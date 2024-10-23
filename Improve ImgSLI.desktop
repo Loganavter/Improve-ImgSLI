@@ -1,8 +1,9 @@
 [Desktop Entry]
 Name=Improve ImgSLI
-Comment=Improved ImgSLI is an open-source, non-proprietary software designed for intuitive image before/after interactions.
-Exec=/usr/bin/improve-imgsli
+Comment=Image comparison tool with magnifying glass feature
+Exec=improve-imgsli
 Icon=improve-imgsli
 Terminal=false
 Type=Application
 Categories=Graphics;Photography;
+Keywords=image;comparison;magnifier;
