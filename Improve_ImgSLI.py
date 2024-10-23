@@ -4,6 +4,6 @@ from image_comparison_app import ImageComparisonApp
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    ex = ImageComparisonApp()
+    ex = Improve ImgSLI()
     ex.show()
     sys.exit(app.exec())
