@@ -23,9 +23,15 @@
 
 
 ### How to install
+```python 
+git clone https://github.com/Loganavter/Improve-ImgSLI.git
+cd Improve-ImgSLI
 pip install -r requirements.txt
-python improve_imgsli.py
-
+python Improve_ImgSLI.py
+```
 ---
+<details>
 
-Code writed via ChatGPT and Claude AI.
+<summary>Spoiler</summary>
+Code writed via ChatGPT and Claude AI. For 2 days and $10.
+</details>
