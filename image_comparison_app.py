@@ -29,7 +29,7 @@ class ImageComparisonApp(QWidget):
         self.magnifier_spacing = 50
 
     def initUI(self):
-        self.setWindowTitle('Image Comparison App')
+        self.setWindowTitle('Improve ImgSLI')
         self.setGeometry(100, 100, 800, 900)
 
         layout = QVBoxLayout()
