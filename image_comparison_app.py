@@ -82,9 +82,11 @@ class ImageComparisonApp(QWidget):
         self.update_minimum_window_size()
         self.setFixedSize(self.size())
         self.setWindowFlags(self.windowFlags() |
-                            Qt.WindowType.WindowStaysOnTopHint |
                             Qt.WindowType.Dialog |
-                            Qt.WindowType.MSWindowsFixedSizeDialogHint)
+                                    Qt.WindowType.MSWindowsFixedSizeDialogHint)
+
+        self.checkbox_magnifier = QCheckBox('Use Magnifier')
+        self.checkbox_magnifier.setToolTip('Use WASD keys to move the magnifier glasses.\nUse Q and E keys to adjust the distance between magnifiers.')
 
     def resizeEvent(self, event):
         self.update_comparison()
