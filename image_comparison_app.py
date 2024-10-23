@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel, QFileDialog, QSizePolicy
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QPainterPath
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel, QFileDialog, QSizePolicy, QMessageBox)
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QPainterPath, QFont
 from PyQt6.QtCore import Qt, QPoint, QTimer, QRect
 from PIL import Image, ImageDraw
 from clickable_label import ClickableLabel
@@ -48,8 +48,18 @@ class ImageComparisonApp(QWidget):
         self.checkbox_horizontal.stateChanged.connect(self.toggle_orientation)
         self.checkbox_magnifier = QCheckBox('Use Magnifier')
         self.checkbox_magnifier.stateChanged.connect(self.toggle_magnifier)
+        
+        # Create help button
+        self.help_button = QPushButton("?")
+        self.help_button.setFixedSize(24, 24)  # Make it square
+        self.help_button.setFont(QFont('Arial', 14, QFont.Weight.Bold))
+        self.help_button.clicked.connect(self.show_help)
+        self.help_button.hide()  # Initially hidden
+        
         checkbox_layout.addWidget(self.checkbox_horizontal)
         checkbox_layout.addWidget(self.checkbox_magnifier)
+        checkbox_layout.addWidget(self.help_button)
+        checkbox_layout.addStretch()  # Add stretch to keep widgets left-aligned
         layout.addLayout(checkbox_layout)
 
         slider_layout = QHBoxLayout()
@@ -85,9 +95,22 @@ class ImageComparisonApp(QWidget):
                             Qt.WindowType.Dialog |
                                     Qt.WindowType.MSWindowsFixedSizeDialogHint)
 
-        self.checkbox_magnifier = QCheckBox('Use Magnifier')
-        self.checkbox_magnifier.setToolTip('Use WASD keys to move the magnifier glasses.\nUse Q and E keys to adjust the distance between magnifiers.')
+    def toggle_magnifier(self, state):
+        self.use_magnifier = state == Qt.CheckState.Checked.value
+        self.help_button.setVisible(self.use_magnifier)  # Show/hide help button based on checkbox state
+        self.update_comparison()
 
+    def show_help(self):
+        help_text = ("Use WASD keys to move the magnifying glasses independently from the detection area. "
+                    "Use Q and E keys to adjust the distance between magnifying glasses. "
+                    "If the distance between them becomes too small, they will merge.")
+        
+        msg_box = QMessageBox()
+        msg_box.setWindowTitle("Magnifier Controls")
+        msg_box.setText(help_text)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.exec()
+        
     def resizeEvent(self, event):
         self.update_comparison()
         self.update_minimum_window_size()
