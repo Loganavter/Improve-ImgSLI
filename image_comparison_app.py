@@ -1,11 +1,12 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel, QFileDialog, QSizePolicy, QMessageBox)
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QPainterPath, QFont
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel, QFileDialog, QSizePolicy, QMessageBox
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QPainterPath
 from PyQt6.QtCore import Qt, QPoint, QTimer, QRect
 from PIL import Image, ImageDraw
 from clickable_label import ClickableLabel
 from image_processing import resize_images, update_comparison, draw_magnifier, draw_capture_area, save_result
 import numpy as np
 from math import sqrt
+
 
 class ImageComparisonApp(QWidget):
     def __init__(self):
@@ -49,17 +50,15 @@ class ImageComparisonApp(QWidget):
         self.checkbox_magnifier = QCheckBox('Use Magnifier')
         self.checkbox_magnifier.stateChanged.connect(self.toggle_magnifier)
         
-        # Create help button
-        self.help_button = QPushButton("?")
-        self.help_button.setFixedSize(24, 24)  # Make it square
-        self.help_button.setFont(QFont('Arial', 14, QFont.Weight.Bold))
+        # Add help button with question mark
+        self.help_button = QPushButton('?')
+        self.help_button.setFixedSize(24, 24)  # Make it square and compact
         self.help_button.clicked.connect(self.show_help)
-        self.help_button.hide()  # Initially hidden
         
         checkbox_layout.addWidget(self.checkbox_horizontal)
         checkbox_layout.addWidget(self.checkbox_magnifier)
+        checkbox_layout.addStretch()  # Add stretch to push help button to the right
         checkbox_layout.addWidget(self.help_button)
-        checkbox_layout.addStretch()  # Add stretch to keep widgets left-aligned
         layout.addLayout(checkbox_layout)
 
         slider_layout = QHBoxLayout()
@@ -95,21 +94,12 @@ class ImageComparisonApp(QWidget):
                             Qt.WindowType.Dialog |
                                     Qt.WindowType.MSWindowsFixedSizeDialogHint)
 
-    def toggle_magnifier(self, state):
-        self.use_magnifier = state == Qt.CheckState.Checked.value
-        self.help_button.setVisible(self.use_magnifier)  # Show/hide help button based on checkbox state
-        self.update_comparison()
-
     def show_help(self):
-        help_text = ("Use WASD keys to move the magnifying glasses independently from the detection area. "
-                    "Use Q and E keys to adjust the distance between magnifying glasses. "
+        help_text = ("To move magnifying glasses separately from the detection area - use WASD keys. "
+                    "To change the distance between magnifying glasses - use Q and E keys. "
                     "If the distance between them becomes too small, they will merge.")
         
-        msg_box = QMessageBox()
-        msg_box.setWindowTitle("Magnifier Controls")
-        msg_box.setText(help_text)
-        msg_box.setIcon(QMessageBox.Icon.Information)
-        msg_box.exec()
+        QMessageBox.information(self, "Help", help_text)
         
     def resizeEvent(self, event):
         self.update_comparison()
