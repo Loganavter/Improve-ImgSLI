@@ -28,6 +28,11 @@ cd Improve-ImgSLI
 pip install -r requirements.txt
 python Improve_ImgSLI.py
 ```
+
+## Arch Linux 
+```bash
+yay -S improve-imgsli
+```
 ---
 
 <details>
