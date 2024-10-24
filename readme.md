@@ -33,6 +33,10 @@ python Improve_ImgSLI.py
 ```bash
 yay -S improve-imgsli
 ```
+
+## Windows
+1. Download latest [Realese](https://github.com/Loganavter/Improve-ImgSLI/releases)
+2. Run .exe
 ---
 
 <details>
