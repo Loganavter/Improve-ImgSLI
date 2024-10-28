@@ -227,7 +227,7 @@ def draw_capture_area(app, painter, capture_rect):
     painter.save()
     pen = QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.SolidLine)
     painter.setPen(pen)
-    capture_center = QPointF(capture_rect.center().x(), capture_rect.center().y() - 75) 
+    capture_center = QPointF(capture_rect.center().x(), capture_rect.center().y() - 100) 
     painter.drawEllipse(capture_center, app.capture_size // 2, app.capture_size // 2)
     painter.restore()
 
