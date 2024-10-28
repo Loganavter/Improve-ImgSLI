@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel, QFileDialog, QSizePolicy, QMessageBox
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QPainterPath
-from PyQt6.QtCore import Qt, QPoint, QTimer, QRect
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QPainterPath, QDragEnterEvent, QDropEvent
+from PyQt6.QtCore import Qt, QPoint, QTimer, QRect, QMimeData, QSize
 from PIL import Image, ImageDraw
 from clickable_label import ClickableLabel
 from image_processing import resize_images, update_comparison, draw_magnifier, draw_capture_area, save_result
@@ -28,10 +28,24 @@ class ImageComparisonApp(QWidget):
         self.active_keys = set()
         self.movement_speed = 2
         self.magnifier_spacing = 50
+        
+        # Create drag overlays for Image 1 and Image 2
+        self.drag_overlay1 = QLabel(self)
+        self.drag_overlay1.setText("Drop Image 1 Here")
+        self.drag_overlay1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.drag_overlay1.setStyleSheet("background-color: rgba(0, 0, 0, 0.5); color: white; font-size: 24px; border-radius: 15px;")
+        self.drag_overlay1.hide()
+
+        self.drag_overlay2 = QLabel(self)
+        self.drag_overlay2.setText("Drop Image 2 Here")
+        self.drag_overlay2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.drag_overlay2.setStyleSheet("background-color: rgba(0, 0, 0, 0.5); color: white; font-size: 24px; border-radius: 15px;")
+        self.drag_overlay2.hide()
 
     def initUI(self):
         self.setWindowTitle('Improve ImgSLI')
         self.setGeometry(100, 100, 800, 900)
+        self.setAcceptDrops(True)  # Enable drag and drop
 
         layout = QVBoxLayout()
 
@@ -256,3 +270,50 @@ class ImageComparisonApp(QWidget):
             
         self.update_comparison()
 
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            self.update_drag_overlays()
+            self.drag_overlay1.show()
+            self.drag_overlay2.show()
+
+    def dragLeaveEvent(self, event):
+        self.drag_overlay1.hide()
+        self.drag_overlay2.hide()
+
+    def dropEvent(self, event: QDropEvent):
+        self.drag_overlay1.hide()
+        self.drag_overlay2.hide()
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls:
+                file_path = urls[0].toLocalFile()
+                if file_path:
+                    drop_pos = event.position().toPoint()
+                    if self.is_in_left_area(drop_pos):
+                        self.load_image_from_path(file_path, 1)
+                    else:
+                        self.load_image_from_path(file_path, 2)
+
+    def load_image_from_path(self, file_path, image_number):
+        image = Image.open(file_path)
+        if image_number == 1:
+            self.image1 = image
+        else:
+            self.image2 = image
+        
+        if self.image1 and self.image2:
+            resize_images(self)
+            self.update_comparison()
+
+    def update_drag_overlays(self):
+        width = self.width()
+        height = self.height()
+        overlay_width = width // 2 - 20
+        overlay_height = height - 40
+
+        self.drag_overlay1.setGeometry(10, 20, overlay_width, overlay_height)
+        self.drag_overlay2.setGeometry(width // 2 + 10, 20, overlay_width, overlay_height)
+
+    def is_in_left_area(self, pos):
+        return pos.x() < self.width() // 2
