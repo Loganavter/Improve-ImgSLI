@@ -227,9 +227,33 @@ def draw_capture_area(app, painter, capture_rect):
     painter.save()
     pen = QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.SolidLine)
     painter.setPen(pen)
-    capture_center = QPointF(capture_rect.center().x(), capture_rect.center().y() - 100) 
-    painter.drawEllipse(capture_center, app.capture_size // 2, app.capture_size // 2)
+
+    display_rect = app.image_label.rect()
+    pixmap = app.image_label.pixmap()
+    if pixmap:
+        scaled_width = pixmap.width()
+        scaled_height = pixmap.height()
+
+        x_offset = (display_rect.width() - scaled_width) // 2
+        y_offset = (display_rect.height() - scaled_height) // 2
+
+        scale_x = app.image1.width / scaled_width
+        scale_y = app.image1.height / scaled_height
+
+        adjusted_capture_x = capture_rect.center().x() - x_offset
+        adjusted_capture_y = capture_rect.center().y() - y_offset
+
+        adjusted_capture_x = max(0, min(adjusted_capture_x, scaled_width))
+        adjusted_capture_y = max(0, min(adjusted_capture_y, scaled_height))
+
+        capture_center = QPointF(
+            adjusted_capture_x,
+            adjusted_capture_y
+        )
+
+        painter.drawEllipse(capture_center, app.capture_size // 2, app.capture_size // 2)
     painter.restore()
+
 
 def save_result(app):
     if not app.image1 or not app.image2 or not app.result_image:
