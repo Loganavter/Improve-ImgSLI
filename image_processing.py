@@ -450,6 +450,9 @@ def save_result(app):
                 ], outline='white', width=max(1, int(2 * scale_x)))
 
     try:
-        result.save(file_name)
+        if file_name.lower().endswith(".jpg") or file_name.lower().endswith(".jpeg"):
+            result.save(file_name, "JPEG", quality=93)
+        else:
+            result.save(file_name)
     except Exception as e:
         QMessageBox.critical(app, "Error", f"Failed to save image: {str(e)}")
