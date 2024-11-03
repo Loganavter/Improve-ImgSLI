@@ -5,8 +5,7 @@ from PIL import Image, ImageDraw
 from clickable_label import ClickableLabel
 from image_processing import resize_images, update_comparison, draw_magnifier, draw_capture_area, save_result
 import numpy as np
-from math import sqrt
-
+from math import sqrt, cos, sin, pi
 
 class ImageComparisonApp(QWidget):
     def __init__(self):
@@ -25,10 +24,12 @@ class ImageComparisonApp(QWidget):
         self.capture_position = QPoint(300, 300)
         self.movement_timer = QTimer(self)
         self.movement_timer.timeout.connect(self.update_magnifier_position)
+        self.movement_timer.setInterval(16)  # ~60 FPS for smooth movement
         self.active_keys = set()
-        self.movement_speed = 2
+        self.movement_speed = 2  # Базовая скорость движения
         self.magnifier_spacing = 50
-        
+        self.freeze_magnifier = False
+
         # Create drag overlays for Image 1 and Image 2
         self.drag_overlay1 = QLabel(self)
         self.drag_overlay1.setText("Drop Image 1 Here")
@@ -54,7 +55,13 @@ class ImageComparisonApp(QWidget):
         self.btn_image2 = QPushButton('Select Image 2')
         self.btn_image1.clicked.connect(lambda: self.load_image(1))
         self.btn_image2.clicked.connect(lambda: self.load_image(2))
+
+        self.btn_swap = QPushButton('⇄')
+        self.btn_swap.setFixedSize(20, 20)
+        self.btn_swap.clicked.connect(self.swap_images)
+        
         btn_layout.addWidget(self.btn_image1)
+        btn_layout.addWidget(self.btn_swap)
         btn_layout.addWidget(self.btn_image2)
         layout.addLayout(btn_layout)
 
@@ -64,30 +71,39 @@ class ImageComparisonApp(QWidget):
         self.checkbox_magnifier = QCheckBox('Use Magnifier')
         self.checkbox_magnifier.stateChanged.connect(self.toggle_magnifier)
         
-        # Add help button with question mark
         self.help_button = QPushButton('?')
         self.help_button.setFixedSize(24, 24)  # Make it square and compact
         self.help_button.clicked.connect(self.show_help)
         
+        self.freeze_button = QCheckBox('Freeze Magnifier')
+        self.freeze_button.stateChanged.connect(self.toggle_freeze_magnifier)
+        
         checkbox_layout.addWidget(self.checkbox_horizontal)
         checkbox_layout.addWidget(self.checkbox_magnifier)
+        checkbox_layout.addWidget(self.freeze_button)
         checkbox_layout.addStretch()  # Add stretch to push help button to the right
         checkbox_layout.addWidget(self.help_button)
         layout.addLayout(checkbox_layout)
 
         slider_layout = QHBoxLayout()
         self.slider_size = QSlider(Qt.Orientation.Horizontal)
-        self.slider_size.setRange(50, 200)
+        self.slider_size.setRange(50, 400)
         self.slider_size.setValue(100)
         self.slider_size.valueChanged.connect(self.update_magnifier_size)
         self.slider_capture = QSlider(Qt.Orientation.Horizontal)
-        self.slider_capture.setRange(1, 100)
+        self.slider_capture.setRange(1, 200)
         self.slider_capture.setValue(50)
         self.slider_capture.valueChanged.connect(self.update_capture_size)
+        self.slider_speed = QSlider(Qt.Orientation.Horizontal)
+        self.slider_speed.setRange(1, 10)
+        self.slider_speed.setValue(2)
+        self.slider_speed.valueChanged.connect(self.update_movement_speed)
         slider_layout.addWidget(QLabel("Magnifier Size:"))
         slider_layout.addWidget(self.slider_size)
         slider_layout.addWidget(QLabel("Capture Size:"))
         slider_layout.addWidget(self.slider_capture)
+        slider_layout.addWidget(QLabel("Movement Speed:"))
+        slider_layout.addWidget(self.slider_speed)
         layout.addLayout(slider_layout)
 
         self.image_label = ClickableLabel(self)
@@ -146,6 +162,12 @@ class ImageComparisonApp(QWidget):
                 resize_images(self)
                 self.update_comparison()
 
+    def swap_images(self):
+        self.image1, self.image2 = self.image2, self.image1
+        if self.image1 and self.image2:
+            resize_images(self)
+            self.update_comparison()
+
     def update_comparison(self):
         update_comparison(self)
 
@@ -157,6 +179,9 @@ class ImageComparisonApp(QWidget):
         self.use_magnifier = state == Qt.CheckState.Checked.value
         self.update_comparison()
 
+    def toggle_freeze_magnifier(self, state):
+        self.freeze_magnifier = state == Qt.CheckState.Checked.value
+
     def update_magnifier_size(self, value):
         self.magnifier_size = value
         self.update_comparison()
@@ -164,6 +189,9 @@ class ImageComparisonApp(QWidget):
     def update_capture_size(self, value):
         self.capture_size = value
         self.update_comparison()
+    
+    def update_movement_speed(self, value):
+        self.movement_speed = value
 
     def save_result(self):
         save_result(self)
@@ -196,12 +224,13 @@ class ImageComparisonApp(QWidget):
                 self.split_position = max(0, min(1, self.split_position))
             
             if self.use_magnifier:
-                dx = self.magnifier_position.x() - self.capture_position.x()
-                dy = self.magnifier_position.y() - self.capture_position.y()
-                
-                self.capture_position = cursor_pos
-                
-                self.magnifier_position = QPoint(cursor_pos.x() + dx, cursor_pos.y() + dy)
+                if not self.freeze_magnifier:
+                    dx = self.magnifier_position.x() - self.capture_position.x()
+                    dy = self.magnifier_position.y() - self.capture_position.y()
+                    self.capture_position = cursor_pos
+                    self.magnifier_position = QPoint(cursor_pos.x() + dx, cursor_pos.y() + dy)
+                else:
+                    self.capture_position = cursor_pos
             
             self.update_comparison()
 
@@ -224,11 +253,57 @@ class ImageComparisonApp(QWidget):
         
         return interaction_area.contains(pos)
 
+    def update_magnifier_position(self):
+        if not self.use_magnifier:
+            return
+
+        needs_update = False
+        
+        dx = 0
+        dy = 0
+        
+        if Qt.Key.Key_A in self.active_keys:
+            dx -= self.movement_speed
+        if Qt.Key.Key_D in self.active_keys:
+            dx += self.movement_speed
+        if Qt.Key.Key_W in self.active_keys:
+            dy -= self.movement_speed
+        if Qt.Key.Key_S in self.active_keys:
+            dy += self.movement_speed
+        if Qt.Key.Key_Q in self.active_keys:
+            self.magnifier_spacing = max(0, self.magnifier_spacing - 2)
+            needs_update = True
+        if Qt.Key.Key_E in self.active_keys:
+            self.magnifier_spacing += 2
+            needs_update = True
+        if dx != 0 or dy != 0:
+            # При движении по диагонали нормализуем компоненты так, 
+            # чтобы результирующая скорость была равна self.movement_speed
+            if dx != 0 and dy != 0:
+                dx = dx / sqrt(2)
+                dy = dy / sqrt(2)
+            
+            new_x = self.magnifier_position.x() + int(dx)
+            new_y = self.magnifier_position.y() + int(dy)
+            
+            self.magnifier_position = QPoint(new_x, new_y)
+            needs_update = True
+
+        # Update the comparison if any changes occurred
+        if needs_update:
+            self.update_comparison()
+
     def keyPressEvent(self, event):
         if self.use_magnifier:
             key = event.key()
-            self.active_keys.add(key)
-            self.movement_timer.start(30)
+            if key not in self.active_keys:
+                self.active_keys.add(key)
+                # Start timer if it's not already running
+                if not self.movement_timer.isActive():
+                    self.movement_timer.start()
+                # Immediate update for Q/E keys
+                if key in [Qt.Key.Key_Q, Qt.Key.Key_E]:
+                    self.update_magnifier_position()
 
     def keyReleaseEvent(self, event):
         key = event.key()
@@ -236,39 +311,6 @@ class ImageComparisonApp(QWidget):
             self.active_keys.remove(key)
         if not self.active_keys:
             self.movement_timer.stop()
-
-    def update_magnifier_position(self):
-        if not self.use_magnifier:
-            return
-
-        dx = 0
-        dy = 0
-        
-        if Qt.Key.Key_A in self.active_keys:
-            dx -= 1
-        if Qt.Key.Key_D in self.active_keys:
-            dx += 1
-        if Qt.Key.Key_W in self.active_keys:
-            dy -= 1
-        if Qt.Key.Key_S in self.active_keys:
-            dy += 1
-        if Qt.Key.Key_Q in self.active_keys:
-            self.magnifier_spacing = max(0, self.magnifier_spacing - 2)
-        if Qt.Key.Key_E in self.active_keys:
-            self.magnifier_spacing += 2
-            
-        if dx != 0 or dy != 0:
-            if dx != 0 and dy != 0:
-                length = sqrt(dx * dx + dy * dy)
-                dx = dx / length
-                dy = dy / length
-                
-            new_x = self.magnifier_position.x() + int(dx * self.movement_speed)
-            new_y = self.magnifier_position.y() + int(dy * self.movement_speed)
-            
-            self.magnifier_position = QPoint(new_x, new_y)
-            
-        self.update_comparison()
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
