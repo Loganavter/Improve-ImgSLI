@@ -119,10 +119,6 @@ class ImageComparisonApp(QWidget):
 
         self.setLayout(layout)
         self.update_minimum_window_size()
-        self.setFixedSize(self.size())
-        self.setWindowFlags(self.windowFlags() |
-                            Qt.WindowType.Dialog |
-                                    Qt.WindowType.MSWindowsFixedSizeDialogHint)
 
     def show_help(self):
         help_text = ("To move magnifying glasses separately from the detection area - use WASD keys. "
@@ -132,10 +128,12 @@ class ImageComparisonApp(QWidget):
         QMessageBox.information(self, "Help", help_text)
         
     def resizeEvent(self, event):
-        self.update_comparison()
-        self.update_minimum_window_size()
         super().resizeEvent(event)
-
+        if self.image1 and self.image2:
+            self.update_comparison()
+        if hasattr(self, 'drag_overlay1') and hasattr(self, 'drag_overlay2'):
+            self.update_drag_overlays()
+    
     def update_minimum_window_size(self):
         min_label_size = self.image_label.minimumSize()
         min_width = 300
@@ -147,8 +145,7 @@ class ImageComparisonApp(QWidget):
                 min_height += item.sizeHint().height()
 
         self.setMinimumSize(min_width, min_height)
-        self.setFixedSize(self.size())
-
+        
     def load_image(self, image_number):
         file_name, _ = QFileDialog.getOpenFileName(self, f"Select Image {image_number}", "", "Image Files (*.png *.jpg *.bmp)")
         if file_name:
@@ -189,7 +186,7 @@ class ImageComparisonApp(QWidget):
     def update_capture_size(self, value):
         self.capture_size = value
         self.update_comparison()
-    
+
     def update_movement_speed(self, value):
         self.movement_speed = value
 
@@ -347,8 +344,10 @@ class ImageComparisonApp(QWidget):
         if self.image1 and self.image2:
             resize_images(self)
             self.update_comparison()
-
+            
     def update_drag_overlays(self):
+        if not hasattr(self, 'drag_overlay1') or not hasattr(self, 'drag_overlay2'):
+            return
         width = self.width()
         height = self.height()
         overlay_width = width // 2 - 20
