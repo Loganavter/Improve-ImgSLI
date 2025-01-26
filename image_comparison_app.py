@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel, QFileDialog, QSizePolicy, QMessageBox
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QPainterPath, QDragEnterEvent, QDropEvent, QIcon, QPixmap
-from PyQt6.QtCore import Qt, QPoint, QTimer, QRect, QMimeData, QSize
+from PyQt6.QtCore import Qt, QPoint, QTimer, QRect, QMimeData, QSize, QSettings, QLocale
 from PIL import Image, ImageDraw
 import base64
 from flag_icons import FLAG_ICONS
@@ -13,9 +13,40 @@ from translations import tr
 class ImageComparisonApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.current_language = 'en'  # Default language
-        self.slider_layout = None  # Store the slider layout
+        
+        overlay_style = """
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            font-size: 24px;
+            border-radius: 15px;
+            padding: 10px;
+        """
+
+        self.drag_overlay1 = QLabel(self)
+        self.drag_overlay1.setText(tr("Drop Image 1 Here", 'en'))
+        self.drag_overlay1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.drag_overlay1.setStyleSheet(overlay_style)
+        self.drag_overlay1.setWordWrap(True)
+        self.drag_overlay1.hide()
+
+        self.drag_overlay2 = QLabel(self)
+        self.drag_overlay2.setText(tr("Drop Image 2 Here", 'en'))
+        self.drag_overlay2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.drag_overlay2.setStyleSheet(overlay_style)
+        self.drag_overlay2.setWordWrap(True)
+        self.drag_overlay2.hide()
+
+        settings = QSettings("YourCompany", "ImproveImgSLI")
+        saved_lang = settings.value("language", None)
+        
+        if saved_lang is not None:
+            self.current_language = saved_lang
+        else:
+            system_lang = QLocale.system().name[:2]
+            self.current_language = system_lang if system_lang in ['en', 'ru', 'zh'] else 'en'
+        
         self.initUI()
+        
         self.image1 = None
         self.image2 = None
         self.result_image = None
@@ -29,38 +60,19 @@ class ImageComparisonApp(QWidget):
         self.capture_position = QPoint(300, 300)
         self.movement_timer = QTimer(self)
         self.movement_timer.timeout.connect(self.update_magnifier_position)
-        self.movement_timer.setInterval(16)  # ~60 FPS for smooth movement
+        self.movement_timer.setInterval(16)
         self.active_keys = set()
-        self.movement_speed = 2  # Базовая скорость движения
+        self.movement_speed = 2
         self.magnifier_spacing = 50
         self.freeze_magnifier = False
 
-        overlay_style = """
-            background-color: rgba(0, 0, 0, 0.5);
-            color: white;
-            font-size: 24px;
-            border-radius: 15px;
-            padding: 10px;
-        """
-
-        self.drag_overlay1 = QLabel(self)
-        self.drag_overlay1.setText(tr("Drop Image 1 Here", self.current_language))
-        self.drag_overlay1.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.drag_overlay1.setStyleSheet(overlay_style)
-        self.drag_overlay1.setWordWrap(True)  # Используем только метод setWordWrap
-        self.drag_overlay1.hide()
-
-        self.drag_overlay2 = QLabel(self)
-        self.drag_overlay2.setText(tr("Drop Image 2 Here", self.current_language))
-        self.drag_overlay2.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.drag_overlay2.setStyleSheet(overlay_style)
-        self.drag_overlay2.setWordWrap(True)  # Используем только метод setWordWrap
-        self.drag_overlay2.hide()
+        self.update_translations()
+        self.update_language_checkboxes()
 
     def initUI(self):
         self.setWindowTitle('Improve ImgSLI')
         self.setGeometry(100, 100, 800, 900)
-        self.setAcceptDrops(True)  # Enable drag and drop
+        self.setAcceptDrops(True)
 
         layout = QVBoxLayout()
 
@@ -86,7 +98,7 @@ class ImageComparisonApp(QWidget):
         self.checkbox_magnifier.stateChanged.connect(self.toggle_magnifier)
 
         self.help_button = QPushButton('?')
-        self.help_button.setFixedSize(24, 24)  # Make it square and compact
+        self.help_button.setFixedSize(24, 24)
         self.help_button.clicked.connect(self.show_help)
 
         self.freeze_button = QCheckBox(tr('Freeze Magnifier', self.current_language))
@@ -96,23 +108,19 @@ class ImageComparisonApp(QWidget):
         self.lang_ru = QCheckBox()
         self.lang_zh = QCheckBox()
 
-        # Устанавливаем иконки
         self.lang_en.setIcon(self.create_flag_icon(FLAG_ICONS['en']))
         self.lang_ru.setIcon(self.create_flag_icon(FLAG_ICONS['ru']))
         self.lang_zh.setIcon(self.create_flag_icon(FLAG_ICONS['zh']))
 
-        # Устанавливаем размер иконок
         icon_size = QSize(24, 16)
         self.lang_en.setIconSize(icon_size)
         self.lang_ru.setIconSize(icon_size)
         self.lang_zh.setIconSize(icon_size)
 
-        # Убираем текст чекбоксов
         self.lang_en.setText('')
         self.lang_ru.setText('')
         self.lang_zh.setText('')
 
-        # Добавляем стиль
         style = '''
         QCheckBox {
             padding: 2px;
@@ -137,12 +145,11 @@ class ImageComparisonApp(QWidget):
         checkbox_layout.addWidget(self.help_button)
         layout.addLayout(checkbox_layout)
 
-        # Добавляем обработчики событий для языковых чекбоксов
         self.lang_en.stateChanged.connect(lambda: self.on_language_changed('en'))
-        self.lang_ru.stateChanged.connect(lambda: self.on_language_changed('ru')) 
+        self.lang_ru.stateChanged.connect(lambda: self.on_language_changed('ru'))
         self.lang_zh.stateChanged.connect(lambda: self.on_language_changed('zh'))
 
-        self.slider_layout = QHBoxLayout()  # Store reference here
+        self.slider_layout = QHBoxLayout()
         self.slider_size = QSlider(Qt.Orientation.Horizontal)
         self.slider_size.setRange(50, 400)
         self.slider_size.setValue(100)
@@ -176,6 +183,7 @@ class ImageComparisonApp(QWidget):
 
         self.setLayout(layout)
         self.update_minimum_window_size()
+        self.update_language_checkboxes()
 
     def create_flag_icon(self, base64_data):
         pixmap = QPixmap()
@@ -183,22 +191,18 @@ class ImageComparisonApp(QWidget):
         return QIcon(pixmap)
 
     def on_language_changed(self, language):
-        # Отключаем обработчики событий временно
         self.lang_en.blockSignals(True)
-        self.lang_ru.blockSignals(True) 
+        self.lang_ru.blockSignals(True)
         self.lang_zh.blockSignals(True)
 
-        # Устанавливаем состояние чекбоксов
         self.lang_en.setChecked(language == 'en')
         self.lang_ru.setChecked(language == 'ru')
         self.lang_zh.setChecked(language == 'zh')
 
-        # Включаем обработчики событий обратно
         self.lang_en.blockSignals(False)
         self.lang_ru.blockSignals(False)
         self.lang_zh.blockSignals(False)
 
-        # Меняем язык
         self.change_language(language)
 
     def show_help(self):
@@ -358,8 +362,6 @@ class ImageComparisonApp(QWidget):
             self.magnifier_spacing += 2
             needs_update = True
         if dx != 0 or dy != 0:
-            # При движении по диагонали нормализуем компоненты так,
-            # чтобы результирующая скорость была равна self.movement_speed
             if dx != 0 and dy != 0:
                 dx = dx / sqrt(2)
                 dy = dy / sqrt(2)
@@ -370,7 +372,6 @@ class ImageComparisonApp(QWidget):
             self.magnifier_position = QPoint(new_x, new_y)
             needs_update = True
 
-        # Update the comparison if any changes occurred
         if needs_update:
             self.update_comparison()
 
@@ -379,10 +380,8 @@ class ImageComparisonApp(QWidget):
             key = event.key()
             if key not in self.active_keys:
                 self.active_keys.add(key)
-                # Start timer if it's not already running
                 if not self.movement_timer.isActive():
                     self.movement_timer.start()
-                # Immediate update for Q/E keys
                 if key in [Qt.Key.Key_Q, Qt.Key.Key_E]:
                     self.update_magnifier_position()
 
@@ -448,8 +447,14 @@ class ImageComparisonApp(QWidget):
         self.update_translations()
         self.update_language_checkboxes()
 
+        settings = QSettings("YourCompany", "ImproveImgSLI")
+        settings.setValue("language", language)
+
     def update_translations(self):
-        # Update all text elements
+        if hasattr(self, 'drag_overlay1') and hasattr(self, 'drag_overlay2'):
+            self.drag_overlay1.setText(tr("Drop Image 1 Here", self.current_language))
+            self.drag_overlay2.setText(tr("Drop Image 2 Here", self.current_language))
+
         self.btn_image1.setText(tr('Select Image 1', self.current_language))
         self.btn_image2.setText(tr('Select Image 2', self.current_language))
         self.checkbox_horizontal.setText(tr('Horizontal Split', self.current_language))
@@ -460,7 +465,6 @@ class ImageComparisonApp(QWidget):
         self.drag_overlay2.setText(tr("Drop Image 2 Here", self.current_language))
         self.setWindowTitle(tr('Improve ImgSLI', self.current_language))
         self.btn_swap.setText(tr('⇄', self.current_language))
-        # Update labels in slider layout
         if self.slider_layout:
             self.slider_layout.itemAt(0).widget().setText(tr("Magnifier Size:", self.current_language))
             self.slider_layout.itemAt(2).widget().setText(tr("Capture Size:", self.current_language))
