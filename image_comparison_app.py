@@ -42,7 +42,7 @@ class ImageComparisonApp(QWidget):
         if saved_lang is not None:
             self.current_language = saved_lang
         else:
-            system_lang = QLocale.system().name[:2]
+            system_lang = QLocale.system().name()[:2]
             self.current_language = system_lang if system_lang in ['en', 'ru', 'zh'] else 'en'
         
         self.initUI()
