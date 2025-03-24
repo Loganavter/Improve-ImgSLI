@@ -22,8 +22,8 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 ---
 
 <div style="display: flex; justify-content: space-between;">
-    <img src="1.png" alt="Изображение 1" style="width: 45%;">
-    <img src="2.png" alt="Изображение 2" style="width: 45%;">
+    <img src="1_.png" alt="Изображение 1" style="width: 45%;">
+    <img src="2_.png" alt="Изображение 2" style="width: 45%;">
 </div>
 
 ## Installation
