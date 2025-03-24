@@ -5,5 +5,5 @@ Exec=improve-imgsli
 Icon=improve-imgsli
 Terminal=false
 Type=Application
-Categories=Graphics;Photography;
+Categories=Graphics;Viewer;Editor;Utility;
 Keywords=image;comparison;magnifier;
