@@ -56,8 +56,3 @@ Occasionally, I leaned on the new Claude Sonnet when Grok hit prediction snagsâ€
 
 In general, if do not take into account the price of my personal time, which is about 2 weeks in total, then this project cost me about $ 30. I got the AUR maintainer for free, so we don't take it into account either :)
 </details>
-
-<details>
-<summary>Spoiler</summary>
-This code was developed using ChatGPT and Claude AI over the course of 2 days for a cost of $10.
-</details>
