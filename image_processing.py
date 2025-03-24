@@ -57,11 +57,11 @@ def draw_split_line(app, painter, scaled_pixmap):
     """Draws the split line on the displayed image."""
     if not app.is_horizontal:
         line_x = int(scaled_pixmap.width() * app.split_position)
-        line_width = max(1, int(scaled_pixmap.width() * 0.0025)) # Reduced line width to match original
+        line_width = max(1, int(scaled_pixmap.width() * 0.0035))
         painter.fillRect(line_x - line_width // 2, 0, line_width, scaled_pixmap.height(), QColor(0, 0, 0, 128))
     else:
         line_y = int(scaled_pixmap.height() * app.split_position)
-        line_height = max(1, int(scaled_pixmap.height() * 0.0025)) # Reduced line height to match original
+        line_height = max(1, int(scaled_pixmap.height() * 0.0035))
         painter.fillRect(0, line_y - line_height // 2, scaled_pixmap.width(), line_height, QColor(0, 0, 0, 128))
 
 
@@ -86,9 +86,9 @@ def draw_magnifier_processor(app, painter, pixmap):
     capture_rect = QRect(app.capture_position.x() - app.capture_size // 2, app.capture_position.y() - app.capture_size // 2, app.capture_size, app.capture_size)
     draw_capture_area_processor(app, painter, capture_rect)
 
-    adjusted_magnifier_position = QPoint(app.magnifier_position.x(), app.magnifier_position.y() - 100)  # Fixed position
-    left_center = QPoint(adjusted_magnifier_position.x() - app.magnifier_size // 2 - app.magnifier_spacing, adjusted_magnifier_position.y() + 25) # Fixed position
-    right_center = QPoint(adjusted_magnifier_position.x() + app.magnifier_size // 2 + app.magnifier_spacing, adjusted_magnifier_position.y() + 25) # Fixed position
+    adjusted_magnifier_position = QPoint(app.magnifier_position.x(), app.magnifier_position.y() - 100)
+    left_center = QPoint(adjusted_magnifier_position.x() - app.magnifier_size // 2 - app.magnifier_spacing, adjusted_magnifier_position.y() + 25)
+    right_center = QPoint(adjusted_magnifier_position.x() + app.magnifier_size // 2 + app.magnifier_spacing, adjusted_magnifier_position.y() + 25)
 
     distance_between_magnifiers = right_center.x() - left_center.x()
     min_distance = app.magnifier_size
@@ -145,7 +145,7 @@ def draw_combined_magnifier_circle_processor(app, painter, pixmap, capture_rect,
     scaled_capture2 = captured_area2.resize((app.magnifier_size, app.magnifier_size), Image.LANCZOS)
 
     half_width = app.magnifier_size // 2
-    line_width = max(1, int(app.magnifier_size * 0.025)) # Reduced line width to match original
+    line_width = max(1, int(app.magnifier_size * 0.025))
 
     left_pixmap = QPixmap.fromImage(scaled_capture1.toqimage())
     left_pixmap = left_pixmap.copy(0, 0, half_width, app.magnifier_size)
@@ -242,8 +242,8 @@ def save_result_processor(self):
     result = Image.new('RGB', (orig_width, orig_height))
     split_pos = int(orig_width * self.split_position) if not self.is_horizontal else int(orig_height * self.split_position)
 
-    line_width = max(1, int(orig_width * 0.0025))
-    line_height = max(1, int(orig_height * 0.0025))
+    line_width = max(1, int(orig_width * 0.0035))
+    line_height = max(1, int(orig_height * 0.0035))
 
     if not self.is_horizontal:
         result.paste(self.image1.crop((0, 0, split_pos, orig_height)), (0, 0))
@@ -256,10 +256,7 @@ def save_result_processor(self):
         draw = ImageDraw.Draw(result)
         draw.rectangle([0, split_pos - line_height // 2, orig_width, split_pos + line_height // 2], fill=(0, 0, 0, 128))
 
-    # Добавляем отладочный вывод для проверки состояния чекбокса
-    print(f"Include file names: {self.checkbox_file_names.isChecked()}")
     if self.checkbox_file_names.isChecked():
-        print("Drawing file names...")
         draw_file_names_on_image(self, result, split_pos, orig_width, orig_height, line_width, line_height)
 
     try:
@@ -280,17 +277,13 @@ def draw_file_names_on_image(self, result, split_pos, orig_width, orig_height, l
     base_margin = 5
     additional_margin = int(font_size * 0.1)
     margin = min(base_margin + additional_margin, int(orig_height * 0.03))
-    font_path = "./SourceSans3-Regular.ttf"  # Убедитесь, что путь к шрифту корректен
+    font_path = "./SourceSans3-Regular.ttf" 
 
     try:
         font = ImageFont.truetype(font_path, size=font_size)
-        print(f"Font loaded: {font_path}, size: {font_size}")
     except IOError:
-        print("Font not found, using default font.")
-        QMessageBox.warning(self, tr("Warning", self.current_language), "Шрифт Source Sans Pro не найден, используется шрифт по умолчанию.")
-        font = ImageFont.load_default()  # Используем шрифт по умолчанию без размера, если метод load_default(size) недоступен
+        font = ImageFont.load_default()
 
-    # Получаем имена файлов
     file_name1_raw = self.edit_name1.text() or (os.path.basename(self.image1_path) if self.image1_path else "Изображение 1")
     file_name2_raw = self.edit_name2.text() or (os.path.basename(self.image2_path) if self.image2_path else "Изображение 2")
     max_length = self.max_name_length
@@ -335,8 +328,8 @@ def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_po
     """Draws filenames for horizontal split."""
     line_top = split_pos - line_height // 2
     line_bottom = split_pos + line_height // 2
-    top_margin = int(margin * 2) # Increased top margin to match original
-    bottom_margin = int(margin * 0.001) # Reduced bottom margin to match original
+    top_margin = int(margin * 2)
+    bottom_margin = int(margin * 0.001)
 
     bbox1 = draw.textbbox((0, 0), file_name1, font=font)
     text_width1 = bbox1[2] - bbox1[0]
