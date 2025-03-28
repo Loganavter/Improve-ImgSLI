@@ -1,8 +1,24 @@
 from PyQt6.QtWidgets import QLabel
+from PyQt6.QtCore import pyqtSignal, QPointF, Qt
+from PyQt6.QtGui import QMouseEvent
 
 class ClickableLabel(QLabel):
-    def mousePressEvent(self, event):
-        self.parent().on_mouse_move(event)
+    mousePressed = pyqtSignal(QMouseEvent)
+    mouseMoved = pyqtSignal(QMouseEvent)
+    mouseReleased = pyqtSignal(QMouseEvent)
 
-    def mouseMoveEvent(self, event):
-        self.parent().on_mouse_move(event)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMouseTracking(True)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        self.mousePressed.emit(event)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        self.mouseMoved.emit(event)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self.mouseReleased.emit(event)
+        super().mouseReleaseEvent(event)
