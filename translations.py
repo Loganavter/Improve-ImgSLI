@@ -1,5 +1,4 @@
-
-translations = {
+    translations = {
     'en': {
         'Select Image 1': 'Img 1',
         'Select Image 2': 'Img 2',
@@ -8,7 +7,7 @@ translations = {
         'Freeze Magnifier': 'Freeze mag',
         'Magnifier Size:': 'Mag size:',
         'Capture Size:': 'Capture size:',
-        'Movement Speed:': 'Speed:',
+        'Speed (px/sec):': 'Speed:',
         'Save Result': 'Save',
         'Help': 'Help',
         'Drop Image 1 Here': 'Drop img 1',
@@ -28,11 +27,23 @@ translations = {
         'Font Size (%):': 'Font size (%):',
         'Edit Image 1 Name': 'Edit img 1 name',
         'Edit Image 2 Name': 'Edit img 2 name',
-        'Select text to edit:': 'Edit text:',
-        'Image 1: ': 'Img 1: ',
-        'Image 2: ': 'Img 2: ',
-        'Enter new text (max {max_length} characters):': 'New text (max {max_length}):',
+        'Select text to edit:': 'Edit text:', # Keep or remove? Seems unused now.
+        'Image 1': 'Image 1', # Used when no path is available
+        'Image 2': 'Image 2', # Used when no path is available
         'Include file names in saved image': 'Display names in file',
+        'Failed to load image:': 'Failed to load image:',
+        'Error': 'Error',
+        'Warning': 'Warning',
+        'Invalid file path.': 'Invalid file path.',
+        'Unsupported file type.': 'Unsupported file type.',
+        'Please load both images first.': 'Please load both images first.',
+        'Failed to save image:': 'Failed to save image:',
+        'Select Image {number}': 'Select Image {number}',
+        'Save Image': 'Save Image',
+        # --- New Color Picker Translations ---
+        'Change Filename Color': 'Change Filename Color',
+        'Current:': 'Current:',
+        'Select Filename Color': 'Select Filename Color',
     },
     'ru': {
         'Select Image 1': 'Изобр. 1',
@@ -42,7 +53,7 @@ translations = {
         'Freeze Magnifier': 'Заморозить лупу',
         'Magnifier Size:': 'Размер лупы:',
         'Capture Size:': 'Размер захвата:',
-        'Movement Speed:': 'Скорость:',
+        'Speed (px/sec):': 'Скорость:',
         'Save Result': 'Сохранить',
         'Help': 'Помощь',
         'Drop Image 1 Here': 'Перетащите изобр. 1',
@@ -62,11 +73,22 @@ translations = {
         'Font Size (%):': 'Размер шрифта (%):',
         'Edit Image 1 Name': 'Ред. имя изобр. 1',
         'Edit Image 2 Name': 'Ред. имя изобр. 2',
-        'Select text to edit:': 'Ред. текст:',
-        'Image 1: ': 'Изобр. 1: ',
-        'Image 2: ': 'Изобр. 2: ',
-        'Enter new text (max {max_length} characters):': 'Новый текст (max {max_length}):',
+        'Image 1': 'Изображение 1', # Used when no path is available
+        'Image 2': 'Изображение 2', # Used when no path is available
         'Include file names in saved image': 'Отобразить имена в файле',
+        'Failed to load image:': 'Не удалось загрузить:',
+        'Error': 'Ошибка',
+        'Warning': 'Предупреждение',
+        'Invalid file path.': 'Неверный путь к файлу.',
+        'Unsupported file type.': 'Неподдерживаемый тип файла.',
+        'Please load both images first.': 'Сначала загрузите оба изображения.',
+        'Failed to save image:': 'Не удалось сохранить:',
+        'Select Image {number}': 'Выберите Изображение {number}',
+        'Save Image': 'Сохранить изображение',
+        # --- New Color Picker Translations ---
+        'Change Filename Color': 'Изменить цвет имени файла',
+        'Current:': 'Тек.:',
+        'Select Filename Color': 'Выберите цвет имени файла',
     },
     'zh': {
         'Select Image 1': '图1',
@@ -76,12 +98,12 @@ translations = {
         'Freeze Magnifier': '冻结 放大镜',
         'Magnifier Size:': '放大镜大小:',
         'Capture Size:': '捕获大小:',
-        'Movement Speed:': '速度:',
+        'Speed (px/sec):': '速度:',
         'Save Result': '保存',
         'Help': '帮助',
         'Drop Image 1 Here': '拖放 图1',
         'Drop Image 2 Here': '拖放 图2',
-        'To move magnifying glasses separately from the detection area - use WASD keys. To change the distance between magnifying glasses - use Q and E keys. If the distance between them becomes too small, they will merge.': '要将放大镜与捕获区域分开移动 - 使用WASD键 (仅限英语键盘). 要更改放大镜之间的距离 - 使用Q和E键。如果它们之间的距离变得太小，它们将合并。要在保存的图像上显示文件名 - 请勾选上方的对应复选框。',
+        'To move magnifying glasses separately from the detection area - use WASD keys. To change the distance between magnifying glasses - use Q and E keys. If the distance between them becomes too small, they will merge.': '要将放大镜与捕获区域分开移动 - 使用WASD键 (仅限英语键盘)。要更改放大镜之间的距离 - 使用Q和E键。如果它们之间的距离变得太小，它们将合并。要在保存的图像上显示文件名 - 请勾选上方的对应复选框。',
         '⇄': '⇄',
         'Reduce Length!': '修改允许的长度，否则名称将被截断',
         'Current length is {length}, which exceeds the maximum {max_length}': '长度 {length} > 最大 {max_length}',
@@ -96,13 +118,24 @@ translations = {
         'Font Size (%):': '字体大小 (%):',
         'Edit Image 1 Name': '编辑 图1 名称',
         'Edit Image 2 Name': '编辑 图2 名称',
-        'Select text to edit:': '编辑 文本:',
-        'Image 1: ': '图 1: ',
-        'Image 2: ': '图 2: ',
-        'Enter new text (max {max_length} characters):': '新 文本 (最大 {max_length}):',
+        'Image 1': '图像 1', # Used when no path is available
+        'Image 2': '图像 2', # Used when no path is available
         'Include file names in saved image': '在文件中显示名称',
+        'Failed to load image:': '加载图像失败:',
+        'Error': '错误',
+        'Warning': '警告',
+        'Invalid file path.': '无效的文件路径。',
+        'Unsupported file type.': '不支持的文件类型。',
+        'Please load both images first.': '请先加载两个图像。',
+        'Failed to save image:': '保存图像失败:',
+        'Select Image {number}': '选择图像 {number}',
+        'Save Image': '保存图像',
+        'Change Filename Color': '更改文件名颜色',
+        'Current:': '当前:',
+        'Select Filename Color': '选择文件名颜色',
     }
 }
 
 def tr(text, language='en'):
-    return translations.get(language, translations['en']).get(text, text)
+    lang_dict = translations.get(language, translations['en'])
+    return lang_dict.get(text, text)
