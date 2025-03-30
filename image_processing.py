@@ -11,6 +11,10 @@ except ImportError:
 import os
 import math
 
+_module_dir = os.path.dirname(os.path.abspath(__file__))
+_font_file_name = "SourceSans3-Regular.ttf"
+_font_path_absolute = os.path.join(_module_dir, _font_file_name)
+
 def get_scaled_pixmap_dimensions(app):
     source_image = app.result_image if app.result_image else app.original_image1
     if not source_image:
@@ -639,6 +643,7 @@ def save_result_processor(self):
     print("--- save_result_processor finished ---")
 
 
+
 def draw_file_names_on_image(self, draw, image, split_position_abs, orig_width, orig_height, line_width, line_height, text_color_tuple):
     font_size_percentage = self.font_size_slider.value() / 200.0
     base_font_size_ratio = 0.03
@@ -646,13 +651,16 @@ def draw_file_names_on_image(self, draw, image, split_position_abs, orig_width, 
     base_margin = max(5, int(font_size * 0.2))
     margin = min(base_margin, int(orig_height * 0.04))
 
-    font_path = "./SourceSans3-Regular.ttf"
+    font_path = _font_path_absolute
+
     try:
         font = ImageFont.truetype(font_path, size=font_size)
     except IOError:
+        print(f"Warning: Failed to load font '{_font_file_name}' from path '{font_path}'. Falling back.")
         try:
             font = ImageFont.truetype("arial.ttf", size=font_size)
         except IOError:
+            print("Warning: Failed to load arial.ttf. Falling back to PIL default.")
             font = ImageFont.load_default()
 
     file_name1_raw = self.edit_name1.text() or (os.path.basename(self.image1_path) if self.image1_path else "Image 1")
@@ -660,24 +668,25 @@ def draw_file_names_on_image(self, draw, image, split_position_abs, orig_width, 
     max_length = self.max_name_length
 
     def get_text_size(text, font_to_use):
-         if not text: return 0, 0
-         try:
-             if hasattr(draw, 'textbbox'):
-                 bbox = draw.textbbox((0, 0), text, font=font_to_use, anchor="lt")
-                 return bbox[2] - bbox[0], bbox[3] - bbox[1]
-             elif hasattr(draw, 'textlength'):
-                 if hasattr(font_to_use, 'getmetrics'):
-                     ascent, descent = font_to_use.getmetrics(); height = ascent + descent
-                 elif hasattr(font_to_use, 'getsize'): _, height = font_to_use.getsize(text)
-                 else: height = font_size
-                 return draw.textlength(text, font=font_to_use), height
-             else:
-                 return len(text) * font_size * 0.6, font_size
-         except Exception:
-              return len(text) * font_size * 0.6, font_size
+        if not text: return 0, 0
+        try:
+            if hasattr(draw, 'textbbox'):
+                bbox = draw.textbbox((0, 0), text, font=font_to_use, anchor="lt")
+                return bbox[2] - bbox[0], bbox[3] - bbox[1]
+            elif hasattr(draw, 'textlength'):
+                if hasattr(font_to_use, 'getmetrics'):
+                    ascent, descent = font_to_use.getmetrics(); height = ascent + descent
+                elif hasattr(font_to_use, 'getsize'): _, height = font_to_use.getsize(text)
+                else: height = font_size
+                return draw.textlength(text, font=font_to_use), height
+            else:
+                return len(text) * font_size * 0.6, font_size
+        except Exception:
+            return len(text) * font_size * 0.6, font_size
 
     available_width1 = max(10, (split_position_abs - (line_width // 2) - margin * 2) if not self.is_horizontal else (orig_width - margin * 2))
-    temp_name1 = file_name1_raw; name1_w, _ = get_text_size(temp_name1, font)
+    temp_name1 = file_name1_raw
+    name1_w, _ = get_text_size(temp_name1, font)
     while name1_w > available_width1 and len(temp_name1) > 3:
         temp_name1 = temp_name1[:-4] + "..."
         name1_w, _ = get_text_size(temp_name1, font)
@@ -688,7 +697,8 @@ def draw_file_names_on_image(self, draw, image, split_position_abs, orig_width, 
         file_name1 = ""
 
     available_width2 = max(10, (orig_width - (split_position_abs + (line_width + 1) // 2) - margin * 2) if not self.is_horizontal else (orig_width - margin * 2))
-    temp_name2 = file_name2_raw; name2_w, _ = get_text_size(temp_name2, font)
+    temp_name2 = file_name2_raw
+    name2_w, _ = get_text_size(temp_name2, font)
     while name2_w > available_width2 and len(temp_name2) > 3:
         temp_name2 = temp_name2[:-4] + "..."
         name2_w, _ = get_text_size(temp_name2, font)
@@ -752,6 +762,9 @@ def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_po
         y2_top = max(margin, y2_top)
         y2_top = min(y2_top, orig_height - margin - text_height2)
 
+        try:
+            draw.text((x2, y2_top), file_name2, fill=text_color, font=font, anchor="lt")
+        except Exception as e: pass
         try:
             draw.text((x2, y2_top), file_name2, fill=text_color, font=font, anchor="lt")
         except Exception as e: pass
