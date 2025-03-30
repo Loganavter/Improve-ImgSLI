@@ -682,22 +682,28 @@ class ImageComparisonApp(QWidget):
 
 
             for file_path in file_paths:
-                if os.path.isfile(file_path):
+                # Пытаемся определить расширение по имени файла, даже если isfile не работает
+                # Это менее надежно, но необходимо в Flatpak
+                try:
                     ext = os.path.splitext(file_path)[1].lower()
                     if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff'):
+                        # Не проверяем isfile, добавляем путь и позволим Image.open() разобраться
                         valid_paths.append(file_path)
+                        print(f"Accepted potentially valid path (Flatpak): {file_path}") # Отладка
                     else:
-                        print(f"Unsupported file type: {file_path}")
+                        print(f"Unsupported file type based on extension: {file_path}")
                         unsupported_found = True
-                else:
-                    print(f"Invalid path (not a file): {file_path}")
-                    invalid_found = True
-
+                except Exception as e:
+                     # Если даже с путем что-то не так (например, пустой)
+                     print(f"Error processing path '{file_path}': {e}")
+                     invalid_found = True
             if invalid_found:
-                QMessageBox.warning(self, tr("Warning", self.current_language), tr("One or more paths were invalid.", self.current_language))
+                 # Можно изменить текст, чтобы он был менее категоричным в Flatpak
+                 # QMessageBox.warning(self, tr("Warning", self.current_language), tr("One or more paths could not be accessed or were invalid.", self.current_language))
+                 pass # Или просто пропустить, т.к. Image.open покажет ошибку если что
             if unsupported_found:
-                QMessageBox.warning(self, tr("Warning", self.current_language), tr("One or more files had unsupported types (supported: png, jpg, bmp, webp, tif).", self.current_language))
-
+                QMessageBox.warning(self, tr("Warning", self.current_language), tr("One or more files had unsupported types based on filename extension (supported: png, jpg, bmp, webp, tif).", self.current_language))
+              
             if valid_paths:
                  drop_point = event.position().toPoint()
                  target_image_num = 1 if self._is_in_left_area(drop_point) else 2
