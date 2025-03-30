@@ -1,5 +1,14 @@
 # Improved ImgSLI
 
+<div style="display: flex; justify-content: space-between;">
+    <img src="__1.png" alt="Изображение 1" style="width: 33%;">
+    <img src="__2.png" alt="Изображение 2" style="width: 33%;">
+    <img src="__3.png" alt="Изображение 2" style="width: 33%;">
+</div>
+<details>
+     <img src="__4.jpg" alt="Изображение 1" style="width: 33%;">
+</details>
+
 ## Overview
 Improved ImgSLI is an open-source, non-proprietary software designed for intuitive image interactions. It is completely free of charge and allows for easy distribution without the need for a license.
 
@@ -26,11 +35,6 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 
 ---
 
-<div style="display: flex; justify-content: space-between;">
-    <img src="1.png" alt="Изображение 1" style="width: 45%;">
-    <img src="2.png" alt="Изображение 2" style="width: 45%;">
-</div>
-
 ## Installation
 To install Improved ImgSLI, follow these steps:
 ```bash
@@ -48,7 +52,7 @@ yay -S improve-imgsli
 ---
 
 <details>
-<summary>Spoiler</summary>
+<summary>Development story</summary>
 Originally, Improve ImgSLI was fully crafted by ChatGPT in September 2024 to simplify creating comparison images for my work, offering basic image comparison functionality. In October, I discovered Claude and used it to enhance the tool with a magnifier feature and drag-and-drop support.
 
 By November, with Claude’s help, I refined the magnifier, adding options to freeze the detection area and merge magnifiers. However, the growing codebase—coupled with Claude’s 8k token context limit—made full regeneration impossible, forcing me to manually edit sections. I turned to Gemini, which assisted in integrating changes, though not all generated code was successful. Some features were postponed, and others were intentionally disabled to avoid bugs.
