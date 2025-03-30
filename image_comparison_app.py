@@ -4,9 +4,6 @@ import math
 import sys
 import importlib
 import traceback
-import io
-import subprocess
-import shlex
 
 from PIL import Image
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel,
@@ -14,7 +11,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCh
                              QColorDialog, QComboBox)
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QPainter, QBrush, QPen
 from PyQt6.QtCore import (Qt, QPoint, QTimer, QPointF, QRect, QEvent, QSize, QSettings, QLocale,
-                          QElapsedTimer, QRectF, QByteArray, QFile, QIODevice, QUrl)
+                          QElapsedTimer, QRectF, QByteArray)
 
 
 placeholder_dir = "placeholders"
@@ -874,171 +871,71 @@ class ImageComparisonApp(QWidget):
         if file_names:
             self._load_images_from_paths(file_names, image_number)
 
-      
-    def _load_images_from_paths(self, items_to_process, image_number):
-        """
-        Загружает изображения. Пытается использовать портал Access через flatpak-spawn
-        для получения доступного пути внутри песочницы.
-        """
+    def _load_images_from_paths(self, file_paths, image_number):
+        """Загружает изображения из списка путей и добавляет их в соответствующий список."""
         target_list = self.image_list1 if image_number == 1 else self.image_list2
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
         loaded_count = 0
         newly_added_indices = []
-        paths_actually_added = [] # Сохраняем оригинальный путь для UI
+        paths_actually_added = []
 
-        print(f"--- _load_images_from_paths (Image {image_number}) ---")
-        print(f"  Input items ({len(items_to_process)}): {items_to_process}")
-
-        for item in items_to_process:
-            original_path_or_uri = "" # Оригинальный путь для UI и дубликатов
-            path_to_try_opening = ""  # Путь, который будем пытаться открыть
-            source_description = ""   # Для логов
-            temp_image = None
-            image_stream = None
+        for file_path in file_paths:
+            if any(item[1] == file_path for item in target_list):
+                continue
 
             try:
-                # 1. Получить оригинальный путь или URI для запроса к порталу
-                if isinstance(item, QUrl):
-                    url = item
-                    source_description = url.toString()
-                    original_path_or_uri = url.toLocalFile() # Используем это для запроса
-                    if not original_path_or_uri:
-                        print(f"  Skipping URL with empty local path: {source_description}")
-                        continue
-                    print(f"  Processing URL: {source_description} -> Original Path: {original_path_or_uri}")
-                elif isinstance(item, str):
-                    original_path_or_uri = item
-                    source_description = item
-                    if not original_path_or_uri:
-                        print("  Skipping empty path string.")
-                        continue
-                    print(f"  Processing Path String: {original_path_or_uri}")
-                else:
-                    print(f"  Skipping unknown item type: {type(item)} - {item}")
-                    continue
-
-                # 2. Проверить на дубликаты по оригинальному пути
-                if any(entry[1] == original_path_or_uri for entry in target_list):
-                    print(f"    Skipping duplicate: {original_path_or_uri}")
-                    continue
-
-                # 3. --- ИСПОЛЬЗОВАНИЕ ПОРТАЛА ACCESS через flatpak-spawn ---
-                accessible_path = None
-                try:
-                    # Команда для запроса доступа к файлу через портал
-                    # flatpak-spawn --host dbus-send --session --print-reply --dest=org.freedesktop.portal.Desktop --type=method_call /org/freedesktop/portal/desktop org.freedesktop.portal.Access.AccessFile "ay" "s" "string:$FILEPATH"
-                    # Это может быть сложно и не всегда надежно вызывать так.
-                    # Проще попробовать открыть напрямую, а если не вышло - показать ошибку.
-                    # Давайте вернемся к QFile, но с более детальной диагностикой.
-
-                    # --- ДИАГНОСТИКА ---
-                    print(f"    Attempting QFile.open on: {original_path_or_uri}")
-                    qfile_diag = QFile(original_path_or_uri)
-                    if not qfile_diag.exists():
-                         print(f"    QFile.exists() returns FALSE for {original_path_or_uri}")
-                    else:
-                         print(f"    QFile.exists() returns TRUE for {original_path_or_uri}")
-                         perms = qfile_diag.permissions()
-                         print(f"    QFile.permissions(): {perms}")
-                         if not perms & QFile.Permission.ReadUser:
-                              print("      WARNING: No user read permission according to QFile.")
-
-                    # --- Попытка открытия через QFile (как раньше, но с exists проверкой) ---
-                    qfile = QFile(original_path_or_uri)
-                    if qfile.open(QIODevice.OpenModeFlag.ReadOnly):
-                        print(f"    QFile.open() SUCCESS for: {original_path_or_uri}")
-                        file_data = qfile.readAll()
-                        qfile.close()
-                        print(f"    QFile read {file_data.size()} bytes and closed.")
-
-                        if file_data.size() == 0:
-                            print("    Warning: Read 0 bytes from file via QFile.")
-                            # Не генерируем ошибку здесь, пусть Pillow решает
-
-                        image_stream = io.BytesIO(file_data.data())
-                        with Image.open(image_stream) as img:
-                            temp_image = img.copy()
-                            temp_image.load()
-                        print("    Image loaded from BytesIO stream.")
-                        path_to_try_opening = original_path_or_uri # Успех
-
-                    else:
-                        # QFile.open провалился
-                        error_string = qfile.errorString()
-                        print(f"    QFile.open() FAILED for: {original_path_or_uri}. Error: {error_string}")
-                        # Здесь можно добавить попытку через flatpak-spawn если очень нужно,
-                        # но скорее всего проблема в разрешениях или путях портала.
-                        raise FileNotFoundError(f"QFile could not open '{original_path_or_uri}': {error_string}")
-
-                except Exception as portal_err:
-                     print(f"    Error during file access attempt: {portal_err}")
-                     raise portal_err # Передаем ошибку дальше
-
-                # 4. Обработка успешно загруженного изображения
-                if temp_image:
+                with Image.open(file_path) as img:
+                    temp_image = img.copy()
                     if temp_image.mode != 'RGBA':
-                        temp_image = temp_image.convert('RGBA')
-                        print("    Converted to RGBA.")
+                         temp_image = temp_image.convert('RGBA')
+                    else:
+                         temp_image.load()
 
-                    display_name = os.path.basename(original_path_or_uri) if original_path_or_uri else "Unnamed Image"
-                    # Сохраняем оригинальный путь для UI, чтобы избежать путаницы с FUSE путями
-                    target_list.append((temp_image, original_path_or_uri, display_name))
-                    newly_added_indices.append(len(target_list) - 1)
-                    paths_actually_added.append(original_path_or_uri)
-                    loaded_count += 1
-                    print(f"    Successfully loaded and added: '{display_name}' from '{original_path_or_uri}'")
-
-            except FileNotFoundError as e:
-                 print(f"  ERROR (FileNotFound/Access): Failed to access image source: {source_description}\n  Reason: {e}")
-                 QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load image (Not Found or Access Denied):', self.current_language)}\n{original_path_or_uri}\n\n{e}")
+                display_name = os.path.basename(file_path)
+                target_list.append((temp_image, file_path, display_name))
+                newly_added_indices.append(len(target_list) - 1)
+                paths_actually_added.append(file_path)
+                loaded_count += 1
             except Exception as e:
-                print(f"  ERROR (Processing): Failed to process image source: {source_description}\n  Error Type: {type(e).__name__}\n  Error: {e}")
+                print(f"Failed to load image: {file_path}\nError: {e}")
                 traceback.print_exc()
-                QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load or process image:', self.current_language)}\n{original_path_or_uri}\n\n{type(e).__name__}: {e}")
-            finally:
-                if qfile and qfile.isOpen(): qfile.close()
-                if image_stream: image_stream.close()
+                QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load image:', self.current_language)}\n{file_path}\n{e}")
 
-        print(f"--- _load_images_from_paths finished. Loaded {loaded_count} new images. ---")
-
-        # --- Обновление UI --- (без изменений)
         if loaded_count > 0:
             self._update_combobox(image_number)
+
             if newly_added_indices:
                 new_index = newly_added_indices[-1]
-                print(f"  Setting index for Image {image_number} to {new_index}")
+
                 current_cb_index = combobox.currentIndex()
                 needs_manual_set = (current_cb_index != new_index)
+
                 if needs_manual_set:
-                    combobox.blockSignals(True)
-                    combobox.setCurrentIndex(new_index)
-                    combobox.blockSignals(False)
-                    print("    Combobox index set manually (signals blocked).")
+                     combobox.blockSignals(True)
+                     combobox.setCurrentIndex(new_index)
+                     combobox.blockSignals(False)
 
                 if image_number == 1:
                     if self.current_index1 != new_index:
-                        print(f"    Updating current_index1 from {self.current_index1} to {new_index}")
-                        self.current_index1 = new_index
-                        self._set_current_image(1, trigger_update=True)
+                         self.current_index1 = new_index
+                         self._set_current_image(1, trigger_update=True)
                     elif not needs_manual_set:
-                        print("    Triggering _set_current_image(1) even if index hasn't changed internally (combobox might have).")
-                        self._set_current_image(1, trigger_update=True)
-                else: # image_number == 2
+                         self._set_current_image(1, trigger_update=True)
+                else:
                     if self.current_index2 != new_index:
-                        print(f"    Updating current_index2 from {self.current_index2} to {new_index}")
                         self.current_index2 = new_index
                         self._set_current_image(2, trigger_update=True)
                     elif not needs_manual_set:
-                        print("    Triggering _set_current_image(2) even if index hasn't changed internally (combobox might have).")
                         self._set_current_image(2, trigger_update=True)
             else:
                  print("Warning: loaded_count > 0 but newly_added_indices is empty.")
 
-        elif not items_to_process:
-             print("  No items to process (input list was empty).")
+        elif not file_paths:
+             pass
         else:
-             print("  Finished processing, but no new images were added (check logs for reasons like duplicates or errors).")
-             
+             pass
+
+
     def _set_current_image(self, image_number, trigger_update=True):
         """Устанавливает self.original_imageX и связанные переменные на основе текущего индекса."""
         target_list = self.image_list1 if image_number == 1 else self.image_list2
@@ -1926,10 +1823,6 @@ class ImageComparisonApp(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-
-    window = ImageComparisonApp()
-    window.show()
-    sys.exit(app.exec())
 
     window = ImageComparisonApp()
     window.show()
