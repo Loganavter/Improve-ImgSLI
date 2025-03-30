@@ -9,8 +9,8 @@ from PIL import Image
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel,
                              QFileDialog, QSizePolicy, QMessageBox, QLineEdit, QInputDialog, QApplication,
                              QColorDialog, QComboBox)
-from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QPainter, QBrush, QPen
-from PyQt6.QtCore import (Qt, QPoint, QTimer, QPointF, QRect, QEvent, QSize, QSettings, QLocale,
+from PyQt6.QtGui import QPixmap, QIcon, QColor, QPainter, QBrush
+from PyQt6.QtCore import (Qt, QPoint, QTimer, QPointF, QEvent, QSize, QSettings, QLocale,
                           QElapsedTimer, QRectF, QByteArray, QUrl)
 
 
@@ -198,6 +198,7 @@ class ImageComparisonApp(QWidget):
                          return default
                 return value
             except (ValueError, TypeError) as e:
+                 print(f"Warning: Could not convert setting '{key}' to {target_type}, using default. Value: '{value}', Error: {e}") # Keep this warning
                  return default
 
         self.capture_pos_rel_x = get_setting("capture_relative_x", 0.5, float)
@@ -305,7 +306,7 @@ class ImageComparisonApp(QWidget):
         self._is_dragging_split_line = False
         self.file_name_color = QColor(self.loaded_filename_color_name)
         if not self.file_name_color.isValid():
-            print(f"Warning: Loaded filename color '{self.loaded_filename_color_name}' is invalid. Using default red.")
+            print(f"Warning: Loaded filename color '{self.loaded_filename_color_name}' is invalid. Using default red.") # Keep this warning
             self.file_name_color = QColor(255, 0, 0, 255)
 
 
@@ -331,11 +332,11 @@ class ImageComparisonApp(QWidget):
                      display_name = os.path.basename(file_path)
                      target_list.append((temp_image, file_path, display_name))
                  except FileNotFoundError:
-                      print(f"Warning: Preload path not found during load: {file_path}")
+                      print(f"Warning: Preload path not found during load: {file_path}") # Keep this warning
                  except Exception as e:
-                     print(f"Warning: Failed to preload image {file_path}: {e}")
+                     print(f"Warning: Failed to preload image {file_path}: {e}") # Keep this warning
              else:
-                 print(f"Warning: Preload path invalid or not a file: {file_path}")
+                 print(f"Warning: Preload path invalid or not a file: {file_path}") # Keep this warning
 
 
     def _init_timers(self):
@@ -500,9 +501,9 @@ class ImageComparisonApp(QWidget):
             self.checkbox_file_names.toggled.connect(self.toggle_edit_layout_visibility)
             self.checkbox_file_names.toggled.connect(self.update_comparison_if_needed)
 
-        if hasattr(self, 'lang_en'): self.lang_en.toggled.connect(lambda checked: self._on_language_changed('en') if checked else None)
-        if hasattr(self, 'lang_ru'): self.lang_ru.toggled.connect(lambda checked: self._on_language_changed('ru') if checked else None)
-        if hasattr(self, 'lang_zh'): self.lang_zh.toggled.connect(lambda checked: self._on_language_changed('zh') if checked else None)
+        if hasattr(self, 'lang_en'): self.lang_en.toggled.connect(lambda checked: self._handle_language_toggle('en', checked))
+        if hasattr(self, 'lang_ru'): self.lang_ru.toggled.connect(lambda checked: self._handle_language_toggle('ru', checked))
+        if hasattr(self, 'lang_zh'): self.lang_zh.toggled.connect(lambda checked: self._handle_language_toggle('zh', checked))
 
         if hasattr(self, 'slider_size'): self.slider_size.valueChanged.connect(self.update_magnifier_size)
         if hasattr(self, 'slider_capture'): self.slider_capture.valueChanged.connect(self.update_capture_size)
@@ -534,6 +535,34 @@ class ImageComparisonApp(QWidget):
             if hasattr(self.image_label, 'mouseReleased'):
                 self.image_label.mouseReleased.connect(self.on_mouse_release)
 
+    def _handle_language_toggle(self, lang_code, is_checked):
+        """
+        Обрабатывает попытку переключения языка через чекбокс.
+        Гарантирует, что хотя бы один чекбокс языка всегда активен.
+        """
+        sender_checkbox = getattr(self, f'lang_{lang_code}', None)
+
+        if not sender_checkbox:
+            print(f"Warning: Checkbox widget for language '{lang_code}' not found.") # Keep this warning
+            return
+
+        if is_checked:
+            if self.current_language != lang_code:
+                self.change_language(lang_code)
+            else:
+                if not sender_checkbox.isChecked(): # Ensure it's checked visually
+                     self._block_language_checkbox_signals(True)
+                     sender_checkbox.setChecked(True)
+                     self._block_language_checkbox_signals(False)
+        else:
+            if self.current_language == lang_code:
+                self._block_language_checkbox_signals(True)
+                sender_checkbox.setChecked(True)
+                self._block_language_checkbox_signals(False)
+            else:
+                # This case should ideally not happen if logic is correct
+                print(f"Warning: Checkbox for inactive language '{lang_code}' was unchecked. Restoring state.") # Keep this warning
+                self.update_language_checkboxes()
 
     def _restore_geometry(self):
         """Restores window geometry from settings."""
@@ -543,9 +572,9 @@ class ImageComparisonApp(QWidget):
             try:
                 restored = self.restoreGeometry(geom_setting)
                 if not restored:
-                     print("Warning: Failed to restore geometry from settings (restoreGeometry returned false).")
+                     print("Warning: Failed to restore geometry from settings (restoreGeometry returned false).") # Keep this warning
             except Exception as e:
-                 print(f"Error restoring geometry: {e}")
+                 print(f"Error restoring geometry: {e}") # Keep this warning
                  restored = False
         else:
             pass
@@ -673,61 +702,43 @@ class ImageComparisonApp(QWidget):
         self.drag_overlay1.hide()
         self.drag_overlay2.hide()
         if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()  # Get list of QUrl objects
+            urls = event.mimeData().urls()
             if not urls:
-                print("Drop event received, but no URLs found.")
                 return
-
-            print(f"Drop event received with {len(urls)} URLs.") # Debug
 
             unsupported_found = False
             valid_urls_to_try = []
 
-            # Optional: Basic check based on URL scheme and maybe suffix
             for url in urls:
-                print(f"  Checking URL: {url.toString()}") # Debug
-                if url.isLocalFile():  # Check if it's a file:// URL
-                    # Basic check for image-like extension in the URL string
-                    # Use url.path() for local files, might handle encoding better
+                if url.isLocalFile():
                     path_str = url.path()
-                    if not path_str: # Handle cases where path might be empty
-                        print(f"    Skipping URL with empty path: {url.toString()}")
+                    if not path_str:
                         continue
-
                     try:
                         ext = os.path.splitext(path_str)[1].lower()
-                        print(f"    Local file path: {path_str}, extension: '{ext}'") # Debug
                         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff'):
                             valid_urls_to_try.append(url)
-                            print("    -> Added as valid URL to try.") # Debug
                         else:
-                            print(f"    Unsupported file type based on URL suffix: {url.toString()}")
                             unsupported_found = True
                     except Exception as e:
-                        print(f"    Error processing path from URL '{url.toString()}': {e}")
-                        unsupported_found = True # Consider error as unsupported
+                        print(f"Error processing path from URL '{url.toString()}': {e}") # Keep this warning
+                        unsupported_found = True
                 else:
-                    print(f"    Skipping non-local URL: {url.toString()}")
-                    unsupported_found = True  # Treat non-local as unsupported
+                    unsupported_found = True
 
             if unsupported_found:
-                # Make the warning less alarming, as some might be filtered intentionally
                 QMessageBox.warning(self, tr("Notice", self.current_language), tr("One or more dropped items were not local image files or had unsupported types based on filename extension.", self.current_language))
 
             if valid_urls_to_try:
-                print(f"  Proceeding to load {len(valid_urls_to_try)} valid URLs.") # Debug
                 drop_point = event.position().toPoint()
                 target_image_num = 1 if self._is_in_left_area(drop_point) else 2
-                # Pass the list of QUrl objects directly
                 self._load_images_from_paths(valid_urls_to_try, target_image_num)
             else:
-                print("  No valid local file URLs with supported extensions found in drop event.")
-                # Optionally inform the user if *only* unsupported types were dropped
                 if unsupported_found and not valid_urls_to_try:
                      QMessageBox.information(self, tr("Information", self.current_language), tr("No supported image files were found in the dropped items.", self.current_language))
-                pass # No valid items to process
+                pass
         else:
-            print("Drop event received, but mimeData has no URLs.")
+            pass
 
 
     def changeEvent(self, event):
@@ -750,13 +761,13 @@ class ImageComparisonApp(QWidget):
                 if self.previous_geometry:
                     try:
                         if not self.restoreGeometry(self.previous_geometry):
-                            print("Warning: Failed to restore previous geometry after leaving max/fullscreen.")
+                            print("Warning: Failed to restore previous geometry after leaving max/fullscreen.") # Keep this warning
                     except Exception as e:
-                        print(f"Error restoring previous geometry: {e}")
+                        print(f"Error restoring previous geometry: {e}") # Keep this warning
                     self.previous_geometry = None
                     QTimer.singleShot(50, self.update_comparison_if_needed)
                 else:
-                    print("Warning: Was maximized/fullscreen, but no previous geometry to restore.")
+                    print("Warning: Was maximized/fullscreen, but no previous geometry to restore.") # Keep this warning
 
         super().changeEvent(event)
 
@@ -773,16 +784,16 @@ class ImageComparisonApp(QWidget):
              geometry_to_save = self.previous_geometry
         else:
              geometry_to_save = self.saveGeometry()
-             print("Warning: Saving maximized/fullscreen geometry as previous geometry was lost.")
+             print("Warning: Saving maximized/fullscreen geometry as previous geometry was lost.") # Keep this warning
 
         if isinstance(geometry_to_save, QByteArray):
             geom_b64 = geometry_to_save.toBase64().data().decode()
             self.save_setting("window_geometry", geom_b64)
         elif geometry_to_save:
-             print(f"Warning: Geometry to save is not QByteArray: {type(geometry_to_save)}")
+             print(f"Warning: Geometry to save is not QByteArray: {type(geometry_to_save)}") # Keep this warning
              self.save_setting("window_geometry", geometry_to_save)
         else:
-             print("Warning: Could not get valid geometry to save.")
+             print("Warning: Could not get valid geometry to save.") # Keep this warning
 
 
         self.save_setting("capture_relative_x", self.capture_position_relative.x())
@@ -809,7 +820,7 @@ class ImageComparisonApp(QWidget):
             self.settings.remove("magnifier_size")
             self.settings.remove("capture_size")
         except Exception as e:
-            print(f"Error removing settings: {e}")
+            print(f"Error removing settings: {e}") # Keep this warning
 
         super().closeEvent(event)
 
@@ -822,7 +833,7 @@ class ImageComparisonApp(QWidget):
             try:
                 update_comparison_processor(self)
             except Exception as e:
-                print(f"Error during update_comparison_processor: {e}")
+                print(f"Error during update_comparison_processor: {e}") # Keep this warning
                 traceback.print_exc()
                 QMessageBox.critical(self, tr("Error", self.current_language), f"{tr('Failed to update comparison view:', self.current_language)}\n{e}")
         elif not self.original_image1 or not self.original_image2:
@@ -871,7 +882,7 @@ class ImageComparisonApp(QWidget):
         if file_names:
             self._load_images_from_paths(file_names, image_number)
 
-      
+
     def _load_images_from_paths(self, items_to_process, image_number):
         """
         Загружает изображения из списка путей (str) или QUrl объектов.
@@ -881,116 +892,85 @@ class ImageComparisonApp(QWidget):
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
         loaded_count = 0
         newly_added_indices = []
-        paths_actually_added = [] # Сохраняем оригинальный путь для UI
-
-        print(f"--- _load_images_from_paths (Image {image_number}) ---") # Debug
-        print(f"  Input items ({len(items_to_process)}): {items_to_process}") # Debug
+        paths_actually_added = []
 
         for item in items_to_process:
             path_to_open = None
-            original_path_for_display = "" # Путь для UI и дубликатов
+            original_path_for_display = ""
 
-            # --- Преобразование QUrl в строку пути ---
             if isinstance(item, QUrl):
-                original_path_for_display = item.toLocalFile() # Используем для проверок и хранения
+                original_path_for_display = item.toLocalFile()
                 if item.isLocalFile():
                     path_to_open = original_path_for_display
                     if not path_to_open:
-                        print(f"    Skipping URL with empty local path: {item.toString()}") # Debug
                         continue
-                    print(f"  Processing URL: {item.toString()} -> Path: {path_to_open}") # Debug
                 else:
-                    print(f"    Skipping non-local URL: {item.toString()}") # Debug
-                    continue # Пропускаем нелокальные URL
+                    continue
             elif isinstance(item, str):
                 path_to_open = item
                 original_path_for_display = item
-                print(f"  Processing Path String: {path_to_open}") # Debug
             else:
-                print(f"    Skipping unknown item type: {type(item)} - {item}") # Debug
                 continue
 
-            # --- Проверка на дубликат (используем original_path_for_display) ---
-            # Важно использовать тот же тип пути, который хранится в target_list[x][1]
             if any(entry[1] == original_path_for_display for entry in target_list):
-                print(f"    Skipping duplicate: {original_path_for_display}") # Debug
                 continue
 
-            # --- Загрузка изображения (используем path_to_open) ---
-            if path_to_open: # Убедимся, что путь для открытия действителен
+            if path_to_open:
                 try:
-                    print(f"    Attempting Image.open on: {path_to_open}") # Debug
-                    with Image.open(path_to_open) as img: # Теперь передаем строку пути
+                    with Image.open(path_to_open) as img:
                         temp_image = img.copy()
                         if temp_image.mode != 'RGBA':
                              temp_image = temp_image.convert('RGBA')
                         else:
-                             temp_image.load() # Убеждаемся, что данные загружены
-                        print("    Image loaded successfully.") # Debug
+                             temp_image.load()
 
-                    # Используем original_path_for_display для имени и хранения в списке
                     display_name = os.path.basename(original_path_for_display) if original_path_for_display else "Unnamed Image"
                     target_list.append((temp_image, original_path_for_display, display_name))
                     newly_added_indices.append(len(target_list) - 1)
                     paths_actually_added.append(original_path_for_display)
                     loaded_count += 1
-                    print(f"    Successfully added: '{display_name}' from '{original_path_for_display}'") #Debug
 
                 except FileNotFoundError:
-                     print(f"  ERROR (FileNotFound): Failed to open image: {path_to_open}") # Debug
                      QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load image (Not Found):', self.current_language)}\n{original_path_for_display}")
                 except Exception as e:
-                    print(f"  ERROR (Processing): Failed to process image: {path_to_open}\n  Error: {e}") # Debug
+                    print(f"Error (Processing): Failed to process image: {path_to_open}\n  Error: {e}") # Keep this error print
                     traceback.print_exc()
                     QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load or process image:', self.current_language)}\n{original_path_for_display}\n\n{type(e).__name__}: {e}")
             else:
-                # Этого не должно произойти, если логика выше верна, но на всякий случай
-                print(f"    Warning: path_to_open is None for item: {item}") # Debug
+                pass
 
-        print(f"--- _load_images_from_paths finished. Loaded {loaded_count} new images. ---") # Debug
 
-        # --- Обновление UI --- (без изменений)
         if loaded_count > 0:
             self._update_combobox(image_number)
             if newly_added_indices:
                 new_index = newly_added_indices[-1]
-                print(f"  Setting index for Image {image_number} to {new_index}") # Debug
                 current_cb_index = combobox.currentIndex()
                 needs_manual_set = (current_cb_index != new_index)
                 if needs_manual_set:
                     combobox.blockSignals(True)
                     combobox.setCurrentIndex(new_index)
                     combobox.blockSignals(False)
-                    print("    Combobox index set manually (signals blocked).") # Debug
 
-                # Обновляем внутренний индекс и изображение
                 if image_number == 1:
                     if self.current_index1 != new_index:
-                        print(f"    Updating current_index1 from {self.current_index1} to {new_index}") # Debug
                         self.current_index1 = new_index
                         self._set_current_image(1, trigger_update=True)
-                    # Если индекс комбобокса изменился вручную, но внутренний нет, все равно обновить
                     elif not needs_manual_set:
-                        print("    Triggering _set_current_image(1) even if index hasn't changed internally (combobox might have).") # Debug
                         self._set_current_image(1, trigger_update=True)
                 else: # image_number == 2
                     if self.current_index2 != new_index:
-                        print(f"    Updating current_index2 from {self.current_index2} to {new_index}") # Debug
                         self.current_index2 = new_index
                         self._set_current_image(2, trigger_update=True)
                     elif not needs_manual_set:
-                        print("    Triggering _set_current_image(2) even if index hasn't changed internally (combobox might have).") # Debug
                         self._set_current_image(2, trigger_update=True)
             else:
-                 print("Warning: loaded_count > 0 but newly_added_indices is empty.") # Debug
+                 pass # Warning was removed
 
         elif not items_to_process:
-             print("  No items to process (input list was empty).") # Debug
+             pass
         else:
-             # Успешно обработано, но ничего не добавлено (например, все дубликаты)
-             print("  Finished processing, but no new images were added (check logs for reasons like duplicates or errors).") # Debug
+             pass
 
-    
 
     def _set_current_image(self, image_number, trigger_update=True):
         """Устанавливает self.original_imageX и связанные переменные на основе текущего индекса."""
@@ -1011,10 +991,10 @@ class ImageComparisonApp(QWidget):
                 new_pil_img, new_path, new_display_name = target_list[current_index]
                 reset_image = False
             except IndexError:
-                 print(f"Error: Index {current_index} out of range for image list {image_number}.")
+                 print(f"Error: Index {current_index} out of range for image list {image_number}.") # Keep this error print
                  reset_image = True
             except Exception as e:
-                print(f"Error accessing image {image_number} at index {current_index}: {e}")
+                print(f"Error accessing image {image_number} at index {current_index}: {e}") # Keep this error print
                 reset_image = True
 
         if reset_image:
@@ -1156,7 +1136,7 @@ class ImageComparisonApp(QWidget):
         if 0 <= current_index < len(target_list):
             new_name = sender_widget.text().strip()
             if not new_name:
-                 print(f"Warning: Empty name entered for image {image_number}, ignoring change.")
+                 print(f"Warning: Empty name entered for image {image_number}, ignoring change.") # Keep this warning
                  _, _, old_name = target_list[current_index]
                  sender_widget.blockSignals(True)
                  sender_widget.setText(old_name)
@@ -1179,9 +1159,9 @@ class ImageComparisonApp(QWidget):
                     pass
 
             except IndexError:
-                 print(f"Error: Index {current_index} out of range when editing name for image {image_number}.")
+                 print(f"Error: Index {current_index} out of range when editing name for image {image_number}.") # Keep this error print
             except Exception as e:
-                 print(f"Error updating name for image {image_number}: {e}")
+                 print(f"Error updating name for image {image_number}: {e}") # Keep this error print
                  traceback.print_exc()
 
 
@@ -1206,7 +1186,7 @@ class ImageComparisonApp(QWidget):
 
             save_result_processor(self)
         except Exception as e:
-            print(f"ERROR during save_result_processor: {e}")
+            print(f"ERROR during save_result_processor: {e}") # Keep this error print
             traceback.print_exc()
             QMessageBox.critical(self, tr("Error", self.current_language), f"{tr('Failed to save image:', self.current_language)}\n{str(e)}")
 
@@ -1409,12 +1389,12 @@ class ImageComparisonApp(QWidget):
                         self.magnifier_offset_float_visual.setY(self.magnifier_offset_float.y())
                         self._magnifier_spacing_float_visual = self._magnifier_spacing_float
                     else:
-                         print("  Warning: Could not get valid magnifier/capture coordinates to freeze. Aborting freeze.")
+                         print("Warning: Could not get valid magnifier/capture coordinates to freeze. Aborting freeze.") # Keep this warning
                          self.frozen_magnifier_position_relative = None
                          self.freeze_magnifier = False
                          if hasattr(self, 'freeze_button'): self.freeze_button.setChecked(False)
                 else:
-                     print("  Warning: Cannot get magnifier coordinates, result_image invalid. Aborting freeze.")
+                     print("Warning: Cannot get magnifier coordinates, result_image invalid. Aborting freeze.") # Keep this warning
                      self.frozen_magnifier_position_relative = None
                      self.freeze_magnifier = False
                      if hasattr(self, 'freeze_button'): self.freeze_button.setChecked(False)
@@ -1474,7 +1454,7 @@ class ImageComparisonApp(QWidget):
                  pass
 
         except Exception as e:
-             print(f"    Error during unfreeze offset calculation: {e}")
+             print(f"Error during unfreeze offset calculation: {e}") # Keep this error print
 
         self.magnifier_offset_float.setX(new_offset_float_x)
         self.magnifier_offset_float.setY(new_offset_float_y)
@@ -1525,7 +1505,6 @@ class ImageComparisonApp(QWidget):
                  if widget:
                      widget.setVisible(is_visible)
         self.update_minimum_window_size()
-        QTimer.singleShot(0, self._ensure_minimum_size_after_restore)
         if is_visible and hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
             self.update_comparison_if_needed()
 
@@ -1545,7 +1524,7 @@ class ImageComparisonApp(QWidget):
             else:
                  pass
         else:
-            print("Invalid color selected.")
+            pass
 
 
     def _update_color_button_tooltip(self):
@@ -1558,12 +1537,12 @@ class ImageComparisonApp(QWidget):
         try:
             self.settings.setValue(key, value)
         except Exception as e:
-            print(f"ERROR saving setting '{key}' (value: {value}): {e}")
+            print(f"ERROR saving setting '{key}' (value: {value}): {e}") # Keep this error print
             traceback.print_exc()
 
     def change_language(self, language):
         if language not in ['en', 'ru', 'zh']:
-            print(f"Unsupported language '{language}', defaulting to 'en'.")
+            print(f"Unsupported language '{language}', defaulting to 'en'.") # Keep this warning
             language = 'en'
         if language == self.current_language:
              return
@@ -1786,59 +1765,32 @@ class ImageComparisonApp(QWidget):
             pixmap = QPixmap()
             loaded = pixmap.loadFromData(base64.b64decode(base64_data))
             if not loaded:
-                 print("Warning: Failed to load pixmap from base64 flag data.")
+                 print("Warning: Failed to load pixmap from base64 flag data.") # Keep this warning
                  return QIcon()
             return QIcon(pixmap)
         except Exception as e:
-             print(f"Error decoding/loading flag icon: {e}")
+             print(f"Error decoding/loading flag icon: {e}") # Keep this warning
              return QIcon()
 
     def update_minimum_window_size(self):
-        """Calculates and sets the minimum window size based on visible widgets."""
-        min_w, min_h = 400, 0
+        """Calculates and sets the minimum window size based on the layout's minimum size."""
         layout = self.layout()
-        if not layout: return
+        if not layout:
+            return
 
-        margins = layout.contentsMargins()
-        spacing = layout.spacing() if layout.spacing() > -1 else 5
-
-        min_h += margins.top() + margins.bottom()
-
-        for i in range(layout.count()):
-            item = layout.itemAt(i)
-            item_h = 0
-            is_visible = False
-
-            widget = item.widget()
-            sub_layout = item.layout()
-
-            if widget:
-                if widget.isVisible():
-                    is_visible = True
-                    hint = widget.minimumSizeHint() if widget == self.image_label else widget.sizeHint()
-                    item_h = hint.height()
-            elif sub_layout:
-                 for j in range(sub_layout.count()):
-                     sub_item = sub_layout.itemAt(j)
-                     if sub_item and sub_item.widget() and sub_item.widget().isVisible():
-                          is_visible = True
-                          break
-                 if is_visible:
-                     item_h = sub_layout.sizeHint().height()
-
-            if is_visible and item_h > 0:
-                min_h += item_h
-                if i < layout.count() - 1:
-                    min_h += spacing
-
-        min_h = max(350, min_h)
         try:
-             current_min = self.minimumSize()
-             if current_min.width() != min_w or current_min.height() != min_h:
-                  self.setMinimumSize(min_w, min_h)
-        except Exception as e:
-             print(f"Error setting minimum size: {e}")
+            layout_min_size = layout.minimumSize()
+            new_min_w = max(300, layout_min_size.width())
+            new_min_h = max(350, layout_min_size.height())
 
+            current_min = self.minimumSize()
+
+            if current_min.width() != new_min_w or current_min.height() != new_min_h:
+                self.setMinimumSize(new_min_w, new_min_h)
+
+        except Exception as e:
+            print(f"Error in update_minimum_window_size: {e}") # Keep this error print
+            traceback.print_exc()
 
     def _update_drag_overlays(self):
         """Positions the drag-and-drop overlay labels over the image label halves."""
@@ -1863,7 +1815,7 @@ class ImageComparisonApp(QWidget):
              self.drag_overlay2.setGeometry(overlay2_x, overlay2_y, overlay_w, overlay_h)
 
         except Exception as e:
-             print(f"Error updating drag overlays geometry: {e}")
+             print(f"Error updating drag overlays geometry: {e}") # Keep this error print
 
 
     def _is_in_left_area(self, pos: QPoint) -> bool:
@@ -1874,7 +1826,7 @@ class ImageComparisonApp(QWidget):
             center_x = label_geom.x() + label_geom.width() // 2
             return pos.x() < center_x
         except Exception as e:
-             print(f"Error in _is_in_left_area: {e}")
+             print(f"Error in _is_in_left_area: {e}") # Keep this error print
              return True
 
 if __name__ == '__main__':
