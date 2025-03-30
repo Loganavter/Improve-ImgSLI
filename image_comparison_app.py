@@ -5,6 +5,8 @@ import sys
 import importlib
 import traceback
 import io
+import subprocess
+import shlex
 
 from PIL import Image
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel,
@@ -1036,8 +1038,7 @@ class ImageComparisonApp(QWidget):
              print("  No items to process (input list was empty).")
         else:
              print("  Finished processing, but no new images were added (check logs for reasons like duplicates or errors).")
-    
-
+             
     def _set_current_image(self, image_number, trigger_update=True):
         """Устанавливает self.original_imageX и связанные переменные на основе текущего индекса."""
         target_list = self.image_list1 if image_number == 1 else self.image_list2
