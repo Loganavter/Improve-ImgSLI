@@ -13,17 +13,22 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 - Adjustable distance between magnifying glasses using the Q and E keys
 - Ability to combine magnifying glasses for comparison
 - Multilingual support (English, Russian, Chinese) with flag-based language selection
-- File name display on saved images with customizable font size and length limits
-- Drag-and-drop support for loading images directly into the application
-- Editable image names with real-time length validation
-- Swap images with a single button click for quick comparison adjustments
-- Persistent settings for window size, language, and preferences across sessions
+- Drag-and-drop support for loading one or multiple images per slot.
+- Selection of loaded images via dropdown menus when multiple images are present in a slot.
+- Swap entire image lists between slots with a single button click.
+- Editable image names directly within the application interface.
+- Option to include file names in the saved comparison image.
+- Customizable font size and color for file names included in the saved image.
+- Adjustable maximum length limit for displayed file names with visual warnings.
+- Ability to freeze the magnifier's capture position.
+- Support for dynamic window resizing with adaptive content rendering.
+- Persistent settings for window state, language, and various display preferences across sessions.
 
 ---
 
 <div style="display: flex; justify-content: space-between;">
-    <img src="1_.png" alt="Изображение 1" style="width: 45%;">
-    <img src="2_.png" alt="Изображение 2" style="width: 45%;">
+    <img src="1.png" alt="Изображение 1" style="width: 45%;">
+    <img src="2.png" alt="Изображение 2" style="width: 45%;">
 </div>
 
 ## Installation
@@ -52,7 +57,7 @@ In early December, I experimented with adaptive magnifier positioning tied to wi
 
 In late February 2025, I resumed enhancing Improve ImgSLI. With Claude Sonnet 3.7, I added dynamic image swapping via a button, a language dictionary, and further magnifier improvements, along with a help tooltip in the top-right corner. Soon after, I gained access to Grok 3—first on X, then via its website after a quick Google search. Grok 3 proved invaluable: its DeepThink model efficiently resolved persistent bugs, outperforming DeepSeek, while its generous query limits and smart standard model kept development flowing smoothly. It optimized rendering updates, introduced file name display and editing, and fixed fullscreen mode issues.
 
-Occasionally, I leaned on the new Claude Sonnet when Grok hit prediction snags—both AIs complemented each other, though Sonnet’s 16k token context eventually fell short too. Finally, with Gemini’s assistance, I improved code readability to wrap up this round of updates.
+Occasionally, I leaned on the new Claude Sonnet when Grok hit prediction snags—both AIs complemented each other, though Sonnet’s 16k token context eventually fell short too. Finally, Gemini 2.5 Pro Experimental recently became available; with its help, I was able to replace part of the PyQt logic with PIL, which was easier to work with. Also, with this AI, I managed to add a huge number of improvements, from displaying file names on the screen to the ability to load a list of files and customize all of it. Additionally, a massive number of bugs were fixed.
 
-In general, if do not take into account the price of my personal time, which is about 2 weeks in total, then this project cost me about $ 30. I got the AUR maintainer for free, so we don't take it into account either :)
+In general, if do not take into account the price of my personal time, which is about 2.5 weeks in total, then this project cost me about $ 30. I got the AUR maintainer for free, so we don't take it into account either :)
 </details>
