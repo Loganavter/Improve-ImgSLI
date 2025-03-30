@@ -1,2 +1,3 @@
 #!/bin/sh
-exec python ./Improve_ImgSLI.py "$@"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec python "$SCRIPT_DIR/Improve_ImgSLI.py" "$@"
