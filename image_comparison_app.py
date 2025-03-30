@@ -4,6 +4,7 @@ import math
 import sys
 import importlib
 import traceback
+import io
 
 from PIL import Image
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel,
@@ -11,7 +12,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCh
                              QColorDialog, QComboBox)
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QPainter, QBrush, QPen
 from PyQt6.QtCore import (Qt, QPoint, QTimer, QPointF, QRect, QEvent, QSize, QSettings, QLocale,
-                          QElapsedTimer, QRectF, QByteArray)
+                          QElapsedTimer, QRectF, QByteArray, QFile, QIODevice, QUrl)
 
 
 placeholder_dir = "placeholders"
@@ -669,47 +670,65 @@ class ImageComparisonApp(QWidget):
         self.drag_overlay1.hide(); self.drag_overlay2.hide()
 
     def dropEvent(self, event):
-        """Обрабатывает перетаскивание файлов, теперь может добавлять несколько."""
-        self.drag_overlay1.hide(); self.drag_overlay2.hide()
+        """Обрабатывает перетаскивание файлов, передает URL в _load_images_from_paths."""
+        self.drag_overlay1.hide()
+        self.drag_overlay2.hide()
         if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            if not urls: return
+            urls = event.mimeData().urls()  # Get list of QUrl objects
+            if not urls:
+                print("Drop event received, but no URLs found.")
+                return
 
-            file_paths = [url.toLocalFile() for url in urls if url.isLocalFile()]
-            valid_paths = []
-            invalid_found = False
+            print(f"Drop event received with {len(urls)} URLs.") # Debug
+
             unsupported_found = False
+            valid_urls_to_try = []
 
+            # Optional: Basic check based on URL scheme and maybe suffix
+            for url in urls:
+                print(f"  Checking URL: {url.toString()}") # Debug
+                if url.isLocalFile():  # Check if it's a file:// URL
+                    # Basic check for image-like extension in the URL string
+                    # Use url.path() for local files, might handle encoding better
+                    path_str = url.path()
+                    if not path_str: # Handle cases where path might be empty
+                        print(f"    Skipping URL with empty path: {url.toString()}")
+                        continue
 
-            for file_path in file_paths:
-                # Пытаемся определить расширение по имени файла, даже если isfile не работает
-                # Это менее надежно, но необходимо в Flatpak
-                try:
-                    ext = os.path.splitext(file_path)[1].lower()
-                    if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff'):
-                        # Не проверяем isfile, добавляем путь и позволим Image.open() разобраться
-                        valid_paths.append(file_path)
-                        print(f"Accepted potentially valid path (Flatpak): {file_path}") # Отладка
-                    else:
-                        print(f"Unsupported file type based on extension: {file_path}")
-                        unsupported_found = True
-                except Exception as e:
-                     # Если даже с путем что-то не так (например, пустой)
-                     print(f"Error processing path '{file_path}': {e}")
-                     invalid_found = True
-            if invalid_found:
-                 # Можно изменить текст, чтобы он был менее категоричным в Flatpak
-                 # QMessageBox.warning(self, tr("Warning", self.current_language), tr("One or more paths could not be accessed or were invalid.", self.current_language))
-                 pass # Или просто пропустить, т.к. Image.open покажет ошибку если что
+                    try:
+                        ext = os.path.splitext(path_str)[1].lower()
+                        print(f"    Local file path: {path_str}, extension: '{ext}'") # Debug
+                        if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff'):
+                            valid_urls_to_try.append(url)
+                            print("    -> Added as valid URL to try.") # Debug
+                        else:
+                            print(f"    Unsupported file type based on URL suffix: {url.toString()}")
+                            unsupported_found = True
+                    except Exception as e:
+                        print(f"    Error processing path from URL '{url.toString()}': {e}")
+                        unsupported_found = True # Consider error as unsupported
+                else:
+                    print(f"    Skipping non-local URL: {url.toString()}")
+                    unsupported_found = True  # Treat non-local as unsupported
+
             if unsupported_found:
-                QMessageBox.warning(self, tr("Warning", self.current_language), tr("One or more files had unsupported types based on filename extension (supported: png, jpg, bmp, webp, tif).", self.current_language))
-              
-            if valid_paths:
-                 drop_point = event.position().toPoint()
-                 target_image_num = 1 if self._is_in_left_area(drop_point) else 2
-                 self._load_images_from_paths(valid_paths, target_image_num)
+                # Make the warning less alarming, as some might be filtered intentionally
+                QMessageBox.warning(self, tr("Notice", self.current_language), tr("One or more dropped items were not local image files or had unsupported types based on filename extension.", self.current_language))
+
+            if valid_urls_to_try:
+                print(f"  Proceeding to load {len(valid_urls_to_try)} valid URLs.") # Debug
+                drop_point = event.position().toPoint()
+                target_image_num = 1 if self._is_in_left_area(drop_point) else 2
+                # Pass the list of QUrl objects directly
+                self._load_images_from_paths(valid_urls_to_try, target_image_num)
             else:
-                 pass
+                print("  No valid local file URLs with supported extensions found in drop event.")
+                # Optionally inform the user if *only* unsupported types were dropped
+                if unsupported_found and not valid_urls_to_try:
+                     QMessageBox.information(self, tr("Information", self.current_language), tr("No supported image files were found in the dropped items.", self.current_language))
+                pass # No valid items to process
+        else:
+            print("Drop event received, but mimeData has no URLs.")
 
 
     def changeEvent(self, event):
@@ -853,70 +872,155 @@ class ImageComparisonApp(QWidget):
         if file_names:
             self._load_images_from_paths(file_names, image_number)
 
-    def _load_images_from_paths(self, file_paths, image_number):
-        """Загружает изображения из списка путей и добавляет их в соответствующий список."""
+      
+    def _load_images_from_paths(self, file_paths_or_urls, image_number):
+        """Загружает изображения из списка путей ИЛИ URL и добавляет их в соответствующий список."""
         target_list = self.image_list1 if image_number == 1 else self.image_list2
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
         loaded_count = 0
         newly_added_indices = []
-        paths_actually_added = []
+        paths_actually_added = [] # Keep track of the original path/URL string
 
-        for file_path in file_paths:
-            if any(item[1] == file_path for item in target_list):
-                continue
+        items_to_process = file_paths_or_urls
+
+        print(f"--- _load_images_from_paths (Image {image_number}) ---")
+        print(f"  Input items ({len(items_to_process)}): {items_to_process}")
+
+        for item in items_to_process:
+            file_path_for_display = ""
+            source_description = ""
+            qfile = None
+            temp_image = None
+            image_stream = None # Для BytesIO
 
             try:
-                with Image.open(file_path) as img:
-                    temp_image = img.copy()
-                    if temp_image.mode != 'RGBA':
-                         temp_image = temp_image.convert('RGBA')
+                is_url = isinstance(item, QUrl)
+
+                if is_url:
+                    url = item
+                    source_description = url.toString()
+                    print(f"  Processing URL: {source_description}")
+
+                    file_path_for_display = url.toLocalFile()
+                    print(f"    url.toLocalFile() gives: {file_path_for_display}")
+
+                    if not file_path_for_display:
+                        print("    Skipping URL with empty local path representation.")
+                        continue
+
+                    qfile = QFile(file_path_for_display)
+                    if qfile.open(QIODevice.OpenModeFlag.ReadOnly):
+                        print(f"    QFile.open() SUCCESS for: {file_path_for_display}")
+                        # --- ИЗМЕНЕНИЕ: Читаем данные и используем BytesIO ---
+                        file_data = qfile.readAll()
+                        qfile.close() # Закрываем файл сразу после чтения
+                        print(f"    QFile read {file_data.size()} bytes and closed.")
+                        if file_data.size() == 0:
+                             print("    Warning: Read 0 bytes from file.")
+                             raise IOError(f"Failed to read data from {file_path_for_display}")
+
+                        # Создаем поток в памяти из QByteArray
+                        # Важно использовать .data() для получения объекта bytes/memoryview
+                        image_stream = io.BytesIO(file_data.data())
+                        with Image.open(image_stream) as img:
+                            temp_image = img.copy()
+                            temp_image.load()
+                        print("    Image loaded from BytesIO stream.")
+                        # --- КОНЕЦ ИЗМЕНЕНИЯ ---
                     else:
+                        error_string = qfile.errorString()
+                        print(f"    QFile.open() FAILED for: {file_path_for_display}. Error: {error_string}")
+                        raise FileNotFoundError(f"QFile could not open '{file_path_for_display}': {error_string}")
+
+                else: # Path string from QFileDialog
+                    file_path = str(item)
+                    file_path_for_display = file_path
+                    source_description = file_path
+                    print(f"  Processing Path: {file_path}")
+                    # Standard opening (this might still fail in strict sandboxes if dialog gives bad paths)
+                    with Image.open(file_path) as img:
+                         temp_image = img.copy()
                          temp_image.load()
+                    print("    Standard Image.open() succeeded.")
 
-                display_name = os.path.basename(file_path)
-                target_list.append((temp_image, file_path, display_name))
-                newly_added_indices.append(len(target_list) - 1)
-                paths_actually_added.append(file_path)
-                loaded_count += 1
+                # --- Common processing after successful opening ---
+                if temp_image:
+                    if any(entry[1] == file_path_for_display for entry in target_list):
+                        print(f"    Skipping duplicate: {file_path_for_display}")
+                        continue
+
+                    if temp_image.mode != 'RGBA':
+                        temp_image = temp_image.convert('RGBA')
+                        print("    Converted to RGBA.")
+                    # Load already called
+
+                    display_name = os.path.basename(file_path_for_display) if file_path_for_display else "Unnamed Image"
+                    target_list.append((temp_image, file_path_for_display, display_name))
+                    newly_added_indices.append(len(target_list) - 1)
+                    paths_actually_added.append(file_path_for_display)
+                    loaded_count += 1
+                    print(f"    Successfully loaded and added: '{display_name}' from '{file_path_for_display}'")
+
+            except FileNotFoundError as e:
+                 print(f"  ERROR (FileNotFound): Failed to load image source: {source_description}\n  Reason: {e}")
+                 QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load image (Not Found):', self.current_language)}\n{file_path_for_display}\n\n{e}")
             except Exception as e:
-                print(f"Failed to load image: {file_path}\nError: {e}")
+                print(f"  ERROR (General): Failed to process image source: {source_description}\n  Error Type: {type(e).__name__}\n  Error: {e}")
                 traceback.print_exc()
-                QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load image:', self.current_language)}\n{file_path}\n{e}")
+                QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load or process image:', self.current_language)}\n{file_path_for_display}\n\n{type(e).__name__}: {e}")
+            finally:
+                # Close QFile if it's still open (e.g., exception before close)
+                if qfile and qfile.isOpen():
+                    print(f"    Closing QFile in finally block for: {file_path_for_display}")
+                    qfile.close()
+                # Close BytesIO stream if it exists
+                if image_stream:
+                    image_stream.close()
 
+
+        print(f"--- _load_images_from_paths finished. Loaded {loaded_count} new images. ---")
+
+        # --- Update UI based on loaded images ---
         if loaded_count > 0:
             self._update_combobox(image_number)
-
             if newly_added_indices:
                 new_index = newly_added_indices[-1]
-
+                print(f"  Setting index for Image {image_number} to {new_index}")
                 current_cb_index = combobox.currentIndex()
                 needs_manual_set = (current_cb_index != new_index)
-
                 if needs_manual_set:
-                     combobox.blockSignals(True)
-                     combobox.setCurrentIndex(new_index)
-                     combobox.blockSignals(False)
+                    combobox.blockSignals(True)
+                    combobox.setCurrentIndex(new_index)
+                    combobox.blockSignals(False)
+                    print("    Combobox index set manually (signals blocked).")
 
                 if image_number == 1:
                     if self.current_index1 != new_index:
-                         self.current_index1 = new_index
-                         self._set_current_image(1, trigger_update=True)
+                        print(f"    Updating current_index1 from {self.current_index1} to {new_index}")
+                        self.current_index1 = new_index
+                        self._set_current_image(1, trigger_update=True)
                     elif not needs_manual_set:
+                         print("    Triggering _set_current_image(1) even if index hasn't changed internally (combobox might have).")
                          self._set_current_image(1, trigger_update=True)
-                else:
+                else: # image_number == 2
                     if self.current_index2 != new_index:
+                        print(f"    Updating current_index2 from {self.current_index2} to {new_index}")
                         self.current_index2 = new_index
                         self._set_current_image(2, trigger_update=True)
                     elif not needs_manual_set:
-                        self._set_current_image(2, trigger_update=True)
+                         print("    Triggering _set_current_image(2) even if index hasn't changed internally (combobox might have).")
+                         self._set_current_image(2, trigger_update=True)
             else:
                  print("Warning: loaded_count > 0 but newly_added_indices is empty.")
 
-        elif not file_paths:
-             pass
+        # --- ИСПРАВЛЕНИЕ NameError ---
+        # Заменяем file_paths на file_paths_or_urls
+        elif not file_paths_or_urls:
+             print("  No items to process (input list was empty).")
         else:
-             pass
+             print("  Finished processing, but no new images were added (check logs for reasons like duplicates or errors).")
 
+    
 
     def _set_current_image(self, image_number, trigger_update=True):
         """Устанавливает self.original_imageX и связанные переменные на основе текущего индекса."""
@@ -1805,6 +1909,10 @@ class ImageComparisonApp(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+
+    window = ImageComparisonApp()
+    window.show()
+    sys.exit(app.exec())
 
     window = ImageComparisonApp()
     window.show()
