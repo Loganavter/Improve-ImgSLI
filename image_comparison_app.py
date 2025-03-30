@@ -871,70 +871,126 @@ class ImageComparisonApp(QWidget):
         if file_names:
             self._load_images_from_paths(file_names, image_number)
 
-    def _load_images_from_paths(self, file_paths, image_number):
-        """Загружает изображения из списка путей и добавляет их в соответствующий список."""
+      
+    def _load_images_from_paths(self, items_to_process, image_number):
+        """
+        Загружает изображения из списка путей (str) или QUrl объектов.
+        Преобразует QUrl в локальные пути перед обработкой.
+        """
         target_list = self.image_list1 if image_number == 1 else self.image_list2
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
         loaded_count = 0
         newly_added_indices = []
-        paths_actually_added = []
+        paths_actually_added = [] # Сохраняем оригинальный путь для UI
 
-        for file_path in file_paths:
-            if any(item[1] == file_path for item in target_list):
+        print(f"--- _load_images_from_paths (Image {image_number}) ---") # Debug
+        print(f"  Input items ({len(items_to_process)}): {items_to_process}") # Debug
+
+        for item in items_to_process:
+            path_to_open = None
+            original_path_for_display = "" # Путь для UI и дубликатов
+
+            # --- Преобразование QUrl в строку пути ---
+            if isinstance(item, QUrl):
+                original_path_for_display = item.toLocalFile() # Используем для проверок и хранения
+                if item.isLocalFile():
+                    path_to_open = original_path_for_display
+                    if not path_to_open:
+                        print(f"    Skipping URL with empty local path: {item.toString()}") # Debug
+                        continue
+                    print(f"  Processing URL: {item.toString()} -> Path: {path_to_open}") # Debug
+                else:
+                    print(f"    Skipping non-local URL: {item.toString()}") # Debug
+                    continue # Пропускаем нелокальные URL
+            elif isinstance(item, str):
+                path_to_open = item
+                original_path_for_display = item
+                print(f"  Processing Path String: {path_to_open}") # Debug
+            else:
+                print(f"    Skipping unknown item type: {type(item)} - {item}") # Debug
                 continue
 
-            try:
-                with Image.open(file_path) as img:
-                    temp_image = img.copy()
-                    if temp_image.mode != 'RGBA':
-                         temp_image = temp_image.convert('RGBA')
-                    else:
-                         temp_image.load()
+            # --- Проверка на дубликат (используем original_path_for_display) ---
+            # Важно использовать тот же тип пути, который хранится в target_list[x][1]
+            if any(entry[1] == original_path_for_display for entry in target_list):
+                print(f"    Skipping duplicate: {original_path_for_display}") # Debug
+                continue
 
-                display_name = os.path.basename(file_path)
-                target_list.append((temp_image, file_path, display_name))
-                newly_added_indices.append(len(target_list) - 1)
-                paths_actually_added.append(file_path)
-                loaded_count += 1
-            except Exception as e:
-                print(f"Failed to load image: {file_path}\nError: {e}")
-                traceback.print_exc()
-                QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load image:', self.current_language)}\n{file_path}\n{e}")
+            # --- Загрузка изображения (используем path_to_open) ---
+            if path_to_open: # Убедимся, что путь для открытия действителен
+                try:
+                    print(f"    Attempting Image.open on: {path_to_open}") # Debug
+                    with Image.open(path_to_open) as img: # Теперь передаем строку пути
+                        temp_image = img.copy()
+                        if temp_image.mode != 'RGBA':
+                             temp_image = temp_image.convert('RGBA')
+                        else:
+                             temp_image.load() # Убеждаемся, что данные загружены
+                        print("    Image loaded successfully.") # Debug
 
+                    # Используем original_path_for_display для имени и хранения в списке
+                    display_name = os.path.basename(original_path_for_display) if original_path_for_display else "Unnamed Image"
+                    target_list.append((temp_image, original_path_for_display, display_name))
+                    newly_added_indices.append(len(target_list) - 1)
+                    paths_actually_added.append(original_path_for_display)
+                    loaded_count += 1
+                    print(f"    Successfully added: '{display_name}' from '{original_path_for_display}'") #Debug
+
+                except FileNotFoundError:
+                     print(f"  ERROR (FileNotFound): Failed to open image: {path_to_open}") # Debug
+                     QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load image (Not Found):', self.current_language)}\n{original_path_for_display}")
+                except Exception as e:
+                    print(f"  ERROR (Processing): Failed to process image: {path_to_open}\n  Error: {e}") # Debug
+                    traceback.print_exc()
+                    QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load or process image:', self.current_language)}\n{original_path_for_display}\n\n{type(e).__name__}: {e}")
+            else:
+                # Этого не должно произойти, если логика выше верна, но на всякий случай
+                print(f"    Warning: path_to_open is None for item: {item}") # Debug
+
+        print(f"--- _load_images_from_paths finished. Loaded {loaded_count} new images. ---") # Debug
+
+        # --- Обновление UI --- (без изменений)
         if loaded_count > 0:
             self._update_combobox(image_number)
-
             if newly_added_indices:
                 new_index = newly_added_indices[-1]
-
+                print(f"  Setting index for Image {image_number} to {new_index}") # Debug
                 current_cb_index = combobox.currentIndex()
                 needs_manual_set = (current_cb_index != new_index)
-
                 if needs_manual_set:
-                     combobox.blockSignals(True)
-                     combobox.setCurrentIndex(new_index)
-                     combobox.blockSignals(False)
+                    combobox.blockSignals(True)
+                    combobox.setCurrentIndex(new_index)
+                    combobox.blockSignals(False)
+                    print("    Combobox index set manually (signals blocked).") # Debug
 
+                # Обновляем внутренний индекс и изображение
                 if image_number == 1:
                     if self.current_index1 != new_index:
-                         self.current_index1 = new_index
-                         self._set_current_image(1, trigger_update=True)
+                        print(f"    Updating current_index1 from {self.current_index1} to {new_index}") # Debug
+                        self.current_index1 = new_index
+                        self._set_current_image(1, trigger_update=True)
+                    # Если индекс комбобокса изменился вручную, но внутренний нет, все равно обновить
                     elif not needs_manual_set:
-                         self._set_current_image(1, trigger_update=True)
-                else:
+                        print("    Triggering _set_current_image(1) even if index hasn't changed internally (combobox might have).") # Debug
+                        self._set_current_image(1, trigger_update=True)
+                else: # image_number == 2
                     if self.current_index2 != new_index:
+                        print(f"    Updating current_index2 from {self.current_index2} to {new_index}") # Debug
                         self.current_index2 = new_index
                         self._set_current_image(2, trigger_update=True)
                     elif not needs_manual_set:
+                        print("    Triggering _set_current_image(2) even if index hasn't changed internally (combobox might have).") # Debug
                         self._set_current_image(2, trigger_update=True)
             else:
-                 print("Warning: loaded_count > 0 but newly_added_indices is empty.")
+                 print("Warning: loaded_count > 0 but newly_added_indices is empty.") # Debug
 
-        elif not file_paths:
-             pass
+        elif not items_to_process:
+             print("  No items to process (input list was empty).") # Debug
         else:
-             pass
+             # Успешно обработано, но ничего не добавлено (например, все дубликаты)
+             print("  Finished processing, but no new images were added (check logs for reasons like duplicates or errors).") # Debug
 
+    
 
     def _set_current_image(self, image_number, trigger_update=True):
         """Устанавливает self.original_imageX и связанные переменные на основе текущего индекса."""
