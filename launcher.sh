@@ -1,2 +1,2 @@
 #!/bin/sh
-exec python /usr/lib/improve-imgsli/Improve_ImgSLI.py "$@"
+exec python ./Improve_ImgSLI.py "$@"
