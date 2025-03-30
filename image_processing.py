@@ -1,7 +1,7 @@
 from PIL import Image, ImageDraw, ImageFont
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
-from PyQt6.QtGui import QPixmap, QImage, QColor
-from PyQt6.QtCore import Qt, QRect, QPoint, QPointF
+from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtCore import Qt, QPoint
 try:
     from translations import tr
 except ImportError:
