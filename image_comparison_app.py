@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCh
                              QColorDialog, QComboBox)
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QPainter, QBrush, QPen
 from PyQt6.QtCore import (Qt, QPoint, QTimer, QPointF, QRect, QEvent, QSize, QSettings, QLocale,
-                          QElapsedTimer, QRectF, QByteArray)
+                          QElapsedTimer, QRectF, QByteArray, QUrl)
 
 
 placeholder_dir = "placeholders"
