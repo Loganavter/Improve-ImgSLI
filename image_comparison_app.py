@@ -551,7 +551,7 @@ class ImageComparisonApp(QWidget):
             pass
 
         if not restored:
-            self.setGeometry(100, 100, 800, 900)
+            self.setGeometry(100, 100, 640, 480)
 
         QTimer.singleShot(0, self._ensure_minimum_size_after_restore)
 
