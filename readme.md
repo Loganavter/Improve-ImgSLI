@@ -36,7 +36,7 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 ---
 
 ## Installation
-To install Improved ImgSLI, follow these steps:
+To install Improved ImgSLI via python, follow these steps:
 ```bash
 git clone https://github.com/Loganavter/Improve-ImgSLI.git
 cd Improve-ImgSLI
@@ -48,6 +48,10 @@ python Improve_ImgSLI.py
 ```bash
 yay -S improve-imgsli
 ```
+
+## Windows
+1. Download latest [realese](https://github.com/Loganavter/Improve-ImgSLI/releases/latest) ".exe" file
+2. Install it
 
 ---
 
