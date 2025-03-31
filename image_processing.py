@@ -736,6 +736,10 @@ def draw_vertical_filenames(self, draw, font, file_name1, file_name2, split_posi
 
 
 def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_position_abs, line_height, margin, orig_width, orig_height, text_color, get_text_size_func):
+    """
+    Рисует имена файлов для горизонтального режима разделения.
+    Исправлено: Нижний текст теперь может уходить за нижнюю границу изображения.
+    """
     line_top = split_position_abs - (line_height // 2)
     line_bottom = split_position_abs + (line_height + 1) // 2
     text_height1 = text_height2 = 0
@@ -743,28 +747,19 @@ def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_po
     if file_name1:
         text_width1, text_height1 = get_text_size_func(file_name1, font)
         x1 = margin
-        y1_baseline = max(margin, line_top - margin)
+        y1_baseline = line_top - margin
         try:
             draw.text((x1, y1_baseline), file_name1, fill=text_color, font=font, anchor="ls")
-        except Exception as e: pass
+        except Exception as e:
+            print(f"Error drawing text 1: {e}")
+            pass
 
     if file_name2:
         text_width2, text_height2 = get_text_size_func(file_name2, font)
         x2 = margin
-        y2_top = max(margin, line_bottom + margin)
-        y2_top = min(y2_top, orig_height - margin - text_height2)
-
-        if file_name1 and text_height1 > 0:
-            y1_top_approx = y1_baseline - text_height1
-            if y2_top < y1_baseline + (margin // 2):
-                y2_top = y1_baseline + (margin // 2)
-
-        y2_top = max(margin, y2_top)
-        y2_top = min(y2_top, orig_height - margin - text_height2)
-
+        y2_top = line_bottom + margin
         try:
             draw.text((x2, y2_top), file_name2, fill=text_color, font=font, anchor="lt")
-        except Exception as e: pass
-        try:
-            draw.text((x2, y2_top), file_name2, fill=text_color, font=font, anchor="lt")
-        except Exception as e: pass
+        except Exception as e:
+            print(f"Error drawing text 2: {e}")
+            pass
