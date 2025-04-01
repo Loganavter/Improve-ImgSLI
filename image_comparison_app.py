@@ -773,7 +773,7 @@ class ImageComparisonApp(QWidget):
 
 
     def closeEvent(self, event):
-        """Saves settings on application close."""
+        """Saves settings on application close, carefully handling window geometry."""
         geometry_to_save = None
         is_maximized = self.windowState() & Qt.WindowState.WindowMaximized
         is_fullscreen = self.windowState() & Qt.WindowState.WindowFullScreen
@@ -783,22 +783,23 @@ class ImageComparisonApp(QWidget):
         elif self.previous_geometry:
              geometry_to_save = self.previous_geometry
         else:
-             geometry_to_save = self.saveGeometry()
-             print("Warning: Saving maximized/fullscreen geometry as previous geometry was lost.") # Keep this warning
+             geometry_to_save = None
 
-        if isinstance(geometry_to_save, QByteArray):
+        if geometry_to_save is not None and isinstance(geometry_to_save, QByteArray):
             geom_b64 = geometry_to_save.toBase64().data().decode()
             self.save_setting("window_geometry", geom_b64)
-        elif geometry_to_save:
-             print(f"Warning: Geometry to save is not QByteArray: {type(geometry_to_save)}") # Keep this warning
-             self.save_setting("window_geometry", geometry_to_save)
+        elif geometry_to_save is None:
+            if self.settings.contains("window_geometry"):
+                print("Removing potentially invalid 'window_geometry' setting.")
+                try:
+                    self.settings.remove("window_geometry")
+                except Exception as e:
+                    print(f"Error removing 'window_geometry' setting: {e}")
         else:
-             print("Warning: Could not get valid geometry to save.") # Keep this warning
-
+            print(f"Warning: Geometry to save is not QByteArray or None: {type(geometry_to_save)}") 
 
         self.save_setting("capture_relative_x", self.capture_position_relative.x())
         self.save_setting("capture_relative_y", self.capture_position_relative.y())
-
 
         self.save_setting("movement_speed_per_sec", self.movement_speed_per_sec)
         self.save_setting("language", self.current_language)
@@ -820,8 +821,7 @@ class ImageComparisonApp(QWidget):
             self.settings.remove("magnifier_size")
             self.settings.remove("capture_size")
         except Exception as e:
-            print(f"Error removing settings: {e}") # Keep this warning
-
+            print(f"Error removing obsolete settings: {e}") 
         super().closeEvent(event)
 
     def update_comparison(self):
