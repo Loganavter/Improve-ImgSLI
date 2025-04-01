@@ -1,6 +1,6 @@
-<div style="text-align: center;">
-    <img src="./media/logo-github.png" alt="Logo" width="256">
-</div>
+<p align="center"><img src="./media/logo-github.png" alt="Logo" width="256">
+
+
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square)](https://github.com/Loganavter/Improve-ImgSLI/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square)](LICENSE)
