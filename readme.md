@@ -1,5 +1,5 @@
-<p align="center"><img src="./media/logo-github.png" alt="Logo" width="512">
-    
+<p align="center"><img src="./media/logo-github.png" alt="Logo" width="384">
+
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square)](https://github.com/Loganavter/Improve-ImgSLI/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square)](LICENSE)
 
@@ -42,17 +42,17 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 *   Save the current comparison view as a full-resolution image.
 
 **Magnifier Tool:**
-*   Powerful magnifying glass for close inspection.
-*   Adjustable magnification area size and mirror size.
+*   Powerful Magnifier for close inspection.
+*   Adjustable magnification area size and magnifier display size.
 *   Independent magnifier movement using WASD keys.
 *   Adjust distance between magnifiers using Q and E keys.
 *   Option to combine magnifiers for direct comparison of magnified areas.
-*   Freeze the magnifier's capture position.
+*   Freeze the magnifier's view position.
 
 **File & Workflow Management:**
-*   Drag-and-drop support for loading one or multiple images per slot.
-*   Select loaded images via dropdown menus when multiple images are in a slot.
-*   Swap entire image lists between slots with a single button click.
+*   Drag-and-drop support for loading one or multiple images per panel.
+*   Select loaded images via dropdown menus when multiple images are loaded into a panel.
+*   Swap entire image lists between panels with a single button click.
 *   Edit image names directly within the application interface.
 *   Option to include file names in the saved comparison image.
 *   Customizable font size and color for included file names.
@@ -99,7 +99,7 @@ yay -S improve-imgsli
 1.  **Launch:** Start Improved ImgSLI using the method corresponding to your installation.
 2.  **Load Images:** Drag and drop image files onto the left and right panels. If you drop multiple files onto one panel, use the dropdown menu above it to select the active image.
 3.  **Compare:** Click and drag the mouse to move the separator line. Right-click to toggle between vertical and horizontal split.
-4.  **Magnify:** Press the middle mouse button (scroll wheel) to activate the magnifying glass. Use WASD to move the magnifiers independently, Q/E to adjust their distance. Explore menus/tooltips for more options (like freezing or combining).
+4.  **Magnify:** Press the middle mouse button (scroll wheel) to activate the Magnifier tool. Use WASD to move the magnifiers independently, Q/E to adjust their distance. Explore menus/tooltips for more options (like freezing the view position or combining).
 5.  **Save:** Click the save button in the UI to export the current comparison view as a single image file.
 
 https://github.com/user-attachments/assets/08767c4f-9ae4-4bfc-8c1e-aab14b1dc830
@@ -110,7 +110,7 @@ https://github.com/user-attachments/assets/08767c4f-9ae4-4bfc-8c1e-aab14b1dc830
 
 Contributions are welcome! Feel free to:
 *   Report bugs or suggest features by opening an [Issue](https://github.com/Loganavter/Improve-ImgSLI/issues).
-*   Submit improvements by creating a [Pull Request](https://github.com/Loganavter/Improve-ImgSLI/pulls). 
+*   Submit improvements by creating a [Pull Request](https://github.com/Loganavter/Improve-ImgSLI/pulls).
 
 ---
 
@@ -129,7 +129,7 @@ This project is distributed under the MIT License. See the [LICENSE](https://git
 
 Originally, Improve ImgSLI was fully crafted by ChatGPT in September 2024 to simplify creating comparison images for my work, offering basic image comparison functionality. In October, I discovered Claude and used it to enhance the tool with a magnifier feature and drag-and-drop support.
 
-By November, with Claude’s help, I refined the magnifier, adding options to freeze the detection area and merge magnifiers. However, the growing codebase—coupled with Claude’s 8k token context limit—made full regeneration impossible, forcing me to manually edit sections. I turned to Gemini, which assisted in integrating changes, though not all generated code was successful. Some features were postponed, and others were intentionally disabled to avoid bugs.
+By November, with Claude’s help, I refined the magnifier, adding options to freeze the view position and merge magnifiers. However, the growing codebase—coupled with Claude’s 8k token context limit—made full regeneration impossible, forcing me to manually edit sections. I turned to Gemini, which assisted in integrating changes, though not all generated code was successful. Some features were postponed, and others were intentionally disabled to avoid bugs.
 
 In early December, I experimented with adaptive magnifier positioning tied to window resizing, but the results were unsatisfactory, and I abandoned the effort. Then, in January 2025, a user [request](https://github.com/Loganavter/Improve-ImgSLI/issues/1) to enable window resizing prompted me to explore DeepSeek—a breakthrough AI with Chain-of-Thought reasoning at the time. DeepSeek helped implement this feature, while Gemini seamlessly incorporated it and other updates into the existing code.
 
@@ -139,3 +139,4 @@ In late March 2025, I focused on improving cross-platform compatibility. Gemini 
 
 In general, if do not take into account the price of my personal time, which is about 3 weeks in total, then this project cost me about $ 30. I got the AUR maintainer for free, so we don't take it into account either :)
 </details>
+
