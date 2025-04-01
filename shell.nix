@@ -11,9 +11,6 @@ pkgs.mkShell {
     (pkgs.python313.withPackages (
       python-pkgs: with python-pkgs; [
         # select Python packages here
-        mpmath
-        networkx
-        numpy
         pillow
         pyqt6
         pyqt6-sip
