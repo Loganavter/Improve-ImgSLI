@@ -1,6 +1,6 @@
-<h1 style="display: flex; align-items: center; justify-content: center;">
-  Improve <img src="./media/33.png" alt="Logo" width="64"/> ImgSLI
-</h1>
+<div style="text-align: center;">
+    <img src="./media/logo-github.png" alt="Logo" width="256">
+</div>
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square)](https://github.com/Loganavter/Improve-ImgSLI/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square)](LICENSE)
@@ -90,10 +90,7 @@ yay -S improve-imgsli
 2.  Run the installer and follow the prompts.
 
 **Flatpak (FlatHub):**
-```bash
-flatpak install flathub io.github.Loganavter.Improve-ImgSLI
-flatpak run io.github.Loganavter.Improve-ImgSLI
-```
+*   Very soon...
 
 **MacOS:**
 *   Coming soon... Stay tuned!
