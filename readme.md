@@ -1,7 +1,5 @@
 <p align="center"><img src="./media/logo-github.png" alt="Logo" width="256">
-
-
-
+    
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square)](https://github.com/Loganavter/Improve-ImgSLI/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square)](LICENSE)
 
@@ -15,7 +13,6 @@
 <details>
      <summary>Full resolution save</summary>
      <img src="./media/__4.jpg" alt="Another feature example" style="width: 33%;">
-
 </details>
 
 ---
@@ -105,7 +102,7 @@ yay -S improve-imgsli
 4.  **Magnify:** Press the middle mouse button (scroll wheel) to activate the magnifying glass. Use WASD to move the magnifiers independently, Q/E to adjust their distance. Explore menus/tooltips for more options (like freezing or combining).
 5.  **Save:** Click the save button in the UI to export the current comparison view as a single image file.
 
-https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.2/media/demo.mp4
+https://github.com/user-attachments/assets/08767c4f-9ae4-4bfc-8c1e-aab14b1dc830
 
 ---
 
