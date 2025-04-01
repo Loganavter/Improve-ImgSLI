@@ -8,9 +8,9 @@
 **An intuitive, open-source tool for advanced image comparison and interaction.**
 
 <div style="display: flex; justify-content: space-between;">
-    <img src="./media/__1.png" alt="Side-by-side comparison with vertical split" style="width: 33%;">
-    <img src="./media/__2.png" alt="Magnifying glass tool inspecting details" style="width: 33%;">
-    <img src="./media/__3.png" alt="Language selection interface" style="width: 33%;">
+    <img src="./media/__1.png" alt="Side-by-side comparison with vertical split" style="width: 30%;">
+    <img src="./media/__2.png" alt="Magnifying glass tool inspecting details" style="width: 30%;">
+    <img src="./media/__3.png" alt="Language selection interface" style="width: 30%;">
 </div>
 <details>
      <summary>Full resolution save</summary>
