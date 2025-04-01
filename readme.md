@@ -97,10 +97,10 @@ yay -S improve-imgsli
 ## Basic Usage <a name="basic-usage"></a>
 
 1.  **Launch:** Start Improved ImgSLI using the method corresponding to your installation.
-2.  **Load Images:** Drag and drop image files onto the left and right panels. If you drop multiple files onto one panel, use the dropdown menu above it to select the active image.
-3.  **Compare:** Click and drag the mouse to move the separator line. Right-click to toggle between vertical and horizontal split.
-4.  **Magnify:** Press the middle mouse button (scroll wheel) to activate the Magnifier tool. Use WASD to move the magnifiers independently, Q/E to adjust their distance. Explore menus/tooltips for more options (like freezing the view position or combining).
-5.  **Save:** Click the save button in the UI to export the current comparison view as a single image file.
+2.  **Load Images:** Use the "Add Img(s)" buttons or drag and drop image files onto the left or right half of the main image display area. If you load multiple files onto one side, use the dropdown menu above it to select the active image.
+3.  **Compare:** In the standard comparison mode, click and drag the mouse on the image to move the separator line. Use the "Horizontal Split" checkbox to change the split orientation.
+4.  **Magnify:** Activate the Magnifier tool via its checkbox. In this mode, clicking or dragging on the image sets the central capture point. Use WASD keys to move the magnified view areas independently. Use Q/E keys to adjust the distance between the magnifier circles. You can also freeze the capture point using the corresponding checkbox (WASD will then move the frozen point).
+5.  **Save:** Click the "Save Result" button in the UI to export the current comparison view as a single image file.
 
 https://github.com/user-attachments/assets/08767c4f-9ae4-4bfc-8c1e-aab14b1dc830
 
