@@ -1,4 +1,4 @@
-<p align="center"><img src="./media/logo-github.svg" alt="Logo" width="384">
+<p align="center"><img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/logo-github.svg" alt="Logo" width="384">
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square)](https://github.com/Loganavter/Improve-ImgSLI/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square)](LICENSE)
@@ -6,9 +6,9 @@
 **An intuitive, open-source tool for advanced image comparison and interaction.**
 
 <div style="display: flex; justify-content: space-between;">
-    <img src="./media/__1.png" alt="Side-by-side comparison with vertical split" style="width: 32%;">
-    <img src="./media/__2.png" alt="Magnifying glass tool inspecting details" style="width: 32%;">
-    <img src="./media/__3.png" alt="Language selection interface" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/__1.png" alt="Side-by-side comparison with vertical split" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/__2.png" alt="Magnifying glass tool inspecting details" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/__3.png" alt="Language selection interface" style="width: 32%;">
 </div>
 <details>
      <summary>Full resolution save</summary>
