@@ -150,24 +150,20 @@ class ImageComparisonApp(QWidget):
         self.settings = QSettings("MyCompany", "ImageComparisonApp")
 
         self.pending_portal_requests = {}
-
-        if dbus_available:
-            print("Attempting to connect to portal Response signal via QtDBus...")
-            success = session_bus.connect(
-                "org.freedesktop.portal.Desktop",
-                "/org/freedesktop/portal/desktop",
-                "org.freedesktop.portal.Request",
-                "Response",
-                self._on_portal_response_qtdbus
-            )
-            if success:
-                print("Successfully connected to org.freedesktop.portal.Request.Response signal.")
-            else:
-                print("!!! Failed to connect to org.freedesktop.portal.Request.Response signal. Drag-n-drop might fail. !!!")
+        print("Attempting to connect to portal Response signal via QtDBus...")
+        success = session_bus.connect(
+            "org.freedesktop.portal.Desktop",      # service
+            "/org/freedesktop/portal/desktop",     # path
+            "org.freedesktop.portal.Request",      # interface (ДОБАВЛЕНО)
+            "Response",                            # name (ДОБАВЛЕНО)
+            self._on_portal_response_qtdbus        # slot (теперь на правильной позиции)
+        )
+        if success:
+            print("Successfully connected to org.freedesktop.portal.Request.Response signal.")
         else:
-            # REMOVED: QMessageBox.warning(self, "D-Bus Warning", "D-Bus session bus is not available. Drag-n-drop via portal will not work.")
-            print("Warning: D-Bus session bus is not available. Drag-n-drop via portal will not work.")
-
+            # Эта ошибка более специфична для QtDBus, чем общая D-Bus ошибка
+            dbus_error = session_bus.lastError()
+            print(f"!!! Failed to connect to org.freedesktop.portal.Request.Response signal. QtDBus Error: {dbus_error.name()} - {dbus_error.message()} !!!")
 
         self._load_settings()
         self._init_state()
@@ -658,172 +654,214 @@ class ImageComparisonApp(QWidget):
         self.drag_overlay1.hide(); self.drag_overlay2.hide()
 
     def dropEvent(self, event):
-        """Обрабатывает перетаскивание файлов с использованием QDBus."""
+        """Handles file drops using QtDBus for portal interaction."""
         self.drag_overlay1.hide()
         self.drag_overlay2.hide()
+
         if not event.mimeData().hasUrls():
-            event.ignore(); return
+            print("Drop event ignored: No URLs found in mimeData.")
+            event.ignore()
+            return
+
         urls = event.mimeData().urls()
         if not urls:
-            event.ignore(); return
+            print("Drop event ignored: mimeData hasUrls but URL list is empty.")
+            event.ignore()
+            return
 
         event.acceptProposedAction()
         drop_point = event.position().toPoint()
         target_image_num = 1 if self._is_in_left_area(drop_point) else 2
+        print(f"Drop detected for image slot {target_image_num} at {drop_point}. Processing {len(urls)} URL(s).")
 
         uris_for_portal = []
+        url_map = {} # Map uri_string back to QUrl for display name retrieval
+        non_local_urls = []
+        unsupported_files = []
+
         for url in urls:
+            uri_string = url.toString()
+            print(f"  Processing URL: {uri_string}")
             if url.isLocalFile():
                 path_str = url.toLocalFile()
                 if not path_str:
-                    print(f"Warning: Could not convert URL to local path: {url.toString()}")
+                    print(f"    Warning: Could not convert URL to local path: {uri_string}")
+                    unsupported_files.append(uri_string + " (Conversion failed)")
                     continue
                 try:
+                    # Basic check for image extensions
                     ext = os.path.splitext(path_str)[1].lower()
                     if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff'):
-                        uri_string = url.toString()
-                        if uri_string: uris_for_portal.append(uri_string)
+                        if uri_string:
+                             uris_for_portal.append(uri_string)
+                             url_map[uri_string] = url # Store for later use
+                             print(f"    Added local image file URI for portal: {uri_string}")
+                        else:
+                             print(f"    Warning: URL toString() returned empty for local file: {path_str}")
+                             unsupported_files.append(os.path.basename(path_str) + " (Empty URI)")
                     else:
-                        print(f"Info: Skipped non-image file based on extension: {path_str}")
+                        print(f"    Info: Skipped non-image file based on extension: {path_str}")
+                        unsupported_files.append(os.path.basename(path_str) + " (Unsupported ext)")
                 except Exception as e:
-                    print(f"Error processing path from URL '{url.toString()}': {e}")
+                    print(f"    Error processing path '{path_str}' from URL '{uri_string}': {e}")
+                    unsupported_files.append(os.path.basename(path_str) + f" (Error: {e})")
             else:
-                print(f"Info: Skipped non-local URL: {url.toString()}")
+                print(f"    Info: Skipped non-local URL: {uri_string}")
+                non_local_urls.append(uri_string)
 
-        # --- Обработка через портал QDBus или фолбэк ---
+        # --- Portal Handling via QDBus ---
         portal_requests_made = 0
-        uris_processed_directly = [] # Список для путей, обработанных напрямую
+        portal_errors = [] # Keep track of portal failures
 
-        if dbus_available and uris_for_portal:
-            print(f"Attempting portal access via QtDBus for {len(uris_for_portal)} URIs for slot {target_image_num}...")
-
-            portal_interface = QDBusInterface(
-                "org.freedesktop.portal.Desktop",
-                "/org/freedesktop/portal/desktop",
-                "org.freedesktop.portal.OpenFile", # По-прежнему пытаемся использовать этот интерфейс
-                QDBusConnection.sessionBus()
-            )
-
-            # --- Определим ожидаемые типы сообщений ---
-            try:
-                MethodReturnMessageType = QDBusMessage.MethodReturnMessage
-                ErrorMessageType = QDBusMessage.ErrorMessage
-            except AttributeError:
-                print("  DEBUG: Using numeric constants (2, 3) for message types.")
-                MethodReturnMessageType = 2
-                ErrorMessageType = 3
-
-            url_map = {url.toString(): url for url in urls if url.toString() in uris_for_portal}
-
-            for uri_string in uris_for_portal:
-                original_qurl = url_map.get(uri_string)
-
-                if not portal_interface.isValid():
-                    print(f"!!! Error: QDBusInterface for OpenFile is invalid (already known issue for URI: {uri_string}). Skipping portal call. !!!")
-                    if original_qurl and original_qurl.isLocalFile():
-                        local_path = original_qurl.toLocalFile()
-                        if local_path and os.path.exists(local_path):
-                             print(f"    FALLBACK (Interface Invalid): Using direct local path: {local_path}")
-                             uris_processed_directly.append(local_path)
-                        else:
-                             print(f"    FALLBACK WARNING (Interface Invalid): Could not get valid local path from {uri_string}")
-                    continue
-
-                try:
-                    options = {'writable': QVariant(False), 'ask': QVariant(False)}
-                    parent_window_handle = ""
-                    print(f"  Calling OpenFile via QtDBus for: {uri_string}")
-                    reply_message: QDBusMessage = portal_interface.call("OpenFile", parent_window_handle, uri_string, options)
-                    reply_type_value = reply_message.type()
-                    print(f"    DEBUG: reply_message.type() returned value: {reply_type_value}, Python type: {type(reply_type_value)}")
-
-                    if reply_type_value == MethodReturnMessageType:
-                        arguments = reply_message.arguments()
-                        if arguments and isinstance(arguments[0], str) and arguments[0].startswith('/org/freedesktop/portal/request'):
-                             request_path = arguments[0]
-                             print(f"    OpenFile call successful. Request object path: {request_path}")
-                             self.pending_portal_requests[request_path] = target_image_num
-                             portal_requests_made += 1
-                        else:
-                             print(f"    Warning: OpenFile call returned successfully but with unexpected response arguments: {arguments}")
-                    elif reply_type_value == ErrorMessageType:
-                        error_name = reply_message.errorName()
-                        error_message = reply_message.errorMessage()
-                        print(f"    !!! Error: OpenFile D-Bus call failed for {uri_string}: {error_name} - {error_message} !!!")
-                        if original_qurl and original_qurl.isLocalFile():
-                             local_path = original_qurl.toLocalFile()
-                             if local_path and os.path.exists(local_path):
-                                  print(f"    FALLBACK (D-Bus Error): Using direct local path: {local_path}")
-                                  uris_processed_directly.append(local_path)
-                             else:
-                                  print(f"    FALLBACK WARNING (D-Bus Error): Could not get valid local path from {uri_string}")
-                        else:
-                            print(f"    FALLBACK INFO: Original URL for {uri_string} was not local or not found.")
-                    else:
-                         error_name = reply_message.errorName() if hasattr(reply_message, 'errorName') else "N/A"
-                         error_message = reply_message.errorMessage() if hasattr(reply_message, 'errorMessage') else "N/A"
-                         print(f"    Warning: OpenFile call returned unexpected message type: {reply_type_value}. Error details (if any): {error_name} - {error_message}")
-                         if original_qurl and original_qurl.isLocalFile():
-                             local_path = original_qurl.toLocalFile()
-                             if local_path and os.path.exists(local_path):
-                                  print(f"    FALLBACK (Unexpected Type): Using direct local path: {local_path}")
-                                  uris_processed_directly.append(local_path)
-                             else:
-                                  print(f"    FALLBACK WARNING (Unexpected Type): Could not get valid local path from {uri_string}")
-
-                except Exception as e:
-                    print(f"!!! Exception during QtDBus OpenFile call for {uri_string}: {e} !!!")
-                    traceback.print_exc()
-                    if original_qurl and original_qurl.isLocalFile():
-                         local_path = original_qurl.toLocalFile()
-                         if local_path and os.path.exists(local_path):
-                              print(f"    FALLBACK (Python Exception): Using direct local path: {local_path}")
-                              uris_processed_directly.append(local_path)
-                         else:
-                              print(f"    FALLBACK WARNING (Python Exception): Could not get valid local path from {uri_string}")
-
-            # --- Обработка путей, полученных напрямую (фолбэк) ---
-            if uris_processed_directly:
-                 print(f"Processing {len(uris_processed_directly)} files obtained via fallback mechanism for slot {target_image_num}...")
-                 QTimer.singleShot(0, lambda paths=list(set(uris_processed_directly)), num=target_image_num: self._load_images_from_paths(paths, num))
-                 if portal_requests_made == 0:
-                     # REMOVED: QMessageBox.information(self, tr("Information", self.current_language),
-                     #                         tr("Used direct file access as portal interaction failed.", self.current_language))
-                     print("Info: Used direct file access as portal interaction failed.")
-
-            if portal_requests_made == 0 and not uris_processed_directly and len(uris_for_portal) > 0:
-                 # REMOVED: QMessageBox.warning(self, tr("Error", self.current_language), tr("Could not open dropped files via portal or direct access.", self.current_language))
-                 print("Error: Could not open dropped files via portal or direct access.")
-
-        elif not dbus_available and uris_for_portal:
-             # --- Если D-Bus недоступен, сразу используем фолбэк ---
-             print("D-Bus not available, attempting direct file access (fallback)...")
-             for url in urls:
-                 if url.isLocalFile():
-                      local_path = url.toLocalFile()
-                      if local_path and os.path.exists(local_path):
-                           try:
-                               ext = os.path.splitext(local_path)[1].lower()
-                               if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff'):
-                                    uris_processed_directly.append(local_path)
-                               else:
-                                    print(f"  Skipping non-image file (direct access): {local_path}")
-                           except Exception as e:
-                                print(f"Error checking extension for direct access file {local_path}: {e}")
-                      else:
-                           print(f"  Warning (direct access): Could not get valid local path from {url.toString()}")
-             if uris_processed_directly:
-                  print(f"Processing {len(uris_processed_directly)} files obtained via direct access for slot {target_image_num}...")
-                  QTimer.singleShot(0, lambda paths=list(set(uris_processed_directly)), num=target_image_num: self._load_images_from_paths(paths, num))
-             elif len(urls) > 0:
-                 # REMOVED: QMessageBox.warning(self, tr("Warning", self.current_language), tr("D-Bus is not available and could not access dropped files directly.", self.current_language))
-                 print("Warning: D-Bus is not available and could not access dropped files directly.")
-
-        elif not uris_for_portal:
+        if not uris_for_portal:
+             print("No valid local image URIs found to process via portal.")
              if len(urls) > 0:
-                 QMessageBox.information(self, tr("Information", self.current_language), tr("No supported local image files were found in the dropped items.", self.current_language))
+                 reason_list = []
+                 if non_local_urls: reason_list.append(tr("Non-local files skipped:", self.current_language) + f" {len(non_local_urls)}")
+                 if unsupported_files: reason_list.append(tr("Unsupported or inaccessible files skipped:", self.current_language) + f" {len(unsupported_files)}")
+                 reason_str = "\n - ".join(reason_list) if reason_list else tr("No supported local image files detected.", self.current_language)
+                 QMessageBox.information(self, tr("Information", self.current_language),
+                                          tr("No supported local image files could be processed from the dropped items.", self.current_language) +
+                                          (f"\n\n{tr('Details:', self.current_language)}\n - {reason_str}" if reason_list else ""))
+             return
+
+        if not dbus_available:
+            print("Error: D-Bus not available. Cannot use portal for drag-and-drop.")
+            QMessageBox.critical(self, tr("Error", self.current_language),
+                                   tr("D-Bus connection is not available. Cannot open dropped files via the portal.\nPlease ensure D-Bus is running.", self.current_language))
+            return
+
+        print(f"Attempting portal access via QtDBus for {len(uris_for_portal)} URIs for slot {target_image_num}...")
+
+        # --- Create QDBusInterface ---
+        portal_interface = None
+        try:
+            portal_interface = QDBusInterface("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                                            "org.freedesktop.portal.FileChooser", QDBusConnection.sessionBus())
+        except Exception as e: # Catch TypeError or other issues
+             print(f"!!! Critical Error during QDBusInterface creation: {e} !!!")
+             traceback.print_exc()
+             QMessageBox.critical(self, tr("D-Bus Error", self.current_language),
+                                   tr("Internal error creating D-Bus interface.", self.current_language) + f"\n\n{e}")
+             return
+
+        if not portal_interface or not portal_interface.isValid():
+            error_msg = "QDBusInterface for FileChooser is invalid after creation."
+            print(f"!!! Error: {error_msg} !!!")
+            QMessageBox.critical(self, tr("D-Bus Error", self.current_language),
+                                   tr("Could not establish a valid connection to the FileChooser portal via D-Bus.", self.current_language) +
+                                   f"\n\n{error_msg}")
+            return
+
+        # --- Determine expected message types using full Enum path ---
+        try:
+            ReplyMsgType = QDBusMessage.MessageType.ReplyMessage
+            ErrorMsgType = QDBusMessage.MessageType.ErrorMessage
+            print("    DEBUG: Using QDBusMessage.MessageType Enum members for comparison.")
+        except AttributeError:
+            # This fallback is less likely needed now, but kept as a safety net
+            print("    !!! CRITICAL WARNING: Could not access QDBusMessage.MessageType members! D-Bus interaction will likely fail. !!!")
+            QMessageBox.critical(self, tr("D-Bus Error", self.current_language),
+                                   tr("Internal error accessing D-Bus message types. Cannot proceed with portal.", self.current_language))
+            return # Stop processing if we can't get the types
+
+        # --- Loop through URIs and call OpenFile ---
+        parent_window_handle = "" # Typically empty for OpenFile
+        # Ensure options uses QVariant as required by QtDBus
+        options = {'writable': QVariant(False), 'ask': QVariant(False)}
 
 
+        for uri_string in uris_for_portal:
+            original_qurl = url_map.get(uri_string)
+            file_display_name = os.path.basename(original_qurl.path()) if (original_qurl and original_qurl.path()) else uri_string
+
+            print(f"  Calling OpenFile via QtDBus for: {uri_string} (Display: {file_display_name})")
+      
+            try:
+                # Попытка получить X11 Window ID
+                win_id_ptr = self.winId()
+                if win_id_ptr:
+                    # Преобразуем voidptr в integer
+                    win_id_int = int(win_id_ptr)
+                    # Формируем хэндл для портала (формат x11:...)
+                    parent_window_handle = f"x11:{hex(win_id_int)}"
+                    print(f"    DEBUG: Using parent window handle: {parent_window_handle}")
+                else:
+                    print("    DEBUG: winId() returned null pointer.")
+            except (TypeError, ValueError, Exception) as e: # Ловим возможные ошибки преобразования
+                print(f"    Warning: Could not get/convert window handle: {e}")
+                parent_window_handle = "" # Сбрасываем в пустую строку при ошибке
+
+                
+
+            try:
+                # --- Make the D-Bus call ---
+                reply_message: QDBusMessage = portal_interface.call("OpenFile", parent_window_handle, uri_string, options)
+                reply_type_value = reply_message.type() # Get the Enum member object
+
+                # --- Debug output ---
+                print(f"    DEBUG: reply_message.type() returned value: {reply_type_value} (Type: {type(reply_type_value)})")
+                print(f"    DEBUG: Comparing against Reply Type: {ReplyMsgType} (Type: {type(ReplyMsgType)})")
+                print(f"    DEBUG: Comparing against Error Type: {ErrorMsgType} (Type: {type(ErrorMsgType)})")
+
+                # --- Perform direct comparison with Enum objects ---
+                is_reply = (reply_type_value == ReplyMsgType)
+                is_error = (reply_type_value == ErrorMsgType)
+
+                print(f"    DEBUG: Enum comparison: {reply_type_value} == {ReplyMsgType}? {is_reply}")
+                print(f"    DEBUG: Enum comparison: {reply_type_value} == {ErrorMsgType}? {is_error}")
+
+                # --- Process based on comparison result ---
+                if is_reply:
+                    arguments = reply_message.arguments()
+                    print(f"    DEBUG: Arguments received in ReplyMessage: {arguments}")
+                    # The first argument should be the request object path (string)
+                    if arguments and len(arguments) > 0 and isinstance(arguments[0], str) and arguments[0].startswith('/org/freedesktop/portal/desktop/request'):
+                        request_path = arguments[0]
+                        print(f"    OpenFile call successful (Reply). Request object path: {request_path}")
+                        self.pending_portal_requests[request_path] = target_image_num
+                        portal_requests_made += 1
+                    else:
+                        error_msg = f"OpenFile call returned Reply but with unexpected/missing arguments: {arguments}"
+                        print(f"    Warning: {error_msg}")
+                        portal_errors.append(f"{file_display_name}: {error_msg}")
+
+                elif is_error:
+                    error_name = reply_message.errorName()
+                    error_message = reply_message.errorMessage()
+                    error_msg = f"OpenFile D-Bus call failed: {error_name} - {error_message}"
+                    print(f"    !!! Error: {error_msg} (URI: {uri_string}) !!!")
+                    portal_errors.append(f"{file_display_name}: {error_msg}")
+
+                else: # Neither Reply nor Error matched
+                    # Should be less common now, but handle other types like Signal or Invalid
+                    error_msg = (f"OpenFile call returned unexpected message type: {reply_type_value}. "
+                                 f"Expected Reply ({ReplyMsgType}) or Error ({ErrorMsgType}).")
+                    print(f"    Warning: {error_msg} (URI: {uri_string})")
+                    portal_errors.append(f"{file_display_name}: {error_msg}")
+
+            except Exception as e:
+                # Catch exceptions during the .call() itself or interface issues
+                error_msg = f"Exception during QtDBus OpenFile call: {e}"
+                print(f"!!! Exception: {error_msg} (URI: {uri_string}) !!!")
+                traceback.print_exc()
+                portal_errors.append(f"{file_display_name}: {error_msg}")
+
+        # --- Report Results ---
+        print(f"Portal interaction finished. Requests made: {portal_requests_made}, Errors encountered: {len(portal_errors)}")
+        if portal_requests_made == 0 and len(uris_for_portal) > 0:
+            error_details = "\n - ".join(portal_errors) if portal_errors else tr("Unknown error.", self.current_language)
+            QMessageBox.warning(self, tr("Portal Error", self.current_language),
+                                 tr("Could not initiate portal access for any dropped image files.", self.current_language) +
+                                 f"\n\n{tr('Details:', self.current_language)}\n - {error_details}")
+        elif portal_errors:
+            error_details = "\n - ".join(portal_errors)
+            QMessageBox.warning(self, tr("Portal Warning", self.current_language),
+                                 tr("Failed to initiate portal access for some dropped files.", self.current_language) +
+                                 f"\n\n{tr('Failed files:', self.current_language)}\n - {error_details}")
+# --- END OF REWRITTEN dropEvent FUNCTION ---
+
+# --- START OF UNMODIFIED _on_portal_response_qtdbus FUNCTION ---
     @pyqtSlot(int, 'QVariantMap')
     def _on_portal_response_qtdbus(self, response_code: int, results: dict):
         message = self.sender()
@@ -843,62 +881,71 @@ class ImageComparisonApp(QWidget):
         target_image_num = self.pending_portal_requests.pop(request_path)
 
         if response_code != 0:
+            error_msg = tr("Failed to get access to the dropped file via portal (Error code: {code}).", self.current_language).format(code=response_code)
             print(f"  Portal request failed (request path: {request_path}, slot: {target_image_num}, code: {response_code})")
-            # REMOVED: QMessageBox.warning(self, tr("Portal Error", self.current_language),
-            #                     tr("Failed to get access to the dropped file via portal (Error code: {code}).", self.current_language).format(code=response_code))
+            QMessageBox.warning(self, tr("Portal Error", self.current_language), error_msg)
             return
 
         print(f"  Portal request successful (request path: {request_path}, slot: {target_image_num})")
         accessible_uris_variant = results.get('uris', None)
         if accessible_uris_variant is None:
+            error_msg = tr("Portal granted access, but did not return file locations ('uris' missing).", self.current_language)
             print("  Warning: Portal response successful, but 'uris' key missing in results.")
-            # REMOVED: QMessageBox.warning(self, tr("Portal Warning", self.current_language), tr("Portal granted access, but did not return file locations ('uris' missing).", self.current_language))
+            QMessageBox.warning(self, tr("Portal Warning", self.current_language), error_msg)
             return
 
-        # --- Упрощенная проверка типа ---
+        # --- Simplified type check ---
         accessible_uri_list = []
         if isinstance(accessible_uris_variant, QVariant):
-            value = accessible_uris_variant.value() # Получаем значение из QVariant
-            if isinstance(value, list): # Проверяем, является ли результат списком
-                # Предполагаем, что это список строк (QStringList преобразуется в list[str])
+            value = accessible_uris_variant.value() # Get value from QVariant
+            if isinstance(value, list): # Check if the result is a list
+                # Assume it's a list of strings (QStringList becomes list[str])
                 accessible_uri_list = value
-            elif isinstance(value, str): # Проверяем, является ли результат строкой
-                # Может вернуться одна строка
+            elif isinstance(value, str): # Check if the result is a string
+                # Might return a single string
                 if value: accessible_uri_list = [value]
             else:
                 print(f"  Warning: 'uris' key contains QVariant with unexpected inner type: {type(value)} (typeName: {accessible_uris_variant.typeName()})")
         elif isinstance(accessible_uris_variant, list):
-            # Если results уже содержит Python list (менее вероятно, но возможно)
+            # If results already contains a Python list (less likely, but possible)
             accessible_uri_list = accessible_uris_variant
         else:
             print(f"  Warning: 'uris' key has unexpected type (not QVariant or list): {type(accessible_uris_variant)}")
 
 
         if not accessible_uri_list:
+            error_msg = tr("Portal granted access, but did not return a usable file location.", self.current_language)
             print("  Warning: Portal response successful, but no accessible URIs found or extracted from results.")
-            # REMOVED: QMessageBox.warning(self, tr("Portal Warning", self.current_language), tr("Portal granted access, but did not return a usable file location.", self.current_language))
+            QMessageBox.warning(self, tr("Portal Warning", self.current_language), error_msg)
             return
 
         accessible_qurls = []
+        failed_qurls = []
         for uri_str in accessible_uri_list:
             if isinstance(uri_str, str):
                 qurl = QUrl(uri_str)
+                # Even if the portal gives a URI, double-check it's valid and local now
                 if qurl.isValid() and qurl.isLocalFile():
                     accessible_qurls.append(qurl)
                     print(f"  Got accessible QUrl: {qurl.toString()}")
                 else:
                     print(f"  Warning: Received invalid or non-local accessible URI string from portal: {uri_str}")
+                    failed_qurls.append(uri_str)
             else:
                  print(f"  Warning: Item in accessible_uri_list is not a string: {type(uri_str)}")
+                 failed_qurls.append(f"Type {type(uri_str)}")
 
 
         if accessible_qurls:
             print(f"  Calling _load_images_from_paths for slot {target_image_num} with {len(accessible_qurls)} accessible QUrls.")
+            # Use QTimer.singleShot to defer loading to the event loop, avoiding potential re-entrancy issues
             QTimer.singleShot(0, lambda: self._load_images_from_paths(accessible_qurls, target_image_num))
         else:
+            error_msg = tr("Failed to process the file location provided by the portal.", self.current_language)
             print("  Error: No valid accessible QUrls found in portal response.")
-            # REMOVED: QMessageBox.warning(self, tr("Portal Error", self.current_language), tr("Failed to process the file location provided by the portal.", self.current_language))
-
+            if failed_qurls:
+                error_msg += "\n\n" + tr("Invalid URIs received:", self.current_language) + "\n - " + "\n - ".join(failed_qurls)
+            QMessageBox.warning(self, tr("Portal Error", self.current_language), error_msg)
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.LanguageChange:
@@ -925,7 +972,6 @@ class ImageComparisonApp(QWidget):
                 else:
                     print("Warning: Was maximized/fullscreen, but no previous geometry to restore.")
         super().changeEvent(event)
-
 
     def closeEvent(self, event):
         geometry_to_save = None
@@ -960,6 +1006,7 @@ class ImageComparisonApp(QWidget):
             self.save_setting("include_file_names", self.checkbox_file_names.isChecked())
         self.save_setting("filename_color", self.file_name_color.name(QColor.NameFormat.HexArgb))
         try:
+            # Remove obsolete settings
             self.settings.remove("image1_paths")
             self.settings.remove("image2_paths")
             self.settings.remove("current_index1")
@@ -1027,12 +1074,15 @@ class ImageComparisonApp(QWidget):
 
 
     def _load_images_from_paths(self, items_to_process, image_number):
+        # This method now receives either local file paths (from QFileDialog)
+        # or QUrls (from successful portal responses).
         print(f"_load_images_from_paths called for slot {image_number} with {len(items_to_process)} items.")
         target_list = self.image_list1 if image_number == 1 else self.image_list2
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
         loaded_count = 0
         newly_added_indices = []
         paths_actually_added = []
+        load_errors = []
 
         for item in items_to_process:
             path_to_open = None
@@ -1044,14 +1094,18 @@ class ImageComparisonApp(QWidget):
                     original_path_for_display = os.path.basename(item.path()) or path_to_open or "Portal File"
                     print(f"  Processing QUrl: {item.toString()} -> Local Path: {path_to_open}")
                 else:
+                    # This shouldn't happen if called from portal response, but good safety check
                     print(f"  Skipping non-local QUrl: {item.toString()}")
+                    load_errors.append(f"{item.toString()}: " + tr("Non-local URL received", self.current_language))
                     continue
             elif isinstance(item, str):
+                # This happens from QFileDialog
                 path_to_open = item
                 original_path_for_display = os.path.basename(path_to_open) or "Unnamed File"
                 print(f"  Processing Path String: {path_to_open}")
             else:
                 print(f"  Skipping unknown item type: {type(item)}")
+                load_errors.append(f"{str(item)}: " + tr("Unknown item type", self.current_language))
                 continue
 
             if any(entry[1] == path_to_open for entry in target_list if entry[1]):
@@ -1061,6 +1115,10 @@ class ImageComparisonApp(QWidget):
             if path_to_open:
                 try:
                     print(f"    Attempting to open: '{path_to_open}'")
+                    # Check existence again, especially for paths from portal which might have become invalid
+                    if not os.path.isfile(path_to_open):
+                        raise FileNotFoundError(f"File not found at path: {path_to_open}")
+
                     with Image.open(path_to_open) as img:
                         if not hasattr(img, 'copy') or not hasattr(img, 'mode') or not hasattr(img, 'size'):
                              raise TypeError(f"Image.open returned unexpected type: {type(img)}")
@@ -1070,7 +1128,7 @@ class ImageComparisonApp(QWidget):
                             print(f"      Converting image from {temp_image.mode} to RGBA")
                             temp_image = temp_image.convert('RGBA')
                         else:
-                            temp_image.load()
+                            temp_image.load() # Ensure image data is loaded
                         print(f"      Image processed: size={temp_image.size}, mode={temp_image.mode}")
 
                     display_name = original_path_for_display
@@ -1079,15 +1137,18 @@ class ImageComparisonApp(QWidget):
                     newly_added_indices.append(len(target_list) - 1)
                     paths_actually_added.append(path_to_open)
                     loaded_count += 1
-                except FileNotFoundError:
-                     print(f"    Error (FileNotFoundError): Image.open failed for '{path_to_open}'")
-                     QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load image (Not Found):', self.current_language)}\n{original_path_for_display}")
+                except FileNotFoundError as e:
+                     print(f"    Error (FileNotFoundError): Image.open failed for '{path_to_open}': {e}")
+                     error_detail = tr("File not found or inaccessible.", self.current_language)
+                     load_errors.append(f"{original_path_for_display}: {error_detail}")
                 except Exception as e:
                     print(f"    Error ({type(e).__name__}): Failed to process image: '{path_to_open}'\n        Error: {e}")
                     traceback.print_exc()
-                    QMessageBox.warning(self, tr("Error", self.current_language), f"{tr('Failed to load or process image:', self.current_language)}\n{original_path_for_display}\n\n{type(e).__name__}: {e}")
+                    error_detail = f"{type(e).__name__}: {e}"
+                    load_errors.append(f"{original_path_for_display}: {error_detail}")
             else:
                  print(f"    Skipping item with no valid path_to_open.")
+                 load_errors.append(f"{original_path_for_display}: "+ tr("Could not determine valid file path.", self.current_language))
 
         if loaded_count > 0:
             print(f"  Loaded {loaded_count} new images for slot {image_number}. Updating UI.")
@@ -1101,6 +1162,7 @@ class ImageComparisonApp(QWidget):
                     combobox.blockSignals(True)
                     combobox.setCurrentIndex(new_index)
                     combobox.blockSignals(False)
+                # Trigger update even if combobox index didn't change programmatically
                 if image_number == 1:
                     self.current_index1 = new_index
                     self._set_current_image(1, trigger_update=True)
@@ -1111,8 +1173,13 @@ class ImageComparisonApp(QWidget):
                  print(f"  Loaded {loaded_count} images, but no new indices recorded? This might be an error.")
         elif not items_to_process:
              print(f"  _load_images_from_paths called with empty list for slot {image_number}.")
-        else:
+        else: # No images loaded, but items were provided
              print(f"  Warning: Processed {len(items_to_process)} items, but loaded 0 new images for slot {image_number}.")
+
+        if load_errors:
+             QMessageBox.warning(self, tr("Error Loading Images", self.current_language),
+                                  tr("Some images could not be loaded:", self.current_language) + "\n\n - " + "\n - ".join(load_errors))
+
 
 
     def _set_current_image(self, image_number, trigger_update=True):
@@ -1128,13 +1195,21 @@ class ImageComparisonApp(QWidget):
 
         if 0 <= current_index < len(target_list):
             try:
+                # Ensure the image data is still valid (e.g., underlying file wasn't deleted)
+                # A simple way is just trying to access it. More robust might involve reload if needed.
                 new_pil_img, new_path, new_display_name = target_list[current_index]
+                # Optional: Add a check if new_pil_img is still usable
+                # if new_pil_img:
+                #    _ = new_pil_img.size # Access an attribute to check
                 reset_image = False
             except IndexError:
                  print(f"Error: Index {current_index} out of range for image list {image_number}.")
                  reset_image = True
             except Exception as e:
                 print(f"Error accessing image {image_number} at index {current_index}: {e}")
+                # Maybe remove the problematic entry?
+                # try: del target_list[current_index] except: pass
+                # self._update_combobox(image_number) # Refresh combobox
                 reset_image = True
 
         if reset_image:
@@ -1168,10 +1243,14 @@ class ImageComparisonApp(QWidget):
             max_dims_changed = True
 
         if self.original_image1 and self.original_image2:
+            # Resize processor handles the case where image1/image2 might be None initially
             resize_images_processor(self)
             if trigger_update: self.update_comparison()
         elif trigger_update:
+            # Clear display if one image is missing
             self.image_label.clear(); self.result_image = None; self.image1 = None; self.image2 = None
+
+        # Update names displayed below the image label regardless
         self.update_file_names()
 
 
@@ -1179,35 +1258,58 @@ class ImageComparisonApp(QWidget):
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
         target_list = self.image_list1 if image_number == 1 else self.image_list2
         current_index = self.current_index1 if image_number == 1 else self.current_index2
+
         combobox.blockSignals(True)
         combobox.clear()
         for i, (_, _, display_name) in enumerate(target_list):
-            max_cb_len = 60
+            max_cb_len = 60 # Max length in combobox dropdown
             cb_name = (display_name[:max_cb_len-3] + "...") if len(display_name) > max_cb_len else display_name
-            combobox.addItem(cb_name)
+            combobox.addItem(cb_name) # Add truncated name
+
+        # Determine the index to select
         new_index = -1
-        if 0 <= current_index < len(target_list): new_index = current_index
-        elif len(target_list) > 0: new_index = 0
-        if new_index != -1: combobox.setCurrentIndex(new_index)
+        if 0 <= current_index < len(target_list):
+            new_index = current_index # Restore previous valid index
+        elif len(target_list) > 0:
+            new_index = 0 # Default to first item if list is not empty
+        # else: new_index remains -1 if list is empty
+
+        if new_index != -1:
+            combobox.setCurrentIndex(new_index)
+
+        # Update internal index state if it changed
         if image_number == 1:
-            if self.current_index1 != new_index: self.current_index1 = new_index
-        else:
-            if self.current_index2 != new_index: self.current_index2 = new_index
+            if self.current_index1 != new_index:
+                self.current_index1 = new_index
+        else: # image_number == 2
+            if self.current_index2 != new_index:
+                self.current_index2 = new_index
+
         combobox.blockSignals(False)
 
 
     def _on_combobox_changed(self, image_number, index):
         target_list = self.image_list1 if image_number == 1 else self.image_list2
         current_internal_index = self.current_index1 if image_number == 1 else self.current_index2
+
         if 0 <= index < len(target_list):
+            # Combobox index changed to a valid item
             if index != current_internal_index:
-                if image_number == 1: self.current_index1 = index
-                else: self.current_index2 = index
+                # Update internal state only if it's different
+                if image_number == 1:
+                    self.current_index1 = index
+                else: # image_number == 2
+                    self.current_index2 = index
+                # Load the newly selected image
                 self._set_current_image(image_number, trigger_update=True)
-        elif index == -1 and current_internal_index != -1:
-             if image_number == 1: self.current_index1 = -1
-             else: self.current_index2 = -1
-             self._set_current_image(image_number, trigger_update=True)
+        elif index == -1:
+             # Combobox became empty or selection cleared
+             if current_internal_index != -1:
+                 # Update internal state if it was previously valid
+                 if image_number == 1: self.current_index1 = -1
+                 else: self.current_index2 = -1
+                 # Clear the image for this slot
+                 self._set_current_image(image_number, trigger_update=True)
 
 
     def _on_edit_name_changed(self):
@@ -1222,19 +1324,28 @@ class ImageComparisonApp(QWidget):
             new_name = sender_widget.text().strip()
             if not new_name:
                  print(f"Warning: Empty name entered for image {image_number}, ignoring change.")
-                 _, _, old_name = target_list[current_index]
-                 sender_widget.blockSignals(True); sender_widget.setText(old_name); sender_widget.blockSignals(False)
+                 # Restore old name in edit box
+                 try:
+                     _, _, old_name = target_list[current_index]
+                     sender_widget.blockSignals(True); sender_widget.setText(old_name); sender_widget.blockSignals(False)
+                 except IndexError: pass # Should not happen if current_index is valid
                  return
             try:
                 old_img, old_path, old_name = target_list[current_index]
                 if new_name != old_name:
+                    # Update the name in the data list
                     target_list[current_index] = (old_img, old_path, new_name)
+                    # Update the corresponding combobox item text (truncated)
                     combobox.blockSignals(True)
                     max_cb_len = 60
                     cb_name = (new_name[:max_cb_len-3] + "...") if len(new_name) > max_cb_len else new_name
                     combobox.setItemText(current_index, cb_name)
                     combobox.blockSignals(False)
+                    # Update the file name labels below the image
                     self.update_file_names()
+                    # If names are included in the saved image, trigger redraw
+                    if hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
+                         self.update_comparison_if_needed() # Needed to redraw names on image
             except IndexError:
                  print(f"Error: Index {current_index} out of range when editing name for image {image_number}.")
             except Exception as e:
@@ -1243,19 +1354,34 @@ class ImageComparisonApp(QWidget):
 
 
     def swap_images(self):
+        # Swap the lists and indices
         self.image_list1, self.image_list2 = self.image_list2, self.image_list1
         self.current_index1, self.current_index2 = self.current_index2, self.current_index1
+
+        # Update both comboboxes to reflect the new lists and selections
         self._update_combobox(1)
         self._update_combobox(2)
+
+        # Set the current images based on the new state.
+        # Only trigger update after the second image is set to avoid intermediate state redraw.
         self._set_current_image(1, trigger_update=False)
-        self._set_current_image(2, trigger_update=True)
+        self._set_current_image(2, trigger_update=True) # This will call update_comparison_if_needed
+
 
     def _save_result_with_error_handling(self):
         try:
             if not self.original_image1 or not self.original_image2:
                  QMessageBox.warning(self, tr("Warning", self.current_language), tr("Please load and select images in both slots first.", self.current_language)); return
+            # Check if resized images are available (needed by save_result_processor)
             if not self.image1 or not self.image2:
-                 QMessageBox.warning(self, tr("Warning", self.current_language), tr("Resized images not available. Please reload or select images.", self.current_language)); return
+                 # Attempt to resize them if they are missing but originals exist
+                 print("Resized images missing, attempting resize before saving...")
+                 resize_images_processor(self)
+                 # Check again after attempting resize
+                 if not self.image1 or not self.image2:
+                     QMessageBox.warning(self, tr("Warning", self.current_language), tr("Resized images not available. Cannot save result. Please reload or select images.", self.current_language)); return
+
+            # If we have resized images, proceed to save
             save_result_processor(self)
         except Exception as e:
             print(f"ERROR during save_result_processor: {e}")
@@ -1266,175 +1392,323 @@ class ImageComparisonApp(QWidget):
     def _update_magnifier_position_by_keys(self):
         current_elapsed = self.movement_elapsed_timer.elapsed()
         delta_time_ms = current_elapsed - self.last_update_elapsed
+        # Use timer interval as fallback for delta time calculation
         if delta_time_ms <= 0 or delta_time_ms > 100: delta_time_ms = self.movement_timer.interval()
         delta_time_sec = delta_time_ms / 1000.0
         self.last_update_elapsed = current_elapsed
-        epsilon = 1e-6; target_pos_changed = False; target_spacing_changed = False
-        raw_dx, raw_dy, raw_ds = 0.0, 0.0, 0.0; spacing_speed_per_sec_qe = 300
+
+        epsilon = 1e-6 # For float comparisons
+        target_pos_changed = False
+        target_spacing_changed = False
+
+        # Calculate raw movement delta based on active keys and speed settings
+        raw_dx, raw_dy, raw_ds = 0.0, 0.0, 0.0
+        spacing_speed_per_sec_qe = 300 # Speed for changing spacing with Q/E
 
         if self.active_keys:
+            # Direction vectors (-1, 0, or 1)
             dx_dir = (Qt.Key.Key_D in self.active_keys) - (Qt.Key.Key_A in self.active_keys)
             dy_dir = (Qt.Key.Key_S in self.active_keys) - (Qt.Key.Key_W in self.active_keys)
             ds_dir = (Qt.Key.Key_E in self.active_keys) - (Qt.Key.Key_Q in self.active_keys)
+
+            # Normalize diagonal movement
             length_sq = dx_dir*dx_dir + dy_dir*dy_dir
-            if length_sq > 1.0 + 1e-6: inv_length = 1.0 / math.sqrt(length_sq); dx_dir *= inv_length; dy_dir *= inv_length
+            if length_sq > 1.0 + 1e-6: # Allow for slight float inaccuracies
+                inv_length = 1.0 / math.sqrt(length_sq)
+                dx_dir *= inv_length
+                dy_dir *= inv_length
+
+            # Calculate raw deltas based on speed and time
             raw_dx = dx_dir * self.movement_speed_per_sec * delta_time_sec
             raw_dy = dy_dir * self.movement_speed_per_sec * delta_time_sec
             raw_ds = ds_dir * spacing_speed_per_sec_qe * delta_time_sec
+
+            # Clamp maximum delta per tick to avoid large jumps
             clamped_dx = max(-self.max_target_delta_per_tick, min(self.max_target_delta_per_tick, raw_dx))
             clamped_dy = max(-self.max_target_delta_per_tick, min(self.max_target_delta_per_tick, raw_dy))
             clamped_ds = max(-self.max_target_delta_per_tick, min(self.max_target_delta_per_tick, raw_ds))
+
+            # Update target position (either frozen relative or offset float)
             if abs(clamped_dx) > epsilon or abs(clamped_dy) > epsilon:
                  if self.freeze_magnifier:
+                     # Move the frozen *relative* position
                      if self.frozen_magnifier_position_relative and self.pixmap_width > 0 and self.pixmap_height > 0:
-                         dx_rel = clamped_dx / self.pixmap_width; dy_rel = clamped_dy / self.pixmap_height
+                         # Convert pixel delta to relative delta
+                         dx_rel = clamped_dx / self.pixmap_width
+                         dy_rel = clamped_dy / self.pixmap_height
+                         # Calculate new relative position, clamped to [0, 1]
                          new_x = max(0.0, min(1.0, self.frozen_magnifier_position_relative.x() + dx_rel))
                          new_y = max(0.0, min(1.0, self.frozen_magnifier_position_relative.y() + dy_rel))
+                         # Check if position actually changed before setting flag
                          if not math.isclose(new_x, self.frozen_magnifier_position_relative.x(), abs_tol=epsilon) or \
                             not math.isclose(new_y, self.frozen_magnifier_position_relative.y(), abs_tol=epsilon):
-                             self.frozen_magnifier_position_relative.setX(new_x); self.frozen_magnifier_position_relative.setY(new_y); target_pos_changed = True
+                             self.frozen_magnifier_position_relative.setX(new_x)
+                             self.frozen_magnifier_position_relative.setY(new_y)
+                             target_pos_changed = True
                  else:
-                     new_target_x = self.magnifier_offset_float.x() + clamped_dx; new_target_y = self.magnifier_offset_float.y() + clamped_dy
+                     # Move the target offset (floating point)
+                     new_target_x = self.magnifier_offset_float.x() + clamped_dx
+                     new_target_y = self.magnifier_offset_float.y() + clamped_dy
+                     # Check if position actually changed
                      if not math.isclose(new_target_x, self.magnifier_offset_float.x(), abs_tol=epsilon) or \
                         not math.isclose(new_target_y, self.magnifier_offset_float.y(), abs_tol=epsilon):
-                          self.magnifier_offset_float.setX(new_target_x); self.magnifier_offset_float.setY(new_target_y); target_pos_changed = True
+                          self.magnifier_offset_float.setX(new_target_x)
+                          self.magnifier_offset_float.setY(new_target_y)
+                          target_pos_changed = True
+
+            # Update target spacing (floating point)
             if abs(clamped_ds) > epsilon:
                 new_target_spacing = max(self.MIN_MAGNIFIER_SPACING, self._magnifier_spacing_float + clamped_ds)
+                # Check if spacing actually changed
                 if not math.isclose(new_target_spacing, self._magnifier_spacing_float, abs_tol=epsilon):
-                    self._magnifier_spacing_float = new_target_spacing; target_spacing_changed = True
+                    self._magnifier_spacing_float = new_target_spacing
+                    target_spacing_changed = True
 
+        # --- Smooth Interpolation (Lerp) for Visual Position and Spacing ---
         visual_pos_moved = False
-        if not self.freeze_magnifier:
+        if not self.freeze_magnifier: # Only lerp visual offset if not frozen
             delta_vx = self.magnifier_offset_float.x() - self.magnifier_offset_float_visual.x()
             delta_vy = self.magnifier_offset_float.y() - self.magnifier_offset_float_visual.y()
+            # If close enough, snap to target
             if abs(delta_vx) < self.lerp_stop_threshold and abs(delta_vy) < self.lerp_stop_threshold:
                 if not math.isclose(self.magnifier_offset_float_visual.x(), self.magnifier_offset_float.x()) or \
                    not math.isclose(self.magnifier_offset_float_visual.y(), self.magnifier_offset_float.y()):
-                    self.magnifier_offset_float_visual.setX(self.magnifier_offset_float.x()); self.magnifier_offset_float_visual.setY(self.magnifier_offset_float.y()); visual_pos_moved = True
-            else:
-                new_visual_x = self.magnifier_offset_float_visual.x() + delta_vx * self.smoothing_factor_pos; new_visual_y = self.magnifier_offset_float_visual.y() + delta_vy * self.smoothing_factor_pos
-                self.magnifier_offset_float_visual.setX(new_visual_x); self.magnifier_offset_float_visual.setY(new_visual_y); visual_pos_moved = True
+                    self.magnifier_offset_float_visual.setX(self.magnifier_offset_float.x())
+                    self.magnifier_offset_float_visual.setY(self.magnifier_offset_float.y())
+                    visual_pos_moved = True # Snapped
+            else: # Lerp towards target
+                new_visual_x = self.magnifier_offset_float_visual.x() + delta_vx * self.smoothing_factor_pos
+                new_visual_y = self.magnifier_offset_float_visual.y() + delta_vy * self.smoothing_factor_pos
+                self.magnifier_offset_float_visual.setX(new_visual_x)
+                self.magnifier_offset_float_visual.setY(new_visual_y)
+                visual_pos_moved = True # Moved
 
-        visual_spacing_moved = False; target_spacing_clamped = max(self.MIN_MAGNIFIER_SPACING, self._magnifier_spacing_float)
+        visual_spacing_moved = False
+        target_spacing_clamped = max(self.MIN_MAGNIFIER_SPACING, self._magnifier_spacing_float) # Use clamped target
         delta_vs = target_spacing_clamped - self._magnifier_spacing_float_visual
+        # If close enough, snap to target
         if abs(delta_vs) < self.lerp_stop_threshold:
              if not math.isclose(self._magnifier_spacing_float_visual, target_spacing_clamped):
-                  self._magnifier_spacing_float_visual = target_spacing_clamped; visual_spacing_moved = True
-        else:
+                  self._magnifier_spacing_float_visual = target_spacing_clamped
+                  visual_spacing_moved = True # Snapped
+        else: # Lerp towards target
              new_visual_spacing = self._magnifier_spacing_float_visual + delta_vs * self.smoothing_factor_spacing
-             self._magnifier_spacing_float_visual = max(self.MIN_MAGNIFIER_SPACING, new_visual_spacing); visual_spacing_moved = True
+             self._magnifier_spacing_float_visual = max(self.MIN_MAGNIFIER_SPACING, new_visual_spacing) # Ensure lerped value is also clamped
+             visual_spacing_moved = True # Moved
 
+        # --- Update Integer Pixel Values and Trigger Redraw if Necessary ---
         needs_redraw = False
+        # Update pixel offset based on visual float offset (only if not frozen)
         new_offset_pixels = QPoint(round(self.magnifier_offset_float_visual.x()), round(self.magnifier_offset_float_visual.y()))
-        if not self.freeze_magnifier and self.magnifier_offset_pixels != new_offset_pixels: self.magnifier_offset_pixels = new_offset_pixels; needs_redraw = True
-        new_spacing_int = round(self._magnifier_spacing_float_visual)
-        if self.magnifier_spacing != new_spacing_int: self.magnifier_spacing = new_spacing_int; needs_redraw = True
-        if self.freeze_magnifier and target_pos_changed: needs_redraw = True
-        if needs_redraw:
-            if not self.resize_in_progress: self.update_comparison()
+        if not self.freeze_magnifier and self.magnifier_offset_pixels != new_offset_pixels:
+             self.magnifier_offset_pixels = new_offset_pixels
+             needs_redraw = True
 
+        # Update integer spacing based on visual float spacing
+        new_spacing_int = round(self._magnifier_spacing_float_visual)
+        if self.magnifier_spacing != new_spacing_int:
+             self.magnifier_spacing = new_spacing_int
+             needs_redraw = True
+
+        # If frozen, redraw only if the target relative position changed via keys
+        if self.freeze_magnifier and target_pos_changed:
+             needs_redraw = True
+
+        # Trigger UI update if any visual change occurred
+        if needs_redraw:
+            if not self.resize_in_progress:
+                self.update_comparison()
+
+        # --- Stop Timer if Idle ---
+        # Check if keys are released AND visual position/spacing are close to their targets
         if not self.active_keys:
             pos_is_close = self.freeze_magnifier or \
                            (abs(self.magnifier_offset_float.x() - self.magnifier_offset_float_visual.x()) < self.lerp_stop_threshold and
                             abs(self.magnifier_offset_float.y() - self.magnifier_offset_float_visual.y()) < self.lerp_stop_threshold)
+
             spacing_is_close = abs(target_spacing_clamped - self._magnifier_spacing_float_visual) < self.lerp_stop_threshold
+
             if pos_is_close and spacing_is_close:
                 self.movement_timer.stop()
-                final_offset_x_f = self.magnifier_offset_float.x(); final_offset_y_f = self.magnifier_offset_float.y(); final_spacing_f_clamped = target_spacing_clamped
+                # Snap visual values exactly to target values upon stopping
+                final_offset_x_f = self.magnifier_offset_float.x()
+                final_offset_y_f = self.magnifier_offset_float.y()
+                final_spacing_f_clamped = target_spacing_clamped
+
                 if not self.freeze_magnifier:
-                     self.magnifier_offset_float_visual.setX(final_offset_x_f); self.magnifier_offset_float_visual.setY(final_offset_y_f)
+                     self.magnifier_offset_float_visual.setX(final_offset_x_f)
+                     self.magnifier_offset_float_visual.setY(final_offset_y_f)
                 self._magnifier_spacing_float_visual = final_spacing_f_clamped
-                final_offset_pixels = QPoint(round(final_offset_x_f), round(final_offset_y_f)); final_spacing_int_clamped = round(final_spacing_f_clamped)
-                self.magnifier_offset_pixels = final_offset_pixels; self.magnifier_spacing = final_spacing_int_clamped
+
+                # Update final integer values
+                final_offset_pixels = QPoint(round(final_offset_x_f), round(final_offset_y_f))
+                final_spacing_int_clamped = round(final_spacing_f_clamped)
+                self.magnifier_offset_pixels = final_offset_pixels
+                self.magnifier_spacing = final_spacing_int_clamped
 
 
     def toggle_orientation(self, state):
         new_state = (state == Qt.CheckState.Checked.value)
         if new_state != self.is_horizontal:
-            self.is_horizontal = new_state; self.update_file_names(); self.update_comparison_if_needed()
+            self.is_horizontal = new_state
+            self.update_file_names() # Update Left/Right vs Top/Bottom labels
+            self.update_comparison_if_needed()
 
     def toggle_magnifier(self, state):
         new_state = (state == Qt.CheckState.Checked.value)
-        if new_state == self.use_magnifier: return
-        self.use_magnifier = new_state; visible = self.use_magnifier
+        if new_state == self.use_magnifier: return # No change
+        self.use_magnifier = new_state
+        visible = self.use_magnifier
+
+        # Toggle visibility of magnifier-related controls
         if hasattr(self, 'slider_size'): self.slider_size.setVisible(visible)
         if hasattr(self, 'slider_capture'): self.slider_capture.setVisible(visible)
         if hasattr(self, 'label_magnifier_size'): self.label_magnifier_size.setVisible(visible)
         if hasattr(self, 'label_capture_size'): self.label_capture_size.setVisible(visible)
-        if hasattr(self, 'freeze_button'): self.freeze_button.setEnabled(visible)
+        if hasattr(self, 'freeze_button'): self.freeze_button.setEnabled(visible) # Enable/disable based on magnifier
         if hasattr(self, 'slider_speed'): self.slider_speed.setVisible(visible)
         if hasattr(self, 'label_movement_speed'): self.label_movement_speed.setVisible(visible)
+
         if not self.use_magnifier:
+            # Clean up magnifier state when disabled
             self.active_keys.clear()
             if self.movement_timer.isActive(): self.movement_timer.stop()
+            # Unfreeze if magnifier is turned off while frozen
             if self.freeze_magnifier:
-                 if hasattr(self, 'freeze_button'): self.freeze_button.setChecked(False)
-                 else: self._unfreeze_magnifier_logic()
+                 if hasattr(self, 'freeze_button'):
+                     # Setting checked to False will trigger toggle_freeze_magnifier -> _unfreeze_magnifier_logic
+                     self.freeze_button.setChecked(False)
+                 else:
+                     # Directly call unfreeze logic if button doesn't exist (shouldn't happen)
+                     self._unfreeze_magnifier_logic()
+        # Update the comparison view
         self.update_comparison_if_needed()
 
 
     def toggle_freeze_magnifier(self, state):
         new_freeze_state = (state == Qt.CheckState.Checked.value)
-        if new_freeze_state == self.freeze_magnifier: return
+        if new_freeze_state == self.freeze_magnifier: return # No change
+
         if new_freeze_state:
+            # --- Attempt to Freeze ---
             if self.use_magnifier and self.original_image1 and self.original_image2:
-                was_frozen = self.freeze_magnifier; self.freeze_magnifier = False
+                # Temporarily unfreeze to get current coordinates based on offset
+                was_frozen = self.freeze_magnifier
+                self.freeze_magnifier = False # Ensure get_original_coords uses current offset
                 result_width, result_height = (0, 0)
                 if self.result_image: result_width, result_height = self.result_image.size
+
                 if result_width > 0 and result_height > 0:
+                    # Get current magnifier center position in the *result* image coordinates
                     cap_orig1, _, magnifier_pos_result_current = get_original_coords(self)
-                    if magnifier_pos_result_current and cap_orig1:
+
+                    if magnifier_pos_result_current and cap_orig1 is not None: # cap_orig1 can be QPoint(0,0)
+                        # Calculate relative position based on current magnifier center
                         rel_x = max(0.0, min(1.0, magnifier_pos_result_current.x() / result_width))
                         rel_y = max(0.0, min(1.0, magnifier_pos_result_current.y() / result_height))
-                        self.frozen_magnifier_position_relative = QPointF(rel_x, rel_y); self.freeze_magnifier = True
+
+                        # Store the relative position and set freeze state
+                        self.frozen_magnifier_position_relative = QPointF(rel_x, rel_y)
+                        self.freeze_magnifier = True
+
+                        # Snap visual lerp values to current target values upon freezing
                         self.magnifier_offset_float_visual.setX(self.magnifier_offset_float.x())
                         self.magnifier_offset_float_visual.setY(self.magnifier_offset_float.y())
                         self._magnifier_spacing_float_visual = self._magnifier_spacing_float
+                        # Update pixel/int values accordingly
+                        self.magnifier_offset_pixels = QPoint(round(self.magnifier_offset_float_visual.x()), round(self.magnifier_offset_float_visual.y()))
+                        self.magnifier_spacing = round(self._magnifier_spacing_float_visual)
+
                     else:
+                         # Failed to get coordinates, cannot freeze
                          print("Warning: Could not get valid magnifier/capture coordinates to freeze. Aborting freeze.")
-                         self.frozen_magnifier_position_relative = None; self.freeze_magnifier = False
+                         self.frozen_magnifier_position_relative = None
+                         self.freeze_magnifier = False
+                         # Uncheck the box if it exists
                          if hasattr(self, 'freeze_button'): self.freeze_button.setChecked(False)
                 else:
+                     # result_image invalid, cannot get coordinates
                      print("Warning: Cannot get magnifier coordinates, result_image invalid. Aborting freeze.")
-                     self.frozen_magnifier_position_relative = None; self.freeze_magnifier = False
+                     self.frozen_magnifier_position_relative = None
+                     self.freeze_magnifier = False
                      if hasattr(self, 'freeze_button'): self.freeze_button.setChecked(False)
             else:
-                self.frozen_magnifier_position_relative = None; self.freeze_magnifier = False
+                # Cannot freeze if magnifier off or images missing
+                print("Warning: Cannot freeze magnifier (magnifier disabled or images missing).")
+                self.frozen_magnifier_position_relative = None
+                self.freeze_magnifier = False
                 if hasattr(self, 'freeze_button'): self.freeze_button.setChecked(False)
         else:
+            # --- Unfreeze ---
             self._unfreeze_magnifier_logic()
+
+        # Update the view after freeze/unfreeze
         self.update_comparison_if_needed()
 
 
     def _unfreeze_magnifier_logic(self):
-        if not self.freeze_magnifier: return
-        frozen_pos_rel = self.frozen_magnifier_position_relative
-        self.freeze_magnifier = False; self.frozen_magnifier_position_relative = None
-        new_offset_float_x = 0.0; new_offset_float_y = 0.0
+        if not self.freeze_magnifier: return # Already unfrozen
+
+        frozen_pos_rel = self.frozen_magnifier_position_relative # Store before clearing
+
+        # Clear freeze state
+        self.freeze_magnifier = False
+        self.frozen_magnifier_position_relative = None
+
+        # Calculate the new offset required to keep the magnifier visually at the same spot
+        new_offset_float_x = 0.0
+        new_offset_float_y = 0.0
         try:
-            current_scaled_width, current_scaled_height = get_scaled_pixmap_dimensions(self)
+            # Get dimensions needed for calculation
+            current_scaled_width, current_scaled_height = get_scaled_pixmap_dimensions(self) # Displayed pixmap size
             current_result_width, current_result_height = (0, 0)
-            if self.result_image: current_result_width, current_result_height = self.result_image.size
+            if self.result_image: current_result_width, current_result_height = self.result_image.size # Underlying combined image size
+
             if frozen_pos_rel and current_result_width > 0 and current_result_height > 0:
-                frozen_x_res = frozen_pos_rel.x() * current_result_width; frozen_y_res = frozen_pos_rel.y() * current_result_height
+                # Calculate the frozen point in result image coordinates
+                frozen_x_res = frozen_pos_rel.x() * current_result_width
+                frozen_y_res = frozen_pos_rel.y() * current_result_height
                 frozen_point_res = QPoint(int(round(frozen_x_res)), int(round(frozen_y_res)))
+
+                # Calculate the current capture *center* point in result image coordinates
+                # This depends ONLY on the mouse/capture relative position, NOT the offset
                 current_cap_center_res_x = int(self.capture_position_relative.x() * current_result_width)
                 current_cap_center_res_y = int(self.capture_position_relative.y() * current_result_height)
                 current_cap_center_res = QPoint(current_cap_center_res_x, current_cap_center_res_y)
+
+                # The required offset is the difference between where it *was* (frozen point)
+                # and where the capture *center* currently is.
                 required_offset_res_x = frozen_point_res.x() - current_cap_center_res.x()
                 required_offset_res_y = frozen_point_res.y() - current_cap_center_res.y()
+
+                # Convert the required offset from result coordinates to pixmap (visual) coordinates
                 if current_scaled_width > 0 and current_scaled_height > 0:
                     scale_res_to_pix_x = float(current_scaled_width) / float(current_result_width)
                     scale_res_to_pix_y = float(current_scaled_height) / float(current_result_height)
                     new_offset_float_x = required_offset_res_x * scale_res_to_pix_x
                     new_offset_float_y = required_offset_res_y * scale_res_to_pix_y
+
         except Exception as e:
              print(f"Error during unfreeze offset calculation: {e}")
-        self.magnifier_offset_float.setX(new_offset_float_x); self.magnifier_offset_float.setY(new_offset_float_y)
-        self.magnifier_offset_float_visual.setX(new_offset_float_x); self.magnifier_offset_float_visual.setY(new_offset_float_y)
+             # Fallback to zero offset if calculation fails
+             new_offset_float_x = 0.0
+             new_offset_float_y = 0.0
+
+        # Set the new target offset
+        self.magnifier_offset_float.setX(new_offset_float_x)
+        self.magnifier_offset_float.setY(new_offset_float_y)
+        # Immediately snap the visual lerp position to the new target
+        self.magnifier_offset_float_visual.setX(new_offset_float_x)
+        self.magnifier_offset_float_visual.setY(new_offset_float_y)
+        # Update integer pixel offset
         self.magnifier_offset_pixels = QPoint(round(new_offset_float_x), round(new_offset_float_y))
+
+        # Set target spacing based on current visual spacing (which was snapped on freeze)
         cur_vis_space_clamped = max(self.MIN_MAGNIFIER_SPACING, self._magnifier_spacing_float_visual)
-        self._magnifier_spacing_float = cur_vis_space_clamped; self.magnifier_spacing = round(cur_vis_space_clamped)
+        self._magnifier_spacing_float = cur_vis_space_clamped
+        self.magnifier_spacing = round(cur_vis_space_clamped)
+
+        # Restart movement timer if keys are held and magnifier is active
         if self.active_keys and not self.movement_timer.isActive() and self.use_magnifier:
             self.movement_elapsed_timer.start()
             self.last_update_elapsed = self.movement_elapsed_timer.elapsed()
@@ -1442,36 +1716,40 @@ class ImageComparisonApp(QWidget):
 
 
     def update_magnifier_size(self, value):
-        new_size = max(50, value)
+        new_size = max(50, value) # Ensure minimum size
         if new_size != self.magnifier_size:
             self.magnifier_size = new_size
             if hasattr(self, 'slider_size'): self.slider_size.setToolTip(f"{self.magnifier_size} {tr('px', self.current_language)}")
             self.update_comparison_if_needed()
 
     def update_capture_size(self, value):
-        new_size = max(10, value)
+        new_size = max(10, value) # Ensure minimum size
         if new_size != self.capture_size:
             self.capture_size = new_size
             if hasattr(self, 'slider_capture'): self.slider_capture.setToolTip(f"{self.capture_size} {tr('px', self.current_language)}")
             self.update_comparison_if_needed()
 
     def update_movement_speed(self, value):
-        new_speed = max(10, value)
+        new_speed = max(10, value) # Ensure minimum speed
         if new_speed != self.movement_speed_per_sec:
             self.movement_speed_per_sec = new_speed
+            # Save immediately as it's a direct user setting
             self.save_setting("movement_speed_per_sec", self.movement_speed_per_sec)
             if hasattr(self, 'slider_speed'): self.slider_speed.setToolTip(f"{self.movement_speed_per_sec} {tr('px/sec', self.current_language)}")
 
     def toggle_edit_layout_visibility(self, checked):
         if not hasattr(self, 'edit_layout'): return
         is_visible = bool(checked)
+        # Iterate through items in the edit layout and set visibility
         for i in range(self.edit_layout.count()):
             item = self.edit_layout.itemAt(i)
             if item:
                  widget = item.widget()
                  if widget: widget.setVisible(is_visible)
+        # Adjust window minimum size after toggling layout
         self.update_minimum_window_size()
-        if is_visible and hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
+        # Trigger redraw if names are now visible and should be drawn
+        if is_visible and self.original_image1 and self.original_image2:
             self.update_comparison_if_needed()
 
 
@@ -1484,7 +1762,9 @@ class ImageComparisonApp(QWidget):
             if color != self.file_name_color:
                  self.file_name_color = color
                  self._update_color_button_tooltip()
+                 # Save the new color setting immediately
                  self.save_setting("filename_color", color.name(QColor.NameFormat.HexArgb))
+                 # Trigger redraw if names are included in the image
                  if hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
                       self.update_comparison_if_needed()
 
@@ -1506,68 +1786,111 @@ class ImageComparisonApp(QWidget):
         if language not in ['en', 'ru', 'zh']:
             print(f"Unsupported language '{language}', defaulting to 'en'.")
             language = 'en'
-        if language == self.current_language: return
+        if language == self.current_language: return # No change needed
+
         self.current_language = language
-        self.update_translations(); self.update_file_names(); self.update_language_checkboxes()
-        self.save_setting("language", language)
-        if hasattr(self, 'length_warning_label'): self.check_name_lengths()
+        self.update_translations() # Update UI text
+        self.update_file_names() # Update L/R/T/B labels and tooltips
+        self.update_language_checkboxes() # Update flag checkboxes state
+        self.save_setting("language", language) # Save new language preference
+
+        # Update elements that depend on language-specific text formatting
+        if hasattr(self, 'length_warning_label'): self.check_name_lengths() # Re-check lengths with new translations
         if hasattr(self, 'help_button'): self.help_button.setToolTip(tr("Show Help", self.current_language))
         if hasattr(self, 'lang_en'): self.lang_en.setToolTip(tr("Switch language to English", self.current_language))
         if hasattr(self, 'lang_ru'): self.lang_ru.setToolTip(tr("Switch language to Русский", self.current_language))
         if hasattr(self, 'lang_zh'): self.lang_zh.setToolTip(tr("Switch language to 中文", self.current_language))
+        # Slider tooltips also need updating
+        if hasattr(self, 'slider_speed'): self.slider_speed.setToolTip(f"{self.movement_speed_per_sec} {tr('px/sec', self.current_language)}")
+        if hasattr(self, 'slider_size'): self.slider_size.setToolTip(f"{self.magnifier_size} {tr('px', self.current_language)}")
+        if hasattr(self, 'slider_capture'): self.slider_capture.setToolTip(f"{self.capture_size} {tr('px', self.current_language)}")
+        # Redraw image if names are included (translations might affect layout)
+        if hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
+             self.update_comparison_if_needed()
 
 
     def update_translations(self):
+        # Update window title
         self.setWindowTitle(tr('Improve ImgSLI', self.current_language))
+
+        # Update buttons
         if hasattr(self, 'btn_image1'): self.btn_image1.setText(tr('Add Image(s) 1', self.current_language))
         if hasattr(self, 'btn_image2'): self.btn_image2.setText(tr('Add Image(s) 2', self.current_language))
         if hasattr(self, 'btn_swap'): self.btn_swap.setToolTip(tr('Swap Image Lists', self.current_language))
         if hasattr(self, 'btn_save'): self.btn_save.setText(tr('Save Result', self.current_language))
+
+        # Update checkboxes
         if hasattr(self, 'checkbox_horizontal'): self.checkbox_horizontal.setText(tr('Horizontal Split', self.current_language))
         if hasattr(self, 'checkbox_magnifier'): self.checkbox_magnifier.setText(tr('Use Magnifier', self.current_language))
         if hasattr(self, 'freeze_button'): self.freeze_button.setText(tr('Freeze Magnifier', self.current_language))
         if hasattr(self, 'checkbox_file_names'): self.checkbox_file_names.setText(tr('Include file names in saved image', self.current_language))
+
+        # Update labels for sliders
         if hasattr(self, 'label_magnifier_size'): self.label_magnifier_size.setText(tr("Magnifier Size:", self.current_language))
         if hasattr(self, 'label_capture_size'): self.label_capture_size.setText(tr("Capture Size:", self.current_language))
         if hasattr(self, 'label_movement_speed'): self.label_movement_speed.setText(tr("Move Speed:", self.current_language))
+
+        # Update edit layout labels and placeholders
         if hasattr(self, 'label_edit_name1'): self.label_edit_name1.setText(tr("Name 1:", self.current_language))
         if hasattr(self, 'edit_name1'): self.edit_name1.setPlaceholderText(tr("Edit Current Image 1 Name", self.current_language))
         if hasattr(self, 'label_edit_name2'): self.label_edit_name2.setText(tr("Name 2:", self.current_language))
         if hasattr(self, 'edit_name2'): self.edit_name2.setPlaceholderText(tr("Edit Current Image 2 Name", self.current_language))
         if hasattr(self, 'label_edit_font_size'): self.label_edit_font_size.setText(tr("Font Size (%):", self.current_language))
+
+        # Update combobox tooltips
         if hasattr(self, 'combo_image1'): self.combo_image1.setToolTip(tr('Select image for left/top side', self.current_language))
         if hasattr(self, 'combo_image2'): self.combo_image2.setToolTip(tr('Select image for right/bottom side', self.current_language))
+
+        # Update slider tooltips (value + unit)
         if hasattr(self, 'slider_speed'): self.slider_speed.setToolTip(f"{self.movement_speed_per_sec} {tr('px/sec', self.current_language)}")
         if hasattr(self, 'slider_size'): self.slider_size.setToolTip(f"{self.magnifier_size} {tr('px', self.current_language)}")
         if hasattr(self, 'slider_capture'): self.slider_capture.setToolTip(f"{self.capture_size} {tr('px', self.current_language)}")
+
+        # Update color picker tooltip
         self._update_color_button_tooltip()
+
+        # Update drag overlay text (if visible)
         if hasattr(self, 'drag_overlay1') and self.drag_overlay1.isVisible(): self.drag_overlay1.setText(tr("Drop Image(s) 1 Here", self.current_language))
         if hasattr(self, 'drag_overlay2') and self.drag_overlay2.isVisible(): self.drag_overlay2.setText(tr("Drop Image(s) 2 Here", self.current_language))
+
+        # Update name length warning label text (if visible)
         if hasattr(self, 'length_warning_label') and self.length_warning_label.isVisible(): self.check_name_lengths()
-        self.update_file_names()
+
+        # Update file name labels below image label
+        self.update_file_names() # This handles L/R/T/B labels
 
 
     def _on_language_changed(self, language):
+        # This method seems redundant now that _handle_language_toggle calls change_language directly.
+        # Kept for potential future use, but currently not called.
         if self.current_language == language:
+             # Ensure the correct checkbox is checked if the language didn't actually change
              cb = getattr(self, f'lang_{language}', None)
              if cb and not cb.isChecked():
                   self._block_language_checkbox_signals(True); cb.setChecked(True); self._block_language_checkbox_signals(False)
              return
+
+        # Block signals to prevent infinite loops
         self._block_language_checkbox_signals(True)
+        # Uncheck other language checkboxes
         for lang_code in ['en', 'ru', 'zh']:
              if lang_code != language:
                   cb = getattr(self, f'lang_{lang_code}', None)
                   if cb: cb.setChecked(False)
+        # Call the main language change logic
         self.change_language(language)
+        # Unblock signals
         self._block_language_checkbox_signals(False)
 
 
     def _block_language_checkbox_signals(self, block):
+        # Helper to block/unblock signals for language checkboxes
         if hasattr(self, 'lang_en'): self.lang_en.blockSignals(block)
         if hasattr(self, 'lang_ru'): self.lang_ru.blockSignals(block)
         if hasattr(self, 'lang_zh'): self.lang_zh.blockSignals(block)
 
     def update_language_checkboxes(self):
+        # Update the checked state of language checkboxes based on current_language
         self._block_language_checkbox_signals(True)
         if hasattr(self, 'lang_en'): self.lang_en.setChecked(self.current_language == 'en')
         if hasattr(self, 'lang_ru'): self.lang_ru.setChecked(self.current_language == 'ru')
@@ -1575,134 +1898,253 @@ class ImageComparisonApp(QWidget):
         self._block_language_checkbox_signals(False)
 
     def _show_help_dialog(self):
-        help_text = tr("Minimal Help Text", self.current_language)
+        # Basic placeholder help dialog
+        # TODO: Populate with actual help information
+        help_text = (
+            f"--- {tr('Improve ImgSLI Help', self.current_language)} ---\n\n"
+            f"{tr('Usage:', self.current_language)}\n"
+            f"- {tr('Use Add buttons or Drag-n-Drop to load images.', self.current_language)}\n"
+            f"- {tr('Use dropdowns to select loaded images.', self.current_language)}\n"
+            f"- {tr('Click and drag the split line.', self.current_language)}\n"
+            f"- {tr('Check Magnifier to enable zoom.', self.current_language)}\n"
+            f"- {tr('Magnifier: Click/drag sets capture point.', self.current_language)}\n"
+            f"- {tr('Magnifier: Use WASD keys to move offset, QE for spacing.', self.current_language)}\n"
+            f"- {tr('Freeze Magnifier locks the zoomed area position.', self.current_language)}\n"
+            f"- {tr('Include file names saves names onto the image.', self.current_language)}\n"
+            f"- {tr('Edit names and font size in the bottom panel.', self.current_language)}\n"
+            f"- {tr('Save Result outputs the current comparison view.', self.current_language)}"
+        )
         QMessageBox.information(self, tr("Help", self.current_language), help_text)
 
     def _update_split_or_capture_position(self, cursor_pos_f: QPointF):
-        if self.pixmap_width <= 0 or self.pixmap_height <= 0: return
-        cursor_pos = cursor_pos_f.toPoint(); label_rect = self.image_label.rect()
+        # Updates split line position or magnifier capture point based on mouse click/drag
+        if self.pixmap_width <= 0 or self.pixmap_height <= 0: return # No pixmap displayed
+
+        cursor_pos = cursor_pos_f.toPoint()
+        label_rect = self.image_label.rect()
+
+        # Calculate offset of the pixmap within the label (due to centering)
         x_offset = max(0, (label_rect.width() - self.pixmap_width) // 2)
         y_offset = max(0, (label_rect.height() - self.pixmap_height) // 2)
-        raw_x = cursor_pos_f.x() - x_offset; raw_y = cursor_pos_f.y() - y_offset
+
+        # Calculate cursor position relative to the top-left of the pixmap
+        raw_x = cursor_pos_f.x() - x_offset
+        raw_y = cursor_pos_f.y() - y_offset
+
+        # Clamp coordinates to be within the pixmap bounds
         pixmap_x = max(0.0, min(float(self.pixmap_width), raw_x))
         pixmap_y = max(0.0, min(float(self.pixmap_height), raw_y))
-        rel_x = pixmap_x / self.pixmap_width; rel_y = pixmap_y / self.pixmap_height
-        rel_x = max(0.0, min(1.0, rel_x)); rel_y = max(0.0, min(1.0, rel_y))
-        needs_update = False; epsilon = 1e-5
+
+        # Calculate relative position (0.0 to 1.0) within the pixmap
+        rel_x = pixmap_x / self.pixmap_width
+        rel_y = pixmap_y / self.pixmap_height
+        # Ensure relative coordinates are strictly within [0, 1] due to float precision
+        rel_x = max(0.0, min(1.0, rel_x))
+        rel_y = max(0.0, min(1.0, rel_y))
+
+        needs_update = False
+        epsilon = 1e-5 # Tolerance for float comparison
+
         if not self.use_magnifier:
+            # Update split position
             new_split = rel_x if not self.is_horizontal else rel_y
             if not math.isclose(self.split_position, new_split, abs_tol=epsilon):
-                self.split_position = new_split; needs_update = True
+                self.split_position = new_split
+                needs_update = True
         else:
-            new_rel = QPointF(rel_x, rel_y); current_rel = self.capture_position_relative
+            # Update magnifier capture position (relative)
+            new_rel = QPointF(rel_x, rel_y)
+            current_rel = self.capture_position_relative
+            # Check if the relative position actually changed significantly
             if not math.isclose(current_rel.x(), new_rel.x(), abs_tol=epsilon) or \
                not math.isclose(current_rel.y(), new_rel.y(), abs_tol=epsilon):
-                self.capture_position_relative = new_rel; needs_update = True
-        if needs_update: self.update_comparison()
+                self.capture_position_relative = new_rel
+                needs_update = True
+
+        # If position changed, update the comparison view
+        if needs_update:
+            self.update_comparison()
 
     def _trigger_live_name_update(self):
+        # Called when text changes in edit boxes or font slider moves
+        # Redraws the comparison only if names are included in the output image
         if hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
             if self.original_image1 and self.original_image2:
+                # Use update_comparison_if_needed to handle potential resizing first
                 self.update_comparison_if_needed()
+        # Update the labels below the image regardless
+        self.update_file_names()
+
 
     def update_file_names(self):
+        # Updates the text labels below the main image label and checks name lengths.
         name1_raw = ""
         if 0 <= self.current_index1 < len(self.image_list1):
-             _, path, display_name = self.image_list1[self.current_index1]
-             name1_raw = (self.edit_name1.text() if hasattr(self, 'edit_name1') else display_name) or display_name or os.path.basename(path or "")
-        else: name1_raw = tr("Image 1", self.current_language) if self.current_index1 == -1 else ""
+             try:
+                 _, path, display_name = self.image_list1[self.current_index1]
+                 # Prefer text from edit box if available and valid
+                 name1_raw = (self.edit_name1.text() if hasattr(self, 'edit_name1') and self.edit_name1.text() else display_name) or display_name or os.path.basename(path or "")
+             except IndexError: pass # Handle race condition if list changes
+        else: name1_raw = tr("Image 1", self.current_language) if self.current_index1 == -1 else "" # Placeholder
+
         name2_raw = ""
         if 0 <= self.current_index2 < len(self.image_list2):
-             _, path, display_name = self.image_list2[self.current_index2]
-             name2_raw = (self.edit_name2.text() if hasattr(self, 'edit_name2') else display_name) or display_name or os.path.basename(path or "")
+             try:
+                 _, path, display_name = self.image_list2[self.current_index2]
+                 name2_raw = (self.edit_name2.text() if hasattr(self, 'edit_name2') and self.edit_name2.text() else display_name) or display_name or os.path.basename(path or "")
+             except IndexError: pass
         else: name2_raw = tr("Image 2", self.current_language) if self.current_index2 == -1 else ""
-        max_len_ui = self.max_name_length
+
+        max_len_ui = self.max_name_length # Use the configured limit for UI display
+        # Truncate names for the UI labels if they exceed the limit
         display_name1 = (name1_raw[:max_len_ui-3]+"...") if len(name1_raw) > max_len_ui else name1_raw
         display_name2 = (name2_raw[:max_len_ui-3]+"...") if len(name2_raw) > max_len_ui else name2_raw
+
         if hasattr(self, 'file_name_label1') and hasattr(self, 'file_name_label2'):
+            # Set prefixes based on orientation
             prefix1 = tr('Left', self.current_language) if not self.is_horizontal else tr('Top', self.current_language)
             prefix2 = tr('Right', self.current_language) if not self.is_horizontal else tr('Bottom', self.current_language)
-            self.file_name_label1.setText(f"{prefix1}: {display_name1}"); self.file_name_label2.setText(f"{prefix2}: {display_name2}")
-            self.file_name_label1.setToolTip(name1_raw if len(name1_raw) > max_len_ui else ""); self.file_name_label2.setToolTip(name2_raw if len(name2_raw) > max_len_ui else "")
+            # Set the label text
+            self.file_name_label1.setText(f"{prefix1}: {display_name1}")
+            self.file_name_label2.setText(f"{prefix2}: {display_name2}")
+            # Set tooltips to show full name if truncated
+            self.file_name_label1.setToolTip(name1_raw if len(name1_raw) > max_len_ui else "")
+            self.file_name_label2.setToolTip(name2_raw if len(name2_raw) > max_len_ui else "")
+
+        # Check if the raw names exceed the limit and show/hide warning label
         self.check_name_lengths(name1_raw, name2_raw)
 
 
     def check_name_lengths(self, name1 = None, name2 = None):
+        # Shows/hides the warning label if names exceed max_name_length.
         if not hasattr(self, 'length_warning_label'): return
+
+        # Get current names if not provided (e.g., called after language change)
         if name1 is None or name2 is None:
+             name1_raw = ""
              if 0 <= self.current_index1 < len(self.image_list1):
-                  _, _, dn1 = self.image_list1[self.current_index1]; name1 = (self.edit_name1.text() if hasattr(self, 'edit_name1') else dn1) or dn1
-             else: name1 = ""
+                  try:
+                      _, _, dn1 = self.image_list1[self.current_index1]; name1_raw = (self.edit_name1.text() if hasattr(self, 'edit_name1') and self.edit_name1.text() else dn1) or dn1
+                  except IndexError: pass
+             name2_raw = ""
              if 0 <= self.current_index2 < len(self.image_list2):
-                  _, _, dn2 = self.image_list2[self.current_index2]; name2 = (self.edit_name2.text() if hasattr(self, 'edit_name2') else dn2) or dn2
-             else: name2 = ""
-        len1, len2 = len(name1), len(name2); limit = self.max_name_length
+                  try:
+                      _, _, dn2 = self.image_list2[self.current_index2]; name2_raw = (self.edit_name2.text() if hasattr(self, 'edit_name2') and self.edit_name2.text() else dn2) or dn2
+                  except IndexError: pass
+             name1 = name1_raw
+             name2 = name2_raw
+
+        len1, len2 = len(name1 or ""), len(name2 or ""); limit = self.max_name_length
+
         if len1 > limit or len2 > limit:
+            # At least one name is too long
             longest = max(len1, len2)
             warning_text = tr("Name length limit ({limit}) exceeded!", self.current_language).format(limit=limit)
             tooltip_text = tr("One or both names exceed the current limit of {limit} characters (longest is {length}).\nClick here to change the limit.", self.current_language).format(length=longest, limit=limit)
-            self.length_warning_label.setText(warning_text); self.length_warning_label.setToolTip(tooltip_text)
+            self.length_warning_label.setText(warning_text)
+            self.length_warning_label.setToolTip(tooltip_text)
             if not self.length_warning_label.isVisible(): self.length_warning_label.setVisible(True)
         else:
+            # Both names are within the limit
             if self.length_warning_label.isVisible():
-                 self.length_warning_label.setVisible(False); self.length_warning_label.setToolTip("")
+                 self.length_warning_label.setVisible(False)
+                 self.length_warning_label.setToolTip("")
 
 
     def _edit_length_dialog(self, event):
+        # Opens dialog to change max_name_length when warning label is clicked.
         current_limit = self.max_name_length
         new_limit, ok = QInputDialog.getInt(
             self, tr("Edit Length Limit", self.current_language),
-            tr("Enter new maximum length (10-100):", self.current_language),
+            tr("Enter new maximum length for UI display (10-100):", self.current_language), # Clarified purpose
             value=current_limit, min=10, max=100)
         if ok and new_limit != current_limit:
             self.max_name_length = new_limit
-            self.save_setting("max_name_length", new_limit); self.update_file_names()
+            self.save_setting("max_name_length", new_limit)
+            self.update_file_names() # Re-check lengths and update UI labels/warning
+            # Redraw comparison if needed (names might affect rendering if included)
             if hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
                 self.update_comparison_if_needed()
 
 
     def _create_flag_icon(self, base64_data):
+        # Creates a QIcon from base64 encoded image data.
         try:
-            pixmap = QPixmap(); loaded = pixmap.loadFromData(base64.b64decode(base64_data))
-            if not loaded: print("Warning: Failed to load pixmap from base64 flag data."); return QIcon()
+            pixmap = QPixmap()
+            # Decode base64 and load data into pixmap
+            loaded = pixmap.loadFromData(base64.b64decode(base64_data))
+            if not loaded:
+                print("Warning: Failed to load pixmap from base64 flag data.")
+                return QIcon() # Return empty icon on failure
             return QIcon(pixmap)
-        except Exception as e: print(f"Error decoding/loading flag icon: {e}"); return QIcon()
+        except Exception as e:
+            print(f"Error decoding/loading flag icon: {e}")
+            return QIcon() # Return empty icon on error
+
 
     def update_minimum_window_size(self):
-        layout = self.layout();
+        # Adjusts the window's minimum size based on layout requirements.
+        layout = self.layout()
         if not layout: return
         try:
+            # Get the minimum sizehint from the main layout
             layout_min_size = layout.minimumSize()
-            new_min_w = max(300, layout_min_size.width()); new_min_h = max(350, layout_min_size.height())
+            # Enforce some absolute minimums, potentially larger than layout hint
+            new_min_w = max(300, layout_min_size.width())
+            new_min_h = max(350, layout_min_size.height()) # Increased height slightly
             current_min = self.minimumSize()
+            # Apply the new minimum size only if it changed
             if current_min.width() != new_min_w or current_min.height() != new_min_h:
                 self.setMinimumSize(new_min_w, new_min_h)
         except Exception as e:
             print(f"Error in update_minimum_window_size: {e}")
             traceback.print_exc()
 
+
     def _update_drag_overlays(self):
+        # Repositions the drag-and-drop overlay labels based on image_label geometry.
         if not hasattr(self, 'drag_overlay1') or not hasattr(self, 'image_label') or not self.image_label.isVisible(): return
         try:
-             label_geom = self.image_label.geometry(); margin = 10; half_width = label_geom.width() // 2
-             overlay_w = half_width - margin - (margin // 2); overlay_h = label_geom.height() - 2 * margin
-             overlay_w = max(10, overlay_w); overlay_h = max(10, overlay_h)
-             overlay1_x = label_geom.x() + margin; overlay1_y = label_geom.y() + margin
+             label_geom = self.image_label.geometry()
+             margin = 10 # Margin around overlays
+             half_width = label_geom.width() // 2
+
+             # Calculate dimensions for each overlay (half width minus margins)
+             overlay_w = half_width - margin - (margin // 2) # Width for one overlay
+             overlay_h = label_geom.height() - 2 * margin # Height for overlays
+             overlay_w = max(10, overlay_w) # Ensure minimum size
+             overlay_h = max(10, overlay_h)
+
+             # Position overlay 1 (left)
+             overlay1_x = label_geom.x() + margin
+             overlay1_y = label_geom.y() + margin
              self.drag_overlay1.setGeometry(overlay1_x, overlay1_y, overlay_w, overlay_h)
-             overlay2_x = label_geom.x() + half_width + (margin // 2); overlay2_y = label_geom.y() + margin
+
+             # Position overlay 2 (right)
+             overlay2_x = label_geom.x() + half_width + (margin // 2)
+             overlay2_y = label_geom.y() + margin
              self.drag_overlay2.setGeometry(overlay2_x, overlay2_y, overlay_w, overlay_h)
-        except Exception as e: print(f"Error updating drag overlays geometry: {e}")
+        except Exception as e:
+             print(f"Error updating drag overlays geometry: {e}")
 
 
     def _is_in_left_area(self, pos: QPoint) -> bool:
-        if not hasattr(self, 'image_label'): return True
+        # Determines if a drop position is in the left half of the image label area.
+        if not hasattr(self, 'image_label'): return True # Default to left if label doesn't exist
         try:
-            label_geom = self.image_label.geometry(); center_x = label_geom.x() + label_geom.width() // 2
+            label_geom = self.image_label.geometry()
+            # Calculate the center X coordinate relative to the widget's top-left
+            center_x = label_geom.x() + label_geom.width() // 2
+            # Compare drop position's X coordinate
             return pos.x() < center_x
-        except Exception as e: print(f"Error in _is_in_left_area: {e}"); return True
+        except Exception as e:
+             print(f"Error in _is_in_left_area: {e}")
+             return True # Default to left on error
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    # Apply a style for better consistency if desired
+    # app.setStyle('Fusion')
     window = ImageComparisonApp()
     window.show()
     sys.exit(app.exec())
