@@ -654,212 +654,75 @@ class ImageComparisonApp(QWidget):
         self.drag_overlay1.hide(); self.drag_overlay2.hide()
 
     def dropEvent(self, event):
-        """Handles file drops using QtDBus for portal interaction."""
-        self.drag_overlay1.hide()
-        self.drag_overlay2.hide()
+            """Handles file drops directly using local paths."""
+            self.drag_overlay1.hide()
+            self.drag_overlay2.hide()
 
-        if not event.mimeData().hasUrls():
-            print("Drop event ignored: No URLs found in mimeData.")
-            event.ignore()
-            return
+            if not event.mimeData().hasUrls():
+                print("Drop event ignored: No URLs found in mimeData.")
+                event.ignore()
+                return
 
-        urls = event.mimeData().urls()
-        if not urls:
-            print("Drop event ignored: mimeData hasUrls but URL list is empty.")
-            event.ignore()
-            return
+            urls = event.mimeData().urls()
+            if not urls:
+                print("Drop event ignored: mimeData hasUrls but URL list is empty.")
+                event.ignore()
+                return
 
-        event.acceptProposedAction()
-        drop_point = event.position().toPoint()
-        target_image_num = 1 if self._is_in_left_area(drop_point) else 2
-        print(f"Drop detected for image slot {target_image_num} at {drop_point}. Processing {len(urls)} URL(s).")
+            event.acceptProposedAction()
+            drop_point = event.position().toPoint()
+            target_image_num = 1 if self._is_in_left_area(drop_point) else 2
+            print(f"Drop detected for image slot {target_image_num} at {drop_point}. Processing {len(urls)} URL(s).")
 
-        uris_for_portal = []
-        url_map = {} # Map uri_string back to QUrl for display name retrieval
-        non_local_urls = []
-        unsupported_files = []
+            local_image_paths = []
+            non_local_urls = []
+            unsupported_files = []
 
-        for url in urls:
-            uri_string = url.toString()
-            print(f"  Processing URL: {uri_string}")
-            if url.isLocalFile():
-                path_str = url.toLocalFile()
-                if not path_str:
-                    print(f"    Warning: Could not convert URL to local path: {uri_string}")
-                    unsupported_files.append(uri_string + " (Conversion failed)")
-                    continue
-                try:
-                    # Basic check for image extensions
-                    ext = os.path.splitext(path_str)[1].lower()
-                    if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff'):
-                        if uri_string:
-                             uris_for_portal.append(uri_string)
-                             url_map[uri_string] = url # Store for later use
-                             print(f"    Added local image file URI for portal: {uri_string}")
+            for url in urls:
+                print(f"  Processing URL: {url.toString()}")
+                if url.isLocalFile():
+                    path_str = url.toLocalFile()
+                    if not path_str:
+                        print(f"    Warning: Could not convert URL to local path: {url.toString()}")
+                        unsupported_files.append(url.toString() + " (Conversion failed)")
+                        continue
+                    try:
+                        # Basic check for image extensions
+                        ext = os.path.splitext(path_str)[1].lower()
+                        if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff'):
+                            # Check if file actually exists before adding
+                            if os.path.isfile(path_str):
+                                local_image_paths.append(path_str)
+                                print(f"    Added local image file path: {path_str}")
+                            else:
+                                print(f"    Warning: File path does not exist or is not a file: {path_str}")
+                                unsupported_files.append(os.path.basename(path_str) + " (Not found)")
+
                         else:
-                             print(f"    Warning: URL toString() returned empty for local file: {path_str}")
-                             unsupported_files.append(os.path.basename(path_str) + " (Empty URI)")
-                    else:
-                        print(f"    Info: Skipped non-image file based on extension: {path_str}")
-                        unsupported_files.append(os.path.basename(path_str) + " (Unsupported ext)")
-                except Exception as e:
-                    print(f"    Error processing path '{path_str}' from URL '{uri_string}': {e}")
-                    unsupported_files.append(os.path.basename(path_str) + f" (Error: {e})")
-            else:
-                print(f"    Info: Skipped non-local URL: {uri_string}")
-                non_local_urls.append(uri_string)
-
-        # --- Portal Handling via QDBus ---
-        portal_requests_made = 0
-        portal_errors = [] # Keep track of portal failures
-
-        if not uris_for_portal:
-             print("No valid local image URIs found to process via portal.")
-             if len(urls) > 0:
-                 reason_list = []
-                 if non_local_urls: reason_list.append(tr("Non-local files skipped:", self.current_language) + f" {len(non_local_urls)}")
-                 if unsupported_files: reason_list.append(tr("Unsupported or inaccessible files skipped:", self.current_language) + f" {len(unsupported_files)}")
-                 reason_str = "\n - ".join(reason_list) if reason_list else tr("No supported local image files detected.", self.current_language)
-                 QMessageBox.information(self, tr("Information", self.current_language),
-                                          tr("No supported local image files could be processed from the dropped items.", self.current_language) +
-                                          (f"\n\n{tr('Details:', self.current_language)}\n - {reason_str}" if reason_list else ""))
-             return
-
-        if not dbus_available:
-            print("Error: D-Bus not available. Cannot use portal for drag-and-drop.")
-            QMessageBox.critical(self, tr("Error", self.current_language),
-                                   tr("D-Bus connection is not available. Cannot open dropped files via the portal.\nPlease ensure D-Bus is running.", self.current_language))
-            return
-
-        print(f"Attempting portal access via QtDBus for {len(uris_for_portal)} URIs for slot {target_image_num}...")
-
-        # --- Create QDBusInterface ---
-        portal_interface = None
-        try:
-            portal_interface = QDBusInterface("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
-                                            "org.freedesktop.portal.FileChooser", QDBusConnection.sessionBus())
-        except Exception as e: # Catch TypeError or other issues
-             print(f"!!! Critical Error during QDBusInterface creation: {e} !!!")
-             traceback.print_exc()
-             QMessageBox.critical(self, tr("D-Bus Error", self.current_language),
-                                   tr("Internal error creating D-Bus interface.", self.current_language) + f"\n\n{e}")
-             return
-
-        if not portal_interface or not portal_interface.isValid():
-            error_msg = "QDBusInterface for FileChooser is invalid after creation."
-            print(f"!!! Error: {error_msg} !!!")
-            QMessageBox.critical(self, tr("D-Bus Error", self.current_language),
-                                   tr("Could not establish a valid connection to the FileChooser portal via D-Bus.", self.current_language) +
-                                   f"\n\n{error_msg}")
-            return
-
-        # --- Determine expected message types using full Enum path ---
-        try:
-            ReplyMsgType = QDBusMessage.MessageType.ReplyMessage
-            ErrorMsgType = QDBusMessage.MessageType.ErrorMessage
-            print("    DEBUG: Using QDBusMessage.MessageType Enum members for comparison.")
-        except AttributeError:
-            # This fallback is less likely needed now, but kept as a safety net
-            print("    !!! CRITICAL WARNING: Could not access QDBusMessage.MessageType members! D-Bus interaction will likely fail. !!!")
-            QMessageBox.critical(self, tr("D-Bus Error", self.current_language),
-                                   tr("Internal error accessing D-Bus message types. Cannot proceed with portal.", self.current_language))
-            return # Stop processing if we can't get the types
-
-        # --- Loop through URIs and call OpenFile ---
-        parent_window_handle = "" # Typically empty for OpenFile
-        # Ensure options uses QVariant as required by QtDBus
-        options = {'writable': QVariant(False), 'ask': QVariant(False)}
-
-
-        for uri_string in uris_for_portal:
-            original_qurl = url_map.get(uri_string)
-            file_display_name = os.path.basename(original_qurl.path()) if (original_qurl and original_qurl.path()) else uri_string
-
-            print(f"  Calling OpenFile via QtDBus for: {uri_string} (Display: {file_display_name})")
-      
-            try:
-                # Попытка получить X11 Window ID
-                win_id_ptr = self.winId()
-                if win_id_ptr:
-                    # Преобразуем voidptr в integer
-                    win_id_int = int(win_id_ptr)
-                    # Формируем хэндл для портала (формат x11:...)
-                    parent_window_handle = f"x11:{hex(win_id_int)}"
-                    print(f"    DEBUG: Using parent window handle: {parent_window_handle}")
+                            print(f"    Info: Skipped non-image file based on extension: {path_str}")
+                            unsupported_files.append(os.path.basename(path_str) + " (Unsupported ext)")
+                    except Exception as e:
+                        print(f"    Error processing path '{path_str}' from URL '{url.toString()}': {e}")
+                        unsupported_files.append(os.path.basename(path_str) + f" (Error: {e})")
                 else:
-                    print("    DEBUG: winId() returned null pointer.")
-            except (TypeError, ValueError, Exception) as e: # Ловим возможные ошибки преобразования
-                print(f"    Warning: Could not get/convert window handle: {e}")
-                parent_window_handle = "" # Сбрасываем в пустую строку при ошибке
+                    print(f"    Info: Skipped non-local URL: {url.toString()}")
+                    non_local_urls.append(url.toString())
 
-                
-
-            try:
-                # --- Make the D-Bus call ---
-                reply_message: QDBusMessage = portal_interface.call("OpenFile", parent_window_handle, uri_string, options)
-                reply_type_value = reply_message.type() # Get the Enum member object
-
-                # --- Debug output ---
-                print(f"    DEBUG: reply_message.type() returned value: {reply_type_value} (Type: {type(reply_type_value)})")
-                print(f"    DEBUG: Comparing against Reply Type: {ReplyMsgType} (Type: {type(ReplyMsgType)})")
-                print(f"    DEBUG: Comparing against Error Type: {ErrorMsgType} (Type: {type(ErrorMsgType)})")
-
-                # --- Perform direct comparison with Enum objects ---
-                is_reply = (reply_type_value == ReplyMsgType)
-                is_error = (reply_type_value == ErrorMsgType)
-
-                print(f"    DEBUG: Enum comparison: {reply_type_value} == {ReplyMsgType}? {is_reply}")
-                print(f"    DEBUG: Enum comparison: {reply_type_value} == {ErrorMsgType}? {is_error}")
-
-                # --- Process based on comparison result ---
-                if is_reply:
-                    arguments = reply_message.arguments()
-                    print(f"    DEBUG: Arguments received in ReplyMessage: {arguments}")
-                    # The first argument should be the request object path (string)
-                    if arguments and len(arguments) > 0 and isinstance(arguments[0], str) and arguments[0].startswith('/org/freedesktop/portal/desktop/request'):
-                        request_path = arguments[0]
-                        print(f"    OpenFile call successful (Reply). Request object path: {request_path}")
-                        self.pending_portal_requests[request_path] = target_image_num
-                        portal_requests_made += 1
-                    else:
-                        error_msg = f"OpenFile call returned Reply but with unexpected/missing arguments: {arguments}"
-                        print(f"    Warning: {error_msg}")
-                        portal_errors.append(f"{file_display_name}: {error_msg}")
-
-                elif is_error:
-                    error_name = reply_message.errorName()
-                    error_message = reply_message.errorMessage()
-                    error_msg = f"OpenFile D-Bus call failed: {error_name} - {error_message}"
-                    print(f"    !!! Error: {error_msg} (URI: {uri_string}) !!!")
-                    portal_errors.append(f"{file_display_name}: {error_msg}")
-
-                else: # Neither Reply nor Error matched
-                    # Should be less common now, but handle other types like Signal or Invalid
-                    error_msg = (f"OpenFile call returned unexpected message type: {reply_type_value}. "
-                                 f"Expected Reply ({ReplyMsgType}) or Error ({ErrorMsgType}).")
-                    print(f"    Warning: {error_msg} (URI: {uri_string})")
-                    portal_errors.append(f"{file_display_name}: {error_msg}")
-
-            except Exception as e:
-                # Catch exceptions during the .call() itself or interface issues
-                error_msg = f"Exception during QtDBus OpenFile call: {e}"
-                print(f"!!! Exception: {error_msg} (URI: {uri_string}) !!!")
-                traceback.print_exc()
-                portal_errors.append(f"{file_display_name}: {error_msg}")
-
-        # --- Report Results ---
-        print(f"Portal interaction finished. Requests made: {portal_requests_made}, Errors encountered: {len(portal_errors)}")
-        if portal_requests_made == 0 and len(uris_for_portal) > 0:
-            error_details = "\n - ".join(portal_errors) if portal_errors else tr("Unknown error.", self.current_language)
-            QMessageBox.warning(self, tr("Portal Error", self.current_language),
-                                 tr("Could not initiate portal access for any dropped image files.", self.current_language) +
-                                 f"\n\n{tr('Details:', self.current_language)}\n - {error_details}")
-        elif portal_errors:
-            error_details = "\n - ".join(portal_errors)
-            QMessageBox.warning(self, tr("Portal Warning", self.current_language),
-                                 tr("Failed to initiate portal access for some dropped files.", self.current_language) +
-                                 f"\n\n{tr('Failed files:', self.current_language)}\n - {error_details}")
-# --- END OF REWRITTEN dropEvent FUNCTION ---
+            # --- Directly load the collected local paths ---
+            if local_image_paths:
+                print(f"Loading {len(local_image_paths)} images directly for slot {target_image_num}...")
+                # Use QTimer.singleShot for safety, although likely not strictly needed here
+                QTimer.singleShot(0, lambda: self._load_images_from_paths(local_image_paths, target_image_num))
+            else:
+                print("No valid local image files found to load from drop.")
+                if non_local_urls or unsupported_files:
+                    reason_list = []
+                    if non_local_urls: reason_list.append(tr("Non-local files skipped:", self.current_language) + f" {len(non_local_urls)}")
+                    if unsupported_files: reason_list.append(tr("Unsupported or inaccessible files skipped:", self.current_language) + f" {len(unsupported_files)}")
+                    reason_str = "\n - ".join(reason_list)
+                    QMessageBox.information(self, tr("Information", self.current_language),
+                                            tr("No supported local image files could be processed from the dropped items.", self.current_language) +
+                                            f"\n\n{tr('Details:', self.current_language)}\n - {reason_str}")# --- END OF REWRITTEN dropEvent FUNCTION ---
 
 # --- START OF UNMODIFIED _on_portal_response_qtdbus FUNCTION ---
     @pyqtSlot(int, 'QVariantMap')
