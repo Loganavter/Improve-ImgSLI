@@ -1,0 +1,34 @@
+pkgname=improve-imgsli
+pkgver=2.4.0
+pkgrel=6
+pkgdesc="Image comparison tool with magnifying glass feature"
+arch=(any)
+url="https://github.com/Loganavter/$pkgname"
+license=(MIT)
+depends=(
+  hicolor-icon-theme
+  python
+  python-pillow
+  python-pyqt6
+  python-pyqt6-sip
+  sh
+)
+options=(!debug)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-v$pkgver.tar.gz")
+sha512sums=('4832aa09f952ab5f06a41031c4a7bad236641049aecb021a4efdbd60d2403814a12564502f6e523ae4e49a0076f79bb0db0e559f7b7035f8eb1a9020cd90b4a5')
+b2sums=('73aa9857552a236e840eb332b549a9c6c3c25485b3dd4963a723eebca355bdf9d849baf28f47c6eaebd1366e814d60e99c9be93d942e1c6c13f1b57a78e0d913')
+
+package() {
+  cd "$srcdir/Improve-ImgSLI-$pkgver"
+  install -vDm 755 build/launcher.sh "$pkgdir"/usr/bin/$pkgname
+  install -vDm 644 src/Improve_ImgSLI.py       "$pkgdir"/usr/lib/$pkgname/Improve_ImgSLI.py
+  install -vDm 644 src/clickable_label.py      "$pkgdir"/usr/lib/$pkgname/clickable_label.py
+  install -vDm 644 src/image_comparison_app.py "$pkgdir"/usr/lib/$pkgname/image_comparison_app.py
+  install -vDm 644 src/image_processing.py     "$pkgdir"/usr/lib/$pkgname/image_processing.py
+  install -vDm 644 src/flag_icons.py           "$pkgdir"/usr/lib/$pkgname/flag_icons.py
+  install -vDm 644 src/translations.py         "$pkgdir"/usr/lib/$pkgname/translations.py
+  install -vDm 644 src/font/SourceSans3-Regular.ttf "$pkgdir"/usr/lib/$pkgname/SourceSans3-Regular.ttf
+  install -vDm 644 build/AUR-template/$pkgname.desktop "$pkgdir"/usr/share/applications/$pkgname.desktop
+  install -vDm 644 src/icons/icon.png "$pkgdir"/usr/share/icons/hicolor/512x512/apps/$pkgname.png
+  install -vDm 644 LICENSE.txt "$pkgdir"/usr/share/licenses/$pkgname/LICENSE.txt
+}

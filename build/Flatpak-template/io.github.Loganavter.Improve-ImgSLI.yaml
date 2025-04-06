@@ -1,0 +1,46 @@
+app-id: io.github.Loganavter.Improve-ImgSLI
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.8'
+command: Improve-ImgSLI
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /man
+  - /share/man
+  - /share/pkgconfig
+  - '*.la'
+  - '*.a'
+modules:
+  - python3-modules.json
+  - name: Improve-ImgSLI
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 build/Flatpak-template/improve-imgsli-launcher.sh ${FLATPAK_DEST}/bin/Improve-ImgSLI
+      - install -Dm644 src/flag_icons.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
+      - install -Dm644 src/clickable_label.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
+      - install -Dm644 src/image_processing.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
+      - install -Dm644 src/translations.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
+      - install -Dm644 src/Improve_ImgSLI.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
+      - install -Dm644 build/Flatpak-template/image_comparison_app.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
+      - install -Dm644 src/font/SourceSans3-Regular.ttf -t ${FLATPAK_DEST}/share/fonts/truetype/
+      - install -Dm644 src/icons/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 LICENSE.txt ${FLATPAK_DEST}/share/licenses/Improve-ImgSLI/LICENSE
+      - desktop-file-edit --set-key=Categories --set-value="Graphics;Utility;Viewer;" build/AUR-template/improve-imgsli.desktop
+      - desktop-file-edit --set-icon="${FLATPAK_ID}" build/AUR-template/improve-imgsli.desktop
+      - desktop-file-edit --set-key=Exec --set-value="Improve-ImgSLI" build/AUR-template/improve-imgsli.desktop
+      - install -Dm644 build/AUR-template/improve-imgsli.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 io.github.Loganavter.Improve-ImgSLI.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: archive
+        url: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v2.4.0.tar.gz
+        sha256: e44d3a5873e2ef26674290afc09ce1769e87107625f0df06eb759299764c1c98
+      - type: file
+        path: io.github.Loganavter.Improve-ImgSLI.metainfo.xml
