@@ -721,51 +721,6 @@ class ImageComparisonApp(QWidget):
     def focusInEvent(self, event):
         super().focusInEvent(event)
 
-    def closeEvent(self, event):
-        geometry_to_save = None
-        is_maximized = self.windowState() & Qt.WindowState.WindowMaximized
-        is_fullscreen = self.windowState() & Qt.WindowState.WindowFullScreen
-        if not (is_maximized or is_fullscreen):
-            geometry_to_save = self.saveGeometry()
-        elif self.previous_geometry:
-             geometry_to_save = self.previous_geometry
-        if geometry_to_save is not None and isinstance(geometry_to_save, QByteArray):
-            geom_b64 = geometry_to_save.toBase64().data().decode('ascii')
-            self.save_setting("window_geometry", geom_b64)
-        elif geometry_to_save is None:
-            if self.settings.contains("window_geometry"):
-                print("Removing potentially stale 'window_geometry' setting.")
-                try:
-                    self.settings.remove("window_geometry")
-                except Exception as e:
-                    print(f"Error removing 'window_geometry' setting: {e}")
-        else:
-            print(f"Warning: Geometry to save is not QByteArray or None: {type(geometry_to_save)}")
-        self.save_setting("capture_relative_x", self.capture_position_relative.x())
-        self.save_setting("capture_relative_y", self.capture_position_relative.y())
-        self.save_setting("movement_speed_per_sec", self.movement_speed_per_sec)
-        self.save_setting("language", self.current_language)
-        self.save_setting("max_name_length", self.max_name_length)
-        if hasattr(self, 'checkbox_file_names'):
-            self.save_setting("include_file_names", self.checkbox_file_names.isChecked())
-        self.save_setting("filename_color", self.file_name_color.name(QColor.NameFormat.HexArgb))
-        try:
-            obsolete_settings = [
-                "image1_paths", "image2_paths",
-                "current_index1", "current_index2",
-                "magnifier_offset_pixels_x", "magnifier_offset_pixels_y",
-                "magnifier_spacing",
-                "magnifier_size",
-                "capture_size"
-            ]
-            for setting in obsolete_settings:
-                 if self.settings.contains(setting):
-                      self.settings.remove(setting)
-        except Exception as e:
-            print(f"Error removing obsolete settings: {e}")
-        self.settings.sync()
-        super().closeEvent(event)
-
     def update_comparison(self):
         if self.resize_in_progress:
              return
