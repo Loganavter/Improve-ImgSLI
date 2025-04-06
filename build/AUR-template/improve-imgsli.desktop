@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Improve ImgSLI
+Comment=Image comparison tool with magnifying glass feature
+Exec=improve-imgsli
+Icon=improve-imgsli
+Terminal=false
+Type=Application
+Categories=Graphics;Viewer;Editor;Utility;
+Keywords=image;comparison;magnifier;
