@@ -69,12 +69,11 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 
 **Python (from source):**
 *   Requires: Python, pip
-*   Recommended: Use a virtual environment (`python -m venv venv`, then activate it).
 ```bash
 git clone https://github.com/Loganavter/Improve-ImgSLI.git
 cd Improve-ImgSLI
-pip install -r requirements.txt
-python Improve_ImgSLI.py
+chmod +x launcher.sh
+./launcher.sh
 ```
 
 **Arch Linux (AUR):**
@@ -87,7 +86,7 @@ yay -S improve-imgsli
 2.  Run the installer and follow the prompts.
 
 **Flatpak (FlatHub):**
-*   Very soon...
+*   [Very soon...](https://github.com/flathub/flathub/pull/6329)
 
 **MacOS:**
 *   Coming soon... Stay tuned!
