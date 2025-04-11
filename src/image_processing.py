@@ -404,31 +404,25 @@ def draw_combined_magnifier_circle_pil(target_image, display_center_pos,
         pass
 
 def save_result_processor(self):
-    print("--- save_result_processor (Corrected Magnifier & Marker Size) ---")
     if not self.original_image1 or not self.original_image2:
         QMessageBox.warning(self, tr("Warning", self.current_language), tr("Please load and select images in both slots first.", self.current_language))
-        print("  Save aborted: Original images missing.")
         return
     if not self.image1 or not self.image2:
         QMessageBox.warning(self, tr("Warning", self.current_language), tr("Resized images not available. Please reload or select images.", self.current_language))
-        print("  Save aborted: Resized working images (self.image1/image2) missing.")
         return
     img1_rgba = self.image1
     img2_rgba = self.image2
     width, height = img1_rgba.size
-    print(f"  Save base image dimensions: {width}x{height}")
     image_to_save = Image.new('RGBA', (width, height))
     split_position_abs = 0
     if not self.is_horizontal:
         split_position_abs = max(0, min(width, int(width * self.split_position)))
-        print(f"  Vertical split at abs position: {split_position_abs}")
         if split_position_abs > 0:
             image_to_save.paste(img1_rgba.crop((0, 0, split_position_abs, height)), (0, 0))
         if split_position_abs < width:
             image_to_save.paste(img2_rgba.crop((split_position_abs, 0, width, height)), (split_position_abs, 0))
     else:
         split_position_abs = max(0, min(height, int(height * self.split_position)))
-        print(f"  Horizontal split at abs position: {split_position_abs}")
         if split_position_abs > 0:
             image_to_save.paste(img1_rgba.crop((0, 0, width, split_position_abs)), (0, 0))
         if split_position_abs < height:
@@ -436,22 +430,15 @@ def save_result_processor(self):
     draw = ImageDraw.Draw(image_to_save)
     orig1_size = self.original_image1.size
     orig2_size = self.original_image2.size
-    print(f"  Original sizes for overlays: 1={orig1_size}, 2={orig2_size}")
     valid_orig_sizes = orig1_size and orig2_size and orig1_size[0] > 0 and orig1_size[1] > 0 and orig2_size[0] > 0 and orig2_size[1] > 0
-    print(f"  Original sizes valid for magnifier: {valid_orig_sizes}")
     save_split_color = (128, 128, 128, 255)
-    print("  Drawing split line for save...")
     draw_split_line_pil(draw, image_to_save, self.split_position, self.is_horizontal, split_color=save_split_color)
     if hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
-        print("  Drawing file names for save...")
         line_width_names = max(1, min(5, int(width * 0.0035))) if not self.is_horizontal else 0
         line_height_names = max(1, min(5, int(height * 0.005))) if self.is_horizontal else 0
         color_tuple = self.file_name_color.getRgb()
         draw_file_names_on_image(self, draw, image_to_save, split_position_abs, width, height, line_width_names, line_height_names, color_tuple)
-    else:
-        print("  Skipping file names drawing (disabled).")
     if self.use_magnifier and valid_orig_sizes:
-        print("  Drawing magnifier for save...")
         scaled_width_display, scaled_height_display = get_scaled_pixmap_dimensions(self)
         orig_width_save, orig_height_save = image_to_save.size
         scale_factor_display = 1.0
@@ -463,10 +450,8 @@ def save_result_processor(self):
         if scale_factor_display > 1e-6:
             magnifier_size_for_save = int(round(self.magnifier_size / scale_factor_display))
         magnifier_size_for_save = max(10, magnifier_size_for_save)
-        print(f"  Save - Display Scale Factor: {scale_factor_display:.3f}, Slider Size: {self.magnifier_size}, Calculated Magnifier Draw Size for Save: {magnifier_size_for_save}")
         final_edge_spacing = self.magnifier_spacing
         capture_pos_orig1, capture_pos_orig2, magnifier_midpoint_result_for_save = get_original_coords(self)
-        print(f"  Coords from get_original_coords: cap1={capture_pos_orig1}, cap2={capture_pos_orig2}, midpoint(res)={magnifier_midpoint_result_for_save}")
         midpoint_to_use_for_draw = None
         if capture_pos_orig1 and capture_pos_orig2 and magnifier_midpoint_result_for_save:
             save_width, save_height = image_to_save.size
@@ -474,13 +459,10 @@ def save_result_processor(self):
             if self.result_image: res_width, res_height = self.result_image.size
             if save_width == res_width and save_height == res_height:
                 midpoint_to_use_for_draw = magnifier_midpoint_result_for_save
-                print(f"  Using midpoint from get_original_coords directly: {midpoint_to_use_for_draw}")
             else:
-                print(f"  Warning: Save image size ({save_width}x{save_height}) differs from last result image size ({res_width}x{res_height}). Recalculating midpoint based on capture center.")
                 cap_center_save_x = max(0, min(width - 1, int(self.capture_position_relative.x() * width)))
                 cap_center_save_y = max(0, min(height - 1, int(self.capture_position_relative.y() * height)))
                 midpoint_to_use_for_draw = QPoint(cap_center_save_x, cap_center_save_y)
-                print(f"  Using fallback midpoint (capture center in save coords): {midpoint_to_use_for_draw}")
             if midpoint_to_use_for_draw:
                 draw_magnifier_pil(
                     draw, image_to_save,
@@ -497,15 +479,13 @@ def save_result_processor(self):
                     self
                 )
             else:
-                 print("  Save Warning: Failed to determine midpoint for magnifier drawing.")
+                 pass
         else:
-             print("  Save Warning: Failed to get valid magnifier coordinates for saving.")
+             pass
     elif self.use_magnifier and not valid_orig_sizes:
-        print("  Save Warning: Cannot draw magnifier due to invalid original image sizes.")
         pass
     else:
-        print("  Skipping magnifier drawing (disabled or invalid sizes).")
-    print("  Opening save file dialog...")
+        pass
     file_name, selected_filter = QFileDialog.getSaveFileName(
         self,
         tr("Save Image", self.current_language),
@@ -513,9 +493,7 @@ def save_result_processor(self):
         tr("PNG Files", self.current_language) + " (*.png);;" + tr("JPEG Files", self.current_language) + " (*.jpg *.jpeg);;" + tr("All Files", self.current_language) + " (*)"
     )
     if not file_name:
-        print("  Save cancelled by user.")
         return
-    print(f"  User selected filename: {file_name}, filter: {selected_filter}")
     _, ext = os.path.splitext(file_name)
     original_file_name = file_name
     if not ext:
@@ -528,11 +506,9 @@ def save_result_processor(self):
         elif "PNG" in selected_filter and ext_lower != ".png":
              file_name = os.path.splitext(file_name)[0] + '.png'
     if file_name != original_file_name:
-        print(f"  Adjusted filename with extension: {file_name}")
+        pass
     try:
-        print(f"  Attempting to save to: {file_name}")
         if file_name.lower().endswith((".jpg", ".jpeg")):
-            print("  Saving as JPEG (creating white background)...")
             background = Image.new("RGB", image_to_save.size, (255, 255, 255))
             if image_to_save.mode == 'RGBA':
                 img_copy = image_to_save.copy()
@@ -541,18 +517,12 @@ def save_result_processor(self):
             else:
                  background.paste(image_to_save.convert("RGB"))
             background.save(file_name, "JPEG", quality=93)
-            print("  JPEG saved successfully.")
         else:
             if not file_name.lower().endswith((".jpg", ".jpeg")) and not file_name.lower().endswith(".png"):
                  file_name = os.path.splitext(file_name)[0] + '.png'
-                 print(f"  Forcing PNG format, final filename: {file_name}")
-            print(f"  Saving as PNG (or other specified format): {file_name}")
             image_to_save.save(file_name)
-            print("  PNG (or other) saved successfully.")
     except Exception as e:
-        print(f"  ERROR during image save: {e}")
         QMessageBox.critical(self, tr("Error", self.current_language), f"{tr('Failed to save image:', self.current_language)}\n{file_name}\n\n{str(e)}")
-    print("--- save_result_processor finished ---")
 
 def draw_file_names_on_image(self, draw, image, split_position_abs, orig_width, orig_height, line_width, line_height, text_color_tuple):
     font_size_percentage = self.font_size_slider.value() / 200.0
@@ -564,11 +534,9 @@ def draw_file_names_on_image(self, draw, image, split_position_abs, orig_width, 
     try:
         font = ImageFont.truetype(font_path, size=font_size)
     except IOError:
-        print(f"Warning: Failed to load font '{_font_file_name}' from path '{font_path}'. Falling back.")
         try:
             font = ImageFont.truetype("arial.ttf", size=font_size)
         except IOError:
-            print("Warning: Failed to load arial.ttf. Falling back to PIL default.")
             font = ImageFont.load_default()
     file_name1_raw = self.edit_name1.text() or (os.path.basename(self.image1_path) if self.image1_path else "Image 1")
     file_name2_raw = self.edit_name2.text() or (os.path.basename(self.image2_path) if self.image2_path else "Image 2")
@@ -646,7 +614,6 @@ def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_po
         try:
             draw.text((x1, y1_baseline), file_name1, fill=text_color, font=font, anchor="ls")
         except Exception as e:
-            print(f"Error drawing text 1: {e}")
             pass
     if file_name2:
         text_width2, text_height2 = get_text_size_func(file_name2, font)
@@ -655,5 +622,4 @@ def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_po
         try:
             draw.text((x2, y2_top), file_name2, fill=text_color, font=font, anchor="lt")
         except Exception as e:
-            print(f"Error drawing text 2: {e}")
             pass
