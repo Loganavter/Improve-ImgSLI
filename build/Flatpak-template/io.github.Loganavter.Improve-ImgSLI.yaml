@@ -10,6 +10,11 @@ finish-args:
   - --socket=wayland
   - --share=ipc
   - --device=dri
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-pictures
 cleanup:
   - /include
   - /lib/pkgconfig
@@ -29,7 +34,7 @@ modules:
       - install -Dm644 src/image_processing.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
       - install -Dm644 src/translations.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
       - install -Dm644 src/Improve_ImgSLI.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
-      - install -Dm644 build/Flatpak-template/image_comparison_app.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
+      - install -Dm644 src/image_comparison_app.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/
       - install -Dm644 src/font/SourceSans3-Regular.ttf -t ${FLATPAK_DEST}/share/fonts/truetype/
       - install -Dm644 src/icons/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
       - install -Dm644 LICENSE.txt ${FLATPAK_DEST}/share/licenses/Improve-ImgSLI/LICENSE
@@ -40,7 +45,7 @@ modules:
       - install -Dm644 io.github.Loganavter.Improve-ImgSLI.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
       - type: archive
-        url: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v2.4.0.tar.gz
-        sha256: e44d3a5873e2ef26674290afc09ce1769e87107625f0df06eb759299764c1c98
+        url: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v2.5.1.tar.gz
+        sha256: aa686da2f699acc6c4a931775497f0a04868fb658d000487f8b4d3fa2f14e0de
       - type: file
         path: io.github.Loganavter.Improve-ImgSLI.metainfo.xml
