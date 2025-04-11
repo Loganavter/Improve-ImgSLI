@@ -1,6 +1,6 @@
 pkgname=improve-imgsli
-pkgver=2.4.0
-pkgrel=6
+pkgver=2.5.1
+pkgrel=0
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=(any)
 url="https://github.com/Loganavter/$pkgname"
@@ -15,8 +15,8 @@ depends=(
 )
 options=(!debug)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-v$pkgver.tar.gz")
-sha512sums=('4832aa09f952ab5f06a41031c4a7bad236641049aecb021a4efdbd60d2403814a12564502f6e523ae4e49a0076f79bb0db0e559f7b7035f8eb1a9020cd90b4a5')
-b2sums=('73aa9857552a236e840eb332b549a9c6c3c25485b3dd4963a723eebca355bdf9d849baf28f47c6eaebd1366e814d60e99c9be93d942e1c6c13f1b57a78e0d913')
+sha512sums=('0e46c76e91b36ea87ff28bee96d1961a960c5d516b00336dc83da98f8f8d74191a00fbc3d896bab2d61481831ca0b236270e01c42ed44e9fb3f7db985d026abd')
+b2sums=('771084c1f90a3b8dd04d6006013145b08b54db636b81c64c67896b9662b41ee150bf2c931f05cc4c7a8135cb7cbe2cba14d74b68df4e6222d61f2e75c1169821')
 
 package() {
   cd "$srcdir/Improve-ImgSLI-$pkgver"
