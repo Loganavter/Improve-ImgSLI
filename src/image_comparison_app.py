@@ -114,6 +114,16 @@ ClickableLabel = getattr(clickable_label_mod, 'ClickableLabel', QLabel)
 font_file = 'SourceSans3-Regular.ttf'
 font_placeholder = os.path.join(placeholder_dir,'font', font_file)
 
+def _is_running_in_flatpak():
+    if os.path.exists('/.flatpak-info'):
+        return True
+    if 'FLATPAK_ID' in os.environ:
+        return True
+    if os.path.exists('/app'):
+        return True
+    if 'FLATPAK_INSTANCE_ID' in os.environ:
+        return True
+    return False
 
 class ImageComparisonApp(QWidget):
 
@@ -777,14 +787,24 @@ class ImageComparisonApp(QWidget):
              self.image2 = None
 
     def load_image(self, image_number):
-        file_names, _ = QFileDialog.getOpenFileNames(
-            self,
-            tr(f"Select Image(s) {image_number}", self.current_language),
-            "",
-            tr("Image Files", self.current_language) + " (*.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff);;" + tr("All Files", self.current_language) + " (*)"
-        )
-        if file_names:
-            self._load_images_from_paths(file_names, image_number)
+            if _is_running_in_flatpak():
+                warning_title = tr("Flatpak Environment Detected", self.current_language)
+                accessible_dirs_list = [
+                    "- xdg-documents",
+                    "- xdg-download",
+                    "- xdg-music",
+                    "- xdg-videos",
+                    "- xdg-pictures"
+                ]
+                accessible_dirs_str = "\n".join(accessible_dirs_list)
+                warning_text = tr(
+                    "This application appears to be running inside a Flatpak sandbox.\n\n"
+                    "Due to sandbox restrictions, you might only be able to reliably access files from specific directories granted during installation, typically:\n"
+                    "{dirs}\n\n"
+                    "Accessing files from other locations might not work unless you have granted specific permissions or use the file chooser portal.",
+                    self.current_language
+                ).format(dirs=accessible_dirs_str)
+                QMessageBox.information(self, warning_title, warning_text)
 
     def _load_images_from_paths(self, file_paths: list[str], image_number: int):
         print(f"_load_images_from_paths called for slot {image_number} with {len(file_paths)} paths.")
