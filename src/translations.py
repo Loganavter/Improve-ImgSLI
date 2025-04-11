@@ -1,3 +1,4 @@
+
 translations = {
     'en': {
         'Improve ImgSLI': 'Improve ImgSLI',
