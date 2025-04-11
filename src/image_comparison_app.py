@@ -7,7 +7,7 @@ import traceback
 from PIL import Image
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSlider, QLabel,
                              QFileDialog, QSizePolicy, QMessageBox, QLineEdit, QInputDialog, QApplication,
-                             QColorDialog, QComboBox)
+                             QColorDialog, QComboBox, QStyle)
 from PyQt6.QtGui import QPixmap, QIcon, QColor, QPainter, QBrush
 from PyQt6.QtCore import (Qt, QPoint, QTimer, QPointF, QEvent, QSize, QSettings, QLocale,
                           QElapsedTimer, QRectF, QByteArray)
@@ -88,7 +88,7 @@ def load_module(mod_name, create_placeholder=True):
         print(f"Unexpected error importing/reloading module {mod_name}: {e}")
         traceback.print_exc()
         return None
-    
+
 translations_mod = load_module('translations')
 flag_icons_mod = load_module('flag_icons')
 image_processing_mod = load_module('image_processing')
@@ -293,10 +293,20 @@ class ImageComparisonApp(QWidget):
         self.btn_image2 = QPushButton()
         self.btn_swap = QPushButton('⇄')
         self.btn_swap.setFixedSize(24, 24)
-        self.btn_swap.setToolTip(tr('Swap Image Lists', self.current_language))
+
+        self.btn_clear_list1 = QPushButton()
+        self.btn_clear_list2 = QPushButton()
+        clear_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon)
+        self.btn_clear_list1.setIcon(clear_icon)
+        self.btn_clear_list1.setFixedSize(24, 24)
+        self.btn_clear_list2.setIcon(clear_icon)
+        self.btn_clear_list2.setFixedSize(24, 24)
+
         layout.addWidget(self.btn_image1)
+        layout.addWidget(self.btn_clear_list1)
         layout.addWidget(self.btn_swap)
         layout.addWidget(self.btn_image2)
+        layout.addWidget(self.btn_clear_list2)
         return layout
 
     def _create_combobox_layout(self):
@@ -393,6 +403,8 @@ class ImageComparisonApp(QWidget):
         if hasattr(self, 'btn_image1'): self.btn_image1.clicked.connect(lambda: self.load_image(1))
         if hasattr(self, 'btn_image2'): self.btn_image2.clicked.connect(lambda: self.load_image(2))
         if hasattr(self, 'btn_swap'): self.btn_swap.clicked.connect(self.swap_images)
+        if hasattr(self, 'btn_clear_list1'): self.btn_clear_list1.clicked.connect(lambda: self.clear_image_list(1))
+        if hasattr(self, 'btn_clear_list2'): self.btn_clear_list2.clicked.connect(lambda: self.clear_image_list(2))
         if hasattr(self, 'btn_save'): self.btn_save.clicked.connect(self._save_result_with_error_handling)
         if hasattr(self, 'help_button'): self.help_button.clicked.connect(self._show_help_dialog)
         if hasattr(self, 'btn_color_picker'): self.btn_color_picker.clicked.connect(self._open_color_dialog)
@@ -989,6 +1001,40 @@ class ImageComparisonApp(QWidget):
         self._set_current_image(1, trigger_update=False)
         self._set_current_image(2, trigger_update=True)
 
+    def clear_image_list(self, image_number):
+        if image_number == 1:
+            target_list = self.image_list1
+            combobox = self.combo_image1
+            edit_name_widget = self.edit_name1 if hasattr(self, 'edit_name1') else None
+            self.current_index1 = -1
+            self.original_image1 = None
+            self.image1_path = None
+            self.image1 = None
+        elif image_number == 2:
+            target_list = self.image_list2
+            combobox = self.combo_image2
+            edit_name_widget = self.edit_name2 if hasattr(self, 'edit_name2') else None
+            self.current_index2 = -1
+            self.original_image2 = None
+            self.image2_path = None
+            self.image2 = None
+        else:
+            return
+
+        target_list.clear()
+        if combobox:
+            combobox.blockSignals(True)
+            combobox.clear()
+            combobox.blockSignals(False)
+        if edit_name_widget:
+            edit_name_widget.blockSignals(True)
+            edit_name_widget.clear()
+            edit_name_widget.blockSignals(False)
+
+        self.update_comparison_if_needed()
+        self.update_file_names()
+        self.check_name_lengths()
+
     def _save_result_with_error_handling(self):
         try:
             if not self.original_image1 or not self.original_image2:
@@ -1311,6 +1357,8 @@ class ImageComparisonApp(QWidget):
         if hasattr(self, 'btn_image1'): self.btn_image1.setText(tr('Add Image(s) 1', self.current_language))
         if hasattr(self, 'btn_image2'): self.btn_image2.setText(tr('Add Image(s) 2', self.current_language))
         if hasattr(self, 'btn_swap'): self.btn_swap.setToolTip(tr('Swap Image Lists', self.current_language))
+        if hasattr(self, 'btn_clear_list1'): self.btn_clear_list1.setToolTip(tr('Clear Left Image List', self.current_language))
+        if hasattr(self, 'btn_clear_list2'): self.btn_clear_list2.setToolTip(tr('Clear Right Image List', self.current_language))
         if hasattr(self, 'btn_save'): self.btn_save.setText(tr('Save Result', self.current_language))
         if hasattr(self, 'checkbox_horizontal'): self.checkbox_horizontal.setText(tr('Horizontal Split', self.current_language))
         if hasattr(self, 'checkbox_magnifier'): self.checkbox_magnifier.setText(tr('Use Magnifier', self.current_language))
@@ -1367,6 +1415,8 @@ class ImageComparisonApp(QWidget):
             f"{tr('Usage:', self.current_language)}\n"
             f"- {tr('Use Add buttons or Drag-n-Drop to load images.', self.current_language)}\n"
             f"- {tr('Use dropdowns to select loaded images.', self.current_language)}\n"
+            f"- {tr('Use the ⇄ button to swap image lists.', self.current_language)}\n"
+            f"- {tr('Use the Trash buttons (🗑️) to clear respective image lists.', self.current_language)}\n"
             f"- {tr('Click and drag the split line.', self.current_language)}\n"
             f"- {tr('Check Magnifier to enable zoom.', self.current_language)}\n"
             f"- {tr('Magnifier: Click/drag sets capture point.', self.current_language)}\n"
@@ -1422,14 +1472,22 @@ class ImageComparisonApp(QWidget):
                  _, path, display_name = self.image_list1[self.current_index1]
                  name1_raw = (self.edit_name1.text() if hasattr(self, 'edit_name1') and self.edit_name1.text() else display_name) or display_name or os.path.basename(path or "")
              except IndexError: pass
-        else: name1_raw = tr("Image 1", self.current_language) if self.current_index1 == -1 else ""
+        elif self.original_image1 is None:
+             name1_raw = tr("Image 1", self.current_language)
+        else:
+             name1_raw = ""
+
         name2_raw = ""
         if 0 <= self.current_index2 < len(self.image_list2):
              try:
                  _, path, display_name = self.image_list2[self.current_index2]
                  name2_raw = (self.edit_name2.text() if hasattr(self, 'edit_name2') and self.edit_name2.text() else display_name) or display_name or os.path.basename(path or "")
              except IndexError: pass
-        else: name2_raw = tr("Image 2", self.current_language) if self.current_index2 == -1 else ""
+        elif self.original_image2 is None:
+             name2_raw = tr("Image 2", self.current_language)
+        else:
+             name2_raw = ""
+
         max_len_ui = self.max_name_length
         display_name1 = (name1_raw[:max_len_ui-3]+"...") if len(name1_raw) > max_len_ui else name1_raw
         display_name2 = (name2_raw[:max_len_ui-3]+"...") if len(name2_raw) > max_len_ui else name2_raw
@@ -1441,6 +1499,7 @@ class ImageComparisonApp(QWidget):
             self.file_name_label1.setToolTip(name1_raw if len(name1_raw) > max_len_ui else "")
             self.file_name_label2.setToolTip(name2_raw if len(name2_raw) > max_len_ui else "")
         self.check_name_lengths(name1_raw, name2_raw)
+
 
     def check_name_lengths(self, name1 = None, name2 = None):
         if not hasattr(self, 'length_warning_label'): return
@@ -1537,7 +1596,7 @@ class ImageComparisonApp(QWidget):
         except Exception as e:
              print(f"Error in _is_in_left_area: {e}")
              return True
-        
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = ImageComparisonApp()
