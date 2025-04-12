@@ -26,6 +26,7 @@
 *   [Contributing](#contributing)
 *   [License](#license)
 *   [Development Story](#development-story)
+*   [My personal view on project](#my-personal-view)
 
 ---
 
@@ -137,5 +138,9 @@ In February 2025, I resumed enhancing Improve ImgSLI. With Claude Sonnet 3.7, I 
 In late March 2025, I focused on improving cross-platform compatibility. Gemini and Grok, utilizing their web search functions, helped draft the necessary build and packaging scripts. While I initially hoped for community assistance with maintaining builds for different platforms, skepticism from some potential contributors about the project's AI-assisted origins meant this became a solo undertaking. Consequently, preparing each platform release was time-intensive, taking considerable effort, though this thorough process did help uncover and resolve several remaining bugs before the successful launch of the cross-platform versions.
 
 In general, if do not take into account the price of my personal time, which is about 3 weeks in total, then this project cost me about $ 30. I got the AUR maintainer for free, so we don't take it into account either :)
+</details>
+<details>
+<summary>My personal view on project<a name="my-personal-view"></summary>
+Initially, I was forced to create this program for illustrations in my article. I relied entirely on the design of the website - imgsli.com , hence the name. However, something like badsli. But over time, everything has improved, and now I can be proud of this most useful public asset, just like VideoCut Kahive, on whose principles I also partially relied, and in general it is my very valuable tool that saves a lot of time. That is, I could do the same job as this program manually, but it is much more convenient when it does not take 2-5 minutes, inconvenient frame selection, knowledge of ffmpeg and other things for cropping without transcoding. But this program does exactly the same thing, but in 30 seconds and with a user-friendly interface.
 </details>
 
