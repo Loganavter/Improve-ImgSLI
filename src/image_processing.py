@@ -14,7 +14,7 @@ import math
 
 _module_dir = os.path.dirname(os.path.abspath(__file__))
 _font_file_name = "SourceSans3-Regular.ttf"
-_font_path_absolute = os.path.join(_module_dir, 'font', _font_file_name)
+_font_path_absolute = os.path.join(_module_dir, _font_file_name)
 
 def get_scaled_pixmap_dimensions(app):
     source_image = app.result_image if app.result_image else app.original_image1
