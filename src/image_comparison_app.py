@@ -167,16 +167,19 @@ class ImageComparisonApp(QWidget):
                      if isinstance(value, QByteArray): return value
                      try:
                          if isinstance(value, str):
+                              if not value: return default
                               return QByteArray.fromBase64(value.encode())
                          elif isinstance(value, (bytes, bytearray)):
                               return QByteArray(value)
                          return default
-                     except:
+                     except Exception as e:
+                         print(f"Warning: Error decoding QByteArray for key '{key}'. Value: '{value}', Error: {e}")
                          return default
                 return value
             except (ValueError, TypeError) as e:
                  print(f"Warning: Could not convert setting '{key}' to {target_type}, using default. Value: '{value}', Error: {e}")
                  return default
+
         self.capture_pos_rel_x = get_setting("capture_relative_x", 0.5, float)
         self.capture_pos_rel_y = get_setting("capture_relative_y", 0.5, float)
         saved_lang = get_setting("language", None, str)
@@ -187,15 +190,10 @@ class ImageComparisonApp(QWidget):
         self.loaded_max_name_length = get_setting("max_name_length", 30, int)
         self.loaded_file_names_state = get_setting("include_file_names", False, bool)
         self.loaded_movement_speed = get_setting("movement_speed_per_sec", 150, int)
-        geom_raw = self.settings.value("window_geometry")
-        self.loaded_geometry = None
-        if isinstance(geom_raw, QByteArray):
-            self.loaded_geometry = geom_raw
-        elif isinstance(geom_raw, str):
-            try: self.loaded_geometry = QByteArray.fromBase64(geom_raw.encode())
-            except: pass
-        elif isinstance(geom_raw, (bytes, bytearray)):
-            self.loaded_geometry = QByteArray(geom_raw)
+
+        self.loaded_geometry = get_setting("window_geometry", None, QByteArray)
+        self.loaded_previous_geometry = get_setting("previous_geometry", None, QByteArray)
+
         default_color = QColor(255, 0, 0, 255)
         self.loaded_filename_color_name = get_setting("filename_color", default_color.name(QColor.NameFormat.HexArgb), str)
         self.loaded_image1_paths = []
@@ -244,7 +242,7 @@ class ImageComparisonApp(QWidget):
         self.current_language = self.loaded_language
         self.max_name_length = max(10, self.loaded_max_name_length)
         self.resize_in_progress = False
-        self.previous_geometry = None
+        self.previous_geometry = self.loaded_previous_geometry
         self.pixmap_width = 0
         self.pixmap_height = 0
         self.active_keys = set()
@@ -468,7 +466,7 @@ class ImageComparisonApp(QWidget):
     def _restore_geometry(self):
         geom_setting = self.loaded_geometry
         restored = False
-        if geom_setting and isinstance(geom_setting, QByteArray):
+        if geom_setting and isinstance(geom_setting, QByteArray) and not geom_setting.isEmpty():
             try:
                 restored = self.restoreGeometry(geom_setting)
                 if not restored:
@@ -478,9 +476,21 @@ class ImageComparisonApp(QWidget):
                  restored = False
         else:
             pass
+
         if not restored:
-            self.setGeometry(100, 100, 640, 480)
+            self.setGeometry(100, 100, 800, 600)
+
+        current_state = self.windowState()
+        is_max_or_full_after_restore = bool(current_state & (Qt.WindowState.WindowMaximized | Qt.WindowState.WindowFullScreen))
+
+        if not is_max_or_full_after_restore and self.previous_geometry is not None:
+            print("Info: Window restored to normal state, clearing potentially stale previous_geometry.")
+            self.previous_geometry = None
+        elif is_max_or_full_after_restore and self.previous_geometry is None:
+             print("Warning: Window restored to Max/Full state, but no previous_geometry was loaded.")
+
         QTimer.singleShot(0, self._ensure_minimum_size_after_restore)
+        QTimer.singleShot(10, self.update_comparison_if_needed)
 
     def _ensure_minimum_size_after_restore(self):
         self.update_minimum_window_size()
@@ -685,31 +695,34 @@ class ImageComparisonApp(QWidget):
         super().changeEvent(event)
 
     def closeEvent(self, event):
-        geometry_to_save = None
         is_maximized = bool(self.windowState() & Qt.WindowState.WindowMaximized)
         is_fullscreen = bool(self.windowState() & Qt.WindowState.WindowFullScreen)
 
-        if not (is_maximized or is_fullscreen):
-            geometry_to_save = self.saveGeometry()
-        elif self.previous_geometry:
-             geometry_to_save = self.previous_geometry
+        current_geom_to_save = self.saveGeometry()
+        if current_geom_to_save and isinstance(current_geom_to_save, QByteArray):
+             try:
+                 geom_b64 = current_geom_to_save.toBase64().data().decode()
+                 self.save_setting("window_geometry", geom_b64)
+             except Exception as e:
+                 print(f"Error encoding or saving window_geometry on close: {e}")
         else:
-             geometry_to_save = None
+             print("Warning: Could not get valid current geometry to save.")
+             if self.settings.contains("window_geometry"):
+                 self.settings.remove("window_geometry")
 
-        if geometry_to_save is not None and isinstance(geometry_to_save, QByteArray):
+        if self.previous_geometry and isinstance(self.previous_geometry, QByteArray):
             try:
-                geom_b64 = geometry_to_save.toBase64().data().decode()
-                self.save_setting("window_geometry", geom_b64)
+                prev_geom_b64 = self.previous_geometry.toBase64().data().decode()
+                self.save_setting("previous_geometry", prev_geom_b64)
             except Exception as e:
-                 print(f"Error encoding or saving geometry on close: {e}")
-        elif geometry_to_save is None:
-            if self.settings.contains("window_geometry"):
-                try:
-                    self.settings.remove("window_geometry")
-                except Exception as e:
-                    print(f"Error removing 'window_geometry' setting on close: {e}")
+                print(f"Error encoding or saving previous_geometry on close: {e}")
         else:
-            print(f"Warning: Geometry to save on close is not QByteArray or None: {type(geometry_to_save)}")
+            if self.settings.contains("previous_geometry"):
+                try:
+                    self.settings.remove("previous_geometry")
+                except Exception as e:
+                    print(f"Error removing 'previous_geometry' setting on close: {e}")
+
         self.save_setting("capture_relative_x", self.capture_position_relative.x())
         self.save_setting("capture_relative_y", self.capture_position_relative.y())
         self.save_setting("movement_speed_per_sec", self.movement_speed_per_sec)
@@ -718,6 +731,7 @@ class ImageComparisonApp(QWidget):
         if hasattr(self, 'checkbox_file_names'):
             self.save_setting("include_file_names", self.checkbox_file_names.isChecked())
         self.save_setting("filename_color", self.file_name_color.name(QColor.NameFormat.HexArgb))
+
         try:
             obsolete_keys = [
                 "image1_paths", "image2_paths", "current_index1", "current_index2",
