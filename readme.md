@@ -90,6 +90,7 @@ yay -S improve-imgsli
 *   Requires: Flatpak
 ```bash
 flatpak install io.github.Loganavter.Improve-ImgSLI
+flatpak run io.github.Loganavter.Improve-ImgSLI
 ```
 
 **MacOS:**
@@ -138,9 +139,9 @@ In early December, I experimented with adaptive magnifier positioning tied to wi
 
 In February 2025, I resumed enhancing Improve ImgSLI. With Claude Sonnet 3.7, I added dynamic image swapping via a button, a language dictionary, and further magnifier improvements, along with a help tooltip in the top-right corner. Soon after, I gained access to Grok 3—first on X, then via its website after a quick Google search. Grok 3 proved invaluable: its DeepThink model efficiently resolved persistent bugs, outperforming DeepSeek, while its generous query limits and smart standard model kept development flowing smoothly. It optimized rendering updates, introduced file name display and editing, and fixed fullscreen mode issues.
 
-In late March 2025, I focused on improving cross-platform compatibility. Gemini and Grok, utilizing their web search functions, helped draft the necessary build and packaging scripts. While I initially hoped for community assistance with maintaining builds for different platforms, skepticism from some potential contributors about the project's AI-assisted origins meant this became a solo undertaking. Consequently, preparing each platform release was time-intensive, taking considerable effort, though this thorough process did help uncover and resolve several remaining bugs before the successful launch of the cross-platform versions.
+In late March 2025, I focused on improving cross-platform compatibility. Gemini and Grok, utilizing their web search functions, helped draft the necessary build and packaging scripts. While I initially hoped for community assistance with maintaining builds for different platforms, skepticism from some potential contributors about the project's AI-assisted origins meant this became a solo undertaking. Consequently, preparing each platform release was time-intensive, taking considerable effort, though this thorough process did help uncover and resolve several remaining bugs before the successful launch of the cross-platform versions. However, additional reviews and inspections delayed the publication on flathab until mid-April. But during this time, I also managed to fix a few more bugs and add a list cleanup feature.
 
-In general, if do not take into account the price of my personal time, which is about 3 weeks in total, then this project cost me about $ 30. I got the AUR maintainer for free, so we don't take it into account either :)
+In general, if do not take into account the price of my personal time, which is about 3.5 weeks in total, then this project cost me about $ 30. I got the AUR maintainer for free, so we don't take it into account either :)
 </details>
 <details>
 <summary>My personal view on project<a name="my-personal-view"></summary>
