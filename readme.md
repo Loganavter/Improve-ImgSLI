@@ -1,4 +1,4 @@
-![изображение](https://github.com/user-attachments/assets/6ab1f722-ee30-497f-921f-496a9e6901dd)<p align="center"><img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/logo-github.svg" alt="Logo" width="384">
+<p align="center"><img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/logo-github.svg" alt="Logo" width="384">
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square)](https://github.com/Loganavter/Improve-ImgSLI/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square)](LICENSE)
