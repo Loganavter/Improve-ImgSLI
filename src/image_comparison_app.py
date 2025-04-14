@@ -1588,7 +1588,6 @@ class ImageComparisonApp(QWidget):
             new_min_h += padding
             current_min = self.minimumSize()
             if current_min.width() != new_min_w or current_min.height() != new_min_h:
-                print(f"  >>> Setting new minimum window size: {new_min_w}x{new_min_h}")
                 self.setMinimumSize(new_min_w, new_min_h)
 
         except Exception as e:
