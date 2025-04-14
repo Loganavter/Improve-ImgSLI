@@ -237,30 +237,39 @@ class ImageComparisonApp(QWidget):
         QTimer.singleShot(0, self._perform_initial_image_setup)
 
     def _determine_font_path(self):
-        """Определяет и проверяет путь к файлу шрифта, сохраняет в self.font_path_absolute."""
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.font_file_name = 'SourceSans3-Regular.ttf'
+        self.font_path_absolute = None
+        flatpak_font_path = f"/app/share/fonts/truetype/{self.font_file_name}"
+        if os.path.exists(flatpak_font_path):
+            self.font_path_absolute = flatpak_font_path
+            print(f"Font Found (Flatpak Standard): {self.font_path_absolute}")
+            return
+
         expected_font_path = os.path.join(self.script_dir, 'font', self.font_file_name)
         if os.path.exists(expected_font_path):
             self.font_path_absolute = expected_font_path
-        else:
-            self.font_path_absolute = None
-            try:
-                if image_processing_mod and hasattr(image_processing_mod, '__file__'):
-                    ip_module_path = os.path.abspath(image_processing_mod.__file__)
-                    ip_module_dir = os.path.dirname(ip_module_path)
-                    fallback_font_path = os.path.join(ip_module_dir, self.font_file_name)
-                    if os.path.exists(fallback_font_path):
-                        self.font_path_absolute = fallback_font_path
-                        print(f"WARNING: Font not found at {expected_font_path}. Using fallback path near image_processing.py: {self.font_path_absolute}")
-                    else:
-                         print(f"ERROR: Font not found at expected path ({expected_font_path}) or fallback path ({fallback_font_path}). Will use default font.")
-                else:
-                    print(f"ERROR: Font not found at expected path ({expected_font_path}) and image_processing module not loaded correctly to check fallback. Will use default font.")
-            except Exception as e:
-                 print(f"ERROR: Error determining fallback font path: {e}. Will use default font.")
-            if self.font_path_absolute is None:
-                 print("CRITICAL FONT INFO: No valid custom font path found. Relying on system fonts (Arial/Default).")
+            return
+
+        try:
+            if image_processing_mod and hasattr(image_processing_mod, '__file__'):
+                ip_module_path = os.path.abspath(image_processing_mod.__file__)
+                ip_module_dir = os.path.dirname(ip_module_path)
+                fallback_path_direct = os.path.join(ip_module_dir, self.font_file_name)
+                if os.path.exists(fallback_path_direct):
+                    self.font_path_absolute = fallback_path_direct
+                    return
+
+                fallback_path_subdir = os.path.join(ip_module_dir, 'font', self.font_file_name)
+                if os.path.exists(fallback_path_subdir):
+                    self.font_path_absolute = fallback_path_subdir
+                    return
+
+        except Exception as e:
+             traceback.print_exc()
+
+        if self.font_path_absolute is None:
+             print("CRITICAL FONT INFO: No valid custom font path found after checking Flatpak, relative and fallback locations. Relying on system fonts (Arial/Default).")
 
     def _perform_initial_image_setup(self):
         self._set_current_image(1, trigger_update=False)
@@ -837,7 +846,9 @@ class ImageComparisonApp(QWidget):
         for url in urls:
             if url.isLocalFile():
                 path_str = url.toLocalFile()
-                if not path_str: unsupported_files.append(url.toString() + " (Conversion failed)"); continue
+                if not path_str:
+                    unsupported_files.append(f"{url.toString()} ({tr('Conversion failed detail', self.current_language)})")
+                    continue
                 display_name = os.path.basename(path_str) or path_str
                 try:
                     ext = os.path.splitext(path_str)[1].lower()
@@ -845,7 +856,8 @@ class ImageComparisonApp(QWidget):
                     if ext in supported_exts:
                         if os.path.isfile(path_str): local_file_paths.append(path_str)
                         else: errors.append(f"{display_name}: " + tr("File not found", self.current_language))
-                    else: unsupported_files.append(display_name + " (Unsupported ext)")
+                    else:
+                        unsupported_files.append(f"{display_name} ({tr('Unsupported extension detail', self.current_language)})")
                 except Exception as e: errors.append(f"{display_name}: {e}")
             else: non_local_urls.append(url.toString())
         if not local_file_paths:
@@ -959,8 +971,11 @@ class ImageComparisonApp(QWidget):
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
         loaded_count = 0; newly_added_indices = []; paths_actually_added = []; load_errors = []
         for file_path in file_paths:
-            if not isinstance(file_path, str) or not file_path: load_errors.append(f"{str(file_path)}: " + tr("Invalid item type or empty path", self.current_language)); continue
-            path_to_open = file_path; original_path_for_display = os.path.basename(path_to_open) or "Unnamed File"
+            if not isinstance(file_path, str) or not file_path:
+                load_errors.append(f"{str(file_path)}: " + tr("Invalid item type or empty path", self.current_language))
+                continue
+            path_to_open = file_path
+            original_path_for_display = os.path.basename(path_to_open) or tr("Unnamed File", self.current_language)
             if any(entry[1] == path_to_open for entry in target_list if len(entry) > 1 and entry[1]): continue
             try:
                 if not os.path.isfile(path_to_open): raise FileNotFoundError(f"File not found at path: {path_to_open}")
@@ -973,8 +988,13 @@ class ImageComparisonApp(QWidget):
                 target_list.append((temp_image, path_to_open, display_name))
                 newly_added_indices.append(len(target_list) - 1)
                 paths_actually_added.append(path_to_open); loaded_count += 1
-            except FileNotFoundError as e: error_detail = tr("File not found or inaccessible.", self.current_language); load_errors.append(f"{original_path_for_display}: {error_detail}")
-            except Exception as e: traceback.print_exc(); error_detail = f"{type(e).__name__}: {str(e)[:100]}"; load_errors.append(f"{original_path_for_display}: {error_detail}")
+            except FileNotFoundError as e:
+                error_detail = tr("File not found or inaccessible.", self.current_language)
+                load_errors.append(f"{original_path_for_display}: {error_detail}")
+            except Exception as e:
+                traceback.print_exc()
+                error_detail = f"{type(e).__name__}: {str(e)[:100]}"
+                load_errors.append(f"{original_path_for_display}: {error_detail}")
         if loaded_count > 0:
             self._update_combobox(image_number)
             if newly_added_indices:
@@ -982,7 +1002,8 @@ class ImageComparisonApp(QWidget):
                 if needs_manual_set: combobox.blockSignals(True); combobox.setCurrentIndex(new_index); combobox.blockSignals(False)
                 if image_number == 1: self.current_index1 = new_index; self._set_current_image(1, trigger_update=True)
                 else: self.current_index2 = new_index; self._set_current_image(2, trigger_update=True)
-        if load_errors: QMessageBox.warning(self, tr("Error Loading Images", self.current_language), tr("Some images could not be loaded:", self.current_language) + "\\n\\n - " + "\\n - ".join(load_errors))
+        if load_errors:
+             QMessageBox.warning(self, tr("Error Loading Images", self.current_language), tr("Some images could not be loaded:", self.current_language) + "\\n\\n - " + "\\n - ".join(load_errors))
 
     def _set_current_image(self, image_number, trigger_update=True):
         target_list = self.image_list1 if image_number == 1 else self.image_list2
@@ -1026,9 +1047,13 @@ class ImageComparisonApp(QWidget):
         current_index = self.current_index1 if image_number == 1 else self.current_index2
         combobox.blockSignals(True); combobox.clear()
         for i, item_data in enumerate(target_list):
-            display_name = "Invalid Data"
-            if isinstance(item_data, tuple) and len(item_data) >= 3: display_name = item_data[2] or "Unnamed"
-            elif isinstance(item_data, tuple) and len(item_data) >= 2: path = item_data[1]; display_name = os.path.basename(path) if path else "Unnamed"
+            display_name = tr("Invalid Data", self.current_language)
+            if isinstance(item_data, tuple) and len(item_data) >= 3:
+                display_name = item_data[2] or tr("Unnamed", self.current_language)
+            elif isinstance(item_data, tuple) and len(item_data) >= 2:
+                path = item_data[1]
+                display_name = os.path.basename(path) if path else tr("Unnamed", self.current_language)
+
             max_cb_len = 60; cb_name = (display_name[:max_cb_len-3] + "...") if len(display_name) > max_cb_len else display_name
             combobox.addItem(cb_name)
         new_index = -1
@@ -1261,10 +1286,8 @@ class ImageComparisonApp(QWidget):
         except Exception as e: print(f"ERROR saving setting '{key}' (value: {value}): {e}"); traceback.print_exc()
 
     def change_language(self, language):
-        """Меняет язык интерфейса."""
         if language not in ['en', 'ru', 'zh']: language = 'en'
         if language == self.current_language: return
-        print(f"Changing language to: {language}")
         self.current_language = language
         self.update_translations()
         self.update_file_names()
@@ -1402,13 +1425,6 @@ class ImageComparisonApp(QWidget):
         else:
             if self.length_warning_label.isVisible(): self.length_warning_label.setVisible(False); self.length_warning_label.setToolTip("")
 
-    def _create_flag_icon(self, base64_data):
-        try:
-            pixmap = QPixmap(); loaded = pixmap.loadFromData(base64.b64decode(base64_data))
-            if not loaded: print("Warning: Failed to load pixmap from base64 flag data."); return QIcon()
-            return QIcon(pixmap)
-        except Exception as e: print(f"Error decoding/loading flag icon: {e}"); return QIcon()
-
     def update_minimum_window_size(self):
         layout = self.layout()
         if not layout: return
@@ -1454,9 +1470,11 @@ class ImageComparisonApp(QWidget):
                 self.check_name_lengths()
                 if hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
                     self.update_comparison_if_needed()
+            if new_lang != self.current_language:
+                 self.change_language(new_lang)
+        
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = ImageComparisonApp()
     window.show()
     sys.exit(app.exec())
-
