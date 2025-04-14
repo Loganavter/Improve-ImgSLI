@@ -192,7 +192,7 @@ class SettingsDialog(QDialog):
         traceback.print_exc()
         return None
 translations_mod = load_module('translations')
-flag_icons_mod = load_module('flag_icons')
+flag_icons_mod = load_module('icons')
 image_processing_mod = load_module('image_processing')
 clickable_label_mod = load_module('clickable_label')
 if not all([translations_mod, flag_icons_mod, image_processing_mod, clickable_label_mod]):
