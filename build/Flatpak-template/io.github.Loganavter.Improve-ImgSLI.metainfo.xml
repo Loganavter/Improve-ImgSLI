@@ -15,15 +15,15 @@
   <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>     
 <screenshots>
   <screenshot type="default">
-    <image>https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.1/__1.png</image>
+    <image>https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/10.png</image>
     <caption>Vertical caption</caption>
   </screenshot>
   <screenshot>
-    <image>https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.1/__2.png</image>
+    <image>https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/11.png</image>
     <caption>Horizontal caption</caption>
   </screenshot>
     <screenshot>
-    <image>https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.1/__3.png</image>
+    <image>https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/12.png</image>
     <caption>List option</caption>
   </screenshot>
 </screenshots>
@@ -34,6 +34,6 @@
 </developer>
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="2.5.1" date="2025-04-12"/>
+    <release version="3.1.2" date="2025-04-14"/>
   </releases>
 </component>
