@@ -72,7 +72,7 @@ def tr(text, language='en'):
     if text not in lang_dict and text in translations['en']: return translations['en'][text]
     return lang_dict.get(text, text)
 """
-            elif mod_name == 'flag_icons':
+            elif mod_name == 'icons':
                 content = "FLAG_ICONS = {}\n"
             elif mod_name == 'image_processing':
                  content = ("from PyQt6.QtCore import QPoint, QPointF\n"
@@ -243,7 +243,6 @@ class ImageComparisonApp(QWidget):
         expected_font_path = os.path.join(self.script_dir, 'font', self.font_file_name)
         if os.path.exists(expected_font_path):
             self.font_path_absolute = expected_font_path
-            print(f"INFO: Font found at expected path: {self.font_path_absolute}")
         else:
             self.font_path_absolute = None
             try:
@@ -273,7 +272,6 @@ class ImageComparisonApp(QWidget):
 
     def _load_settings(self):
         self.settings = QSettings("MyCompany", "ImageComparisonApp")
-        print(f"DEBUG: Loading max_name_length from QSettings: {self.settings.value('max_name_length')}")
 
         def get_setting(key, default, target_type):
             value = self.settings.value(key, default)
@@ -706,23 +704,17 @@ class ImageComparisonApp(QWidget):
                     prev_geom_setting_value = self.settings.value("previous_geometry")
                     if prev_geom_setting_value and isinstance(prev_geom_setting_value, QByteArray) and not prev_geom_setting_value.isEmpty():
                         loaded_prev_geom_runtime = prev_geom_setting_value
-                    else:
-                        print("Warning: Saved state was maximized, but no valid previous_geometry found in settings.")
                 self.previous_geometry = loaded_prev_geom_runtime
                 if was_maximized:
-                    print("Restoring state: Maximized")
                     self.show()
                     self.showMaximized()
                 else:
-                    print("Restoring state: Normal")
                     self.showNormal()
                     self.previous_geometry = None
             except Exception as e:
-                print(f"Error restoring geometry/state: {e}")
                 restored_from_settings = False
                 self.previous_geometry = None
         if not restored_from_settings:
-            print("Setting default geometry and state.")
             self.setGeometry(100, 100, 800, 600)
             self.showNormal()
             self.previous_geometry = None
@@ -755,7 +747,6 @@ class ImageComparisonApp(QWidget):
         self.drag_overlay2.hide()
 
     def _init_warning_label(self):
-        """Инициализирует метку для предупреждения о длине имени."""
         self.length_warning_label = QLabel(self)
         self.length_warning_label.setStyleSheet("color: #FF8C00; font-weight: bold;")
         self.length_warning_label.setVisible(False)
@@ -1468,3 +1459,4 @@ if __name__ == '__main__':
     window = ImageComparisonApp()
     window.show()
     sys.exit(app.exec())
+
