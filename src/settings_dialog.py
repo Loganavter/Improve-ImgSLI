@@ -6,7 +6,6 @@ from PyQt6.QtCore import QSize, Qt
 try:
     from translations import tr as app_tr
 except ImportError:
-    print("Warning: translations.py not found. Using basic fallback for SettingsDialog.")
 
     def app_tr(text, lang='en', *args, **kwargs):
         try:
@@ -14,29 +13,12 @@ except ImportError:
         except (KeyError, IndexError):
             return text
 try:
-    from flag_icons import FLAG_ICONS
+    from icons import FLAG_ICONS
 except ImportError:
-    print("Warning: flag_icons.py not found. Language flags will be missing in SettingsDialog.")
     FLAG_ICONS = {}
 
 class SettingsDialog(QDialog):
-    """
-    A dialog window for configuring application settings like language
-    and maximum displayed name length.
-    """
-
     def __init__(self, current_language, current_max_length, min_len, max_len, parent=None, tr_func=None):
-        """
-        Initializes the Settings Dialog.
-        Args:
-            current_language (str): The currently active language code (e.g., 'en', 'ru').
-            current_max_length (int): The currently set maximum name length.
-            min_len (int): The minimum allowed value for maximum name length.
-            max_len (int): The maximum allowed value for maximum name length.
-            parent (QWidget, optional): The parent widget. Defaults to None.
-            tr_func (callable, optional): The translation function to use.
-                                          Defaults to the fallback or imported app_tr.
-        """
         super().__init__(parent)
         self.tr = tr_func if callable(tr_func) else app_tr
         self.current_language = current_language
@@ -84,13 +66,6 @@ class SettingsDialog(QDialog):
         self.setLayout(main_layout)
 
     def _setup_language_radio(self, radio_button, lang_code, base64_icon):
-        """
-        Configures the appearance and properties of a language radio button.
-        Args:
-            radio_button (QRadioButton): The radio button widget to configure.
-            lang_code (str): The language code associated with this button (e.g., 'en').
-            base64_icon (str | None): Base64 encoded string for the flag icon, or None.
-        """
         radio_button.setProperty("language_code", lang_code)
         radio_button.setText("")
         icon = QIcon()
