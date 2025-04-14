@@ -6,9 +6,9 @@
 **An intuitive, open-source tool for advanced image comparison and interaction.**
 
 <div style="display: flex; justify-content: space-between;">
-    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/__1.png" alt="Side-by-side comparison with vertical split" style="width: 32%;">
-    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/__2.png" alt="Magnifying glass tool inspecting details" style="width: 32%;">
-    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v2.3.4/media/__3.png" alt="Language selection interface" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/media/10.png" alt="Side-by-side comparison with vertical split" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/media/11.png" alt="Magnifying glass tool inspecting details" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/media/12.png" alt="Language selection interface" style="width: 32%;">
 </div>
 <details>
      <summary>Full resolution save</summary>
