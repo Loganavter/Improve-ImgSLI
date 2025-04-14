@@ -270,7 +270,7 @@ translations = {
         'Switch language to Brazilian Portuguese': '将语言更改为巴西葡萄牙语',
     },
     'pt_BR': {
-       'Improve ImgSLI': 'Melhore o ImgSLI',
+        'Improve ImgSLI': 'Melhore o ImgSLI',
         'Add Image(s) 1': 'Adicionar imagem(ns) 1',
         'Add Image(s) 2': 'Adicionar imagem(ns) 2',
         'Swap Image Lists': 'Trocar listas de imagens',
