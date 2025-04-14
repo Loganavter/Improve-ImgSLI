@@ -12,7 +12,7 @@
 </div>
 <details>
      <summary>Full resolution save</summary>
-     <img src="./media/__4.jpg" alt="Another feature example" style="width: 33%;">
+     <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.1/media/13.png" alt="Another feature example" style="width: 33%;">
 </details>
 
 ---
