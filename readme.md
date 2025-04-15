@@ -122,7 +122,7 @@ Contributions are welcome! Feel free to:
 *   Submit improvements by creating a [Pull Request](https://github.com/Loganavter/Improve-ImgSLI/pulls).
 
 <details>
-<summary>Unaccounted-for contributors (thanks a lot) evelopment-story"></summary>
+<summary>Unaccounted-for contributors (thanks a lot)</summary>
 Yes, I'm not very good at github, so it's possible.
 
 *   [johnpetersa19](https://github.com/Loganavter/Improve-ImgSLI/pull/14)
