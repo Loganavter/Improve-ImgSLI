@@ -121,6 +121,12 @@ Contributions are welcome! Feel free to:
 *   Report bugs or suggest features by opening an [Issue](https://github.com/Loganavter/Improve-ImgSLI/issues).
 *   Submit improvements by creating a [Pull Request](https://github.com/Loganavter/Improve-ImgSLI/pulls).
 
+<details>
+<summary>Unaccounted-for contributors (thanks a lot) evelopment-story"></summary>
+Yes, I'm not very good at github, so it's possible.
+
+*   [johnpetersa19](https://github.com/Loganavter/Improve-ImgSLI/pull/14)
+</details>
 ---
 
 ## License <a name="license"></a>
