@@ -1,5 +1,5 @@
 pkgname=improve-imgsli
-pkgver=2.6.2
+pkgver=3.1.2
 pkgrel=0
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=(any)
@@ -25,8 +25,9 @@ package() {
   install -vDm 644 src/clickable_label.py      "$pkgdir"/usr/lib/$pkgname/clickable_label.py
   install -vDm 644 src/image_comparison_app.py "$pkgdir"/usr/lib/$pkgname/image_comparison_app.py
   install -vDm 644 src/image_processing.py     "$pkgdir"/usr/lib/$pkgname/image_processing.py
-  install -vDm 644 src/flag_icons.py           "$pkgdir"/usr/lib/$pkgname/flag_icons.py
+  install -vDm 644 src/icons.py           "$pkgdir"/usr/lib/$pkgname/icons.py
   install -vDm 644 src/translations.py         "$pkgdir"/usr/lib/$pkgname/translations.py
+  install -vDm 644 src/settings_dialog.py         "$pkgdir"/usr/lib/$pkgname/settings_dialog.py
   install -vDm 644 src/font/SourceSans3-Regular.ttf "$pkgdir"/usr/lib/$pkgname/SourceSans3-Regular.ttf
   install -vDm 644 build/AUR-template/$pkgname.desktop "$pkgdir"/usr/share/applications/$pkgname.desktop
   install -vDm 644 src/icons/icon.png "$pkgdir"/usr/share/icons/hicolor/512x512/apps/$pkgname.png
