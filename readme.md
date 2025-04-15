@@ -69,7 +69,7 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 ## Installation <a name="installation"></a>
 
 **Python (from source):**
-*   Requires: Python, pip
+*   Requires: Python, pip, bash
 ```bash
 git clone https://github.com/Loganavter/Improve-ImgSLI.git
 cd Improve-ImgSLI
@@ -94,7 +94,7 @@ flatpak run io.github.Loganavter.Improve-ImgSLI
 ```
 
 **MacOS:**
-*   Coming soon... Stay tuned!
+*   Help wanted! We are looking for assistance to create and maintain a macOS build. [See the discussion and contribute here](https://github.com/Loganavter/Improve-ImgSLI/pull/15).
 
 ---
 
