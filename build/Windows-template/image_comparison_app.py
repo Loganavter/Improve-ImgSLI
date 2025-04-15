@@ -60,7 +60,7 @@ class ImageComparisonApp(QWidget):
         self.settings = QSettings('MyCompany', 'ImageComparisonApp')
         self._load_settings()
         self.setWindowTitle(tr('Improve ImgSLI', self.current_language))
-        window_icon_path = get_resource_path('icons/33.ico')
+        window_icon_path = get_resource_path('icons/icon.ico')
         if os.path.exists(window_icon_path):
             app_icon = QIcon(window_icon_path)
             if not app_icon.isNull():
