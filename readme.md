@@ -40,13 +40,17 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 
 **Core Comparison & Viewing:**
 *   Intuitive image splitting (horizontal/vertical) controlled by mouse.
-*   Save the current comparison view as a full-resolution image.
+*   Display original resolution (WxH) for each loaded image.
+*   Automatic resizing of images to match the largest dimensions for consistent comparison.
+*   Save the current comparison view (including split line, magnifier, capture marker, and optional file names) as a full-resolution image.
 
 **Magnifier Tool:**
 *   Powerful Magnifier for close inspection.
+*   Visual marker (red circle) indicating the magnifier's capture area on the main image.
 *   Adjustable magnification area size and magnifier display size.
-*   Independent magnifier movement using WASD keys.
-*   Adjust distance between magnifiers using Q and E keys.
+*   Adjustable movement speed for WASD magnifier control.
+*   Independent magnifier movement using WASD keys (with smooth interpolation).
+*   Adjust distance between magnifiers using Q and E keys (with smooth interpolation).
 *   Option to combine magnifiers for direct comparison of magnified areas.
 *   Freeze the magnifier's view position.
 
@@ -54,14 +58,15 @@ Improved ImgSLI is an open-source, non-proprietary software designed for intuiti
 *   Drag-and-drop support for loading one or multiple images per panel.
 *   Select loaded images via dropdown menus when multiple images are loaded into a panel.
 *   Swap entire image lists between panels with a single button click.
+*   Clear image lists for each panel individually using Trash (🗑️) buttons.
 *   Edit image names directly within the application interface.
 *   Option to include file names in the saved comparison image.
 *   Customizable font size and color for included file names.
 *   Adjustable maximum length for displayed file names with visual warnings.
 
 **User Experience & Interface:**
-*   Multilingual support (English, Russian, Chinese) with flag-based language selection.
-*   Dynamic window resizing with adaptive content rendering.
+*   Multilingual support (English, Russian, Chinese, Brazilian Portuguese) with flag-based language selection.
+*   Dynamic window resizing with adaptive content rendering(relative coords).
 *   Persistent settings for window state, language, and various display preferences across sessions.
 
 ---
@@ -106,7 +111,7 @@ flatpak run io.github.Loganavter.Improve-ImgSLI
 4.  **Magnify:** Activate the Magnifier tool via its checkbox. In this mode, clicking or dragging on the image sets the central capture point. Use WASD keys to move the magnified view areas independently. Use Q/E keys to adjust the distance between the magnifier circles. You can also freeze the capture point using the corresponding checkbox (WASD will then move the frozen point).
 5.  **Save:** Click the "Save Result" button in the UI to export the current comparison view as a single image file.
 
-https://github.com/user-attachments/assets/08767c4f-9ae4-4bfc-8c1e-aab14b1dc830
+https://github.com/user-attachments/assets/f2c843c2-31eb-4fb9-8eef-2d28630f2baf
 
 ---
 
