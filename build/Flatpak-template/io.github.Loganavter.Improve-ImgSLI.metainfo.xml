@@ -4,25 +4,39 @@
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
   <name>Improve ImgSLI</name>
-  <summary>Image comparison tool with magnifying glass feature</summary>
+  <summary>Image comparison with magnifier</summary>
   <description>
     <p>
-      Image comparison with magnifier
+      Improve ImgSLI is a versatile open-source tool designed for detailed side-by-side image comparison. Easily spot differences and inspect fine details using its synchronized magnifying glass feature. Ideal for designers, photographers, AI art/upscaling enthusiasts, and anyone needing precise visual analysis.
+    </p>
+    <p>Key features include:</p>
+    <ul>
+      <li>Compare images with an adjustable horizontal or vertical split line.</li>
+      <li>Use the powerful synchronized magnifier with flexible controls: adjustable capture/display size, position control (mouse & WASD/QE keys), view freezing, and combined magnifiers.</li>
+      <li>Load single or multiple images per comparison panel via drag-and-drop or file dialogs.</li>
+      <li>Easily switch between loaded images using dropdown selectors.</li>
+      <li>Save the complete comparison view (including split line, magnifier markers, and optional filenames) as a full-resolution image.</li>
+      <li>Swap image lists between panels with a single click.</li>
+      <li>Edit displayed file names directly within the interface.</li>
+      <li>Multi-language interface (English, Russian, Chinese, Brazilian Portuguese) with persistent settings.</li>
+    </ul>
+    <p>
+      The application is intuitive and distributed under the free MIT License.
     </p>
   </description>
   <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>
   <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>     
 <screenshots>
   <screenshot type="default">
-    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.0/screenshots/10.png</image>
+    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/flatpak_1.png</image>
     <caption>Vertical caption</caption>
   </screenshot>
   <screenshot>
-    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.0/screenshots/11.png</image>
+    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/flatpak_2.png</image>
     <caption>Horizontal caption</caption>
   </screenshot>
     <screenshot>
-    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.0/screenshots/12.png</image>
+    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/flatpak_3.png</image>
     <caption>List option</caption>
   </screenshot>
 </screenshots>
