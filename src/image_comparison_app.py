@@ -88,30 +88,81 @@ class ImageComparisonApp(QWidget):
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.font_file_name = 'SourceSans3-Regular.ttf'
         self.font_path_absolute = None
+        flatpak_exists = False
+        relative_exists = False 
+        ip_fallback_direct_exists = False 
+        ip_fallback_subdir_exists = False
         flatpak_font_path = f'/app/share/fonts/truetype/{self.font_file_name}'
-        if os.path.exists(flatpak_font_path):
-            self.font_path_absolute = flatpak_font_path
-            return
-        expected_font_path = os.path.join(self.script_dir, 'font', self.font_file_name)
-        if os.path.exists(expected_font_path):
-            self.font_path_absolute = expected_font_path
-            return
+        print(f"DEBUG: Checking Flatpak font path: {flatpak_font_path}")
         try:
-            if image_processing_mod and hasattr(image_processing_mod, '__file__'):
+            flatpak_exists = os.path.exists(flatpak_font_path)
+            print(f"DEBUG: Flatpak font path exists: {flatpak_exists}")
+            if flatpak_exists:
+                self.font_path_absolute = flatpak_font_path
+                print(f"DEBUG: Found font at Flatpak path: {self.font_path_absolute}")
+                return 
+        except Exception as e:
+            print(f"DEBUG: Error checking Flatpak path: {e}")
+            flatpak_exists = False
+        expected_font_path = os.path.join(self.script_dir, 'font', self.font_file_name)
+        print(f"DEBUG: Checking relative font path: {expected_font_path}")
+        try:
+            relative_exists = os.path.exists(expected_font_path)
+            print(f"DEBUG: Relative font path exists: {relative_exists}")
+            if relative_exists:
+                self.font_path_absolute = expected_font_path
+                print(f"DEBUG: Found font at relative path: {self.font_path_absolute}")
+                return 
+        except Exception as e:
+            print(f"DEBUG: Error checking relative path: {e}")
+            relative_exists = False
+        fallback_path_direct = None
+        fallback_path_subdir = None
+        try:
+            if image_processing_mod and hasattr(image_processing_mod, '__file__') and image_processing_mod.__file__:
                 ip_module_path = os.path.abspath(image_processing_mod.__file__)
                 ip_module_dir = os.path.dirname(ip_module_path)
                 fallback_path_direct = os.path.join(ip_module_dir, self.font_file_name)
-                if os.path.exists(fallback_path_direct):
-                    self.font_path_absolute = fallback_path_direct
-                    return
+                print(f"DEBUG: Checking fallback font path (direct): {fallback_path_direct}")
+                try:
+                    ip_fallback_direct_exists = os.path.exists(fallback_path_direct)
+                    print(f"DEBUG: Fallback font path (direct) exists: {ip_fallback_direct_exists}")
+                    if ip_fallback_direct_exists:
+                        self.font_path_absolute = fallback_path_direct
+                        print(f"DEBUG: Found font at fallback path (direct): {self.font_path_absolute}")
+                        return 
+                except Exception as e_fb_direct:
+                    print(f"DEBUG: Error checking fallback path (direct): {e_fb_direct}")
+                    ip_fallback_direct_exists = False
                 fallback_path_subdir = os.path.join(ip_module_dir, 'font', self.font_file_name)
-                if os.path.exists(fallback_path_subdir):
-                    self.font_path_absolute = fallback_path_subdir
-                    return
+                print(f"DEBUG: Checking fallback font path (subdir): {fallback_path_subdir}")
+                try:
+                    ip_fallback_subdir_exists = os.path.exists(fallback_path_subdir)
+                    print(f"DEBUG: Fallback font path (subdir) exists: {ip_fallback_subdir_exists}")
+                    if ip_fallback_subdir_exists:
+                        self.font_path_absolute = fallback_path_subdir
+                        print(f"DEBUG: Found font at fallback path (subdir): {self.font_path_absolute}")
+                        return 
+                except Exception as e_fb_subdir:
+                    print(f"DEBUG: Error checking fallback path (subdir): {e_fb_subdir}")
+                    ip_fallback_subdir_exists = False
+            else:
+                print("DEBUG: image_processing module or its file path not available for fallback checks.")
+
         except Exception as e:
             print(f'Info: Error checking fallback font locations near image_processing: {e}')
         if self.font_path_absolute is None:
-            print('CRITICAL FONT INFO: No valid custom font path found after checking Flatpak, relative and fallback locations. Relying on system fonts (Arial/Default).')
+            checked_paths = [
+                f"Flatpak ('{flatpak_font_path}', exists={flatpak_exists})",
+                f"Relative ('{expected_font_path}', exists={relative_exists})"
+            ]
+            if fallback_path_direct:
+                checked_paths.append(f"Fallback Direct ('{fallback_path_direct}', exists={ip_fallback_direct_exists})")
+            if fallback_path_subdir:
+                checked_paths.append(f"Fallback Subdir ('{fallback_path_subdir}', exists={ip_fallback_subdir_exists})")
+
+            checked_paths_str = ",\n  ".join(checked_paths)
+            print(f'CRITICAL FONT INFO: No valid custom font path found after checking:\n  {checked_paths_str}\nRelying on system fonts (Arial/Default).')
 
     def _perform_initial_image_setup(self):
         self._set_current_image(1, trigger_update=False)
@@ -938,7 +989,6 @@ class ImageComparisonApp(QWidget):
                     print(f'Error checking image dimensions in update_comparison_if_needed: {e}')
                     needs_resize = True
             if needs_resize:
-                print('Resizing images...')
                 try:
                     resize_images_processor(self)
                     if not self.image1 or not self.image2:
@@ -1080,7 +1130,6 @@ class ImageComparisonApp(QWidget):
                 error_detail = f'Unexpected {type(e).__name__}: {str(e)[:100]}'
                 load_errors.append(f'{original_path_for_display}: {error_detail}')
         if loaded_count > 0 or target_selection_index != (self.current_index1 if image_number == 1 else self.current_index2):
-            print(f'Finished processing files for slot {image_number}. Attempting to select index: {target_selection_index}')
             final_index_to_set = -1
             if 0 <= target_selection_index < len(target_list):
                 final_index_to_set = target_selection_index
@@ -1092,7 +1141,6 @@ class ImageComparisonApp(QWidget):
                     final_index_to_set = 0
                     print(f'Warning: Target index {target_selection_index} invalid and no new items, falling back to index 0.')
             if final_index_to_set != -1:
-                print(f'Setting current index for slot {image_number} to: {final_index_to_set}')
                 if image_number == 1:
                     self.current_index1 = final_index_to_set
                 else:
@@ -1169,7 +1217,6 @@ class ImageComparisonApp(QWidget):
             max_dims_changed = True
             self.image1 = None
             self.image2 = None
-            print('Max dimensions changed, invalidated resized images.')
         self.update_file_names()
         self._update_resolution_labels()
         if trigger_update:
@@ -1280,7 +1327,6 @@ class ImageComparisonApp(QWidget):
             print(f'Warning: Cannot update name for slot {image_number}, index {current_index} is invalid.')
 
     def swap_images(self):
-        print('Swapping image lists...')
         self.image_list1, self.image_list2 = (self.image_list2, self.image_list1)
         self.current_index1, self.current_index2 = (self.current_index2, self.current_index1)
         self._update_combobox(1)
@@ -1947,9 +1993,6 @@ class ImageComparisonApp(QWidget):
                 QMessageBox.warning(self, self.tr('Error', self.current_language), f'Error processing settings dialog results: {e}')
                 traceback.print_exc()
 if __name__ == '__main__':
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
     app = QApplication(sys.argv)
     window = ImageComparisonApp()
     window.show()
