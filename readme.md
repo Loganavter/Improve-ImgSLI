@@ -6,13 +6,13 @@
 **An intuitive, open-source tool for advanced image comparison and interaction.**
 
 <div style="display: flex; justify-content: space-between;">
-    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/media/10.png" alt="Side-by-side comparison with vertical split" style="width: 32%;">
-    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/media/11.png" alt="Magnifying glass tool inspecting details" style="width: 32%;">
-    <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.0/media/12.png" alt="Language selection interface" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_1.png" alt="Side-by-side comparison with vertical split" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_2.png" alt="Magnifying glass tool inspecting details" style="width: 32%;">
+    <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_3.png" alt="Language selection interface" style="width: 32%;">
 </div>
 <details>
      <summary>Full resolution save</summary>
-     <img src="https://raw.githubusercontent.com/Loganavter/Improve-ImgSLI/v3.1.1/media/13.png" alt="Another feature example" style="width: 33%;">
+     <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/fullres/github_fullres.png" alt="Another feature example" style="width: 33%;">
 </details>
 
 ---
