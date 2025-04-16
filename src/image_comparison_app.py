@@ -89,68 +89,56 @@ class ImageComparisonApp(QWidget):
         self.font_file_name = 'SourceSans3-Regular.ttf'
         self.font_path_absolute = None
         flatpak_exists = False
-        relative_exists = False 
-        ip_fallback_direct_exists = False 
+        relative_exists = False
+        ip_fallback_direct_exists = False
         ip_fallback_subdir_exists = False
+
         flatpak_font_path = f'/app/share/fonts/truetype/{self.font_file_name}'
-        print(f"DEBUG: Checking Flatpak font path: {flatpak_font_path}")
         try:
             flatpak_exists = os.path.exists(flatpak_font_path)
-            print(f"DEBUG: Flatpak font path exists: {flatpak_exists}")
             if flatpak_exists:
                 self.font_path_absolute = flatpak_font_path
-                print(f"DEBUG: Found font at Flatpak path: {self.font_path_absolute}")
-                return 
-        except Exception as e:
-            print(f"DEBUG: Error checking Flatpak path: {e}")
+                return
+        except Exception:
             flatpak_exists = False
+
         expected_font_path = os.path.join(self.script_dir, 'font', self.font_file_name)
-        print(f"DEBUG: Checking relative font path: {expected_font_path}")
         try:
             relative_exists = os.path.exists(expected_font_path)
-            print(f"DEBUG: Relative font path exists: {relative_exists}")
             if relative_exists:
                 self.font_path_absolute = expected_font_path
-                print(f"DEBUG: Found font at relative path: {self.font_path_absolute}")
-                return 
-        except Exception as e:
-            print(f"DEBUG: Error checking relative path: {e}")
+                return
+        except Exception:
             relative_exists = False
+
         fallback_path_direct = None
         fallback_path_subdir = None
         try:
             if image_processing_mod and hasattr(image_processing_mod, '__file__') and image_processing_mod.__file__:
                 ip_module_path = os.path.abspath(image_processing_mod.__file__)
                 ip_module_dir = os.path.dirname(ip_module_path)
+
                 fallback_path_direct = os.path.join(ip_module_dir, self.font_file_name)
-                print(f"DEBUG: Checking fallback font path (direct): {fallback_path_direct}")
                 try:
                     ip_fallback_direct_exists = os.path.exists(fallback_path_direct)
-                    print(f"DEBUG: Fallback font path (direct) exists: {ip_fallback_direct_exists}")
                     if ip_fallback_direct_exists:
                         self.font_path_absolute = fallback_path_direct
-                        print(f"DEBUG: Found font at fallback path (direct): {self.font_path_absolute}")
-                        return 
-                except Exception as e_fb_direct:
-                    print(f"DEBUG: Error checking fallback path (direct): {e_fb_direct}")
+                        return
+                except Exception:
                     ip_fallback_direct_exists = False
+
                 fallback_path_subdir = os.path.join(ip_module_dir, 'font', self.font_file_name)
-                print(f"DEBUG: Checking fallback font path (subdir): {fallback_path_subdir}")
                 try:
                     ip_fallback_subdir_exists = os.path.exists(fallback_path_subdir)
-                    print(f"DEBUG: Fallback font path (subdir) exists: {ip_fallback_subdir_exists}")
                     if ip_fallback_subdir_exists:
                         self.font_path_absolute = fallback_path_subdir
-                        print(f"DEBUG: Found font at fallback path (subdir): {self.font_path_absolute}")
-                        return 
-                except Exception as e_fb_subdir:
-                    print(f"DEBUG: Error checking fallback path (subdir): {e_fb_subdir}")
+                        return
+                except Exception:
                     ip_fallback_subdir_exists = False
-            else:
-                print("DEBUG: image_processing module or its file path not available for fallback checks.")
 
-        except Exception as e:
-            print(f'Info: Error checking fallback font locations near image_processing: {e}')
+        except Exception:
+            pass
+
         if self.font_path_absolute is None:
             checked_paths = [
                 f"Flatpak ('{flatpak_font_path}', exists={flatpak_exists})",
