@@ -349,9 +349,7 @@ def draw_split_line_pil(image_to_draw_on, image1_param, image2_param, split_posi
         traceback.print_exc()
 
 def display_result_processor(app):
-    print('DEBUG: display_result_processor called.')
     if not app.image1 or not app.image2:
-        print('DEBUG: display_result: app.image1 or app.image2 is None. Cannot proceed.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
         app.result_image = None
@@ -383,7 +381,6 @@ def display_result_processor(app):
             if split_pos_abs < height:
                 result.paste(img2_rgba.crop((0, split_pos_abs, width, height)), (0, split_pos_abs))
         app.result_image = result
-        print('DEBUG: display_result: Combined base image (app.result_image) created successfully.')
     except ValueError as ve:
         print(f'ERROR in display_result_processor during paste (ValueError): {ve}')
         print(f'  is_horizontal={app.is_horizontal}, size={width}x{height}, split_pos_ratio={app.split_position:.3f}, split_pos_abs={split_pos_abs}')
@@ -405,7 +402,6 @@ def display_result_processor(app):
         if image_to_display.mode != 'RGBA':
             print('Warning: display_result: Copied result_image is not RGBA, converting.')
             image_to_display = image_to_display.convert('RGBA')
-        print(f'DEBUG: display_result: image_to_display ready for overlays, mode={image_to_display.mode}')
     except Exception as e_copy:
         print(f'ERROR: Failed to copy/convert app.result_image: {e_copy}')
         if hasattr(app.image_label, 'clear'):
@@ -414,9 +410,7 @@ def display_result_processor(app):
         return
     orig_width, orig_height = image_to_display.size
     display_width, display_height = get_scaled_pixmap_dimensions(app)
-    print(f'DEBUG: display_result: Original size={orig_width}x{orig_height}, Scaled display size={display_width}x{display_height}')
     if display_width <= 0 or display_height <= 0:
-        print('DEBUG: display_result: Calculated display width/height is zero or negative. Clearing.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
         app.pixmap_width, app.pixmap_height = (0, 0)
@@ -452,7 +446,6 @@ def display_result_processor(app):
     except Exception as e_line:
         print(f'Error drawing split line on overlay: {e_line}')
     if app.use_magnifier and app.original_image1 and app.original_image2:
-        print('DEBUG: display_result: Drawing magnifier...')
         coords = get_original_coords(app, drawing_width=orig_width, drawing_height=orig_height, display_width=display_width, display_height=display_height, use_visual_offset=True)
         if coords and coords[0] is not None:
             capture_center_orig1, capture_center_orig2, capture_size_orig1, capture_size_orig2, magnifier_midpoint_drawing, magnifier_size_pixels_drawing, edge_spacing_pixels_drawing = coords
@@ -470,17 +463,12 @@ def display_result_processor(app):
             if magnifier_midpoint_drawing:
                 is_dragging_capture = getattr(app, '_is_dragging_capture_point', False)
                 draw_magnifier_pil(draw_overlay, overlay, app.original_image1, app.original_image2, capture_center_orig1, capture_center_orig2, capture_size_orig1, capture_size_orig2, magnifier_midpoint_drawing, magnifier_size_pixels_drawing, edge_spacing_pixels_drawing, app, is_dragging=is_dragging_capture)
-        else:
-            print('DEBUG: display_result: get_original_coords returned None, skipping magnifier drawing.')
     try:
-        print('DEBUG: display_result: Before alpha_composite')
         image_to_display = Image.alpha_composite(image_to_display, overlay)
-        print(f'DEBUG: display_result: After alpha_composite, mode={image_to_display.mode}')
     except Exception as e_composite:
         print(f'ERROR during alpha_composite: {e_composite}')
     draw_final = ImageDraw.Draw(image_to_display)
     if hasattr(app, 'checkbox_file_names') and app.checkbox_file_names.isChecked():
-        print('DEBUG: display_result: Drawing file names...')
         if not app.is_horizontal:
             split_position_abs_names = max(0, min(orig_width, int(round(orig_width * app.split_position))))
             line_width_names, line_height_names = (line_thickness, 0)
@@ -490,36 +478,28 @@ def display_result_processor(app):
         color_tuple = app.file_name_color.getRgb()
         draw_file_names_on_image(app, draw_final, image_to_display, split_position_abs_names, orig_width, orig_height, line_width_names, line_height_names, color_tuple)
     try:
-        print(f'DEBUG: display_result: Final image mode BEFORE conversion: {image_to_display.mode}, size: {image_to_display.size}')
         if image_to_display.mode != 'RGBA':
             print(f'ERROR: Final image mode is {image_to_display.mode} INSTEAD OF RGBA before QImage conversion!')
             image_to_display = image_to_display.convert('RGBA')
         qimage = QImage(image_to_display.tobytes('raw', 'RGBA'), orig_width, orig_height, QImage.Format.Format_RGBA8888)
         if qimage.isNull():
-            print('DEBUG: display_result: QImage is Null AFTER conversion.')
             raise ValueError('Failed to create QImage from PIL image bytes')
         pixmap = QPixmap.fromImage(qimage)
         if pixmap.isNull():
-            print('DEBUG: display_result: QPixmap is Null AFTER conversion.')
             raise ValueError('Failed to create QPixmap from QImage')
-        print('DEBUG: display_result: Conversion to QPixmap successful.')
     except Exception as e_conv:
         print(f'Error converting final PIL image to QPixmap: {e_conv}')
         traceback.print_exc()
-        print('DEBUG: display_result: Clearing label due to conversion error.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
         app.pixmap_width, app.pixmap_height = (0, 0)
         return
     if not pixmap.isNull():
-        print(f'DEBUG: display_result: Scaling pixmap to {target_display_size.width()}x{target_display_size.height()}')
         scaled_pixmap = pixmap.scaled(target_display_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         if scaled_pixmap.isNull():
-            print('DEBUG: display_result: Scaled pixmap is Null!')
             if hasattr(app.image_label, 'clear'):
                 app.image_label.clear()
         else:
-            print('DEBUG: display_result: Setting scaled pixmap to label.')
             app.image_label.setPixmap(scaled_pixmap)
     else:
         print('Warning: Final QPixmap is null before setting to label.')
