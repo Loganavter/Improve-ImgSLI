@@ -617,19 +617,11 @@ class ImageComparisonApp(QWidget):
         geom_setting = self.loaded_geometry
         was_maximized = self.loaded_was_maximized
         loaded_prev_geom_runtime = None
-        print('--- Restoring Geometry and State (Using OLD logic) ---')
         geom_valid = geom_setting and isinstance(geom_setting, QByteArray) and (not geom_setting.isEmpty())
-        print(f'Loaded geom_setting is valid: {geom_valid}')
-        print(f'Loaded was_maximized flag: {was_maximized}')
         restored_from_settings = False
         if geom_valid:
             try:
-                print('Attempting self.restoreGeometry()...')
                 restored_geom_ok = self.restoreGeometry(geom_setting)
-                if not restored_geom_ok:
-                    print('Warning: restoreGeometry returned false.')
-                else:
-                    print('restoreGeometry() call succeeded.')
                 restored_from_settings = True
                 if was_maximized:
                     prev_geom_setting_value = self.settings.value('previous_geometry')
@@ -640,15 +632,12 @@ class ImageComparisonApp(QWidget):
                         print("Warning: was_maximized is True, but no valid 'previous_geometry' found in settings.")
                 self.previous_geometry = loaded_prev_geom_runtime
                 if was_maximized:
-                    print('Calling self.showMaximized().')
                     self.show()
                     self.showMaximized()
                 else:
-                    print('Calling self.showNormal().')
                     self.showNormal()
                     self.previous_geometry = None
             except Exception as e:
-                print(f'Error during restoreGeometry/show: {e}')
                 traceback.print_exc()
                 restored_from_settings = False
                 self.previous_geometry = None
@@ -659,7 +648,6 @@ class ImageComparisonApp(QWidget):
             self.previous_geometry = None
         QTimer.singleShot(0, self._ensure_minimum_size_after_restore)
         QTimer.singleShot(10, self.update_comparison_if_needed)
-        print('--- Geometry and State restoration attempt complete (OLD logic) ---')
 
     def _ensure_minimum_size_after_restore(self):
         self.update_minimum_window_size()
@@ -973,12 +961,9 @@ class ImageComparisonApp(QWidget):
             self.resolution_label2.setToolTip(tooltip2)
 
     def update_comparison_if_needed(self):
-        print('DEBUG: update_comparison_if_needed called.')
         if self.resize_in_progress:
-            print('DEBUG: update_comparison_if_needed: Skipping update due to resize_in_progress.')
             return
         if not self.original_image1 or not self.original_image2:
-            print('DEBUG: update_comparison_if_needed: Missing original_image1 or original_image2.')
             if hasattr(self, 'image_label'):
                 self.image_label.clear()
             self.result_image = None
@@ -989,19 +974,16 @@ class ImageComparisonApp(QWidget):
         needs_resize = False
         if not self.image1 or not self.image2:
             needs_resize = True
-            print('DEBUG: update_comparison_if_needed: Need resize because self.image1 or self.image2 is None.')
         else:
             try:
                 max_w = max(self.original_image1.width, self.original_image2.width)
                 max_h = max(self.original_image1.height, self.original_image2.height)
                 if self.image1.size != (max_w, max_h) or self.image2.size != (max_w, max_h):
                     needs_resize = True
-                    print(f'DEBUG: update_comparison_if_needed: Need resize due to size mismatch. Expected ({max_w},{max_h}), got image1={self.image1.size}, image2={self.image2.size}')
             except Exception as e:
                 print(f'Error checking image dimensions in update_comparison_if_needed: {e}')
                 needs_resize = True
         if needs_resize:
-            print('DEBUG: update_comparison_if_needed: Calling resize_images_processor...')
             try:
                 resize_images_processor(self)
                 if not self.image1 or not self.image2:
@@ -1011,7 +993,6 @@ class ImageComparisonApp(QWidget):
                     self.result_image = None
                     self.pixmap_width, self.pixmap_height = (0, 0)
                     return
-                print('DEBUG: update_comparison_if_needed: resize_images_processor finished successfully.')
             except Exception as e_resize:
                 print(f'ERROR during resize_images_processor call: {e_resize}')
                 traceback.print_exc()
@@ -1022,7 +1003,6 @@ class ImageComparisonApp(QWidget):
                 self.pixmap_width, self.pixmap_height = (0, 0)
                 return
         if self.image1 and self.image2:
-            print('DEBUG: update_comparison_if_needed: Calling display_result_processor...')
             try:
                 display_result_processor(self)
             except Exception as e_display:
@@ -2003,18 +1983,4 @@ class ImageComparisonApp(QWidget):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = ImageComparisonApp()
-
-    def log_final_state():
-        if window:
-            print(f'\n--- Post-Show Check (500ms) ---')
-            print(f'Window State: {window.windowState()}, isMaximized: {window.isMaximized()}')
-            print(f'Window Geometry: {window.geometry()}')
-            runtime_prev_geom_valid = bool(hasattr(window, 'previous_geometry') and window.previous_geometry is not None and isinstance(window.previous_geometry, QByteArray) and (not window.previous_geometry.isNull()) and (not window.previous_geometry.isEmpty()))
-            print(f'Runtime previous_geometry is valid: {runtime_prev_geom_valid}')
-            if runtime_prev_geom_valid:
-                print(f'  previous_geometry size: {window.previous_geometry.size()}')
-            print(f'-----------------------------\n')
-        else:
-            print('\n--- Post-Show Check (500ms): Window no longer exists. ---\n')
-    QTimer.singleShot(500, log_final_state)
     sys.exit(app.exec())
