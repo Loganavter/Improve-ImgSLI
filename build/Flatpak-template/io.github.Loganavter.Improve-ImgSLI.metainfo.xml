@@ -12,7 +12,7 @@
     <p>Key features include:</p>
     <ul>
       <li>Compare images with an adjustable horizontal or vertical split line.</li>
-      <li>Use the powerful synchronized magnifier with flexible controls: adjustable capture/display size, position control (mouse & WASD/QE keys), view freezing, and combined magnifiers.</li>
+      <li>Use the powerful synchronized magnifier with flexible controls: adjustable capture/display size, position control (mouse and WASD/QE keys), view freezing, and combined magnifiers.</li>
       <li>Load single or multiple images per comparison panel via drag-and-drop or file dialogs.</li>
       <li>Easily switch between loaded images using dropdown selectors.</li>
       <li>Save the complete comparison view (including split line, magnifier markers, and optional filenames) as a full-resolution image.</li>
@@ -47,6 +47,6 @@
 </developer>
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="3.1.7" date="2025-04-15"/>
+    <release version="3.1.8" date="2025-04-15"/>
   </releases>
 </component>
