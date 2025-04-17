@@ -973,65 +973,71 @@ class ImageComparisonApp(QWidget):
             self.resolution_label2.setToolTip(tooltip2)
 
     def update_comparison_if_needed(self):
+        print('DEBUG: update_comparison_if_needed called.')
         if self.resize_in_progress:
+            print('DEBUG: update_comparison_if_needed: Skipping update due to resize_in_progress.')
             return
-        if self.original_image1 and self.original_image2:
-            needs_resize = False
-            if not self.image1 or not self.image2:
-                needs_resize = True
-            else:
-                try:
-                    if not (hasattr(self.original_image1, 'size') and hasattr(self.original_image1, 'width') and hasattr(self.original_image1, 'height') and hasattr(self.original_image2, 'size') and hasattr(self.original_image2, 'width') and hasattr(self.original_image2, 'height')):
-                        print('Warning: Original images missing size/width/height attributes. Forcing resize.')
-                        needs_resize = True
-                    else:
-                        max_w = max(self.original_image1.width, self.original_image2.width)
-                        max_h = max(self.original_image1.height, self.original_image2.height)
-                        if not hasattr(self.image1, 'size') or self.image1.size != (max_w, max_h):
-                            needs_resize = True
-                        elif not hasattr(self.image2, 'size') or self.image2.size != (max_w, max_h):
-                            needs_resize = True
-                except Exception as e:
-                    print(f'Error checking image dimensions in update_comparison_if_needed: {e}')
-                    needs_resize = True
-            if needs_resize:
-                try:
-                    resize_images_processor(self)
-                    if not self.image1 or not self.image2:
-                        print('Resize failed or resulted in missing images.')
-                        if hasattr(self, 'image_label'):
-                            self.image_label.clear()
-                        self.result_image = None
-                        self.pixmap_width, self.pixmap_height = (0, 0)
-                        return
-                except Exception as e_resize:
-                    print(f'ERROR during resize_images_processor call: {e_resize}')
-                    traceback.print_exc()
-                    QMessageBox.critical(self, tr('Error', self.current_language), f'Error during image resizing:\n{e_resize}')
-                    if hasattr(self, 'image_label'):
-                        self.image_label.clear()
-                    self.result_image = None
-                    self.pixmap_width, self.pixmap_height = (0, 0)
-                    return
-            if self.image1 and self.image2:
-                try:
-                    display_result_processor(self)
-                except Exception as e_display:
-                    print(f'Error calling display_result_processor: {e_display}')
-                    traceback.print_exc()
-                    QMessageBox.critical(self, tr('Error', self.current_language), f"{tr('Failed to update comparison view:', self.current_language)}\n{e_display}")
-            else:
-                print('Warning: image1 or image2 is missing after resize check/call.')
-                if hasattr(self, 'image_label'):
-                    self.image_label.clear()
-                self.result_image = None
-                self.pixmap_width, self.pixmap_height = (0, 0)
-        else:
+        if not self.original_image1 or not self.original_image2:
+            print('DEBUG: update_comparison_if_needed: Missing original_image1 or original_image2.')
             if hasattr(self, 'image_label'):
                 self.image_label.clear()
             self.result_image = None
             self.image1 = None
             self.image2 = None
+            self.pixmap_width, self.pixmap_height = (0, 0)
+            return
+        needs_resize = False
+        if not self.image1 or not self.image2:
+            needs_resize = True
+            print('DEBUG: update_comparison_if_needed: Need resize because self.image1 or self.image2 is None.')
+        else:
+            try:
+                max_w = max(self.original_image1.width, self.original_image2.width)
+                max_h = max(self.original_image1.height, self.original_image2.height)
+                if self.image1.size != (max_w, max_h) or self.image2.size != (max_w, max_h):
+                    needs_resize = True
+                    print(f'DEBUG: update_comparison_if_needed: Need resize due to size mismatch. Expected ({max_w},{max_h}), got image1={self.image1.size}, image2={self.image2.size}')
+            except Exception as e:
+                print(f'Error checking image dimensions in update_comparison_if_needed: {e}')
+                needs_resize = True
+        if needs_resize:
+            print('DEBUG: update_comparison_if_needed: Calling resize_images_processor...')
+            try:
+                resize_images_processor(self)
+                if not self.image1 or not self.image2:
+                    print('ERROR: resize_images_processor did not produce valid self.image1 or self.image2.')
+                    if hasattr(self, 'image_label'):
+                        self.image_label.clear()
+                    self.result_image = None
+                    self.pixmap_width, self.pixmap_height = (0, 0)
+                    return
+                print('DEBUG: update_comparison_if_needed: resize_images_processor finished successfully.')
+            except Exception as e_resize:
+                print(f'ERROR during resize_images_processor call: {e_resize}')
+                traceback.print_exc()
+                QMessageBox.critical(self, tr('Error', self.current_language), f'Error during image resizing:\n{e_resize}')
+                if hasattr(self, 'image_label'):
+                    self.image_label.clear()
+                self.result_image = None
+                self.pixmap_width, self.pixmap_height = (0, 0)
+                return
+        if self.image1 and self.image2:
+            print('DEBUG: update_comparison_if_needed: Calling display_result_processor...')
+            try:
+                display_result_processor(self)
+            except Exception as e_display:
+                print(f'Error calling display_result_processor from update_comparison_if_needed: {e_display}')
+                traceback.print_exc()
+                QMessageBox.critical(self, tr('Error', self.current_language), f"{tr('Failed to update comparison view:', self.current_language)}\n{e_display}")
+                if hasattr(self, 'image_label'):
+                    self.image_label.clear()
+                self.result_image = None
+                self.pixmap_width, self.pixmap_height = (0, 0)
+        else:
+            print('ERROR: update_comparison_if_needed: self.image1 or self.image2 is None before calling display_result_processor.')
+            if hasattr(self, 'image_label'):
+                self.image_label.clear()
+            self.result_image = None
             self.pixmap_width, self.pixmap_height = (0, 0)
 
     def load_image(self, image_number):
