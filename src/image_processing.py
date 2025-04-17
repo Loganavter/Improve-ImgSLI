@@ -1,9 +1,10 @@
 import os
 import math
 import traceback
+from typing import Callable, Tuple, Union
 from PIL import Image, ImageDraw, ImageFont
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt, QPoint, QPointF, QSize
 try:
     from translations import tr
@@ -18,6 +19,55 @@ CAPTURE_THICKNESS_FACTOR = 0.35
 MIN_MAG_BORDER_THICKNESS = 1
 MAX_MAG_BORDER_THICKNESS = 4
 MAG_BORDER_THICKNESS_FACTOR = 0.15
+FontType = Union[ImageFont.FreeTypeFont, ImageFont.ImageFont]
+GetSizeFuncType = Callable[[str, FontType], Tuple[int, int]]
+
+def truncate_text(raw_text: str, available_width: int, max_len: int, font_instance: FontType, get_size_func: GetSizeFuncType) -> str:
+    original_len = len(raw_text)
+    max_len = max(1, max_len)
+    if original_len == 0:
+        return ''
+    if original_len <= max_len:
+        try:
+            text_w, _ = get_size_func(raw_text, font_instance)
+            if text_w <= available_width:
+                return raw_text
+        except Exception as e:
+            print(f"Error measuring initial text '{raw_text}': {e}")
+    current_len_base = min(original_len, max_len - 1)
+    while current_len_base >= 0:
+        current_base_text = raw_text[:current_len_base]
+        chars_removed_total = original_len - current_len_base
+        if chars_removed_total <= 0:
+            ellipsis_symbol = ''
+        elif chars_removed_total == 1:
+            ellipsis_symbol = '.'
+        elif chars_removed_total == 2:
+            ellipsis_symbol = '..'
+        else:
+            ellipsis_symbol = '...'
+        processed_text = current_base_text + ellipsis_symbol
+        if len(processed_text) > max_len:
+            base_chars_allowed = max(0, max_len - len(ellipsis_symbol))
+            current_base_text = raw_text[:base_chars_allowed]
+            processed_text = current_base_text + ellipsis_symbol
+            current_len_base = len(current_base_text)
+            if current_len_base == 0 and len(ellipsis_symbol) > max_len:
+                if max_len >= 1:
+                    ellipsis_symbol = '.'
+                    processed_text = ellipsis_symbol
+                else:
+                    return ''
+        try:
+            text_w, _ = get_size_func(processed_text, font_instance)
+        except Exception as e:
+            print(f"Error in get_size_func for '{processed_text}': {e}")
+            text_w = available_width + 1
+        if text_w <= available_width:
+            return processed_text
+        else:
+            current_len_base -= 1
+    return ''
 
 def get_scaled_pixmap_dimensions(app):
     source_image = app.result_image if app.result_image else app.original_image1
@@ -156,7 +206,9 @@ def resize_images_processor(app):
         traceback.print_exc()
 
 def update_comparison_processor(app):
+    print('DEBUG: update_comparison_processor called.')
     if not app.image1 or not app.image2:
+        print('DEBUG: update_comp: One or both app.image1/2 are None. Clearing label.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
         app.result_image = None
@@ -180,6 +232,7 @@ def update_comparison_processor(app):
     result = Image.new('RGBA', (width, height))
     split_pos_abs = 0
     try:
+        print(f'DEBUG: update_comp: Split pos = {app.split_position:.4f}, Horizontal = {app.is_horizontal}, Size = {width}x{height}')
         if not app.is_horizontal:
             split_pos_abs = max(0, min(width, int(round(width * app.split_position))))
             if split_pos_abs > 0:
@@ -193,11 +246,13 @@ def update_comparison_processor(app):
             if split_pos_abs < height:
                 result.paste(img2_rgba.crop((0, split_pos_abs, width, height)), (0, split_pos_abs))
         app.result_image = result
+        print('DEBUG: update_comp: app.result_image created successfully.')
         display_result_processor(app)
     except ValueError as ve:
         print(f'ERROR in update_comparison_processor during paste (ValueError): {ve}')
         print(f'  is_horizontal={app.is_horizontal}, size={width}x{height}, split_pos_ratio={app.split_position:.3f}, split_pos_abs={split_pos_abs}')
         app.result_image = None
+        print('DEBUG: update_comp: app.result_image set to None due to paste error.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
         app.pixmap_width = 0
@@ -206,6 +261,7 @@ def update_comparison_processor(app):
         print(f'ERROR in update_comparison_processor: {e}')
         traceback.print_exc()
         app.result_image = None
+        print('DEBUG: update_comp: app.result_image set to None due to general error.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
         app.pixmap_width = 0
@@ -293,35 +349,77 @@ def draw_split_line_pil(image_to_draw_on, image1_param, image2_param, split_posi
         traceback.print_exc()
 
 def display_result_processor(app):
-    if not app.result_image:
+    print('DEBUG: display_result_processor called.')
+    if not app.image1 or not app.image2:
+        print('DEBUG: display_result: app.image1 or app.image2 is None. Cannot proceed.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
-        app.pixmap_width = 0
-        app.pixmap_height = 0
+        app.result_image = None
+        app.pixmap_width, app.pixmap_height = (0, 0)
+        return
+    if app.image1.size != app.image2.size:
+        print(f'ERROR in display_result_processor: Mismatched sizes: {app.image1.size} vs {app.image2.size}. Aborting display.')
+        if hasattr(app.image_label, 'clear'):
+            app.image_label.clear()
+        app.result_image = None
+        app.pixmap_width, app.pixmap_height = (0, 0)
+        return
+    img1_rgba = app.image1
+    img2_rgba = app.image2
+    width, height = img1_rgba.size
+    result = Image.new('RGBA', (width, height))
+    split_pos_abs = 0
+    try:
+        if not app.is_horizontal:
+            split_pos_abs = max(0, min(width, int(round(width * app.split_position))))
+            if split_pos_abs > 0:
+                result.paste(img1_rgba.crop((0, 0, split_pos_abs, height)), (0, 0))
+            if split_pos_abs < width:
+                result.paste(img2_rgba.crop((split_pos_abs, 0, width, height)), (split_pos_abs, 0))
+        else:
+            split_pos_abs = max(0, min(height, int(round(height * app.split_position))))
+            if split_pos_abs > 0:
+                result.paste(img1_rgba.crop((0, 0, width, split_pos_abs)), (0, 0))
+            if split_pos_abs < height:
+                result.paste(img2_rgba.crop((0, split_pos_abs, width, height)), (0, split_pos_abs))
+        app.result_image = result
+        print('DEBUG: display_result: Combined base image (app.result_image) created successfully.')
+    except ValueError as ve:
+        print(f'ERROR in display_result_processor during paste (ValueError): {ve}')
+        print(f'  is_horizontal={app.is_horizontal}, size={width}x{height}, split_pos_ratio={app.split_position:.3f}, split_pos_abs={split_pos_abs}')
+        app.result_image = None
+        if hasattr(app.image_label, 'clear'):
+            app.image_label.clear()
+        app.pixmap_width, app.pixmap_height = (0, 0)
+        return
+    except Exception as e:
+        print(f'ERROR in display_result_processor during paste (General): {e}')
+        traceback.print_exc()
+        app.result_image = None
+        if hasattr(app.image_label, 'clear'):
+            app.image_label.clear()
+        app.pixmap_width, app.pixmap_height = (0, 0)
         return
     try:
-        if app.result_image.mode == 'RGBA':
-            image_to_display = app.result_image.copy()
-        else:
-            print('Warning: app.result_image was not RGBA in display_result_processor. Converting copy.')
-            image_to_display = app.result_image.convert('RGBA')
+        image_to_display = app.result_image.copy()
         if image_to_display.mode != 'RGBA':
-            print('ERROR: Failed to ensure image_to_display is RGBA!')
-            image_to_display = Image.new('RGBA', app.result_image.size, (0, 0, 0, 0))
-    except Exception as e:
-        print(f'Error copying/converting result image for display: {e}')
+            print('Warning: display_result: Copied result_image is not RGBA, converting.')
+            image_to_display = image_to_display.convert('RGBA')
+        print(f'DEBUG: display_result: image_to_display ready for overlays, mode={image_to_display.mode}')
+    except Exception as e_copy:
+        print(f'ERROR: Failed to copy/convert app.result_image: {e_copy}')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
-        app.pixmap_width = 0
-        app.pixmap_height = 0
+        app.pixmap_width, app.pixmap_height = (0, 0)
         return
     orig_width, orig_height = image_to_display.size
     display_width, display_height = get_scaled_pixmap_dimensions(app)
+    print(f'DEBUG: display_result: Original size={orig_width}x{orig_height}, Scaled display size={display_width}x{display_height}')
     if display_width <= 0 or display_height <= 0:
+        print('DEBUG: display_result: Calculated display width/height is zero or negative. Clearing.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
-        app.pixmap_width = 0
-        app.pixmap_height = 0
+        app.pixmap_width, app.pixmap_height = (0, 0)
         return
     target_display_size = QSize(display_width, display_height)
     app.pixmap_width = display_width
@@ -342,8 +440,7 @@ def display_result_processor(app):
             line_y0 = 0
             line_x1_inc = split_x + half_thickness_ceil - 1
             line_y1_inc = orig_height - 1
-            line_coords = [line_x0, line_y0, line_x1_inc, line_y1_inc]
-            draw_overlay.rectangle(line_coords, fill=line_color)
+            draw_overlay.rectangle([line_x0, line_y0, line_x1_inc, line_y1_inc], fill=line_color)
         else:
             split_y = int(round(orig_height * app.split_position))
             split_y = max(half_thickness_floor, min(orig_height - half_thickness_ceil, split_y))
@@ -351,11 +448,11 @@ def display_result_processor(app):
             line_y0 = split_y - half_thickness_floor
             line_x1_inc = orig_width - 1
             line_y1_inc = split_y + half_thickness_ceil - 1
-            line_coords = [line_x0, line_y0, line_x1_inc, line_y1_inc]
-            draw_overlay.rectangle(line_coords, fill=line_color)
-    except Exception as e:
-        print(f'Error drawing split line on overlay: {e}')
+            draw_overlay.rectangle([line_x0, line_y0, line_x1_inc, line_y1_inc], fill=line_color)
+    except Exception as e_line:
+        print(f'Error drawing split line on overlay: {e_line}')
     if app.use_magnifier and app.original_image1 and app.original_image2:
+        print('DEBUG: display_result: Drawing magnifier...')
         coords = get_original_coords(app, drawing_width=orig_width, drawing_height=orig_height, display_width=display_width, display_height=display_height, use_visual_offset=True)
         if coords and coords[0] is not None:
             capture_center_orig1, capture_center_orig2, capture_size_orig1, capture_size_orig2, magnifier_midpoint_drawing, magnifier_size_pixels_drawing, edge_spacing_pixels_drawing = coords
@@ -373,45 +470,62 @@ def display_result_processor(app):
             if magnifier_midpoint_drawing:
                 is_dragging_capture = getattr(app, '_is_dragging_capture_point', False)
                 draw_magnifier_pil(draw_overlay, overlay, app.original_image1, app.original_image2, capture_center_orig1, capture_center_orig2, capture_size_orig1, capture_size_orig2, magnifier_midpoint_drawing, magnifier_size_pixels_drawing, edge_spacing_pixels_drawing, app, is_dragging=is_dragging_capture)
+        else:
+            print('DEBUG: display_result: get_original_coords returned None, skipping magnifier drawing.')
     try:
+        print('DEBUG: display_result: Before alpha_composite')
         image_to_display = Image.alpha_composite(image_to_display, overlay)
-    except ValueError as ve:
-        print(f'ERROR during alpha_composite (ValueError): {ve}. Check image modes and sizes.')
-    except Exception as e:
-        print(f'ERROR during alpha_composite: {e}')
+        print(f'DEBUG: display_result: After alpha_composite, mode={image_to_display.mode}')
+    except Exception as e_composite:
+        print(f'ERROR during alpha_composite: {e_composite}')
     draw_final = ImageDraw.Draw(image_to_display)
     if hasattr(app, 'checkbox_file_names') and app.checkbox_file_names.isChecked():
-        split_position_abs = int(round(float(orig_width) * app.split_position)) if not app.is_horizontal else int(round(float(orig_height) * app.split_position))
-        line_width_names = line_thickness if not app.is_horizontal else 0
-        line_height_names = line_thickness if app.is_horizontal else 0
+        print('DEBUG: display_result: Drawing file names...')
+        if not app.is_horizontal:
+            split_position_abs_names = max(0, min(orig_width, int(round(orig_width * app.split_position))))
+            line_width_names, line_height_names = (line_thickness, 0)
+        else:
+            split_position_abs_names = max(0, min(orig_height, int(round(orig_height * app.split_position))))
+            line_width_names, line_height_names = (0, line_thickness)
         color_tuple = app.file_name_color.getRgb()
-        draw_file_names_on_image(app, draw_final, image_to_display, split_position_abs, orig_width, orig_height, line_width_names, line_height_names, color_tuple)
+        draw_file_names_on_image(app, draw_final, image_to_display, split_position_abs_names, orig_width, orig_height, line_width_names, line_height_names, color_tuple)
     try:
+        print(f'DEBUG: display_result: Final image mode BEFORE conversion: {image_to_display.mode}, size: {image_to_display.size}')
         if image_to_display.mode != 'RGBA':
             print(f'ERROR: Final image mode is {image_to_display.mode} INSTEAD OF RGBA before QImage conversion!')
             image_to_display = image_to_display.convert('RGBA')
         qimage = QImage(image_to_display.tobytes('raw', 'RGBA'), orig_width, orig_height, QImage.Format.Format_RGBA8888)
         if qimage.isNull():
+            print('DEBUG: display_result: QImage is Null AFTER conversion.')
             raise ValueError('Failed to create QImage from PIL image bytes')
         pixmap = QPixmap.fromImage(qimage)
         if pixmap.isNull():
+            print('DEBUG: display_result: QPixmap is Null AFTER conversion.')
             raise ValueError('Failed to create QPixmap from QImage')
-    except Exception as e:
-        print(f'Error converting final PIL image to QPixmap: {e}')
+        print('DEBUG: display_result: Conversion to QPixmap successful.')
+    except Exception as e_conv:
+        print(f'Error converting final PIL image to QPixmap: {e_conv}')
+        traceback.print_exc()
+        print('DEBUG: display_result: Clearing label due to conversion error.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
-        app.pixmap_width = 0
-        app.pixmap_height = 0
+        app.pixmap_width, app.pixmap_height = (0, 0)
         return
     if not pixmap.isNull():
+        print(f'DEBUG: display_result: Scaling pixmap to {target_display_size.width()}x{target_display_size.height()}')
         scaled_pixmap = pixmap.scaled(target_display_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        app.image_label.setPixmap(scaled_pixmap)
+        if scaled_pixmap.isNull():
+            print('DEBUG: display_result: Scaled pixmap is Null!')
+            if hasattr(app.image_label, 'clear'):
+                app.image_label.clear()
+        else:
+            print('DEBUG: display_result: Setting scaled pixmap to label.')
+            app.image_label.setPixmap(scaled_pixmap)
     else:
         print('Warning: Final QPixmap is null before setting to label.')
         if hasattr(app.image_label, 'clear'):
             app.image_label.clear()
-        app.pixmap_width = 0
-        app.pixmap_height = 0
+        app.pixmap_width, app.pixmap_height = (0, 0)
 
 def draw_magnifier_pil(draw, image_to_draw_on, image1_for_crop, image2_for_crop, capture_pos1, capture_pos2, capture_size_orig1, capture_size_orig2, magnifier_midpoint_target, magnifier_size_pixels, edge_spacing_pixels, app, is_dragging=False):
     if not image1_for_crop or not image2_for_crop or (not capture_pos1) or (not capture_pos2) or (not magnifier_midpoint_target):
@@ -668,7 +782,7 @@ def save_result_processor(self):
                 if split_position_abs > 0:
                     image_to_save.paste(img1_rgba.crop((0, 0, width, split_position_abs)), (0, 0))
                 if split_position_abs < height:
-                    image_to_save.paste(img2_rgba.crop((0, split_position_abs, width, height)), (0, split_position_abs))
+                    image_to_save.paste(img2_rgba.crop((0, split_position_abs, width, height)), (0, split_pos_abs))
         except Exception as paste_err:
             print(f'ERROR creating base image for saving: {paste_err}')
             QMessageBox.critical(self, tr('Error', self.current_language), tr('Failed to create the base image for saving.', self.current_language))
@@ -760,13 +874,13 @@ def save_result_processor(self):
         error_path_msg = file_name if file_name else tr('Path not determined', self.current_language)
         QMessageBox.critical(self, tr('Error', self.current_language), f"{tr('An unexpected error occurred during the save process:', self.current_language)}\n{error_path_msg}\n\n{str(e_outer)}")
 
-def draw_file_names_on_image(self, draw, image, split_position_abs, orig_width, orig_height, line_width, line_height, text_color_tuple):
+def draw_file_names_on_image(self, draw: ImageDraw.ImageDraw, image: Image.Image, split_position_abs: int, orig_width: int, orig_height: int, line_width: int, line_height: int, text_color_tuple: tuple):
     font_size_percentage = self.font_size_slider.value() / 200.0
     base_font_size_ratio = 0.03
     font_size = max(10, int(orig_height * base_font_size_ratio * font_size_percentage))
     margin = max(5, int(font_size * 0.25))
     font_path_to_use = getattr(self, 'font_path_absolute', None)
-    font = None
+    font: FontType = None
     if font_path_to_use and os.path.exists(font_path_to_use):
         try:
             font = ImageFont.truetype(font_path_to_use, size=font_size)
@@ -796,65 +910,49 @@ def draw_file_names_on_image(self, draw, image, split_position_abs, orig_width, 
     file_name2_raw = self.edit_name2.text() or (os.path.basename(self.image2_path) if self.image2_path else 'Image 2')
     max_length = self.max_name_length
 
-    def get_text_size(text, font_to_use):
+    def _internal_get_text_size(text: str, font_to_use: FontType) -> Tuple[int, int]:
         if not text or not font_to_use:
             return (0, 0)
         try:
             if hasattr(draw, 'textbbox') and hasattr(font_to_use, 'getbbox'):
                 bbox = draw.textbbox((0, 0), text, font=font_to_use, anchor='lt')
-                return (bbox[2] - bbox[0], bbox[3] - bbox[1])
+                width = bbox[2] - bbox[0]
+                height = bbox[3] - bbox[1]
+                return (int(round(width)), int(round(height)))
             elif hasattr(draw, 'textlength') and hasattr(font_to_use, 'getmetrics'):
                 ascent, descent = font_to_use.getmetrics()
-                height = ascent + descent
-                return (draw.textlength(text, font=font_to_use), height)
+                height = int(round(ascent + descent))
+                width = int(round(draw.textlength(text, font=font_to_use)))
+                return (width, height)
             elif hasattr(font_to_use, 'getsize'):
                 width, height = font_to_use.getsize(text)
-                return (width, height)
+                return (int(round(width)), int(round(height)))
             else:
                 print('Warning: Cannot determine text size accurately. Using approximation.')
                 char_width_approx = font_size * 0.6
-                return (len(text) * char_width_approx, font_size)
+                return (int(round(len(text) * char_width_approx)), int(round(font_size)))
         except Exception as e:
             print(f"Error getting text size for '{text[:20]}...': {e}")
             char_width_approx = font_size * 0.6
-            return (len(text) * char_width_approx, font_size)
+            return (int(round(len(text) * char_width_approx)), int(round(font_size)))
+    margin_int = int(round(margin))
     available_width1 = 0
     if not self.is_horizontal:
-        available_width1 = max(10, split_position_abs - line_width // 2 - margin * 2)
+        available_width1 = max(10, int(round(split_position_abs - line_width // 2 - margin_int * 2)))
     else:
-        available_width1 = max(10, orig_width - margin * 2)
-    temp_name1 = file_name1_raw
-    name1_w, _ = get_text_size(temp_name1, font)
-    while name1_w > available_width1 and len(temp_name1) > 3:
-        remove_chars = max(1, int(len(temp_name1) * 0.1))
-        temp_name1 = temp_name1[:-(remove_chars + 3)] + '...'
-        name1_w, _ = get_text_size(temp_name1, font)
-        if len(temp_name1) <= 3:
-            break
-    if len(temp_name1) > max_length:
-        temp_name1 = temp_name1[:max_length - 3] + '...'
-    file_name1 = temp_name1
+        available_width1 = max(10, int(round(orig_width - margin_int * 2)))
     available_width2 = 0
     if not self.is_horizontal:
-        available_width2 = max(10, orig_width - (split_position_abs + (line_width + 1) // 2) - margin * 2)
+        available_width2 = max(10, int(round(orig_width - (split_position_abs + (line_width + 1) // 2) - margin_int * 2)))
     else:
-        available_width2 = max(10, orig_width - margin * 2)
-    temp_name2 = file_name2_raw
-    name2_w, _ = get_text_size(temp_name2, font)
-    while name2_w > available_width2 and len(temp_name2) > 3:
-        remove_chars = max(1, int(len(temp_name2) * 0.1))
-        temp_name2 = temp_name2[:-(remove_chars + 3)] + '...'
-        name2_w, _ = get_text_size(temp_name2, font)
-        if len(temp_name2) <= 3:
-            break
-    if len(temp_name2) > max_length:
-        temp_name2 = temp_name2[:max_length - 3] + '...'
-    file_name2 = temp_name2
+        available_width2 = max(10, int(round(orig_width - margin_int * 2)))
+    file_name1 = truncate_text(file_name1_raw, available_width1, max_length, font, _internal_get_text_size)
+    file_name2 = truncate_text(file_name2_raw, available_width2, max_length, font, _internal_get_text_size)
     text_color = text_color_tuple
     if not self.is_horizontal:
-        draw_vertical_filenames(self, draw, font, file_name1, file_name2, split_position_abs, line_width, margin, orig_width, orig_height, text_color, get_text_size)
+        draw_vertical_filenames(self, draw, font, file_name1, file_name2, split_position_abs, line_width, margin_int, orig_width, orig_height, text_color, _internal_get_text_size)
     else:
-        draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_position_abs, line_height, margin, orig_width, orig_height, text_color, get_text_size)
+        draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_position_abs, line_height, margin_int, orig_width, orig_height, text_color, _internal_get_text_size)
 
 def draw_vertical_filenames(self, draw, font, file_name1, file_name2, split_position_abs, line_width, margin, orig_width, orig_height, text_color, get_text_size_func):
     y_baseline = orig_height - margin
@@ -863,8 +961,9 @@ def draw_vertical_filenames(self, draw, font, file_name1, file_name2, split_posi
             ideal_x1_right = split_position_abs - line_width // 2 - margin
             ideal_x1_pos = ideal_x1_right
             bbox1 = None
+            anchor1 = 'rs'
             if hasattr(draw, 'textbbox') and hasattr(font, 'getbbox'):
-                bbox1 = draw.textbbox((ideal_x1_pos, y_baseline), file_name1, font=font, anchor='rs')
+                bbox1 = draw.textbbox((ideal_x1_pos, y_baseline), file_name1, font=font, anchor=anchor1)
             else:
                 text_width1, text_height1 = get_text_size_func(file_name1, font)
                 approx_ascent = text_height1 * 0.75
@@ -872,7 +971,7 @@ def draw_vertical_filenames(self, draw, font, file_name1, file_name2, split_posi
                 bbox1_left = ideal_x1_pos - text_width1
                 bbox1 = (bbox1_left, bbox1_top, ideal_x1_pos, bbox1_top + text_height1)
             if bbox1 and bbox1[0] >= margin:
-                draw.text((ideal_x1_pos, y_baseline), file_name1, fill=text_color, font=font, anchor='rs')
+                draw.text((ideal_x1_pos, y_baseline), file_name1, fill=text_color, font=font, anchor=anchor1)
         except Exception as e:
             print(f'Error processing or drawing filename 1 (vertical): {e}')
     if file_name2:
@@ -880,8 +979,9 @@ def draw_vertical_filenames(self, draw, font, file_name1, file_name2, split_posi
             ideal_x2_left = split_position_abs + (line_width + 1) // 2 + margin
             ideal_x2_pos = ideal_x2_left
             bbox2 = None
+            anchor2 = 'ls'
             if hasattr(draw, 'textbbox') and hasattr(font, 'getbbox'):
-                bbox2 = draw.textbbox((ideal_x2_pos, y_baseline), file_name2, font=font, anchor='ls')
+                bbox2 = draw.textbbox((ideal_x2_pos, y_baseline), file_name2, font=font, anchor=anchor2)
             else:
                 text_width2, text_height2 = get_text_size_func(file_name2, font)
                 approx_ascent = text_height2 * 0.75
@@ -889,7 +989,7 @@ def draw_vertical_filenames(self, draw, font, file_name1, file_name2, split_posi
                 bbox2_right = ideal_x2_pos + text_width2
                 bbox2 = (ideal_x2_pos, bbox2_top, bbox2_right, bbox2_top + text_height2)
             if bbox2 and bbox2[2] <= orig_width - margin:
-                draw.text((ideal_x2_pos, y_baseline), file_name2, fill=text_color, font=font, anchor='ls')
+                draw.text((ideal_x2_pos, y_baseline), file_name2, fill=text_color, font=font, anchor=anchor2)
         except Exception as e:
             print(f'Error processing or drawing filename 2 (vertical): {e}')
 
@@ -901,8 +1001,9 @@ def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_po
             ideal_y1_baseline = line_top - margin
             ideal_x1 = margin
             bbox1 = None
+            anchor1 = 'ls'
             if hasattr(draw, 'textbbox'):
-                bbox1 = draw.textbbox((ideal_x1, ideal_y1_baseline), file_name1, font=font, anchor='ls')
+                bbox1 = draw.textbbox((ideal_x1, ideal_y1_baseline), file_name1, font=font, anchor=anchor1)
             else:
                 text_width1, text_height1 = get_text_size_func(file_name1, font)
                 approx_ascent = text_height1 * 0.75
@@ -910,7 +1011,7 @@ def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_po
                 bbox1_bottom = bbox1_top + text_height1
                 bbox1 = (ideal_x1, bbox1_top, ideal_x1 + text_width1, bbox1_bottom)
             if bbox1 and bbox1[1] >= margin:
-                draw.text((ideal_x1, ideal_y1_baseline), file_name1, fill=text_color, font=font, anchor='ls')
+                draw.text((ideal_x1, ideal_y1_baseline), file_name1, fill=text_color, font=font, anchor=anchor1)
         except Exception as e:
             print(f'Error processing or drawing filename 1 (horizontal): {e}')
     if file_name2:
@@ -918,12 +1019,13 @@ def draw_horizontal_filenames(self, draw, font, file_name1, file_name2, split_po
             ideal_y2_top = line_bottom + margin
             ideal_x2 = margin
             bbox2 = None
+            anchor2 = 'lt'
             if hasattr(draw, 'textbbox'):
-                bbox2 = draw.textbbox((ideal_x2, ideal_y2_top), file_name2, font=font, anchor='lt')
+                bbox2 = draw.textbbox((ideal_x2, ideal_y2_top), file_name2, font=font, anchor=anchor2)
             else:
                 text_width2, text_height2 = get_text_size_func(file_name2, font)
                 bbox2 = (ideal_x2, ideal_y2_top, ideal_x2 + text_width2, ideal_y2_top + text_height2)
             if bbox2 and bbox2[3] <= orig_height - margin:
-                draw.text((ideal_x2, ideal_y2_top), file_name2, fill=text_color, font=font, anchor='lt')
+                draw.text((ideal_x2, ideal_y2_top), file_name2, fill=text_color, font=font, anchor=anchor2)
         except Exception as e:
             print(f'Error processing or drawing filename 2 (horizontal): {e}')
