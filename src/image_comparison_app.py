@@ -18,7 +18,10 @@ except ImportError:
 
 def load_module(mod_name):
     try:
-        module = importlib.import_module(mod_name)
+        if mod_name in sys.modules:
+            module = importlib.reload(sys.modules[mod_name])
+        else:
+            module = importlib.import_module(mod_name)
         return module
     except ImportError as e:
         print(f'Error: Could not import module {mod_name}. File might be missing or contain errors: {e}')
@@ -55,8 +58,6 @@ font_file_name = 'SourceSans3-Regular.ttf'
 font_file = os.path.join(script_dir, 'font', font_file_name)
 BASE_PIXEL_SPEED_FROZEN = 150.0
 BASE_RELATIVE_SPEED_UNFROZEN = 0.3
-if not os.path.exists(font_file):
-    print(f'WARNING: Font file not found at expected path: {font_file}. Will rely on system default.')
 
 class ImageComparisonApp(QWidget):
     MIN_NAME_LENGTH_LIMIT = 10
@@ -74,7 +75,6 @@ class ImageComparisonApp(QWidget):
         self.settings = QSettings('MyCompany', 'ImageComparisonApp')
         self._load_settings()
         self._init_state()
-        self.setWindowTitle(tr('Improve ImgSLI', self.current_language))
         self._init_timers()
         self._build_ui()
         self._apply_initial_settings_to_ui()
@@ -92,7 +92,6 @@ class ImageComparisonApp(QWidget):
         relative_exists = False
         ip_fallback_direct_exists = False
         ip_fallback_subdir_exists = False
-
         flatpak_font_path = f'/app/share/fonts/truetype/{self.font_file_name}'
         try:
             flatpak_exists = os.path.exists(flatpak_font_path)
@@ -101,7 +100,6 @@ class ImageComparisonApp(QWidget):
                 return
         except Exception:
             flatpak_exists = False
-
         expected_font_path = os.path.join(self.script_dir, 'font', self.font_file_name)
         try:
             relative_exists = os.path.exists(expected_font_path)
@@ -110,14 +108,12 @@ class ImageComparisonApp(QWidget):
                 return
         except Exception:
             relative_exists = False
-
         fallback_path_direct = None
         fallback_path_subdir = None
         try:
             if image_processing_mod and hasattr(image_processing_mod, '__file__') and image_processing_mod.__file__:
                 ip_module_path = os.path.abspath(image_processing_mod.__file__)
                 ip_module_dir = os.path.dirname(ip_module_path)
-
                 fallback_path_direct = os.path.join(ip_module_dir, self.font_file_name)
                 try:
                     ip_fallback_direct_exists = os.path.exists(fallback_path_direct)
@@ -126,7 +122,6 @@ class ImageComparisonApp(QWidget):
                         return
                 except Exception:
                     ip_fallback_direct_exists = False
-
                 fallback_path_subdir = os.path.join(ip_module_dir, 'font', self.font_file_name)
                 try:
                     ip_fallback_subdir_exists = os.path.exists(fallback_path_subdir)
@@ -135,21 +130,15 @@ class ImageComparisonApp(QWidget):
                         return
                 except Exception:
                     ip_fallback_subdir_exists = False
-
-        except Exception:
+        except Exception as e:
             pass
-
         if self.font_path_absolute is None:
-            checked_paths = [
-                f"Flatpak ('{flatpak_font_path}', exists={flatpak_exists})",
-                f"Relative ('{expected_font_path}', exists={relative_exists})"
-            ]
+            checked_paths = [f"Flatpak ('{flatpak_font_path}', exists={flatpak_exists})", f"Relative ('{expected_font_path}', exists={relative_exists})"]
             if fallback_path_direct:
                 checked_paths.append(f"Fallback Direct ('{fallback_path_direct}', exists={ip_fallback_direct_exists})")
             if fallback_path_subdir:
                 checked_paths.append(f"Fallback Subdir ('{fallback_path_subdir}', exists={ip_fallback_subdir_exists})")
-
-            checked_paths_str = ",\n  ".join(checked_paths)
+            checked_paths_str = ',\n  '.join(checked_paths)
             print(f'CRITICAL FONT INFO: No valid custom font path found after checking:\n  {checked_paths_str}\nRelying on system fonts (Arial/Default).')
 
     def _perform_initial_image_setup(self):
@@ -169,16 +158,27 @@ class ImageComparisonApp(QWidget):
                 return default
             try:
                 if target_type == int:
-                    return int(value)
+                    try:
+                        return int(float(value))
+                    except (ValueError, TypeError):
+                        return default
                 elif target_type == float:
-                    return float(value)
+                    try:
+                        return float(value)
+                    except (ValueError, TypeError):
+                        return default
                 elif target_type == bool:
                     if isinstance(value, str):
-                        if value.lower() == 'true':
+                        val_lower = value.lower()
+                        if val_lower == 'true':
                             return True
-                        if value.lower() == 'false':
+                        if val_lower == 'false':
                             return False
-                    return bool(int(value)) if value in ('0', '1') else bool(value)
+                        try:
+                            return bool(int(value))
+                        except ValueError:
+                            pass
+                    return bool(value) if isinstance(value, (bool, int)) else default
                 elif target_type == str:
                     return str(value)
                 elif target_type == QColor:
@@ -188,55 +188,57 @@ class ImageComparisonApp(QWidget):
                     test_color = QColor(color_val)
                     if test_color.isValid():
                         return test_color
-                    if color_val.startswith('#'):
-                        if len(color_val) == 7:
-                            try:
-                                return QColor(color_val)
-                            except ValueError:
-                                pass
-                        elif len(color_val) == 9:
-                            try:
-                                return QColor(color_val)
-                            except ValueError:
-                                pass
-                    print(f"Warning: Invalid color format '{color_val}' for key '{key}'. Using default.")
                     return default
                 elif target_type == QByteArray:
-                    if isinstance(value, QByteArray):
-                        return value
-                    if isinstance(value, str):
-                        try:
-                            if not value:
-                                return default
-                            missing_padding = len(value) % 4
-                            if missing_padding:
-                                value += '=' * (4 - missing_padding)
-                            byte_data = base64.b64decode(value.encode('ascii'))
-                            return QByteArray(byte_data)
-                        except (base64.binascii.Error, ValueError, TypeError) as e_b64:
-                            print(f"Warning: Error decoding Base64 QByteArray for key '{key}'. Value: '{value[:50]}...', Error: {e_b64}")
-                            return default
-                    elif isinstance(value, (bytes, bytearray)):
-                        return QByteArray(value)
-                    print(f"Warning: Unexpected type '{type(value)}' for QByteArray key '{key}'. Using default.")
-                    return default
-                elif target_type == QPointF:
-                    if isinstance(value, QPointF):
-                        return value
+                    if not isinstance(value, str):
+                        print(f"Warning: Expected Base64 string for QByteArray key '{key}', but got type {type(value)}. Using default.")
+                        return QByteArray()
+                    if not value:
+                        return QByteArray()
                     try:
-                        if isinstance(value, str):
-                            parts = value.split(',')
-                            if len(parts) == 2:
-                                return QPointF(float(parts[0]), float(parts[1]))
-                        elif isinstance(value, (list, tuple)) and len(value) == 2:
-                            return QPointF(float(value[0]), float(value[1]))
-                    except (ValueError, TypeError) as e_point:
-                        print(f"Warning: Error decoding QPointF for key '{key}'. Value: '{value}', Error: {e_point}")
-                    return default
-                return value
-            except (ValueError, TypeError) as e_conv:
-                print(f"Warning: Could not convert setting '{key}' to {target_type.__name__}, using default. Value: '{value}', Error: {e_conv}")
+                        missing_padding = len(value) % 4
+                        if missing_padding:
+                            value += '=' * (4 - missing_padding)
+                        byte_data = QByteArray.fromBase64(value.encode('ascii'))
+                        if byte_data.isNull():
+                            print(f"Warning: Base64 decoding resulted in null QByteArray for key '{key}'. Value: '{value[:50]}...'")
+                            return QByteArray()
+                        return byte_data
+                    except Exception as e_b64:
+                        print(f"Warning: Error decoding Base64 string for QByteArray key '{key}'. Value: '{value[:50]}...', Error: {e_b64}")
+                        traceback.print_exc()
+                        return QByteArray()
+                elif target_type == QPointF:
+                    if not isinstance(value, str):
+                        print(f"Warning: Expected string 'x,y' for QPointF key '{key}', but got type {type(value)}. Using default.")
+                        return QPointF()
+                    try:
+                        parts = value.split(',')
+                        if len(parts) == 2:
+                            return QPointF(float(parts[0]), float(parts[1]))
+                    except (ValueError, TypeError, IndexError) as e_point:
+                        print(f"Warning: Error parsing QPointF string for key '{key}'. Value: '{value}', Error: {e_point}")
+                    return QPointF()
+                elif target_type == list:
+                    if isinstance(value, list):
+                        if not value or all((isinstance(item, str) for item in value)):
+                            return value
+                        else:
+                            print(f"Warning: List for key '{key}' contains non-string elements. Using default.")
+                            return []
+                    else:
+                        print(f"Warning: Expected list for key '{key}', but got type {type(value)}. Using default.")
+                        return []
+                else:
+                    print(f"Warning: Unhandled target type '{target_type.__name__}' for key '{key}'. Returning raw value.")
+                    return value
+            except Exception as e_unexpected:
+                print(f"Unexpected error processing setting '{key}' for type {target_type.__name__}. Raw Value: '{value}', Error: {e_unexpected}")
+                traceback.print_exc()
                 return default
+        self.loaded_geometry = get_setting('window_geometry', QByteArray(), QByteArray)
+        self.loaded_was_maximized = get_setting('window_was_maximized', False, bool)
+        self.loaded_previous_geometry = get_setting('previous_geometry', QByteArray(), QByteArray)
         self.loaded_capture_pos_rel_x = get_setting('capture_relative_x', self.DEFAULT_CAPTURE_POS_RELATIVE.x(), float)
         self.loaded_capture_pos_rel_y = get_setting('capture_relative_y', self.DEFAULT_CAPTURE_POS_RELATIVE.y(), float)
         saved_lang = get_setting('language', None, str)
@@ -252,8 +254,6 @@ class ImageComparisonApp(QWidget):
         self.loaded_capture_size_relative = get_setting('capture_size_relative', self.DEFAULT_CAPTURE_SIZE_RELATIVE, float)
         self.loaded_magnifier_offset_relative = get_setting('magnifier_offset_relative', self.DEFAULT_MAGNIFIER_OFFSET_RELATIVE, QPointF)
         self.loaded_magnifier_spacing_relative = get_setting('magnifier_spacing_relative', self.DEFAULT_MAGNIFIER_SPACING_RELATIVE, float)
-        self.loaded_geometry = get_setting('window_geometry', QByteArray(), QByteArray)
-        self.loaded_was_maximized = get_setting('window_was_maximized', False, bool)
         default_color = QColor(255, 0, 0, 255)
         self.loaded_filename_color_name = get_setting('filename_color', default_color.name(QColor.NameFormat.HexArgb), str)
         self.loaded_image1_paths = get_setting('image_list1_paths', [], list)
@@ -277,23 +277,23 @@ class ImageComparisonApp(QWidget):
         self.is_horizontal = False
         self.use_magnifier = False
         self.split_position = 0.5
-        self.magnifier_size_relative = max(0.05, min(1.0, self.DEFAULT_MAGNIFIER_SIZE_RELATIVE))
-        self.capture_size_relative = max(0.01, min(0.5, self.DEFAULT_CAPTURE_SIZE_RELATIVE))
+        self.magnifier_size_relative = max(0.05, min(1.0, self.loaded_magnifier_size_relative))
+        self.capture_size_relative = max(0.01, min(0.5, self.loaded_capture_size_relative))
         self.capture_position_relative = QPointF(max(0.0, min(1.0, self.loaded_capture_pos_rel_x)), max(0.0, min(1.0, self.loaded_capture_pos_rel_y)))
-        self.magnifier_offset_relative = QPointF(self.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
-        self.magnifier_spacing_relative = max(0.0, min(0.5, self.DEFAULT_MAGNIFIER_SPACING_RELATIVE))
+        self.magnifier_offset_relative = QPointF(self.loaded_magnifier_offset_relative)
+        self.magnifier_spacing_relative = max(0.0, min(0.5, self.loaded_magnifier_spacing_relative))
         self.movement_speed_per_sec = max(0.1, min(5.0, self.loaded_movement_speed))
+        self.spacing_speed_per_sec_qe = 3.0
+        self.smoothing_factor_pos = 0.25
+        self.smoothing_factor_spacing = 0.25
+        self.lerp_stop_threshold = 0.001
+        self.max_target_delta_per_tick = 0.15
         self.current_language = self.loaded_language
         self.max_name_length = max(self.MIN_NAME_LENGTH_LIMIT, min(self.MAX_NAME_LENGTH_LIMIT, self.loaded_max_name_length))
         self.file_name_color = QColor(self.loaded_filename_color_name)
         if not self.file_name_color.isValid():
             print(f"Warning: Loaded filename color '{self.loaded_filename_color_name}' is invalid. Using default red.")
             self.file_name_color = QColor(255, 0, 0, 255)
-        self.spacing_speed_per_sec_qe = 3.0
-        self.smoothing_factor_pos = 0.25
-        self.smoothing_factor_spacing = 0.25
-        self.lerp_stop_threshold = 0.001
-        self.max_target_delta_per_tick = 0.15
         self.freeze_magnifier = False
         self.frozen_magnifier_position_relative = None
         self.magnifier_offset_relative_visual = QPointF(self.magnifier_offset_relative)
@@ -302,8 +302,7 @@ class ImageComparisonApp(QWidget):
         self.active_keys = set()
         self._is_dragging_split_line = False
         self._is_dragging_capture_point = False
-        self.previous_geometry = None
-        self._intend_to_close_maximized = False
+        self.previous_geometry = self.loaded_previous_geometry
         self.pixmap_width = 0
         self.pixmap_height = 0
         self.jpeg_quality = max(1, min(100, self.loaded_jpeg_quality))
@@ -319,6 +318,7 @@ class ImageComparisonApp(QWidget):
         self.resize_timer.timeout.connect(self._finish_resize)
 
     def _build_ui(self):
+        self.setWindowTitle(tr('Improve ImgSLI', self.current_language))
         self.setAcceptDrops(True)
         self._create_image_label()
         self._init_drag_overlays()
@@ -526,11 +526,9 @@ class ImageComparisonApp(QWidget):
         if hasattr(self, 'slider_size'):
             slider_val = int(self.magnifier_size_relative * 100)
             self.slider_size.setValue(slider_val)
-            self.slider_size.setToolTip(f'{slider_val}%')
         if hasattr(self, 'slider_capture'):
             slider_val = int(self.capture_size_relative * 100)
             self.slider_capture.setValue(slider_val)
-            self.slider_capture.setToolTip(f'{slider_val}%')
         if hasattr(self, 'slider_speed'):
             slider_val = int(self.movement_speed_per_sec * 10)
             self.slider_speed.setValue(slider_val)
@@ -576,6 +574,8 @@ class ImageComparisonApp(QWidget):
             self.btn_settings.clicked.connect(self._open_settings_dialog)
             if not settings_dialog_available:
                 self.btn_settings.setEnabled(False)
+        if hasattr(self, 'btn_color_picker'):
+            self.btn_color_picker.clicked.connect(self._open_color_dialog)
         if hasattr(self, 'checkbox_horizontal'):
             self.checkbox_horizontal.stateChanged.connect(self.toggle_orientation)
         if hasattr(self, 'checkbox_magnifier'):
@@ -605,8 +605,6 @@ class ImageComparisonApp(QWidget):
             self.edit_name2.editingFinished.connect(self._on_edit_name_changed)
             self.edit_name2.textChanged.connect(self._trigger_live_name_update)
             self.edit_name2.textChanged.connect(self.update_file_names)
-        if hasattr(self, 'btn_color_picker'):
-            self.btn_color_picker.clicked.connect(self._open_color_dialog)
         if hasattr(self, 'image_label'):
             if hasattr(self.image_label, 'mousePressed'):
                 self.image_label.mousePressed.connect(self.on_mouse_press)
@@ -618,33 +616,50 @@ class ImageComparisonApp(QWidget):
     def _restore_geometry(self):
         geom_setting = self.loaded_geometry
         was_maximized = self.loaded_was_maximized
+        loaded_prev_geom_runtime = None
+        print('--- Restoring Geometry and State (Using OLD logic) ---')
+        geom_valid = geom_setting and isinstance(geom_setting, QByteArray) and (not geom_setting.isEmpty())
+        print(f'Loaded geom_setting is valid: {geom_valid}')
+        print(f'Loaded was_maximized flag: {was_maximized}')
         restored_from_settings = False
-        if geom_setting and isinstance(geom_setting, QByteArray) and (not geom_setting.isEmpty()):
+        if geom_valid:
             try:
+                print('Attempting self.restoreGeometry()...')
                 restored_geom_ok = self.restoreGeometry(geom_setting)
                 if not restored_geom_ok:
-                    print('Warning: restoreGeometry returned false. Saved geometry might be invalid.')
+                    print('Warning: restoreGeometry returned false.')
                 else:
-                    restored_from_settings = True
-                    if was_maximized:
-                        QTimer.singleShot(0, self.showMaximized)
+                    print('restoreGeometry() call succeeded.')
+                restored_from_settings = True
+                if was_maximized:
+                    prev_geom_setting_value = self.settings.value('previous_geometry')
+                    if prev_geom_setting_value and isinstance(prev_geom_setting_value, QByteArray) and (not prev_geom_setting_value.isEmpty()):
+                        loaded_prev_geom_runtime = prev_geom_setting_value
+                        print(f'Loaded previous_geometry from settings (size: {loaded_prev_geom_runtime.size()}).')
                     else:
-                        self.showNormal()
-                        self.previous_geometry = None
+                        print("Warning: was_maximized is True, but no valid 'previous_geometry' found in settings.")
+                self.previous_geometry = loaded_prev_geom_runtime
+                if was_maximized:
+                    print('Calling self.showMaximized().')
+                    self.show()
+                    self.showMaximized()
+                else:
+                    print('Calling self.showNormal().')
+                    self.showNormal()
+                    self.previous_geometry = None
             except Exception as e:
-                print(f'Error restoring geometry: {e}')
+                print(f'Error during restoreGeometry/show: {e}')
                 traceback.print_exc()
                 restored_from_settings = False
                 self.previous_geometry = None
-        else:
-            print('No valid geometry found in settings.')
         if not restored_from_settings:
-            print('Applying default window geometry.')
+            print('Restore from settings failed or no data. Setting default geometry and showing Normal.')
             self.setGeometry(100, 100, 800, 600)
             self.showNormal()
             self.previous_geometry = None
-        QTimer.singleShot(10, self._ensure_minimum_size_after_restore)
-        QTimer.singleShot(20, self.update_comparison_if_needed)
+        QTimer.singleShot(0, self._ensure_minimum_size_after_restore)
+        QTimer.singleShot(10, self.update_comparison_if_needed)
+        print('--- Geometry and State restoration attempt complete (OLD logic) ---')
 
     def _ensure_minimum_size_after_restore(self):
         self.update_minimum_window_size()
@@ -653,11 +668,11 @@ class ImageComparisonApp(QWidget):
         new_width = max(current_size.width(), min_size.width())
         new_height = max(current_size.height(), min_size.height())
         if new_width != current_size.width() or new_height != current_size.height():
-            print(f'Adjusting window size to minimum: {new_width}x{new_height}')
+            print(f'Adjusting window size to minimum after restore: {new_width}x{new_height}')
             self.resize(new_width, new_height)
 
     def _init_drag_overlays(self):
-        style = '\n            background-color: rgba(0, 100, 200, 0.6);\n            color: white;\n            font-size: 20px;\n            border-radius: 10px;\n            padding: 15px;\n            border: 1px solid rgba(255, 255, 255, 0.7);\n        '
+        style = 'background-color: rgba(0, 100, 200, 0.6); color: white; font-size: 20px; border-radius: 10px; padding: 15px; border: 1px solid rgba(255, 255, 255, 0.7);'
         self.drag_overlay1 = QLabel(self.image_label)
         self.drag_overlay1.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.drag_overlay1.setStyleSheet(style)
@@ -822,7 +837,7 @@ class ImageComparisonApp(QWidget):
                     else:
                         unsupported_files.append(f"{display_name} ({tr('Unsupported extension', self.current_language)}: {ext})")
                 except Exception as e:
-                    errors.append(f"{display_name}: {tr('Error processing path', self.current_language)} - {e}")
+                    errors.append(f"{url.toString()}: {tr('Error processing path', self.current_language)} - {e}")
             else:
                 non_local_urls.append(url.toString())
         if not local_file_paths:
@@ -833,97 +848,94 @@ class ImageComparisonApp(QWidget):
                 reason_list.append(tr('Unsupported/Invalid files skipped:', self.current_language) + f' {len(unsupported_files)}')
             if errors:
                 reason_list.append(tr('Errors:', self.current_language) + f' {len(errors)}')
-            reason_str = '\n - '.join(reason_list) if reason_list else tr('No supported local image files detected in drop.', self.current_language)
-            QMessageBox.information(self, tr('Information', self.current_language), tr('No supported local image files could be processed from the dropped items.', self.current_language) + (f"\n\n{tr('Details:', self.current_language)}\n - {reason_str}" if reason_list else ''))
+            reason_str = '\\n - '.join(reason_list) if reason_list else tr('No supported local image files detected in drop.', self.current_language)
+            QMessageBox.information(self, tr('Information', self.current_language), tr('No supported local image files could be processed from the dropped items.', self.current_language) + (f"\\n\\n{tr('Details:', self.current_language)}\\n - {reason_str}" if reason_list else ''))
             return
         QTimer.singleShot(0, lambda: self._load_images_from_paths(local_file_paths, target_image_num))
         if errors:
-            error_details = '\n - '.join(errors)
-            QMessageBox.warning(self, tr('Warning', self.current_language), tr('Some errors occurred while processing dropped files:', self.current_language) + f"\n\n{tr('Details:', self.current_language)}\n - {error_details}")
+            error_details = '\\n - '.join(errors)
+            QMessageBox.warning(self, tr('Warning', self.current_language), tr('Some errors occurred while processing dropped files:', self.current_language) + f"\\n\\n{tr('Details:', self.current_language)}\\n - {error_details}")
 
-    def changeEvent(self, event):
+    def changeEvent(self, event: QEvent):
         event_type = event.type()
         if event_type == QEvent.Type.LanguageChange:
-            print('LanguageChange event detected, updating translations.')
             self.update_translations()
+            if hasattr(self, 'length_warning_label'):
+                self.check_name_lengths()
+            if hasattr(self, 'help_button'):
+                self.help_button.setToolTip(tr('Show Help', self.current_language))
+            if hasattr(self, 'slider_speed'):
+                self.slider_speed.setToolTip(f"{self.movement_speed_per_sec:.1f} {tr('rel. units/sec', self.current_language)}")
+            self._update_color_button_tooltip()
+            if hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
+                self.update_comparison_if_needed()
+            super().changeEvent(event)
+            return
         elif event_type == QEvent.Type.WindowStateChange:
-            old_state = event.oldState()
-            new_state = self.windowState()
-            was_normal = not old_state & (Qt.WindowState.WindowMaximized | Qt.WindowState.WindowFullScreen)
-            is_max_or_full = bool(new_state & (Qt.WindowState.WindowMaximized | Qt.WindowState.WindowFullScreen))
-            if is_max_or_full and was_normal:
-                current_normal_geom = self.saveGeometry()
-                if current_normal_geom and (not current_normal_geom.isEmpty()):
-                    self.previous_geometry = current_normal_geom
-                    print(f'Saved previous geometry on maximize: {len(self.previous_geometry)} bytes')
-                else:
-                    print('Warning: Tried to save previous_geometry on maximize, but saveGeometry was empty.')
+            old_state_bit = event.oldState()
+            new_state_bit = self.windowState()
+            was_max_or_full = bool(old_state_bit & (Qt.WindowState.WindowMaximized | Qt.WindowState.WindowFullScreen))
+            is_max_or_full = bool(new_state_bit & (Qt.WindowState.WindowMaximized | Qt.WindowState.WindowFullScreen))
+            if is_max_or_full and (not was_max_or_full):
+                if self.previous_geometry is None:
+                    current_normal_geom = self.saveGeometry()
+                    if current_normal_geom and (not current_normal_geom.isEmpty()):
+                        self.previous_geometry = current_normal_geom
+                    else:
+                        print('ChangeEvent: Warning - Tried to save previous geometry on maximize, but saveGeometry() returned empty (OLD handler).')
+                        self.previous_geometry = None
+            elif not is_max_or_full and was_max_or_full:
+                if self.previous_geometry is not None:
                     self.previous_geometry = None
-            was_max_or_full = bool(old_state & (Qt.WindowState.WindowMaximized | Qt.WindowState.WindowFullScreen))
-            is_normal_now = not is_max_or_full
-            if is_normal_now and was_max_or_full:
-                print('Window restored to normal state.')
-                self.previous_geometry = None
                 QTimer.singleShot(50, self.update_comparison_if_needed)
                 QTimer.singleShot(60, self._ensure_minimum_size_after_restore)
+            super().changeEvent(event)
+            return
         super().changeEvent(event)
 
     def closeEvent(self, event):
-        current_state = self.windowState()
-        should_save_as_maximized = getattr(self, '_intend_to_close_maximized', False)
-        geometry_to_save = None
-        save_maximized_flag = False
-        if should_save_as_maximized:
-            if self.previous_geometry and (not self.previous_geometry.isEmpty()):
-                geometry_to_save = self.previous_geometry
-                save_maximized_flag = True
-            else:
-                if self.settings.contains('window_geometry'):
-                    try:
-                        self.settings.remove('window_geometry')
-                    except Exception as e:
-                        print(f"Error removing 'window_geometry': {e}")
-                if self.settings.contains('window_was_maximized'):
-                    try:
-                        self.settings.remove('window_was_maximized')
-                    except Exception as e:
-                        print(f"Error removing 'window_was_maximized': {e}")
+        runtime_prev_geom_valid = bool(hasattr(self, 'previous_geometry') and self.previous_geometry is not None and isinstance(self.previous_geometry, QByteArray) and (not self.previous_geometry.isNull()) and (not self.previous_geometry.isEmpty()))
+        current_geometry = self.saveGeometry()
+        if current_geometry and (not current_geometry.isEmpty()):
+            self.save_setting('window_geometry', current_geometry)
         else:
-            current_geometry = self.saveGeometry()
-            if current_geometry and (not current_geometry.isEmpty()):
-                geometry_to_save = current_geometry
-                save_maximized_flag = False
-            else:
-                if self.settings.contains('window_geometry'):
-                    try:
-                        self.settings.remove('window_geometry')
-                    except Exception as e:
-                        print(f"Error removing 'window_geometry': {e}")
-                if self.settings.contains('window_was_maximized'):
-                    try:
-                        self.settings.remove('window_was_maximized')
-                    except Exception as e:
-                        print(f"Error removing 'window_was_maximized': {e}")
-        if geometry_to_save:
-            self.save_setting('window_geometry', geometry_to_save)
-            self.save_setting('window_was_maximized', save_maximized_flag)
-        if self.settings.contains('previous_geometry'):
+            print('CloseEvent: Warning - saveGeometry() returned empty on close, not saving geometry (OLD logic).')
+            if self.settings.contains('window_geometry'):
+                try:
+                    self.settings.remove('window_geometry')
+                except Exception as e:
+                    print(f"Error removing invalid 'window_geometry' on close: {e}")
+        should_save_as_maximized = runtime_prev_geom_valid
+        self.save_setting('window_was_maximized', should_save_as_maximized)
+        if should_save_as_maximized:
+            self.save_setting('previous_geometry', self.previous_geometry)
+        elif self.settings.contains('previous_geometry'):
             try:
                 self.settings.remove('previous_geometry')
             except Exception as e:
-                print(f"Error removing 'previous_geometry' on close: {e}")
+                print(f"Error removing 'previous_geometry' setting on close (normal): {e}")
         self.save_setting('language', self.current_language)
         self.save_setting('max_name_length', self.max_name_length)
-        self.save_setting('include_file_names', self.checkbox_file_names.isChecked() if hasattr(self, 'checkbox_file_names') else False)
+        if hasattr(self, 'checkbox_file_names'):
+            self.save_setting('include_file_names', self.checkbox_file_names.isChecked())
         self.save_setting('movement_speed_per_sec', self.movement_speed_per_sec)
-        self.save_setting('filename_color', self.file_name_color.name(QColor.NameFormat.HexArgb))
         self.save_setting('magnifier_size_relative', self.magnifier_size_relative)
         self.save_setting('capture_size_relative', self.capture_size_relative)
-        self.save_setting('capture_relative_x', self.capture_position_relative.x())
-        self.save_setting('capture_relative_y', self.capture_position_relative.y())
         self.save_setting('magnifier_offset_relative', self.magnifier_offset_relative)
         self.save_setting('magnifier_spacing_relative', self.magnifier_spacing_relative)
+        self.save_setting('capture_relative_x', self.capture_position_relative.x())
+        self.save_setting('capture_relative_y', self.capture_position_relative.y())
+        self.save_setting('filename_color', self.file_name_color.name(QColor.NameFormat.HexArgb))
         self.save_setting('jpeg_quality', self.jpeg_quality)
+        try:
+            paths1 = [item[1] for item in self.image_list1 if len(item) > 1 and isinstance(item[1], str)]
+            paths2 = [item[1] for item in self.image_list2 if len(item) > 1 and isinstance(item[1], str)]
+            self.save_setting('image_list1_paths', paths1)
+            self.save_setting('image_list2_paths', paths2)
+            self.save_setting('current_index1', self.current_index1)
+            self.save_setting('current_index2', self.current_index2)
+        except Exception as e:
+            print(f'CloseEvent: Error saving image lists/indices: {e}')
         self.settings.sync()
         super().closeEvent(event)
 
@@ -969,10 +981,16 @@ class ImageComparisonApp(QWidget):
                 needs_resize = True
             else:
                 try:
-                    max_w = max(self.original_image1.width, self.original_image2.width)
-                    max_h = max(self.original_image1.height, self.original_image2.height)
-                    if self.image1.size != (max_w, max_h) or self.image2.size != (max_w, max_h):
+                    if not (hasattr(self.original_image1, 'size') and hasattr(self.original_image1, 'width') and hasattr(self.original_image1, 'height') and hasattr(self.original_image2, 'size') and hasattr(self.original_image2, 'width') and hasattr(self.original_image2, 'height')):
+                        print('Warning: Original images missing size/width/height attributes. Forcing resize.')
                         needs_resize = True
+                    else:
+                        max_w = max(self.original_image1.width, self.original_image2.width)
+                        max_h = max(self.original_image1.height, self.original_image2.height)
+                        if not hasattr(self.image1, 'size') or self.image1.size != (max_w, max_h):
+                            needs_resize = True
+                        elif not hasattr(self.image2, 'size') or self.image2.size != (max_w, max_h):
+                            needs_resize = True
                 except Exception as e:
                     print(f'Error checking image dimensions in update_comparison_if_needed: {e}')
                     needs_resize = True
@@ -997,37 +1015,17 @@ class ImageComparisonApp(QWidget):
                     return
             if self.image1 and self.image2:
                 try:
-                    img1_rgba = self.image1
-                    img2_rgba = self.image2
-                    width, height = img1_rgba.size
-                    result = Image.new('RGBA', (width, height))
-                    split_pos_abs = 0
-                    if not self.is_horizontal:
-                        split_pos_abs = max(0, min(width, int(width * self.split_position)))
-                        if split_pos_abs > 0:
-                            result.paste(img1_rgba.crop((0, 0, split_pos_abs, height)), (0, 0))
-                        if split_pos_abs < width:
-                            result.paste(img2_rgba.crop((split_pos_abs, 0, width, height)), (split_pos_abs, 0))
-                    else:
-                        split_pos_abs = max(0, min(height, int(height * self.split_position)))
-                        if split_pos_abs > 0:
-                            result.paste(img1_rgba.crop((0, 0, width, split_pos_abs)), (0, 0))
-                        if split_pos_abs < height:
-                            result.paste(img2_rgba.crop((0, split_pos_abs, width, height)), (0, split_pos_abs))
-                    self.result_image = result
-                except Exception as e_combine:
-                    print(f'Error combining images in update_comparison_if_needed: {e_combine}')
+                    display_result_processor(self)
+                except Exception as e_display:
+                    print(f'Error calling display_result_processor: {e_display}')
                     traceback.print_exc()
-                    self.result_image = None
+                    QMessageBox.critical(self, tr('Error', self.current_language), f"{tr('Failed to update comparison view:', self.current_language)}\n{e_display}")
             else:
-                print('Warning: Resized images (image1/image2) are missing after resize check.')
+                print('Warning: image1 or image2 is missing after resize check/call.')
+                if hasattr(self, 'image_label'):
+                    self.image_label.clear()
                 self.result_image = None
-            try:
-                display_result_processor(self)
-            except Exception as e_display:
-                print(f'Error calling display_result_processor: {e_display}')
-                traceback.print_exc()
-                QMessageBox.critical(self, tr('Error', self.current_language), f"{tr('Failed to update comparison view:', self.current_language)}\n{e_display}")
+                self.pixmap_width, self.pixmap_height = (0, 0)
         else:
             if hasattr(self, 'image_label'):
                 self.image_label.clear()
@@ -1066,7 +1064,7 @@ class ImageComparisonApp(QWidget):
                 load_errors.append(f'{file_path}: Error normalizing path - {e_norm}')
                 continue
             if normalized_path in current_paths_in_list:
-                print(f'Path {original_path_for_display} already exists. Finding and selecting it.')
+                print(f"Path '{original_path_for_display}' already exists in list {image_number}. Finding and selecting it.")
                 found_index = -1
                 try:
                     for idx, item_data in enumerate(target_list):
@@ -1075,7 +1073,6 @@ class ImageComparisonApp(QWidget):
                             break
                     if found_index != -1:
                         target_selection_index = found_index
-                        print(f'Found at index {found_index}. Will select after processing all files.')
                     else:
                         print(f'Warning: Path {normalized_path} was in set but not found in list {image_number}.')
                         load_errors.append(f"{original_path_for_display}: {tr('Internal state inconsistency (path in set, not list)', self.current_language)}")
@@ -1218,19 +1215,23 @@ class ImageComparisonApp(QWidget):
         combobox.clear()
         for i, item_data in enumerate(target_list):
             display_name = tr('Invalid Data', self.current_language)
+            full_name_for_tooltip = ''
             if isinstance(item_data, tuple) and len(item_data) >= 3:
                 display_name = item_data[2] or tr('Unnamed', self.current_language)
+                full_name_for_tooltip = display_name
             elif isinstance(item_data, tuple) and len(item_data) >= 2 and item_data[1]:
                 display_name = os.path.basename(item_data[1])
+                full_name_for_tooltip = display_name
             else:
                 print(f'Warning: Unexpected item format in list {image_number} at index {i}')
                 pass
             max_cb_len = 60
             cb_name = display_name[:max_cb_len - 3] + '...' if len(display_name) > max_cb_len else display_name
             combobox.addItem(cb_name)
-            combobox.setItemData(i, {'full_name': display_name, 'list_index': i}, Qt.ItemDataRole.UserRole)
+            path = item_data[1] if isinstance(item_data, tuple) and len(item_data) > 1 else None
+            combobox.setItemData(i, {'full_name': full_name_for_tooltip, 'list_index': i, 'path': path}, Qt.ItemDataRole.UserRole)
             if len(display_name) > max_cb_len:
-                combobox.setItemData(i, display_name, Qt.ItemDataRole.ToolTipRole)
+                combobox.setItemData(i, full_name_for_tooltip, Qt.ItemDataRole.ToolTipRole)
         new_index_to_select = -1
         if 0 <= current_internal_index < len(target_list):
             new_index_to_select = current_internal_index
@@ -1250,7 +1251,6 @@ class ImageComparisonApp(QWidget):
         current_internal_index = self.current_index1 if image_number == 1 else self.current_index2
         if 0 <= index < len(target_list):
             if index != current_internal_index:
-                print(f'Combobox {image_number} changed to index: {index}')
                 if image_number == 1:
                     self.current_index1 = index
                 else:
@@ -1291,13 +1291,12 @@ class ImageComparisonApp(QWidget):
                     self.update_file_names()
                     return
                 if new_name != old_name:
-                    print(f"Updating name for image {image_number} from '{old_name}' to '{new_name}'")
                     target_list[current_index] = (old_img, old_path, new_name)
                     combobox.blockSignals(True)
                     max_cb_len = 60
                     cb_name = new_name[:max_cb_len - 3] + '...' if len(new_name) > max_cb_len else new_name
                     combobox.setItemText(current_index, cb_name)
-                    combobox.setItemData(current_index, {'full_name': new_name, 'list_index': current_index}, Qt.ItemDataRole.UserRole)
+                    combobox.setItemData(current_index, {'full_name': new_name, 'list_index': current_index, 'path': old_path}, Qt.ItemDataRole.UserRole)
                     if len(new_name) > max_cb_len:
                         combobox.setItemData(current_index, new_name, Qt.ItemDataRole.ToolTipRole)
                     else:
@@ -1471,32 +1470,31 @@ class ImageComparisonApp(QWidget):
             pos_is_settled = self.freeze_magnifier or (abs(delta_vx) < self.lerp_stop_threshold and abs(delta_vy) < self.lerp_stop_threshold)
             spacing_is_settled = abs(delta_vs) < self.lerp_stop_threshold
             if pos_is_settled and spacing_is_settled:
-                self.movement_timer.stop()
-                print('Magnifier movement timer stopped.')
-                needs_final_set = False
-                if not self.freeze_magnifier:
-                    if not math.isclose(self.magnifier_offset_relative_visual.x(), self.magnifier_offset_relative.x(), abs_tol=epsilon) or not math.isclose(self.magnifier_offset_relative_visual.y(), self.magnifier_offset_relative.y(), abs_tol=epsilon):
-                        self.magnifier_offset_relative_visual.setX(self.magnifier_offset_relative.x())
-                        self.magnifier_offset_relative_visual.setY(self.magnifier_offset_relative.y())
+                if self.movement_timer.isActive():
+                    self.movement_timer.stop()
+                    needs_final_set = False
+                    if not self.freeze_magnifier:
+                        if not math.isclose(self.magnifier_offset_relative_visual.x(), self.magnifier_offset_relative.x(), abs_tol=epsilon) or not math.isclose(self.magnifier_offset_relative_visual.y(), self.magnifier_offset_relative.y(), abs_tol=epsilon):
+                            self.magnifier_offset_relative_visual.setX(self.magnifier_offset_relative.x())
+                            self.magnifier_offset_relative_visual.setY(self.magnifier_offset_relative.y())
+                            needs_final_set = True
+                    if not math.isclose(self.magnifier_spacing_relative_visual, self.magnifier_spacing_relative, abs_tol=epsilon):
+                        self.magnifier_spacing_relative_visual = self.magnifier_spacing_relative
                         needs_final_set = True
-                if not math.isclose(self.magnifier_spacing_relative_visual, self.magnifier_spacing_relative, abs_tol=epsilon):
-                    self.magnifier_spacing_relative_visual = self.magnifier_spacing_relative
-                    needs_final_set = True
-                if needs_final_set and (not self.resize_in_progress):
-                    print('Performing final snap redraw for magnifier.')
-                    try:
-                        display_result_processor(self)
-                    except Exception as e:
-                        print(f'Error calling display_result_processor after movement stop: {e}')
-                        traceback.print_exc()
-                self.save_setting('magnifier_offset_relative', self.magnifier_offset_relative)
-                self.save_setting('magnifier_spacing_relative', self.magnifier_spacing_relative)
+                    if needs_final_set and (not self.resize_in_progress):
+                        print('Performing final snap redraw for magnifier.')
+                        try:
+                            display_result_processor(self)
+                        except Exception as e:
+                            print(f'Error calling display_result_processor after movement stop: {e}')
+                            traceback.print_exc()
+                    self.save_setting('magnifier_offset_relative', self.magnifier_offset_relative)
+                    self.save_setting('magnifier_spacing_relative', self.magnifier_spacing_relative)
 
     def toggle_orientation(self, state):
         new_state_bool = state == Qt.CheckState.Checked.value
         if new_state_bool != self.is_horizontal:
             self.is_horizontal = new_state_bool
-            print(f"Split orientation changed to: {('Horizontal' if self.is_horizontal else 'Vertical')}")
             self.update_file_names()
             self.update_comparison_if_needed()
 
@@ -1505,7 +1503,6 @@ class ImageComparisonApp(QWidget):
         if new_state_bool == self.use_magnifier:
             return
         self.use_magnifier = new_state_bool
-        print(f"Magnifier {('enabled' if self.use_magnifier else 'disabled')}")
         visible = self.use_magnifier
         if hasattr(self, 'slider_size'):
             self.slider_size.setVisible(visible)
@@ -1535,6 +1532,7 @@ class ImageComparisonApp(QWidget):
     def toggle_freeze_magnifier(self, state):
         if not self.use_magnifier:
             if state == Qt.CheckState.Checked.value and hasattr(self, 'freeze_button'):
+                print('Warning: Freeze toggled while magnifier is off. Unchecking.')
                 self.freeze_button.blockSignals(True)
                 self.freeze_button.setChecked(False)
                 self.freeze_button.blockSignals(False)
@@ -1543,7 +1541,6 @@ class ImageComparisonApp(QWidget):
         if new_freeze_state == self.freeze_magnifier:
             return
         if new_freeze_state:
-            print('Attempting to freeze magnifier...')
             can_freeze = self.use_magnifier and self.original_image1 and self.original_image2 and self.result_image and (self.result_image.width > 0) and (self.result_image.height > 0) and (self.pixmap_width > 0) and (self.pixmap_height > 0)
             if can_freeze:
                 try:
@@ -1554,7 +1551,6 @@ class ImageComparisonApp(QWidget):
                         rel_y = max(0.0, min(1.0, float(magnifier_midpoint_drawing.y()) / float(self.result_image.height)))
                         self.frozen_magnifier_position_relative = QPointF(rel_x, rel_y)
                         self.freeze_magnifier = True
-                        print(f'Magnifier frozen at relative position: ({rel_x:.3f}, {rel_y:.3f})')
                         self.magnifier_offset_relative_visual = QPointF(self.magnifier_offset_relative)
                         self.magnifier_spacing_relative_visual = self.magnifier_spacing_relative
                     else:
@@ -1568,11 +1564,11 @@ class ImageComparisonApp(QWidget):
                 self.freeze_magnifier = False
                 print('Warning: Cannot freeze magnifier (conditions not met - images loaded, view rendered?).')
             if not self.freeze_magnifier and hasattr(self, 'freeze_button') and self.freeze_button.isChecked():
+                print('Unchecking freeze button because freeze failed.')
                 self.freeze_button.blockSignals(True)
                 self.freeze_button.setChecked(False)
                 self.freeze_button.blockSignals(False)
         else:
-            print('Unfreezing magnifier...')
             self._unfreeze_magnifier_logic()
         self.update_comparison_if_needed()
 
@@ -1598,7 +1594,6 @@ class ImageComparisonApp(QWidget):
                     required_offset_rel_x = required_offset_pixels_x / reference_magnifier_size_display
                     required_offset_rel_y = required_offset_pixels_y / reference_magnifier_size_display
                     new_target_offset_rel = QPointF(required_offset_rel_x, required_offset_rel_y)
-                    print(f'Calculated unfreeze target offset: ({required_offset_rel_x:.3f}, {required_offset_rel_y:.3f})')
                 else:
                     print('Warning: Reference magnifier size is zero during unfreeze calculation.')
             except Exception as e:
@@ -1651,7 +1646,6 @@ class ImageComparisonApp(QWidget):
             item = self.edit_layout.itemAt(i)
             if item and item.widget():
                 item.widget().setVisible(is_visible)
-        self.update_minimum_window_size()
         if is_visible and self.original_image1 and self.original_image2:
             self.update_comparison_if_needed()
 
@@ -1673,15 +1667,28 @@ class ImageComparisonApp(QWidget):
 
     def save_setting(self, key, value):
         try:
+            value_to_save = None
             if isinstance(value, QPointF):
                 value_to_save = f'{value.x()},{value.y()}'
-            elif isinstance(value, QByteArray):
-                value_to_save = value.toBase64().data().decode('ascii') if not value.isEmpty() else ''
             elif isinstance(value, QColor):
                 value_to_save = value.name(QColor.NameFormat.HexArgb)
-            else:
+            elif isinstance(value, QByteArray):
+                if value.isNull() or value.isEmpty():
+                    if self.settings.contains(key):
+                        try:
+                            self.settings.remove(key)
+                        except Exception as e_rem:
+                            print(f"Error removing setting '{key}' for null/empty QByteArray: {e_rem}")
+                    return
+                else:
+                    value_to_save = value.toBase64().data().decode('ascii')
+            elif isinstance(value, (int, float, bool, str)) or (isinstance(value, list) and all((isinstance(item, str) for item in value))):
                 value_to_save = value
-            self.settings.setValue(key, value_to_save)
+            else:
+                print(f"ERROR: Attempted to save unsupported type '{type(value)}' for key '{key}'. Skipping save.")
+                return
+            if value_to_save is not None:
+                self.settings.setValue(key, value_to_save)
         except Exception as e:
             print(f"ERROR saving setting '{key}' (value type: {type(value)}): {e}")
             traceback.print_exc()
@@ -1763,6 +1770,12 @@ class ImageComparisonApp(QWidget):
         if hasattr(self, 'slider_speed'):
             speed_tooltip = f"{self.movement_speed_per_sec:.1f} {tr('rel. units/sec', lang)}"
             self.slider_speed.setToolTip(speed_tooltip)
+        if hasattr(self, 'slider_size'):
+            size_tooltip = f'{int(self.magnifier_size_relative * 100):.0f}%'
+            self.slider_size.setToolTip(size_tooltip)
+        if hasattr(self, 'slider_capture'):
+            capture_tooltip = f'{int(self.capture_size_relative * 100):.0f}%'
+            self.slider_capture.setToolTip(capture_tooltip)
         self._update_color_button_tooltip()
         if hasattr(self, 'drag_overlay1') and self.drag_overlay1.isVisible():
             self.drag_overlay1.setText(tr('Drop Image(s) 1 Here', lang))
@@ -1950,7 +1963,7 @@ class ImageComparisonApp(QWidget):
 
     def _open_settings_dialog(self):
         if not settings_dialog_available or SettingsDialog is None:
-            QMessageBox.warning(self, self.tr('Error', self.current_language), self.tr('Settings dialog module could not be loaded.', self.current_language) + '\n(Ensure settings_dialog.py exists and is error-free)')
+            QMessageBox.warning(self, tr('Error', self.current_language), tr('Settings dialog module could not be loaded.', self.current_language) + '\n(Ensure settings_dialog.py exists and is error-free)')
             return
         dialog = SettingsDialog(current_language=self.current_language, current_max_length=self.max_name_length, min_limit=self.MIN_NAME_LENGTH_LIMIT, max_limit=self.MAX_NAME_LENGTH_LIMIT, current_jpeg_quality=self.jpeg_quality, parent=self, tr_func=tr)
         result = dialog.exec()
@@ -1963,7 +1976,6 @@ class ImageComparisonApp(QWidget):
                     self.max_name_length = new_max_length_validated
                     self.save_setting('max_name_length', self.max_name_length)
                     length_changed = True
-                    print(f'Max name length changed to: {self.max_name_length}')
                     self.update_file_names()
                     self.check_name_lengths()
                 new_jpeg_quality_validated = max(1, min(100, new_jpeg_quality_from_dialog))
@@ -1972,16 +1984,31 @@ class ImageComparisonApp(QWidget):
                     self.jpeg_quality = new_jpeg_quality_validated
                     self.save_setting('jpeg_quality', self.jpeg_quality)
                     jpeg_quality_changed = True
-                    print(f'JPEG quality changed to: {self.jpeg_quality}')
+                    print(f'JPEG Quality set to: {self.jpeg_quality}')
                 if new_lang != self.current_language:
                     self.change_language(new_lang)
+                if length_changed and hasattr(self, 'checkbox_file_names') and self.checkbox_file_names.isChecked():
+                    self.update_comparison_if_needed()
             except AttributeError:
-                QMessageBox.warning(self, self.tr('Error', self.current_language), 'Failed to get settings from dialog (get_settings method missing or incorrect?).')
+                QMessageBox.warning(self, tr('Error', self.current_language), 'Failed to get settings from dialog (get_settings method missing or incorrect?).')
             except Exception as e:
-                QMessageBox.warning(self, self.tr('Error', self.current_language), f'Error processing settings dialog results: {e}')
+                QMessageBox.warning(self, tr('Error', self.current_language), f'Error processing settings dialog results: {e}')
                 traceback.print_exc()
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = ImageComparisonApp()
-    window.show()
+
+    def log_final_state():
+        if window:
+            print(f'\n--- Post-Show Check (500ms) ---')
+            print(f'Window State: {window.windowState()}, isMaximized: {window.isMaximized()}')
+            print(f'Window Geometry: {window.geometry()}')
+            runtime_prev_geom_valid = bool(hasattr(window, 'previous_geometry') and window.previous_geometry is not None and isinstance(window.previous_geometry, QByteArray) and (not window.previous_geometry.isNull()) and (not window.previous_geometry.isEmpty()))
+            print(f'Runtime previous_geometry is valid: {runtime_prev_geom_valid}')
+            if runtime_prev_geom_valid:
+                print(f'  previous_geometry size: {window.previous_geometry.size()}')
+            print(f'-----------------------------\n')
+        else:
+            print('\n--- Post-Show Check (500ms): Window no longer exists. ---\n')
+    QTimer.singleShot(500, log_final_state)
     sys.exit(app.exec())
