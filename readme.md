@@ -134,12 +134,8 @@ This project is distributed under the MIT License. See the [LICENSE](https://git
 
 ---
 
-<div align="center">
-<h2>Star History</h2>
-<img src="https://raw.githubusercontent.com/johnpetersa19/star-history-chart.png" alt="Star History Chart showing growth from February through May">
-</div>
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Date)](https://star-history.com/#loganavter/Improve-ImgSLI&Date)
+## Star History
+[![Star History Chart](https://api.star-history.com/svg?repos=loganavter/Improve-ImgSLI&type=Date)](https://www.star-history.com/#loganavter/Improve-ImgSLI&Date)
 
 ---
 
