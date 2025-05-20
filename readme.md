@@ -1,80 +1,89 @@
-<p align="center"><img src="https://raw.githubusercontent.com/johnpetersa19/Improve-ImgSLI/037ab021aa79aa40a85a25d591e887dca85cd50d/src/icons/logo-github%20.svg" alt="Logo" width="384">
+<p align="center">
+  <img src="https://raw.githubusercontent.com/johnpetersa19/Improve-ImgSLI/037ab021aa79aa40a85a25d591e887dca85cd50d/src/icons/logo-github%20.svg" alt="Logo" width="384">
+</p>
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square)](https://github.com/Loganavter/Improve-ImgSLI/releases/latest)
-[![License: MIT](https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square)](LICENSE)
+<p align="center">
+  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square">
+  </a>
+</p>
 
-**An intuitive, open-source tool for advanced image comparison and interaction.**
+<p align="center"><strong>An intuitive, open-source tool for advanced image comparison and interaction.</strong></p>
 
-<div style="display: flex; justify-content: space-between;">
-    <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_1.png" alt="Side-by-side comparison with vertical split" style="width: 32%;">
-    <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_2.png" alt="Magnifying glass tool inspecting details" style="width: 32%;">
-    <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_3.png" alt="Language selection interface" style="width: 32%;">
+---
+
+## 📸 Screenshots
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_1.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_2.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_3.png" width="32%">
 </div>
+
 <details>
-     <summary>Full resolution save</summary>
-     <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/fullres/github_fullres.png" alt="Another feature example" style="width: 33%;">
+  <summary>Full resolution save</summary>
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/fullres/github_fullres.png" alt="Full resolution example" width="33%">
 </details>
 
 ---
 
-## Table of Contents
+## 📖 Table of Contents
 
-*   [Overview](#overview)
-*   [Key Features](#key-features)
-*   [Installation](#installation)
-*   [Basic Usage](#basic-usage)
-*   [Contributing](#contributing)
-*   [License](#license)
-*   [Development Story](#development-story)
-*   [My personal view on project](#my-personal-view)
-
----
-
-## Overview <a name="overview"></a>
-
-Improved ImgSLI is an open-source, non-proprietary software designed for intuitive image interactions. It's completely free, allowing easy distribution without restrictive licensing. It's built for anyone needing detailed image comparison, analysis, or manipulation, such as designers, upscale enthusiasts, photographers, or researchers.
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Basic Usage](#basic-usage)
+- [Contributing](#contributing)
+- [License](#license)
+- [Development Story](#development-story)
+- [My Personal View](#my-personal-view)
 
 ---
 
-## Key Features <a name="key-features"></a>
+## 🧩 Overview <a name="overview"></a>
 
-**Core Comparison & Viewing:**
-*   Intuitive image splitting (horizontal/vertical) controlled by mouse.
-*   Display original resolution (WxH) for each loaded image.
-*   Automatic resizing of images to match the largest dimensions for consistent comparison.
-*   Save the current comparison view (including split line, magnifier, capture marker, and optional file names) as a full-resolution image.
-
-**Magnifier Tool:**
-*   Powerful Magnifier for close inspection.
-*   Visual marker (red circle) indicating the magnifier's capture area on the main image.
-*   Adjustable magnification area size and magnifier display size.
-*   Adjustable movement speed for WASD magnifier control.
-*   Independent magnifier movement using WASD keys (with smooth interpolation).
-*   Adjust distance between magnifiers using Q and E keys (with smooth interpolation).
-*   Option to combine magnifiers for direct comparison of magnified areas.
-*   Freeze the magnifier's view position.
-
-**File & Workflow Management:**
-*   Drag-and-drop support for loading one or multiple images per panel.
-*   Select loaded images via dropdown menus when multiple images are loaded into a panel.
-*   Swap entire image lists between panels with a single button click.
-*   Clear image lists for each panel individually using Trash (🗑️) buttons.
-*   Edit image names directly within the application interface.
-*   Option to include file names in the saved comparison image.
-*   Customizable font size and color for included file names.
-*   Adjustable maximum length for displayed file names with visual warnings.
-
-**User Experience & Interface:**
-*   Multilingual support (English, Russian, Chinese, Brazilian Portuguese) with flag-based language selection.
-*   Dynamic window resizing with adaptive content rendering(relative coords).
-*   Persistent settings for window state, language, and various display preferences across sessions.
+Improve-ImgSLI is a free and open-source application for detailed visual image comparison — ideal for designers, photographers, upscaling enthusiasts, and researchers.
 
 ---
 
-## Installation <a name="installation"></a>
+## 🚀 Key Features <a name="key-features"></a>
 
-**Python (from source):**
-*   Requires: Python, pip, bash
+### 🖼️ Core Comparison & Viewing
+- Horizontal/vertical image split with mouse control.
+- Original resolution display (WxH).
+- Auto-resize to match dimensions.
+- Export current view to high-res image (includes divider, magnifier, marker, and filenames).
+
+### 🔍 Magnifier Tool
+- Powerful image magnifier tool.
+- Marker showing the captured area.
+- Adjustable source size and magnified area.
+- Smooth WASD controls.
+- Merge both magnifiers into one view.
+- Freeze magnifier position.
+
+### 🗂️ File & Workflow Management
+- Drag and drop multiple files.
+- Dropdowns to select from loaded images.
+- Quick switch between image lists.
+- Clear list buttons.
+- Filename editing from UI.
+- Optional filename overlay in exports.
+- Customizable font and max name length.
+
+### 🧑‍💻 User Experience & Interface
+- Multilingual support (EN, RU, ZH, PT-BR).
+- Dynamic UI resizing.
+- Settings persist across sessions.
+
+---
+
+## 🛠️ Installation <a name="installation"></a>
+
+### 🐍 Python (from source)
 ```bash
 git clone https://github.com/Loganavter/Improve-ImgSLI.git
 cd Improve-ImgSLI
@@ -82,76 +91,81 @@ chmod +x launcher.sh
 ./launcher.sh
 ```
 
-**Arch Linux (AUR):**
+### 🐧 Arch Linux (AUR)
 ```bash
 yay -S improve-imgsli
 ```
 
-**Windows (Inno Setup):**
-1.  Directly download it from [>>>here<<<](https://github.com/Loganavter/Improve-ImgSLI/releases/download/v3.1.2/Improve_ImgSLI.exe)
-2.  Run the installer and follow the prompts.
+### 🪟 Windows (Inno Setup)
+1. Download the installer [here](https://github.com/Loganavter/Improve-ImgSLI/releases/download/v3.1.2/Improve_ImgSLI.exe)
+2. Run and install normally
 
-**Flatpak (FlatHub):**
-*   Requires: Flatpak
+### 🧊 Flatpak (Flathub)
 ```bash
 flatpak install io.github.Loganavter.Improve-ImgSLI
 flatpak run io.github.Loganavter.Improve-ImgSLI
 ```
 
-**MacOS:**
-*   Help wanted! We are looking for assistance to create and maintain a macOS build. [See the discussion and contribute here](https://github.com/Loganavter/Improve-ImgSLI/pull/15).
+### 🍏 macOS
+🚧 Help wanted! Contribute to the macOS build [here](https://github.com/Loganavter/Improve-ImgSLI/pull/15).
 
 ---
 
-## Basic Usage <a name="basic-usage"></a>
+## 🧪 Basic Usage <a name="basic-usage"></a>
 
-1.  **Launch:** Start Improved ImgSLI using the method corresponding to your installation.
-2.  **Load Images:** Use the "Add Img(s)" buttons or drag and drop image files onto the left or right half of the main image display area. If you load multiple files onto one side, use the dropdown menu above it to select the active image.
-3.  **Compare:** In the standard comparison mode, click and drag the mouse on the image to move the separator line. Use the "Horizontal Split" checkbox to change the split orientation.
-4.  **Magnify:** Activate the Magnifier tool via its checkbox. In this mode, clicking or dragging on the image sets the central capture point. Use WASD keys to move the magnified view areas independently. Use Q/E keys to adjust the distance between the magnifier circles. You can also freeze the capture point using the corresponding checkbox (WASD will then move the frozen point).
-5.  **Save:** Click the "Save Result" button in the UI to export the current comparison view as a single image file.
+1. **Start** Improve-ImgSLI using your preferred installation method.
+2. **Load Images** via the "Add Img(s)" button or drag-and-drop.
+3. **Compare:** move the split line with your mouse. Check "Horizontal Split" to change orientation.
+4. **Magnify:** enable the magnifier and adjust zoom with sliders or keys.
+5. **Export:** use the save button to export a high-res composite.
 
 https://github.com/user-attachments/assets/f2c843c2-31eb-4fb9-8eef-2d28630f2baf
 
 ---
 
-## Contributing <a name="contributing"></a>
+## 🤝 Contributing <a name="contributing"></a>
 
-Contributions are welcome! Feel free to:
-*   Report bugs or suggest features by opening an [Issue](https://github.com/Loganavter/Improve-ImgSLI/issues).
-*   Submit improvements by creating a [Pull Request](https://github.com/Loganavter/Improve-ImgSLI/pulls).
+Feel free to fork, submit issues, or open PRs. Contributions are welcome!
 
 ---
 
-## License <a name="license"></a>
+## 📄 License <a name="license"></a>
 
-This project is distributed under the MIT License. See the [LICENSE](https://github.com/Loganavter/Improve-ImgSLI/blob/main/LICENSE.txt) file for more details.
-
----
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Date)](https://star-history.com/#loganavter/Improve-ImgSLI&Date)
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
+
+## 🧠 Development Story <a name="development-story"></a>
 
 <details>
-<summary>Development Story <a name="development-story"></a></summary>
+<summary>Development Story</summary>
+The journey of Improve ImgSLI began in September 2024, initially conceived with ChatGPT's assistance to address a personal need for straightforward image comparison in my work. The early version provided basic side-by-side functionality. The following month, October, marked an enhancement phase using Claude, which introduced a magnifier tool and drag-and-drop support, significantly improving usability.
 
-Originally, Improve ImgSLI was fully crafted by ChatGPT in September 2024 to simplify creating comparison images for my work, offering basic image comparison functionality. In October, I discovered Claude and used it to enhance the tool with a magnifier feature and drag-and-drop support.
+By November, further refinements to the magnifier were implemented with Claude, including view freezing and merging capabilities. However, the codebase's expansion, coupled with Claude's 8k token context limit, made complete code regeneration impractical, necessitating manual integration of new features. Gemini was then employed to help manage these integrations, though not all AI-generated code was directly usable, leading to some features being postponed or temporarily disabled to maintain stability.
 
-By November, with Claude’s help, I refined the magnifier, adding options to freeze the view position and merge magnifiers. However, the growing codebase—coupled with Claude’s 8k token context limit—made full regeneration impossible, forcing me to manually edit sections. I turned to Gemini, which assisted in integrating changes, though not all generated code was successful. Some features were postponed, and others were intentionally disabled to avoid bugs.
+A brief period in early December saw an experiment with adaptive magnifier positioning tied to window resizing, which was ultimately set aside due to unsatisfactory results. A turning point came in January 2025 when a user [request](https://github.com/Loganavter/Improve-ImgSLI/issues/1) for dynamic window resizing led to the exploration of DeepSeek. This AI, notable at the time for its Chain-of-Thought reasoning, successfully guided the implementation of this crucial feature, with Gemini then seamlessly incorporating it alongside other updates.
 
-In early December, I experimented with adaptive magnifier positioning tied to window resizing, but the results were unsatisfactory, and I abandoned the effort. Then, in January 2025, a user [request](https://github.com/Loganavter/Improve-ImgSLI/issues/1) to enable window resizing prompted me to explore DeepSeek—a breakthrough AI with Chain-of-Thought reasoning at the time. DeepSeek helped implement this feature, while Gemini seamlessly incorporated it and other updates into the existing code.
+February 2025 brought renewed focus on enhancing the application. Leveraging Claude Sonnet 3.7, features like dynamic image swapping, a multilingual dictionary, and further magnifier improvements were added, along with a helpful tooltip. Shortly thereafter, access to Grok 3—first via X, then its dedicated website—provided a significant boost. Grok 3's DeepThink model proved exceptionally effective at resolving persistent bugs, outperforming previous AIs, while its generous query limits and intelligent standard model streamlined development. Key contributions included optimized rendering, filename display and editing, and fixes for fullscreen mode.
 
-In February 2025, I resumed enhancing Improve ImgSLI. With Claude Sonnet 3.7, I added dynamic image swapping via a button, a language dictionary, and further magnifier improvements, along with a help tooltip in the top-right corner. Soon after, I gained access to Grok 3—first on X, then via its website after a quick Google search. Grok 3 proved invaluable: its DeepThink model efficiently resolved persistent bugs, outperforming DeepSeek, while its generous query limits and smart standard model kept development flowing smoothly. It optimized rendering updates, introduced file name display and editing, and fixed fullscreen mode issues.
+Late March 2025 was dedicated to cross-platform compatibility. Gemini and Grok, using their web search capabilities, assisted in drafting build and packaging scripts. While initial hopes for community maintenance of platform builds didn't materialize due to some skepticism about the project's AI-assisted origins, this solo effort, though time-intensive (taking considerable effort per platform), led to the discovery and resolution of several bugs, culminating in a successful cross-platform launch. Delays in Flathub publication until mid-April allowed for further bug fixes and the addition of a list cleanup feature.
 
-In late March 2025, I focused on improving cross-platform compatibility. Gemini and Grok, utilizing their web search functions, helped draft the necessary build and packaging scripts. While I initially hoped for community assistance with maintaining builds for different platforms, skepticism from some potential contributors about the project's AI-assisted origins meant this became a solo undertaking. Consequently, preparing each platform release was time-intensive, taking considerable effort, though this thorough process did help uncover and resolve several remaining bugs before the successful launch of the cross-platform versions. However, additional reviews and inspections delayed the publication on flathab until mid-April. But during this time, I also managed to fix a few more bugs and add a list cleanup feature.
+In April 2025, attention shifted back to addressing critical bugs, with continued reliance on Gemini. A major achievement during this period was the implementation of window state persistence—a feature that proved incredibly challenging but vastly improved user experience. A settings tab was also introduced, centralizing language selection, output image quality, and filename length preferences. Following these updates, Windows and Flatpak builds were refreshed. The current plan involves implementing one final feature and verifying the Flatpak maintenance pipeline before updating Windows and AUR builds, after which the project will likely enter a period of stability.
 
-In April 2025, I turned my attention back to eliminating some very serious bugs, continuing to rely on Gemini for assistance. Ultimately, one of the most significant changes from this period was implementing window state persistence—making the application remember its position and state before closing. Honestly, I thought I'd never finish implementing that feature; it was incredibly challenging. A settings tab was also added, providing a dedicated place for language selection, choosing the output image quality, and setting the filename length preference. Following these improvements, and for the first time in a while, the builds for Windows and Flatpak were updated to incorporate all the recent changes. My plan is to put the project on hold for an extended period once I implement one final planned feature and confirm that the Flatpak maintenance process is working correctly. Subsequently, I will update the Windows and AUR builds accordingly.
+Excluding the value of approximately four weeks of personal development time, the direct monetary cost of this project has been around $30. The AUR maintainer's contribution was voluntary and is gratefully acknowledged.</details>
 
-In general, if do not take into account the price of my personal time, which is about 4 weeks in total, then this project cost me about $ 30. I got the AUR maintainer for free, so we don't take it into account either :)
-</details>
+---
+
+## 💬 My Personal View <a name="my-personal-view"></a>
+
 <details>
 <summary>My personal view on project<a name="my-personal-view"></summary>
-Initially, I was forced to create this program for illustrations in my article. I relied entirely on the design of the website - imgsli.com , hence the name. However, something like badsli. But over time, everything has improved, and now I can be proud of this most useful public asset, just like VideoCut Kahive, on whose principles I also partially relied, and in general it is my very valuable tool that saves a lot of time. That is, I could do the same job as this program manually, but it is much more convenient when it does not take 2-5 minutes, inconvenient frame selection, knowledge of ffmpeg and other things for cropping without transcoding. But this program does exactly the same thing, but in 30 seconds and with a user-friendly interface.
+The genesis of Improve ImgSLI was a practical need: to create clear visual comparisons for an article. The initial design, and indeed the name, drew inspiration from imgsli.com. While the early iterations were functional, the project has since evolved significantly.
+
+Today, I view Improve ImgSLI as a valuable public asset, much like VideoCut Kahive, another tool whose principles partially guided its development and which has become indispensable in my own workflow. The core value of Improve ImgSLI lies in its efficiency. Manually creating detailed image comparisons can be a laborious process, often taking several minutes and requiring familiarity with tools like ffmpeg for precise cropping without re-encoding. This program accomplishes the same, often superior, results in approximately 30 seconds, all through an intuitive, user-friendly interface. It's this transformation of a cumbersome task into a swift, accessible one that I believe makes Improve ImgSLI a genuinely useful tool.
 </details>
 
+---
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Timeline)](https://star-history.com/#Loganavter/Improve-ImgSLI&Timeline)
