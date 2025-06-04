@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QLabel
-from PyQt6.QtCore import pyqtSignal, QPointF, Qt
+from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QMouseEvent
 
 class ClickableLabel(QLabel):
@@ -10,6 +10,7 @@ class ClickableLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def mousePressEvent(self, event: QMouseEvent):
         self.mousePressed.emit(event)

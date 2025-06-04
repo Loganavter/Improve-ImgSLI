@@ -1,0 +1,227 @@
+Existing virtual environment found.
+Running application
+
+[1;33m📢 Tips:[0m QFluentWidgets Pro is now released. Click [1;96mhttps://qfluentwidgets.com/pages/pro[0m to learn more about it.
+
+DEBUG: Added item 'Ближайший сосед' with userData=0 for internal key 'NEAREST'.
+DEBUG: Added item 'Билинейная' with userData=1 for internal key 'BILINEAR'.
+DEBUG: Added item 'Бикубическая' with userData=2 for internal key 'BICUBIC'.
+DEBUG: Added item 'Ланцош (Высокое качество)' with userData=3 for internal key 'LANCZOS'.
+DEBUG: QThreadPool initialized with max thread count: 12
+DEBUG: WindowStateChange event detected.
+DEBUG: Window maximized/fullscreen from normal state.
+DEBUG: Initial UI setup: checkbox_magnifier is checked=False
+DEBUG _apply_initial_settings_to_ui: Setting combo_interpolation index to 3 for method 'LANCZOS'
+DEBUG: Initializing app display from settings...
+DEBUG: Initial app display setup complete. Triggering first comparison update.
+DEBUG: _exit_interactive_mode_if_settled: Exiting interactive mode. Force redraw: True
+DEBUG: Caches cleared for final high-quality render.
+DEBUG: Fixed label sizes reset in app_state.
+
+--- update_comparison_if_needed START (MAIN THREAD) ---
+_DEBUG_LOG_: app_state.pixmap_width (previous displayed): 0, app_state.pixmap_height (previous displayed): 0
+_DEBUG_LOG_: Current label dimensions: 1062x680
+DEBUG: update_comparison_if_needed skipped due to resize_in_progress.
+_DEBUG_TIMER_: update_comparison_if_needed total took 0.01 ms (skipped)
+DEBUG: do_final_render_prep_and_call: Applying panel visibility, stabilizing, and updating comparison.
+DEBUG (_apply_panel_visibility): Magnifier panel visibility set to False
+DEBUG (_apply_panel_visibility): Edit layout visibility set to False
+DEBUG: Stabilizing UI layout...
+_DEBUG_LOG_: Stabilization attempt 1: contentsRect 1062x680 -> 1062x746
+_DEBUG_LOG_: Stabilization attempt 2: contentsRect 1062x746 -> 1062x746
+DEBUG: UI stabilized (contentsRect) after 2 attempts. Final contentsRect: 1062x746
+_DEBUG_TIMER_: _stabilize_ui_layout took 4.20 ms
+
+--- update_comparison_if_needed START (MAIN THREAD) ---
+_DEBUG_LOG_: app_state.pixmap_width (previous displayed): 0, app_state.pixmap_height (previous displayed): 0
+_DEBUG_LOG_: Current label dimensions: 1062x746
+DEBUG: update_comparison_if_needed skipped due to resize_in_progress.
+_DEBUG_TIMER_: update_comparison_if_needed total took 0.01 ms (skipped)
+DEBUG: _finish_resize called.
+DEBUG: Setting resize_in_progress to False. Triggering comparison update.
+DEBUG: Stabilizing UI layout...
+_DEBUG_LOG_: Stabilization attempt 1: contentsRect 1904x801 -> 1904x801
+DEBUG: UI stabilized (contentsRect) after 1 attempts. Final contentsRect: 1904x801
+_DEBUG_TIMER_: _stabilize_ui_layout took 0.12 ms
+DEBUG: _exit_interactive_mode_if_settled: Exiting interactive mode. Force redraw: True
+DEBUG: Caches cleared for final high-quality render.
+DEBUG: Fixed label sizes reset in app_state.
+DEBUG: do_final_render_prep_and_call: Applying panel visibility, stabilizing, and updating comparison.
+DEBUG (_apply_panel_visibility): Magnifier panel visibility set to False
+DEBUG (_apply_panel_visibility): Edit layout visibility set to False
+DEBUG: Stabilizing UI layout...
+_DEBUG_LOG_: Stabilization attempt 1: contentsRect 1904x801 -> 1904x801
+DEBUG: UI stabilized (contentsRect) after 1 attempts. Final contentsRect: 1904x801
+_DEBUG_TIMER_: _stabilize_ui_layout took 0.05 ms
+
+--- update_comparison_if_needed START (MAIN THREAD) ---
+_DEBUG_LOG_: app_state.pixmap_width (previous displayed): 0, app_state.pixmap_height (previous displayed): 0
+_DEBUG_LOG_: Current label dimensions: 1904x801
+DEBUG: Both original image slots empty. Clearing display.
+_DEBUG_TIMER_: update_comparison_if_needed total took 0.06 ms (no images loaded)
+DEBUG: Dropped into left area. Loading 1 images for slot 1.
+DEBUG: Attempting to load 1 images for slot 1 (trigger_update=True).
+DEBUG: set_current_image called for slot 1 (trigger_update=True).
+DEBUG: Setting image 1 from list index 0. Path: /home/jorj/2Tb/Upscale/vi/Новая папка/[MTBB] Steins;Gate - 03 (BD 1080p) [204C4A4E]_RVE_frame12000.png, Name: [MTBB] Steins;Gate - 03 (BD 1080p) [204C4A4E]_RVE_frame12000
+DEBUG: Resizing original images for display (main content) for app_state.imageX.
+DEBUG: Processed main images sizes (app_state.imageX): Image1: (3840, 2160), Image2: None
+DEBUG (set_current_image): Only image 1 loaded, switching to single image mode 1.
+DEBUG: Requesting settled UI render from set_current_image for slot 1. Current single_mode: 1
+DEBUG: _request_settled_ui_render skipped, in single image mode.
+DEBUG: Dropped into right area. Loading 1 images for slot 2.
+DEBUG: Attempting to load 1 images for slot 2 (trigger_update=True).
+DEBUG: set_current_image called for slot 2 (trigger_update=True).
+DEBUG: Setting image 2 from list index 0. Path: /home/jorj/2Tb/Upscale/vi/Новая папка/[Fogelion] Steins;Gate ep 03 [Upscaler Futsuu]_frame12000.png, Name: [Fogelion] Steins;Gate ep 03 [Upscaler Futsuu]_frame12000
+DEBUG: Resizing original images for display (main content) for app_state.imageX.
+DEBUG: Processed main images sizes (app_state.imageX): Image1: (3840, 2160), Image2: (3840, 2160)
+DEBUG (set_current_image): Both images now loaded, switching from single image mode to comparison mode.
+DEBUG: Requesting settled UI render from set_current_image for slot 2. Current single_mode: 0
+DEBUG: ImageComparisonApp._request_settled_ui_render called.
+DEBUG: _exit_interactive_mode_if_settled: Exiting interactive mode. Force redraw: True
+DEBUG: Caches cleared for final high-quality render.
+DEBUG: Fixed label sizes reset in app_state.
+DEBUG: do_final_render_prep_and_call: Applying panel visibility, stabilizing, and updating comparison.
+DEBUG (_apply_panel_visibility): Magnifier panel visibility set to False
+DEBUG (_apply_panel_visibility): Edit layout visibility set to False
+DEBUG: Stabilizing UI layout...
+_DEBUG_LOG_: Stabilization attempt 1: contentsRect 1904x779 -> 1904x779
+DEBUG: UI stabilized (contentsRect) after 1 attempts. Final contentsRect: 1904x779
+_DEBUG_TIMER_: _stabilize_ui_layout took 0.06 ms
+
+--- update_comparison_if_needed START (MAIN THREAD) ---
+_DEBUG_LOG_: app_state.pixmap_width (previous displayed): 0, app_state.pixmap_height (previous displayed): 0
+_DEBUG_LOG_: Current label dimensions: 1904x779
+DEBUG: Queueing rendering task (ID: 1) with priority 1. Interactive state for worker: False. Active threads: 0. Queued: True
+--- update_comparison_if_needed END (MAIN THREAD - Render queued) Total time: 12.09 ms ---
+
+--- ImageRenderingWorker.run START (Task ID: 1) ---
+WORKER (Task 1): Received split_position=0.5000, split_position_visual=0.5000, is_interactive_mode=False
+WORKER (Task 1): Base split image cache MISS or parameters changed. Re-creating base image.
+_DEBUG_LOG_: Base split image created with split position 0.5. Size: (3840, 2160)
+_DEBUG_TIMER_: create_base_split_image_pil took 10.77 ms
+_DEBUG_TIMER_ (Worker Task 1): create_base_split_image_pil took 10.77 ms
+_DEBUG_TIMER_: draw_split_line_pil took 0.04 ms
+DEBUG_MAG_CONDITION_CHECK: use_magnifier=False, magnifier_drawing_coords=None, first_coord=N/A
+DEBUG_MAG_RENDER_BLOCK_SKIPPED: Condition for magnifier drawing was FALSE.
+_DEBUG_TIMER_: draw_all_overlays: alpha_composite took 8.42 ms
+_DEBUG_TIMER_: draw_all_overlays_on_base_image_pil total took 10.68 ms
+_DEBUG_TIMER_: generate_comparison_image_pil total took 10.69 ms
+_DEBUG_TIMER_ (Worker Task 1): generate_comparison_image_pil (overlays) took 10.71 ms
+--- ImageRenderingWorker.run END (Task ID: 1) Total time: 21.57 ms ---
+
+--- _on_worker_finished START (MAIN THREAD - Received render result for Task ID: 1) ---
+DEBUG: _on_worker_finished: Task ID 1, Task was interactive: False, App currently interactive: False, Master Task ID: 1
+DEBUG: Processing FINAL task 1.
+_DEBUG_LOG_: Label dimensions at task creation for scaling: 1904x779
+_DEBUG_LOG_: Pixmap set. Displayed size: 1384x779
+DEBUG: Performing final stabilization after non-interactive render.
+DEBUG: Stabilizing UI layout...
+_DEBUG_LOG_: Stabilization attempt 1: contentsRect 1904x779 -> 1904x779
+DEBUG: UI stabilized (contentsRect) after 1 attempts. Final contentsRect: 1904x779
+_DEBUG_TIMER_: _stabilize_ui_layout took 1.03 ms
+--- _on_worker_finished END (Total time in slot: 14.64 ms) ---
+
+DEBUG (_apply_panel_visibility): Magnifier panel visibility set to False
+DEBUG (_apply_panel_visibility): Edit layout visibility set to True
+DEBUG: Stabilizing UI layout...
+_DEBUG_LOG_: Stabilization attempt 1: contentsRect 1904x703 -> 1904x703
+DEBUG: UI stabilized (contentsRect) after 1 attempts. Final contentsRect: 1904x703
+_DEBUG_TIMER_: _stabilize_ui_layout took 4.27 ms
+DEBUG: Entered interactive mode.
+DEBUG: Updated app_state.fixed_label_width/height for interactive session: 1904x703
+DEBUG: enter_interactive: Updated current_displayed_pixmap from label.
+DEBUG: enter_interactive: Restoring current_displayed_pixmap to label.
+DEBUG: Starting movement timer on _enter_interactive_mode (interactive mode ON).
+DEBUG: MainController forcing _perform_interactive_update after checkbox toggle.
+
+--- update_comparison_if_needed START (MAIN THREAD) ---
+_DEBUG_LOG_: app_state.pixmap_width (previous displayed): 1384, app_state.pixmap_height (previous displayed): 779
+_DEBUG_LOG_: Current label dimensions: 1904x703
+DEBUG: Queueing rendering task (ID: 2) with priority 0. Interactive state for worker: True. Active threads: 0. Queued: True
+--- update_comparison_if_needed END (MAIN THREAD - Render queued) Total time: 13.65 ms ---
+
+--- ImageRenderingWorker.run START (Task ID: 2) ---
+WORKER (Task 2): Received split_position=0.5000, split_position_visual=0.5000, is_interactive_mode=True
+WORKER (Task 2): Base split image cache MISS or parameters changed. Re-creating base image.
+DEBUG: Visuals settled and no active input. Exiting interactive mode.
+DEBUG: _exit_interactive_mode_if_settled: Exiting interactive mode. Force redraw: True
+DEBUG: Caches cleared for final high-quality render.
+DEBUG: Fixed label sizes reset in app_state.
+DEBUG: do_final_render_prep_and_call: Applying panel visibility, stabilizing, and updating comparison.
+DEBUG (_apply_panel_visibility): Magnifier panel visibility set to False
+DEBUG (_apply_panel_visibility): Edit layout visibility set to True
+DEBUG: Stabilizing UI layout...
+_DEBUG_LOG_: Base split image created with split position 0.5. Size: (3840, 2160)
+_DEBUG_TIMER_: create_base_split_image_pil took 7.84 ms
+_DEBUG_TIMER_ (Worker Task 2): create_base_split_image_pil took 7.85 ms
+_DEBUG_TIMER_: draw_split_line_pil took 0.04 ms
+DEBUG_MAG_CONDITION_CHECK: use_magnifier=False, magnifier_drawing_coords=None, first_coord=N/A
+DEBUG_MAG_RENDER_BLOCK_SKIPPED: Condition for magnifier drawing was FALSE.
+_DEBUG_TIMER_: draw_all_overlays: alpha_composite took 7.53 ms
+_DEBUG_LOG_: Text drawing interactive state from app_state.is_interactive_mode: True
+_DEBUG_LOG_: draw_file_names: use_antialiasing=False (font_size=86, is_interactive_render=True)
+_DEBUG_LOG_: Stabilization attempt 1: contentsRect 1904x703 -> 1904x703
+DEBUG: UI stabilized (contentsRect) after 1 attempts. Final contentsRect: 1904x703
+_DEBUG_TIMER_: _stabilize_ui_layout took 14.23 ms
+
+--- update_comparison_if_needed START (MAIN THREAD) ---
+_DEBUG_LOG_: app_state.pixmap_width (previous displayed): 1384, app_state.pixmap_height (previous displayed): 779
+_DEBUG_LOG_: Current label dimensions: 1904x703
+_DEBUG_TIMER_: Truncating text for drawing took 0.84 ms
+_DEBUG_LOG_: Drawn text 1: '[MTBB] Steins;Gate - 03 (BD...' at 1891,2134 (width 1048, height 79)
+_DEBUG_LOG_: Drawn text 2: '[Fogelion] Steins;Gate ep 0...' at 1950,2134 (width 1023, height 82)
+_DEBUG_TIMER_: Non-anti-aliased text drawing took 10.76 ms
+_DEBUG_TIMER_: draw_file_names_on_image total took 12.17 ms
+_DEBUG_TIMER_: draw_all_overlays: draw_file_names_on_image took 12.20 ms
+_DEBUG_TIMER_: draw_all_overlays_on_base_image_pil total took 21.22 ms
+_DEBUG_TIMER_: generate_comparison_image_pil total took 21.23 ms
+_DEBUG_TIMER_ (Worker Task 2): generate_comparison_image_pil (overlays) took 21.26 ms
+--- ImageRenderingWorker.run END (Task ID: 2) Total time: 29.19 ms ---
+DEBUG: Queueing rendering task (ID: 3) with priority 1. Interactive state for worker: False. Active threads: 0. Queued: True
+--- update_comparison_if_needed END (MAIN THREAD - Render queued) Total time: 19.09 ms ---
+
+--- ImageRenderingWorker.run START (Task ID: 3) ---
+WORKER (Task 3): Received split_position=0.5000, split_position_visual=0.5000, is_interactive_mode=False
+WORKER (Task 3): Base split image cache MISS or parameters changed. Re-creating base image.
+
+--- _on_worker_finished START (MAIN THREAD - Received render result for Task ID: 2) ---
+DEBUG: _on_worker_finished: Task ID 2, Task was interactive: True, App currently interactive: False, Master Task ID: 3
+DEBUG: Discarding late INTERACTIVE task 2 because app expects a FINAL render.
+_DEBUG_LOG_: Base split image created with split position 0.5. Size: (3840, 2160)
+_DEBUG_TIMER_: create_base_split_image_pil took 7.52 ms
+_DEBUG_TIMER_ (Worker Task 3): create_base_split_image_pil took 7.53 ms
+_DEBUG_TIMER_: draw_split_line_pil took 0.03 ms
+DEBUG_MAG_CONDITION_CHECK: use_magnifier=False, magnifier_drawing_coords=None, first_coord=N/A
+DEBUG_MAG_RENDER_BLOCK_SKIPPED: Condition for magnifier drawing was FALSE.
+_DEBUG_TIMER_: draw_all_overlays: alpha_composite took 5.11 ms
+_DEBUG_LOG_: Text drawing interactive state from app_state.is_interactive_mode: False
+_DEBUG_LOG_: draw_file_names: use_antialiasing=True (font_size=86, is_interactive_render=False)
+_DEBUG_TIMER_: Truncating text for drawing took 0.76 ms
+_DEBUG_LOG_: Drawn text 1: '[MTBB] Steins;Gate - 03 (BD...' at 3781,4268 (width 2092, height 157)
+_DEBUG_LOG_: Drawn text 2: '[Fogelion] Steins;Gate ep 0...' at 3899,4268 (width 2045, height 162)
+_DEBUG_TIMER_: Anti-aliased text drawing took 724.66 ms
+_DEBUG_TIMER_: draw_file_names_on_image total took 725.70 ms
+_DEBUG_TIMER_: draw_all_overlays: draw_file_names_on_image took 725.83 ms
+_DEBUG_TIMER_: draw_all_overlays_on_base_image_pil total took 732.32 ms
+_DEBUG_TIMER_: generate_comparison_image_pil total took 732.33 ms
+_DEBUG_TIMER_ (Worker Task 3): generate_comparison_image_pil (overlays) took 732.35 ms
+--- ImageRenderingWorker.run END (Task ID: 3) Total time: 739.94 ms ---
+
+--- _on_worker_finished START (MAIN THREAD - Received render result for Task ID: 3) ---
+DEBUG: _on_worker_finished: Task ID 3, Task was interactive: False, App currently interactive: False, Master Task ID: 3
+DEBUG: Processing FINAL task 3.
+_DEBUG_LOG_: Label dimensions at task creation for scaling: 1904x703
+_DEBUG_LOG_: Pixmap set. Displayed size: 1249x703
+DEBUG: Performing final stabilization after non-interactive render.
+DEBUG: Stabilizing UI layout...
+_DEBUG_LOG_: Stabilization attempt 1: contentsRect 1904x703 -> 1904x701
+_DEBUG_LOG_: Stabilization attempt 2: contentsRect 1904x701 -> 1904x701
+DEBUG: UI stabilized (contentsRect) after 2 attempts. Final contentsRect: 1904x701
+_DEBUG_TIMER_: _stabilize_ui_layout took 3.06 ms
+--- _on_worker_finished END (Total time in slot: 17.50 ms) ---
+
+DEBUG: Application closing. Waiting for rendering tasks to finish...
+DEBUG: All rendering tasks finished. Proceeding with close.
+DEBUG: handle_close_event called. Saving settings.
+DEBUG: All rendering tasks finished. Proceeding with close.
+Application finished with exit code: 0
