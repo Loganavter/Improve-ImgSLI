@@ -59,9 +59,10 @@ Improve-ImgSLI is a free and open-source application for detailed visual image c
 
 ### 🔍 Magnifier Tool
 - Powerful image magnifier tool.
+- Selectable interpolation method (Nearest Neighbor, Bilinear, Bicubic, Lanczos).
 - Marker showing the captured area.
 - Adjustable source size and magnified area.
-- Smooth WASD controls.
+- Smooth WASD controls for magnifier movement.
 - Merge both magnifiers into one view.
 - Freeze magnifier position.
 
@@ -78,6 +79,8 @@ Improve-ImgSLI is a free and open-source application for detailed visual image c
 - Multilingual support (EN, RU, ZH, PT-BR).
 - Dynamic UI resizing.
 - Settings persist across sessions.
+- Quick image preview using keyboard (Space + Mouse Buttons).
+- Improved performance through advanced image caching.
 
 ---
 
@@ -114,14 +117,15 @@ flatpak run io.github.Loganavter.Improve-ImgSLI
 ## 🧪 Basic Usage <a name="basic-usage"></a>
 
 1. **Start** Improve-ImgSLI using your preferred installation method.
-2. **Load Images** via the "Add Img(s)" button or drag-and-drop.
+2. **Load Images** via the "Add Img(s)" button or drag-and-drop. Use Space + Mouse Buttons for quick preview of individual images.
 3. **Compare:** move the split line with your mouse. Check "Horizontal Split" to change orientation.
-4. **Magnify:** enable the magnifier and adjust zoom with sliders or keys.
+4. **Magnify:** enable the magnifier, select an interpolation method, and adjust zoom/position with sliders or keys.
 5. **Export:** use the save button to export a high-res composite.
 
 https://github.com/user-attachments/assets/f2c843c2-31eb-4fb9-8eef-2d28630f2baf
 
 ---
+
 
 ## 🤝 Contributing <a name="contributing"></a>
 
@@ -151,7 +155,10 @@ Late March 2025 was dedicated to cross-platform compatibility. Gemini and Grok, 
 
 In April 2025, attention shifted back to addressing critical bugs, with continued reliance on Gemini. A major achievement during this period was the implementation of window state persistence—a feature that proved incredibly challenging but vastly improved user experience. A settings tab was also introduced, centralizing language selection, output image quality, and filename length preferences. Following these updates, Windows and Flatpak builds were refreshed. The current plan involves implementing one final feature and verifying the Flatpak maintenance pipeline before updating Windows and AUR builds, after which the project will likely enter a period of stability.
 
-Excluding the value of approximately four weeks of personal development time, the direct monetary cost of this project has been around $30. The AUR maintainer's contribution was voluntary and is gratefully acknowledged.</details>
+May 2025. I discovered Cursor AI, which allowed me to quickly implement three key features in this update using agents like ChatGPT 4.1, Sonnet 3.5, and Gemini 2.5 PRO, all within the free limit of 150 uses. These features included a smarter caching service that improved smoothness by approximately 2-3 times compared to the previous version, the ability to select magnifier interpolation, and quick image preview using the keyboard. Additionally, the project's structure became much more multi-layered and less coupled between modules. This refactoring required two days of collaboration with Gemini to break down two monolithic scripts into numerous services with separate folders. The entire process took about three days.
+
+June 2025. With Gemini, I refactored the code once again. The application now features a qfluentwidgets style. This was quite a time-consuming process. Caching was also further improved. The icons.py file was completely removed as it was no longer necessary.
+</details>
 
 ---
 
@@ -161,7 +168,7 @@ Excluding the value of approximately four weeks of personal development time, th
 <summary>My personal view on project<a name="my-personal-view"></summary>
 The genesis of Improve ImgSLI was a practical need: to create clear visual comparisons for an article. The initial design, and indeed the name, drew inspiration from imgsli.com. While the early iterations were functional, the project has since evolved significantly.
 
-Today, I view Improve ImgSLI as a valuable public asset, much like VideoCut Kahive, another tool whose principles partially guided its development and which has become indispensable in my own workflow. The core value of Improve ImgSLI lies in its efficiency. Manually creating detailed image comparisons can be a laborious process, often taking several minutes. This program accomplishes the same, often superior, results in approximately 30 seconds, all through an intuitive, user-friendly interface. It's this transformation of a cumbersome task into a swift, accessible one that I believe makes Improve ImgSLI a genuinely useful tool.
+Today, I view Improve ImgSLI as a valuable public asset, much like [VideoCut](https://github.com/kanehekili/VideoCut) Kanehekili, another tool whose principles partially guided its development and which has become indispensable in my own workflow. The core value of Improve ImgSLI lies in its efficiency. Manually creating detailed image comparisons can be a laborious process, often taking several minutes. This program accomplishes the same, often superior, results in approximately 30 seconds, all through an intuitive, user-friendly interface. It's this transformation of a cumbersome task into a swift, accessible one that I believe makes Improve ImgSLI a genuinely useful tool.
 </details>
 
 ---

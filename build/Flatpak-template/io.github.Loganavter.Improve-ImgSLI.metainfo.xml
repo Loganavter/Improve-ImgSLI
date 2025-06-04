@@ -19,6 +19,9 @@
       <li>Swap image lists between panels with a single click.</li>
       <li>Edit displayed file names directly within the interface.</li>
       <li>Multi-language interface (English, Russian, Chinese, Brazilian Portuguese) with persistent settings.</li>
+      <li>Selectable interpolation methods for the magnifier (Nearest Neighbor, Bilinear, Bicubic, Lanczos).</li>
+      <li>Quick preview of individual images using Space + Mouse Buttons.</li>
+      <li>Improved performance with image caching.</li>
     </ul>
     <p>
       The application is intuitive and distributed under the free MIT License.
@@ -47,6 +50,7 @@
 </developer>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="4.8.9" date="2025-06-03"/>
     <release version="3.1.9" date="2025-04-15"/>
   </releases>
 </component>
