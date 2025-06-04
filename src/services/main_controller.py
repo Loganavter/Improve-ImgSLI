@@ -370,48 +370,43 @@ class MainController:
             self.app._request_settled_ui_render()
 
     def unfreeze_magnifier_logic(self):
-        print('DEBUG: unfreeze_magnifier_logic called.')
-        if not self.app_state.freeze_magnifier:
-            return
-        frozen_pos_rel = self.app_state.frozen_magnifier_position_relative
-        self.app_state.freeze_magnifier = False
-        self.app_state.frozen_magnifier_position_relative = None
-        print('DEBUG: Magnifier state set to unfrozen, frozen position cleared.')
-        new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
-        if self.app_state.image1 is None:
-            print('WARNING: Cannot unfreeze magnifier, app_state.image1 is not available. Using default offset.')
-        else:
-            drawing_width, drawing_height = self.app_state.image1.size
-            if frozen_pos_rel and drawing_width > 0 and (drawing_height > 0):
+            print('DEBUG: unfreeze_magnifier_logic called.')
+            if not self.app_state.freeze_magnifier:
+                return
+            frozen_pos_rel = self.app_state.frozen_magnifier_position_relative
+            self.app_state.freeze_magnifier = False
+            self.app_state.frozen_magnifier_position_relative = None
+            print('DEBUG: Magnifier state set to unfrozen, frozen position cleared.')
+            new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
+            D_w = float(self.app_state.pixmap_width)
+            D_h = float(self.app_state.pixmap_height)
+            if frozen_pos_rel and D_w > 1e-6 and D_h > 1e-6:
                 try:
-                    effective_magnifier_drawing_size = max(1.0, AppConstants.DEFAULT_MAGNIFIER_SIZE_RELATIVE * min(drawing_width, drawing_height))
-                    frozen_x_drawing_pix = frozen_pos_rel.x() * drawing_width
-                    frozen_y_drawing_pix = frozen_pos_rel.y() * drawing_height
-                    cap_center_drawing_pix_x = self.app_state.capture_position_relative.x() * drawing_width
-                    cap_center_drawing_pix_y = self.app_state.capture_position_relative.y() * drawing_height
-                    required_offset_drawing_pixels_x = frozen_x_drawing_pix - cap_center_drawing_pix_x
-                    required_offset_drawing_pixels_y = frozen_y_drawing_pix - cap_center_drawing_pix_y
-                    if effective_magnifier_drawing_size > 0:
-                        required_offset_rel_x = required_offset_drawing_pixels_x / effective_magnifier_drawing_size
-                        required_offset_rel_y = required_offset_drawing_pixels_y / effective_magnifier_drawing_size
-                        new_target_offset_rel = QPointF(required_offset_rel_x, required_offset_rel_y)
-                        print(f'DEBUG: Calculated new target offset relative: {new_target_offset_rel.x():.4f},{new_target_offset_rel.y():.4f}')
+                    D_min = min(D_w, D_h)
+                    if D_min <= 1e-6:
+                        print('WARNING: Unfreeze logic: D_min is zero or too small. Using default offset.')
                     else:
-                        print('WARNING: Effective magnifier drawing size is zero, defaulting offset on unfreeze.')
-                        new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
+                        delta_x_norm = frozen_pos_rel.x() - self.app_state.capture_position_relative.x()
+                        delta_y_norm = frozen_pos_rel.y() - self.app_state.capture_position_relative.y()
+                        new_target_offset_rel_x = delta_x_norm * (D_w / D_min)
+                        new_target_offset_rel_y = delta_y_norm * (D_h / D_min)
+                        new_target_offset_rel = QPointF(new_target_offset_rel_x, new_target_offset_rel_y)
+                        print(f'DEBUG: Calculated new target offset relative: {new_target_offset_rel.x():.4f},{new_target_offset_rel.y():.4f}')
                 except Exception as e:
                     print(f'[DEBUG] Error calculating offset on unfreeze: {e}')
                     new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
                     traceback.print_exc()
             else:
-                print('DEBUG: No valid frozen position or image dimensions to unfreeze magnifier to, defaulting offset.')
-                new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
-        self.app_state.magnifier_offset_relative = new_target_offset_rel
-        self.app_state.magnifier_offset_relative_visual.setX(self.app_state.magnifier_offset_relative.x())
-        self.app_state.magnifier_offset_relative_visual.setY(self.app_state.magnifier_offset_relative.y())
-        self.app_state.magnifier_spacing_relative_visual = self.app_state.magnifier_spacing_relative
-        print(f'DEBUG: Magnifier offset/spacing visuals reset to target values for lerping.')
-        self.app.event_handler._handle_interactive_movement_and_lerp()
+                if not frozen_pos_rel:
+                    print('DEBUG: No valid frozen position to unfreeze from. Using default offset.')
+                else:
+                    print(f'WARNING: Unfreeze logic: Invalid pixmap dimensions (D_w={D_w}, D_h={D_h}). Using default offset.')
+            self.app_state.magnifier_offset_relative = new_target_offset_rel
+            self.app_state.magnifier_offset_relative_visual.setX(self.app_state.magnifier_offset_relative.x())
+            self.app_state.magnifier_offset_relative_visual.setY(self.app_state.magnifier_offset_relative.y())
+            self.app_state.magnifier_spacing_relative_visual = self.app_state.magnifier_spacing_relative
+            print(f'DEBUG: Magnifier offset/spacing visuals reset to target values for lerping.')
+            self.app.event_handler._handle_interactive_movement_and_lerp()
 
     def on_slider_pressed(self, slider_name: str):
         print(f"DEBUG: Slider '{slider_name}' pressed.")
