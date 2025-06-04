@@ -163,14 +163,10 @@ def get_magnifier_drawing_coords(app_state: AppState, drawing_width: int, drawin
         cap_center_drawing_x = max(0.0, min(float(drawing_width - 1), capture_rel_x * float(drawing_width)))
         cap_center_drawing_y = max(0.0, min(float(drawing_height - 1), capture_rel_y * float(drawing_height)))
         cap_center_drawing = QPointF(cap_center_drawing_x, cap_center_drawing_y)
-        target_min_dim_display = float(min(display_width, display_height))
-        magnifier_size_pixels_display = max(10.0, app_state.magnifier_size_relative * target_min_dim_display)
+        target_min_dim_drawing = float(min(drawing_width, drawing_height))
+        magnifier_size_pixels_drawing = max(10, int(round(app_state.magnifier_size_relative * target_min_dim_drawing)))
         spacing_relative = app_state.magnifier_spacing_relative_visual
-        edge_spacing_pixels_display = max(0.0, spacing_relative * magnifier_size_pixels_display)
-        scale_factor_for_drawing_w = float(drawing_width) / float(display_width) if display_width > 0 else 1.0
-        scale_factor_for_drawing_h = float(drawing_height) / float(display_height) if display_height > 0 else 1.0
-        magnifier_size_pixels_drawing = max(10, int(round(magnifier_size_pixels_display * min(scale_factor_for_drawing_w, scale_factor_for_drawing_h))))
-        edge_spacing_pixels_drawing = max(0, int(round(edge_spacing_pixels_display * min(scale_factor_for_drawing_w, scale_factor_for_drawing_h))))
+        edge_spacing_pixels_drawing = max(0, int(round(spacing_relative * magnifier_size_pixels_drawing)))
         if app_state.freeze_magnifier:
             if app_state.frozen_magnifier_position_relative is not None:
                 frozen_rel_x = max(0.0, min(1.0, app_state.frozen_magnifier_position_relative.x()))
@@ -182,12 +178,8 @@ def get_magnifier_drawing_coords(app_state: AppState, drawing_width: int, drawin
                 magnifier_midpoint_drawing = QPoint(int(round(cap_center_drawing.x())), int(round(cap_center_drawing.y())))
         else:
             offset_relative = app_state.magnifier_offset_relative_visual
-            REFERENCE_MAGNIFIER_RELATIVE_SIZE = AppConstants.DEFAULT_MAGNIFIER_SIZE_RELATIVE
-            reference_magnifier_size_display = max(1.0, REFERENCE_MAGNIFIER_RELATIVE_SIZE * target_min_dim_display)
-            offset_pixels_display_ref_x = offset_relative.x() * reference_magnifier_size_display
-            offset_pixels_display_ref_y = offset_relative.y() * reference_magnifier_size_display
-            offset_pixels_drawing_x = offset_pixels_display_ref_x * scale_factor_for_drawing_w
-            offset_pixels_drawing_y = offset_pixels_display_ref_y * scale_factor_for_drawing_h
+            offset_pixels_drawing_x = offset_relative.x() * target_min_dim_drawing
+            offset_pixels_drawing_y = offset_relative.y() * target_min_dim_drawing
             magn_center_drawing_x_float = cap_center_drawing.x() + offset_pixels_drawing_x
             magn_center_drawing_y_float = cap_center_drawing.y() + offset_pixels_drawing_y
             magn_center_drawing_x_clamped = max(0.0, min(float(drawing_width - 1), magn_center_drawing_x_float))
