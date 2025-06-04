@@ -1,5 +1,5 @@
 pkgname=improve-imgsli
-pkgver=3.1.2
+pkgver=4.0.0
 pkgrel=0
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=(any)
@@ -15,20 +15,23 @@ depends=(
 )
 options=(!debug)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-v$pkgver.tar.gz")
-sha512sums=('a601dc60af48aab95f9489ea9cd5fd242d332e4b2611396e4faac4853f66c196ad28504ad945581460e47d5fc5094d34a3200ab86a16316aa75c6144198df9cd')
-b2sums=('8a856ca7c1e29ac756a297b941f8331f925a31a438cb7503c73b1174692b6b2a64956b0c5f348141ab897cb1e669556224aa23c21eb37435904d448565aec9bb')
+sha512sums=('PLACEHOLDER_SHA512SUM')
+b2sums=('PLACEHOLDER_B2SUM')
 
 package() {
   cd "$srcdir/Improve-ImgSLI-$pkgver"
   install -vDm 755 build/launcher.sh "$pkgdir"/usr/bin/$pkgname
-  install -vDm 644 src/Improve_ImgSLI.py       "$pkgdir"/usr/lib/$pkgname/Improve_ImgSLI.py
-  install -vDm 644 src/clickable_label.py      "$pkgdir"/usr/lib/$pkgname/clickable_label.py
+  install -vDm 644 src/Improve_ImgSLI.py "$pkgdir"/usr/lib/$pkgname/Improve_ImgSLI.py
   install -vDm 644 src/image_comparison_app.py "$pkgdir"/usr/lib/$pkgname/image_comparison_app.py
-  install -vDm 644 src/image_processing.py     "$pkgdir"/usr/lib/$pkgname/image_processing.py
-  install -vDm 644 src/icons.py           "$pkgdir"/usr/lib/$pkgname/icons.py
-  install -vDm 644 src/translations.py         "$pkgdir"/usr/lib/$pkgname/translations.py
-  install -vDm 644 src/settings_dialog.py         "$pkgdir"/usr/lib/$pkgname/settings_dialog.py
-  install -vDm 644 src/font/SourceSans3-Regular.ttf "$pkgdir"/usr/lib/$pkgname/SourceSans3-Regular.ttf
+  install -vDm 644 src/clickable_label.py "$pkgdir"/usr/lib/$pkgname/clickable_label.py
+  install -vDm 644 src/translations.py "$pkgdir"/usr/lib/$pkgname/translations.py
+  install -vDm 644 src/settings_dialog.py "$pkgdir"/usr/lib/$pkgname/settings_dialog.py
+  mkdir -p "$pkgdir"/usr/lib/$pkgname/services
+  install -vDm 644 src/services/*.py "$pkgdir"/usr/lib/$pkgname/services/
+  mkdir -p "$pkgdir"/usr/lib/$pkgname/processing_services
+  install -vDm 644 src/processing_services/*.py "$pkgdir"/usr/lib/$pkgname/processing_services/
+  mkdir -p "$pkgdir"/usr/lib/$pkgname/font
+  install -vDm 644 src/font/SourceSans3-Regular.ttf "$pkgdir"/usr/lib/$pkgname/font/SourceSans3-Regular.ttf
   install -vDm 644 build/AUR-template/$pkgname.desktop "$pkgdir"/usr/share/applications/$pkgname.desktop
   install -vDm 644 src/icons/icon.png "$pkgdir"/usr/share/icons/hicolor/512x512/apps/$pkgname.png
   install -vDm 644 LICENSE.txt "$pkgdir"/usr/share/licenses/$pkgname/LICENSE.txt
