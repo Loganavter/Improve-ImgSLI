@@ -574,17 +574,35 @@ class ImageComparisonApp(QWidget):
         original_image1_pil_copy = self.app_state.original_image1.copy() if self.app_state.original_image1 else None
         original_image2_pil_copy = self.app_state.original_image2.copy() if self.app_state.original_image2 else None
         magnifier_coords = None
+        name1_for_render = ''
+        if hasattr(self, 'edit_name1'):
+            name1_for_render = self.edit_name1.text()
+        if not self.app_state.original_image1:
+            name1_for_render = tr('Image 1', self.app_state.current_language)
+        name2_for_render = ''
+        if hasattr(self, 'edit_name2'):
+            name2_for_render = self.edit_name2.text()
+        if not self.app_state.original_image2:
+            name2_for_render = tr('Image 2', self.app_state.current_language)
+        current_name1_text = name1_for_render
+        current_name2_text = name2_for_render
         if app_state_copy_for_worker.use_magnifier:
             magnifier_coords = get_magnifier_drawing_coords(app_state_copy_for_worker, drawing_width=image1_pil_copy.width, drawing_height=image1_pil_copy.height, display_width=label_width, display_height=label_height)
 
         def _get_base_name_without_ext(path):
             return os.path.splitext(os.path.basename(path))[0] if path else ''
-        current_name1_text = self.edit_name1.text() if hasattr(self, 'edit_name1') and self.edit_name1.text() else self.app_state.get_current_display_name(1) or (_get_base_name_without_ext(self.app_state.image1_path) if self.app_state.image1_path else tr('Image 1', self.app_state.current_language))
-        current_name2_text = self.edit_name2.text() if hasattr(self, 'edit_name2') and self.edit_name2.text() else self.app_state.get_current_display_name(2) or (_get_base_name_without_ext(self.app_state.image2_path) if self.app_state.image2_path else tr('Image 2', self.app_state.current_language))
+        if self.app_state.original_image1:
+            current_name1_text = self.edit_name1.text() if hasattr(self, 'edit_name1') else self.app_state.get_current_display_name(1)
+        else:
+            current_name1_text = tr('Image 1', self.app_state.current_language)
+        if self.app_state.original_image2:
+            current_name2_text = self.edit_name2.text() if hasattr(self, 'edit_name2') else self.app_state.get_current_display_name(2)
+        else:
+            current_name2_text = tr('Image 2', self.app_state.current_language)
         self.current_rendering_task_id += 1
         current_task_id = self.current_rendering_task_id
         self.current_rendering_is_interactive_worker_flag = app_state_copy_for_worker.is_interactive_mode
-        render_params = {'app_state_copy': app_state_copy_for_worker, 'image1_pil_copy': image1_pil_copy, 'image2_pil_copy': image2_pil_copy, 'original_image1_pil_copy': original_image1_pil_copy, 'original_image2_pil_copy': original_image2_pil_copy, 'current_label_dims': (label_width, label_height), 'magnifier_coords': magnifier_coords, 'font_path_absolute': self.font_path_absolute, 'file_name1_text': current_name1_text, 'file_name2_text': current_name2_text, 'finished_signal': self._worker_finished_signal, 'error_signal': self._worker_error_signal, 'task_id': current_task_id}
+        render_params = {'app_state_copy': app_state_copy_for_worker, 'image1_pil_copy': image1_pil_copy, 'image2_pil_copy': image2_pil_copy, 'original_image1_pil_copy': original_image1_pil_copy, 'original_image2_pil_copy': original_image2_pil_copy, 'current_label_dims': (label_width, label_height), 'magnifier_coords': magnifier_coords, 'font_path_absolute': self.font_path_absolute, 'file_name1_text': current_name1_text, 'file_name2_text': current_name2_text, 'finished_signal': self._worker_finished_signal, 'error_signal': self._worker_error_signal, 'task_id': current_task_id, 'file_name2_text': current_name2_text, 'file_name1_text': current_name1_text}
         worker = ImageRenderingWorker(render_params)
         priority = 1 if not app_state_copy_for_worker.is_interactive_mode else 0
         print(f'DEBUG: Queueing rendering task (ID: {current_task_id}) with priority {priority}. Interactive state for worker: {app_state_copy_for_worker.is_interactive_mode}. Active threads: {self.thread_pool.activeThreadCount()}. Queued: {self.thread_pool.waitForDone(0)}')
@@ -645,7 +663,7 @@ class ImageComparisonApp(QWidget):
                 scaled_target_width, scaled_target_height = get_scaled_pixmap_dimensions(self.app_state.result_image, label_width_at_task_creation, label_height_at_task_creation)
                 scaled_target_width = max(1, scaled_target_width)
                 scaled_target_height = max(1, scaled_target_height)
-                qt_scale_mode = Qt.TransformationMode.FastTransformation if task_was_interactive else Qt.TransformationMode.SmoothTransformation
+                qt_scale_mode = Qt.TransformationMode.SmoothTransformation
                 scale_pixmap_start = time.perf_counter()
                 scaled_pixmap = original_pixmap_for_scaling.scaled(scaled_target_width, scaled_target_height, Qt.AspectRatioMode.KeepAspectRatio, qt_scale_mode)
                 if scaled_pixmap.isNull():

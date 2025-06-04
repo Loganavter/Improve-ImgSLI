@@ -232,12 +232,10 @@ class EventHandler(QObject):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
             self.ui_logic._update_drag_overlays(self.app_state.is_horizontal)
-            if self.app_state.original_image1 is None:
-                self.app.drag_overlay1.setText(tr('Drop Image(s) 1 Here', self.app_state.current_language))
-                self.app.drag_overlay1.show()
-            if self.app_state.original_image2 is None:
-                self.app.drag_overlay2.setText(tr('Drop Image(s) 2 Here', self.app_state.current_language))
-                self.app.drag_overlay2.show()
+            self.app.drag_overlay1.setText(tr('Drop Image(s) 1 Here', self.app_state.current_language))
+            self.app.drag_overlay2.setText(tr('Drop Image(s) 2 Here', self.app_state.current_language))
+            self.app.drag_overlay1.show()
+            self.app.drag_overlay2.show()
         else:
             event.ignore()
 

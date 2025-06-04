@@ -137,18 +137,18 @@ class MainController:
         target_list = self.app_state.image_list1 if image_number == 1 else self.app_state.image_list2
         current_index = self.app_state.current_index1 if image_number == 1 else self.app_state.current_index2
         edit_name_widget = self.app.edit_name1 if image_number == 1 else self.app.edit_name2
-        new_pil_img, new_path, new_display_name = (None, None, None)
+        new_pil_img, new_path, new_display_name_from_list = (None, None, None)
         if 0 <= current_index < len(target_list):
             try:
                 img_data = target_list[current_index]
                 if isinstance(img_data, tuple) and len(img_data) >= 3:
-                    new_pil_img, new_path, new_display_name = img_data[:3]
-                print(f'DEBUG: Setting image {image_number} from list index {current_index}. Path: {new_path}, Name: {new_display_name}')
+                    new_pil_img, new_path, new_display_name_from_list = img_data[:3]
+                print(f'DEBUG: Setting image {image_number} from list index {current_index}. Path: {new_path}, Name (from list): "{new_display_name_from_list}"')
             except Exception as e:
                 print(f'Error accessing image data for slot {image_number} at index {current_index}: {e}')
         else:
             print(f'DEBUG: No valid image selected for slot {image_number} (index {current_index}). Clearing.')
-        self.app_state.set_current_image_data(image_number, new_pil_img, new_path, new_display_name)
+        self.app_state.set_current_image_data(image_number, new_pil_img, new_path, new_display_name_from_list)
         temp_image1_to_process, temp_image2_to_process = (self.app_state.original_image1, self.app_state.original_image2)
         if temp_image1_to_process or temp_image2_to_process:
             print('DEBUG: Resizing original images for display (main content) for app_state.imageX.')
@@ -175,7 +175,7 @@ class MainController:
             print('DEBUG (set_current_image): No images loaded, ensuring single image mode is 0.')
         if edit_name_widget:
             edit_name_widget.blockSignals(True)
-            edit_name_widget.setText(new_display_name or '')
+            edit_name_widget.setText(new_display_name_from_list if new_display_name_from_list is not None else '')
             edit_name_widget.blockSignals(False)
         self.app.ui_logic.update_file_names()
         self.app._update_resolution_labels()
@@ -378,23 +378,34 @@ class MainController:
         self.app_state.frozen_magnifier_position_relative = None
         print('DEBUG: Magnifier state set to unfrozen, frozen position cleared.')
         new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
-        display_width, display_height = self.app.get_current_label_dimensions()
-        if frozen_pos_rel and display_width > 0 and (display_height > 0):
-            try:
-                target_min_dim_display = float(min(display_width, display_height))
-                reference_magnifier_size_display = max(1.0, AppConstants.DEFAULT_MAGNIFIER_SIZE_RELATIVE * target_min_dim_display)
-                frozen_x_display_pix, frozen_y_display_pix = (frozen_pos_rel.x() * display_width, frozen_pos_rel.y() * display_height)
-                cap_center_display_pix_x, cap_center_display_pix_y = (self.app_state.capture_position_relative.x() * display_width, self.app_state.capture_position_relative.y() * display_height)
-                required_offset_display_pixels_x, required_offset_display_pixels_y = (frozen_x_display_pix - cap_center_display_pix_x, frozen_y_display_pix - cap_center_display_pix_y)
-                if reference_magnifier_size_display > 0:
-                    required_offset_rel_x = required_offset_display_pixels_x / reference_magnifier_size_display
-                    required_offset_rel_y = required_offset_display_pixels_y / reference_magnifier_size_display
-                    new_target_offset_rel = QPointF(required_offset_rel_x, required_offset_rel_y)
-                    print(f'DEBUG: Calculated new target offset relative: {new_target_offset_rel.x():.4f},{new_target_offset_rel.y():.4f}')
-            except Exception as e:
-                print(f'[DEBUG] Error calculating offset on unfreeze: {e}')
+        if self.app_state.image1 is None:
+            print('WARNING: Cannot unfreeze magnifier, app_state.image1 is not available. Using default offset.')
+        else:
+            drawing_width, drawing_height = self.app_state.image1.size
+            if frozen_pos_rel and drawing_width > 0 and (drawing_height > 0):
+                try:
+                    effective_magnifier_drawing_size = max(1.0, AppConstants.DEFAULT_MAGNIFIER_SIZE_RELATIVE * min(drawing_width, drawing_height))
+                    frozen_x_drawing_pix = frozen_pos_rel.x() * drawing_width
+                    frozen_y_drawing_pix = frozen_pos_rel.y() * drawing_height
+                    cap_center_drawing_pix_x = self.app_state.capture_position_relative.x() * drawing_width
+                    cap_center_drawing_pix_y = self.app_state.capture_position_relative.y() * drawing_height
+                    required_offset_drawing_pixels_x = frozen_x_drawing_pix - cap_center_drawing_pix_x
+                    required_offset_drawing_pixels_y = frozen_y_drawing_pix - cap_center_drawing_pix_y
+                    if effective_magnifier_drawing_size > 0:
+                        required_offset_rel_x = required_offset_drawing_pixels_x / effective_magnifier_drawing_size
+                        required_offset_rel_y = required_offset_drawing_pixels_y / effective_magnifier_drawing_size
+                        new_target_offset_rel = QPointF(required_offset_rel_x, required_offset_rel_y)
+                        print(f'DEBUG: Calculated new target offset relative: {new_target_offset_rel.x():.4f},{new_target_offset_rel.y():.4f}')
+                    else:
+                        print('WARNING: Effective magnifier drawing size is zero, defaulting offset on unfreeze.')
+                        new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
+                except Exception as e:
+                    print(f'[DEBUG] Error calculating offset on unfreeze: {e}')
+                    new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
+                    traceback.print_exc()
+            else:
+                print('DEBUG: No valid frozen position or image dimensions to unfreeze magnifier to, defaulting offset.')
                 new_target_offset_rel = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
-                traceback.print_exc()
         self.app_state.magnifier_offset_relative = new_target_offset_rel
         self.app_state.magnifier_offset_relative_visual.setX(self.app_state.magnifier_offset_relative.x())
         self.app_state.magnifier_offset_relative_visual.setY(self.app_state.magnifier_offset_relative.y())
@@ -483,7 +494,7 @@ class MainController:
             print(traceback.format_exc())
 
     def on_edit_name_changed(self, sender_line_edit):
-        print(f"DEBUG: on_edit_name_changed triggered by {(sender_line_edit.objectName() if hasattr(sender_line_edit, 'objectName') else 'unknown')}.")
+        print(f"DEBUG: on_edit_name_changed (editingFinished) by {(sender_line_edit.objectName() if hasattr(sender_line_edit, 'objectName') else 'unknown')}.")
         image_number, target_list_ref, current_index, combobox = (0, None, -1, None)
         if sender_line_edit == self.app.edit_name1:
             image_number, target_list_ref, current_index, combobox = (1, self.app_state.image_list1, self.app_state.current_index1, self.app.combo_image1)
@@ -492,38 +503,34 @@ class MainController:
         else:
             return
         if 0 <= current_index < len(target_list_ref):
-            new_name = sender_line_edit.text().strip()
+            new_name_for_state = sender_line_edit.text().strip()
             try:
-                old_img, old_path, old_name = target_list_ref[current_index]
-                if not new_name:
-                    default_name = os.path.splitext(os.path.basename(old_path))[0] if old_path else tr('Unnamed File', self.app_state.current_language)
-                    if default_name != old_name:
-                        target_list_ref[current_index] = (old_img, old_path, default_name)
-                        if combobox:
-                            self.app._update_single_combobox_item_text(combobox, current_index, default_name)
-                        sender_line_edit.blockSignals(True)
-                        sender_line_edit.setText(default_name)
-                        sender_line_edit.blockSignals(False)
-                        self.app.ui_logic.update_file_names()
-                        if self.app_state.include_file_names_in_saved and self.app_state.showing_single_image_mode == 0:
-                            self.app._request_settled_ui_render()
-                    return
-                if new_name != old_name:
-                    target_list_ref[current_index] = (old_img, old_path, new_name)
+                old_img, old_path, old_name_in_state = target_list_ref[current_index]
+                if new_name_for_state != old_name_in_state:
+                    target_list_ref[current_index] = (old_img, old_path, new_name_for_state)
                     if combobox:
-                        self.app._update_single_combobox_item_text(combobox, current_index, new_name)
+                        self.app._update_single_combobox_item_text(combobox, current_index, new_name_for_state)
+                    if sender_line_edit.text() != new_name_for_state:
+                        sender_line_edit.blockSignals(True)
+                        sender_line_edit.setText(new_name_for_state)
+                        sender_line_edit.blockSignals(False)
                     self.app.ui_logic.update_file_names()
                     if self.app_state.include_file_names_in_saved and self.app_state.showing_single_image_mode == 0:
+                        print('DEBUG: on_edit_name_changed (editingFinished): Requesting settled UI render.')
                         self.app._request_settled_ui_render()
             except Exception as e:
-                print(f'[DEBUG] Error updating name: {e}')
+                print(f'[DEBUG] Error updating name in on_edit_name_changed: {e}')
                 traceback.print_exc()
         else:
             print('DEBUG: on_edit_name_changed: No valid image selected, nothing to update name for.')
 
     def trigger_live_name_or_font_update(self):
+        print(f"DEBUG: trigger_live_name_or_font_update called. Include_filenames: {hasattr(self.app, 'checkbox_file_names') and self.app.checkbox_file_names.isChecked()}")
         if hasattr(self.app, 'checkbox_file_names') and self.app.checkbox_file_names.isChecked():
             if self.app_state.original_image1 and self.app_state.original_image2 and (self.app_state.showing_single_image_mode == 0):
+                if not self.app_state.is_interactive_mode:
+                    print('DEBUG: Entering interactive mode from trigger_live_name_or_font_update for filename update.')
+                    self.app.event_handler._enter_interactive_mode()
                 self.app.event_handler._request_interactive_update()
         else:
             pass

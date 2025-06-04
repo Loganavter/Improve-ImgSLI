@@ -362,53 +362,32 @@ class UILogic:
             self.app.freeze_button.setEnabled(visible)
 
     def update_file_names(self):
-
-        def _get_base_name_without_ext(path):
-            return os.path.splitext(os.path.basename(path))[0] if path else ''
-        name1_raw, edit1_text = ('', self.app.edit_name1.text() if hasattr(self.app, 'edit_name1') else '')
-        if self.app_state.current_index1 != -1 and 0 <= self.app_state.current_index1 < len(self.app_state.image_list1):
-            try:
-                img_tuple = self.app_state.image_list1[self.app_state.current_index1]
-                list_n1 = img_tuple[2] if len(img_tuple) >= 3 else _get_base_name_without_ext(img_tuple[1]) if len(img_tuple) >= 2 and img_tuple[1] else ''
-                name1_raw = edit1_text if edit1_text else list_n1
-            except:
-                name1_raw = edit1_text
-        elif self.app_state.original_image1 is None:
-            name1_raw = tr('Image 1', self.app_state.current_language)
-        else:
-            name1_raw = edit1_text
-        name2_raw, edit2_text = ('', self.app.edit_name2.text() if hasattr(self.app, 'edit_name2') else '')
-        if self.app_state.current_index2 != -1 and 0 <= self.app_state.current_index2 < len(self.app_state.image_list2):
-            try:
-                img_tuple = self.app_state.image_list2[self.app_state.current_index2]
-                list_n2 = img_tuple[2] if len(img_tuple) >= 3 else _get_base_name_without_ext(img_tuple[1]) if len(img_tuple) >= 2 and img_tuple[1] else ''
-                name2_raw = edit2_text if edit2_text else list_n2
-            except:
-                name2_raw = edit2_text
-        elif self.app_state.original_image2 is None:
-            name2_raw = tr('Image 2', self.app_state.current_language)
-        else:
-            name2_raw = edit2_text
+        name1_from_edit = self.app.edit_name1.text().strip() if hasattr(self.app, 'edit_name1') else ''
+        name2_from_edit = self.app.edit_name2.text().strip() if hasattr(self.app, 'edit_name2') else ''
+        display_name1_for_label = name1_from_edit
+        display_name2_for_label = name2_from_edit
+        if not self.app_state.original_image1:
+            display_name1_for_label = tr('Image 1', self.app_state.current_language)
+        if not self.app_state.original_image2:
+            display_name2_for_label = tr('Image 2', self.app_state.current_language)
         max_len_ui = self.app_state.max_name_length
-        display_name1 = name1_raw or ''
-        display_name2 = name2_raw or ''
         if hasattr(self.app, 'file_name_label1') and hasattr(self.app, 'file_name_label2'):
-            should_be_visible = self.app_state.original_image1 is not None and self.app_state.original_image2 is not None
+            should_be_visible = self.app_state.original_image1 is not None and self.app_state.original_image2 is not None and (self.app_state.showing_single_image_mode == 0)
             self.app.file_name_label1.setVisible(should_be_visible)
             self.app.file_name_label2.setVisible(should_be_visible)
             if should_be_visible:
                 prefix1 = tr('Left', self.app_state.current_language) if not self.app_state.is_horizontal else tr('Top', self.app_state.current_language)
                 prefix2 = tr('Right', self.app_state.current_language) if not self.app_state.is_horizontal else tr('Bottom', self.app_state.current_language)
-                self.app.file_name_label1.setText(f'{prefix1}: {display_name1}')
-                self.app.file_name_label2.setText(f'{prefix2}: {display_name2}')
-                self.app.file_name_label1.setToolTip(name1_raw if len(name1_raw or '') > max_len_ui else '')
-                self.app.file_name_label2.setToolTip(name2_raw if len(name2_raw or '') > max_len_ui else '')
+                self.app.file_name_label1.setText(f'{prefix1}: {display_name1_for_label}')
+                self.app.file_name_label2.setText(f'{prefix2}: {display_name2_for_label}')
+                self.app.file_name_label1.setToolTip(display_name1_for_label if display_name1_for_label else tr('No name entered', self.app_state.current_language))
+                self.app.file_name_label2.setToolTip(display_name2_for_label if display_name2_for_label else tr('No name entered', self.app_state.current_language))
             else:
                 self.app.file_name_label1.setText('')
                 self.app.file_name_label2.setText('')
                 self.app.file_name_label1.setToolTip('')
                 self.app.file_name_label2.setToolTip('')
-        self.check_name_lengths(name1_raw, name2_raw)
+        self.check_name_lengths(name1_from_edit, name2_from_edit)
 
     def check_name_lengths(self, name1=None, name2=None):
         if not hasattr(self.app, 'length_warning_label'):
