@@ -603,6 +603,15 @@ def draw_all_overlays_on_base_image_pil(base_image: Image.Image, app_state, spli
     width, height = base_image.size
     if width <= 0 or height <= 0:
         return None
+    if include_file_names:
+        draw_names_start = time.perf_counter()
+        split_pos_abs = int(round(width * split_position_visual)) if not is_horizontal else int(round(height * split_position_visual))
+        line_thickness_display_for_names = max(1, int(min(width, height) * 0.005))
+        line_thickness_display_for_names = min(line_thickness_display_for_names, 7)
+        text_render_is_interactive = app_state.is_interactive_mode
+        print(f'_DEBUG_LOG_: Text drawing interactive state from app_state.is_interactive_mode: {text_render_is_interactive}')
+        draw_file_names_on_image(ImageDraw.Draw(base_image), width, height, split_pos_abs, is_horizontal, line_thickness_display_for_names, font_path_absolute, font_size_percent, max_name_length, file_name1_text, file_name2_text, file_name_color_rgb, text_render_is_interactive)
+        print(f'_DEBUG_TIMER_: draw_all_overlays: draw_file_names_on_image (on base_image) took {(time.perf_counter() - draw_names_start) * 1000:.2f} ms')
     combined_overlay = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     combined_overlay_draw = ImageDraw.Draw(combined_overlay)
     line_thickness_display = max(1, int(min(width, height) * 0.005))
@@ -646,14 +655,6 @@ def draw_all_overlays_on_base_image_pil(base_image: Image.Image, app_state, spli
         traceback.print_exc()
         return None
     print(f'_DEBUG_TIMER_: draw_all_overlays: alpha_composite took {(time.perf_counter() - alpha_composite_start) * 1000:.2f} ms')
-    if include_file_names:
-        draw_names_start = time.perf_counter()
-        split_pos_abs = int(round(width * split_position_visual)) if not is_horizontal else int(round(height * split_position_visual))
-        line_width_names = line_thickness_display
-        text_render_is_interactive = app_state.is_interactive_mode
-        print(f'_DEBUG_LOG_: Text drawing interactive state from app_state.is_interactive_mode: {text_render_is_interactive}')
-        draw_file_names_on_image(ImageDraw.Draw(final_image_result), width, height, split_pos_abs, is_horizontal, line_width_names, font_path_absolute, font_size_percent, max_name_length, file_name1_text, file_name2_text, file_name_color_rgb, text_render_is_interactive)
-        print(f'_DEBUG_TIMER_: draw_all_overlays: draw_file_names_on_image took {(time.perf_counter() - draw_names_start) * 1000:.2f} ms')
     print(f'_DEBUG_TIMER_: draw_all_overlays_on_base_image_pil total took {(time.perf_counter() - _DEBUG_TIMER_START) * 1000:.2f} ms')
     return final_image_result
 
