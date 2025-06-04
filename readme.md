@@ -18,9 +18,9 @@
 ## 📸 Screenshots
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_1.png" width="32%">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_2.png" width="32%">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/screenshots/github_3.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/github_1.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/github_2.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/github_3.png" width="32%">
 </div>
 
 <details>
