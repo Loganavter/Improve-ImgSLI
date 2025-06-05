@@ -1,11 +1,11 @@
 ; -- Improve_ImgSLI Inno Setup Script --
 
-MyAppName "Improve ImgSLI"
-MyAppVersion "4.8.9"  ;
-MyAppPublisher "Loganavter" ;
-MyAppURL "https://github.com/Loganavter/Improve-ImgSLI" ;
-MyAppExeName "Improve_ImgSLI.exe"
-MyAppSetupName "Improve_ImgSLI_Setup_v4.8.9" ;
+#define MyAppName "Improve ImgSLI"
+#define MyAppVersion "4.9.0"
+#define MyAppPublisher "Loganavter"
+#define MyAppURL "https://github.com/Loganavter/Improve-ImgSLI"
+#define MyAppExeName "Improve_ImgSLI.exe"
+#define MyAppSetupName "Improve_ImgSLI_Setup_v4.9.0"
 
 [Setup]
 AppName={#MyAppName}
@@ -22,7 +22,7 @@ Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#MyAppExeName}
-SetupIconFile=33.ico
+SetupIconFile=icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
