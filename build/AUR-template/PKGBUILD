@@ -1,38 +1,65 @@
 pkgname=improve-imgsli
-pkgver=4.0.0
+pkgver=4.9.0
 pkgrel=0
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=(any)
 url="https://github.com/Loganavter/$pkgname"
 license=(MIT)
 depends=(
-  hicolor-icon-theme
-  python
-  python-pillow
-  python-pyqt6
-  python-pyqt6-sip
-  sh
+    hicolor-icon-theme
+    python
+    python-pillow
+    python-pyqt6
+    sh
+    markdown
+    python-darkdetect
+)
+makedepends=(
+    'python-build'
+    'python-installer'
+    'python-wheel'
+    'python-pip'
 )
 options=(!debug)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-v$pkgver.tar.gz")
 sha512sums=('PLACEHOLDER_SHA512SUM')
 b2sums=('PLACEHOLDER_B2SUM')
 
+prepare() {
+    cd "$srcdir/Improve-ImgSLI-$pkgver"
+}
+
+build() {
+    mkdir -p "$srcdir/python-vendor-deps"
+    pip install --target="$srcdir/python-vendor-deps" \
+        PyQt6-Frameless-Window \
+        PyQt6-Fluent-Widgets
+}
+
 package() {
-  cd "$srcdir/Improve-ImgSLI-$pkgver"
-  install -vDm 755 build/launcher.sh "$pkgdir"/usr/bin/$pkgname
-  install -vDm 644 src/Improve_ImgSLI.py "$pkgdir"/usr/lib/$pkgname/Improve_ImgSLI.py
-  install -vDm 644 src/image_comparison_app.py "$pkgdir"/usr/lib/$pkgname/image_comparison_app.py
-  install -vDm 644 src/clickable_label.py "$pkgdir"/usr/lib/$pkgname/clickable_label.py
-  install -vDm 644 src/translations.py "$pkgdir"/usr/lib/$pkgname/translations.py
-  install -vDm 644 src/settings_dialog.py "$pkgdir"/usr/lib/$pkgname/settings_dialog.py
-  mkdir -p "$pkgdir"/usr/lib/$pkgname/services
-  install -vDm 644 src/services/*.py "$pkgdir"/usr/lib/$pkgname/services/
-  mkdir -p "$pkgdir"/usr/lib/$pkgname/processing_services
-  install -vDm 644 src/processing_services/*.py "$pkgdir"/usr/lib/$pkgname/processing_services/
-  mkdir -p "$pkgdir"/usr/lib/$pkgname/font
-  install -vDm 644 src/font/SourceSans3-Regular.ttf "$pkgdir"/usr/lib/$pkgname/font/SourceSans3-Regular.ttf
-  install -vDm 644 build/AUR-template/$pkgname.desktop "$pkgdir"/usr/share/applications/$pkgname.desktop
-  install -vDm 644 src/icons/icon.png "$pkgdir"/usr/share/icons/hicolor/512x512/apps/$pkgname.png
-  install -vDm 644 LICENSE.txt "$pkgdir"/usr/share/licenses/$pkgname/LICENSE.txt
+    cd "$srcdir/Improve-ImgSLI-$pkgver"
+    install -dm755 "$pkgdir/usr/lib/$pkgname"
+    install -dm755 "$pkgdir/usr/lib/$pkgname/vendor-libs"
+    if [ -d "$srcdir/python-vendor-deps" ]; then
+        cp -r "$srcdir"/python-vendor-deps/* "$pkgdir"/usr/lib/$pkgname/vendor-libs/
+    fi
+    install -vDm 755 "build/AUR-template/launcher.sh" "$pkgdir"/usr/bin/$pkgname
+    install -vDm 644 src/Improve_ImgSLI.py "$pkgdir"/usr/lib/$pkgname/Improve_ImgSLI.py
+    install -vDm 644 src/image_comparison_app.py "$pkgdir"/usr/lib/$pkgname/image_comparison_app.py
+    install -vDm 644 src/clickable_label.py "$pkgdir"/usr/lib/$pkgname/clickable_label.py
+    install -vDm 644 src/translations.py "$pkgdir"/usr/lib/$pkgname/translations.py
+    install -vDm 644 src/settings_dialog.py "$pkgdir"/usr/lib/$pkgname/settings_dialog.py
+    mkdir -p "$pkgdir"/usr/lib/$pkgname/services
+    if ls src/services/*.py > /dev/null 2>&1; then
+        install -vDm 644 src/services/*.py "$pkgdir"/usr/lib/$pkgname/services/
+    fi
+    mkdir -p "$pkgdir"/usr/lib/$pkgname/processing_services
+    if ls src/processing_services/*.py > /dev/null 2>&1; then
+        install -vDm 644 src/processing_services/*.py "$pkgdir"/usr/lib/$pkgname/processing_services/
+    fi
+    mkdir -p "$pkgdir"/usr/lib/$pkgname/font
+    install -vDm 644 src/font/SourceSans3-Regular.ttf "$pkgdir"/usr/lib/$pkgname/font/SourceSans3-Regular.ttf
+    install -vDm 644 build/AUR-template/$pkgname.desktop "$pkgdir"/usr/share/applications/$pkgname.desktop
+    install -vDm 644 src/icons/icon.png "$pkgdir"/usr/share/icons/hicolor/512x512/apps/$pkgname.png
+    install -vDm 644 LICENSE.txt "$pkgdir"/usr/share/licenses/$pkgname/LICENSE.txt
 }

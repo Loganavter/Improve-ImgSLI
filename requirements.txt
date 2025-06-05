@@ -1,6 +1,8 @@
-pillow==11.0.0
-PyQt6==6.7.1
-PyQt6-Qt6==6.7.3
-PyQt6_sip==13.8.0
-markdown
-PyQt6-Fluent-Widgets
+darkdetect==0.8.0
+Markdown==3.8
+pillow==11.2.1
+PyQt6==6.9.0
+PyQt6-Fluent-Widgets==1.8.1
+PyQt6-Frameless-Window==0.7.3
+PyQt6-Qt6==6.9.1
+PyQt6_sip==13.10.2
