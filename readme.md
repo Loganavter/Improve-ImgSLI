@@ -100,7 +100,7 @@ yay -S improve-imgsli
 ```
 
 ### 🪟 Windows (Inno Setup)
-1. Download the installer [here](https://github.com/Loganavter/Improve-ImgSLI/releases/download/v3.1.2/Improve_ImgSLI.exe)
+1. Download the installer [here](https://github.com/Loganavter/Improve-ImgSLI/releases/download/v4.9.0/Improve_ImgSLI_Setup_v4.9.0.exe)
 2. Run and install normally
 
 ### 🧊 Flatpak (Flathub)
