@@ -131,6 +131,8 @@ https://github.com/user-attachments/assets/f2c843c2-31eb-4fb9-8eef-2d28630f2baf
 
 Feel free to fork, submit issues, or open PRs. Contributions are welcome!
 
+Special thanks to [Anduin9527](https://github.com/Anduin9527)! I borrowed many GUI developments from his [fork](https://github.com/Anduin9527/Improve-ImgSLI) of this project.
+
 ---
 
 ## 📄 License <a name="license"></a>
