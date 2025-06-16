@@ -131,7 +131,11 @@ https://github.com/user-attachments/assets/f2c843c2-31eb-4fb9-8eef-2d28630f2baf
 
 Feel free to fork, submit [issues](https://github.com/Loganavter/Improve-ImgSLI/issues), or open [PRs](https://github.com/Loganavter/Improve-ImgSLI/pulls). Contributions are welcome!
 
+<details>
+<summary>Best Contributors</summary>
 Special thanks to [Anduin9527](https://github.com/Anduin9527)! I borrowed many GUI developments from his [fork](https://github.com/Anduin9527/Improve-ImgSLI) of this project.
+Special thanks to [johnpetersa19](https://github.com/johnpetersa19)! Your [reworking](https://github.com/Loganavter/Improve-ImgSLI/pull/18) of Readme.MD greatly improved the look of the project with a bunch of contextual emoji.
+</details>
 
 ---
 
