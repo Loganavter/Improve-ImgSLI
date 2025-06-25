@@ -9,6 +9,12 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square">
   </a>
+  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases">
+    <img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="Total Downloads">
+  </a>
+  <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI">
+    <img src="https://img.shields.io/flathub/d/io.github.Loganavter.Improve-ImgSLI?style=flat-square&logo=flathub" alt="Flathub Downloads(badge will be fixed soon)">
+  </a>
 </p>
 
 <p align="center"><strong>An intuitive, open-source tool for advanced image comparison and interaction.</strong></p>
@@ -176,10 +182,12 @@ June 2025. With Gemini, I refactored the code once again. The application now fe
 The genesis of Improve ImgSLI was a practical need: to create clear visual comparisons for an article. The initial design, and indeed the name, drew inspiration from imgsli.com. While the early iterations were functional, the project has since evolved significantly.
 
 Today, I view Improve ImgSLI as a valuable public asset, much like [VideoCut](https://github.com/kanehekili/VideoCut) Kanehekili, another tool whose principles partially guided its development and which has become indispensable in my own workflow. The core value of Improve ImgSLI lies in its efficiency. Manually creating detailed image comparisons can be a laborious process, often taking several minutes. This program accomplishes the same, often superior, results in approximately 30 seconds, all through an intuitive, user-friendly interface. It's this transformation of a cumbersome task into a swift, accessible one that I believe makes Improve ImgSLI a genuinely useful tool.
+
+It's difficult to pinpoint the exact time spent on the project, but I would estimate it to be around 100-150 hours in total. The most productive period was with Cursor, though I didn't have enough time to fully adapt to its specific workflow. Furthermore, its pricing is quite steep, especially compared to Google's AI Studio for developers. The $20 plan for 400 uses a month is simply nowhere near enough for my development style.
 </details>
 
 ---
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Timeline)](https://star-history.com/#Loganavter/Improve-ImgSLI&Timeline)
+![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Timeline)](https://star-history.com/#Loganavter/Improve-ImgSLI&Timeline)
