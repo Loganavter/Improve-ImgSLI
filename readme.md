@@ -10,10 +10,10 @@
     <img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square">
   </a>
   <a href="https://github.com/Loganavter/Improve-ImgSLI/releases">
-    <img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="Total Downloads">
+    <img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="GitHub Downloads">
   </a>
   <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI">
-    <img src="https://img.shields.io/flathub/d/io.github.Loganavter.Improve-ImgSLI?style=flat-square&logo=flathub" alt="Flathub Downloads(badge will be fixed soon)">
+    <img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads">
   </a>
 </p>
 
