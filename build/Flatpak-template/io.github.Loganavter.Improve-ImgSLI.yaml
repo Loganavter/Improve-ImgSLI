@@ -38,6 +38,8 @@ modules:
       - install -Dm644 src/processing_services/*.py -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/processing_services/
       - install -Dm644 src/font/SourceSans3-Regular.ttf -t ${FLATPAK_DEST}/share/fonts/truetype/      
       - install -Dm644 src/icons/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -d ${FLATPAK_DEST}/lib/Improve-ImgSLI/assets
+      - install -Dm644 src/assets/circle_mask.png -t ${FLATPAK_DEST}/lib/Improve-ImgSLI/assets/
       - install -Dm644 LICENSE.txt ${FLATPAK_DEST}/share/licenses/Improve-ImgSLI/LICENSE
       - desktop-file-edit --set-key=Categories --set-value="Graphics;Utility;Viewer;Photography;" build/AUR-template/improve-imgsli.desktop
       - desktop-file-edit --set-icon="${FLATPAK_ID}" build/AUR-template/improve-imgsli.desktop
@@ -46,5 +48,5 @@ modules:
       - install -Dm644 build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
       - type: archive
-        url: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v4.9.0.tar.gz 
+        url: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v5.8.20.tar.gz 
         sha256: cdd7db71e7ec41a252a3ef82890728fb4cc68f3ee973f33545e66e5c79edb6af

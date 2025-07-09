@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QGridLayout, QDialog
 from PyQt6.QtCore import QSize, Qt
-from qfluentwidgets import RadioButton, SpinBox, PushButton, SubtitleLabel, BodyLabel
+from qfluentwidgets import RadioButton, SpinBox, PushButton, SubtitleLabel, BodyLabel, CheckBox
 try:
     from translations import tr as app_tr
 except ImportError:
@@ -11,15 +11,17 @@ except ImportError:
         except (KeyError, IndexError):
             return text
 
+
 class SettingsDialog(QDialog):
 
-    def __init__(self, current_language, current_max_length, min_limit, max_limit, current_jpeg_quality, parent=None, tr_func=None):
+    def __init__(self, current_language, current_max_length, min_limit,
+                 max_limit, current_jpeg_quality, debug_mode_enabled, parent=None, tr_func=None):
         super().__init__(parent)
         self.tr = tr_func if callable(tr_func) else app_tr
         self.current_language = current_language
         self.setWindowTitle(self.tr('Settings', self.current_language))
         self.setModal(True)
-        self.setFixedSize(400, 320)
+        self.setFixedSize(400, 360) 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
@@ -54,31 +56,48 @@ class SettingsDialog(QDialog):
         else:
             self.radio_en.setChecked(True)
         length_layout = QHBoxLayout()
-        length_label = BodyLabel(self.tr('Maximum Name Length (UI):', self.current_language))
+        length_label = BodyLabel(
+            self.tr(
+                'Maximum Name Length (UI):',
+                self.current_language))
         self.spin_max_length = SpinBox()
         self.spin_max_length.setRange(min_limit, max_limit)
-        clamped_current_max_length = max(min_limit, min(max_limit, current_max_length))
+        clamped_current_max_length = max(
+            min_limit, min(max_limit, current_max_length))
         self.spin_max_length.setValue(clamped_current_max_length)
-        tooltip_template = self.tr('Limits the displayed name length in the UI ({min}-{max}).', self.current_language)
+        tooltip_template = self.tr(
+            'Limits the displayed name length in the UI ({min}-{max}).',
+            self.current_language)
         tooltip_text = tooltip_template.format(min=min_limit, max=max_limit)
         self.spin_max_length.setToolTip(tooltip_text)
         length_layout.addWidget(length_label)
         length_layout.addWidget(self.spin_max_length)
         main_layout.addLayout(length_layout)
         jpeg_quality_layout = QHBoxLayout()
-        jpeg_quality_label = BodyLabel(self.tr('JPEG Quality:', self.current_language))
+        jpeg_quality_label = BodyLabel(
+            self.tr('JPEG Quality:', self.current_language))
         self.spin_jpeg_quality = SpinBox()
         self.spin_jpeg_quality.setRange(1, 100)
         clamped_jpeg_quality = max(1, min(100, current_jpeg_quality))
         self.spin_jpeg_quality.setValue(clamped_jpeg_quality)
-        self.spin_jpeg_quality.setToolTip(self.tr('JPEG compression quality (1-100, higher is better).', self.current_language))
+        self.spin_jpeg_quality.setToolTip(
+            self.tr(
+                'JPEG compression quality (1-100, higher is better).',
+                self.current_language))
         jpeg_quality_layout.addWidget(jpeg_quality_label)
         jpeg_quality_layout.addWidget(self.spin_jpeg_quality)
         main_layout.addLayout(jpeg_quality_layout)
+        
+        self.debug_checkbox = CheckBox(self.tr('Enable debug logging', self.current_language))
+        self.debug_checkbox.setChecked(debug_mode_enabled)
+        self.debug_checkbox.setToolTip(self.tr('Shows detailed logs for developers. Requires restart.', self.current_language))
+        main_layout.addWidget(self.debug_checkbox)
+        
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
         self.ok_button = PushButton(self.tr('OK', self.current_language))
-        self.cancel_button = PushButton(self.tr('Cancel', self.current_language))
+        self.cancel_button = PushButton(
+            self.tr('Cancel', self.current_language))
         self.ok_button.setMinimumSize(80, 32)
         self.cancel_button.setMinimumSize(80, 32)
         self.ok_button.clicked.connect(self.accept)
@@ -124,4 +143,5 @@ class SettingsDialog(QDialog):
             selected_language = 'pt_BR'
         max_length = self.spin_max_length.value()
         jpeg_quality = self.spin_jpeg_quality.value()
-        return (selected_language, max_length, jpeg_quality)
+        debug_enabled = self.debug_checkbox.isChecked()
+        return (selected_language, max_length, jpeg_quality, debug_enabled)
