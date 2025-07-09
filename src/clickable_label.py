@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import QLabel
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QMouseEvent
 
+
 class ClickableLabel(QLabel):
     mousePressed = pyqtSignal(QMouseEvent)
     mouseMoved = pyqtSignal(QMouseEvent)
