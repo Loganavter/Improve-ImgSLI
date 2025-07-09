@@ -24,14 +24,14 @@
 ## 📸 Screenshots
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/github_1.png" width="32%">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/github_2.png" width="32%">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/github_3.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_1.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_2.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_3.png" width="32%">
 </div>
 
 <details>
   <summary>Full resolution save</summary>
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.1/Improve_ImgSLI/fullres/github_fullres.png" alt="Full resolution example" width="33%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/fullres/github_fullres.png" alt="Full resolution example" width="33%">
 </details>
 
 ---
@@ -64,9 +64,10 @@ Improve-ImgSLI is a free and open-source application for detailed visual image c
 - Export current view to high-res image (includes divider, magnifier, marker, and filenames).
 
 ### 🔍 Magnifier Tool
-- Powerful image magnifier tool.
+- Powerful image magnifier tool with horizontal/vertical split support.
+- High-quality, smooth anti-aliased borders on magnifier and capture area.
 - Selectable interpolation method (Nearest Neighbor, Bilinear, Bicubic, Lanczos).
-- Marker showing the captured area.
+- Unclipped rendering: magnifier can be moved freely, even outside the image boundaries.
 - Adjustable source size and magnified area.
 - Smooth WASD controls for magnifier movement.
 - Merge both magnifiers into one view.
@@ -74,31 +75,33 @@ Improve-ImgSLI is a free and open-source application for detailed visual image c
 
 ### 🗂️ File & Workflow Management
 - Drag and drop multiple files.
-- Dropdowns to select from loaded images.
-- Quick switch between image lists.
-- Clear list buttons.
+- Scrollable dropdowns to select from loaded images using the mouse wheel.
+- Advanced List Management:
+    - Swap (⇄): Short-press to swap selected images, long-press to swap entire lists.
+    - Clear (🗑️): Short-press to remove the selected image, long-press to clear the entire list.
 - Filename editing from UI.
-- Optional filename overlay in exports.
-- Customizable font and max name length.
+- Optional filename overlay in exports with customizable font and color.
 
 ### 🧑‍💻 User Experience & Interface
 - Multilingual support (EN, RU, ZH, PT-BR).
-- Dynamic UI resizing.
-- Settings persist across sessions.
+- Dynamic UI resizing and persistent window state.
 - Quick image preview using keyboard (Space + Mouse Buttons).
-- Improved performance through advanced image caching.
+- Improved performance through advanced image caching and an optimized rendering pipeline.
+- Power-user launcher for managing virtual environment and debug logging.
 
 ---
 
 ## 🛠️ Installation <a name="installation"></a>
 
 ### 🐍 Python (from source)
+A command-line utility for managing the environment.
 ```bash
 git clone https://github.com/Loganavter/Improve-ImgSLI.git
 cd Improve-ImgSLI
 chmod +x launcher.sh
-./launcher.sh
+./launcher.sh run
 ```
+Use `./launcher.sh --help` to see other commands like `recreate`, `delete`, and `enable-logging`.
 
 ### 🐧 Arch Linux (AUR)
 ```bash
@@ -106,8 +109,52 @@ yay -S improve-imgsli
 ```
 
 ### 🪟 Windows (Inno Setup)
-1. Download the installer [here](https://github.com/Loganavter/Improve-ImgSLI/releases/download/v4.9.0/Improve_ImgSLI_Setup_v4.9.0.exe)
-2. Run and install normally
+**Option 1: Pre-built Installer**
+1. Download the latest installer from the [Releases page](https://github.com/Loganavter/Improve-ImgSLI/releases/latest).
+2. Run the downloaded `.exe` file and follow the installation instructions.
+
+**Option 2: Build from Source**
+If you prefer to compile the application yourself, please follow the detailed instructions.
+<details>
+<summary>Building from Source</summary>
+
+### Prerequisites
+- **Python**: Make sure Python is installed and that its `Scripts` directory is added to your system's PATH.
+- **Git**: Required for cloning the repository.
+- **Inno Setup**: Required for creating the final installer.
+
+### Step-by-Step Guide
+
+1.  **Clone the repository and navigate into it:**
+    ```bash
+    git clone https://github.com/Loganavter/Improve-ImgSLI.git
+    cd Improve-ImgSLI
+    ```
+
+2.  **Install dependencies:**
+    This will install all required Python packages, including `pyinstaller`.
+    ```bash
+    pip install -r requirements.txt pyinstaller
+    ```
+
+3.  **Create the executable with PyInstaller:**
+    Run the following command from the root directory of the project.
+    ```bash
+    pyinstaller --noconsole --onefile --name "Improve_ImgSLI" --icon="build/Windows-template/icons/icon.ico" --paths=src --add-data "src/assets/circle_mask.png;assets" --add-data "src/font/SourceSans3-Regular.ttf;font" --add-data "src/icons/icon.png;icons" --hidden-import=clickable_label --hidden-import=settings_dialog --hidden-import=translations src/Improve_ImgSLI.py
+    ```
+    This command packages the application into a single `.exe` file, including all necessary assets and hidden imports.
+
+4.  **Prepare for Inno Setup:**
+    After PyInstaller finishes, a `dist` folder will be created. Copy the generated `Improve_ImgSLI.exe` from the `dist` folder to the `build/Windows-template` directory.
+
+5.  **Compile the installer with Inno Setup:**
+    - Open the **Inno Setup Compiler**.
+    - Go to `File > Open...` and select the script `build/Windows-template/inno_setup_6.iss`.
+    - Compile the script by pressing **F9** or using the `Build > Compile` menu.
+
+6.  **Find the result:**
+    The final installer, `Improve_ImgSLI_Setup_vX.X.XX.exe`, will be created in the `build/Windows-template/Output` directory. You can now use this file to install the application.
+</details>
 
 ### 🧊 Flatpak (Flathub)
 ```bash
@@ -126,9 +173,12 @@ flatpak run io.github.Loganavter.Improve-ImgSLI
 2. **Load Images** via the "Add Img(s)" button or drag-and-drop. Use Space + Mouse Buttons for quick preview of individual images.
 3. **Compare:** move the split line with your mouse. Check "Horizontal Split" to change orientation.
 4. **Magnify:** enable the magnifier, select an interpolation method, and adjust zoom/position with sliders or keys.
-5. **Export:** use the save button to export a high-res composite.
+5. **Manage Lists:** Use short/long presses on the swap (⇄) and clear (🗑️) buttons for quick workflow.
+6. **Export:** use the save button to export a high-res composite.
 
 https://github.com/user-attachments/assets/f2c843c2-31eb-4fb9-8eef-2d28630f2baf
+
+*Note: The demo video may not reflect all the latest features.*
 
 ---
 
@@ -164,15 +214,17 @@ A brief period in early December saw an experiment with adaptive magnifier posit
 
 February 2025 brought renewed focus on enhancing the application. Leveraging Claude Sonnet 3.7, features like dynamic image swapping, a multilingual dictionary, and further magnifier improvements were added, along with a helpful tooltip. Shortly thereafter, access to Grok 3—first via X, then its dedicated website—provided a significant boost. Grok 3's DeepThink model proved exceptionally effective at resolving persistent bugs, outperforming previous AIs, while its generous query limits and intelligent standard model streamlined development. Key contributions included optimized rendering, filename display and editing, and fixes for fullscreen mode.
 
-Late March 2025 was dedicated to cross-platform compatibility. Gemini and Grok, using their web search capabilities, assisted in drafting build and packaging scripts. While initial hopes for community maintenance of platform builds didn't materialize due to some skepticism about the project's AI-assisted origins, this solo effort, though time-intensive (taking considerable effort per platform), led to the discovery and resolution of several bugs, culminating in a successful cross-platform launch. Delays in Flathub publication until mid-April allowed for further bug fixes and the addition of a list cleanup feature.
+Late March 2025 was dedicated to cross-platform compatibility. Gemini and Grok, using their web search capabilities, assisted in drafting build and packaging scripts. While initial hopes for community maintenance of platform builds didn't materialize due-to some skepticism about the project's AI-assisted origins, this solo effort, though time-intensive (taking considerable effort per platform), led to the discovery and resolution of several bugs, culminating in a successful cross-platform launch. Delays in Flathub publication until mid-April allowed for further bug fixes and the addition of a list cleanup feature.
 
 In April 2025, attention shifted back to addressing critical bugs, with continued reliance on Gemini. A major achievement during this period was the implementation of window state persistence—a feature that proved incredibly challenging but vastly improved user experience. A settings tab was also introduced, centralizing language selection, output image quality, and filename length preferences. Following these updates, Windows and Flatpak builds were refreshed. The current plan involves implementing one final feature and verifying the Flatpak maintenance pipeline before updating Windows and AUR builds, after which the project will likely enter a period of stability.
 
 May 2025. I discovered Cursor AI, which allowed me to quickly implement three key features in this update using agents like ChatGPT 4.1, Sonnet 3.5, and Gemini 2.5 PRO, all within the free limit of 150 uses. These features included a smarter caching service that improved smoothness by approximately 2-3 times compared to the previous version, the ability to select magnifier interpolation, and quick image preview using the keyboard. Additionally, the project's structure became much more multi-layered and less coupled between modules. This refactoring required two days of collaboration with Gemini to break down two monolithic scripts into numerous services with separate folders. The entire process took about three days.
 
-June 2025. With Gemini, I refactored the code once again. The application now features a qfluentwidgets style. This was quite a time-consuming process. Caching was also further improved. The icons.py file was completely removed as it was no longer necessary.
-</details>
+June 2025. With Gemini, I refactored the code once again. The application now features a qfluentwidgets style. It initially took a long time, but then I gave the project fork code with this GUI, and it went much faster, it took about 3 days. Caching was also further improved. The icons.py file was completely removed as it was no longer necessary.
 
+July 2025. The solid architecture from the June refactoring allowed for another rapid development burst. This update took about 3-4 days, again with Gemini's assistance. The launcher.sh script was turned into a proper command-line utility for managing the environment. The rendering pipeline was overhauled to use a dynamic canvas, which allows the magnifier to draw outside the image bounds and also improves performance on large images and magnifiers due to more efficient data packaging. The magnifier also now correctly handles horizontal splitting. UI interaction was improved with long-press actions and scrollable selection dropdowns. Internally, all print statements were replaced with a standard logging system. The persistent bug with window geometry, however, remains. After over 20 failed attempts to fix it, it's clear the root cause is a race condition in how state signals are handled. This confirms the need to move away from the current semblance of an architecture to a **full** MVC/MVVM pattern, which will be the primary focus going forward.
+</details>
+ 
 ---
 
 ## 💬 My Personal View <a name="my-personal-view"></a>
@@ -190,4 +242,4 @@ It's difficult to pinpoint the exact time spent on the project, but I would esti
 
 ## ⭐ Star History
 
-![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Timeline)](https://star-history.com/#Loganavter/Improve-ImgSLI&Timeline)
+![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Timeline)

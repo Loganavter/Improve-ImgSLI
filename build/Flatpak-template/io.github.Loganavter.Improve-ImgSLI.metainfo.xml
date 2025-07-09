@@ -29,28 +29,59 @@
   </description>
   <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>
   <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>     
-<screenshots>
-  <screenshot type="default">
-    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/flatpak_1.png</image>
-    <caption>Vertical caption</caption>
-  </screenshot>
-  <screenshot>
-    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/flatpak_2.png</image>
-    <caption>Horizontal caption</caption>
-  </screenshot>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/flatpak_1.png</image>
+      <caption>Vertical caption</caption>
+    </screenshot>
     <screenshot>
-    <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.3/Improve_ImgSLI/screenshots/flatpak_3.png</image>
-    <caption>List option</caption>
-  </screenshot>
-</screenshots>
-      
-      
-<developer id="io.github.loganavter">
-  <name>Loganavter</name>
-</developer>
-  <content_rating type="oars-1.1" />
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/flatpak_2.png</image>
+      <caption>Horizontal caption</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/flatpak_3.png</image>
+      <caption>List option</caption>
+    </screenshot>
+  </screenshots>
+  <developer id="io.github.loganavter">
+    <name>Loganavter</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
   <releases>
-    <release version="4.9.0" date="2025-06-05"/>
-    <release version="3.1.9" date="2025-04-15"/>
+    <release version="5.8.20" date="2025-07-09">
+      <description>
+        <p>This is a major quality-of-life and rendering engine update.</p>
+        <ul>
+          <li>Overhauled the core update logic to a reactive, state-driven architecture, significantly improving stability and eliminating a class of race-condition bugs.</li>
+          <li>The magnifier can now render outside the image boundaries and correctly handles horizontal split view.</li>
+          <li>Added smooth, anti-aliased borders for the magnifier and capture area for better visual quality.</li>
+          <li>Added long-press actions for swapping and clearing images/lists to speed up workflow.</li>
+          <li>Image selection dropdowns are now scrollable with the mouse wheel.</li>
+          <li>Added a new setting to permanently enable or disable debug logging.</li>
+          <li>Replaced all internal print statements with a structured logging system.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="4.9.0" date="2025-06-05">
+      <description>
+        <p>This release introduces a major user interface overhaul and performance improvements.</p>
+        <ul>
+          <li>The application interface has been completely redesigned using the modern `qfluentwidgets` style.</li>
+          <li>The image caching service has been significantly improved, resulting in a much smoother experience.</li>
+          <li>Refactored the core rendering code for better performance and easier maintenance.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="3.1.9" date="2025-04-15">
+      <description>
+        <p>This release focuses on settings persistence and bug fixes.</p>
+        <ul>
+          <li>Added window state persistence: the app now remembers its size and position between sessions.</li>
+          <li>Introduced a new Settings dialog to centralize application preferences.</li>
+          <li>Added options to configure UI language, JPEG save quality, and the maximum length of displayed filenames.</li>
+          <li>Addressed several critical bugs to improve stability.</li>
+        </ul>
+      </description>
+    </release>
   </releases>
 </component>

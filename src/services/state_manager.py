@@ -1,8 +1,9 @@
 import os
-from PyQt6.QtCore import QObject, QPointF, QByteArray
+from PyQt6.QtCore import QObject, QPointF, QByteArray, QRect, pyqtSignal, QPoint
 from PyQt6.QtGui import QColor
 from PIL import Image
 import os
+
 
 class AppConstants:
     MIN_NAME_LENGTH_LIMIT = 10
@@ -25,9 +26,15 @@ class AppConstants:
     MAX_CAPTURE_THICKNESS = 4
     MIN_MAG_BORDER_THICKNESS = 1
     MAX_MAG_BORDER_THICKNESS = 4
-    INTERPOLATION_METHODS_MAP = {'NEAREST': 'Nearest Neighbor', 'BILINEAR': 'Bilinear', 'BICUBIC': 'Bicubic', 'LANCZOS': 'Lanczos'}
+    INTERPOLATION_METHODS_MAP = {
+        'NEAREST': 'Nearest Neighbor',
+        'BILINEAR': 'Bilinear',
+        'BICUBIC': 'Bicubic',
+        'LANCZOS': 'Lanczos'}
+
 
 class AppState(QObject):
+    stateChanged = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -51,10 +58,11 @@ class AppState(QObject):
         self._capture_position_relative: QPointF = AppConstants.DEFAULT_CAPTURE_POS_RELATIVE
         self._show_capture_area_on_main_image: bool = True
         self._freeze_magnifier: bool = False
-        self._frozen_magnifier_position_relative: QPointF | None = None
+        self._frozen_magnifier_absolute_pos: QPoint | None = None
         self._magnifier_offset_relative: QPointF = AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE
         self._magnifier_spacing_relative: float = AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE
-        self._magnifier_offset_relative_visual: QPointF = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
+        self._magnifier_offset_relative_visual: QPointF = QPointF(
+            AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
         self._magnifier_spacing_relative_visual: float = AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE
         self._interpolation_method: str = AppConstants.DEFAULT_INTERPOLATION_METHOD
         self._include_file_names_in_saved: bool = False
@@ -66,6 +74,7 @@ class AppState(QObject):
         self._current_language: str = 'en'
         self._pixmap_width: int = 0
         self._pixmap_height: int = 0
+        self._image_display_rect_on_label = QRect()
         self._is_dragging_split_line: bool = False
         self._is_dragging_capture_point: bool = False
         self._is_dragging_any_slider: bool = False
@@ -79,11 +88,9 @@ class AppState(QObject):
         self._showing_single_image_mode: int = 0
         self._fixed_label_width: int | None = None
         self._fixed_label_height: int | None = None
-        self._cached_split_base_image: Image.Image | None = None
-        self._last_split_cached_params: tuple | None = None
-        self._magnifier_cache: dict = {}
+        self.debug_mode_enabled: bool = False
         self.loaded_geometry: QByteArray = QByteArray()
-        self.loaded_was_maximized: bool = False
+        self.loaded_window_state: int = 0
         self.loaded_previous_geometry: QByteArray = QByteArray()
         self.loaded_image1_paths: list[str] = []
         self.loaded_image2_paths: list[str] = []
@@ -92,7 +99,8 @@ class AppState(QObject):
         self.loaded_language: str = 'en'
         self.loaded_max_name_length: int = 30
         self.loaded_movement_speed: float = 2.0
-        self.loaded_filename_color_name: str = QColor(255, 0, 0, 255).name(QColor.NameFormat.HexArgb)
+        self.loaded_filename_color_name: str = QColor(
+            255, 0, 0, 255).name(QColor.NameFormat.HexArgb)
         self.loaded_jpeg_quality: int = AppConstants.DEFAULT_JPEG_QUALITY
         self.loaded_magnifier_size_relative: float = AppConstants.DEFAULT_MAGNIFIER_SIZE_RELATIVE
         self.loaded_capture_size_relative: float = AppConstants.DEFAULT_CAPTURE_SIZE_RELATIVE
@@ -102,6 +110,53 @@ class AppState(QObject):
         self.loaded_magnifier_spacing_relative: float = AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE
         self.loaded_interpolation_method: str = AppConstants.DEFAULT_INTERPOLATION_METHOD
         self.loaded_file_names_state: bool = False
+        self.loaded_debug_mode_enabled: bool = False
+        self._cached_split_base_image: Image.Image | None = None
+        self._last_split_cached_params: tuple | None = None
+        self._magnifier_cache: dict = {}
+
+    def clear_all_caches(self):
+        self.clear_split_cache()
+        self.clear_magnifier_cache()
+
+    def clear_split_cache(self):
+        self._cached_split_base_image = None
+        self._last_split_cached_params = None
+
+    def clear_magnifier_cache(self):
+        self._magnifier_cache.clear()
+
+    def copy_for_worker(self):
+        new_state = AppState()
+
+        new_state.split_position_visual = self.split_position_visual
+        new_state.is_horizontal = self.is_horizontal
+        new_state.use_magnifier = self.use_magnifier
+        new_state.show_capture_area_on_main_image = self.show_capture_area_on_main_image
+        new_state.capture_position_relative = QPointF(
+            self.capture_position_relative)
+        new_state.magnifier_offset_relative_visual = QPointF(
+            self.magnifier_offset_relative_visual)
+        new_state.magnifier_spacing_relative_visual = self.magnifier_spacing_relative_visual
+        new_state.magnifier_size_relative = self.magnifier_size_relative
+        new_state.capture_size_relative = self.capture_size_relative
+        new_state.freeze_magnifier = self.freeze_magnifier
+        if self.frozen_magnifier_absolute_pos:
+            new_state.frozen_magnifier_absolute_pos = QPoint(
+                self.frozen_magnifier_absolute_pos)
+   
+        new_state.include_file_names_in_saved = self.include_file_names_in_saved
+        new_state.font_size_percent = self.font_size_percent
+        new_state.max_name_length = self.max_name_length
+        new_state.file_name_color = QColor(self.file_name_color)
+
+        new_state.interpolation_method = self.interpolation_method
+        new_state.is_interactive_mode = self.is_interactive_mode
+
+        new_state._cached_split_base_image = self._cached_split_base_image
+        new_state._last_split_cached_params = self._last_split_cached_params
+
+        return new_state
 
     @property
     def fixed_label_width(self) -> int | None:
@@ -127,16 +182,7 @@ class AppState(QObject):
     def current_language(self, value: str):
         if self._current_language != value:
             self._current_language = value
-
-    @property
-    def original_image1(self) -> Image.Image | None:
-        return self._original_image1
-
-    @original_image1.setter
-    def original_image1(self, value: Image.Image | None):
-        self._original_image1 = value
-        self.clear_split_cache()
-        self.clear_magnifier_cache()
+            self.stateChanged.emit()
 
     @property
     def image_list1(self) -> list[tuple[Image.Image, str, str]]:
@@ -152,7 +198,9 @@ class AppState(QObject):
 
     @current_index1.setter
     def current_index1(self, value: int):
-        self._current_index1 = value
+        if self._current_index1 != value:
+            self._current_index1 = value
+            self.stateChanged.emit()
 
     @property
     def current_index2(self) -> int:
@@ -160,7 +208,25 @@ class AppState(QObject):
 
     @current_index2.setter
     def current_index2(self, value: int):
-        self._current_index2 = value
+        if self._current_index2 != value:
+            self._current_index2 = value
+            self.stateChanged.emit()
+
+    @property
+    def original_image1(self) -> Image.Image | None:
+        return self._original_image1
+
+    @original_image1.setter
+    def original_image1(self, value: Image.Image | None):
+        self._original_image1 = value
+
+    @property
+    def original_image2(self) -> Image.Image | None:
+        return self._original_image2
+
+    @original_image2.setter
+    def original_image2(self, value: Image.Image | None):
+        self._original_image2 = value
 
     @property
     def image1(self) -> Image.Image | None:
@@ -194,9 +260,8 @@ class AppState(QObject):
     def is_horizontal(self, value: bool):
         if self._is_horizontal != value:
             self._is_horizontal = value
-            self.clear_split_cache()
-            self.clear_magnifier_cache()
-            self._split_position_visual = self._split_position
+            self.clear_all_caches()
+            self.stateChanged.emit()
 
     @property
     def split_position(self) -> float:
@@ -206,6 +271,7 @@ class AppState(QObject):
     def split_position(self, value: float):
         if self._split_position != value:
             self._split_position = value
+            self.stateChanged.emit()
 
     @property
     def split_position_visual(self) -> float:
@@ -213,9 +279,7 @@ class AppState(QObject):
 
     @split_position_visual.setter
     def split_position_visual(self, value: float):
-        if self._split_position_visual != value:
-            self._split_position_visual = value
-            self.clear_split_cache()
+        self._split_position_visual = value
 
     @property
     def use_magnifier(self) -> bool:
@@ -223,7 +287,10 @@ class AppState(QObject):
 
     @use_magnifier.setter
     def use_magnifier(self, value: bool):
-        self._use_magnifier = value
+        if self._use_magnifier != value:
+            self._use_magnifier = value
+            self.clear_all_caches()
+            self.stateChanged.emit()
 
     @property
     def magnifier_size_relative(self) -> float:
@@ -231,7 +298,9 @@ class AppState(QObject):
 
     @magnifier_size_relative.setter
     def magnifier_size_relative(self, value: float):
-        self._magnifier_size_relative = value
+        if self._magnifier_size_relative != value:
+            self._magnifier_size_relative = value
+            self.stateChanged.emit()
 
     @property
     def capture_size_relative(self) -> float:
@@ -239,7 +308,9 @@ class AppState(QObject):
 
     @capture_size_relative.setter
     def capture_size_relative(self, value: float):
-        self._capture_size_relative = value
+        if self._capture_size_relative != value:
+            self._capture_size_relative = value
+            self.stateChanged.emit()
 
     @property
     def capture_position_relative(self) -> QPointF:
@@ -247,7 +318,9 @@ class AppState(QObject):
 
     @capture_position_relative.setter
     def capture_position_relative(self, value: QPointF):
-        self._capture_position_relative = value
+        if self._capture_position_relative != value:
+            self._capture_position_relative = value
+            self.stateChanged.emit()
 
     @property
     def show_capture_area_on_main_image(self) -> bool:
@@ -255,7 +328,9 @@ class AppState(QObject):
 
     @show_capture_area_on_main_image.setter
     def show_capture_area_on_main_image(self, value: bool):
-        self._show_capture_area_on_main_image = value
+        if self._show_capture_area_on_main_image != value:
+            self._show_capture_area_on_main_image = value
+            self.stateChanged.emit()
 
     @property
     def freeze_magnifier(self) -> bool:
@@ -263,15 +338,19 @@ class AppState(QObject):
 
     @freeze_magnifier.setter
     def freeze_magnifier(self, value: bool):
-        self._freeze_magnifier = value
+        if self._freeze_magnifier != value:
+            self._freeze_magnifier = value
+            self.clear_all_caches()
+            self.stateChanged.emit()
 
     @property
-    def frozen_magnifier_position_relative(self) -> QPointF | None:
-        return self._frozen_magnifier_position_relative
+    def frozen_magnifier_absolute_pos(self) -> QPoint | None:
+        return self._frozen_magnifier_absolute_pos
 
-    @frozen_magnifier_position_relative.setter
-    def frozen_magnifier_position_relative(self, value: QPointF | None):
-        self._frozen_magnifier_position_relative = value
+    @frozen_magnifier_absolute_pos.setter
+    def frozen_magnifier_absolute_pos(self, value: QPoint | None):
+        if self._frozen_magnifier_absolute_pos != value:
+            self._frozen_magnifier_absolute_pos = value
 
     @property
     def magnifier_offset_relative(self) -> QPointF:
@@ -279,7 +358,9 @@ class AppState(QObject):
 
     @magnifier_offset_relative.setter
     def magnifier_offset_relative(self, value: QPointF):
-        self._magnifier_offset_relative = value
+        if self._magnifier_offset_relative != value:
+            self._magnifier_offset_relative = value
+            self.stateChanged.emit()
 
     @property
     def magnifier_spacing_relative(self) -> float:
@@ -287,7 +368,9 @@ class AppState(QObject):
 
     @magnifier_spacing_relative.setter
     def magnifier_spacing_relative(self, value: float):
-        self._magnifier_spacing_relative = value
+        if self._magnifier_spacing_relative != value:
+            self._magnifier_spacing_relative = value
+            self.stateChanged.emit()
 
     @property
     def magnifier_offset_relative_visual(self) -> QPointF:
@@ -306,6 +389,14 @@ class AppState(QObject):
         self._magnifier_spacing_relative_visual = value
 
     @property
+    def image_display_rect_on_label(self) -> QRect:
+        return self._image_display_rect_on_label
+
+    @image_display_rect_on_label.setter
+    def image_display_rect_on_label(self, value: QRect):
+        self._image_display_rect_on_label = value
+
+    @property
     def movement_speed_per_sec(self) -> float:
         return self._movement_speed_per_sec
 
@@ -321,7 +412,8 @@ class AppState(QObject):
     def interpolation_method(self, value: str):
         if self._interpolation_method != value:
             self._interpolation_method = value
-            self.clear_magnifier_cache()
+            self.clear_all_caches()
+            self.stateChanged.emit()
 
     @property
     def max_name_length(self) -> int:
@@ -329,7 +421,9 @@ class AppState(QObject):
 
     @max_name_length.setter
     def max_name_length(self, value: int):
-        self._max_name_length = value
+        if self._max_name_length != value:
+            self._max_name_length = value
+            self.stateChanged.emit()
 
     @property
     def file_name_color(self) -> QColor:
@@ -337,7 +431,9 @@ class AppState(QObject):
 
     @file_name_color.setter
     def file_name_color(self, value: QColor):
-        self._file_name_color = value
+        if self._file_name_color != value:
+            self._file_name_color = value
+            self.stateChanged.emit()
 
     @property
     def include_file_names_in_saved(self) -> bool:
@@ -345,7 +441,9 @@ class AppState(QObject):
 
     @include_file_names_in_saved.setter
     def include_file_names_in_saved(self, value: bool):
-        self._include_file_names_in_saved = value
+        if self._include_file_names_in_saved != value:
+            self._include_file_names_in_saved = value
+            self.stateChanged.emit()
 
     @property
     def font_size_percent(self) -> int:
@@ -353,7 +451,9 @@ class AppState(QObject):
 
     @font_size_percent.setter
     def font_size_percent(self, value: int):
-        self._font_size_percent = value
+        if self._font_size_percent != value:
+            self._font_size_percent = value
+            self.stateChanged.emit()
 
     @property
     def pixmap_width(self) -> int:
@@ -378,7 +478,6 @@ class AppState(QObject):
     @is_dragging_split_line.setter
     def is_dragging_split_line(self, value: bool):
         self._is_dragging_split_line = value
-        self._split_is_actively_lerping = value
 
     @property
     def is_dragging_capture_point(self) -> bool:
@@ -394,8 +493,7 @@ class AppState(QObject):
 
     @is_dragging_any_slider.setter
     def is_dragging_any_slider(self, value: bool):
-        if self._is_dragging_any_slider != value:
-            self._is_dragging_any_slider = value
+        self._is_dragging_any_slider = value
 
     @property
     def magnifier_is_actively_lerping(self) -> bool:
@@ -455,7 +553,9 @@ class AppState(QObject):
 
     @showing_single_image_mode.setter
     def showing_single_image_mode(self, value: int):
-        self._showing_single_image_mode = value
+        if self._showing_single_image_mode != value:
+            self._showing_single_image_mode = value
+            self.stateChanged.emit()
 
     @property
     def image1_path(self) -> str | None:
@@ -472,17 +572,7 @@ class AppState(QObject):
     @image2_path.setter
     def image2_path(self, value: str | None):
         self._image2_path = value
-
-    @property
-    def original_image2(self) -> Image.Image | None:
-        return self._original_image2
-
-    @original_image2.setter
-    def original_image2(self, value: Image.Image | None):
-        self._original_image2 = value
-        self.clear_split_cache()
-        self.clear_magnifier_cache()
-
+    
     @property
     def jpeg_quality(self) -> int:
         return self._jpeg_quality
@@ -491,33 +581,14 @@ class AppState(QObject):
     def jpeg_quality(self, value: int):
         self._jpeg_quality = value
 
-    @property
-    def cached_split_base_image(self) -> Image.Image | None:
-        return self._cached_split_base_image
-
-    @cached_split_base_image.setter
-    def cached_split_base_image(self, value: Image.Image | None):
-        self._cached_split_base_image = value
-
-    @property
-    def last_split_cached_params(self) -> tuple | None:
-        return self._last_split_cached_params
-
-    @last_split_cached_params.setter
-    def last_split_cached_params(self, value: tuple | None):
-        self._last_split_cached_params = value
-
-    @property
-    def magnifier_cache(self) -> dict:
-        return self._magnifier_cache
-
-    def set_current_image_data(self, image_number: int, image_pil: Image.Image | None, image_path: str | None, display_name: str | None):
-
+    def set_current_image_data(self, image_number: int, image_pil: Image.Image |
+                            None, image_path: str | None, display_name: str | None):
         def _get_default_display_name(path: str | None) -> str:
             if path:
                 base_name = os.path.basename(path)
                 return os.path.splitext(base_name)[0]
             return ''
+
         if image_number == 1:
             self._original_image1 = image_pil
             self._image1_path = image_path
@@ -525,9 +596,6 @@ class AppState(QObject):
                 img_ref, pth_ref, _ = self._image_list1[self._current_index1]
                 final_display_name = display_name if display_name is not None else _get_default_display_name(image_path)
                 self._image_list1[self._current_index1] = (img_ref if img_ref is not None else image_pil, pth_ref if pth_ref is not None else image_path, final_display_name)
-            self._image1 = None
-            if self._original_image2:
-                self._image2 = None
         elif image_number == 2:
             self._original_image2 = image_pil
             self._image2_path = image_path
@@ -535,36 +603,28 @@ class AppState(QObject):
                 img_ref, pth_ref, _ = self._image_list2[self._current_index2]
                 final_display_name = display_name if display_name is not None else _get_default_display_name(image_path)
                 self._image_list2[self._current_index2] = (img_ref if img_ref is not None else image_pil, pth_ref if pth_ref is not None else image_path, final_display_name)
-            self._image2 = None
-            if self._original_image1:
-                self._image1 = None
-        self.clear_split_cache()
-        self.clear_magnifier_cache()
-        self._split_position_visual = self._split_position
 
-    def get_current_display_name(self, image_number: int) -> str:
-        if image_number == 1 and 0 <= self._current_index1 < len(self._image_list1):
-            return self._image_list1[self._current_index1][2]
-        if image_number == 2 and 0 <= self._current_index2 < len(self._image_list2):
-            return self._image_list2[self._current_index2][2]
-        return ''
-
-    def get_image_dimensions(self, image_number: int) -> tuple[int, int] | None:
-        img = self._original_image1 if image_number == 1 else self._original_image2
-        if img and hasattr(img, 'size'):
-            return img.size
-        return None
-
-    def swap_all_image_data(self):
-        self._original_image1, self._original_image2 = (self._original_image2, self._original_image1)
-        self._image1_path, self._image2_path = (self._image2_path, self._image1_path)
-        self._image_list1, self._image_list2 = (self._image_list2, self._image_list1)
-        self._current_index1, self._current_index2 = (self._current_index2, self._current_index1)
         self._image1 = None
         self._image2 = None
-        self.clear_split_cache()
-        self.clear_magnifier_cache()
+        
+        self.clear_all_caches()
         self._split_position_visual = self._split_position
+        self.stateChanged.emit()
+
+    def swap_all_image_data(self):
+        self._original_image1, self._original_image2 = (
+            self._original_image2, self._original_image1)
+        self._image1_path, self._image2_path = (
+            self._image2_path, self._image1_path)
+        self._image_list1, self._image_list2 = (
+            self._image_list2, self._image_list1)
+        self._current_index1, self._current_index2 = (
+            self._current_index2, self._current_index1)
+        self._image1 = None
+        self._image2 = None
+        self.clear_all_caches()
+        self._split_position_visual = self._split_position
+        self.stateChanged.emit()
 
     def clear_image_slot_data(self, image_number: int):
         if image_number == 1:
@@ -583,13 +643,23 @@ class AppState(QObject):
             self._image2 = None
         if image_number == 2 and self._original_image1:
             self._image1 = None
-        self.clear_split_cache()
-        self.clear_magnifier_cache()
+        self.clear_all_caches()
         self._split_position_visual = self._split_position
+        self.stateChanged.emit()
+    
+    def get_current_display_name(
+            self, image_number: int) -> str:
+        if image_number == 1 and 0 <= self._current_index1 < len(
+                self._image_list1):
+            return self._image_list1[self._current_index1][2]
+        if image_number == 2 and 0 <= self._current_index2 < len(
+                self._image_list2):
+            return self._image_list2[self._current_index2][2]
+        return ''
 
-    def clear_split_cache(self):
-        self._cached_split_base_image = None
-        self._last_split_cached_params = None
-
-    def clear_magnifier_cache(self):
-        self._magnifier_cache.clear()
+    def get_image_dimensions(
+            self, image_number: int) -> tuple[int, int] | None:
+        img = self._original_image1 if image_number == 1 else self._original_image2
+        if img and hasattr(img, 'size'):
+            return img.size
+        return None
