@@ -4,6 +4,34 @@
     "build-commands": [],
     "modules": [
         {
+            "name": "python3-darkdetect",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"darkdetect\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/f2/f2/728f041460f1b9739b85ee23b45fa5a505962ea11fd85bdbe2a02b021373/darkdetect-0.8.0-py3-none-any.whl",
+                    "sha256": "a7509ccf517eaad92b31c214f593dbcf138ea8a43b2935406bbd565e15527a85"
+                }
+            ]
+        },
+        {
+            "name": "python3-Markdown",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"Markdown\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/2f/15/222b423b0b88689c266d9eac4e61396fe2cc53464459d6a37618ac863b24/markdown-3.8.tar.gz",
+                    "sha256": "7df81e63f0df5c4b24b7d156eb81e4690595239b7d70937d0409f1b0de319c6f"
+                }
+            ]
+        },
+        {
             "name": "python3-Pillow",
             "buildsystem": "simple",
             "build-commands": [
@@ -14,6 +42,25 @@
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/af/cb/bb5c01fcd2a69335b86c22142b2bccfc3464087efb7fd382eee5ffc7fdf7/pillow-11.2.1.tar.gz",
                     "sha256": "a64dd61998416367b7ef979b73d3a85853ba9bec4c2925f74e588879a58716b6"
+                }
+            ]
+        },
+        {
+            "name": "python3-pyqt-fluent-dependencies",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"PyQt6-Frameless-Window\" \"PyQt6-Fluent-Widgets\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/33/5d/8e6b0582efa5488ded4b102d602a0874000c9da07d64f6a111bcb429ebad/pyqt6_fluent_widgets-1.8.3-py3-none-any.whl",
+                    "sha256": "e487784120136ed3fc20b7d631b38e579da9a944ce167f9204ff888ef318405b"
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/00/73/ecf55ae31c5d3997620615219641685e77271b28c13d09b4a092d787683c/pyqt6_frameless_window-0.7.3-py3-none-any.whl",
+                    "sha256": "810867dea37c63da1203d8ef2774737377a5655c8bf7978f39169aa91a16ef52"
                 }
             ]
         }
