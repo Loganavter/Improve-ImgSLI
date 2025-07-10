@@ -43,6 +43,7 @@
 - [Installation](#installation)
 - [Basic Usage](#basic-usage)
 - [Contributing](#contributing)
+- [Maintainers](#maintainers)
 - [License](#license)
 - [Development Story](#development-story)
 - [My Personal View](#my-personal-view)
@@ -164,6 +165,29 @@ flatpak run io.github.Loganavter.Improve-ImgSLI
 
 ### 🍏 macOS
 🚧 Help wanted! Contribute to the macOS build [here](https://github.com/Loganavter/Improve-ImgSLI/pull/15).
+
+---
+
+## 🫂 Maintainers <a name="maintainers"></a>
+
+This project is supported and improved by the efforts of dedicated maintainers. A huge thank you for their contributions!
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="140">
+      <a href="https://github.com/nebulosa2007" title="GitHub profile">
+        <img src="https://github.com/nebulosa2007.png?size=100" alt="Nebulosa's Avatar" width="100" style="border-radius: 50%;"><br/>
+        <sub><b>Nebulosa</b></sub>
+      </a>
+    </td>
+    <td valign="top">
+      <strong>AUR Package Maintainer</strong>
+      <p>A massive thank you to Nebulosa for his relentless dedication to maintaining the <a href="https://aur.archlinux.org/packages/improve-imgsli">Arch Linux (AUR)</a> package right from the start. His proactive work in fixing packaging issues and ensuring stability has been crucial for the project's presence and reliability within the Arch community.</p>
+      <a href="https://github.com/nebulosa2007"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
+      <a href="https://aur.archlinux.org/account/Nebulosa"><img src="https://img.shields.io/badge/AUR-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="AUR Profile"></a>
+    </td>
+  </tr>
+</table>
 
 ---
 
