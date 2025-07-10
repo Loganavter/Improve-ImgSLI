@@ -48,15 +48,6 @@
   </developer>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="5.8.22" date="2025-07-10">
-      <description>
-        <p>This is a major quality-of-life and rendering engine update.</p>
-        <ul>
-          <li>Hot fix.</li>
-        </ul>
-      </description>
-    </release>
-  <releases>
     <release version="5.8.20" date="2025-07-09">
       <description>
         <p>This is a major quality-of-life and rendering engine update.</p>
