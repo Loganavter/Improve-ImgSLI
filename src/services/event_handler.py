@@ -154,13 +154,28 @@ class EventHandler(QObject):
         if image_rect.isNull() or not image_rect.isValid() or image_rect.width() <= 0 or image_rect.height() <= 0:
             return
 
-        rel_x = max(0.0, min(1.0, (cursor_pos_f.x() - image_rect.left()) / float(image_rect.width())))
-        rel_y = max(0.0, min(1.0, (cursor_pos_f.y() - image_rect.top()) / float(image_rect.height())))
+        raw_rel_x = (cursor_pos_f.x() - image_rect.left()) / float(image_rect.width())
+        raw_rel_y = (cursor_pos_f.y() - image_rect.top()) / float(image_rect.height())
 
         if self.app_state.use_magnifier:
-            self.app_state.capture_position_relative = QPointF(rel_x, rel_y)
+            if not self.app_state.image1: return
+
+            unified_w, unified_h = self.app_state.image1.size
+            if unified_w <= 0 or unified_h <= 0: return
+
+            unified_ref_dim = min(unified_w, unified_h)
+            capture_size_px = self.app_state.capture_size_relative * unified_ref_dim
+            
+            radius_rel_x = (capture_size_px / 2.0) / unified_w if unified_w > 0 else 0
+            radius_rel_y = (capture_size_px / 2.0) / unified_h if unified_h > 0 else 0
+
+            clamped_rel_x = max(radius_rel_x, min(raw_rel_x, 1.0 - radius_rel_x))
+            clamped_rel_y = max(radius_rel_y, min(raw_rel_y, 1.0 - radius_rel_y))
+            
+            self.app_state.capture_position_relative = QPointF(clamped_rel_x, clamped_rel_y)
         else:
-            self.app_state.split_position = rel_x if not self.app_state.is_horizontal else rel_y
+            rel_pos = raw_rel_x if not self.app_state.is_horizontal else raw_rel_y
+            self.app_state.split_position = max(0.0, min(1.0, rel_pos))
 
     def handle_drag_enter(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():

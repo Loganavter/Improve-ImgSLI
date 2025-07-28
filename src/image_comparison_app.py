@@ -740,7 +740,6 @@ class ImageComparisonApp(QWidget):
             self.scaled_image1_for_display is None
             or self.scaled_image1_for_display.size != (scaled_img_w, scaled_img_h)
         ):
-            # ИСПРАВЛЕНИЕ: Используем 'LANCZOS' для отображения, а не значение из app_state.
             resampling_method_for_display = get_pil_resampling_method(
                 'LANCZOS', True
             )
@@ -992,8 +991,12 @@ class ImageComparisonApp(QWidget):
 
             magnifier_coords = None
             if self.app_state.use_magnifier:
+                temp_state_for_save = self.app_state.copy_for_worker()
+                if not temp_state_for_save.image1: temp_state_for_save.image1 = full_res_img1
+                if not temp_state_for_save.image2: temp_state_for_save.image2 = full_res_img2
+
                 magnifier_coords = get_magnifier_drawing_coords(
-                    app_state=self.app_state,
+                    app_state=temp_state_for_save,
                     drawing_width=img_w_full,
                     drawing_height=img_h_full,
                     container_width=img_w_full,
@@ -1010,7 +1013,7 @@ class ImageComparisonApp(QWidget):
                         new_x = int(round(frozen_pos_on_screen.x() * scale_x))
                         new_y = int(round(frozen_pos_on_screen.y() * scale_y))
                         
-                        (cap_center1, cap_center2, cap_size1, cap_size2, 
+                        (crop_box1, crop_box2, 
                          _old_magn_mid, magn_size_pix, magn_spacing_pix, _old_bbox) = magnifier_coords
                         
                         magn_midpoint_full_res = QPoint(new_x, new_y)
@@ -1024,7 +1027,7 @@ class ImageComparisonApp(QWidget):
                             top_edge = int(new_y - radius)
                             new_bbox = QRect(left_edge, top_edge, int(total_width), magn_size_pix)
 
-                        magnifier_coords = (cap_center1, cap_center2, cap_size1, cap_size2,
+                        magnifier_coords = (crop_box1, crop_box2,
                                             magn_midpoint_full_res, magn_size_pix, magn_spacing_pix, new_bbox)
 
             name1_from_state = self.app_state.get_current_display_name(1)
@@ -1095,9 +1098,9 @@ class ImageComparisonApp(QWidget):
         <h3 style='margin:8px 0 4px 0'>{tr('Loading Images:', lang)}</h3>
         <ul style='margin:0 0 6px 0; padding-left:10px; list-style-position:inside;'>
             <li style='margin-bottom:2px'>{tr('Use Add buttons or Drag-n-Drop images onto the left/right side.', lang)}</li>
-            <li style='margin-bottom:2px'>{tr('Use dropdown menus to select from loaded images.', lang)}</li>
-            <li style='margin-bottom:2px'>{tr('Use the ⇄ button to swap the entire left and right image lists.', lang)}</li>
-            <li style='margin-bottom:2px'>{tr('Use the Trash buttons (🗑️) to clear respective image lists.', lang)}</li>
+            <li style='margin-bottom:2px'>{tr('Use dropdown menus to select from loaded images.', lang)} (<b>{tr("Hint:", lang)}</b> {tr("You can scroll through the list with the mouse wheel.", lang)})</li>
+            <li style='margin-bottom:2px'>{tr('Use the ⇄ button to swap image lists.', lang)} (<b>{tr('Click: Swap current images', lang)}</b>, <b>{tr('Hold: Swap entire lists', lang)}</b>)</li>
+            <li style='margin-bottom:2px'>{tr('Use the Trash buttons (🗑️) to clear the corresponding image list.', lang)} (<b>{tr('Click: Remove current image', lang)}</b>, <b>{tr('Hold: Clear entire list', lang)}</b>)</li>
         </ul>
         <h3 style='margin:8px 0 4px 0'>{tr('Comparison View:', lang)}</h3>
         <ul style='margin:0 0 6px 0; padding-left:10px; list-style-position:inside;'>
@@ -1120,7 +1123,8 @@ class ImageComparisonApp(QWidget):
         </ul>
         <h3 style='margin:8px 0 4px 0'>{tr('Settings', lang)}:</h3>
         <ul style='margin:0 0 6px 0; padding-left:10px; list-style-position:inside;'>
-            <li style='margin-bottom:2px'>{tr('Click the settings button (…) to change the application language, the maximum displayed name length, and JPEG quality.', lang)}</li>
+            <li style='margin-bottom:2px'>{tr('Click the settings button (...) to change the application language, the maximum displayed name length, and JPEG quality.', lang)}</li>
+            <li style='margin-bottom:2px'>{tr('Enable debug logging', lang)}: {tr('Shows detailed logs for developers. Requires restart.', lang)}</li>
         </ul>
         <h3 style='margin:8px 0 4px 0'>{tr('Quick Preview:', lang)}</h3>
         <ul style='margin:0 0 6px 0; padding-left:10px; list-style-position:inside;'>
