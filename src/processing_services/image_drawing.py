@@ -408,13 +408,13 @@ MIN_MAG_BORDER_THICKNESS = AppConstants.MIN_MAG_BORDER_THICKNESS
 MAX_MAG_BORDER_THICKNESS = AppConstants.MAX_MAG_BORDER_THICKNESS
 MAG_BORDER_THICKNESS_FACTOR = 0.15
 
-def draw_magnifier_pil(draw: ImageDraw.ImageDraw, image_to_draw_on: Image.Image, image1_for_crop: Image.Image, image2_for_crop: Image.Image, capture_pos1: QPoint, capture_pos2: QPoint, capture_size_orig1: int,
-                       capture_size_orig2: int, magnifier_midpoint_target: QPoint, magnifier_size_pixels: int, edge_spacing_pixels: int, interpolation_method: str, is_horizontal: bool, 
+def draw_magnifier_pil(draw: ImageDraw.ImageDraw, image_to_draw_on: Image.Image, image1_for_crop: Image.Image, image2_for_crop: Image.Image, 
+                       crop_box1: tuple, crop_box2: tuple, magnifier_midpoint_target: QPoint, magnifier_size_pixels: int, 
+                       edge_spacing_pixels: int, interpolation_method: str, is_horizontal: bool, 
                        force_combine: bool, is_interactive_render: bool = False):
-    if not image1_for_crop or not image2_for_crop or (not capture_pos1) or (
-            not capture_pos2) or (not magnifier_midpoint_target):
+    if not image1_for_crop or not image2_for_crop or not crop_box1 or not crop_box2 or not magnifier_midpoint_target:
         return
-    if capture_size_orig1 <= 0 or capture_size_orig2 <= 0 or magnifier_size_pixels <= 0:
+    if magnifier_size_pixels <= 0:
         return
     if not isinstance(image_to_draw_on, Image.Image):
         return
@@ -431,8 +431,7 @@ def draw_magnifier_pil(draw: ImageDraw.ImageDraw, image_to_draw_on: Image.Image,
         draw_combined_magnifier_circle_pil(
             target_image=image_to_draw_on,
             display_center_pos=magnifier_midpoint_target,
-            capture_center1=capture_pos1, capture_center2=capture_pos2,
-            capture_size1=capture_size_orig1, capture_size2=capture_size_orig2,
+            crop_box1=crop_box1, crop_box2=crop_box2,
             magnifier_size_pixels=magnifier_size_pixels,
             image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
             interpolation_method=interpolation_method,
@@ -450,8 +449,7 @@ def draw_magnifier_pil(draw: ImageDraw.ImageDraw, image_to_draw_on: Image.Image,
         draw_single_magnifier_circle_pil(
             target_image=image_to_draw_on,
             display_center_pos=left_center,
-            capture_center_orig=capture_pos1,
-            capture_size_orig=capture_size_orig1,
+            crop_box_orig=crop_box1,
             magnifier_size_pixels=magnifier_size_pixels,
             image_for_crop=image1_for_crop,
             interpolation_method=interpolation_method,
@@ -459,8 +457,7 @@ def draw_magnifier_pil(draw: ImageDraw.ImageDraw, image_to_draw_on: Image.Image,
         draw_single_magnifier_circle_pil(
             target_image=image_to_draw_on,
             display_center_pos=right_center,
-            capture_center_orig=capture_pos2,
-            capture_size_orig=capture_size_orig2,
+            crop_box_orig=crop_box2,
             magnifier_size_pixels=magnifier_size_pixels,
             image_for_crop=image2_for_crop,
             interpolation_method=interpolation_method,
@@ -516,15 +513,14 @@ def draw_capture_area_pil(image_to_draw_on: Image.Image,
 def draw_combined_magnifier_circle_pil(
     target_image: Image.Image,
     display_center_pos: QPoint,
-    capture_center1: QPoint, capture_center2: QPoint,
-    capture_size1: int, capture_size2: int,
+    crop_box1: tuple, crop_box2: tuple,
     magnifier_size_pixels: int,
     image1_for_crop: Image.Image, image2_for_crop: Image.Image,
     interpolation_method: str, 
     is_horizontal: bool,
     is_interactive_render: bool = False
 ):
-    if not all([image1_for_crop, image2_for_crop, capture_size1 > 0, capture_size2 > 0, magnifier_size_pixels > 0]):
+    if not all([image1_for_crop, image2_for_crop, crop_box1, crop_box2, magnifier_size_pixels > 0]):
         return
 
     try:
@@ -534,22 +530,7 @@ def draw_combined_magnifier_circle_pil(
         content_size = magnifier_size_pixels - border_width * 2
         if content_size <= 0: return
 
-        thickness1_float = CAPTURE_THICKNESS_FACTOR * math.sqrt(max(1.0, float(capture_size1)))
-        thickness1 = max(2, int(round(max(float(MIN_CAPTURE_THICKNESS), min(float(MAX_CAPTURE_THICKNESS), thickness1_float)))))
-        effective_capture_size1 = max(1, capture_size1 - thickness1 * 2)
-        
-        capture_radius1 = effective_capture_size1 // 2
-        crop_box1 = (max(0, capture_center1.x() - capture_radius1), max(0, capture_center1.y() - capture_radius1),
-                     min(image1_for_crop.width, capture_center1.x() + capture_radius1), min(image1_for_crop.height, capture_center1.y() + capture_radius1))
         scaled_content1 = image1_for_crop.crop(crop_box1).resize((content_size, content_size), resampling_method)
-
-        thickness2_float = CAPTURE_THICKNESS_FACTOR * math.sqrt(max(1.0, float(capture_size2)))
-        thickness2 = max(2, int(round(max(float(MIN_CAPTURE_THICKNESS), min(float(MAX_CAPTURE_THICKNESS), thickness2_float)))))
-        effective_capture_size2 = max(1, capture_size2 - thickness2 * 2)
-
-        capture_radius2 = effective_capture_size2 // 2
-        crop_box2 = (max(0, capture_center2.x() - capture_radius2), max(0, capture_center2.y() - capture_radius2),
-                     min(image2_for_crop.width, capture_center2.x() + capture_radius2), min(image2_for_crop.height, capture_center2.y() + capture_radius2))
         scaled_content2 = image2_for_crop.crop(crop_box2).resize((content_size, content_size), resampling_method)
         
         content_mask = get_smooth_circular_mask(content_size)
@@ -621,14 +602,13 @@ def draw_combined_magnifier_circle_pil(
 def draw_single_magnifier_circle_pil(
     target_image: Image.Image, 
     display_center_pos: QPoint, 
-    capture_center_orig: QPoint,
-    capture_size_orig: int, 
+    crop_box_orig: tuple,
     magnifier_size_pixels: int, 
     image_for_crop: Image.Image, 
     interpolation_method: str, 
     is_interactive_render: bool = False
 ):
-    if not isinstance(image_for_crop, Image.Image) or capture_size_orig <= 0 or magnifier_size_pixels <= 0:
+    if not isinstance(image_for_crop, Image.Image) or not crop_box_orig or magnifier_size_pixels <= 0:
         return
 
     try:
@@ -638,16 +618,7 @@ def draw_single_magnifier_circle_pil(
         content_size = magnifier_size_pixels - border_width * 2
         if content_size <= 0: return
 
-        thickness_float = CAPTURE_THICKNESS_FACTOR * math.sqrt(max(1.0, float(capture_size_orig)))
-        thickness = max(2, int(round(max(float(MIN_CAPTURE_THICKNESS), min(float(MAX_CAPTURE_THICKNESS), thickness_float)))))
-        effective_capture_size = max(1, capture_size_orig - thickness * 2)
-        
-        capture_radius = effective_capture_size // 2
-        crop_box = (
-            max(0, capture_center_orig.x() - capture_radius), max(0, capture_center_orig.y() - capture_radius),
-            min(image_for_crop.width, capture_center_orig.x() + capture_radius), min(image_for_crop.height, capture_center_orig.y() + capture_radius)
-        )
-        scaled_content = image_for_crop.crop(crop_box).resize((content_size, content_size), resampling_method)
+        scaled_content = image_for_crop.crop(crop_box_orig).resize((content_size, content_size), resampling_method)
         
         content_mask = get_smooth_circular_mask(content_size)
         if not content_mask: return
@@ -711,32 +682,17 @@ def generate_comparison_image_with_canvas(
     final_canvas.paste(base_image_pil, image_paste_pos_on_canvas)
 
     if app_state.use_magnifier and magnifier_drawing_coords and app_state.show_capture_area_on_main_image:
-        cap_center1, cap_center2, cap_size1, cap_size2, magn_mid_on_img, magn_size_pix, magn_spacing_pix, _ = magnifier_drawing_coords
+        on_screen_ref_dim = min(img_w, img_h)
+        cap_marker_size = max(5, int(round(app_state.capture_size_relative * on_screen_ref_dim)))
 
-        orig_w, orig_h = original_image1.size
-        scale_ratio = min(img_w, img_h) / min(orig_w, orig_h) if min(orig_w, orig_h) > 0 else 0
-        cap_marker_size = max(5, int(round(cap_size1 * scale_ratio)))
-        cap_marker_radius = cap_marker_size // 2
-        
-        raw_cap_marker_x_on_canvas = padding_left + \
-            int(round(app_state.capture_position_relative.x() * img_w))
-        raw_cap_marker_y_on_canvas = padding_top + \
-            int(round(app_state.capture_position_relative.y() * img_h))
+        raw_cap_marker_x_on_canvas = padding_left + int(round(app_state.capture_position_relative.x() * img_w))
+        raw_cap_marker_y_on_canvas = padding_top + int(round(app_state.capture_position_relative.y() * img_h))
 
-        min_x = padding_left + cap_marker_radius
-        max_x = padding_left + img_w - cap_marker_radius
-        min_y = padding_top + cap_marker_radius
-        max_y = padding_top + img_h - cap_marker_radius
-
-        clamped_x = max(min_x, min(raw_cap_marker_x_on_canvas, max_x))
-        clamped_y = max(min_y, min(raw_cap_marker_y_on_canvas, max_y))
-        
         draw_capture_area_pil(
             final_canvas,
-            QPoint(
-                clamped_x,
-                clamped_y),
-            cap_marker_size)
+            QPoint(raw_cap_marker_x_on_canvas, raw_cap_marker_y_on_canvas),
+            cap_marker_size
+        )
 
     canvas_draw = ImageDraw.Draw(final_canvas)
     
@@ -781,7 +737,7 @@ def generate_comparison_image_with_canvas(
         )
 
     if app_state.use_magnifier and magnifier_drawing_coords:
-        cap_center1, cap_center2, cap_size1, cap_size2, magn_mid_on_img, magn_size_pix, magn_spacing_pix, _ = magnifier_drawing_coords
+        crop_box1, crop_box2, magn_mid_on_img, magn_size_pix, magn_spacing_pix, _ = magnifier_drawing_coords
 
         magn_mid_on_canvas = QPoint(
             magn_mid_on_img.x() + padding_left,
@@ -792,7 +748,7 @@ def generate_comparison_image_with_canvas(
         draw_magnifier_pil(
             canvas_draw, final_canvas,
             original_image1, original_image2,
-            cap_center1, cap_center2, cap_size1, cap_size2,
+            crop_box1, crop_box2,
             magn_mid_on_canvas, magn_size_pix, magn_spacing_pix,
             app_state.interpolation_method, 
             app_state.is_horizontal,
