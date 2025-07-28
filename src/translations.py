@@ -153,7 +153,9 @@ en_translations = {
     'Hold Space and use mouse buttons to quickly preview': 'Hold Space and use mouse buttons to quickly preview',
     'Enable debug logging': 'Enable debug logging',
     'Shows detailed logs for developers. Requires restart.': 'Shows detailed logs for developers. Requires restart.',
-    'Restart the application for the debug log setting to take full effect.': 'Restart the application for the debug log setting to take full effect.'
+    'Restart the application for the debug log setting to take full effect.': 'Restart the application for the debug log setting to take full effect.',
+    'Hint:': 'Hint:',
+    'You can scroll through the list with the mouse wheel.': 'You can scroll through the list with the mouse wheel.',
 }
 ru_translations = {
     'Add Image(s) 1': 'Доб. Изобр(ы) 1',
@@ -310,7 +312,9 @@ ru_translations = {
     'Hold Space and use mouse buttons to quickly preview': 'Удерживайте Пробел и используйте кнопки мыши для быстрого предпросмотра',
     'Enable debug logging': 'Включить отладочные логи',
     'Shows detailed logs for developers. Requires restart.': 'Показывает подробные логи для разработчиков. Требуется перезапуск.',
-    'Restart the application for the debug log setting to take full effect.': 'Перезапустите приложение, чтобы настройка отладочных логов вступила в силу.'
+    'Restart the application for the debug log setting to take full effect.': 'Перезапустите приложение, чтобы настройка отладочных логов вступила в силу.',
+    'Hint:': 'Подсказка:',
+    'You can scroll through the list with the mouse wheel.': 'Вы можете прокручивать список колесом мыши.',
 }
 zh_translations = {
     'Add Image(s) 1': '添加图像1',
@@ -467,7 +471,9 @@ zh_translations = {
     'Hold Space and use mouse buttons to quickly preview': '按住空格键并使用鼠标按钮快速预览',
     'Enable debug logging': '启用调试日志',
     'Shows detailed logs for developers. Requires restart.': '为开发者显示详细日志。需要重启。',
-    'Restart the application for the debug log setting to take full effect.': '重启应用程序以使调试日志设置完全生效。'
+    'Restart the application for the debug log setting to take full effect.': '重启应用程序以使调试日志设置完全生效。',
+    'Hint:': '提示:',
+    'You can scroll through the list with the mouse wheel.': '您可以使用鼠标滚轮滚动列表。',
 }
 pt_BR_translations = {
     'Add Image(s) 1': 'Adicionar Imagem(ns) 1',
@@ -624,7 +630,9 @@ pt_BR_translations = {
     'Hold Space and use mouse buttons to quickly preview': 'Segure Espaço e use os botões do mouse para pré-visualizar rapidamente',
     'Enable debug logging': 'Ativar registro de depuração',
     'Shows detailed logs for developers. Requires restart.': 'Mostra logs detalhados para desenvolvedores. Requer reinicialização.',
-    'Restart the application for the debug log setting to take full effect.': 'Reinicie o aplicativo para que a configuração de registro de depuração tenha efeito completo.'
+    'Restart the application for the debug log setting to take full effect.': 'Reinicie o aplicativo para que a configuração de registro de depuração tenha efeito completo.',
+    'Hint:': 'Dica:',
+    'You can scroll through the list with the mouse wheel.': 'Você pode rolar a lista com a roda do mouse.',
 }
 translations = {
     'en': en_translations,

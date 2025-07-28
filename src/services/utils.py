@@ -123,64 +123,57 @@ def get_magnifier_drawing_coords(
     app_state: AppState,
     drawing_width: int, drawing_height: int,
     container_width: int | None = None, container_height: int | None = None,
-) -> Tuple[QPoint | None, QPoint | None, int, int, QPoint | None, int, int, QRect]:
-    empty_result = (None, None, 0, 0, None, 0, 0, QRect())
-    if not app_state.original_image1 or not app_state.original_image2:
+) -> Tuple[Tuple[float, float, float, float] | None, Tuple[float, float, float, float] | None, QPoint | None, int, int, QRect]:
+    empty_result = (None, None, None, 0, 0, QRect())
+    if not all([app_state.original_image1, app_state.original_image2,
+                app_state.image1, app_state.image2]):
         return empty_result
+    
+    unified_width, unified_height = app_state.image1.size
+    orig1_width, orig1_height = app_state.original_image1.size
+    orig2_width, orig2_height = app_state.original_image2.size
 
-    try:
-        orig1_width, orig1_height = app_state.original_image1.size
-        orig2_width, orig2_height = app_state.original_image2.size
-    except Exception:
+    if not all([unified_width > 0, unified_height > 0, orig1_width > 0, 
+                orig1_height > 0, orig2_width > 0, orig2_height > 0]):
         return empty_result
+        
+    scale_x1 = unified_width / orig1_width
+    scale_y1 = unified_height / orig1_height
+    scale_x2 = unified_width / orig2_width
+    scale_y2 = unified_height / orig2_height
 
-    raw_rel_x = app_state.capture_position_relative.x()
-    raw_rel_y = app_state.capture_position_relative.y()
+    capture_center_unified_x = app_state.capture_position_relative.x() * unified_width
+    capture_center_unified_y = app_state.capture_position_relative.y() * unified_height
 
-    orig1_ref_dim = min(orig1_width, orig1_height)
-    orig2_ref_dim = min(orig2_width, orig2_height)
-    capture_size_orig1 = max(
-        10, int(
-            round(
-                app_state.capture_size_relative * orig1_ref_dim)))
-    capture_size_orig2 = max(
-        10, int(
-            round(
-                app_state.capture_size_relative * orig2_ref_dim)))
-    cap_radius1 = capture_size_orig1 // 2
-    cap_radius2 = capture_size_orig2 // 2
+    unified_ref_dim = min(unified_width, unified_height)
+    capture_size_on_unified = max(1, app_state.capture_size_relative * unified_ref_dim)
+    capture_radius_on_unified = capture_size_on_unified / 2.0
 
-    raw_center_x1 = raw_rel_x * orig1_width
-    raw_center_y1 = raw_rel_y * orig1_height
-    raw_center_x2 = raw_rel_x * orig2_width
-    raw_center_y2 = raw_rel_y * orig2_height
+    box_unified = (
+        capture_center_unified_x - capture_radius_on_unified,
+        capture_center_unified_y - capture_radius_on_unified,
+        capture_center_unified_x + capture_radius_on_unified,
+        capture_center_unified_y + capture_radius_on_unified,
+    )
 
-    clamped_center_x1 = max(cap_radius1, min(
-        raw_center_x1, orig1_width - cap_radius1))
-    clamped_center_y1 = max(cap_radius1, min(
-        raw_center_y1, orig1_height - cap_radius1))
-    clamped_center_x2 = max(cap_radius2, min(
-        raw_center_x2, orig2_width - cap_radius2))
-    clamped_center_y2 = max(cap_radius2, min(
-        raw_center_y2, orig2_height - cap_radius2))
-
-    capture_center_orig1 = QPoint(
-        int(round(clamped_center_x1)), int(round(clamped_center_y1)))
-    capture_center_orig2 = QPoint(
-        int(round(clamped_center_x2)), int(round(clamped_center_y2)))
-
-    final_rel_x = ((clamped_center_x1 / orig1_width) + (clamped_center_x2 /
-                   orig2_width)) / 2 if orig1_width > 0 and orig2_width > 0 else 0
-    final_rel_y = ((clamped_center_y1 / orig1_height) + (clamped_center_y2 /
-                   orig2_height)) / 2 if orig1_height > 0 and orig2_height > 0 else 0
+    crop_box1 = (
+        box_unified[0] / scale_x1,
+        box_unified[1] / scale_y1,
+        box_unified[2] / scale_x1,
+        box_unified[3] / scale_y1,
+    )
+    crop_box2 = (
+        box_unified[0] / scale_x2,
+        box_unified[1] / scale_y2,
+        box_unified[2] / scale_x2,
+        box_unified[3] / scale_y2,
+    )
     
     magnifier_midpoint_on_image = QPoint()
     magnifier_bbox_on_image = QRect()
     magnifier_size_pixels = 0
     edge_spacing_pixels = 0
     
-    use_container_dims = container_width is not None and container_height is not None
-
     if app_state.use_magnifier:
         target_max_dim_drawing = float(max(drawing_width, drawing_height))
         magnifier_size_pixels = max(
@@ -192,11 +185,10 @@ def get_magnifier_drawing_coords(
 
         if app_state.freeze_magnifier and app_state.frozen_magnifier_absolute_pos:
             magnifier_midpoint_on_image = app_state.frozen_magnifier_absolute_pos
-            
         else:
             capture_marker_center_on_screen = QPointF(
-                final_rel_x * drawing_width,
-                final_rel_y * drawing_height
+                app_state.capture_position_relative.x() * drawing_width,
+                app_state.capture_position_relative.y() * drawing_height
             )
             offset_relative = app_state.magnifier_offset_relative_visual
             offset_pixels_x = offset_relative.x() * target_max_dim_drawing
@@ -217,19 +209,12 @@ def get_magnifier_drawing_coords(
             )
         else:
             total_width = magnifier_size_pixels * 2 + edge_spacing_pixels
-            left_edge = int(
-                magnifier_midpoint_on_image.x() -
-                total_width /
-                2.0)
+            left_edge = int(magnifier_midpoint_on_image.x() - total_width / 2.0)
             top_edge = int(magnifier_midpoint_on_image.y() - radius)
-            magnifier_bbox_on_image = QRect(
-                left_edge, top_edge,
-                int(total_width), magnifier_size_pixels
-            )
+            magnifier_bbox_on_image = QRect(left_edge, top_edge, int(total_width), magnifier_size_pixels)
 
     return (
-        capture_center_orig1, capture_center_orig2,
-        capture_size_orig1, capture_size_orig2,
+        crop_box1, crop_box2,
         magnifier_midpoint_on_image,
         magnifier_size_pixels,
         edge_spacing_pixels,
