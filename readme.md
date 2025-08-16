@@ -21,15 +21,17 @@
 
 ---
 
-## 📸 Screenshot
+## 📸 Screenshots
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.5/Improve_ImgSLI/screenshots/screenshot_1.png">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_1.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_2.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_3.png" width="32%">
 </div>
 
 <details>
   <summary>Full resolution save</summary>
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.5/Improve_ImgSLI/fullres/github_fullres.png" alt="Full resolution example" width="33%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/fullres/github_fullres.png" alt="Full resolution example" width="33%">
 </details>
 
 ---
@@ -56,37 +58,45 @@ Improve-ImgSLI is a free and open-source application for detailed visual image c
 
 ## 🚀 Key Features <a name="key-features"></a>
 
-### 🖼️ Core Comparison & Viewing
-- Horizontal/vertical image split with mouse control.
-- Original resolution display (WxH).
-- Auto-resize to match dimensions.
-- Export current view to high-res image (includes divider, magnifier, marker, and filenames).
+### 🖼️ Core Viewing & Comparison
+- **Dual View Modes**: Side-by-side (vertical) and over-under (horizontal) comparison with a smooth, draggable splitter.
+- **Synchronized Interaction**: Pan and zoom actions are perfectly synced across both images for precise analysis.
+- **Quick Preview**: Hold `Space` and use the `Left/Right Mouse Buttons` to instantly view the original Image 1 or Image 2 in full.
+- **Performance Caching**: Features a configurable display cache resolution (e.g., 4K, 2K, 1080p) to ensure smooth performance even with very large images, while always using original quality for the magnifier and final export.
 
-### 🔍 Magnifier Tool
-- Powerful image magnifier tool with horizontal/vertical split support.
-- High-quality, smooth anti-aliased borders on magnifier and capture area.
-- Selectable interpolation method (Nearest Neighbor, Bilinear, Bicubic, Lanczos).
-- Unclipped rendering: magnifier can be moved freely, even outside the image boundaries.
-- Adjustable source size and magnified area.
-- Smooth WASD controls for magnifier movement.
-- Merge both magnifiers into one view.
-- Freeze magnifier position.
+### 🔍 Advanced Magnifier Tool
+- **Flexible Display**: View magnified areas in either a dual-circle (one for each image) or a combined split-circle view.
+- **High-Quality Zoom**: Choose from multiple interpolation methods (`Nearest Neighbor`, `Bilinear`, `Bicubic`, `Lanczos`) to control rendering quality.
+- **Unclipped Rendering**: The magnifier can be moved freely across the entire view, even beyond the image boundaries, without being cut off.
+- **Precise Control**: Fine-tune the zoom level, capture area size, and magnifier position with dedicated sliders and smooth `WASD`/`QE` keyboard controls.
+- **Freeze Position**: Lock the magnifier's on-screen position so that they do not shift during the positioning of the detection area.
 
-### 🗂️ File & Workflow Management
-- Drag and drop multiple files.
-- Scrollable dropdowns to select from loaded images using the mouse wheel.
-- Advanced List Management:
-    - Swap (⇄): Short-press to swap selected images, long-press to swap entire lists.
-    - Clear (🗑️): Short-press to remove the selected image, long-press to clear the entire list.
-- Filename editing from UI.
-- Optional filename overlay in exports with customizable font and color.
+### 🗂️ Powerful File & Workflow Management
+- **Versatile Loading**: Load images via file dialogs or by dragging and dropping multiple files directly into the application.
+- **Full List Control**:
+    - **Drag & Drop Reordering**: Reorder images within a list or move them between the left and right lists simply by dragging.
+    - **Advanced Actions**: Use short-press and long-press actions on `Swap (⇄)` and `Clear (🗑️)` buttons for rapid workflow adjustments.
+    - **Image Rating**: Assign ratings to images using `[+]` and `[-]` buttons to help with sorting and selection.
+- **Easy Navigation**: Quickly switch between loaded images using scrollable dropdowns.
+- **In-UI Editing**: Edit filenames directly within the interface for cleaner exports and better organization.
 
-### 🧑‍💻 User Experience & Interface
-- Multilingual support (EN, RU, ZH, PT-BR).
-- Dynamic UI resizing and persistent window state.
-- Quick image preview using keyboard (Space + Mouse Buttons).
-- Improved performance through advanced image caching and an optimized rendering pipeline.
-- Power-user launcher for managing virtual environment and debug logging.
+### 📤 Comprehensive Exporting
+- **What You See Is What You Get**: Export the current composite view—including the splitter, magnifier, and text overlays—to a single high-resolution image file.
+- **Advanced Options**:
+    - **Format Choice**: Save in multiple formats like `PNG`, `JPEG`, `WEBP`, `BMP`, and `TIFF`.
+    - **Quality Control**: Adjust JPEG quality and PNG compression levels.
+    - **Custom Background**: Optionally fill transparent areas with a color of your choice using a color picker.
+- **Customizable Text Overlays**:
+    - Control font size, weight, and color.
+    - Add a text background with adjustable color and opacity.
+    - Choose text placement: either at the image edges or near the split line.
+
+### 🧑‍💻 User Experience & Customization
+- **Theme Support**: Automatically adapts to your system's theme, or manually select **Light** or **Dark** mode.
+- **Customizable UI Font**: Use the built-in font, your system's default, or select any custom font installed on your system.
+- **Persistent State**: The application remembers window size, position, and layout between sessions.
+- **Multilingual Interface**: Supports English, Russian, Chinese, and Brazilian Portuguese.
+- **Robust Launcher**: A powerful `launcher.sh` script for managing the virtual environment, installing dependencies, running in debug mode, and profiling performance.
 
 ---
 
@@ -124,27 +134,49 @@ If you prefer to compile the application yourself, please follow the detailed in
 
 ### Step-by-Step Guide
 
+Отличная идея. Рекомендация использовать виртуальное окружение — это лучшая практика, а переход на `.spec` файл для сборки сделает процесс более надежным и воспроизводимым.
+
+Вот обновленный раздел **Build from Source** для вашего `readme.md`, учитывающий эти улучшения.
+
+---
+
+**Option 2: Build from Source**
+If you prefer to compile the application yourself, please follow the detailed instructions. This guide ensures a clean, isolated build environment.
+<details>
+<summary>Building from Source</summary>
+
+### Prerequisites
+- **Python**: Make sure Python is installed. During installation, check the box that says "Add Python to PATH".
+- **Git**: Required for cloning the repository.
+- **Inno Setup**: Required for creating the final installer package.
+
+### Step-by-Step Guide
+
 1.  **Clone the repository and navigate into it:**
     ```bash
     git clone https://github.com/Loganavter/Improve-ImgSLI.git
     cd Improve-ImgSLI
     ```
 
-2.  **Install dependencies:**
-    This will install all required Python packages, including `pyinstaller`.
+2.  **Create and activate a virtual environment:**
+    This creates an isolated environment for the project's dependencies, preventing conflicts with other Python projects on your system.
+    ```bash
+    python -m venv venv
+    .\venv\Scripts\activate
+    ```
+    You should see `(venv)` appear at the beginning of your command prompt line.
+
+3.  **Install dependencies:**
+    This will install all required Python packages, including `pyinstaller`, into your active virtual environment.
     ```bash
     pip install -r requirements.txt pyinstaller
     ```
 
-3.  **Create the executable with PyInstaller:**
-    Run the following command from the root directory of the project.
+4.  **Create the executable with PyInstaller:**
+    Run the following command from the root directory of the project. This command analyzes your project and creates a file named `Improve_ImgSLI.spec`, which stores the build configuration.
     ```bash
-    pyinstaller --noconsole --onefile --name "Improve_ImgSLI" --icon="build/Windows-template/icons/icon.ico" --paths=src --add-data "src/assets/circle_mask.png;assets" --add-data "src/font/SourceSans3-Regular.ttf;font" --add-data "src/icons/icon.png;icons" --hidden-import=clickable_label --hidden-import=settings_dialog --hidden-import=translations src/Improve_ImgSLI.py
+    python -m pyinstaller build/Windows-template/Improve_ImgSLI.spec
     ```
-    This command packages the application into a single `.exe` file, including all necessary assets and hidden imports.
-
-4.  **Prepare for Inno Setup:**
-    After PyInstaller finishes, a `dist` folder will be created. Copy the generated `Improve_ImgSLI.exe` from the `dist` folder to the `build/Windows-template` directory.
 
 5.  **Compile the installer with Inno Setup:**
     - Open the **Inno Setup Compiler**.
@@ -152,7 +184,7 @@ If you prefer to compile the application yourself, please follow the detailed in
     - Compile the script by pressing **F9** or using the `Build > Compile` menu.
 
 6.  **Find the result:**
-    The final installer, `Improve_ImgSLI_Setup_vX.X.XX.exe`, will be created in the `build/Windows-template/Output` directory. You can now use this file to install the application.
+    The final installer, `Improve_ImgSLI_Setup_vX.X.X.exe`, will be created in the `build/Windows-template/Output` directory. You can now use this file to install the application.
 </details>
 
 ### 🧊 Flatpak (Flathub)
@@ -200,7 +232,6 @@ This project is supported and improved by the efforts of dedicated maintainers. 
 
 ---
 
-
 ## 🤝 Contributing <a name="contributing"></a>
 
 Feel free to fork, submit [issues](https://github.com/Loganavter/Improve-ImgSLI/issues), or open [PRs](https://github.com/Loganavter/Improve-ImgSLI/pulls). Contributions are welcome!
@@ -242,7 +273,7 @@ June 2025. With Gemini, I refactored the code once again. The application now fe
 
 July 2025. The solid architecture from the June refactoring allowed for another rapid development burst. This update took about 4-5 days, again with Gemini's assistance. The launcher.sh script was turned into a proper command-line utility for managing the environment. The rendering pipeline was overhauled to use a dynamic canvas, which allows the magnifier to draw outside the image bounds and also improves performance on large images and magnifiers due to more efficient data packaging. The magnifier also now correctly handles horizontal splitting. UI interaction was improved with long-press actions and scrollable selection dropdowns. Internally, all print statements were replaced with a standard logging system. The persistent bug with window geometry, however, remains. After over 20 failed attempts to fix it, it's clear the root cause is a race condition in how state signals are handled. This confirms the need to move away from the current semblance of an architecture to a **full** MVC/MVVM pattern, which will be the primary focus going forward.
 
-August 2025. It was a huge challenge. The architecture was completely migrated to MVP, and many new features were added—too many to list outside of a release post. A third-party GPL v3 library was completely removed. The entire refactoring took 2.5 weeks or more, involving hundreds of hours of work in Cursor AI and Gemini.
+August 2025. This update was born out of necessity. The qfluentwidgets library, while initially useful, became a major roadblock due to its extreme rigidity in customization. Discovering that simple layout logic was hardcoded in its C++ source was the final straw. This prompted a full rewrite of the user interface with 100% custom components. In parallel, the long-standing "god script" issue was tackled by migrating the entire application to a proper Model-View-Presenter (MVP) architecture. This new, solid foundation allowed for the rapid implementation of several new features: an image rating system, selectable light/dark themes, a display cache for performance with large files, and completely redesigned settings and help dialogs. The entire transformation was completed in about a week, exclusively with Gemini's help.
 </details>
  
 ---
@@ -255,7 +286,7 @@ The genesis of Improve ImgSLI was a practical need: to create clear visual compa
 
 Today, I view Improve ImgSLI as a valuable public asset, much like [VideoCut](https://github.com/kanehekili/VideoCut) Kanehekili, another tool whose principles partially guided its development and which has become indispensable in my own workflow. The core value of Improve ImgSLI lies in its efficiency. Manually creating detailed image comparisons can be a laborious process, often taking several minutes. This program accomplishes the same, often superior, results in approximately 30 seconds, all through an intuitive, user-friendly interface. It's this transformation of a cumbersome task into a swift, accessible one that I believe makes Improve ImgSLI a genuinely useful tool.
 
-It's difficult to pinpoint the exact time spent on the project, but I would estimate it to be around 300-400 hours in total, excluding the time required for package construction. The main 200 hours of this total were spent in August 2025.
+It's difficult to pinpoint the exact time spent on the project, but I would estimate it to be around 100-200 hours in total, excluding the time required for package construction. The most productive period was with Cursor, though I didn't have enough time to fully adapt to its specific workflow. Furthermore, its pricing is quite steep, especially compared to Google's AI Studio for developers. The $20 plan for 400 uses per month is simply nowhere near enough for my development style.
 </details>
 
 ---
