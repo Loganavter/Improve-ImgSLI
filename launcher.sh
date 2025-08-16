@@ -8,8 +8,8 @@ TEXT_WHITE="\033[1;37m"
 TEXT_BLACK="\033[1;30m"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+APP_MAIN="$SCRIPT_DIR/src/__main__.py"
 VENV_DIR="$SCRIPT_DIR/venv"
-APP_MAIN="$SCRIPT_DIR/src/Improve_ImgSLI.py"
 REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 
 log_info() {
@@ -28,22 +28,22 @@ log_status() {
 }
 
 show_spinner() {
-  local pid=$1
-  local msg=$2
-  local delay=0.1
-  local spinstr='/-\|'
-  
-  tput civis
-  trap 'tput cnorm' EXIT
+    local pid=$1
+    local msg=$2
+    local delay=0.1
+    local spinstr='/-\|'
 
-  while ps -p "$pid" > /dev/null; do
-    local temp=${spinstr#?}
-    printf "\r\033[K%s %c " "$msg" "${spinstr:0:1}"
-    spinstr=$temp${spinstr%"$temp"}
-    sleep "$delay"
-  done
-  
-  tput cnorm
+    tput civis
+    trap 'tput cnorm' EXIT
+
+    while ps -p "$pid" > /dev/null; do
+        local temp=${spinstr#?}
+        printf "\r\033[K%s %c " "$msg" "${spinstr:0:1}"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep "$delay"
+    done
+
+    tput cnorm
 }
 
 run_with_spinner() {
@@ -106,7 +106,7 @@ run_pip_with_inline_progress() {
     local collect_count=0
     local download_count=0
     local updated=false
-    
+
     local error_log
     error_log=$(mktemp) || { log_status "Failed to create temporary file" 1; exit 1; }
     trap 'rm -f "$error_log"' RETURN
@@ -116,7 +116,7 @@ run_pip_with_inline_progress() {
     "$@" 2> "$error_log" | while IFS= read -r line; do
         local percentage=0
         updated=false
-        
+
         if [[ "$line" == "Collecting "* ]]; then ((collect_count++)); updated=true;
         elif [[ "$line" == "Downloading "* || "$line" == "Using cached "* ]]; then ((download_count++)); updated=true;
         elif [[ "$line" == "Requirement already satisfied:"* ]]; then ((collect_count++)); ((download_count++)); updated=true;
@@ -212,7 +212,7 @@ ensure_venv_is_ready() {
         else
             if ! activate_venv; then
                 log_status "Failed to activate existing venv. Considering it corrupted" 1
-                 if $retry_done; then log_status "Error: Retry activation also failed" 1; return 1; fi
+                if $retry_done; then log_status "Error: Retry activation also failed" 1; return 1; fi
                 log_info "Removing potentially corrupted venv for recreation..."
                 rm -rf "$VENV_DIR"
                 retry_done=true
@@ -270,15 +270,20 @@ disable_logging_action() {
 
 show_help() {
     echo "Usage: $0 <command> [options]"
+    echo "       $0 [--debug|-d] [--theme <dark|light>]"
     echo ""
     echo "Commands:"
     echo "  run [args...]      Run the application with optional GUI arguments."
-    echo "  install            Install or update dependencies."
-    echo "  recreate           Recreate the virtual environment."
+    echo "                     Additional flags for 'run' (also valid at top-level):"
+    echo "                       --theme <dark|light>  Force a specific theme."
+    echo "                       --debug, -d          Enable debug logging for this session only."
+    echo "  profile            Run the application with cProfile to check performance."
+    echo "  install            Create the virtual environment and/or install dependencies."
+    echo "  recreate           Forcibly recreate the virtual environment."
     echo "  delete             Delete the virtual environment and caches."
     echo "  --enable-logging   Permanently enable debug logging."
     echo "  --disable-logging  Permanently disable debug logging."
-    echo "  help, --help       Show this help message."
+    echo "  help               Show this help message."
     echo ""
 }
 
@@ -317,7 +322,7 @@ delete_action() {
 handle_interrupt() {
     printf "\n"
     log_info "Operation cancelled by user. Cleaning up..."
-    tput cnorm 2>/dev/null || true 
+    tput cnorm 2>/dev/null || true
     deactivate_venv
     log_info "Cleanup complete. Exiting."
     printf "${COLOR_RESET}\n"
@@ -325,30 +330,99 @@ handle_interrupt() {
 }
 trap handle_interrupt INT
 
+# Allow top-level flags --debug, -d, --theme to imply `run`
+if [[ "$1" == "--debug" || "$1" == "-d" || "$1" == "--theme" ]]; then
+    set -- run "$@"
+fi
+
 COMMAND=$1
 case "$COMMAND" in
-      
+
+    install)
+        if ensure_venv_is_ready; then
+            log_info "Environment is ready."
+        else
+            log_status "Failed to set up environment." 1
+            exit 1
+        fi
+        deactivate_venv
+        ;;
+
+    profile)
+        shift
+        gui_args=()
+        THEME_TO_SET="auto"
+
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --theme)
+                    if [[ -n "$2" && ("$2" == "dark" || "$2" == "light") ]]; then
+                        THEME_TO_SET="$2"
+                        shift 2
+                    else
+                        log_info "Error: --theme option requires an argument (dark or light)"
+                        exit 1
+                    fi
+                    ;;
+                --debug|-d)
+                    export IMPROVE_DEBUG=1
+                    shift
+                    ;;
+                *)
+                    log_info "Error: Unknown option '$1' for profile command."
+                    show_help
+                    exit 1
+                    ;;
+            esac
+        done
+
+        if ensure_venv_is_ready; then
+            log_info "Running application with profiler..."
+            log_info "Results will be saved to 'profile_results.prof'"
+            APP_THEME="$THEME_TO_SET" python -m cProfile -o profile_results.prof "$APP_MAIN"
+            app_exit_code=$?
+            deactivate_venv
+            log_info "Profiling finished with exit code: $app_exit_code"
+            log_info "To view results, run: snakeviz profile_results.prof"
+            exit $app_exit_code
+        else
+            deactivate_venv
+            log_status "Failed to prepare environment. Aborting." 1
+            exit 1
+        fi
+        ;;
+
     run)
         shift
         gui_args=()
+        THEME_TO_SET="auto"
 
-        for arg in "$@"; do
-            case "$arg" in
-                --enable-logging)
-                    enable_logging_action
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --theme)
+                    if [[ -n "$2" && ("$2" == "dark" || "$2" == "light") ]]; then
+                        THEME_TO_SET="$2"
+                        shift 2
+                    else
+                        log_info "Error: --theme option requires an argument (dark or light)"
+                        exit 1
+                    fi
                     ;;
-                --disable-logging)
-                    disable_logging_action
+                --debug|-d)
+                    export IMPROVE_DEBUG=1
+                    shift
                     ;;
                 *)
-                    gui_args+=("$arg")
+                    log_info "Error: Unknown option '$1' for run command."
+                    show_help
+                    exit 1
                     ;;
             esac
         done
 
         if ensure_venv_is_ready; then
             log_info "Running application..."
-            python "$APP_MAIN" "${gui_args[@]}"
+            APP_THEME="$THEME_TO_SET" python "$APP_MAIN"
             app_exit_code=$?
             deactivate_venv
             log_info "Application finished with exit code: $app_exit_code"
@@ -358,25 +432,31 @@ case "$COMMAND" in
             log_status "Failed to prepare environment. Aborting." 1
             exit 1
         fi
-        ;;    
+        ;;
+
     recreate)
         recreate_action
         deactivate_venv
         ;;
+
     delete)
         delete_action
         ;;
-    enable-logging)
+
+    --enable-logging)
         enable_logging_action
         ;;
-    disable-logging)
+
+    --disable-logging)
         disable_logging_action
         ;;
+
     ""|help|--help)
         show_help
         ;;
+
     *)
-        log_info "Error: Unknown command '$COMMAND'" [cite: 76]
+        log_info "Error: Unknown command '$COMMAND'"
         show_help
         exit 1
         ;;

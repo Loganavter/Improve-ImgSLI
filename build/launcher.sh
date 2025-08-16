@@ -1,2 +1,3 @@
 #!/bin/sh
-exec python /usr/lib/improve-imgsli/Improve_ImgSLI.py "$@"
+export PYTHONPATH="/usr/lib/improve-imgsli/"
+exec python3 -m __main__ "$@"

@@ -1,3 +1,2 @@
 #!/bin/sh
-export PYTHONPATH="/usr/lib/improve-imgsli/vendor-libs${PYTHONPATH:+:$PYTHONPATH}"
-exec python "/usr/lib/improve-imgsli/Improve_ImgSLI.py" "$@"
+exec python3 /usr/lib/improve-imgsli/__main__.py "$@"
