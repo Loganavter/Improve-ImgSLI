@@ -122,23 +122,7 @@ yay -S improve-imgsli
 1. Download the latest installer from the [Releases page](https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v6.2.0).
 2. Run the downloaded `.exe` file and follow the installation instructions.
 
-**Option 2: Build from Source**
-If you prefer to compile the application yourself, please follow the detailed instructions.
-<details>
-<summary>Building from Source</summary>
-
-### Prerequisites
-- **Python**: Make sure Python is installed and that its `Scripts` directory is added to your system's PATH.
-- **Git**: Required for cloning the repository.
-- **Inno Setup**: Required for creating the final installer.
-
 ### Step-by-Step Guide
-
-Отличная идея. Рекомендация использовать виртуальное окружение — это лучшая практика, а переход на `.spec` файл для сборки сделает процесс более надежным и воспроизводимым.
-
-Вот обновленный раздел **Build from Source** для вашего `readme.md`, учитывающий эти улучшения.
-
----
 
 **Option 2: Build from Source**
 If you prefer to compile the application yourself, please follow the detailed instructions. This guide ensures a clean, isolated build environment.
