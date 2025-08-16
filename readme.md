@@ -21,12 +21,10 @@
 
 ---
 
-## 📸 Screenshots
+## 📸 Screenshot
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_1.png" width="32%">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_2.png" width="32%">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_3.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.5/Improve_ImgSLI/screenshots/screenshot_1.png" width="75%">
 </div>
 
 <details>
