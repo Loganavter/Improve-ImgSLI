@@ -119,7 +119,7 @@ yay -S improve-imgsli
 
 ### 🪟 Windows (Inno Setup)
 **Option 1: Pre-built Installer**
-1. Download the latest installer from the [Releases page](https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v5.8.20).
+1. Download the latest installer from the [Releases page](https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v6.2.0).
 2. Run the downloaded `.exe` file and follow the installation instructions.
 
 **Option 2: Build from Source**
