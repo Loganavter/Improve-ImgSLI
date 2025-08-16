@@ -1,11 +1,11 @@
 ; -- Improve_ImgSLI Inno Setup Script --
 
 #define MyAppName "Improve ImgSLI"
-#define MyAppVersion "5.8.20"
+#define MyAppVersion "6.2.0"
 #define MyAppPublisher "Loganavter"
 #define MyAppURL "https://github.com/Loganavter/Improve-ImgSLI"
 #define MyAppExeName "Improve_ImgSLI.exe"
-#define MyAppSetupName "Improve_ImgSLI_Setup_v5.8.20"
+#define MyAppSetupName "Improve_ImgSLI_Setup_v6.2.0"
 
 [Setup]
 AppName={#MyAppName}
@@ -32,7 +32,7 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\Improve_ImgSLI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

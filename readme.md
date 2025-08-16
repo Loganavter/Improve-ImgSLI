@@ -21,17 +21,15 @@
 
 ---
 
-## 📸 Screenshots
+## 📸 Screenshot
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_1.png" width="32%">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_2.png" width="32%">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/screenshots/github_3.png" width="32%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.5/Improve_ImgSLI/screenshots/screenshot_1.png">
 </div>
 
 <details>
   <summary>Full resolution save</summary>
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/fullres/github_fullres.png" alt="Full resolution example" width="33%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.5/Improve_ImgSLI/fullres/github_fullres.png" alt="Full resolution example" width="33%">
 </details>
 
 ---
@@ -200,10 +198,6 @@ This project is supported and improved by the efforts of dedicated maintainers. 
 5. **Manage Lists:** Use short/long presses on the swap (⇄) and clear (🗑️) buttons for quick workflow.
 6. **Export:** use the save button to export a high-res composite.
 
-https://github.com/user-attachments/assets/f2c843c2-31eb-4fb9-8eef-2d28630f2baf
-
-*Note: The demo video may not reflect all the latest features.*
-
 ---
 
 
@@ -247,6 +241,8 @@ May 2025. I discovered Cursor AI, which allowed me to quickly implement three ke
 June 2025. With Gemini, I refactored the code once again. The application now features a qfluentwidgets style. It initially took a long time, but then I gave the project fork code with this GUI, and it went much faster, it took about 3 days. Caching was also further improved. The icons.py file was completely removed as it was no longer necessary.
 
 July 2025. The solid architecture from the June refactoring allowed for another rapid development burst. This update took about 4-5 days, again with Gemini's assistance. The launcher.sh script was turned into a proper command-line utility for managing the environment. The rendering pipeline was overhauled to use a dynamic canvas, which allows the magnifier to draw outside the image bounds and also improves performance on large images and magnifiers due to more efficient data packaging. The magnifier also now correctly handles horizontal splitting. UI interaction was improved with long-press actions and scrollable selection dropdowns. Internally, all print statements were replaced with a standard logging system. The persistent bug with window geometry, however, remains. After over 20 failed attempts to fix it, it's clear the root cause is a race condition in how state signals are handled. This confirms the need to move away from the current semblance of an architecture to a **full** MVC/MVVM pattern, which will be the primary focus going forward.
+
+August 2025. It was a huge challenge. The architecture was completely migrated to MVP, and many new features were added—too many to list outside of a release post. A third-party GPL v3 library was completely removed. The entire refactoring took 2.5 weeks or more, involving hundreds of hours of work in Cursor AI and Gemini.
 </details>
  
 ---
@@ -259,7 +255,7 @@ The genesis of Improve ImgSLI was a practical need: to create clear visual compa
 
 Today, I view Improve ImgSLI as a valuable public asset, much like [VideoCut](https://github.com/kanehekili/VideoCut) Kanehekili, another tool whose principles partially guided its development and which has become indispensable in my own workflow. The core value of Improve ImgSLI lies in its efficiency. Manually creating detailed image comparisons can be a laborious process, often taking several minutes. This program accomplishes the same, often superior, results in approximately 30 seconds, all through an intuitive, user-friendly interface. It's this transformation of a cumbersome task into a swift, accessible one that I believe makes Improve ImgSLI a genuinely useful tool.
 
-It's difficult to pinpoint the exact time spent on the project, but I would estimate it to be around 100-200 hours in total, excluding the time required for package construction. The most productive period was with Cursor, though I didn't have enough time to fully adapt to its specific workflow. Furthermore, its pricing is quite steep, especially compared to Google's AI Studio for developers. The $20 plan for 400 uses per month is simply nowhere near enough for my development style.
+It's difficult to pinpoint the exact time spent on the project, but I would estimate it to be around 300-400 hours in total, excluding the time required for package construction. The main 200 hours of this total were spent in August 2025.
 </details>
 
 ---
