@@ -52,12 +52,12 @@
       <description>
         <p>This is the most extensive architectural refactoring in the project's history, transitioning the entire application to a robust and modern Model-View-Presenter (MVP) pattern. This update establishes a new, stable foundation for future development and introduces a completely custom-built UI.</p>
         <ul>
-          <li><strong>Complete Architectural Overhaul:</strong> The codebase is now fully modular and based on the MVP pattern, significantly improving stability and maintainability. Many underlying bugs have been passively fixed as a result.</li>
-          <li><strong>New Custom UI:</strong> The third-party `PyQt-Fluent-Widgets` library has been removed and replaced with a custom-built set of "fluent-style" components. This removes GPL licensing constraints and gives the application a more unique design.</li>
-          <li><strong>Enhanced Image List Management:</strong> The image selection flyout is now a powerful two-panel manager with full drag-and-drop support for reordering and moving images between lists.</li>
-          <li><strong>New and Reimagined Dialogs:</strong> Introduced a dedicated, feature-rich Export dialog and a redesigned, easier-to-navigate Help window.</li>
-          <li><strong>Improved Caching:</strong> The caching system has been upgraded from two to three levels for even smoother performance during interactive use.</li>
-          <li><strong>Reduced Package Size:</strong> The removal of the external UI library has decreased the application's overall size on some platforms.</li>
+          <li>Complete Architectural Overhaul: The codebase is now fully modular and based on the MVP pattern, significantly improving stability and maintainability. Many underlying bugs have been passively fixed as a result.</li>
+          <li>New Custom UI: The third-party `PyQt-Fluent-Widgets` library has been removed and replaced with a custom-built set of "fluent-style" components. This removes GPL licensing constraints and gives the application a more unique design.</li>
+          <li>Enhanced Image List Management: The image selection flyout is now a powerful two-panel manager with full drag-and-drop support for reordering and moving images between lists.</li>
+          <li>New and Reimagined Dialogs: Introduced a dedicated, feature-rich Export dialog and a redesigned, easier-to-navigate Help window.</li>
+          <li>Improved Caching: The caching system has been upgraded from two to three levels for even smoother performance during interactive use.</li>
+          <li>Reduced Package Size: The removal of the external UI library has decreased the application's overall size on some platforms.</li>
         </ul>
       </description>
     </release>
