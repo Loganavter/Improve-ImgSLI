@@ -2,19 +2,22 @@
 # Co-maintainer: Nebulosa
 
 pkgname=improve-imgsli
-pkgver=5.8.20
+pkgver=6.2.0
 pkgrel=1
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=(x86_64)
-url="https://github.com/Loganavter/$pkgname"
+url="https://github.com/Loganavter/Improve-ImgSLI"
 license=(MIT)
 depends=(
   hicolor-icon-theme
   python
   python-darkdetect
+  python-markdown
   python-pillow
   python-pyqt6
-  sh
+)
+optdepends=(
+  'python-desktop-notifier: enhanced system notifications'
 )
 makedepends=(
   python-build
@@ -24,46 +27,45 @@ makedepends=(
 )
 options=(!debug)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-v$pkgver.tar.gz")
-sha512sums=('4eec575b317ff9e0343de3088c92ef11bc14c36a534b83e58f57f66fc740f15afa1b3a2e53bd6489998037abf2d048539467a07099e6ae264c48f8ffef64a084')
-b2sums=('924ea05420d6998eac317c85c963c868a2047f3714ac4ed136b16122d2f680345894f8ac701d38e864549b7528400be5df59877289d07a9580969ada1f289392')
 
 prepare() {
   #Making launching app more secure
   sed -i "s|^Exec=$pkgname|Exec=/usr/bin/$pkgname|" "$srcdir"/Improve-ImgSLI-$pkgver/build/AUR-template/$pkgname.desktop
 }
 
-build() {
-  pip install --target="$srcdir/Improve-ImgSLI-$pkgver/src/vendor-libs" PyQt6-Frameless-Window PyQt6-Fluent-Widgets
-}
-
 package() {
-  cd "$srcdir"/Improve-ImgSLI-$pkgver/src
-  install -vDm 755 ../build/AUR-template/launcher.sh         "$pkgdir"/usr/bin/$pkgname
-  install -vDm 644 Improve_ImgSLI.py                      -t "$pkgdir"/usr/lib/$pkgname/
-  install -vDm 644 clickable_label.py                     -t "$pkgdir"/usr/lib/$pkgname/
-  install -vDm 644 image_comparison_app.py                -t "$pkgdir"/usr/lib/$pkgname/
-  install -vDm 644 translations.py                        -t "$pkgdir"/usr/lib/$pkgname/
-  install -vDm 644 settings_dialog.py                     -t "$pkgdir"/usr/lib/$pkgname/
-  install -vDm 644 font/SourceSans3-Regular.ttf           -t "$pkgdir"/usr/lib/$pkgname/font/
-  install -vDm 644 assets/circle_mask.png                  -t "$pkgdir"/usr/lib/$pkgname/assets/
-  install -vDm 644 ../build/AUR-template/$pkgname.desktop -t "$pkgdir"/usr/share/applications/
-  install -vDm 644 icons/icon.png                            "$pkgdir"/usr/share/icons/hicolor/512x512/apps/$pkgname.png
-  install -vDm 644 ../LICENSE.txt                            "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+  cd "$srcdir"/Improve-ImgSLI-$pkgver
 
-  install -vdm 755 "$pkgdir"/usr/lib/$pkgname/vendor-libs
-  cp      -r       vendor-libs/*                             "$pkgdir"/usr/lib/$pkgname/vendor-libs/
+  # Install launcher, desktop file, icon, and license
+  install -vDm 755 build/AUR-template/launcher.sh "$pkgdir"/usr/bin/$pkgname
+  install -vDm 644 build/AUR-template/$pkgname.desktop -t "$pkgdir"/usr/share/applications/
+  install -vDm 644 src/resources/icons/icon.png "$pkgdir"/usr/share/icons/hicolor/512x512/apps/$pkgname.png
+  install -vDm 644 LICENSE.txt "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
 
-  cd "$srcdir"/Improve-ImgSLI-$pkgver/src/services
-  install -vDm 644 event_handler.py                       -t "$pkgdir"/usr/lib/$pkgname/services/
-  install -vDm 644 image_processing_worker.py             -t "$pkgdir"/usr/lib/$pkgname/services/
-  install -vDm 644 main_controller.py                     -t "$pkgdir"/usr/lib/$pkgname/services/
-  install -vDm 644 settings_manager.py                    -t "$pkgdir"/usr/lib/$pkgname/services/
-  install -vDm 644 state_manager.py                       -t "$pkgdir"/usr/lib/$pkgname/services/
-  install -vDm 644 ui_logic.py                            -t "$pkgdir"/usr/lib/$pkgname/services/
-  install -vDm 644 utils.py                               -t "$pkgdir"/usr/lib/$pkgname/services/
+  # Install application source code
+  install -vDm 644 src/__init__.py -t "$pkgdir"/usr/lib/$pkgname/
+  install -vDm 644 src/__main__.py -t "$pkgdir"/usr/lib/$pkgname/
 
-  cd "$srcdir"/Improve-ImgSLI-$pkgver/src/processing_services
-  install -vDm 644 image_drawing.py                       -t "$pkgdir"/usr/lib/$pkgname/processing_services/
-  install -vDm 644 image_io.py                            -t "$pkgdir"/usr/lib/$pkgname/processing_services/
-  install -vDm 644 image_resize.py                        -t "$pkgdir"/usr/lib/$pkgname/processing_services/
+  install -vDm 644 src/core/*.py -t "$pkgdir"/usr/lib/$pkgname/core/
+  install -vDm 644 src/events/*.py -t "$pkgdir"/usr/lib/$pkgname/events/
+  install -vDm 644 src/image_processing/*.py -t "$pkgdir"/usr/lib/$pkgname/image_processing/
+  install -vDm 644 src/image_processing/drawing/*.py -t "$pkgdir"/usr/lib/$pkgname/image_processing/drawing/
+  install -vDm 644 src/ui/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/
+  install -vDm 644 src/ui/dialogs/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/dialogs/
+  install -vDm 644 src/ui/managers/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/managers/
+  install -vDm 644 src/ui/presenters/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/presenters/
+  install -vDm 644 src/ui/widgets/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/widgets/
+  install -vDm 644 src/ui/widgets/atomic/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/widgets/atomic/
+  install -vDm 644 src/ui/widgets/composite/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/widgets/composite/
+  install -vDm 644 src/ui/widgets/helpers/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/widgets/helpers/
+  install -vDm 644 src/utils/*.py -t "$pkgdir"/usr/lib/$pkgname/utils/
+  install -vDm 644 src/workers/*.py -t "$pkgdir"/usr/lib/$pkgname/workers/
+
+  # Install resources
+  install -vDm 644 src/resources/translations.py -t "$pkgdir"/usr/lib/$pkgname/resources/
+  install -vDm 644 src/resources/assets/circle_mask.png -t "$pkgdir"/usr/lib/$pkgname/resources/assets/
+  install -vDm 644 src/resources/assets/icons/*.svg -t "$pkgdir"/usr/lib/$pkgname/resources/assets/icons/
+  install -vDm 644 src/resources/fonts/*.ttf -t "$pkgdir"/usr/lib/$pkgname/resources/fonts/
+  install -vDm 644 src/resources/icons/icon.png -t "$pkgdir"/usr/lib/$pkgname/resources/icons/
+  install -vDm 644 src/resources/styles/*.qss -t "$pkgdir"/usr/lib/$pkgname/resources/styles/
 }
