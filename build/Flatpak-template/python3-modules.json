@@ -45,5 +45,61 @@
                 }
             ]
         },
+        {
+            "name": "python3-numpy",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"numpy\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/source/n/numpy/numpy-2.3.4.tar.gz",
+                    "sha256": "TO_BE_FILLED"
+                }
+            ]
+        },
+        {
+            "name": "python3-scikit-image",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"scikit-image\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/source/s/scikit-image/scikit-image-0.24.0.tar.gz",
+                    "sha256": "TO_BE_FILLED"
+                }
+            ]
+        },
+        {
+            "name": "python3-Wand",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"Wand\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/source/w/wand/Wand-0.6.13.tar.gz",
+                    "sha256": "TO_BE_FILLED"
+                }
+            ]
+        },
+        {
+            "name": "python3-desktop-notifier",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"desktop-notifier\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/source/d/desktop-notifier/desktop-notifier-3.6.0.tar.gz",
+                    "sha256": "TO_BE_FILLED"
+                }
+            ]
+        }
     ]
 }

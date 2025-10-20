@@ -13,6 +13,7 @@ finish-args:
   - --filesystem=xdg-documents
   - --filesystem=xdg-download
   - --filesystem=xdg-pictures
+  - --talk-name=org.freedesktop.Notifications
 cleanup:
   - /include
   - /lib/pkgconfig
@@ -38,5 +39,5 @@ modules:
       - install -Dm644 build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
       - type: archive
-        path: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v6.2.0.tar.gz
-        sha256:
+        path: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v7.8.0.tar.gz
+        sha256: TO_BE_FILLED

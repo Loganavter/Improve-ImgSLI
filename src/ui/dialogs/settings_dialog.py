@@ -1,24 +1,24 @@
-from PyQt6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QLabel,
-    QSpinBox,
-    QComboBox,
-    QCheckBox,
-    QPushButton,
-    QButtonGroup,
-)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QIcon, QFontDatabase
 import logging
 
-from utils.resource_loader import resource_path
-from core.theme import ThemeManager
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFontDatabase, QIcon
+from PyQt6.QtWidgets import (
+    QButtonGroup,
+    QDialog,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
+
 from core.constants import AppConstants
-from utils.resource_loader import resource_path
+from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from src.shared_toolkit.ui.widgets.atomic.fluent_combobox import FluentComboBox
 from ui.widgets import FluentCheckBox, FluentRadioButton
+from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -47,6 +47,10 @@ class SettingsDialog(QDialog):
         tr_func=None,
         current_ui_font_mode: str = "builtin",
         current_ui_font_family: str = "",
+        optimize_magnifier_movement: bool = True,
+        movement_interpolation_method: str = "BILINEAR",
+        auto_calculate_psnr: bool = False,
+        auto_calculate_ssim: bool = False,
     ):
         super().__init__(parent)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
@@ -67,11 +71,6 @@ class SettingsDialog(QDialog):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
-
-        title_label = QLabel(self.tr("Settings", self.current_language))
-        title_label.setObjectName("titleLabel")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(title_label)
 
         lang_title = QLabel(self.tr("Language:", self.current_language))
         main_layout.addWidget(lang_title)
@@ -104,7 +103,7 @@ class SettingsDialog(QDialog):
 
         theme_layout = QHBoxLayout()
         theme_label = QLabel(self.tr("Theme:", self.current_language))
-        self.combo_theme = QComboBox()
+        self.combo_theme = FluentComboBox()
         self.combo_theme.addItem(self.tr("Auto", self.current_language), "auto")
         self.combo_theme.addItem(self.tr("Light", self.current_language), "light")
         self.combo_theme.addItem(self.tr("Dark", self.current_language), "dark")
@@ -132,7 +131,7 @@ class SettingsDialog(QDialog):
         font_mode_layout.addWidget(self.radio_font_system_custom)
         main_layout.addLayout(font_mode_layout)
 
-        self.combo_font_family = QComboBox()
+        self.combo_font_family = FluentComboBox()
         families = QFontDatabase.families()
         self.combo_font_family.addItem(self.tr("Select font...", self.current_language), "")
         for fam in families:
@@ -183,7 +182,7 @@ class SettingsDialog(QDialog):
         resolution_label = QLabel(
             self.tr("Display Cache Resolution:", self.current_language)
         )
-        self.combo_resolution = QComboBox()
+        self.combo_resolution = FluentComboBox()
         for name_key, limit in AppConstants.DISPLAY_RESOLUTION_OPTIONS.items():
             self.combo_resolution.addItem(
                 self.tr(name_key, self.current_language), userData=limit
@@ -195,11 +194,62 @@ class SettingsDialog(QDialog):
         resolution_layout.addWidget(self.combo_resolution)
         main_layout.addLayout(resolution_layout)
 
+        self.movement_interp_container = QWidget()
+        movement_interp_layout = QHBoxLayout(self.movement_interp_container)
+        movement_interp_layout.setContentsMargins(0, 0, 0, 0)
+        movement_interp_layout.setSpacing(8)
+
+        self.movement_interp_label = QLabel(self.tr("Movement Interpolation:", self.current_language))
+        movement_interp_layout.addWidget(self.movement_interp_label)
+
+        self.combo_movement_interpolation = FluentComboBox()
+        try:
+            from image_processing.resize import WAND_AVAILABLE
+        except Exception:
+            WAND_AVAILABLE = False
+
+        self._movement_interp_keys = []
+        for key, name in AppConstants.INTERPOLATION_METHODS_MAP.items():
+            if key == "EWA_LANCZOS" and not WAND_AVAILABLE:
+                continue
+            self.combo_movement_interpolation.addItem(self.tr(name, self.current_language), key)
+            self._movement_interp_keys.append(key)
+
+        interp_index_to_set = self.combo_movement_interpolation.findData(movement_interpolation_method)
+        if interp_index_to_set != -1:
+            self.combo_movement_interpolation.setCurrentIndex(interp_index_to_set)
+
+        movement_interp_layout.addWidget(self.combo_movement_interpolation)
+
+        main_layout.addWidget(self.movement_interp_container)
+
+        self.optimize_movement_checkbox = FluentCheckBox(
+            self.tr("Optimize magnifier movement", self.current_language)
+        )
+        self.optimize_movement_checkbox.setChecked(optimize_magnifier_movement)
+        main_layout.addWidget(self.optimize_movement_checkbox)
+
+        self.optimize_movement_checkbox.toggled.connect(self.movement_interp_container.setVisible)
+
+        self.movement_interp_container.setVisible(optimize_magnifier_movement)
+
         self.debug_checkbox = FluentCheckBox(
             self.tr("Enable debug logging", self.current_language)
         )
         self.debug_checkbox.setChecked(debug_mode_enabled)
         main_layout.addWidget(self.debug_checkbox)
+
+        self.auto_psnr_checkbox = FluentCheckBox(
+            self.tr("Auto-calculate PSNR", self.current_language)
+        )
+        self.auto_psnr_checkbox.setChecked(auto_calculate_psnr)
+        main_layout.addWidget(self.auto_psnr_checkbox)
+
+        self.auto_ssim_checkbox = FluentCheckBox(
+            self.tr("Auto-calculate SSIM", self.current_language)
+        )
+        self.auto_ssim_checkbox.setChecked(auto_calculate_ssim)
+        main_layout.addWidget(self.auto_ssim_checkbox)
 
         self.system_notifications_checkbox = FluentCheckBox(
             self.tr("System notifications", self.current_language)
@@ -226,7 +276,7 @@ class SettingsDialog(QDialog):
 
     def _apply_styles(self):
 
-        self.update()
+        self.theme_manager.apply_theme_to_dialog(self)
 
     def get_settings(self):
         selected_language = "en"
@@ -243,8 +293,13 @@ class SettingsDialog(QDialog):
 
         max_length = self.spin_max_length.value()
         debug_enabled = self.debug_checkbox.isChecked()
+        auto_psnr = self.auto_psnr_checkbox.isChecked()
+        auto_ssim = self.auto_ssim_checkbox.isChecked()
         sys_notif_enabled = self.system_notifications_checkbox.isChecked()
         resolution_limit = self.combo_resolution.currentData()
+
+        optimize_movement = self.optimize_movement_checkbox.isChecked()
+        movement_interp = self.combo_movement_interpolation.currentData()
 
         if self.radio_font_system_default.isChecked():
             ui_font_mode = "system_default"
@@ -263,13 +318,15 @@ class SettingsDialog(QDialog):
             resolution_limit,
             ui_font_mode,
             ui_font_family,
+            optimize_movement,
+            movement_interp,
+            auto_psnr,
+            auto_ssim,
         )
 
     def update_language(self, lang_code: str):
         self.current_language = lang_code
         self.setWindowTitle(self.tr("Settings", self.current_language))
-
-        self.findChild(QLabel, "titleLabel").setText(self.tr("Settings", self.current_language))
 
         for label in self.findChildren(QLabel):
             if "Language:" in label.text() or "Язык:" in label.text():
@@ -283,12 +340,22 @@ class SettingsDialog(QDialog):
             elif "Display Cache Resolution:" in label.text() or "Разрешение кэша:" in label.text():
                 label.setText(self.tr("Display Cache Resolution:", self.current_language))
 
+            elif "Movement Interpolation:" in label.text() or "Интерполяция при движении:" in label.text():
+                label.setText(self.tr("Movement Interpolation:", self.current_language))
+
         self.radio_font_builtin.setText(self.tr("Built-in font", self.current_language))
         self.radio_font_system_default.setText(self.tr("System default", self.current_language))
         self.radio_font_system_custom.setText(self.tr("Custom", self.current_language))
         self.combo_font_family.setItemText(0, self.tr("Select font...", self.current_language))
 
         self.debug_checkbox.setText(self.tr("Enable debug logging", self.current_language))
+        self.auto_psnr_checkbox.setText(self.tr("Auto-calculate PSNR", self.current_language))
+        self.auto_ssim_checkbox.setText(self.tr("Auto-calculate SSIM", self.current_language))
+
+        self.optimize_movement_checkbox.setText(self.tr("Optimize magnifier movement", self.current_language))
+        for i, key in enumerate(self._movement_interp_keys):
+            self.combo_movement_interpolation.setItemText(i, self.tr(AppConstants.INTERPOLATION_METHODS_MAP[key], self.current_language))
+
         self.system_notifications_checkbox.setText(self.tr("System notifications", self.current_language))
 
         self.ok_button.setText(self.tr("OK", self.current_language))

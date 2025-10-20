@@ -1,14 +1,23 @@
-import math
-from PyQt6.QtWidgets import QApplication, QLineEdit, QTextEdit, QPlainTextEdit
-from PyQt6.QtCore import (Qt, QPoint, QPointF, QEvent, QTimer, QElapsedTimer, QObject, pyqtSignal)
-from PyQt6.QtGui import (QDragEnterEvent, QDragMoveEvent, QDropEvent, QMouseEvent, QKeyEvent)
 import logging
+import math
+
+from PyQt6.QtCore import QElapsedTimer, QEvent, QObject, QPointF, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import (
+    QDragEnterEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QKeyEvent,
+    QMouseEvent,
+    QWheelEvent,
+)
+from PyQt6.QtWidgets import QApplication, QLineEdit, QPlainTextEdit, QTextEdit
+
 from core.constants import AppConstants
 from events.drag_drop_handler import DragAndDropService
-from PyQt6.QtGui import QCursor
 
 logger = logging.getLogger("ImproveImgSLI")
 from resources import translations as translations_mod
+
 tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: text)
 
 class EventHandler(QObject):
@@ -24,6 +33,7 @@ class EventHandler(QObject):
     mouse_press_event_on_image_label_signal = pyqtSignal(QMouseEvent)
     mouse_move_event_on_image_label_signal = pyqtSignal(QMouseEvent)
     mouse_release_event_on_image_label_signal = pyqtSignal(QMouseEvent)
+    mouse_wheel_event_on_image_label_signal = pyqtSignal(QWheelEvent)
 
     def __init__(self, app_instance, app_state, presenter_ref):
         super().__init__(app_instance)
@@ -45,6 +55,7 @@ class EventHandler(QObject):
             image_label.mouseReleased.connect(self.mouse_release_event_on_image_label_signal.emit)
             image_label.keyPressed.connect(self.keyboard_press_event_signal.emit)
             image_label.keyReleased.connect(self.keyboard_release_event_signal.emit)
+            image_label.wheelScrolled.connect(self.mouse_wheel_event_on_image_label_signal.emit)
 
     def eventFilter(self, watched_obj, event: QEvent) -> bool:
         event_type = event.type()
@@ -129,12 +140,23 @@ class EventHandler(QObject):
         delta_time_sec = delta_time_ms / 1000.0
 
         if self.app_state.use_magnifier and self.app_state.pressed_keys:
-            dx_dir = (Qt.Key.Key_D.value in self.app_state.pressed_keys) - (
-                Qt.Key.Key_A.value in self.app_state.pressed_keys
-            )
-            dy_dir = (Qt.Key.Key_S.value in self.app_state.pressed_keys) - (
-                Qt.Key.Key_W.value in self.app_state.pressed_keys
-            )
+
+            if not self.app_state.freeze_magnifier:
+                dx_dir = (Qt.Key.Key_D.value in self.app_state.pressed_keys) - (
+                    Qt.Key.Key_A.value in self.app_state.pressed_keys
+                )
+                dy_dir = (Qt.Key.Key_S.value in self.app_state.pressed_keys) - (
+                    Qt.Key.Key_W.value in self.app_state.pressed_keys
+                )
+            else:
+
+                dx_dir = (Qt.Key.Key_D.value in self.app_state.pressed_keys) - (
+                    Qt.Key.Key_A.value in self.app_state.pressed_keys
+                )
+                dy_dir = (Qt.Key.Key_S.value in self.app_state.pressed_keys) - (
+                    Qt.Key.Key_W.value in self.app_state.pressed_keys
+                )
+
             ds_dir = (Qt.Key.Key_E.value in self.app_state.pressed_keys) - (
                 Qt.Key.Key_Q.value in self.app_state.pressed_keys
             )
@@ -188,6 +210,7 @@ class EventHandler(QObject):
         is_still_interacting = (
             self.app_state.is_dragging_split_line
             or self.app_state.is_dragging_capture_point
+            or self.app_state.is_dragging_split_in_magnifier
             or self.app_state.is_dragging_any_slider
             or bool(self.app_state.pressed_keys)
         )
@@ -262,10 +285,25 @@ class EventHandler(QObject):
 
         fw = QApplication.focusWidget()
         if isinstance(fw, (QLineEdit, QTextEdit, QPlainTextEdit)):
+
+            if event.key() == Qt.Key.Key_V and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                return False
+
+            if event.key() == Qt.Key.Key_S and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                return False
+
             return False
 
         key = event.key()
+        modifiers = event.modifiers()
 
+        if key == Qt.Key.Key_V and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            return True
+
+        if key == Qt.Key.Key_S and modifiers == Qt.KeyboardModifier.ControlModifier:
+            return True
+        if key == Qt.Key.Key_S and modifiers == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
+            return True
         if key == space_key:
             return True
         if key in magnifier_keys and self.app_state.use_magnifier:

@@ -1,9 +1,10 @@
-import traceback
-from PyQt6.QtCore import QSettings, QPointF, QByteArray, QLocale, QObject
+import logging
+
+from PyQt6.QtCore import QLocale, QPointF, QSettings
 from PyQt6.QtGui import QColor
+
 from core.app_state import AppState
 from core.constants import AppConstants
-import logging
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -42,7 +43,7 @@ class SettingsManager:
                     return target_type(value)
                 except (ValueError, TypeError):
                     return default
-        except Exception as e:
+        except Exception:
             return default
 
     def load_all_settings(self, app_state: AppState):
@@ -55,11 +56,23 @@ class SettingsManager:
         app_state.system_notifications_enabled = self._get_setting(
             "system_notifications_enabled", True, bool
         )
+        app_state.auto_calculate_psnr = self._get_setting(
+            "auto_calculate_psnr", False, bool
+        )
+        app_state.auto_calculate_ssim = self._get_setting(
+            "auto_calculate_ssim", False, bool
+        )
 
         app_state.display_resolution_limit = self._get_setting(
             "display_resolution_limit",
             AppConstants.DEFAULT_DISPLAY_RESOLUTION_LIMIT,
             int,
+        )
+        app_state.optimize_magnifier_movement = self._get_setting(
+            "optimize_magnifier_movement", True, bool
+        )
+        app_state.movement_interpolation_method = self._get_setting(
+            "movement_interpolation_method", "BILINEAR", str
         )
         app_state.theme = self._get_setting("theme", "auto", str)
 
@@ -137,8 +150,13 @@ class SettingsManager:
             pass
         app_state.magnifier_offset_relative = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
         app_state.magnifier_offset_relative_visual = QPointF(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
-        app_state.magnifier_spacing_relative = AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE
-        app_state.magnifier_spacing_relative_visual = AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE
+
+        default_spacing = AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE
+        half_spacing = default_spacing / 2.0
+        app_state.magnifier_left_offset_relative = QPointF(-half_spacing, 0.0)
+        app_state.magnifier_right_offset_relative = QPointF(half_spacing, 0.0)
+        app_state.magnifier_left_offset_relative_visual = QPointF(-half_spacing, 0.0)
+        app_state.magnifier_right_offset_relative_visual = QPointF(half_spacing, 0.0)
 
         app_state.export_use_default_dir = self._get_setting("export_use_default_dir", True, bool)
         app_state.export_default_dir = self._get_setting("export_default_dir", None, str)
@@ -154,11 +172,49 @@ class SettingsManager:
         app_state.export_comment_text = self._get_setting("export_comment_text", "", str)
         app_state.export_comment_keep_default = self._get_setting("export_comment_keep_default", False, bool)
 
+        app_state.divider_line_visible = self._get_setting("divider_line_visible", True, bool)
+        app_state.divider_line_thickness = max(1, min(20, self._get_setting("divider_line_thickness", 3, int)))
+
+        default_divider_color = QColor(255, 255, 255, 255)
+        loaded_divider_color_name = self._get_setting(
+            "divider_line_color", default_divider_color.name(QColor.NameFormat.HexArgb), str
+        )
+        app_state.divider_line_color = QColor(loaded_divider_color_name)
+        if not app_state.divider_line_color.isValid():
+            app_state.divider_line_color = default_divider_color
+
+        app_state.magnifier_divider_visible = self._get_setting("magnifier_divider_visible", True, bool)
+        app_state.magnifier_divider_thickness = max(1, min(10, self._get_setting("magnifier_divider_thickness", 2, int)))
+
+        default_mag_divider_color = QColor(255, 255, 255, 230)
+        loaded_mag_divider_color_name = self._get_setting(
+            "magnifier_divider_color", default_mag_divider_color.name(QColor.NameFormat.HexArgb), str
+        )
+        app_state.magnifier_divider_color = QColor(loaded_mag_divider_color_name)
+        if not app_state.magnifier_divider_color.isValid():
+            app_state.magnifier_divider_color = default_mag_divider_color
+        app_state.magnifier_is_horizontal = self._get_setting("magnifier_is_horizontal", False, bool)
+
+        app_state.magnifier_visible_left = True
+        app_state.magnifier_visible_center = True
+        app_state.magnifier_visible_right = True
+
+        app_state.is_horizontal = self._get_setting("is_horizontal", False, bool)
+        app_state.use_magnifier = self._get_setting("use_magnifier", False, bool)
+        app_state.freeze_magnifier = self._get_setting("freeze_magnifier", False, bool)
+        app_state.include_file_names_in_saved = self._get_setting("include_file_names_in_saved", False, bool)
+
     def save_all_settings(self, app_state: AppState):
 
         self._save_setting("language", app_state.current_language)
         self._save_setting(
             "display_resolution_limit", app_state.display_resolution_limit
+        )
+        self._save_setting(
+            "optimize_magnifier_movement", app_state.optimize_magnifier_movement
+        )
+        self._save_setting(
+            "movement_interpolation_method", app_state.movement_interpolation_method
         )
         self._save_setting("max_name_length", app_state.max_name_length)
         self._save_setting("movement_speed_per_sec", app_state.movement_speed_per_sec)
@@ -176,6 +232,8 @@ class SettingsManager:
             "text_placement_mode", app_state.text_placement_mode
         )
         self._save_setting("debug_mode_enabled", app_state.debug_mode_enabled)
+        self._save_setting("auto_calculate_psnr", app_state.auto_calculate_psnr)
+        self._save_setting("auto_calculate_ssim", app_state.auto_calculate_ssim)
         self._save_setting("system_notifications_enabled", getattr(app_state, "system_notifications_enabled", True))
         self._save_setting("theme", app_state.theme)
         self._save_setting("ui_font_mode", getattr(app_state, "ui_font_mode", "builtin"))
@@ -195,6 +253,20 @@ class SettingsManager:
 
         self._save_setting("export_comment_text", getattr(app_state, "export_comment_text", ""))
         self._save_setting("export_comment_keep_default", getattr(app_state, "export_comment_keep_default", False))
+
+        self._save_setting("divider_line_visible", app_state.divider_line_visible)
+        self._save_setting("divider_line_thickness", app_state.divider_line_thickness)
+        self._save_setting("divider_line_color", app_state.divider_line_color.name(QColor.NameFormat.HexArgb))
+
+        self._save_setting("magnifier_divider_visible", app_state.magnifier_divider_visible)
+        self._save_setting("magnifier_divider_thickness", app_state.magnifier_divider_thickness)
+        self._save_setting("magnifier_divider_color", app_state.magnifier_divider_color.name(QColor.NameFormat.HexArgb))
+        self._save_setting("magnifier_is_horizontal", app_state.magnifier_is_horizontal)
+
+        self._save_setting("is_horizontal", app_state.is_horizontal)
+        self._save_setting("use_magnifier", app_state.use_magnifier)
+        self._save_setting("freeze_magnifier", app_state.freeze_magnifier)
+        self._save_setting("include_file_names_in_saved", app_state.include_file_names_in_saved)
 
         self.settings.sync()
 

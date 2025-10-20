@@ -1,5 +1,5 @@
-from PyQt6.QtCore import Qt, QPoint, QTimer, QObject
-from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QMouseEvent
+from PyQt6.QtCore import QObject, QPoint, QTimer
+from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 
 class WindowEventHandler(QObject):
     def __init__(self, app_state, main_controller, ui, parent=None):

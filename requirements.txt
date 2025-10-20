@@ -1,8 +1,11 @@
 darkdetect==0.8.0
 Markdown==3.8
 pillow==11.2.1
+numpy==2.3.4
 PyQt6==6.9.0
 PyQt6-Qt6==6.9.1
 PyQt6_sip==13.10.2
+Wand==0.6.13
 snakeviz==2.2.2
 desktop-notifier
+scikit-image

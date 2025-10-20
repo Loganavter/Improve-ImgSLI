@@ -1,6 +1,6 @@
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QKeyEvent, QMouseEvent, QWheelEvent
 from PyQt6.QtWidgets import QLabel
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QMouseEvent, QKeyEvent
 
 class ClickableLabel(QLabel):
     mousePressed = pyqtSignal(QMouseEvent)
@@ -8,6 +8,7 @@ class ClickableLabel(QLabel):
     mouseReleased = pyqtSignal(QMouseEvent)
     keyPressed = pyqtSignal(QKeyEvent)
     keyReleased = pyqtSignal(QKeyEvent)
+    wheelScrolled = pyqtSignal(QWheelEvent)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -33,3 +34,7 @@ class ClickableLabel(QLabel):
     def keyReleaseEvent(self, event: QKeyEvent):
         self.keyReleased.emit(event)
         super().keyReleaseEvent(event)
+
+    def wheelEvent(self, event: QWheelEvent):
+        self.wheelScrolled.emit(event)
+        event.accept()

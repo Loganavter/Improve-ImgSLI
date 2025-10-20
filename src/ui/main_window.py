@@ -1,51 +1,57 @@
-import os
-import time
-import PIL.Image
-import logging
-import sys
 import asyncio
-import threading
+import logging
+import os
 import subprocess
+import threading
+from pathlib import Path
+import time
 
-from PyQt6.QtWidgets import QWidget, QMessageBox, QApplication, QSystemTrayIcon
-from PyQt6.QtWidgets import QMenu
-from PyQt6.QtGui import QAction
-from PyQt6.QtGui import (
-    QPixmap,
-    QColor,
-    QImage,
-    QPainter,
-    QPalette,
-    QIcon,
-    QResizeEvent,
-)
+import PIL.Image
 from PyQt6.QtCore import (
-    Qt,
-    QTimer,
-    QPoint,
     QEvent,
+    QPoint,
+    QRect,
+    Qt,
     QThreadPool,
+    QTimer,
+    QUrl,
     pyqtSignal,
     pyqtSlot,
-    QRect,
-    QUrl,
 )
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import (
+    QAction,
+    QDesktopServices,
+    QIcon,
+    QImage,
+    QPainter,
+    QPixmap,
+    QResizeEvent,
+)
+from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QWidget
+
+from src.shared_toolkit.core import setup_logging
+from src.shared_toolkit.ui.managers.font_manager import FontManager
+from core.app_state import AppState
+from core.constants import AppConstants
+from core.geometry import GeometryManager
+from core.main_controller import MainController
+from core.settings import SettingsManager
+from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
+from events.app_event_handler import EventHandler
+from image_processing.resize import resize_images_processor
+from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
 from ui.main_window_ui import Ui_ImageComparisonApp
 from ui.presenters.main_window_presenter import MainWindowPresenter
 from ui.widgets.composite.toast import ToastManager
-from core.app_state import AppState
-from core.settings import SettingsManager
-from core.main_controller import MainController
-from events.app_event_handler import EventHandler
-from core import logging as logging_service_module
-from core.theme import ThemeManager, DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
-from core.geometry import GeometryManager
-from image_processing.resize import resize_images_processor
-from utils.resource_loader import get_scaled_pixmap_dimensions, get_magnifier_drawing_coords, resource_path
+from utils.resource_loader import (
+    get_magnifier_drawing_coords,
+    get_scaled_pixmap_dimensions,
+    resource_path,
+)
 from workers.image_rendering_worker import ImageRenderingWorker
+
 try:
-    from desktop_notifier import DesktopNotifier, Icon, Attachment, Urgency
+    from desktop_notifier import Attachment, DesktopNotifier, Icon, Urgency
 except Exception:
     DesktopNotifier = None
     Icon = None
@@ -60,6 +66,7 @@ except ImportError:
     _SETTINGS_DIALOG_AVAILABLE = False
 
 from resources import translations as translations_mod
+
 tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: text)
 
 PIL.Image.MAX_IMAGE_PIXELS = None
@@ -82,6 +89,15 @@ class ImageComparisonApp(QWidget):
         self.app_state = AppState()
         self.theme_manager = ThemeManager.get_instance()
 
+        self.theme_manager.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
+        qss_path = resource_path("resources/styles/base.qss")
+        self.theme_manager.register_qss_path(qss_path)
+
+        app = QApplication.instance()
+        if app:
+            self.theme_manager.apply_theme_to_app(app)
+            self.theme_manager.theme_changed.connect(self._on_theme_changed)
+
         self.settings_manager = SettingsManager("improve-imgsli", "improve-imgsli")
         self.geometry_manager = GeometryManager(self, self.settings_manager.settings)
 
@@ -97,10 +113,10 @@ class ImageComparisonApp(QWidget):
         if os.getenv("IMPROVE_DEBUG", "0") == "1":
             self.app_state.debug_mode_enabled = True
 
-        logging_service_module.setup_logging(self.app_state.debug_mode_enabled)
+        setup_logging("Improve-ImgSLI", self.app_state.debug_mode_enabled, "IMPROVE_DEBUG")
 
         try:
-            from core.font_manager import FontManager
+            from src.shared_toolkit.ui.managers.font_manager import FontManager
             FontManager.get_instance().apply_from_state(self.app_state)
         except Exception:
             pass
@@ -177,7 +193,6 @@ class ImageComparisonApp(QWidget):
         self.toast_manager = ToastManager(self, self.ui.image_label)
         self.save_task_counter = 0
 
-        self._determine_font_path()
         self.setAcceptDrops(True)
 
         self._update_scheduler_timer = QTimer(self)
@@ -215,8 +230,7 @@ class ImageComparisonApp(QWidget):
         self.apply_application_theme(final_theme_setting)
 
         try:
-            from core.font_manager import FontManager
-            import logging
+            from src.shared_toolkit.ui.managers.font_manager import FontManager
             FontManager.get_instance().apply_from_state(self.app_state)
         except Exception:
             pass
@@ -232,6 +246,8 @@ class ImageComparisonApp(QWidget):
 
         if self.app_state.theme != theme_name:
             self.app_state.theme = theme_name
+
+        self.ui.reapply_button_styles()
 
     def changeEvent(self, event: QEvent):
         super().changeEvent(event)
@@ -371,18 +387,6 @@ class ImageComparisonApp(QWidget):
         palette.setColor(self.ui.image_label.backgroundRole(), bg_color)
         self.ui.image_label.setPalette(palette)
 
-    def _determine_font_path(self):
-        self.font_path_absolute = None
-        font_relative_path = "resources/fonts/SourceSans3-Regular.ttf"
-        try:
-            candidate_path = resource_path(font_relative_path)
-            if os.path.exists(candidate_path):
-                self.font_path_absolute = candidate_path
-        except Exception as e:
-            logger.error(f"Could not determine font path: {e}", exc_info=True)
-        if self.font_path_absolute is None:
-            logger.warning("SourceSans3-Regular.ttf font not found. Fallback to default.")
-
     def update_comparison_if_needed(self) -> bool:
         if not getattr(self, '_is_ui_stable', False):
             return False
@@ -425,15 +429,30 @@ class ImageComparisonApp(QWidget):
             last_source1_id != id(source1) or last_source2_id != id(source2)):
 
             try:
-
                 setattr(self.app_state, '_last_source1_id', id(source1))
                 setattr(self.app_state, '_last_source2_id', id(source2))
 
-                unified1, unified2 = resize_images_processor(source1, source2)
-                self.app_state.image1, self.app_state.image2 = unified1, unified2
+                cache_key = (self.app_state.image1_path, self.app_state.image2_path)
 
+                if cache_key in self.app_state._unified_image_cache:
+
+                    unified1, unified2 = self.app_state._unified_image_cache[cache_key]
+                else:
+
+                    unified1, unified2 = resize_images_processor(source1, source2)
+
+                    self.app_state._unified_image_cache[cache_key] = (unified1, unified2)
+                    self.app_state._unified_image_cache_keys.append(cache_key)
+
+                    MAX_UNIFIED_CACHE_SIZE = 20
+                    if len(self.app_state._unified_image_cache_keys) > MAX_UNIFIED_CACHE_SIZE:
+                        key_to_remove = self.app_state._unified_image_cache_keys.pop(0)
+                        self.app_state._unified_image_cache.pop(key_to_remove, None)
+
+                self.app_state.image1, self.app_state.image2 = unified1, unified2
                 self.app_state.clear_all_caches()
-            except Exception as e:
+
+            except Exception:
                 return False
 
         current_cache_params = (
@@ -459,7 +478,7 @@ class ImageComparisonApp(QWidget):
         source_for_widget_resize1, source_for_widget_resize2 = (
             self.app_state._display_cache_image1, self.app_state._display_cache_image2,
         )
-        scaled_w, scaled_h = get_scaled_pixmap_dimensions(source_for_widget_resize1, label_width, label_height)
+        scaled_w, scaled_h = get_scaled_pixmap_dimensions(source_for_widget_resize1, source_for_widget_resize2, label_width, label_height)
         if scaled_w <= 0 or scaled_h <= 0:
             return False
 
@@ -474,7 +493,7 @@ class ImageComparisonApp(QWidget):
                 self.app_state.scaled_image1_for_display = source_for_widget_resize1.resize((scaled_w, scaled_h), PIL.Image.Resampling.BILINEAR)
                 self.app_state.scaled_image2_for_display = source_for_widget_resize2.resize((scaled_w, scaled_h), PIL.Image.Resampling.BILINEAR)
                 self.app_state._cached_scaled_image_dims = (scaled_w, scaled_h)
-            except Exception as e:
+            except Exception:
                 return False
 
         pixmap_w, pixmap_h = self.app_state._cached_scaled_image_dims
@@ -483,6 +502,7 @@ class ImageComparisonApp(QWidget):
         self.app_state.image_display_rect_on_label = QRect(img_x, img_y, pixmap_w, pixmap_h)
 
         app_state_copy = self.app_state.copy_for_worker()
+
         magnifier_coords = get_magnifier_drawing_coords(
             app_state=self.app_state,
             drawing_width=pixmap_w,
@@ -503,7 +523,7 @@ class ImageComparisonApp(QWidget):
             "original_image1_pil": (self.app_state.full_res_image1 or self.app_state.original_image1),
             "original_image2_pil": (self.app_state.full_res_image2 or self.app_state.original_image2),
             "magnifier_coords": magnifier_coords,
-            "font_path_absolute": self.font_path_absolute,
+            "font_path_absolute": str(FontManager.get_instance()._built_in_font_path) if FontManager.get_instance().is_builtin_available() else None,
             "file_name1_text": current_name1_text,
             "file_name2_text": current_name2_text,
             "finished_signal": self._worker_finished_signal,
@@ -535,6 +555,36 @@ class ImageComparisonApp(QWidget):
 
         final_canvas_pil = result_payload.get("final_canvas")
         padding_left, padding_top = result_payload.get("padding_left", 0), result_payload.get("padding_top", 0)
+
+        magnifier_bbox = result_payload.get("magnifier_bbox")
+        if magnifier_bbox and isinstance(magnifier_bbox, QRect):
+            target_image_rect_in_label = self.app_state.image_display_rect_on_label
+            draw_x = target_image_rect_in_label.x() - padding_left
+            draw_y = target_image_rect_in_label.y() - padding_top
+
+            final_bbox_on_label = magnifier_bbox.translated(draw_x, draw_y)
+
+            combined_center = result_payload.get("combined_center")
+
+            if combined_center and isinstance(combined_center, QPoint):
+                self.app_state.is_magnifier_combined = True
+
+                self.app_state.magnifier_screen_center = combined_center + QPoint(draw_x, draw_y)
+
+                self.app_state.magnifier_screen_size = min(final_bbox_on_label.width(), final_bbox_on_label.height())
+            else:
+
+                self.app_state.magnifier_screen_center = final_bbox_on_label.center()
+                self.app_state.magnifier_screen_size = max(final_bbox_on_label.width(), final_bbox_on_label.height())
+                app_state_copy = params["app_state_copy"]
+                should_combine = app_state_copy.magnifier_spacing_relative_visual < AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+                self.app_state.is_magnifier_combined = should_combine
+
+        else:
+            self.app_state.magnifier_screen_center = QPoint()
+            self.app_state.magnifier_screen_size = 0
+            self.app_state.is_magnifier_combined = False
+
         if not final_canvas_pil:
             return
 
@@ -567,7 +617,13 @@ class ImageComparisonApp(QWidget):
 
     @pyqtSlot(str)
     def _on_worker_error(self, error_message: str):
-        QMessageBox.critical(self, tr("Error", self.app_state.current_language), error_message)
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Critical)
+        msg_box.setWindowTitle(tr("Error", self.app_state.current_language))
+        msg_box.setText(error_message)
+
+        self.theme_manager.apply_theme_to_dialog(msg_box)
+        msg_box.exec()
 
     def _display_single_image_on_label(self, pil_image_to_display: PIL.Image.Image | None):
         if not hasattr(self.ui, "image_label"):
@@ -589,7 +645,7 @@ class ImageComparisonApp(QWidget):
 
             self.ui.image_label.setPixmap(scaled_pixmap)
             self.current_displayed_pixmap = scaled_pixmap.copy()
-        except Exception as e:
+        except Exception:
             if self.ui.image_label.pixmap() is not None: self.ui.image_label.clear()
             self.current_displayed_pixmap = None
 
@@ -692,20 +748,20 @@ class ImageComparisonApp(QWidget):
                 icon_obj = None
                 attach_obj = None
                 if image_path and isinstance(image_path, str):
+                    path_obj = None
                     try:
                         path_abs = os.path.abspath(image_path)
-                    except Exception:
-                        path_abs = image_path
-                    if Icon is not None and os.path.isfile(path_abs):
-                        try:
-                            icon_obj = Icon(path=path_abs)
-                        except Exception:
-                            icon_obj = None
-                    if Attachment is not None and os.path.isfile(path_abs):
-                        try:
-                            attach_obj = Attachment(path=path_abs)
-                        except Exception:
-                            attach_obj = None
+                        if os.path.isfile(path_abs):
+                            path_obj = Path(path_abs)
+                    except Exception as e:
+                        logger.warning(f"Could not resolve absolute path for notification: {e}")
+
+                    if path_obj:
+                        if Icon is not None:
+                            icon_obj = Icon(path=path_obj)
+                        if Attachment is not None:
+                            attach_obj = Attachment(path=path_obj)
+
                 timeout_seconds = max(0, int(round((timeout_ms or 0) / 1000)))
                 coro = self.notifier.send(
                     title=title,
@@ -780,3 +836,11 @@ class ImageComparisonApp(QWidget):
             self.main_controller._on_image_loaded(result)
         except Exception as e:
             logger.error(f"Error handling loaded image in UI thread: {e}", exc_info=True)
+
+    def _on_theme_changed(self):
+        """Обработчик изменения темы"""
+        self._update_image_label_background()
+
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()

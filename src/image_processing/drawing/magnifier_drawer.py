@@ -1,15 +1,23 @@
-import time
-from typing import Callable, Tuple
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageChops
 
-from image_processing.resize import get_pil_resampling_method
-from PyQt6.QtCore import QPoint, QRect
-import traceback
+
+import logging
 import math
 import os
 import sys
-import logging
-from utils.paths import resource_path
+
+from PIL import Image, ImageChops, ImageDraw, ImageOps
+from PyQt6.QtCore import QPoint
+
+from core.app_state import AppState
+from core.constants import AppConstants
+from image_processing.analysis import (
+    create_highlight_diff,
+    create_grayscale_diff,
+    create_ssim_map,
+    create_edge_map
+)
+from image_processing.resize import resample_image
+from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -92,6 +100,35 @@ class MagnifierDrawer:
         self._mask_image_cache = None
         self._mask_path_checked = False
         self._resized_mask_cache = {}
+        self.composer = None
+
+    def _create_diff_image(self, image1: Image.Image, image2: Image.Image | None, mode: str = 'highlight', threshold: int = 20) -> Image.Image | None:
+        """Создает изображение с подсвеченными различиями для лупы."""
+        try:
+            font_path = self.composer.font_path if hasattr(self, 'composer') and self.composer else None
+
+            if mode == 'edges':
+                if not image1:
+                    return None
+                return create_edge_map(image1)
+
+            if not image1 or image2 is None:
+                return None
+
+            if image1.size != image2.size:
+                try:
+                    image2 = image2.resize(image1.size, Image.Resampling.LANCZOS)
+                except Exception:
+                    return None
+
+            if mode == 'ssim':
+                return create_ssim_map(image1, image2, font_path)
+            elif mode == 'grayscale':
+                return create_grayscale_diff(image1, image2, font_path)
+            else:
+                return create_highlight_diff(image1, image2, threshold, font_path)
+        except Exception:
+            return None
 
     def get_smooth_circular_mask(self, size: int) -> Image.Image | None:
         return get_smooth_circular_mask(size)
@@ -136,20 +173,10 @@ class MagnifierDrawer:
         except Exception:
             pass
 
-        ring_color = (255, 50, 100, 230)
-        pastel_red_ring = Image.new("RGBA", (outer_size, outer_size), ring_color)
-
-        paste_pos_x = center_pos.x() - outer_size // 2
-        paste_pos_y = center_pos.y() - outer_size // 2
-
-        try:
-            image_to_draw_on.paste(pastel_red_ring, (paste_pos_x, paste_pos_y), donut_mask)
-        except Exception:
-            pass
-
     def draw_magnifier(
         self,
         draw: ImageDraw.ImageDraw,
+        app_state: AppState,
         image_to_draw_on: Image.Image,
         image1_for_crop: Image.Image,
         image2_for_crop: Image.Image,
@@ -162,7 +189,19 @@ class MagnifierDrawer:
         is_horizontal: bool,
         force_combine: bool,
         is_interactive_render: bool = False,
+        internal_split: float = 0.5,
+        divider_visible: bool = True,
+        divider_color: tuple = (255, 255, 255, 230),
+        divider_thickness: int = 2,
     ):
+        """
+        Диспетчер стратегий рисования лупы.
+        4 стратегии:
+        - 2 отдельные лупы
+        - 1 соединенная лупа
+        - 3 лупы (две оригинала + дифф по центру)
+        - 1 лупа сверху и 1 соединенная снизу (ориентируется по app_state.is_horizontal)
+        """
         if not all([image1_for_crop, image2_for_crop, crop_box1, crop_box2, magnifier_midpoint_target]) or magnifier_size_pixels <= 0:
             return
         if image_to_draw_on.mode != "RGBA":
@@ -171,44 +210,467 @@ class MagnifierDrawer:
             except Exception:
                 return
 
-        should_combine = force_combine
+        show_left = getattr(app_state, "magnifier_visible_left", True)
+        show_center = getattr(app_state, "magnifier_visible_center", True)
+        show_right = getattr(app_state, "magnifier_visible_right", True)
 
-        if should_combine:
-            try:
-                self.draw_combined_magnifier_circle(
-                    target_image=image_to_draw_on, display_center_pos=magnifier_midpoint_target,
-                    crop_box1=crop_box1, crop_box2=crop_box2,
-                    magnifier_size_pixels=magnifier_size_pixels,
+        spacing_threshold = AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+        should_combine_under_diff = app_state.magnifier_spacing_relative_visual < spacing_threshold
+        if hasattr(app_state, 'magnifier_combine_under_diff'):
+            app_state.magnifier_combine_under_diff = should_combine_under_diff
+
+        diff_mode = app_state.diff_mode
+        is_visual_diff = diff_mode in ('highlight', 'grayscale', 'ssim', 'edges')
+
+        effective_force_combine = bool(force_combine and show_left and show_right)
+
+        try:
+            if is_visual_diff and not should_combine_under_diff:
+                if not show_center:
+
+                    self._draw_strategy_two_magnifiers(
+                        image_to_draw_on=image_to_draw_on,
+                        image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                        crop_box1=crop_box1, crop_box2=crop_box2,
+                        midpoint=magnifier_midpoint_target,
+                        magnifier_size=magnifier_size_pixels,
+                        spacing=edge_spacing_pixels,
+                        interpolation_method=interpolation_method,
+                        is_interactive=is_interactive_render,
+                        layout_horizontal=app_state.is_horizontal,
+                        app_state=app_state,
+                        show_left=show_left,
+                        show_right=show_right,
+                    )
+                else:
+
+                    self._draw_strategy_three_magnifiers(
+                        image_to_draw_on=image_to_draw_on,
+                        image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                        crop_box1=crop_box1, crop_box2=crop_box2,
+                        midpoint=magnifier_midpoint_target,
+                        magnifier_size=magnifier_size_pixels,
+                        spacing=edge_spacing_pixels,
+                        interpolation_method=interpolation_method,
+                        is_interactive=is_interactive_render,
+                        diff_mode=diff_mode,
+                        layout_horizontal=app_state.is_horizontal,
+                        app_state=app_state,
+                        show_left=show_left,
+                        show_center=show_center,
+                        show_right=show_right,
+                    )
+            elif is_visual_diff and should_combine_under_diff:
+                if not show_center:
+
+                    if show_left and show_right:
+                        self._draw_strategy_combined_single(
+                            image_to_draw_on=image_to_draw_on,
+                            image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                            crop_box1=crop_box1, crop_box2=crop_box2,
+                            midpoint=magnifier_midpoint_target,
+                            magnifier_size=magnifier_size_pixels,
+                            interpolation_method=interpolation_method,
+                            is_interactive=is_interactive_render,
+                            is_horizontal=app_state.magnifier_is_horizontal,
+                            internal_split=app_state.magnifier_internal_split,
+                            divider_visible=app_state.magnifier_divider_visible,
+                            divider_color=divider_color,
+                            divider_thickness=app_state.magnifier_divider_thickness,
+                            app_state=app_state
+                        )
+                    else:
+
+                        self._draw_strategy_two_magnifiers(
+                            image_to_draw_on=image_to_draw_on,
+                            image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                            crop_box1=crop_box1, crop_box2=crop_box2,
+                            midpoint=magnifier_midpoint_target,
+                            magnifier_size=magnifier_size_pixels,
+                            spacing=edge_spacing_pixels,
+                            interpolation_method=interpolation_method,
+                            is_interactive=is_interactive_render,
+                            layout_horizontal=app_state.magnifier_is_horizontal,
+                            app_state=app_state,
+                            show_left=show_left,
+                            show_right=show_right,
+                        )
+                else:
+
+                    if show_left and show_right:
+                        self._draw_strategy_diff_top_combined_bottom(
+                            image_to_draw_on=image_to_draw_on,
+                            image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                            crop_box1=crop_box1, crop_box2=crop_box2,
+                            midpoint=magnifier_midpoint_target,
+                            magnifier_size=magnifier_size_pixels,
+                            interpolation_method=interpolation_method,
+                            is_interactive=is_interactive_render,
+                            diff_mode=diff_mode,
+                            comb_is_horizontal=app_state.magnifier_is_horizontal,
+                            comb_split=app_state.magnifier_internal_split,
+                            comb_divider_visible=app_state.magnifier_divider_visible,
+                            comb_divider_color=divider_color,
+                            comb_divider_thickness=app_state.magnifier_divider_thickness,
+                            layout_horizontal=app_state.is_horizontal,
+                            app_state=app_state,
+                            show_center=show_center,
+                            show_left=show_left,
+                            show_right=show_right,
+                        )
+                    else:
+                        self._draw_strategy_three_magnifiers(
+                            image_to_draw_on=image_to_draw_on,
+                            image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                            crop_box1=crop_box1, crop_box2=crop_box2,
+                            midpoint=magnifier_midpoint_target,
+                            magnifier_size=magnifier_size_pixels,
+                            spacing=edge_spacing_pixels,
+                            interpolation_method=interpolation_method,
+                            is_interactive=is_interactive_render,
+                            diff_mode=diff_mode,
+                            layout_horizontal=app_state.is_horizontal,
+                            app_state=app_state,
+                            show_left=show_left,
+                            show_center=show_center,
+                            show_right=show_right,
+                        )
+            elif effective_force_combine:
+
+                self._draw_strategy_combined_single(
+                    image_to_draw_on=image_to_draw_on,
                     image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
-                    interpolation_method=interpolation_method, is_horizontal=is_horizontal,
-                    is_interactive_render=is_interactive_render,
+                    crop_box1=crop_box1, crop_box2=crop_box2,
+                    midpoint=magnifier_midpoint_target,
+                    magnifier_size=magnifier_size_pixels,
+                    interpolation_method=interpolation_method,
+                    is_interactive=is_interactive_render,
+                    is_horizontal=app_state.magnifier_is_horizontal,
+                    internal_split=app_state.magnifier_internal_split,
+                    divider_visible=app_state.magnifier_divider_visible,
+                    divider_color=divider_color,
+                    divider_thickness=app_state.magnifier_divider_thickness,
+                    app_state=app_state
                 )
-            except Exception:
-                pass
+            else:
+
+                self._draw_strategy_two_magnifiers(
+                    image_to_draw_on=image_to_draw_on,
+                    image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                    crop_box1=crop_box1, crop_box2=crop_box2,
+                    midpoint=magnifier_midpoint_target,
+                    magnifier_size=magnifier_size_pixels,
+                    spacing=edge_spacing_pixels,
+                    interpolation_method=interpolation_method,
+                    is_interactive=is_interactive_render,
+                    layout_horizontal=app_state.magnifier_is_horizontal,
+                    app_state=app_state,
+                    show_left=show_left,
+                    show_right=show_right,
+                )
+        except Exception:
+            pass
+
+    def _draw_strategy_three_magnifiers(
+        self,
+        image_to_draw_on: Image.Image,
+        image1_for_crop: Image.Image,
+        image2_for_crop: Image.Image,
+        crop_box1: tuple,
+        crop_box2: tuple,
+        midpoint: QPoint,
+        magnifier_size: int,
+        spacing: int,
+        interpolation_method: str,
+        is_interactive: bool,
+        diff_mode: str,
+        layout_horizontal: bool,
+        app_state: AppState,
+        show_left: bool = True,
+        show_center: bool = True,
+        show_right: bool = True,
+    ):
+        """3 лупы: по бокам оригиналы, по центру дифф/edges (учет видимости)."""
+        try:
+            app_state.is_magnifier_combined = False
+        except Exception:
+            pass
+
+        spacing_f = float(spacing)
+        mid_x, mid_y = midpoint.x(), midpoint.y()
+
+        offset = max(magnifier_size, magnifier_size + spacing_f)
+
+        if not layout_horizontal:
+            center_left = QPoint(int(round(mid_x - offset)), int(round(mid_y)))
+            center_right = QPoint(int(round(mid_x + offset)), int(round(mid_y)))
         else:
+            center_left = QPoint(int(round(mid_x)), int(round(mid_y - offset)))
+            center_right = QPoint(int(round(mid_x)), int(round(mid_y + offset)))
+
+        try:
+            cropped1 = image1_for_crop.crop(crop_box1)
+            cropped2 = image2_for_crop.crop(crop_box2)
+
+            if show_left:
+                self.draw_single_magnifier_circle(
+                    target_image=image_to_draw_on, display_center_pos=center_left,
+                    crop_box_orig=None, magnifier_size_pixels=magnifier_size,
+                    image_for_crop=cropped1, interpolation_method=interpolation_method,
+                    is_interactive_render=is_interactive
+                )
+            if show_right:
+                self.draw_single_magnifier_circle(
+                    target_image=image_to_draw_on, display_center_pos=center_right,
+                    crop_box_orig=None, magnifier_size_pixels=magnifier_size,
+                    image_for_crop=cropped2, interpolation_method=interpolation_method,
+                    is_interactive_render=is_interactive
+                )
+
+            diff_center_patch = None
+            if show_center:
+                try:
+                    precomputed = getattr(self.composer, 'precomputed_center_diff_display', None)
+                except Exception:
+                    precomputed = None
+
+                if isinstance(precomputed, Image.Image):
+                    w, h = precomputed.size
+                    ref_dim = min(w, h)
+                    thickness_display = max(int(MIN_CAPTURE_THICKNESS), int(round(ref_dim * 0.003)))
+                    capture_size_px = max(1, int(round(app_state.capture_size_relative * min(w, h))))
+                    inner_size = max(1, capture_size_px - thickness_display)
+                    if inner_size % 2 != 0:
+                        inner_size += 1
+                    cx = app_state.capture_position_relative.x() * w
+                    cy = app_state.capture_position_relative.y() * h
+                    left = int(round(cx - inner_size / 2.0)); top = int(round(cy - inner_size / 2.0))
+                    right = left + inner_size; bottom = top + inner_size
+                    left = max(0, left); top = max(0, top)
+                    right = min(w, right); bottom = min(h, bottom)
+                    crop_box_display = (left, top, right, bottom)
+                    try:
+                        diff_center_patch = precomputed.crop(crop_box_display)
+                    except Exception:
+                        diff_center_patch = None
+
+                if diff_center_patch is None:
+                    if diff_mode == 'edges':
+                        diff_center_patch = self._create_diff_image(cropped1, None, mode='edges')
+                    else:
+                        diff_center_patch = self._create_diff_image(cropped1, cropped2, mode=diff_mode)
+
+                if isinstance(diff_center_patch, Image.Image):
+                    self.draw_single_magnifier_circle(
+                        target_image=image_to_draw_on, display_center_pos=midpoint,
+                        crop_box_orig=None, magnifier_size_pixels=magnifier_size,
+                        image_for_crop=diff_center_patch, interpolation_method=interpolation_method,
+                        is_interactive_render=False
+                    )
+        except Exception:
+            pass
+
+    def _draw_strategy_diff_top_combined_bottom(
+        self,
+        image_to_draw_on: Image.Image,
+        image1_for_crop: Image.Image,
+        image2_for_crop: Image.Image,
+        crop_box1: tuple,
+        crop_box2: tuple,
+        midpoint: QPoint,
+        magnifier_size: int,
+        interpolation_method: str,
+        is_interactive: bool,
+        diff_mode: str,
+        comb_is_horizontal: bool,
+        comb_split: float,
+        comb_divider_visible: bool,
+        comb_divider_color: tuple,
+        comb_divider_thickness: int,
+        layout_horizontal: bool,
+        app_state: AppState,
+        show_center: bool = True,
+        show_left: bool = True,
+        show_right: bool = True,
+    ):
+        """1 дифф‑лупа сверху и 1 соединенная снизу (или слева/справа при горизонтальном макете), учет видимости."""
+        try:
+            diff_patch = None
             try:
-                radius = float(magnifier_size_pixels) / 2.0
-                half_spacing = float(edge_spacing_pixels) / 2.0
-                offset_from_midpoint = radius + half_spacing
-                mid_x, mid_y = float(magnifier_midpoint_target.x()), float(magnifier_midpoint_target.y())
+                precomputed = getattr(self.composer, 'precomputed_center_diff_display', None)
+            except Exception:
+                precomputed = None
 
-                left_center = QPoint(int(round(mid_x - offset_from_midpoint)), int(round(mid_y)))
-                right_center = QPoint(int(round(mid_x + offset_from_midpoint)), int(round(mid_y)))
+            if isinstance(precomputed, Image.Image):
+                w, h = precomputed.size
+                ref_dim = min(w, h)
+                thickness_display = max(int(MIN_CAPTURE_THICKNESS), int(round(ref_dim * 0.003)))
+                capture_size_px = max(1, int(round(app_state.capture_size_relative * min(w, h))))
+                inner_size = max(1, capture_size_px - thickness_display)
+                if inner_size % 2 != 0:
+                    inner_size += 1
+                cx = app_state.capture_position_relative.x() * w
+                cy = app_state.capture_position_relative.y() * h
+                left = int(round(cx - inner_size / 2.0)); top = int(round(cy - inner_size / 2.0))
+                right = left + inner_size; bottom = top + inner_size
+                left = max(0, left); top = max(0, top)
+                right = min(w, right); bottom = min(h, bottom)
+                crop_box_display = (left, top, right, bottom)
+                try:
+                    diff_patch = precomputed.crop(crop_box_display)
+                except Exception:
+                    diff_patch = None
 
+            if diff_patch is None:
+                cropped1 = image1_for_crop.crop(crop_box1)
+                cropped2 = image2_for_crop.crop(crop_box2)
+                diff_patch = self._create_diff_image(cropped1, cropped2, mode=diff_mode)
+
+            if show_center and isinstance(diff_patch, Image.Image):
                 self.draw_single_magnifier_circle(
-                    target_image=image_to_draw_on, display_center_pos=left_center,
-                    crop_box_orig=crop_box1, magnifier_size_pixels=magnifier_size_pixels,
-                    image_for_crop=image1_for_crop, interpolation_method=interpolation_method,
-                    is_interactive_render=is_interactive_render,
+                    target_image=image_to_draw_on, display_center_pos=midpoint,
+                    crop_box_orig=None, magnifier_size_pixels=magnifier_size,
+                    image_for_crop=diff_patch, interpolation_method=interpolation_method,
+                    is_interactive_render=False
                 )
-                self.draw_single_magnifier_circle(
-                    target_image=image_to_draw_on, display_center_pos=right_center,
-                    crop_box_orig=crop_box2, magnifier_size_pixels=magnifier_size_pixels,
-                    image_for_crop=image2_for_crop, interpolation_method=interpolation_method,
-                    is_interactive_render=is_interactive_render,
+
+            if show_left and show_right:
+                mid_x, mid_y = midpoint.x(), midpoint.y()
+                if not layout_horizontal:
+                    combined_pos = QPoint(int(round(mid_x)), int(round(mid_y + magnifier_size + 8)))
+                else:
+                    combined_pos = QPoint(int(round(mid_x + magnifier_size + 8)), int(round(mid_y)))
+
+                try:
+                    app_state.is_magnifier_combined = True
+                    app_state.magnifier_screen_center = combined_pos
+                    app_state.magnifier_screen_size = magnifier_size
+                except Exception:
+                    pass
+
+                self.draw_combined_magnifier_circle(
+                    target_image=image_to_draw_on, display_center_pos=combined_pos,
+                    crop_box1=crop_box1, crop_box2=crop_box2,
+                    magnifier_size_pixels=magnifier_size,
+                    image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                    interpolation_method=interpolation_method, is_horizontal=comb_is_horizontal,
+                    is_interactive_render=is_interactive,
+                    internal_split=comb_split,
+                    divider_visible=comb_divider_visible,
+                    divider_color=comb_divider_color,
+                    divider_thickness=comb_divider_thickness,
                 )
+        except Exception:
+            pass
+
+    def _draw_strategy_two_magnifiers(
+        self,
+        image_to_draw_on: Image.Image,
+        image1_for_crop: Image.Image,
+        image2_for_crop: Image.Image,
+        crop_box1: tuple,
+        crop_box2: tuple,
+        midpoint: QPoint,
+        magnifier_size: int,
+        spacing: int,
+        interpolation_method: str,
+        is_interactive: bool,
+        layout_horizontal: bool,
+        app_state: AppState,
+        show_left: bool = True,
+        show_right: bool = True,
+    ):
+        """2 отдельные лупы по разные стороны от центральной точки (учет видимости)."""
+        try:
+            try:
+                app_state.is_magnifier_combined = False
             except Exception:
                 pass
+            radius = float(magnifier_size) / 2.0
+            half_spacing = float(spacing) / 2.0
+            offset_from_midpoint = radius + half_spacing
+            mid_x, mid_y = midpoint.x(), midpoint.y()
+
+            if not layout_horizontal:
+                center1 = QPoint(int(round(mid_x - offset_from_midpoint)), int(round(mid_y)))
+                center2 = QPoint(int(round(mid_x + offset_from_midpoint)), int(round(mid_y)))
+            else:
+                center1 = QPoint(int(round(mid_x)), int(round(mid_y - offset_from_midpoint)))
+                center2 = QPoint(int(round(mid_x)), int(round(mid_y + offset_from_midpoint)))
+
+            if show_left and show_right:
+
+                self.draw_single_magnifier_circle(
+                    target_image=image_to_draw_on, display_center_pos=center1,
+                    crop_box_orig=crop_box1, magnifier_size_pixels=magnifier_size,
+                    image_for_crop=image1_for_crop, interpolation_method=interpolation_method,
+                    is_interactive_render=is_interactive
+                )
+                self.draw_single_magnifier_circle(
+                    target_image=image_to_draw_on, display_center_pos=center2,
+                    crop_box_orig=crop_box2, magnifier_size_pixels=magnifier_size,
+                    image_for_crop=image2_for_crop, interpolation_method=interpolation_method,
+                    is_interactive_render=is_interactive
+                )
+            elif show_left and not show_right:
+
+                self.draw_single_magnifier_circle(
+                    target_image=image_to_draw_on, display_center_pos=midpoint,
+                    crop_box_orig=crop_box1, magnifier_size_pixels=magnifier_size,
+                    image_for_crop=image1_for_crop, interpolation_method=interpolation_method,
+                    is_interactive_render=is_interactive
+                )
+            elif show_right and not show_left:
+                self.draw_single_magnifier_circle(
+                    target_image=image_to_draw_on, display_center_pos=midpoint,
+                    crop_box_orig=crop_box2, magnifier_size_pixels=magnifier_size,
+                    image_for_crop=image2_for_crop, interpolation_method=interpolation_method,
+                    is_interactive_render=is_interactive
+                )
+            else:
+
+                return
+        except Exception:
+            pass
+
+    def _draw_strategy_combined_single(
+        self,
+        image_to_draw_on: Image.Image,
+        image1_for_crop: Image.Image,
+        image2_for_crop: Image.Image,
+        crop_box1: tuple,
+        crop_box2: tuple,
+        midpoint: QPoint,
+        magnifier_size: int,
+        interpolation_method: str,
+        is_interactive: bool,
+        is_horizontal: bool,
+        internal_split: float,
+        divider_visible: bool,
+        divider_color: tuple,
+        divider_thickness: int,
+        app_state: AppState,
+    ):
+        """1 соединенная лупа в центре."""
+        try:
+            try:
+                app_state.is_magnifier_combined = True
+                app_state.magnifier_screen_center = midpoint
+                app_state.magnifier_screen_size = magnifier_size
+            except Exception:
+                pass
+            self.draw_combined_magnifier_circle(
+                target_image=image_to_draw_on, display_center_pos=midpoint,
+                crop_box1=crop_box1, crop_box2=crop_box2,
+                magnifier_size_pixels=magnifier_size,
+                image1_for_crop=image1_for_crop, image2_for_crop=image2_for_crop,
+                interpolation_method=interpolation_method, is_horizontal=is_horizontal,
+                is_interactive_render=is_interactive, internal_split=internal_split,
+                divider_visible=divider_visible, divider_color=divider_color,
+                divider_thickness=divider_thickness,
+            )
+        except Exception:
+            pass
 
     def draw_combined_magnifier_circle(
         self,
@@ -222,20 +684,25 @@ class MagnifierDrawer:
         interpolation_method: str,
         is_horizontal: bool,
         is_interactive_render: bool = False,
+        internal_split: float = 0.5,
+        divider_visible: bool = True,
+        divider_color: tuple = (255, 255, 255, 230),
+        divider_thickness: int = 2,
     ):
         if not all([image1_for_crop, image2_for_crop, crop_box1, crop_box2, magnifier_size_pixels > 0]):
             return
 
         try:
-            resampling_method = get_pil_resampling_method(interpolation_method, is_interactive_render)
-
             border_width = max(2, int(magnifier_size_pixels * 0.015))
             content_size = magnifier_size_pixels - border_width * 2 + 2
             if content_size <= 0:
                 return
 
-            scaled_content1 = image1_for_crop.crop(crop_box1).resize((content_size, content_size), resampling_method)
-            scaled_content2 = image2_for_crop.crop(crop_box2).resize((content_size, content_size), resampling_method)
+            cropped1 = image1_for_crop.crop(crop_box1)
+            cropped2 = image2_for_crop.crop(crop_box2)
+            diff_mode_active = self.composer.app_state.diff_mode != 'off' if hasattr(self.composer, 'app_state') else False
+            scaled_content1 = resample_image(cropped1, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
+            scaled_content2 = resample_image(cropped2, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
 
             content_mask = self.get_smooth_circular_mask(content_size)
             if not content_mask:
@@ -252,32 +719,43 @@ class MagnifierDrawer:
             content_paste_pos = border_width - 1
 
             if not is_horizontal:
-                half_content_width = content_size // 2
-                left_half = scaled_content1.crop((0, 0, half_content_width, content_size))
-                right_half = scaled_content2.crop((half_content_width, 0, content_size, content_size))
+
+                split_content_x = int(content_size * internal_split)
+                left_half = scaled_content1.crop((0, 0, split_content_x, content_size))
+                right_half = scaled_content2.crop((split_content_x, 0, content_size, content_size))
                 final_magnifier_widget.paste(left_half, (content_paste_pos, content_paste_pos), mask=left_half)
-                final_magnifier_widget.paste(right_half, (content_paste_pos + half_content_width, content_paste_pos), mask=right_half)
+                final_magnifier_widget.paste(right_half, (content_paste_pos + split_content_x, content_paste_pos), mask=right_half)
 
-                line_thickness = max(1, int(border_width / 2))
-                center_x = magnifier_size_pixels // 2
-                line_image = Image.new("RGBA", (magnifier_size_pixels, magnifier_size_pixels), (0,0,0,0))
-                ImageDraw.Draw(line_image).rectangle((center_x - line_thickness // 2, 0, center_x + (line_thickness + 1) // 2 - 1, magnifier_size_pixels), fill=(255, 255, 255, 230))
+                if divider_visible:
+                    line_thickness = max(1, divider_thickness)
+
+                    split_line_x = content_paste_pos + split_content_x
+                    line_image = Image.new("RGBA", (magnifier_size_pixels, magnifier_size_pixels), (0,0,0,0))
+                    ImageDraw.Draw(line_image).rectangle((split_line_x - line_thickness // 2, 0, split_line_x + (line_thickness + 1) // 2 - 1, magnifier_size_pixels), fill=divider_color)
+                else:
+                    line_image = None
             else:
-                half_content_height = content_size // 2
-                top_half = scaled_content1.crop((0, 0, content_size, half_content_height))
-                bottom_half = scaled_content2.crop((0, half_content_height, content_size, content_size))
+
+                split_content_y = int(content_size * internal_split)
+                top_half = scaled_content1.crop((0, 0, content_size, split_content_y))
+                bottom_half = scaled_content2.crop((0, split_content_y, content_size, content_size))
                 final_magnifier_widget.paste(top_half, (content_paste_pos, content_paste_pos), mask=top_half)
-                final_magnifier_widget.paste(bottom_half, (content_paste_pos, content_paste_pos + half_content_height), mask=bottom_half)
+                final_magnifier_widget.paste(bottom_half, (content_paste_pos, content_paste_pos + split_content_y), mask=bottom_half)
 
-                line_thickness = max(1, int(border_width / 2))
-                center_y = magnifier_size_pixels // 2
-                line_image = Image.new("RGBA", (magnifier_size_pixels, magnifier_size_pixels), (0,0,0,0))
-                ImageDraw.Draw(line_image).rectangle((0, center_y - line_thickness // 2, magnifier_size_pixels, center_y + (line_thickness + 1) // 2 - 1), fill=(255, 255, 255, 230))
+                if divider_visible:
+                    line_thickness = max(1, divider_thickness)
 
-            line_mask_canvas = Image.new("L", (magnifier_size_pixels, magnifier_size_pixels), 0)
-            line_mask_canvas.paste(content_mask, (content_paste_pos, content_paste_pos))
-            line_image.putalpha(ImageChops.multiply(line_image.getchannel("A"), line_mask_canvas))
-            final_magnifier_widget.alpha_composite(line_image, (0, 0))
+                    split_line_y = content_paste_pos + split_content_y
+                    line_image = Image.new("RGBA", (magnifier_size_pixels, magnifier_size_pixels), (0,0,0,0))
+                    ImageDraw.Draw(line_image).rectangle((0, split_line_y - line_thickness // 2, magnifier_size_pixels, split_line_y + (line_thickness + 1) // 2 - 1), fill=divider_color)
+                else:
+                    line_image = None
+
+            if line_image:
+                line_mask_canvas = Image.new("L", (magnifier_size_pixels, magnifier_size_pixels), 0)
+                line_mask_canvas.paste(content_mask, (content_paste_pos, content_paste_pos))
+                line_image.putalpha(ImageChops.multiply(line_image.getchannel("A"), line_mask_canvas))
+                final_magnifier_widget.alpha_composite(line_image, (0, 0))
 
             paste_x = display_center_pos.x() - (magnifier_size_pixels // 2)
             paste_y = display_center_pos.y() - (magnifier_size_pixels // 2)
@@ -296,18 +774,19 @@ class MagnifierDrawer:
         interpolation_method: str,
         is_interactive_render: bool = False,
     ):
-        if not isinstance(image_for_crop, Image.Image) or not crop_box_orig or magnifier_size_pixels <= 0:
+        if not isinstance(image_for_crop, Image.Image) or magnifier_size_pixels <= 0:
             return
 
-        try:
-            resampling_method = get_pil_resampling_method(interpolation_method, is_interactive_render)
+        cropped = image_for_crop if crop_box_orig is None else image_for_crop.crop(crop_box_orig)
 
+        try:
             border_width = max(2, int(magnifier_size_pixels * 0.015))
             content_size = magnifier_size_pixels - border_width * 2 + 2
             if content_size <= 0:
                 return
 
-            scaled_content = image_for_crop.crop(crop_box_orig).resize((content_size, content_size), resampling_method)
+            diff_mode_active = self.composer.app_state.diff_mode != 'off' if hasattr(self.composer, 'app_state') else False
+            scaled_content = resample_image(cropped, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
 
             content_mask = self.get_smooth_circular_mask(content_size)
             if not content_mask:
