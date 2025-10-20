@@ -1,12 +1,13 @@
-import time
+import logging
+import os
+import traceback
 from typing import Callable, Tuple
+
 from PIL import Image, ImageDraw, ImageFont
+from PyQt6.QtCore import QRect
+
 from core.app_state import AppState
 from utils.resource_loader import truncate_text
-from PyQt6.QtCore import QRect
-import traceback
-import os
-import logging
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -114,7 +115,7 @@ class TextDrawer:
                     self._font_cache[cache_key] = ImageFont.truetype(self._font_path, size)
                 else:
                     self._font_cache[cache_key] = ImageFont.load_default()
-            except Exception as e:
+            except Exception:
                 self._font_cache[cache_key] = ImageFont.load_default()
         return self._font_cache[cache_key]
 
@@ -150,7 +151,7 @@ class TextDrawer:
                     draw_context = ImageDraw.Draw(dummy_image)
                 bbox = draw_context.textbbox((0, 0), text, font=font_to_use)
                 return bbox[2] - bbox[0], bbox[3] - bbox[1]
-        except Exception as e:
+        except Exception:
             return len(text) * font_to_use.size // 2, font_to_use.size
 
     def _draw_text_with_supersampling_stroke(self, target_image: Image.Image, xy: tuple[int, int], text: str, font: FontType, anchor: str, fill_color: tuple, font_weight: int, global_alpha_int: int):
@@ -529,5 +530,5 @@ class TextDrawer:
                     w1,
                     w2
                 )
-        except Exception as e:
+        except Exception:
             traceback.print_exc()

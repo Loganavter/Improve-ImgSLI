@@ -43,6 +43,7 @@ class AppConstants:
         "BILINEAR": "Bilinear",
         "BICUBIC": "Bicubic",
         "LANCZOS": "Lanczos",
+        "EWA_LANCZOS": "EWA Lanczos",
     }
 
     FLYOUT_ANIMATION_DURATION_MS = 150

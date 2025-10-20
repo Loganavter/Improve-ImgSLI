@@ -1,6 +1,19 @@
-import sys
-import os
 import argparse
+import os
+import sys
+from pathlib import Path
+
+try:
+
+    current_dir = Path(__file__).resolve().parent
+
+    project_dir = current_dir.parent
+
+    if str(project_dir) not in sys.path:
+        sys.path.insert(0, str(project_dir))
+except Exception:
+
+    pass
 
 if getattr(sys, 'frozen', False):
     application_path = sys._MEIPASS
@@ -9,8 +22,9 @@ else:
 sys.path.insert(0, application_path)
 
 from PyQt6.QtWidgets import QApplication
-from ui.main_window import ImageComparisonApp
+
 from core.settings import SettingsManager
+from ui.main_window import ImageComparisonApp
 
 def main():
     parser = argparse.ArgumentParser(description="Improve ImgSLI - Main entry point")

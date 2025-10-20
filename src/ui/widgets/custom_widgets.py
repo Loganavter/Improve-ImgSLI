@@ -1,87 +1,53 @@
-
-
+import logging
 from enum import Enum
-from functools import lru_cache
-import sys
+
 from PyQt6.QtCore import (
-    Qt, QSize, QTimer, pyqtSignal, QPointF, QPropertyAnimation,
-    QEasingCurve, QRect, QRectF, QPoint, pyqtProperty, QAbstractAnimation, QObject, QEvent
+    QEvent,
+    QPoint,
+    QPointF,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    QTimer,
+    pyqtProperty,
+    pyqtSignal,
 )
 from PyQt6.QtGui import (
-    QColor, QPainter, QPen, QBrush, QPolygon, QFont,
-    QMouseEvent, QCursor, QPixmap, QFontMetrics
+    QBrush,
+    QColor,
+    QCursor,
+    QFont,
+    QFontMetrics,
+    QIcon,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPolygon,
 )
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QSizePolicy,
-    QScrollArea, QScrollBar, QApplication, QGraphicsDropShadowEffect, QPushButton, QColorDialog,
-    QButtonGroup,
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QScrollBar,
+    QSizePolicy,
+    QWidget,
 )
-from ui.widgets import ToolButton, FluentSlider, FluentSwitch, FluentRadioButton
 
-from core.theme import ThemeManager
 from events.drag_drop_handler import DragAndDropService
-from ui.icon_manager import get_icon, AppIcon
 from resources import translations as translations_mod
-import logging
-from .helpers.underline_painter import draw_bottom_underline, UnderlineConfig
+from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from src.shared_toolkit.ui.widgets.helpers.underline_painter import (
+    UnderlineConfig,
+    draw_bottom_underline,
+)
 from ui.gesture_resolver import RatingGestureTransaction
+from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from ui.widgets import ToolButton
 
 tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: text)
 
 logger = logging.getLogger("ImproveImgSLI")
-
-class PathTooltip(QWidget):
-    _instance = None
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            cls._instance = PathTooltip()
-        return cls._instance
-
-    def __init__(self):
-        if PathTooltip._instance is not None:
-            raise RuntimeError("This class is a singleton!")
-
-        super().__init__(None, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-
-        self.main_layout = QVBoxLayout(self)
-        self.SHADOW_WIDTH = 8
-        self.main_layout.setContentsMargins(self.SHADOW_WIDTH, self.SHADOW_WIDTH, self.SHADOW_WIDTH, self.SHADOW_WIDTH)
-
-        self.content_widget = QLabel(self)
-        self.content_widget.setObjectName("TooltipContentWidget")
-        self.main_layout.addWidget(self.content_widget)
-
-        self.shadow = QGraphicsDropShadowEffect(self)
-        self.shadow.setBlurRadius(self.SHADOW_WIDTH * 2)
-        self.shadow.setColor(QColor(0, 0, 0, 100))
-        self.shadow.setOffset(1, 2)
-        self.content_widget.setGraphicsEffect(self.shadow)
-
-        self.theme_manager = ThemeManager.get_instance()
-        self.theme_manager.theme_changed.connect(self._apply_style)
-        self._apply_style()
-
-    def _apply_style(self):
-
-        self.style().unpolish(self.content_widget)
-        self.style().polish(self.content_widget)
-        self.update()
-
-    def show_tooltip(self, pos: QPoint, text: str):
-        if not text:
-            return
-        self.content_widget.setText(text)
-        self.adjustSize()
-
-        self.move(pos + QPoint(15, 15))
-        self.show()
-
-    def hide_tooltip(self):
-        self.hide()
 
 def lerp_color(c1: QColor, c2: QColor, t: float) -> QColor:
     t = max(0.0, min(1.0, t))
@@ -181,7 +147,8 @@ class IconButton(QWidget):
         self._update_icon()
 
     def _update_icon(self):
-        pixmap = get_icon(self._icon).pixmap(self._icon_size)
+
+        pixmap = get_app_icon(self._icon).pixmap(self._icon_size, QIcon.Mode.Normal, QIcon.State.Off)
         self.icon_label.setPixmap(pixmap)
 
     def enterEvent(self, event):
@@ -265,7 +232,8 @@ class LongPressIconButton(QWidget):
         self._update_icon()
 
     def _update_icon(self):
-        pixmap = get_icon(self._icon).pixmap(self._icon_size)
+
+        pixmap = get_app_icon(self._icon).pixmap(self._icon_size, QIcon.Mode.Normal, QIcon.State.Off)
         self.icon_label.setPixmap(pixmap)
 
     def enterEvent(self, event):
@@ -346,6 +314,10 @@ class ScrollableComboBox(QWidget):
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self.update)
         self.setMouseTracking(True)
+    def _style_prefix(self) -> str:
+        """Возвращает префикс для ключей стиля в зависимости от класса виджета."""
+        btn_class = str(self.property("class") or "")
+        return "button.primary" if "primary" in btn_class else "button.default"
         self._pressed = False
 
     def setAutoWidthEnabled(self, enabled: bool):
@@ -477,12 +449,10 @@ class ScrollableComboBox(QWidget):
         painter.setBrush(QBrush(bg_color))
         painter.drawRoundedRect(rectf, 6, 6)
 
-        thin = QColor(self.theme_manager.get_color("input.border.thin"))
-        alpha = max(8, int(thin.alpha() * 0.33))
-        thin.setAlpha(alpha)
-        pen_border = QPen(thin)
-        pen_border.setWidthF(0.66)
-        pen_border.setCapStyle(Qt.PenCapStyle.FlatCap)
+        prefix = self._style_prefix()
+        border_color = QColor(self.theme_manager.get_color(f"{prefix}.border"))
+        pen_border = QPen(border_color)
+        pen_border.setWidthF(1.0)
         painter.setPen(pen_border)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(rectf, 6, 6)
@@ -584,6 +554,9 @@ class MinimalistScrollBar(QScrollBar):
         else:
             self._idle_color = QColor(0, 0, 0, 70)
             self._hover_color = self._idle_color
+
+        self.style().unpolish(self)
+        self.style().polish(self)
         self.update()
 
     @pyqtProperty(float)
@@ -628,41 +601,6 @@ class MinimalistScrollBar(QScrollBar):
     def mousePressEvent(self, event: QMouseEvent):
         event.ignore()
 
-class OverlayScrollArea(QScrollArea):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.setWidgetResizable(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        self.custom_v_scrollbar = MinimalistScrollBar(self)
-
-        self.verticalScrollBar().valueChanged.connect(self.custom_v_scrollbar.setValue)
-        self.custom_v_scrollbar.valueChanged.connect(self.verticalScrollBar().setValue)
-
-        self.verticalScrollBar().rangeChanged.connect(self.custom_v_scrollbar.setRange)
-
-        self.custom_v_scrollbar.setVisible(False)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._position_scrollbar()
-        self._update_scrollbar_visibility()
-
-    def _update_scrollbar_visibility(self):
-        if self.widget():
-            content_height = self.widget().height()
-            viewport_height = self.viewport().height()
-            self.custom_v_scrollbar.setVisible(content_height > viewport_height)
-
-    def _position_scrollbar(self):
-        width = 14
-        self.custom_v_scrollbar.setGeometry(
-            self.width() - width, 0, width, self.height()
-        )
-        self.custom_v_scrollbar.raise_()
-
 class RatingListItem(QWidget):
     itemSelected = pyqtSignal(int)
     itemRightClicked = pyqtSignal(int)
@@ -698,10 +636,7 @@ class RatingListItem(QWidget):
         self._drag_start_pos_global = QPointF()
         self._is_being_dragged = False
 
-        self.tooltip_timer = QTimer(self)
-        self.tooltip_timer.setSingleShot(True)
-        self.tooltip_timer.setInterval(500)
-        self.tooltip_timer.timeout.connect(self._show_tooltip)
+        self.setToolTip(full_path)
 
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(8, 3, 8, 3)
@@ -728,8 +663,8 @@ class RatingListItem(QWidget):
         rating_font.setPixelSize(max(8, base_px - 3))
         self.rating_label.setFont(rating_font)
 
-        self.btn_minus = AutoRepeatButton(get_icon(AppIcon.REMOVE), self)
-        self.btn_plus = AutoRepeatButton(get_icon(AppIcon.ADD), self)
+        self.btn_minus = AutoRepeatButton(get_app_icon(AppIcon.REMOVE), self)
+        self.btn_plus = AutoRepeatButton(get_app_icon(AppIcon.ADD), self)
         for btn in [self.btn_minus, self.btn_plus]:
             btn.setFixedSize(22, 22)
 
@@ -813,8 +748,10 @@ class RatingListItem(QWidget):
 
     def update_styles(self):
 
-        self.btn_minus.setIcon(get_icon(AppIcon.REMOVE))
-        self.btn_plus.setIcon(get_icon(AppIcon.ADD))
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.btn_minus.setIcon(get_app_icon(AppIcon.REMOVE))
+        self.btn_plus.setIcon(get_app_icon(AppIcon.ADD))
         self.update()
 
     def paintEvent(self, event):
@@ -854,19 +791,14 @@ class RatingListItem(QWidget):
             painter.setOpacity(1.0)
 
     def enterEvent(self, event):
-        self.tooltip_timer.start()
         self.update()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.tooltip_timer.stop()
-        PathTooltip.get_instance().hide_tooltip()
         self.update()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent):
-        self.tooltip_timer.stop()
-        PathTooltip.get_instance().hide_tooltip()
 
         if event.button() == Qt.MouseButton.LeftButton:
 
@@ -910,9 +842,6 @@ class RatingListItem(QWidget):
                 if self._gesture_tx is not None:
                     self._gesture_tx.rollback()
                     self._gesture_tx = None
-            self.tooltip_timer.stop()
-            PathTooltip.get_instance().hide_tooltip()
-
             self._is_drag_initiated = True
             service = DragAndDropService.get_instance()
             if not service.is_dragging():
@@ -985,9 +914,6 @@ class RatingListItem(QWidget):
             new_rating = target_list[self.index][3]
             self.rating_label.setText(str(new_rating))
 
-    def _show_tooltip(self):
-        PathTooltip.get_instance().show_tooltip(self.mapToGlobal(self.rect().center()), self.full_path)
-
 class _FlyoutInnerContentWidget(QWidget):
 
     def __init__(self, owner_flyout, parent=None):
@@ -1002,259 +928,3 @@ class _FlyoutInnerContentWidget(QWidget):
             pen = QPen(pen_color, 2, Qt.PenStyle.SolidLine)
             painter.setPen(pen)
             painter.drawLine(8, self.owner_flyout.drop_indicator_y, self.width() - 8, self.owner_flyout.drop_indicator_y)
-
-class FlyoutContentWidget(QWidget):
-    item_chosen = pyqtSignal(int)
-    closing_animation_finished = pyqtSignal()
-
-    SHADOW_RADIUS = 10
-    MARGIN = 8
-
-    def __init__(self, app_ref):
-        super().__init__(None)
-        self.app_ref = app_ref
-        self.image_number = -1
-        self.item_height = 36
-        self.item_font = QFont(QApplication.font(self))
-        self._is_closing = False
-        self.selected_index_to_apply = -1
-        self.drop_indicator_y = -1
-
-        if sys.platform in ('linux', 'darwin'):
-            window_flags = Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
-        else:
-            window_flags = Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
-
-        self.setWindowFlags(window_flags)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-
-        self.container_widget = QWidget(self)
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(self.SHADOW_RADIUS)
-        shadow.setOffset(1, 2)
-        shadow.setColor(QColor(0, 0, 0, 120))
-        self.container_widget.setGraphicsEffect(shadow)
-
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(
-            self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN
-        )
-        self.main_layout.addWidget(self.container_widget)
-
-        container_layout = QVBoxLayout(self.container_widget)
-        container_layout.setContentsMargins(4, 4, 4, 4)
-        container_layout.setSpacing(0)
-
-        self.scroll_area = OverlayScrollArea(self.container_widget)
-        container_layout.addWidget(self.scroll_area)
-
-        self.theme_manager = ThemeManager.get_instance()
-
-        self.content_widget = _FlyoutInnerContentWidget(self)
-        self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(2)
-        self.scroll_area.setWidget(self.content_widget)
-
-        DragAndDropService.get_instance().register_drop_target(self)
-        self.theme_manager.theme_changed.connect(self._update_style)
-        self._update_style()
-        self.hide()
-
-    def _on_destroyed(self):
-        if DragAndDropService._instance is not None:
-            try:
-                DragAndDropService.get_instance().unregister_drop_target(self)
-            except Exception as e:
-                pass
-    def can_accept_drop(self, payload: dict) -> bool:
-        if not payload:
-            return False
-        return payload.get('list_num') == self.image_number
-
-    def _find_drop_target(self, local_pos_y: int) -> tuple[int, int]:
-        service = DragAndDropService.get_instance()
-        source_widget = service._source_widget
-
-        if self.content_layout.count() <= 1 and source_widget:
-            return 0, 0
-
-        closest_item = None
-        min_distance = float('inf')
-
-        for i in range(self.content_layout.count()):
-            item = self.content_layout.itemAt(i).widget()
-            if not item or item is source_widget:
-                continue
-
-            item_mid_y = item.y() + item.height() / 2
-            distance = abs(local_pos_y - item_mid_y)
-
-            if distance < min_distance:
-                min_distance = distance
-                closest_item = item
-
-        if closest_item is None:
-             return 0, 0
-
-        closest_item_mid_y = closest_item.y() + closest_item.height() / 2
-
-        closest_visual_index = self.content_layout.indexOf(closest_item)
-
-        if local_pos_y < closest_item_mid_y:
-            return closest_visual_index, closest_item.y()
-        else:
-            return closest_visual_index + 1, closest_item.y() + closest_item.height()
-
-    def update_drop_indicator(self, global_pos: QPointF):
-        local_pos = self.content_widget.mapFromGlobal(global_pos.toPoint())
-
-        _, indicator_y = self._find_drop_target(local_pos.y())
-
-        if self.drop_indicator_y != indicator_y:
-            self.drop_indicator_y = indicator_y
-            self.content_widget.update()
-
-    def clear_drop_indicator(self):
-        if self.drop_indicator_y != -1:
-            self.drop_indicator_y = -1
-            self.content_widget.update()
-
-    def handle_drop(self, payload: dict, global_pos: QPointF):
-        self.clear_drop_indicator()
-
-        source_list_num = payload.get('list_num', -1)
-        source_index = payload.get('index', -1)
-        if source_index == -1 or source_list_num == -1:
-            return
-
-        local_pos = self.content_widget.mapFromGlobal(global_pos.toPoint())
-
-        dest_index, _ = self._find_drop_target(local_pos.y())
-
-        if source_list_num == self.image_number:
-            QTimer.singleShot(0, lambda: self.app_ref.main_controller.reorder_item_in_list(
-                image_number=self.image_number,
-                source_index=source_index,
-                dest_index=dest_index
-            ))
-        else:
-            QTimer.singleShot(0, lambda: self.app_ref.main_controller.move_item_between_lists(
-                source_list_num=source_list_num,
-                source_index=source_index,
-                dest_list_num=self.image_number,
-                dest_index=dest_index
-            ))
-
-    def _update_style(self):
-        tm = self.theme_manager
-        bg_color = tm.get_color("flyout.background").name(QColor.NameFormat.HexArgb)
-        border_color = tm.get_color("flyout.border").name(QColor.NameFormat.HexArgb)
-        border_radius = 8
-        self.container_widget.setStyleSheet(f"""
-            QWidget {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: {border_radius}px;
-            }}
-        """)
-        self.scroll_area.setStyleSheet("background-color: transparent; border: none;")
-        self.content_widget.setStyleSheet("background: transparent;")
-
-    def repopulate_from_state(self):
-        image_list = self.app_ref.app_state.image_list1 if self.image_number == 1 else self.app_ref.app_state.image_list2
-        self._clear_layout_and_rebuild(image_list)
-
-    def populate(self, image_list, content_width: int):
-        self.container_widget.setFixedWidth(content_width)
-        self._clear_layout_and_rebuild(image_list)
-
-    def _clear_layout_and_rebuild(self, image_list):
-        PathTooltip.get_instance().hide_tooltip()
-        while item := self.content_layout.takeAt(0):
-            if widget := item.widget():
-                widget.deleteLater()
-
-        current_app_index = (
-            self.app_ref.app_state.current_index1
-            if self.image_number == 1
-            else self.app_ref.app_state.current_index2
-        )
-
-        for i, item_data in enumerate(image_list):
-            full_path, name, rating = (
-                item_data[1], item_data[2] or "-----", item_data[3],
-            )
-            list_item_widget = RatingListItem(
-                index=i, text=name, rating=rating, full_path=full_path,
-                app_ref=self.app_ref, owner_flyout=self, parent=self.content_widget,
-                is_current=(i == current_app_index), item_height=self.item_height,
-                item_font=self.item_font,
-            )
-            list_item_widget.itemSelected.connect(
-                lambda idx=i: self.item_chosen.emit(idx)
-            )
-            list_item_widget.itemRightClicked.connect(self._on_item_right_clicked)
-            self.content_layout.addWidget(list_item_widget)
-
-        QTimer.singleShot(0, self._update_flyout_size)
-
-    def update_current_selection(self, new_index: int):
-        for i in range(self.content_layout.count()):
-            item = self.content_layout.itemAt(i).widget()
-            if isinstance(item, RatingListItem):
-                is_now_current = item.index == new_index
-                if item.is_current != is_now_current:
-                    item.is_current = is_now_current
-                    item.update()
-
-    def start_closing_animation(self):
-        PathTooltip.get_instance().hide_tooltip()
-        if self._is_closing or not self.isVisible():
-            return
-        self._is_closing = True
-        self.hide()
-        self.closing_animation_finished.emit()
-
-    def hideEvent(self, event):
-        PathTooltip.get_instance().hide_tooltip()
-        super().hideEvent(event)
-
-    def _on_item_right_clicked(self, index: int):
-        self.app_ref.main_controller.remove_specific_image_from_list(self.image_number, index)
-
-        updated_list = self.app_ref.app_state.image_list1 if self.image_number == 1 else self.app_ref.app_state.image_list2
-
-        if not updated_list:
-            self.start_closing_animation()
-            return
-
-        self.populate(updated_list, self.container_widget.width())
-
-    def _update_flyout_size(self):
-        num_items = self.content_layout.count()
-        if num_items == 0 and self.isVisible():
-             self.hide()
-             return
-
-        spacing = self.content_layout.spacing()
-        content_height = num_items * self.item_height + max(0, num_items - 1) * spacing
-
-        max_items_visible = 7.5
-        max_content_height = int(max_items_visible * self.item_height)
-
-        target_content_height = min(content_height, max_content_height)
-
-        container_height = target_content_height + 4 + 4
-        self.container_widget.setFixedHeight(container_height)
-
-        self.setFixedHeight(container_height + self.MARGIN * 2)
-
-        QTimer.singleShot(0, self._check_scrollbar_visibility)
-
-    def _check_scrollbar_visibility(self):
-        if not self.isVisible(): return
-        content_height_actual = self.content_widget.sizeHint().height()
-        viewport_height_actual = self.scroll_area.viewport().height()
-        is_needed = content_height_actual > viewport_height_actual
-        self.scroll_area.custom_v_scrollbar.setVisible(is_needed)

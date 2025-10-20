@@ -1,13 +1,30 @@
-from enum import Enum
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QPointF, QRect, QEasingCurve, QPropertyAnimation, QTimer, QSize, QAbstractAnimation
-from PyQt6.QtGui import QColor, QPainter, QPen, QGuiApplication
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGraphicsDropShadowEffect, QApplication
 import logging
+from enum import Enum
 
-from ui.widgets.custom_widgets import RatingListItem, OverlayScrollArea, PathTooltip
-from core.theme import ThemeManager
+from PyQt6.QtCore import (
+    QEasingCurve,
+    QPoint,
+    QPointF,
+    QPropertyAnimation,
+    QRect,
+    QSize,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
+from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtWidgets import (
+    QApplication,
+    QGraphicsDropShadowEffect,
+    QVBoxLayout,
+    QWidget,
+)
+
 from core.constants import AppConstants
 from events.drag_drop_handler import DragAndDropService
+from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from src.shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import OverlayScrollArea
+from ui.widgets.custom_widgets import RatingListItem
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -93,7 +110,6 @@ class _Panel(QWidget):
 
 	def clear_and_rebuild(self, image_list: list, owner_proxy: _ListOwnerProxy, item_height: int, item_font, list_type="image", current_index=-1):
 
-		PathTooltip.get_instance().hide_tooltip()
 		while item := self.content_layout.takeAt(0):
 			if w := item.widget():
 				w.deleteLater()
@@ -107,7 +123,7 @@ class _Panel(QWidget):
 			current_app_index = current_index
 
 		if not image_list:
-			from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget, QHBoxLayout
+			from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
 			ph = QWidget(self.content_widget)
 			ph.setFixedHeight(item_height)
 			ph.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -525,8 +541,6 @@ class UnifiedFlyout(QWidget):
 
 		if self._anim:
 			self._anim.stop()
-
-		PathTooltip.get_instance().hide_tooltip()
 
 		if not self._is_closing:
 			self._is_closing = True

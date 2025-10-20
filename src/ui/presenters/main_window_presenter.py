@@ -1,27 +1,33 @@
 import logging
-import time
-import PIL.Image
 import os
 import re
-from datetime import datetime
-from PyQt6.QtWidgets import QWidget, QSizePolicy, QFileDialog, QMessageBox, QDialog, QSystemTrayIcon
-from PyQt6.QtCore import Qt, QTimer, QObject, QSize, QPoint, QEvent
-from PyQt6.QtGui import QColor, QFont, QIcon
 import threading
 
-from image_processing.composer import ImageComposer
-from image_processing.resize import resize_images_processor
-from utils.resource_loader import get_magnifier_drawing_coords
-from ui.main_window_ui import Ui_ImageComparisonApp
+import PIL.Image
+from PyQt6.QtCore import QObject, QPoint, QSize, Qt, QTimer
+from PyQt6.QtGui import QColor, QIcon
+from PyQt6.QtWidgets import (
+    QDialog,
+    QFileDialog,
+    QLabel,
+    QMessageBox,
+    QSizePolicy,
+    QWidget,
+)
+
 from core.app_state import AppState
+from core.constants import AppConstants
 from core.main_controller import MainController
-from workers.generic_worker import GenericWorker
 from events.image_label_event_handler import ImageLabelEventHandler
 from events.window_event_handler import WindowEventHandler
-from ui.managers.ui_manager import UIManager
-from utils.resource_loader import resource_path
-from core.constants import AppConstants
+from image_processing.composer import ImageComposer
+from image_processing.resize import resize_images_processor
 from resources import translations as translations_mod
+from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from ui.main_window_ui import Ui_ImageComparisonApp
+from ui.managers.ui_manager import UIManager
+from utils.resource_loader import get_magnifier_drawing_coords
+from src.shared_toolkit.workers import GenericWorker
 
 tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: text)
 logger = logging.getLogger("ImproveImgSLI")
@@ -38,10 +44,18 @@ class MainWindowPresenter(QObject):
         self.window_handler = WindowEventHandler(app_state, main_controller, ui, main_window_app)
         self.ui_manager = UIManager(app_state, main_controller, ui, main_window_app)
 
+        self._divider_color_dialog = None
+        self._magnifier_divider_color_dialog = None
+
         from ui.widgets.composite.text_settings_flyout import FontSettingsFlyout
         self.font_settings_flyout = FontSettingsFlyout(main_window_app)
         self.font_settings_flyout.hide()
         self.ui_manager.font_settings_flyout = self.font_settings_flyout
+
+        self._orientation_popup = None
+        self._popup_timer = QTimer(self)
+        self._popup_timer.setSingleShot(True)
+        self._popup_timer.timeout.connect(self._hide_orientation_popup)
 
         self._connect_signals()
 
@@ -75,10 +89,21 @@ class MainWindowPresenter(QObject):
         self.ui.edit_name1.textEdited.connect(lambda text: self.main_controller.on_edit_name_changed(1, text))
         self.ui.edit_name2.textEdited.connect(lambda text: self.main_controller.on_edit_name_changed(2, text))
 
-        self.ui.checkbox_horizontal.stateChanged.connect(lambda state: self.main_controller.toggle_orientation(state == Qt.CheckState.Checked.value))
-        self.ui.checkbox_magnifier.stateChanged.connect(lambda state: self.main_controller.toggle_magnifier(state == Qt.CheckState.Checked.value))
-        self.ui.checkbox_file_names.toggled.connect(self.main_controller.toggle_include_filenames_in_saved)
-        self.ui.freeze_button.toggled.connect(self.main_controller.toggle_freeze_magnifier)
+        self.ui.btn_orientation.toggled.connect(self.main_controller.toggle_orientation)
+        self.ui.btn_orientation.rightClicked.connect(self._toggle_magnifier_orientation_on_right_click)
+        self.ui.btn_magnifier_orientation.toggled.connect(self.main_controller.toggle_magnifier_orientation)
+        self.ui.btn_magnifier_orientation.rightClicked.connect(self.ui.btn_magnifier_orientation.click)
+        self.ui.btn_magnifier.toggled.connect(self.main_controller.toggle_magnifier)
+        self.ui.btn_file_names.toggled.connect(self.main_controller.toggle_include_filenames_in_saved)
+        self.ui.btn_freeze.toggled.connect(self.main_controller.toggle_freeze_magnifier)
+
+        self.ui.btn_divider_visible.toggled.connect(self.main_controller.toggle_divider_line_visibility)
+        self.ui.btn_divider_color.clicked.connect(self._show_divider_color_picker)
+        self.ui.btn_divider_width.valueChanged.connect(self.main_controller.set_divider_line_thickness)
+
+        self.ui.btn_magnifier_divider_visible.toggled.connect(self.main_controller.toggle_magnifier_divider_visibility)
+        self.ui.btn_magnifier_divider_color.clicked.connect(self._show_magnifier_divider_color_picker)
+        self.ui.btn_magnifier_divider_width.valueChanged.connect(self.main_controller.set_magnifier_divider_thickness)
 
         self.ui.slider_size.valueChanged.connect(lambda v: self.main_controller.update_magnifier_size_relative(v / 100.0))
         self.ui.slider_capture.valueChanged.connect(lambda v: self.main_controller.update_capture_size_relative(v / 100.0))
@@ -111,6 +136,9 @@ class MainWindowPresenter(QObject):
         self.ui.btn_image1.clicked.connect(lambda: handle_load_button(1))
         self.ui.btn_image2.clicked.connect(lambda: handle_load_button(2))
 
+        self.ui.btn_diff_mode.triggered.connect(lambda action: self.main_controller.set_diff_mode(action.data()))
+        self.ui.btn_channel_mode.triggered.connect(lambda action: self.main_controller.set_channel_view_mode(action.data()))
+
         self.ui.combo_image1.wheelScrolledToIndex.connect(lambda index: self.main_controller.on_combobox_changed(1, index))
         self.ui.combo_image2.wheelScrolledToIndex.connect(lambda index: self.main_controller.on_combobox_changed(2, index))
 
@@ -121,6 +149,7 @@ class MainWindowPresenter(QObject):
         event_handler.mouse_release_event_on_image_label_signal.connect(self.image_label_handler.handle_mouse_release)
         event_handler.keyboard_press_event_signal.connect(self.image_label_handler.handle_key_press)
         event_handler.keyboard_release_event_signal.connect(self.image_label_handler.handle_key_release)
+        event_handler.mouse_wheel_event_on_image_label_signal.connect(self.image_label_handler.handle_wheel_scroll)
         event_handler.drag_enter_event_signal.connect(self.window_handler.handle_drag_enter)
         event_handler.drag_move_event_signal.connect(self.window_handler.handle_drag_move)
         event_handler.drag_leave_event_signal.connect(self.window_handler.handle_drag_leave)
@@ -158,17 +187,35 @@ class MainWindowPresenter(QObject):
         self.ui.slider_size.setValue(int(self.app_state.magnifier_size_relative * 100))
         self.ui.slider_capture.setValue(int(self.app_state.capture_size_relative * 100))
         self.ui.slider_speed.setValue(int(self.app_state.movement_speed_per_sec * 10))
-        self.ui.checkbox_horizontal.setChecked(self.app_state.is_horizontal)
-        self.ui.checkbox_magnifier.setChecked(self.app_state.use_magnifier)
-        self.ui.freeze_button.setChecked(self.app_state.freeze_magnifier)
-        self.ui.checkbox_file_names.setChecked(self.app_state.include_file_names_in_saved)
+
+        self.ui.btn_orientation.setChecked(self.app_state.is_horizontal, emit_signal=False)
+        self.ui.btn_magnifier_orientation.setChecked(self.app_state.magnifier_is_horizontal, emit_signal=False)
+        self.ui.btn_magnifier.setChecked(self.app_state.use_magnifier, emit_signal=False)
+        self.ui.btn_freeze.setChecked(self.app_state.freeze_magnifier, emit_signal=False)
+        self.ui.btn_file_names.setChecked(self.app_state.include_file_names_in_saved, emit_signal=False)
+
+        self.ui.btn_divider_visible.setChecked(not self.app_state.divider_line_visible, emit_signal=False)
+        self.ui.btn_divider_width.set_value(self.app_state.divider_line_thickness)
+        self.ui.btn_divider_color.set_color(self.app_state.divider_line_color)
+
+        self.ui.btn_magnifier_divider_visible.setChecked(not self.app_state.magnifier_divider_visible, emit_signal=False)
+        self.ui.btn_magnifier_divider_width.set_value(self.app_state.magnifier_divider_thickness)
+        self.ui.btn_magnifier_divider_color.set_color(self.app_state.magnifier_divider_color)
+
         self.ui.toggle_edit_layout_visibility(self.app_state.include_file_names_in_saved)
         self.ui.toggle_magnifier_panel_visibility(self.app_state.use_magnifier)
         self._update_interpolation_combo_box_ui()
         self.update_file_names_display()
+        self._setup_view_buttons()
+        self.on_language_changed()
 
     def _on_app_state_changed(self):
         self.ui.toggle_magnifier_panel_visibility(self.app_state.use_magnifier)
+
+        if self.ui.btn_orientation.isChecked() != self.app_state.is_horizontal:
+            self.ui.btn_orientation.setChecked(self.app_state.is_horizontal, emit_signal=False)
+        if self.ui.btn_magnifier_orientation.isChecked() != self.app_state.magnifier_is_horizontal:
+            self.ui.btn_magnifier_orientation.setChecked(self.app_state.magnifier_is_horizontal, emit_signal=False)
         self.ui.toggle_edit_layout_visibility(self.app_state.include_file_names_in_saved)
         self.update_file_names_display()
         self.update_resolution_labels()
@@ -187,11 +234,14 @@ class MainWindowPresenter(QObject):
                     pass
                 return
 
-            file_dialog = QFileDialog(None, tr("Select Image(s)", self.app_state.current_language))
+            file_dialog = QFileDialog(self.main_window_app, tr("Select Image(s)", self.app_state.current_language))
+            file_dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
             file_dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
             file_dialog.setNameFilter(f"{tr('Image Files', self.app_state.current_language)} (*.png *.bmp *.gif *.webp *.tif *.tiff);;{tr('All Files', self.app_state.current_language)} (*)")
             file_dialog.setWindowModality(Qt.WindowModality.NonModal)
             file_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+            self.main_window_app.theme_manager.apply_theme_to_dialog(file_dialog)
 
             def on_selected(paths: list[str]):
                 if paths:
@@ -217,6 +267,24 @@ class MainWindowPresenter(QObject):
         res2_text = "--x--"
         if dim := self.app_state.get_image_dimensions(2): res2_text = f"{dim[0]}x{dim[1]}"
         self.ui.update_resolution_labels(res1_text, res1_text, res2_text, res2_text)
+
+        psnr_visible = self.app_state.auto_calculate_psnr
+        self.ui.psnr_label.setVisible(psnr_visible)
+        if psnr_visible:
+            psnr = self.app_state.psnr_value
+            if psnr is not None:
+                self.ui.psnr_label.setText(f"PSNR: {psnr:.2f} dB")
+            else:
+                self.ui.psnr_label.setText("PSNR: --")
+
+        ssim_visible = self.app_state.auto_calculate_ssim or self.app_state.diff_mode == 'ssim'
+        self.ui.ssim_label.setVisible(ssim_visible)
+        if ssim_visible:
+            ssim = self.app_state.ssim_value
+            if ssim is not None:
+                self.ui.ssim_label.setText(f"SSIM: {ssim:.4f}")
+            else:
+                self.ui.ssim_label.setText("SSIM: --")
 
     def update_file_names_display(self):
         name1 = self.app_state.get_current_display_name(1) or "-----"
@@ -252,6 +320,7 @@ class MainWindowPresenter(QObject):
 
     def on_language_changed(self):
         self.ui.update_translations(self.app_state.current_language)
+        self._setup_view_buttons()
         self.update_combobox_displays()
 
         self._update_interpolation_combo_box_ui()
@@ -259,16 +328,23 @@ class MainWindowPresenter(QObject):
 
     def _update_interpolation_combo_box_ui(self):
 
+        try:
+            from image_processing.resize import WAND_AVAILABLE
+        except Exception:
+            WAND_AVAILABLE = False
+
+        method_keys_all = list(AppConstants.INTERPOLATION_METHODS_MAP.keys())
+        method_keys = [k for k in method_keys_all if k != "EWA_LANCZOS" or WAND_AVAILABLE]
+
         target_method_key = self.app_state.interpolation_method
-        method_keys = list(AppConstants.INTERPOLATION_METHODS_MAP.keys())
+        if target_method_key not in method_keys:
+            target_method_key = AppConstants.DEFAULT_INTERPOLATION_METHOD if AppConstants.DEFAULT_INTERPOLATION_METHOD in method_keys else (method_keys[0] if method_keys else AppConstants.DEFAULT_INTERPOLATION_METHOD)
+            self.app_state.interpolation_method = target_method_key
 
         try:
             current_index = method_keys.index(target_method_key)
         except ValueError:
-
-            target_method_key = AppConstants.DEFAULT_INTERPOLATION_METHOD
-            current_index = method_keys.index(target_method_key)
-            self.app_state.interpolation_method = target_method_key
+            current_index = 0
 
         labels = [
             tr(AppConstants.INTERPOLATION_METHODS_MAP[key], self.app_state.current_language)
@@ -283,6 +359,26 @@ class MainWindowPresenter(QObject):
             items=labels
         )
 
+    def _setup_view_buttons(self):
+        lang = self.app_state.current_language
+
+        diff_actions = [
+            (tr("Off", lang), 'off'),
+            (tr("Highlight", lang), 'highlight'),
+            (tr("Grayscale", lang), 'grayscale'),
+            (tr("Edge Comparison", lang), 'edges'),
+            (tr("SSIM Map", lang), 'ssim')
+        ]
+        self.ui.btn_diff_mode.set_actions(diff_actions)
+        self.ui.btn_diff_mode.set_current_by_data(self.app_state.diff_mode)
+
+        channel_actions = [
+            (tr("RGB", lang), 'RGB'), ('Red', 'R'), ('Green', 'G'), ('Blue', 'B'),
+            (tr("Luminance", lang), 'L')
+        ]
+        self.ui.btn_channel_mode.set_actions(channel_actions)
+        self.ui.btn_channel_mode.set_current_by_data(self.app_state.channel_view_mode)
+
     def _finish_resize_delay(self):
         if self.app_state.resize_in_progress:
             self.app_state.resize_in_progress = False
@@ -290,7 +386,11 @@ class MainWindowPresenter(QObject):
 
     def _save_result_with_error_handling(self):
         if not self.app_state.original_image1 or not self.app_state.original_image2:
-            QMessageBox.warning(self.main_window_app, tr("Warning", self.app_state.current_language), tr("Please load and select images in both slots first.", self.app_state.current_language))
+            self.ui_manager.show_non_modal_message(
+                icon=QMessageBox.Icon.Warning,
+                title=tr("Warning", self.app_state.current_language),
+                text=tr("Please load and select images in both slots first.", self.app_state.current_language)
+            )
             return
 
         try:
@@ -302,20 +402,33 @@ class MainWindowPresenter(QObject):
             if not image1_for_save or not image2_for_save: raise ValueError("Failed to unify images for saving.")
 
             save_width, save_height = image1_for_save.size
-            magnifier_coords_for_save = get_magnifier_drawing_coords(app_state=self.app_state, drawing_width=save_width, drawing_height=save_height) if self.app_state.use_magnifier else None
+
+            magnifier_coords_for_save = get_magnifier_drawing_coords(
+                app_state=self.app_state,
+                drawing_width=save_width,
+                drawing_height=save_height,
+                container_width=save_width,
+                container_height=save_height,
+            ) if self.app_state.use_magnifier else None
 
             preview_scale = max(1, min(5, max(save_width, save_height) // 800))
             preview_w, preview_h = max(1, save_width // preview_scale), max(1, save_height // preview_scale)
 
+            magnifier_coords_for_preview = get_magnifier_drawing_coords(
+                app_state=self.app_state,
+                drawing_width=preview_w,
+                drawing_height=preview_h,
+            ) if self.app_state.use_magnifier else None
+
             composer = ImageComposer(self.main_window_app.font_path_absolute)
 
-            preview_magnifier_coords = get_magnifier_drawing_coords(app_state=self.app_state, drawing_width=preview_w, drawing_height=preview_h) if self.app_state.use_magnifier else None
-
-            preview_img, _, _ = composer.generate_comparison_image(
+            preview_img, _, _, _, _ = composer.generate_comparison_image(
                 app_state=self.app_state,
                 image1_scaled=image1_for_save.resize((preview_w, preview_h), PIL.Image.Resampling.BILINEAR),
                 image2_scaled=image2_for_save.resize((preview_w, preview_h), PIL.Image.Resampling.BILINEAR),
-                original_image1=original1_full, original_image2=original2_full, magnifier_drawing_coords=preview_magnifier_coords,
+                original_image1=original1_full,
+                original_image2=original2_full,
+                magnifier_drawing_coords=magnifier_coords_for_preview,
                 font_path_absolute=self.main_window_app.font_path_absolute, file_name1_text=self.app_state.get_current_display_name(1),
                 file_name2_text=self.app_state.get_current_display_name(2)
             )
@@ -342,7 +455,11 @@ class MainWindowPresenter(QObject):
 
             out_dir, out_name = export_opts.get("output_dir"), export_opts.get("file_name")
             if not out_dir or not out_name:
-                QMessageBox.warning(self.main_window_app, tr("Invalid Data", self.app_state.current_language), tr("Please specify output directory and file name.", self.app_state.current_language))
+                self.ui_manager.show_non_modal_message(
+                    icon=QMessageBox.Icon.Warning,
+                    title=tr("Invalid Data", self.app_state.current_language),
+                    text=tr("Please specify output directory and file name.", self.app_state.current_language)
+                )
                 return
 
             app_state_copy_for_task = self.app_state.copy_for_worker()
@@ -379,7 +496,7 @@ class MainWindowPresenter(QObject):
                 image2_for_save=image2_for_save,
                 original1_full=original1_full,
                 original2_full=original2_full,
-                magnifier_coords_for_save=magnifier_coords_for_save,
+                magnifier_drawing_coords=magnifier_coords_for_save,
                 export_options=export_opts,
                 cancel_event=cancel_event,
                 file_name1_text=self.app_state.get_current_display_name(1),
@@ -432,15 +549,23 @@ class MainWindowPresenter(QObject):
             self.main_controller.settings_manager.save_all_settings(self.app_state)
         except Exception as e:
             logger.error(f"Error during save preparation: {e}", exc_info=True)
-            QMessageBox.critical(self.main_window_app, tr("Error", self.app_state.current_language), f"{tr('Failed to save image:', self.app_state.current_language)}\n{str(e)}")
+            self.ui_manager.show_non_modal_message(
+                icon=QMessageBox.Icon.Critical,
+                title=tr("Error", self.app_state.current_language),
+                text=f"{tr('Failed to save image:', self.app_state.current_language)}\n{str(e)}"
+            )
 
     def _quick_save_with_error_handling(self):
         if not self.app_state.original_image1 or not self.app_state.original_image2:
-            QMessageBox.warning(self.main_window_app, tr("Warning", self.app_state.current_language), tr("Please load and select images in both slots first.", self.app_state.current_language))
+            self.ui_manager.show_non_modal_message(icon=QMessageBox.Icon.Warning, title=tr("Warning", self.app_state.current_language), text=tr("Please load and select images in both slots first.", self.app_state.current_language))
             return
 
         if not hasattr(self.app_state, 'export_default_dir') or not self.app_state.export_default_dir:
-            QMessageBox.warning(self.main_window_app, tr("Warning", self.app_state.current_language), tr("No previous export settings found. Please use Save Result first.", self.app_state.current_language))
+            self.ui_manager.show_non_modal_message(
+                icon=QMessageBox.Icon.Warning,
+                title=tr("Warning", self.app_state.current_language),
+                text=tr("No previous export settings found. Please use Save Result first.", self.app_state.current_language)
+            )
             return
 
         try:
@@ -455,10 +580,13 @@ class MainWindowPresenter(QObject):
                 raise ValueError("Failed to unify images for saving.")
 
             save_width, save_height = image1_for_save.size
+
             magnifier_coords_for_save = get_magnifier_drawing_coords(
                 app_state=self.app_state,
                 drawing_width=save_width,
-                drawing_height=save_height
+                drawing_height=save_height,
+                container_width=save_width,
+                container_height=save_height,
             ) if self.app_state.use_magnifier else None
 
             composer = ImageComposer(self.main_window_app.font_path_absolute)
@@ -528,7 +656,7 @@ class MainWindowPresenter(QObject):
                 image2_for_save=image2_for_save,
                 original1_full=original1_full,
                 original2_full=original2_full,
-                magnifier_coords_for_save=magnifier_coords_for_save,
+                magnifier_drawing_coords=magnifier_coords_for_save,
                 export_options=export_options,
                 cancel_event=cancel_event,
                 file_name1_text=self.app_state.get_current_display_name(1),
@@ -573,10 +701,10 @@ class MainWindowPresenter(QObject):
 
         except Exception as e:
             logger.error(f"Error during quick save preparation: {e}", exc_info=True)
-            QMessageBox.critical(
-                self.main_window_app,
-                tr("Error", self.app_state.current_language),
-                f"{tr('Failed to quick save image:', self.app_state.current_language)}\n{str(e)}"
+            self.ui_manager.show_non_modal_message(
+                icon=QMessageBox.Icon.Critical,
+                title=tr("Error", self.app_state.current_language),
+                text=f"{tr('Failed to quick save image:', self.app_state.current_language)}\n{str(e)}"
             )
 
     def _export_worker_task(self, **kwargs):
@@ -593,13 +721,13 @@ class MainWindowPresenter(QObject):
         try:
             emit_progress(10)
             check_canceled()
-            final_img, _, _ = composer.generate_comparison_image(
+            final_img, _, _, _, _ = composer.generate_comparison_image(
                 app_state=kwargs['app_state_copy'],
                 image1_scaled=kwargs['image1_for_save'],
                 image2_scaled=kwargs['image2_for_save'],
                 original_image1=kwargs['original1_full'],
                 original_image2=kwargs['original2_full'],
-                magnifier_drawing_coords=kwargs['magnifier_coords_for_save'],
+                magnifier_drawing_coords=kwargs.get('magnifier_drawing_coords'),
                 font_path_absolute=self.main_window_app.font_path_absolute,
                 file_name1_text=kwargs['file_name1_text'],
                 file_name2_text=kwargs['file_name2_text'],
@@ -647,7 +775,6 @@ class MainWindowPresenter(QObject):
                 try:
                     comment_text = (export_options.get("comment_text") or "").strip()
                     if comment_text and bool(export_options.get("include_metadata", True)):
-                        from PIL import TiffImagePlugin
                         exif = img_to_save.getexif()
                         exif[0x9286] = comment_text
                         save_kwargs['exif'] = exif.tobytes()
@@ -666,7 +793,6 @@ class MainWindowPresenter(QObject):
 
             check_canceled()
 
-            import io
             class _CancelableStream:
                 def __init__(self, base, cancel_ev): self._b, self._e = base, cancel_ev
                 def write(self, b):
@@ -757,17 +883,16 @@ class MainWindowPresenter(QObject):
                 raise ValueError("Failed to unify images for saving.")
 
             save_width, save_height = image1_for_save.size
-            magnifier_coords_for_save = get_magnifier_drawing_coords(app_state=self.app_state, drawing_width=save_width, drawing_height=save_height) if self.app_state.use_magnifier else None
 
             composer = ImageComposer(self.main_window_app.font_path_absolute)
 
-            final_img, _, _ = composer.generate_comparison_image(
+            final_img, _, _, _, _ = composer.generate_comparison_image(
                 app_state=self.app_state,
                 image1_scaled=image1_for_save,
                 image2_scaled=image2_for_save,
                 original_image1=original1_full,
                 original_image2=original2_full,
-                magnifier_drawing_coords=magnifier_coords_for_save,
+                magnifier_drawing_coords=None,
                 font_path_absolute=self.main_window_app.font_path_absolute,
                 file_name1_text=self.app_state.get_current_display_name(1),
                 file_name2_text=self.app_state.get_current_display_name(2)
@@ -846,4 +971,99 @@ class MainWindowPresenter(QObject):
             if not os.path.exists(new_path):
                 return new_path
             counter += 1
+
+    def _show_divider_color_picker(self):
+        """Показывает диалог выбора цвета для линии разделения"""
+        from PyQt6.QtWidgets import QColorDialog
+        if self._divider_color_dialog and self._divider_color_dialog.isVisible():
+            self._divider_color_dialog.raise_()
+            self._divider_color_dialog.activateWindow()
+            return
+
+        current_color = self.app_state.divider_line_color
+        self._divider_color_dialog = QColorDialog(current_color, self.main_window_app)
+        self._divider_color_dialog.setWindowFlags(self._divider_color_dialog.windowFlags() | Qt.WindowType.Window)
+        self._divider_color_dialog.setModal(False)
+        self._divider_color_dialog.setWindowTitle(tr("Choose Divider Line Color", self.app_state.current_language))
+        self.main_window_app.theme_manager.apply_theme_to_dialog(self._divider_color_dialog)
+
+        def on_color_selected(color):
+            if color.isValid():
+                self.main_controller.set_divider_line_color(color)
+                self.ui.btn_divider_color.set_color(color)
+
+        self._divider_color_dialog.colorSelected.connect(on_color_selected)
+        self._divider_color_dialog.show()
+
+    def _show_magnifier_divider_color_picker(self):
+        """Показывает диалог выбора цвета для внутренней линии разделения в лупе"""
+        from PyQt6.QtWidgets import QColorDialog
+        if self._magnifier_divider_color_dialog and self._magnifier_divider_color_dialog.isVisible():
+            self._magnifier_divider_color_dialog.raise_()
+            self._magnifier_divider_color_dialog.activateWindow()
+            return
+
+        current_color = self.app_state.magnifier_divider_color
+        self._magnifier_divider_color_dialog = QColorDialog(current_color, self.main_window_app)
+        self._magnifier_divider_color_dialog.setWindowFlags(self._magnifier_divider_color_dialog.windowFlags() | Qt.WindowType.Window)
+        self._magnifier_divider_color_dialog.setModal(False)
+        self._magnifier_divider_color_dialog.setWindowTitle(tr("Choose Magnifier Divider Line Color", self.app_state.current_language))
+        self.main_window_app.theme_manager.apply_theme_to_dialog(self._magnifier_divider_color_dialog)
+
+        def on_color_selected(color):
+            if color.isValid():
+                self.main_controller.set_magnifier_divider_color(color)
+                self.ui.btn_magnifier_divider_color.set_color(color)
+
+        self._magnifier_divider_color_dialog.colorSelected.connect(on_color_selected)
+        self._magnifier_divider_color_dialog.show()
+
+    def update_magnifier_orientation_button_state(self):
+        """Обновляет состояние кнопки ориентации лупы извне."""
+        self.ui.btn_magnifier_orientation.setChecked(self.app_state.magnifier_is_horizontal, emit_signal=False)
+
+    def _toggle_magnifier_orientation_on_right_click(self):
+        """Обрабатывает правый клик по основной кнопке ориентации и показывает попап."""
+
+        self.main_controller.toggle_magnifier_orientation()
+
+        is_now_horizontal = self.app_state.magnifier_is_horizontal
+        icon_to_show = AppIcon.HORIZONTAL_SPLIT if is_now_horizontal else AppIcon.VERTICAL_SPLIT
+
+        pixmap = get_app_icon(icon_to_show).pixmap(QSize(20, 20), QIcon.Mode.Normal, QIcon.State.Off)
+
+        if self._orientation_popup is None:
+            self._orientation_popup = QLabel(parent=self.main_window_app.window())
+            self._orientation_popup.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+            self._orientation_popup.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        is_dark = self.main_window_app.theme_manager.is_dark()
+        bg_color = "#3c3c3c" if is_dark else "#ffffff"
+        border_color = "#666666" if is_dark else "#d0d0d0"
+        self._orientation_popup.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                padding: 4px;
+            }}
+        """)
+
+        self._orientation_popup.setPixmap(pixmap)
+        self._orientation_popup.setFixedSize(32, 32)
+
+        button_global_pos = self.ui.btn_orientation.mapToGlobal(QPoint(0, 0))
+        popup_x = button_global_pos.x() + (self.ui.btn_orientation.width() - self._orientation_popup.width()) // 2
+        popup_y = button_global_pos.y() - self._orientation_popup.height() - 10
+
+        self._orientation_popup.move(popup_x, popup_y)
+        self._orientation_popup.show()
+        self._orientation_popup.raise_()
+
+        self._popup_timer.start(1200)
+
+    def _hide_orientation_popup(self):
+        """Скрывает всплывающую подсказку"""
+        if self._orientation_popup:
+            self._orientation_popup.hide()
 

@@ -1,7 +1,7 @@
 import logging
+
 from PyQt6 import sip
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QPointF, QEvent, pyqtSignal, QObject, QTimer, QPoint
+from PyQt6.QtCore import QObject, QPointF
 
 DragGhostWidget = None
 
@@ -52,12 +52,6 @@ class DragAndDropService(QObject):
             return
 
         self._is_dragging = True
-
-        try:
-            from ui.widgets.custom_widgets import PathTooltip
-            PathTooltip.get_instance().hide_tooltip()
-        except Exception:
-            pass
 
         self._source_widget = source_widget
 

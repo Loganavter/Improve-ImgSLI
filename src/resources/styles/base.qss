@@ -86,9 +86,11 @@ QDialog#HelpDialog QListWidget {
     border-right: 1px solid @help.nav.border;
     font-size: 14px;
     padding-top: 5px;
+    outline: 0;
 }
 QDialog#HelpDialog QListWidget::item {
     padding-left: 15px;
+    padding-right: 5px;
 }
 QDialog#HelpDialog QListWidget::item:hover {
     background-color: @help.nav.hover;
@@ -179,16 +181,6 @@ QWidget#FlyoutWidget, QWidget#FontSettingsContainer {
 }
 QWidget#FlyoutWidget QScrollArea, QWidget#FlyoutWidget QScrollArea > QWidget > QWidget {
     background-color: transparent; border: none;
-}
-
-/* --- Стили для PathTooltip --- */
-QLabel#TooltipContentWidget {
-    background-color: @tooltip.background;
-    color: @tooltip.text;
-    border: 1px solid @tooltip.border;
-    padding: 4px 6px;
-    border-radius: 5px;
-    font-size: 13px;
 }
 
 /* --- Стили для RatingListItem --- */

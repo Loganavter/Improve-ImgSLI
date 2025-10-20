@@ -1,14 +1,33 @@
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QPropertyAnimation, QEasingCurve, QSize, QRect
-from PyQt6.QtGui import QColor, QMouseEvent
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QButtonGroup, QColorDialog, QApplication, QGraphicsDropShadowEffect
+from PyQt6.QtCore import (
+    QEasingCurve,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    QSize,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QButtonGroup,
+    QColorDialog,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from core.theme import ThemeManager
 from core.constants import AppConstants
-from ui.widgets.atomic.fluent_slider import FluentSlider
-from ui.widgets.atomic.fluent_switch import FluentSwitch
-from ui.widgets.atomic.fluent_radio import FluentRadioButton
-
 from resources import translations as translations_mod
+from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from src.shared_toolkit.ui.widgets.atomic import (
+    FluentRadioButton,
+    FluentSlider,
+    FluentSwitch,
+)
 
 tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: text)
 
@@ -28,6 +47,9 @@ class FontSettingsFlyout(QWidget):
         self.container.setObjectName("FlyoutWidget")
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(10)
+
+        self._color_dialog = None
+        self._bg_color_dialog = None
         shadow.setOffset(1, 2)
         shadow.setColor(QColor(0, 0, 0, 120))
         self.container.setGraphicsEffect(shadow)
@@ -130,6 +152,7 @@ class FontSettingsFlyout(QWidget):
                 border-radius: 8px;
             }}
         """)
+
         self.style().unpolish(self)
         self.style().polish(self)
         self.update()
@@ -184,42 +207,62 @@ class FontSettingsFlyout(QWidget):
         self.settings_changed.emit(size, font_weight, color, bg_color, draw_text_background, text_placement_mode, text_alpha_percent)
 
     def _open_color_dialog(self):
+        if self._color_dialog and self._color_dialog.isVisible():
+            self._color_dialog.raise_()
+            self._color_dialog.activateWindow()
+            return
+
         color_str = self.color_preview.styleSheet().split("background-color:")[1].split(";")[0].strip()
         initial_color = QColor(color_str)
-        color_dialog = QColorDialog()
-        color_dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
-        color_dialog.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
-        color_dialog.setCurrentColor(initial_color)
+        self._color_dialog = QColorDialog(initial_color, self)
+        self._color_dialog.setWindowFlags(self._color_dialog.windowFlags() | Qt.WindowType.Window)
+        self._color_dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+        self._color_dialog.setModal(False)
 
         ui_manager = self.app_ref.presenter.ui_manager
         ui_manager.set_modal_dialog_active(True)
-        try:
-            if color_dialog.exec():
-                new_color = color_dialog.selectedColor()
-                if new_color.isValid():
-                    self.color_preview.setStyleSheet(f"background-color: {new_color.name()}; border-radius: 14px; border: 1px solid grey;")
-                    self._emit_changes()
-        finally:
+
+        def on_color_selected(color):
+            if color.isValid():
+                self.color_preview.setStyleSheet(f"background-color: {color.name()}; border-radius: 14px; border: 1px solid grey;")
+                self._emit_changes()
+
+        def on_finished(result):
             ui_manager.set_modal_dialog_active(False)
+            self._color_dialog = None
+
+        self._color_dialog.colorSelected.connect(on_color_selected)
+        self._color_dialog.finished.connect(on_finished)
+        self._color_dialog.show()
 
     def _open_bg_color_dialog(self):
+        if self._bg_color_dialog and self._bg_color_dialog.isVisible():
+            self._bg_color_dialog.raise_()
+            self._bg_color_dialog.activateWindow()
+            return
+
         color_str = self.bg_color_preview.styleSheet().split("background-color:")[1].split(";")[0].strip()
         initial_color = QColor(color_str)
-        color_dialog = QColorDialog()
-        color_dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
-        color_dialog.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
-        color_dialog.setCurrentColor(initial_color)
+        self._bg_color_dialog = QColorDialog(initial_color, self)
+        self._bg_color_dialog.setWindowFlags(self._bg_color_dialog.windowFlags() | Qt.WindowType.Window)
+        self._bg_color_dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+        self._bg_color_dialog.setModal(False)
 
         ui_manager = self.app_ref.presenter.ui_manager
         ui_manager.set_modal_dialog_active(True)
-        try:
-            if color_dialog.exec():
-                new_color = color_dialog.selectedColor()
-                if new_color.isValid():
-                    self.bg_color_preview.setStyleSheet(f"background-color: {new_color.name()}; border-radius: 14px; border: 1px solid grey;")
-                    self._emit_changes()
-        finally:
+
+        def on_color_selected(color):
+            if color.isValid():
+                self.bg_color_preview.setStyleSheet(f"background-color: {color.name()}; border-radius: 14px; border: 1px solid grey;")
+                self._emit_changes()
+
+        def on_finished(result):
             ui_manager.set_modal_dialog_active(False)
+            self._bg_color_dialog = None
+
+        self._bg_color_dialog.colorSelected.connect(on_color_selected)
+        self._bg_color_dialog.finished.connect(on_finished)
+        self._bg_color_dialog.show()
 
     def _create_debug_marker(self, pos: QPoint, color: str, size: int = 10, text: str = ""):
         marker = QLabel(text, self.parent())
@@ -238,7 +281,7 @@ class FontSettingsFlyout(QWidget):
 
             anchor_origin_global = anchor_widget.mapToGlobal(anchor_widget.rect().topLeft())
 
-        except Exception as e:
+        except Exception:
             return
 
         content_size = self.container.sizeHint()
