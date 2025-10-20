@@ -154,10 +154,13 @@ en_translations = {
     "Bilinear": "Bilinear",
     "Bicubic": "Bicubic",
     "Lanczos": "Lanczos (High Quality)",
+    "EWA Lanczos": "EWA Lanczos (Superior Anti-Aliasing)",
     "Select interpolation method for magnifier zoom": "Select interpolation method for magnifier zoom",
     "Quick Preview:": "Quick Preview:",
     "Hold Space and use mouse buttons to quickly preview": "Hold Space and use mouse buttons to quickly preview",
     "Enable debug logging": "Enable debug logging",
+    "Auto-calculate PSNR": "Auto-calculate PSNR",
+    "Auto-calculate SSIM": "Auto-calculate SSIM",
     "System notifications": "System notifications",
     "Shows detailed logs for developers. Requires restart.": "Shows detailed logs for developers. Requires restart.",
     "Restart the application for the debug log setting to take full effect.": "Restart the application for the debug log setting to take full effect.",
@@ -186,7 +189,7 @@ en_translations = {
     "help_intro_html": """
     <body>
         <h2>Welcome to Improve ImgSLI!</h2>
-        <p>This application is designed for detailed visual image comparison, ideal for designers, photographers, AI upscaling enthusiasts, and anyone who needs to see the difference between images.</p>
+        <p>This application is designed for detailed visual image comparison, ideal for designers, photographers, AI art/upscaling enthusiasts, and anyone needing precise visual analysis.</p>
         <p>Use the navigation panel on the left to learn about specific features.</p>
     </body>
     """,
@@ -194,9 +197,30 @@ en_translations = {
     <body>
         <h2>File Management</h2>
         <h3>Loading Images</h3>
+        <p>You can load images in multiple ways:</p>
         <ul>
-            <li>Click the <b>Add Img(s)</b> buttons to open a file dialog.</li>
-            <li>Alternatively, <b>drag and drop</b> image files onto the left or right drop zones in the main window.</li>
+            <li>Click the <b>Add Img(s)</b> buttons to open a file dialog and select multiple files.</li>
+            <li><b>Drag and drop</b> one or more image files directly onto the main window. An overlay will appear, allowing you to choose whether to add them to the left or right list.</li>
+            <li>Press <code>Ctrl+V</code> to paste an image from the clipboard.</li>
+        </ul>
+        <h3>Managing Image Lists</h3>
+        <p>Click the dropdown menus to open the image list manager. This powerful flyout provides advanced features:</p>
+        <ul>
+            <li><b>Drag & Drop Reordering:</b> Click and drag an item to reorder it within its list, or drag it over to the other list to move it.</li>
+            <li><b>Swap Button (⇄):</b>
+                <ul>
+                    <li>A <b>short click</b> swaps only the two currently selected images between the lists.</li>
+                    <li>A <b>long press</b> (~0.6s) swaps the entire left and right image lists.</li>
+                </ul>
+            </li>
+            <li><b>Clear Button (🗑️):</b>
+                <ul>
+                    <li>A <b>short click</b> removes only the currently selected image from its list.</li>
+                    <li>A <b>long press</b> clears the entire list for that panel.</li>
+                </ul>
+            </li>
+            <li><b>Rating System:</b> Use the <b>[+]</b> and <b>[-]</b> buttons next to each image to change its rating.</li>
+            <li><b>Remove Item:</b> <b>Right-click</b> on any item in the list to remove it.</li>
         </ul>
     </body>
     """,
@@ -232,6 +256,8 @@ en_translations = {
     "At Edges": "At Edges",
     "Near Split Line": "Near Split Line",
     "Select Image(s)": "Select Image(s)",
+    "Optimize magnifier movement": "Optimize magnifier movement",
+    "Movement Interpolation:": "Movement Interpolation:",
 
     "Help Section: Hotkeys": "Hotkeys",
 
@@ -239,15 +265,21 @@ en_translations = {
     <body>
         <h2>Basic Comparison</h2>
         <ul>
-            <li>When the magnifier is off, you can <b>click and drag the split line</b> to compare different parts.</li>
+            <li>When the magnifier is off, you can <b>click and drag the split line</b> to compare different parts of the images.</li>
             <li>Check <b>Horizontal Split</b> to change the split orientation from vertical to horizontal.</li>
+        </ul>
+        <h3>Quick Preview</h3>
+        <p>To quickly see one of the original images in full, hold down the <b>Spacebar</b>:</p>
+        <ul>
+            <li>While holding Space, press the <b>Left Mouse Button</b> to view Image 1.</li>
+            <li>While holding Space, press the <b>Right Mouse Button</b> to view Image 2.</li>
+            <li>Release the mouse button and Spacebar to return to the comparison view.</li>
         </ul>
     </body>
     """,
     "help_magnifier_html": """
     <body>
         <h2>Magnifier Tool</h2>
-        <p>The magnifier is a powerful tool for pixel-level inspection.</p>
         <h3>Basics</h3>
         <ul>
             <li>Check <b>Use Magnifier</b> to enable it.</li>
@@ -255,21 +287,17 @@ en_translations = {
             <li><b>Freeze Magnifier:</b> Lock the magnifier position on screen. While frozen, you can still move the view with WASD.</li>
         </ul>
         <h3>Controls</h3>
+        <p>Fine-tune the magnifier using sliders and keyboard shortcuts:</p>
         <ul>
-            <li><b>Magnifier Sliders:</b>
-                <ul>
-                    <li><b>Magnifier Size:</b> Zoom level.</li>
-                    <li><b>Capture Size:</b> Size of the sampled area from the original image.</li>
-                    <li><b>Move Speed:</b> Speed of WASD movement.</li>
-                </ul>
-            </li>
-            <li><b>Keyboard:</b>
-                <ul>
-                    <li><code>WASD</code> moves the magnified view relative to the capture point (or moves the frozen view).</li>
-                    <li><code>QE</code> adjusts spacing between the two halves when separated.</li>
-                </ul>
-            </li>
-            <li><b>Interpolation:</b> Choose resampling method (Nearest, Bilinear, Lanczos) to control rendering quality.</li>
+            <li><b>Magnifier Size Slider:</b> Controls the zoom level.</li>
+            <li><b>Capture Size Slider:</b> Adjusts the size of the area being sampled from the original image.</li>
+            <li><b>Move Speed Slider:</b> Sets the speed for keyboard movement.</li>
+            <li><b>Keyboard <code>WASD</code>:</b> Moves the magnified view relative to the capture point (or moves the entire frozen magnifier).</li>
+            <li><b>Keyboard <code>QE</code>:</b> Adjusts the spacing between the two magnifier halves when they are separated.</li>
+            <li><b>Interpolation:</b> Choose a resampling method (e.g., Nearest, Bilinear, Lanczos, EWA Lanczos) to control the rendering quality of the zoomed image.</li>
+            <ul>
+                <li><b>EWA Lanczos:</b> An advanced method using supersampling to simulate EWA (Elliptical Weighted Average) Lanczos. Provides superior anti-aliasing by first upscaling the image 2x, then downscaling with Lanczos filtering. Excellent for reducing moiré and aliasing in detailed images.</li>
+            </ul>
         </ul>
     </body>
     """,
@@ -277,10 +305,16 @@ en_translations = {
     <body>
         <h2>Exporting Results</h2>
         <ul>
-            <li>Click <b>Save Result</b> to export the current view as a high‑resolution PNG or JPG.</li>
-            <li>The saved image includes the split line, magnifier (if active), and capture marker.</li>
-            <li>Check <b>Include file names</b> to add text overlays.</li>
-            <li>Use the text settings flyout (✎) to adjust font size, weight, color, background and placement.</li>
+            <li>Click the main <b>Save Result</b> button to open the feature-rich <b>Export dialog</b>.</li>
+            <li>In this dialog, you can configure:
+                <ul>
+                    <li>Output directory and file name.</li>
+                    <li>Image format (PNG, JPEG, WEBP, etc.).</li>
+                    <li>Quality/compression levels.</li>
+                    <li>An option to fill transparent backgrounds with a custom color.</li>
+                </ul>
+            </li>
+            <li><b>Text Overlays:</b> If you check <b>Include file names</b>, you can use the text settings flyout (✎) to customize the appearance of the filename overlays on the final image, including font size, weight, color, background, and placement.</li>
         </ul>
     </body>
     """,
@@ -288,10 +322,13 @@ en_translations = {
     <body>
         <h2>Settings</h2>
         <ul>
-            <li><b>Language</b> — UI language.</li>
-            <li><b>Theme</b> — Auto/Light/Dark.</li>
-            <li><b>Max Name Length (UI)</b> — limit file name length in UI.</li>
-            <li><b>JPEG Quality</b> — compression level for JPG.</li>
+            <li><b>Language:</b> Changes the UI language.</li>
+            <li><b>Theme:</b> Choose between Auto, Light, or Dark mode.</li>
+            <li><b>UI Font:</b> Select between the built-in font, your system default, or a custom installed font.</li>
+            <li><b>Max Name Length (UI):</b> Limits the length of filenames displayed in the UI.</li>
+            <li><b>Display Cache Resolution:</b> Sets a resolution limit for the main preview to improve performance with large images. The magnifier and final export always use original quality.</li>
+            <li><b>Enable debug logging:</b> Toggles detailed logging for troubleshooting.</li>
+            <li><b>System notifications:</b> Toggles system notifications on save.</li>
         </ul>
     </body>
     """,
@@ -299,14 +336,15 @@ en_translations = {
     <body>
         <h2>Hotkeys</h2>
         <ul>
-            <li><b>Quick Preview:</b> Hold <b>Space</b>.
+            <li><b>Quick Preview:</b> Hold <b><code>Spacebar</code></b>.
                 <ul>
-                    <li>While holding Space, <b>Left Mouse</b> shows Image 1 full screen.</li>
-                    <li>While holding Space, <b>Right Mouse</b> shows Image 2 full screen.</li>
-                    <li>Release to return to comparison view.</li>
+                    <li>While holding Space, the <b>Left Mouse Button</b> shows Image 1 full screen.</li>
+                    <li>The <b>Right Mouse Button</b> shows Image 2 full screen.</li>
+                    <li>Release the mouse button and Spacebar to return to the comparison view.</li>
                 </ul>
             </li>
-            <li><b>Magnifier Movement:</b> <code>WASD</code> for position, <code>QE</code> for spacing.</li>
+            <li><b>Magnifier Movement:</b> Use <code>WASD</code> to move the view and <code>QE</code> to adjust spacing.</li>
+            <li><b>Paste Image:</b> Press <code>Ctrl+V</code> to paste an image from your clipboard.</li>
         </ul>
     </body>
     """,
@@ -315,7 +353,49 @@ en_translations = {
     "System default": "System default",
     "Custom": "Custom",
     "Select font...": "Select font...",
+
+    "Toggle Split Orientation (Horizontal/Vertical)": "Toggle Split Orientation (Horizontal/Vertical)",
+    "Toggle Magnifier": "Toggle Magnifier",
+    "Freeze Magnifier Position": "Freeze Magnifier Position",
+    "Toggle Divider Line Visibility": "Toggle Divider Line Visibility",
+    "Change Divider Line Color": "Change Divider Line Color",
+    "Change Divider Line Thickness": "Change Divider Line Thickness",
+    "Divider Line Thickness Tooltip": "Divider line thickness (1-20)\nScroll mouse wheel to change",
+    "Magnifier Divider Line Thickness Tooltip": "Magnifier divider line thickness (1-10)\nScroll mouse wheel to change",
+    "Choose Divider Line Color": "Choose Divider Line Color",
+    "Divider Line Thickness": "Divider Line Thickness",
+    "Enter line thickness (1-20):": "Enter line thickness (1-20):",
+    "Line": "Line",
+    "Magnifier": "Magnifier",
+    "Text": "Text",
+    "В буфере обмена нет изображения": "No image in clipboard",
+    "Не удалось получить изображение из буфера обмена": "Failed to get image from clipboard",
+    "Изображение вставлено в оба слота": "Image pasted to both slots",
+    "Изображение вставлено во второй слот": "Image pasted to second slot",
+    "Изображение вставлено в первый слот": "Image pasted to first slot",
+    "Изображение добавлено в первый список": "Image added to first list",
+    "Изображение добавлено во второй список": "Image added to second list",
+    "Изображения вставлены в первый список": "Images added to first list",
+    "Изображения вставлены во второй список": "Images added to second list",
+    "Ошибка при вставке изображения": "Error pasting image",
+    "Вверх": "Up",
+    "Вниз": "Down",
+    "Влево": "Left",
+    "Вправо": "Right",
 }
+en_translations["View"] = "View"
+en_translations["Diff Mode"] = "Diff Mode"
+en_translations["Channel View"] = "Channel View"
+en_translations["Off"] = "Off"
+en_translations["Highlight"] = "Highlight"
+en_translations["Grayscale"] = "Grayscale"
+en_translations["PSNR"] = "PSNR"
+en_translations["SSIM"] = "SSIM"
+en_translations["SSIM Map"] = "SSIM Map"
+en_translations["Edge Comparison"] = "Edge Comparison"
+en_translations["Calculating..."] = "Calculating..."
+en_translations["RGB"] = "RGB"
+en_translations["Luminance"] = "Luminance"
 
 ru_translations = {
 
@@ -329,10 +409,13 @@ ru_translations = {
     "Bilinear": "Билинейная",
     "Bicubic": "Бикубическая",
     "Lanczos": "Ланцош (Высокое качество)",
+    "EWA Lanczos": "EWA Lanczos (Улучшенное сглаживание)",
     "Select interpolation method for magnifier zoom": "Выберите метод интерполяции для увеличения лупы",
     "Quick Preview:": "Быстрый предпросмотр:",
     "Hold Space and use mouse buttons to quickly preview": "Удерживайте Пробел и используйте кнопки мыши для быстрого предпросмотра",
     "Enable debug logging": "Включить отладочные логи",
+    "Auto-calculate PSNR": "Авто-расчет PSNR",
+    "Auto-calculate SSIM": "Авто-расчет SSIM",
     "System notifications": "Системные уведомления",
     "Shows detailed logs for developers. Requires restart.": "Показывает подробные логи для разработчиков. Требуется перезапуск.",
     "Restart the application for the debug log setting to take full effect.": "Перезапустите приложение, чтобы настройка отладочных логов вступила в силу.",
@@ -391,11 +474,29 @@ ru_translations = {
     "At Edges": "По краям",
     "Near Split Line": "У линии разделения",
     "Select Image(s)": "Выбрать изображение(я)",
+    "Оптимизировать перемещение лупы": "Оптимизировать перемещение лупы",
+    "Movement Interpolation:": "Интерполяция при движении:",
+    "Optimize magnifier movement": "Оптимизировать перемещение лупы",
     "UI Font:": "Шрифт интерфейса:",
     "Built-in font": "Встроенный шрифт",
     "System default": "Системный",
     "Custom": "Пользовательский",
     "Select font...": "Выбрать шрифт...",
+
+    "Toggle Split Orientation (Horizontal/Vertical)": "Переключить ориентацию разделения (Горизонтальная/Вертикальная)",
+    "Toggle Magnifier": "Переключить лупу",
+    "Freeze Magnifier Position": "Заморозить позицию лупы",
+    "Toggle Divider Line Visibility": "Переключить видимость линии разделения",
+    "Change Divider Line Color": "Изменить цвет линии разделения",
+    "Change Divider Line Thickness": "Изменить толщину линии разделения",
+    "Divider Line Thickness Tooltip": "Толщина линии разделения (1-20)\nКрутите колесико мыши для изменения",
+    "Magnifier Divider Line Thickness Tooltip": "Толщина линии в лупе (1-10)\nКрутите колесико мыши для изменения",
+    "Choose Divider Line Color": "Выберите цвет линии разделения",
+    "Divider Line Thickness": "Толщина линии разделения",
+    "Enter line thickness (1-20):": "Введите толщину линии (1-20):",
+    "Line": "Линия",
+    "Magnifier": "Лупа",
+    "Text": "Текст",
 
     "Add Image(s) 1": "Доб. Изобр(ы) 1",
     "Add Image(s) 2": "Доб. Изобр(ы) 2",
@@ -420,6 +521,8 @@ ru_translations = {
     "Clear Left Image List": "Очистить левый список",
     "Clear Right Image List": "Очистить правый список",
     "Click and drag the separation line to adjust the split (when Magnifier is off).": "Щелкните и перетащите линию разделения для настройки разделения (когда Лупа выключена).",
+    "Click: Swap current images": "Нажатие: Поменять текущие изображения",
+    "Hold: Swap entire lists": "Удержание: Поменять списки целиком",
     "Click and drag the split line (when Magnifier is off).": "Щелкните и перетащите линию разделения (когда Лупа выключена).",
     "Click the settings button (...) to change the application language, the maximum displayed name length, and JPEG quality.": "Нажмите кнопку настроек (...), чтобы изменить язык приложения, максимальную отображаемую длину имени и качество JPEG.",
     "Click to change color": "Нажмите, чтобы изменить цвет",
@@ -427,9 +530,6 @@ ru_translations = {
     "Click [Save Result] to save the current view (including split, magnifier, names if enabled) as a PNG or JPG file.": "Нажмите [Сохранить Результат], чтобы сохранить текущий вид (включая разделение, лупу, имена, если включены) как файл PNG или JPG.",
     "Color and alpha for magnifier and capture area borders.": "Цвет и прозрачность для рамок лупы и области захвата.",
     "Color and alpha for the divider line.": "Цвет и прозрачность для линии разделения.",
-    "Click: Swap current images": "Нажатие: Поменять текущие изображения",
-    "Hold: Swap entire lists": "Удержание: Поменять списки целиком",
-    "Edit names, adjust font size, and pick text color in the bottom panel (visible when names are included).": "Редактируйте имена, настройте размер шрифта и выберите цвет текста в нижней панели (видна, когда включены имена).",
     "Comparison View:": "Вид сравнения:",
     "Conversion failed detail": "Ошибка преобразования в локальный путь",
     "Current:": "Текущий:",
@@ -440,6 +540,7 @@ ru_translations = {
     "Edit Current Image 2 Name": "Редактировать имя Изобр. 2",
     "Edit Length Limit": "Изменить лимит длины",
     "Edit names, adjust font size, and pick color in the bottom panel (when Include names is checked).": "Редактируйте имена, настройте размер шрифта и выберите цвет в нижней панели (когда Включить имена отмечено).",
+    "Edit names, adjust font size, and pick text color in the bottom panel (visible when names are included).": "Редактируйте имена, настройте размер шрифта и выберите цвет текста в нижней панели (видна, когда включены имена).",
     "Enter new maximum length for UI display (10-100):": "Введите новую максимальную длину для отображения в интерфейсе (10-100):",
     "Error": "Ошибка",
     "Error getting image size": "Ошибка получения размера изображения",
@@ -471,7 +572,7 @@ ru_translations = {
     "Invalid item type or empty path": "Неверный тип элемента или пустой путь",
     "JPEG Files": "Файлы JPEG",
     "JPEG Quality:": "Качество JPEG:",
-    "JPEG compression quality (1-100, выше - лучше).": "Качество сжатия JPEG (1-100, выше - лучше).",
+    "JPEG compression quality (1-100, higher is better).": "Качество сжатия JPEG (1-100, выше - лучше).",
     "Language:": "Язык:",
     "Left": "Левое",
     "Limits the displayed name length in the UI ({min}-{max}).": "Ограничивает отображаемую длину имени в интерфейсе ({min}-{max}).",
@@ -518,6 +619,7 @@ ru_translations = {
     "Some images could not be loaded:": "Некоторые изображения не удалось загрузить:",
     "Some items could not be processed:": "Некоторые элементы не удалось обработать:",
     "Split Line Color:": "Цвет линии разделения:",
+    "Magnifier Divider Line Thickness Tooltip": "Толщина линии в лупе (1-10)\nКрутите колесико мыши для изменения",
     "Swap Image Lists": "Поменять списки",
     "Switch language to Brazilian Portuguese": "Переключить язык на бразильский португальский",
     "Switch language to English": "Переключить язык на английский",
@@ -537,7 +639,7 @@ ru_translations = {
     "Use dropdown menus to select from loaded images.": "Используйте выпадающие меню для выбора из загруженных изображений.",
     "Use dropdowns to select loaded images.": "Используйте выпадающие списки для выбора загруженных изображений.",
     "Use the Trash buttons (🗑️) to clear the corresponding image list.": "Используйте кнопки Корзины (🗑️) для очистки соответствующего списка изображений.",
-    "Use the Trash buttons (🗑️) to clear respective image lists.": "Используйте кнопки Корзины (🗑️) для очистки соответствующих списков изображений.",
+    "Use the Trash buttons (🗑️) para limpar respective image lists.": "Используйте кнопки Корзины (🗑️) для очистки соответствующих списков изображений.",
     "Use the ⇄ button to swap image lists.": "Используйте кнопку ⇄ для обмена списками изображений.",
     "Use the ⇄ button to swap the entire left and right image lists.": "Используйте кнопку ⇄ для обмена списками изображений слева и справа.",
     "Warning": "Предупреждение",
@@ -546,7 +648,7 @@ ru_translations = {
     "help_intro_html": """
     <body>
         <h2>Добро пожаловать в Improve ImgSLI!</h2>
-        <p>Это приложение предназначено для детального визуального сравнения изображений — удобно дизайнерам, фотографам, энтузиастам AI‑апскейла и всем, кому важно видеть отличия.</p>
+        <p>Это приложение предназначено для детального визуального сравнения изображений — идеально подходит для дизайнеров, фотографов, энтузиастов AI-арта/апскейлинга и всех, кому нужен точный визуальный анализ.</p>
         <p>Используйте левую панель навигации, чтобы узнать о конкретных возможностях.</p>
     </body>
     """,
@@ -554,9 +656,11 @@ ru_translations = {
     <body>
         <h2>Управление файлами</h2>
         <h3>Загрузка изображений</h3>
+        <p>Вы можете загружать изображения несколькими способами:</p>
         <ul>
-            <li>Нажмите кнопки <b>Доб. Изобр(ы)</b>, чтобы открыть диалог выбора файлов.</li>
-            <li>Либо <b>перетащите</b> файлы изображений на левую или правую область сброса в главном окне.</li>
+            <li>Нажмите кнопки <b>Доб. Изобр(ы)</b>, чтобы открыть диалог выбора нескольких файлов.</li>
+            <li><b>Перетащите</b> один или несколько файлов изображений прямо в главное окно. Появится оверлей, позволяющий выбрать, в какой список их добавить — левый или правый.</li>
+            <li>Нажмите <code>Ctrl+V</code>, чтобы вставить изображение из буфера обмена.</li>
         </ul>
         <h3>Работа со списками</h3>
         <ul>
@@ -567,7 +671,7 @@ ru_translations = {
                     <li><b>Долгое нажатие</b> — меняет местами списки целиком.</li>
                 </ul>
             </li>
-            <li><b>Кнопки 🗑️:</b>
+            <li><b>Кнопка 🗑️:</b>
                 <ul>
                     <li><b>Короткое нажатие</b> — удаляет текущий элемент.</li>
                     <li><b>Долгое нажатие</b> — очищает весь список.</li>
@@ -582,15 +686,21 @@ ru_translations = {
     <body>
         <h2>Базовое сравнение</h2>
         <ul>
-            <li>Когда лупа выключена, можно <b>перетаскивать линию разделения</b> для сравнения разных областей.</li>
+            <li>Когда лупа выключена, вы можете <b>перетаскивать линию разделения</b> для сравнения разных частей изображений.</li>
             <li>Отметьте <b>Горизонтальное разделение</b>, чтобы изменить ориентацию (вертикаль ↔ горизонталь).</li>
+        </ul>
+        <h3>Быстрый предпросмотр</h3>
+        <p>Чтобы быстро просмотреть одно из исходных изображений целиком, зажмите <b>Пробел</b>:</p>
+        <ul>
+            <li>Удерживая Пробел, нажмите <b>левую кнопку мыши</b> для просмотра Изображения 1.</li>
+            <li>Удерживая Пробел, нажмите <b>правую кнопку мыши</b> для просмотра Изображения 2.</li>
+            <li>Отпустите кнопку мыши и Пробел, чтобы вернуться в режим сравнения.</li>
         </ul>
     </body>
     """,
     "help_magnifier_html": """
     <body>
         <h2>Инструмент «Лупа»</h2>
-        <p>Лупа полезна для проверки на уровне пикселей.</p>
         <h3>Основы</h3>
         <ul>
             <li>Отметьте <b>Использовать Лупу</b>, чтобы включить её.</li>
@@ -598,21 +708,17 @@ ru_translations = {
             <li><b>Заморозить Лупу</b> — фиксирует положение лупы на экране. В замороженном состоянии можно перемещать вид клавишами WASD.</li>
         </ul>
         <h3>Управление</h3>
+        <p>Точно настройте лупу с помощью ползунков и горячих клавиш:</p>
         <ul>
-            <li><b>Ползунки лупы:</b>
-                <ul>
-                    <li><b>Размер Лупы</b> — уровень увеличения.</li>
-                    <li><b>Размер Захвата</b> — размер области выборки из оригинала.</li>
-                    <li><b>Скорость движ.</b> — скорость перемещения WASD.</li>
-                </ul>
-            </li>
-            <li><b>Клавиатура:</b>
-                <ul>
-                    <li><code>WASD</code> — перемещает увеличенный вид (или всю замороженную лупу).</li>
-                    <li><code>QE</code> — регулирует расстояние между половинками лупы (когда разделены).</li>
-                </ul>
-            </li>
-            <li><b>Интерполяция</b> — выберите метод ресемплинга (Ближайший сосед, Билинейная, Ланцош) для качества отображения.</li>
+            <li><b>Ползунок "Размер Лупы":</b> Управляет уровнем увеличения.</li>
+            <li><b>Ползунок "Размер Захвата":</b> Регулирует размер области, считываемой с исходного изображения.</li>
+            <li><b>Ползунок "Скорость движ.":</b> Устанавливает скорость перемещения с клавиатуры.</li>
+            <li><b>Клавиши <code>WASD</code>:</b> Перемещают увеличенный вид относительно точки захвата (или всю замороженную лупу).</li>
+            <li><b>Клавиши <code>QE</code>:</b> Регулируют расстояние между двумя половинками лупы, когда они разделены.</li>
+            <li><b>Интерполяция:</b> Выберите метод передискретизации (например, Ближайший сосед, Билинейная, Ланцош, EWA Lanczos), чтобы контролировать качество отрисовки увеличенного изображения.</li>
+            <ul>
+                <li><b>EWA Lanczos:</b> Продвинутый метод, использующий суперсэмплинг для имитации EWA Lanczos. Обеспечивает превосходное сглаживание, сначала увеличивая изображение в 2 раза, а затем уменьшая его с фильтрацией Lanczos. Отлично подходит для подавления муара и артефактов на детализированных изображениях.</li>
+            </ul>
         </ul>
     </body>
     """,
@@ -620,10 +726,16 @@ ru_translations = {
     <body>
         <h2>Экспорт результатов</h2>
         <ul>
-            <li>Нажмите <b>Сохранить результат</b>, чтобы вывести текущий вид в PNG или JPG высокого разрешения.</li>
-            <li>Сохранённое изображение включает линию разделения, лупу (если активна) и маркер точки захвата.</li>
-            <li>Отметьте <b>Вкл. имена в изображ.</b>, чтобы добавить текстовые подписи.</li>
-            <li>Иконка настроек текста (✎) открывает меню, где настраиваются размер, жирность, цвет, фон и расположение текста.</li>
+            <li>Нажмите главную кнопку <b>Сохранить результат</b>, чтобы открыть многофункциональный <b>диалог экспорта</b>.</li>
+            <li>В этом диалоге вы можете настроить:
+                <ul>
+                    <li>Выходную директорию и имя файла.</li>
+                    <li>Формат изображения (PNG, JPEG, WEBP и др.).</li>
+                    <li>Уровни качества/сжатия.</li>
+                    <li>Опцию для заливки прозрачных областей пользовательским цветом.</li>
+                </ul>
+            </li>
+            <li><b>Текстовые оверлеи:</b> Если вы отметите <b>Вкл. имена в изображ.</b>, вы можете использовать всплывающее меню настроек текста (✎), чтобы настроить внешний вид оверлеев с именами файлов на итоговом изображении, включая размер шрифта, жирность, цвет, фон и расположение.</li>
         </ul>
     </body>
     """,
@@ -631,10 +743,13 @@ ru_translations = {
     <body>
         <h2>Настройки</h2>
         <ul>
-            <li><b>Язык</b> — язык интерфейса.</li>
-            <li><b>Тема</b> — Авто/Светлая/Тёмная.</li>
-            <li><b>Макс. длина имени (UI)</b> — ограничение длины имени файла в интерфейсе.</li>
-            <li><b>Качество JPEG</b> — качество сжатия JPG.</li>
+            <li><b>Язык:</b> Изменяет язык интерфейса.</li>
+            <li><b>Тема:</b> Выбор между режимами Авто, Светлая или Тёмная.</li>
+            <li><b>Шрифт интерфейса:</b> Выбор между встроенным шрифтом, системным по умолчанию или пользовательским установленным шрифтом.</li>
+            <li><b>Макс. длина имени (UI):</b> Ограничивает длину имён файлов, отображаемых в интерфейсе.</li>
+            <li><b>Разрешение кэша:</b> Устанавливает лимит разрешения для основного предпросмотра для улучшения производительности при работе с большими изображениями. Лупа и финальный экспорт всегда используют оригинальное качество.</li>
+            <li><b>Включить отладочные логи:</b> Включает/выключает подробное логирование для отладки.</li>
+            <li><b>Системные уведомления:</b> Включает/выключает системные уведомления при сохранении.</li>
         </ul>
     </body>
     """,
@@ -642,18 +757,46 @@ ru_translations = {
     <body>
         <h2>Горячие клавиши</h2>
         <ul>
-            <li><b>Быстрый предпросмотр:</b> удерживайте <b>Пробел</b>.
+            <li><b>Быстрый предпросмотр:</b> Удерживайте <b><code>Пробел</code></b>.
                 <ul>
-                    <li>Удерживая Пробел, <b>левая кнопка</b> показывает Изображение 1 на весь экран.</li>
-                    <li>Удерживая Пробел, <b>правая кнопка</b> показывает Изображение 2 на весь экран.</li>
-                    <li>Отпустите, чтобы вернуться к режиму сравнения.</li>
+                    <li>Удерживая Пробел, <b>левая кнопка мыши</b> показывает Изображение 1 на весь экран.</li>
+                    <li><b>Правая кнопка мыши</b> показывает Изображение 2 на весь экран.</li>
+                    <li>Отпустите кнопку мыши и Пробел, чтобы вернуться к режиму сравнения.</li>
                 </ul>
             </li>
-            <li><b>Лупа:</b> <code>WASD</code> — перемещение, <code>QE</code> — расстояние между половинками.</li>
+            <li><b>Перемещение лупы:</b> Используйте <code>WASD</code> для перемещения вида и <code>QE</code> для регулировки расстояния.</li>
+            <li><b>Вставить изображение:</b> Нажмите <code>Ctrl+V</code>, чтобы вставить изображение из буфера обмена.</li>
         </ul>
     </body>
     """,
+    "В буфере обмена нет изображения": "В буфере обмена нет изображения",
+    "Не удалось получить изображение из буфера обмена": "Не удалось получить изображение из буфера обмена",
+    "Изображение вставлено в оба слота": "Изображение вставлено в оба слота",
+    "Изображение вставлено во второй слот": "Изображение вставлено во второй слот",
+    "Изображение вставлено в первый слот": "Изображение вставлено в первый слот",
+    "Изображение добавлено в первый список": "Изображение добавлено в первый список",
+    "Изображение добавлено во второй список": "Изображение добавлено во второй список",
+    "Изображения вставлены в первый список": "Изображения вставлены в первый список",
+    "Изображения вставлены во второй список": "Изображения вставлены во второй список",
+    "Ошибка при вставке изображения": "Ошибка при вставке изображения",
+    "Вверх": "Вверх",
+    "Вниз": "Вниз",
+    "Влево": "Влево",
+    "Вправо": "Вправо",
 }
+ru_translations["View"] = "Вид"
+ru_translations["Diff Mode"] = "Режим разницы"
+ru_translations["Channel View"] = "Каналы"
+ru_translations["Off"] = "Выкл"
+ru_translations["Highlight"] = "Подсветка"
+ru_translations["Grayscale"] = "Оттенки серого"
+ru_translations["PSNR"] = "PSNR"
+ru_translations["SSIM"] = "SSIM"
+ru_translations["SSIM Map"] = "Карта SSIM"
+ru_translations["Edge Comparison"] = "Сравнение контуров"
+ru_translations["Calculating..."] = "Вычисление..."
+ru_translations["RGB"] = "RGB"
+ru_translations["Luminance"] = "Яркость"
 
 zh_translations = {
 
@@ -667,10 +810,13 @@ zh_translations = {
     "Bilinear": "双线性",
     "Bicubic": "双三次",
     "Lanczos": "Lanczos (高质量)",
+    "EWA Lanczos": "EWA Lanczos (高级抗锯齿)",
     "Select interpolation method for magnifier zoom": "选择放大镜缩放的插值方法",
     "Quick Preview:": "快速预览:",
     "Hold Space and use mouse buttons to quickly preview": "按住空格键并使用鼠标按钮快速预览",
     "Enable debug logging": "启用调试日志",
+    "Auto-calculate PSNR": "自动计算PSNR",
+    "Auto-calculate SSIM": "自动计算SSIM",
     "System notifications": "系统通知",
     "Shows detailed logs for developers. Requires restart.": "为开发者显示详细日志。需要重启。",
     "Restart the application for the debug log setting to take full effect.": "重启应用程序以使调试日志设置完全生效。",
@@ -728,6 +874,9 @@ zh_translations = {
     "At Edges": "靠边",
     "Near Split Line": "靠分割线",
     "Select Image(s)": "选择图像",
+    "优化放大镜移动": "优化放大镜移动",
+    "Movement Interpolation:": "移动时插值:",
+    "Optimize magnifier movement": "优化放大镜移动",
     "UI Font:": "UI字体:",
     "Built-in font": "内置字体",
     "System default": "系统默认",
@@ -853,6 +1002,7 @@ zh_translations = {
     "Some images could not be loaded:": "某些图像无法加载：",
     "Some items could not be processed:": "某些项目无法处理：",
     "Split Line Color:": "分割线颜色:",
+    "Magnifier Divider Line Thickness Tooltip": "放大镜分隔线厚度 (1-10)\n滚动鼠标滚轮更改",
     "Swap Image Lists": "交换图像列表",
     "Switch language to Brazilian Portuguese": "切换语言为巴西葡萄牙语",
     "Switch language to English": "切换语言为英语",
@@ -881,7 +1031,7 @@ zh_translations = {
     "help_intro_html": """
     <body>
         <h2>欢迎使用 Improve ImgSLI！</h2>
-        <p>本应用程序专为详细的视觉图像比较而设计，是设计师、摄影师、AI 图像放大爱好者以及任何需要比较图像差异的人的理想选择。</p>
+        <p>本应用程序专为详细的视觉图像比较而设计，是设计师、摄影师、AI 艺术/放大爱好者以及任何需要精确视觉分析的人的理想选择。</p>
         <p>使用左侧导航面板了解特定功能。</p>
     </body>
     """,
@@ -921,86 +1071,100 @@ zh_translations = {
             <li>当放大镜关闭时，您可以<b>点击并拖动分隔线</b>以比较图像的不同部分。</li>
             <li>勾选<b>水平分割</b>框以更改比较方向，从垂直变为水平。</li>
         </ul>
+        <h3>快速预览</h3>
+        <p>要快速查看其中一个原始图像的全屏，按住 <b>空格键</b>：</p>
+        <ul>
+            <li>按住空格时，按<b>鼠标左键</b>查看图像1。</li>
+            <li>按住空格时，按<b>鼠标右键</b>查看图像2。</li>
+            <li>释放鼠标按钮和空格键以返回比较视图。</li>
+        </ul>
     </body>
     """,
     "help_magnifier_html": """
     <body>
         <h2>放大镜工具</h2>
-        <p>放大镜是进行像素级检查的强大工具。</p>
         <h3>基本用法</h3>
         <ul>
             <li>勾选<b>使用放大镜</b>框以启用它。</li>
-            <li><b>Clique e arraste</b> na visualização da imagem principal para definir o ponto de captura (indicado pelo círculo vermelho). A lupa mostrará uma visualização ampliada desta área.</li>
-            <li><b>Congelar Lupa:</b> Marque esta opção para travar a posição da lupa na tela. Enquanto congelada, você ainda pode usar WASD para mover a visualização congelada.</li>
+            <li><b>点击/拖动</b>主图像以设置捕捉点（红色圆圈）。</li>
+            <li><b>冻结放大镜：</b>锁定放大镜在屏幕上的位置。在冻结时，您仍可以使用WASD移动视图。</li>
         </ul>
-        <h3>Controles</h3>
+        <h3>控件</h3>
+        <p>使用滑块和键盘快捷键微调放大镜：</p>
         <ul>
-            <li><b>Controles Deslizantes da Lupa:</b>
-                <ul>
-                    <li><b>Tamanho da Lupa:</b> Controla o nível de zoom.</li>
-                    <li><b>Tamanho da Captura:</b> Controla o tamanho da área sendo amostrada da imagem original.</li>
-                    <li><b>Veloc. Movim.:</b> Ajusta a velocidade com que a lupa se move com as teclas WASD.</li>
-                </ul>
-            </li>
-            <li><b>Controles do Teclado:</b>
-                <ul>
-                    <li>As teclas <code>WASD</code> movem a visualização da lupa em relação ao ponto de captura (ou movem a lupa congelada inteira).</li>
-                    <li>As teclas <code>QE</code> ajustam o espaçamento entre as duas metades da lupa quando elas estão separadas.</li>
-                </ul>
-            </li>
-            <li><b>Interpolação:</b> Selecione o algoritmo de reamostragem (por exemplo, Vizinho Mais Próximo, Bilinear, Lanczos) para a lupa controlar como a imagem ampliada é renderizada.</li>
+            <li><b>放大镜大小滑块：</b>控制缩放级别。</li>
+            <li><b>捕捉大小滑块：</b>调整从原始图像采样区域的大小。</li>
+            <li><b>移动速度滑块：</b>设置键盘移动的速度。</li>
+            <li><b>键盘 <code>WASD</code>：</b>相对于捕捉点移动放大的视图（或移动整个冻结的放大镜）。</li>
+            <li><b>键盘 <code>QE</code>：</b>调整放大镜两半之间的间距（当分离时）。</li>
+            <li><b>插值：</b>选择重采样方法（例如，最近邻，双线性，Lanczos，EWA Lanczos）以控制缩放图像的渲染质量。</li>
+            <ul>
+                <li><b>EWA Lanczos：</b>一种高级方法，使用超采样模拟EWA（椭圆加权平均）Lanczos。通过先将图像放大2倍，然后用Lanczos滤镜缩小，提供卓越的反锯齿。非常适合减少详细图像中的莫尔纹和锯齿。</li>
+            </ul>
         </ul>
     </body>
     """,
     "help_export_html": """
     <body>
-        <h2>Exportando Resultados</h2>
+        <h2>导出结果</h2>
         <ul>
-            <li>Clique no botão <b>Salvar Resultado</b> para salvar a visualização atual como um arquivo PNG ou JPG de alta resolução.</li>
-            <li>A imagem salva incluirá a linha de divisão, a lupa (se ativa) e o marcador da área de captura (se mostrado).</li>
-            <li>Marque a caixa <b>Incluir nomes de arquivo</b>, que abre um menu flutuante onde você pode ajustar:
+            <li>点击主<b>保存结果</b>按钮以打开功能丰富的<b>导出对话框</b>。</li>
+            <li>在此对话框中，您可以配置：
                 <ul>
-                    <li><b>Tamanho da Fonte:</b> O tamanho do texto.</li>
-                    <li><b>Peso da Fonte:</b> Tornar o texto mais negrito.</li>
-                    <li><b>Cor:</b> A cor do texto.</li>
-                    <li><b>Fundo:</b> A cor do painel de fundo do texto.</li>
-                    <li><b>Desenhar fundo do texto:</b> Um interruptor para mostrar ou ocultar o painel de fundo.</li>
-                    <li><b>Posição do Texto Horizontal:</b> Coloca o texto nas bordas mais distantes da imagem ou perto da linha de divisão central.</li>
+                    <li>输出目录和文件名。</li>
+                    <li>图像格式（PNG、JPEG、WEBP等）。</li>
+                    <li>质量/压缩级别。</li>
+                    <li>填充透明背景的自定义颜色选项。</li>
                 </ul>
             </li>
+            <li><b>文本覆盖：</b>如果您勾选<b>包含文件名</b>，您可以使用文本设置弹出窗口（✎）来自定义最终图像上文件名覆盖的外观，包括字体大小、粗细、颜色、背景和位置。</li>
         </ul>
     </body>
     """,
     "help_settings_html": """
     <body>
-        <h2>Configurações</h2>
-        <p>Clique no ícone de configurações (⚙️) para abrir a caixa de diálogo de Configurações, onde você pode configurar:</p>
+        <h2>设置</h2>
         <ul>
-            <li><b>Idioma:</b> Altera o idioma da interface do aplicativo.</li>
-            <li><b>Tema:</b> Escolha entre os modos Automático, Claro ou Escuro. Requer reinicialização para aplicar totalmente.</li>
-            <li><b>Comp. Máx. Nome (UI):</b> Limita o comprimento dos nomes de arquivo exibidos na interface para evitar que fiquem muito longos.</li>
-            <li><b>Qualidade JPEG:</b> Define a qualidade de compressão para arquivos JPG salvos (1-100).</li>
-            <li><b>Resolução do Cache:</b> Limita a resolução da pré-visualização para melhorar o desempenho em imagens grandes. A lupa e o salvamento final sempre usam a qualidade original.</li>
-            <li><b>Ativar registro de depuração:</b> Ativa o registro detalhado para solução de problemas. Requer reinicialização do aplicativo.</li>
+            <li><b>语言：</b>更改UI语言。</li>
+            <li><b>主题：</b>在自动、浅色或深色模式之间选择。</li>
+            <li><b>UI字体：</b>在内置字体、系统默认或自定义安装字体之间选择。</li>
+            <li><b>最大名称长度 (UI)：</b>限制UI中显示的文件名长度。</li>
+            <li><b>显示缓存分辨率：</b>为主要预览设置分辨率限制，以在使用大图像时提高性能。放大镜和最终导出始终使用原始质量。</li>
+            <li><b>启用调试日志：</b>切换详细日志以进行故障排除。</li>
+            <li><b>系统通知：</b>切换保存时的系统通知。</li>
         </ul>
     </body>
     """,
     "help_hotkeys_html": """
     <body>
-        <h2>Atalhos e Teclas de Atalho</h2>
+        <h2>快捷键</h2>
         <ul>
-            <li><b>Pré-visualização Rápida:</b> Mantenha pressionada a <b>Barra de Espaços</b> para entrar no modo de pré-visualização.
+            <li><b>快速预览：</b>按住<b><code>空格键</code></b>。
                 <ul>
-                    <li>Enquanto segura Espaço, pressione o <b>Botão Esquerdo do Mouse</b> para ver a primeira imagem em tela cheia.</li>
-                    <li>Enquanto segura Espaço, pressione o <b>Botão Direito do Mouse</b> para ver a segunda imagem em tela cheia.</li>
-                    <li>Solte o botão do mouse e a Barra de Espaços para retornar à visualização de comparação.</li>
+                    <li>按住空格时，<b>鼠标左键</b>显示图像1全屏。</li>
+                    <li><b>鼠标右键</b>显示图像2全屏。</li>
+                    <li>释放鼠标按钮和空格键以返回比较视图。</li>
                 </ul>
             </li>
-            <li><b>Movimento da Lupa:</b> <code>WASD</code> para posição, <code>QE</code> para espaçamento.</li>
+            <li><b>放大镜移动：</b>使用<code>WASD</code>移动视图并使用<code>QE</code>调整间距。</li>
+            <li><b>粘贴图像：</b>按<code>Ctrl+V</code>从剪贴板粘贴图像。</li>
         </ul>
     </body>
     """,
 }
+zh_translations["View"] = "视图"
+zh_translations["Diff Mode"] = "差异模式"
+zh_translations["Channel View"] = "通道视图"
+zh_translations["Off"] = "关"
+zh_translations["Highlight"] = "高亮"
+zh_translations["Grayscale"] = "灰度"
+zh_translations["PSNR"] = "峰值信噪比"
+zh_translations["SSIM"] = "结构相似性"
+zh_translations["SSIM Map"] = "SSIM 图"
+zh_translations["Edge Comparison"] = "边缘比较"
+zh_translations["Calculating..."] = "计算中..."
+zh_translations["RGB"] = "RGB"
+zh_translations["Luminance"] = "亮度"
 
 pt_BR_translations = {
 
@@ -1014,10 +1178,13 @@ pt_BR_translations = {
     "Bilinear": "Bilinear",
     "Bicubic": "Bicúbica",
     "Lanczos": "Lanczos (Alta Qualidade)",
+    "EWA Lanczos": "EWA Lanczos (Anti-Aliasing Superior)",
     "Select interpolation method for magnifier zoom": "Selecione o método de interpolação para o zoom da lupa",
     "Quick Preview:": "Pré-visualização Rápida:",
     "Hold Space and use mouse buttons to quickly preview": "Segure Espaço e use os botões do mouse para pré-visualizar rapidamente",
     "Enable debug logging": "Ativar registro de depuração",
+    "Auto-calculate PSNR": "Calcular PSNR automaticamente",
+    "Auto-calculate SSIM": "Calcular SSIM automaticamente",
     "System notifications": "Notificações do sistema",
     "Shows detailed logs for developers. Requires restart.": "Mostra logs detalhados para desenvolvedores. Requer reinicialização.",
     "Restart the application for the debug log setting to take full effect.": "Reinicie o aplicativo para que a configuração de registro de depuração tenha efeito completo.",
@@ -1076,6 +1243,9 @@ pt_BR_translations = {
     "At Edges": "Nas Bordas",
     "Near Split Line": "Perto da Linha de Divisão",
     "Select Image(s)": "Selecionar Imagem(ns)",
+    "Otimizar movimento da lupa": "Otimizar movimento da lupa",
+    "Movement Interpolation:": "Interpolação em Movimento:",
+    "Optimize magnifier movement": "Otimizar movimento da lupa",
     "UI Font:": "Fonte da UI:",
     "Built-in font": "Fonte embutida",
     "System default": "Padrão do sistema",
@@ -1203,6 +1373,7 @@ pt_BR_translations = {
     "Some images could not be loaded:": "Algumas imagens não puderam ser carregadas:",
     "Some items could not be processed:": "Alguns itens não puderam ser processados:",
     "Split Line Color:": "Cor da Linha de Divisão:",
+    "Magnifier Divider Line Thickness Tooltip": "Espessura da linha divisória da lupa (1-10)\nRole a roda do mouse para alterar",
     "Swap Image Lists": "Trocar Listas de Imagens",
     "Switch language to Brazilian Portuguese": "Mudar idioma para Português do Brasil",
     "Switch language to English": "Mudar idioma para Inglês",
@@ -1231,7 +1402,7 @@ pt_BR_translations = {
     "help_intro_html": """
     <body>
         <h2>Bem-vindo ao Improve ImgSLI!</h2>
-        <p>Este aplicativo foi projetado para comparação visual detalhada de imagens, ideal para designers, fotógrafos, entusiastas de upscaling de IA e qualquer pessoa que precise ver a diferença entre as imagens.</p>
+        <p>Este aplicativo foi projetado para comparação visual detalhada de imagens, ideal para designers, fotógrafos, entusiastas de IA arte/upscaling e qualquer pessoa que precise de análise visual precisa.</p>
         <p>Use o painel de navegação à esquerda para aprender sobre recursos específicos.</p>
     </body>
     """,
@@ -1271,12 +1442,18 @@ pt_BR_translations = {
             <li>Quando a Lupa estiver desligada, você pode <b>clicar e arrastar a linha de separação</b> para comparar diferentes partes das imagens.</li>
             <li>Marque a caixa <b>Divisão Horizontal</b> para alterar a orientação da comparação de vertical para horizontal.</li>
         </ul>
+        <h3>Pré-visualização Rápida</h3>
+        <p>Para ver rapidamente uma das imagens originais em tela cheia, segure a <b>Barra de Espaços</b>:</p>
+        <ul>
+            <li>Enquanto segura Espaço, pressione o <b>Botão Esquerdo do Mouse</b> para visualizar a Imagem 1.</li>
+            <li>Enquanto segura Espaço, pressione o <b>Botão Direito do Mouse</b> para visualizar a Imagem 2.</li>
+            <li>Libere o botão do mouse e a Barra de Espaços para retornar à visão de comparação.</li>
+        </ul>
     </body>
     """,
     "help_magnifier_html": """
     <body>
         <h2>Ferramenta Lupa</h2>
-        <p>A lupa é uma ferramenta poderosa para inspeção em nível de pixel.</p>
         <h3>Uso Básico</h3>
         <ul>
             <li>Marque a caixa <b>Usar Lupa</b> para habilitá-la.</li>
@@ -1284,21 +1461,17 @@ pt_BR_translations = {
             <li><b>Congelar Lupa:</b> Marque esta opção para travar a posição da lupa na tela. Enquanto congelada, você ainda pode usar WASD para mover a visualização congelada.</li>
         </ul>
         <h3>Controles</h3>
+        <p>Ajuste fino da lupa usando controles deslizantes e atalhos de teclado:</p>
         <ul>
-            <li><b>Controles Deslizantes da Lupa:</b>
-                <ul>
-                    <li><b>Tamanho da Lupa:</b> Controla o nível de zoom.</li>
-                    <li><b>Tamanho da Captura:</b> Controla o tamanho da área sendo amostrada da imagem original.</li>
-                    <li><b>Veloc. Movim.:</b> Ajusta a velocidade com que a lupa se move com as teclas WASD.</li>
-                </ul>
-            </li>
-            <li><b>Controles do Teclado:</b>
-                <ul>
-                    <li>As teclas <code>WASD</code> movem a visualização da lupa em relação ao ponto de captura (ou movem a lupa congelada inteira).</li>
-                    <li>As teclas <code>QE</code> ajustam o espaçamento entre as duas metades da lupa quando elas estão separadas.</li>
-                </ul>
-            </li>
-            <li><b>Interpolação:</b> Selecione o algoritmo de reamostragem (por exemplo, Vizinho Mais Próximo, Bilinear, Lanczos) para a lupa controlar como a imagem ampliada é renderizada.</li>
+            <li><b>Controle Deslizante de Tamanho da Lupa:</b> Controla o nível de zoom.</li>
+            <li><b>Controle Deslizante de Tamanho da Captura:</b> Ajusta o tamanho da área sendo amostrada da imagem original.</li>
+            <li><b>Controle Deslizante de Velocidade de Movimento:</b> Define a velocidade para movimento do teclado.</li>
+            <li><b>Teclado <code>WASD</code>:</b> Move a visualização ampliada em relação ao ponto de captura (ou move toda a lupa congelada).</li>
+            <li><b>Teclado <code>QE</code>:</b> Ajusta o espaçamento entre as duas metades da lupa quando elas estão separadas.</li>
+            <li><b>Interpolação:</b> Selecione um método de reamostragem (por exemplo, Vizinho Mais Próximo, Bilinear, Lanczos, EWA Lanczos) para controlar a qualidade de renderização da imagem ampliada.</li>
+            <ul>
+                <li><b>EWA Lanczos:</b> Um método avançado que usa supersampling para simular EWA Lanczos. Fornece anti-aliasing superior primeiro aumentando a imagem 2x, depois reduzindo com filtro Lanczos. Excelente para reduzir moiré e aliasing em imagens detalhadas.</li>
+            </ul>
         </ul>
     </body>
     """,
@@ -1306,32 +1479,30 @@ pt_BR_translations = {
     <body>
         <h2>Exportando Resultados</h2>
         <ul>
-            <li>Clique no botão <b>Salvar Resultado</b> para salvar a visualização atual como um arquivo PNG ou JPG de alta resolução.</li>
-            <li>A imagem salva incluirá a linha de divisão, a lupa (se ativa) e o marcador da área de captura (se mostrado).</li>
-            <li>Marque a caixa <b>Incluir nomes de arquivo</b>, que abre um menu flutuante onde você pode ajustar:
+            <li>Clique no botão principal <b>Salvar Resultado</b> para abrir o diálogo rico em recursos <b>Exportar</b>.</li>
+            <li>Neste diálogo, você pode configurar:
                 <ul>
-                    <li><b>Tamanho da Fonte:</b> O tamanho do texto.</li>
-                    <li><b>Peso da Fonte:</b> Tornar o texto mais negrito.</li>
-                    <li><b>Cor:</b> A cor do texto.</li>
-                    <li><b>Fundo:</b> A cor do painel de fundo do texto.</li>
-                    <li><b>Desenhar fundo do texto:</b> Um interruptor para mostrar ou ocultar o painel de fundo.</li>
-                    <li><b>Posição do Texto Horizontal:</b> Coloca o texto nas bordas mais distantes da imagem ou perto da linha de divisão central.</li>
+                    <li>Diretório de saída e nome do arquivo.</li>
+                    <li>Formato da imagem (PNG, JPEG, WEBP, etc.).</li>
+                    <li>Níveis de qualidade/compressão.</li>
+                    <li>Uma opção para preencher fundos transparentes com uma cor personalizada.</li>
                 </ul>
             </li>
+            <li><b>Sobreposições de Texto:</b> Se você marcar <b>Incluir nomes de arquivo</b>, você pode usar o flyout de configurações de texto (✎) para personalizar a aparência das sobreposições de nome de arquivo na imagem final, incluindo tamanho da fonte, peso, cor, fundo e posição.</li>
         </ul>
     </body>
     """,
     "help_settings_html": """
     <body>
         <h2>Configurações</h2>
-        <p>Clique no ícone de configurações (⚙️) para abrir a caixa de diálogo de Configurações, onde você pode configurar:</p>
         <ul>
-            <li><b>Idioma:</b> Altera o idioma da interface do aplicativo.</li>
-            <li><b>Tema:</b> Escolha entre os modos Automático, Claro ou Escuro. Requer reinicialização para aplicar totalmente.</li>
-            <li><b>Comp. Máx. Nome (UI):</b> Limita o comprimento dos nomes de arquivo exibidos na interface para evitar que fiquem muito longos.</li>
-            <li><b>Qualidade JPEG:</b> Define a qualidade de compressão para arquivos JPG salvos (1-100).</li>
-            <li><b>Resolução do Cache:</b> Limita a resolução da pré-visualização para melhorar o desempenho em imagens grandes. A lupa e o salvamento final sempre usam a qualidade original.</li>
-            <li><b>Ativar registro de depuração:</b> Ativa o registro detalhado para solução de problemas. Requer reinicialização do aplicativo.</li>
+            <li><b>Idioma:</b> Altera o idioma da interface.</li>
+            <li><b>Tema:</b> Escolha entre Auto, Claro ou Escuro.</li>
+            <li><b>Fonte da UI:</b> Selecione entre a fonte integrada, o padrão do sistema ou uma fonte personalizada instalada.</li>
+            <li><b>Comp. Máx. Nome (UI):</b> Limita o comprimento dos nomes de arquivo exibidos na UI.</li>
+            <li><b>Resolução do Cache de Exibição:</b> Define um limite de resolução para a pré-visualização principal para melhorar o desempenho com imagens grandes. A lupa e a exportação final sempre usam qualidade original.</li>
+            <li><b>Habilitar logs de depuração:</b> Alterna logs detalhados para solução de problemas.</li>
+            <li><b>Notificações do sistema:</b> Alterna notificações do sistema no salvar.</li>
         </ul>
     </body>
     """,
@@ -1339,18 +1510,32 @@ pt_BR_translations = {
     <body>
         <h2>Atalhos e Teclas de Atalho</h2>
         <ul>
-            <li><b>Pré-visualização Rápida:</b> Mantenha pressionada a <b>Barra de Espaços</b> para entrar no modo de pré-visualização.
+            <li><b>Pré-visualização Rápida:</b> Segure <b><code>Barra de Espaços</code></b>.
                 <ul>
-                    <li>Enquanto segura Espaço, pressione o <b>Botão Esquerdo do Mouse</b> para ver a primeira imagem em tela cheia.</li>
-                    <li>Enquanto segura Espaço, pressione o <b>Botão Direito do Mouse</b> para ver a segunda imagem em tela cheia.</li>
-                    <li>Solte o botão do mouse e a Barra de Espaços para retornar à visualização de comparação.</li>
+                    <li>Enquanto segura Espaço, o <b>Botão Esquerdo do Mouse</b> mostra a Imagem 1 em tela cheia.</li>
+                    <li>O <b>Botão Direito do Mouse</b> mostra a Imagem 2 em tela cheia.</li>
+                    <li>Libere o botão do mouse e a Barra de Espaços para retornar à visão de comparação.</li>
                 </ul>
             </li>
-            <li><b>Movimento da Lupa:</b> <code>WASD</code> para posição, <code>QE</code> para espaçamento.</li>
+            <li><b>Movimento da Lupa:</b> Use <code>WASD</code> para mover a visão e <code>QE</code> para ajustar o espaçamento.</li>
+            <li><b>Colar Imagem:</b> Pressione <code>Ctrl+V</code> para colar uma imagem da área de transferência.</li>
         </ul>
     </body>
     """,
 }
+pt_BR_translations["View"] = "Visão"
+pt_BR_translations["Diff Mode"] = "Modo Diferença"
+pt_BR_translations["Channel View"] = "Visão de Canal"
+pt_BR_translations["Off"] = "Desligado"
+pt_BR_translations["Highlight"] = "Destaque"
+pt_BR_translations["Grayscale"] = "Escala de Cinza"
+pt_BR_translations["PSNR"] = "PSNR"
+pt_BR_translations["SSIM"] = "SSIM"
+pt_BR_translations["SSIM Map"] = "Mapa SSIM"
+pt_BR_translations["Edge Comparison"] = "Comparação de Bordas"
+pt_BR_translations["Calculating..."] = "Calculando..."
+pt_BR_translations["RGB"] = "RGB"
+pt_BR_translations["Luminance"] = "Luminância"
 
 translations = {
     "en": en_translations,
@@ -1397,7 +1582,7 @@ def tr(text, language="en", *args, **kwargs):
     if args or kwargs:
         try:
             return translated_text.format(*args, **kwargs)
-        except (KeyError, IndexError, ValueError, TypeError) as e:
+        except (KeyError, IndexError, ValueError, TypeError):
 
             return translated_text
     else:

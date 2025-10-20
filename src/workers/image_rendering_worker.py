@@ -1,8 +1,9 @@
-from PyQt6.QtCore import QRunnable, pyqtSlot
-import traceback
 import logging
 import time
-import inspect
+import traceback
+
+from PyQt6.QtCore import QRunnable, pyqtSlot
+
 from image_processing.composer import ImageComposer
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -24,16 +25,16 @@ class ImageRenderingWorker(QRunnable):
             font_path = self.render_params.get("font_path_absolute")
             composer = ImageComposer(font_path)
 
-            final_canvas, padding_left, padding_top = composer.generate_comparison_image(
-                app_state=self.render_params["app_state_copy"],
-                image1_scaled=self.render_params["image1_scaled_for_display"],
-                image2_scaled=self.render_params["image2_scaled_for_display"],
-                original_image1=self.render_params.get("original_image1_pil"),
-                original_image2=self.render_params.get("original_image2_pil"),
-                magnifier_drawing_coords=self.render_params.get("magnifier_coords"),
-                font_path_absolute=self.render_params.get("font_path_absolute"),
-                file_name1_text=self.render_params.get("file_name1_text"),
-                file_name2_text=self.render_params.get("file_name2_text"),
+            final_canvas, padding_left, padding_top, magnifier_bbox_on_canvas, combined_center = composer.generate_comparison_image(
+                self.render_params["app_state_copy"],
+                self.render_params["image1_scaled_for_display"],
+                self.render_params["image2_scaled_for_display"],
+                self.render_params.get("original_image1_pil"),
+                self.render_params.get("original_image2_pil"),
+                self.render_params.get("magnifier_coords"),
+                self.render_params.get("font_path_absolute"),
+                self.render_params.get("file_name1_text"),
+                self.render_params.get("file_name2_text"),
             )
 
             worker_duration_ms = (time.perf_counter() - worker_start_time) * 1000
@@ -46,7 +47,10 @@ class ImageRenderingWorker(QRunnable):
                 "final_canvas": final_canvas,
                 "padding_left": padding_left,
                 "padding_top": padding_top,
+                "magnifier_bbox": magnifier_bbox_on_canvas,
+                "combined_center": combined_center,
             }
+
             self.finished.emit(result_payload, self.render_params, task_id)
 
         except Exception as e:

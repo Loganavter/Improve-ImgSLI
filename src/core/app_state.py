@@ -1,9 +1,9 @@
-import sys
-import traceback
-from PyQt6.QtCore import QObject, QPointF, QByteArray, QRect, pyqtSignal, QPoint
-from PyQt6.QtGui import QColor
-from PIL import Image
 import logging
+
+from PIL import Image
+from PyQt6.QtCore import QByteArray, QObject, QPoint, QPointF, QRect, pyqtSignal
+from PyQt6.QtGui import QColor
+
 from .constants import AppConstants
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -42,9 +42,19 @@ class AppState(QObject):
         self._last_split_cached_params: tuple | None = None
         self._magnifier_cache: dict = {}
 
+        self._unified_image_cache: dict = {}
+        self._unified_image_cache_keys: list = []
+
         self._split_position: float = 0.5
         self._split_position_visual: float = 0.5
         self._is_horizontal: bool = False
+        self._diff_mode: str = 'off'
+        self._channel_view_mode: str = 'RGB'
+        self._auto_calculate_psnr: bool = False
+        self._auto_calculate_ssim: bool = False
+
+        self._psnr_value: float | None = None
+        self._ssim_value: float | None = None
 
         self._use_magnifier: bool = False
         self._magnifier_size_relative: float = (
@@ -69,11 +79,28 @@ class AppState(QObject):
         self._magnifier_spacing_relative_visual: float = (
             AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE
         )
+        self._magnifier_is_horizontal: bool = False
+
+        self._magnifier_visible_left: bool = True
+        self._magnifier_visible_center: bool = True
+        self._magnifier_visible_right: bool = True
+
+        try:
+            default_spacing = AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE
+            half_spacing = default_spacing / 2.0
+        except Exception:
+            half_spacing = 0.05
+        self._magnifier_left_offset_relative: QPointF = QPointF(-half_spacing, 0.0)
+        self._magnifier_right_offset_relative: QPointF = QPointF(half_spacing, 0.0)
+        self._magnifier_left_offset_relative_visual: QPointF = QPointF(-half_spacing, 0.0)
+        self._magnifier_right_offset_relative_visual: QPointF = QPointF(half_spacing, 0.0)
 
         self._display_resolution_limit: int = (
             AppConstants.DEFAULT_DISPLAY_RESOLUTION_LIMIT
         )
         self._interpolation_method: str = AppConstants.DEFAULT_INTERPOLATION_METHOD
+        self._optimize_magnifier_movement: bool = True
+        self._movement_interpolation_method: str = "BILINEAR"
         self._include_file_names_in_saved: bool = False
         self._font_size_percent: int = 100
         self._font_weight: int = 0
@@ -97,7 +124,14 @@ class AppState(QObject):
         self._image_display_rect_on_label = QRect()
         self._is_dragging_split_line: bool = False
         self._is_dragging_capture_point: bool = False
+        self._is_dragging_split_in_magnifier: bool = False
         self._is_dragging_any_slider: bool = False
+
+        self._magnifier_screen_center: QPoint = QPoint()
+        self._magnifier_screen_size: int = 0
+        self._is_magnifier_combined: bool = False
+
+        self._magnifier_internal_split: float = 0.5
         self._is_interactive_mode: bool = False
         self._resize_in_progress: bool = False
         self._text_bg_visual_height: float = 0.0
@@ -127,6 +161,14 @@ class AppState(QObject):
         self._export_last_filename: str = ""
         self._export_png_compress_level: int = 9
 
+        self._divider_line_visible: bool = True
+        self._divider_line_color: QColor = QColor(255, 255, 255, 255)
+        self._divider_line_thickness: int = 3
+
+        self._magnifier_divider_visible: bool = True
+        self._magnifier_divider_color: QColor = QColor(255, 255, 255, 230)
+        self._magnifier_divider_thickness: int = 2
+
     def clear_all_caches(self):
         self._scaled_image1_for_display = None
         self._scaled_image2_for_display = None
@@ -134,6 +176,10 @@ class AppState(QObject):
         self._display_cache_image1 = None
         self._display_cache_image2 = None
         self._last_display_cache_params = None
+
+        self._unified_image_cache.clear()
+        self._unified_image_cache_keys.clear()
+
         self.clear_interactive_caches()
 
     def clear_interactive_caches(self):
@@ -147,6 +193,8 @@ class AppState(QObject):
         new_state = AppState()
         new_state.split_position_visual = self.split_position_visual
         new_state.is_horizontal = self.is_horizontal
+        new_state.diff_mode = self.diff_mode
+        new_state.channel_view_mode = self.channel_view_mode
         new_state.use_magnifier = self.use_magnifier
         new_state.show_capture_area_on_main_image = self.show_capture_area_on_main_image
         new_state.capture_position_relative = QPointF(self.capture_position_relative)
@@ -175,6 +223,35 @@ class AppState(QObject):
         new_state.text_bg_visual_height = self.text_bg_visual_height
         new_state.text_bg_visual_width = self.text_bg_visual_width
         new_state.text_placement_mode = self.text_placement_mode
+        new_state.divider_line_visible = self.divider_line_visible
+        new_state.divider_line_color = QColor(self.divider_line_color)
+        new_state.divider_line_thickness = self.divider_line_thickness
+        new_state.magnifier_screen_center = QPoint(self.magnifier_screen_center)
+        new_state.magnifier_screen_size = self.magnifier_screen_size
+        new_state.is_magnifier_combined = self.is_magnifier_combined
+        new_state.magnifier_internal_split = self.magnifier_internal_split
+        new_state.magnifier_is_horizontal = self.magnifier_is_horizontal
+        new_state.magnifier_divider_visible = self.magnifier_divider_visible
+        new_state.magnifier_divider_color = QColor(self.magnifier_divider_color)
+        new_state.magnifier_divider_thickness = self.magnifier_divider_thickness
+        new_state.optimize_magnifier_movement = self.optimize_magnifier_movement
+        new_state.movement_interpolation_method = self.movement_interpolation_method
+
+        try:
+            new_state.magnifier_visible_left = self.magnifier_visible_left
+            new_state.magnifier_visible_center = self.magnifier_visible_center
+            new_state.magnifier_visible_right = self.magnifier_visible_right
+        except Exception:
+            pass
+
+        try:
+            new_state.magnifier_left_offset_relative = QPointF(self.magnifier_left_offset_relative)
+            new_state.magnifier_right_offset_relative = QPointF(self.magnifier_right_offset_relative)
+            new_state.magnifier_left_offset_relative_visual = QPointF(self.magnifier_left_offset_relative_visual)
+            new_state.magnifier_right_offset_relative_visual = QPointF(self.magnifier_right_offset_relative_visual)
+        except Exception:
+            pass
+
         return new_state
 
     @property
@@ -285,6 +362,38 @@ class AppState(QObject):
             self.stateChanged.emit()
 
     @property
+    def diff_mode(self) -> str:
+        return self._diff_mode
+
+    @diff_mode.setter
+    def diff_mode(self, value: str):
+        self._diff_mode = value
+
+    @property
+    def channel_view_mode(self) -> str:
+        return self._channel_view_mode
+
+    @channel_view_mode.setter
+    def channel_view_mode(self, value: str):
+        self._channel_view_mode = value
+
+    @property
+    def psnr_value(self) -> float | None:
+        return self._psnr_value
+
+    @psnr_value.setter
+    def psnr_value(self, value: float | None):
+        self._psnr_value = value
+
+    @property
+    def ssim_value(self) -> float | None:
+        return self._ssim_value
+
+    @ssim_value.setter
+    def ssim_value(self, value: float | None):
+        self._ssim_value = value
+
+    @property
     def split_position(self) -> float:
         return self._split_position
 
@@ -380,7 +489,17 @@ class AppState(QObject):
     magnifier_spacing_relative_visual = _create_simple_property(
         "magnifier_spacing_relative_visual", False
     )
+
+    magnifier_left_offset_relative = _create_simple_property("magnifier_left_offset_relative")
+    magnifier_right_offset_relative = _create_simple_property("magnifier_right_offset_relative")
+    magnifier_left_offset_relative_visual = _create_simple_property(
+        "magnifier_left_offset_relative_visual", False
+    )
+    magnifier_right_offset_relative_visual = _create_simple_property(
+        "magnifier_right_offset_relative_visual", False
+    )
     include_file_names_in_saved = _create_simple_property("include_file_names_in_saved")
+    magnifier_is_horizontal = _create_simple_property("magnifier_is_horizontal")
     font_size_percent = _create_simple_property("font_size_percent")
     font_weight = _create_simple_property("font_weight")
     max_name_length = _create_simple_property("max_name_length")
@@ -400,7 +519,15 @@ class AppState(QObject):
     is_dragging_capture_point = _create_simple_property(
         "is_dragging_capture_point", False
     )
+    is_dragging_split_in_magnifier = _create_simple_property(
+        "is_dragging_split_in_magnifier", False
+    )
     is_dragging_any_slider = _create_simple_property("is_dragging_any_slider", False)
+
+    magnifier_screen_center = _create_simple_property("magnifier_screen_center", False)
+    magnifier_screen_size = _create_simple_property("magnifier_screen_size", False)
+    is_magnifier_combined = _create_simple_property("is_magnifier_combined", False)
+    magnifier_internal_split = _create_simple_property("magnifier_internal_split")
     is_interactive_mode = _create_simple_property("is_interactive_mode", False)
     resize_in_progress = _create_simple_property("resize_in_progress", False)
     text_bg_visual_height = _create_simple_property("text_bg_visual_height", False)
@@ -428,6 +555,23 @@ class AppState(QObject):
     export_last_filename = _create_simple_property("export_last_filename")
     export_png_compress_level = _create_simple_property("export_png_compress_level")
 
+    divider_line_visible = _create_simple_property("divider_line_visible")
+    divider_line_color = _create_simple_property("divider_line_color")
+    divider_line_thickness = _create_simple_property("divider_line_thickness")
+
+    magnifier_divider_visible = _create_simple_property("magnifier_divider_visible")
+    magnifier_divider_color = _create_simple_property("magnifier_divider_color")
+    magnifier_divider_thickness = _create_simple_property("magnifier_divider_thickness")
+
+    magnifier_visible_left = _create_simple_property("magnifier_visible_left")
+    magnifier_visible_center = _create_simple_property("magnifier_visible_center")
+    magnifier_visible_right = _create_simple_property("magnifier_visible_right")
+
+    optimize_magnifier_movement = _create_simple_property("optimize_magnifier_movement")
+    movement_interpolation_method = _create_simple_property("movement_interpolation_method")
+    auto_calculate_psnr = _create_simple_property("auto_calculate_psnr")
+    auto_calculate_ssim = _create_simple_property("auto_calculate_ssim")
+
     @property
     def pressed_keys(self) -> set[int]:
         return self._pressed_keys
@@ -443,16 +587,14 @@ class AppState(QObject):
             current_index = self._current_index1 if image_number == 1 else self._current_index2
 
             if image_number == 1:
-                if self._image1_path != image_path or image_path is None:
+                if self._image1_path != image_path:
                     self._image1 = None
-                    self.clear_all_caches()
                 self._preview_image1 = image_pil
                 self._full_res_image1 = image_pil
                 self._image1_path = image_path
             else:
-                if self._image2_path != image_path or image_path is None:
+                if self._image2_path != image_path:
                     self._image2 = None
-                    self.clear_all_caches()
                 self._preview_image2 = image_pil
                 self._full_res_image2 = image_pil
                 self._image2_path = image_path

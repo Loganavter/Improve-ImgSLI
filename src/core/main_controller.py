@@ -1,17 +1,21 @@
-import os
-from PIL import Image
-from PyQt6.QtWidgets import QMessageBox
-from PyQt6.QtCore import QPointF, QPoint, QTimer
-from PyQt6.QtGui import QColor
+import io
 import logging
+import os
+import tempfile
+import time
+import urllib.request
 
-from ui.widgets.composite.unified_flyout import FlyoutMode
+from PIL import Image
+from PyQt6.QtCore import QPointF, QTimer
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QApplication, QMessageBox
+
 from core.app_state import AppState
 from core.constants import AppConstants
 from core.settings import SettingsManager
-from utils.resource_loader import get_magnifier_drawing_coords
+from image_processing.resize import resize_images_processor
 from resources.translations import tr
-from workers.generic_worker import GenericWorker
+from src.shared_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -23,6 +27,7 @@ class MainController:
         self.app = app_instance_ref
         self.settings_manager = settings_manager
         self.presenter = None
+        self._paste_dialog = None
 
     def set_presenter(self, presenter_ref):
         self.presenter = presenter_ref
@@ -189,9 +194,14 @@ class MainController:
 
     def on_interpolation_changed(self, index: int):
         try:
-            method_keys = list(AppConstants.INTERPOLATION_METHODS_MAP.keys())
-            if 0 <= index < len(method_keys):
-                selected_method_key = method_keys[index]
+            from image_processing.resize import WAND_AVAILABLE
+        except Exception:
+            WAND_AVAILABLE = False
+        try:
+            all_keys = list(AppConstants.INTERPOLATION_METHODS_MAP.keys())
+            visible_keys = [k for k in all_keys if k != "EWA_LANCZOS" or WAND_AVAILABLE]
+            if 0 <= index < len(visible_keys):
+                selected_method_key = visible_keys[index]
                 self.app_state.interpolation_method = selected_method_key
                 if self.presenter:
                     self.presenter._update_interpolation_combo_box_ui()
@@ -284,15 +294,53 @@ class MainController:
             self.presenter.update_rating_displays()
             self.presenter.update_combobox_displays()
 
+        img1_unified, img2_unified = resize_images_processor(self.app_state.full_res_image1, self.app_state.full_res_image2)
+        if img1_unified and img2_unified:
+            self.app_state.image1 = img1_unified
+            self.app_state.image2 = img2_unified
+            self._trigger_metrics_calculation_if_needed()
+        else:
+            self._on_metrics_calculated(None)
+
         if emit_signal:
             self.app_state.stateChanged.emit()
 
-    def on_combobox_changed(self, image_number: int, combobox_index: int):
-        if image_number == 1:
-            self.app_state.current_index1 = combobox_index
+    def _calculate_metrics_async(self, calc_psnr: bool, calc_ssim: bool):
+        img1 = self.app_state.image1
+        img2 = self.app_state.image2
+        if not img1 or not img2 or img1.size != img2.size:
+            self._on_metrics_calculated(None)
+            return
+
+        worker = GenericWorker(self._metrics_worker_task, img1.copy(), img2.copy(), calc_psnr, calc_ssim)
+        worker.signals.result.connect(self._on_metrics_calculated)
+        self.app.thread_pool.start(worker)
+
+    def _metrics_worker_task(self, img1: Image.Image, img2: Image.Image, calc_psnr: bool, calc_ssim: bool):
+        try:
+            from image_processing.analysis import calculate_psnr, calculate_ssim
+            psnr_val, ssim_val = None, None
+            if calc_psnr:
+                psnr_val = calculate_psnr(img1, img2)
+            if calc_ssim:
+                ssim_val = calculate_ssim(img1, img2)
+            return psnr_val, ssim_val
+        except Exception as e:
+            logger.error(f"Failed to calculate metrics: {e}")
+            return None
+
+    def _trigger_metrics_calculation_if_needed(self):
+        calc_psnr = self.app_state.auto_calculate_psnr
+        calc_ssim = self.app_state.auto_calculate_ssim
+
+        if self.app_state.diff_mode == 'ssim':
+            calc_ssim = True
+
+        if calc_psnr or calc_ssim:
+            self._calculate_metrics_async(calc_psnr=calc_psnr, calc_ssim=calc_ssim)
         else:
-            self.app_state.current_index2 = combobox_index
-        self.set_current_image(image_number)
+
+            self._on_metrics_calculated(None)
 
     def swap_current_images(self):
         idx1, idx2 = self.app_state.current_index1, self.app_state.current_index2
@@ -305,6 +353,9 @@ class MainController:
 
         if self.presenter:
             self.presenter.update_combobox_displays()
+            self.presenter.update_file_names_display()
+            self.presenter.update_resolution_labels()
+        self._trigger_metrics_calculation_if_needed()
 
         self.set_current_image(1, emit_signal=False)
         self.set_current_image(2, emit_signal=False)
@@ -338,6 +389,9 @@ class MainController:
 
         if self.presenter:
             self.presenter.update_combobox_displays()
+            self.presenter.update_file_names_display()
+            self.presenter.update_resolution_labels()
+        self._trigger_metrics_calculation_if_needed()
 
         self.set_current_image(image_number)
 
@@ -484,12 +538,26 @@ class MainController:
     def toggle_orientation(self, is_horizontal_checked: bool):
         if is_horizontal_checked != self.app_state.is_horizontal:
             self.app_state.is_horizontal = is_horizontal_checked
+            self.app_state.magnifier_is_horizontal = is_horizontal_checked
+            if self.presenter:
+                self.presenter.ui.btn_magnifier_orientation.setChecked(is_horizontal_checked, emit_signal=False)
+            self.settings_manager._save_setting("is_horizontal", is_horizontal_checked)
+            self.settings_manager._save_setting("magnifier_is_horizontal", is_horizontal_checked)
+            self.app_state.stateChanged.emit()
 
     def toggle_magnifier(self, use_magnifier_checked: bool):
         if use_magnifier_checked != self.app_state.use_magnifier:
             self.app_state.use_magnifier = use_magnifier_checked
+            self.settings_manager._save_setting("use_magnifier", use_magnifier_checked)
         if self.presenter:
             self.presenter.ui.toggle_magnifier_panel_visibility(use_magnifier_checked)
+
+    def toggle_magnifier_orientation(self, is_horizontal_checked: bool):
+        """Переключает ориентацию только для лупы."""
+        if is_horizontal_checked != self.app_state.magnifier_is_horizontal:
+            self.app_state.magnifier_is_horizontal = is_horizontal_checked
+            self.settings_manager._save_setting("magnifier_is_horizontal", is_horizontal_checked)
+            self.app_state.stateChanged.emit()
 
     def toggle_freeze_magnifier(self, freeze_checked: bool):
         if freeze_checked:
@@ -499,7 +567,6 @@ class MainController:
         else:
 
             if self.app_state.frozen_capture_point_relative:
-
                 drawing_width, drawing_height = (
                     self.app_state.pixmap_width,
                     self.app_state.pixmap_height,
@@ -536,6 +603,7 @@ class MainController:
             self.app_state.freeze_magnifier = False
             self.app_state.frozen_capture_point_relative = None
 
+        self.settings_manager._save_setting("freeze_magnifier", freeze_checked)
         self.app_state.stateChanged.emit()
 
     def on_slider_pressed(self, slider_name: str):
@@ -595,6 +663,7 @@ class MainController:
 
     def toggle_include_filenames_in_saved(self, checked: bool):
         self.app_state.include_file_names_in_saved = checked
+        self.settings_manager._save_setting("include_file_names_in_saved", checked)
 
     def apply_font_settings(self, size: int, font_weight: int, color: QColor, bg_color: QColor, draw_background: bool, placement_mode: str, text_alpha_percent: int):
         changed = False
@@ -690,6 +759,291 @@ class MainController:
         except Exception:
             pass
 
+    def toggle_divider_line_visibility(self, checked: bool):
+        """Переключает видимость линии разделения"""
+        is_visible = not checked
+        if self.app_state.divider_line_visible != is_visible:
+            self.app_state.divider_line_visible = is_visible
+            self.settings_manager._save_setting("divider_line_visible", is_visible)
+
+    def set_divider_line_color(self, color: QColor):
+        """Устанавливает цвет линии разделения"""
+        if self.app_state.divider_line_color != color:
+            self.app_state.divider_line_color = color
+            self.settings_manager._save_setting("divider_line_color", color.name(QColor.NameFormat.HexArgb))
+
+    def set_divider_line_thickness(self, thickness: int):
+        """Устанавливает толщину линии разделения"""
+        thickness = max(1, min(20, thickness))
+        if self.app_state.divider_line_thickness != thickness:
+            self.app_state.divider_line_thickness = thickness
+            self.settings_manager._save_setting("divider_line_thickness", thickness)
+
+            if self.presenter and hasattr(self.presenter.ui, 'btn_divider_width'):
+                if self.presenter.ui.btn_divider_width.get_value() != thickness:
+                    self.presenter.ui.btn_divider_width.set_value(thickness)
+
+    def toggle_magnifier_divider_visibility(self, visible: bool):
+        """Переключает видимость внутренней линии разделения в лупе"""
+        is_visible = not visible
+        if self.app_state.magnifier_divider_visible != is_visible:
+            self.app_state.magnifier_divider_visible = is_visible
+            self.settings_manager._save_setting("magnifier_divider_visible", is_visible)
+
+    def set_magnifier_divider_color(self, color: QColor):
+        """Устанавливает цвет внутренней линии разделения в лупе"""
+        if self.app_state.magnifier_divider_color != color:
+            self.app_state.magnifier_divider_color = color
+            self.settings_manager._save_setting("magnifier_divider_color", color.name(QColor.NameFormat.HexArgb))
+
+    def set_magnifier_divider_thickness(self, thickness: int):
+        """Устанавливает толщину внутренней линии разделения в лупе"""
+        thickness = max(1, min(10, thickness))
+        if self.app_state.magnifier_divider_thickness != thickness:
+            self.app_state.magnifier_divider_thickness = thickness
+            self.settings_manager._save_setting("magnifier_divider_thickness", thickness)
+
+            if self.presenter and hasattr(self.presenter.ui, 'btn_magnifier_divider_width'):
+                if self.presenter.ui.btn_magnifier_divider_width.get_value() != thickness:
+                    self.presenter.ui.btn_magnifier_divider_width.set_value(thickness)
+
+    def set_magnifier_visibility(self, left: bool | None = None, center: bool | None = None, right: bool | None = None):
+        """Устанавливает видимость отдельных частей лупы (левая/центральная/правая). Настройка не сохраняется между сессиями."""
+        changed = False
+        if left is not None and getattr(self.app_state, "magnifier_visible_left", True) != bool(left):
+            self.app_state.magnifier_visible_left = bool(left)
+            changed = True
+        if center is not None and getattr(self.app_state, "magnifier_visible_center", True) != bool(center):
+            self.app_state.magnifier_visible_center = bool(center)
+            changed = True
+        if right is not None and getattr(self.app_state, "magnifier_visible_right", True) != bool(right):
+            self.app_state.magnifier_visible_right = bool(right)
+            changed = True
+        if changed:
+
+            try:
+                self.app_state.clear_interactive_caches()
+            except Exception:
+                pass
+            self.app_state.stateChanged.emit()
+
+    def toggle_magnifier_part(self, part: str, visible: bool):
+        """Обертка для смены одного флага видимости по строковому ключу: 'left'|'center'|'right'."""
+        part = (part or "").strip().lower()
+        if part == "left":
+            self.set_magnifier_visibility(left=visible)
+        elif part == "center":
+            self.set_magnifier_visibility(center=visible)
+        elif part == "right":
+            self.set_magnifier_visibility(right=visible)
+        else:
+
+            return
+
+    def toggle_magnifier_orientation(self):
+        """Переключает ориентацию лупы независимо от основной линии."""
+        self.app_state.magnifier_is_horizontal = not self.app_state.magnifier_is_horizontal
+        self.settings_manager._save_setting("magnifier_is_horizontal", self.app_state.magnifier_is_horizontal)
+        if self.presenter:
+            self.presenter.update_magnifier_orientation_button_state()
+
+    def toggle_diff_mode(self, checked: bool):
+        self.app_state.show_diff = checked
+
+        self.app_state.clear_interactive_caches()
+        self.app_state.stateChanged.emit()
+
+    def set_diff_mode(self, mode: str):
+        self.app_state.diff_mode = mode
+        self._trigger_metrics_calculation_if_needed()
+        self.app_state.clear_interactive_caches()
+        self.app_state.stateChanged.emit()
+
+    def set_channel_view_mode(self, mode: str):
+        self.app_state.channel_view_mode = mode
+        self.app_state.clear_all_caches()
+        self.app_state.stateChanged.emit()
+
+    def _on_metrics_calculated(self, result):
+        if result:
+            psnr_val, ssim_val = result
+
+            if self.app_state.auto_calculate_psnr or self.app_state.diff_mode == 'ssim':
+                self.app_state.psnr_value = psnr_val
+            if self.app_state.auto_calculate_ssim or self.app_state.diff_mode == 'ssim':
+                self.app_state.ssim_value = ssim_val
+        else:
+
+            if not self.app_state.auto_calculate_psnr:
+                self.app_state.psnr_value = None
+            if not self.app_state.auto_calculate_ssim:
+                self.app_state.ssim_value = None
+        self.presenter.update_resolution_labels()
+
+    def paste_image_from_clipboard(self):
+        """Вставляет изображение(я) из буфера обмена"""
+        try:
+
+            if self._paste_dialog is not None:
+                try:
+                    if self._paste_dialog.isVisible():
+                        return False
+                except (RuntimeError, AttributeError):
+
+                    self._paste_dialog = None
+
+            clipboard = QApplication.clipboard()
+            mime_data = clipboard.mimeData()
+
+            image_paths = []
+
+            text_content = mime_data.text()
+            if text_content:
+
+                lines = text_content.strip().split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('2025-'):
+                        if os.path.exists(line):
+                            ext = os.path.splitext(line)[1].lower()
+                            if ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.tif']:
+                                image_paths.append(line)
+                        elif line.startswith('file://'):
+
+                            file_path = line[7:]
+                            if os.path.exists(file_path):
+                                ext = os.path.splitext(file_path)[1].lower()
+                                if ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.tif']:
+                                    image_paths.append(file_path)
+
+            if mime_data.hasUrls():
+                urls = mime_data.urls()
+                for url in urls:
+                    url_str = url.toString()
+                    if url.isLocalFile():
+                        file_path = url.toLocalFile()
+
+                        if os.path.exists(file_path):
+                            ext = os.path.splitext(file_path)[1].lower()
+                            if ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.tif']:
+                                image_paths.append(file_path)
+                    elif url_str.startswith(('http://', 'https://')):
+
+                        try:
+                            with urllib.request.urlopen(url_str, timeout=10) as response:
+                                content_type = response.headers.get_content_type()
+                                if content_type and content_type.startswith('image/'):
+                                    temp_dir = tempfile.gettempdir()
+                                    timestamp = int(time.time() * 1000)
+                                    ext = content_type.split('/')[-1]
+                                    if ext == 'jpeg':
+                                        ext = 'jpg'
+                                    temp_filename = f"url_image_{os.getpid()}_{timestamp}.{ext}"
+                                    image_path = os.path.join(temp_dir, temp_filename)
+                                    with open(image_path, 'wb') as f:
+                                        f.write(response.read())
+                                    image_paths.append(image_path)
+                        except Exception as e:
+                            logger.warning(f"Failed to download image from URL {url_str}: {e}")
+
+            if not image_paths and mime_data.hasImage():
+                qimage = clipboard.image()
+                if qimage.isNull():
+                    if self.app and hasattr(self.app, 'toast_manager'):
+                        self.app.toast_manager.show_toast(
+                            tr("Не удалось получить изображение из буфера обмена", self.app_state.current_language),
+                            duration=2500
+                        )
+                    return False
+                else:
+                    import tempfile
+                    temp_dir = tempfile.gettempdir()
+                    timestamp = int(time.time() * 1000)
+                    temp_filename = f"clipboard_image_{os.getpid()}_{timestamp}.png"
+                    image_path = os.path.join(temp_dir, temp_filename)
+                    qimage.save(image_path, "PNG")
+                    image_paths = [image_path]
+
+            if not image_paths:
+                if self.app and hasattr(self.app, 'toast_manager'):
+                    self.app.toast_manager.show_toast(
+                        tr("В буфере обмена нет изображения", self.app_state.current_language),
+                        duration=2500
+                    )
+                return False
+
+            self._show_paste_direction_dialog(image_paths)
+            return True
+
+        except Exception as e:
+            logger.error(f"Error pasting image from clipboard: {e}", exc_info=True)
+            if self.app and hasattr(self.app, 'toast_manager'):
+                self.app.toast_manager.show_toast(
+                    tr("Ошибка при вставке изображения", self.app_state.current_language),
+                    duration=2500
+                )
+            return False
+
+    def _show_paste_direction_dialog(self, image_paths: list):
+        """Показывает overlay выбора направления для вставки изображения"""
+        try:
+            from ui.widgets.paste_direction_overlay import PasteDirectionOverlay
+
+            if not hasattr(self.app, 'ui') or not hasattr(self.app.ui, 'image_label'):
+                self.load_images_from_paths(image_paths, 1)
+                return
+
+            overlay = PasteDirectionOverlay(
+                self.app,
+                self.app.ui.image_label,
+                is_horizontal=self.app_state.is_horizontal
+            )
+            overlay.set_language(self.app_state.current_language)
+            self._paste_dialog = overlay
+
+            def on_direction_selected(direction: str):
+                """Обрабатывает выбор направления"""
+                self._paste_dialog = None
+
+                if direction in ("up", "left"):
+                    slot_number = 1
+                    toast_message = tr("Изображение добавлено в первый список", self.app_state.current_language) if len(image_paths) == 1 else tr("Изображения вставлены в первый список", self.app_state.current_language)
+                else:
+                    slot_number = 2
+                    toast_message = tr("Изображение добавлено во второй список", self.app_state.current_language) if len(image_paths) == 1 else tr("Изображения вставлены во второй список", self.app_state.current_language)
+
+                self.load_images_from_paths(image_paths, slot_number)
+
+                if self.app and hasattr(self.app, 'toast_manager'):
+                    self.app.toast_manager.show_toast(toast_message, duration=2000)
+
+            def on_cancelled():
+                """Обрабатывает отмену"""
+                self._paste_dialog = None
+
+            def on_destroyed():
+                """Очищает ссылку на overlay при уничтожении"""
+                self._paste_dialog = None
+
+            overlay.direction_selected.connect(on_direction_selected)
+            overlay.cancelled.connect(on_cancelled)
+            overlay.destroyed.connect(on_destroyed)
+
+            overlay.setFocus()
+            overlay.show()
+            overlay.raise_()
+
+        except Exception as e:
+            logger.error(f"Error showing paste direction overlay: {e}", exc_info=True)
+            self._paste_dialog = None
+
+            self.load_images_from_paths(image_paths, 1)
+            if self.app and hasattr(self.app, 'toast_manager'):
+                self.app.toast_manager.show_toast(
+                    tr("Изображение добавлено в первый список", self.app_state.current_language) if len(image_paths) == 1 else tr("Изображения вставлены в первый список", self.app_state.current_language),
+                    duration=2000
+                )
+
     def quick_save_comparison(self):
         if not self.app_state.original_image1 or not self.app_state.original_image2:
             return False
@@ -709,32 +1063,37 @@ class MainController:
                 extension = "png"
             if not base_name.endswith(f".{extension}"):
                 base_name = f"{base_name}.{extension}"
-            output_path = os.path.join(self.app_state.export_default_dir, base_name)
-            counter = 1
-            original_path = output_path
-            while os.path.exists(output_path):
-                name_without_ext = os.path.splitext(original_path)[0]
-                output_path = f"{name_without_ext}_{counter}.{extension}"
-                counter += 1
+
+            try:
+                from src.shared_toolkit.utils.file_utils import get_unique_filepath
+                base_name_without_ext = os.path.splitext(base_name)[0]
+                output_path = get_unique_filepath(
+                    directory=self.app_state.export_default_dir,
+                    base_name=base_name_without_ext,
+                    extension=extension
+                )
+            except ImportError:
+
+                output_path = os.path.join(self.app_state.export_default_dir, base_name)
+                counter = 1
+                original_path = output_path
+                while os.path.exists(output_path):
+                    name_without_ext = os.path.splitext(original_path)[0]
+                    output_path = f"{name_without_ext}_{counter}.{extension}"
+                    counter += 1
             original1_full = self.app_state.full_res_image1 or self.app_state.original_image1
             original2_full = self.app_state.full_res_image2 or self.app_state.original_image2
             if not original1_full or not original2_full:
                 return False
-            from image_processing.resize import resize_images_processor
             image1_for_save, image2_for_save = resize_images_processor(original1_full, original2_full)
             if not image1_for_save or not image2_for_save:
                 return False
-            from utils.resource_loader import get_magnifier_drawing_coords
             save_width, save_height = image1_for_save.size
-            magnifier_coords_for_save = get_magnifier_drawing_coords(
-                app_state=self.app_state,
-                drawing_width=save_width,
-                drawing_height=save_height
-            ) if self.app_state.use_magnifier else None
+
             from image_processing.composer import ImageComposer
             font_path = getattr(self.app, 'font_path_absolute', None)
             composer = ImageComposer(font_path)
-            result_image, _, _ = composer.generate_comparison_image(
+            result_image, *_ = composer.generate_comparison_image(
                 app_state=self.app_state,
                 image1_scaled=image1_for_save,
                 image2_scaled=image2_for_save,
@@ -761,4 +1120,14 @@ class MainController:
                 return False
         except Exception as e:
             logger.error(f"Error during quick save: {e}")
+    def on_combobox_changed(self, image_number: int, index: int):
+        """Обрабатывает смену изображения из выпадающего списка или другого источника."""
+        if image_number == 1:
+            if 0 <= index < len(self.app_state.image_list1):
+                self.app_state.current_index1 = index
+                self.set_current_image(1)
+        elif image_number == 2:
+            if 0 <= index < len(self.app_state.image_list2):
+                self.app_state.current_index2 = index
+                self.set_current_image(2)
             return False

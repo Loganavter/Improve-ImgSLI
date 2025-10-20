@@ -2,7 +2,7 @@
 # Co-maintainer: Nebulosa
 
 pkgname=improve-imgsli
-pkgver=6.2.0
+pkgver=7.8.0
 pkgrel=1
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=(x86_64)
@@ -12,13 +12,15 @@ depends=(
   hicolor-icon-theme
   python
   python-darkdetect
+  python-numpy
   python-markdown
   python-pillow
   python-pyqt6
+  python-wand
+  python-scikit-image
+  python-desktop-notifier
 )
-optdepends=(
-  'python-desktop-notifier: enhanced system notifications'
-)
+# optdepends removed; 'python-desktop-notifier' moved to depends
 makedepends=(
   python-build
   python-installer
@@ -50,6 +52,7 @@ package() {
   install -vDm 644 src/events/*.py -t "$pkgdir"/usr/lib/$pkgname/events/
   install -vDm 644 src/image_processing/*.py -t "$pkgdir"/usr/lib/$pkgname/image_processing/
   install -vDm 644 src/image_processing/drawing/*.py -t "$pkgdir"/usr/lib/$pkgname/image_processing/drawing/
+  install -vDm 644 src/image_processing/analysis/*.py -t "$pkgdir"/usr/lib/$pkgname/image_processing/analysis/
   install -vDm 644 src/ui/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/
   install -vDm 644 src/ui/dialogs/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/dialogs/
   install -vDm 644 src/ui/managers/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/managers/
@@ -60,6 +63,7 @@ package() {
   install -vDm 644 src/ui/widgets/helpers/*.py -t "$pkgdir"/usr/lib/$pkgname/ui/widgets/helpers/
   install -vDm 644 src/utils/*.py -t "$pkgdir"/usr/lib/$pkgname/utils/
   install -vDm 644 src/workers/*.py -t "$pkgdir"/usr/lib/$pkgname/workers/
+  cp -a src/shared_toolkit "$pkgdir"/usr/lib/$pkgname/
 
   # Install resources
   install -vDm 644 src/resources/translations.py -t "$pkgdir"/usr/lib/$pkgname/resources/
@@ -68,4 +72,8 @@ package() {
   install -vDm 644 src/resources/fonts/*.ttf -t "$pkgdir"/usr/lib/$pkgname/resources/fonts/
   install -vDm 644 src/resources/icons/icon.png -t "$pkgdir"/usr/lib/$pkgname/resources/icons/
   install -vDm 644 src/resources/styles/*.qss -t "$pkgdir"/usr/lib/$pkgname/resources/styles/
+
+  # Help content (Markdown)
+  install -vdm 755 "$pkgdir"/usr/lib/$pkgname/resources/help
+  cp -a src/resources/help "$pkgdir"/usr/lib/$pkgname/resources/
 }

@@ -1,30 +1,29 @@
-from PIL import Image
 from typing import Tuple
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy
 
-import logging
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
+from resources import translations as translations_mod
+from src.shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from src.shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
+from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
 from ui.widgets import (
     BodyLabel,
     CaptionLabel,
     FluentSlider,
 )
-
-from resources import translations as translations_mod
-from ui.icon_manager import get_icon, AppIcon
-from ui.widgets.custom_widgets import (
-    LongPressIconButton,
-    IconButton,
-    ScrollableComboBox,
-    ButtonType,
-)
+from ui.widgets.atomic.button_group_container import ButtonGroupContainer
 from ui.widgets.atomic.clickable_label import ClickableLabel
-from core.constants import AppConstants
-from core.theme import ThemeManager
-from ui.widgets import FluentCheckBox
-from ui.widgets.atomic.custom_button import CustomButton
-from ui.widgets.atomic.custom_line_edit import CustomLineEdit
+from ui.widgets.atomic.scrollable_icon_button import ScrollableIconButton
+from ui.widgets.atomic.simple_icon_button import SimpleIconButton
+from ui.widgets.atomic.tool_button_with_menu import ToolButtonWithMenu
+from ui.widgets.atomic.toggle_icon_button import ToggleIconButton
+from ui.widgets.custom_widgets import (
+    ButtonType,
+    IconButton,
+    LongPressIconButton,
+    ScrollableComboBox,
+)
 
 tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: text)
 
@@ -38,9 +37,9 @@ class Ui_ImageComparisonApp:
         self.image_label = ClickableLabel(main_window)
         self.length_warning_label = BodyLabel(main_window)
 
-        self.btn_image1 = CustomButton(AppIcon.PHOTO, "")
+        self.btn_image1 = CustomButton(get_app_icon(AppIcon.PHOTO), "")
         self.btn_image1.setProperty("class", "primary")
-        self.btn_image2 = CustomButton(AppIcon.PHOTO, "")
+        self.btn_image2 = CustomButton(get_app_icon(AppIcon.PHOTO), "")
         self.btn_image2.setProperty("class", "primary")
 
         self.btn_swap = LongPressIconButton(AppIcon.SYNC, ButtonType.DEFAULT)
@@ -51,7 +50,8 @@ class Ui_ImageComparisonApp:
 
         self.btn_color_picker = IconButton(AppIcon.TEXT_MANIPULATOR, ButtonType.DEFAULT)
         self.btn_quick_save = IconButton(AppIcon.SAVE, ButtonType.DEFAULT)
-        self.btn_save = CustomButton(AppIcon.SAVE, "")
+        self.btn_magnifier_orientation = ToggleIconButton(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT)
+        self.btn_save = CustomButton(get_app_icon(AppIcon.SAVE), "")
         self.btn_save.setProperty("class", "primary")
         self.label_rating1 = CaptionLabel("–")
         self.label_rating2 = CaptionLabel("–")
@@ -59,10 +59,22 @@ class Ui_ImageComparisonApp:
         self.combo_image2 = ScrollableComboBox()
         self.combo_interpolation = ScrollableComboBox()
         self.combo_interpolation.setAutoWidthEnabled(True)
-        self.checkbox_horizontal = FluentCheckBox()
-        self.checkbox_magnifier = FluentCheckBox()
-        self.freeze_button = FluentCheckBox()
-        self.checkbox_file_names = FluentCheckBox()
+
+        self.btn_orientation = ToggleIconButton(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT)
+        self.btn_magnifier = ToggleIconButton(AppIcon.MAGNIFIER)
+        self.btn_freeze = ToggleIconButton(AppIcon.FREEZE)
+        self.btn_file_names = ToggleIconButton(AppIcon.TEXT_FILENAME)
+
+        self.btn_diff_mode = ToolButtonWithMenu(AppIcon.HIGHLIGHT_DIFFERENCES)
+        self.btn_channel_mode = ToolButtonWithMenu(AppIcon.PHOTO)
+
+        self.btn_divider_visible = ToggleIconButton(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN)
+        self.btn_divider_color = SimpleIconButton(AppIcon.DIVIDER_COLOR)
+        self.btn_divider_width = ScrollableIconButton(AppIcon.DIVIDER_WIDTH, min_value=1, max_value=20)
+
+        self.btn_magnifier_divider_visible = ToggleIconButton(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN)
+        self.btn_magnifier_divider_color = SimpleIconButton(AppIcon.DIVIDER_COLOR)
+        self.btn_magnifier_divider_width = ScrollableIconButton(AppIcon.DIVIDER_WIDTH, min_value=1, max_value=10)
         self.slider_size = FluentSlider(Qt.Orientation.Horizontal)
         self.slider_capture = FluentSlider(Qt.Orientation.Horizontal)
         self.slider_speed = FluentSlider(Qt.Orientation.Horizontal)
@@ -102,12 +114,18 @@ class Ui_ImageComparisonApp:
         self.image_container_layout.addWidget(self.magnifier_settings_panel)
         self.image_container_layout.addWidget(self.image_label)
         main_layout.addWidget(image_container_widget, 1)
+        self.psnr_label = CaptionLabel("PSNR: --")
+        self.ssim_label = CaptionLabel("SSIM: --")
         resolutions_and_filenames_group_layout = QVBoxLayout()
         resolutions_and_filenames_group_layout.setSpacing(0)
         resolution_layout = QHBoxLayout()
         resolution_layout.addWidget(
             self.resolution_label1, alignment=Qt.AlignmentFlag.AlignLeft
         )
+        resolution_layout.addStretch()
+        resolution_layout.addWidget(self.psnr_label)
+        resolution_layout.addSpacing(15)
+        resolution_layout.addWidget(self.ssim_label)
         resolution_layout.addStretch()
         resolution_layout.addWidget(
             self.resolution_label2, alignment=Qt.AlignmentFlag.AlignRight
@@ -126,15 +144,28 @@ class Ui_ImageComparisonApp:
         main_layout.addWidget(self._create_save_buttons_widget())
         self.toggle_edit_layout_visibility(False)
         self.magnifier_settings_panel.setVisible(False)
-        self.freeze_button.setEnabled(False)
+
+        self.btn_divider_visible.setChecked(True)
 
         self._post_init_icons_and_sizes()
 
     def _post_init_icons_and_sizes(self):
+
+        self.btn_image1.setIcon(get_app_icon(AppIcon.PHOTO))
+        self.btn_image2.setIcon(get_app_icon(AppIcon.PHOTO))
+        self.btn_save.setIcon(get_app_icon(AppIcon.SAVE))
+
         self.btn_quick_save.setIconSize(QSize(24, 24))
         self.help_button.setIconSize(QSize(24, 24))
         self.btn_clear_list1.setIconSize(QSize(22, 22))
         self.btn_clear_list2.setIconSize(QSize(22, 22))
+
+        for btn in [self.btn_orientation, self.btn_magnifier, self.btn_freeze,
+                    self.btn_file_names, self.btn_divider_visible]:
+            pass
+
+        self.btn_divider_color.setIconSize(QSize(22, 22))
+        self.btn_divider_width.setIconSize(QSize(22, 22))
 
     def reapply_button_styles(self):
 
@@ -185,30 +216,44 @@ class Ui_ImageComparisonApp:
         return main_layout
 
     def _create_checkbox_layout(self):
-        layout = QHBoxLayout()
-        layout.setSpacing(10)
-        self.checkbox_sub_layout = QHBoxLayout()
-        self.checkbox_sub_layout.setSpacing(-10)
+        main_layout = QHBoxLayout()
+        main_layout.setSpacing(8)
 
-        for cb in (self.checkbox_horizontal, self.checkbox_magnifier, self.freeze_button, self.checkbox_file_names):
-            cb.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.checkbox_sub_layout.addWidget(self.checkbox_horizontal)
-        self.checkbox_sub_layout.addWidget(self.checkbox_magnifier)
-        self.checkbox_sub_layout.addWidget(self.freeze_button)
-        self.checkbox_sub_layout.addWidget(self.checkbox_file_names)
-        self.checkbox_sub_layout.addStretch(1)
+        groups_layout = QHBoxLayout()
+        groups_layout.setSpacing(16)
+        groups_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self._update_checkbox_stretches()
-        layout.addLayout(self.checkbox_sub_layout, 1)
+        self.line_group_container = ButtonGroupContainer(
+            [self.btn_orientation, self.btn_divider_visible, self.btn_divider_color, self.btn_divider_width],
+            "Line"
+        )
+        groups_layout.addWidget(self.line_group_container)
+
+        self.view_group_container = ButtonGroupContainer(
+            [self.btn_diff_mode, self.btn_channel_mode, self.btn_file_names],
+            "View"
+        )
+        groups_layout.addWidget(self.view_group_container)
+
+        self.magnifier_group_container = ButtonGroupContainer(
+            [self.btn_magnifier, self.btn_freeze, self.btn_magnifier_orientation,
+             self.btn_magnifier_divider_visible, self.btn_magnifier_divider_color, self.btn_magnifier_divider_width],
+            "Magnifier"
+        )
+        groups_layout.addWidget(self.magnifier_group_container)
+
+        main_layout.addLayout(groups_layout)
+        main_layout.addStretch(1)
 
         buttons_sub_layout = QHBoxLayout()
         buttons_sub_layout.setSpacing(8)
+        buttons_sub_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         buttons_sub_layout.addWidget(self.btn_quick_save)
         buttons_sub_layout.addWidget(self.btn_settings)
         buttons_sub_layout.addWidget(self.help_button)
-        layout.addLayout(buttons_sub_layout)
-        return layout
+        main_layout.addLayout(buttons_sub_layout)
+        return main_layout
 
     def _create_slider_layout(self):
         panel_layout = QVBoxLayout(self.magnifier_settings_panel)
@@ -355,34 +400,32 @@ class Ui_ImageComparisonApp:
         )
         self.btn_quick_save.setToolTip("")
         self.btn_save.setText(tr("Save Result", lang_code))
-        self.checkbox_horizontal.setText(tr("Horizontal Split", lang_code))
-        self.checkbox_magnifier.setText(tr("Use Magnifier", lang_code))
-        self.freeze_button.setText(tr("Freeze Magnifier", lang_code))
-        self.checkbox_file_names.setText(
-            tr("Include file names in saved image", lang_code)
-        )
+
+        self.btn_orientation.setToolTip(tr("Toggle Split Orientation (Horizontal/Vertical)", lang_code))
+        self.btn_magnifier.setToolTip(tr("Toggle Magnifier", lang_code))
+        self.btn_freeze.setToolTip(tr("Freeze Magnifier Position", lang_code))
+        self.btn_magnifier_orientation.setToolTip(tr("Toggle Split Orientation (Horizontal/Vertical)", lang_code))
+        self.btn_file_names.setToolTip(tr("Include file names in saved image", lang_code))
+
+        self.btn_divider_visible.setToolTip(tr("Toggle Divider Line Visibility", lang_code))
+        self.btn_divider_color.setToolTip(tr("Change Divider Line Color", lang_code))
+        self.btn_divider_width.setToolTip(tr("Divider Line Thickness Tooltip", lang_code))
+
+        self.btn_magnifier_divider_visible.setToolTip(tr("Toggle Divider Line Visibility", lang_code))
+        self.btn_magnifier_divider_color.setToolTip(tr("Change Divider Line Color", lang_code))
+        self.btn_magnifier_divider_width.setToolTip(tr("Magnifier Divider Line Thickness Tooltip", lang_code))
+
+        if hasattr(self, 'line_group_container'):
+            self.line_group_container.set_label_text(tr("Line", lang_code))
+        if hasattr(self, 'magnifier_group_container'):
+            self.magnifier_group_container.set_label_text(tr("Magnifier", lang_code))
+        if hasattr(self, 'view_group_container'):
+            self.view_group_container.set_label_text(tr("View", lang_code))
+
         self.label_magnifier_size.setText(tr("Magnifier Size (%):", lang_code))
         self.label_capture_size.setText(tr("Capture Size (%):", lang_code))
         self.label_movement_speed.setText(tr("Move Speed:", lang_code))
         self.label_interpolation.setText(tr("Magnifier Interpolation:", lang_code))
-
-        try:
-            self._update_checkbox_stretches()
-        except Exception:
-            pass
-
-    def _update_checkbox_stretches(self):
-
-        checkboxes = [
-            self.checkbox_horizontal,
-            self.checkbox_magnifier,
-            self.freeze_button,
-            self.checkbox_file_names,
-        ]
-
-        widths = [max(1, cb.sizeHint().width()) for cb in checkboxes]
-        for i, w in enumerate(widths):
-            self.checkbox_sub_layout.setStretch(i, int(w))
 
     def update_drag_overlays(self, horizontal: bool = False, visible: bool = False):
         if not self.image_label.isVisible():
@@ -501,7 +544,6 @@ class Ui_ImageComparisonApp:
 
     def toggle_magnifier_panel_visibility(self, visible: bool):
         self.magnifier_settings_panel.setVisible(visible)
-        self.freeze_button.setEnabled(visible)
 
     def update_rating_display(
         self, image_number: int, score: int | None, current_language: str

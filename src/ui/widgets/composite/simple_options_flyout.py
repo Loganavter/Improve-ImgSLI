@@ -1,11 +1,27 @@
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QPropertyAnimation, QEasingCurve, QSize
-from PyQt6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPen, QFontMetrics, QBrush
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QGraphicsDropShadowEffect, QApplication, QLabel, QHBoxLayout
-from PyQt6.QtCore import QTimer
-import sys
-from core.theme import ThemeManager
 import logging
+import sys
+
+from PyQt6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, pyqtSignal
+from PyQt6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QFontMetrics,
+    QGuiApplication,
+    QPainter,
+    QPen,
+)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QVBoxLayout,
+    QWidget,
+)
+
 from core.constants import AppConstants
+from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 logger = logging.getLogger("ImproveImgSLI")
 

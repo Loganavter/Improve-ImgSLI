@@ -1,17 +1,18 @@
-from PyQt6.QtCore import Qt, QObject, QPoint, QTimer, QPropertyAnimation, QEasingCurve, QAbstractAnimation, QPointF, QRect
-from PyQt6.QtWidgets import QMessageBox, QDialog, QApplication
-from ui.dialogs.settings_dialog import SettingsDialog
-from ui.dialogs.help_dialog import HelpDialog
-from ui.dialogs.export_dialog import ExportDialog
-from ui.widgets.composite.unified_flyout import UnifiedFlyout, FlyoutMode
-from core.constants import AppConstants
-from resources.translations import tr
-import gc
-import sys
 import logging
 import time
+
+from PyQt6.QtCore import QObject, QPoint, QPointF, QRect, Qt, QTimer, QEvent
+from PyQt6.QtWidgets import QApplication, QMessageBox
+
+from core.constants import AppConstants
+from src.shared_toolkit.ui.managers.font_manager import FontManager
+from resources.translations import tr
+from ui.dialogs.export_dialog import ExportDialog
+from src.shared_toolkit.ui.dialogs.help_dialog import HelpDialog
+from ui.dialogs.settings_dialog import SettingsDialog
 from ui.widgets.composite.simple_options_flyout import SimpleOptionsFlyout
-from core.font_manager import FontManager
+from ui.widgets.composite.unified_flyout import FlyoutMode, UnifiedFlyout
+from ui.widgets.composite.magnifier_visibility_flyout import MagnifierVisibilityFlyout
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -24,6 +25,8 @@ class UIManager(QObject):
         self.ui = ui
         self.parent_widget = parent_widget
         self.app_ref = parent_widget
+
+        self._active_message_boxes = []
 
         self.unified_flyout = UnifiedFlyout(self.parent_widget)
         self.font_settings_flyout = None
@@ -43,6 +46,32 @@ class UIManager(QObject):
 
         self._font_popup_open: bool = False
         self._font_popup_last_open_ts: float = 0.0
+
+        self.magnifier_visibility_flyout = MagnifierVisibilityFlyout(self.parent_widget)
+        self._magn_popup_open: bool = False
+        self._magn_popup_last_open_ts: float = 0.0
+        self._magn_hover_timer = QTimer(self)
+        self._magn_hover_timer.setSingleShot(True)
+
+        try:
+            self.ui.btn_magnifier.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+            self.ui.btn_magnifier.installEventFilter(self)
+            self.magnifier_visibility_flyout.installEventFilter(self)
+        except Exception:
+            pass
+
+        try:
+            self.ui.btn_magnifier.toggled.connect(self._on_magnifier_toggle_with_hover)
+        except Exception:
+            pass
+
+        try:
+
+            self.magnifier_visibility_flyout.btn_left.toggled.connect(lambda checked: self.main_controller.toggle_magnifier_part('left', not checked))
+            self.magnifier_visibility_flyout.btn_right.toggled.connect(lambda checked: self.main_controller.toggle_magnifier_part('right', not checked))
+            self.magnifier_visibility_flyout.btn_center.toggled.connect(lambda checked: self.main_controller.toggle_magnifier_part('center', not checked))
+        except Exception:
+            pass
 
         try:
             FontManager.get_instance().font_changed.connect(self._on_font_changed)
@@ -126,16 +155,30 @@ class UIManager(QObject):
             except Exception:
                 pass
 
-        from resources.translations import tr as _tr
         from core.constants import AppConstants as _AC
+        from resources.translations import tr as _tr
         lang = self.app_state.current_language
         labels: list[str] = []
-        method_keys = list(_AC.INTERPOLATION_METHODS_MAP.keys())
+
+        try:
+            from image_processing.resize import WAND_AVAILABLE
+        except Exception:
+            WAND_AVAILABLE = False
+        method_keys = [k for k in _AC.INTERPOLATION_METHODS_MAP.keys() if k != "EWA_LANCZOS" or WAND_AVAILABLE]
         for key in method_keys:
             labels.append(_tr(_AC.INTERPOLATION_METHODS_MAP[key], lang))
 
-        current_index = self.ui.combo_interpolation.currentIndex()
-        if not (0 <= current_index < len(labels)):
+        try:
+            target_key = getattr(self.app_state, "interpolation_method", _AC.DEFAULT_INTERPOLATION_METHOD)
+            if target_key not in method_keys:
+
+                target_key = _AC.DEFAULT_INTERPOLATION_METHOD if _AC.DEFAULT_INTERPOLATION_METHOD in method_keys else (method_keys[0] if method_keys else _AC.DEFAULT_INTERPOLATION_METHOD)
+                try:
+                    self.app_state.interpolation_method = target_key
+                except Exception:
+                    pass
+            current_index = method_keys.index(target_key) if method_keys else 0
+        except Exception:
             current_index = 0
 
         try:
@@ -270,9 +313,138 @@ class UIManager(QObject):
         except Exception:
             pass
 
+    def _update_magnifier_flyout_states(self):
+        """Sync flyout buttons with current AppState and mode."""
+        try:
+            show_center = getattr(self.app_state, "diff_mode", "off") != "off"
+            left_on = getattr(self.app_state, "magnifier_visible_left", True)
+            center_on = getattr(self.app_state, "magnifier_visible_center", True)
+            right_on = getattr(self.app_state, "magnifier_visible_right", True)
+            self.magnifier_visibility_flyout.set_mode_and_states(show_center, left_on, center_on, right_on)
+        except Exception:
+            pass
+
+    def _on_magnifier_toggle_with_hover(self, checked: bool):
+        """
+        If magnifier is toggled while cursor is still over the button:
+        - when turned ON: show the hover flyout immediately
+        - when turned OFF: hide the flyout immediately
+        """
+        try:
+            btn = self.ui.btn_magnifier
+        except Exception:
+            btn = None
+        if not btn:
+            return
+        try:
+            if btn.underMouse():
+                if checked:
+
+                    QTimer.singleShot(0, lambda: self._show_magnifier_visibility_flyout(reason="hover"))
+                else:
+                    self._hide_magnifier_visibility_flyout()
+        except Exception:
+            pass
+
+    def _show_magnifier_visibility_flyout(self, reason: str = "hover"):
+
+        if not getattr(self.app_state, "use_magnifier", False):
+            return
+        try:
+            self._update_magnifier_flyout_states()
+
+            hover_delay_ms = 0 if reason != "hover" else 0
+            self.magnifier_visibility_flyout.show_for_button(self.ui.btn_magnifier, self.parent_widget, hover_delay_ms=hover_delay_ms)
+            self._magn_popup_open = True
+            self._magn_popup_last_open_ts = time.monotonic()
+
+            if reason == "wheel":
+                self.magnifier_visibility_flyout.schedule_auto_hide(1200)
+            else:
+                self.magnifier_visibility_flyout.cancel_auto_hide()
+        except Exception:
+            pass
+
+    def _hide_magnifier_visibility_flyout(self):
+        try:
+            self.magnifier_visibility_flyout.hide()
+            self._magn_popup_open = False
+        except Exception:
+            pass
+
+    def eventFilter(self, watched, event):
+        try:
+            btn = self.ui.btn_magnifier
+        except Exception:
+            btn = None
+
+        if btn is not None and watched is btn:
+            et = event.type()
+            if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
+
+                self._magn_hover_timer.stop()
+                if getattr(self.app_state, "use_magnifier", False):
+                    def _do_show():
+                        self._show_magnifier_visibility_flyout(reason="hover")
+                    try:
+                        self._magn_hover_timer.timeout.disconnect()
+                    except Exception:
+                        pass
+                    self._magn_hover_timer.timeout.connect(_do_show)
+                    self._magn_hover_timer.start(150)
+                else:
+
+                    try:
+                        self.magnifier_visibility_flyout.hide()
+                    except Exception:
+                        pass
+                return False
+            elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
+
+                try:
+                    self.magnifier_visibility_flyout.schedule_auto_hide(300)
+                except Exception:
+                    pass
+                return False
+            elif et == QEvent.Type.Wheel:
+
+                if not getattr(self.app_state, "use_magnifier", False):
+                    return True
+                self._show_magnifier_visibility_flyout(reason="wheel")
+                return True
+            else:
+                return False
+
+        if watched is self.magnifier_visibility_flyout:
+            et = event.type()
+            if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
+
+                self.magnifier_visibility_flyout.cancel_auto_hide()
+                return False
+            elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
+
+                self.magnifier_visibility_flyout.schedule_auto_hide(300)
+                return False
+            else:
+                return False
+
+        return super().eventFilter(watched, event)
+
     def close_all_flyouts_if_needed(self, global_pos: QPointF):
         if self._is_modal_active:
             return
+
+        try:
+            if self.magnifier_visibility_flyout and self.magnifier_visibility_flyout.isVisible():
+                local_pos = self.parent_widget.mapFromGlobal(global_pos.toPoint())
+                btn_rect = self.ui.btn_magnifier.rect()
+                btn_rect.moveTo(self.ui.btn_magnifier.mapTo(self.parent_widget, btn_rect.topLeft()))
+                inside_btn = btn_rect.contains(local_pos)
+                inside_fly = self.magnifier_visibility_flyout.contains_global(global_pos)
+                if not inside_btn and not inside_fly:
+                    self._hide_magnifier_visibility_flyout()
+        except Exception:
+            pass
 
         if self._font_popup_open and (time.monotonic() - self._font_popup_last_open_ts) > 0.12:
 
@@ -333,7 +505,16 @@ class UIManager(QObject):
     def show_help_dialog(self):
 
         if self._help_dialog is None:
-            self._help_dialog = HelpDialog(self.app_state.current_language, parent=self.parent_widget)
+            sections = [
+                ("Help Section: Introduction", "introduction"),
+                ("Help Section: File Management", "file-management"),
+                ("Help Section: Basic Comparison", "comparison"),
+                ("Help Section: Magnifier Tool", "magnifier"),
+                ("Help Section: Exporting Results", "export"),
+                ("Help Section: Settings", "settings"),
+                ("Help Section: Hotkeys", "hotkeys"),
+            ]
+            self._help_dialog = HelpDialog(sections, self.app_state.current_language, "Improve-ImgSLI", parent=self.parent_widget)
 
         if getattr(self._help_dialog, 'current_language', None) != self.app_state.current_language:
             try:
@@ -369,6 +550,10 @@ class UIManager(QObject):
                 tr_func=tr,
                 current_ui_font_mode=getattr(self.app_state, 'ui_font_mode', 'builtin'),
                 current_ui_font_family=getattr(self.app_state, 'ui_font_family', ''),
+                optimize_magnifier_movement=self.app_state.optimize_magnifier_movement,
+                movement_interpolation_method=self.app_state.movement_interpolation_method,
+                auto_calculate_psnr=self.app_state.auto_calculate_psnr,
+                auto_calculate_ssim=self.app_state.auto_calculate_ssim,
             )
 
             self._settings_dialog.accepted.connect(lambda: self._apply_settings(self._settings_dialog.get_settings()))
@@ -392,8 +577,36 @@ class UIManager(QObject):
         )
         return dialog.exec(), dialog.get_export_options()
 
+    def show_non_modal_message(self, icon, title: str, text: str):
+
+        msg_box = QMessageBox(self.parent_widget)
+        msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowType.Window)
+        msg_box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        msg_box.setModal(False)
+
+        msg_box.setIcon(icon)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(text)
+
+        self.app_ref.theme_manager.apply_theme_to_dialog(msg_box)
+
+        self._active_message_boxes.append(msg_box)
+        msg_box.finished.connect(lambda: self._active_message_boxes.remove(msg_box))
+
+        msg_box.show()
+        try:
+            msg_box.raise_()
+            msg_box.activateWindow()
+        except Exception:
+            pass
+
     def _apply_settings(self, settings):
-        new_lang, new_theme, new_max_length, new_debug, new_sys_notif, new_res_limit, new_ui_font_mode, new_ui_font_family = settings
+        (
+            new_lang, new_theme, new_max_length, new_debug, new_sys_notif,
+            new_res_limit, new_ui_font_mode, new_ui_font_family,
+            new_optimize_movement, new_movement_interp,
+            new_auto_psnr, new_auto_ssim
+        ) = settings
 
         theme_changed = new_theme != self.app_state.theme
         if theme_changed:
@@ -433,6 +646,20 @@ class UIManager(QObject):
                 self.main_controller.settings_manager._save_setting("ui_font_family", self.app_state.ui_font_family)
             except Exception:
                 pass
+
+        if new_optimize_movement != self.app_state.optimize_magnifier_movement:
+            self.app_state.optimize_magnifier_movement = new_optimize_movement
+        if new_movement_interp != self.app_state.movement_interpolation_method:
+            self.app_state.movement_interpolation_method = new_movement_interp
+
+        if new_auto_psnr != self.app_state.auto_calculate_psnr:
+            self.app_state.auto_calculate_psnr = new_auto_psnr
+
+        if new_auto_ssim != self.app_state.auto_calculate_ssim:
+            self.app_state.auto_calculate_ssim = new_auto_ssim
+
+        self.main_controller._trigger_metrics_calculation_if_needed()
+
         if debug_changed:
             QMessageBox.information(
                 self.parent_widget,

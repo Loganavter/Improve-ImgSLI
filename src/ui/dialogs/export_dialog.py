@@ -1,31 +1,28 @@
-from PyQt6.QtWidgets import (
-    QDialog,
-    QHBoxLayout,
-    QVBoxLayout,
-    QLabel,
-    QFrame,
-    QPushButton,
-    QLineEdit,
-    QFileDialog,
-    QComboBox,
-    QCheckBox,
-    QSlider,
-    QWidget,
-    QColorDialog,
-    QSizePolicy,
-)
-from PyQt6.QtCore import Qt, QSize, QTimer
-from PyQt6.QtGui import QPixmap, QColor, QIcon, QPainter, QImage
-import PIL.Image
-from PIL.ImageQt import ImageQt
 import io
-import os
-import re
 import logging
+import os
 
-from core.theme import ThemeManager
-from utils.resource_loader import resource_path
+import PIL.Image
+from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
+from PyQt6.QtWidgets import (
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
 from ui.widgets import FluentCheckBox, FluentSlider
+from utils.resource_loader import resource_path
 
 try:
     from resources.translations import tr as app_tr
@@ -219,7 +216,7 @@ class ExportDialog(QDialog):
 
     def _apply_styles(self):
 
-        self.update()
+        self.theme_manager.apply_theme_to_dialog(self)
 
     def _populate_from_state(self):
         out_dir = self.app_state.export_default_dir if self.app_state.export_use_default_dir and self.app_state.export_default_dir else None
@@ -251,9 +248,18 @@ class ExportDialog(QDialog):
 
     def _choose_directory(self):
         start_dir = self.edit_dir.text() or self._get_os_default_downloads()
-        chosen = QFileDialog.getExistingDirectory(self, self.tr("Select Output Directory", self.app_state.current_language), start_dir)
-        if chosen:
-            self.edit_dir.setText(chosen)
+        file_dialog = QFileDialog(self)
+        file_dialog.setFileMode(QFileDialog.FileMode.Directory)
+        file_dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
+        file_dialog.setWindowTitle(self.tr("Select Output Directory", self.app_state.current_language))
+        file_dialog.setDirectory(start_dir)
+
+        self.theme_manager.apply_theme_to_dialog(file_dialog)
+
+        if file_dialog.exec():
+            chosen = file_dialog.selectedFiles()[0] if file_dialog.selectedFiles() else ""
+            if chosen:
+                self.edit_dir.setText(chosen)
 
     def _set_favorite_from_current(self):
         path = self.edit_dir.text().strip()

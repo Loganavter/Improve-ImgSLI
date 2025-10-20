@@ -1,9 +1,11 @@
+import logging
 import os
 import traceback
+
 from PIL import Image
 from PyQt6.QtWidgets import QMessageBox
+
 from image_processing.composer import ImageComposer
-import logging
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -45,7 +47,7 @@ def save_result_processor(
     app_state.is_interactive_mode = False
 
     composer = ImageComposer(font_path_absolute)
-    image_to_save, _, _ = composer.generate_comparison_image(
+    image_to_save, *_ = composer.generate_comparison_image(
         app_state=app_state,
         image1_scaled=image1_processed,
         image2_scaled=image2_processed,

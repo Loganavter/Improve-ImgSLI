@@ -1,7 +1,8 @@
-from PyQt6.QtWidgets import QWidget, QLabel, QHBoxLayout, QPushButton
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFontMetrics
-from core.theme import ThemeManager
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+
+from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class ToastNotification(QWidget):
     def __init__(self, parent=None):
@@ -35,6 +36,8 @@ class ToastNotification(QWidget):
 
     def _on_theme_changed(self):
 
+        self.style().unpolish(self)
+        self.style().polish(self)
         self.adjustSize()
 
     def show_message(self, message: str, max_width: int, duration: int = 3000, action_text: str | None = None, on_action = None):
@@ -93,7 +96,7 @@ class ToastNotification(QWidget):
         self.hide_and_close()
         event.accept()
 
-from PyQt6.QtCore import QRect, QObject, QEvent, QPoint
+from PyQt6.QtCore import QEvent, QObject, QPoint, QRect
 
 class ToastManager(QObject):
     def __init__(self, parent_window: QWidget, image_label_widget: QWidget):
