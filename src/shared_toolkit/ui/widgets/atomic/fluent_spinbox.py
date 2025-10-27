@@ -1,35 +1,29 @@
-"""
-Fluent Design SpinBox with custom rendering and smooth interactions.
-
-Provides a modern spin box with custom arrow buttons and theme support.
-"""
+\
+\
+\
+\
 
 from enum import Enum
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QRectF, QPointF, QTimer
+from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QFont, QFontMetrics, QPolygonF
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLineEdit, QSizePolicy
 
-from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPolygonF
-from PyQt6.QtWidgets import QHBoxLayout, QLineEdit, QSizePolicy, QWidget
-
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.helpers.underline_painter import (
-    UnderlineConfig,
-    draw_bottom_underline,
-)
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.helpers.underline_painter import draw_bottom_underline, UnderlineConfig
 
 class FocusLineEdit(QLineEdit):
     """LineEdit that emits focus change signals."""
     focusChanged = pyqtSignal(bool)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def focusInEvent(self, event):
         super().focusInEvent(event)
-        self.focusChanged.emit(True)
+
+        QTimer.singleShot(0, lambda: self.focusChanged.emit(True))
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
-        self.focusChanged.emit(False)
+
+        QTimer.singleShot(0, lambda: self.focusChanged.emit(False))
 
 class _ArrowDirection(Enum):
     """Arrow direction for spin buttons."""
@@ -50,14 +44,19 @@ class _SpinButton(QWidget):
         self.theme_manager.theme_changed.connect(self.update)
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setMouseTracking(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
     def enterEvent(self, event):
-        self._hovered = True
-        self.update()
+        if self.underMouse():
+            self._hovered = True
+            self.update()
+        super().enterEvent(event)
 
     def leaveEvent(self, event):
         self._hovered = False
         self.update()
+        super().leaveEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -118,7 +117,7 @@ class FluentSpinBox(QWidget):
     - Theme-aware styling
     """
     valueChanged = pyqtSignal(int)
-    RADIUS = 6
+    RADIUS = 8
 
     def __init__(self, parent: QWidget = None, default_value: int = 30):
         super().__init__(parent)
@@ -140,7 +139,7 @@ class FluentSpinBox(QWidget):
         self.line_edit.setStyleSheet("border: none; background: transparent; padding: 0; margin: 0;")
         self.line_edit.textChanged.connect(self._on_text_changed)
         self.line_edit.editingFinished.connect(self._on_text_edited)
-        self.setFocusProxy(self.line_edit)
+
         self.line_edit.focusChanged.connect(self.update)
 
         main_layout.addStretch(1)
@@ -239,9 +238,10 @@ class FluentSpinBox(QWidget):
 
     def mousePressEvent(self, event):
         """Focuses and selects text on click."""
-        if event.button() == Qt.MouseButton.LeftButton and not self.line_edit.hasFocus():
-            self.line_edit.setFocus()
-            self.line_edit.selectAll()
+        if event.button() == Qt.MouseButton.LeftButton:
+            if not self.line_edit.hasFocus():
+                self.line_edit.setFocus()
+                self.line_edit.selectAll()
         super().mousePressEvent(event)
 
     def _on_theme_changed(self):
@@ -259,8 +259,13 @@ class FluentSpinBox(QWidget):
         max_width = fm.horizontalAdvance(str(self._maximum)) + 12
         self.line_edit.setFixedWidth(max_width)
 
+    def focusInEvent(self, event):
+        """Handles focus in event."""
+        super().focusInEvent(event)
+        self.line_edit.setFocus()
+
     def focusOutEvent(self, event):
-        """Finalizes value when focus is lost."""
+        """Handles focus out event."""
         self._on_text_edited()
         super().focusOutEvent(event)
 
@@ -306,4 +311,3 @@ class FluentSpinBox(QWidget):
         else:
             underline_config = UnderlineConfig(alpha=40, thickness=1.0)
         draw_bottom_underline(painter, r, self.theme_manager, underline_config)
-

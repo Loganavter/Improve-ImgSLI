@@ -8,12 +8,13 @@ from PyQt6.QtCore import (
     QRectF,
     QSize,
     Qt,
+    QTimer,
     pyqtProperty,
 )
 from PyQt6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QCheckBox, QSizePolicy, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class FluentCheckBox(QCheckBox):
     """
@@ -165,11 +166,13 @@ class FluentCheckBox(QCheckBox):
         super().mouseReleaseEvent(e)
 
     def focusInEvent(self, e):
-        self.update()
+
+        QTimer.singleShot(0, self.update)
         super().focusInEvent(e)
 
     def focusOutEvent(self, e):
-        self.update()
+
+        QTimer.singleShot(0, self.update)
         super().focusOutEvent(e)
 
     def changeEvent(self, e):

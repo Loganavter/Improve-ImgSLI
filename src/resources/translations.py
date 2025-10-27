@@ -382,6 +382,8 @@ en_translations = {
     "Вниз": "Down",
     "Влево": "Left",
     "Вправо": "Right",
+    "Switch On": "On",
+    "Switch Off": "Off",
 }
 en_translations["View"] = "View"
 en_translations["Diff Mode"] = "Diff Mode"
@@ -783,6 +785,8 @@ ru_translations = {
     "Вниз": "Вниз",
     "Влево": "Влево",
     "Вправо": "Вправо",
+    "Switch On": "Вкл",
+    "Switch Off": "Выкл",
 }
 ru_translations["View"] = "Вид"
 ru_translations["Diff Mode"] = "Режим разницы"
@@ -1165,6 +1169,8 @@ zh_translations["Edge Comparison"] = "边缘比较"
 zh_translations["Calculating..."] = "计算中..."
 zh_translations["RGB"] = "RGB"
 zh_translations["Luminance"] = "亮度"
+zh_translations["Switch On"] = "开"
+zh_translations["Switch Off"] = "关"
 
 pt_BR_translations = {
 
@@ -1536,6 +1542,8 @@ pt_BR_translations["Edge Comparison"] = "Comparação de Bordas"
 pt_BR_translations["Calculating..."] = "Calculando..."
 pt_BR_translations["RGB"] = "RGB"
 pt_BR_translations["Luminance"] = "Luminância"
+pt_BR_translations["Switch On"] = "Ligado"
+pt_BR_translations["Switch Off"] = "Desligado"
 
 translations = {
     "en": en_translations,

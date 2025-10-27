@@ -1,4 +1,5 @@
 from PyQt6.QtCore import QRect, QRectF, QSize, Qt, QTimer
+import time
 from PyQt6.QtGui import QColor, QGuiApplication, QPainterPath, QRegion
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -13,8 +14,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import OverlayScrollArea
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import OverlayScrollArea
 
 class ComboBoxItemDelegate(QStyledItemDelegate):
     """Custom delegate to paint item backgrounds with rounded corners clipping."""
@@ -121,6 +122,7 @@ class _ComboPopupFlyout(QWidget):
         self._on_close = None
         self._signals_connected = False
         self._current_combo = None
+        self._ignore_clicks_until = 0
 
     def _apply_style(self):
 
@@ -200,7 +202,10 @@ class _ComboPopupFlyout(QWidget):
         try:
             current = combo.currentIndex()
             if current >= 0:
+
                 self.view.setCurrentIndex(combo.model().index(current, 0))
+
+                self.view.clearSelection()
         except Exception:
             pass
 
@@ -250,17 +255,43 @@ class _ComboPopupFlyout(QWidget):
         screen = QGuiApplication.screenAt(anchor_center) or QApplication.primaryScreen()
         avail = (screen.availableGeometry() if screen else QApplication.primaryScreen().availableGeometry())
 
-        ideal_x = int(anchor_center.x() - self.width() / 2)
-        ideal_y = int(anchor_center.y() - self.height() / 2)
+        current_index = current if current >= 0 else 0
+
+        if combo.count() > max_visible:
+
+            ideal_y = int(anchor_center.y() - self.height() / 2)
+        else:
+
+            selected_item_offset_y = current_index * row_h
+            ideal_y = int(anchor_center.y() - selected_item_offset_y - row_h / 2)
+
+        ideal_x = int(combo.mapToGlobal(combo_rect.topLeft()).x())
 
         final_x = max(avail.left(), min(ideal_x, avail.right() - self.width()))
-        final_y = max(avail.top(), min(ideal_y, avail.bottom() - self.height()))
+
+        if combo.count() <= max_visible:
+            final_y = min(ideal_y, avail.bottom() - self.height())
+        else:
+            final_y = max(avail.top(), min(ideal_y, avail.bottom() - self.height()))
 
         end_rect = QRect(final_x, final_y, self.width(), self.height())
+
+        self._ignore_clicks_until = time.time() + 0.15
 
         self.show()
         self.raise_()
         self.setGeometry(end_rect)
+
+        if combo.count() > max_visible and current_index >= 0:
+            try:
+
+                scrollbar = self.scroll_area.verticalScrollBar()
+                visible_height = self.scroll_area.height()
+                target_value = current_index * row_h - visible_height // 2 + row_h // 2
+                target_value = max(0, min(target_value, scrollbar.maximum()))
+                scrollbar.setValue(target_value)
+            except Exception:
+                pass
 
         try:
             self.scroll_area._position_scrollbar()
@@ -284,6 +315,10 @@ class _ComboPopupFlyout(QWidget):
         super().keyPressEvent(event)
 
     def _on_item_clicked_proxy(self, idx):
+
+        if time.time() < self._ignore_clicks_until:
+            return
+
         try:
             if self._current_combo is not None:
                 self._current_combo.setCurrentIndex(idx.row())
@@ -352,14 +387,14 @@ class FluentComboBox(QComboBox):
         hover_bg_str = hover_bg.name(QColor.NameFormat.HexArgb)
 
         selected_bg_str = accent.name(QColor.NameFormat.HexArgb)
-        selected_text = "#ffffff" if is_dark else "#ffffff"
+        selected_text = "#ffffff" if is_dark else "#000000"
 
         self.setStyleSheet(f"""
             QComboBox {{
                 background-color: {bg};
                 color: {text};
                 border: 1px solid {border};
-                border-radius: 6px;
+                border-radius: 8px;
                 padding: 6px 28px 6px 10px;
                 outline: 0;
             }}
@@ -369,14 +404,21 @@ class FluentComboBox(QComboBox):
             QComboBox:focus {{
                 border: 1px solid {selected_bg_str};
             }}
+            QComboBox[flyoutOpen="true"]::drop-down {{
+                width: 0px;
+            }}
+            QComboBox[flyoutOpen="true"]::down-arrow {{
+                width: 0px;
+                height: 0px;
+            }}
             QComboBox::drop-down {{
                 border: none;
                 width: 24px;
             }}
             /* Keep default arrow from style. If you want a custom icon, add QSS with image url here. */
             QComboBox::down-arrow {{
-                /* image: url();  // optional custom chevron */
-            }}
+                  /* image: url();  // optional custom chevron */
+              }}
         """)
 
         view = self.view()
@@ -433,6 +475,7 @@ class FluentComboBox(QComboBox):
         self.setProperty("flyoutOpen", True)
         self.style().unpolish(self)
         self.style().polish(self)
+        self.update()
         QTimer.singleShot(0, lambda: self._flyout.show_for_combo(self))
 
     def hidePopup(self):
@@ -446,6 +489,7 @@ class FluentComboBox(QComboBox):
         self.setProperty("flyoutOpen", False)
         self.style().unpolish(self)
         self.style().polish(self)
+        self.update()
 
     def _animate_open_popup(self):
 

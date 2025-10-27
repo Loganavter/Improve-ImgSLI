@@ -4,9 +4,9 @@ from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from resources import translations as translations_mod
-from src.shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
-from src.shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
-from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
+from ui.icon_manager import AppIcon, get_app_icon
 from ui.widgets import (
     BodyLabel,
     CaptionLabel,
@@ -49,7 +49,7 @@ class Ui_ImageComparisonApp:
         self.btn_settings = IconButton(AppIcon.SETTINGS, ButtonType.DEFAULT)
 
         self.btn_color_picker = IconButton(AppIcon.TEXT_MANIPULATOR, ButtonType.DEFAULT)
-        self.btn_quick_save = IconButton(AppIcon.SAVE, ButtonType.DEFAULT)
+        self.btn_quick_save = IconButton(AppIcon.QUICK_SAVE, ButtonType.DEFAULT)
         self.btn_magnifier_orientation = ToggleIconButton(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT)
         self.btn_save = CustomButton(get_app_icon(AppIcon.SAVE), "")
         self.btn_save.setProperty("class", "primary")
@@ -170,6 +170,13 @@ class Ui_ImageComparisonApp:
     def reapply_button_styles(self):
 
         self._post_init_icons_and_sizes()
+
+        for btn in [self.btn_settings, self.btn_quick_save, self.help_button]:
+            if hasattr(btn, '_apply_background_style'):
+                btn.style().unpolish(btn)
+                btn.style().polish(btn)
+                btn._apply_background_style()
+                btn.update()
 
     def _create_button_layout(self):
         layout = QHBoxLayout()

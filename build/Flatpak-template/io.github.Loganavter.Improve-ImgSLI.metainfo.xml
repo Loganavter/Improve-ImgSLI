@@ -48,6 +48,11 @@
   </developer>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="7.9.0" date="2025-10-27">
+      <description>
+        <p>This release includes various improvements and bug fixes.</p>
+      </description>
+    </release>
     <release version="6.2.0" date="2025-08-16">
       <description>
         <p>This is the most extensive architectural refactoring in the project's history, transitioning the entire application to a robust and modern Model-View-Presenter (MVP) pattern. This update establishes a new, stable foundation for future development and introduces a completely custom-built UI.</p>

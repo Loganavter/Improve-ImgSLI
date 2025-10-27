@@ -23,14 +23,15 @@ from PyQt6.QtGui import (
     QDesktopServices,
     QIcon,
     QImage,
+    QMouseEvent,
     QPainter,
     QPixmap,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QWidget
+from PyQt6.QtWidgets import QApplication, QLineEdit, QMenu, QMessageBox, QSystemTrayIcon, QWidget
 
-from src.shared_toolkit.core import setup_logging
-from src.shared_toolkit.ui.managers.font_manager import FontManager
+from shared_toolkit.core import setup_logging
+from shared_toolkit.ui.managers.font_manager import FontManager
 from core.app_state import AppState
 from core.constants import AppConstants
 from core.geometry import GeometryManager
@@ -39,7 +40,7 @@ from core.settings import SettingsManager
 from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
 from events.app_event_handler import EventHandler
 from image_processing.resize import resize_images_processor
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 from ui.main_window_ui import Ui_ImageComparisonApp
 from ui.presenters.main_window_presenter import MainWindowPresenter
 from ui.widgets.composite.toast import ToastManager
@@ -49,6 +50,7 @@ from utils.resource_loader import (
     resource_path,
 )
 from workers.image_rendering_worker import ImageRenderingWorker
+from shared_toolkit.workers import GenericWorker
 
 try:
     from desktop_notifier import Attachment, DesktopNotifier, Icon, Urgency
@@ -72,7 +74,7 @@ tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: te
 PIL.Image.MAX_IMAGE_PIXELS = None
 logger = logging.getLogger("ImproveImgSLI")
 
-class ImageComparisonApp(QWidget):
+class MainWindow(QWidget):
     _worker_finished_signal = pyqtSignal(dict, dict, int)
     _worker_error_signal = pyqtSignal(str)
 
@@ -116,7 +118,7 @@ class ImageComparisonApp(QWidget):
         setup_logging("Improve-ImgSLI", self.app_state.debug_mode_enabled, "IMPROVE_DEBUG")
 
         try:
-            from src.shared_toolkit.ui.managers.font_manager import FontManager
+            from shared_toolkit.ui.managers.font_manager import FontManager
             FontManager.get_instance().apply_from_state(self.app_state)
         except Exception:
             pass
@@ -131,7 +133,15 @@ class ImageComparisonApp(QWidget):
         self.tray_icon = None
         try:
             if QSystemTrayIcon.isSystemTrayAvailable():
-                self.tray_icon = QSystemTrayIcon(QIcon(resource_path("resources/icons/icon.png")), self)
+
+                icon_path = resource_path("resources/icons/icon.png")
+                icon = QIcon(icon_path)
+
+                if icon.isNull():
+                    logger.warning(f"Could not load tray icon from {icon_path}")
+                    icon = QIcon.fromTheme("application", QIcon())
+
+                self.tray_icon = QSystemTrayIcon(icon, self)
                 self.tray_icon.setToolTip("Improve-ImgSLI")
 
                 tray_menu = QMenu(self)
@@ -159,7 +169,9 @@ class ImageComparisonApp(QWidget):
 
                 self.tray_icon.activated.connect(self._on_tray_activated)
                 self.tray_icon.messageClicked.connect(self._on_tray_message_clicked)
-                self.tray_icon.show()
+
+                if not self.tray_icon.icon().isNull():
+                    self.tray_icon.show()
         except Exception:
             self.tray_icon = None
 
@@ -193,6 +205,12 @@ class ImageComparisonApp(QWidget):
         self.toast_manager = ToastManager(self, self.ui.image_label)
         self.save_task_counter = 0
 
+        try:
+            from shared_toolkit.ui.managers.font_manager import FontManager
+            self.font_path_absolute = str(FontManager.get_instance()._built_in_font_path) if FontManager.get_instance().is_builtin_available() else None
+        except Exception:
+            self.font_path_absolute = None
+
         self.setAcceptDrops(True)
 
         self._update_scheduler_timer = QTimer(self)
@@ -207,10 +225,12 @@ class ImageComparisonApp(QWidget):
 
         self.current_displayed_pixmap: QPixmap | None = None
         self.thread_pool = QThreadPool()
+        self.thread_pool.setMaxThreadCount(4)
         self._worker_finished_signal.connect(self._on_worker_finished)
         self._worker_error_signal.connect(self._on_worker_error)
         self.render_start_times = {}
         self.current_rendering_task_id = 0
+        self.current_scaling_task_id = 0
         self._reflagged_flyout = None
 
         self.installEventFilter(self.event_handler)
@@ -230,7 +250,7 @@ class ImageComparisonApp(QWidget):
         self.apply_application_theme(final_theme_setting)
 
         try:
-            from src.shared_toolkit.ui.managers.font_manager import FontManager
+            from shared_toolkit.ui.managers.font_manager import FontManager
             FontManager.get_instance().apply_from_state(self.app_state)
         except Exception:
             pass
@@ -375,6 +395,23 @@ class ImageComparisonApp(QWidget):
     def hideEvent(self, event: QEvent):
         super().hideEvent(event)
 
+    def mousePressEvent(self, event: QMouseEvent):
+        """Removes focus from input fields when clicking on empty area."""
+        self.clear_input_focus()
+        super().mousePressEvent(event)
+
+    def clear_input_focus(self):
+        """Removes focus if it's set on QLineEdit."""
+        focused_widget = self.focusWidget()
+        if not focused_widget:
+            return
+
+        is_edit_name1 = focused_widget == self.ui.edit_name1
+        is_edit_name2 = focused_widget == self.ui.edit_name2
+
+        if is_edit_name1 or is_edit_name2:
+            focused_widget.clearFocus()
+
     def schedule_update(self):
         if not self._update_scheduler_timer.isActive():
             self._update_scheduler_timer.start()
@@ -429,55 +466,49 @@ class ImageComparisonApp(QWidget):
             last_source1_id != id(source1) or last_source2_id != id(source2)):
 
             try:
-                setattr(self.app_state, '_last_source1_id', id(source1))
-                setattr(self.app_state, '_last_source2_id', id(source2))
 
                 cache_key = (self.app_state.image1_path, self.app_state.image2_path)
 
                 if cache_key in self.app_state._unified_image_cache:
-
                     unified1, unified2 = self.app_state._unified_image_cache[cache_key]
+                    self.app_state.image1, self.app_state.image2 = unified1, unified2
+                    setattr(self.app_state, '_last_source1_id', id(source1))
+                    setattr(self.app_state, '_last_source2_id', id(source2))
+
+                    if not self.app_state._display_cache_image1 or not self.app_state._display_cache_image2:
+                        self._create_preview_cache_async(unified1, unified2)
+
+                    self.app_state._scaled_image1_for_display = None
+                    self.app_state._scaled_image2_for_display = None
+                    self.app_state._cached_scaled_image_dims = None
                 else:
 
-                    unified1, unified2 = resize_images_processor(source1, source2)
+                    if getattr(self.app_state, '_unification_in_progress', False):
 
-                    self.app_state._unified_image_cache[cache_key] = (unified1, unified2)
-                    self.app_state._unified_image_cache_keys.append(cache_key)
+                        if self.app_state.image1 and self.app_state.image2:
 
-                    MAX_UNIFIED_CACHE_SIZE = 20
-                    if len(self.app_state._unified_image_cache_keys) > MAX_UNIFIED_CACHE_SIZE:
-                        key_to_remove = self.app_state._unified_image_cache_keys.pop(0)
-                        self.app_state._unified_image_cache.pop(key_to_remove, None)
+                            pass
+                        else:
 
-                self.app_state.image1, self.app_state.image2 = unified1, unified2
-                self.app_state.clear_all_caches()
+                            return False
+                    else:
 
+                        if not self.app_state.image1 or not self.app_state.image2:
+                            return False
+
+                        setattr(self.app_state, '_last_source1_id', id(source1))
+                        setattr(self.app_state, '_last_source2_id', id(source2))
             except Exception:
                 return False
 
-        current_cache_params = (
-            id(self.app_state.image1),
-            id(self.app_state.image2),
-            self.app_state.display_resolution_limit,
-        )
-        if self.app_state._last_display_cache_params != current_cache_params:
-            limit = self.app_state.display_resolution_limit
-            w, h = self.app_state.image1.size
-            if limit > 0 and max(w, h) > limit:
-                if w > h:
-                    new_w, new_h = limit, int(h * limit / w)
-                else:
-                    new_h, new_w = limit, int(w * limit / h)
-                self.app_state._display_cache_image1 = self.app_state.image1.resize((new_w, new_h), PIL.Image.Resampling.LANCZOS)
-                self.app_state._display_cache_image2 = self.app_state.image2.resize((new_w, new_h), PIL.Image.Resampling.LANCZOS)
-            else:
-                self.app_state._display_cache_image1, self.app_state._display_cache_image2 = self.app_state.image1, self.app_state.image2
-            self.app_state._last_display_cache_params = current_cache_params
-            self.app_state._cached_scaled_image_dims = None
-
-        source_for_widget_resize1, source_for_widget_resize2 = (
-            self.app_state._display_cache_image1, self.app_state._display_cache_image2,
-        )
+        if self.app_state._display_cache_image1 and self.app_state._display_cache_image2:
+            source_for_widget_resize1, source_for_widget_resize2 = (
+                self.app_state._display_cache_image1, self.app_state._display_cache_image2,
+            )
+        else:
+            source_for_widget_resize1, source_for_widget_resize2 = (
+                self.app_state.image1, self.app_state.image2,
+            )
         scaled_w, scaled_h = get_scaled_pixmap_dimensions(source_for_widget_resize1, source_for_widget_resize2, label_width, label_height)
         if scaled_w <= 0 or scaled_h <= 0:
             return False
@@ -489,12 +520,40 @@ class ImageComparisonApp(QWidget):
                 cache_is_valid = True
 
         if not cache_is_valid:
-            try:
-                self.app_state.scaled_image1_for_display = source_for_widget_resize1.resize((scaled_w, scaled_h), PIL.Image.Resampling.BILINEAR)
-                self.app_state.scaled_image2_for_display = source_for_widget_resize2.resize((scaled_w, scaled_h), PIL.Image.Resampling.BILINEAR)
-                self.app_state._cached_scaled_image_dims = (scaled_w, scaled_h)
-            except Exception:
-                return False
+
+            unification_in_progress = getattr(self.app_state, '_unification_in_progress', False)
+            is_very_small = (scaled_w * scaled_h < 1000000)
+
+            if is_very_small and not unification_in_progress:
+
+                try:
+                    self.app_state.scaled_image1_for_display = source_for_widget_resize1.resize((scaled_w, scaled_h), PIL.Image.Resampling.BILINEAR)
+                    self.app_state.scaled_image2_for_display = source_for_widget_resize2.resize((scaled_w, scaled_h), PIL.Image.Resampling.BILINEAR)
+                    self.app_state._cached_scaled_image_dims = (scaled_w, scaled_h)
+                except Exception:
+                    return False
+            else:
+
+                try:
+
+                    self.current_scaling_task_id += 1
+                    scaling_task_id = self.current_scaling_task_id
+
+                    worker = GenericWorker(
+                        self._scale_images_for_display_worker_task,
+                        source_for_widget_resize1.copy(),
+                        source_for_widget_resize2.copy(),
+                        scaled_w,
+                        scaled_h,
+                        scaling_task_id,
+                    )
+                    worker.signals.result.connect(self._on_display_scaling_ready)
+
+                    priority = 0 if (self.app_state.is_interactive_mode or unification_in_progress) else 1
+                    self.thread_pool.start(worker, priority=priority)
+                    return False
+                except Exception:
+                    return False
 
         pixmap_w, pixmap_h = self.app_state._cached_scaled_image_dims
         self.app_state.pixmap_width, self.app_state.pixmap_height = pixmap_w, pixmap_h
@@ -617,13 +676,62 @@ class ImageComparisonApp(QWidget):
 
     @pyqtSlot(str)
     def _on_worker_error(self, error_message: str):
+
+        try:
+            if hasattr(self, 'toast_manager') and self.toast_manager:
+                self.toast_manager.show_toast(
+                    error_message or tr("Произошла ошибка", self.app_state.current_language),
+                    duration=5000,
+                    success=False
+                )
+                return
+        except Exception:
+            pass
+
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Critical)
         msg_box.setWindowTitle(tr("Error", self.app_state.current_language))
-        msg_box.setText(error_message)
-
+        msg_box.setText(error_message or tr("Произошла ошибка", self.app_state.current_language))
         self.theme_manager.apply_theme_to_dialog(msg_box)
         msg_box.exec()
+
+    def _scale_images_for_display_worker_task(self, img1: PIL.Image.Image, img2: PIL.Image.Image, w: int, h: int, task_id: int):
+        try:
+            img1_s = img1.resize((w, h), PIL.Image.Resampling.BILINEAR)
+            img2_s = img2.resize((w, h), PIL.Image.Resampling.BILINEAR)
+            return img1_s, img2_s, w, h, task_id
+        except Exception as e:
+            logger.error(f"Scaling worker failed: {e}", exc_info=True)
+            return None
+
+    @pyqtSlot(object)
+    def _on_display_scaling_ready(self, result):
+        try:
+            if not result:
+                return
+            if isinstance(result, tuple) and len(result) == 5:
+                img1_s, img2_s, w, h, task_id = result
+
+                if int(task_id) != int(self.current_scaling_task_id):
+                    return
+
+                if img1_s and img2_s and w > 0 and h > 0:
+
+                    label_w, label_h = self.presenter.get_current_label_dimensions()
+                    src1 = self.app_state._display_cache_image1
+                    src2 = self.app_state._display_cache_image2
+                    if not src1 or not src2 or label_w <= 1 or label_h <= 1:
+                        return
+                    desired_w, desired_h = get_scaled_pixmap_dimensions(src1, src2, label_w, label_h)
+                    if abs(desired_w - w) > 1 or abs(desired_h - h) > 1:
+                        return
+
+                    self.app_state.scaled_image1_for_display = img1_s
+                    self.app_state.scaled_image2_for_display = img2_s
+                    self.app_state._cached_scaled_image_dims = (w, h)
+                    self.schedule_update()
+        except Exception as e:
+            logger.error(f"Error handling display scaling result: {e}", exc_info=True)
 
     def _display_single_image_on_label(self, pil_image_to_display: PIL.Image.Image | None):
         if not hasattr(self.ui, "image_label"):
@@ -844,3 +952,55 @@ class ImageComparisonApp(QWidget):
         self.style().unpolish(self)
         self.style().polish(self)
         self.update()
+
+    def _create_preview_cache_async(self, img1: PIL.Image.Image, img2: PIL.Image.Image):
+        """Создает кэш предпросмотра в фоновом потоке"""
+        try:
+            worker = GenericWorker(
+                self._create_preview_cache_worker_task,
+                img1.copy(),
+                img2.copy(),
+                self.app_state.display_resolution_limit,
+            )
+            worker.signals.result.connect(self._on_preview_cache_ready)
+            self.thread_pool.start(worker, priority=1)
+        except Exception as e:
+            logger.error(f"Error creating preview cache async: {e}")
+
+    def _create_preview_cache_worker_task(self, img1: PIL.Image.Image, img2: PIL.Image.Image, limit: int):
+        """Создает кэш предпросмотра в фоновом потоке"""
+        try:
+            w, h = img1.size
+            if limit > 0 and max(w, h) > limit:
+                if w > h:
+                    new_w, new_h = limit, int(h * limit / w)
+                else:
+                    new_h, new_w = limit, int(w * limit / h)
+                cached_img1 = img1.resize((new_w, new_h), PIL.Image.Resampling.LANCZOS)
+                cached_img2 = img2.resize((new_w, new_h), PIL.Image.Resampling.LANCZOS)
+            else:
+                cached_img1, cached_img2 = img1, img2
+            return cached_img1, cached_img2
+        except Exception as e:
+            logger.error(f"Error creating preview cache: {e}")
+            return None
+
+    def _on_preview_cache_ready(self, result):
+        """Обработчик готовности кэша предпросмотра"""
+        if not result:
+            return
+        try:
+            cached_img1, cached_img2 = result
+            if cached_img1 and cached_img2:
+                self.app_state._display_cache_image1 = cached_img1
+                self.app_state._display_cache_image2 = cached_img2
+
+                current_cache_params = (
+                    id(self.app_state.image1),
+                    id(self.app_state.image2),
+                    self.app_state.display_resolution_limit,
+                )
+                self.app_state._last_display_cache_params = current_cache_params
+                self.schedule_update()
+        except Exception as e:
+            logger.error(f"Error handling preview cache: {e}")

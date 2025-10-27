@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Improve ImgSLI
+Comment=An intuitive, open-source tool for advanced image comparison and interaction.
+Exec=/usr/bin/improve-imgsli
+Icon=improve-imgsli
+Terminal=false
+Type=Application
+Categories=Graphics;2DGraphics;

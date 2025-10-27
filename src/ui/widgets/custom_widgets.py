@@ -27,22 +27,25 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
+    QScrollArea,
     QScrollBar,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
 from events.drag_drop_handler import DragAndDropService
 from resources import translations as translations_mod
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.helpers.underline_painter import (
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.helpers.underline_painter import (
     UnderlineConfig,
     draw_bottom_underline,
 )
 from ui.gesture_resolver import RatingGestureTransaction
-from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from ui.icon_manager import AppIcon, get_app_icon
 from ui.widgets import ToolButton
 
 tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: text)
@@ -56,6 +59,58 @@ def lerp_color(c1: QColor, c2: QColor, t: float) -> QColor:
     b = int(c1.blue() + (c2.blue() - c1.blue()) * t)
     a = int(c1.alpha() + (c2.alpha() - c1.alpha()) * t)
     return QColor(r, g, b, a)
+
+class PathTooltip(QWidget):
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = PathTooltip()
+        return cls._instance
+
+    def __init__(self):
+        if PathTooltip._instance is not None:
+            raise RuntimeError("This class is a singleton!")
+
+        super().__init__(None, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+
+        self.main_layout = QVBoxLayout(self)
+        self.SHADOW_WIDTH = 8
+        self.main_layout.setContentsMargins(self.SHADOW_WIDTH, self.SHADOW_WIDTH, self.SHADOW_WIDTH, self.SHADOW_WIDTH)
+
+        self.content_widget = QLabel(self)
+        self.content_widget.setObjectName("TooltipContentWidget")
+        self.main_layout.addWidget(self.content_widget)
+
+        self.shadow = QGraphicsDropShadowEffect(self)
+        self.shadow.setBlurRadius(self.SHADOW_WIDTH * 2)
+        self.shadow.setColor(QColor(0, 0, 0, 100))
+        self.shadow.setOffset(1, 2)
+        self.content_widget.setGraphicsEffect(self.shadow)
+
+        self.theme_manager = ThemeManager.get_instance()
+        self.theme_manager.theme_changed.connect(self._apply_style)
+        self._apply_style()
+
+    def _apply_style(self):
+        self.style().unpolish(self.content_widget)
+        self.style().polish(self.content_widget)
+        self.update()
+
+    def show_tooltip(self, pos: QPoint, text: str):
+        if not text:
+            return
+        self.content_widget.setText(text)
+        self.adjustSize()
+
+        self.move(pos + QPoint(15, 15))
+        self.show()
+
+    def hide_tooltip(self):
+        self.hide()
 
 class ButtonType(Enum):
     DEFAULT = 0
@@ -108,7 +163,7 @@ class IconButton(QWidget):
         else:
             self.setProperty("variant", "default")
 
-        self.setFixedSize(36, 36)
+        self.setFixedSize(33, 33)
 
         self._icon_size = QSize(22, 22)
         self._icon = icon
@@ -126,8 +181,10 @@ class IconButton(QWidget):
 
         self._update_icon()
         self.theme_manager.theme_changed.connect(self._update_icon)
+        self.theme_manager.theme_changed.connect(self._apply_background_style)
 
         self.style().polish(self)
+        self._apply_background_style()
 
     def setFlyoutOpen(self, is_open: bool):
         if self._flyout_is_open != is_open:
@@ -140,6 +197,7 @@ class IconButton(QWidget):
                 self.setProperty("state", "normal")
             self.style().unpolish(self)
             self.style().polish(self)
+            self._apply_background_style()
             self.update()
 
     def setIconSize(self, size: QSize):
@@ -151,11 +209,41 @@ class IconButton(QWidget):
         pixmap = get_app_icon(self._icon).pixmap(self._icon_size, QIcon.Mode.Normal, QIcon.State.Off)
         self.icon_label.setPixmap(pixmap)
 
+    def _apply_background_style(self):
+        """Apply background color based on current state."""
+        variant = "delete" if self.button_type == ButtonType.DELETE else "default"
+        state = self.property("state") or "normal"
+
+        if state == "pressed":
+            bg_key = f"button.{variant}.background.pressed"
+        elif state == "hover":
+            bg_key = f"button.{variant}.background.hover"
+        else:
+            bg_key = f"button.{variant}.background"
+
+        try:
+            bg_color = self.theme_manager.get_color(bg_key)
+            border_color = self.theme_manager.get_color(f"button.{variant}.border")
+
+            bg_rgba = f"rgba({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}, {bg_color.alpha()})"
+            border_rgba = f"rgba({border_color.red()}, {border_color.green()}, {border_color.blue()}, {border_color.alpha()})"
+
+            self.setStyleSheet(f"""
+                QWidget[class="icon-button"][variant="{variant}"][state="{state}"] {{
+                    background-color: {bg_rgba};
+                    border: 1px solid {border_rgba};
+                    border-radius: 6px;
+                }}
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to apply background style: {e}")
+
     def enterEvent(self, event):
         if not self._flyout_is_open:
             self.setProperty("state", "hover")
             self.style().unpolish(self)
             self.style().polish(self)
+            self._apply_background_style()
             self.update()
         super().enterEvent(event)
 
@@ -164,6 +252,7 @@ class IconButton(QWidget):
             self.setProperty("state", "normal")
             self.style().unpolish(self)
             self.style().polish(self)
+            self._apply_background_style()
             self.update()
         super().leaveEvent(event)
 
@@ -172,6 +261,7 @@ class IconButton(QWidget):
             self.setProperty("state", "pressed")
             self.style().unpolish(self)
             self.style().polish(self)
+            self._apply_background_style()
             self.update()
         super().mousePressEvent(event)
 
@@ -179,6 +269,7 @@ class IconButton(QWidget):
         self.setProperty("state", "hover" if self.rect().contains(event.pos()) else "normal")
         self.style().unpolish(self)
         self.style().polish(self)
+        self._apply_background_style()
         self.update()
         if self.rect().contains(event.pos()) and event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
@@ -200,7 +291,7 @@ class LongPressIconButton(QWidget):
         else:
             self.setProperty("variant", "default")
 
-        self.setFixedSize(36, 36)
+        self.setFixedSize(33, 33)
 
         self._icon_size = QSize(22, 22)
         self._icon = icon
@@ -218,6 +309,7 @@ class LongPressIconButton(QWidget):
 
         self._update_icon()
         self.theme_manager.theme_changed.connect(self._update_icon)
+        self.theme_manager.theme_changed.connect(self._apply_background_style)
 
         self._long_press_timer = QTimer(self)
         self._long_press_timer.setSingleShot(True)
@@ -226,6 +318,7 @@ class LongPressIconButton(QWidget):
         self._long_press_triggered = False
 
         self.style().polish(self)
+        self._apply_background_style()
 
     def setIconSize(self, size: QSize):
         self._icon_size = size
@@ -236,10 +329,40 @@ class LongPressIconButton(QWidget):
         pixmap = get_app_icon(self._icon).pixmap(self._icon_size, QIcon.Mode.Normal, QIcon.State.Off)
         self.icon_label.setPixmap(pixmap)
 
+    def _apply_background_style(self):
+        """Apply background color based on current state."""
+        variant = "delete" if self.button_type == ButtonType.DELETE else "default"
+        state = self.property("state") or "normal"
+
+        if state == "pressed":
+            bg_key = f"button.{variant}.background.pressed"
+        elif state == "hover":
+            bg_key = f"button.{variant}.background.hover"
+        else:
+            bg_key = f"button.{variant}.background"
+
+        try:
+            bg_color = self.theme_manager.get_color(bg_key)
+            border_color = self.theme_manager.get_color(f"button.{variant}.border")
+
+            bg_rgba = f"rgba({bg_color.red()}, {bg_color.green()}, {bg_color.blue()}, {bg_color.alpha()})"
+            border_rgba = f"rgba({border_color.red()}, {border_color.green()}, {border_color.blue()}, {border_color.alpha()})"
+
+            self.setStyleSheet(f"""
+                QWidget[class="long-press-icon-button"][variant="{variant}"][state="{state}"] {{
+                    background-color: {bg_rgba};
+                    border: 1px solid {border_rgba};
+                    border-radius: 6px;
+                }}
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to apply background style: {e}")
+
     def enterEvent(self, event):
         self.setProperty("state", "hover")
         self.style().unpolish(self)
         self.style().polish(self)
+        self._apply_background_style()
         self.update()
         super().enterEvent(event)
 
@@ -247,6 +370,7 @@ class LongPressIconButton(QWidget):
         self.setProperty("state", "normal")
         self.style().unpolish(self)
         self.style().polish(self)
+        self._apply_background_style()
         self.update()
         super().leaveEvent(event)
 
@@ -255,6 +379,7 @@ class LongPressIconButton(QWidget):
             self.setProperty("state", "pressed")
             self.style().unpolish(self)
             self.style().polish(self)
+            self._apply_background_style()
             self.update()
 
             self._long_press_triggered = False
@@ -271,6 +396,7 @@ class LongPressIconButton(QWidget):
             self.setProperty("state", "hover" if is_hovered else "normal")
             self.style().unpolish(self)
             self.style().polish(self)
+            self._apply_background_style()
             self.update()
 
             if not self._long_press_triggered and is_hovered:
@@ -554,9 +680,6 @@ class MinimalistScrollBar(QScrollBar):
         else:
             self._idle_color = QColor(0, 0, 0, 70)
             self._hover_color = self._idle_color
-
-        self.style().unpolish(self)
-        self.style().polish(self)
         self.update()
 
     @pyqtProperty(float)
@@ -601,6 +724,41 @@ class MinimalistScrollBar(QScrollBar):
     def mousePressEvent(self, event: QMouseEvent):
         event.ignore()
 
+class OverlayScrollArea(QScrollArea):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.custom_v_scrollbar = MinimalistScrollBar(self)
+
+        self.verticalScrollBar().valueChanged.connect(self.custom_v_scrollbar.setValue)
+        self.custom_v_scrollbar.valueChanged.connect(self.verticalScrollBar().setValue)
+
+        self.verticalScrollBar().rangeChanged.connect(self.custom_v_scrollbar.setRange)
+
+        self.custom_v_scrollbar.setVisible(False)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_scrollbar()
+        self._update_scrollbar_visibility()
+
+    def _update_scrollbar_visibility(self):
+        if self.widget():
+            content_height = self.widget().height()
+            viewport_height = self.viewport().height()
+            self.custom_v_scrollbar.setVisible(content_height > viewport_height)
+
+    def _position_scrollbar(self):
+        width = 14
+        self.custom_v_scrollbar.setGeometry(
+            self.width() - width, 0, width, self.height()
+        )
+        self.custom_v_scrollbar.raise_()
+
 class RatingListItem(QWidget):
     itemSelected = pyqtSignal(int)
     itemRightClicked = pyqtSignal(int)
@@ -636,7 +794,10 @@ class RatingListItem(QWidget):
         self._drag_start_pos_global = QPointF()
         self._is_being_dragged = False
 
-        self.setToolTip(full_path)
+        self.tooltip_timer = QTimer(self)
+        self.tooltip_timer.setSingleShot(True)
+        self.tooltip_timer.setInterval(500)
+        self.tooltip_timer.timeout.connect(self._show_tooltip)
 
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(8, 3, 8, 3)
@@ -706,7 +867,8 @@ class RatingListItem(QWidget):
 
                 self._active_button = obj
 
-                self.drag_start_pos = self.mapFromGlobal(event.globalPosition().toPoint())
+                global_point = event.globalPosition().toPoint()
+                self.drag_start_pos = self.mapFromGlobal(global_point)
                 self._drag_start_pos_global = event.globalPosition()
 
                 image_number = self.owner_flyout.image_number
@@ -748,8 +910,6 @@ class RatingListItem(QWidget):
 
     def update_styles(self):
 
-        self.style().unpolish(self)
-        self.style().polish(self)
         self.btn_minus.setIcon(get_app_icon(AppIcon.REMOVE))
         self.btn_plus.setIcon(get_app_icon(AppIcon.ADD))
         self.update()
@@ -791,14 +951,19 @@ class RatingListItem(QWidget):
             painter.setOpacity(1.0)
 
     def enterEvent(self, event):
+        self.tooltip_timer.start()
         self.update()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
+        self.tooltip_timer.stop()
+        PathTooltip.get_instance().hide_tooltip()
         self.update()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent):
+        self.tooltip_timer.stop()
+        PathTooltip.get_instance().hide_tooltip()
 
         if event.button() == Qt.MouseButton.LeftButton:
 
@@ -842,6 +1007,9 @@ class RatingListItem(QWidget):
                 if self._gesture_tx is not None:
                     self._gesture_tx.rollback()
                     self._gesture_tx = None
+            self.tooltip_timer.stop()
+            PathTooltip.get_instance().hide_tooltip()
+
             self._is_drag_initiated = True
             service = DragAndDropService.get_instance()
             if not service.is_dragging():
@@ -913,6 +1081,9 @@ class RatingListItem(QWidget):
         if 0 <= self.index < len(target_list):
             new_rating = target_list[self.index][3]
             self.rating_label.setText(str(new_rating))
+
+    def _show_tooltip(self):
+        PathTooltip.get_instance().show_tooltip(self.mapToGlobal(self.rect().center()), self.full_path)
 
 class _FlyoutInnerContentWidget(QWidget):
 

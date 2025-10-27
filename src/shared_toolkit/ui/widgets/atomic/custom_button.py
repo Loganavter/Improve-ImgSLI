@@ -4,8 +4,8 @@ from PyQt6.QtCore import QRectF, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QIcon
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.helpers.underline_painter import (
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.helpers.underline_painter import (
     UnderlineConfig,
     draw_bottom_underline,
 )
@@ -147,7 +147,7 @@ class CustomButton(QWidget):
 
     def _style_prefix(self) -> str:
         btn_class = str(self.property("class") or "")
-        return "button.primary" if "primary" in btn_class else "button.default"
+        return "button.primary" if "primary" in btn_class else "button.dialog.default"
 
     def enterEvent(self, event):
         if not self.isEnabled():

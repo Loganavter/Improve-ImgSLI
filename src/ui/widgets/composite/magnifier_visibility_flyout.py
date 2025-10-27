@@ -3,7 +3,7 @@ from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QWidget
 
 from ui.widgets.atomic.numbered_toggle_icon_button import NumberedToggleIconButton
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class MagnifierVisibilityFlyout(QWidget):
     """

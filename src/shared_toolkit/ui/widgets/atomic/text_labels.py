@@ -1,13 +1,12 @@
-"""
-Unified text label components for shared toolkit.
-
-This module provides various label types used across projects:
-- BodyLabel: Standard body text with normal size
-- CaptionLabel: Smaller caption text
-- AdaptiveLabel: Smart label with automatic text truncation
-- CompactLabel: Compact label for minimal spacing
-- GroupTitleLabel: Special label for group titles
-"""
+\
+\
+\
+\
+\
+\
+\
+\
+\
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QFontMetrics

@@ -8,15 +8,15 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from core.constants import AppConstants
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.atomic.fluent_combobox import FluentComboBox
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from shared_toolkit.ui.widgets.atomic.fluent_combobox import FluentComboBox
+from shared_toolkit.ui.widgets.atomic.fluent_spinbox import FluentSpinBox
 from ui.widgets import FluentCheckBox, FluentRadioButton
 from utils.resource_loader import resource_path
 
@@ -67,6 +67,8 @@ class SettingsDialog(QDialog):
         )
         self.setSizeGripEnabled(True)
         self.resize(400, 560)
+
+        self.setMouseTracking(True)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
@@ -169,12 +171,10 @@ class SettingsDialog(QDialog):
         length_label = QLabel(
             self.tr("Maximum Name Length (UI):", self.current_language)
         )
-        self.spin_max_length = QSpinBox()
+        self.spin_max_length = FluentSpinBox(default_value=max(min_limit, min(max_limit, current_max_length)))
         self.spin_max_length.setRange(min_limit, max_limit)
-        self.spin_max_length.setValue(
-            max(min_limit, min(max_limit, current_max_length))
-        )
         length_layout.addWidget(length_label)
+        length_layout.addStretch()
         length_layout.addWidget(self.spin_max_length)
         main_layout.addLayout(length_layout)
 
@@ -259,13 +259,19 @@ class SettingsDialog(QDialog):
 
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
-        self.ok_button = QPushButton(self.tr("OK", self.current_language))
-        self.ok_button.setObjectName("okButton")
-        self.cancel_button = QPushButton(self.tr("Cancel", self.current_language))
-        self.ok_button.setMinimumSize(80, 32)
-        self.cancel_button.setMinimumSize(80, 32)
+
+        self.ok_button = CustomButton(None, self.tr("OK", self.current_language))
+        self.ok_button.setProperty("class", "primary")
+        self.cancel_button = CustomButton(None, self.tr("Cancel", self.current_language))
+
+        ok_size = self.ok_button.sizeHint()
+        self.ok_button.setMinimumSize(max(ok_size.width(), 80), ok_size.height())
+        cancel_size = self.cancel_button.sizeHint()
+        self.cancel_button.setMinimumSize(max(cancel_size.width(), 80), cancel_size.height())
+
         self.ok_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.reject)
+
         buttons_layout.addWidget(self.ok_button)
         buttons_layout.addWidget(self.cancel_button)
         main_layout.addStretch()
@@ -273,6 +279,19 @@ class SettingsDialog(QDialog):
 
         self._apply_styles()
         self.theme_manager.theme_changed.connect(self._apply_styles)
+
+    def mousePressEvent(self, event):
+        """Обработка кликов по диалогу для снятия фокуса с виджетов."""
+
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clear_input_focus()
+        super().mousePressEvent(event)
+
+    def clear_input_focus(self):
+        """Removes focus from any input field in dialog."""
+        focused_widget = self.focusWidget()
+        if focused_widget and hasattr(focused_widget, 'clearFocus'):
+            focused_widget.clearFocus()
 
     def _apply_styles(self):
 

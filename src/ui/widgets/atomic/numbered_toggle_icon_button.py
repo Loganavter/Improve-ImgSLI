@@ -9,8 +9,8 @@ from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QPushButton
 
 from ui.widgets.atomic.toggle_icon_button import ToggleIconButton
-from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from ui.icon_manager import AppIcon, get_app_icon
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class NumberedToggleIconButton(ToggleIconButton):
     """

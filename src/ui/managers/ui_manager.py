@@ -5,10 +5,10 @@ from PyQt6.QtCore import QObject, QPoint, QPointF, QRect, Qt, QTimer, QEvent
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from core.constants import AppConstants
-from src.shared_toolkit.ui.managers.font_manager import FontManager
+from shared_toolkit.ui.managers.font_manager import FontManager
 from resources.translations import tr
 from ui.dialogs.export_dialog import ExportDialog
-from src.shared_toolkit.ui.dialogs.help_dialog import HelpDialog
+from shared_toolkit.ui.dialogs.help_dialog import HelpDialog
 from ui.dialogs.settings_dialog import SettingsDialog
 from ui.widgets.composite.simple_options_flyout import SimpleOptionsFlyout
 from ui.widgets.composite.unified_flyout import FlyoutMode, UnifiedFlyout

@@ -1,18 +1,16 @@
-"""
-Dialog helper functions and base class.
-
-Provides utilities for creating consistent dialogs across projects.
-"""
+\
+\
+\
+\
 
 import os
-
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
-from src.shared_toolkit.utils.paths import resource_path
+from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from shared_toolkit.utils.paths import resource_path
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class BaseDialog(QDialog):
     """
@@ -61,7 +59,7 @@ class BaseDialog(QDialog):
 
     def _on_theme_changed(self):
         """Override this method to handle theme changes."""
-        self.theme_manager.apply_theme_to_dialog(self)
+        self.update()
 
 def setup_dialog_scaffold(
     dialog: QDialog,

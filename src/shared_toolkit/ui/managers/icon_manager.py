@@ -1,57 +1,60 @@
-"""
-Icon Manager - Менеджер иконок для Tkonverter.
+import os
+from functools import lru_cache
 
-Этот модуль содержит только enum с иконками и простую обертку над общим IconService.
-"""
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 
-from enum import Enum
-from PyQt6.QtGui import QIcon
+from .theme_manager import ThemeManager
 
-from src.shared_toolkit.ui.services import get_icon_service
-
-class AppIcon(Enum):
-    """Иконки, используемые в Improve-ImgSLI."""
-    SETTINGS = "settings.svg"
-    SAVE = "save_icon.svg"
-    FOLDER_OPEN = "folder_open.svg"
-    CHART = "chart.svg"
-    DOWNLOAD = "download.svg"
-    CALENDAR = "calendar.svg"
-    HELP = "help.svg"
-
-    PHOTO = "photo_icon.svg"
-    SYNC = "sync.svg"
-    DELETE = "delete.svg"
-    ADD = "add.svg"
-    REMOVE = "remove.svg"
-
-    MAGNIFIER = "magnifier.svg"
-    FREEZE = "freeze.svg"
-    TEXT_FILENAME = "text_filename.svg"
-    TEXT_MANIPULATOR = "text-manipulator.svg"
-    HIGHLIGHT_DIFFERENCES = "highlight_diff_icon.svg"
-
-    VERTICAL_SPLIT = "vertical_split.svg"
-    HORIZONTAL_SPLIT = "horizontal_split.svg"
-
-    DIVIDER_VISIBLE = "divider_visible.svg"
-    DIVIDER_HIDDEN = "divider_hidden.svg"
-    DIVIDER_COLOR = "divider_color.svg"
-    DIVIDER_WIDTH = "divider_width.svg"
-
-def get_app_icon(icon: AppIcon) -> QIcon:
+@lru_cache(maxsize=128)
+def get_themed_icon(path_to_icon: str, is_dark: bool) -> QIcon:
     """
-    Получить иконку приложения используя общий IconService.
+    Get icon with theme-aware color inversion.
 
     Args:
-        icon: Enum иконки
+        path_to_icon: Full path to the icon file
+        is_dark: Whether the current theme is dark
 
     Returns:
-        QIcon: Обработанная иконка
+        QIcon: The processed icon
     """
-    service = get_icon_service("Improve-ImgSLI")
+    if not path_to_icon or not os.path.exists(path_to_icon):
+        return QIcon()
 
-    from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+    source_icon = QIcon(path_to_icon)
+
+    if not is_dark:
+        return source_icon
+
+    base_size = source_icon.actualSize(QSize(256, 256))
+    if not base_size.isValid():
+        base_size = QSize(256, 256)
+
+    source_pixmap = source_icon.pixmap(base_size)
+    if source_pixmap.isNull():
+        return source_icon
+
+    result_pixmap = QPixmap(source_pixmap.size())
+    result_pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(result_pixmap)
+    painter.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform)
+    painter.drawPixmap(0, 0, source_pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(result_pixmap.rect(), QColor("white"))
+    painter.end()
+
+    return QIcon(result_pixmap)
+
+def get_icon_by_path(icon_path: str) -> QIcon:
+    """
+    Get icon with automatic theme-aware color inversion.
+
+    Args:
+        icon_path: Path to the icon file
+
+    Returns:
+        QIcon: The processed icon
+    """
     theme_manager = ThemeManager.get_instance()
-    is_dark = theme_manager.is_dark()
-    return service.get_icon(icon.value, is_dark=is_dark)
+    return get_themed_icon(icon_path, theme_manager.is_dark())

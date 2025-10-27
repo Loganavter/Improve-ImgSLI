@@ -78,6 +78,9 @@ def setup_logging(app_name: str, debug_enabled: bool = False, debug_env_var: str
         file_handler.setLevel(level)
         logger.addHandler(file_handler)
 
+        logging.getLogger("markdown").setLevel(logging.WARNING)
+        logging.getLogger("markdown.extensions").setLevel(logging.WARNING)
+
     except Exception:
         logger.error(
             "FATAL: Failed to set up file logger. Continuing with console-only logging.",
@@ -111,3 +114,6 @@ def setup_simple_logging(app_name: str, level: int = logging.WARNING):
 
     app_logger = logging.getLogger(app_name)
     app_logger.setLevel(level)
+
+    logging.getLogger("markdown").setLevel(logging.WARNING)
+    logging.getLogger("markdown.extensions").setLevel(logging.WARNING)

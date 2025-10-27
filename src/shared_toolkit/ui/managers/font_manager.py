@@ -1,12 +1,9 @@
-import logging
 import os
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QFont, QFontDatabase
 from PyQt6.QtWidgets import QApplication
-
-logger = logging.getLogger("FontManager")
 
 class FontManager(QObject):
     """Manager for managing application fonts."""
@@ -51,7 +48,6 @@ class FontManager(QObject):
 
             self.set_font(mode=mode, family=family)
         except Exception as e:
-            logger.warning(f"Error applying font settings: {e}")
 
             self.set_font(mode="builtin", family="")
 
@@ -67,14 +63,13 @@ class FontManager(QObject):
                 families = QFontDatabase.applicationFontFamilies(font_id) if font_id != -1 else []
                 if families:
                     self._built_in_family_cache = families[0]
-                    logger.info(f"Loaded built-in font: {self._built_in_family_cache}")
                     return self._built_in_family_cache
                 else:
-                    logger.warning(f"Font file exists but no families found: {path}")
+                    pass
             else:
-                logger.warning(f"Font file not found: {path}")
+                pass
         except Exception as e:
-            logger.error(f"Error loading built-in font: {e}")
+            pass
         return None
 
     def set_font(self, mode: str, family: str = ""):
@@ -89,7 +84,6 @@ class FontManager(QObject):
         if mode == "system":
             mode = "system_default"
         if mode not in ("builtin", "system_default", "system_custom"):
-            logger.warning(f"Unknown mode '{mode}', using 'builtin'")
             mode = "builtin"
 
         self._current_mode = mode
@@ -97,7 +91,6 @@ class FontManager(QObject):
 
         app = QApplication.instance()
         if not app:
-            logger.warning("QApplication not found")
             return
 
         try:
@@ -116,7 +109,6 @@ class FontManager(QObject):
                     new_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
                     app.setFont(new_font)
                 except Exception as e:
-                    logger.warning(f"Error getting system font: {e}")
                     new_font = QFont()
                     app.setFont(new_font)
 
@@ -133,7 +125,6 @@ class FontManager(QObject):
             self.font_changed.emit()
 
         except Exception as e:
-            logger.error(f"Error setting font: {e}")
             fallback_font = QFont()
             app.setFont(fallback_font)
 
@@ -154,7 +145,7 @@ class FontManager(QObject):
                     except Exception as widget_error:
                         pass
         except Exception as e:
-            logger.warning(f"Error during forced widget update: {e}")
+            pass
 
     def get_current_mode(self) -> str:
         """Get current font mode."""

@@ -45,6 +45,20 @@ run_with_spinner() {
     local base_msg=$1
     shift
 
+    if [[ "${DISABLE_PROGRESS:-0}" == "1" ]]; then
+        log_info "$base_msg"
+        "$@"
+        local exit_code=$?
+
+        if [[ $exit_code -eq 0 ]]; then
+            log_status "$base_msg" 0
+        else
+            log_status "$base_msg" 1
+        fi
+
+        return $exit_code
+    fi
+
     local terminal_cols=$(tput cols 2>/dev/null)
     if [[ -z "$terminal_cols" || "$terminal_cols" -eq 0 ]]; then
         terminal_cols=80
@@ -98,6 +112,20 @@ run_pip_with_inline_progress() {
     if [[ "$total_packages" -eq 0 ]]; then
         log_info "$base_msg (No packages to install)."
         return 0
+    fi
+
+    if [[ "${DISABLE_PROGRESS:-0}" == "1" ]]; then
+        log_info "$base_msg"
+        "$@"
+        local exit_code=$?
+
+        if [[ $exit_code -eq 0 ]]; then
+            log_status "$base_msg" 0
+        else
+            log_status "$base_msg" 1
+        fi
+
+        return $exit_code
     fi
 
     local COLLECT_WEIGHT=30
