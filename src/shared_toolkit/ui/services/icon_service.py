@@ -1,16 +1,15 @@
-"""
-Icon Service - Общий сервис для работы с иконками приложений.
-
-Этот модуль предоставляет универсальный API для загрузки иконок
-с поддержкой светлой и темной темы через отдельные наборы иконок.
-"""
+\
+\
+\
+\
+\
 
 from pathlib import Path
 from typing import Dict, Type, TypeVar, Union
 
 from PyQt6.QtGui import QIcon
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 T = TypeVar('T')
 

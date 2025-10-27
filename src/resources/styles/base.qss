@@ -27,7 +27,7 @@ QDialog QComboBox {
     background-color: @dialog.input.background;
     color: @dialog.text;
     border: 1px solid @dialog.border;
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 4px;
 }
 
@@ -42,7 +42,7 @@ QDialog QPushButton {
     background-color: @dialog.button.background;
     color: @dialog.text;
     border: 1px solid @dialog.border;
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 5px 15px;
 }
 
@@ -71,7 +71,7 @@ QColorDialog QLabel, QColorDialog QLineEdit, QColorDialog QPushButton {
 }
 QColorDialog QPushButton {
     padding: 5px 10px;
-    border-radius: 4px;
+    border-radius: 8px;
 }
 QColorDialog QPushButton:hover {
     background-color: @dialog.button.hover;
@@ -122,7 +122,6 @@ QWidget[class="icon-button"][state="pressed"] {
     background-color: @button.default.background.pressed;
 }
 
-/* --- ИЗМЕНЕНИЯ ЗДЕСЬ --- */
 /* Стиль для варианта "delete" */
 QWidget[class="icon-button"][variant="delete"] {
     background-color: @button.delete.background;
@@ -141,7 +140,7 @@ QWidget[class="icon-button"][variant="delete"][state="pressed"] {
     background-color: @button.delete.background.pressed;
 }
 
-/* --- Стили для LongPressIconButton (ИСПРАВЛЕННАЯ ВЕРСИЯ) --- */
+/* --- Стили для LongPressIconButton --- */
 
 /* --- Вариант "default" (для SYNC и др.) --- */
 QWidget[class="long-press-icon-button"][variant="default"] {
@@ -221,16 +220,25 @@ QWidget#ToastNotification QPushButton {
     border-radius: 6px;
     padding: 4px 10px;
 }
-QWidget#ToastNotification QPushButton:hover {
-    background-color: rgba(255,255,255,0.10);
-}
-
-/* --- Глобальные стили для QLineEdit и других виджетов --- */
-QLineEdit {
+/* Style for CustomLineEdit */
+QLineEdit[custom-line-edit="true"] {
     background-color: @dialog.input.background;
     color: @dialog.text;
-    border: none;
-    border-radius: 6px;
+    border: none !important;
+    border-radius: 8px;
     padding: 6px 10px;
+    outline: none;
 }
-QLineEdit:focus { border: none; } 
+QLineEdit[custom-line-edit="true"]:focus {
+    border: none !important;
+    outline: none;
+}
+
+/* --- Стили для PathTooltip --- */
+QLabel#TooltipContentWidget {
+    background-color: @tooltip.background;
+    color: @tooltip.text;
+    border: 1px solid @tooltip.border;
+    padding: 4px 6px;
+    border-radius: 5px;
+}

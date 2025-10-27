@@ -1,6 +1,6 @@
-"""
-Overlay виджет для выбора направления вставки изображения
-"""
+\
+\
+
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PyQt6.QtWidgets import QWidget

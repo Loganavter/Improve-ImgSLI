@@ -33,13 +33,14 @@ disable_logging_action() {
 
 show_help() {
     echo "Usage: $0 <command> [options]"
-    echo "       $0 [--debug|-d] [--theme <dark|light>]"
+    echo "       $0 [--debug|-d] [--theme <dark|light>] [--verbose|--full-output]"
     echo ""
     echo "Commands:"
     echo "  run [args...]      Run the application with optional GUI arguments."
     echo "                     Additional flags for 'run' (also valid at top-level):"
     echo "                       --theme <dark|light>  Force a specific theme."
     echo "                       --debug, -d          Enable debug logging for this session only."
+    echo "                       --verbose, --full-output  Show full output without progress bars."
     echo "  profile            Run the application with cProfile to check performance."
     echo "  install            Create the virtual environment and/or install dependencies."
     echo "  recreate           Forcibly recreate the virtual environment."
@@ -82,7 +83,10 @@ delete_action() {
     log_info "Cleanup complete."
 }
 
-if [[ "$1" == "--debug" || "$1" == "-d" || "$1" == "--theme" ]]; then
+if [[ "$1" == "--verbose" || "$1" == "--full-output" ]]; then
+    export DISABLE_PROGRESS=1
+    set -- run "$@"
+elif [[ "$1" == "--debug" || "$1" == "-d" || "$1" == "--theme" ]]; then
     set -- run "$@"
 fi
 
@@ -117,6 +121,10 @@ profile)
             ;;
         --debug | -d)
             export IMPROVE_DEBUG=1
+            shift
+            ;;
+        --verbose | --full-output)
+            export DISABLE_PROGRESS=1
             shift
             ;;
         *)
@@ -161,6 +169,10 @@ run)
             ;;
         --debug | -d)
             export IMPROVE_DEBUG=1
+            shift
+            ;;
+        --verbose | --full-output)
+            export DISABLE_PROGRESS=1
             shift
             ;;
         *)

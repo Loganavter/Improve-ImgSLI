@@ -1,11 +1,11 @@
-"""
-Контейнер для группы кнопок с подписью, врезанной в нижнюю линию
-"""
+\
+\
+
 from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class ButtonGroupContainer(QWidget):
     """

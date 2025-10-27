@@ -1,10 +1,9 @@
-"""
-Функции для расчета метрик качества изображений.
-
-Этот модуль содержит алгоритмы расчета метрик:
-- PSNR: Peak Signal-to-Noise Ratio
-- SSIM: Structural Similarity Index
-"""
+\
+\
+\
+\
+\
+\
 
 import logging
 from typing import Optional, Tuple

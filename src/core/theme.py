@@ -1,7 +1,6 @@
-"""
-Theme palettes for Improve-ImgSLI application.
-This file contains project-specific color palettes.
-"""
+\
+\
+\
 
 from PyQt6.QtGui import QColor
 
@@ -25,6 +24,11 @@ LIGHT_THEME_PALETTE = {
     "button.default.background.pressed": QColor("#2D0078D7"),
     "button.default.border": QColor("#1E000000"),
     "button.default.bottom.edge": QColor("#32000000"),
+    "button.dialog.default.background": QColor("#ffffff"),
+    "button.dialog.default.background.hover": QColor("#f8f8f8"),
+    "button.dialog.default.background.pressed": QColor("#e9e9e9"),
+    "button.dialog.default.border": QColor("#1E000000"),
+    "button.dialog.default.bottom.edge": QColor("#32000000"),
     "button.delete.background": QColor("#26D93025"),
     "button.delete.background.hover": QColor("#4CD93025"),
     "button.delete.background.pressed": QColor("#4CD93025"),
@@ -77,6 +81,10 @@ LIGHT_THEME_PALETTE = {
     "switch.knob.border": QColor("#23000000"),
     "switch.text": QColor("#1f1f1f"),
 
+    "tooltip.background": QColor("#ffffff"),
+    "tooltip.text": QColor("#1f1f1f"),
+    "tooltip.border": QColor("#c0c0c0"),
+
     "color_dialog.background": QColor("#f0f0f0"),
     "color_dialog.text": QColor("#1f1f1f"),
     "color_dialog.input.background": QColor("#ffffff"),
@@ -109,6 +117,11 @@ DARK_THEME_PALETTE = {
     "button.default.background.pressed": QColor("#3C0096FF"),
     "button.default.border": QColor("#26FFFFFF"),
     "button.default.bottom.edge": QColor("#1EFFFFFF"),
+    "button.dialog.default.background": QColor("#3c3c3c"),
+    "button.dialog.default.background.hover": QColor("#4a4a4a"),
+    "button.dialog.default.background.pressed": QColor("#555555"),
+    "button.dialog.default.border": QColor("#26FFFFFF"),
+    "button.dialog.default.bottom.edge": QColor("#1EFFFFFF"),
     "button.delete.background": QColor("#33D93025"),
     "button.delete.background.hover": QColor("#66D93025"),
     "button.delete.background.pressed": QColor("#66D93025"),
@@ -160,6 +173,10 @@ DARK_THEME_PALETTE = {
     "switch.knob.on": QColor("#ffffff"),
     "switch.knob.border": QColor("#5A000000"),
     "switch.text": QColor("#dfdfdf"),
+
+    "tooltip.background": QColor("#3c3c3c"),
+    "tooltip.text": QColor("#dfdfdf"),
+    "tooltip.border": QColor("#555555"),
 
     "color_dialog.background": QColor("#2b2b2b"),
     "color_dialog.text": QColor("#e0e0e0"),

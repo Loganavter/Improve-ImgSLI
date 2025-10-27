@@ -1,12 +1,12 @@
-"""
-Виджет кнопки с иконкой, поддерживающий изменение значения скроллингом мыши
-"""
+\
+\
+
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import QLabel, QPushButton
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from ui.icon_manager import AppIcon, get_app_icon
 
 class ScrollableIconButton(QPushButton):
     """

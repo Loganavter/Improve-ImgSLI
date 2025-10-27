@@ -1,15 +1,14 @@
-"""
-Minimalist scrollbar with smooth animations and theme support.
-
-Provides a modern, minimalist scrollbar design that responds to
-hover and drag states with visual feedback.
-"""
+\
+\
+\
+\
+\
 
 from PyQt6.QtCore import QEvent, QRect, Qt
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import QScrollArea, QScrollBar
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class MinimalistScrollBar(QScrollBar):
     """
@@ -196,17 +195,6 @@ class OverlayScrollArea(QScrollArea):
         self.verticalScrollBar().rangeChanged.connect(self.custom_v_scrollbar.setRange)
 
         self.custom_v_scrollbar.setVisible(False)
-        self.widget_resized = False
-
-    def setWidget(self, widget):
-        super().setWidget(widget)
-        if widget:
-            widget.installEventFilter(self)
-
-    def eventFilter(self, watched, event):
-        if watched == self.widget() and event.type() == QEvent.Type.Resize:
-            self._update_scrollbar_visibility()
-        return super().eventFilter(watched, event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -217,9 +205,7 @@ class OverlayScrollArea(QScrollArea):
         if self.widget():
             content_height = self.widget().height()
             viewport_height = self.viewport().height()
-            is_visible = content_height > viewport_height
-            if self.custom_v_scrollbar.isVisible() != is_visible:
-                self.custom_v_scrollbar.setVisible(is_visible)
+            self.custom_v_scrollbar.setVisible(content_height > viewport_height)
 
     def _position_scrollbar(self):
         width = 14
