@@ -1,27 +1,11 @@
-"""
-Minimalist scrollbar with smooth animations and theme support.
-
-Provides a modern, minimalist scrollbar design that responds to
-hover and drag states with visual feedback.
-"""
 
 from PyQt6.QtCore import QEvent, QRect, Qt
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import QScrollArea, QScrollBar
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class MinimalistScrollBar(QScrollBar):
-    """
-    Minimalist custom scrollbar with dynamic thickness and colors.
-
-    Features:
-    - Thin idle state (4px)
-    - Medium hover state (6px)
-    - Thick drag state (10px)
-    - Smooth color transitions
-    - Theme-aware colors
-    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -43,7 +27,6 @@ class MinimalistScrollBar(QScrollBar):
         self.setMouseTracking(True)
 
     def _update_colors(self):
-        """Updates colors based on current theme."""
         if self.theme_manager.is_dark():
             self._idle_color = QColor(255, 255, 255, 60)
             self._hover_color = QColor(255, 255, 255, 90)
@@ -53,7 +36,6 @@ class MinimalistScrollBar(QScrollBar):
         self.update()
 
     def paintEvent(self, event):
-        """Custom paint event for minimalist rendering."""
         if self.minimum() == self.maximum():
             return
 
@@ -77,7 +59,6 @@ class MinimalistScrollBar(QScrollBar):
         painter.drawRoundedRect(handle_rect, radius, radius)
 
     def _get_handle_rect(self):
-        """Calculates handle rectangle based on current state."""
         if self.minimum() == self.maximum():
             return QRect()
 
@@ -113,7 +94,6 @@ class MinimalistScrollBar(QScrollBar):
         )
 
     def mousePressEvent(self, event):
-        """Handles mouse press for dragging or jumping."""
         if event.button() != Qt.MouseButton.LeftButton:
             return
 
@@ -145,7 +125,6 @@ class MinimalistScrollBar(QScrollBar):
         event.accept()
 
     def mouseMoveEvent(self, event):
-        """Handles mouse move for dragging."""
         if self._is_dragging:
             v_padding = 8
             handle_height = self._get_handle_rect().height()
@@ -163,24 +142,20 @@ class MinimalistScrollBar(QScrollBar):
         event.accept()
 
     def mouseReleaseEvent(self, event):
-        """Handles mouse release to stop dragging."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._is_dragging = False
             self.update()
             event.accept()
 
     def enterEvent(self, event):
-        """Handles mouse enter for hover effect."""
         self.update()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        """Handles mouse leave to reset hover effect."""
         self.update()
         super().leaveEvent(event)
 
 class OverlayScrollArea(QScrollArea):
-    """QScrollArea, который использует MinimalistScrollBar в качестве оверлея."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -196,17 +171,6 @@ class OverlayScrollArea(QScrollArea):
         self.verticalScrollBar().rangeChanged.connect(self.custom_v_scrollbar.setRange)
 
         self.custom_v_scrollbar.setVisible(False)
-        self.widget_resized = False
-
-    def setWidget(self, widget):
-        super().setWidget(widget)
-        if widget:
-            widget.installEventFilter(self)
-
-    def eventFilter(self, watched, event):
-        if watched == self.widget() and event.type() == QEvent.Type.Resize:
-            self._update_scrollbar_visibility()
-        return super().eventFilter(watched, event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -217,9 +181,7 @@ class OverlayScrollArea(QScrollArea):
         if self.widget():
             content_height = self.widget().height()
             viewport_height = self.viewport().height()
-            is_visible = content_height > viewport_height
-            if self.custom_v_scrollbar.isVisible() != is_visible:
-                self.custom_v_scrollbar.setVisible(is_visible)
+            self.custom_v_scrollbar.setVisible(content_height > viewport_height)
 
     def _position_scrollbar(self):
         width = 14

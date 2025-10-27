@@ -1,8 +1,8 @@
-from PyQt6.QtCore import QRectF, Qt
+from PyQt6.QtCore import QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen, QRegion
 from PyQt6.QtWidgets import QLineEdit
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 from ..helpers.underline_painter import UnderlineConfig, draw_bottom_underline
 
@@ -22,6 +22,13 @@ class CustomLineEdit(QLineEdit):
         except Exception:
             pass
 
+        self.setStyleSheet("""
+            QLineEdit {
+                selection-background-color: transparent;
+                background-color: transparent;
+            }
+        """)
+
     def _style_prefix(self) -> str:
         btn_class = str(self.property("class") or "")
         return "button.primary" if btn_class == "primary" else "button.default"
@@ -31,21 +38,34 @@ class CustomLineEdit(QLineEdit):
         super().resizeEvent(e)
 
     def focusInEvent(self, event):
-        """Обработка получения фокуса для обновления внешнего вида"""
         super().focusInEvent(event)
-        self.update()
+
+        QTimer.singleShot(0, self.update)
 
     def focusOutEvent(self, event):
-        """Обработка потери фокуса для обновления внешнего вида"""
         super().focusOutEvent(event)
-        self.update()
+
+        QTimer.singleShot(0, self.update)
 
     def paintEvent(self, e):
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = self.rect()
+
+        bg_color = self.theme_manager.get_color("dialog.input.background")
+        painter.setBrush(bg_color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        radius = self.RADIUS
+        rr = QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5)
+        painter.drawRoundedRect(rr, radius, radius)
+        painter.end()
+
         super().paintEvent(e)
+
         try:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            r = self.rect()
 
             thin = QColor(self.theme_manager.get_color("input.border.thin"))
             alpha = max(8, int(thin.alpha() * 0.66))
@@ -54,9 +74,7 @@ class CustomLineEdit(QLineEdit):
             pen.setWidthF(0.66)
             pen.setCapStyle(Qt.PenCapStyle.FlatCap)
             painter.setPen(pen)
-
-            radius = self.RADIUS
-            rr = QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rr, radius, radius)
 
             if self.hasFocus():

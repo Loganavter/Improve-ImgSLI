@@ -4,7 +4,7 @@ import os
 
 import PIL.Image
 from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QImage, QMouseEvent, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QColorDialog,
     QComboBox,
@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 from ui.widgets import FluentCheckBox, FluentSlider
 from utils.resource_loader import resource_path
 
@@ -412,3 +412,12 @@ class ExportDialog(QDialog):
             self.edit_comment.setVisible(checked)
         if hasattr(self, 'checkbox_comment_default'):
             self.checkbox_comment_default.setVisible(checked)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        self.clear_input_focus()
+        super().mousePressEvent(event)
+
+    def clear_input_focus(self):
+        focused_widget = self.focusWidget()
+        if focused_widget and isinstance(focused_widget, QLineEdit):
+            focused_widget.clearFocus()

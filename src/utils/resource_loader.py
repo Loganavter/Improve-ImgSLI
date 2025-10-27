@@ -16,11 +16,8 @@ MIN_CAPTURE_THICKNESS = 2.0
 MAX_CAPTURE_THICKNESS = 8.0
 
 def resource_path(relative_path: str) -> str:
-    try:
-        base_path = Path(sys._MEIPASS)
-    except Exception:
-        base_path = Path(__file__).resolve().parent.parent
-    return (base_path / relative_path).as_posix()
+    from shared_toolkit.utils.paths import resource_path as shared_resource_path
+    return shared_resource_path(relative_path)
 
 FontType = Union[ImageFont.FreeTypeFont, ImageFont.ImageFont]
 GetSizeFuncType = Callable[[str, FontType], Tuple[int, int]]

@@ -1,25 +1,8 @@
-"""
-File utilities.
-"""
 
 import os
 import re
 
 def get_unique_filepath(directory: str, base_name: str, extension: str) -> str:
-    """
-    Generates unique filename in specified directory more efficiently.
-
-    If file with such name already exists, adds or increments a counter in brackets.
-    This is the improved version that combines the best of both implementations.
-
-    Args:
-        directory: Directory where the file should be created
-        base_name: Base name of the file (without extension)
-        extension: File extension (with or without dot)
-
-    Returns:
-        Full path to a unique file
-    """
 
     if not extension.startswith('.'):
         extension = f'.{extension}'

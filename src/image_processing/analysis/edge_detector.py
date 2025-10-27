@@ -1,9 +1,3 @@
-"""
-Функции для детекции контуров в изображениях.
-
-Этот модуль содержит алгоритмы выделения контуров:
-- canny: детектор контуров Канни
-"""
 
 import logging
 from typing import Optional
@@ -16,16 +10,6 @@ from skimage.util import img_as_ubyte
 logger = logging.getLogger("ImproveImgSLI")
 
 def create_edge_map(image: Image.Image, sigma: float = 1.0) -> Optional[Image.Image]:
-    """
-    Создает карту контуров для изображения используя детектор Канни.
-
-    Args:
-        image: Входное изображение
-        sigma: Параметр размытия для детектора Канни
-
-    Returns:
-        Изображение с выделенными контурами или None при ошибке
-    """
     if not image:
         return None
 

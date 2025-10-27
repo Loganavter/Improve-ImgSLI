@@ -1,29 +1,14 @@
-"""
-Dialog helper functions and base class.
-
-Provides utilities for creating consistent dialogs across projects.
-"""
 
 import os
-
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
-from src.shared_toolkit.utils.paths import resource_path
+from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from shared_toolkit.utils.paths import resource_path
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class BaseDialog(QDialog):
-    """
-    Base dialog class with standard setup.
-
-    Provides common functionality for all dialogs:
-    - Window flags setup
-    - Icon setup
-    - Theme manager connection
-    - Standard sizing
-    """
 
     def __init__(self, parent=None, title="", min_width=350, min_height=0):
         super().__init__(parent)
@@ -35,7 +20,6 @@ class BaseDialog(QDialog):
         self._setup_theme()
 
     def _setup_window(self, title, min_width, min_height):
-        """Sets up window properties."""
         if title:
             self.setWindowTitle(title)
 
@@ -52,16 +36,13 @@ class BaseDialog(QDialog):
             self.setMinimumHeight(min_height)
 
     def _setup_icon(self):
-        """Sets up window icon from resources."""
         setup_dialog_icon(self)
 
     def _setup_theme(self):
-        """Connects to theme manager."""
         self.theme_manager.theme_changed.connect(self._on_theme_changed)
 
     def _on_theme_changed(self):
-        """Override this method to handle theme changes."""
-        self.theme_manager.apply_theme_to_dialog(self)
+        self.update()
 
 def setup_dialog_scaffold(
     dialog: QDialog,
@@ -103,13 +84,6 @@ def setup_dialog_scaffold(
     main_layout.addLayout(buttons_layout)
 
 def setup_dialog_icon(dialog: QDialog, icon_path: str = None):
-    """
-    Sets icon for dialog window.
-
-    Args:
-        dialog: Dialog to set icon for
-        icon_path: Optional custom icon path. If None, tries default from resources.
-    """
     if icon_path is None:
 
         try:
@@ -121,17 +95,6 @@ def setup_dialog_icon(dialog: QDialog, icon_path: str = None):
         dialog.setWindowIcon(QIcon(icon_path))
 
 def auto_size_dialog(dialog: QDialog, min_width: int = 300, min_height: int = 200):
-    """
-    Automatically calculates and sets dialog sizes based on content.
-
-    This function schedules size calculation for the next event loop iteration
-    to ensure all widgets are properly laid out first.
-
-    Args:
-        dialog: Dialog to update sizes for
-        min_width: Minimum width
-        min_height: Minimum height
-    """
 
     def _recalculate_sizes():
 
@@ -149,12 +112,6 @@ def auto_size_dialog(dialog: QDialog, min_width: int = 300, min_height: int = 20
     QTimer.singleShot(0, _recalculate_sizes)
 
 def _update_group_sizes(dialog: QDialog):
-    """
-    Updates sizes of styled groups in dialog.
-
-    Searches for CustomGroupWidget instances and updates their minimum widths
-    based on content and title sizes.
-    """
     for child in dialog.findChildren(QWidget):
         if child.objectName() == "StyledGroupFrame":
             parent_group = child.parent()

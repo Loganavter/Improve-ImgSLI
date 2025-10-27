@@ -195,7 +195,6 @@ class ImageLabelEventHandler(QObject):
             self.app_state.split_position = max(0.0, min(1.0, rel_pos))
 
     def _is_point_in_magnifier(self, cursor_pos: QPointF) -> bool:
-        """Check if point is inside the magnifier circle"""
         if not self.app_state.magnifier_screen_center or self.app_state.magnifier_screen_size <= 0:
             return False
 
@@ -207,7 +206,6 @@ class ImageLabelEventHandler(QObject):
         return distance_sq <= radius * radius
 
     def _update_magnifier_internal_split(self, cursor_pos: QPointF):
-        """Update the internal split position within the magnifier"""
         if not self.app_state.magnifier_screen_center or self.app_state.magnifier_screen_size <= 0:
             return
 

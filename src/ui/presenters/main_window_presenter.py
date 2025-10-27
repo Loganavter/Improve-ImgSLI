@@ -23,11 +23,12 @@ from events.window_event_handler import WindowEventHandler
 from image_processing.composer import ImageComposer
 from image_processing.resize import resize_images_processor
 from resources import translations as translations_mod
-from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from ui.icon_manager import AppIcon, get_app_icon
 from ui.main_window_ui import Ui_ImageComparisonApp
 from ui.managers.ui_manager import UIManager
+from ui.presenters.ui_update_batcher import UIUpdateBatcher
 from utils.resource_loader import get_magnifier_drawing_coords
-from src.shared_toolkit.workers import GenericWorker
+from shared_toolkit.workers import GenericWorker
 
 tr = getattr(translations_mod, "tr", lambda text, lang="en", *args, **kwargs: text)
 logger = logging.getLogger("ImproveImgSLI")
@@ -43,6 +44,8 @@ class MainWindowPresenter(QObject):
         self.image_label_handler = ImageLabelEventHandler(app_state, main_controller, self)
         self.window_handler = WindowEventHandler(app_state, main_controller, ui, main_window_app)
         self.ui_manager = UIManager(app_state, main_controller, ui, main_window_app)
+
+        self.ui_batcher = UIUpdateBatcher(self)
 
         self._divider_color_dialog = None
         self._magnifier_divider_color_dialog = None
@@ -139,6 +142,9 @@ class MainWindowPresenter(QObject):
         self.ui.btn_diff_mode.triggered.connect(lambda action: self.main_controller.set_diff_mode(action.data()))
         self.ui.btn_channel_mode.triggered.connect(lambda action: self.main_controller.set_channel_view_mode(action.data()))
 
+        self.ui.btn_diff_mode.menu_closed.connect(self._on_diff_mode_menu_closed)
+        self.ui.btn_channel_mode.menu_closed.connect(self._on_channel_mode_menu_closed)
+
         self.ui.combo_image1.wheelScrolledToIndex.connect(lambda index: self.main_controller.on_combobox_changed(1, index))
         self.ui.combo_image2.wheelScrolledToIndex.connect(lambda index: self.main_controller.on_combobox_changed(2, index))
 
@@ -183,6 +189,12 @@ class MainWindowPresenter(QObject):
         self.ui_manager._font_popup_open = False
         self.ui.btn_color_picker.setFlyoutOpen(False)
 
+    def _on_diff_mode_menu_closed(self):
+        self.ui_manager._diff_mode_popup_open = False
+
+    def _on_channel_mode_menu_closed(self):
+        self.ui_manager._channel_mode_popup_open = False
+
     def _apply_initial_settings_to_ui(self):
         self.ui.slider_size.setValue(int(self.app_state.magnifier_size_relative * 100))
         self.ui.slider_capture.setValue(int(self.app_state.capture_size_relative * 100))
@@ -217,12 +229,8 @@ class MainWindowPresenter(QObject):
         if self.ui.btn_magnifier_orientation.isChecked() != self.app_state.magnifier_is_horizontal:
             self.ui.btn_magnifier_orientation.setChecked(self.app_state.magnifier_is_horizontal, emit_signal=False)
         self.ui.toggle_edit_layout_visibility(self.app_state.include_file_names_in_saved)
-        self.update_file_names_display()
-        self.update_resolution_labels()
-        self.update_combobox_displays()
-        self.update_slider_tooltips()
-        self.update_rating_displays()
-        self.main_window_app.schedule_update()
+
+        self.ui_batcher.schedule_batch_update(['file_names', 'resolution', 'combobox', 'slider_tooltips', 'ratings', 'window_schedule'])
 
     def _open_image_dialog(self, image_number: int):
         try:
@@ -262,6 +270,9 @@ class MainWindowPresenter(QObject):
             logger.exception("Failed to open non-modal file dialog")
 
     def update_resolution_labels(self):
+        self.ui_batcher.schedule_update('resolution')
+
+    def _do_update_resolution_labels(self):
         res1_text = "--x--"
         if dim := self.app_state.get_image_dimensions(1): res1_text = f"{dim[0]}x{dim[1]}"
         res2_text = "--x--"
@@ -287,6 +298,9 @@ class MainWindowPresenter(QObject):
                 self.ui.ssim_label.setText("SSIM: --")
 
     def update_file_names_display(self):
+        self.ui_batcher.schedule_update('file_names')
+
+    def _do_update_file_names_display(self):
         name1 = self.app_state.get_current_display_name(1) or "-----"
         name2 = self.app_state.get_current_display_name(2) or "-----"
 
@@ -305,6 +319,9 @@ class MainWindowPresenter(QObject):
             self.ui.update_name_length_warning("", "", False)
 
     def update_combobox_displays(self):
+        self.ui_batcher.schedule_update('combobox')
+
+    def _do_update_combobox_displays(self):
         count1 = len(self.app_state.image_list1)
         idx1 = self.app_state.current_index1
         text1 = self.app_state.get_current_display_name(1) if 0 <= idx1 < count1 else tr("Select an image", self.app_state.current_language)
@@ -315,13 +332,24 @@ class MainWindowPresenter(QObject):
         text2 = self.app_state.get_current_display_name(2) if 0 <= idx2 < count2 else tr("Select an image", self.app_state.current_language)
         self.ui.update_combobox_display(2, count2, idx2, text2, "")
 
-    def update_slider_tooltips(self): self.ui.update_slider_tooltips(self.app_state.movement_speed_per_sec, self.app_state.magnifier_size_relative, self.app_state.capture_size_relative, self.app_state.current_language)
-    def update_rating_displays(self): self.ui.update_rating_display(1, self.app_state.get_current_score(1), self.app_state.current_language); self.ui.update_rating_display(2, self.app_state.get_current_score(2), self.app_state.current_language)
+    def update_slider_tooltips(self):
+        self.ui_batcher.schedule_update('slider_tooltips')
+
+    def _do_update_slider_tooltips(self):
+        self.ui.update_slider_tooltips(self.app_state.movement_speed_per_sec, self.app_state.magnifier_size_relative, self.app_state.capture_size_relative, self.app_state.current_language)
+
+    def update_rating_displays(self):
+        self.ui_batcher.schedule_update('ratings')
+
+    def _do_update_rating_displays(self):
+        self.ui.update_rating_display(1, self.app_state.get_current_score(1), self.app_state.current_language)
+        self.ui.update_rating_display(2, self.app_state.get_current_score(2), self.app_state.current_language)
 
     def on_language_changed(self):
         self.ui.update_translations(self.app_state.current_language)
         self._setup_view_buttons()
-        self.update_combobox_displays()
+
+        self._do_update_combobox_displays()
 
         self._update_interpolation_combo_box_ui()
         self.ui.reapply_button_styles()
@@ -973,7 +1001,6 @@ class MainWindowPresenter(QObject):
             counter += 1
 
     def _show_divider_color_picker(self):
-        """Показывает диалог выбора цвета для линии разделения"""
         from PyQt6.QtWidgets import QColorDialog
         if self._divider_color_dialog and self._divider_color_dialog.isVisible():
             self._divider_color_dialog.raise_()
@@ -996,7 +1023,6 @@ class MainWindowPresenter(QObject):
         self._divider_color_dialog.show()
 
     def _show_magnifier_divider_color_picker(self):
-        """Показывает диалог выбора цвета для внутренней линии разделения в лупе"""
         from PyQt6.QtWidgets import QColorDialog
         if self._magnifier_divider_color_dialog and self._magnifier_divider_color_dialog.isVisible():
             self._magnifier_divider_color_dialog.raise_()
@@ -1019,11 +1045,9 @@ class MainWindowPresenter(QObject):
         self._magnifier_divider_color_dialog.show()
 
     def update_magnifier_orientation_button_state(self):
-        """Обновляет состояние кнопки ориентации лупы извне."""
         self.ui.btn_magnifier_orientation.setChecked(self.app_state.magnifier_is_horizontal, emit_signal=False)
 
     def _toggle_magnifier_orientation_on_right_click(self):
-        """Обрабатывает правый клик по основной кнопке ориентации и показывает попап."""
 
         self.main_controller.toggle_magnifier_orientation()
 
@@ -1063,7 +1087,6 @@ class MainWindowPresenter(QObject):
         self._popup_timer.start(1200)
 
     def _hide_orientation_popup(self):
-        """Скрывает всплывающую подсказку"""
         if self._orientation_popup:
             self._orientation_popup.hide()
 

@@ -1,22 +1,32 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
+import os
+
+project_root = os.getcwd()
 
 a = Analysis(
-    ['../../src/__main__.py'],
-    pathex=['src'],
+    [os.path.join(project_root, 'src', '__main__.py')],
+    pathex=[os.path.join(project_root, 'src')],
     binaries=[],
     datas=[
-        ('../../src/resources', 'resources'),
-        ('../../src/shared_toolkit/resources', 'shared_toolkit/resources'),
-        ('../../src/shared_toolkit', 'shared_toolkit'),
-        ('../../src/image_processing/analysis', 'image_processing/analysis'),
+        (os.path.join(project_root, 'src', 'resources'), 'resources'),
+        (os.path.join(project_root, 'src', 'shared_toolkit', 'resources'), 'shared_toolkit/resources')
     ],
     hiddenimports=[
         'darkdetect',
         'desktop_notifier',
         'numpy',
         'wand',
+        'markdown',
+        'PIL',
+        'PIL.Image',
+        'PIL.ImageDraw',
+        'PIL.ImageFont',
+        'PIL.ImageChops',
+        'PIL.ImageOps',
+        'PIL.ImageStat',
+        'PIL.PngImagePlugin',
         'core.app_state',
         'core.constants',
         'core.font_manager',
@@ -44,8 +54,6 @@ a = Analysis(
         'ui.main_window_ui',
         'ui.managers.ui_manager',
         'ui.presenters.main_window_presenter',
-
-        # Atomic widgets
         'ui.widgets.atomic.clickable_label',
         'ui.widgets.atomic.custom_button',
         'ui.widgets.atomic.custom_line_edit',
@@ -61,28 +69,18 @@ a = Analysis(
         'ui.widgets.atomic.tool_button_with_menu',
         'ui.widgets.atomic.numbered_toggle_icon_button',
         'ui.widgets.atomic.toggle_icon_button',
-
-        # Composite widgets
         'ui.widgets.composite.drag_ghost_widget',
         'ui.widgets.composite.simple_options_flyout',
         'ui.widgets.composite.text_settings_flyout',
         'ui.widgets.composite.toast',
         'ui.widgets.composite.unified_flyout',
         'ui.widgets.composite.magnifier_visibility_flyout',
-
-        # Other widgets
         'ui.widgets.custom_widgets',
         'ui.widgets.paste_direction_overlay',
-
-        # Utils
         'utils.paths',
         'utils.resource_loader',
-
-        # Workers
         'workers.generic_worker',
         'workers.image_rendering_worker',
-
-        # Additional dynamic/dependency modules
         'skimage',
         'skimage.metrics',
         'skimage.feature',
@@ -91,8 +89,6 @@ a = Analysis(
         'image_processing.analysis.differ',
         'image_processing.analysis.edge_detector',
         'image_processing.analysis.metrics',
-
-        # Shared toolkit (src-prefixed)
         'src.shared_toolkit.ui.dialogs.dialog_helpers',
         'src.shared_toolkit.ui.managers.theme_manager',
         'src.shared_toolkit.ui.widgets.helpers.underline_painter',

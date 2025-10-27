@@ -21,10 +21,12 @@ else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, application_path)
 
+from PyQt6.QtCore import QThreadPool
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
 from core.settings import SettingsManager
-from ui.main_window import ImageComparisonApp
+from ui.main_window import MainWindow
 
 def main():
     parser = argparse.ArgumentParser(description="Improve ImgSLI - Main entry point")
@@ -62,8 +64,20 @@ def main():
 
     app = QApplication(sys.argv)
 
-    window = ImageComparisonApp(debug_mode=args.debug)
+    app.setApplicationName("Improve ImgSLI")
+    app.setApplicationDisplayName("")
+    app.setApplicationVersion("1.0.0")
+    app.setOrganizationName("improve-imgsli")
+    app.setOrganizationDomain("improve-imgsli.local")
+
+    window = MainWindow(debug_mode=args.debug)
     window.show()
+
+    def on_quit():
+        if not QThreadPool.globalInstance().waitForDone(3000):
+            QThreadPool.globalInstance().clear()
+
+    app.aboutToQuit.connect(on_quit)
     sys.exit(app.exec())
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 ; -- Improve_ImgSLI Inno Setup Script --
 
 #define MyAppName "Improve ImgSLI"
-#define MyAppVersion "6.2.0"
+#define MyAppVersion "7.9.0"
 #define MyAppPublisher "Loganavter"
 #define MyAppURL "https://github.com/Loganavter/Improve-ImgSLI"
 #define MyAppExeName "Improve_ImgSLI.exe"
-#define MyAppSetupName "Improve_ImgSLI_Setup_v6.2.0"
+#define MyAppSetupName "Improve_ImgSLI_Setup_v7.9.0"
 
 [Setup]
 AppName={#MyAppName}

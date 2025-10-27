@@ -1,6 +1,6 @@
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt
 
 class DragGhostWidget(QWidget):
     def __init__(self, parent=None):

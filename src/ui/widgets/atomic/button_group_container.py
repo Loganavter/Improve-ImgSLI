@@ -1,16 +1,11 @@
-"""
-Контейнер для группы кнопок с подписью, врезанной в нижнюю линию
-"""
+
 from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class ButtonGroupContainer(QWidget):
-    """
-    Контейнер для группы кнопок с границей и подписью, врезанной в нижнюю линию.
-    """
 
     def __init__(self, buttons: list, label_text: str = "", parent=None):
         super().__init__(parent)
@@ -34,27 +29,23 @@ class ButtonGroupContainer(QWidget):
         self.theme_manager.theme_changed.connect(self.update)
 
     def set_label_text(self, text: str):
-        """Устанавливает текст подписи"""
         if self._label_text != text:
             self._label_text = text
             self.update()
 
     def _get_label_height(self):
-        """Возвращает высоту текста подписи"""
         if not self._label_text:
             return 0
         font_metrics = QFontMetrics(self.font())
         return font_metrics.height()
 
     def _get_label_width(self):
-        """Возвращает ширину текста подписи"""
         if not self._label_text:
             return 0
         font_metrics = QFontMetrics(self.font())
         return font_metrics.horizontalAdvance(self._label_text)
 
     def paintEvent(self, event):
-        """Рисует границу с врезанной подписью"""
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)

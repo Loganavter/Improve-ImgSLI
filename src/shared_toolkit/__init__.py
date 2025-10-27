@@ -1,33 +1,25 @@
-"""
-Shared Toolkit - Общая библиотека для проектов Improve-ImgSLI и Tkonverter
 
-Этот модуль содержит общие компоненты, используемые в обоих проектах:
-- Утилиты для работы с файлами и путями
-- UI компоненты (fluent widgets, менеджеры)
-- Общие скрипты и функции
-"""
-
-from .ui.managers import ThemeManager
-from .ui.services import IconService, get_icon_by_name, get_icon_service
+from .utils import get_unique_filepath, resource_path
 from .ui.widgets.atomic import (
-    AdaptiveLabel,
-    BodyLabel,
-    CaptionLabel,
-    CompactLabel,
-    CustomButton,
-    CustomGroupBuilder,
-    CustomGroupWidget,
-    CustomLineEdit,
     FluentCheckBox,
+    CustomButton,
+    CustomLineEdit,
     FluentComboBox,
     FluentRadioButton,
+    FluentSwitch,
     FluentSlider,
     FluentSpinBox,
-    FluentSwitch,
+    BodyLabel,
+    CaptionLabel,
+    AdaptiveLabel,
+    CompactLabel,
     GroupTitleLabel,
-    MinimalistScrollBar,
+    CustomGroupWidget,
+    CustomGroupBuilder,
+    MinimalistScrollBar
 )
-from .utils import get_unique_filepath, resource_path
+from .ui.managers import ThemeManager
+from .ui.services import IconService, get_icon_by_name, get_icon_service
 
 __version__ = "1.1.0"
 __author__ = "Loganavter"
@@ -38,6 +30,7 @@ __all__ = [
     'FluentCheckBox',
     'CustomButton',
     'CustomLineEdit',
+    'FluentComboBox',
     'FluentRadioButton',
     'FluentSwitch',
     'FluentSlider',
@@ -50,7 +43,6 @@ __all__ = [
     'CustomGroupWidget',
     'CustomGroupBuilder',
     'MinimalistScrollBar',
-    'FluentComboBox',
     'ThemeManager',
     'IconService',
     'get_icon_by_name',

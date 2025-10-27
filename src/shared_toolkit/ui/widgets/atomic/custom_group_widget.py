@@ -1,26 +1,11 @@
-"""
-Custom group widget with custom border drawing.
-
-Provides dynamic border updates and title rendering
-with theme-aware styling capabilities.
-"""
 
 from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class CustomGroupWidget(QWidget):
-    """
-    Custom group widget with custom border drawing.
-
-    Features:
-    - Custom rounded border
-    - Title positioned on border
-    - Theme-aware colors
-    - Dynamic content layout
-    """
 
     def __init__(self, title_text: str = "", parent=None):
         super().__init__(parent)
@@ -40,13 +25,11 @@ class CustomGroupWidget(QWidget):
         self.theme_manager.theme_changed.connect(self.update)
 
     def _setup_layout(self):
-        """Sets up layout considering space for title."""
         title_height = self._get_title_height()
         self._content_layout.setContentsMargins(10, title_height // 2 + 10, 10, 10)
         self._content_layout.setSpacing(6)
 
     def _get_title_height(self):
-        """Returns title height considering boldness."""
         if not self._title_text:
             return 0
         font = self.font()
@@ -55,7 +38,6 @@ class CustomGroupWidget(QWidget):
         return font_metrics.height()
 
     def _get_title_width(self):
-        """Returns title width considering boldness."""
         if not self._title_text:
             return 0
         font = self.font()
@@ -64,7 +46,6 @@ class CustomGroupWidget(QWidget):
         return font_metrics.horizontalAdvance(self._title_text)
 
     def set_title(self, title: str):
-        """Sets new title and updates layout."""
         if self._title_text != title:
             self._title_text = title
             self._update_layout_margins()
@@ -74,24 +55,19 @@ class CustomGroupWidget(QWidget):
                 self.parent().layout().invalidate()
 
     def get_title(self):
-        """Returns current title."""
         return self._title_text
 
     def _update_layout_margins(self):
-        """Updates layout margins based on title height."""
         title_height = self._get_title_height()
         self._content_layout.setContentsMargins(10, title_height // 2 + 10, 10, 10)
 
     def add_widget(self, widget):
-        """Adds widget to content layout."""
         self._content_layout.addWidget(widget)
 
     def add_layout(self, layout):
-        """Adds layout to content layout."""
         self._content_layout.addLayout(layout)
 
     def paintEvent(self, event):
-        """Custom paint event for border and title."""
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -146,21 +122,13 @@ class CustomGroupWidget(QWidget):
             )
 
 class CustomGroupBuilder:
-    """Helper class for creating styled groups with simplified API."""
 
     @staticmethod
     def create_styled_group(title_text: str):
-        """
-        Creates a styled group widget with title.
-
-        Returns:
-            tuple: (group_widget, content_layout, title_widget)
-        """
         group_widget = CustomGroupWidget(title_text)
         content_layout = group_widget._content_layout
 
         class TitleWidget:
-            """Wrapper for title operations."""
             def __init__(self, group_widget):
                 self._group = group_widget
 

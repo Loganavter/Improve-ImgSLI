@@ -1,115 +1,357 @@
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
-from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMenu, QPushButton
+import sys
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from PyQt6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QRect, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QGuiApplication, QIcon, QPainter, QBrush, QPen, QColor
+from PyQt6.QtWidgets import QWidget, QGraphicsDropShadowEffect, QVBoxLayout
 
-class ToolButtonWithMenu(QPushButton):
-    """
-    Кнопка с иконкой, которая открывает выпадающее меню при нажатии.
-    """
+from core.constants import AppConstants
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from ui.icon_manager import AppIcon, get_app_icon
+
+class _MenuItem(QWidget):
+    clicked = pyqtSignal()
+
+    def __init__(self, text: str, is_current: bool, parent=None):
+        super().__init__(parent)
+        self._text = text
+        self._is_current = is_current
+        self._hovered = False
+        self._check_icon = None
+
+        self.setFixedHeight(40)
+        self.setMouseTracking(True)
+
+        if is_current:
+            check_icon = get_app_icon(AppIcon.CHECK)
+            self._check_icon = check_icon.pixmap(20, 20)
+
+    def set_current(self, is_current: bool):
+        self._is_current = is_current
+        if is_current:
+            check_icon = get_app_icon(AppIcon.CHECK)
+            self._check_icon = check_icon.pixmap(20, 20)
+        else:
+            self._check_icon = None
+        self.update()
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        tm = ThemeManager.get_instance()
+
+        if self._is_current:
+            bg_color = tm.get_color("list_item.background.hover")
+        elif self._hovered:
+            bg_color = tm.get_color("list_item.background.hover")
+        else:
+            bg_color = tm.get_color("list_item.background.normal")
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(bg_color))
+        painter.drawRoundedRect(self.rect().adjusted(2, 2, -2, -2), 4, 4)
+
+        text_color = tm.get_color("dialog.text")
+
+        if self._check_icon:
+            icon_rect = QRect(10, (self.height() - 20) // 2, 20, 20)
+            painter.drawPixmap(icon_rect, self._check_icon)
+
+        painter.setPen(QPen(text_color))
+        painter.setFont(self.font())
+
+        text_x = 40 if self._check_icon else 12
+        text_y = self.rect().center().y() + 5
+
+        painter.drawText(text_x, text_y, self._text)
+
+class _DropdownMenu(QWidget):
+    item_selected = pyqtSignal(QAction)
+
+    MARGIN = 8
+    DROP_OFFSET_PX = 80
+    APPEAR_EXTRA_Y = 6
+    _move_duration_ms = AppConstants.FLYOUT_ANIMATION_DURATION_MS
+    _move_easing = QEasingCurve.Type.OutQuad
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._actions = []
+        self._menu_items = []
+        self._current_index = -1
+        self._anim = None
+
+        if sys.platform in ('linux', 'darwin'):
+            window_flags = Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+        else:
+            window_flags = Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
+        self.setWindowFlags(window_flags)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(8, 8, 8, 8)
+
+        self.container_widget = QWidget(self)
+        self.container_widget.setObjectName("menuContainer")
+
+        shadow = QGraphicsDropShadowEffect(self.container_widget)
+        shadow.setBlurRadius(10)
+        shadow.setOffset(1, 2)
+        shadow.setColor(QColor(0, 0, 0, 120))
+        self.container_widget.setGraphicsEffect(shadow)
+
+        self.main_layout.addWidget(self.container_widget)
+
+        self.container_layout = QVBoxLayout(self.container_widget)
+        self.container_layout.setContentsMargins(4, 4, 4, 4)
+        self.container_layout.setSpacing(2)
+
+        self.content_widget = QWidget(self.container_widget)
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(2)
+        self.container_layout.addWidget(self.content_widget)
+
+        self._apply_style()
+
+    def set_actions(self, actions: list[tuple[str, any]]):
+        self._actions = actions
+        self._current_index = -1
+
+    def set_current_by_data(self, data: any):
+        for i, (_, action_data) in enumerate(self._actions):
+            if action_data == data:
+                self._current_index = i
+                break
+
+    def show_at(self, pos: QPoint):
+        if not self._actions:
+            return
+
+        if self._anim:
+            self._anim.stop()
+
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self._menu_items.clear()
+
+        max_width = 180
+        for i, (text, data) in enumerate(self._actions):
+            item = _MenuItem(text, i == self._current_index, self.content_widget)
+            item.set_current(i == self._current_index)
+            item.clicked.connect(lambda checked=False, idx=i: self._on_item_clicked(idx))
+            self._menu_items.append(item)
+            self.content_layout.addWidget(item)
+
+            fm = item.fontMetrics()
+            text_width = fm.boundingRect(text).width()
+            max_width = max(max_width, text_width + 60)
+
+        item_height = 40
+        content_height = len(self._actions) * item_height + max(0, len(self._actions) - 1) * self.content_layout.spacing()
+        container_height = content_height + 8
+
+        self.container_widget.setFixedSize(max_width, container_height)
+        self.setFixedSize(max_width + 16, container_height + 16)
+
+        final_pos = QPoint(pos.x(), pos.y() + self.APPEAR_EXTRA_Y)
+        start_pos = QPoint(final_pos.x(), final_pos.y() - self.DROP_OFFSET_PX)
+
+        try:
+            screen = QGuiApplication.screenAt(pos)
+            if screen:
+                avail = screen.availableGeometry()
+                final_pos.setX(max(avail.left(), min(final_pos.x(), avail.right() - (max_width + 16))))
+                final_pos.setY(max(avail.top(), min(final_pos.y(), avail.bottom() - (container_height + 16))))
+                start_pos = QPoint(final_pos.x(), final_pos.y() - self.DROP_OFFSET_PX)
+        except Exception:
+            pass
+
+        self.move(start_pos)
+        self.show()
+
+        anim_pos = QPropertyAnimation(self, b"pos", self)
+        anim_pos.setDuration(self._move_duration_ms)
+        anim_pos.setStartValue(start_pos)
+        anim_pos.setEndValue(final_pos)
+        anim_pos.setEasingCurve(self._move_easing)
+        anim_pos.finished.connect(self._on_animation_finished)
+
+        self._anim = anim_pos
+        anim_pos.start()
+
+    def _on_animation_finished(self):
+        if self._anim:
+            anim_obj = self._anim
+            self._anim = None
+            anim_obj.deleteLater()
+
+    def _on_item_clicked(self, index: int):
+        if 0 <= index < len(self._actions):
+            _, data = self._actions[index]
+            action = QAction(self)
+            action.setData(data)
+            self.item_selected.emit(action)
+        self.hide()
+
+    def _apply_style(self):
+        tm = ThemeManager.get_instance()
+
+        menu_bg = tm.get_color("flyout.background").name()
+        menu_border = tm.get_color("flyout.border").name()
+
+        self.setStyleSheet(f"""
+            QWidget#menuContainer {{
+                background-color: {menu_bg};
+                border: 1px solid {menu_border};
+                border-radius: 6px;
+            }}
+        """)
+
+    def hideEvent(self, event):
+        if self._anim:
+            self._anim.stop()
+
+        parent = self.parent()
+        if parent and isinstance(parent, ToolButtonWithMenu):
+            parent._menu_visible = False
+        super().hideEvent(event)
+
+class ToolButtonWithMenu(QWidget):
     triggered = pyqtSignal(QAction)
+    menu_closed = pyqtSignal()
 
     def __init__(self, icon: AppIcon, parent=None):
         super().__init__(parent)
         self._icon = icon
         self._actions = []
         self._current_action = None
+        self._hovered = False
+        self._pressed = False
+        self._menu_visible = False
 
         self.setFixedSize(36, 36)
-        self.setIcon(get_app_icon(self._icon))
-        self.setIconSize(self.size() * 0.6)
 
-        self.menu = QMenu(self)
-        self.menu.triggered.connect(self._on_action_triggered)
-        self.clicked.connect(self.show_menu)
+        self.menu = _DropdownMenu(self)
+        self.menu.item_selected.connect(self._on_action_triggered)
+        self.menu.destroyed.connect(self._on_menu_destroyed)
 
         self.theme_manager = ThemeManager.get_instance()
-        self.theme_manager.theme_changed.connect(self._update_style)
+        self.theme_manager.theme_changed.connect(self.update)
 
-        self._update_style()
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
+            self._pressed = True
+            self.update()
+        super().mousePressEvent(event)
 
-    def _update_style(self):
-        """Обновляет стиль кнопки и меню"""
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._pressed = False
+            self.update()
+            if self.rect().contains(event.pos()):
+                self.show_menu()
+        super().mouseReleaseEvent(event)
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self._pressed = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
         tm = self.theme_manager
-        is_dark = tm.is_dark()
 
-        self.setIcon(get_app_icon(self._icon))
-        self.setIconSize(self.size() * 0.6)
+        if self._pressed:
+            bg_color = tm.get_color("button.toggle.background.pressed")
+        elif self._hovered:
+            bg_color = tm.get_color("button.toggle.background.hover")
+        else:
+            bg_color = tm.get_color("button.toggle.background.normal")
 
-        bg_normal = tm.get_color("button.toggle.background.normal").name()
-        bg_hover = tm.get_color("button.toggle.background.hover").name()
-        bg_pressed = tm.get_color("button.toggle.background.pressed").name()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(bg_color))
+        painter.drawRoundedRect(self.rect(), 6, 6)
 
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {bg_normal};
-                border: none;
-                border-radius: 6px;
-                padding: 0px;
-            }}
-            QPushButton:hover {{
-                background-color: {bg_hover};
-            }}
-            QPushButton:pressed, QPushButton:menu-indicator:open {{
-                background-color: {bg_pressed};
-            }}
-        """)
-
-        menu_bg = tm.get_color("flyout.background").name()
-        menu_border = tm.get_color("flyout.border").name()
-        menu_text = tm.get_color("dialog.text").name()
-        menu_selected_bg = tm.get_color("list_item.background.hover").name()
-
-        self.menu.setStyleSheet(f"""
-            QMenu {{
-                background-color: {menu_bg};
-                border: 1px solid {menu_border};
-                border-radius: 6px;
-                padding: 4px;
-            }}
-            QMenu::item {{
-                color: {menu_text};
-                padding: 6px 20px;
-                border-radius: 4px;
-            }}
-            QMenu::item:selected {{
-                background-color: {menu_selected_bg};
-            }}
-            QMenu::separator {{
-                height: 1px;
-                background: {menu_border};
-                margin-left: 5px;
-                margin-right: 5px;
-            }}
-        """)
+        icon = get_app_icon(self._icon)
+        icon_size = int(self.width() * 0.6)
+        icon_rect = QRect(
+            (self.width() - icon_size) // 2,
+            (self.height() - icon_size) // 2,
+            icon_size,
+            icon_size
+        )
+        painter.drawPixmap(icon_rect, icon.pixmap(icon_size, icon_size))
 
     def set_actions(self, actions: list[tuple[str, any]]):
-        """Устанавливает действия для меню. actions: список кортежей (текст, данные)"""
-        self.menu.clear()
-        self._actions = []
-        for text, data in actions:
-            action = QAction(text, self)
-            action.setData(data)
-            action.setCheckable(True)
-            self.menu.addAction(action)
-            self._actions.append(action)
+        self._actions = actions
+        self.menu.set_actions(actions)
 
     def set_current_by_data(self, data: any):
-        """Отмечает текущее действие по его данным"""
-        for action in self._actions:
-            is_current = (action.data() == data)
-            action.setChecked(is_current)
-            if is_current:
-                self._current_action = action
+        for text, action_data in self._actions:
+            if action_data == data:
+
+                for i, (t, d) in enumerate(self._actions):
+                    if d == data:
+                        self._current_action = (text, data)
+                        self.menu.set_current_by_data(data)
+                        break
+                break
 
     def show_menu(self):
-        """Показывает меню под кнопкой"""
-        self.menu.popup(self.mapToGlobal(QPoint(0, self.height())))
+        if not self._actions:
+            return
+
+        if self._menu_visible and self.menu.isVisible():
+            self.hide_menu()
+            return
+
+        self._menu_visible = True
+        offset = QPoint(-8, self.height() - 4)
+        global_pos = self.mapToGlobal(offset)
+
+        self.menu.show_at(global_pos)
+
+    def hide_menu(self):
+        self._menu_visible = False
+        if self.menu and self.menu.isVisible():
+            self.menu.hide()
+        self.menu_closed.emit()
+
+    def is_menu_visible(self):
+        return self._menu_visible and self.menu.isVisible() if self.menu else False
 
     def _on_action_triggered(self, action: QAction):
-        """Обработчик выбора действия в меню"""
+        self._menu_visible = False
         self.set_current_by_data(action.data())
         self.triggered.emit(action)
+
+    def _on_menu_destroyed(self):
+        self._menu_visible = False
 

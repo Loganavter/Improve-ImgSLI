@@ -1,30 +1,13 @@
-import logging
 from enum import Enum
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QPointF, QRect, QEasingCurve, QPropertyAnimation, QTimer, QSize, QAbstractAnimation
+from PyQt6.QtGui import QColor, QPainter, QPen, QGuiApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGraphicsDropShadowEffect, QApplication
+import logging
 
-from PyQt6.QtCore import (
-    QEasingCurve,
-    QPoint,
-    QPointF,
-    QPropertyAnimation,
-    QRect,
-    QSize,
-    Qt,
-    QTimer,
-    pyqtSignal,
-)
-from PyQt6.QtGui import QColor, QPainter, QPen
-from PyQt6.QtWidgets import (
-    QApplication,
-    QGraphicsDropShadowEffect,
-    QVBoxLayout,
-    QWidget,
-)
-
+from ui.widgets.custom_widgets import RatingListItem, PathTooltip, OverlayScrollArea
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 from core.constants import AppConstants
 from events.drag_drop_handler import DragAndDropService
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import OverlayScrollArea
-from ui.widgets.custom_widgets import RatingListItem
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -110,6 +93,7 @@ class _Panel(QWidget):
 
 	def clear_and_rebuild(self, image_list: list, owner_proxy: _ListOwnerProxy, item_height: int, item_font, list_type="image", current_index=-1):
 
+		PathTooltip.get_instance().hide_tooltip()
 		while item := self.content_layout.takeAt(0):
 			if w := item.widget():
 				w.deleteLater()
@@ -123,7 +107,7 @@ class _Panel(QWidget):
 			current_app_index = current_index
 
 		if not image_list:
-			from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
+			from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget, QHBoxLayout
 			ph = QWidget(self.content_widget)
 			ph.setFixedHeight(item_height)
 			ph.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -240,7 +224,8 @@ class _Panel(QWidget):
 		return payload.get('list_num') == self.image_number
 
 	def update_drop_indicator(self, global_pos: QPointF):
-		local_pos = self.content_widget.mapFromGlobal(global_pos.toPoint())
+		local_pos_f = self.content_widget.mapFromGlobal(global_pos)
+		local_pos = local_pos_f.toPoint()
 		_, indicator_y = self.find_drop_target(local_pos.y(), DragAndDropService.get_instance()._source_widget)
 		if self.drop_indicator_y != indicator_y:
 			self.drop_indicator_y = indicator_y
@@ -257,7 +242,8 @@ class _Panel(QWidget):
 		source_index = payload.get('index', -1)
 		if source_index == -1 or source_list_num == -1:
 			return
-		local_pos = self.content_widget.mapFromGlobal(global_pos.toPoint())
+		local_pos_f = self.content_widget.mapFromGlobal(global_pos)
+		local_pos = local_pos_f.toPoint()
 		dest_index, _ = self.find_drop_target(local_pos.y(), DragAndDropService.get_instance()._source_widget)
 		if source_list_num == self.image_number:
 			QTimer.singleShot(0, lambda: self.app_ref.main_controller.reorder_item_in_list(
@@ -542,6 +528,8 @@ class UnifiedFlyout(QWidget):
 		if self._anim:
 			self._anim.stop()
 
+		PathTooltip.get_instance().hide_tooltip()
+
 		if not self._is_closing:
 			self._is_closing = True
 			try:
@@ -576,7 +564,8 @@ class UnifiedFlyout(QWidget):
 
 	def _panel_under_global_pos(self, global_pos: QPointF):
 
-		local = self.mapFromGlobal(global_pos.toPoint())
+		local_f = self.mapFromGlobal(global_pos)
+		local = local_f.toPoint()
 
 		container_local = self.container_widget.mapFrom(self, local)
 

@@ -1,6 +1,4 @@
-"""
-Overlay виджет для выбора направления вставки изображения
-"""
+
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
@@ -8,7 +6,6 @@ from PyQt6.QtWidgets import QWidget
 from resources.translations import tr
 
 class PasteDirectionOverlay(QWidget):
-    """Overlay виджет с кнопками для выбора направления вставки изображения"""
 
     direction_selected = pyqtSignal(str)
     cancelled = pyqtSignal()
@@ -34,12 +31,10 @@ class PasteDirectionOverlay(QWidget):
         self.btn_cancel_rect = None
 
     def set_language(self, lang_code: str):
-        """Устанавливает язык интерфейса"""
         self.current_language = lang_code
         self.update()
 
     def showEvent(self, event):
-        """При показе устанавливаем геометрию и вычисляем кнопки"""
         super().showEvent(event)
 
         if self.parent():
@@ -47,7 +42,6 @@ class PasteDirectionOverlay(QWidget):
         self._update_button_rects()
 
     def _update_button_rects(self):
-        """Обновляет прямоугольники для кнопок по центру image_label"""
 
         if self.image_label_widget and self.image_label_widget.isVisible():
             image_label_pos = self.image_label_widget.mapTo(self.parent(), self.image_label_widget.rect().topLeft())
@@ -112,7 +106,6 @@ class PasteDirectionOverlay(QWidget):
             )
 
     def paintEvent(self, event):
-        """Рисует overlay с кнопками"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -167,7 +160,6 @@ class PasteDirectionOverlay(QWidget):
             painter.drawLine(center.x() - offset, center.y() + offset, center.x() + offset, center.y() - offset)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        """Обрабатывает перемещение мыши для подсветки кнопок"""
         pos = event.pos()
         old_hovered = self.hovered_button
 
@@ -188,7 +180,6 @@ class PasteDirectionOverlay(QWidget):
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent):
-        """Обрабатывает клик по кнопкам"""
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.pos()
 
@@ -219,7 +210,6 @@ class PasteDirectionOverlay(QWidget):
                 self.deleteLater()
 
     def keyPressEvent(self, event):
-        """Обрабатывает нажатие клавиш"""
         if event.key() == Qt.Key.Key_Escape:
             self.cancelled.emit()
             self.hide()

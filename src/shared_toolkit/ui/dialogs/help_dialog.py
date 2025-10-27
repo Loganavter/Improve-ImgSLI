@@ -11,16 +11,49 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
 )
 import os
+import logging
+
+logging.getLogger('markdown').setLevel(logging.WARNING)
+logging.getLogger('markdown.extensions').setLevel(logging.WARNING)
+logging.getLogger('markdown.extensions.md_in_html').setLevel(logging.WARNING)
+logging.getLogger('markdown.extensions.extra').setLevel(logging.WARNING)
+logging.getLogger('markdown.extensions.sane_lists').setLevel(logging.WARNING)
+logging.getLogger('markdown.extensions.smarty').setLevel(logging.WARNING)
+logging.getLogger('markdown.extensions.nl2br').setLevel(logging.WARNING)
+
 from markdown import markdown
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import (
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import (
     MinimalistScrollBar,
 )
-from src.shared_toolkit.utils.paths import resource_path
+from shared_toolkit.utils.paths import resource_path
+
+import sys
+import os
+from pathlib import Path
+
+try:
+    from resources.translations import tr
+except ImportError:
+
+    try:
+        current_file = Path(__file__).resolve()
+
+        base_dir = current_file.parent.parent.parent
+
+        if (base_dir / "resources" / "translations.py").exists():
+            if str(base_dir) not in sys.path:
+                sys.path.insert(0, str(base_dir))
+            from resources.translations import tr
+        else:
+            raise ImportError("Resources not found")
+    except ImportError:
+
+        def tr(text, language="en", *args, **kwargs):
+            return text
 
 class CurrentPageStackedWidget(QStackedWidget):
-    """QStackedWidget, который возвращает размер текущей страницы вместо максимального"""
 
     def sizeHint(self):
         current_widget = self.currentWidget()
@@ -44,8 +77,9 @@ class HelpDialog(QDialog):
         self.theme_manager = ThemeManager.get_instance()
 
         self._md_cache: dict[str, dict[str, str]] = {}
+        self._title_keys: list[str] = []
 
-        self.setWindowTitle(f"{app_name} Help")
+        self.setWindowTitle(tr("Help", language=self.current_language))
 
         self.setWindowFlags(
             Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint
@@ -96,14 +130,37 @@ class HelpDialog(QDialog):
     def _update_nav_width(self):
         max_text_width = 0
         for i in range(self.nav_widget.count()):
-            item = self.nav_widget.item(i)
-            text = item.text()
-            text_width = QFontMetrics(self.nav_widget.font()).horizontalAdvance(text)
-            max_text_width = max(max_text_width, text_width)
+            if i < len(self._title_keys):
+                title_key = self._title_keys[i]
+
+                max_width_for_item = 0
+                for lang in ["en", "ru", "zh", "pt_BR"]:
+                    try:
+                        text = tr(title_key, language=lang)
+                        text_width = QFontMetrics(self.nav_widget.font()).horizontalAdvance(text)
+                        max_width_for_item = max(max_width_for_item, text_width)
+                    except:
+
+                        try:
+                            text = tr(title_key, language="en")
+                            text_width = QFontMetrics(self.nav_widget.font()).horizontalAdvance(text)
+                            max_width_for_item = max(max_width_for_item, text_width)
+                        except:
+                            text_width = QFontMetrics(self.nav_widget.font()).horizontalAdvance(title_key)
+                            max_width_for_item = max(max_width_for_item, text_width)
+                max_text_width = max(max_text_width, max_width_for_item)
+            else:
+
+                item = self.nav_widget.item(i)
+                text = item.text()
+                text_width = QFontMetrics(self.nav_widget.font()).horizontalAdvance(text)
+                max_text_width = max(max_text_width, text_width)
+
         self.nav_widget.setFixedWidth(max(180, max_text_width + 32))
 
     def _populate_content(self, sections):
         self._content_keys = []
+        self._title_keys = []
 
         for page in self._pages:
             page.deleteLater()
@@ -112,6 +169,7 @@ class HelpDialog(QDialog):
         for title_key, section_id in sections:
             self._add_section(title_key, section_id)
             self._content_keys.append(section_id)
+            self._title_keys.append(title_key)
 
         if self.nav_widget.count() > 0:
             self.nav_widget.setCurrentRow(0)
@@ -121,8 +179,7 @@ class HelpDialog(QDialog):
     def _add_section(self, title_key: str, section_id: str):
 
         try:
-            from resources.translations import tr
-            title = tr(title_key, self.current_language)
+            title = tr(title_key, language=self.current_language)
         except:
             title = title_key
 
@@ -144,11 +201,6 @@ class HelpDialog(QDialog):
         self._pages.append(content_page)
 
     def _normalize_markdown_lists(self, md_text: str) -> str:
-        """
-        Ensure a blank line before Markdown lists so python-markdown parses
-        '- ' / '* ' / '+ ' and '1.' list markers correctly.
-        This helps when authors forget to put an empty line before lists.
-        """
         lines = md_text.splitlines()
         out: list[str] = []
         prev = ""
@@ -176,12 +228,6 @@ class HelpDialog(QDialog):
         return "\n".join(out)
 
     def _fallback_plainlist_to_html(self, md_text: str) -> str:
-        """
-        Запасной конвертер: превращает последовательности строк, начинающихся
-        с '- ' / '* ' / '+ ' или 'N. ' в HTML-списки, если Markdown не распознал их
-        (например, из-за отсутствующей пустой строки перед списком).
-        Остальные непустые строки превращаются в абзацы &lt;p&gt;.
-        """
         def is_bullet(s: str) -> bool:
             s = s.lstrip()
             if s.startswith("- ") or s.startswith("* ") or s.startswith("+ "):
@@ -240,12 +286,6 @@ class HelpDialog(QDialog):
         return "\n".join(html_parts)
 
     def load_section_md(self, language: str, section_id: str) -> str:
-        """
-        Load section content from Markdown files with fallback to English and legacy translations.
-        - Path pattern: resources/help/{lang}/{section_id}.md
-        - Language normalization: en, ru, zh, pt_BR (pt → pt_BR; zh-* → zh)
-        - Legacy fallback: maps section_id to old help_*_html keys in translations.py
-        """
 
         try:
             lang_norm = str(language) if language is not None else "en"
@@ -306,18 +346,16 @@ class HelpDialog(QDialog):
 
                 legacy_map = {
                     "introduction": "help_intro_html",
-                    "file-management": "help_files_html",
-                    "comparison": "help_comparison_html",
-                    "magnifier": "help_magnifier_html",
+                    "files": "help_files_html",
+                    "conversion": "help_conversion_html",
+                    "analysis": "help_analysis_html",
+                    "ai": "help_ai_html",
                     "export": "help_export_html",
-                    "settings": "help_settings_html",
-                    "hotkeys": "help_hotkeys_html",
                 }
                 legacy_key = legacy_map.get(section_id)
                 if legacy_key:
                     try:
-                        from resources.translations import tr
-                        html_content = tr(legacy_key, language)
+                        html_content = tr(legacy_key, language=language)
                     except:
                         html_content = ""
                 else:
@@ -448,7 +486,11 @@ class HelpDialog(QDialog):
 
     def update_language(self, new_language: str):
         self.current_language = new_language
-        self.setWindowTitle(f"{self.app_name} Help")
+        self.setWindowTitle(tr("Help", language=self.current_language))
+
+        if self.current_language in self._md_cache:
+            del self._md_cache[self.current_language]
+
         self.nav_widget.clear()
 
         old = self.scroll_area.takeWidget()
@@ -457,14 +499,12 @@ class HelpDialog(QDialog):
 
         sections = []
         for i in range(len(self._content_keys)):
-            item = self.nav_widget.item(i)
-            if item:
-                sections.append((item.text(), self._content_keys[i]))
+            if i < len(self._title_keys):
+                sections.append((self._title_keys[i], self._content_keys[i]))
 
         self._populate_content(sections)
         self._apply_styles()
 
     def retranslate_ui(self):
-        """Empty method for compatibility with Improve-ImgSLI's dialog system."""
 
         pass

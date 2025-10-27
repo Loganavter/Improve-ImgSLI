@@ -8,23 +8,15 @@ from PyQt6.QtCore import (
     QRectF,
     QSize,
     Qt,
+    QTimer,
     pyqtProperty,
 )
 from PyQt6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QCheckBox, QSizePolicy, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class FluentCheckBox(QCheckBox):
-    """
-    Fluent Design checkbox widget with smooth animations and hover effects.
-
-    This is the shared version that combines the best features from both projects:
-    - Smooth hover and check animations
-    - Proper event handling for hover states
-    - Support for grouped checkboxes (from Tkonverter)
-    - Clean, maintainable code structure
-    """
     INDICATOR_SIZE = 20
     INDICATOR_RADIUS = 4
     OUTLINE_WIDTH = 1
@@ -142,7 +134,6 @@ class FluentCheckBox(QCheckBox):
         return super().eventFilter(watched_object, event)
 
     def _find_group_parent(self) -> QWidget | None:
-        """Traverses up the widget hierarchy to find a CustomGroupWidget."""
         parent = self.parent()
         while parent:
             if parent.__class__.__name__ == 'CustomGroupWidget':
@@ -165,11 +156,13 @@ class FluentCheckBox(QCheckBox):
         super().mouseReleaseEvent(e)
 
     def focusInEvent(self, e):
-        self.update()
+
+        QTimer.singleShot(0, self.update)
         super().focusInEvent(e)
 
     def focusOutEvent(self, e):
-        self.update()
+
+        QTimer.singleShot(0, self.update)
         super().focusOutEvent(e)
 
     def changeEvent(self, e):

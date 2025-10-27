@@ -66,6 +66,69 @@ def resample_image(pil_image: Image.Image, target_size: tuple[int, int], method_
 
     return pil_image.resize(target_size, final_method_for_pil)
 
+def resample_image_subpixel(
+    pil_image: Image.Image,
+    crop_box_float: tuple[float, float, float, float],
+    target_size: tuple[int, int],
+    method_name: str,
+    is_interactive_render: bool,
+    diff_mode_active: bool = False
+) -> Image.Image:
+    """
+    Выполняет субпиксельный crop и масштабирование изображения (лёгкая версия).
+    Использует расширенную crop-область вместо полного 4x масштабирования.
+
+    Args:
+        pil_image: Исходное изображение
+        crop_box_float: Координаты crop-области (left, top, right, bottom) с float точностью
+        target_size: Целевой размер результата
+        method_name: Метод интерполяции
+        is_interactive_render: Флаг интерактивного рендеринга
+        diff_mode_active: Флаг активного diff режима
+
+    Returns:
+        Масштабированное изображение с учётом субпиксельных координат crop
+    """
+    if not pil_image or target_size[0] <= 0 or target_size[1] <= 0:
+        return pil_image
+
+    left = crop_box_float[0]
+    top = crop_box_float[1]
+    right = crop_box_float[2]
+    bottom = crop_box_float[3]
+
+    crop_w = right - left
+    crop_h = bottom - top
+
+    expand_pixels = 2
+
+    expanded_left = max(0, int(left - expand_pixels))
+    expanded_top = max(0, int(top - expand_pixels))
+    expanded_right = min(pil_image.width, int(right + expand_pixels))
+    expanded_bottom = min(pil_image.height, int(bottom + expand_pixels))
+
+    expanded_cropped = pil_image.crop((expanded_left, expanded_top, expanded_right, expanded_bottom))
+
+    subpixel_offset_x = left - expanded_left
+    subpixel_offset_y = top - expanded_top
+
+    final_left = int(subpixel_offset_x)
+    final_top = int(subpixel_offset_y)
+    final_right = int(subpixel_offset_x + crop_w)
+    final_bottom = int(subpixel_offset_y + crop_h)
+
+    compensate = 1
+    cropped = expanded_cropped.crop((
+        max(0, final_left - compensate),
+        max(0, final_top - compensate),
+        min(expanded_cropped.width, final_right + compensate),
+        min(expanded_cropped.height, final_bottom + compensate)
+    ))
+
+    result = resample_image(cropped, target_size, method_name, is_interactive_render, diff_mode_active)
+
+    return result
+
 def resize_images_processor(
     original_image1: Image.Image | None, original_image2: Image.Image | None
 ) -> Tuple[Image.Image | None, Image.Image | None]:
