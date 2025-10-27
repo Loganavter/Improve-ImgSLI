@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Дискета -->
+  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+  <path d="M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2" />
+  <path d="M12 14m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+  <path d="M14 4l0 4l-6 0l0 -4" />
+  
+     id="path4" /><!-- Стрелка вверх --><g
+     style="fill:#ffffff;stroke:#000000;stroke-opacity:1"
+     id="g6"
+     transform="matrix(0.55722082,0,0,0.55722082,9.1943415,12.078976)"><path
+       d="M 5.08884,11.2945 C 5.26942,11.7216 5.69482,12 6.16669,12 H 9 v 7 c 0,0.5523 0.44772,1 1,1 h 4 c 0.5523,0 1,-0.4477 1,-1 v -7 h 2.8333 c 0.4719,0 0.8973,-0.2784 1.0779,-0.7055 0.1805,-0.4271 0.0807,-0.9186 -0.2529,-1.2455 L 12.825,4.33474 c -0.4557,-0.44632 -1.1943,-0.44632 -1.65,0 L 5.34174,10.049 c -0.33366,0.3269 -0.43348,0.8184 -0.2529,1.2455 z"
+       fill="#000000"
+       id="path1-3"
+       style="fill:#000000;stroke:#ffffff;stroke-opacity:1" /></g></svg>
+</svg>

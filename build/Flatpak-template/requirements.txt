@@ -1,7 +1,12 @@
+pybind11==2.13.2
 darkdetect==0.8.0
-Markdown==3.8
 pillow==11.2.1
-PyQt6==6.9.0
-PyQt6-Frameless-Window==0.7.3
-PyQt6-Qt6==6.9.1
-PyQt6_sip==13.10.2
+meson-python==0.18.0
+numpy==2.3.4
+Wand==0.6.13
+snakeviz==2.2.2
+poetry-core==2.2.1
+desktop-notifier==6.2.0
+pythran==0.18.0
+scipy==1.16.2
+scikit-image==0.25.2

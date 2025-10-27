@@ -1,9 +1,8 @@
-"""
-Theme Manager for shared toolkit.
-
-This module provides a unified theme management system that is
-project-agnostic. Each project should provide its own color palettes.
-"""
+\
+\
+\
+\
+\
 
 import copy
 import logging
