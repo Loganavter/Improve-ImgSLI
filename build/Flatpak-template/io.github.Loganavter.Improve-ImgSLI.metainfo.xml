@@ -48,6 +48,57 @@
   </developer>
   <content_rating type="oars-1.1"/>
   <releases>
+  <releases>
+    <release version="7.9.0" date="2025-10-27">
+      <description>
+        <p>This update represents a strategic unification effort, bringing significant architectural improvements, powerful new workflow features, and a complete suite of image analysis tools.</p>
+        <ul>
+          <li>Shared Toolkit Integration: Complete integration with a shared component library enabling code reuse across projects and establishing a solid foundation for future development.</li>
+          <li>Clipboard Integration: Revolutionary workflow enhancement with full clipboard support! Paste images directly from your clipboard using Ctrl+V, with an intuitive direction selection overlay for choosing placement (left/right/both).</li>
+          <li>Professional Image Analysis Suite: A comprehensive set of visual comparison and analysis tools, including pixel difference highlighting, structural similarity mapping, edge detection, channel analysis, and metrics calculation (PSNR/SSIM).</li>
+          <li>Enhanced UX Customization: Complete redesign of visual customization options, allowing precise control over the comparison divider and magnifier separator (visibility, color, thickness). System notifications on Linux have been fixed.</li>
+          <li>Premium Magnifier Rendering: Subpixel precision controls ensure smooth, accurate comparisons even when images have different resolutions. The magnifier now intelligently adapts its rendering quality based on zoom levels and comparison modes.</li>
+          <li>Robust Multi-Platform Builds: Extensive DevOps work ensured stable cross-platform deployment, with thorough testing and debugging across Linux (AUR, Flatpak) and Windows build systems.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="6.2.0" date="2025-08-16"> The application is intuitive and distributed under the free MIT License.
+    </p>
+  </description>
+  <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>
+  <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>     
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.7.0/Improve_ImgSLI/screenshots/screenshot_1.png</image>
+      <caption>Vertical caption</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.7.0/Improve_ImgSLI/screenshots/screenshot_2.png</image>
+      <caption>Horizontal caption</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.7.0/Improve_ImgSLI/screenshots/screenshot_3.png</image>
+      <caption>List option</caption>
+    </screenshot>
+  </screenshots>
+  <developer id="io.github.loganavter">
+    <name>Loganavter</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="7.9.0" date="2025-10-27">
+      <description>
+        <p>This update represents a strategic unification effort, bringing significant architectural improvements, powerful new workflow features, and a complete suite of image analysis tools.</p>
+        <ul>
+          <li>Shared Toolkit Integration: Complete integration with a shared component library enabling code reuse across projects and establishing a solid foundation for future development.</li>
+          <li>Clipboard Integration: Revolutionary workflow enhancement with full clipboard support! Paste images directly from your clipboard using Ctrl+V, with an intuitive direction selection overlay for choosing placement (left/right/both).</li>
+          <li>Professional Image Analysis Suite: A comprehensive set of visual comparison and analysis tools, including pixel difference highlighting, structural similarity mapping, edge detection, channel analysis, and metrics calculation (PSNR/SSIM).</li>
+          <li>Enhanced UX Customization: Complete redesign of visual customization options, allowing precise control over the comparison divider and magnifier separator (visibility, color, thickness). System notifications on Linux have been fixed.</li>
+          <li>Premium Magnifier Rendering: Subpixel precision controls ensure smooth, accurate comparisons even when images have different resolutions. The magnifier now intelligently adapts its rendering quality based on zoom levels and comparison modes.</li>
+          <li>Robust Multi-Platform Builds: Extensive DevOps work ensured stable cross-platform deployment, with thorough testing and debugging across Linux (AUR, Flatpak) and Windows build systems.</li>
+        </ul>
+      </description>
+    </release>
     <release version="6.2.0" date="2025-08-16">
       <description>
         <p>This is the most extensive architectural refactoring in the project's history, transitioning the entire application to a robust and modern Model-View-Presenter (MVP) pattern. This update establishes a new, stable foundation for future development and introduces a completely custom-built UI.</p>
