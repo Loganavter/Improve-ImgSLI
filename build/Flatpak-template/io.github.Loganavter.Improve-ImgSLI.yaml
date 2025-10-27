@@ -38,4 +38,5 @@ modules:
       - install -Dm644 build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
       - type: archive
-        path: /home/jorj/Загрузки/improve-imgsli-7.9.0.tar.gz
+        path: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v7.9.0.tar.gz
+        sha256:
