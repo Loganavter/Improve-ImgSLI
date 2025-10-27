@@ -30,9 +30,10 @@ makedepends=(
   'python-wheel'
 )
 options=(!debug)
-source=("file:///home/jorj/Загрузки/improve-imgsli-7.9.0.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-v$pkgver.tar.gz")
 
-sha256sums=('SKIP')
+sha256sums=('TO_BE_FILLED')
+b2sums=('TO_BE_FILLED')
 
 prepare() {
   #Making launching app more secure
