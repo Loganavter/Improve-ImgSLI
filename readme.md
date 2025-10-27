@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest">
     <img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square">
+
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square">
@@ -24,12 +25,13 @@
   <a href="README.ru.md">Русский</a>
 </p>
 
+
 ---
 
 ## 📸 Preview
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.5/Improve_ImgSLI/screenshots/screenshot_1.png" width="75%">
+   <img width="1920" height="994" alt="Снимок экрана от 2025-10-21 02-47-54" src="https://github.com/user-attachments/assets/3b800ba4-6d37-4a74-aa19-58c2e2ae3ec9" width="75%">
 </div>
 
 <details>
