@@ -61,7 +61,52 @@ source venv/bin/activate        # Linux/macOS
 pip install -r requirements.txt
 python -m src
 ```
+---
 
+**Build from Source for Windows**
+If you prefer to compile the application yourself, please follow the detailed instructions. This guide ensures a clean, isolated build environment.
+
+### Prerequisites
+- **Python**: Make sure Python is installed. During installation, check the box that says "Add Python to PATH".
+- **Git**: Required for cloning the repository.
+- **Inno Setup**: Required for creating the final installer package.
+
+### Step-by-Step Guide
+
+1.  **Clone the repository and navigate into it:**
+    ```bash
+    git clone https://github.com/Loganavter/Improve-ImgSLI.git
+    cd Improve-ImgSLI
+    ```
+
+2.  **Create and activate a virtual environment:**
+    This creates an isolated environment for the project's dependencies, preventing conflicts with other Python projects on your system.
+    ```bash
+    python -m venv venv
+    .\venv\Scripts\activate
+    ```
+    You should see `(venv)` appear at the beginning of your command prompt line.
+
+3.  **Install dependencies:**
+    This will install all required Python packages, including `pyinstaller`, into your active virtual environment.
+    ```bash
+    pip install -r requirements.txt pyinstaller
+    ```
+
+4.  **Create the executable with PyInstaller:**
+    Run the following command from the root directory of the project. This command analyzes your project and creates a file named `Improve_ImgSLI.spec`, which stores the build configuration.
+    ```bash
+    python -m pyinstaller build/Windows-template/Improve_ImgSLI.spec
+    ```
+
+5.  **Compile the installer with Inno Setup:**
+    - Open the **Inno Setup Compiler**.
+    - Go to `File > Open...` and select the script `build/Windows-template/inno_setup_6.iss`.
+    - Compile the script by pressing **F9** or using the `Build > Compile` menu.
+
+6.  **Find the result:**
+    The final installer, `Improve_ImgSLI_Setup_vX.X.X.exe`, will be created in the `build/Windows-template/Output` directory. You can now use this file to install the application.
+    
 ---
 
 ## Documentation

@@ -40,7 +40,10 @@ August 2025. This update was born out of necessity. The qfluentwidgets library, 
 
 ## Early October 2025 — Shared toolkit and UX polish
 Early October 2025. With renewed access to Cursor AI, a significant unification of the codebase with another of my projects, Tkonverter, was carried out. The result is a shared library, shared_toolkit, which simplifies transferring functionality between projects. Following a user request, a feature for pasting images from the clipboard (Ctrl+V) was added. The user experience was substantially redesigned, introducing new customization options for the main comparison line and the magnifier's divider (controlling visibility, color, and thickness). System notifications on Linux were also fixed. In addition to Cursor, this update was developed with the active use of Gemini and Claude models, as well as new AI aggregator platforms, which helped accelerate the process. See issue: https://github.com/Loganavter/Improve-ImgSLI/issues/20
-Further enhancements to the magnifier (precision controls and rendering tweaks), plus the addition of pixel/structural difference views and analysis tools (channels, edges, metrics). This batch of work took approximately 3–5 hours.
+Further enhancements to the magnifier (precision controls and subpixel rendering for smoother comparisons between different resolutions), plus the addition of pixel/structural difference views and analysis tools (channels, edges, metrics). This batch of work took approximately 3–5 hours.
+
+## Late October 2025 — DevOps struggles
+Late October 2025. The DevOps work for distribution was exceptionally long due to heavily refactored code and new dependencies. It took at least 2 days to get it to compile and work correctly on all three platforms (Linux AUR, Flatpak, and Windows). The extensive code refactoring introduced new dependencies and architectural changes that required thorough testing and debugging across each platform's build system before successful deployment.
 ---
 
 For earlier notes and context, see the original README history in the repository's commit log.

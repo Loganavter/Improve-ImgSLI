@@ -1,5 +1,4 @@
 
-
 import logging
 import traceback
 from typing import Tuple
@@ -86,7 +85,6 @@ class ImageComposer:
         return result if result is not None else image.convert("RGBA")
 
     def _create_edge_map(self, image: Image.Image) -> Image.Image:
-        """Создает карту контуров для изображения."""
         result = create_edge_map(image)
         return result if result is not None else image.convert("RGBA")
 
@@ -302,8 +300,42 @@ class ImageComposer:
                         right = min(w, right); bottom = min(h, bottom)
                         return (left, top, right, bottom)
 
-                    crop_box1_used = crop_box1 if original_image1 else _compute_scaled_crop_box(img1_for_crop)
-                    crop_box2_used = crop_box2 if original_image2 else _compute_scaled_crop_box(img2_for_crop)
+                    def _compute_scaled_crop_box_float(img: Image.Image) -> tuple[float, float, float, float]:
+                        w, h = img.size
+
+                        ref_dim = min(img_w, img_h)
+                        thickness_display = max(int(MIN_CAPTURE_THICKNESS), int(round(ref_dim * 0.003)))
+                        capture_size_px = max(1, int(round(app_state.capture_size_relative * min(w, h))))
+                        inner_size = max(1, capture_size_px - thickness_display)
+
+                        if inner_size % 2 != 0:
+                            inner_size += 1
+                        cx = app_state.capture_position_relative.x() * w
+                        cy = app_state.capture_position_relative.y() * h
+                        left = cx - inner_size / 2.0
+                        top = cy - inner_size / 2.0
+                        right = left + inner_size
+                        bottom = top + inner_size
+
+                        left = max(0, left); top = max(0, top)
+                        right = min(w, right); bottom = min(h, bottom)
+                        return (left, top, right, bottom)
+
+                    w1, h1 = img1_for_crop.size
+                    w2, h2 = img2_for_crop.size
+                    size1_area = w1 * h1
+                    size2_area = w2 * h2
+                    needs_subpixel = (min(size1_area, size2_area) > 0 and
+                                     max(size1_area, size2_area) / min(size1_area, size2_area) > 1.1)
+
+                    if needs_subpixel:
+
+                        crop_box1_used = crop_box1 if original_image1 else _compute_scaled_crop_box_float(img1_for_crop)
+                        crop_box2_used = crop_box2 if original_image2 else _compute_scaled_crop_box_float(img2_for_crop)
+                    else:
+
+                        crop_box1_used = crop_box1 if original_image1 else _compute_scaled_crop_box(img1_for_crop)
+                        crop_box2_used = crop_box2 if original_image2 else _compute_scaled_crop_box(img2_for_crop)
 
                     effective_interpolation_method = app_state.interpolation_method
                     if app_state.is_interactive_mode and app_state.optimize_magnifier_movement:

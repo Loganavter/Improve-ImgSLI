@@ -1,18 +1,12 @@
-"""
-Виджет кнопки с иконкой, поддерживающий изменение значения скроллингом мыши
-"""
+
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import QLabel, QPushButton
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from ui.icon_manager import AppIcon, get_app_icon
 
 class ScrollableIconButton(QPushButton):
-    """
-    Квадратная кнопка с иконкой, которая поддерживает изменение значения скроллингом мыши.
-    При клике также можно вызвать дополнительное действие.
-    """
     valueChanged = pyqtSignal(int)
 
     def __init__(self, icon: AppIcon, min_value: int = 1, max_value: int = 20, parent=None):
@@ -36,24 +30,20 @@ class ScrollableIconButton(QPushButton):
         self._update_style()
 
     def set_value(self, value: int):
-        """Устанавливает текущее значение"""
         value = max(self._min_value, min(self._max_value, value))
         if self._current_value != value:
             self._current_value = value
             self.update()
 
     def get_value(self) -> int:
-        """Возвращает текущее значение"""
         return self._current_value
 
     def set_range(self, min_value: int, max_value: int):
-        """Устанавливает диапазон значений"""
         self._min_value = min_value
         self._max_value = max_value
         self._current_value = max(self._min_value, min(self._max_value, self._current_value))
 
     def wheelEvent(self, event):
-        """Обработка скроллинга мыши для изменения значения"""
         if not self.isEnabled():
             event.ignore()
             return
@@ -79,7 +69,6 @@ class ScrollableIconButton(QPushButton):
             event.accept()
 
     def _show_value_popup(self, value: int):
-        """Показывает всплывающую подсказку с текущим значением"""
         if self._value_popup is None:
             self._value_popup = QLabel(parent=self.window())
             self._value_popup.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
@@ -130,12 +119,10 @@ class ScrollableIconButton(QPushButton):
         self._popup_timer.start()
 
     def _hide_value_popup(self):
-        """Скрывает всплывающую подсказку"""
         if self._value_popup is not None:
             self._value_popup.hide()
 
     def paintEvent(self, event):
-        """Переопределяем paintEvent для рисования иконки выше и счётчика внизу"""
         super().paintEvent(event)
 
         painter = QPainter(self)
@@ -156,7 +143,6 @@ class ScrollableIconButton(QPushButton):
         painter.end()
 
     def _update_style(self):
-        """Обновляет стиль и иконку"""
         self.setIcon(get_app_icon(self._icon))
         self.setIconSize(QSize(18, 18))
 

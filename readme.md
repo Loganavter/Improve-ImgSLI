@@ -29,7 +29,7 @@
 ## 📸 Preview
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.5/Improve_ImgSLI/screenshots/screenshot_1.png" width="75%">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.7.0/Improve_ImgSLI/screenshots/screenshot_1.png" width="75%">
 </div>
 
 <details>
@@ -54,7 +54,7 @@
 - 🖼️ Comparison & Viewing: vertical/horizontal split, synced pan/zoom, quick preview with Space + mouse buttons.
 - 🔍 Magnifier: dual or split circle, multiple interpolation modes (Nearest, Bilinear, Bicubic, Lanczos), precise WASD/QE controls, freeze position.
 - 🗂️ Workflow & file management: drag-n-drop, reorder across left/right lists, short/long press actions, ratings, filename editing, clipboard paste (Ctrl+V).
-- 🎨 Overlays & UI: customizable divider and magnifier divider (visibility, color, thickness), custom icon buttons, light/dark themes, custom UI font.
+- 🎨 Overlays & UI: Fully custom interface with customizable comparison and magnifier dividers (visibility, color, thickness), custom icon buttons, light/dark themes, and custom UI font.
 - 📤 Export: WYSIWYG export of the current composite (splitter, magnifier, text), multiple formats (PNG/JPEG/WEBP/BMP/TIFF), quality controls, text overlays with styling.
 - ⚙️ UX & settings: persistent window/layout, multilingual UI (EN/RU/zh/pt_BR), robust launcher for venv, debug, profiling.
 

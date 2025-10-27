@@ -1,17 +1,11 @@
-"""
-Простой виджет кнопки-переключателя с иконкой
-"""
+
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import QPushButton
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
-from src.shared_toolkit.ui.managers.icon_manager import AppIcon, get_app_icon
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from ui.icon_manager import AppIcon, get_app_icon
 
 class ToggleIconButton(QPushButton):
-    """
-    Простая квадратная кнопка-переключатель с иконкой.
-    Без сложной логики, чистый flat design.
-    """
     rightClicked = pyqtSignal()
     toggled = pyqtSignal(bool)
 
@@ -30,7 +24,6 @@ class ToggleIconButton(QPushButton):
         self.clicked.connect(self._on_clicked)
 
     def _update_style(self):
-        """Обновляет стиль и иконку, используя ThemeManager."""
         tm = self.theme_manager
 
         current_icon = self._icon_checked if super().isChecked() else self._icon_unchecked
@@ -66,7 +59,6 @@ class ToggleIconButton(QPushButton):
         self.setStyleSheet(style)
 
     def _on_clicked(self):
-        """Обработка клика - эмитируем сигнал с новым состоянием"""
 
         self._update_style()
         self.toggled.emit(super().isChecked())
@@ -79,16 +71,9 @@ class ToggleIconButton(QPushButton):
             super().mouseReleaseEvent(event)
 
     def isChecked(self) -> bool:
-        """Возвращает текущее состояние кнопки"""
         return super().isChecked()
 
     def setChecked(self, checked: bool, emit_signal: bool = True):
-        """Устанавливает состояние кнопки
-
-        Args:
-            checked: Новое состояние
-            emit_signal: Эмитировать ли сигнал toggled (по умолчанию True)
-        """
         old_checked = super().isChecked()
 
         super().setChecked(checked)

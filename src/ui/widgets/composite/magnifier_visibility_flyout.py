@@ -3,18 +3,9 @@ from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QWidget
 
 from ui.widgets.atomic.numbered_toggle_icon_button import NumberedToggleIconButton
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class MagnifierVisibilityFlyout(QWidget):
-    """
-    Небольшой флайаут поверх кнопки лупы: 2 или 3 мини‑кнопки [1][2][3].
-    - 1 = левая/верхняя лупа
-    - 2 = центральная (дифф)
-    - 3 = правая/нижняя
-
-    Расширенная зона взаимодействия: геометрия флайаута может включать "пустой" участок,
-    дотягивающийся до нижней кромки родительской кнопки. Само содержимое (кнопки) размещается сверху.
-    """
     def __init__(self, parent_widget: QWidget):
         super().__init__(parent_widget)
         self._parent = parent_widget
@@ -61,11 +52,6 @@ class MagnifierVisibilityFlyout(QWidget):
         self.setStyleSheet("background: transparent;")
 
     def set_mode_and_states(self, show_center: bool, left_on: bool, center_on: bool, right_on: bool):
-        """
-        Контролирует набор кнопок (2 или 3) и их состояние.
-        show_center=True => отображаем 3 кнопки, иначе 2 (левая/правая).
-        Инвертируем семантику checked: checked=True => OFF (выключено), checked=False => ON (включено).
-        """
         self._count = 3 if show_center else 2
         self.btn_center.setVisible(show_center)
 
@@ -80,11 +66,6 @@ class MagnifierVisibilityFlyout(QWidget):
         self.adjustSize()
 
     def update_display_numbers(self, left_on: bool, center_on: bool, right_on: bool, show_center: bool):
-        """
-        Сжимает нумерацию только для активных (ON) луп слева направо.
-        - Активные получают номера 1..N
-        - Выключенные (OFF) — без номера (пусто), остаются видимыми как "выключенные"
-        """
 
         self.btn_left.set_display_number(None)
         self.btn_center.set_display_number(None)
@@ -108,10 +89,6 @@ class MagnifierVisibilityFlyout(QWidget):
             self.btn_right.set_display_number(next_num)
             next_num += 1
     def show_for_button(self, anchor_btn: QWidget, parent_widget: QWidget, hover_delay_ms: int = 0):
-        """
-        Позиционирует флайаут над кнопкой anchor_btn.
-        Без расширенной зоны: геометрия равна размеру панели; кнопки "летают" на одной линии.
-        """
 
         btn_top_left_in_parent = anchor_btn.mapTo(parent_widget, QPoint(0, 0))
         btn_w = anchor_btn.width()

@@ -1,5 +1,4 @@
 
-
 import logging
 import math
 import os
@@ -16,7 +15,7 @@ from image_processing.analysis import (
     create_ssim_map,
     create_edge_map
 )
-from image_processing.resize import resample_image
+from image_processing.resize import resample_image, resample_image_subpixel
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -103,7 +102,6 @@ class MagnifierDrawer:
         self.composer = None
 
     def _create_diff_image(self, image1: Image.Image, image2: Image.Image | None, mode: str = 'highlight', threshold: int = 20) -> Image.Image | None:
-        """Создает изображение с подсвеченными различиями для лупы."""
         try:
             font_path = self.composer.font_path if hasattr(self, 'composer') and self.composer else None
 
@@ -132,6 +130,56 @@ class MagnifierDrawer:
 
     def get_smooth_circular_mask(self, size: int) -> Image.Image | None:
         return get_smooth_circular_mask(size)
+    def _should_use_subpixel(self, crop_box1: tuple, crop_box2: tuple) -> bool:
+        try:
+            size1 = abs((crop_box1[2] - crop_box1[0]) * (crop_box1[3] - crop_box1[1]))
+            size2 = abs((crop_box2[2] - crop_box2[0]) * (crop_box2[3] - crop_box2[1]))
+            if min(size1, size2) <= 0:
+                return False
+            ratio = max(size1, size2) / min(size1, size2)
+            return ratio > 1.1
+        except Exception:
+            return False
+
+    def _compute_crop_boxes_subpixel(self, image1: Image.Image, image2: Image.Image,
+                                     app_state: AppState) -> tuple[tuple[float, float, float, float],
+                                                                   tuple[float, float, float, float]]:
+        """Вычисляет субпиксельные координаты для crop областей."""
+        try:
+            w1, h1 = image1.size
+            w2, h2 = image2.size
+
+            ref_dim = min(w1, h1)
+            thickness_display = max(int(MIN_CAPTURE_THICKNESS), int(round(ref_dim * 0.003)))
+            capture_size_px = max(1, int(round(app_state.capture_size_relative * min(w1, h1))))
+            inner_size = max(1, capture_size_px - thickness_display)
+
+            if inner_size % 2 != 0:
+                inner_size += 1
+
+            cx1 = app_state.capture_position_relative.x() * w1
+            cy1 = app_state.capture_position_relative.y() * h1
+            left1 = cx1 - inner_size / 2.0
+            top1 = cy1 - inner_size / 2.0
+            right1 = left1 + inner_size
+            bottom1 = top1 + inner_size
+
+            left1 = max(0, left1); top1 = max(0, top1)
+            right1 = min(w1, right1); bottom1 = min(h1, bottom1)
+
+            cx2 = app_state.capture_position_relative.x() * w2
+            cy2 = app_state.capture_position_relative.y() * h2
+            left2 = cx2 - inner_size / 2.0
+            top2 = cy2 - inner_size / 2.0
+            right2 = left2 + inner_size
+
+            left2 = max(0, left2); top2 = max(0, top2)
+            right2 = min(w2, right2); bottom2 = min(h2, bottom2)
+
+            return (left1, top1, right1, bottom1), (left2, top2, right2, bottom2)
+        except Exception:
+
+            return ((0.0, 0.0, 1.0, 1.0), (0.0, 0.0, 1.0, 1.0))
 
     def draw_capture_area(self, image_to_draw_on: Image.Image, center_pos: QPoint, size: int, thickness: int | None = None):
         if size <= 0 or center_pos is None or not isinstance(image_to_draw_on, Image.Image):
@@ -698,11 +746,20 @@ class MagnifierDrawer:
             if content_size <= 0:
                 return
 
-            cropped1 = image1_for_crop.crop(crop_box1)
-            cropped2 = image2_for_crop.crop(crop_box2)
             diff_mode_active = self.composer.app_state.diff_mode != 'off' if hasattr(self.composer, 'app_state') else False
-            scaled_content1 = resample_image(cropped1, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
-            scaled_content2 = resample_image(cropped2, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
+
+            if self._should_use_subpixel(crop_box1, crop_box2):
+
+                crop_box1_float = crop_box1 if isinstance(crop_box1, tuple) and len(crop_box1) == 4 and isinstance(crop_box1[0], float) else (float(crop_box1[0]), float(crop_box1[1]), float(crop_box1[2]), float(crop_box1[3]))
+                crop_box2_float = crop_box2 if isinstance(crop_box2, tuple) and len(crop_box2) == 4 and isinstance(crop_box2[0], float) else (float(crop_box2[0]), float(crop_box2[1]), float(crop_box2[2]), float(crop_box2[3]))
+                scaled_content1 = resample_image_subpixel(image1_for_crop, crop_box1_float, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active)
+                scaled_content2 = resample_image_subpixel(image2_for_crop, crop_box2_float, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active)
+            else:
+
+                cropped1 = image1_for_crop.crop(crop_box1)
+                cropped2 = image2_for_crop.crop(crop_box2)
+                scaled_content1 = resample_image(cropped1, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
+                scaled_content2 = resample_image(cropped2, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
 
             content_mask = self.get_smooth_circular_mask(content_size)
             if not content_mask:
@@ -777,7 +834,11 @@ class MagnifierDrawer:
         if not isinstance(image_for_crop, Image.Image) or magnifier_size_pixels <= 0:
             return
 
-        cropped = image_for_crop if crop_box_orig is None else image_for_crop.crop(crop_box_orig)
+        if crop_box_orig is not None and self._should_use_subpixel(crop_box_orig, crop_box_orig):
+            crop_box_float = crop_box_orig if isinstance(crop_box_orig, tuple) and len(crop_box_orig) == 4 and isinstance(crop_box_orig[0], float) else (float(crop_box_orig[0]), float(crop_box_orig[1]), float(crop_box_orig[2]), float(crop_box_orig[3]))
+            cropped = None
+        else:
+            cropped = image_for_crop if crop_box_orig is None else image_for_crop.crop(crop_box_orig)
 
         try:
             border_width = max(2, int(magnifier_size_pixels * 0.015))
@@ -786,7 +847,10 @@ class MagnifierDrawer:
                 return
 
             diff_mode_active = self.composer.app_state.diff_mode != 'off' if hasattr(self.composer, 'app_state') else False
-            scaled_content = resample_image(cropped, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
+            if crop_box_orig is not None and self._should_use_subpixel(crop_box_orig, crop_box_orig):
+                scaled_content = resample_image_subpixel(image_for_crop, crop_box_float, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active)
+            else:
+                scaled_content = resample_image(cropped, (content_size, content_size), interpolation_method, is_interactive_render, diff_mode_active=diff_mode_active)
 
             content_mask = self.get_smooth_circular_mask(content_size)
             if not content_mask:

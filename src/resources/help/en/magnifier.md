@@ -15,6 +15,11 @@
   - **EWA Lanczos:** An advanced method using supersampling to simulate EWA (Elliptical Weighted Average) Lanczos. Provides superior anti-aliasing by first upscaling the image 2×, then downscaling with Lanczos filtering. Excellent for reducing moiré and aliasing in detailed images.
 
 
+### High-Precision Rendering
+- The magnifier uses subpixel rendering to ensure smooth and accurate comparisons, even when the two images have different resolutions.
+- This eliminates pixel jitter when moving the capture point and provides a more precise view of details.
+
+
 ### Combined Halves and Internal Split
 - When the spacing between the two magnifier halves becomes small enough, or when a difference mode is active, the halves automatically combine into a single circle with an internal split line.
 - You can adjust the internal split position by dragging with the Right Mouse Button inside the magnifier circle.

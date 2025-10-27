@@ -1,5 +1,5 @@
 
-from src.shared_toolkit.ui.widgets.atomic import (
+from shared_toolkit.ui.widgets.atomic import (
     BodyLabel,
     CaptionLabel,
     FluentCheckBox,

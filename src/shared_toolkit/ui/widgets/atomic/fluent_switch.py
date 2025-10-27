@@ -12,7 +12,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class FluentSwitch(QWidget):
     checkedChanged = pyqtSignal(bool)
@@ -39,8 +39,10 @@ class FluentSwitch(QWidget):
         self._progress: float = 0.0
 
         self._show_text: bool = True
+
         self._on_text: str = "On"
         self._off_text: str = "Off"
+        self._initialize_translations()
 
         self._anim = QPropertyAnimation(self, b"progress", self)
         self._anim.setDuration(160)
@@ -97,6 +99,38 @@ class FluentSwitch(QWidget):
             self._show_text = bool(show)
             self.updateGeometry()
             self.update()
+
+    def _initialize_translations(self):
+        try:
+            import sys
+            import os
+
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            src_dir = os.path.join(current_dir, '..', '..', '..', '..', '..')
+            if src_dir not in sys.path:
+                sys.path.insert(0, src_dir)
+            from resources.translations import tr
+            self._on_text = tr("Switch On")
+            self._off_text = tr("Switch Off")
+        except ImportError:
+
+            self._on_text = "On"
+            self._off_text = "Off"
+
+    def update_translations(self):
+        try:
+            import sys
+            import os
+
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            src_dir = os.path.join(current_dir, '..', '..', '..', '..', '..')
+            if src_dir not in sys.path:
+                sys.path.insert(0, src_dir)
+            from resources.translations import tr
+            self.set_state_texts(tr("Switch On"), tr("Switch Off"))
+        except ImportError:
+
+            self.set_state_texts("On", "Off")
 
     def sizeHint(self) -> QSize:
         base_w = self.TRACK_WIDTH

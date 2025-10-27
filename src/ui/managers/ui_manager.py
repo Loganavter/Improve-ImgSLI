@@ -5,10 +5,10 @@ from PyQt6.QtCore import QObject, QPoint, QPointF, QRect, Qt, QTimer, QEvent
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from core.constants import AppConstants
-from src.shared_toolkit.ui.managers.font_manager import FontManager
+from shared_toolkit.ui.managers.font_manager import FontManager
 from resources.translations import tr
 from ui.dialogs.export_dialog import ExportDialog
-from src.shared_toolkit.ui.dialogs.help_dialog import HelpDialog
+from shared_toolkit.ui.dialogs.help_dialog import HelpDialog
 from ui.dialogs.settings_dialog import SettingsDialog
 from ui.widgets.composite.simple_options_flyout import SimpleOptionsFlyout
 from ui.widgets.composite.unified_flyout import FlyoutMode, UnifiedFlyout
@@ -46,6 +46,37 @@ class UIManager(QObject):
 
         self._font_popup_open: bool = False
         self._font_popup_last_open_ts: float = 0.0
+
+        self._diff_mode_popup_open: bool = False
+        self._diff_mode_last_open_ts: float = 0.0
+        self._channel_mode_popup_open: bool = False
+        self._channel_mode_last_open_ts: float = 0.0
+
+        try:
+
+            self._original_diff_show_menu = self.ui.btn_diff_mode.show_menu
+            self._original_channel_show_menu = self.ui.btn_channel_mode.show_menu
+
+            def wrapped_diff_show_menu():
+                result = self._original_diff_show_menu()
+
+                if self.ui.btn_diff_mode._menu_visible:
+                    self._diff_mode_popup_open = True
+                    self._diff_mode_last_open_ts = time.monotonic()
+                return result
+
+            def wrapped_channel_show_menu():
+                result = self._original_channel_show_menu()
+
+                if self.ui.btn_channel_mode._menu_visible:
+                    self._channel_mode_popup_open = True
+                    self._channel_mode_last_open_ts = time.monotonic()
+                return result
+
+            self.ui.btn_diff_mode.show_menu = wrapped_diff_show_menu
+            self.ui.btn_channel_mode.show_menu = wrapped_channel_show_menu
+        except Exception:
+            pass
 
         self.magnifier_visibility_flyout = MagnifierVisibilityFlyout(self.parent_widget)
         self._magn_popup_open: bool = False
@@ -314,7 +345,6 @@ class UIManager(QObject):
             pass
 
     def _update_magnifier_flyout_states(self):
-        """Sync flyout buttons with current AppState and mode."""
         try:
             show_center = getattr(self.app_state, "diff_mode", "off") != "off"
             left_on = getattr(self.app_state, "magnifier_visible_left", True)
@@ -325,11 +355,6 @@ class UIManager(QObject):
             pass
 
     def _on_magnifier_toggle_with_hover(self, checked: bool):
-        """
-        If magnifier is toggled while cursor is still over the button:
-        - when turned ON: show the hover flyout immediately
-        - when turned OFF: hide the flyout immediately
-        """
         try:
             btn = self.ui.btn_magnifier
         except Exception:
@@ -461,6 +486,36 @@ class UIManager(QObject):
 
         if self._interp_popup_open and (time.monotonic() - self._interp_last_open_ts) < 0.12:
             return
+
+        if self._diff_mode_popup_open:
+            if (time.monotonic() - self._diff_mode_last_open_ts) > 0.12:
+                if self.ui.btn_diff_mode.is_menu_visible():
+                    local_pos = self.parent_widget.mapFromGlobal(global_pos.toPoint())
+                    btn_rect = self.ui.btn_diff_mode.rect()
+                    btn_rect.moveTo(self.ui.btn_diff_mode.mapTo(self.parent_widget, btn_rect.topLeft()))
+                    menu_rect = self.ui.btn_diff_mode.menu.geometry()
+
+                    if not btn_rect.contains(local_pos) and not menu_rect.contains(global_pos.toPoint()):
+                        self.ui.btn_diff_mode.hide_menu()
+                        self._diff_mode_popup_open = False
+                else:
+
+                    self._diff_mode_popup_open = False
+
+        if self._channel_mode_popup_open:
+            if (time.monotonic() - self._channel_mode_last_open_ts) > 0.12:
+                if self.ui.btn_channel_mode.is_menu_visible():
+                    local_pos = self.parent_widget.mapFromGlobal(global_pos.toPoint())
+                    btn_rect = self.ui.btn_channel_mode.rect()
+                    btn_rect.moveTo(self.ui.btn_channel_mode.mapTo(self.parent_widget, btn_rect.topLeft()))
+                    menu_rect = self.ui.btn_channel_mode.menu.geometry()
+
+                    if not btn_rect.contains(local_pos) and not menu_rect.contains(global_pos.toPoint()):
+                        self.ui.btn_channel_mode.hide_menu()
+                        self._channel_mode_popup_open = False
+                else:
+
+                    self._channel_mode_popup_open = False
 
         if not self.unified_flyout or not self.unified_flyout.isVisible():
 

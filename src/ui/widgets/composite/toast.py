@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class ToastNotification(QWidget):
     def __init__(self, parent=None):

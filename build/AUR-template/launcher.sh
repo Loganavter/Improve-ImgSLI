@@ -1,2 +1,2 @@
 #!/bin/sh
-exec python3 /usr/lib/improve-imgsli/__main__.py "$@"
+python /usr/lib/improve-imgsli/__main__.py

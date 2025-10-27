@@ -14,18 +14,9 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QBrush, QColor, QCursor, QPainter, QPen
 from PyQt6.QtWidgets import QSlider
 
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
 
 class FluentSlider(QSlider):
-    """
-    Fluent Design slider widget with smooth animations and hover effects.
-
-    This is a shared component that provides:
-    - Smooth hover and press animations
-    - Custom rendering with theme support
-    - Mouse wheel support
-    - Click-to-position functionality
-    """
     TRACK_HEIGHT = 5
     RADIUS = 8
     MARGIN_H = 10

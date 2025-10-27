@@ -45,6 +45,16 @@ class AppState(QObject):
         self._unified_image_cache: dict = {}
         self._unified_image_cache_keys: list = []
 
+        self._unification_in_progress: bool = False
+        self._pending_unification_paths: tuple[str | None, str | None] | None = None
+
+        self._progressive_load_in_progress1: bool = False
+        self._progressive_load_in_progress2: bool = False
+        self._preview_ready1: bool = False
+        self._preview_ready2: bool = False
+        self._full_res_ready1: bool = False
+        self._full_res_ready2: bool = False
+
         self._split_position: float = 0.5
         self._split_position_visual: float = 0.5
         self._is_horizontal: bool = False
@@ -587,26 +597,29 @@ class AppState(QObject):
             current_index = self._current_index1 if image_number == 1 else self._current_index2
 
             if image_number == 1:
-                if self._image1_path != image_path:
-                    self._image1 = None
+
                 self._preview_image1 = image_pil
                 self._full_res_image1 = image_pil
                 self._image1_path = image_path
             else:
-                if self._image2_path != image_path:
-                    self._image2 = None
+
                 self._preview_image2 = image_pil
                 self._full_res_image2 = image_pil
                 self._image2_path = image_path
 
             if 0 <= current_index < len(target_list):
-                img_ref, pth_ref, _, score = target_list[current_index]
+                img_ref, pth_ref, old_name, score = target_list[current_index]
+
                 final_display_name = (
-                    display_name if display_name is not None else target_list[current_index][2]
+                    display_name if display_name is not None else old_name
                 )
+
+                new_img_ref = image_pil if image_pil is not None else img_ref
+                new_pth_ref = image_path if image_path is not None else pth_ref
+
                 target_list[current_index] = (
-                    img_ref or image_pil,
-                    pth_ref or image_path,
+                    new_img_ref,
+                    new_pth_ref,
                     final_display_name,
                     score,
                 )

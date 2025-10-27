@@ -1,11 +1,3 @@
-"""
-Функции для анализа цветовых каналов изображений.
-
-Этот модуль содержит функции для выделения отдельных цветовых каналов:
-- R, G, B: красный, зеленый, синий каналы
-- L: канал яркости (grayscale)
-- RGB: все каналы (оригинальное изображение)
-"""
 
 import logging
 from typing import Optional
@@ -15,16 +7,6 @@ from PIL import Image
 logger = logging.getLogger("ImproveImgSLI")
 
 def extract_channel(image: Image.Image, mode: str) -> Optional[Image.Image]:
-    """
-    Извлекает указанный цветовой канал из изображения.
-
-    Args:
-        image: Входное изображение
-        mode: Режим канала ('R', 'G', 'B', 'L', 'RGB')
-
-    Returns:
-        Изображение с выделенным каналом или None при ошибке
-    """
     if not image:
         return None
 

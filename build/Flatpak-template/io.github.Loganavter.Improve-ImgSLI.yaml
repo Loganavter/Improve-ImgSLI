@@ -1,9 +1,9 @@
 app-id: io.github.Loganavter.Improve-ImgSLI
 runtime: org.kde.Platform
-runtime-version: '6.8'
+runtime-version: '6.9'
 sdk: org.kde.Sdk
 base: com.riverbankcomputing.PyQt.BaseApp
-base-version: '6.8'
+base-version: '6.9'
 command: Improve-ImgSLI
 finish-args:
   - --socket=fallback-x11
@@ -28,8 +28,7 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm755 build/Flatpak-template/improve-imgsli-launcher.sh ${FLATPAK_DEST}/bin/Improve-ImgSLI
-      - install -d ${FLATPAK_DEST}/lib/Improve-ImgSLI/
-      - cp -a src/* ${FLATPAK_DEST}/lib/Improve-ImgSLI/
+      - cp -r src/. ${FLATPAK_DEST}/lib/Improve-ImgSLI/
       - install -Dm644 src/resources/icons/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
       - install -Dm644 LICENSE.txt ${FLATPAK_DEST}/share/licenses/Improve-ImgSLI/LICENSE
       - desktop-file-edit --set-key=Categories --set-value="Graphics;Utility;Viewer;Photography;" build/AUR-template/improve-imgsli.desktop
@@ -39,5 +38,4 @@ modules:
       - install -Dm644 build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
     sources:
       - type: archive
-        path: https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v7.8.0.tar.gz
-        sha256: TO_BE_FILLED
+        path: /home/jorj/Загрузки/improve-imgsli-7.9.0.tar.gz

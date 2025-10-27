@@ -1,11 +1,9 @@
-from dataclasses import dataclass
-from typing import Optional
-
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QPen
+from dataclasses import dataclass, field
+from PyQt6.QtCore import QRectF, QPointF, Qt
+from PyQt6.QtGui import QPen, QColor
 from PyQt6.QtWidgets import QLineEdit
-
-from src.shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from typing import Optional
 
 @dataclass
 class UnderlineConfig:
