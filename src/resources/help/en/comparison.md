@@ -21,3 +21,5 @@ To quickly see one of the original images in full, hold down the **Spacebar**:
 - The application can display PSNR (Peak Signal-to-Noise Ratio) and SSIM (Structural Similarity Index) metrics below the main comparison view.
 - By default, these calculations are **disabled** for better performance.
 - To enable them, go to **Settings** and check the **"Auto-calculate PSNR"** and **"Auto-calculate SSIM"** options.
+
+

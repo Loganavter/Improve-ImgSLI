@@ -41,6 +41,13 @@ August 2025. This update was born out of necessity. The qfluentwidgets library, 
 ## Early October 2025 — Shared toolkit and UX polish
 Early October 2025. With renewed access to Cursor AI, a significant unification of the codebase with another of my projects, Tkonverter, was carried out. The result is a shared library, shared_toolkit, which simplifies transferring functionality between projects. Following a user request, a feature for pasting images from the clipboard (Ctrl+V) was added. The user experience was substantially redesigned, introducing new customization options for the main comparison line and the magnifier's divider (controlling visibility, color, and thickness). System notifications on Linux were also fixed. In addition to Cursor, this update was developed with the active use of Gemini and Claude models, as well as new AI aggregator platforms, which helped accelerate the process. See issue: https://github.com/Loganavter/Improve-ImgSLI/issues/20
 Further enhancements to the magnifier (precision controls and subpixel rendering for smoother comparisons between different resolutions), plus the addition of pixel/structural difference views and analysis tools (channels, edges, metrics). This batch of work took approximately 3–5 hours.
+
+## December 2025 – January 2026 — Plugin Architecture and Video Export
+This update represents a massive architectural overhaul that took nearly a week of intensive work. After experimenting with several patterns, including Redux-like state management, the application was migrated to a more flexible and scalable plugin-based architecture.
+
+The flagship feature of this release is the introduction of a video editor and export functionality, allowing users to record their comparison sessions, perform basic trimming, and export the result to various video formats. The user experience of the main toolbar was also redesigned for clarity and better grouping of functions.
+
+Several quality-of-life improvements were added, such as automatic cropping of black borders on image load, magnifier guide lines (or "lasers") to visually connect the magnifier to its capture point, and support for the JPEG XL format. This release was a significant effort to stabilize the new architecture and deliver a cohesive set of powerful new features. Development was primarily done using Cursor AI with models from Claude and ChatGPT, as well as separately using Gemini 3.5 Pro Preview.
 ---
 
 For earlier notes and context, see the original README history in the repository's commit log.

@@ -1,0 +1,38 @@
+{
+  "help_sidebar": {
+    "en": 182,
+    "pt_BR": 243,
+    "ru": 212,
+    "zh": 145
+  },
+  "interpolation_selector": {
+    "en": 279,
+    "pt_BR": 279,
+    "ru": 312,
+    "zh": 218
+  },
+  "resolution_selector": {
+    "en": 145,
+    "pt_BR": 145,
+    "ru": 145,
+    "zh": 145
+  },
+  "settings_sidebar": {
+    "en": 166,
+    "pt_BR": 162,
+    "ru": 175,
+    "zh": 115
+  },
+  "theme_selector": {
+    "en": 82,
+    "pt_BR": 122,
+    "ru": 103,
+    "zh": 80
+  },
+  "video_editor_tabs": {
+    "en": 301,
+    "pt_BR": 278,
+    "ru": 366,
+    "zh": 265
+  }
+}

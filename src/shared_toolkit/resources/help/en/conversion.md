@@ -13,3 +13,7 @@ The profile affects how messages are formatted. In most cases, **Auto-detect pro
 
 - **Show reactions:** Includes message reactions (e.g., 👍 2).
 - **Optimization:** A mode for channels that groups consecutive messages from the same author to save tokens.
+
+
+
+

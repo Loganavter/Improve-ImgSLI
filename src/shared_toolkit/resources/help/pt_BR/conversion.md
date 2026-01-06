@@ -13,3 +13,7 @@ O perfil afeta como as mensagens são formatadas. Na maioria dos casos, **Detec�
 
 - **Mostrar reações:** Inclui reações de mensagens (ex., 👍 2).
 - **Otimização:** Um modo para canais que agrupa mensagens consecutivas do mesmo autor para economizar tokens.
+
+
+
+

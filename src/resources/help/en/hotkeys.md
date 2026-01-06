@@ -16,3 +16,5 @@
 - After pressing Ctrl+V, a paste direction overlay appears to choose where to place the image.
 - Use Arrow keys or `WASD` to select the direction; press the mouse button to confirm placement.
 - Press `Esc` to cancel the paste overlay.
+
+

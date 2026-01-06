@@ -1,5 +1,5 @@
 
-from shared_toolkit.ui.widgets.atomic import (
+from toolkit.widgets.atomic import (
     BodyLabel,
     CaptionLabel,
     FluentCheckBox,
@@ -8,4 +8,3 @@ from shared_toolkit.ui.widgets.atomic import (
     FluentSwitch,
 )
 
-from .atomic.tool_button import ToolButton

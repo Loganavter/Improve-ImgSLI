@@ -30,3 +30,5 @@ Click the dropdown menus to open the image list manager (flyout). It provides:
 ### Ratings
 - Use the `[+]` and `[-]` buttons next to each image to change its rating.
 - Additionally, scroll the mouse wheel over the rating display to increase or decrease the current image's score.
+
+

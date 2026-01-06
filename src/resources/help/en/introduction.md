@@ -15,3 +15,5 @@ Use the navigation panel on the left to learn about specific features.
   - Quit
 - On successful save, a system notification may appear; clicking the notification opens the last saved folder.
 - You can toggle system notifications in Settings.
+
+
