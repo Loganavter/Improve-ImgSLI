@@ -1,0 +1,285 @@
+/* --- Стили для кастомных виджетов toolkit --- */
+
+/* Базовый стиль для всех icon-button */
+QWidget[class="icon-button"] {
+    background-color: @button.default.background;
+    border: 1px solid @button.default.border;
+    border-radius: 6px;
+}
+
+/* Ховер для всех */
+QWidget[class="icon-button"]:hover,
+QWidget[class="icon-button"][state="hover"] {
+    background-color: @button.default.background.hover;
+}
+
+/* Нажатие для всех */
+QWidget[class="icon-button"]:pressed,
+QWidget[class="icon-button"][state="pressed"] {
+    background-color: @button.default.background.pressed;
+}
+
+/* Стиль для варианта "delete" */
+QWidget[class="icon-button"][variant="delete"] {
+    background-color: @button.delete.background;
+    border: 1px solid @button.delete.border;
+}
+
+/* Ховер для варианта "delete" */
+QWidget[class="icon-button"][variant="delete"]:hover,
+QWidget[class="icon-button"][variant="delete"][state="hover"] {
+    background-color: @button.delete.background.hover;
+}
+
+/* Нажатие для варианта "delete" */
+QWidget[class="icon-button"][variant="delete"]:pressed,
+QWidget[class="icon-button"][variant="delete"][state="pressed"] {
+    background-color: @button.delete.background.pressed;
+}
+
+/* --- Стили для LongPressIconButton --- */
+
+/* --- Вариант "default" (для SYNC и др.) --- */
+QWidget[class="long-press-icon-button"][variant="default"] {
+    background-color: @button.default.background;
+    border: 1px solid @button.default.border;
+    border-radius: 6px;
+}
+QWidget[class="long-press-icon-button"][variant="default"]:hover,
+QWidget[class="long-press-icon-button"][variant="default"][state="hover"] {
+    background-color: @button.default.background.hover;
+}
+QWidget[class="long-press-icon-button"][variant="default"]:pressed,
+QWidget[class="long-press-icon-button"][variant="default"][state="pressed"] {
+    background-color: @button.default.background.pressed;
+}
+
+/* --- Вариант "delete" (для корзины) --- */
+QWidget[class="long-press-icon-button"][variant="delete"] {
+    background-color: @button.delete.background;
+    border: 1px solid @button.delete.border;
+    border-radius: 6px;
+}
+QWidget[class="long-press-icon-button"][variant="delete"]:hover,
+QWidget[class="long-press-icon-button"][variant="delete"][state="hover"] {
+    background-color: @button.delete.background.hover;
+}
+QWidget[class="long-press-icon-button"][variant="delete"]:pressed,
+QWidget[class="long-press-icon-button"][variant="delete"][state="pressed"] {
+    background-color: @button.delete.background.pressed;
+}
+
+/* --- Стили для flyout виджетов --- */
+QWidget#FlyoutWidget, QWidget#FontSettingsContainer {
+    background-color: @flyout.background;
+    border: 1px solid @flyout.border;
+    border-radius: 8px;
+}
+QWidget#FlyoutWidget QScrollArea, QWidget#FlyoutWidget QScrollArea > QWidget > QWidget {
+    background-color: transparent; border: none;
+}
+
+/* --- Toast --- */
+QWidget#ToastNotification {
+    background-color: @toast.background;
+    border: 1px solid @toast.border;
+    border-radius: 8px;
+}
+QWidget#ToastNotification QLabel {
+    color: @toast.text;
+}
+QWidget#ToastNotification QPushButton {
+    background-color: transparent;
+    color: @toast.text;
+    border: 1px solid @toast.border;
+    border-radius: 6px;
+    padding: 4px 10px;
+}
+
+/* Style for CustomLineEdit */
+QLineEdit[custom-line-edit="true"] {
+    background-color: @dialog.input.background;
+    color: @dialog.text;
+    border: none !important;
+    border-radius: 8px;
+    padding: 6px 10px;
+    outline: none;
+}
+QLineEdit[custom-line-edit="true"]:focus {
+    border: none !important;
+    outline: none;
+}
+
+/* --- Стили для PathTooltip --- */
+QLabel#TooltipContentWidget {
+    background-color: @tooltip.background;
+    color: @tooltip.text;
+    border: 1px solid @tooltip.border;
+    padding: 4px 6px;
+    border-radius: 5px;
+}
+
+/* --- FluentComboBox --- */
+FluentComboBox {
+    background-color: @dialog.input.background;
+    color: @dialog.text;
+    border: 1px solid @dialog.border;
+    border-radius: 8px;
+    padding: 6px 28px 6px 10px;
+    outline: 0;
+}
+
+FluentComboBox:hover {
+    border: 1px solid @accent;
+}
+
+FluentComboBox:focus {
+    border: 1px solid @accent;
+}
+
+FluentComboBox::drop-down {
+    border: none;
+    width: 24px;
+}
+
+/* Скрываем стандартную стрелку если открыт кастомный попап */
+FluentComboBox[flyoutOpen="true"]::drop-down {
+    width: 0px;
+}
+
+FluentComboBox[flyoutOpen="true"]::down-arrow {
+    width: 0px;
+    height: 0px;
+}
+
+/* Стили для выпадающего списка внутри комбобокса (если используется стандартный view) */
+FluentComboBox QListView {
+    background-color: transparent;
+    color: @dialog.text;
+    border: none;
+    padding: 0px;
+    show-decoration-selected: 1;
+    outline: 0;
+}
+
+FluentComboBox QListView::viewport {
+    background-color: transparent;
+}
+
+FluentComboBox QListView::item {
+    padding: 6px 10px;
+    margin: 0px;
+    min-height: 28px;
+    text-align: center;
+}
+
+FluentComboBox QListView::item:hover {
+    background-color: @list_item.background.hover;
+}
+
+FluentComboBox QListView::item:selected {
+    background-color: @accent;
+    color: white;
+}
+
+/* --- ToggleIconButton / SimpleIconButton / ScrollableIconButton --- */
+/* Используем селектор по типу класса, так как они наследуются от QPushButton */
+ToggleIconButton, SimpleIconButton, ScrollableIconButton {
+    background-color: @button.toggle.background.normal;
+    border: none;
+    border-radius: 6px;
+    padding: 0px;
+}
+
+ToggleIconButton:hover, SimpleIconButton:hover, ScrollableIconButton:hover {
+    background-color: @button.toggle.background.hover;
+}
+
+ToggleIconButton:pressed, SimpleIconButton:pressed, ScrollableIconButton:pressed {
+    background-color: @button.toggle.background.pressed;
+}
+
+ToggleIconButton:checked {
+    background-color: @button.toggle.background.checked;
+}
+
+ToggleIconButton:checked:hover {
+    background-color: @button.toggle.background.checked.hover;
+}
+
+/* Дополнительные стили для ScrollableIconButton */
+ScrollableIconButton {
+    padding-top: 0px;
+    padding-bottom: 12px;
+}
+
+/* --- ScrollableComboBox --- */
+ScrollableComboBox {
+    background: transparent;
+    border: none;
+}
+
+/* --- FluentSpinBox --- */
+FluentSpinBox {
+    background-color: @dialog.input.background;
+    border: 1px solid @input.border.thin;
+    border-radius: 2px;
+}
+
+FluentSpinBox:focus {
+    border: 1px solid @accent;
+}
+
+/* Стили для line edit внутри FluentSpinBox */
+FluentSpinBox QLineEdit {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+}
+
+/* --- Дополнительные стили для FluentComboBox --- */
+/* Стили для popup flyout */
+QWidget[class="combo-popup-flyout"] {
+    background-color: @flyout.background;
+    border: 1px solid @flyout.border;
+    border-radius: 8px;
+}
+
+/* Стили для scroll area внутри комбобокса */
+FluentComboBox QScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+/* Исправление фона для выпадающих списков FluentComboBox */
+_ComboPopupFlyout,
+_ComboPopupFlyout QWidget {
+    background-color: @flyout.background;
+}
+
+_ComboPopupFlyout QWidget#menuContainer {
+    background-color: @flyout.background;
+    border: 1px solid @flyout.border;
+    border-radius: 8px;
+}
+
+/* Также убедимся, что ScrollArea внутри попапа не прозрачная */
+_ComboPopupFlyout OverlayScrollArea,
+_ComboPopupFlyout QListView {
+    background-color: @flyout.background;
+    border: none;
+}
+
+/* Стили для элементов списка в попапе */
+_ComboPopupFlyout QListView::item {
+    background-color: transparent;
+    border-radius: 4px;
+}
+
+_ComboPopupFlyout QListView::item:hover {
+    background-color: @list_item.background.hover;
+}
+
+
+

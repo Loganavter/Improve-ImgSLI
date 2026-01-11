@@ -1,7 +1,6 @@
 import logging
 from PyQt6 import sip
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QPointF, QEvent, pyqtSignal, QObject, QTimer, QPoint
+from PyQt6.QtCore import QPointF, QObject, QTimer
 
 DragGhostWidget = None
 
@@ -13,17 +12,17 @@ class DragAndDropService(QObject):
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
-            raise RuntimeError("DragAndDropService has not been initialized yet. Call DragAndDropService(app_ref, parent) once.")
+            raise RuntimeError("DragAndDropService has not been initialized yet. Call DragAndDropService(store, parent) once.")
         return cls._instance
 
-    def __init__(self, app_ref, parent=None):
+    def __init__(self, store, parent=None):
         if DragAndDropService._instance is not None:
             raise RuntimeError("This class is a singleton! Use get_instance().")
         super().__init__(parent)
         DragAndDropService._instance = self
 
-        self.app_ref = app_ref
-        self.app_state = app_ref.app_state
+        self.store = store
+        self.main_window = parent
 
         self._is_dragging = False
         self._source_data = None
@@ -45,6 +44,14 @@ class DragAndDropService(QObject):
     def is_dragging(self):
         return self._is_dragging
 
+    def get_source_data(self):
+        if not self._source_data:
+            return None
+        try:
+            return dict(self._source_data)
+        except Exception:
+            return self._source_data
+
     def start_drag(self, source_widget, event):
         global DragGhostWidget
 
@@ -54,7 +61,7 @@ class DragAndDropService(QObject):
         self._is_dragging = True
 
         try:
-            from ui.widgets.custom_widgets import PathTooltip
+            from toolkit.widgets.atomic.tooltips import PathTooltip
             PathTooltip.get_instance().hide_tooltip()
         except Exception:
             pass
@@ -63,10 +70,10 @@ class DragAndDropService(QObject):
 
         list_num = source_widget.owner_flyout.image_number
         index = source_widget.index
-        target_list = self.app_ref.app_state.image_list1 if list_num == 1 else self.app_ref.app_state.image_list2
+        target_list = self.store.document.image_list1 if list_num == 1 else self.store.document.image_list2
         current_rating = 0
         if 0 <= index < len(target_list):
-            current_rating = target_list[index][3]
+            current_rating = target_list[index].rating
 
         self._source_data = {
             "list_num": list_num,
@@ -80,7 +87,7 @@ class DragAndDropService(QObject):
         pixmap = source_widget.grab()
 
         if DragGhostWidget is None:
-            from ui.widgets.composite.drag_ghost_widget import DragGhostWidget
+            from toolkit.widgets.composite.drag_ghost_widget import DragGhostWidget
 
         self._ghost_widget = DragGhostWidget()
         self._ghost_widget.set_pixmap(pixmap)
@@ -105,14 +112,22 @@ class DragAndDropService(QObject):
             self._ghost_widget.move(desired_top_left_global)
 
         try:
-            ui_manager = self.app_ref.presenter.ui_manager if hasattr(self.app_ref, 'presenter') else None
+            ui_manager = None
+            if self.main_window and hasattr(self.main_window, 'presenter'):
+                ui_manager = self.main_window.presenter.ui_manager
+
             unified = ui_manager.unified_flyout if ui_manager else None
+
             if unified and unified.isVisible() and unified.mode.name.startswith('SINGLE'):
-                rect = unified.frameGeometry()
-                if not rect.contains(current_pos_global.toPoint()):
-                    unified.switchToDoubleMode()
-        except Exception:
-            pass
+                parent_widget = unified.parent()
+                if parent_widget:
+                    local_pos = parent_widget.mapFromGlobal(current_pos_global.toPoint())
+                    unified_geom = unified.geometry()
+                    contains = unified_geom.contains(local_pos)
+                    if not contains:
+                        unified.switchToDoubleMode()
+        except Exception as e:
+            logger.exception(f"[DragAndDrop] update_drag_position: исключение при проверке переключения в DOUBLE режим: {e}")
 
         new_target = None
         for target in reversed(self._drop_targets):
@@ -146,6 +161,17 @@ class DragAndDropService(QObject):
         if final_target and hasattr(final_target, 'can_accept_drop') and final_target.can_accept_drop(self._source_data):
             if hasattr(final_target, 'handle_drop'):
                 final_target.handle_drop(self._source_data, current_pos_global)
+
+                try:
+                    ui_manager = None
+                    if self.main_window and hasattr(self.main_window, 'presenter'):
+                        ui_manager = self.main_window.presenter.ui_manager
+
+                    unified = ui_manager.unified_flyout if ui_manager else None
+                    if unified and unified.isVisible():
+                        QTimer.singleShot(0, unified.refreshGeometry)
+                except Exception:
+                    pass
 
         self._cleanup()
 

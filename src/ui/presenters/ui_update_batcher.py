@@ -1,7 +1,6 @@
 from PyQt6.QtCore import QTimer
 
 class UIUpdateBatcher:
-    """Управляет батчингом UI-обновлений для синхронизации с Wayland"""
 
     def __init__(self, presenter):
         self._presenter = presenter
@@ -9,21 +8,18 @@ class UIUpdateBatcher:
         self._flush_scheduled = False
 
     def schedule_update(self, update_type: str):
-        """Регистрирует необходимость обновления определенного типа"""
         self._pending_updates.add(update_type)
         if not self._flush_scheduled:
             self._flush_scheduled = True
             QTimer.singleShot(0, self._flush_updates)
 
     def schedule_batch_update(self, update_types: list):
-        """Регистрирует несколько типов обновлений одновременно"""
         self._pending_updates.update(update_types)
         if not self._flush_scheduled:
             self._flush_scheduled = True
             QTimer.singleShot(0, self._flush_updates)
 
     def _flush_updates(self):
-        """Применяет все накопленные обновления одним тактом"""
         updates = self._pending_updates.copy()
         self._pending_updates.clear()
         self._flush_scheduled = False

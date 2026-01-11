@@ -1,0 +1,236 @@
+/* --- Общие стили для всего приложения --- */
+QCheckBox {
+    spacing: 6px;
+}
+QCheckBox::indicator { width: 0px; height: 0px; }
+
+QLabel, QRadioButton, QCheckBox {
+    color: @dialog.text;
+}
+
+/* --- Стили для диалогов (Settings, Help, Export) --- */
+QDialog#SettingsDialog,
+QDialog#HelpDialog,
+QDialog#ExportDialog {
+    background-color: @dialog.background;
+}
+
+QDialog QLabel, 
+QDialog QRadioButton, 
+QDialog QCheckBox {
+    color: @dialog.text;
+}
+
+QDialog QLineEdit,
+QDialog QSpinBox, 
+QDialog QComboBox {
+    background-color: @dialog.input.background;
+    color: @dialog.text;
+    border: 1px solid @dialog.border;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QDialog QSpinBox::up-button, 
+QDialog QSpinBox::down-button, 
+QDialog QComboBox::drop-down {
+    border: none;
+    background-color: transparent;
+}
+
+QDialog QPushButton {
+    background-color: @dialog.button.background;
+    color: @dialog.text;
+    border: 1px solid @dialog.border;
+    border-radius: 8px;
+    padding: 5px 15px;
+}
+
+QDialog QPushButton:hover {
+    background-color: @dialog.button.hover;
+}
+
+QDialog QPushButton#okButton {
+    background-color: @accent;
+    color: white;
+    border: none;
+}
+
+QDialog QPushButton#okButton:hover {
+    background-color: @accent.hover;
+}
+
+/* --- Стили для QColorDialog (из FontSettingsFlyout) --- */
+QColorDialog {
+    background-color: @color_dialog.background;
+}
+QColorDialog QLabel, QColorDialog QLineEdit, QColorDialog QPushButton {
+    color: @color_dialog.text;
+    background-color: @color_dialog.input.background;
+    border: 1px solid @color_dialog.input.border;
+}
+QColorDialog QPushButton {
+    padding: 5px 10px;
+    border-radius: 8px;
+}
+QColorDialog QPushButton:hover {
+    background-color: @dialog.button.hover;
+}
+QColorDialog QLineEdit, QColorDialog QAbstractSpinBox {
+    padding: 2px;
+}
+
+/* --- Стили для HelpDialog --- */
+QDialog#HelpDialog QListWidget {
+    background-color: @help.nav.background;
+    border-right: 1px solid @help.nav.border;
+    font-size: 14px;
+    padding-top: 5px;
+    outline: 0;
+}
+QDialog#HelpDialog QListWidget::item {
+    padding-left: 15px;
+    padding-right: 5px;
+}
+QDialog#HelpDialog QListWidget::item:hover {
+    background-color: @help.nav.hover;
+    border-radius: 4px;
+}
+QDialog#HelpDialog QListWidget::item:selected {
+    background-color: @help.nav.selected;
+    color: @help.nav.selected.text;
+    border-radius: 4px;
+}
+
+/* --- Стили для RatingListItem --- */
+RatingListItem > QLabel {
+    background: transparent;
+}
+RatingListItem > QLabel#ratingLabel {
+    color: @list_item.text.rating;
+}
+RatingListItem > QLabel#nameLabel {
+    color: @list_item.text.normal;
+}
+RatingListItem > AutoRepeatButton {
+    border-radius: 11px;
+    padding: 0px;
+    background-color: transparent;
+    border: none;
+}
+RatingListItem > AutoRepeatButton:hover {
+    background-color: transparent;
+}
+RatingListItem > AutoRepeatButton:pressed {
+    background-color: transparent;
+}
+RatingListItem > AutoRepeatButton#plusButton {
+    qproperty-iconSize: 9px;
+    margin-top: -1px;
+}
+RatingListItem > AutoRepeatButton#minusButton {
+    qproperty-iconSize: 9px;
+}
+
+/* --- Flyouts (Magnifier, Menu, etc) --- */
+#MagnifierVisibilityFlyoutPanel,
+QWidget#menuContainer {
+    background-color: @flyout.background;
+    border: 1px solid @flyout.border;
+    border-radius: 8px;
+}
+
+/* Общие стили для всех панелей-облачков */
+#MagnifierVisibilityFlyoutPanel,
+#ColorOptionsFlyoutPanel {
+    background-color: @flyout.background;
+    border: 1px solid @flyout.border;
+    border-radius: 8px;
+}
+
+/* --- Value Popup (ScrollableButton) --- */
+#ValuePopupLabel {
+    background-color: @flyout.background;
+    color: @dialog.text;
+    border: 1px solid @flyout.border;
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+/* --- MagnifierVisibilityFlyout --- */
+#MagnifierVisibilityFlyoutPanel {
+    background-color: @flyout.background;
+    border: 1px solid @flyout.border;
+    border-radius: 8px;
+}
+
+/* --- UnifiedFlyout --- */
+#UnifiedFlyoutPanel {
+    background-color: @flyout.background;
+    border: 1px solid @flyout.border;
+    border-radius: 8px;
+}
+
+/* --- FontSettingsFlyout --- */
+/* Стили для color preview кнопок */
+QPushButton[class="color-preview"] {
+    border-radius: 14px;
+    border: 1px solid grey;
+}
+
+/* --- SimpleOptionsFlyout --- */
+/* Стили для меток в опциях */
+QLabel[class="option-label"] {
+    color: @list_item.text.normal;
+    background: transparent;
+}
+
+/* --- MainWindowUI --- */
+/* Стили для drag overlay */
+QLabel[class="drag-overlay"] {
+    background-color: rgba(0, 100, 200, 0.6);
+    color: white;
+    font-size: 20px;
+    border-radius: 10px;
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+/* Стили для rating labels */
+QLabel[class="rating-label"] {
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* Стили для warning label */
+QLabel[class="warning-label"] {
+    color: #FF4500;
+    font-weight: bold;
+}
+
+/* --- Дополнительные стили для новых классов --- */
+/* Стили для placeholder labels */
+QLabel[class="placeholder-label"] {
+    color: rgba(255,255,255,0.4);
+}
+
+/* Стили для debug markers */
+QLabel[class="debug-marker"] {
+    background-color: #FF0000;
+    border: 1px solid black;
+    color: white;
+    font-weight: bold;
+}
+
+/* Стили для opacity property */
+QWidget[opacity="0.4"] {
+    opacity: 0.4;
+}
+
+QWidget[opacity="1.0"] {
+    opacity: 1.0;
+}
+

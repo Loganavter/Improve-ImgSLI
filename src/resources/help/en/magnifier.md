@@ -24,6 +24,11 @@
 - When the spacing between the two magnifier halves becomes small enough, or when a difference mode is active, the halves automatically combine into a single circle with an internal split line.
 - You can adjust the internal split position by dragging with the Right Mouse Button inside the magnifier circle.
 
+### Guide Lines ("Lasers")
+- To visually connect the magnifier to its capture point on the main image, you can enable guide lines.
+- Click the laser icon button on the magnifier toolbar to toggle them on or off.
+- The thickness of these lines can be adjusted by scrolling the mouse wheel over the same button.
+
 ### Visibility Flyout (Left/Center/Right)
 - Hover over the Magnifier button to reveal a small flyout that lets you toggle visibility of the left, center, and right parts.
 - You can also open this flyout by scrolling the mouse wheel over the Magnifier button; in this case it auto-hides shortly after.
