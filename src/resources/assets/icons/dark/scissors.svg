@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <!-- Левое лезвие -->
+  <path d="M 6 4 L 6 8 L 4 10 L 4 14 L 6 16 L 6 20" stroke="#dfdfdf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Правое лезвие -->
+  <path d="M 18 4 L 18 8 L 20 10 L 20 14 L 18 16 L 18 20" stroke="#dfdfdf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Центральное соединение -->
+  <circle cx="12" cy="12" r="2" fill="current#dfdfdfColor"/>
+  <!-- Ручки -->
+  <circle cx="6" cy="4" r="1.5" fill="#dfdfdf"/>
+  <circle cx="18" cy="4" r="1.5" fill="#dfdfdf"/>
+  <circle cx="6" cy="20" r="1.5" fill="#dfdfdf"/>
+  <circle cx="18" cy="20" r="1.5" fill="#dfdfdf"/>
+</svg>

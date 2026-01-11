@@ -8,5 +8,6 @@
 - **Movement Interpolation:** When "Optimize magnifier movement" is enabled, this selects a faster, lower-quality interpolation method (like Bilinear) to use *only* during interactive movement for a smoother experience. The high-quality method is still used when static.
 - **Optimize magnifier movement:** Enables the use of the separate, faster interpolation method above during magnifier movement. Enabled by default.
 - **Auto-calculate PSNR / SSIM:** Toggles the automatic calculation and display of PSNR and SSIM metrics below the image. Disabled by default for better performance. Note: SSIM will still be calculated and shown if the "SSIM Map" diff mode is active.
+- **Auto-crop black borders on load:** Automatically removes black bars from the edges of images when they are added to the lists.
 - **Enable debug logging:** Toggles detailed logging for troubleshooting.
 - **System notifications:** Toggles system notifications on save.

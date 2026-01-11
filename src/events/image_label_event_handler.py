@@ -1,230 +1,270 @@
-from PyQt6.QtCore import QObject, QPointF, Qt
+import logging
+
+from PyQt6.QtCore import QElapsedTimer, QObject, QPointF, Qt
 from PyQt6.QtGui import QKeyEvent, QMouseEvent, QWheelEvent
 
+logger = logging.getLogger("ImproveImgSLI")
+
 class ImageLabelEventHandler(QObject):
-    def __init__(self, app_state, main_controller, parent=None):
+    def __init__(self, store, main_controller, parent=None):
         super().__init__(parent)
-        self.app_state = app_state
+        self.store = store
         self.main_controller = main_controller
+        self.presenter = parent
+
+        self._mouse_move_timer = QElapsedTimer()
+        self._mouse_move_timer.start()
+
+    @property
+    def event_bus(self):
+        if self.main_controller is not None:
+            return self.main_controller.event_bus
+        return None
 
     def handle_mouse_press(self, event: QMouseEvent):
-        if self.app_state.space_bar_pressed:
-            if event.button() == Qt.MouseButton.LeftButton:
-                self.main_controller.activate_single_image_mode(1)
-            elif event.button() == Qt.MouseButton.RightButton:
-                self.main_controller.activate_single_image_mode(2)
+        vp = self.store.viewport
+        if vp.space_bar_pressed:
+            if event.button() == Qt.MouseButton.LeftButton and self.main_controller is not None and self.main_controller.session_ctrl is not None:
+                self.main_controller.session_ctrl.activate_single_image_mode(1)
+            elif event.button() == Qt.MouseButton.RightButton and self.main_controller is not None and self.main_controller.session_ctrl is not None:
+                self.main_controller.session_ctrl.activate_single_image_mode(2)
             event.accept()
             return
 
-        if (self.app_state.showing_single_image_mode != 0 or
-                not self.app_state.original_image1 or not self.app_state.original_image2 or
-                self.app_state.resize_in_progress):
+        if vp.showing_single_image_mode != 0 or not vp.image1 or vp.resize_in_progress:
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
-            if self.app_state.use_magnifier:
-                self.app_state.is_dragging_capture_point = True
+            if vp.use_magnifier:
+                clicked_id = self._get_magnifier_at_position(event.position())
+                if clicked_id:
+                    vp.active_magnifier_id = clicked_id
+                    self.store.emit_state_change()
+                    if self.main_controller:
+                        self.main_controller.update_requested.emit()
+
+                if not vp.active_magnifier_id:
+                    vp.active_magnifier_id = "default"
+                    self.store.emit_state_change()
+
+                vp.is_dragging_capture_point = True
+                if self.main_controller:
+                    self.main_controller.start_interactive_movement.emit()
+                self._update_state_from_mouse_position(event.position())
             else:
-                self.app_state.is_dragging_split_line = True
-
-            if hasattr(self.main_controller, 'app') and hasattr(self.main_controller.app, 'event_handler'):
-                self.main_controller.app.event_handler.start_interactive_movement()
-            elif hasattr(self.parent(), 'main_window_app') and hasattr(self.parent().main_window_app, 'event_handler'):
-                self.parent().main_window_app.event_handler.start_interactive_movement()
-            self._update_state_from_mouse_position(event.position())
+                vp.is_dragging_split_line = True
+                if self.main_controller:
+                    self.main_controller.start_interactive_movement.emit()
+                self._update_state_from_mouse_position(event.position())
             event.accept()
+        elif event.button() == Qt.MouseButton.RightButton and vp.use_magnifier and vp.is_magnifier_combined:
+            is_in_magnifier = self._is_point_in_magnifier(event.position())
 
-        elif event.button() == Qt.MouseButton.RightButton:
-
-            if self.app_state.use_magnifier and self.app_state.is_magnifier_combined:
-
-                if self._is_point_in_magnifier(event.position()):
-                    self.app_state.is_dragging_split_in_magnifier = True
-                    if hasattr(self.main_controller, 'app') and hasattr(self.main_controller.app, 'event_handler'):
-                        self.main_controller.app.event_handler.start_interactive_movement()
-                    elif hasattr(self.parent(), 'main_window_app') and hasattr(self.parent().main_window_app, 'event_handler'):
-                        self.parent().main_window_app.event_handler.start_interactive_movement()
-                    self._update_magnifier_internal_split(event.position())
-                    event.accept()
+            if is_in_magnifier:
+                vp.is_dragging_split_in_magnifier = True
+                if self.main_controller:
+                    self.main_controller.start_interactive_movement.emit()
+                self._update_magnifier_internal_split(event.position())
+                event.accept()
 
     def handle_mouse_move(self, event: QMouseEvent):
-        if (self.app_state.showing_single_image_mode != 0 or
-                self.app_state.resize_in_progress or
-                not self.app_state.original_image1 or not self.app_state.original_image2):
+        vp = self.store.viewport
+        if vp.showing_single_image_mode != 0 or vp.resize_in_progress:
             return
 
-        if event.buttons() & Qt.MouseButton.LeftButton and (self.app_state.is_dragging_split_line or self.app_state.is_dragging_capture_point):
+        if self._mouse_move_timer.elapsed() < 16:
+            return
+        self._mouse_move_timer.restart()
+
+        if event.buttons() & Qt.MouseButton.LeftButton and (
+            vp.is_dragging_split_line or vp.is_dragging_capture_point
+        ):
             self._update_state_from_mouse_position(event.position())
             event.accept()
 
-        if event.buttons() & Qt.MouseButton.RightButton and self.app_state.is_dragging_split_in_magnifier:
+        if event.buttons() & Qt.MouseButton.RightButton and vp.is_dragging_split_in_magnifier:
+
             self._update_magnifier_internal_split(event.position())
             event.accept()
 
     def handle_mouse_release(self, event: QMouseEvent):
-
-        if self.app_state.space_bar_pressed:
+        vp = self.store.viewport
+        if vp.space_bar_pressed:
             event.accept()
             return
-
-        if self.app_state.showing_single_image_mode != 0:
-            return
-
         if event.button() == Qt.MouseButton.LeftButton:
-            if self.app_state.is_dragging_split_line:
-                self.app_state.is_dragging_split_line = False
-            if self.app_state.is_dragging_capture_point:
-                self.app_state.is_dragging_capture_point = False
-
-            if hasattr(self.main_controller, 'app') and hasattr(self.main_controller.app, 'event_handler'):
-                self.main_controller.app.event_handler.stop_interactive_movement()
-            elif hasattr(self.parent(), 'main_window_app') and hasattr(self.parent().main_window_app, 'event_handler'):
-                self.parent().main_window_app.event_handler.stop_interactive_movement()
+            vp.is_dragging_split_line = False
+            vp.is_dragging_capture_point = False
+            self.store.emit_state_change()
+            if self.main_controller:
+                self.main_controller.stop_interactive_movement.emit()
             event.accept()
-
         elif event.button() == Qt.MouseButton.RightButton:
-            if self.app_state.is_dragging_split_in_magnifier:
-                self.app_state.is_dragging_split_in_magnifier = False
-
-                if hasattr(self.main_controller, 'app') and hasattr(self.main_controller.app, 'event_handler'):
-                    self.main_controller.app.event_handler.stop_interactive_movement()
-                elif hasattr(self.parent(), 'main_window_app') and hasattr(self.parent().main_window_app, 'event_handler'):
-                    self.parent().main_window_app.event_handler.stop_interactive_movement()
-                event.accept()
-
-    def handle_key_press(self, event: QKeyEvent):
-
-        if event.key() == Qt.Key.Key_V and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            if not event.isAutoRepeat():
-                self.main_controller.paste_image_from_clipboard()
-            return
-
-        if event.key() == Qt.Key.Key_S:
-            if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-                if not event.isAutoRepeat():
-                    self.main_controller.presenter._quick_save_with_error_handling()
-                return
-            elif event.modifiers() == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
-                if not event.isAutoRepeat():
-                    self.main_controller.presenter._save_result_with_error_handling()
-                return
-
-        self.app_state.pressed_keys.add(event.key())
-        if event.key() == Qt.Key.Key_Space:
-
-            if event.isAutoRepeat():
-                return
-            self.app_state.space_bar_pressed = True
-
-        if hasattr(self.main_controller, 'app') and hasattr(self.main_controller.app, 'event_handler'):
-            self.main_controller.app.event_handler.start_interactive_movement()
-        elif hasattr(self.parent(), 'main_window_app') and hasattr(self.parent().main_window_app, 'event_handler'):
-            self.parent().main_window_app.event_handler.start_interactive_movement()
-
-    def handle_key_release(self, event: QKeyEvent):
-        self.app_state.pressed_keys.discard(event.key())
-        if event.key() == Qt.Key.Key_Space:
-
-            if event.isAutoRepeat():
-                return
-            self.app_state.space_bar_pressed = False
-
-            self.main_controller.deactivate_single_image_mode()
-
-    def handle_wheel_scroll(self, event: QWheelEvent):
-
-        if self.app_state.use_magnifier or (not self.app_state.image_list1 and not self.app_state.image_list2):
-            return
-
-        delta = event.angleDelta().y()
-        if delta == 0:
-            return
-
-        direction = 1 if delta < 0 else -1
-
-        pos = event.position()
-        rect = self.app_state.image_display_rect_on_label
-
-        if not rect.contains(pos.toPoint()):
-            return
-
-        if not self.app_state.is_horizontal:
-            split_x = rect.left() + rect.width() * self.app_state.split_position_visual
-            image_number = 2 if pos.x() > split_x else 1
-        else:
-            split_y = rect.top() + rect.height() * self.app_state.split_position_visual
-            image_number = 2 if pos.y() > split_y else 1
-
-        if image_number == 1:
-            current_index = self.app_state.current_index1
-            count = len(self.app_state.image_list1)
-        else:
-            current_index = self.app_state.current_index2
-            count = len(self.app_state.image_list2)
-
-        if count <= 1:
-            return
-
-        new_index = (current_index + direction + count) % count
-
-        self.main_controller.on_combobox_changed(image_number, new_index)
-        event.accept()
+            vp.is_dragging_split_in_magnifier = False
+            self.store.emit_state_change()
+            if self.main_controller:
+                self.main_controller.stop_interactive_movement.emit()
+            event.accept()
 
     def _update_state_from_mouse_position(self, cursor_pos: QPointF):
-        image_rect = self.app_state.image_display_rect_on_label
-        if image_rect.isNull() or not image_rect.isValid() or image_rect.width() <= 0 or image_rect.height() <= 0:
+        vp = self.store.viewport
+        rect = vp.image_display_rect_on_label
+        if rect.width() <= 0 or rect.height() <= 0:
+            return
+        raw_rel_x = (cursor_pos.x() - rect.left()) / float(rect.width())
+        raw_rel_y = (cursor_pos.y() - rect.top()) / float(rect.height())
+        if vp.use_magnifier:
+            vp.capture_position_relative = QPointF(
+                max(0.0, min(1.0, raw_rel_x)),
+                max(0.0, min(1.0, raw_rel_y)),
+            )
+
+            if self.presenter and hasattr(self.presenter, 'update_capture_area_display'):
+                self.presenter.update_capture_area_display()
+        else:
+            rel_pos = raw_rel_x if not vp.is_horizontal else raw_rel_y
+            vp.split_position = max(0.0, min(1.0, rel_pos))
+        self.store.emit_state_change()
+
+    def _update_magnifier_internal_split(self, position: QPointF):
+
+        vp = self.store.viewport
+
+        center = vp.magnifier_screen_center
+        size = vp.magnifier_screen_size
+
+        if size <= 0:
             return
 
-        raw_rel_x = (cursor_pos.x() - image_rect.left()) / float(image_rect.width())
-        raw_rel_y = (cursor_pos.y() - image_rect.top()) / float(image_rect.height())
+        radius = size / 2.0
 
-        if self.app_state.use_magnifier:
-            if not self.app_state.image1: return
-            unified_w, unified_h = self.app_state.image1.size
-            if unified_w <= 0 or unified_h <= 0: return
+        val = 0.5
 
-            unified_ref_dim = min(unified_w, unified_h)
-            capture_size_px = self.app_state.capture_size_relative * unified_ref_dim
-            radius_rel_x = (capture_size_px / 2.0) / unified_w if unified_w > 0 else 0
-            radius_rel_y = (capture_size_px / 2.0) / unified_h if unified_h > 0 else 0
-            clamped_rel_x = max(radius_rel_x, min(raw_rel_x, 1.0 - radius_rel_x))
-            clamped_rel_y = max(radius_rel_y, min(raw_rel_y, 1.0 - radius_rel_y))
-            self.app_state.capture_position_relative = QPointF(clamped_rel_x, clamped_rel_y)
+        if not vp.magnifier_is_horizontal:
+
+            left_edge = center.x() - radius
+
+            val = (position.x() - left_edge) / size
         else:
-            rel_pos = raw_rel_x if not self.app_state.is_horizontal else raw_rel_y
-            self.app_state.split_position = max(0.0, min(1.0, rel_pos))
 
-    def _is_point_in_magnifier(self, cursor_pos: QPointF) -> bool:
-        """Check if point is inside the magnifier circle"""
-        if not self.app_state.magnifier_screen_center or self.app_state.magnifier_screen_size <= 0:
+            top_edge = center.y() - radius
+            val = (position.y() - top_edge) / size
+
+        clamped_val = max(0.0, min(1.0, val))
+
+        if vp.magnifier_internal_split != clamped_val:
+            vp.magnifier_internal_split = clamped_val
+
+            self.store.emit_state_change()
+
+            if self.main_controller:
+                self.main_controller.update_requested.emit()
+
+    def _is_point_in_magnifier(self, pos: QPointF) -> bool:
+        vp = self.store.viewport
+        size = vp.magnifier_screen_size
+        if size <= 0:
             return False
+        center = vp.magnifier_screen_center
+        half = size / 2.0
 
-        dx = cursor_pos.x() - self.app_state.magnifier_screen_center.x()
-        dy = cursor_pos.y() - self.app_state.magnifier_screen_center.y()
-        distance_sq = dx * dx + dy * dy
+        dx = pos.x() - center.x()
+        dy = pos.y() - center.y()
+        distance_squared = dx * dx + dy * dy
+        radius_squared = half * half
+        is_inside = distance_squared <= radius_squared
+        return is_inside
 
-        radius = self.app_state.magnifier_screen_size / 2.0
-        return distance_sq <= radius * radius
+    def _get_magnifier_at_position(self, position: QPointF) -> str | None:
+        if self._is_point_in_magnifier(position):
+            return self.store.viewport.active_magnifier_id or "default"
+        return None
 
-    def _update_magnifier_internal_split(self, cursor_pos: QPointF):
-        """Update the internal split position within the magnifier"""
-        if not self.app_state.magnifier_screen_center or self.app_state.magnifier_screen_size <= 0:
+    def handle_key_press(self, event: QKeyEvent):
+        key = event.key()
+        if key == Qt.Key.Key_Space:
+            if event.isAutoRepeat():
+                return
+            self.store.viewport.space_bar_pressed = True
+            self.store.emit_state_change()
+            event.accept()
             return
 
-        mag_center = self.app_state.magnifier_screen_center
-        mag_size = self.app_state.magnifier_screen_size
+        magnifier_keys = {
+            Qt.Key.Key_W, Qt.Key.Key_A, Qt.Key.Key_S,
+            Qt.Key.Key_D, Qt.Key.Key_Q, Qt.Key.Key_E
+        }
 
-        if not self.app_state.magnifier_is_horizontal:
-            left_edge = mag_center.x() - mag_size / 2.0
+        if key in magnifier_keys and self.store.viewport.use_magnifier:
 
-            rel_pos = (cursor_pos.x() - left_edge) / mag_size if mag_size > 0 else 0.5
-            self.app_state.magnifier_internal_split = max(0.0, min(1.0, rel_pos))
+            if self.main_controller:
+                self.main_controller.start_interactive_movement.emit()
+
+        self.store.viewport.pressed_keys.add(key)
+        self.store.emit_state_change()
+
+    def handle_key_release(self, event: QKeyEvent):
+        key = event.key()
+        if key == Qt.Key.Key_Space:
+            if event.isAutoRepeat():
+                return
+            self.store.viewport.space_bar_pressed = False
+            self.store.emit_state_change()
+            event.accept()
+            return
+
+        self.store.viewport.pressed_keys.discard(key)
+        self.store.emit_state_change()
+
+        magnifier_keys = {
+            Qt.Key.Key_W, Qt.Key.Key_A, Qt.Key.Key_S,
+            Qt.Key.Key_D, Qt.Key.Key_Q, Qt.Key.Key_E
+        }
+
+        if (self.store.viewport.use_magnifier and
+            not any(k in self.store.viewport.pressed_keys for k in magnifier_keys) and
+            not (self.store.viewport.is_dragging_split_line or
+                 self.store.viewport.is_dragging_capture_point or
+                 self.store.viewport.is_dragging_split_in_magnifier or
+                 self.store.viewport.is_dragging_any_slider)):
+            if self.main_controller:
+                self.main_controller.stop_interactive_movement.emit()
+
+    def handle_wheel_scroll(self, event: QWheelEvent):
+        vp = self.store.viewport
+        rect = vp.image_display_rect_on_label
+
+        delta = event.angleDelta().y()
+        if abs(delta) < 1:
+            return
+
+        cursor_pos = event.position()
+
+        if rect.width() > 0 and rect.height() > 0:
+            raw_rel_x = (cursor_pos.x() - rect.left()) / float(rect.width())
+            raw_rel_y = (cursor_pos.y() - rect.top()) / float(rect.height())
         else:
-            top_edge = mag_center.y() - mag_size / 2.0
 
-            rel_pos = (cursor_pos.y() - top_edge) / mag_size if mag_size > 0 else 0.5
-            self.app_state.magnifier_internal_split = max(0.0, min(1.0, rel_pos))
+            label_size = self.parent().get_current_label_dimensions() if self.parent() else (1, 1)
+            raw_rel_x = cursor_pos.x() / float(label_size[0])
+            raw_rel_y = cursor_pos.y() / float(label_size[1])
 
-        if hasattr(self.main_controller, 'presenter') and self.main_controller.presenter:
-            self.main_controller.presenter.main_window_app.schedule_update()
+        modifiers = event.modifiers()
+        sync_scroll = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
 
+        if sync_scroll:
+            if self.main_controller and self.main_controller.session_ctrl:
+                self.main_controller.session_ctrl.on_combobox_changed(1, -1, delta)
+                self.main_controller.session_ctrl.on_combobox_changed(2, -1, delta)
+                event.accept()
+        else:
+
+            if vp.showing_single_image_mode != 0:
+                image_number = vp.showing_single_image_mode
+            else:
+                rel_pos = raw_rel_x if not vp.is_horizontal else raw_rel_y
+                image_number = 1 if rel_pos < vp.split_position_visual else 2
+
+            if self.main_controller and self.main_controller.session_ctrl:
+                self.main_controller.session_ctrl.on_combobox_changed(image_number, -1, delta)
+                event.accept()
