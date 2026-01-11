@@ -1,0 +1,177 @@
+/* --- Стили для VideoEditorDialog --- */
+
+#VideoEditorSettingsPanel {
+    background-color: transparent;
+    border: none;
+}
+
+/* Основной контейнер табов */
+#VideoEditorTabs {
+    background-color: transparent;
+    border: none;
+}
+
+/* Внутренняя область (Pane) */
+#VideoEditorTabs::pane {
+    border: 1px solid @separator.color;
+    border-radius: 8px;
+    background-color: @dialog.input.background;
+    top: -1px;
+}
+
+/* Заголовки вкладок (TabBar) */
+#VideoEditorTabs QTabBar {
+    background: transparent;
+    margin-left: 6px; /* СДВИГ ВПРАВО */
+}
+
+#VideoEditorTabs QTabBar::tab {
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    padding: 6px 14px;
+    margin-right: 2px;
+    color: @WindowText;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+
+#VideoEditorTabs QTabBar::tab:selected {
+    background-color: @dialog.input.background;
+    color: @accent;
+    border: 1px solid @separator.color;
+    border-bottom: 1px solid @dialog.input.background;
+    margin-bottom: -1px;
+}
+
+#VideoEditorTabs QTabBar::tab:hover:!selected {
+    background-color: @button.toggle.background.hover;
+}
+
+/* Внутренний контент вкладок (прозрачный, чтобы видеть фон pane) */
+#VideoEditorTabContent {
+    background-color: transparent;
+}
+
+/* Инпуты */
+#VideoEditorSettingsPanel CustomLineEdit {
+    background-color: @Window;
+    border: 1px solid @dialog.border;
+    border-radius: 6px;
+    padding: 4px;
+    min-height: 24px;
+}
+
+#VideoEditorSettingsPanel CustomLineEdit:focus {
+    border: 1px solid @accent;
+}
+
+#VideoEditorTabs QLineEdit {
+    background-color: @Window;
+    border: 1px solid @separator.color;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+/* Превью-панель */
+#VideoEditorPreviewLabel {
+    background-color: #0a0a0a;
+    border: 1px solid @separator.color;
+    border-radius: 8px;
+}
+
+/* FIX: Убираем серый фон у области таймлайна */
+#VideoEditorTimelineScrollArea,
+#VideoEditorTimelineScrollArea QWidget {
+    background-color: transparent;
+    border: none;
+    background: none;
+}
+
+/* Панель инструментов */
+#VideoEditorToolbar {
+    background-color: @AlternateBase;
+    border-top: 1px solid @separator.color;
+    border-bottom: 1px solid @separator.color;
+}
+
+/* Стили для кнопок в тулбаре видеоредактора */
+#VideoEditorToolbar ToggleIconButton,
+#VideoEditorToolbar SimpleIconButton {
+    background-color: @button.toggle.background.normal;
+    border: none;
+    border-radius: 6px;
+    padding: 0px;
+}
+
+#VideoEditorToolbar ToggleIconButton:hover,
+#VideoEditorToolbar SimpleIconButton:hover {
+    background-color: @button.toggle.background.hover;
+}
+
+#VideoEditorToolbar ToggleIconButton:pressed,
+#VideoEditorToolbar SimpleIconButton:pressed {
+    background-color: @button.toggle.background.pressed;
+}
+
+#VideoEditorToolbar ToggleIconButton:checked {
+    background-color: @button.toggle.background.checked;
+}
+
+#VideoEditorToolbar ToggleIconButton:checked:hover {
+    background-color: @button.toggle.background.checked.hover;
+}
+
+/* Стили для неактивных кнопок в видеоредакторе */
+#VideoEditorToolbar ToggleIconButton:disabled,
+#VideoEditorToolbar SimpleIconButton:disabled {
+    background-color: transparent;
+    opacity: 0.4;
+}
+
+/* --- Стили для кнопки Lock Ratio --- */
+#btnLockRatio {
+    background-color: @button.toggle.background.normal;
+    border: none;
+    border-radius: 6px;
+}
+
+#btnLockRatio:hover {
+    background-color: @button.toggle.background.hover;
+}
+
+#btnLockRatio:pressed {
+    background-color: @button.toggle.background.pressed;
+}
+
+#btnLockRatio:checked {
+    background-color: @button.toggle.background.checked;
+}
+
+#btnLockRatio:checked:hover {
+    background-color: @button.toggle.background.checked.hover;
+}
+
+/* --- Стили для кнопки Fit Content (Crop) --- */
+#btnFitContent {
+    background-color: @button.toggle.background.normal;
+    border: none;
+    border-radius: 6px;
+}
+
+#btnFitContent:hover {
+    background-color: @button.toggle.background.hover;
+}
+
+#btnFitContent:pressed {
+    background-color: @button.toggle.background.pressed;
+}
+
+#btnFitContent:checked {
+    background-color: @button.toggle.background.checked;
+}
+
+#btnFitContent:checked:hover {
+    background-color: @button.toggle.background.checked.hover;
+}
+

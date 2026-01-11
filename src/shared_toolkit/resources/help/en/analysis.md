@@ -14,3 +14,5 @@ Before using the analysis tools, you must first load a chat and click **"Calcula
 - **Left-click a month/year:** Zoom into that month/year.
 - **Right-click a day/month/year:** Toggle that entire period as **disabled** for export.
 - **Click the title (e.g., "August 2025"):** Zoom out to the parent level (e.g., to the year view).
+
+

@@ -1,15 +1,11 @@
-\
-\
-\
-\
+
 
 from enum import Enum
 from PyQt6.QtGui import QIcon
 
-from shared_toolkit.ui.services import get_icon_service
+from toolkit.services import get_icon_service
 
 class AppIcon(Enum):
-    """Иконки, используемые в Improve-ImgSLI."""
     SETTINGS = "settings.svg"
     SAVE = "save_icon.svg"
     QUICK_SAVE = "quick_save.svg"
@@ -32,15 +28,24 @@ class AppIcon(Enum):
     REMOVE = "remove.svg"
     CHECK = "check.svg"
 
+    RECORD = "record.svg"
+    STOP = "stop.svg"
+    PAUSE = "pause.svg"
+    PLAY = "play.svg"
+    EXPORT_VIDEO = "video.svg"
+    VIDEO_EDIT = "edit_video.svg"
+    UNDO = "undo.svg"
+    REDO = "redo.svg"
+    SCISSORS = "scissors.svg"
+    CROP_IN = "crop_in.svg"
+    CROP_OUT = "crop_out.svg"
+
+    LINK = "link.svg"
+    UNLINK = "unlink.svg"
+    MAGNIFIER_GUIDES = "laser.svg"
+    CAPTURE_AREA_COLOR = "circle_outline.svg"
+    MAGNIFIER_BORDER_COLOR = "magnifier.svg"
+
 def get_app_icon(icon: AppIcon) -> QIcon:
-    """
-    Получить иконку приложения используя общий IconService.
-
-    Args:
-        icon: Enum иконки
-
-    Returns:
-        QIcon: Обработанная иконка
-    """
     service = get_icon_service("Improve-ImgSLI")
     return service.get_icon(icon.value)

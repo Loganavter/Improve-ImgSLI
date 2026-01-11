@@ -1,4 +1,3 @@
-import logging
 import sys
 from pathlib import Path
 from typing import Callable, Tuple, Union
@@ -6,25 +5,21 @@ from typing import Callable, Tuple, Union
 from PIL import Image, ImageFont
 from PyQt6.QtCore import QPoint, QPointF, QRect
 
-from core.app_state import AppState
-from core.constants import AppConstants
+from core.store import Store
 
-logger = logging.getLogger("ImproveImgSLI")
-
-CAPTURE_THICKNESS_FACTOR = 0.1
 MIN_CAPTURE_THICKNESS = 2.0
-MAX_CAPTURE_THICKNESS = 8.0
 
 def resource_path(relative_path: str) -> str:
     try:
         base_path = Path(sys._MEIPASS)
     except Exception:
-        base_path = Path(__file__).resolve().parent.parent
+
+        current_file = Path(__file__).resolve()
+        base_path = current_file.parent.parent
     return (base_path / relative_path).as_posix()
 
 FontType = Union[ImageFont.FreeTypeFont, ImageFont.ImageFont]
 GetSizeFuncType = Callable[[str, FontType], Tuple[int, int]]
-TRUNCATE_TEXT_DEBUG_VERBOSE = False
 
 def _find_longest_prefix(
     text_to_fit: str,
@@ -131,7 +126,7 @@ def get_scaled_pixmap_dimensions(
     return scaled_w, scaled_h
 
 def get_magnifier_drawing_coords(
-    app_state: AppState,
+    store: Store,
     drawing_width: int,
     drawing_height: int,
     container_width: int | None = None,
@@ -144,20 +139,16 @@ def get_magnifier_drawing_coords(
     int,
     QRect,
 ]:
+
     empty_result = (None, None, None, 0, 0, QRect())
 
-    if not all([
-        app_state.image1, app_state.image2
-    ]):
-        return empty_result
-
-    full_res_img1 = app_state.full_res_image1 or app_state.original_image1
-    full_res_img2 = app_state.full_res_image2 or app_state.original_image2
+    full_res_img1 = store.document.full_res_image1 or store.document.original_image1
+    full_res_img2 = store.document.full_res_image2 or store.document.original_image2
 
     if not full_res_img1 or not full_res_img2:
         return empty_result
 
-    unified_width, unified_height = app_state.image1.size
+    unified_width, unified_height = drawing_width, drawing_height
     full1_width, full1_height = full_res_img1.size
     full2_width, full2_height = full_res_img2.size
 
@@ -168,24 +159,29 @@ def get_magnifier_drawing_coords(
     ]):
         return empty_result
 
-    capture_center_full1_x = app_state.capture_position_relative.x() * full1_width
-    capture_center_full1_y = app_state.capture_position_relative.y() * full1_height
-
-    capture_center_full2_x = app_state.capture_position_relative.x() * full2_width
-    capture_center_full2_y = app_state.capture_position_relative.y() * full2_height
-
     unified_ref_dim = min(unified_width, unified_height)
-    capture_size_on_unified = app_state.capture_size_relative * unified_ref_dim
+    capture_size_on_unified = store.viewport.capture_size_relative * unified_ref_dim
 
     drawing_ref_dim = max(1, min(drawing_width, drawing_height))
-    thickness_display = max(int(MIN_CAPTURE_THICKNESS), int(round(drawing_ref_dim * 0.003)))
-    unified_ref_dim = min(unified_width, unified_height)
-    thickness_on_unified = int(round(thickness_display * (unified_ref_dim / drawing_ref_dim)))
-    thickness_on_unified = max(1, thickness_on_unified)
+    thickness_on_unified = max(int(MIN_CAPTURE_THICKNESS), int(round(drawing_ref_dim * 0.003)))
 
     inner_capture_size_on_unified = capture_size_on_unified - thickness_on_unified
     if inner_capture_size_on_unified <= 0:
         inner_capture_size_on_unified = max(1, int(round(capture_size_on_unified - thickness_on_unified))) or 1
+
+    radius_rel_x = (capture_size_on_unified / 2.0) / unified_width if unified_width > 0 else 0.0
+    radius_rel_y = (capture_size_on_unified / 2.0) / unified_height if unified_height > 0 else 0.0
+
+    raw_pos = store.viewport.capture_position_relative
+
+    eff_rel_x = max(radius_rel_x, min(raw_pos.x(), 1.0 - radius_rel_x))
+    eff_rel_y = max(radius_rel_y, min(raw_pos.y(), 1.0 - radius_rel_y))
+
+    capture_center_full1_x = eff_rel_x * full1_width
+    capture_center_full1_y = eff_rel_y * full1_height
+
+    capture_center_full2_x = eff_rel_x * full2_width
+    capture_center_full2_y = eff_rel_y * full2_height
 
     capture_frac_w = inner_capture_size_on_unified / unified_width
     capture_frac_h = inner_capture_size_on_unified / unified_height
@@ -205,130 +201,94 @@ def get_magnifier_drawing_coords(
     left2 = int(round(capture_center_full2_x - crop_width2 / 2.0))
     top2 = int(round(capture_center_full2_y - crop_height2 / 2.0))
 
-    crop_box1 = (
-        left1,
-        top1,
-        left1 + crop_width1,
-        top1 + crop_height1,
-    )
-    crop_box2 = (
-        left2,
-        top2,
-        left2 + crop_width2,
-        top2 + crop_height2,
-    )
+    crop_box1 = (left1, top1, left1 + crop_width1, top1 + crop_height1)
+    crop_box2 = (left2, top2, left2 + crop_width2, top2 + crop_height2)
 
     magnifier_midpoint_on_image = QPoint()
     magnifier_bbox_on_image = QRect()
     magnifier_size_pixels = 0
     edge_spacing_pixels = 0
 
-    if app_state.use_magnifier:
+    if store.viewport.use_magnifier:
         target_max_dim_drawing = float(max(drawing_width, drawing_height))
-        magnifier_size_pixels = max(
-            10, int(round(app_state.magnifier_size_relative * target_max_dim_drawing))
-        )
+        magnifier_size_pixels = max(10, int(round(store.viewport.magnifier_size_relative * target_max_dim_drawing)))
+
         edge_spacing_pixels = max(
             0,
-            int(
-                round(
-                    app_state.magnifier_spacing_relative_visual * target_max_dim_drawing
-                )
-            ),
+            int(round(store.viewport.magnifier_spacing_relative_visual * target_max_dim_drawing))
         )
 
-        base_capture_pos_relative = (
-            app_state.frozen_capture_point_relative
-            if app_state.freeze_magnifier and app_state.frozen_capture_point_relative is not None
-            else app_state.capture_position_relative
-        )
+        if store.viewport.freeze_magnifier:
+            base_pos = store.viewport.frozen_capture_point_relative
+        else:
+            base_pos = QPointF(eff_rel_x, eff_rel_y)
 
-        capture_marker_center_on_screen = QPointF(
-            base_capture_pos_relative.x() * drawing_width,
-            base_capture_pos_relative.y() * drawing_height,
-        )
-        offset_relative = app_state.magnifier_offset_relative_visual
-        offset_pixels_x = offset_relative.x() * target_max_dim_drawing
-        offset_pixels_y = offset_relative.y() * target_max_dim_drawing
+        offset_visual = store.viewport.magnifier_offset_relative_visual
 
-        magnifier_midpoint_on_image = QPoint(
-            int(round(capture_marker_center_on_screen.x() + offset_pixels_x)),
-            int(round(capture_marker_center_on_screen.y() + offset_pixels_y)),
-        )
+        mid_x = int(round(base_pos.x() * drawing_width + offset_visual.x() * target_max_dim_drawing))
+        mid_y = int(round(base_pos.y() * drawing_height + offset_visual.y() * target_max_dim_drawing))
+        magnifier_midpoint_on_image = QPoint(mid_x, mid_y)
 
-        spacing_threshold = AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
-        spacing_small = app_state.magnifier_spacing_relative_visual < spacing_threshold
-        is_visual_diff = app_state.diff_mode in ('highlight', 'grayscale', 'ssim', 'edges')
-        both_halves = getattr(app_state, "magnifier_visible_left", True) and getattr(app_state, "magnifier_visible_right", True)
-        show_left = getattr(app_state, "magnifier_visible_left", True)
-        show_center = getattr(app_state, "magnifier_visible_center", True)
-        show_right = getattr(app_state, "magnifier_visible_right", True)
+        r = magnifier_size_pixels // 2
 
-        mid_x = magnifier_midpoint_on_image.x()
-        mid_y = magnifier_midpoint_on_image.y()
-        r = int(round(float(magnifier_size_pixels) / 2.0))
+        rect_center = QRect(mid_x - r, mid_y - r, magnifier_size_pixels, magnifier_size_pixels)
+        magnifier_bbox_on_image = rect_center
 
-        centers: list[tuple[int, int]] = []
+        is_visual_diff = store.viewport.diff_mode in ('highlight', 'grayscale', 'ssim', 'edges')
 
-        if is_visual_diff and not spacing_small:
+        if is_visual_diff:
+            show_left = getattr(store.viewport, "magnifier_visible_left", True)
+            show_right = getattr(store.viewport, "magnifier_visible_right", True)
 
-            offset = max(magnifier_size_pixels, magnifier_size_pixels + edge_spacing_pixels)
-            if not app_state.is_horizontal:
-                if show_left: centers.append((mid_x - offset, mid_y))
-                if show_center: centers.append((mid_x, mid_y))
-                if show_right: centers.append((mid_x + offset, mid_y))
-            else:
-                if show_left: centers.append((mid_x, mid_y - offset))
-                if show_center: centers.append((mid_x, mid_y))
-                if show_right: centers.append((mid_x, mid_y + offset))
+            if store.viewport.is_magnifier_combined:
 
-        elif is_visual_diff and spacing_small:
+                shift = magnifier_size_pixels + 8
+                if not store.viewport.is_horizontal:
 
-            if show_center and both_halves:
-                combined_offset = magnifier_size_pixels + 8
-                centers.append((mid_x, mid_y))
-                if not app_state.is_horizontal:
-                    centers.append((mid_x, mid_y + combined_offset))
+                    rect_combined = QRect(mid_x - r, mid_y + shift - r, magnifier_size_pixels, magnifier_size_pixels)
                 else:
-                    centers.append((mid_x + combined_offset, mid_y))
+
+                    rect_combined = QRect(mid_x + shift - r, mid_y - r, magnifier_size_pixels, magnifier_size_pixels)
+
+                magnifier_bbox_on_image = rect_center.united(rect_combined)
+
             else:
+                spacing_f = float(edge_spacing_pixels)
+                offset_dist = max(magnifier_size_pixels, magnifier_size_pixels + spacing_f)
 
-                offset = max(magnifier_size_pixels, magnifier_size_pixels + edge_spacing_pixels)
-                if show_center: centers.append((mid_x, mid_y))
-                if not app_state.is_horizontal:
-                    if show_left: centers.append((mid_x - offset, mid_y))
-                    if show_right: centers.append((mid_x + offset, mid_y))
+                if not store.viewport.is_horizontal:
+
+                    center_left = QPoint(int(round(mid_x - offset_dist)), int(round(mid_y)))
+                    center_right = QPoint(int(round(mid_x + offset_dist)), int(round(mid_y)))
                 else:
-                    if show_left: centers.append((mid_x, mid_y - offset))
-                    if show_right: centers.append((mid_x, mid_y + offset))
 
-        elif not is_visual_diff and spacing_small and both_halves:
+                    center_left = QPoint(int(round(mid_x)), int(round(mid_y - offset_dist)))
+                    center_right = QPoint(int(round(mid_x)), int(round(mid_y + offset_dist)))
 
-            centers.append((mid_x, mid_y))
+                rect_left = QRect(center_left.x() - r, center_left.y() - r, magnifier_size_pixels, magnifier_size_pixels)
+                rect_right = QRect(center_right.x() - r, center_right.y() - r, magnifier_size_pixels, magnifier_size_pixels)
+
+                if show_left:
+                    magnifier_bbox_on_image = magnifier_bbox_on_image.united(rect_left)
+                if show_right:
+                    magnifier_bbox_on_image = magnifier_bbox_on_image.united(rect_right)
 
         else:
+            if store.viewport.is_magnifier_combined:
 
-            offset_two = int(round(r + (edge_spacing_pixels / 2.0)))
-            if not app_state.magnifier_is_horizontal:
-                if show_left: centers.append((mid_x - offset_two, mid_y))
-                if show_right: centers.append((mid_x + offset_two, mid_y))
+                magnifier_bbox_on_image = rect_center
             else:
-                if show_left: centers.append((mid_x, mid_y - offset_two))
-                if show_right: centers.append((mid_x, mid_y + offset_two))
 
-            if len(centers) == 0:
-                centers.append((mid_x, mid_y))
+                dist = r + int(round(edge_spacing_pixels / 2.0))
 
-        if centers:
-            if len(centers) == 1:
-                cx, cy = centers[0]
-                magnifier_bbox_on_image = QRect(int(cx - r), int(cy - r), magnifier_size_pixels, magnifier_size_pixels)
-            else:
-                left_edge = min(cx - r for cx, _ in centers)
-                right_edge = max(cx + r for cx, _ in centers)
-                top_edge = min(cy - r for _, cy in centers)
-                bottom_edge = max(cy + r for _, cy in centers)
-                magnifier_bbox_on_image = QRect(int(left_edge), int(top_edge), int(right_edge - left_edge), int(bottom_edge - top_edge))
+                if not store.viewport.magnifier_is_horizontal:
+                    rect1 = QRect(mid_x - dist - r, mid_y - r, magnifier_size_pixels, magnifier_size_pixels)
+                    rect2 = QRect(mid_x + dist - r, mid_y - r, magnifier_size_pixels, magnifier_size_pixels)
+                else:
+                    rect1 = QRect(mid_x - r, mid_y - dist - r, magnifier_size_pixels, magnifier_size_pixels)
+                    rect2 = QRect(mid_x - r, mid_y + dist - r, magnifier_size_pixels, magnifier_size_pixels)
+
+                magnifier_bbox_on_image = rect1.united(rect2)
 
     return (
         crop_box1,

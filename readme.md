@@ -54,11 +54,12 @@
 ## 🚀 Key Features
 
 - 🖼️ Comparison & Viewing: vertical/horizontal split, synced pan/zoom, quick preview with Space + mouse buttons.
-- 🔍 Magnifier: dual or split circle, multiple interpolation modes (Nearest, Bilinear, Bicubic, Lanczos), precise WASD/QE controls, freeze position.
+- 🔍 Magnifier: dual or split circle, multiple interpolation modes (Nearest, Bilinear, Bicubic, Lanczos), precise WASD/QE controls, freeze position, "laser" guides.
 - 🗂️ Workflow & file management: drag-n-drop, reorder across left/right lists, short/long press actions, ratings, filename editing, clipboard paste (Ctrl+V).
+- 🎥 Video Recording & Editing: record comparison sessions, basic trimming, and export to popular formats (MP4, WebM, etc.).
 - 🎨 Overlays & UI: Fully custom interface with customizable comparison and magnifier dividers (visibility, color, thickness), custom icon buttons, light/dark themes, and custom UI font.
-- 📤 Export: WYSIWYG export of the current composite (splitter, magnifier, text), multiple formats (PNG/JPEG/WEBP/BMP/TIFF), quality controls, text overlays with styling.
-- ⚙️ UX & settings: persistent window/layout, multilingual UI (EN/RU/zh/pt_BR), robust launcher for venv, debug, profiling.
+- 📤 Export: WYSIWYG export of the current composite (splitter, magnifier, text), multiple formats (PNG/JPEG/WEBP/BMP/TIFF/JXL), quality controls, text overlays with styling.
+- ⚙️ UX & settings: persistent window/layout, multilingual UI (EN/RU/zh/pt_BR), auto-cropping of black borders, robust launcher for venv, debug, profiling.
 
 ---
 

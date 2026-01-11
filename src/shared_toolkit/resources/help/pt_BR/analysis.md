@@ -14,3 +14,5 @@ Antes de usar as ferramentas de análise, você deve primeiro carregar um chat e
 - **Clique esquerdo em um mês/ano:** Ampliar para aquele mês/ano.
 - **Clique direito em um dia/mês/ano:** Alternar todo aquele período como **desabilitado** para exportação.
 - **Clique no título (ex., "Agosto 2025"):** Diminuir para o nível pai (ex., para a visualização do ano).
+
+

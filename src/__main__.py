@@ -25,7 +25,7 @@ from PyQt6.QtCore import QThreadPool
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
-from core.settings import SettingsManager
+from plugins.settings.manager import SettingsManager
 from ui.main_window import MainWindow
 
 def main():
@@ -56,10 +56,8 @@ def main():
 
         if args.enable_logging:
             settings_manager._save_setting("debug_mode_enabled", True)
-            print("Debug logging has been permanently enabled.")
         elif args.disable_logging:
             settings_manager._save_setting("debug_mode_enabled", False)
-            print("Debug logging has been permanently disabled.")
         sys.exit(0)
 
     app = QApplication(sys.argv)
@@ -74,7 +72,11 @@ def main():
     window.show()
 
     def on_quit():
-        if not QThreadPool.globalInstance().waitForDone(3000):
+
+        QThreadPool.globalInstance().clear()
+
+        if not QThreadPool.globalInstance().waitForDone(2000):
+
             QThreadPool.globalInstance().clear()
 
     app.aboutToQuit.connect(on_quit)

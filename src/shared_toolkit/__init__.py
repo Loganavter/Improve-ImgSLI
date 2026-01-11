@@ -1,13 +1,7 @@
-\
-\
-\
-\
-\
-\
-\
 
-from .utils import get_unique_filepath, resource_path
-from .ui.widgets.atomic import (
+
+from shared_toolkit.utils import get_unique_filepath, resource_path
+from toolkit.widgets.atomic import (
     FluentCheckBox,
     CustomButton,
     CustomLineEdit,
@@ -23,10 +17,11 @@ from .ui.widgets.atomic import (
     GroupTitleLabel,
     CustomGroupWidget,
     CustomGroupBuilder,
-    MinimalistScrollBar
+    MinimalistScrollBar,
+    OverlayScrollArea
 )
-from .ui.managers import ThemeManager
-from .ui.services import IconService, get_icon_by_name, get_icon_service
+from toolkit.managers import ThemeManager
+from toolkit.services import IconService, get_icon_by_name, get_icon_service
 
 __version__ = "1.1.0"
 __author__ = "Loganavter"
@@ -50,8 +45,10 @@ __all__ = [
     'CustomGroupWidget',
     'CustomGroupBuilder',
     'MinimalistScrollBar',
+    'OverlayScrollArea',
     'ThemeManager',
     'IconService',
     'get_icon_by_name',
     'get_icon_service'
 ]
+

@@ -3,15 +3,7 @@ import os
 import sys
 
 def get_log_directory(app_name: str):
-    """
-    Get the appropriate log directory for the application based on the platform.
 
-    Args:
-        app_name: Name of the application (e.g., "Improve-ImgSLI", "Tkonverter")
-
-    Returns:
-        str: Path to the log directory
-    """
     logger = logging.getLogger(app_name)
 
     if sys.platform == "win32":
@@ -33,14 +25,6 @@ def get_log_directory(app_name: str):
         return os.path.join(xdg_data_home, app_name)
 
 def setup_logging(app_name: str, debug_enabled: bool = False, debug_env_var: str = None):
-    """
-    Setup logging for the application.
-
-    Args:
-        app_name: Name of the application (e.g., "Improve-ImgSLI", "Tkonverter")
-        debug_enabled: Whether to enable debug logging
-        debug_env_var: Environment variable name to check for debug mode (e.g., "IMPROVE_DEBUG", "DEBUG")
-    """
     logger = logging.getLogger(app_name)
 
     if debug_env_var:
@@ -88,13 +72,6 @@ def setup_logging(app_name: str, debug_enabled: bool = False, debug_env_var: str
         )
 
 def setup_simple_logging(app_name: str, level: int = logging.WARNING):
-    """
-    Setup simple logging for applications that don't need file logging.
-
-    Args:
-        app_name: Name of the application
-        level: Logging level (default: WARNING)
-    """
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
 
@@ -117,3 +94,4 @@ def setup_simple_logging(app_name: str, level: int = logging.WARNING):
 
     logging.getLogger("markdown").setLevel(logging.WARNING)
     logging.getLogger("markdown.extensions").setLevel(logging.WARNING)
+
