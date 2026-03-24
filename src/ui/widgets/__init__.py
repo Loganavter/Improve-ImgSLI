@@ -1,5 +1,4 @@
-
-from toolkit.widgets.atomic import (
+from shared_toolkit.ui.widgets.atomic import (
     BodyLabel,
     CaptionLabel,
     FluentCheckBox,
@@ -7,3 +6,6 @@ from toolkit.widgets.atomic import (
     FluentSlider,
     FluentSwitch,
 )
+from ui.widgets.video_session_widget import VideoSessionWidget
+
+__all__ = ["VideoSessionWidget"]

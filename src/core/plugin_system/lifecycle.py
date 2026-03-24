@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Iterable
 
+from core.events import PluginEvent
 from core.plugin_system.event_bus import EventBus
 from core.plugin_system.plugin import Plugin, PluginState
-from core.events import PluginEvent
 
 logger = logging.getLogger("ImproveImgSLI.plugin.lifecycle")
 
@@ -32,7 +32,9 @@ class PluginLifecycleManager:
 
     def initialize_all(self, context: Any) -> None:
         for name, plugin in self._plugins.items():
-            self._safe_call(plugin, "initialize", context, name, PluginState.INITIALIZED)
+            self._safe_call(
+                plugin, "initialize", context, name, PluginState.INITIALIZED
+            )
 
     def activate_all(self) -> None:
         for name, plugin in self._plugins.items():
@@ -78,7 +80,9 @@ class PluginLifecycleManager:
             else:
                 method()
         except Exception as err:  # noqa: BLE001 (logging of exception is intentional)
-            logger.exception("Plugin %s failed during %s: %s", plugin_name, method_name, err)
+            logger.exception(
+                "Plugin %s failed during %s: %s", plugin_name, method_name, err
+            )
             plugin._set_state(PluginState.ERROR)
             self._emit_event("error", plugin_name, err)
         else:
@@ -89,7 +93,9 @@ class PluginLifecycleManager:
         meta = getattr(plugin, "_plugin_meta", {})
         return meta.get("name", plugin.__class__.__name__)
 
-    def _emit_event(self, stage: str, plugin_name: str, payload: Any | None = None) -> None:
+    def _emit_event(
+        self, stage: str, plugin_name: str, payload: Any | None = None
+    ) -> None:
         if not self._event_bus:
             return
 
@@ -98,4 +104,3 @@ class PluginLifecycleManager:
 
     def plugin_name(self, plugin: Plugin) -> str:
         return self._plugin_name(plugin)
-

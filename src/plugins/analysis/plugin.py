@@ -3,18 +3,18 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from core.plugin_system import Plugin, plugin
-from core.plugin_system.interfaces import IControllablePlugin
-from core.plugin_system.ui_integration import get_plugin_name
 from core.events import (
     AnalysisMetricsUpdatedEvent,
     AnalysisRequestMetricsEvent,
     AnalysisSetChannelViewModeEvent,
-    AnalysisToggleDiffModeEvent,
     AnalysisSetDiffModeEvent,
+    AnalysisToggleDiffModeEvent,
 )
-from plugins.analysis.services.metrics import MetricsService
+from core.plugin_system import Plugin, plugin
+from core.plugin_system.interfaces import IControllablePlugin
+from core.plugin_system.ui_integration import get_plugin_name
 from plugins.analysis.controller import AnalysisController
+from plugins.analysis.services.metrics import MetricsService
 from plugins.analysis.state import AnalysisState
 
 class _UIUpdateChannel:
@@ -27,7 +27,9 @@ class _UIUpdateChannel:
 
 class _MainControllerProxy(SimpleNamespace):
     def __init__(self, thread_pool: Any | None, event_bus: Any | None):
-        super().__init__(thread_pool=thread_pool, ui_update_requested=_UIUpdateChannel(event_bus))
+        super().__init__(
+            thread_pool=thread_pool, ui_update_requested=_UIUpdateChannel(event_bus)
+        )
 
 @plugin(name="analysis", version="1.0")
 class AnalysisPlugin(Plugin, IControllablePlugin):
@@ -50,7 +52,9 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
 
         self.metrics_service = MetricsService(
             self.store,
-            _MainControllerProxy(thread_pool=self.thread_pool, event_bus=self.event_bus),
+            _MainControllerProxy(
+                thread_pool=self.thread_pool, event_bus=self.event_bus
+            ),
         )
         ui_registry = getattr(context, "plugin_ui_registry", None)
         if ui_registry and self.metrics_service:
@@ -61,16 +65,27 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
             )
 
         if self.store and self.thread_pool:
-            self.controller = AnalysisController(self.store, self.thread_pool, self.metrics_service, self.event_bus)
+            self.controller = AnalysisController(
+                self.store, self.thread_pool, self.metrics_service, self.event_bus
+            )
 
         if self.event_bus:
 
-            self.event_bus.subscribe(AnalysisRequestMetricsEvent, self._on_metrics_requested_event)
+            self.event_bus.subscribe(
+                AnalysisRequestMetricsEvent, self._on_metrics_requested_event
+            )
 
             if self.controller:
-                self.event_bus.subscribe(AnalysisSetChannelViewModeEvent, self.controller.on_set_channel_view_mode)
-                self.event_bus.subscribe(AnalysisToggleDiffModeEvent, self.controller.on_toggle_diff_mode)
-                self.event_bus.subscribe(AnalysisSetDiffModeEvent, self.controller.on_set_diff_mode)
+                self.event_bus.subscribe(
+                    AnalysisSetChannelViewModeEvent,
+                    self.controller.on_set_channel_view_mode,
+                )
+                self.event_bus.subscribe(
+                    AnalysisToggleDiffModeEvent, self.controller.on_toggle_diff_mode
+                )
+                self.event_bus.subscribe(
+                    AnalysisSetDiffModeEvent, self.controller.on_set_diff_mode
+                )
 
     def _on_metrics_requested(self, payload: dict[str, Any] | None = None) -> None:
         calc_psnr = payload.get("psnr", True) if payload else True
@@ -82,7 +97,9 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
 
     def get_ui_components(self) -> dict[str, Any]:
         return {
-            "trigger_metrics": lambda psnr=True, ssim=True: self.metrics_service.calculate_metrics_async(psnr, ssim)
+            "trigger_metrics": lambda psnr=True, ssim=True: self.metrics_service.calculate_metrics_async(
+                psnr, ssim
+            )
         }
 
     def get_controller(self) -> AnalysisController | None:
@@ -95,4 +112,3 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
         if callable(target):
             return target(*args, **kwargs)
         raise AttributeError(f"Analysis controller has no command '{command}'")
-

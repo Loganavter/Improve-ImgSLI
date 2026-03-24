@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from shared_toolkit.workers import GenericWorker
-from resources.translations import tr
+
 from core.events import (
     CoreErrorOccurredEvent,
-    ExportToggleRecordingEvent,
-    ExportTogglePauseRecordingEvent,
     ExportExportRecordedVideoEvent,
     ExportOpenVideoEditorEvent,
     ExportPasteImageFromClipboardEvent,
     ExportQuickSaveComparisonEvent,
+    ExportTogglePauseRecordingEvent,
+    ExportToggleRecordingEvent,
 )
-import logging
+from resources.translations import tr
+from shared_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -42,115 +43,167 @@ class ExportController(QObject):
         self.clipboard_service = clipboard_service
         self.presenter = presenter
         self._toggle_recording_in_progress = False
+        self._recording_finalize_in_progress = False
+        self._pending_open_editor = False
         self.video_editor_plugin = video_editor_plugin
         self.main_controller = main_controller
         self.event_bus = event_bus
 
-    def _get_ui(self):
-        if self.presenter and hasattr(self.presenter, 'main_window_app'):
-            return getattr(self.presenter.main_window_app, 'ui', None)
-        if self.main_controller and hasattr(self.main_controller, 'presenter'):
-            return getattr(self.main_controller.presenter, 'ui', None)
-        return None
-
     def toggle_recording(self, checked: bool = None):
 
-        if self._toggle_recording_in_progress:
+        if self._toggle_recording_in_progress or self._recording_finalize_in_progress:
             return
         self._toggle_recording_in_progress = True
 
         try:
-            ui = self._get_ui()
             if self.recorder.is_recording:
-                self.recorder.stop()
-
-                try:
-                    snapshots_count = 0
-                    if hasattr(self.recorder, "snapshots") and self.recorder.snapshots:
-                        snapshots_count = len(self.recorder.snapshots)
-                except Exception:
-                    pass
-                if ui and hasattr(ui, 'btn_record'):
-
-                    ui.btn_record.blockSignals(True)
-                    ui.btn_record.setChecked(False)
-                    ui.btn_record.blockSignals(False)
-
-                    ui.btn_pause.setChecked(False)
-                    ui.btn_pause.setEnabled(False)
+                self.recorder.stop(finalize=False)
+                if self.presenter and hasattr(self.presenter, "sync_recording_controls"):
+                    self.presenter.sync_recording_controls(
+                        is_recording=False, is_paused=False, pause_enabled=False
+                    )
+                self._finalize_recording_async()
             else:
                 self.recorder.start()
 
-                if ui and hasattr(ui, 'btn_record'):
-
-                    ui.btn_record.blockSignals(True)
-                    ui.btn_record.setChecked(True)
-                    ui.btn_record.blockSignals(False)
-
-                    ui.btn_pause.setEnabled(True)
-                    ui.btn_pause.setChecked(False)
+                if self.presenter and hasattr(self.presenter, "sync_recording_controls"):
+                    self.presenter.sync_recording_controls(
+                        is_recording=True, is_paused=False, pause_enabled=True
+                    )
+                self._toggle_recording_in_progress = False
         finally:
-            self._toggle_recording_in_progress = False
+            if self.recorder.is_recording:
+                self._toggle_recording_in_progress = False
 
     def toggle_pause_recording(self, checked: bool = None):
-
-        ui = self._get_ui()
         if not self.recorder.is_recording:
-            if ui and hasattr(ui, 'btn_pause'):
-                ui.btn_pause.setChecked(False)
+            if self.presenter and hasattr(self.presenter, "sync_recording_controls"):
+                self.presenter.sync_recording_controls(
+                    is_recording=False, is_paused=False, pause_enabled=False
+                )
             return
 
         is_paused = self.recorder.toggle_pause()
 
-        if ui and hasattr(ui, 'btn_pause'):
-            ui.btn_pause.setChecked(is_paused)
+        if self.presenter and hasattr(self.presenter, "sync_recording_controls"):
+            self.presenter.sync_recording_controls(
+                is_recording=True, is_paused=is_paused, pause_enabled=True
+            )
 
     def export_recorded_video(self, resolution=(1920, 1080), fps=60):
-        if not self.recorder.snapshots:
+        if not self.recorder.has_recording_data() or self._recording_finalize_in_progress:
             return
 
         if self.event_bus:
-            self.event_bus.emit(CoreErrorOccurredEvent(tr("msg.starting_video_export_please_wait", self.store.settings.current_language)))
+            self.event_bus.emit(
+                CoreErrorOccurredEvent(
+                    tr(
+                        "msg.starting_video_export_please_wait",
+                        self.store.settings.current_language,
+                    )
+                )
+            )
         else:
-            self.error_occurred.emit(tr("msg.starting_video_export_please_wait", self.store.settings.current_language))
+            self.error_occurred.emit(
+                tr(
+                    "msg.starting_video_export_please_wait",
+                    self.store.settings.current_language,
+                )
+            )
 
-        worker = GenericWorker(self.video_exporter.export_recorded_video, resolution, fps)
+        worker = GenericWorker(
+            self.video_exporter.export_recorded_video, resolution, fps
+        )
 
-        worker.signals.result.connect(lambda path: logger.info(f"Export finished: {path}"))
+        worker.signals.result.connect(
+            lambda path: logger.info(f"Export finished: {path}")
+        )
         worker.signals.error.connect(lambda err: logger.error(f"Export failed: {err}"))
 
         self.thread_pool.start(worker)
 
     def open_video_editor(self, checked: bool = False):
-
-        if not self.recorder.snapshots:
+        if not self.recorder.has_recording_data():
             if self.event_bus:
-                self.event_bus.emit(CoreErrorOccurredEvent("No recording available to edit."))
+                self.event_bus.emit(
+                    CoreErrorOccurredEvent("No recording available to edit.")
+                )
             else:
                 self.error_occurred.emit("No recording available to edit.")
             return
 
         if self.recorder.is_recording:
+            self._pending_open_editor = True
             self.toggle_recording()
-
-        if self.video_editor_plugin:
-            snapshots_copy = list(self.recorder.snapshots)
-            main_window_app = getattr(self.presenter, "main_window_app", None)
-            self.video_editor_plugin.open_editor(snapshots_copy, self, main_window_app)
             return
 
-        from plugins.video_editor.dialog import VideoEditorDialog
+        if self._recording_finalize_in_progress:
+            self._pending_open_editor = True
+            return
 
-        snapshots_copy = list(self.recorder.snapshots)
+        if self.presenter and hasattr(self.presenter, "open_video_editor"):
+            self.presenter.open_video_editor(
+                self.recorder.recording, self, self.video_editor_plugin
+            )
+            return
 
-        dialog = VideoEditorDialog(snapshots_copy, self, self.presenter.main_window_app)
-        dialog.exec()
-
-    def export_video_from_editor(self, frames, fps, resolution=(1920, 1080), options=None):
         if self.event_bus:
-            self.event_bus.emit(CoreErrorOccurredEvent(tr("msg.starting_video_export_please_wait", self.store.settings.current_language)))
+            self.event_bus.emit(
+                CoreErrorOccurredEvent("Video editor is unavailable.")
+            )
         else:
-            self.error_occurred.emit(tr("msg.starting_video_export_please_wait", self.store.settings.current_language))
+            self.error_occurred.emit("Video editor is unavailable.")
+
+    def _finalize_recording_async(self) -> None:
+        if self._recording_finalize_in_progress:
+            return
+        self._recording_finalize_in_progress = True
+
+        worker = GenericWorker(self.recorder.finalize_recording)
+        worker.signals.result.connect(self._on_recording_finalized)
+        worker.signals.error.connect(self._on_recording_finalize_error)
+        worker.signals.finished.connect(self._on_recording_finalize_finished)
+        self.thread_pool.start(worker)
+
+    def _on_recording_finalized(self, _recording) -> None:
+        if (
+            self._pending_open_editor
+            and self.presenter
+            and hasattr(self.presenter, "open_video_editor")
+            and self.video_editor_plugin is not None
+        ):
+            self._pending_open_editor = False
+            self.presenter.open_video_editor(
+                self.recorder.recording, self, self.video_editor_plugin
+            )
+
+    def _on_recording_finalize_error(self, err: Any) -> None:
+        logger.error(f"Recording finalize failed: {err}")
+        self._pending_open_editor = False
+
+    def _on_recording_finalize_finished(self) -> None:
+        self._recording_finalize_in_progress = False
+        self._toggle_recording_in_progress = False
+
+    def export_video_from_editor(
+        self, frames, fps, resolution=(1920, 1080), options=None
+    ):
+        if self.event_bus:
+            self.event_bus.emit(
+                CoreErrorOccurredEvent(
+                    tr(
+                        "msg.starting_video_export_please_wait",
+                        self.store.settings.current_language,
+                    )
+                )
+            )
+        else:
+            self.error_occurred.emit(
+                tr(
+                    "msg.starting_video_export_please_wait",
+                    self.store.settings.current_language,
+                )
+            )
 
         w, h = resolution
         w = w if w % 2 == 0 else w - 1
@@ -167,39 +220,65 @@ class ExportController(QObject):
             )
 
         worker = GenericWorker(export_task)
+        export_completed = {"signaled": False}
 
-        if hasattr(self, "main_controller") and hasattr(self.main_controller, "video_export_progress"):
-            worker.signals.progress.connect(self.main_controller.video_export_progress.emit)
+        if hasattr(self, "main_controller") and hasattr(
+            self.main_controller, "video_export_progress"
+        ):
+            worker.signals.progress.connect(
+                self.main_controller.video_export_progress.emit
+            )
             worker.kwargs["progress_callback"] = worker.signals.progress
 
         def on_success(path):
+            export_completed["signaled"] = True
             if path:
                 logger.info(f"Video export finished: {path}")
 
-                if hasattr(self, "main_controller") and hasattr(self.main_controller, "video_export_finished"):
+                if hasattr(self, "main_controller") and hasattr(
+                    self.main_controller, "video_export_finished"
+                ):
                     self.main_controller.video_export_finished.emit(True)
 
-                if self.presenter and hasattr(self.presenter.main_window_app, "notify_system"):
+                if self.presenter and hasattr(
+                    self.presenter.main_window_app, "notify_system"
+                ):
                     self.presenter.main_window_app.notify_system(
                         "Video Exported",
                         f"Saved to: {path}",
                         image_path=None,
                     )
             else:
-                if hasattr(self, "main_controller") and hasattr(self.main_controller, "video_export_finished"):
+                if hasattr(self, "main_controller") and hasattr(
+                    self.main_controller, "video_export_finished"
+                ):
                     self.main_controller.video_export_finished.emit(False)
 
         def on_error(err):
+            export_completed["signaled"] = True
             logger.error(f"Video export failed: {err}")
             if self.event_bus:
-                self.event_bus.emit(CoreErrorOccurredEvent(f"Video export failed: {err}"))
+                self.event_bus.emit(
+                    CoreErrorOccurredEvent(f"Video export failed: {err}")
+                )
             else:
                 self.error_occurred.emit(f"Video export failed: {err}")
-            if hasattr(self, "main_controller") and hasattr(self.main_controller, "video_export_finished"):
+            if hasattr(self, "main_controller") and hasattr(
+                self.main_controller, "video_export_finished"
+            ):
+                self.main_controller.video_export_finished.emit(False)
+
+        def on_finished():
+            if (
+                not export_completed["signaled"]
+                and hasattr(self, "main_controller")
+                and hasattr(self.main_controller, "video_export_finished")
+            ):
                 self.main_controller.video_export_finished.emit(False)
 
         worker.signals.result.connect(on_success)
         worker.signals.error.connect(on_error)
+        worker.signals.finished.connect(on_finished)
 
         self.thread_pool.start(worker)
 
@@ -214,7 +293,9 @@ class ExportController(QObject):
                 logger.error("quick_save_comparison: presenter is None")
                 return False
             if not hasattr(presenter, "quick_save"):
-                logger.error("quick_save_comparison: presenter has no quick_save method")
+                logger.error(
+                    "quick_save_comparison: presenter has no quick_save method"
+                )
                 return False
             logger.info("quick_save_comparison: calling presenter.quick_save()")
 
@@ -241,4 +322,3 @@ class ExportController(QObject):
 
     def on_quick_save_comparison(self, event: ExportQuickSaveComparisonEvent):
         self.quick_save_comparison()
-

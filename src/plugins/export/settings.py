@@ -10,4 +10,3 @@ class ExportSettings:
     default_format: str = "PNG"
     quality: int = 95
     fill_background: bool = False
-

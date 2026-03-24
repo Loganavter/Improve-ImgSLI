@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-from typing import Any, Iterable
-
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     from core.bootstrap import ApplicationContext
+
 from core.plugin_system.decorators import get_registered_plugins
 from core.plugin_system.plugin import Plugin
 
@@ -43,4 +42,3 @@ class PluginRegistry:
 
     def all_plugins(self) -> Iterable[Plugin]:
         return tuple(self._plugins.values())
-

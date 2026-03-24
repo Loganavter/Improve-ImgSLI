@@ -1,20 +1,25 @@
-
 import logging
 import os
 import re
 import threading
-from PyQt6.QtCore import QObject
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QMessageBox, QDialog
+
 import PIL.Image
+from PyQt6.QtCore import QObject
+from PyQt6.QtWidgets import QDialog, QMessageBox
+
+from domain.types import Color
 
 from core.store import Store
-from shared.image_processing.pipeline import RenderingPipeline, create_render_context_from_store
-from shared.image_processing.resize import resize_images_processor
+from plugins.export.models import ExportDialogState
 from plugins.export.services.image_export import ExportService
+from resources.translations import tr
+from shared.image_processing.pipeline import (
+    RenderingPipeline,
+    create_render_context_from_store,
+)
+from shared.image_processing.resize import resize_images_processor
 from shared_toolkit.workers import GenericWorker
 from utils.resource_loader import get_magnifier_drawing_coords
-from resources.translations import tr
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -27,7 +32,7 @@ class ExportPresenter(QObject):
         ui_manager,
         main_window_app,
         font_path_absolute,
-        parent=None
+        parent=None,
     ):
         super().__init__(parent)
         self.store = store
@@ -46,15 +51,47 @@ class ExportPresenter(QObject):
     def _tr(self, text):
         return tr(text, self.store.settings.current_language)
 
+    def sync_recording_controls(
+        self, is_recording: bool, is_paused: bool = False, pause_enabled: bool = False
+    ):
+        ui = getattr(self.main_window_app, "ui", None)
+        if ui is None:
+            return
+
+        if hasattr(ui, "btn_record"):
+            ui.btn_record.blockSignals(True)
+            ui.btn_record.setChecked(is_recording)
+            ui.btn_record.blockSignals(False)
+
+        if hasattr(ui, "btn_pause"):
+            ui.btn_pause.setEnabled(pause_enabled)
+            ui.btn_pause.setChecked(is_paused)
+
+    def open_video_editor(self, snapshots, export_controller, video_editor_plugin):
+        if not snapshots or export_controller is None or video_editor_plugin is None:
+            self.ui_manager.show_non_modal_message(
+                icon=QMessageBox.Icon.Warning,
+                title=self._tr("common.warning"),
+                text="Video editor is unavailable.",
+            )
+            return
+
+        video_editor_plugin.open_editor(
+            snapshots, export_controller, self.main_window_app
+        )
+
     def _get_os_default_downloads(self):
 
-        if hasattr(self.main_window_app, '_get_os_default_downloads'):
+        if hasattr(self.main_window_app, "_get_os_default_downloads"):
             return self.main_window_app._get_os_default_downloads()
 
         from pathlib import Path
+
         return str(Path.home() / "Downloads")
 
-    def _get_unique_filepath(self, directory: str, base_name: str, extension: str) -> str:
+    def _get_unique_filepath(
+        self, directory: str, base_name: str, extension: str
+    ) -> str:
         full_path = os.path.join(directory, f"{base_name}{extension}")
         if not os.path.exists(full_path):
             return full_path
@@ -67,232 +104,88 @@ class ExportPresenter(QObject):
                 return new_path
             counter += 1
 
-    def _qcolor_from_tuple(self, color_tuple):
+    def _color_from_tuple(self, color_tuple):
         if color_tuple is None:
-            return QColor(255, 255, 255, 255)
-        return QColor(*color_tuple)
+            return Color(255, 255, 255, 255)
+        return Color(*color_tuple)
 
     def _default_bg_color(self):
-        return QColor(255, 255, 255, 255)
+        return Color(255, 255, 255, 255)
+
+    def _resolve_quick_save_output_dir(self) -> str:
+        settings = self.store.settings
+
+        if (
+            getattr(settings, "export_use_default_dir", True)
+            and getattr(settings, "export_default_dir", None)
+        ):
+            return settings.export_default_dir
+
+        favorite_dir = getattr(settings, "export_favorite_dir", None)
+        if favorite_dir:
+            return favorite_dir
+
+        default_dir = getattr(settings, "export_default_dir", None)
+        if default_dir:
+            return default_dir
+
+        return self._get_os_default_downloads()
+
+    def _build_export_dialog_state(self) -> ExportDialogState:
+        settings = self.store.settings
+        return ExportDialogState(
+            current_language=settings.current_language,
+            output_dir=(
+                getattr(settings, "export_default_dir", None)
+                or self._get_os_default_downloads()
+            ),
+            favorite_dir=getattr(settings, "export_favorite_dir", None),
+            last_format=(getattr(settings, "export_last_format", "PNG") or "PNG"),
+            quality=int(getattr(settings, "export_quality", 95) or 95),
+            png_compress_level=int(
+                getattr(settings, "export_png_compress_level", 9) or 9
+            ),
+            fill_background=bool(
+                getattr(settings, "export_fill_background", False)
+            ),
+            background_color=getattr(settings, "export_background_color", None),
+            comment_text=getattr(settings, "export_comment_text", "") or "",
+            comment_keep_default=bool(
+                getattr(settings, "export_comment_keep_default", False)
+            ),
+        )
+
+    def _set_export_favorite_dir(self, path: str) -> None:
+        self.store.settings.export_favorite_dir = path
+        if (
+            self.main_controller is not None
+            and self.main_controller.settings_manager is not None
+        ):
+            self.main_controller.settings_manager._save_setting(
+                "export_favorite_dir", path
+            )
 
     def save_result(self):
-        if not self.store.document.original_image1 or not self.store.document.original_image2:
-            self.ui_manager.show_non_modal_message(
-                icon=QMessageBox.Icon.Warning,
-                title=self._tr("common.warning"),
-                text=self._tr("msg.please_load_and_select_images_in_both_slots_first")
-            )
+        if (
+            not self.store.document.original_image1
+            or not self.store.document.original_image2
+        ):
+            self._show_missing_images_warning()
             return
 
         try:
-            original1_full = self.store.document.full_res_image1 or self.store.document.original_image1
-            original2_full = self.store.document.full_res_image2 or self.store.document.original_image2
-
-            if not original1_full or not original2_full:
-                raise ValueError("Full resolution images are not available for saving.")
-
-            image1_for_save, image2_for_save = resize_images_processor(
-                original1_full, original2_full
-            )
-            if not image1_for_save or not image2_for_save:
-                raise ValueError("Failed to unify images for saving.")
-
-            save_width, save_height = image1_for_save.size
-
-            magnifier_coords_for_save = get_magnifier_drawing_coords(
-                store=self.store,
-                drawing_width=save_width,
-                drawing_height=save_height,
-                container_width=save_width,
-                container_height=save_height,
-            ) if self.store.viewport.use_magnifier else None
-
-            preview_scale = max(1, min(5, max(save_width, save_height) // 800))
-            preview_w = max(1, save_width // preview_scale)
-            preview_h = max(1, save_height // preview_scale)
-
-            magnifier_coords_for_preview = get_magnifier_drawing_coords(
-                store=self.store,
-                drawing_width=preview_w,
-                drawing_height=preview_h,
-            ) if self.store.viewport.use_magnifier else None
-
-            image1_preview = image1_for_save.resize(
-                (preview_w, preview_h), PIL.Image.Resampling.BILINEAR
-            )
-            image2_preview = image2_for_save.resize(
-                (preview_w, preview_h), PIL.Image.Resampling.BILINEAR
-            )
-
-            ctx = create_render_context_from_store(
-                store=self.store,
-                width=preview_w,
-                height=preview_h,
-                magnifier_drawing_coords=magnifier_coords_for_preview,
-                image1_scaled=image1_preview,
-                image2_scaled=image2_preview
-            )
-            ctx.file_name1 = self._get_current_display_name(1)
-            ctx.file_name2 = self._get_current_display_name(2)
-
-            pipeline = RenderingPipeline(self.font_path_absolute)
-            preview_img, _, _, _, _, _ = pipeline.render_frame(ctx)
-            if preview_img is None:
-                preview_img = PIL.Image.new(
-                    "RGBA", (preview_w, preview_h), (200, 200, 200, 255)
-                )
-
-            name1 = (self._get_current_display_name(1) or "image1").strip()
-            name2 = (self._get_current_display_name(2) or "image2").strip()
-
-            def sanitize(s: str) -> str:
-                s = re.sub(r'[\\/*?:"<>|]', "_", s)
-                return s[:80]
-
-            base_name = f"{sanitize(name1)}_{sanitize(name2)}"
-            out_dir = self.store.settings.export_default_dir or self._get_os_default_downloads()
-            fmt = (self.store.settings.export_last_format or "PNG").upper()
-            ext = "." + fmt.lower().replace("jpeg", "jpg")
-
-            unique_full_path = self._get_unique_filepath(out_dir, base_name, ext)
-            unique_filename_without_ext = os.path.splitext(
-                os.path.basename(unique_full_path)
-            )[0]
-
-            result_code, export_opts = self.ui_manager.show_export_dialog(
-                preview_img, suggested_filename=unique_filename_without_ext
+            save_ctx = self._prepare_save_result_context()
+            result_code, export_opts = self._open_export_dialog(
+                save_ctx["preview_img"], save_ctx["suggested_filename"]
             )
             if int(result_code) != int(QDialog.DialogCode.Accepted):
                 return
 
-            out_dir = export_opts.get("output_dir")
-            out_name = export_opts.get("file_name")
-            if not out_dir or not out_name:
-                self.ui_manager.show_non_modal_message(
-                    icon=QMessageBox.Icon.Warning,
-                    title=self._tr("msg.invalid_data"),
-                    text=self._tr("msg.please_specify_output_directory_and_file_name")
-                )
+            if not self._validate_export_options(export_opts):
                 return
 
-            store_copy = self.store.copy_for_worker()
-            save_task_id = self.main_window_app.save_task_counter
-            self.main_window_app.save_task_counter += 1
-
-            fmt_disp = (export_opts.get("format", "PNG") or "PNG").upper()
-            ext_disp = "." + fmt_disp.lower().replace("jpeg", "jpg")
-            final_path_for_display = os.path.join(out_dir, f"{out_name}{ext_disp}")
-            toast_message = (
-                f"{self._tr('msg.saving')}\n{final_path_for_display}..."
-            )
-
-            cancel_event = threading.Event()
-            _cancel_ctx = {"event": cancel_event}
-
-            def on_cancel():
-                ev = _cancel_ctx.get("event")
-                toast_id = _cancel_ctx.get("id")
-                if ev:
-                    ev.set()
-                if toast_id is not None:
-                    self.main_window_app.toast_manager.update_toast(
-                        toast_id,
-                        self._tr("msg.saving_canceled"),
-                        success=False,
-                        duration=3000,
-                    )
-
-            save_task_id = self.main_window_app.toast_manager.show_toast(
-                toast_message,
-                duration=0,
-                action_text=self._tr("common.cancel"),
-                on_action=on_cancel,
-            )
-            _cancel_ctx["id"] = save_task_id
-            self._save_cancellation[save_task_id] = cancel_event
-
-            worker = GenericWorker(
-                self._export_worker_task,
-                store_copy=store_copy,
-                image1_for_save=image1_for_save,
-                image2_for_save=image2_for_save,
-                original1_full=original1_full,
-                original2_full=original2_full,
-                magnifier_drawing_coords=magnifier_coords_for_save,
-                export_options=export_opts,
-                cancel_event=cancel_event,
-                file_name1_text=self._get_current_display_name(1),
-                file_name2_text=self._get_current_display_name(2),
-            )
-            self._save_workers[save_task_id] = worker
-
-            def _on_done(out_path):
-                if cancel_event.is_set():
-                    return
-                success_message = f"{self._tr('msg.saved')} {os.path.basename(out_path)}"
-                self.main_window_app.toast_manager.update_toast(
-                    save_task_id, success_message, success=True
-                )
-                try:
-                    setattr(self.main_window_app, "_last_saved_path", out_path)
-                    if hasattr(self.main_window_app, "update_tray_actions_visibility"):
-                        self.main_window_app.update_tray_actions_visibility()
-                    tray = getattr(self.main_window_app, "tray_icon", None)
-                    if getattr(self.store.settings, "system_notifications_enabled", True):
-                        image_for_icon = (
-                            out_path
-                            if isinstance(out_path, str) and os.path.isfile(out_path)
-                            else None
-                        )
-                        self.main_window_app.notify_system(
-                            self._tr("msg.saved"),
-                            f"{self._tr('msg.saved')}: {out_path}",
-                            image_path=image_for_icon,
-                            timeout_ms=4000,
-                        )
-                except Exception as e:
-                    logger.error(f"Tray notification error: {e}")
-                finally:
-                    self._save_cancellation.pop(save_task_id, None)
-                    self._save_workers.pop(save_task_id, None)
-
-            def _on_err(err_tuple):
-                if not cancel_event.is_set():
-                    error_message = f"{self._tr('msg.error_saving')} {final_path_for_display}"
-                    self.main_window_app.toast_manager.update_toast(
-                        save_task_id, error_message, success=False, duration=8000
-                    )
-                self._save_cancellation.pop(save_task_id, None)
-                self._save_workers.pop(save_task_id, None)
-
-            worker.signals.result.connect(_on_done)
-            worker.signals.error.connect(_on_err)
-            self.main_window_app.thread_pool.start(worker)
-
-            self.store.settings.export_last_format = export_opts.get("format", "PNG")
-            self.store.settings.export_quality = int(export_opts.get("quality", 95))
-            self.store.settings.export_fill_background = bool(
-                export_opts.get("fill_background", False)
-            )
-            bg_c = export_opts.get("background_color")
-            self.store.settings.export_background_color = (
-                self._qcolor_from_tuple(bg_c) if bg_c else self._default_bg_color()
-            )
-            self.store.settings.export_last_filename = out_name
-            self.store.settings.export_default_dir = out_dir
-            self.store.settings.export_png_compress_level = int(
-                export_opts.get("png_compress_level", 9)
-            )
-
-            if bool(export_opts.get("comment_keep_default", False)):
-                self.store.settings.export_comment_text = export_opts.get("comment_text", "")
-                self.store.settings.export_comment_keep_default = True
-            else:
-                self.store.settings.export_comment_text = ""
-                self.store.settings.export_comment_keep_default = False
-
-            if self.main_controller and hasattr(self.main_controller, 'settings_manager'):
-                self.main_controller.settings_manager.save_all_settings(self.store)
+            self._start_save_worker(save_ctx, export_opts)
+            self._persist_export_settings(export_opts)
 
         except Exception as e:
             logger.error(f"Error during save preparation: {e}", exc_info=True)
@@ -302,26 +195,284 @@ class ExportPresenter(QObject):
                 text=f"{self._tr('msg.failed_to_save_image')}: {str(e)}",
             )
 
-    def quick_save(self):
-        if not self.store.document.original_image1 or not self.store.document.original_image2:
-            self.ui_manager.show_non_modal_message(
-                icon=QMessageBox.Icon.Warning,
-                title=self._tr("common.warning"),
-                text=self._tr("msg.please_load_and_select_images_in_both_slots_first")
-            )
-            return
+    def _show_missing_images_warning(self) -> None:
+        self.ui_manager.show_non_modal_message(
+            icon=QMessageBox.Icon.Warning,
+            title=self._tr("common.warning"),
+            text=self._tr("msg.please_load_and_select_images_in_both_slots_first"),
+        )
 
-        if not hasattr(self.store.settings, 'export_default_dir') or not self.store.settings.export_default_dir:
+    def _prepare_save_result_context(self) -> dict:
+        original1_full = (
+            self.store.document.full_res_image1 or self.store.document.original_image1
+        )
+        original2_full = (
+            self.store.document.full_res_image2 or self.store.document.original_image2
+        )
+        if not original1_full or not original2_full:
+            raise ValueError("Full resolution images are not available for saving.")
+
+        image1_for_save, image2_for_save = resize_images_processor(
+            original1_full, original2_full
+        )
+        if not image1_for_save or not image2_for_save:
+            raise ValueError("Failed to unify images for saving.")
+
+        preview_img = self._build_export_preview(image1_for_save, image2_for_save)
+        suggested_filename = self._build_suggested_export_filename()
+        magnifier_coords_for_save = self._get_magnifier_coords_for_size(
+            *image1_for_save.size, for_preview=False
+        )
+        return {
+            "original1_full": original1_full,
+            "original2_full": original2_full,
+            "image1_for_save": image1_for_save,
+            "image2_for_save": image2_for_save,
+            "magnifier_coords_for_save": magnifier_coords_for_save,
+            "preview_img": preview_img,
+            "suggested_filename": suggested_filename,
+        }
+
+    def _build_export_preview(self, image1_for_save, image2_for_save):
+        save_width, save_height = image1_for_save.size
+        preview_scale = max(1, min(5, max(save_width, save_height) // 800))
+        preview_w = max(1, save_width // preview_scale)
+        preview_h = max(1, save_height // preview_scale)
+        magnifier_coords_for_preview = self._get_magnifier_coords_for_size(
+            preview_w, preview_h, for_preview=True
+        )
+        image1_preview = image1_for_save.resize(
+            (preview_w, preview_h), PIL.Image.Resampling.BILINEAR
+        )
+        image2_preview = image2_for_save.resize(
+            (preview_w, preview_h), PIL.Image.Resampling.BILINEAR
+        )
+        ctx = create_render_context_from_store(
+            store=self.store,
+            width=preview_w,
+            height=preview_h,
+            magnifier_drawing_coords=magnifier_coords_for_preview,
+            image1_scaled=image1_preview,
+            image2_scaled=image2_preview,
+        )
+        ctx.file_name1 = self._get_current_display_name(1)
+        ctx.file_name2 = self._get_current_display_name(2)
+        pipeline = RenderingPipeline(self.font_path_absolute)
+        preview_img, _, _, _, _, _ = pipeline.render_frame(ctx)
+        if preview_img is None:
+            preview_img = PIL.Image.new(
+                "RGBA", (preview_w, preview_h), (200, 200, 200, 255)
+            )
+        return preview_img
+
+    def _get_magnifier_coords_for_size(
+        self, width: int, height: int, *, for_preview: bool
+    ):
+        if not self.store.viewport.use_magnifier:
+            return None
+        kwargs = {
+            "store": self.store,
+            "drawing_width": width,
+            "drawing_height": height,
+        }
+        if not for_preview:
+            kwargs["container_width"] = width
+            kwargs["container_height"] = height
+        return get_magnifier_drawing_coords(**kwargs)
+
+    def _build_suggested_export_filename(self) -> str:
+        name1 = (self._get_current_display_name(1) or "image1").strip()
+        name2 = (self._get_current_display_name(2) or "image2").strip()
+        base_name = f"{self._sanitize_export_name(name1)}_{self._sanitize_export_name(name2)}"
+        out_dir = self.store.settings.export_default_dir or self._get_os_default_downloads()
+        fmt = (self.store.settings.export_last_format or "PNG").upper()
+        ext = "." + fmt.lower().replace("jpeg", "jpg")
+        unique_full_path = self._get_unique_filepath(out_dir, base_name, ext)
+        return os.path.splitext(os.path.basename(unique_full_path))[0]
+
+    def _sanitize_export_name(self, value: str) -> str:
+        return re.sub(r'[\\/*?:"<>|]', "_", value)[:80]
+
+    def _open_export_dialog(self, preview_img, suggested_filename: str):
+        return self.ui_manager.show_export_dialog(
+            dialog_state=self._build_export_dialog_state(),
+            preview_image=preview_img,
+            suggested_filename=suggested_filename,
+            on_set_favorite_dir=self._set_export_favorite_dir,
+        )
+
+    def _validate_export_options(self, export_opts: dict) -> bool:
+        out_dir = export_opts.get("output_dir")
+        out_name = export_opts.get("file_name")
+        if out_dir and out_name:
+            return True
+        self.ui_manager.show_non_modal_message(
+            icon=QMessageBox.Icon.Warning,
+            title=self._tr("msg.invalid_data"),
+            text=self._tr("msg.please_specify_output_directory_and_file_name"),
+        )
+        return False
+
+    def _start_save_worker(self, save_ctx: dict, export_opts: dict) -> None:
+        out_dir = export_opts["output_dir"]
+        out_name = export_opts["file_name"]
+        fmt_disp = (export_opts.get("format", "PNG") or "PNG").upper()
+        ext_disp = "." + fmt_disp.lower().replace("jpeg", "jpg")
+        final_path_for_display = os.path.join(out_dir, f"{out_name}{ext_disp}")
+        save_task_id, cancel_event = self._create_save_toast(final_path_for_display)
+
+        worker = GenericWorker(
+            self._export_worker_task,
+            store_copy=self.store.copy_for_worker(),
+            image1_for_save=save_ctx["image1_for_save"],
+            image2_for_save=save_ctx["image2_for_save"],
+            original1_full=save_ctx["original1_full"],
+            original2_full=save_ctx["original2_full"],
+            magnifier_drawing_coords=save_ctx["magnifier_coords_for_save"],
+            export_options=export_opts,
+            cancel_event=cancel_event,
+            file_name1_text=self._get_current_display_name(1),
+            file_name2_text=self._get_current_display_name(2),
+        )
+        self._save_workers[save_task_id] = worker
+        worker.signals.result.connect(
+            lambda out_path: self._on_save_worker_done(save_task_id, cancel_event, out_path)
+        )
+        worker.signals.error.connect(
+            lambda err_tuple: self._on_save_worker_error(
+                save_task_id, cancel_event, final_path_for_display, err_tuple
+            )
+        )
+        self.main_window_app.thread_pool.start(worker)
+
+    def _create_save_toast(self, final_path_for_display: str) -> tuple[int, threading.Event]:
+        toast_message = f"{self._tr('msg.saving')}\n{final_path_for_display}..."
+        cancel_event = threading.Event()
+        cancel_ctx = {"event": cancel_event}
+
+        def on_cancel():
+            ev = cancel_ctx.get("event")
+            toast_id = cancel_ctx.get("id")
+            if ev:
+                ev.set()
+            if toast_id is not None:
+                self.main_window_app.toast_manager.update_toast(
+                    toast_id,
+                    self._tr("msg.saving_canceled"),
+                    success=False,
+                    duration=3000,
+                )
+
+        toast_id = self.main_window_app.toast_manager.show_toast(
+            toast_message,
+            duration=0,
+            action_text=self._tr("common.cancel"),
+            on_action=on_cancel,
+        )
+        cancel_ctx["id"] = toast_id
+        self._save_cancellation[toast_id] = cancel_event
+        return toast_id, cancel_event
+
+    def _on_save_worker_done(
+        self, save_task_id: int, cancel_event: threading.Event, out_path: str
+    ) -> None:
+        if cancel_event.is_set():
+            return
+        success_message = f"{self._tr('msg.saved')} {os.path.basename(out_path)}"
+        self.main_window_app.toast_manager.update_toast(
+            save_task_id, success_message, success=True
+        )
+        try:
+            setattr(self.main_window_app, "_last_saved_path", out_path)
+            if hasattr(self.main_window_app, "update_tray_actions_visibility"):
+                self.main_window_app.update_tray_actions_visibility()
+            if getattr(self.store.settings, "system_notifications_enabled", True):
+                image_for_icon = (
+                    out_path
+                    if isinstance(out_path, str) and os.path.isfile(out_path)
+                    else None
+                )
+                self.main_window_app.notify_system(
+                    self._tr("msg.saved"),
+                    f"{self._tr('msg.saved')}: {out_path}",
+                    image_path=image_for_icon,
+                    timeout_ms=4000,
+                )
+        except Exception as e:
+            logger.error(f"Tray notification error: {e}")
+        finally:
+            self._finalize_save_worker(save_task_id)
+
+    def _on_save_worker_error(
+        self,
+        save_task_id: int,
+        cancel_event: threading.Event,
+        final_path_for_display: str,
+        _err_tuple,
+    ) -> None:
+        if not cancel_event.is_set():
+            error_message = (
+                f"{self._tr('msg.error_saving')} {final_path_for_display}"
+            )
+            self.main_window_app.toast_manager.update_toast(
+                save_task_id, error_message, success=False, duration=8000
+            )
+        self._finalize_save_worker(save_task_id)
+
+    def _finalize_save_worker(self, save_task_id: int) -> None:
+        self._save_cancellation.pop(save_task_id, None)
+        self._save_workers.pop(save_task_id, None)
+
+    def _persist_export_settings(self, export_opts: dict) -> None:
+        out_dir = export_opts["output_dir"]
+        out_name = export_opts["file_name"]
+        self.store.settings.export_last_format = export_opts.get("format", "PNG")
+        self.store.settings.export_quality = int(export_opts.get("quality", 95))
+        self.store.settings.export_fill_background = bool(
+            export_opts.get("fill_background", False)
+        )
+        bg_c = export_opts.get("background_color")
+        self.store.settings.export_background_color = (
+            self._color_from_tuple(bg_c) if bg_c else self._default_bg_color()
+        )
+        self.store.settings.export_last_filename = out_name
+        self.store.settings.export_default_dir = out_dir
+        self.store.settings.export_png_compress_level = int(
+            export_opts.get("png_compress_level", 9)
+        )
+        if bool(export_opts.get("comment_keep_default", False)):
+            self.store.settings.export_comment_text = export_opts.get(
+                "comment_text", ""
+            )
+            self.store.settings.export_comment_keep_default = True
+        else:
+            self.store.settings.export_comment_text = ""
+            self.store.settings.export_comment_keep_default = False
+
+        if self.main_controller and hasattr(self.main_controller, "settings_manager"):
+            self.main_controller.settings_manager.save_all_settings(self.store)
+
+    def quick_save(self):
+        if (
+            not self.store.document.original_image1
+            or not self.store.document.original_image2
+        ):
             self.ui_manager.show_non_modal_message(
                 icon=QMessageBox.Icon.Warning,
                 title=self._tr("common.warning"),
-                text=self._tr("button.no_previous_export_settings_found_please_use_save_result_first")
+                text=self._tr("msg.please_load_and_select_images_in_both_slots_first"),
             )
             return
 
         try:
-            original1_full = self.store.document.full_res_image1 or self.store.document.original_image1
-            original2_full = self.store.document.full_res_image2 or self.store.document.original_image2
+            original1_full = (
+                self.store.document.full_res_image1
+                or self.store.document.original_image1
+            )
+            original2_full = (
+                self.store.document.full_res_image2
+                or self.store.document.original_image2
+            )
 
             if not original1_full or not original2_full:
                 raise ValueError("Full resolution images are not available for saving.")
@@ -334,26 +485,24 @@ class ExportPresenter(QObject):
 
             save_width, save_height = image1_for_save.size
 
-            magnifier_coords_for_save = get_magnifier_drawing_coords(
-                store=self.store,
-                drawing_width=save_width,
-                drawing_height=save_height,
-                container_width=save_width,
-                container_height=save_height,
-            ) if self.store.viewport.use_magnifier else None
+            magnifier_coords_for_save = (
+                get_magnifier_drawing_coords(
+                    store=self.store,
+                    drawing_width=save_width,
+                    drawing_height=save_height,
+                    container_width=save_width,
+                    container_height=save_height,
+                )
+                if self.store.viewport.use_magnifier
+                else None
+            )
 
             store_copy = self.store.copy_for_worker()
 
-            bg_color_qcolor = getattr(
-                self.store.settings, 'export_background_color',
-                self._default_bg_color()
+            bg_color = getattr(
+                self.store.settings, "export_background_color", self._default_bg_color()
             )
-            bg_color_tuple = (
-                bg_color_qcolor.red(),
-                bg_color_qcolor.green(),
-                bg_color_qcolor.blue(),
-                bg_color_qcolor.alpha(),
-            )
+            bg_color_tuple = (bg_color.r, bg_color.g, bg_color.b, bg_color.a)
 
             name1 = (self._get_current_display_name(1) or "image1").strip()
             name2 = (self._get_current_display_name(2) or "image2").strip()
@@ -363,23 +512,30 @@ class ExportPresenter(QObject):
                 return s[:80]
 
             base_name = f"{sanitize(name1)}_{sanitize(name2)}"
+            output_dir = self._resolve_quick_save_output_dir()
 
             export_options = {
-                "output_dir": self.store.settings.export_default_dir,
+                "output_dir": output_dir,
                 "file_name": base_name,
                 "format": self.store.settings.export_last_format or "PNG",
                 "quality": self.store.settings.export_quality or 95,
-                "fill_background": getattr(self.store.settings, 'export_fill_background', False),
+                "fill_background": getattr(
+                    self.store.settings, "export_fill_background", False
+                ),
                 "background_color": bg_color_tuple,
-                "png_compress_level": getattr(self.store.settings, 'export_png_compress_level', 9),
+                "png_compress_level": getattr(
+                    self.store.settings, "export_png_compress_level", 9
+                ),
                 "png_optimize": True,
-                "include_metadata": bool(getattr(
-                    self.store.settings, 'export_comment_keep_default', False
-                )),
+                "include_metadata": bool(
+                    getattr(self.store.settings, "export_comment_keep_default", False)
+                ),
                 "comment_text": (
-                    getattr(self.store.settings, 'export_comment_text', '')
-                    if getattr(self.store.settings, 'export_comment_keep_default', False)
-                    else ''
+                    getattr(self.store.settings, "export_comment_text", "")
+                    if getattr(
+                        self.store.settings, "export_comment_keep_default", False
+                    )
+                    else ""
                 ),
                 "is_quick_save": True,
             }
@@ -391,7 +547,7 @@ class ExportPresenter(QObject):
             ext_disp = "." + fmt_disp.lower().replace("jpeg", "jpg")
             display_path = os.path.join(
                 export_options.get("output_dir"),
-                f"{export_options.get('file_name')}{ext_disp}"
+                f"{export_options.get('file_name')}{ext_disp}",
             )
             toast_message = f"{self._tr('msg.saving')}\n{display_path}..."
 
@@ -438,7 +594,9 @@ class ExportPresenter(QObject):
             def _on_done_quick(out_path):
                 if cancel_event.is_set():
                     return
-                success_message = f"{self._tr('msg.saved')} {os.path.basename(out_path)}"
+                success_message = (
+                    f"{self._tr('msg.saved')} {os.path.basename(out_path)}"
+                )
                 self.main_window_app.toast_manager.update_toast(
                     save_task_id, success_message, success=True
                 )
@@ -447,7 +605,9 @@ class ExportPresenter(QObject):
                     if hasattr(self.main_window_app, "update_tray_actions_visibility"):
                         self.main_window_app.update_tray_actions_visibility()
 
-                    if getattr(self.store.settings, "system_notifications_enabled", True):
+                    if getattr(
+                        self.store.settings, "system_notifications_enabled", True
+                    ):
                         image_for_icon = (
                             out_path
                             if isinstance(out_path, str) and os.path.isfile(out_path)
@@ -487,12 +647,12 @@ class ExportPresenter(QObject):
             )
 
     def _export_worker_task(self, **kwargs):
-        progress_callback = kwargs.get('progress_callback')
-        cancel_event = kwargs.get('cancel_event')
-        store_copy = kwargs['store_copy']
-        original1_full = kwargs['original1_full']
-        original2_full = kwargs['original2_full']
-        export_options = kwargs['export_options']
+        progress_callback = kwargs.get("progress_callback")
+        cancel_event = kwargs.get("cancel_event")
+        store_copy = kwargs["store_copy"]
+        original1_full = kwargs["original1_full"]
+        original2_full = kwargs["original2_full"]
+        export_options = kwargs["export_options"]
 
         def emit_progress(val):
             if progress_callback:
@@ -518,7 +678,9 @@ class ExportPresenter(QObject):
             raise e
 
     def cancel_all_exports(self):
-        logger.debug(f"Отмена всех активных экспортов (всего: {len(self._save_cancellation)})")
+        logger.debug(
+            f"Отмена всех активных экспортов (всего: {len(self._save_cancellation)})"
+        )
 
         for save_task_id, cancel_event in list(self._save_cancellation.items()):
             if cancel_event:
@@ -526,7 +688,7 @@ class ExportPresenter(QObject):
                 logger.info(f"Экспорт {save_task_id} отменен")
 
         for save_task_id in list(self._save_cancellation.keys()):
-            if hasattr(self.main_window_app, 'toast_manager'):
+            if hasattr(self.main_window_app, "toast_manager"):
                 try:
                     self.main_window_app.toast_manager.update_toast(
                         save_task_id,
@@ -551,4 +713,3 @@ class ExportPresenter(QObject):
         if 0 <= index < len(target_list):
             return target_list[index].display_name
         return ""
-

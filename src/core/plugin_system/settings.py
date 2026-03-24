@@ -53,4 +53,3 @@ class PluginSettings:
 def auto_persist(cls: type) -> type:
     setattr(cls, "_auto_persist", True)
     return cls
-

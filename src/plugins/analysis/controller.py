@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from shared_toolkit.workers import GenericWorker
+
 from core.events import (
+    AnalysisSetChannelViewModeEvent,
+    AnalysisSetDiffModeEvent,
+    AnalysisToggleDiffModeEvent,
     CoreUpdateRequestedEvent,
     ViewportUpdateMagnifierCombinedStateEvent,
-    AnalysisSetChannelViewModeEvent,
-    AnalysisToggleDiffModeEvent,
-    AnalysisSetDiffModeEvent,
 )
+from shared_toolkit.workers import GenericWorker
 
 class AnalysisController(QObject):
 
@@ -61,8 +62,12 @@ class AnalysisController(QObject):
                 self.update_requested.emit()
 
     def _trigger_full_diff_generation(self):
-        img1 = self.store.document.full_res_image1 or self.store.document.original_image1
-        img2 = self.store.document.full_res_image2 or self.store.document.original_image2
+        img1 = (
+            self.store.document.full_res_image1 or self.store.document.original_image1
+        )
+        img2 = (
+            self.store.document.full_res_image2 or self.store.document.original_image2
+        )
         mode = self.store.viewport.diff_mode
 
         if not img1 or (not img2 and mode != "edges"):
@@ -75,10 +80,10 @@ class AnalysisController(QObject):
     def _generate_diff_map_task(self, img1, img2, mode):
         try:
             from plugins.analysis.processing import (
-                create_highlight_diff,
-                create_grayscale_diff,
-                create_ssim_map,
                 create_edge_map,
+                create_grayscale_diff,
+                create_highlight_diff,
+                create_ssim_map,
             )
 
             prepared_img2 = img2
@@ -87,7 +92,9 @@ class AnalysisController(QObject):
 
             diff_mode_handlers = {
                 "edges": lambda: create_edge_map(img1),
-                "highlight": lambda: create_highlight_diff(img1, prepared_img2, threshold=10),
+                "highlight": lambda: create_highlight_diff(
+                    img1, prepared_img2, threshold=10
+                ),
                 "grayscale": lambda: create_grayscale_diff(img1, prepared_img2),
                 "ssim": lambda: create_ssim_map(img1, prepared_img2),
             }
@@ -116,4 +123,3 @@ class AnalysisController(QObject):
 
     def on_set_diff_mode(self, event: AnalysisSetDiffModeEvent):
         self.set_diff_mode(event.mode)
-

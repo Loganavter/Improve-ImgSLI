@@ -24,20 +24,20 @@ class UIUpdateBatcher:
         self._pending_updates.clear()
         self._flush_scheduled = False
 
-        if 'combobox' in updates:
+        if "combobox" in updates:
             self._presenter._do_update_combobox_displays()
 
-        if 'file_names' in updates:
+        if "file_names" in updates:
             self._presenter._do_update_file_names_display()
 
-        if 'resolution' in updates:
+        if "resolution" in updates:
             self._presenter._do_update_resolution_labels()
 
-        if 'ratings' in updates:
+        if "ratings" in updates:
             self._presenter._do_update_rating_displays()
 
-        if 'slider_tooltips' in updates:
+        if "slider_tooltips" in updates:
             self._presenter._do_update_slider_tooltips()
 
-        if 'window_schedule' in updates:
+        if "window_schedule" in updates:
             self._presenter.main_window_app.schedule_update()

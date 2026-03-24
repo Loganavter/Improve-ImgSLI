@@ -1,11 +1,9 @@
-
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
-from PyQt6.QtCore import QPointF, QPoint, QRect
-from PyQt6.QtGui import QColor
+
+from domain.types import Color, Point
 
 class ActionType(Enum):
 
@@ -59,8 +57,12 @@ class ActionType(Enum):
     SET_CAPTURE_RING_COLOR = "SET_CAPTURE_RING_COLOR"
     SET_INTERPOLATION_METHOD = "SET_INTERPOLATION_METHOD"
     SET_MOVEMENT_INTERPOLATION_METHOD = "SET_MOVEMENT_INTERPOLATION_METHOD"
-    SET_MAGNIFIER_MOVEMENT_INTERPOLATION_METHOD = "SET_MAGNIFIER_MOVEMENT_INTERPOLATION_METHOD"
-    SET_LASER_SMOOTHING_INTERPOLATION_METHOD = "SET_LASER_SMOOTHING_INTERPOLATION_METHOD"
+    SET_MAGNIFIER_MOVEMENT_INTERPOLATION_METHOD = (
+        "SET_MAGNIFIER_MOVEMENT_INTERPOLATION_METHOD"
+    )
+    SET_LASER_SMOOTHING_INTERPOLATION_METHOD = (
+        "SET_LASER_SMOOTHING_INTERPOLATION_METHOD"
+    )
     SET_OPTIMIZE_LASER_SMOOTHING = "SET_OPTIMIZE_LASER_SMOOTHING"
     SET_SHOW_MAGNIFIER_GUIDES = "SET_SHOW_MAGNIFIER_GUIDES"
     SET_MAGNIFIER_GUIDES_THICKNESS = "SET_MAGNIFIER_GUIDES_THICKNESS"
@@ -194,7 +196,12 @@ class SetMagnifierVisibilityAction(Action):
     center: Optional[bool] = None
     right: Optional[bool] = None
 
-    def __init__(self, left: Optional[bool] = None, center: Optional[bool] = None, right: Optional[bool] = None):
+    def __init__(
+        self,
+        left: Optional[bool] = None,
+        center: Optional[bool] = None,
+        right: Optional[bool] = None,
+    ):
         super().__init__(type=ActionType.SET_MAGNIFIER_VISIBILITY)
         self.left = left
         self.center = center
@@ -217,10 +224,15 @@ class ToggleMagnifierOrientationAction(Action):
 @dataclass
 class ToggleFreezeMagnifierAction(Action):
     freeze: bool
-    frozen_position: Optional[QPointF] = None
-    new_offset: Optional[QPointF] = None
+    frozen_position: Optional[Point] = None
+    new_offset: Optional[Point] = None
 
-    def __init__(self, freeze: bool, frozen_position: Optional[QPointF] = None, new_offset: Optional[QPointF] = None):
+    def __init__(
+        self,
+        freeze: bool,
+        frozen_position: Optional[Point] = None,
+        new_offset: Optional[Point] = None,
+    ):
         super().__init__(type=ActionType.TOGGLE_FREEZE_MAGNIFIER)
         self.freeze = freeze
         self.frozen_position = frozen_position
@@ -230,14 +242,14 @@ class ToggleFreezeMagnifierAction(Action):
         return {
             "freeze": self.freeze,
             "frozen_position": self.frozen_position,
-            "new_offset": self.new_offset
+            "new_offset": self.new_offset,
         }
 
 @dataclass
 class SetMagnifierPositionAction(Action):
-    position: QPointF
+    position: Point
 
-    def __init__(self, position: QPointF):
+    def __init__(self, position: Point):
         super().__init__(type=ActionType.SET_MAGNIFIER_POSITION)
         self.position = position
 
@@ -345,9 +357,9 @@ class SetDividerLineVisibleAction(Action):
 
 @dataclass
 class SetDividerLineColorAction(Action):
-    color: QColor
+    color: Color
 
-    def __init__(self, color: QColor):
+    def __init__(self, color: Color):
         super().__init__(type=ActionType.SET_DIVIDER_LINE_COLOR)
         self.color = color
 
@@ -378,9 +390,9 @@ class SetMagnifierDividerVisibleAction(Action):
 
 @dataclass
 class SetMagnifierDividerColorAction(Action):
-    color: QColor
+    color: Color
 
-    def __init__(self, color: QColor):
+    def __init__(self, color: Color):
         super().__init__(type=ActionType.SET_MAGNIFIER_DIVIDER_COLOR)
         self.color = color
 
@@ -400,9 +412,9 @@ class SetMagnifierDividerThicknessAction(Action):
 
 @dataclass
 class SetMagnifierBorderColorAction(Action):
-    color: QColor
+    color: Color
 
-    def __init__(self, color: QColor):
+    def __init__(self, color: Color):
         super().__init__(type=ActionType.SET_MAGNIFIER_BORDER_COLOR)
         self.color = color
 
@@ -411,9 +423,9 @@ class SetMagnifierBorderColorAction(Action):
 
 @dataclass
 class SetMagnifierLaserColorAction(Action):
-    color: QColor
+    color: Color
 
-    def __init__(self, color: QColor):
+    def __init__(self, color: Color):
         super().__init__(type=ActionType.SET_MAGNIFIER_LASER_COLOR)
         self.color = color
 
@@ -422,9 +434,9 @@ class SetMagnifierLaserColorAction(Action):
 
 @dataclass
 class SetCaptureRingColorAction(Action):
-    color: QColor
+    color: Color
 
-    def __init__(self, color: QColor):
+    def __init__(self, color: Color):
         super().__init__(type=ActionType.SET_CAPTURE_RING_COLOR)
         self.color = color
 
@@ -499,9 +511,9 @@ class SetTextAlphaPercentAction(Action):
 
 @dataclass
 class SetFileNameColorAction(Action):
-    color: QColor
+    color: Color
 
-    def __init__(self, color: QColor):
+    def __init__(self, color: Color):
         super().__init__(type=ActionType.SET_FILE_NAME_COLOR)
         self.color = color
 
@@ -510,9 +522,9 @@ class SetFileNameColorAction(Action):
 
 @dataclass
 class SetFileNameBgColorAction(Action):
-    color: QColor
+    color: Color
 
-    def __init__(self, color: QColor):
+    def __init__(self, color: Color):
         super().__init__(type=ActionType.SET_FILE_NAME_BG_COLOR)
         self.color = color
 
@@ -663,4 +675,3 @@ class ClearImageSlotDataAction(Action):
 
     def get_payload(self) -> dict[str, Any]:
         return {"slot": self.slot}
-

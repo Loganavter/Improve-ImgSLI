@@ -1,21 +1,17 @@
-
-
 import logging
-import os
 from collections import OrderedDict
-from typing import Optional, Tuple
+from typing import Optional
 
 from PIL import Image
 from PyQt6.QtCore import QTimer
 
 from shared.image_processing.progressive_loader import (
-    should_use_progressive_load,
-    load_preview_image,
     load_full_image,
+    load_preview_image,
+    should_use_progressive_load,
 )
-from shared.image_processing.resize import resize_images_processor, crop_black_borders
+from shared.image_processing.resize import crop_black_borders, resize_images_processor
 from shared_toolkit.workers import GenericWorker
-from core.store import ImageItem
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -25,16 +21,22 @@ class ImageLoaderService:
         self.store = store
         self.main_controller = main_controller
 
-    def load_image_async(self, path: str, image_number: int, index_in_list: int, target_size=None):
+    def load_image_async(
+        self, path: str, image_number: int, index_in_list: int, target_size=None
+    ):
         try:
             use_progressive = should_use_progressive_load(path)
 
             if use_progressive:
-                preview = load_preview_image(path, self.store.settings.auto_crop_black_borders)
+                preview = load_preview_image(
+                    path, self.store.settings.auto_crop_black_borders
+                )
                 if preview:
                     return preview, path, image_number, index_in_list, True
 
-                pil_img = load_full_image(path, self.store.settings.auto_crop_black_borders)
+                pil_img = load_full_image(
+                    path, self.store.settings.auto_crop_black_borders
+                )
                 return pil_img, path, image_number, index_in_list, False
             else:
                 with Image.open(path) as img:
@@ -53,16 +55,25 @@ class ImageLoaderService:
 
             if self.main_controller:
                 from resources.translations import tr
-                self.main_controller.error_occurred.emit(f"{tr('msg.failed_to_load_image', self.main_controller.store.settings.current_language)}:\n{path}\n\n{e}")
+
+                self.main_controller.error_occurred.emit(
+                    f"{tr('msg.failed_to_load_image', self.main_controller.store.settings.current_language)}:\n{path}\n\n{e}"
+                )
             return None, path, image_number, index_in_list, False
 
-    def load_full_resolution_async(self, path: str, image_number: int, index_in_list: int):
+    def load_full_resolution_async(
+        self, path: str, image_number: int, index_in_list: int
+    ):
         def load_full_task(path_str):
-            return load_full_image(path_str, self.store.settings.auto_crop_black_borders)
+            return load_full_image(
+                path_str, self.store.settings.auto_crop_black_borders
+            )
 
         worker = GenericWorker(load_full_task, path)
         worker.signals.result.connect(
-            lambda full_img: self.on_full_image_loaded(full_img, path, image_number, index_in_list)
+            lambda full_img: self.on_full_image_loaded(
+                full_img, path, image_number, index_in_list
+            )
         )
         worker.signals.error.connect(
             lambda err: logger.error(f"Failed to load full resolution: {err}")
@@ -70,7 +81,13 @@ class ImageLoaderService:
         if self.main_controller:
             self.main_controller.thread_pool.start(worker)
 
-    def on_full_image_loaded(self, full_img: Optional[Image.Image], path: str, image_number: int, index_in_list: int):
+    def on_full_image_loaded(
+        self,
+        full_img: Optional[Image.Image],
+        path: str,
+        image_number: int,
+        index_in_list: int,
+    ):
         if not full_img:
             return
 
@@ -108,16 +125,24 @@ class ImageLoaderService:
                 else self.store.document.current_index2
             )
             if index_in_list == current_app_index:
-                self.store.set_current_image_data(image_number, full_img, path, item.display_name)
+                self.store.set_current_image_data(
+                    image_number, full_img, path, item.display_name
+                )
 
                 def trigger_unification():
-                    source1 = self.store.document.full_res_image1 or self.store.document.original_image1
-                    source2 = self.store.document.full_res_image2 or self.store.document.original_image2
+                    source1 = (
+                        self.store.document.full_res_image1
+                        or self.store.document.original_image1
+                    )
+                    source2 = (
+                        self.store.document.full_res_image2
+                        or self.store.document.original_image2
+                    )
                     if source1 and source2:
                         self.store.viewport.unification_in_progress = True
                         self.store.viewport.pending_unification_paths = (
                             self.store.document.image1_path,
-                            self.store.document.image2_path
+                            self.store.document.image2_path,
                         )
 
                         worker = GenericWorker(
@@ -133,18 +158,25 @@ class ImageLoaderService:
                             self.main_controller.thread_pool.start(worker, priority=1)
                     else:
 
-                        if hasattr(self.store, '_on_metrics_calculated'):
+                        if hasattr(self.store, "_on_metrics_calculated"):
                             self.store._on_metrics_calculated(None)
 
                 QTimer.singleShot(50, trigger_unification)
 
-    def unify_images_worker_task(self, img1: Image.Image, img2: Image.Image,
-                                 path1: Optional[str], path2: Optional[str],
-                                 display_resolution_limit: int):
+    def unify_images_worker_task(
+        self,
+        img1: Image.Image,
+        img2: Image.Image,
+        path1: Optional[str],
+        path2: Optional[str],
+        display_resolution_limit: int,
+    ):
         """Worker task to unify two images to the same size."""
         try:
             u1, u2 = resize_images_processor(img1, img2)
-            cached_u1, cached_u2 = self.create_display_cache(u1, u2, display_resolution_limit)
+            cached_u1, cached_u2 = self.create_display_cache(
+                u1, u2, display_resolution_limit
+            )
             return u1, u2, cached_u1, cached_u2, path1, path2
         except Exception as e:
             logger.error(f"Failed to unify images: {e}")
@@ -182,7 +214,10 @@ class ImageLoaderService:
                 return
 
             try:
-                current_paths_now = (self.store.document.image1_path, self.store.document.image2_path)
+                current_paths_now = (
+                    self.store.document.image1_path,
+                    self.store.document.image2_path,
+                )
                 if (path1 != current_paths_now[0]) or (path2 != current_paths_now[1]):
                     self.store.viewport.unification_in_progress = False
 
@@ -243,7 +278,7 @@ class ImageLoaderService:
 
     def _trigger_metrics_calculation_if_needed(self):
 
-        if hasattr(self.store, '_trigger_metrics_calculation_if_needed'):
+        if hasattr(self.store, "_trigger_metrics_calculation_if_needed"):
             self.store._trigger_metrics_calculation_if_needed()
         else:
 
@@ -258,19 +293,30 @@ class ImageLoaderService:
         return False
 
     def trigger_preview_unification(self, image_number: int):
-        if hasattr(self.store, 'presenter') and self.store.presenter:
-            self.store.presenter.ui_batcher.schedule_batch_update(['file_names', 'resolution'])
+        if hasattr(self.store, "presenter") and self.store.presenter:
+            self.store.presenter.ui_batcher.schedule_batch_update(
+                ["file_names", "resolution"]
+            )
 
-        source1 = self.store.document.full_res_image1 or self.store.document.original_image1
-        source2 = self.store.document.full_res_image2 or self.store.document.original_image2
+        source1 = (
+            self.store.document.full_res_image1 or self.store.document.original_image1
+        )
+        source2 = (
+            self.store.document.full_res_image2 or self.store.document.original_image2
+        )
 
         if source1 and source2:
             try:
-                if self.cancel_pending_unification(self.store.document.image1_path, self.store.document.image2_path):
+                if self.cancel_pending_unification(
+                    self.store.document.image1_path, self.store.document.image2_path
+                ):
                     pass
 
                 self.store.viewport.unification_in_progress = True
-                self.store.viewport.pending_unification_paths = (self.store.document.image1_path, self.store.document.image2_path)
+                self.store.viewport.pending_unification_paths = (
+                    self.store.document.image1_path,
+                    self.store.document.image2_path,
+                )
 
                 worker = GenericWorker(
                     self.unify_images_worker_task,
@@ -290,5 +336,5 @@ class ImageLoaderService:
         else:
             self._trigger_metrics_calculation_if_needed()
 
-        if hasattr(self.store, 'presenter') and self.store.presenter:
+        if hasattr(self.store, "presenter") and self.store.presenter:
             QTimer.singleShot(10, lambda: self.store.state_changed.emit())

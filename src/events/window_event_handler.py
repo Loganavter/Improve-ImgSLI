@@ -1,7 +1,7 @@
 import logging
 
-from PyQt6.QtCore import QObject, QPoint, QTimer, Qt
-from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
+from PyQt6.QtCore import QObject, QPoint, Qt, QTimer
+from PyQt6.QtGui import QCursor, QDragEnterEvent, QDragMoveEvent, QDropEvent
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -14,16 +14,27 @@ class WindowEventHandler(QObject):
         self.ui = ui
         self.main_window = parent
         self._first_external_load_pending = True
+        self._drag_leave_timer = QTimer(self)
+        self._drag_leave_timer.setSingleShot(True)
+        self._drag_leave_timer.setInterval(80)
+        self._drag_leave_timer.timeout.connect(self._handle_deferred_drag_leave)
 
-    def _schedule_load_when_stable(self, image_paths: list[str], slot_num: int, delay_ms: int = 100):
+    def _schedule_load_when_stable(
+        self, image_paths: list[str], slot_num: int, delay_ms: int = 100
+    ):
         def _try_load():
 
-            is_stable = bool(getattr(self.main_window, "_is_ui_stable", True)) and self.main_window.isVisible()
+            is_stable = (
+                bool(getattr(self.main_window, "_is_ui_stable", True))
+                and self.main_window.isVisible()
+            )
             if not is_stable:
                 QTimer.singleShot(delay_ms, _try_load)
                 return
             if self.main_controller and self.main_controller.session_ctrl:
-                self.main_controller.session_ctrl.load_images_from_paths(image_paths, slot_num)
+                self.main_controller.session_ctrl.load_images_from_paths(
+                    image_paths, slot_num
+                )
             self._first_external_load_pending = False
 
         if self._first_external_load_pending:
@@ -33,6 +44,7 @@ class WindowEventHandler(QObject):
 
     def handle_drag_enter(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
+            self._drag_leave_timer.stop()
             event.setDropAction(Qt.DropAction.CopyAction)
             event.accept()
 
@@ -41,26 +53,30 @@ class WindowEventHandler(QObject):
             event.ignore()
 
     def _safe_update_drag_overlays(self, visible):
-        if self.ui is not None and hasattr(self.ui, 'update_drag_overlays'):
+        if self.ui is not None and hasattr(self.ui, "update_drag_overlays"):
             try:
-                self.ui.update_drag_overlays(self.store.viewport.is_horizontal, visible=visible)
+                self.ui.update_drag_overlays(
+                    self.store.viewport.is_horizontal, visible=visible
+                )
             except (AttributeError, RuntimeError) as e:
-                logger.warning(f"WindowEventHandler._safe_update_drag_overlays: failed to update drag overlays: {e}")
+                logger.warning(
+                    f"WindowEventHandler._safe_update_drag_overlays: failed to update drag overlays: {e}"
+                )
 
     def handle_drag_move(self, event: QDragMoveEvent):
         if event.mimeData().hasUrls():
-
+            self._drag_leave_timer.stop()
             event.setDropAction(Qt.DropAction.CopyAction)
             event.accept()
         else:
             event.ignore()
 
     def handle_drag_leave(self, event):
-        self.ui.update_drag_overlays(visible=False)
+        self._drag_leave_timer.start()
         event.accept()
 
     def handle_drop(self, event: QDropEvent):
-
+        self._drag_leave_timer.stop()
         QTimer.singleShot(0, lambda: self._safe_update_drag_overlays(False))
 
         if event.mimeData().hasUrls():
@@ -72,20 +88,31 @@ class WindowEventHandler(QObject):
                 event.ignore()
                 return
 
-            pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+            pos = (
+                event.position().toPoint()
+                if hasattr(event, "position")
+                else event.pos()
+            )
             slot = 1 if self._is_in_left_area(pos) else 2
 
             event.acceptProposedAction()
 
-            QTimer.singleShot(150, lambda: self.main_controller.session_ctrl.load_images_from_paths(image_paths, slot) if self.main_controller and self.main_controller.session_ctrl else None)
+            QTimer.singleShot(
+                150,
+                lambda: (
+                    self.main_controller.session_ctrl.load_images_from_paths(
+                        image_paths, slot
+                    )
+                    if self.main_controller and self.main_controller.session_ctrl
+                    else None
+                ),
+            )
         else:
             event.ignore()
 
     def handle_resize(self, event):
-
         self.ui.update_drag_overlays(
-            self.store.viewport.is_horizontal,
-            self.ui.drag_overlay1.isVisible()
+            self.store.viewport.is_horizontal, self.ui.is_drag_overlay_visible()
         )
 
     def handle_close(self, event):
@@ -93,7 +120,8 @@ class WindowEventHandler(QObject):
         event.accept()
 
     def _is_in_left_area(self, pos: QPoint) -> bool:
-        if not self.ui.image_label.isVisible(): return True
+        if not self.ui.image_label.isVisible():
+            return True
         label_rect = self.ui.image_label.geometry()
 
         if not self.store.viewport.is_horizontal:
@@ -104,3 +132,14 @@ class WindowEventHandler(QObject):
 
             mid_y = label_rect.y() + label_rect.height() / 2
             return pos.y() < mid_y
+
+    def _handle_deferred_drag_leave(self):
+        if self.main_window is None:
+            self._safe_update_drag_overlays(False)
+            return
+
+        cursor_pos = self.main_window.mapFromGlobal(QCursor.pos())
+        if self.main_window.rect().contains(cursor_pos):
+            return
+
+        self._safe_update_drag_overlays(False)

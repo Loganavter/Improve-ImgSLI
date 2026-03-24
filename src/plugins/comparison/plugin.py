@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from services.io.image_loader import ImageLoaderService
-from services.workflow.playlist import PlaylistManager
-
-from plugins.comparison.session_controller import SessionController
-from core.plugin_system import Plugin, plugin
-from plugins.analysis.services.metrics import MetricsService
 from core.events import (
-    ComparisonUIUpdateEvent,
     ComparisonErrorEvent,
+    ComparisonUIUpdateEvent,
     ComparisonUpdateRequestedEvent,
 )
+from core.plugin_system import Plugin, plugin
+from core.plugin_system.interfaces import ISessionPlugin
+from core.session_blueprints import SessionBlueprint, SessionResourceBlueprint
+from plugins.analysis.services.metrics import MetricsService
+from plugins.comparison.session_controller import SessionController
+from services.io.image_loader import ImageLoaderService
+from services.workflow.playlist import PlaylistManager
 
 class _UIUpdateSignal:
     def __init__(self, event_bus: Any | None):
@@ -36,15 +37,19 @@ class _ComparisonControllerProxy:
 
     def set_current_image(self, image_number: int, emit_signal: bool = True) -> None:
         if self.plugin.session_ctrl:
-            self.plugin.session_ctrl.set_current_image(image_number, emit_signal=emit_signal)
+            self.plugin.session_ctrl.set_current_image(
+                image_number, emit_signal=emit_signal
+            )
 
     def __getattr__(self, name):
         if self.plugin.session_ctrl and hasattr(self.plugin.session_ctrl, name):
             return getattr(self.plugin.session_ctrl, name)
-        raise AttributeError(f"'_ComparisonControllerProxy' object has no attribute '{name}'")
+        raise AttributeError(
+            f"'_ComparisonControllerProxy' object has no attribute '{name}'"
+        )
 
 @plugin(name="comparison", version="1.0")
-class ComparisonPlugin(Plugin):
+class ComparisonPlugin(Plugin, ISessionPlugin):
     def __init__(self):
         super().__init__()
         self.event_bus: Any | None = None
@@ -64,6 +69,7 @@ class ComparisonPlugin(Plugin):
         self.event_bus = getattr(context, "event_bus", None)
         self.main_controller_proxy = _ComparisonControllerProxy(self)
         self.image_loader = ImageLoaderService(self.store, None)
+
         class _MetricsControllerAdapter:
             def __init__(self, thread_pool, event_bus):
                 self.thread_pool = thread_pool
@@ -100,3 +106,16 @@ class ComparisonPlugin(Plugin):
     def get_ui_components(self) -> dict[str, Any]:
         return {}
 
+    def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
+        return (
+            SessionBlueprint(
+                session_type="image_compare",
+                plugin_name="comparison",
+                title="Image Compare",
+                resource_namespaces=(
+                    SessionResourceBlueprint("comparison"),
+                    SessionResourceBlueprint("analysis"),
+                ),
+                metadata_defaults={"plugin": "comparison"},
+            ),
+        )

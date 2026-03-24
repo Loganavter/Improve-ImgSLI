@@ -1,12 +1,10 @@
-
-
 import os
 import re
 
 def get_unique_filepath(directory: str, base_name: str, extension: str) -> str:
 
-    if not extension.startswith('.'):
-        extension = f'.{extension}'
+    if not extension.startswith("."):
+        extension = f".{extension}"
 
     base_name = os.path.splitext(base_name)[0]
     full_path = os.path.join(directory, f"{base_name}{extension}")
@@ -28,4 +26,3 @@ def get_unique_filepath(directory: str, base_name: str, extension: str) -> str:
         if not os.path.exists(new_path):
             return new_path
         counter += 1
-

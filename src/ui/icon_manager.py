@@ -1,9 +1,8 @@
-
-
 from enum import Enum
+
 from PyQt6.QtGui import QIcon
 
-from toolkit.services import get_icon_service
+from shared_toolkit.ui.services import get_icon_service
 
 class AppIcon(Enum):
     SETTINGS = "settings.svg"

@@ -1,5 +1,3 @@
-
-
 import asyncio
 import logging
 import os
@@ -12,6 +10,7 @@ from PyQt6.QtWidgets import QSystemTrayIcon
 
 try:
     from desktop_notifier import Attachment, DesktopNotifier, Icon, Urgency
+
     DESKTOP_NOTIFIER_AVAILABLE = True
 except Exception:
     DesktopNotifier = None
@@ -26,10 +25,14 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class NotificationService:
 
-    def __init__(self, app_name: str = "Improve-ImgSLI", app_icon_path: Optional[str] = None):
+    def __init__(
+        self, app_name: str = "Improve-ImgSLI", app_icon_path: Optional[str] = None
+    ):
         self.app_name = app_name
 
-        self.app_icon_path = Path(app_icon_path or resource_path("resources/icons/icon.png"))
+        self.app_icon_path = Path(
+            app_icon_path or resource_path("resources/icons/icon.png")
+        )
         self._enabled = True
 
         self.notifier: Optional[DesktopNotifier] = None
@@ -41,14 +44,21 @@ class NotificationService:
         self._init_notifier()
 
     def _init_notifier(self):
-        if DESKTOP_NOTIFIER_AVAILABLE and DesktopNotifier is not None and Icon is not None:
+        if (
+            DESKTOP_NOTIFIER_AVAILABLE
+            and DesktopNotifier is not None
+            and Icon is not None
+        ):
             try:
 
-                icon_obj = Icon(path=self.app_icon_path) if self.app_icon_path.exists() else None
+                icon_obj = (
+                    Icon(path=self.app_icon_path)
+                    if self.app_icon_path.exists()
+                    else None
+                )
 
                 self.notifier = DesktopNotifier(
-                    app_name=self.app_name,
-                    app_icon=icon_obj
+                    app_name=self.app_name, app_icon=icon_obj
                 )
                 self._start_notifier_loop()
                 logger.debug("DesktopNotifier инициализирован.")
@@ -61,6 +71,7 @@ class NotificationService:
             return
         try:
             loop = asyncio.new_event_loop()
+
             def _runner():
                 try:
                     asyncio.set_event_loop(loop)
@@ -89,6 +100,7 @@ class NotificationService:
                                 pass
                     except Exception:
                         pass
+
             th = threading.Thread(target=_runner, name="NotifierAsyncLoop", daemon=True)
             th.start()
             self._notifier_loop = loop
@@ -111,7 +123,7 @@ class NotificationService:
         title: str,
         message: str,
         image_path: Optional[str] = None,
-        timeout_ms: int = 4000
+        timeout_ms: int = 4000,
     ) -> bool:
         """
         Отправляет системное уведомление.
@@ -132,7 +144,9 @@ class NotificationService:
                         if os.path.isfile(path_abs):
                             path_obj = Path(path_abs)
                     except Exception as e:
-                        logger.warning(f"Не удалось получить абсолютный путь для уведомления: {e}")
+                        logger.warning(
+                            f"Не удалось получить абсолютный путь для уведомления: {e}"
+                        )
 
                     if path_obj:
                         if Icon is not None:
@@ -163,7 +177,7 @@ class NotificationService:
                     title,
                     message,
                     QSystemTrayIcon.MessageIcon.Information,
-                    max(0, int(timeout_ms))
+                    max(0, int(timeout_ms)),
                 )
                 return True
         except Exception as e:
@@ -179,12 +193,20 @@ class NotificationService:
                 cmd = [notify_send, "-a", self.app_name]
                 if isinstance(timeout_ms, int) and timeout_ms > 0:
                     cmd += ["-t", str(timeout_ms)]
-                if image_path and isinstance(image_path, str) and os.path.isfile(image_path):
+                if (
+                    image_path
+                    and isinstance(image_path, str)
+                    and os.path.isfile(image_path)
+                ):
                     cmd += ["-i", os.path.abspath(image_path)]
                 else:
                     try:
 
-                        icon_path = str(self.app_icon_path) if isinstance(self.app_icon_path, Path) else self.app_icon_path
+                        icon_path = (
+                            str(self.app_icon_path)
+                            if isinstance(self.app_icon_path, Path)
+                            else self.app_icon_path
+                        )
                         cmd += ["-i", icon_path]
                     except Exception:
                         pass
@@ -212,6 +234,7 @@ class NotificationService:
                         pass
 
                     import time
+
                     time.sleep(0.05)
 
                 if not loop.is_closed():
@@ -252,7 +275,9 @@ class NotificationService:
 
                 th.join(timeout=0.5)
                 if th.is_alive():
-                    logger.debug("Поток NotificationService не завершился вовремя, но он daemon и будет завершен автоматически")
+                    logger.debug(
+                        "Поток NotificationService не завершился вовремя, но он daemon и будет завершен автоматически"
+                    )
             except Exception as e:
                 logger.debug(f"Ошибка при ожидании завершения потока: {e}")
 

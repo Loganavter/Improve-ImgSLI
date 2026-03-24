@@ -1,8 +1,7 @@
 from typing import Any
-from PyQt6.QtCore import QPointF
 
-from core.plugin_system import Plugin, plugin
 from core.events import MagnifierAddedEvent, MagnifierRemovedEvent
+from core.plugin_system import Plugin, plugin
 
 @plugin(name="magnifier", version="1.0")
 class MagnifierPlugin(Plugin):
@@ -37,4 +36,3 @@ class MagnifierPlugin(Plugin):
         return {
             "add_magnifier": self.add_magnifier,
         }
-
