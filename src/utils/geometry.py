@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QByteArray, QSettings
+from PyQt6.QtCore import QByteArray, QSettings, Qt
 from PyQt6.QtWidgets import QWidget
 
 class GeometryManager:
@@ -12,8 +12,7 @@ class GeometryManager:
         self._freeze_normal_updates: bool = False
 
     def load_and_apply(self):
-
-        if self.store and hasattr(self.store.settings, 'window_width'):
+        if self.store and hasattr(self.store.settings, "window_width"):
             was_maximized = self.store.settings.window_was_maximized
             window_width = max(200, self.store.settings.window_width)
             window_height = max(150, self.store.settings.window_height)
@@ -21,11 +20,17 @@ class GeometryManager:
             window_y = self.store.settings.window_y
 
             self.window.setGeometry(window_x, window_y, window_width, window_height)
-            self.normal_rect_str = f"{window_x},{window_y},{window_width},{window_height}"
+            self.normal_rect_str = (
+                f"{window_x},{window_y},{window_width},{window_height}"
+            )
         else:
 
-            was_maximized = self.settings.value("window_was_maximized", False, type=bool)
-            saved_normal_geom = self.settings.value("normal_geometry", QByteArray(), type=QByteArray)
+            was_maximized = self.settings.value(
+                "window_was_maximized", False, type=bool
+            )
+            saved_normal_geom = self.settings.value(
+                "normal_geometry", QByteArray(), type=QByteArray
+            )
             saved_normal_rect_str = self.settings.value("normal_rect", "", type=str)
 
             if saved_normal_rect_str:
@@ -48,10 +53,11 @@ class GeometryManager:
 
         self._freeze_normal_updates = bool(was_maximized)
 
+        state = self.window.windowState()
         if was_maximized:
-            self.window.showMaximized()
+            self.window.setWindowState(state | Qt.WindowState.WindowMaximized)
         else:
-            self.window.showNormal()
+            self.window.setWindowState(state & ~Qt.WindowState.WindowMaximized)
 
     def update_normal_geometry_if_needed(self):
         if self._freeze_normal_updates:
@@ -70,7 +76,7 @@ class GeometryManager:
     def save_on_close(self):
         is_maximized = self.window.isMaximized() or self.window.isFullScreen()
 
-        if self.store and hasattr(self.store.settings, 'window_width'):
+        if self.store and hasattr(self.store.settings, "window_width"):
             self.store.settings.window_was_maximized = is_maximized
 
             if not is_maximized and self.normal_rect_str:

@@ -10,4 +10,3 @@ class MagnifierSettings:
     size_ratio: float = 0.2
     capture_ratio: float = 0.1
     visible: bool = True
-

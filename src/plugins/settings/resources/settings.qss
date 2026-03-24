@@ -1,0 +1,29 @@
+QDialog#SettingsDialog {
+    background-color: @dialog.background;
+}
+
+#SettingsContentArea {
+    background-color: @dialog.background;
+}
+
+#SettingsSidebar {
+    background-color: @dialog.input.background;
+    border-right: 1px solid @dialog.border;
+    outline: none;
+}
+
+#SettingsSidebar::item {
+    padding: 10px 12px;
+    margin: 4px 8px;
+    border-radius: 6px;
+    color: @dialog.text;
+}
+
+#SettingsSidebar::item:hover {
+    background-color: @list_item.background.hover;
+}
+
+#SettingsSidebar::item:selected {
+    background-color: @accent;
+    color: white;
+}

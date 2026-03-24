@@ -1,6 +1,8 @@
 from typing import Any
-from core.plugin_system import Plugin, plugin
+
 from core.events import SettingsUIModeChangedEvent
+from core.plugin_system import Plugin, plugin
+
 from .manager import LayoutManager
 
 @plugin(name="layout", version="1.0")
@@ -17,19 +19,26 @@ class LayoutPlugin(Plugin):
 
         if event_bus:
 
-            event_bus.subscribe(SettingsUIModeChangedEvent, self._on_ui_mode_changed_event)
+            event_bus.subscribe(
+                SettingsUIModeChangedEvent, self._on_ui_mode_changed_event
+            )
 
     def _on_ui_mode_changed_event(self, event: SettingsUIModeChangedEvent):
         self.on_ui_mode_changed(event.ui_mode)
 
-    def setup_ui_reference(self, ui):
-        self.manager = LayoutManager(ui)
+    def setup_ui_reference(self, ui, parent_window=None):
+        self.manager = LayoutManager(ui, parent_window)
 
         if self.store:
-            current_mode = getattr(self.store.settings, 'ui_mode', 'beginner')
+            current_mode = getattr(self.store.settings, "ui_mode", "beginner")
             self.manager.apply_mode(current_mode)
+
+    @property
+    def toast_manager(self):
+        if self.manager:
+            return self.manager.toast_manager
+        return None
 
     def on_ui_mode_changed(self, mode_name: str):
         if self.manager:
             self.manager.apply_mode(mode_name)
-

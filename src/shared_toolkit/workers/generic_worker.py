@@ -34,4 +34,3 @@ class GenericWorker(QRunnable):
                 self.signals.result.emit(result)
         finally:
             self.signals.finished.emit()
-

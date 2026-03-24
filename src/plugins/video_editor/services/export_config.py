@@ -1,33 +1,21 @@
 import logging
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 logger = logging.getLogger("ImproveImgSLI")
 
 EXPORT_FORMATS = {
     "mp4": {
         "codecs": ["h264 (AVC)", "h265 (HEVC)", "av1", "vp9"],
-        "default_codec": "h264 (AVC)"
+        "default_codec": "h264 (AVC)",
     },
     "mkv": {
         "codecs": ["h264 (AVC)", "h265 (HEVC)", "vp9", "av1", "prores", "raw"],
-        "default_codec": "h264 (AVC)"
+        "default_codec": "h264 (AVC)",
     },
-    "webm": {
-        "codecs": ["vp9", "av1"],
-        "default_codec": "vp9"
-    },
-    "mov": {
-        "codecs": ["prores", "h264 (AVC)"],
-        "default_codec": "prores"
-    },
-    "gif": {
-        "codecs": ["gif"],
-        "default_codec": "gif"
-    },
-    "avi": {
-        "codecs": ["h264 (AVC)", "raw"],
-        "default_codec": "h264 (AVC)"
-    }
+    "webm": {"codecs": ["vp9", "av1"], "default_codec": "vp9"},
+    "mov": {"codecs": ["prores", "h264 (AVC)"], "default_codec": "prores"},
+    "gif": {"codecs": ["gif"], "default_codec": "gif"},
+    "avi": {"codecs": ["h264 (AVC)", "raw"], "default_codec": "h264 (AVC)"},
 }
 
 CODEC_MAPPING = {
@@ -37,21 +25,24 @@ CODEC_MAPPING = {
     "vp9": "vp9",
     "prores": "prores",
     "gif": "gif",
-    "raw": "raw"
+    "raw": "raw",
 }
 
 ENCODING_PRESETS_STANDARD = [
-    "ultrafast", "superfast", "veryfast", "faster",
-    "fast", "medium", "slow", "slower", "veryslow"
+    "ultrafast",
+    "superfast",
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+    "slower",
+    "veryslow",
 ]
 
-PRESETS_PRORES = [
-    "proxy", "lt", "standard", "hq", "4444"
-]
+PRESETS_PRORES = ["proxy", "lt", "standard", "hq", "4444"]
 
-PRESETS_GIF = [
-    "High Quality", "Balanced", "Compact (Dithered)"
-]
+PRESETS_GIF = ["High Quality", "Balanced", "Compact (Dithered)"]
 
 DEFAULT_CRF_VALUES = {
     "h264": 23,
@@ -60,7 +51,56 @@ DEFAULT_CRF_VALUES = {
     "av1": 31,
     "prores": 0,
     "gif": 0,
-    "raw": 0
+    "raw": 0,
+}
+
+PIXEL_FORMATS = {
+    "h264": ["yuv420p", "yuv422p", "yuv444p"],
+    "h265": [
+        "yuv420p",
+        "yuv422p",
+        "yuv444p",
+        "yuv420p10le",
+        "yuv422p10le",
+        "yuv444p10le",
+    ],
+    "vp9": [
+        "yuv420p",
+        "yuv422p",
+        "yuv444p",
+        "yuv420p10le",
+        "yuv422p10le",
+        "yuv444p10le",
+    ],
+    "av1": [
+        "yuv420p",
+        "yuv422p",
+        "yuv444p",
+        "yuv420p10le",
+        "yuv422p10le",
+        "yuv444p10le",
+    ],
+    "prores": ["yuv422p10le", "yuv444p10le"],
+    "raw": [
+        "yuv420p",
+        "yuv422p",
+        "yuv444p",
+        "yuv420p10le",
+        "yuv422p10le",
+        "yuv444p10le",
+        "rgba",
+    ],
+    "gif": [],
+}
+
+DEFAULT_PIXEL_FORMATS = {
+    "h264": "yuv420p",
+    "h265": "yuv420p",
+    "vp9": "yuv420p",
+    "av1": "yuv420p",
+    "prores": "yuv422p10le",
+    "raw": "yuv420p",
+    "gif": "",
 }
 
 class ExportConfigBuilder:
@@ -110,7 +150,7 @@ class ExportConfigBuilder:
             "has_crf": True,
             "has_bitrate": True,
             "has_preset": True,
-            "preset_label": "video.encoding_speed_preset"
+            "preset_label": "video.encoding_speed_preset",
         }
 
         if internal == "gif":
@@ -136,6 +176,16 @@ class ExportConfigBuilder:
         return DEFAULT_CRF_VALUES.get(internal_codec, 23)
 
     @staticmethod
+    def get_pixel_formats_for_codec(codec_display_name: str) -> List[str]:
+        internal = ExportConfigBuilder.get_codec_internal_name(codec_display_name)
+        return PIXEL_FORMATS.get(internal, ["yuv420p"])
+
+    @staticmethod
+    def get_default_pixel_format_for_codec(codec_display_name: str) -> str:
+        internal = ExportConfigBuilder.get_codec_internal_name(codec_display_name)
+        return DEFAULT_PIXEL_FORMATS.get(internal, "yuv420p")
+
+    @staticmethod
     def build_export_config(
         container: str,
         codec: str,
@@ -143,8 +193,9 @@ class ExportConfigBuilder:
         crf: int = 23,
         bitrate: str = "8000k",
         preset: str = "medium",
+        pix_fmt: str = "yuv420p",
         manual_mode: bool = False,
-        manual_args: str = ""
+        manual_args: str = "",
     ) -> Dict[str, Any]:
         """
         Собирает конфигурацию экспорта из параметров.
@@ -156,8 +207,9 @@ class ExportConfigBuilder:
             "crf": crf,
             "bitrate": bitrate,
             "preset": preset,
+            "pix_fmt": pix_fmt,
             "manual_mode": manual_mode,
-            "manual_args": manual_args
+            "manual_args": manual_args,
         }
 
         config = ExportConfigBuilder.validate_and_fix_config(config)
@@ -170,12 +222,16 @@ class ExportConfigBuilder:
 
         if result.get("container") not in EXPORT_FORMATS:
             result["container"] = "mp4"
-            logger.warning(f"Invalid container, using default: mp4")
+            logger.warning("Invalid container, using default: mp4")
 
         valid_codecs = ExportConfigBuilder.get_codecs_for_container(result["container"])
         if result.get("codec") not in valid_codecs:
-            result["codec"] = ExportConfigBuilder.get_default_codec_for_container(result["container"])
-            logger.warning(f"Invalid codec for container {result['container']}, using default: {result['codec']}")
+            result["codec"] = ExportConfigBuilder.get_default_codec_for_container(
+                result["container"]
+            )
+            logger.warning(
+                f"Invalid codec for container {result['container']}, using default: {result['codec']}"
+            )
 
         internal_codec = ExportConfigBuilder.get_codec_internal_name(result["codec"])
 
@@ -193,6 +249,15 @@ class ExportConfigBuilder:
 
         if result.get("quality_mode") not in ["crf", "bitrate"]:
             result["quality_mode"] = "crf"
+
+        valid_pix_fmts = ExportConfigBuilder.get_pixel_formats_for_codec(result["codec"])
+        if valid_pix_fmts:
+            if result.get("pix_fmt") not in valid_pix_fmts:
+                result["pix_fmt"] = ExportConfigBuilder.get_default_pixel_format_for_codec(
+                    result["codec"]
+                )
+        else:
+            result["pix_fmt"] = ""
 
         try:
             crf = int(result.get("crf", 23))
@@ -218,4 +283,3 @@ class ExportConfigBuilder:
     @staticmethod
     def map_codec_to_internal_name(codec_display_name: str) -> str:
         return CODEC_MAPPING.get(codec_display_name, "h264")
-

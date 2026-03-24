@@ -1,22 +1,33 @@
 import logging
-import os
 
-from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, pyqtProperty, QSize
-from PyQt6.QtGui import QFont, QPixmap, QPainter, QColor
+from PyQt6.QtCore import (
+    QEasingCurve,
+    QPropertyAnimation,
+    QSize,
+    Qt,
+    pyqtProperty,
+    pyqtSignal,
+)
+from PyQt6.QtGui import QColor, QFont, QPainter, QPalette
 from PyQt6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QLabel,
-    QWidget, QStackedWidget, QSizePolicy
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from toolkit.managers.theme_manager import ThemeManager
-from toolkit.widgets.atomic.custom_button import CustomButton
-from toolkit.widgets.atomic.toggle_icon_button import ToggleIconButton
-from toolkit.widgets.atomic.scrollable_icon_button import ScrollableIconButton
-from toolkit.widgets.atomic.toggle_scrollable_icon_button import ToggleScrollableIconButton
-from toolkit.widgets.atomic.simple_icon_button import SimpleIconButton
-from ui.icon_manager import AppIcon
-from utils.resource_loader import resource_path
 from resources.translations import tr
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from shared_toolkit.ui.widgets.atomic.scrollable_icon_button import ScrollableIconButton
+from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
+from shared_toolkit.ui.widgets.atomic.toggle_icon_button import ToggleIconButton
+from shared_toolkit.ui.widgets.atomic.toggle_scrollable_icon_button import (
+    ToggleScrollableIconButton,
+)
+from ui.icon_manager import AppIcon
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -89,8 +100,15 @@ class DotIndicator(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(int(x), int(y), dot_size, dot_size)
 
-        if abs(self._animated_position - self._previous_position) > 0.01 and self._animation.state() == QPropertyAnimation.State.Running:
-            animation_progress = self._animation.currentTime() / self._animation.duration() if self._animation.duration() > 0 else 1.0
+        if (
+            abs(self._animated_position - self._previous_position) > 0.01
+            and self._animation.state() == QPropertyAnimation.State.Running
+        ):
+            animation_progress = (
+                self._animation.currentTime() / self._animation.duration()
+                if self._animation.duration() > 0
+                else 1.0
+            )
             direction = -1 if self._animated_position > self._previous_position else 1
 
             trail_steps = 3
@@ -98,7 +116,10 @@ class DotIndicator(QWidget):
                 trail_offset = (i + 1) * step * 0.17
                 trail_x = animated_x + trail_offset * direction
 
-                if trail_x < start_x - step or trail_x > start_x + (self._count - 1) * step + step:
+                if (
+                    trail_x < start_x - step
+                    or trail_x > start_x + (self._count - 1) * step + step
+                ):
                     continue
 
                 base_alpha = 120 * (1.0 - (i + 1) / (trail_steps + 1))
@@ -114,7 +135,12 @@ class DotIndicator(QWidget):
 
                 painter.setBrush(trail_color)
                 painter.setPen(Qt.PenStyle.NoPen)
-                painter.drawEllipse(int(trail_x) - 1, int(y) - 1, int(trail_size) + 2, int(trail_size) + 2)
+                painter.drawEllipse(
+                    int(trail_x) - 1,
+                    int(y) - 1,
+                    int(trail_size) + 2,
+                    int(trail_size) + 2,
+                )
 
         painter.setBrush(accent)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -141,17 +167,17 @@ class OnboardingOverlay(QWidget):
             {
                 "key": "beginner",
                 "name": tr("settings.ui_mode_beginner", current_lang),
-                "desc": tr("onboarding.beginner_description", current_lang)
+                "desc": tr("onboarding.beginner_description", current_lang),
             },
             {
                 "key": "advanced",
                 "name": tr("settings.ui_mode_advanced", current_lang),
-                "desc": tr("onboarding.advanced_description", current_lang)
+                "desc": tr("onboarding.advanced_description", current_lang),
             },
             {
                 "key": "expert",
                 "name": tr("settings.ui_mode_expert", current_lang),
-                "desc": tr("onboarding.expert_description", current_lang)
+                "desc": tr("onboarding.expert_description", current_lang),
             },
         ]
 
@@ -159,6 +185,7 @@ class OnboardingOverlay(QWidget):
         self._apply_theme()
 
         from PyQt6.QtCore import QTimer
+
         QTimer.singleShot(0, self._scale_all)
 
     def _init_ui(self):
@@ -198,7 +225,9 @@ class OnboardingOverlay(QWidget):
             btn = CustomButton(None, mode["name"])
             btn.RADIUS = 8
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda checked=False, idx=i: self._on_mode_btn_clicked(idx))
+            btn.clicked.connect(
+                lambda checked=False, idx=i: self._on_mode_btn_clicked(idx)
+            )
             self.mode_buttons.append(btn)
             self.mode_buttons_layout.addWidget(btn)
 
@@ -216,7 +245,9 @@ class OnboardingOverlay(QWidget):
 
         self.bottom_container = QWidget()
         self.bottom_layout = QVBoxLayout(self.bottom_container)
-        self.bottom_layout.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter)
+        self.bottom_layout.setAlignment(
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter
+        )
 
         welcome_text = tr("onboarding.welcome", current_lang)
         self.welcome_lbl = QLabel(welcome_text)
@@ -280,6 +311,7 @@ class OnboardingOverlay(QWidget):
 
             def _on_beginner_color_clicked():
                 from PyQt6.QtWidgets import QColorDialog
+
                 current_color = b3._current_color if b3._current_color else accent_color
                 color_dialog = QColorDialog(current_color, self)
                 color_dialog.setWindowTitle(tr("ui.select_color", current_lang))
@@ -301,7 +333,7 @@ class OnboardingOverlay(QWidget):
                 tr("onboarding.beginner.button.rotate", current_lang),
                 tr("onboarding.beginner.button.view", current_lang),
                 tr("onboarding.beginner.button.color", current_lang),
-                tr("onboarding.beginner.button.width", current_lang)
+                tr("onboarding.beginner.button.width", current_lang),
             ]
 
             demo_layout.addLayout(self._wrap_btn(b1, labels[0]))
@@ -311,7 +343,9 @@ class OnboardingOverlay(QWidget):
 
         elif key == "advanced":
 
-            b_smart = ToggleScrollableIconButton(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20)
+            b_smart = ToggleScrollableIconButton(
+                AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20
+            )
             b_smart.setFixedSize(40, 40)
             b_smart.setChecked(False)
             b_smart.set_value(3)
@@ -323,7 +357,10 @@ class OnboardingOverlay(QWidget):
 
             def _on_advanced_color_clicked():
                 from PyQt6.QtWidgets import QColorDialog
-                current_color = b_color._current_color if b_color._current_color else accent_color
+
+                current_color = (
+                    b_color._current_color if b_color._current_color else accent_color
+                )
                 color_dialog = QColorDialog(current_color, self)
                 color_dialog.setWindowTitle(tr("ui.select_color", current_lang))
                 self.theme_manager.apply_theme_to_dialog(color_dialog)
@@ -339,7 +376,7 @@ class OnboardingOverlay(QWidget):
 
             txts = [
                 tr("onboarding.advanced.button.smart_control", current_lang),
-                tr("onboarding.advanced.button.color", current_lang)
+                tr("onboarding.advanced.button.color", current_lang),
             ]
 
             demo_layout.addLayout(self._wrap_btn(b_smart, txts[0]))
@@ -347,7 +384,9 @@ class OnboardingOverlay(QWidget):
 
         elif key == "expert":
 
-            b_expert = ToggleScrollableIconButton(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20)
+            b_expert = ToggleScrollableIconButton(
+                AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20
+            )
             b_expert.setFixedSize(40, 40)
             b_expert.setChecked(False)
             b_expert.set_value(3)
@@ -358,7 +397,11 @@ class OnboardingOverlay(QWidget):
             def _on_expert_right():
                 from PyQt6.QtWidgets import QColorDialog
 
-                current_color = b_expert._underline_color if b_expert._underline_color else accent_color
+                current_color = (
+                    b_expert._underline_color
+                    if b_expert._underline_color
+                    else accent_color
+                )
                 color_dialog = QColorDialog(current_color, self)
                 color_dialog.setWindowTitle(tr("ui.select_color", current_lang))
                 self.theme_manager.apply_theme_to_dialog(color_dialog)
@@ -385,7 +428,9 @@ class OnboardingOverlay(QWidget):
                         b_expert.set_value(3)
                 else:
 
-                    logger.debug(f"Onboarding: Saving current value {current_value} and setting to 0")
+                    logger.debug(
+                        f"Onboarding: Saving current value {current_value} and setting to 0"
+                    )
                     b_expert.set_saved_value(current_value)
                     b_expert.set_value(0)
 
@@ -396,7 +441,9 @@ class OnboardingOverlay(QWidget):
             b_expert.rightClicked.connect(_on_expert_right)
             logger.debug("Onboarding: Connecting middleClicked signal")
             b_expert.middleClicked.connect(_on_expert_middle)
-            logger.debug(f"Onboarding: middleClicked connected, receivers count: {b_expert.receivers(b_expert.middleClicked)}")
+            logger.debug(
+                f"Onboarding: middleClicked connected, receivers count: {b_expert.receivers(b_expert.middleClicked)}"
+            )
             b_expert.valueChanged.connect(_on_expert_val_changed)
 
             info_txt = tr("onboarding.expert.button.info", current_lang)
@@ -408,7 +455,13 @@ class OnboardingOverlay(QWidget):
         lbl_desc_main = QLabel(mode_data.get("desc", ""))
         lbl_desc_main.setAlignment(Qt.AlignmentFlag.AlignCenter)
         text_col = self.theme_manager.get_color("dialog.text").name()
-        lbl_desc_main.setStyleSheet(f"font-size: 16px; color: {text_col}; margin-top: 15px; opacity: 0.9;")
+        desc_font = lbl_desc_main.font()
+        desc_font.setPixelSize(16)
+        lbl_desc_main.setFont(desc_font)
+        desc_palette = lbl_desc_main.palette()
+        desc_palette.setColor(lbl_desc_main.foregroundRole(), QColor(text_col))
+        lbl_desc_main.setPalette(desc_palette)
+        lbl_desc_main.setContentsMargins(0, 15, 0, 0)
         layout.addWidget(lbl_desc_main)
 
         return page
@@ -416,7 +469,10 @@ class OnboardingOverlay(QWidget):
     def _style_demo_btn(self, btn, checked=False):
         btn.setFixedSize(40, 40)
 
-        from toolkit.widgets.atomic.toggle_scrollable_icon_button import ToggleScrollableIconButton
+        from shared_toolkit.ui.widgets.atomic.toggle_scrollable_icon_button import (
+            ToggleScrollableIconButton,
+        )
+
         is_toggle_scrollable = isinstance(btn, ToggleScrollableIconButton)
 
         if is_toggle_scrollable:
@@ -431,9 +487,9 @@ class OnboardingOverlay(QWidget):
         btn.setAttribute(Qt.WidgetAttribute.WA_NoMouseReplay, False)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        if hasattr(btn, 'setChecked'):
+        if hasattr(btn, "setChecked"):
             btn.setChecked(checked)
-        if hasattr(btn, 'update_styles'):
+        if hasattr(btn, "update_styles"):
             btn.update_styles()
 
         if not is_toggle_scrollable:
@@ -449,7 +505,13 @@ class OnboardingOverlay(QWidget):
             lbl = QLabel(text)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             text_col = self.theme_manager.get_color("list_item.text.rating").name()
-            lbl.setStyleSheet(f"font-size: 13px; color: {text_col}; font-weight: 500;")
+            label_font = lbl.font()
+            label_font.setPixelSize(13)
+            label_font.setWeight(500)
+            lbl.setFont(label_font)
+            label_palette = lbl.palette()
+            label_palette.setColor(lbl.foregroundRole(), QColor(text_col))
+            lbl.setPalette(label_palette)
             layout.addWidget(lbl)
         return layout
 
@@ -466,10 +528,14 @@ class OnboardingOverlay(QWidget):
         for i, btn in enumerate(self.mode_buttons):
             if i == index:
                 btn.set_override_bg_color(accent_color)
-                btn.text_label.setStyleSheet("color: #ffffff; background: transparent;")
+                btn_palette = btn.text_label.palette()
+                btn_palette.setColor(btn.text_label.foregroundRole(), QColor("#ffffff"))
+                btn.text_label.setPalette(btn_palette)
             else:
                 btn.set_override_bg_color(None)
-                btn.text_label.setStyleSheet(f"color: {text_color.name()}; background: transparent;")
+                btn_palette = btn.text_label.palette()
+                btn_palette.setColor(btn.text_label.foregroundRole(), text_color)
+                btn.text_label.setPalette(btn_palette)
 
     def _get_scale_factor(self):
         width_scale = self.width() / self._base_window_width
@@ -495,7 +561,9 @@ class OnboardingOverlay(QWidget):
 
         spacing = max(1, int(2 * scale)) if scale <= 1.0 else max(1, int(2 / scale))
 
-        self.top_layout.setContentsMargins(margin_horizontal, margin_top, margin_horizontal, 0)
+        self.top_layout.setContentsMargins(
+            margin_horizontal, margin_top, margin_horizontal, 0
+        )
         self.top_layout.setSpacing(spacing)
 
         self.bottom_layout.setSpacing(spacing)
@@ -505,7 +573,11 @@ class OnboardingOverlay(QWidget):
         for layout in [self.top_layout, self.bottom_layout]:
             for i in reversed(range(layout.count())):
                 item = layout.itemAt(i)
-                if item and item.spacerItem() and not item.spacerItem().sizePolicy().hasHeightForWidth():
+                if (
+                    item
+                    and item.spacerItem()
+                    and not item.spacerItem().sizePolicy().hasHeightForWidth()
+                ):
                     layout.removeItem(item)
 
         text_col = self.theme_manager.get_color("WindowText").name()
@@ -522,9 +594,13 @@ class OnboardingOverlay(QWidget):
 
         hint_font_size = max(12, int(15 * scale))
 
-        self.hint_label.setStyleSheet(
-            f"color: {text_col}; font-size: {hint_font_size}px; font-weight: 600; opacity: 0.8;"
-        )
+        hint_font = self.hint_label.font()
+        hint_font.setPixelSize(hint_font_size)
+        hint_font.setWeight(600)
+        self.hint_label.setFont(hint_font)
+        hint_palette = self.hint_label.palette()
+        hint_palette.setColor(self.hint_label.foregroundRole(), QColor(text_col))
+        self.hint_label.setPalette(hint_palette)
 
         btn_width = max(150, int(200 * scale))
         btn_height = max(42, int(52 * scale))
@@ -539,7 +615,7 @@ class OnboardingOverlay(QWidget):
 
         for btn in self.mode_buttons:
             btn.setFixedSize(btn_width, btn_height)
-            if hasattr(btn, 'text_label'):
+            if hasattr(btn, "text_label"):
                 btn.text_label.setFont(mode_btn_font)
 
         welcome_font_size = max(22, int(28 * scale))
@@ -555,7 +631,7 @@ class OnboardingOverlay(QWidget):
         custom_font = QFont()
         custom_font.setPixelSize(start_font_size)
         custom_font.setBold(True)
-        if hasattr(self.btn_start, 'text_label'):
+        if hasattr(self.btn_start, "text_label"):
             self.btn_start.text_label.setFont(custom_font)
 
         self.btn_start.setFixedSize(start_btn_width, start_btn_height)
@@ -581,16 +657,11 @@ class OnboardingOverlay(QWidget):
     def _apply_theme(self):
         bg_window = self.theme_manager.get_color("Window").name()
         text_col = self.theme_manager.get_color("WindowText").name()
-
-        self.setStyleSheet(f"""
-            OnboardingOverlay {{
-                background-color: {bg_window};
-            }}
-            QLabel {{
-                color: {text_col};
-                background: transparent;
-            }}
-        """)
+        self.setAutoFillBackground(True)
+        palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(bg_window))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(text_col))
+        self.setPalette(palette)
 
     def _finish(self):
         key = self.modes[self._current_index]["key"]

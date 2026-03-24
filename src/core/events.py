@@ -1,17 +1,15 @@
-
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol, TypeVar, runtime_checkable
-from PyQt6.QtCore import QPointF
-from PyQt6.QtGui import QColor
+
+from domain.types import Color, Point
 
 @runtime_checkable
 class Event(Protocol):
     pass
 
-T = TypeVar('T', bound=Event)
+T = TypeVar("T", bound=Event)
 
 @dataclass(frozen=True)
 class CoreUpdateRequestedEvent:
@@ -40,7 +38,7 @@ class ViewportUpdateMovementSpeedEvent:
 
 @dataclass(frozen=True)
 class ViewportSetMagnifierPositionEvent:
-    position: QPointF
+    position: Point
 
 @dataclass(frozen=True)
 class ViewportSetMagnifierInternalSplitEvent:
@@ -142,8 +140,8 @@ class SettingsToggleIncludeFilenamesInSavedEvent:
 class SettingsApplyFontSettingsEvent:
     size: int
     weight: int
-    color: QColor
-    bg_color: QColor
+    color: Color
+    bg_color: Color
     draw_bg: bool
     placement: str
     alpha: int
@@ -154,7 +152,7 @@ class SettingsToggleDividerLineVisibilityEvent:
 
 @dataclass(frozen=True)
 class SettingsSetDividerLineColorEvent:
-    color: QColor
+    color: Color
 
 @dataclass(frozen=True)
 class SettingsToggleMagnifierDividerVisibilityEvent:
@@ -162,7 +160,7 @@ class SettingsToggleMagnifierDividerVisibilityEvent:
 
 @dataclass(frozen=True)
 class SettingsSetMagnifierDividerColorEvent:
-    color: QColor
+    color: Color
 
 @dataclass(frozen=True)
 class SettingsToggleAutoCropBlackBordersEvent:
@@ -204,4 +202,3 @@ class MagnifierRemovedEvent:
 class PluginEvent:
     plugin_name: str
     stage: str
-

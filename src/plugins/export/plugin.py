@@ -8,21 +8,24 @@ from shared_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
-from core.plugin_system import Plugin, plugin
-from core.plugin_system.interfaces import IControllablePlugin, IServicePlugin
-from core.plugin_system.ui_integration import get_plugin_name
 from core.events import (
-    ExportToggleRecordingEvent,
-    ExportTogglePauseRecordingEvent,
     ExportExportRecordedVideoEvent,
     ExportOpenVideoEditorEvent,
     ExportPasteImageFromClipboardEvent,
     ExportQuickSaveComparisonEvent,
+    ExportTogglePauseRecordingEvent,
+    ExportToggleRecordingEvent,
 )
-from plugins.export.services.image_export import ExportService
-from plugins.video_editor.services.recorder import Recorder
-from plugins.video_editor.services.export import VideoExporterService
+from core.plugin_system import Plugin, plugin
+from core.plugin_system.interfaces import (
+    IControllablePlugin,
+    IServicePlugin,
+    IVideoTrackProvider,
+)
 from plugins.export.controller import ExportController
+from plugins.export.services.image_export import ExportService
+from plugins.video_editor.services.export import VideoExporterService
+from plugins.video_editor.services.recorder import Recorder
 from services.io.image_loader import ImageLoaderService
 from services.system.clipboard import ClipboardService
 
@@ -42,18 +45,24 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         self.thread_pool: Any | None = None
         self.event_bus: Any | None = None
         self.store: Any | None = None
+        self.plugin_coordinator: Any | None = None
 
     def initialize(self, context: Any) -> None:
         super().initialize(context)
         self.store = getattr(context, "store", None)
         self.thread_pool = getattr(context, "thread_pool", None)
         self.event_bus = getattr(context, "event_bus", None)
+        self.plugin_coordinator = getattr(context, "plugin_coordinator", None)
         font_path = getattr(context, "font_path_absolute", None)
         self.export_service = ExportService(font_path)
-        coordinator = getattr(context, "plugin_coordinator", None)
         self.video_editor_plugin = (
-            coordinator.get_plugin("video_editor") if coordinator else None
+            self.plugin_coordinator.get_plugin("video_editor")
+            if self.plugin_coordinator
+            else None
         )
+
+    def get_qss_paths(self) -> tuple[str, ...]:
+        return (self.plugin_resource_path("resources", "export.qss"),)
 
     def configure_controller(
         self,
@@ -62,10 +71,15 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     ) -> None:
         if self.controller:
             return
-        self.recorder = Recorder(self.store)
-        self.video_exporter = VideoExporterService(self.recorder, self.store, main_controller)
+        extra_specs = self._collect_video_track_specs()
+        self.recorder = Recorder(self.store, extra_specs=extra_specs)
+        self.video_exporter = VideoExporterService(
+            self.recorder, self.store, main_controller
+        )
         self.image_loader = ImageLoaderService(self.store, main_controller)
-        self.clipboard_service = ClipboardService(self.store, main_controller, self.image_loader)
+        self.clipboard_service = ClipboardService(
+            self.store, main_controller, self.image_loader
+        )
         self.controller = ExportController(
             store=self.store,
             thread_pool=self.thread_pool,
@@ -82,12 +96,26 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
 
         if self.event_bus and self.controller:
 
-            self.event_bus.subscribe(ExportToggleRecordingEvent, self.controller.on_toggle_recording)
-            self.event_bus.subscribe(ExportTogglePauseRecordingEvent, self.controller.on_toggle_pause_recording)
-            self.event_bus.subscribe(ExportExportRecordedVideoEvent, self.controller.on_export_recorded_video)
-            self.event_bus.subscribe(ExportOpenVideoEditorEvent, self.controller.on_open_video_editor)
-            self.event_bus.subscribe(ExportPasteImageFromClipboardEvent, self.controller.on_paste_image_from_clipboard)
-            self.event_bus.subscribe(ExportQuickSaveComparisonEvent, self.controller.on_quick_save_comparison)
+            self.event_bus.subscribe(
+                ExportToggleRecordingEvent, self.controller.on_toggle_recording
+            )
+            self.event_bus.subscribe(
+                ExportTogglePauseRecordingEvent,
+                self.controller.on_toggle_pause_recording,
+            )
+            self.event_bus.subscribe(
+                ExportExportRecordedVideoEvent, self.controller.on_export_recorded_video
+            )
+            self.event_bus.subscribe(
+                ExportOpenVideoEditorEvent, self.controller.on_open_video_editor
+            )
+            self.event_bus.subscribe(
+                ExportPasteImageFromClipboardEvent,
+                self.controller.on_paste_image_from_clipboard,
+            )
+            self.event_bus.subscribe(
+                ExportQuickSaveComparisonEvent, self.controller.on_quick_save_comparison
+            )
 
     def quick_save_comparison(self, checked: bool = False) -> bool:
         logger.info("quick_save_comparison called in plugin")
@@ -98,11 +126,15 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         logger.warning("quick_save_comparison: controller is None")
         return False
 
-    def export_image(self, export_options: dict[str, Any], cancel_event: Event | None = None) -> None:
+    def export_image(
+        self, export_options: dict[str, Any], cancel_event: Event | None = None
+    ) -> None:
         if not self.export_service or not self.store:
             return
 
-        worker = GenericWorker(self._export_task, export_options, cancel_event, self._progress_callback)
+        worker = GenericWorker(
+            self._export_task, export_options, cancel_event, self._progress_callback
+        )
         worker.signals.result.connect(self._on_export_finished)
         worker.signals.error.connect(self._on_export_error)
 
@@ -162,7 +194,7 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     def set_presenter(self, presenter: Any) -> None:
         if self.controller:
 
-            if hasattr(presenter, 'export_presenter'):
+            if hasattr(presenter, "export_presenter"):
                 self.controller.presenter = presenter.export_presenter
             else:
 
@@ -170,6 +202,18 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
 
     def get_service(self) -> Any:
         return self.recorder
+
+    def _collect_video_track_specs(self) -> tuple[Any, ...]:
+        if not self.plugin_coordinator:
+            return ()
+
+        specs: list[Any] = []
+        for plugin in self.plugin_coordinator.iter_plugins():
+            if plugin is self:
+                continue
+            if isinstance(plugin, IVideoTrackProvider):
+                specs.extend(plugin.get_video_track_specs())
+        return tuple(specs)
 
     def provides_capability(self, capability: str) -> bool:
         return capability in self.capabilities
@@ -182,5 +226,7 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
                 self.video_exporter.cleanup()
             except Exception as e:
                 import logging
-                logging.getLogger("ImproveImgSLI").error(f"Ошибка при завершении VideoExporterService: {e}")
 
+                logging.getLogger("ImproveImgSLI").error(
+                    f"Ошибка при завершении VideoExporterService: {e}"
+                )

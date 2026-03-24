@@ -7,7 +7,9 @@ class PluginUIRegistry:
     def __init__(self):
         self._actions: dict[str, dict[str, Callable[..., Any]]] = defaultdict(dict)
 
-    def register_action(self, plugin_name: str, action_id: str, callback: Callable[..., Any]) -> None:
+    def register_action(
+        self, plugin_name: str, action_id: str, callback: Callable[..., Any]
+    ) -> None:
         self._actions[plugin_name][action_id] = callback
 
     def unregister_plugin(self, plugin_name: str) -> None:
@@ -22,4 +24,3 @@ class PluginUIRegistry:
 def get_plugin_name(plugin: Any) -> str:
     meta = getattr(plugin, "_plugin_meta", {})
     return meta.get("name", plugin.__class__.__name__)
-

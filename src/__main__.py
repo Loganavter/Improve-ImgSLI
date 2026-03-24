@@ -15,14 +15,13 @@ except Exception:
 
     pass
 
-if getattr(sys, 'frozen', False):
+if getattr(sys, "frozen", False):
     application_path = sys._MEIPASS
 else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, application_path)
 
 from PyQt6.QtCore import QThreadPool
-from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
 from plugins.settings.manager import SettingsManager
@@ -69,6 +68,7 @@ def main():
     app.setOrganizationDomain("improve-imgsli.local")
 
     window = MainWindow(debug_mode=args.debug)
+    window.initialize_application()
     window.show()
 
     def on_quit():

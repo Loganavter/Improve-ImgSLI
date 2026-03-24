@@ -1,4 +1,3 @@
-from shared_toolkit.workers.generic_worker import GenericWorker, WorkerSignals
+from .generic_worker import GenericWorker, WorkerSignals
 
-__all__ = ['GenericWorker', 'WorkerSignals']
-
+__all__ = ["GenericWorker", "WorkerSignals"]

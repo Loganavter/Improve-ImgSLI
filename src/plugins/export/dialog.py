@@ -1,6 +1,5 @@
 import io
 import logging
-import os
 
 import PIL.Image
 from PyQt6.QtCore import QSize, Qt, QTimer
@@ -14,35 +13,48 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from toolkit.managers.theme_manager import ThemeManager
-
-from toolkit.widgets.atomic.custom_button import CustomButton
-from toolkit.widgets.atomic import FluentCheckBox, FluentSlider
-from utils.resource_loader import resource_path
-
+from domain.qt_adapters import color_to_qcolor
+from plugins.export.models import ExportDialogState
 from resources.translations import tr as app_tr
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.atomic import FluentCheckBox, FluentSlider
+from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
 
 class ExportDialog(QDialog):
-    def __init__(self, store, parent=None, tr_func=None, preview_image: QPixmap | PIL.Image.Image | None = None, suggested_filename: str = ""):
+    def __init__(
+        self,
+        dialog_state: ExportDialogState,
+        parent=None,
+        tr_func=None,
+        preview_image: QPixmap | PIL.Image.Image | None = None,
+        suggested_filename: str = "",
+        on_set_favorite_dir=None,
+    ):
         super().__init__(parent)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
         self.setObjectName("ExportDialog")
         self.tr = tr_func if callable(tr_func) else app_tr
-        self.store = store
+        self.dialog_state = dialog_state
         self.theme_manager = ThemeManager.get_instance()
         self.suggested_filename = suggested_filename
+        self._on_set_favorite_dir = on_set_favorite_dir
+        self.favorite_dir = dialog_state.favorite_dir
 
-        self.setWindowTitle(self.tr("misc.export", self.store.settings.current_language))
+        self.setWindowTitle(
+            self.tr("misc.export", self.dialog_state.current_language)
+        )
         self.setWindowFlags(
-            Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
         )
         self.resize(860, 540)
         self.setSizeGripEnabled(True)
@@ -56,10 +68,15 @@ class ExportDialog(QDialog):
                 try:
                     self._preview_source_pixmap = self._pixmap_from_pil(preview_image)
                     if self._preview_source_pixmap.isNull():
-                        logger.warning("Preview image conversion resulted in a null QPixmap.")
+                        logger.warning(
+                            "Preview image conversion resulted in a null QPixmap."
+                        )
                         self._preview_source_pixmap = None
                 except Exception as e:
-                    logger.error(f"Failed to convert preview PIL image to QPixmap: {e}", exc_info=True)
+                    logger.error(
+                        f"Failed to convert preview PIL image to QPixmap: {e}",
+                        exc_info=True,
+                    )
                     self._preview_source_pixmap = None
 
         self._init_ui()
@@ -86,13 +103,17 @@ class ExportDialog(QDialog):
         left_layout.setContentsMargins(8, 8, 8, 8)
         left_layout.setSpacing(8)
 
-        preview_title = QLabel(self.tr("export.preview", self.store.settings.current_language))
+        preview_title = QLabel(
+            self.tr("export.preview", self.dialog_state.current_language)
+        )
         preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label = QLabel()
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumSize(QSize(300, 300))
         self.preview_label.setFrameShape(QFrame.Shape.NoFrame)
-        self.preview_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.preview_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
 
         left_layout.addWidget(preview_title)
         left_layout.addWidget(self.preview_label, 1)
@@ -103,10 +124,15 @@ class ExportDialog(QDialog):
         right_layout.setContentsMargins(8, 8, 8, 8)
         right_layout.setSpacing(10)
 
-        dir_label = QLabel(self.tr("label.output_directory", self.store.settings.current_language) + ":")
+        dir_label = QLabel(
+            self.tr("label.output_directory", self.dialog_state.current_language)
+            + ":"
+        )
         self.edit_dir = QLineEdit()
 
-        self.btn_browse_dir = CustomButton(None, self.tr("button.browse", self.store.settings.current_language))
+        self.btn_browse_dir = CustomButton(
+            None, self.tr("button.browse", self.dialog_state.current_language)
+        )
         self.btn_browse_dir.setFixedHeight(32)
         self.btn_browse_dir.clicked.connect(self._choose_directory)
 
@@ -116,8 +142,12 @@ class ExportDialog(QDialog):
 
         fav_row = QHBoxLayout()
 
-        self.btn_set_favorite = CustomButton(None, self.tr("misc.set_as_favorite", self.store.settings.current_language))
-        self.btn_use_favorite = CustomButton(None, self.tr("tooltip.use_favorite", self.store.settings.current_language))
+        self.btn_set_favorite = CustomButton(
+            None, self.tr("misc.set_as_favorite", self.dialog_state.current_language)
+        )
+        self.btn_use_favorite = CustomButton(
+            None, self.tr("tooltip.use_favorite", self.dialog_state.current_language)
+        )
 
         self.btn_set_favorite.setFixedHeight(32)
         self.btn_use_favorite.setFixedHeight(32)
@@ -127,25 +157,35 @@ class ExportDialog(QDialog):
         fav_row.addWidget(self.btn_set_favorite)
         fav_row.addWidget(self.btn_use_favorite)
 
-        name_label = QLabel(self.tr("label.file_name", self.store.settings.current_language) + ":")
+        name_label = QLabel(
+            self.tr("label.file_name", self.dialog_state.current_language) + ":"
+        )
         self.edit_name = QLineEdit()
 
-        fmt_label = QLabel(self.tr("label.format", self.store.settings.current_language) + ":")
+        fmt_label = QLabel(
+            self.tr("label.format", self.dialog_state.current_language) + ":"
+        )
         self.combo_format = QComboBox()
         for fmt in ["PNG", "JPEG", "WEBP", "BMP", "TIFF", "JXL"]:
             self.combo_format.addItem(fmt)
-        self.combo_format.currentIndexChanged.connect(self._update_controls_visity_by_format)
+        self.combo_format.currentIndexChanged.connect(
+            self._update_controls_visity_by_format
+        )
 
         self.quality_row = QWidget()
         quality_layout = QHBoxLayout(self.quality_row)
         quality_layout.setContentsMargins(0, 0, 0, 0)
         quality_layout.setSpacing(8)
-        quality_label = QLabel(self.tr("label.quality", self.store.settings.current_language) + ":")
+        quality_label = QLabel(
+            self.tr("label.quality", self.dialog_state.current_language) + ":"
+        )
         self.slider_quality = FluentSlider(Qt.Orientation.Horizontal)
         self.slider_quality.setRange(1, 100)
         self.slider_quality.setValue(95)
         self.label_quality_value = QLabel("95")
-        self.slider_quality.valueChanged.connect(lambda v: self.label_quality_value.setText(str(v)))
+        self.slider_quality.valueChanged.connect(
+            lambda v: self.label_quality_value.setText(str(v))
+        )
         quality_layout.addWidget(quality_label)
         quality_layout.addWidget(self.slider_quality, 1)
         quality_layout.addWidget(self.label_quality_value)
@@ -154,21 +194,35 @@ class ExportDialog(QDialog):
         png_layout = QHBoxLayout(self.png_row)
         png_layout.setContentsMargins(0, 0, 0, 0)
         png_layout.setSpacing(8)
-        self.label_png_compress = QLabel(self.tr("export.png_compression_level", self.store.settings.current_language) + ":")
+        self.label_png_compress = QLabel(
+            self.tr(
+                "export.png_compression_level", self.dialog_state.current_language
+            )
+            + ":"
+        )
         self.slider_png_compress = FluentSlider(Qt.Orientation.Horizontal)
         self.slider_png_compress.setRange(0, 9)
         self.slider_png_compress.setValue(9)
         self.label_png_compress_value = QLabel("9")
-        self.slider_png_compress.valueChanged.connect(lambda v: self.label_png_compress_value.setText(str(v)))
-        self.checkbox_png_optimize = FluentCheckBox(self.tr("export.optimize_png", self.store.settings.current_language))
+        self.slider_png_compress.valueChanged.connect(
+            lambda v: self.label_png_compress_value.setText(str(v))
+        )
+        self.checkbox_png_optimize = FluentCheckBox(
+            self.tr("export.optimize_png", self.dialog_state.current_language)
+        )
         png_layout.addWidget(self.label_png_compress)
         png_layout.addWidget(self.slider_png_compress, 1)
         png_layout.addWidget(self.label_png_compress_value)
         png_layout.addWidget(self.checkbox_png_optimize)
 
-        self.checkbox_fill_bg = FluentCheckBox(self.tr("export.fill_background", self.store.settings.current_language))
+        self.checkbox_fill_bg = FluentCheckBox(
+            self.tr("export.fill_background", self.dialog_state.current_language)
+        )
 
-        self.btn_bg_color = CustomButton(None, self.tr("export.background_color", self.store.settings.current_language))
+        self.btn_bg_color = CustomButton(
+            None,
+            self.tr("export.background_color", self.dialog_state.current_language),
+        )
         self.btn_bg_color.setFixedHeight(32)
         self.btn_bg_color.clicked.connect(self._pick_bg_color)
 
@@ -178,22 +232,34 @@ class ExportDialog(QDialog):
         bg_row.addWidget(self.btn_bg_color)
         self.current_bg_color = QColor(255, 255, 255, 255)
 
-        self.checkbox_include_metadata = FluentCheckBox(self.tr("export.include_metadata", self.store.settings.current_language))
-        self.checkbox_include_metadata.toggled.connect(self._on_include_metadata_toggled)
+        self.checkbox_include_metadata = FluentCheckBox(
+            self.tr("export.include_metadata", self.dialog_state.current_language)
+        )
+        self.checkbox_include_metadata.toggled.connect(
+            self._on_include_metadata_toggled
+        )
 
-        self.comment_label = QLabel(self.tr("export.comment", self.store.settings.current_language) + ":")
+        self.comment_label = QLabel(
+            self.tr("export.comment", self.dialog_state.current_language) + ":"
+        )
         self.edit_comment = QLineEdit()
-        self.checkbox_comment_default = FluentCheckBox(self.tr("export.remember_by_default", self.store.settings.current_language))
+        self.checkbox_comment_default = FluentCheckBox(
+            self.tr("export.remember_by_default", self.dialog_state.current_language)
+        )
 
         btns_row = QHBoxLayout()
         btns_row.addStretch()
 
-        self.btn_ok = CustomButton(None, self.tr("common.ok", self.store.settings.current_language))
+        self.btn_ok = CustomButton(
+            None, self.tr("common.ok", self.dialog_state.current_language)
+        )
         self.btn_ok.setProperty("class", "primary")
-        self.btn_ok.setFixedSize(100, 36)
+        self.btn_ok.setMinimumSize(100, 36)
 
-        self.btn_cancel = CustomButton(None, self.tr("common.cancel", self.store.settings.current_language))
-        self.btn_cancel.setFixedSize(100, 36)
+        self.btn_cancel = CustomButton(
+            None, self.tr("common.cancel", self.dialog_state.current_language)
+        )
+        self.btn_cancel.setMinimumSize(100, 36)
 
         self.btn_ok.clicked.connect(self.accept)
         self.btn_cancel.clicked.connect(self.reject)
@@ -230,60 +296,79 @@ class ExportDialog(QDialog):
         self.theme_manager.apply_theme_to_dialog(self)
 
     def _populate_from_state(self):
-        out_dir = self.store.settings.export_default_dir if self.store.settings.export_use_default_dir and self.store.settings.export_default_dir else None
-        if not out_dir:
-            out_dir = self._get_os_default_downloads()
-        self.edit_dir.setText(out_dir)
+        self.edit_dir.setText(self.dialog_state.output_dir)
 
-        fmt = (self.store.settings.export_last_format or "PNG").upper()
+        fmt = (self.dialog_state.last_format or "PNG").upper()
         idx = self.combo_format.findText(fmt)
         if idx >= 0:
             self.combo_format.setCurrentIndex(idx)
-        self.slider_quality.setValue(int(self.store.settings.export_quality or 95))
+        self.slider_quality.setValue(int(self.dialog_state.quality or 95))
         self.label_quality_value.setText(str(self.slider_quality.value()))
-        self.slider_png_compress.setValue(int(getattr(self.store.settings, "export_png_compress_level", 9)))
-        self.label_png_compress_value.setText(str(int(getattr(self.store.settings, "export_png_compress_level", 9))))
+        self.slider_png_compress.setValue(
+            int(self.dialog_state.png_compress_level or 9)
+        )
+        self.label_png_compress_value.setText(
+            str(int(self.dialog_state.png_compress_level or 9))
+        )
         self.checkbox_png_optimize.setChecked(True)
 
-        if hasattr(self.store.settings, "export_background_color") and isinstance(self.store.settings.export_background_color, QColor):
-            self.current_bg_color = self.store.settings.export_background_color
-        self.checkbox_fill_bg.setChecked(bool(getattr(self.store.settings, "export_fill_background", False)))
+        if self.dialog_state.background_color is not None:
+            self.current_bg_color = color_to_qcolor(self.dialog_state.background_color)
+        self.checkbox_fill_bg.setChecked(bool(self.dialog_state.fill_background))
 
         self.checkbox_include_metadata.setChecked(True)
 
-        self.edit_comment.setText(getattr(self.store.settings, "export_comment_text", "") or "")
-        self.checkbox_comment_default.setChecked(bool(getattr(self.store.settings, "export_comment_keep_default", False)))
+        self.edit_comment.setText(self.dialog_state.comment_text or "")
+        self.checkbox_comment_default.setChecked(bool(self.dialog_state.comment_keep_default))
 
     def _suggest_default_filename(self):
         self.edit_name.setText(self.suggested_filename or "comparison")
 
     def _choose_directory(self):
-        start_dir = self.edit_dir.text() or self._get_os_default_downloads()
+        start_dir = self.edit_dir.text().strip() or self.dialog_state.output_dir
         file_dialog = QFileDialog(self)
         file_dialog.setFileMode(QFileDialog.FileMode.Directory)
         file_dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
-        file_dialog.setWindowTitle(self.tr("export.select_output_directory", self.store.settings.current_language))
+        file_dialog.setWindowTitle(
+            self.tr(
+                "export.select_output_directory", self.dialog_state.current_language
+            )
+        )
         file_dialog.setDirectory(start_dir)
 
         self.theme_manager.apply_theme_to_dialog(file_dialog)
 
         if file_dialog.exec():
-            chosen = file_dialog.selectedFiles()[0] if file_dialog.selectedFiles() else ""
+            chosen = (
+                file_dialog.selectedFiles()[0] if file_dialog.selectedFiles() else ""
+            )
             if chosen:
                 self.edit_dir.setText(chosen)
 
     def _set_favorite_from_current(self):
         path = self.edit_dir.text().strip()
         if path:
-            self.store.settings.export_favorite_dir = path
+            self.favorite_dir = path
+            if callable(self._on_set_favorite_dir):
+                self._on_set_favorite_dir(path)
 
     def _use_favorite_dir(self):
-        path = getattr(self.store.settings, "export_favorite_dir", None)
+        path = self.favorite_dir
         if path:
             self.edit_dir.setText(path)
 
     def _pick_bg_color(self):
-        color = QColorDialog.getColor(self.current_bg_color if isinstance(self.current_bg_color, QColor) else QColor(255,255,255,255), self, self.tr("export.select_background_color", self.store.settings.current_language))
+        color = QColorDialog.getColor(
+            (
+                self.current_bg_color
+                if isinstance(self.current_bg_color, QColor)
+                else QColor(255, 255, 255, 255)
+            ),
+            self,
+            self.tr(
+                "export.select_background_color", self.dialog_state.current_language
+            ),
+        )
         if color.isValid():
             self.current_bg_color = color
             self._apply_preview_pixmap()
@@ -321,7 +406,11 @@ class ExportDialog(QDialog):
             if target_size.isEmpty():
                 target_size = QSize(300, 300)
 
-        fmt_current = self.combo_format.currentText().upper() if hasattr(self, "combo_format") else "PNG"
+        fmt_current = (
+            self.combo_format.currentText().upper()
+            if hasattr(self, "combo_format")
+            else "PNG"
+        )
         formats_with_alpha = {"PNG", "TIFF", "WEBP", "JXL"}
         force_fill = fmt_current not in formats_with_alpha
         effective_fill = bool(self.checkbox_fill_bg.isChecked()) or force_fill
@@ -333,7 +422,11 @@ class ExportDialog(QDialog):
         )
         if effective_fill:
             composed = QPixmap(scaled.size())
-            composed.fill(self.current_bg_color if isinstance(self.current_bg_color, QColor) else QColor(255,255,255,255))
+            composed.fill(
+                self.current_bg_color
+                if isinstance(self.current_bg_color, QColor)
+                else QColor(255, 255, 255, 255)
+            )
             painter = QPainter(composed)
             painter.drawPixmap(0, 0, scaled)
             painter.end()
@@ -344,14 +437,18 @@ class ExportDialog(QDialog):
     def _pixmap_from_pil(self, pil_img: PIL.Image.Image) -> QPixmap:
         try:
 
-            if pil_img.mode == 'RGBA':
+            if pil_img.mode == "RGBA":
                 data = pil_img.tobytes("raw", "RGBA")
-                qimage = QImage(data, pil_img.width, pil_img.height, QImage.Format.Format_RGBA8888)
+                qimage = QImage(
+                    data, pil_img.width, pil_img.height, QImage.Format.Format_RGBA8888
+                )
                 if not qimage.isNull():
                     return QPixmap.fromImage(qimage)
-            elif pil_img.mode == 'RGB':
+            elif pil_img.mode == "RGB":
                 data = pil_img.tobytes("raw", "RGB")
-                qimage = QImage(data, pil_img.width, pil_img.height, QImage.Format.Format_RGB888)
+                qimage = QImage(
+                    data, pil_img.width, pil_img.height, QImage.Format.Format_RGB888
+                )
                 if not qimage.isNull():
                     return QPixmap.fromImage(qimage)
 
@@ -365,39 +462,13 @@ class ExportDialog(QDialog):
             logger.error(f"Error converting PIL Image to QPixmap: {e}", exc_info=True)
             return QPixmap()
 
-    def _get_os_default_downloads(self) -> str:
-        home = os.path.expanduser("~")
-        candidates = []
-        try:
-            user_dirs = os.path.join(home, ".config", "user-dirs.dirs")
-            if os.path.exists(user_dirs):
-                with open(user_dirs, "r", encoding="utf-8", errors="ignore") as f:
-                    for line in f:
-                        if line.startswith("XDG_DOWNLOAD_DIR"):
-                            parts = line.split("=")
-                            if len(parts) == 2:
-                                path_val = parts[1].strip().strip('"')
-                                path_val = path_val.replace("$HOME", home)
-                                candidates.append(path_val)
-                            break
-        except Exception:
-            pass
-        candidates += [
-            os.path.join(home, "Downloads"),
-            os.path.join(home, "Загрузки"),
-            home,
-        ]
-        for p in candidates:
-            try:
-                if os.path.isdir(p):
-                    return p
-            except Exception:
-                continue
-        return home
-
     def get_export_options(self) -> dict:
         fmt = self.combo_format.currentText().upper()
-        bg = self.current_bg_color if isinstance(self.current_bg_color, QColor) else QColor(255, 255, 255, 255)
+        bg = (
+            self.current_bg_color
+            if isinstance(self.current_bg_color, QColor)
+            else QColor(255, 255, 255, 255)
+        )
         return {
             "output_dir": self.edit_dir.text().strip(),
             "file_name": self.edit_name.text().strip(),
@@ -417,11 +488,11 @@ class ExportDialog(QDialog):
 
     def _on_include_metadata_toggled(self, checked: bool):
 
-        if hasattr(self, 'comment_label'):
+        if hasattr(self, "comment_label"):
             self.comment_label.setVisible(checked)
-        if hasattr(self, 'edit_comment'):
+        if hasattr(self, "edit_comment"):
             self.edit_comment.setVisible(checked)
-        if hasattr(self, 'checkbox_comment_default'):
+        if hasattr(self, "checkbox_comment_default"):
             self.checkbox_comment_default.setVisible(checked)
 
     def mousePressEvent(self, event: QMouseEvent):
@@ -432,4 +503,3 @@ class ExportDialog(QDialog):
         focused_widget = self.focusWidget()
         if focused_widget and isinstance(focused_widget, QLineEdit):
             focused_widget.clearFocus()
-

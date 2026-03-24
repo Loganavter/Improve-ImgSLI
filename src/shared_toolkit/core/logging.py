@@ -24,11 +24,16 @@ def get_log_directory(app_name: str):
         xdg_data_home = os.getenv("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
         return os.path.join(xdg_data_home, app_name)
 
-def setup_logging(app_name: str, debug_enabled: bool = False, debug_env_var: str = None):
+def setup_logging(
+    app_name: str, debug_enabled: bool = False, debug_env_var: str = None
+):
     logger = logging.getLogger(app_name)
 
     if debug_env_var:
-        suppress_debug = os.getenv(f"{debug_env_var.replace('_DEBUG', '_SUPPRESS_DEBUG')}", "0") == "1"
+        suppress_debug = (
+            os.getenv(f"{debug_env_var.replace('_DEBUG', '_SUPPRESS_DEBUG')}", "0")
+            == "1"
+        )
         if suppress_debug:
             debug_enabled = False
         elif os.getenv(debug_env_var, "0") == "1":
@@ -79,8 +84,8 @@ def setup_simple_logging(app_name: str, level: int = logging.WARNING):
         root_logger.removeHandler(handler)
 
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     console_handler = logging.StreamHandler()
@@ -94,4 +99,3 @@ def setup_simple_logging(app_name: str, level: int = logging.WARNING):
 
     logging.getLogger("markdown").setLevel(logging.WARNING)
     logging.getLogger("markdown.extensions").setLevel(logging.WARNING)
-

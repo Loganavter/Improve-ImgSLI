@@ -1,24 +1,25 @@
 import logging
 import os
 import threading
-from typing import Optional, Tuple, Any
+from typing import Any, Optional
 
-import PIL.Image
 from PIL import Image
-from PyQt6.QtGui import QColor
 
 from core.store import Store
-from core.constants import AppConstants
-from shared.image_processing.pipeline import RenderingPipeline, create_render_context_from_store
+from domain.types import Color
+from shared.image_processing.pipeline import (
+    RenderingPipeline,
+    create_render_context_from_store,
+)
 from shared.image_processing.resize import resize_images_processor
 from utils.resource_loader import get_magnifier_drawing_coords
-from shared_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
 try:
     import imagecodecs
     import numpy as np
+
     JXL_SUPPORTED = True
     logger.info("JXL export support: imagecodecs imported successfully")
 except ImportError as e:
@@ -83,14 +84,15 @@ class ExportService:
             height=save_height,
             magnifier_drawing_coords=magnifier_coords,
             image1_scaled=image1_for_save,
-            image2_scaled=image2_for_save
+            image2_scaled=image2_for_save,
         )
 
         ctx.is_interactive_mode = False
         ctx.file_name1 = self._get_current_display_name(store, 1)
         ctx.file_name2 = self._get_current_display_name(store, 2)
 
-        from toolkit.managers.font_manager import FontManager
+        from shared_toolkit.ui.managers.font_manager import FontManager
+
         font_path = FontManager.get_instance().get_font_path_for_image_text(store)
         pipeline = RenderingPipeline(font_path)
         final_img, _, _, _, _, _ = pipeline.render_frame(ctx)
@@ -132,7 +134,12 @@ class ExportService:
         save_kwargs = {}
         formats_with_alpha = {"PNG", "TIFF", "WEBP", "JXL"}
         if pil_format not in formats_with_alpha and img_to_save.mode == "RGBA":
-            bg_color_tuple = export_options.get("background_color") or (255, 255, 255, 255)
+            bg_color_tuple = export_options.get("background_color") or (
+                255,
+                255,
+                255,
+                255,
+            )
             bg_flat = Image.new("RGBA", img_to_save.size, bg_color_tuple)
             bg_flat.paste(img_to_save, mask=img_to_save.split()[3])
             img_to_save = bg_flat.convert("RGB")
@@ -181,12 +188,18 @@ class ExportService:
                     if quality >= 100:
 
                         logger.debug("Saving JXL in lossless mode")
-                        imagecodecs.imwrite(full_path, img_array, codec='jxl', lossless=True)
+                        imagecodecs.imwrite(
+                            full_path, img_array, codec="jxl", lossless=True
+                        )
                     else:
 
                         distance = max(0.1, (100 - quality) / 10.0)
-                        logger.debug(f"Saving JXL in lossy mode with distance: {distance}")
-                        imagecodecs.imwrite(full_path, img_array, codec='jxl', distance=distance)
+                        logger.debug(
+                            f"Saving JXL in lossy mode with distance: {distance}"
+                        )
+                        imagecodecs.imwrite(
+                            full_path, img_array, codec="jxl", distance=distance
+                        )
 
                     logger.info(f"JXL image saved successfully: {full_path}")
                 except Exception as e:
@@ -258,15 +271,10 @@ class ExportService:
         Быстрый экспорт с использованием сохранённых в store настроек.
         """
 
-        bg_color_qcolor = getattr(
-            store.settings, "export_background_color", QColor(255, 255, 255, 255)
+        bg_color = getattr(
+            store.settings, "export_background_color", Color(255, 255, 255, 255)
         )
-        bg_color_tuple = (
-            bg_color_qcolor.red(),
-            bg_color_qcolor.green(),
-            bg_color_qcolor.blue(),
-            bg_color_qcolor.alpha(),
-        )
+        bg_color_tuple = (bg_color.r, bg_color.g, bg_color.b, bg_color.a)
 
         export_options = {
             "output_dir": store.settings.export_default_dir,
@@ -275,7 +283,9 @@ class ExportService:
             "quality": store.settings.export_quality or 95,
             "fill_background": getattr(store.settings, "export_fill_background", False),
             "background_color": bg_color_tuple,
-            "png_compress_level": getattr(store.settings, "export_png_compress_level", 9),
+            "png_compress_level": getattr(
+                store.settings, "export_png_compress_level", 9
+            ),
             "png_optimize": True,
             "include_metadata": bool(
                 getattr(store.settings, "export_comment_keep_default", False)
@@ -336,4 +346,3 @@ class ExportService:
             if not os.path.exists(new_path):
                 return new_path
             counter += 1
-

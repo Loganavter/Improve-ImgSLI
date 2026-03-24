@@ -1,5 +1,3 @@
-
-
 import logging
 from typing import Optional, Tuple
 
@@ -34,7 +32,9 @@ def calculate_ssim(image1: Image.Image, image2: Image.Image) -> Optional[float]:
         logger.error(f"Error calculating SSIM: {e}", exc_info=True)
         return None
 
-def calculate_metrics(image1: Image.Image, image2: Image.Image) -> Optional[Tuple[float, float]]:
+def calculate_metrics(
+    image1: Image.Image, image2: Image.Image
+) -> Optional[Tuple[float, float]]:
     if not image1 or not image2 or image1.size != image2.size:
         return None
 
@@ -49,4 +49,3 @@ def calculate_metrics(image1: Image.Image, image2: Image.Image) -> Optional[Tupl
     except Exception as e:
         logger.error(f"Error calculating metrics: {e}", exc_info=True)
         return None
-

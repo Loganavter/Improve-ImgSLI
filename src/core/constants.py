@@ -1,5 +1,6 @@
 from enum import StrEnum
-from PyQt6.QtCore import QPointF
+
+from domain.types import Point
 
 class AppConstants:
     DISPLAY_RESOLUTION_OPTIONS = {
@@ -15,14 +16,14 @@ class AppConstants:
     MAX_NAME_LENGTH_LIMIT = 150
     DEFAULT_MAGNIFIER_SIZE_RELATIVE = 0.4
     DEFAULT_CAPTURE_SIZE_RELATIVE = 0.1
-    DEFAULT_CAPTURE_POS_RELATIVE = QPointF(0.5, 0.5)
-    DEFAULT_MAGNIFIER_OFFSET_RELATIVE = QPointF(0.0, -0.15)
+    DEFAULT_CAPTURE_POS_RELATIVE = Point(0.5, 0.5)
+    DEFAULT_MAGNIFIER_OFFSET_RELATIVE = Point(0.0, -0.15)
     DEFAULT_MAGNIFIER_SPACING_RELATIVE = 0.1
 
     MIN_MAGNIFIER_SPACING_RELATIVE = 0.0
     MAX_MAGNIFIER_SPACING_RELATIVE = 0.5
 
-    MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE = 0.02
+    MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE = 0.004
 
     DEFAULT_JPEG_QUALITY = 93
     DEFAULT_INTERPOLATION_METHOD = "LANCZOS"
@@ -80,7 +81,9 @@ class Events(StrEnum):
     VIEWPORT_SET_MAGNIFIER_POSITION = "viewport.set_magnifier_position"
     VIEWPORT_SET_MAGNIFIER_INTERNAL_SPLIT = "viewport.set_magnifier_internal_split"
     VIEWPORT_TOGGLE_MAGNIFIER_PART = "viewport.toggle_magnifier_part"
-    VIEWPORT_UPDATE_MAGNIFIER_COMBINED_STATE = "viewport.update_magnifier_combined_state"
+    VIEWPORT_UPDATE_MAGNIFIER_COMBINED_STATE = (
+        "viewport.update_magnifier_combined_state"
+    )
     VIEWPORT_TOGGLE_ORIENTATION = "viewport.toggle_orientation"
     VIEWPORT_TOGGLE_MAGNIFIER_ORIENTATION = "viewport.toggle_magnifier_orientation"
     VIEWPORT_TOGGLE_FREEZE_MAGNIFIER = "viewport.toggle_freeze_magnifier"
@@ -103,15 +106,21 @@ class Events(StrEnum):
     ANALYSIS_REQUEST_METRICS = "analysis.request_metrics"
 
     SETTINGS_CHANGE_LANGUAGE = "settings.change_language"
-    SETTINGS_TOGGLE_INCLUDE_FILENAMES_IN_SAVED = "settings.toggle_include_filenames_in_saved"
+    SETTINGS_TOGGLE_INCLUDE_FILENAMES_IN_SAVED = (
+        "settings.toggle_include_filenames_in_saved"
+    )
     SETTINGS_APPLY_FONT_SETTINGS = "settings.apply_font_settings"
     SETTINGS_TOGGLE_DIVIDER_LINE_VISIBILITY = "settings.toggle_divider_line_visibility"
     SETTINGS_SET_DIVIDER_LINE_COLOR = "settings.set_divider_line_color"
-    SETTINGS_TOGGLE_MAGNIFIER_DIVIDER_VISIBILITY = "settings.toggle_magnifier_divider_visibility"
+    SETTINGS_TOGGLE_MAGNIFIER_DIVIDER_VISIBILITY = (
+        "settings.toggle_magnifier_divider_visibility"
+    )
     SETTINGS_SET_MAGNIFIER_DIVIDER_COLOR = "settings.set_magnifier_divider_color"
     SETTINGS_TOGGLE_AUTO_CROP_BLACK_BORDERS = "settings.toggle_auto_crop_black_borders"
     SETTINGS_SET_DIVIDER_LINE_THICKNESS = "settings.set_divider_line_thickness"
-    SETTINGS_SET_MAGNIFIER_DIVIDER_THICKNESS = "settings.set_magnifier_divider_thickness"
+    SETTINGS_SET_MAGNIFIER_DIVIDER_THICKNESS = (
+        "settings.set_magnifier_divider_thickness"
+    )
     SETTINGS_UI_MODE_CHANGED = "settings.ui_mode_changed"
 
     COMPARISON_UI_UPDATE = "comparison.ui_update"
@@ -124,4 +133,3 @@ class Events(StrEnum):
     @staticmethod
     def plugin_event(plugin_name: str, stage: str) -> str:
         return f"plugin.{plugin_name}.{stage}"
-

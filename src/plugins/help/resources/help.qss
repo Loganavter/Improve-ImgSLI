@@ -1,0 +1,27 @@
+QDialog#HelpDialog {
+    background-color: @dialog.background;
+}
+
+QDialog#HelpDialog QListWidget {
+    background-color: @help.nav.background;
+    border-right: 1px solid @help.nav.border;
+    font-size: 14px;
+    padding-top: 5px;
+    outline: 0;
+}
+
+QDialog#HelpDialog QListWidget::item {
+    padding-left: 15px;
+    padding-right: 5px;
+}
+
+QDialog#HelpDialog QListWidget::item:hover {
+    background-color: @help.nav.hover;
+    border-radius: 4px;
+}
+
+QDialog#HelpDialog QListWidget::item:selected {
+    background-color: @help.nav.selected;
+    color: @help.nav.selected.text;
+    border-radius: 4px;
+}

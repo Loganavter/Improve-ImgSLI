@@ -15,4 +15,3 @@ def plugin(name: str, version: str = "1.0") -> Callable[[Type], Type]:
 
 def get_registered_plugins() -> tuple[Type, ...]:
     return tuple(_REGISTERED_PLUGINS)
-
