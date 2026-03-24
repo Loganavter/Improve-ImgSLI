@@ -1,342 +1,364 @@
-
-
 from dataclasses import replace
-from typing import Any
-from PyQt6.QtCore import QPointF, QPoint, QRect
-from PyQt6.QtGui import QColor
+
+from core.store import (
+    DocumentModel,
+    RenderConfig,
+    SettingsState,
+    ViewportState,
+)
 
 from .actions import (
     Action,
-    ActionType,
-    SetSplitPositionAction,
-    SetSplitPositionVisualAction,
-    ToggleOrientationAction,
-    SetMagnifierSizeRelativeAction,
-    SetCaptureSizeRelativeAction,
-    ToggleMagnifierAction,
-    SetMagnifierVisibilityAction,
-    ToggleMagnifierOrientationAction,
-    ToggleFreezeMagnifierAction,
-    SetMagnifierPositionAction,
-    SetMagnifierInternalSplitAction,
-    SetMovementSpeedAction,
-    UpdateMagnifierCombinedStateAction,
-    SetIsDraggingSliderAction,
-    SetActiveMagnifierIdAction,
-    SetDiffModeAction,
-    SetChannelViewModeAction,
-    SetCachedDiffImageAction,
-    SetDividerLineVisibleAction,
-    SetDividerLineColorAction,
-    SetDividerLineThicknessAction,
-    SetMagnifierDividerVisibleAction,
-    SetMagnifierDividerColorAction,
-    SetMagnifierDividerThicknessAction,
-    SetMagnifierBorderColorAction,
-    SetMagnifierLaserColorAction,
-    SetCaptureRingColorAction,
-    SetMagnifierMovementInterpolationMethodAction,
-    SetLaserSmoothingInterpolationMethodAction,
-    SetIncludeFileNamesInSavedAction,
-    SetFontSizePercentAction,
-    SetFontWeightAction,
-    SetTextAlphaPercentAction,
-    SetFileNameColorAction,
-    SetFileNameBgColorAction,
-    SetDrawTextBackgroundAction,
-    SetTextPlacementModeAction,
-    SetCurrentIndexAction,
-    SetOriginalImageAction,
-    SetFullResImageAction,
-    SetImagePathAction,
-    SetLanguageAction,
-    SetUIModeAction,
-    SetAutoCropBlackBordersAction,
-    InvalidateRenderCacheAction,
-    InvalidateGeometryCacheAction,
     ClearAllCachesAction,
     ClearImageSlotDataAction,
-)
-
-from core.store import (
-    ViewportState,
-    ViewState,
-    RenderConfig,
-    DocumentModel,
-    SettingsState,
-    SessionData,
+    InvalidateGeometryCacheAction,
+    InvalidateRenderCacheAction,
+    SetActiveMagnifierIdAction,
+    SetAutoCropBlackBordersAction,
+    SetCachedDiffImageAction,
+    SetCaptureRingColorAction,
+    SetCaptureSizeRelativeAction,
+    SetChannelViewModeAction,
+    SetCurrentIndexAction,
+    SetDiffModeAction,
+    SetDividerLineColorAction,
+    SetDividerLineThicknessAction,
+    SetDividerLineVisibleAction,
+    SetDrawTextBackgroundAction,
+    SetFileNameBgColorAction,
+    SetFileNameColorAction,
+    SetFontSizePercentAction,
+    SetFontWeightAction,
+    SetFullResImageAction,
+    SetImagePathAction,
+    SetIncludeFileNamesInSavedAction,
+    SetIsDraggingSliderAction,
+    SetLanguageAction,
+    SetLaserSmoothingInterpolationMethodAction,
+    SetMagnifierBorderColorAction,
+    SetMagnifierDividerColorAction,
+    SetMagnifierDividerThicknessAction,
+    SetMagnifierDividerVisibleAction,
+    SetMagnifierInternalSplitAction,
+    SetMagnifierLaserColorAction,
+    SetMagnifierMovementInterpolationMethodAction,
+    SetMagnifierPositionAction,
+    SetMagnifierSizeRelativeAction,
+    SetMagnifierVisibilityAction,
+    SetMovementSpeedAction,
+    SetOriginalImageAction,
+    SetSplitPositionAction,
+    SetSplitPositionVisualAction,
+    SetTextAlphaPercentAction,
+    SetTextPlacementModeAction,
+    SetUIModeAction,
+    ToggleFreezeMagnifierAction,
+    ToggleMagnifierAction,
+    ToggleMagnifierOrientationAction,
+    ToggleOrientationAction,
+    UpdateMagnifierCombinedStateAction,
 )
 
 class ViewportReducer:
-
     @staticmethod
     def reduce(state: ViewportState, action: Action) -> ViewportState:
-
-        if isinstance(action, SetSplitPositionAction):
-
-            new_pos = max(0.0, min(1.0, action.position))
-            new_view_state = replace(state.view_state, split_position=new_pos)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetSplitPositionVisualAction):
-            new_pos = max(0.0, min(1.0, action.position))
-            new_view_state = replace(state.view_state, split_position_visual=new_pos)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, ToggleOrientationAction):
-            new_view_state = replace(state.view_state, is_horizontal=action.is_horizontal)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetMagnifierSizeRelativeAction):
-            new_view_state = replace(state.view_state, magnifier_size_relative=action.size)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetCaptureSizeRelativeAction):
-            new_view_state = replace(state.view_state, capture_size_relative=action.size)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, ToggleMagnifierAction):
-            new_view_state = replace(state.view_state, use_magnifier=action.enabled)
-
-            if action.enabled and not state.view_state.active_magnifier_id:
-                new_view_state = replace(new_view_state, active_magnifier_id="default")
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetMagnifierVisibilityAction):
-            payload = action.get_payload()
-            new_view_state = state.view_state
-            kwargs = {}
-            if payload.get("left") is not None: kwargs['magnifier_visible_left'] = payload["left"]
-            if payload.get("center") is not None: kwargs['magnifier_visible_center'] = payload["center"]
-            if payload.get("right") is not None: kwargs['magnifier_visible_right'] = payload["right"]
-
-            if kwargs:
-                new_view_state = replace(new_view_state, **kwargs)
-
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, ToggleMagnifierOrientationAction):
-            new_view_state = replace(state.view_state, magnifier_is_horizontal=action.is_horizontal)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, ToggleFreezeMagnifierAction):
-            payload = action.get_payload()
-            new_view_state = replace(
-                state.view_state,
-                freeze_magnifier=payload["freeze"],
-                frozen_capture_point_relative=payload.get("frozen_position"),
-                magnifier_offset_relative=payload.get("new_offset") or state.view_state.magnifier_offset_relative,
-                magnifier_offset_relative_visual=payload.get("new_offset") or state.view_state.magnifier_offset_relative_visual
-            )
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetMagnifierPositionAction):
-            new_view_state = replace(state.view_state, capture_position_relative=action.position)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetMagnifierInternalSplitAction):
-            new_split = max(0.0, min(1.0, action.split))
-            new_view_state = replace(state.view_state, magnifier_internal_split=new_split)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetMovementSpeedAction):
-            new_view_state = replace(state.view_state, movement_speed_per_sec=action.speed)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, UpdateMagnifierCombinedStateAction):
-            new_view_state = replace(state.view_state, is_magnifier_combined=action.is_combined)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetIsDraggingSliderAction):
-            new_view_state = replace(state.view_state, is_dragging_any_slider=action.is_dragging)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetActiveMagnifierIdAction):
-            new_view_state = replace(state.view_state, active_magnifier_id=action.magnifier_id)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetDiffModeAction):
-            new_view_state = replace(state.view_state, diff_mode=action.mode)
-
-            new_session_data = replace(state.session_data, cached_diff_image=None)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=new_session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetChannelViewModeAction):
-            new_view_state = replace(state.view_state, channel_view_mode=action.mode)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=state.session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, SetCachedDiffImageAction):
-            new_session_data = replace(state.session_data, cached_diff_image=action.image)
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=new_session_data,
-                view_state=state.view_state
-            )
-
-        elif isinstance(action, InvalidateRenderCacheAction):
-
-            new_session_data = replace(
-                state.session_data,
-                caches={},
-                magnifier_cache={},
-                cached_split_base_image=None,
-                last_split_cached_params=None
-            )
-            new_view_state = replace(
-                state.view_state,
-                text_bg_visual_height=0.0,
-                text_bg_visual_width=0.0
-            )
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=new_session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, InvalidateGeometryCacheAction):
-
-            new_session_data = replace(
-                state.session_data,
-                scaled_image1_for_display=None,
-                scaled_image2_for_display=None,
-                cached_scaled_image_dims=None,
-                display_cache_image1=None,
-                display_cache_image2=None,
-                last_display_cache_params=None
-            )
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=new_session_data,
-                view_state=state.view_state
-            )
-
-        elif isinstance(action, ClearAllCachesAction):
-
-            new_session_data = replace(
-                state.session_data,
-                unified_image_cache=state.session_data.unified_image_cache.__class__(),
-                scaled_image1_for_display=None,
-                scaled_image2_for_display=None,
-                cached_scaled_image_dims=None,
-                display_cache_image1=None,
-                display_cache_image2=None,
-                last_display_cache_params=None,
-                caches={},
-                magnifier_cache={},
-                cached_split_base_image=None,
-                last_split_cached_params=None
-            )
-            new_view_state = replace(
-                state.view_state,
-                text_bg_visual_height=0.0,
-                text_bg_visual_width=0.0
-            )
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=new_session_data,
-                view_state=new_view_state
-            )
-
-        elif isinstance(action, ClearImageSlotDataAction):
-
-            new_session_data = state.session_data
-            if action.slot == 1:
-                new_session_data = replace(
-                    state.session_data,
-                    image1=None,
-                    display_cache_image1=None,
-                    scaled_image1_for_display=None
-                )
-            else:
-                new_session_data = replace(
-                    state.session_data,
-                    image2=None,
-                    display_cache_image2=None,
-                    scaled_image2_for_display=None
-                )
-
-            new_session_data = replace(
-                new_session_data,
-                scaled_image1_for_display=None,
-                scaled_image2_for_display=None,
-                cached_scaled_image_dims=None,
-                last_display_cache_params=None
-            )
-            return ViewportState(
-                render_config=state.render_config,
-                session_data=new_session_data,
-                view_state=state.view_state
-            )
-
+        for action_type, handler in ViewportReducer._handlers():
+            if isinstance(action, action_type):
+                return handler(state, action)
         return state
+
+    @staticmethod
+    def _handlers():
+        return (
+            (SetSplitPositionAction, ViewportReducer._reduce_split_position),
+            (SetSplitPositionVisualAction, ViewportReducer._reduce_split_position_visual),
+            (ToggleOrientationAction, ViewportReducer._reduce_orientation),
+            (SetMagnifierSizeRelativeAction, ViewportReducer._reduce_magnifier_size),
+            (SetCaptureSizeRelativeAction, ViewportReducer._reduce_capture_size),
+            (ToggleMagnifierAction, ViewportReducer._reduce_toggle_magnifier),
+            (SetMagnifierVisibilityAction, ViewportReducer._reduce_magnifier_visibility),
+            (ToggleMagnifierOrientationAction, ViewportReducer._reduce_magnifier_orientation),
+            (ToggleFreezeMagnifierAction, ViewportReducer._reduce_freeze_magnifier),
+            (SetMagnifierPositionAction, ViewportReducer._reduce_magnifier_position),
+            (SetMagnifierInternalSplitAction, ViewportReducer._reduce_internal_split),
+            (SetMovementSpeedAction, ViewportReducer._reduce_movement_speed),
+            (UpdateMagnifierCombinedStateAction, ViewportReducer._reduce_combined_state),
+            (SetIsDraggingSliderAction, ViewportReducer._reduce_dragging_slider),
+            (SetActiveMagnifierIdAction, ViewportReducer._reduce_active_magnifier_id),
+            (SetDiffModeAction, ViewportReducer._reduce_diff_mode),
+            (SetChannelViewModeAction, ViewportReducer._reduce_channel_view_mode),
+            (SetCachedDiffImageAction, ViewportReducer._reduce_cached_diff_image),
+            (InvalidateRenderCacheAction, ViewportReducer._reduce_invalidate_render_cache),
+            (InvalidateGeometryCacheAction, ViewportReducer._reduce_invalidate_geometry_cache),
+            (ClearAllCachesAction, ViewportReducer._reduce_clear_all_caches),
+            (ClearImageSlotDataAction, ViewportReducer._reduce_clear_image_slot_data),
+        )
+
+    @staticmethod
+    def _with_view_state(state: ViewportState, **kwargs) -> ViewportState:
+        return ViewportState(
+            render_config=state.render_config,
+            session_data=state.session_data,
+            view_state=replace(state.view_state, **kwargs),
+        )
+
+    @staticmethod
+    def _with_session_data(state: ViewportState, **kwargs) -> ViewportState:
+        return ViewportState(
+            render_config=state.render_config,
+            session_data=replace(state.session_data, **kwargs),
+            view_state=state.view_state,
+        )
+
+    @staticmethod
+    def _with_view_and_session(
+        state: ViewportState, *, view_kwargs=None, session_kwargs=None
+    ) -> ViewportState:
+        return ViewportState(
+            render_config=state.render_config,
+            session_data=replace(state.session_data, **(session_kwargs or {})),
+            view_state=replace(state.view_state, **(view_kwargs or {})),
+        )
+
+    @staticmethod
+    def _reduce_split_position(state: ViewportState, action: SetSplitPositionAction) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, split_position=max(0.0, min(1.0, action.position))
+        )
+
+    @staticmethod
+    def _reduce_split_position_visual(
+        state: ViewportState, action: SetSplitPositionVisualAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, split_position_visual=max(0.0, min(1.0, action.position))
+        )
+
+    @staticmethod
+    def _reduce_orientation(state: ViewportState, action: ToggleOrientationAction) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, is_horizontal=action.is_horizontal
+        )
+
+    @staticmethod
+    def _reduce_magnifier_size(
+        state: ViewportState, action: SetMagnifierSizeRelativeAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, magnifier_size_relative=action.size
+        )
+
+    @staticmethod
+    def _reduce_capture_size(
+        state: ViewportState, action: SetCaptureSizeRelativeAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, capture_size_relative=action.size
+        )
+
+    @staticmethod
+    def _reduce_toggle_magnifier(
+        state: ViewportState, action: ToggleMagnifierAction
+    ) -> ViewportState:
+        kwargs = {"use_magnifier": action.enabled}
+        if action.enabled and not state.view_state.active_magnifier_id:
+            kwargs["active_magnifier_id"] = "default"
+        return ViewportReducer._with_view_state(state, **kwargs)
+
+    @staticmethod
+    def _reduce_magnifier_visibility(
+        state: ViewportState, action: SetMagnifierVisibilityAction
+    ) -> ViewportState:
+        payload = action.get_payload()
+        kwargs = {}
+        if payload.get("left") is not None:
+            kwargs["magnifier_visible_left"] = payload["left"]
+        if payload.get("center") is not None:
+            kwargs["magnifier_visible_center"] = payload["center"]
+        if payload.get("right") is not None:
+            kwargs["magnifier_visible_right"] = payload["right"]
+        if not kwargs:
+            return state
+        return ViewportReducer._with_view_state(state, **kwargs)
+
+    @staticmethod
+    def _reduce_magnifier_orientation(
+        state: ViewportState, action: ToggleMagnifierOrientationAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, magnifier_is_horizontal=action.is_horizontal
+        )
+
+    @staticmethod
+    def _reduce_freeze_magnifier(
+        state: ViewportState, action: ToggleFreezeMagnifierAction
+    ) -> ViewportState:
+        payload = action.get_payload()
+        return ViewportReducer._with_view_state(
+            state,
+            freeze_magnifier=payload["freeze"],
+            frozen_capture_point_relative=payload.get("frozen_position"),
+            magnifier_offset_relative=payload.get("new_offset")
+            or state.view_state.magnifier_offset_relative,
+            magnifier_offset_relative_visual=payload.get("new_offset")
+            or state.view_state.magnifier_offset_relative_visual,
+        )
+
+    @staticmethod
+    def _reduce_magnifier_position(
+        state: ViewportState, action: SetMagnifierPositionAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, capture_position_relative=action.position
+        )
+
+    @staticmethod
+    def _reduce_internal_split(
+        state: ViewportState, action: SetMagnifierInternalSplitAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, magnifier_internal_split=max(0.0, min(1.0, action.split))
+        )
+
+    @staticmethod
+    def _reduce_movement_speed(
+        state: ViewportState, action: SetMovementSpeedAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, movement_speed_per_sec=action.speed
+        )
+
+    @staticmethod
+    def _reduce_combined_state(
+        state: ViewportState, action: UpdateMagnifierCombinedStateAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, is_magnifier_combined=action.is_combined
+        )
+
+    @staticmethod
+    def _reduce_dragging_slider(
+        state: ViewportState, action: SetIsDraggingSliderAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, is_dragging_any_slider=action.is_dragging
+        )
+
+    @staticmethod
+    def _reduce_active_magnifier_id(
+        state: ViewportState, action: SetActiveMagnifierIdAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, active_magnifier_id=action.magnifier_id
+        )
+
+    @staticmethod
+    def _reduce_diff_mode(state: ViewportState, action: SetDiffModeAction) -> ViewportState:
+        return ViewportReducer._with_view_and_session(
+            state,
+            view_kwargs={"diff_mode": action.mode},
+            session_kwargs={"cached_diff_image": None},
+        )
+
+    @staticmethod
+    def _reduce_channel_view_mode(
+        state: ViewportState, action: SetChannelViewModeAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_state(
+            state, channel_view_mode=action.mode
+        )
+
+    @staticmethod
+    def _reduce_cached_diff_image(
+        state: ViewportState, action: SetCachedDiffImageAction
+    ) -> ViewportState:
+        return ViewportReducer._with_session_data(
+            state, cached_diff_image=action.image
+        )
+
+    @staticmethod
+    def _reduce_invalidate_render_cache(
+        state: ViewportState, _action: InvalidateRenderCacheAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_and_session(
+            state,
+            view_kwargs={
+                "text_bg_visual_height": 0.0,
+                "text_bg_visual_width": 0.0,
+            },
+            session_kwargs={
+                "caches": {},
+                "magnifier_cache": {},
+                "cached_split_base_image": None,
+                "last_split_cached_params": None,
+            },
+        )
+
+    @staticmethod
+    def _reduce_invalidate_geometry_cache(
+        state: ViewportState, _action: InvalidateGeometryCacheAction
+    ) -> ViewportState:
+        return ViewportReducer._with_session_data(
+            state,
+            scaled_image1_for_display=None,
+            scaled_image2_for_display=None,
+            cached_scaled_image_dims=None,
+            display_cache_image1=None,
+            display_cache_image2=None,
+            last_display_cache_params=None,
+        )
+
+    @staticmethod
+    def _reduce_clear_all_caches(
+        state: ViewportState, _action: ClearAllCachesAction
+    ) -> ViewportState:
+        return ViewportReducer._with_view_and_session(
+            state,
+            view_kwargs={
+                "text_bg_visual_height": 0.0,
+                "text_bg_visual_width": 0.0,
+            },
+            session_kwargs={
+                "unified_image_cache": state.session_data.unified_image_cache.__class__(),
+                "scaled_image1_for_display": None,
+                "scaled_image2_for_display": None,
+                "cached_scaled_image_dims": None,
+                "display_cache_image1": None,
+                "display_cache_image2": None,
+                "last_display_cache_params": None,
+                "caches": {},
+                "magnifier_cache": {},
+                "cached_split_base_image": None,
+                "last_split_cached_params": None,
+            },
+        )
+
+    @staticmethod
+    def _reduce_clear_image_slot_data(
+        state: ViewportState, action: ClearImageSlotDataAction
+    ) -> ViewportState:
+        session_kwargs = (
+            {
+                "image1": None,
+                "display_cache_image1": None,
+                "scaled_image1_for_display": None,
+            }
+            if action.slot == 1
+            else {
+                "image2": None,
+                "display_cache_image2": None,
+                "scaled_image2_for_display": None,
+            }
+        )
+        session_kwargs.update(
+            {
+                "scaled_image1_for_display": None,
+                "scaled_image2_for_display": None,
+                "cached_scaled_image_dims": None,
+                "last_display_cache_params": None,
+            }
+        )
+        return ViewportReducer._with_session_data(state, **session_kwargs)
 
 class RenderConfigReducer:
 
@@ -395,7 +417,9 @@ class RenderConfigReducer:
             return replace(config, text_placement_mode=action.mode)
 
         elif isinstance(action, SetMagnifierMovementInterpolationMethodAction):
-            return replace(config, magnifier_movement_interpolation_method=action.method)
+            return replace(
+                config, magnifier_movement_interpolation_method=action.method
+            )
 
         elif isinstance(action, SetLaserSmoothingInterpolationMethodAction):
             return replace(config, laser_smoothing_interpolation_method=action.method)
@@ -431,6 +455,24 @@ class DocumentReducer:
             else:
                 return replace(document, image2_path=action.path)
 
+        elif isinstance(action, ClearImageSlotDataAction):
+            if action.slot == 1:
+                return replace(
+                    document,
+                    original_image1=None,
+                    full_res_image1=None,
+                    preview_image1=None,
+                    image1_path=None,
+                )
+            else:
+                return replace(
+                    document,
+                    original_image2=None,
+                    full_res_image2=None,
+                    preview_image2=None,
+                    image2_path=None,
+                )
+
         return document
 
 class SettingsReducer:
@@ -457,18 +499,20 @@ class RootReducer:
         self.document_reducer = DocumentReducer()
         self.settings_reducer = SettingsReducer()
 
-    def reduce(self, store: 'Store', action: Action) -> 'Store':
+    def reduce(self, store: "Store", action: Action) -> "Store":
         from core.store import Store
 
         new_viewport = self.viewport_reducer.reduce(store.viewport, action)
 
-        new_render_config = self.render_config_reducer.reduce(new_viewport.render_config, action)
+        new_render_config = self.render_config_reducer.reduce(
+            new_viewport.render_config, action
+        )
         if new_render_config is not new_viewport.render_config:
 
             new_viewport = ViewportState(
                 render_config=new_render_config,
                 session_data=new_viewport.session_data,
-                view_state=new_viewport.view_state
+                view_state=new_viewport.view_state,
             )
 
         new_document = self.document_reducer.reduce(store.document, action)
@@ -489,4 +533,3 @@ class RootReducer:
             return new_store
 
         return store
-

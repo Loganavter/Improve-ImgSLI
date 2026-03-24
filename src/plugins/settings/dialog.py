@@ -1,32 +1,37 @@
 import logging
 
-from PyQt6.QtCore import Qt, QSize, QTimer
+from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
+    QApplication,
+    QButtonGroup,
     QDialog,
+    QFrame,
     QHBoxLayout,
-    QVBoxLayout,
-    QWidget,
+    QLabel,
     QListWidget,
     QListWidgetItem,
-    QStackedWidget,
-    QLabel,
-    QButtonGroup,
-    QFrame,
     QScrollArea,
     QSizePolicy,
-    QApplication,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from core.constants import AppConstants
-from toolkit.managers.theme_manager import ThemeManager
-from toolkit.widgets.atomic.custom_button import CustomButton
-from toolkit.widgets.atomic.fluent_combobox import FluentComboBox
-from toolkit.widgets.atomic.fluent_spinbox import FluentSpinBox
-from toolkit.widgets.atomic import FluentCheckBox, FluentRadioButton, CustomGroupWidget
+from plugins.settings.models import SettingsDialogData
+from resources.translations import tr as app_tr
+from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from shared_toolkit.ui.widgets.atomic import (
+    CustomGroupWidget,
+    FluentCheckBox,
+    FluentRadioButton,
+)
+from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from shared_toolkit.ui.widgets.atomic.fluent_combobox import FluentComboBox
+from shared_toolkit.ui.widgets.atomic.fluent_spinbox import FluentSpinBox
 from ui.icon_manager import AppIcon, get_app_icon
 from utils.resource_loader import resource_path
-from resources.translations import tr as app_tr
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -50,6 +55,7 @@ class SettingsDialog(QDialog):
         movement_interpolation_method: str = "BILINEAR",
         optimize_laser_smoothing: bool = False,
         interpolation_method: str = "LANCZOS",
+        zoom_interpolation_method: str = "BILINEAR",
         auto_calculate_psnr: bool = False,
         auto_calculate_ssim: bool = False,
         auto_crop_black_borders: bool = True,
@@ -68,7 +74,9 @@ class SettingsDialog(QDialog):
         self.setWindowTitle(self.tr("misc.settings", self.current_language))
 
         self.setWindowFlags(
-            Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
         )
         self.setSizeGripEnabled(True)
 
@@ -77,6 +85,7 @@ class SettingsDialog(QDialog):
         self.main_layout.setSpacing(0)
 
         self.sidebar = QListWidget()
+        self.sidebar.setObjectName("SettingsSidebar")
         self.sidebar.setFixedWidth(200)
         self.sidebar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.sidebar.setFrameShape(QFrame.Shape.NoFrame)
@@ -84,6 +93,7 @@ class SettingsDialog(QDialog):
         self.sidebar.currentRowChanged.connect(self._on_category_changed)
 
         self.content_area = QWidget()
+        self.content_area.setObjectName("SettingsContentArea")
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(20, 20, 20, 20)
         self.content_layout.setSpacing(10)
@@ -96,10 +106,12 @@ class SettingsDialog(QDialog):
 
         self.ok_button = CustomButton(None, self.tr("common.ok", self.current_language))
         self.ok_button.setProperty("class", "primary")
-        self.ok_button.setFixedSize(100, 32)
+        self.ok_button.setMinimumSize(100, 32)
 
-        self.cancel_button = CustomButton(None, self.tr("common.cancel", self.current_language))
-        self.cancel_button.setFixedSize(100, 32)
+        self.cancel_button = CustomButton(
+            None, self.tr("common.cancel", self.current_language)
+        )
+        self.cancel_button.setMinimumSize(100, 32)
 
         self.ok_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.reject)
@@ -125,6 +137,12 @@ class SettingsDialog(QDialog):
         self.sidebar.setCurrentRow(0)
 
         QTimer.singleShot(0, self._calculate_and_apply_geometry)
+
+    def changeEvent(self, event: QEvent):
+        if event.type() == QEvent.Type.ApplicationFontChange:
+
+            QTimer.singleShot(0, self._calculate_and_apply_geometry)
+        super().changeEvent(event)
 
     def _calculate_and_apply_geometry(self):
         self.ensurePolished()
@@ -152,9 +170,13 @@ class SettingsDialog(QDialog):
                     for group in groups:
                         max_group_width = max(max_group_width, group.sizeHint().width())
                 else:
-                    max_group_width = max(max_group_width, content_widget.sizeHint().width())
+                    max_group_width = max(
+                        max_group_width, content_widget.sizeHint().width()
+                    )
 
-                max_content_height = max(max_content_height, content_widget.sizeHint().height())
+                max_content_height = max(
+                    max_content_height, content_widget.sizeHint().height()
+                )
 
         required_width = sidebar_width + max_group_width + total_width_margins
         final_width = max(800, min(required_width, 1200))
@@ -163,7 +185,9 @@ class SettingsDialog(QDialog):
 
         sidebar_req_height = self.sidebar.count() * 45 + 40
 
-        required_height = max(sidebar_req_height, max_content_height + bottom_controls_height)
+        required_height = max(
+            sidebar_req_height, max_content_height + bottom_controls_height
+        )
 
         screen_h = QApplication.primaryScreen().availableGeometry().height()
         final_height = min(required_height, screen_h - 100) + 5
@@ -182,7 +206,10 @@ class SettingsDialog(QDialog):
             (self.tr("settings.appearance", self.current_language), AppIcon.SETTINGS),
             (self.tr("label.view", self.current_language), AppIcon.TEXT_MANIPULATOR),
             (self.tr("settings.optimization", self.current_language), AppIcon.PLAY),
-            (self.tr("label.details", self.current_language), AppIcon.HIGHLIGHT_DIFFERENCES)
+            (
+                self.tr("label.details", self.current_language),
+                AppIcon.HIGHLIGHT_DIFFERENCES,
+            ),
         ]
         for text, icon_enum in self._sidebar_items_data:
             item = QListWidgetItem(get_app_icon(icon_enum), text)
@@ -190,7 +217,7 @@ class SettingsDialog(QDialog):
             self.sidebar.addItem(item)
 
     def _update_sidebar_icons(self):
-        if not hasattr(self, '_sidebar_items_data'):
+        if not hasattr(self, "_sidebar_items_data"):
             return
 
         for i, (text, icon_enum) in enumerate(self._sidebar_items_data):
@@ -209,13 +236,17 @@ class SettingsDialog(QDialog):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         content = QWidget()
-        content.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
+        content.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding
+        )
 
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 12, 0)
         content_layout.setSpacing(15)
 
-        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        content_layout.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        )
 
         scroll.setWidget(content)
         layout.addWidget(scroll)
@@ -226,7 +257,9 @@ class SettingsDialog(QDialog):
         self.page_general, layout = self._create_scrollable_page()
         p = self._init_params
 
-        self.lang_group = CustomGroupWidget(self.tr("label.language", self.current_language))
+        self.lang_group = CustomGroupWidget(
+            self.tr("label.language", self.current_language)
+        )
         lang_layout = QHBoxLayout()
 
         lang_layout.setContentsMargins(5, 5, 5, 5)
@@ -246,33 +279,46 @@ class SettingsDialog(QDialog):
             "zh": self.radio_zh,
             "pt_BR": self.radio_pt_br,
         }
-        selected_radio = language_radio_map.get(p['current_language'], self.radio_en)
+        selected_radio = language_radio_map.get(p["current_language"], self.radio_en)
         selected_radio.setChecked(True)
 
-        self.sys_group = CustomGroupWidget(self.tr("settings.appearance", self.current_language))
+        self.sys_group = CustomGroupWidget(
+            self.tr("settings.appearance", self.current_language)
+        )
 
         theme_row = QHBoxLayout()
         theme_row.setContentsMargins(5, 5, 5, 5)
         self.theme_label = QLabel(self.tr("label.theme", self.current_language) + ":")
         self.combo_theme = FluentComboBox()
         self.combo_theme.setFixedWidth(140)
-        self.combo_theme.addItem(self.tr("settings.auto", self.current_language), "auto")
-        self.combo_theme.addItem(self.tr("settings.light", self.current_language), "light")
-        self.combo_theme.addItem(self.tr("settings.dark", self.current_language), "dark")
-        idx = self.combo_theme.findData(p['current_theme'])
-        if idx != -1: self.combo_theme.setCurrentIndex(idx)
+        self.combo_theme.addItem(
+            self.tr("settings.auto", self.current_language), "auto"
+        )
+        self.combo_theme.addItem(
+            self.tr("settings.light", self.current_language), "light"
+        )
+        self.combo_theme.addItem(
+            self.tr("settings.dark", self.current_language), "dark"
+        )
+        idx = self.combo_theme.findData(p["current_theme"])
+        if idx != -1:
+            self.combo_theme.setCurrentIndex(idx)
 
         theme_row.addWidget(self.theme_label)
         theme_row.addWidget(self.combo_theme)
         theme_row.addStretch()
         self.sys_group.add_layout(theme_row)
 
-        self.system_notifications_checkbox = FluentCheckBox(self.tr("settings.system_notifications", self.current_language))
-        self.system_notifications_checkbox.setChecked(p['system_notifications_enabled'])
+        self.system_notifications_checkbox = FluentCheckBox(
+            self.tr("settings.system_notifications", self.current_language)
+        )
+        self.system_notifications_checkbox.setChecked(p["system_notifications_enabled"])
         self.sys_group.add_widget(self.system_notifications_checkbox)
 
-        self.debug_checkbox = FluentCheckBox(self.tr("settings.enable_debug_logging", self.current_language))
-        self.debug_checkbox.setChecked(p['debug_mode_enabled'])
+        self.debug_checkbox = FluentCheckBox(
+            self.tr("settings.enable_debug_logging", self.current_language)
+        )
+        self.debug_checkbox.setChecked(p["debug_mode_enabled"])
         self.sys_group.add_widget(self.debug_checkbox)
 
         layout.addWidget(self.sys_group)
@@ -283,14 +329,26 @@ class SettingsDialog(QDialog):
         self.page_interface, layout = self._create_scrollable_page()
         p = self._init_params
 
-        self.ui_mode_group = CustomGroupWidget(self.tr("settings.ui_mode", self.current_language))
+        self.ui_mode_group = CustomGroupWidget(
+            self.tr("settings.ui_mode", self.current_language)
+        )
         ui_mode_layout = QHBoxLayout()
         ui_mode_layout.setContentsMargins(5, 5, 5, 5)
-        self.radio_ui_mode_beginner = FluentRadioButton(self.tr("settings.ui_mode_beginner", self.current_language))
-        self.radio_ui_mode_advanced = FluentRadioButton(self.tr("settings.ui_mode_advanced", self.current_language))
-        self.radio_ui_mode_expert = FluentRadioButton(self.tr("settings.ui_mode_expert", self.current_language))
+        self.radio_ui_mode_beginner = FluentRadioButton(
+            self.tr("settings.ui_mode_beginner", self.current_language)
+        )
+        self.radio_ui_mode_advanced = FluentRadioButton(
+            self.tr("settings.ui_mode_advanced", self.current_language)
+        )
+        self.radio_ui_mode_expert = FluentRadioButton(
+            self.tr("settings.ui_mode_expert", self.current_language)
+        )
         self._ui_mode_group = QButtonGroup(self)
-        for rb in (self.radio_ui_mode_beginner, self.radio_ui_mode_advanced, self.radio_ui_mode_expert):
+        for rb in (
+            self.radio_ui_mode_beginner,
+            self.radio_ui_mode_advanced,
+            self.radio_ui_mode_expert,
+        ):
             self._ui_mode_group.addButton(rb)
             ui_mode_layout.addWidget(rb)
         self.ui_mode_group.add_layout(ui_mode_layout)
@@ -300,16 +358,26 @@ class SettingsDialog(QDialog):
             "expert": self.radio_ui_mode_expert,
             "advanced": self.radio_ui_mode_advanced,
         }
-        selected_ui_mode_radio = ui_mode_radio_map.get(p['current_ui_mode'], self.radio_ui_mode_beginner)
+        selected_ui_mode_radio = ui_mode_radio_map.get(
+            p["current_ui_mode"], self.radio_ui_mode_beginner
+        )
         selected_ui_mode_radio.setChecked(True)
 
-        self.font_group = CustomGroupWidget(self.tr("settings.ui_font", self.current_language))
+        self.font_group = CustomGroupWidget(
+            self.tr("settings.ui_font", self.current_language)
+        )
         font_radio_layout = QVBoxLayout()
         font_radio_layout.setContentsMargins(5, 5, 5, 5)
 
-        self.radio_font_builtin = FluentRadioButton(self.tr("settings.builtin_font", self.current_language))
-        self.radio_font_system_default = FluentRadioButton(self.tr("settings.system_default", self.current_language))
-        self.radio_font_system_custom = FluentRadioButton(self.tr("settings.custom", self.current_language))
+        self.radio_font_builtin = FluentRadioButton(
+            self.tr("settings.builtin_font", self.current_language)
+        )
+        self.radio_font_system_default = FluentRadioButton(
+            self.tr("settings.system_default", self.current_language)
+        )
+        self.radio_font_system_custom = FluentRadioButton(
+            self.tr("settings.custom", self.current_language)
+        )
 
         font_radio_layout.addWidget(self.radio_font_builtin)
         font_radio_layout.addWidget(self.radio_font_system_default)
@@ -319,8 +387,11 @@ class SettingsDialog(QDialog):
 
         self.combo_font_family = FluentComboBox()
         from PyQt6.QtGui import QFontDatabase
+
         families = QFontDatabase.families()
-        self.combo_font_family.addItem(self.tr("settings.select_font", self.current_language), "")
+        self.combo_font_family.addItem(
+            self.tr("settings.select_font", self.current_language), ""
+        )
         for fam in families:
             self.combo_font_family.addItem(fam, fam)
 
@@ -332,7 +403,7 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(self.font_group)
 
-        mode = p['current_ui_font_mode'] or "builtin"
+        mode = p["current_ui_font_mode"] or "builtin"
         font_mode_radio_map = {
             "system_default": self.radio_font_system_default,
             "system": self.radio_font_system_default,
@@ -341,8 +412,9 @@ class SettingsDialog(QDialog):
         selected_font_radio = font_mode_radio_map.get(mode, self.radio_font_builtin)
         selected_font_radio.setChecked(True)
 
-        idx_fam = self.combo_font_family.findData(p['current_ui_font_family'] or "")
-        if idx_fam != -1: self.combo_font_family.setCurrentIndex(idx_fam)
+        idx_fam = self.combo_font_family.findData(p["current_ui_font_family"] or "")
+        if idx_fam != -1:
+            self.combo_font_family.setCurrentIndex(idx_fam)
 
         def _sync_font_ui():
             is_custom = self.radio_font_system_custom.isChecked()
@@ -354,15 +426,17 @@ class SettingsDialog(QDialog):
         self.radio_font_system_default.toggled.connect(_sync_font_ui)
         _sync_font_ui()
 
-        self.other_ui_group = CustomGroupWidget(self.tr("settings.maximum_name_length_ui", self.current_language))
+        self.other_ui_group = CustomGroupWidget(
+            self.tr("settings.maximum_name_length_ui", self.current_language)
+        )
         len_layout = QHBoxLayout()
 
         len_layout.setContentsMargins(12, 5, 12, 5)
 
-        val_to_set = max(p['min_limit'], min(p['max_limit'], p['current_max_length']))
+        val_to_set = max(p["min_limit"], min(p["max_limit"], p["current_max_length"]))
 
         self.spin_max_length = FluentSpinBox(default_value=val_to_set)
-        self.spin_max_length.setRange(p['min_limit'], p['max_limit'])
+        self.spin_max_length.setRange(p["min_limit"], p["max_limit"])
         self.spin_max_length.setValue(val_to_set)
 
         self.spin_max_length.setFixedWidth(100)
@@ -380,13 +454,22 @@ class SettingsDialog(QDialog):
     def _init_performance_page(self):
         self.page_perf, layout = self._create_scrollable_page()
         p = self._init_params
+        self._build_resolution_group(layout, p)
+        self._build_interactive_optimization_group(layout, p)
+        self._build_video_group(layout, p)
+        self.pages_stack.addWidget(self.page_perf)
 
-        self.res_group = CustomGroupWidget(self.tr("settings.display_cache_resolution", self.current_language))
+    def _build_resolution_group(self, layout, p):
+        self.res_group = CustomGroupWidget(
+            self.tr("settings.display_cache_resolution", self.current_language)
+        )
         res_layout = QHBoxLayout()
         res_layout.setContentsMargins(5, 5, 5, 5)
 
         self.combo_resolution = FluentComboBox()
-        self.combo_resolution.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.combo_resolution.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
 
         resolution_translation_map = {
             "Original": "settings.original",
@@ -400,25 +483,63 @@ class SettingsDialog(QDialog):
             display_text = self.tr(translation_key, self.current_language)
             self.combo_resolution.addItem(display_text, userData=limit)
 
-        idx_res = self.combo_resolution.findData(p['current_resolution_limit'])
-        if idx_res != -1: self.combo_resolution.setCurrentIndex(idx_res)
+        idx_res = self.combo_resolution.findData(p["current_resolution_limit"])
+        if idx_res != -1:
+            self.combo_resolution.setCurrentIndex(idx_res)
 
         res_layout.addWidget(self.combo_resolution)
 
         self.res_group.add_layout(res_layout)
         layout.addWidget(self.res_group)
 
-        self.interactive_opt_group = CustomGroupWidget(self.tr("settings.interactive_optimization", self.current_language))
+    def _build_interactive_optimization_group(self, layout, p):
+        self.interactive_opt_group = CustomGroupWidget(
+            self.tr("settings.interactive_optimization", self.current_language)
+        )
+        self._build_zoom_interpolation_row()
+        self._build_magnifier_interpolation_row(p)
+        self._build_laser_interpolation_row(p)
+        self._populate_interpolation_combos(p)
+        self.optimize_movement_checkbox.toggled.connect(
+            self.combo_mag_interp.setEnabled
+        )
+        self.laser_smoothing_checkbox.toggled.connect(
+            self.combo_laser_interp.setEnabled
+        )
+        layout.addWidget(self.interactive_opt_group)
 
+    def _build_zoom_interpolation_row(self):
+        row_zoom_layout = QHBoxLayout()
+        row_zoom_layout.setContentsMargins(5, 5, 5, 5)
+        self.lbl_zoom_interp = QLabel(
+            self.tr("settings.zoom_interpolation", self.current_language)
+        )
+
+        self.combo_zoom_interp = FluentComboBox()
+        self.combo_zoom_interp.setMinimumWidth(140)
+        self.combo_zoom_interp.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
+        )
+
+        row_zoom_layout.addWidget(self.lbl_zoom_interp)
+        row_zoom_layout.addStretch()
+        row_zoom_layout.addWidget(self.combo_zoom_interp)
+        self.interactive_opt_group.add_layout(row_zoom_layout)
+
+    def _build_magnifier_interpolation_row(self, p):
         row_mag_layout = QHBoxLayout()
         row_mag_layout.setContentsMargins(5, 5, 5, 5)
-        self.optimize_movement_checkbox = FluentCheckBox(self.tr("settings.optimize_magnifier_movement", self.current_language))
-        self.optimize_movement_checkbox.setChecked(p['optimize_magnifier_movement'])
+        self.optimize_movement_checkbox = FluentCheckBox(
+            self.tr("settings.optimize_magnifier_movement", self.current_language)
+        )
+        self.optimize_movement_checkbox.setChecked(p["optimize_magnifier_movement"])
 
         self.combo_mag_interp = FluentComboBox()
         self.combo_mag_interp.setMinimumWidth(140)
-        self.combo_mag_interp.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
-        self.combo_mag_interp.setEnabled(p['optimize_magnifier_movement'])
+        self.combo_mag_interp.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
+        )
+        self.combo_mag_interp.setEnabled(p["optimize_magnifier_movement"])
 
         row_mag_layout.addWidget(self.optimize_movement_checkbox)
         row_mag_layout.addStretch()
@@ -426,15 +547,20 @@ class SettingsDialog(QDialog):
 
         self.interactive_opt_group.add_layout(row_mag_layout)
 
+    def _build_laser_interpolation_row(self, p):
         row_laser_layout = QHBoxLayout()
         row_laser_layout.setContentsMargins(5, 5, 5, 5)
-        self.laser_smoothing_checkbox = FluentCheckBox(self.tr("settings.optimize_laser_smoothing", self.current_language))
-        self.laser_smoothing_checkbox.setChecked(p['optimize_laser_smoothing'])
+        self.laser_smoothing_checkbox = FluentCheckBox(
+            self.tr("settings.optimize_laser_smoothing", self.current_language)
+        )
+        self.laser_smoothing_checkbox.setChecked(p["optimize_laser_smoothing"])
 
         self.combo_laser_interp = FluentComboBox()
         self.combo_laser_interp.setMinimumWidth(140)
-        self.combo_laser_interp.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
-        self.combo_laser_interp.setEnabled(p['optimize_laser_smoothing'])
+        self.combo_laser_interp.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
+        )
+        self.combo_laser_interp.setEnabled(p["optimize_laser_smoothing"])
 
         row_laser_layout.addWidget(self.laser_smoothing_checkbox)
         row_laser_layout.addStretch()
@@ -442,6 +568,7 @@ class SettingsDialog(QDialog):
 
         self.interactive_opt_group.add_layout(row_laser_layout)
 
+    def _populate_interpolation_combos(self, p):
         try:
             from shared.image_processing.resize import WAND_AVAILABLE
         except Exception:
@@ -455,10 +582,18 @@ class SettingsDialog(QDialog):
             "EWA_LANCZOS": "magnifier.ewa_lanczos",
         }
 
-        valid_keys = [k for k in AppConstants.INTERPOLATION_METHODS_MAP.keys() if k != "EWA_LANCZOS" or WAND_AVAILABLE]
+        valid_keys = [
+            k
+            for k in AppConstants.INTERPOLATION_METHODS_MAP.keys()
+            if k != "EWA_LANCZOS" or WAND_AVAILABLE
+        ]
+        self._populate_interpolation_combos_with_widths(valid_keys, interp_map)
+        self._apply_selected_interpolation_values(p)
 
+    def _populate_interpolation_combos_with_widths(self, valid_keys, interp_map):
         from PyQt6.QtGui import QFontMetrics
         from PyQt6.QtWidgets import QApplication
+
         app = QApplication.instance()
         if app:
             font_metrics = QFontMetrics(self.combo_mag_interp.font())
@@ -477,22 +612,46 @@ class SettingsDialog(QDialog):
                 self.combo_mag_interp.addItem(items_texts[i], key)
                 self.combo_laser_interp.addItem(items_texts[i], key)
 
+            zoom_items = [
+                ("NEAREST", self.tr(interp_map["NEAREST"], self.current_language)),
+                ("BILINEAR", self.tr(interp_map["BILINEAR"], self.current_language)),
+            ]
+            for key, text in zoom_items:
+                self.combo_zoom_interp.addItem(text, key)
+
             self.combo_mag_interp.setMinimumWidth(combo_width)
             self.combo_laser_interp.setMinimumWidth(combo_width)
+            self.combo_zoom_interp.setMinimumWidth(max(140, max(len(text) for _, text in zoom_items) * 10))
         else:
 
             for key in valid_keys:
                 text = self.tr(interp_map.get(key, key), self.current_language)
                 self.combo_mag_interp.addItem(text, key)
                 self.combo_laser_interp.addItem(text, key)
+            self.combo_zoom_interp.addItem(
+                self.tr(interp_map["NEAREST"], self.current_language), "NEAREST"
+            )
+            self.combo_zoom_interp.addItem(
+                self.tr(interp_map["BILINEAR"], self.current_language), "BILINEAR"
+            )
 
-        store_obj = p.get('store', None)
-        if store_obj and hasattr(store_obj, 'viewport'):
-            mag_method = getattr(store_obj.viewport.render_config, 'magnifier_movement_interpolation_method', None)
-            laser_method = getattr(store_obj.viewport.render_config, 'laser_smoothing_interpolation_method', None)
+    def _apply_selected_interpolation_values(self, p):
+
+        store_obj = p.get("store", None)
+        if store_obj and hasattr(store_obj, "viewport"):
+            mag_method = getattr(
+                store_obj.viewport.render_config,
+                "magnifier_movement_interpolation_method",
+                None,
+            )
+            laser_method = getattr(
+                store_obj.viewport.render_config,
+                "laser_smoothing_interpolation_method",
+                None,
+            )
         else:
-            mag_method = p.get('movement_interpolation_method', 'BILINEAR')
-            laser_method = 'BILINEAR'
+            mag_method = p.get("movement_interpolation_method", "BILINEAR")
+            laser_method = "BILINEAR"
 
         mag_idx = self.combo_mag_interp.findData(mag_method)
         if mag_idx != -1:
@@ -502,19 +661,24 @@ class SettingsDialog(QDialog):
         if laser_idx != -1:
             self.combo_laser_interp.setCurrentIndex(laser_idx)
 
-        self.optimize_movement_checkbox.toggled.connect(self.combo_mag_interp.setEnabled)
-        self.laser_smoothing_checkbox.toggled.connect(self.combo_laser_interp.setEnabled)
+        zoom_method = p.get("zoom_interpolation_method", "BILINEAR")
+        zoom_idx = self.combo_zoom_interp.findData(zoom_method)
+        if zoom_idx != -1:
+            self.combo_zoom_interp.setCurrentIndex(zoom_idx)
 
-        layout.addWidget(self.interactive_opt_group)
-
-        self.video_group = CustomGroupWidget(self.tr("settings.video_recording", self.current_language))
+    def _build_video_group(self, layout, p):
+        self.video_group = CustomGroupWidget(
+            self.tr("settings.video_recording", self.current_language)
+        )
         video_layout = QHBoxLayout()
         video_layout.setContentsMargins(5, 5, 5, 5)
 
-        self.lbl_fps = QLabel(self.tr("settings.recording_fps", self.current_language) + ":")
+        self.lbl_fps = QLabel(
+            self.tr("settings.recording_fps", self.current_language) + ":"
+        )
         self.spin_fps = FluentSpinBox(default_value=60)
         self.spin_fps.setRange(10, 144)
-        self.spin_fps.setValue(p.get('current_video_fps', 60))
+        self.spin_fps.setValue(p.get("current_video_fps", 60))
         self.spin_fps.setFixedWidth(100)
         self.spin_fps.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -525,29 +689,39 @@ class SettingsDialog(QDialog):
         self.video_group.add_layout(video_layout)
         layout.addWidget(self.video_group)
 
-        self.pages_stack.addWidget(self.page_perf)
-
     def _init_analysis_page(self):
         self.page_analysis, layout = self._create_scrollable_page()
         p = self._init_params
 
-        self.auto_group = CustomGroupWidget(self.tr("settings.auto", self.current_language))
+        self.auto_group = CustomGroupWidget(
+            self.tr("settings.auto", self.current_language)
+        )
 
-        self.crop_checkbox = FluentCheckBox(self.tr("settings.autocrop_black_borders_on_load", self.current_language))
-        self.crop_checkbox.setChecked(p['auto_crop_black_borders'])
+        self.crop_checkbox = FluentCheckBox(
+            self.tr("settings.autocrop_black_borders_on_load", self.current_language)
+        )
+        self.crop_checkbox.setChecked(p["auto_crop_black_borders"])
 
-        self.crop_checkbox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.crop_checkbox.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
 
         self.auto_group.add_widget(self.crop_checkbox)
         layout.addWidget(self.auto_group)
 
-        self.metrics_group = CustomGroupWidget(self.tr("label.details", self.current_language))
-        self.auto_psnr_checkbox = FluentCheckBox(self.tr("settings.autocalculate_psnr", self.current_language))
-        self.auto_psnr_checkbox.setChecked(p['auto_calculate_psnr'])
+        self.metrics_group = CustomGroupWidget(
+            self.tr("label.details", self.current_language)
+        )
+        self.auto_psnr_checkbox = FluentCheckBox(
+            self.tr("settings.autocalculate_psnr", self.current_language)
+        )
+        self.auto_psnr_checkbox.setChecked(p["auto_calculate_psnr"])
         self.metrics_group.add_widget(self.auto_psnr_checkbox)
 
-        self.auto_ssim_checkbox = FluentCheckBox(self.tr("settings.autocalculate_ssim", self.current_language))
-        self.auto_ssim_checkbox.setChecked(p['auto_calculate_ssim'])
+        self.auto_ssim_checkbox = FluentCheckBox(
+            self.tr("settings.autocalculate_ssim", self.current_language)
+        )
+        self.auto_ssim_checkbox.setChecked(p["auto_calculate_ssim"])
         self.metrics_group.add_widget(self.auto_ssim_checkbox)
 
         layout.addWidget(self.metrics_group)
@@ -558,37 +732,6 @@ class SettingsDialog(QDialog):
 
     def _apply_styles(self):
         self.theme_manager.apply_theme_to_dialog(self)
-
-        is_dark = self.theme_manager.is_dark()
-        bg_color = self.theme_manager.get_color("dialog.background").name()
-        sidebar_bg = self.theme_manager.get_color("dialog.input.background").name() if is_dark else "#f3f3f3"
-        item_hover = self.theme_manager.get_color("list_item.background.hover").name()
-        item_selected = self.theme_manager.get_color("accent").name()
-        text_color = self.theme_manager.get_color("dialog.text").name()
-
-        self.sidebar.setStyleSheet(f"""
-            QListWidget {{
-                background-color: {sidebar_bg};
-                border-right: 1px solid {self.theme_manager.get_color("dialog.border").name()};
-                outline: none;
-            }}
-            QListWidget::item {{
-                padding: 10px 12px;
-                margin: 4px 8px;
-                border-radius: 6px;
-                color: {text_color};
-            }}
-            QListWidget::item:hover {{
-                background-color: {item_hover};
-            }}
-            QListWidget::item:selected {{
-                background-color: {item_selected};
-                color: white;
-            }}
-        """)
-
-        self.content_area.setStyleSheet(f"background-color: {bg_color};")
-
         self._update_sidebar_icons()
 
     def get_settings(self):
@@ -600,7 +743,7 @@ class SettingsDialog(QDialog):
         }
         selected_language = next(
             (lang for radio, lang in language_radio_map.items() if radio.isChecked()),
-            "en"
+            "en",
         )
 
         selected_theme = self.combo_theme.currentData()
@@ -615,7 +758,7 @@ class SettingsDialog(QDialog):
         }
         ui_font_mode = next(
             (mode for radio, mode in font_mode_radio_map.items() if radio.isChecked()),
-            "builtin"
+            "builtin",
         )
 
         ui_font_family = self.combo_font_family.currentData() or ""
@@ -624,6 +767,7 @@ class SettingsDialog(QDialog):
         mag_interp = self.combo_mag_interp.currentData() or "BILINEAR"
         opt_laser = self.laser_smoothing_checkbox.isChecked()
         laser_interp = self.combo_laser_interp.currentData() or "BILINEAR"
+        zoom_interp = self.combo_zoom_interp.currentData() or "BILINEAR"
         auto_psnr = self.auto_psnr_checkbox.isChecked()
         auto_ssim = self.auto_ssim_checkbox.isChecked()
         auto_crop = self.crop_checkbox.isChecked()
@@ -635,27 +779,28 @@ class SettingsDialog(QDialog):
         }
         ui_mode = next(
             (mode for radio, mode in ui_mode_radio_map.items() if radio.isChecked()),
-            "beginner"
+            "beginner",
         )
 
-        return (
-            selected_language,
-            selected_theme,
-            max_length,
-            debug_enabled,
-            sys_notif,
-            res_limit,
-            ui_font_mode,
-            ui_font_family,
-            opt_mov,
-            mag_interp,
-            opt_laser,
-            laser_interp,
-            auto_psnr,
-            auto_ssim,
-            auto_crop,
-            ui_mode,
-            video_fps,
+        return SettingsDialogData(
+            language=selected_language,
+            theme=selected_theme,
+            max_name_length=max_length,
+            debug_enabled=debug_enabled,
+            system_notifications_enabled=sys_notif,
+            resolution_limit=res_limit,
+            ui_font_mode=ui_font_mode,
+            ui_font_family=ui_font_family,
+            optimize_magnifier_movement=opt_mov,
+            magnifier_interpolation_method=mag_interp,
+            optimize_laser_smoothing=opt_laser,
+            laser_interpolation_method=laser_interp,
+            zoom_interpolation_method=zoom_interp,
+            auto_calculate_psnr=auto_psnr,
+            auto_calculate_ssim=auto_ssim,
+            auto_crop_black_borders=auto_crop,
+            ui_mode=ui_mode,
+            video_recording_fps=video_fps,
         )
 
     def update_language(self, lang_code: str):
@@ -667,16 +812,16 @@ class SettingsDialog(QDialog):
         self.ok_button.setText(self.tr("common.ok", lang_code))
         self.cancel_button.setText(self.tr("common.cancel", lang_code))
 
-        if hasattr(self, 'lang_group'):
+        if hasattr(self, "lang_group"):
             self.lang_group.set_title(self.tr("label.language", lang_code))
 
-        if hasattr(self, 'sys_group'):
+        if hasattr(self, "sys_group"):
             self.sys_group.set_title(self.tr("settings.appearance", lang_code))
 
-        if hasattr(self, 'theme_label'):
+        if hasattr(self, "theme_label"):
             self.theme_label.setText(self.tr("label.theme", lang_code) + ":")
 
-        if hasattr(self, 'combo_theme'):
+        if hasattr(self, "combo_theme"):
             current_theme = self.combo_theme.currentData()
             self.combo_theme.clear()
             self.combo_theme.addItem(self.tr("settings.auto", lang_code), "auto")
@@ -686,50 +831,69 @@ class SettingsDialog(QDialog):
             if idx != -1:
                 self.combo_theme.setCurrentIndex(idx)
 
-        if hasattr(self, 'system_notifications_checkbox'):
-            self.system_notifications_checkbox.setText(self.tr("settings.system_notifications", lang_code))
-        if hasattr(self, 'debug_checkbox'):
-            self.debug_checkbox.setText(self.tr("settings.enable_debug_logging", lang_code))
+        if hasattr(self, "system_notifications_checkbox"):
+            self.system_notifications_checkbox.setText(
+                self.tr("settings.system_notifications", lang_code)
+            )
+        if hasattr(self, "debug_checkbox"):
+            self.debug_checkbox.setText(
+                self.tr("settings.enable_debug_logging", lang_code)
+            )
 
-        if hasattr(self, 'ui_mode_group'):
+        if hasattr(self, "ui_mode_group"):
             self.ui_mode_group.set_title(self.tr("settings.ui_mode", lang_code))
 
-        if hasattr(self, 'radio_ui_mode_beginner'):
-            self.radio_ui_mode_beginner.setText(self.tr("settings.ui_mode_beginner", lang_code))
-        if hasattr(self, 'radio_ui_mode_advanced'):
-            self.radio_ui_mode_advanced.setText(self.tr("settings.ui_mode_advanced", lang_code))
-        if hasattr(self, 'radio_ui_mode_expert'):
-            self.radio_ui_mode_expert.setText(self.tr("settings.ui_mode_expert", lang_code))
+        if hasattr(self, "radio_ui_mode_beginner"):
+            self.radio_ui_mode_beginner.setText(
+                self.tr("settings.ui_mode_beginner", lang_code)
+            )
+        if hasattr(self, "radio_ui_mode_advanced"):
+            self.radio_ui_mode_advanced.setText(
+                self.tr("settings.ui_mode_advanced", lang_code)
+            )
+        if hasattr(self, "radio_ui_mode_expert"):
+            self.radio_ui_mode_expert.setText(
+                self.tr("settings.ui_mode_expert", lang_code)
+            )
 
-        if hasattr(self, 'font_group'):
+        if hasattr(self, "font_group"):
             self.font_group.set_title(self.tr("settings.ui_font", lang_code))
 
-        if hasattr(self, 'radio_font_builtin'):
+        if hasattr(self, "radio_font_builtin"):
             self.radio_font_builtin.setText(self.tr("settings.builtin_font", lang_code))
-        if hasattr(self, 'radio_font_system_default'):
-            self.radio_font_system_default.setText(self.tr("settings.system_default", lang_code))
-        if hasattr(self, 'radio_font_system_custom'):
+        if hasattr(self, "radio_font_system_default"):
+            self.radio_font_system_default.setText(
+                self.tr("settings.system_default", lang_code)
+            )
+        if hasattr(self, "radio_font_system_custom"):
             self.radio_font_system_custom.setText(self.tr("settings.custom", lang_code))
 
-        if hasattr(self, 'combo_font_family'):
+        if hasattr(self, "combo_font_family"):
             current_font = self.combo_font_family.currentData()
             from PyQt6.QtGui import QFontDatabase
+
             families = QFontDatabase.families()
             self.combo_font_family.clear()
-            self.combo_font_family.addItem(self.tr("settings.select_font", lang_code), "")
+            self.combo_font_family.addItem(
+                self.tr("settings.select_font", lang_code), ""
+            )
             for fam in families:
                 self.combo_font_family.addItem(fam, fam)
             idx_fam = self.combo_font_family.findData(current_font or "")
             if idx_fam != -1:
                 self.combo_font_family.setCurrentIndex(idx_fam)
 
-        if hasattr(self, 'other_ui_group'):
-            self.other_ui_group.set_title(self.tr("settings.maximum_name_length_ui", lang_code))
+        if hasattr(self, "other_ui_group"):
+            self.other_ui_group.set_title(
+                self.tr("settings.maximum_name_length_ui", lang_code)
+            )
 
-        if hasattr(self, 'res_group'):
-            self.res_group.set_title(self.tr("settings.display_cache_resolution", lang_code))
+        if hasattr(self, "res_group"):
+            self.res_group.set_title(
+                self.tr("settings.display_cache_resolution", lang_code)
+            )
 
-        if hasattr(self, 'combo_resolution'):
+        if hasattr(self, "combo_resolution"):
             current_res = self.combo_resolution.currentData()
             resolution_translation_map = {
                 "Original": "settings.original",
@@ -747,17 +911,37 @@ class SettingsDialog(QDialog):
             if idx_res != -1:
                 self.combo_resolution.setCurrentIndex(idx_res)
 
-        if hasattr(self, 'interactive_opt_group'):
-            self.interactive_opt_group.set_title(self.tr("settings.interactive_optimization", lang_code))
+        if hasattr(self, "interactive_opt_group"):
+            self.interactive_opt_group.set_title(
+                self.tr("settings.interactive_optimization", lang_code)
+            )
 
-        if hasattr(self, 'optimize_movement_checkbox'):
-            self.optimize_movement_checkbox.setText(self.tr("settings.optimize_magnifier_movement", lang_code))
-        if hasattr(self, 'laser_smoothing_checkbox'):
-            self.laser_smoothing_checkbox.setText(self.tr("settings.optimize_laser_smoothing", lang_code))
+        if hasattr(self, "lbl_zoom_interp"):
+            self.lbl_zoom_interp.setText(
+                self.tr("settings.zoom_interpolation", lang_code)
+            )
 
-        if hasattr(self, 'combo_mag_interp'):
+        if hasattr(self, "optimize_movement_checkbox"):
+            self.optimize_movement_checkbox.setText(
+                self.tr("settings.optimize_magnifier_movement", lang_code)
+            )
+        if hasattr(self, "laser_smoothing_checkbox"):
+            self.laser_smoothing_checkbox.setText(
+                self.tr("settings.optimize_laser_smoothing", lang_code)
+            )
+
+        if hasattr(self, "combo_mag_interp"):
             current_mag_interp = self.combo_mag_interp.currentData()
-            current_laser_interp = self.combo_laser_interp.currentData() if hasattr(self, 'combo_laser_interp') else None
+            current_laser_interp = (
+                self.combo_laser_interp.currentData()
+                if hasattr(self, "combo_laser_interp")
+                else None
+            )
+            current_zoom_interp = (
+                self.combo_zoom_interp.currentData()
+                if hasattr(self, "combo_zoom_interp")
+                else None
+            )
             try:
                 from shared.image_processing.resize import WAND_AVAILABLE
             except Exception:
@@ -781,7 +965,7 @@ class SettingsDialog(QDialog):
             if idx_mag != -1:
                 self.combo_mag_interp.setCurrentIndex(idx_mag)
 
-            if hasattr(self, 'combo_laser_interp'):
+            if hasattr(self, "combo_laser_interp"):
                 self.combo_laser_interp.clear()
                 for key in AppConstants.INTERPOLATION_METHODS_MAP.keys():
                     if key == "EWA_LANCZOS" and not WAND_AVAILABLE:
@@ -792,19 +976,37 @@ class SettingsDialog(QDialog):
                 if idx_laser != -1:
                     self.combo_laser_interp.setCurrentIndex(idx_laser)
 
-        if hasattr(self, 'auto_group'):
+            if hasattr(self, "combo_zoom_interp"):
+                self.combo_zoom_interp.clear()
+                self.combo_zoom_interp.addItem(
+                    self.tr(interp_map["NEAREST"], lang_code), "NEAREST"
+                )
+                self.combo_zoom_interp.addItem(
+                    self.tr(interp_map["BILINEAR"], lang_code), "BILINEAR"
+                )
+                idx_zoom = self.combo_zoom_interp.findData(current_zoom_interp)
+                if idx_zoom != -1:
+                    self.combo_zoom_interp.setCurrentIndex(idx_zoom)
+
+        if hasattr(self, "auto_group"):
             self.auto_group.set_title(self.tr("settings.auto", lang_code))
 
-        if hasattr(self, 'crop_checkbox'):
-            self.crop_checkbox.setText(self.tr("settings.autocrop_black_borders_on_load", lang_code))
+        if hasattr(self, "crop_checkbox"):
+            self.crop_checkbox.setText(
+                self.tr("settings.autocrop_black_borders_on_load", lang_code)
+            )
 
-        if hasattr(self, 'metrics_group'):
+        if hasattr(self, "metrics_group"):
             self.metrics_group.set_title(self.tr("label.details", lang_code))
 
-        if hasattr(self, 'auto_psnr_checkbox'):
-            self.auto_psnr_checkbox.setText(self.tr("settings.autocalculate_psnr", lang_code))
-        if hasattr(self, 'auto_ssim_checkbox'):
-            self.auto_ssim_checkbox.setText(self.tr("settings.autocalculate_ssim", lang_code))
+        if hasattr(self, "auto_psnr_checkbox"):
+            self.auto_psnr_checkbox.setText(
+                self.tr("settings.autocalculate_psnr", lang_code)
+            )
+        if hasattr(self, "auto_ssim_checkbox"):
+            self.auto_ssim_checkbox.setText(
+                self.tr("settings.autocalculate_ssim", lang_code)
+            )
 
         curr = self.sidebar.currentRow()
         self.sidebar.setCurrentRow(-1)
@@ -821,10 +1023,10 @@ class SettingsDialog(QDialog):
         super().reject()
 
     def _reset_button_states(self):
-        if hasattr(self, 'ok_button'):
+        if hasattr(self, "ok_button"):
             self.ok_button.setProperty("state", "normal")
             self.ok_button.update()
-        if hasattr(self, 'cancel_button'):
+        if hasattr(self, "cancel_button"):
             self.cancel_button.setProperty("state", "normal")
             self.cancel_button.update()
 
@@ -835,5 +1037,5 @@ class SettingsDialog(QDialog):
 
     def clear_input_focus(self):
         focused_widget = self.focusWidget()
-        if focused_widget and hasattr(focused_widget, 'clearFocus'):
+        if focused_widget and hasattr(focused_widget, "clearFocus"):
             focused_widget.clearFocus()

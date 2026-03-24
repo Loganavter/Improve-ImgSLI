@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 from PIL import Image
 
@@ -7,6 +7,7 @@ from core.constants import AppConstants
 
 try:
     from wand.image import Image as WandImage
+
     WAND_AVAILABLE = True
 except ImportError:
     WAND_AVAILABLE = False
@@ -14,35 +15,48 @@ except ImportError:
 logger = logging.getLogger("ImproveImgSLI")
 
 if WAND_AVAILABLE:
-    logger.info("Wand (ImageMagick) is available - EWA_LANCZOS will use high-quality resampling")
+    logger.info(
+        "Wand (ImageMagick) is available - EWA_LANCZOS will use high-quality resampling"
+    )
 else:
-    logger.info("Wand (ImageMagick) is not available - EWA_LANCZOS will fallback to Pillow LANCZOS")
+    logger.info(
+        "Wand (ImageMagick) is not available - EWA_LANCZOS will fallback to Pillow LANCZOS"
+    )
 
-def resample_image(pil_image: Image.Image, target_size: tuple[int, int], method_name: str, is_interactive_render: bool, diff_mode_active: bool = False) -> Image.Image:
+def resample_image(
+    pil_image: Image.Image,
+    target_size: tuple[int, int],
+    method_name: str,
+    is_interactive_render: bool,
+    diff_mode_active: bool = False,
+) -> Image.Image:
     if method_name == "EWA_LANCZOS":
         if not WAND_AVAILABLE:
             pass
         else:
             try:
                 import io
+
                 img_buffer = io.BytesIO()
-                pil_image.save(img_buffer, format='PNG')
+                pil_image.save(img_buffer, format="PNG")
                 img_buffer.seek(0)
 
                 with WandImage(blob=img_buffer.getvalue()) as img:
-                    img.resize(target_size[0], target_size[1], 'lanczos')
-                    img.format = 'png'
+                    img.resize(target_size[0], target_size[1], "lanczos")
+                    img.format = "png"
                     result = Image.open(io.BytesIO(img.make_blob()))
 
                     if result.mode != pil_image.mode:
                         try:
                             result = result.convert(pil_image.mode)
                         except Exception:
-                            if pil_image.mode == 'RGBA':
-                                result = result.convert('RGBA')
+                            if pil_image.mode == "RGBA":
+                                result = result.convert("RGBA")
                     return result
             except Exception as e:
-                logger.warning(f"Wand EWA_LANCZOS resampling failed, falling back to Pillow LANCZOS: {e}")
+                logger.warning(
+                    f"Wand EWA_LANCZOS resampling failed, falling back to Pillow LANCZOS: {e}"
+                )
 
     method_map_base = {
         "NEAREST": Image.Resampling.NEAREST,
@@ -65,7 +79,7 @@ def resample_image_subpixel(
     target_size: tuple[int, int],
     method_name: str,
     is_interactive_render: bool,
-    diff_mode_active: bool = False
+    diff_mode_active: bool = False,
 ) -> Image.Image:
     """
     Выполняет субпиксельный crop и масштабирование изображения (лёгкая версия).
@@ -100,7 +114,9 @@ def resample_image_subpixel(
     expanded_right = min(pil_image.width, int(right + expand_pixels))
     expanded_bottom = min(pil_image.height, int(bottom + expand_pixels))
 
-    expanded_cropped = pil_image.crop((expanded_left, expanded_top, expanded_right, expanded_bottom))
+    expanded_cropped = pil_image.crop(
+        (expanded_left, expanded_top, expanded_right, expanded_bottom)
+    )
 
     subpixel_offset_x = left - expanded_left
     subpixel_offset_y = top - expanded_top
@@ -111,14 +127,18 @@ def resample_image_subpixel(
     final_bottom = int(subpixel_offset_y + crop_h)
 
     compensate = 1
-    cropped = expanded_cropped.crop((
-        max(0, final_left - compensate),
-        max(0, final_top - compensate),
-        min(expanded_cropped.width, final_right + compensate),
-        min(expanded_cropped.height, final_bottom + compensate)
-    ))
+    cropped = expanded_cropped.crop(
+        (
+            max(0, final_left - compensate),
+            max(0, final_top - compensate),
+            min(expanded_cropped.width, final_right + compensate),
+            min(expanded_cropped.height, final_bottom + compensate),
+        )
+    )
 
-    result = resample_image(cropped, target_size, method_name, is_interactive_render, diff_mode_active)
+    result = resample_image(
+        cropped, target_size, method_name, is_interactive_render, diff_mode_active
+    )
 
     return result
 
@@ -157,12 +177,16 @@ def resize_images_processor(
     try:
         if processed_img1_intermediate:
             if processed_img1_intermediate.size != target_size_final:
-                final_processed_image1 = resample_image(processed_img1_intermediate, target_size_final, "LANCZOS", False)
+                final_processed_image1 = resample_image(
+                    processed_img1_intermediate, target_size_final, "LANCZOS", False
+                )
             else:
                 final_processed_image1 = processed_img1_intermediate
         if processed_img2_intermediate:
             if processed_img2_intermediate.size != target_size_final:
-                final_processed_image2 = resample_image(processed_img2_intermediate, target_size_final, "LANCZOS", False)
+                final_processed_image2 = resample_image(
+                    processed_img2_intermediate, target_size_final, "LANCZOS", False
+                )
             else:
                 final_processed_image2 = processed_img2_intermediate
     except Exception:
@@ -175,7 +199,9 @@ def resize_images_processor(
 
     return (final_processed_image1, final_processed_image2)
 
-def get_auto_crop_box(pil_img: Image.Image, threshold: int = 15) -> Optional[Tuple[int, int, int, int]]:
+def get_auto_crop_box(
+    pil_img: Image.Image, threshold: int = 15
+) -> Optional[Tuple[int, int, int, int]]:
     try:
         analysis_img = pil_img.convert("RGB").convert("L")
         mask = analysis_img.point(lambda p: 255 if p > threshold else 0)

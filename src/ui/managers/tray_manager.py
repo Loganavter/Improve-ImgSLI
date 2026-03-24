@@ -1,14 +1,12 @@
-
-
 import logging
 import os
 
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
-from utils.resource_loader import resource_path
 from resources.translations import tr
+from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -19,7 +17,12 @@ class TrayManager(QObject):
     open_last_folder_requested = pyqtSignal()
     quit_requested = pyqtSignal()
 
-    def __init__(self, parent=None, app_name: str = "Improve-ImgSLI", current_language: str = "en"):
+    def __init__(
+        self,
+        parent=None,
+        app_name: str = "Improve-ImgSLI",
+        current_language: str = "en",
+    ):
         super().__init__(parent)
         self.app_name = app_name
         self.current_language = current_language
@@ -61,14 +64,22 @@ class TrayManager(QObject):
 
         tray_menu = QMenu()
 
-        self._actions["toggle"] = QAction(tr("ui.showhide_window", self.current_language))
-        self._actions["open_file"] = QAction(tr("action.open_last_file", self.current_language))
-        self._actions["open_folder"] = QAction(tr("action.open_save_folder", self.current_language))
+        self._actions["toggle"] = QAction(
+            tr("ui.showhide_window", self.current_language)
+        )
+        self._actions["open_file"] = QAction(
+            tr("action.open_last_file", self.current_language)
+        )
+        self._actions["open_folder"] = QAction(
+            tr("action.open_save_folder", self.current_language)
+        )
         self._actions["quit"] = QAction(tr("action.quit", self.current_language))
 
         self._actions["toggle"].triggered.connect(self.toggle_visibility_requested.emit)
         self._actions["open_file"].triggered.connect(self.open_last_file_requested.emit)
-        self._actions["open_folder"].triggered.connect(self.open_last_folder_requested.emit)
+        self._actions["open_folder"].triggered.connect(
+            self.open_last_folder_requested.emit
+        )
         self._actions["quit"].triggered.connect(self.quit_requested.emit)
 
         self._actions["open_file"].setVisible(False)
@@ -94,14 +105,22 @@ class TrayManager(QObject):
     def update_language(self, lang_code: str):
         self.current_language = lang_code
         if self._actions:
-            self._actions["toggle"].setText(tr("ui.showhide_window", self.current_language))
-            self._actions["open_file"].setText(tr("action.open_last_file", self.current_language))
-            self._actions["open_folder"].setText(tr("action.open_save_folder", self.current_language))
+            self._actions["toggle"].setText(
+                tr("ui.showhide_window", self.current_language)
+            )
+            self._actions["open_file"].setText(
+                tr("action.open_last_file", self.current_language)
+            )
+            self._actions["open_folder"].setText(
+                tr("action.open_save_folder", self.current_language)
+            )
             self._actions["quit"].setText(tr("action.quit", self.current_language))
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
-        if reason in (QSystemTrayIcon.ActivationReason.Trigger,
-                      QSystemTrayIcon.ActivationReason.DoubleClick):
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
             self.toggle_visibility_requested.emit()
 
     def _on_tray_message_clicked(self):
@@ -114,7 +133,7 @@ class TrayManager(QObject):
                     title,
                     message,
                     QSystemTrayIcon.MessageIcon.Information,
-                    max(0, int(timeout_ms))
+                    max(0, int(timeout_ms)),
                 )
             except Exception as e:
                 logger.error(f"Ошибка при показе уведомления трея: {e}")

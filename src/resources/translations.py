@@ -1,6 +1,7 @@
 import json
-import os
 import logging
+import os
+
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -23,11 +24,13 @@ class TranslationManager:
         file_path = os.path.join(base_path, f"{lang_code}.json")
 
         if not os.path.exists(file_path):
-            logger.warning(f"Translation file not found: {file_path}. Falling back to EN.")
+            logger.warning(
+                f"Translation file not found: {file_path}. Falling back to EN."
+            )
             file_path = os.path.join(base_path, "en.json")
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 self._translations = json.load(f)
                 self._current_lang = lang_code
         except Exception as e:

@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.plugin_system import Plugin, plugin
-from core.plugin_system.interfaces import IUIPlugin, IServicePlugin
 from core.events import (
-    SettingsChangeLanguageEvent,
-    SettingsToggleIncludeFilenamesInSavedEvent,
     SettingsApplyFontSettingsEvent,
-    SettingsToggleDividerLineVisibilityEvent,
+    SettingsChangeLanguageEvent,
     SettingsSetDividerLineColorEvent,
-    SettingsToggleMagnifierDividerVisibilityEvent,
-    SettingsSetMagnifierDividerColorEvent,
-    SettingsToggleAutoCropBlackBordersEvent,
     SettingsSetDividerLineThicknessEvent,
+    SettingsSetMagnifierDividerColorEvent,
     SettingsSetMagnifierDividerThicknessEvent,
+    SettingsToggleAutoCropBlackBordersEvent,
+    SettingsToggleDividerLineVisibilityEvent,
+    SettingsToggleIncludeFilenamesInSavedEvent,
+    SettingsToggleMagnifierDividerVisibilityEvent,
 )
+from core.plugin_system import Plugin, plugin
+from core.plugin_system.interfaces import IServicePlugin, IUIPlugin
 from plugins.settings.controller import SettingsController
 from plugins.settings.manager import SettingsManager
 
@@ -35,20 +35,53 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
         self.settings_manager = getattr(context, "settings_manager", None)
         self.event_bus = getattr(context, "event_bus", None)
         if self.store and self.settings_manager:
-            self.controller = SettingsController(self.store, self.settings_manager, event_bus=self.event_bus)
+            self.controller = SettingsController(
+                self.store, self.settings_manager, event_bus=self.event_bus
+            )
 
         if self.event_bus and self.controller:
 
-            self.event_bus.subscribe(SettingsChangeLanguageEvent, self.controller.on_change_language)
-            self.event_bus.subscribe(SettingsToggleIncludeFilenamesInSavedEvent, self.controller.on_toggle_include_filenames_in_saved)
-            self.event_bus.subscribe(SettingsApplyFontSettingsEvent, self.controller.on_apply_font_settings)
-            self.event_bus.subscribe(SettingsToggleDividerLineVisibilityEvent, self.controller.on_toggle_divider_line_visibility)
-            self.event_bus.subscribe(SettingsSetDividerLineColorEvent, self.controller.on_set_divider_line_color)
-            self.event_bus.subscribe(SettingsToggleMagnifierDividerVisibilityEvent, self.controller.on_toggle_magnifier_divider_visibility)
-            self.event_bus.subscribe(SettingsSetMagnifierDividerColorEvent, self.controller.on_set_magnifier_divider_color)
-            self.event_bus.subscribe(SettingsToggleAutoCropBlackBordersEvent, self.controller.on_toggle_auto_crop_black_borders)
-            self.event_bus.subscribe(SettingsSetDividerLineThicknessEvent, self.controller.on_set_divider_line_thickness)
-            self.event_bus.subscribe(SettingsSetMagnifierDividerThicknessEvent, self.controller.on_set_magnifier_divider_thickness)
+            self.event_bus.subscribe(
+                SettingsChangeLanguageEvent, self.controller.on_change_language
+            )
+            self.event_bus.subscribe(
+                SettingsToggleIncludeFilenamesInSavedEvent,
+                self.controller.on_toggle_include_filenames_in_saved,
+            )
+            self.event_bus.subscribe(
+                SettingsApplyFontSettingsEvent, self.controller.on_apply_font_settings
+            )
+            self.event_bus.subscribe(
+                SettingsToggleDividerLineVisibilityEvent,
+                self.controller.on_toggle_divider_line_visibility,
+            )
+            self.event_bus.subscribe(
+                SettingsSetDividerLineColorEvent,
+                self.controller.on_set_divider_line_color,
+            )
+            self.event_bus.subscribe(
+                SettingsToggleMagnifierDividerVisibilityEvent,
+                self.controller.on_toggle_magnifier_divider_visibility,
+            )
+            self.event_bus.subscribe(
+                SettingsSetMagnifierDividerColorEvent,
+                self.controller.on_set_magnifier_divider_color,
+            )
+            self.event_bus.subscribe(
+                SettingsToggleAutoCropBlackBordersEvent,
+                self.controller.on_toggle_auto_crop_black_borders,
+            )
+            self.event_bus.subscribe(
+                SettingsSetDividerLineThicknessEvent,
+                self.controller.on_set_divider_line_thickness,
+            )
+            self.event_bus.subscribe(
+                SettingsSetMagnifierDividerThicknessEvent,
+                self.controller.on_set_magnifier_divider_thickness,
+            )
+
+    def get_qss_paths(self) -> tuple[str, ...]:
+        return (self.plugin_resource_path("resources", "settings.qss"),)
 
     def get_controller(self) -> SettingsController | None:
         return self.controller
@@ -70,4 +103,3 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
         if callable(target):
             return target(*args, **kwargs)
         raise AttributeError(f"Settings controller has no command '{command}'")
-

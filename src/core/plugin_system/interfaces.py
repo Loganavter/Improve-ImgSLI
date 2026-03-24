@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from core.session_blueprints import SessionBlueprint
+
 class IControllablePlugin(ABC):
 
     @abstractmethod
@@ -33,6 +35,12 @@ class IServicePlugin(ABC):
     def provides_capability(self, capability: str) -> bool:
         return False
 
+class IVideoTrackProvider(ABC):
+
+    @abstractmethod
+    def get_video_track_specs(self) -> tuple[Any, ...]:
+        raise NotImplementedError
+
 class IRenderPlugin(ABC):
 
     @abstractmethod
@@ -42,3 +50,8 @@ class IRenderPlugin(ABC):
     def render_layer(self, renderer: Any) -> None:
         return None
 
+class ISessionPlugin(ABC):
+
+    @abstractmethod
+    def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
+        raise NotImplementedError

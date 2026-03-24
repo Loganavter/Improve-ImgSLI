@@ -9,4 +9,3 @@ from core.plugin_system.settings import auto_persist
 class AnalysisSettings:
     auto_psnr: bool = True
     auto_ssim: bool = True
-

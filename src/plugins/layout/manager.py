@@ -1,12 +1,20 @@
-from PyQt6.QtWidgets import QWidget
-from .definitions import LAYOUT_DEFINITIONS, ALL_KNOWN_WIDGETS
 import logging
+
+from shared_toolkit.ui.widgets.composite.toast import ToastManager
+
+from .definitions import ALL_KNOWN_WIDGETS, LAYOUT_DEFINITIONS
 
 logger = logging.getLogger("ImproveImgSLI")
 
 class LayoutManager:
-    def __init__(self, ui):
+    def __init__(self, ui, parent_window=None):
         self.ui = ui
+        self.parent_window = parent_window
+        self.toast_manager = None
+
+        if parent_window is not None:
+            image_label = getattr(ui, "image_label", None)
+            self.toast_manager = ToastManager(parent_window, image_label)
 
     def apply_mode(self, mode_name: str):
         if mode_name not in LAYOUT_DEFINITIONS:
@@ -30,10 +38,10 @@ class LayoutManager:
 
         self._update_group("line_group_container", definition.get("line_group", []))
         self._update_group("view_group_container", definition.get("view_group", []))
-        self._update_group("magnifier_group_container", definition.get("magnifier_group", []))
+        self._update_group(
+            "magnifier_group_container", definition.get("magnifier_group", [])
+        )
         self._update_group("record_group_container", definition.get("record_group", []))
-
-        logger.debug(f"UI layout switched to mode: {mode_name}")
 
     def _update_group(self, container_name: str, widget_names: list):
         if not hasattr(self.ui, container_name):
@@ -55,4 +63,3 @@ class LayoutManager:
                 widget = getattr(self.ui, name)
                 layout.addWidget(widget)
                 widget.setVisible(True)
-

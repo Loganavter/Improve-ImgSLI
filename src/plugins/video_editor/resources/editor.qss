@@ -11,6 +11,10 @@
     border: none;
 }
 
+#VideoEditorTabs::tab-bar {
+    alignment: center;
+}
+
 /* Внутренняя область (Pane) */
 #VideoEditorTabs::pane {
     border: 1px solid @separator.color;
@@ -29,8 +33,9 @@
     background: transparent;
     border: 1px solid transparent;
     border-bottom: none;
+    min-width: 80px;
     padding: 6px 14px;
-    margin-right: 2px;
+    margin: 0px 4px;
     color: @WindowText;
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
@@ -90,9 +95,9 @@
 
 /* Панель инструментов */
 #VideoEditorToolbar {
-    background-color: @AlternateBase;
-    border-top: 1px solid @separator.color;
-    border-bottom: 1px solid @separator.color;
+    background: transparent;
+    border: none;
+    border-top: 1px solid rgba(128, 128, 128, 0.2);
 }
 
 /* Стили для кнопок в тулбаре видеоредактора */
@@ -175,3 +180,39 @@
     background-color: @button.toggle.background.checked.hover;
 }
 
+#btnFitFillColor {
+    background-color: @button.toggle.background.normal;
+    border: none;
+    border-radius: 6px;
+}
+
+#btnFitFillColor:hover {
+    background-color: @button.toggle.background.hover;
+}
+
+#btnFitFillColor:pressed {
+    background-color: @button.toggle.background.pressed;
+}
+
+#btnFitFillColor:checked {
+    background-color: @button.toggle.background.checked;
+}
+
+#btnFitFillColor:checked:hover {
+    background-color: @button.toggle.background.checked.hover;
+}
+
+#VideoEditorExportProgress {
+    border: none;
+    background-color: #2d2d2d;
+    border-radius: 2px;
+}
+
+#VideoEditorExportProgress::chunk {
+    background-color: #0078D4;
+    border-radius: 2px;
+}
+
+#VideoEditorExportProgress[state="success"]::chunk {
+    background-color: #28a745;
+}

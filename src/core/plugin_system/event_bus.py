@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 import weakref
 from collections import defaultdict
-from typing import Callable, Any, Union, Type, TypeVar
+from typing import Any, Callable, Type, TypeVar, Union
 
 from core.events import Event
 
 logger = logging.getLogger("ImproveImgSLI")
 
-T = TypeVar('T', bound=Event)
+T = TypeVar("T", bound=Event)
 
 class _StrongRefWrapper:
     def __init__(self, callback: Callable[[Any], None]):
@@ -22,15 +22,18 @@ class EventBus:
 
     def __init__(self):
 
-        self._subscribers: dict[type[Event], list[Union[weakref.ref, weakref.WeakMethod, _StrongRefWrapper]]] = defaultdict(list)
+        self._subscribers: dict[
+            type[Event], list[Union[weakref.ref, weakref.WeakMethod, _StrongRefWrapper]]
+        ] = defaultdict(list)
 
     def subscribe(self, event_type: Type[T], callback: Callable[[T], None]) -> None:
         weak_cb = None
 
-        is_lambda = ((hasattr(callback, '__name__') and callback.__name__ == '<lambda>') or
-                     (hasattr(callback, '__code__') and '<lambda>' in str(callback.__code__)))
+        is_lambda = (
+            hasattr(callback, "__name__") and callback.__name__ == "<lambda>"
+        ) or (hasattr(callback, "__code__") and "<lambda>" in str(callback.__code__))
 
-        if hasattr(callback, '__self__') and callback.__self__ is not None:
+        if hasattr(callback, "__self__") and callback.__self__ is not None:
 
             if is_lambda:
 
@@ -39,7 +42,9 @@ class EventBus:
                 try:
                     weak_cb = weakref.WeakMethod(callback)
                 except TypeError:
-                    logger.warning(f"EventBus: WeakMethod failed for {callback}, using strong reference")
+                    logger.warning(
+                        f"EventBus: WeakMethod failed for {callback}, using strong reference"
+                    )
                     weak_cb = _StrongRefWrapper(callback)
         else:
 
@@ -50,7 +55,9 @@ class EventBus:
                 try:
                     weak_cb = weakref.ref(callback)
                 except TypeError:
-                    logger.debug(f"EventBus: weakref not supported for {callback}, using strong reference")
+                    logger.debug(
+                        f"EventBus: weakref not supported for {callback}, using strong reference"
+                    )
                     weak_cb = _StrongRefWrapper(callback)
 
         for existing_weak_cb in self._subscribers[event_type]:
@@ -93,9 +100,11 @@ class EventBus:
                     cb(event)
                     alive_listeners.append(weak_cb)
                 except Exception as e:
-                    logger.error(f"EventBus error in callback for event '{event_type.__name__}': {e}", exc_info=True)
+                    logger.error(
+                        f"EventBus error in callback for event '{event_type.__name__}': {e}",
+                        exc_info=True,
+                    )
 
                     alive_listeners.append(weak_cb)
 
         self._subscribers[event_type] = alive_listeners
-

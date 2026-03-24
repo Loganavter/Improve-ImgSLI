@@ -1,5 +1,3 @@
-
-
 import logging
 from typing import Optional
 
@@ -12,7 +10,7 @@ def create_highlight_diff(
     image1: Image.Image,
     image2: Image.Image,
     threshold: int = 20,
-    font_path: Optional[str] = None
+    font_path: Optional[str] = None,
 ) -> Optional[Image.Image]:
     """
     Создает изображение с подсвеченными различиями красным цветом.
@@ -48,9 +46,7 @@ def create_highlight_diff(
         return None
 
 def create_grayscale_diff(
-    image1: Image.Image,
-    image2: Image.Image,
-    font_path: Optional[str] = None
+    image1: Image.Image, image2: Image.Image, font_path: Optional[str] = None
 ) -> Optional[Image.Image]:
     """
     Создает изображение различий в градациях серого.
@@ -78,9 +74,7 @@ def create_grayscale_diff(
         return None
 
 def create_ssim_map(
-    image1: Image.Image,
-    image2: Image.Image,
-    font_path: Optional[str] = None
+    image1: Image.Image, image2: Image.Image, font_path: Optional[str] = None
 ) -> Optional[Image.Image]:
     """
     Создает карту структурного сходства (SSIM).
@@ -112,7 +106,9 @@ def create_ssim_map(
 
         heatmap_gray = (diff_map * 255).clip(0, 255).astype(np.uint8)
 
-        heatmap_color = np.zeros((ssim_map.shape[0], ssim_map.shape[1], 3), dtype=np.uint8)
+        heatmap_color = np.zeros(
+            (ssim_map.shape[0], ssim_map.shape[1], 3), dtype=np.uint8
+        )
 
         heatmap_color[..., 0] = heatmap_gray
         heatmap_color[..., 1] = 0
@@ -123,4 +119,3 @@ def create_ssim_map(
     except Exception as e:
         logger.error(f"Error creating SSIM map: {e}", exc_info=True)
         return None
-
