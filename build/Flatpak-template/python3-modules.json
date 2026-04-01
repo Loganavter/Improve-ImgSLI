@@ -251,7 +251,14 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/53/11/a0160990b82999b45874dc60c0c183d3a3a969a563fffc476d5a9995c407/scipy-1.16.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-                    "sha256": "f66bd07ba6f84cd4a380b41d1bf3c59ea488b590a2ff96744845163309ee8e2f"
+                    "sha256": "f66bd07ba6f84cd4a380b41d1bf3c59ea488b590a2ff96744845163309ee8e2f",
+                    "only-arches": ["x86_64"]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/55/a7/22c739e2f21a42cc8f16bc76b47cff4ed54fbe0962832c589591c2abec34/scipy-1.16.2-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                    "sha256": "ea3421209bf00c8a5ef2227de496601087d8f638a2363ee09af059bd70976dc1",
+                    "only-arches": ["aarch64"]
                 }
             ]
         },
@@ -270,7 +277,14 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/53/11/a0160990b82999b45874dc60c0c183d3a3a969a563fffc476d5a9995c407/scipy-1.16.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-                    "sha256": "f66bd07ba6f84cd4a380b41d1bf3c59ea488b590a2ff96744845163309ee8e2f"
+                    "sha256": "f66bd07ba6f84cd4a380b41d1bf3c59ea488b590a2ff96744845163309ee8e2f",
+                    "only-arches": ["x86_64"]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/55/a7/22c739e2f21a42cc8f16bc76b47cff4ed54fbe0962832c589591c2abec34/scipy-1.16.2-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                    "sha256": "ea3421209bf00c8a5ef2227de496601087d8f638a2363ee09af059bd70976dc1",
+                    "only-arches": ["aarch64"]
                 },
                 {
                     "type": "file",
@@ -280,7 +294,14 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/f4/a2/70401a107d6d7466d64b466927e6b96fcefa99d57494b972608e2f8be50f/scikit_image-0.26.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
-                    "sha256": "7df650e79031634ac90b11e64a9eedaf5a5e06fcd09bcd03a34be01745744466"
+                    "sha256": "7df650e79031634ac90b11e64a9eedaf5a5e06fcd09bcd03a34be01745744466",
+                    "only-arches": ["x86_64"]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/b3/2b/c70120a6880579fb42b91567ad79feb4772f7be72e8d52fec403a3dde0c6/scikit_image-0.26.0-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl",
+                    "sha256": "4c717490cec9e276afb0438dd165b7c3072d6c416709cc0f9f5a4c1070d23a44",
+                    "only-arches": ["aarch64"]
                 },
                 {
                     "type": "file",
@@ -324,7 +345,14 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/8f/29/93ea9cbab7f57b4e60480c51fc51d8e138e399d11797c981d5f6e79f9832/imagecodecs-2026.3.6-cp311-abi3-manylinux_2_28_x86_64.whl",
-                    "sha256": "e30a14aa2e1c6c90e00375292726486c1d90bf003b1414d608ea4d1f62fd8a79"
+                    "sha256": "e30a14aa2e1c6c90e00375292726486c1d90bf003b1414d608ea4d1f62fd8a79",
+                    "only-arches": ["x86_64"]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/45/fa/f67c4e644fdf06503e120f9d1c8d8654b99066dea7093a674b67704fa4a4/imagecodecs-2026.3.6-cp311-abi3-manylinux_2_28_aarch64.whl",
+                    "sha256": "30fa140bb1a112a889926af36977214ed52a22e4557356043259b5e2f79cfba5",
+                    "only-arches": ["aarch64"]
                 }
             ]
         }
