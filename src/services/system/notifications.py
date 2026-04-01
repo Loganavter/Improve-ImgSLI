@@ -133,7 +133,6 @@ class NotificationService:
             return False
 
         try:
-
             if self.notifier is not None and self._notifier_loop is not None:
                 icon_obj = None
                 attach_obj = None

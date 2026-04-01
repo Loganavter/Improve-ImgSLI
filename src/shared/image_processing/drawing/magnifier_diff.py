@@ -35,7 +35,7 @@ def build_diff_patch(
     is_interactive: bool,
     font_path: str | None = None,
 ) -> Image.Image | None:
-    cached_map = getattr(store.viewport, "cached_diff_image", None)
+    cached_map = getattr(store.viewport.session_data.render_cache, "cached_diff_image", None)
     content_size = get_magnifier_content_size(magnifier_size)
     if cached_map:
         diff_patch = drawer._get_normalized_content(

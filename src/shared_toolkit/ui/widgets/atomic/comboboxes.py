@@ -168,7 +168,8 @@ class ScrollableComboBox(QWidget):
 
         if not self.isEnabled():
             bg_color = tm.get_color("button.primary.background")
-            text_color = QColor(131, 131, 131) if not is_dark else QColor(161, 161, 161)
+            text_color = QColor(tm.get_color("dialog.text"))
+            text_color.setAlpha(140 if is_dark else 120)
         elif self._pressed:
             bg_color = tm.get_color("button.primary.background.pressed")
             text_color = tm.get_color("button.primary.text")

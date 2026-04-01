@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QEvent, QObject, QSize, Qt
-from PyQt6.QtGui import QIntValidator
+from PyQt6.QtGui import QFont, QIntValidator
 from PyQt6.QtWidgets import (
     QHBoxLayout,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QFrame,
@@ -22,6 +23,7 @@ from shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
 from shared_toolkit.ui.widgets.atomic.fluent_combobox import FluentComboBox
 from shared_toolkit.ui.widgets.atomic.fluent_spinbox import FluentSpinBox
 from shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import OverlayScrollArea
+from shared_toolkit.ui.widgets.composite import OutputPathSection
 from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
 from shared_toolkit.ui.widgets.atomic.text_labels import BodyLabel, CaptionLabel
 from shared_toolkit.ui.widgets.atomic.toggle_icon_button import ToggleIconButton
@@ -158,7 +160,7 @@ def create_resolution_settings(dialog):
     dialog.btn_fit_content.setFixedSize(32, 32)
     dialog.btn_fit_content.setChecked(False)
     dialog.btn_fit_content.setToolTip(
-        dialog._tr("magnifier.off_crop_to_image_on_fit_magnifier_expand_canvas")
+        dialog._tr("magnifier.fit_mode_toggle")
     )
     dialog.btn_fit_content.toggled.connect(dialog._on_fit_content_toggled)
     res_layout.addWidget(dialog.btn_fit_content)
@@ -241,10 +243,34 @@ def create_export_tabs(dialog):
     dialog.tab_output = create_output_tab(dialog)
     tabs.addTab(dialog.tab_output, dialog._tr("label.output"))
 
+    dialog.tab_log = create_log_tab(dialog)
+    tabs.addTab(dialog.tab_log, dialog._tr("video.export_log"))
+
     dialog.combo_container.currentTextChanged.connect(dialog._on_container_changed)
     dialog.combo_codec.currentTextChanged.connect(dialog._on_codec_changed)
 
     return tabs
+
+
+def create_log_tab(dialog) -> QWidget:
+    tab = QWidget()
+    tab.setObjectName("VideoEditorTabContent")
+    layout = QVBoxLayout(tab)
+    layout.setContentsMargins(8, 8, 8, 8)
+    layout.setSpacing(0)
+
+    log_edit = QPlainTextEdit()
+    log_edit.setObjectName("VideoExportLog")
+    log_edit.setReadOnly(True)
+    log_edit.setPlaceholderText("Export log will appear here...")
+    mono_font = QFont("Monospace")
+    mono_font.setStyleHint(QFont.StyleHint.Monospace)
+    mono_font.setPointSize(9)
+    log_edit.setFont(mono_font)
+
+    dialog.export_log_edit = log_edit
+    layout.addWidget(log_edit)
+    return tab
 
 def _wrap_tab_scroll(content: QWidget) -> QWidget:
     tab = QWidget()
@@ -254,6 +280,7 @@ def _wrap_tab_scroll(content: QWidget) -> QWidget:
     layout.setSpacing(0)
 
     scroll_area = OverlayScrollArea(tab)
+    scroll_area.set_reserve_scrollbar_space(False)
     scroll_area.setWidget(content)
     layout.addWidget(scroll_area)
     return tab
@@ -274,7 +301,9 @@ def create_standard_export_tab(dialog):
     layout.addWidget(CaptionLabel(dialog._tr("label.video_codec") + ":"))
     dialog.combo_codec = FluentComboBox()
     for codec in ExportConfigBuilder.get_codecs_for_container("mp4"):
-        dialog.combo_codec.addItem(dialog._tr(codec), codec)
+        dialog.combo_codec.addItem(
+            dialog._tr(ExportConfigBuilder.get_codec_display_key(codec)), codec
+        )
     layout.addWidget(dialog.combo_codec)
 
     dialog.pix_fmt_container = QWidget()
@@ -335,7 +364,7 @@ def create_manual_export_tab(dialog):
     layout.setContentsMargins(12, 16, 12, 16)
 
     info_lbl = CaptionLabel(
-        dialog._tr("video.enter_ffmpeg_output_arguments_input_is_rawvideo_pipe")
+        dialog._tr("video.ffmpeg_output_args_hint")
     )
     info_lbl.setWordWrap(True)
     layout.addWidget(info_lbl)
@@ -354,31 +383,28 @@ def create_output_tab(dialog):
     layout.setContentsMargins(16, 16, 16, 16)
     layout.setSpacing(12)
 
-    layout.addWidget(CaptionLabel(dialog._tr("export.select_output_directory") + ":"))
-    dir_row = QHBoxLayout()
-    dialog.edit_output_dir = CustomLineEdit()
-    dialog.btn_browse_output = CustomButton(None, dialog._tr("button.browse"))
-    dialog.btn_browse_output.setMinimumSize(40, 30)
-    dialog.btn_browse_output.clicked.connect(dialog._browse_output_dir)
-    dir_row.addWidget(dialog.edit_output_dir)
-    dir_row.addWidget(dialog.btn_browse_output)
-    layout.addLayout(dir_row)
-
-    fav_row = QHBoxLayout()
-    dialog.btn_set_favorite = CustomButton(None, dialog._tr("misc.set_as_favorite"))
-    dialog.btn_use_favorite = CustomButton(None, dialog._tr("tooltip.use_favorite"))
-    dialog.btn_set_favorite.setFixedHeight(30)
-    dialog.btn_use_favorite.setFixedHeight(30)
-    dialog.btn_set_favorite.clicked.connect(dialog._on_set_favorite_clicked)
-    dialog.btn_use_favorite.clicked.connect(dialog._on_use_favorite_clicked)
-    fav_row.addWidget(dialog.btn_set_favorite)
-    fav_row.addWidget(dialog.btn_use_favorite)
-    layout.addLayout(fav_row)
-
-    layout.addSpacing(10)
-    layout.addWidget(CaptionLabel(dialog._tr("label.file_name") + ":"))
-    dialog.edit_filename = CustomLineEdit()
-    layout.addWidget(dialog.edit_filename)
+    dialog.output_section = OutputPathSection(
+        directory_label_text=dialog._tr("export.select_output_directory") + ":",
+        browse_text=dialog._tr("button.browse"),
+        set_favorite_text=dialog._tr("misc.set_as_favorite"),
+        use_favorite_text=dialog._tr("tooltip.use_favorite"),
+        filename_label_text=dialog._tr("label.file_name") + ":",
+        on_browse=dialog._browse_output_dir,
+        on_set_favorite=dialog._on_set_favorite_clicked,
+        on_use_favorite=dialog._on_use_favorite_clicked,
+        use_custom_line_edit=True,
+        filename_editor_factory=CustomLineEdit,
+        button_min_size=(40, 30),
+        button_fixed_height=30,
+    )
+    dialog.dir_picker_row = dialog.output_section.dir_picker_row
+    dialog.edit_output_dir = dialog.output_section.edit_dir
+    dialog.btn_browse_output = dialog.output_section.btn_browse_dir
+    dialog.favorite_actions = dialog.output_section.favorite_actions
+    dialog.btn_set_favorite = dialog.output_section.btn_set_favorite
+    dialog.btn_use_favorite = dialog.output_section.btn_use_favorite
+    dialog.edit_filename = dialog.output_section.filename_edit
+    layout.addWidget(dialog.output_section)
 
     layout.addStretch()
     _install_no_wheel_filter_recursive(content, dialog._settings_no_wheel_filter)
@@ -391,9 +417,10 @@ def create_quality_stack(dialog):
     l_crf = QVBoxLayout(p_crf)
     l_crf.setContentsMargins(0, 0, 0, 0)
     l_crf.setSpacing(6)
-    l_crf.addWidget(
-        CaptionLabel(dialog._tr("video.crf_value_051_lower_is_better") + ":")
+    dialog.lbl_quality_value = CaptionLabel(
+        dialog._tr("video.crf_value_hint") + ":"
     )
+    l_crf.addWidget(dialog.lbl_quality_value)
 
     dialog.edit_crf = CustomLineEdit()
     dialog.edit_crf.setValidator(QIntValidator(0, 63))
@@ -409,7 +436,7 @@ def create_quality_stack(dialog):
     l_bit = QVBoxLayout(p_bit)
     l_bit.setContentsMargins(0, 0, 0, 0)
     l_bit.setSpacing(6)
-    l_bit.addWidget(CaptionLabel(dialog._tr("video.bitrate_eg_5000k_5m") + ":"))
+    l_bit.addWidget(CaptionLabel(dialog._tr("video.bitrate_hint") + ":"))
 
     dialog.edit_bitrate = CustomLineEdit()
     dialog.edit_bitrate.setText("8000k")

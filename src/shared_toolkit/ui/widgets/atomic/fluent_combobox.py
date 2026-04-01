@@ -4,11 +4,12 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
-from PyQt6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPainterPath, QPen
+from PyQt6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QFontMetrics, QMouseEvent, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from ...managers.theme_manager import ThemeManager
+from .minimalist_scrollbar import MinimalistScrollBar
 from ..helpers import (
     UnderlineConfig,
     calculate_centered_overlay_geometry,
@@ -33,8 +34,13 @@ class _DropdownOverlay(QWidget):
         self._owner = owner
         self._theme = owner._theme
         self._hovered_row = -1
+        self.custom_v_scrollbar = MinimalistScrollBar(Qt.Orientation.Vertical, self)
+        self._scrollbar_width = 10
+        self._scrollbar_gap = 0
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         self.setMouseTracking(True)
+        self.custom_v_scrollbar.valueChanged.connect(self._on_scrollbar_value_changed)
+        self.custom_v_scrollbar.setVisible(False)
         self.hide()
 
     def _item_height(self) -> int:
@@ -49,8 +55,14 @@ class _DropdownOverlay(QWidget):
     def _content_rect(self) -> QRect:
         return self.rect().adjusted(self.SHADOW, self.SHADOW, -self.SHADOW, -self.SHADOW)
 
+    def _has_scrollbar(self) -> bool:
+        return self._owner.count() > self._owner.maxVisibleItems()
+
     def _list_rect(self) -> QRect:
-        return QRect(0, 0, self._content_rect().width(), self._list_height())
+        width = self._content_rect().width()
+        if self._has_scrollbar():
+            width -= self._scrollbar_width + self._scrollbar_gap
+        return QRect(0, 0, max(0, width), self._list_height())
 
     def _item_rect(self, visible_index: int) -> QRect:
         list_rect = self._list_rect()
@@ -65,6 +77,7 @@ class _DropdownOverlay(QWidget):
         self._hovered_row = -1
         self._owner._ensure_current_visible()
         self._reposition()
+        self._sync_scrollbar()
         self.show()
         self.raise_()
         self.update()
@@ -97,6 +110,47 @@ class _DropdownOverlay(QWidget):
             scrollable=owner.count() > owner.maxVisibleItems(),
         )
         self.setGeometry(outer)
+        self._position_scrollbar()
+
+    def _position_scrollbar(self):
+        content = self._content_rect()
+        if not self._has_scrollbar():
+            self.custom_v_scrollbar.setVisible(False)
+            return
+        x = content.right() - self._scrollbar_width + 1
+        self.custom_v_scrollbar.setGeometry(
+            x,
+            content.y(),
+            self._scrollbar_width,
+            content.height(),
+        )
+        self.custom_v_scrollbar.raise_()
+
+    def _sync_scrollbar(self):
+        max_offset = max(0, self._owner.count() - self._visible_items())
+        if max_offset <= 0:
+            self.custom_v_scrollbar.setVisible(False)
+            return
+        self.custom_v_scrollbar.blockSignals(True)
+        self.custom_v_scrollbar.setRange(0, max_offset)
+        self.custom_v_scrollbar.setPageStep(self._visible_items())
+        self.custom_v_scrollbar.setSingleStep(1)
+        self.custom_v_scrollbar.setValue(self._owner._scroll_offset)
+        self.custom_v_scrollbar.blockSignals(False)
+        self.custom_v_scrollbar.setVisible(True)
+        self._position_scrollbar()
+
+    def _on_scrollbar_value_changed(self, value: int):
+        new_offset = max(0, min(int(value), max(0, self._owner.count() - self._visible_items())))
+        if new_offset == self._owner._scroll_offset:
+            return
+        self._owner._scroll_offset = new_offset
+        self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_scrollbar()
+        self._sync_scrollbar()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -133,7 +187,7 @@ class _DropdownOverlay(QWidget):
                 .translated(self._content_rect().topLeft())
                 .adjusted(0, 1, -1, -1)
             )
-            if item_index == self._hovered_row or item_index == self._owner.currentIndex():
+            if item_index == self._hovered_row:
                 item_path = QPainterPath()
                 item_path.addRoundedRect(item_rect, 6, 6)
                 painter.fillPath(item_path, hover_bg)
@@ -157,6 +211,25 @@ class _DropdownOverlay(QWidget):
         painter.end()
 
     def mouseMoveEvent(self, event):
+        if self.custom_v_scrollbar.isVisible() and self.custom_v_scrollbar.geometry().contains(
+            event.position().toPoint()
+        ):
+            scrollbar_pos = self.custom_v_scrollbar.mapFromGlobal(
+                event.globalPosition().toPoint()
+            )
+            QApplication.sendEvent(
+                self.custom_v_scrollbar,
+                QMouseEvent(
+                    event.type(),
+                    scrollbar_pos,
+                    event.globalPosition(),
+                    event.button(),
+                    event.buttons(),
+                    event.modifiers(),
+                ),
+            )
+            event.accept()
+            return
         self._hovered_row = -1
         local_pos = event.position().toPoint() - self._content_rect().topLeft()
         for visible_idx in range(self._visible_items()):
@@ -177,6 +250,25 @@ class _DropdownOverlay(QWidget):
     def mouseReleaseEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
             super().mouseReleaseEvent(event)
+            return
+        if self.custom_v_scrollbar.isVisible() and self.custom_v_scrollbar.geometry().contains(
+            event.position().toPoint()
+        ):
+            scrollbar_pos = self.custom_v_scrollbar.mapFromGlobal(
+                event.globalPosition().toPoint()
+            )
+            QApplication.sendEvent(
+                self.custom_v_scrollbar,
+                QMouseEvent(
+                    event.type(),
+                    scrollbar_pos,
+                    event.globalPosition(),
+                    event.button(),
+                    event.buttons(),
+                    event.modifiers(),
+                ),
+            )
+            event.accept()
             return
         clicked_row = -1
         local_pos = event.position().toPoint() - self._content_rect().topLeft()
@@ -214,8 +306,30 @@ class _DropdownOverlay(QWidget):
                 self._owner.count() - self._owner._max_visible_items,
                 self._owner._scroll_offset + 1,
             )
+        self._sync_scrollbar()
         self.update()
         event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.custom_v_scrollbar.isVisible():
+            if self.custom_v_scrollbar.geometry().contains(event.position().toPoint()):
+                scrollbar_pos = self.custom_v_scrollbar.mapFromGlobal(
+                    event.globalPosition().toPoint()
+                )
+                QApplication.sendEvent(
+                    self.custom_v_scrollbar,
+                    QMouseEvent(
+                        event.type(),
+                        scrollbar_pos,
+                        event.globalPosition(),
+                        event.button(),
+                        event.buttons(),
+                        event.modifiers(),
+                    ),
+                )
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
 class FluentComboBox(QWidget):
     currentIndexChanged = pyqtSignal(int)
@@ -325,6 +439,7 @@ class FluentComboBox(QWidget):
         self.update()
         if self._expanded and self._overlay is not None:
             self._ensure_current_visible()
+            self._overlay._sync_scrollbar()
             self._overlay.update()
         if not self.signalsBlocked():
             self.currentIndexChanged.emit(index)
@@ -376,7 +491,8 @@ class FluentComboBox(QWidget):
 
         if not self.isEnabled():
             bg_color = tm.get_color("button.primary.background")
-            text_color = QColor(131, 131, 131) if not is_dark else QColor(161, 161, 161)
+            text_color = QColor(tm.get_color("dialog.text"))
+            text_color.setAlpha(140 if is_dark else 120)
         elif self._pressed or self._expanded:
             bg_color = tm.get_color("button.primary.background")
             text_color = tm.get_color("button.primary.text")
@@ -392,8 +508,6 @@ class FluentComboBox(QWidget):
         painter.drawRoundedRect(rectf, self.RADIUS, self.RADIUS)
 
         border_color = QColor(tm.get_color("button.primary.border"))
-        if self.hasFocus():
-            border_color = QColor(tm.get_color("accent"))
         pen_border = QPen(border_color)
         pen_border.setWidthF(1.0)
         painter.setPen(pen_border)
@@ -459,6 +573,9 @@ class FluentComboBox(QWidget):
         self._overlay.show_for_owner()
         self.update()
         QApplication.instance().installEventFilter(self)
+        window = self.window()
+        if window is not None:
+            window.installEventFilter(self)
 
     def hideDropdown(self):
         if self._overlay is not None:
@@ -466,7 +583,12 @@ class FluentComboBox(QWidget):
         self._expanded = False
         self._pressed = False
         self.update()
-        QApplication.instance().removeEventFilter(self)
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+        window = self.window()
+        if window is not None:
+            window.removeEventFilter(self)
 
     def enterEvent(self, event):
         self._hovered = True
@@ -553,6 +675,29 @@ class FluentComboBox(QWidget):
             self._expanded,
             self._overlay.isVisible() if self._overlay is not None else False,
         )
+        if not self._expanded:
+            return
+        QTimer.singleShot(0, self._hide_dropdown_if_focus_left)
+
+    def _is_dropdown_widget(self, widget) -> bool:
+        current = widget
+        while current is not None:
+            if current is self or current is self._overlay:
+                return True
+            current = current.parentWidget() if hasattr(current, "parentWidget") else None
+        return False
+
+    def _hide_dropdown_if_focus_left(self):
+        if not self._expanded:
+            return
+        app = QApplication.instance()
+        next_widget = app.focusWidget() if app is not None else None
+        window = self.window()
+        if next_widget is not None and self._is_dropdown_widget(next_widget):
+            return
+        if window is not None and window.isActiveWindow():
+            return
+        self.hideDropdown()
 
     def eventFilter(self, watched, event):
         if not self._expanded or self._overlay is None:
@@ -560,6 +705,15 @@ class FluentComboBox(QWidget):
 
         if watched is self.window() and event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
             self._overlay.show_for_owner()
+            return False
+
+        if event.type() in (
+            QEvent.Type.WindowDeactivate,
+            QEvent.Type.ApplicationDeactivate,
+            QEvent.Type.Hide,
+            QEvent.Type.Close,
+        ):
+            self.hideDropdown()
             return False
 
         if event.type() == QEvent.Type.MouseButtonPress:

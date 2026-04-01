@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 from core.events import (
-    AnalysisMetricsUpdatedEvent,
     AnalysisRequestMetricsEvent,
     AnalysisSetChannelViewModeEvent,
     AnalysisSetDiffModeEvent,
@@ -14,22 +12,14 @@ from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IControllablePlugin
 from core.plugin_system.ui_integration import get_plugin_name
 from plugins.analysis.controller import AnalysisController
-from plugins.analysis.services.metrics import MetricsService
+from plugins.analysis.services import (
+    AnalysisRuntime,
+    CachedDiffService,
+    CoreUpdateDispatcher,
+    MetricsService,
+    UIUpdateDispatcher,
+)
 from plugins.analysis.state import AnalysisState
-
-class _UIUpdateChannel:
-    def __init__(self, event_bus: Any | None):
-        self._event_bus = event_bus
-
-    def emit(self, payload: Any) -> None:
-        if self._event_bus:
-            self._event_bus.emit(AnalysisMetricsUpdatedEvent(payload))
-
-class _MainControllerProxy(SimpleNamespace):
-    def __init__(self, thread_pool: Any | None, event_bus: Any | None):
-        super().__init__(
-            thread_pool=thread_pool, ui_update_requested=_UIUpdateChannel(event_bus)
-        )
 
 @plugin(name="analysis", version="1.0")
 class AnalysisPlugin(Plugin, IControllablePlugin):
@@ -39,6 +29,7 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
         super().__init__()
         self.controller: AnalysisController | None = None
         self._domain_state: AnalysisState | None = None
+        self.metrics_service: MetricsService | None = None
 
     def initialize(self, context: Any) -> None:
         super().initialize(context)
@@ -50,12 +41,14 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
             self._domain_state = AnalysisState()
             self.store.viewport.set_analysis_plugin_state(self._domain_state)
 
-        self.metrics_service = MetricsService(
-            self.store,
-            _MainControllerProxy(
-                thread_pool=self.thread_pool, event_bus=self.event_bus
-            ),
+        runtime = AnalysisRuntime(
+            thread_pool=self.thread_pool,
+            ui_updates=UIUpdateDispatcher(event_bus=self.event_bus),
+            core_updates=CoreUpdateDispatcher(event_bus=self.event_bus),
         )
+        self.metrics_service = MetricsService(self.store, runtime)
+        diff_service = CachedDiffService(self.store, runtime)
+
         ui_registry = getattr(context, "plugin_ui_registry", None)
         if ui_registry and self.metrics_service:
             ui_registry.register_action(
@@ -66,11 +59,14 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
 
         if self.store and self.thread_pool:
             self.controller = AnalysisController(
-                self.store, self.thread_pool, self.metrics_service, self.event_bus
+                self.store,
+                runtime,
+                self.metrics_service,
+                diff_service,
+                self.event_bus,
             )
 
         if self.event_bus:
-
             self.event_bus.subscribe(
                 AnalysisRequestMetricsEvent, self._on_metrics_requested_event
             )
@@ -90,7 +86,8 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
     def _on_metrics_requested(self, payload: dict[str, Any] | None = None) -> None:
         calc_psnr = payload.get("psnr", True) if payload else True
         calc_ssim = payload.get("ssim", True) if payload else True
-        self.metrics_service.calculate_metrics_async(calc_psnr, calc_ssim)
+        if self.metrics_service is not None:
+            self.metrics_service.calculate_metrics_async(calc_psnr, calc_ssim)
 
     def _on_metrics_requested_event(self, event: AnalysisRequestMetricsEvent) -> None:
         self._on_metrics_requested(event.payload)
@@ -100,6 +97,8 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
             "trigger_metrics": lambda psnr=True, ssim=True: self.metrics_service.calculate_metrics_async(
                 psnr, ssim
             )
+            if self.metrics_service is not None
+            else None
         }
 
     def get_controller(self) -> AnalysisController | None:

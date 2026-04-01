@@ -1,0 +1,17 @@
+{
+  "magnifier": {
+    "bicubic": "Bicúbica",
+    "bilinear": "Bilinear",
+    "capture_ring": "Anel de Captura",
+    "change_magnifier_colors": "Mudar Cores da Lupa",
+    "ewa_lanczos": "EWA Lanczos (Anti-Aliasing Superior)",
+    "freeze_magnifier_position": "Congelar Posição da Lupa",
+    "lanczos": "Lanczos (Alta Qualidade)",
+    "magnifier_interpolation": "Interpolação da Lupa",
+    "move_speed": "Veloc. Movim.",
+    "nearest_neighbor": "Vizinho Mais Próximo",
+    "toggle_magnifier": "Alternar Lupa",
+    "toggle_magnifier_guide_lines": "Alternar Linhas Guia da Lupa",
+    "fit_mode_toggle": "Desligado: Cortar para Imagem\nLigado: Ajustar Lupa (Expandir Tela)"
+  }
+}

@@ -4,32 +4,26 @@ from typing import Any
 
 from core.events import (
     ComparisonErrorEvent,
-    ComparisonUIUpdateEvent,
     ComparisonUpdateRequestedEvent,
 )
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import ISessionPlugin
 from core.session_blueprints import SessionBlueprint, SessionResourceBlueprint
-from plugins.analysis.services.metrics import MetricsService
+from plugins.analysis.services import (
+    AnalysisRuntime,
+    CachedDiffService,
+    CoreUpdateDispatcher,
+    MetricsService,
+    UIUpdateDispatcher,
+)
 from plugins.comparison.session_controller import SessionController
 from services.io.image_loader import ImageLoaderService
 from services.workflow.playlist import PlaylistManager
 
-class _UIUpdateSignal:
-    def __init__(self, event_bus: Any | None):
-        self._event_bus = event_bus
-
-    def emit(self, payload: Any) -> None:
-        if self._event_bus:
-
-            comps = tuple(payload) if isinstance(payload, (list, tuple)) else ()
-            self._event_bus.emit(ComparisonUIUpdateEvent(components=comps))
-
 class _ComparisonControllerProxy:
     def __init__(self, plugin: "ComparisonPlugin"):
         self.plugin = plugin
-        self.presenter: Any | None = None
-        self.ui_update_requested = _UIUpdateSignal(plugin.event_bus)
+        self.window_shell: Any | None = None
 
     @property
     def session_ctrl(self):
@@ -70,13 +64,13 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
         self.main_controller_proxy = _ComparisonControllerProxy(self)
         self.image_loader = ImageLoaderService(self.store, None)
 
-        class _MetricsControllerAdapter:
-            def __init__(self, thread_pool, event_bus):
-                self.thread_pool = thread_pool
-                self.ui_update_requested = _UIUpdateSignal(event_bus)
-
-        metrics_controller = _MetricsControllerAdapter(self.thread_pool, self.event_bus)
-        self.metrics_service = MetricsService(self.store, metrics_controller)
+        runtime = AnalysisRuntime(
+            thread_pool=self.thread_pool,
+            ui_updates=UIUpdateDispatcher(event_bus=self.event_bus),
+            core_updates=CoreUpdateDispatcher(event_bus=self.event_bus),
+        )
+        self.metrics_service = MetricsService(self.store, runtime)
+        diff_service = CachedDiffService(self.store, runtime)
         self.playlist_manager = PlaylistManager(self.store, self.main_controller_proxy)
         self.session_ctrl = SessionController(
             self.store,
@@ -84,6 +78,7 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
             self.image_loader,
             self.playlist_manager,
             self.metrics_service,
+            diff_service=diff_service,
             event_bus=self.event_bus,
         )
         self.image_loader.main_controller = self.session_ctrl
@@ -96,12 +91,12 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
         if self.event_bus:
             self.event_bus.emit(ComparisonUpdateRequestedEvent())
 
-    def set_presenter(self, presenter: Any) -> None:
-        self.presenter = presenter
+    def bind_window_shell(self, window_shell: Any) -> None:
+        self.presenter = window_shell
         if self.main_controller_proxy:
-            self.main_controller_proxy.presenter = presenter
+            self.main_controller_proxy.window_shell = window_shell
         if self.session_ctrl:
-            self.session_ctrl.presenter = presenter
+            self.session_ctrl.presenter = window_shell
 
     def get_ui_components(self) -> dict[str, Any]:
         return {}

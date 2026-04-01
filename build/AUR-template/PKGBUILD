@@ -2,26 +2,25 @@
 # Co-maintainer: Nebulosa
 
 pkgname=improve-imgsli
-pkgver=8.0.0
+pkgver=8.1.0
 pkgrel=1
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=('x86_64')
 url="https://github.com/Loganavter/Improve-ImgSLI"
 license=('MIT')
 depends=(
+  'ffmpeg'
   'hicolor-icon-theme'
   'python'
-  'python-darkdetect'
-  'python-imagecodecs'
   'python-markdown'
   'python-numpy'
   'python-pillow'
-  'python-pyopengl'
+  'python-opengl'
   'python-pyqt6'
   'python-scikit-image'
-  'python-wand'
 )
 optdepends=(
+  'python-imagecodecs: JXL image format support'
   'python-desktop-notifier: enhanced system notifications'
   'python-snakeviz: for performance profiling'
 )
@@ -48,7 +47,7 @@ package() {
   install -vDm 755 build/AUR-template/launcher.sh "$pkgdir/usr/bin/$pkgname"
   install -vDm 644 build/AUR-template/improve-imgsli.desktop "$pkgdir/usr/share/applications/$pkgname.desktop"
   install -vDm 644 src/resources/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
-  install -vDm 644 LICENSE.txt "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -vDm 644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 
   # Install application source code and all resources from the src directory
   install -d "$pkgdir/usr/lib/$pkgname"

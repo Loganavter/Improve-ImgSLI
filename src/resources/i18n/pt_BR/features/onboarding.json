@@ -1,0 +1,30 @@
+{
+  "onboarding": {
+    "advanced": {
+      "button": {
+        "color": "Cor",
+        "rotate_width_hint": "BEM: Girar\nRoda: Largura"
+      }
+    },
+    "advanced_description": "Mais configurações na tela.\nPara aqueles que querem controlar tudo.",
+    "beginner": {
+      "button": {
+        "color": "Cor",
+        "rotate": "Girar",
+        "view": "Visualizar",
+        "width": "Largura"
+      }
+    },
+    "beginner_description": "Interface simples. Controle com mouse.\nPerfeito para usuários iniciantes.",
+    "expert": {
+      "button": {
+        "info": "BEM: Girar | Roda: Largura\nBDM: Cor | BMM: Redefinir"
+      }
+    },
+    "expert_description": "Minimalismo. Controle por teclado (WASD, QE).\nMáximo espaço para imagens.",
+    "magnifier_controls_hint": "Use WASD e QE para controlar a lupa",
+    "mode_hint": "O modo da UI sempre pode ser alterado nas configurações",
+    "start_button": "Começar",
+    "welcome": "Bem-vindo"
+  }
+}

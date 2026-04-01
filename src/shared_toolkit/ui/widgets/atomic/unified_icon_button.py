@@ -107,6 +107,9 @@ class UnifiedIconButton(QWidget):
 
     def mousePressEvent(self, e: QMouseEvent):
         if e.button() == Qt.MouseButton.LeftButton:
+            self._is_scrolling = False
+            self._scroll_end_timer.stop()
+            self._hide_scroll_popup()
             self._pressed = True
             if self.mode & ButtonMode.LONG_PRESS:
                 self._lp_triggered = False

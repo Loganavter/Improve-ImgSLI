@@ -50,56 +50,60 @@ class Keyframe:
     interpolation: str = "linear"
 
 def _read_interaction_session(viewport: ViewportState) -> dict[str, Any]:
-    return {"value": str(int(getattr(viewport, "interaction_session_id", 0)))}
+    return {"value": str(int(getattr(viewport.interaction_state, "interaction_session_id", 0)))}
 
 def _write_interaction_session(viewport: ViewportState, channels: dict[str, Any]) -> None:
     try:
-        viewport.interaction_session_id = int(channels["value"])
+        viewport.interaction_state.interaction_session_id = int(channels["value"])
     except (TypeError, ValueError):
-        viewport.interaction_session_id = 0
+        viewport.interaction_state.interaction_session_id = 0
 
 VIEWPORT_TRACK_SPECS: tuple[ViewportTrackSpec, ...] = (
 
-    track("comparison.diff_mode",         "comparison", "Comparison", "Diff Mode",    "enum",  attr="diff_mode"),
-    track("comparison.channel_view_mode", "comparison", "Comparison", "Channel View", "enum",  attr="channel_view_mode"),
+    track("comparison.diff_mode",         "comparison", "Comparison", "Diff Mode",    "enum",  attr="view_state.diff_mode"),
+    track("comparison.channel_view_mode", "comparison", "Comparison", "Channel View", "enum",  attr="view_state.channel_view_mode"),
 
     track("view.interpolation_method", "view", "View", "Interpolation", "enum",
-          attr="interpolation_method",
-          write_attrs=["interpolation_method", "render_config.interpolation_method"]),
+          attr="render_config.interpolation_method",
+          write_attrs=["render_config.interpolation_method"]),
 
     track("splitter.main.position", "splitter", "Splitter", "Position", "scalar",
-          attr="split_position",
-          write_attrs=["split_position", "split_position_visual"]),
-    track("splitter.main.orientation", "splitter", "Splitter", "Orientation", "bool", attr="is_horizontal"),
+          attr="view_state.split_position",
+          write_attrs=["view_state.split_position", "view_state.split_position_visual"]),
+    track("splitter.main.orientation", "splitter", "Splitter", "Orientation", "bool", attr="view_state.is_horizontal"),
     track("splitter.main.color", "splitter", "Splitter", "Color", "color",
           attr="render_config.divider_line_color"),
 
-    track("magnifier.default.enabled",        "magnifier.default", "Magnifier 1", "Enabled",        "bool",   attr="use_magnifier"),
-    track("magnifier.default.position",       "magnifier.default", "Magnifier 1", "Position",       "vec2",   attr="capture_position_relative"),
-    track("magnifier.default.size",           "magnifier.default", "Magnifier 1", "Size",           "scalar", attr="magnifier_size_relative"),
-    track("magnifier.default.capture_size",   "magnifier.default", "Magnifier 1", "Capture Size",   "scalar", attr="capture_size_relative"),
-    track("magnifier.default.internal_split", "magnifier.default", "Magnifier 1", "Internal Split", "scalar", attr="magnifier_internal_split"),
-    track("magnifier.default.orientation",    "magnifier.default", "Magnifier 1", "Orientation",    "bool",   attr="magnifier_is_horizontal"),
+    track("magnifier.default.enabled",        "magnifier.default", "Magnifier 1", "Enabled",        "bool",   attr="view_state.use_magnifier"),
+    track("magnifier.default.position",       "magnifier.default", "Magnifier 1", "Position",       "vec2",   attr="view_state.capture_position_relative"),
+    track("magnifier.default.size",           "magnifier.default", "Magnifier 1", "Size",           "scalar", attr="view_state.magnifier_size_relative"),
+    track("magnifier.default.capture_size",   "magnifier.default", "Magnifier 1", "Capture Size",   "scalar", attr="view_state.capture_size_relative"),
+    track("magnifier.default.internal_split", "magnifier.default", "Magnifier 1", "Internal Split", "scalar", attr="view_state.magnifier_internal_split"),
+    track("magnifier.default.orientation",    "magnifier.default", "Magnifier 1", "Orientation",    "bool",   attr="view_state.magnifier_is_horizontal"),
     multi_attr_track("magnifier.default.visibility", "magnifier.default", "Magnifier 1", "Visibility", "mask3",
-        attr_map={"left": "magnifier_visible_left", "center": "magnifier_visible_center", "right": "magnifier_visible_right"}),
+        attr_map={
+            "left": "view_state.magnifier_visible_left",
+            "center": "view_state.magnifier_visible_center",
+            "right": "view_state.magnifier_visible_right",
+        }),
 
     track("lasers.enabled",   "lasers", "Lasers", "Enabled",   "bool",   attr="render_config.show_magnifier_guides"),
     track("lasers.thickness", "lasers", "Lasers", "Thickness", "scalar", attr="render_config.magnifier_guides_thickness"),
     track("lasers.color",     "lasers", "Lasers", "Color",     "color",  attr="render_config.magnifier_laser_color"),
     track("lasers.smoothing.enabled", "lasers", "Lasers", "Smoothing", "bool",
           attr="render_config.optimize_laser_smoothing",
-          write_attrs=["optimize_laser_smoothing", "render_config.optimize_laser_smoothing"]),
+          write_attrs=["render_config.optimize_laser_smoothing"]),
     track("lasers.smoothing.interpolation_method", "lasers", "Lasers", "Smoothing Interpolation", "enum",
           attr="render_config.laser_smoothing_interpolation_method"),
 
-    track("text.visible",    "text", "Text", "Visible",          "bool",   attr="include_file_names_in_saved"),
-    track("text.font_size",  "text", "Text", "Font Size %",      "scalar", attr="font_size_percent"),
-    track("text.font_weight","text", "Text", "Font Weight",      "scalar", attr="font_weight"),
-    track("text.alpha",      "text", "Text", "Alpha %",          "scalar", attr="text_alpha_percent"),
-    track("text.color",      "text", "Text", "Color",            "color",  attr="file_name_color"),
-    track("text.bg_color",   "text", "Text", "Background Color", "color",  attr="file_name_bg_color"),
-    track("text.bg_visible", "text", "Text", "Background",       "bool",   attr="draw_text_background"),
-    track("text.placement",  "text", "Text", "Placement",        "enum",   attr="text_placement_mode"),
+    track("text.visible",    "text", "Text", "Visible",          "bool",   attr="render_config.include_file_names_in_saved"),
+    track("text.font_size",  "text", "Text", "Font Size %",      "scalar", attr="render_config.font_size_percent"),
+    track("text.font_weight","text", "Text", "Font Weight",      "scalar", attr="render_config.font_weight"),
+    track("text.alpha",      "text", "Text", "Alpha %",          "scalar", attr="render_config.text_alpha_percent"),
+    track("text.color",      "text", "Text", "Color",            "color",  attr="render_config.file_name_color"),
+    track("text.bg_color",   "text", "Text", "Background Color", "color",  attr="render_config.file_name_bg_color"),
+    track("text.bg_visible", "text", "Text", "Background",       "bool",   attr="render_config.draw_text_background"),
+    track("text.placement",  "text", "Text", "Placement",        "enum",   attr="render_config.text_placement_mode"),
 
     track("__input.interaction_session", "__input", "Input", "Interaction Session", "enum",
           reader=_read_interaction_session, writer=_write_interaction_session),
@@ -444,6 +448,8 @@ def _add_value_to_track(track: TimelineTrack, timestamp: float, value: Any, *, f
         if isinstance(value, dict)
         else _split_value_to_channels(value)
     )
+    if track.kind == "vec2" and {"x", "y"}.issubset(payload.keys()):
+        return _append_vec2_track_keyframe(track, timestamp, payload, fps=fps)
     added = False
     for channel_id, channel_value in payload.items():
         channel = track.channels.get(channel_id)
@@ -457,6 +463,145 @@ def _add_value_to_track(track: TimelineTrack, timestamp: float, value: Any, *, f
             )
         added = _append_channel_keyframe(channel, timestamp, channel_value, fps=fps) or added
     return added
+
+def _append_vec2_track_keyframe(
+    track: TimelineTrack,
+    timestamp: float,
+    payload: dict[str, Any],
+    *,
+    fps: int = 60,
+) -> bool:
+    x_channel = track.channels.get("x")
+    y_channel = track.channels.get("y")
+    if x_channel is None or y_channel is None:
+        added = False
+        for channel_id, channel_value in payload.items():
+            channel = track.channels.get(channel_id)
+            if channel is None:
+                channel = track.ensure_channel(
+                    channel_id,
+                    label=channel_id.upper(),
+                    kind="scalar",
+                    interpolate_values=True,
+                    source_track_id=track.id,
+                )
+            added = _append_channel_keyframe(channel, timestamp, channel_value, fps=fps) or added
+        return added
+
+    timestamp = float(timestamp)
+    current_point = Point(float(payload["x"]), float(payload["y"]))
+    interpolation = "linear"
+
+    if not x_channel.keyframes or not y_channel.keyframes:
+        x_channel.keyframes.append(
+            ChannelKeyframe(timestamp=timestamp, value=float(payload["x"]), interpolation=interpolation)
+        )
+        y_channel.keyframes.append(
+            ChannelKeyframe(timestamp=timestamp, value=float(payload["y"]), interpolation=interpolation)
+        )
+        return True
+
+    if math.isclose(x_channel.keyframes[-1].timestamp, timestamp, abs_tol=1e-9):
+        x_channel.keyframes[-1] = ChannelKeyframe(
+            timestamp=timestamp,
+            value=float(payload["x"]),
+            interpolation=interpolation,
+        )
+        y_channel.keyframes[-1] = ChannelKeyframe(
+            timestamp=timestamp,
+            value=float(payload["y"]),
+            interpolation=interpolation,
+        )
+        return True
+
+    previous_point = Point(
+        float(x_channel.keyframes[-1].value),
+        float(y_channel.keyframes[-1].value),
+    )
+
+    if _values_close(previous_point, current_point, kind="vec2"):
+        if (
+            len(x_channel.keyframes) >= 2
+            and len(y_channel.keyframes) >= 2
+            and not _values_close(
+                Point(
+                    float(x_channel.keyframes[-2].value),
+                    float(y_channel.keyframes[-2].value),
+                ),
+                previous_point,
+                kind="vec2",
+            )
+        ):
+            x_channel.keyframes.append(
+                ChannelKeyframe(timestamp=timestamp, value=float(payload["x"]), interpolation=interpolation)
+            )
+            y_channel.keyframes.append(
+                ChannelKeyframe(timestamp=timestamp, value=float(payload["y"]), interpolation=interpolation)
+            )
+            return True
+        return False
+
+    time_gap = timestamp - float(x_channel.keyframes[-1].timestamp)
+    step_threshold = 3.0 / max(1, fps)
+    if time_gap > step_threshold and _should_insert_linear_step(
+        "vec2",
+        previous_point,
+        current_point,
+    ):
+        x_channel.keyframes.append(
+            ChannelKeyframe(
+                timestamp=timestamp,
+                value=float(previous_point.x),
+                interpolation=interpolation,
+            )
+        )
+        y_channel.keyframes.append(
+            ChannelKeyframe(
+                timestamp=timestamp,
+                value=float(previous_point.y),
+                interpolation=interpolation,
+            )
+        )
+        x_channel.keyframes.append(
+            ChannelKeyframe(timestamp=timestamp, value=float(payload["x"]), interpolation=interpolation)
+        )
+        y_channel.keyframes.append(
+            ChannelKeyframe(timestamp=timestamp, value=float(payload["y"]), interpolation=interpolation)
+        )
+        return True
+
+    new_x = ChannelKeyframe(timestamp=timestamp, value=float(payload["x"]), interpolation=interpolation)
+    new_y = ChannelKeyframe(timestamp=timestamp, value=float(payload["y"]), interpolation=interpolation)
+
+    if (
+        len(x_channel.keyframes) >= 2
+        and len(y_channel.keyframes) >= 2
+        and _is_redundant_linear_keyframe(
+            ChannelKeyframe(
+                timestamp=x_channel.keyframes[-2].timestamp,
+                value=Point(float(x_channel.keyframes[-2].value), float(y_channel.keyframes[-2].value)),
+                interpolation=x_channel.keyframes[-2].interpolation,
+            ),
+            ChannelKeyframe(
+                timestamp=x_channel.keyframes[-1].timestamp,
+                value=Point(float(x_channel.keyframes[-1].value), float(y_channel.keyframes[-1].value)),
+                interpolation=x_channel.keyframes[-1].interpolation,
+            ),
+            ChannelKeyframe(
+                timestamp=timestamp,
+                value=current_point,
+                interpolation=interpolation,
+            ),
+            kind="vec2",
+        )
+    ):
+        x_channel.keyframes[-1] = new_x
+        y_channel.keyframes[-1] = new_y
+        return True
+
+    x_channel.keyframes.append(new_x)
+    y_channel.keyframes.append(new_y)
+    return True
 
 def _append_channel_keyframe(
     channel: TimelineChannel, timestamp: float, value: Any, *, fps: int = 60
@@ -602,6 +747,8 @@ def _values_close(left: Any, right: Any, *, kind: str) -> bool:
         right, (int, float)
     ):
         return abs(float(left) - float(right)) <= 1.0
+    if kind == "vec2" and isinstance(left, Point) and isinstance(right, Point):
+        return math.hypot(float(right.x) - float(left.x), float(right.y) - float(left.y)) <= 0.002
     return _values_equal(left, right)
 
 def _is_redundant_linear_keyframe(

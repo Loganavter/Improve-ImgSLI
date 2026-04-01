@@ -118,6 +118,15 @@ QWidget#ToastNotification QPushButton {
     border-radius: 6px;
     padding: 4px 10px;
 }
+QWidget#ToastNotification QProgressBar#ToastProgressBar {
+    background-color: @toast.progress.background;
+    border: none;
+    border-radius: 3px;
+}
+QWidget#ToastNotification QProgressBar#ToastProgressBar::chunk {
+    background-color: @accent;
+    border-radius: 3px;
+}
 
 /* Style for CustomLineEdit */
 QLineEdit[custom-line-edit="true"] {

@@ -11,7 +11,7 @@ def on_worker_finished(presenter, result_payload, params, finished_task_id):
     if finished_task_id < presenter._last_displayed_task_id:
         return
     presenter._last_displayed_task_id = finished_task_id
-    if presenter.store.viewport.showing_single_image_mode != 0:
+    if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         return
 
     task_type = params.get("type", "unknown")
@@ -46,21 +46,21 @@ def handle_background_result(presenter, result, params):
     base_pixmap = QPixmap(label_width, label_height)
     base_pixmap.fill(Qt.GlobalColor.transparent)
     base_painter = QPainter(base_pixmap)
-    target_rect = presenter.store.viewport.image_display_rect_on_label
+    target_rect = presenter.store.viewport.geometry_state.image_display_rect_on_label
     base_painter.drawPixmap(target_rect.x - padding_left, target_rect.y - padding_top, canvas_pixmap)
     base_painter.end()
 
     presenter._cached_base_pixmap = base_pixmap
     if hasattr(presenter.ui.image_label, "set_pil_layers"):
         img1 = (
-            presenter.store.viewport.display_cache_image1
-            or presenter.store.viewport.scaled_image1_for_display
-            or presenter.store.viewport.image1
+            presenter.store.viewport.session_data.render_cache.display_cache_image1
+            or presenter.store.viewport.session_data.render_cache.scaled_image1_for_display
+            or presenter.store.viewport.session_data.image_state.image1
         )
         img2 = (
-            presenter.store.viewport.display_cache_image2
-            or presenter.store.viewport.scaled_image2_for_display
-            or presenter.store.viewport.image2
+            presenter.store.viewport.session_data.render_cache.display_cache_image2
+            or presenter.store.viewport.session_data.render_cache.scaled_image2_for_display
+            or presenter.store.viewport.session_data.image_state.image2
         )
         source1 = presenter.store.document.full_res_image1 or presenter.store.document.original_image1
         source2 = presenter.store.document.full_res_image2 or presenter.store.document.original_image2
@@ -72,11 +72,18 @@ def handle_background_result(presenter, result, params):
                 "source_key": (
                     presenter.store.document.image1_path,
                     presenter.store.document.image2_path,
+                    id(source1),
+                    id(source2),
                     source1.size,
                     source2.size,
                 ),
             }
-        presenter.ui.image_label.set_pil_layers(img1, img2, **kwargs)
+        presenter.ui.image_label.set_pil_layers(
+            img1,
+            img2,
+            shader_letterbox=True,
+            **kwargs,
+        )
     else:
         presenter.ui.image_label.set_layers(presenter._cached_base_pixmap, None, None, None)
     presenter.schedule_update()
@@ -88,19 +95,19 @@ def handle_magnifier_result(presenter, result, params, debug_state):
     coords_snapshot = result.get("drawing_coords_snapshot")
 
     if not mag_pix or mag_pix.isNull() or not mag_pos:
-        presenter._sync_widget_overlay_coords()
+        presenter.view.sync_widget_overlay_coords()
         if hasattr(presenter.ui.image_label, "set_magnifier_content"):
             presenter.ui.image_label.set_magnifier_content(None, None)
         elif presenter._cached_base_pixmap:
-            presenter._set_image_layers(presenter._cached_base_pixmap)
+            presenter.view.set_image_layers(presenter._cached_base_pixmap)
         return
 
     if current_time - debug_state["last"] >= debug_state["interval"]:
         debug_state["setter"](current_time)
 
-    presenter._sync_widget_overlay_coords()
+    presenter.view.sync_widget_overlay_coords()
     label_w, label_h = params.get("label_dims", presenter.get_current_label_dimensions())
-    pix_w, pix_h = presenter.store.viewport.pixmap_width, presenter.store.viewport.pixmap_height
+    pix_w, pix_h = presenter.store.viewport.geometry_state.pixmap_width, presenter.store.viewport.geometry_state.pixmap_height
     offset_x = (label_w - pix_w) // 2
     offset_y = (label_h - pix_h) // 2
     mag_pos_on_label = QPoint(offset_x + mag_pos.x(), offset_y + mag_pos.y())
@@ -108,7 +115,7 @@ def handle_magnifier_result(presenter, result, params, debug_state):
     if hasattr(presenter.ui.image_label, "set_magnifier_content"):
         presenter.ui.image_label.set_magnifier_content(mag_pix, mag_pos_on_label)
     else:
-        presenter._set_image_layers(
+        presenter.view.set_image_layers(
             presenter._cached_base_pixmap if presenter._cached_base_pixmap else None,
             mag_pix,
             mag_pos_on_label,
@@ -131,17 +138,17 @@ def handle_legacy_result(presenter, result, params, debug_state):
     combined_center = result.get("combined_center")
 
     if magnifier_bbox and isinstance(magnifier_bbox, QRect):
-        target_rect = presenter.store.viewport.image_display_rect_on_label
+        target_rect = presenter.store.viewport.geometry_state.image_display_rect_on_label
         if combined_center and isinstance(combined_center, QPoint):
             qt_center = combined_center + QPoint(target_rect.x, target_rect.y)
-            presenter.store.viewport.magnifier_screen_center = qpoint_to_point(qt_center)
-            presenter.store.viewport.magnifier_screen_size = magnifier_bbox.width()
+            presenter.store.viewport.geometry_state.magnifier_screen_center = qpoint_to_point(qt_center)
+            presenter.store.viewport.geometry_state.magnifier_screen_size = magnifier_bbox.width()
         else:
             draw_x = target_rect.x - padding_left
             draw_y = target_rect.y - padding_top
             qt_center = magnifier_bbox.translated(draw_x, draw_y).center()
-            presenter.store.viewport.magnifier_screen_center = qpoint_to_point(qt_center)
-            presenter.store.viewport.magnifier_screen_size = max(
+            presenter.store.viewport.geometry_state.magnifier_screen_center = qpoint_to_point(qt_center)
+            presenter.store.viewport.geometry_state.magnifier_screen_size = max(
                 magnifier_bbox.width(), magnifier_bbox.height()
             )
 
@@ -159,7 +166,7 @@ def handle_legacy_result(presenter, result, params, debug_state):
         final_pixmap = QPixmap(label_width, label_height)
         final_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(final_pixmap)
-        target_rect = presenter.store.viewport.image_display_rect_on_label
+        target_rect = presenter.store.viewport.geometry_state.image_display_rect_on_label
         painter.drawPixmap(target_rect.x - padding_left, target_rect.y - padding_top, canvas_pixmap)
         painter.end()
 
@@ -196,15 +203,15 @@ def handle_legacy_result(presenter, result, params, debug_state):
                     )
                     if len(magnifier_coords) > 2:
                         presenter._last_magnifier_pos = magnifier_coords[2]
-                    if presenter.store.viewport.show_capture_area_on_main_image and len(magnifier_coords) > 6:
+                    if presenter.store.viewport.render_config.show_capture_area_on_main_image and len(magnifier_coords) > 6:
                         capture_center_on_img = magnifier_coords[6]
                         if capture_center_on_img:
                             cap_x = target_rect.x() + int(capture_center_on_img.x())
                             cap_y = target_rect.y() + int(capture_center_on_img.y())
-                            unified_w, unified_h = presenter.store.viewport.pixmap_width, presenter.store.viewport.pixmap_height
+                            unified_w, unified_h = presenter.store.viewport.geometry_state.pixmap_width, presenter.store.viewport.geometry_state.pixmap_height
                             ref_dim = min(unified_w, unified_h)
-                            cap_size = max(5, int(round(presenter.store.viewport.capture_size_relative * ref_dim)))
-                            col = color_to_qcolor(presenter.store.viewport.capture_ring_color)
+                            cap_size = max(5, int(round(presenter.store.viewport.view_state.capture_size_relative * ref_dim)))
+                            col = color_to_qcolor(presenter.store.viewport.render_config.capture_ring_color)
                             presenter.ui.image_label.set_capture_area(QPoint(cap_x, cap_y), cap_size, col)
 
                     bg_to_use = (
@@ -212,7 +219,7 @@ def handle_legacy_result(presenter, result, params, debug_state):
                         if is_interactive and presenter._cached_base_pixmap and not presenter._cached_base_pixmap.isNull()
                         else final_pixmap
                     )
-                    presenter._set_image_layers(bg_to_use, magnifier_pixmap, mag_pos_on_label)
+                    presenter.view.set_image_layers(bg_to_use, magnifier_pixmap, mag_pos_on_label)
                 else:
                     if hasattr(presenter.ui.image_label, "set_capture_area"):
                         presenter.ui.image_label.set_capture_area(None, 0)
@@ -221,7 +228,7 @@ def handle_legacy_result(presenter, result, params, debug_state):
                         if is_interactive and presenter._cached_base_pixmap and not presenter._cached_base_pixmap.isNull()
                         else final_pixmap
                     )
-                    presenter._set_image_layers(bg_to_use)
+                    presenter.view.set_image_layers(bg_to_use)
             else:
                 if hasattr(presenter.ui.image_label, "set_capture_area"):
                     presenter.ui.image_label.set_capture_area(None, 0)
@@ -230,7 +237,7 @@ def handle_legacy_result(presenter, result, params, debug_state):
                     if is_interactive and presenter._cached_base_pixmap and not presenter._cached_base_pixmap.isNull()
                     else final_pixmap
                 )
-                presenter._set_image_layers(bg_to_use)
+                presenter.view.set_image_layers(bg_to_use)
         else:
             if hasattr(presenter.ui.image_label, "set_capture_area"):
                 presenter.ui.image_label.set_capture_area(None, 0)
@@ -239,7 +246,7 @@ def handle_legacy_result(presenter, result, params, debug_state):
                 if is_interactive and presenter._cached_base_pixmap and not presenter._cached_base_pixmap.isNull()
                 else final_pixmap
             )
-            presenter._set_image_layers(bg_to_use)
+            presenter.view.set_image_layers(bg_to_use)
 
         presenter.current_displayed_pixmap = final_pixmap
     except Exception as exc:

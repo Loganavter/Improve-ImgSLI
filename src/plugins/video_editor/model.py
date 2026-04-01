@@ -245,7 +245,7 @@ class VideoSessionModel:
             raise RuntimeError("MainController is required to open image compare")
         session = self._require_session()
         timeline = self._read_timeline_state(session.id)
-        return self.main_controller.create_workspace_session(
+        return self.main_controller.workspace.create_workspace_session(
             "image_compare",
             activate=True,
             metadata={

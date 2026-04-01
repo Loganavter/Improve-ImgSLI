@@ -5,10 +5,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from domain.types import Point
-
 from core.events import (
-    CoreUpdateRequestedEvent,
     ViewportOnSliderPressedEvent,
     ViewportOnSliderReleasedEvent,
     ViewportSetMagnifierInternalSplitEvent,
@@ -25,13 +22,9 @@ from core.events import (
     ViewportUpdateMagnifierSizeRelativeEvent,
     ViewportUpdateMovementSpeedEvent,
 )
-
-try:
-    from core.constants import AppConstants
-
-    THRESHOLD = AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
-except ImportError:
-    THRESHOLD = 0.02
+from plugins.viewport.interaction_service import ViewportInteractionService
+from plugins.viewport.magnifier_service import ViewportMagnifierService
+from plugins.viewport.runtime import ViewportRuntime
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -46,102 +39,36 @@ class ViewportController(QObject):
         self.store = store
         self.magnifier_plugin = magnifier_plugin
         self.event_bus = event_bus
-        self._interaction_session_counter = int(
-            getattr(self.store.viewport, "interaction_session_id", 0)
+        self.runtime = ViewportRuntime(
+            store=store,
+            event_bus=event_bus,
+            update_requested_signal=self.update_requested,
         )
-        self._dispatcher = (
-            store.get_dispatcher() if hasattr(store, "get_dispatcher") else None
+        self.interaction_service = ViewportInteractionService(self.runtime, store)
+        self.magnifier_service = ViewportMagnifierService(
+            self.runtime, store, self.interaction_service
         )
 
     def _dispatch_action(
         self, action, clear_caches: bool = False, clamp_pos: bool = False
     ):
-        if self._dispatcher:
-            self._dispatcher.dispatch(action, scope="viewport")
-            if clear_caches:
-                from core.state_management.actions import InvalidateRenderCacheAction
-
-                self._dispatcher.dispatch(
-                    InvalidateRenderCacheAction(), scope="viewport"
-                )
-            if clamp_pos:
-                self._clamp_capture_position()
-
-            if self.event_bus:
-                self.event_bus.emit(CoreUpdateRequestedEvent())
-            else:
-                self.update_requested.emit()
-            self._capture_recording_checkpoint()
-        else:
-
-            logger.warning("Dispatcher not available, using legacy state modification")
-
-            pass
-
-    def _update_setting(
-        self,
-        attr_name: str,
-        value: Any,
-        clear_caches: bool = False,
-        clamp_pos: bool = False,
-    ):
-        current_val = getattr(self.store.viewport, attr_name, None)
-
-        if current_val != value:
-            setattr(self.store.viewport, attr_name, value)
-
-            if clear_caches:
-                self.store.invalidate_render_cache()
-
-            if clamp_pos:
-                self._clamp_capture_position()
-
-            self.store.emit_state_change()
-
-            if self.event_bus:
-                self.event_bus.emit(CoreUpdateRequestedEvent())
-            else:
-                self.update_requested.emit()
-            self._capture_recording_checkpoint()
+        if not self.runtime.dispatch(action, clear_caches=clear_caches):
+            return
+        if clamp_pos:
+            self.interaction_service.clamp_capture_position()
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     def _capture_recording_checkpoint(self, *, force_advance_frame: bool = False) -> None:
-        recorder = getattr(self.store, "recorder", None)
-        if recorder is None:
-            return
-        if not getattr(recorder, "is_recording", False):
-            return
-        if getattr(recorder, "is_paused", False):
-            return
-        recorder.capture_frame(force_advance_frame=force_advance_frame)
+        self.runtime.capture_recording_checkpoint(
+            force_advance_frame=force_advance_frame
+        )
 
     def begin_user_interaction(self) -> None:
-        viewport = self.store.viewport
-        if getattr(viewport, "is_user_interacting", False):
-            return
-        self._interaction_session_counter = max(
-            self._interaction_session_counter + 1,
-            int(getattr(viewport, "interaction_session_id", 0)) + 1,
-        )
-        viewport.interaction_session_id = self._interaction_session_counter
-        viewport.is_user_interacting = True
-        self.store.emit_state_change()
-        if self.event_bus:
-            self.event_bus.emit(CoreUpdateRequestedEvent())
-        else:
-            self.update_requested.emit()
-        self._capture_recording_checkpoint(force_advance_frame=True)
+        self.interaction_service.begin_user_interaction()
 
     def end_user_interaction(self) -> None:
-        viewport = self.store.viewport
-        if not getattr(viewport, "is_user_interacting", False):
-            return
-        viewport.is_user_interacting = False
-        self.store.emit_state_change()
-        if self.event_bus:
-            self.event_bus.emit(CoreUpdateRequestedEvent())
-        else:
-            self.update_requested.emit()
-        self._capture_recording_checkpoint(force_advance_frame=True)
+        self.interaction_service.end_user_interaction()
 
     def set_split_position(self, position: float):
         from core.state_management.actions import SetSplitPositionAction
@@ -176,10 +103,10 @@ class ViewportController(QObject):
 
         self._dispatch_action(ToggleMagnifierAction(enabled), clear_caches=True)
 
-        if enabled and not self.store.viewport.active_magnifier_id:
+        if enabled and not self.store.viewport.view_state.active_magnifier_id:
             self._dispatch_action(SetActiveMagnifierIdAction("default"))
 
-        self.update_magnifier_combined_state()
+        self.magnifier_service.update_combined_state()
 
     def toggle_magnifier_part(self, part: str, visible: bool):
         part = (part or "").strip().lower()
@@ -195,7 +122,7 @@ class ViewportController(QObject):
 
         kwargs = {part: visible}
         self._dispatch_action(SetMagnifierVisibilityAction(**kwargs), clear_caches=True)
-        self.update_magnifier_combined_state()
+        self.magnifier_service.update_combined_state()
 
     def set_magnifier_visibility(
         self,
@@ -209,7 +136,7 @@ class ViewportController(QObject):
             SetMagnifierVisibilityAction(left=left, center=center, right=right),
             clear_caches=True,
         )
-        self.update_magnifier_combined_state()
+        self.magnifier_service.update_combined_state()
 
     def toggle_magnifier_orientation(self, is_horizontal: bool):
         from core.state_management.actions import ToggleMagnifierOrientationAction
@@ -217,68 +144,10 @@ class ViewportController(QObject):
         self._dispatch_action(ToggleMagnifierOrientationAction(is_horizontal))
 
     def toggle_freeze_magnifier(self, freeze_checked: bool):
-        from core.state_management.actions import ToggleFreezeMagnifierAction
-
-        if freeze_checked:
-            frozen_point = self.store.viewport.capture_position_relative
-            self._dispatch_action(
-                ToggleFreezeMagnifierAction(freeze=True, frozen_position=frozen_point)
-            )
-        else:
-            new_offset = None
-            if self.store.viewport.frozen_capture_point_relative:
-                drawing_width = self.store.viewport.pixmap_width
-                drawing_height = self.store.viewport.pixmap_height
-
-                if drawing_width > 0 and drawing_height > 0:
-                    target_max_dim = float(max(drawing_width, drawing_height))
-
-                    frozen = self.store.viewport.frozen_capture_point_relative
-                    offset = self.store.viewport.magnifier_offset_relative
-                    capture = self.store.viewport.capture_position_relative
-
-                    frozen_px_x = frozen.x * drawing_width
-                    frozen_px_y = frozen.y * drawing_height
-                    offset_px_x = offset.x * target_max_dim
-                    offset_px_y = offset.y * target_max_dim
-                    target_px_x = frozen_px_x + offset_px_x
-                    target_px_y = frozen_px_y + offset_px_y
-
-                    capture_px_x = capture.x * drawing_width
-                    capture_px_y = capture.y * drawing_height
-
-                    new_offset_x = (target_px_x - capture_px_x) / target_max_dim if target_max_dim > 0 else 0
-                    new_offset_y = (target_px_y - capture_px_y) / target_max_dim if target_max_dim > 0 else 0
-                    new_offset = Point(new_offset_x, new_offset_y)
-
-            self._dispatch_action(
-                ToggleFreezeMagnifierAction(freeze=False, new_offset=new_offset)
-            )
+        self.magnifier_service.toggle_freeze_magnifier(freeze_checked)
 
     def update_magnifier_combined_state(self):
-        if not self.store.viewport.use_magnifier:
-            from core.state_management.actions import UpdateMagnifierCombinedStateAction
-
-            self._dispatch_action(
-                UpdateMagnifierCombinedStateAction(False), clear_caches=True
-            )
-            return
-
-        is_diff_active = self.store.viewport.diff_mode != "off"
-        spacing = self.store.viewport.magnifier_spacing_relative
-
-        both_sides_visible = (
-            self.store.viewport.magnifier_visible_left
-            and self.store.viewport.magnifier_visible_right
-        )
-        should_combine = both_sides_visible and spacing <= THRESHOLD + 1e-5
-
-        if self.store.viewport.is_magnifier_combined != should_combine:
-            from core.state_management.actions import UpdateMagnifierCombinedStateAction
-
-            self._dispatch_action(
-                UpdateMagnifierCombinedStateAction(should_combine), clear_caches=True
-            )
+        self.magnifier_service.update_combined_state()
 
     def update_movement_speed(self, speed: float):
         from core.state_management.actions import SetMovementSpeedAction
@@ -291,22 +160,7 @@ class ViewportController(QObject):
         self._dispatch_action(SetMagnifierPositionAction(position))
 
     def set_magnifier_internal_split(self, location):
-        val = 0.5
-        if isinstance(location, Point):
-            if not self.store.viewport.magnifier_is_horizontal:
-                val = location.x
-            else:
-                val = location.y
-        elif isinstance(location, (float, int)):
-            val = float(location)
-
-        val = max(0.0, min(1.0, val))
-        current_val = self.store.viewport.magnifier_internal_split
-
-        if current_val != val:
-            from core.state_management.actions import SetMagnifierInternalSplitAction
-
-            self._dispatch_action(SetMagnifierInternalSplitAction(val))
+        self.magnifier_service.set_magnifier_internal_split(location)
 
     def on_slider_pressed(self, slider_name: str):
         from core.state_management.actions import SetIsDraggingSliderAction
@@ -327,23 +181,7 @@ class ViewportController(QObject):
         self.on_slider_released(event.slider_name, event.provider)
 
     def _clamp_capture_position(self):
-        capture_pos = self.store.viewport.capture_position_relative
-        if not self.store.viewport.image1:
-            return
-
-        unified_w, unified_h = self.store.viewport.image1.size
-        if unified_w <= 0 or unified_h <= 0:
-            return
-
-        ref_dim = min(unified_w, unified_h)
-        capture_size_px = self.store.viewport.capture_size_relative * ref_dim
-        radius_rel_x = (capture_size_px / 2.0) / unified_w if unified_w > 0 else 0
-        radius_rel_y = (capture_size_px / 2.0) / unified_h if unified_h > 0 else 0
-
-        self.store.viewport.capture_position_relative = Point(
-            max(radius_rel_x, min(capture_pos.x, 1.0 - radius_rel_x)),
-            max(radius_rel_y, min(capture_pos.y, 1.0 - radius_rel_y)),
-        )
+        self.interaction_service.clamp_capture_position()
 
     def on_set_split_position(self, event: ViewportSetSplitPositionEvent):
         self.set_split_position(event.position)

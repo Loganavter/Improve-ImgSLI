@@ -3,7 +3,8 @@ import logging
 from PIL import Image
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
+from core.events import CoreErrorOccurredEvent
+from plugins.analysis.services.cached_diff import CachedDiffService
 from resources.translations import tr
 from plugins.comparison.use_cases import list_ops, loading, navigation
 from shared_toolkit.workers import GenericWorker
@@ -23,6 +24,7 @@ class SessionController(QObject):
         image_loader,
         playlist_manager,
         metrics_service=None,
+        diff_service: CachedDiffService | None = None,
         presenter=None,
         event_bus=None,
     ):
@@ -32,6 +34,7 @@ class SessionController(QObject):
         self.image_loader = image_loader
         self.playlist_manager = playlist_manager
         self.metrics_service = metrics_service
+        self.diff_service = diff_service
         self.presenter = presenter
         self.event_bus = event_bus
 
@@ -112,13 +115,13 @@ class SessionController(QObject):
             return None, path, image_number, index_in_list, False
 
     def _cancel_pending_unification(self, new_path1: str, new_path2: str) -> bool:
-        if not self.store.viewport.unification_in_progress:
+        if not self.store.viewport.session_data.render_cache.unification_in_progress:
             return False
-        pending = self.store.viewport.pending_unification_paths
+        pending = self.store.viewport.session_data.render_cache.pending_unification_paths
         if pending and (pending[0] != new_path1 or pending[1] != new_path2):
 
-            self.store.viewport.unification_in_progress = False
-            self.store.viewport.pending_unification_paths = None
+            self.store.viewport.session_data.render_cache.unification_in_progress = False
+            self.store.viewport.session_data.render_cache.pending_unification_paths = None
 
             self.store.invalidate_geometry_cache()
             return True
@@ -232,22 +235,14 @@ class SessionController(QObject):
         loading.load_images_from_paths(self, file_paths, image_number)
 
     def _invalidate_image_canvas_render_state(self, clear_magnifier: bool = False):
-        image_canvas_presenter = getattr(
-            getattr(self, "presenter", None), "image_canvas_presenter", None
-        )
-        if image_canvas_presenter and hasattr(
-            image_canvas_presenter, "invalidate_render_state"
-        ):
-            image_canvas_presenter.invalidate_render_state(
-                clear_magnifier=clear_magnifier
-            )
+        presenter = getattr(self, "presenter", None)
+        if presenter and hasattr(presenter, "invalidate_canvas_render_state"):
+            presenter.invalidate_canvas_render_state(clear_magnifier=clear_magnifier)
 
     def _schedule_image_canvas_update(self):
-        image_canvas_presenter = getattr(
-            getattr(self, "presenter", None), "image_canvas_presenter", None
-        )
-        if image_canvas_presenter and hasattr(image_canvas_presenter, "schedule_update"):
-            QTimer.singleShot(0, image_canvas_presenter.schedule_update)
+        presenter = getattr(self, "presenter", None)
+        if presenter and hasattr(presenter, "schedule_canvas_update"):
+            QTimer.singleShot(0, presenter.schedule_canvas_update)
 
     def set_current_image(
         self, image_number: int, force_refresh: bool = False, emit_signal: bool = True
@@ -301,60 +296,8 @@ class SessionController(QObject):
         self.metrics_service.trigger_metrics_calculation_if_needed()
 
     def _trigger_full_diff_generation(self):
-        img1 = (
-            self.store.document.full_res_image1 or self.store.document.original_image1
-        )
-        img2 = (
-            self.store.document.full_res_image2 or self.store.document.original_image2
-        )
-        mode = self.store.viewport.diff_mode
-
-        if not img1 or (not img2 and mode != "edges"):
-            return
-
-        worker = GenericWorker(self._generate_diff_map_task, img1, img2, mode)
-        worker.signals.result.connect(self._on_diff_map_ready)
-
-        self.thread_pool.start(worker, priority=1)
-
-    def _generate_diff_map_task(self, img1, img2, mode):
-        try:
-            from PIL import Image
-
-            from plugins.analysis.processing import (
-                create_edge_map,
-                create_grayscale_diff,
-                create_highlight_diff,
-                create_ssim_map,
-            )
-
-            target_size = img1.size
-
-            prepared_img2 = img2
-            if img2 and img2.size != target_size:
-                prepared_img2 = img2.resize(target_size, Image.Resampling.LANCZOS)
-
-            diff_mode_handlers = {
-                "edges": lambda: create_edge_map(img1),
-                "highlight": lambda: create_highlight_diff(
-                    img1, prepared_img2, threshold=10
-                ),
-                "grayscale": lambda: create_grayscale_diff(img1, prepared_img2),
-                "ssim": lambda: create_ssim_map(img1, prepared_img2),
-            }
-
-            handler = diff_mode_handlers.get(mode)
-            return handler() if handler else None
-        except Exception:
-            return None
-
-    def _on_diff_map_ready(self, diff_image):
-        if diff_image:
-            self.store.viewport.cached_diff_image = diff_image
-            if self.event_bus:
-                self.event_bus.emit(CoreUpdateRequestedEvent())
-            else:
-                self.update_requested.emit()
+        if self.diff_service is not None:
+            self.diff_service.request_generation(optimize_ssim=False)
 
     def swap_current_images(self):
         list_ops.swap_current_images(self)

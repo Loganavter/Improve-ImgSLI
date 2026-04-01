@@ -10,7 +10,7 @@ class StoreOperationsMixin:
 
             self._dispatcher.dispatch(ClearAllCachesAction(), scope="viewport")
         else:
-            self.viewport.session_data.unified_image_cache.clear()
+            self.viewport.session_data.render_cache.unified_image_cache.clear()
             self.invalidate_geometry_cache()
 
     def invalidate_render_cache(self):
@@ -20,10 +20,10 @@ class StoreOperationsMixin:
             self._dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
         else:
             session = self.viewport.session_data
-            session.caches.clear()
-            session.magnifier_cache.clear()
-            session.cached_split_base_image = None
-            session.last_split_cached_params = None
+            session.render_cache.caches.clear()
+            session.render_cache.magnifier_cache.clear()
+            session.render_cache.cached_split_base_image = None
+            session.render_cache.last_split_cached_params = None
 
     def invalidate_geometry_cache(self):
         if self._dispatcher:
@@ -32,12 +32,12 @@ class StoreOperationsMixin:
             self._dispatcher.dispatch(InvalidateGeometryCacheAction(), scope="viewport")
         else:
             session = self.viewport.session_data
-            session.scaled_image1_for_display = None
-            session.scaled_image2_for_display = None
-            session.cached_scaled_image_dims = None
-            session.display_cache_image1 = None
-            session.display_cache_image2 = None
-            session.last_display_cache_params = None
+            session.render_cache.scaled_image1_for_display = None
+            session.render_cache.scaled_image2_for_display = None
+            session.render_cache.cached_scaled_image_dims = None
+            session.render_cache.display_cache_image1 = None
+            session.render_cache.display_cache_image2 = None
+            session.render_cache.last_display_cache_params = None
             self.invalidate_render_cache()
 
     def clear_interactive_caches(self):
@@ -56,21 +56,21 @@ class StoreOperationsMixin:
                 self.document.full_res_image1 = None
                 self.document.preview_image1 = None
                 self.document.image1_path = None
-                self.viewport.image1 = None
-                self.viewport.display_cache_image1 = None
+                self.viewport.session_data.image_state.image1 = None
+                self.viewport.session_data.render_cache.display_cache_image1 = None
             else:
                 self.document.original_image2 = None
                 self.document.full_res_image2 = None
                 self.document.preview_image2 = None
                 self.document.image2_path = None
-                self.viewport.image2 = None
-                self.viewport.display_cache_image2 = None
+                self.viewport.session_data.image_state.image2 = None
+                self.viewport.session_data.render_cache.display_cache_image2 = None
 
             session = self.viewport.session_data
-            session.scaled_image1_for_display = None
-            session.scaled_image2_for_display = None
-            session.cached_scaled_image_dims = None
-            session.last_display_cache_params = None
+            session.render_cache.scaled_image1_for_display = None
+            session.render_cache.scaled_image2_for_display = None
+            session.render_cache.cached_scaled_image_dims = None
+            session.render_cache.last_display_cache_params = None
             self.invalidate_render_cache()
 
     def set_current_image_data(self, image_number: int, image, path, display_name):
@@ -95,12 +95,12 @@ class StoreOperationsMixin:
                 self.document.full_res_image1 = image
                 self.document.original_image1 = image
                 self.document.image1_path = path
-                self.viewport.image1 = image
+                self.viewport.session_data.image_state.image1 = image
             else:
                 self.document.full_res_image2 = image
                 self.document.original_image2 = image
                 self.document.image2_path = path
-                self.viewport.image2 = image
+                self.viewport.session_data.image_state.image2 = image
             self.emit_state_change("document")
 
     def swap_all_image_data(self):
@@ -121,14 +121,14 @@ class StoreOperationsMixin:
         doc.preview_image1, doc.preview_image2 = doc.preview_image2, doc.preview_image1
         doc.image1_path, doc.image2_path = doc.image2_path, doc.image1_path
 
-        vp.image1, vp.image2 = vp.image2, vp.image1
-        vp.display_cache_image1, vp.display_cache_image2 = (
-            vp.display_cache_image2,
-            vp.display_cache_image1,
+        vp.session_data.image_state.image1, vp.session_data.image_state.image2 = vp.session_data.image_state.image2, vp.session_data.image_state.image1
+        vp.session_data.render_cache.display_cache_image1, vp.session_data.render_cache.display_cache_image2 = (
+            vp.session_data.render_cache.display_cache_image2,
+            vp.session_data.render_cache.display_cache_image1,
         )
-        vp.scaled_image1_for_display, vp.scaled_image2_for_display = (
-            vp.scaled_image2_for_display,
-            vp.scaled_image1_for_display,
+        vp.session_data.render_cache.scaled_image1_for_display, vp.session_data.render_cache.scaled_image2_for_display = (
+            vp.session_data.render_cache.scaled_image2_for_display,
+            vp.session_data.render_cache.scaled_image1_for_display,
         )
 
         self.invalidate_geometry_cache()
@@ -150,11 +150,16 @@ class StoreOperationsMixin:
         src_session = self.viewport.session_data
         new_session_data = SessionData()
 
-        new_session_data.loaded_image1_paths = list(src_session.loaded_image1_paths)
-        new_session_data.loaded_image2_paths = list(src_session.loaded_image2_paths)
+        new_session_data.image_state.loaded_image1_paths = list(src_session.image_state.loaded_image1_paths)
+        new_session_data.image_state.loaded_image2_paths = list(src_session.image_state.loaded_image2_paths)
+        new_session_data.render_cache.cached_diff_image = src_session.render_cache.cached_diff_image
 
         new_viewport = ViewportState(
-            new_render_config, new_session_data, new_view_state
+            new_render_config,
+            new_session_data,
+            new_view_state,
+            self.viewport.interaction_state.clone(),
+            self.viewport.geometry_state.clone(),
         )
 
         new_doc = DocumentModel()
@@ -166,5 +171,7 @@ class StoreOperationsMixin:
         new_doc.full_res_image2 = self.document.full_res_image2
         new_doc.original_image1 = self.document.original_image1
         new_doc.original_image2 = self.document.original_image2
+        new_doc.image1_path = self.document.image1_path
+        new_doc.image2_path = self.document.image2_path
 
         return self._build_worker_snapshot(new_viewport, new_doc)

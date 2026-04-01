@@ -1,0 +1,31 @@
+{
+  "label": {
+    "background": "Fundo",
+    "bold": "Negrito",
+    "border": "Borda",
+    "capture_size": "Tam. Captura (%)",
+    "color": "Cor",
+    "container": "Contêiner",
+    "details": "Detalhes",
+    "file_name": "Nome do arquivo",
+    "font_size": "Tamanho da Fonte",
+    "format": "Formato",
+    "fps": "FPS",
+    "guides": "Guias",
+    "language": "Idioma",
+    "line": "Linha",
+    "magnifier": "Lupa",
+    "magnifier_size": "Tam. Lupa (%)",
+    "name_1": "Nome 1",
+    "name_2": "Nome 2",
+    "opacity": "Opacidade",
+    "output": "Saída",
+    "output_directory": "Diretório de saída",
+    "quality": "Qualidade",
+    "resolution": "Resolução",
+    "text_position": "Posição do Texto",
+    "theme": "Tema",
+    "video_codec": "Codec de Vídeo",
+    "view": "Visualização"
+  }
+}

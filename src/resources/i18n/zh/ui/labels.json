@@ -1,0 +1,31 @@
+{
+  "label": {
+    "background": "背景",
+    "bold": "粗体",
+    "border": "边框",
+    "capture_size": "捕捉大小 (%)",
+    "color": "颜色",
+    "container": "容器",
+    "details": "详情",
+    "file_name": "文件名",
+    "font_size": "字体大小",
+    "format": "格式",
+    "fps": "帧率",
+    "guides": "引导线",
+    "language": "语言",
+    "line": "线条",
+    "magnifier": "放大镜",
+    "magnifier_size": "放大镜大小 (%)",
+    "name_1": "名称1",
+    "name_2": "名称2",
+    "opacity": "不透明度",
+    "output": "输出",
+    "output_directory": "输出目录",
+    "quality": "质量",
+    "resolution": "分辨率",
+    "text_position": "文本位置",
+    "theme": "主题",
+    "video_codec": "视频编解码器",
+    "view": "视图"
+  }
+}

@@ -158,12 +158,15 @@ def multi_attr_track(
         coerce = lambda v: v
 
     def reader(vp: ViewportState) -> dict[str, Any]:
-        return {ch_id: coerce(getattr(vp, attr_name)) for ch_id, attr_name in attr_map.items()}
+        return {
+            ch_id: coerce(_resolve_read(vp, attr_name.split(".")))
+            for ch_id, attr_name in attr_map.items()
+        }
 
     def writer(vp: ViewportState, ch: dict[str, Any]) -> None:
         for ch_id, attr_name in attr_map.items():
             if ch_id in ch:
-                setattr(vp, attr_name, coerce(ch[ch_id]))
+                _resolve_write(vp, attr_name, coerce(ch[ch_id]))
 
     return ViewportTrackSpec(
         public_id=public_id,

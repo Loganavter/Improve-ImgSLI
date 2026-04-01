@@ -1,8 +1,9 @@
-from PyQt6.QtCore import QEvent, QSize, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QSize, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout
 
 from resources.translations import tr
 from shared_toolkit.ui.icon_manager import AppIcon
+from shared_toolkit.ui.managers.flyout_timer_service import AnchoredFlyoutAutoHide
 from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
 from shared_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
 
@@ -18,9 +19,11 @@ class ColorOptionsFlyout(BaseFlyout):
         self._hovered_element = None
         self._anchor_button = None
 
-        self._auto_hide_timer = QTimer(self)
-        self._auto_hide_timer.setSingleShot(True)
-        self._auto_hide_timer.timeout.connect(self._on_auto_hide_timeout)
+        self._auto_hide = AnchoredFlyoutAutoHide(
+            flyout=self,
+            anchor_getter=lambda: self._anchor_button,
+            parent=self,
+        )
 
         self.h_layout = QHBoxLayout()
         self.h_layout.setContentsMargins(0, 0, 0, 0)
@@ -86,23 +89,23 @@ class ColorOptionsFlyout(BaseFlyout):
     def _is_magnifier_active(self):
         if not self.store:
             return False
-        return getattr(self.store.viewport, "use_magnifier", False)
+        return getattr(self.store.viewport.view_state, "use_magnifier", False)
 
     def _is_capture_active(self):
         if not self._is_magnifier_active():
             return False
-        return getattr(self.store.viewport, "show_capture_area_on_main_image", True)
+        return getattr(self.store.viewport.render_config, "show_capture_area_on_main_image", True)
 
     def _is_laser_active(self):
         if not self._is_magnifier_active():
             return False
-        return getattr(self.store.viewport, "show_magnifier_guides", False)
+        return getattr(self.store.viewport.render_config, "show_magnifier_guides", False)
 
     def _is_divider_active(self):
 
         if not self._is_magnifier_active():
             return False
-        return getattr(self.store.viewport, "is_magnifier_combined", False)
+        return getattr(self.store.viewport.view_state, "is_magnifier_combined", False)
 
     def _update_buttons_visibility(self):
         is_magnifier_active = self._is_magnifier_active()
@@ -163,43 +166,10 @@ class ColorOptionsFlyout(BaseFlyout):
         self.show_aligned(anchor, "top")
 
     def schedule_auto_hide(self, ms: int):
-        if ms <= 0:
-            self._auto_hide_timer.stop()
-            return
-        self._auto_hide_timer.start(ms)
+        self._auto_hide.schedule(ms)
 
     def cancel_auto_hide(self):
-        self._auto_hide_timer.stop()
-
-    def _on_auto_hide_timeout(self):
-        if not self.isVisible():
-            return
-
-        from PyQt6.QtCore import QPoint
-        from PyQt6.QtGui import QCursor
-
-        cursor_pos = QCursor.pos()
-
-        try:
-            if self.contains_global(cursor_pos):
-                self.schedule_auto_hide(1000)
-                return
-        except Exception:
-            pass
-
-        if self._anchor_button:
-            try:
-                button_global_pos = self._anchor_button.mapToGlobal(QPoint(0, 0))
-                button_rect = self._anchor_button.rect()
-                button_global_rect = button_rect.translated(button_global_pos)
-                if button_global_rect.contains(cursor_pos):
-
-                    self.schedule_auto_hide(1000)
-                    return
-            except Exception:
-                pass
-
-        self.hide()
+        self._auto_hide.cancel()
 
     def hide(self):
         self.cancel_auto_hide()

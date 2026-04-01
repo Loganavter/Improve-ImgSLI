@@ -1,0 +1,30 @@
+{
+  "onboarding": {
+    "advanced": {
+      "button": {
+        "color": "Color",
+        "rotate_width_hint": "LMB: Rotate\nWheel: Width"
+      }
+    },
+    "advanced_description": "More settings on screen.\nFor those who want to control everything.",
+    "beginner": {
+      "button": {
+        "color": "Color",
+        "rotate": "Rotate",
+        "view": "View",
+        "width": "Width"
+      }
+    },
+    "beginner_description": "Simple interface. Mouse control.\nPerfect for first-time users.",
+    "expert": {
+      "button": {
+        "info": "LMB: Rotate | Wheel: Width\nRMB: Color | MMB: Reset"
+      }
+    },
+    "expert_description": "Minimalism. Keyboard control (WASD, QE).\nMaximum space for images.",
+    "magnifier_controls_hint": "Use WASD and QE to control the magnifier",
+    "mode_hint": "UI mode can always be changed in settings",
+    "start_button": "Get Started",
+    "welcome": "Welcome"
+  }
+}

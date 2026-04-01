@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 from PyQt6.QtCore import QPoint
 
 from utils.resource_loader import resource_path

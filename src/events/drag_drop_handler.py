@@ -62,8 +62,6 @@ class DragAndDropService(QObject):
         if self._is_dragging:
             return
 
-        self._is_dragging = True
-
         try:
             from shared_toolkit.ui.widgets.atomic.tooltips import PathTooltip
 
@@ -73,8 +71,23 @@ class DragAndDropService(QObject):
 
         self._source_widget = source_widget
 
-        list_num = source_widget.owner_flyout.image_number
-        index = source_widget.index
+        list_num = getattr(source_widget, "image_number", None)
+        if list_num not in (1, 2):
+            owner_flyout = getattr(source_widget, "owner_flyout", None)
+            list_num = getattr(owner_flyout, "image_number", None)
+        index = getattr(source_widget, "index", -1)
+        if list_num not in (1, 2) or index < 0:
+            logger.warning(
+                "[DragAndDrop] start_drag skipped for unsupported source widget: type=%s list_num=%r index=%r",
+                type(source_widget).__name__,
+                list_num,
+                index,
+            )
+            self._source_widget = None
+            return
+
+        self._is_dragging = True
+
         target_list = (
             self.store.document.image_list1
             if list_num == 1

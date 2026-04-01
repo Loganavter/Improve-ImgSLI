@@ -1,0 +1,11 @@
+{
+  "action": {
+    "export_video": "Exportar Vídeo",
+    "open_application_settings": "Abrir Configurações do Aplicativo",
+    "open_last_file": "Abrir último arquivo",
+    "open_save_folder": "Abrir pasta de salvamento",
+    "open_video_editor_exporter": "Abrir Editor e Exportador de Vídeo",
+    "quit": "Sair",
+    "show_help": "Mostrar Ajuda"
+  }
+}

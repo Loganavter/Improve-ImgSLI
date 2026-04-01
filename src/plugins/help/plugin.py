@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.events import SettingsChangeLanguageEvent
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IControllablePlugin, IUIPlugin
 from plugins.help.dialog import HelpDialog
@@ -18,6 +19,11 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
     def initialize(self, context: Any) -> None:
         super().initialize(context)
         self.store = getattr(context, "store", None)
+        self.event_bus = getattr(context, "event_bus", None)
+        if self.event_bus is not None:
+            self.event_bus.subscribe(
+                SettingsChangeLanguageEvent, self._on_language_changed
+            )
 
     def get_qss_paths(self) -> tuple[str, ...]:
         return (self.plugin_resource_path("resources", "help.qss"),)
@@ -55,3 +61,7 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
 
     def _on_dialog_destroyed(self) -> None:
         self._dialog = None
+
+    def _on_language_changed(self, event: SettingsChangeLanguageEvent) -> None:
+        if self._dialog is not None:
+            self._dialog.update_language(event.lang_code)

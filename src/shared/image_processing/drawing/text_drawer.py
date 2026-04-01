@@ -214,7 +214,7 @@ class TextDrawer:
         name2: str,
         visible_rect: QRect | None = None,
     ):
-        if not store.viewport.include_file_names_in_saved:
+        if not store.viewport.render_config.include_file_names_in_saved:
             return
 
         layout = self.compute_filenames_layout(
@@ -236,7 +236,7 @@ class TextDrawer:
 
         for label in layout["labels"]:
             bg_rect = label["bg_rect"]
-            if store.viewport.draw_text_background:
+            if store.viewport.render_config.draw_text_background:
                 draw_nine_slice_rounded_rect(target_image, bg_rect, 6, layout["bg_rgba"])
 
             self._draw_text_with_supersampling_stroke(
@@ -259,30 +259,30 @@ class TextDrawer:
         name2: str,
         visible_rect: QRect | None = None,
     ):
-        if not store.viewport.include_file_names_in_saved:
+        if not store.viewport.render_config.include_file_names_in_saved:
             return None
 
         SAFE_GAP = 5
         PADDING_X = 10
         PADDING_Y = 6
 
-        name_limit = getattr(store.viewport, "max_name_length", 50)
+        name_limit = getattr(store.viewport.render_config, "max_name_length", 50)
         rect_w = image_rect.width()
         rect_h = image_rect.height()
         ref_size = min(rect_h, rect_w)
 
         base_font_ratio = 0.03
         font_size_raw = (
-            ref_size * base_font_ratio * (store.viewport.font_size_percent / 100.0)
+            ref_size * base_font_ratio * (store.viewport.render_config.font_size_percent / 100.0)
         )
         font_size = max(20, int(font_size_raw))
 
         font = self._get_cached_font(font_size, True)
-        f_weight = store.viewport.font_weight
-        alpha_pc = store.viewport.text_alpha_percent
+        f_weight = store.viewport.render_config.font_weight
+        alpha_pc = store.viewport.render_config.text_alpha_percent
         half_line = (line_thickness + 1) // 2
 
-        if not store.viewport.is_horizontal:
+        if not store.viewport.view_state.is_horizontal:
             w1_avail = (split_pos - image_rect.left()) - half_line - SAFE_GAP
             w2_avail = (image_rect.right() - split_pos) - half_line - SAFE_GAP
         else:
@@ -308,8 +308,8 @@ class TextDrawer:
         current_max_th = max(th1, th2)
         bh = current_max_th + (PADDING_Y * 2)
 
-        t_color = color_to_qcolor(store.viewport.file_name_color).getRgb()
-        bg_color_raw = color_to_qcolor(store.viewport.file_name_bg_color).getRgb()
+        t_color = color_to_qcolor(store.viewport.render_config.file_name_color).getRgb()
+        bg_color_raw = color_to_qcolor(store.viewport.render_config.file_name_bg_color).getRgb()
         eff_bg_color = (*bg_color_raw[:3], int(bg_color_raw[3] * alpha_pc / 100))
 
         labels = []
@@ -321,19 +321,19 @@ class TextDrawer:
             tw, actual_th = self._get_cached_text_size(display_text, font, f_weight)
             bw = tw + (PADDING_X * 2)
 
-            if not store.viewport.is_horizontal:
+            if not store.viewport.view_state.is_horizontal:
                 by = image_rect.bottom() - SAFE_GAP - bh
             else:
                 if slot_num == 1:
                     by = (
                         (split_pos - half_line - SAFE_GAP - bh)
-                        if store.viewport.text_placement_mode == "split_line"
+                        if store.viewport.render_config.text_placement_mode == "split_line"
                         else (image_rect.top() + SAFE_GAP)
                     )
                 else:
                     by = (
                         (split_pos + half_line + SAFE_GAP)
-                        if store.viewport.text_placement_mode == "split_line"
+                        if store.viewport.render_config.text_placement_mode == "split_line"
                         else (image_rect.bottom() - SAFE_GAP - bh)
                     )
 
@@ -376,15 +376,15 @@ class TextDrawer:
                 }
             )
 
-        if not store.viewport.is_horizontal:
+        if not store.viewport.view_state.is_horizontal:
             mode1 = (
                 "left_of_split"
-                if store.viewport.text_placement_mode == "split_line"
+                if store.viewport.render_config.text_placement_mode == "split_line"
                 else "left_edge"
             )
             mode2 = (
                 "right_of_split"
-                if store.viewport.text_placement_mode == "split_line"
+                if store.viewport.render_config.text_placement_mode == "split_line"
                 else "right_edge"
             )
             add_label(txt1, mode1, 1)

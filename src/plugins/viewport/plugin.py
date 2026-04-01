@@ -140,7 +140,7 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
                 "Magnifier 1",
                 "Freeze",
                 "bool",
-                attr="freeze_magnifier",
+                attr="view_state.freeze_magnifier",
             ),
             track(
                 "magnifier.default.combined",
@@ -148,7 +148,7 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
                 "Magnifier 1",
                 "Combined",
                 "bool",
-                attr="is_magnifier_combined",
+                attr="view_state.is_magnifier_combined",
             ),
             track(
                 "magnifier.movement.speed",
@@ -156,7 +156,7 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
                 "Magnifier Motion",
                 "Speed",
                 "scalar",
-                attr="movement_speed_per_sec",
+                attr="view_state.movement_speed_per_sec",
             ),
             track(
                 "magnifier.movement.optimized",
@@ -164,6 +164,6 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
                 "Magnifier Motion",
                 "Optimized",
                 "bool",
-                attr="optimize_magnifier_movement",
+                attr="view_state.optimize_magnifier_movement",
             ),
         )

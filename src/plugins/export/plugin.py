@@ -74,7 +74,10 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         extra_specs = self._collect_video_track_specs()
         self.recorder = Recorder(self.store, extra_specs=extra_specs)
         self.video_exporter = VideoExporterService(
-            self.recorder, self.store, main_controller
+            self.recorder,
+            self.store,
+            main_controller,
+            gpu_export_service=getattr(presenter, "gpu_export_service", None),
         )
         self.image_loader = ImageLoaderService(self.store, main_controller)
         self.clipboard_service = ClipboardService(
@@ -191,14 +194,12 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
             return getattr(self.controller, command)(*args, **kwargs)
         raise AttributeError(f"Export plugin has no command '{command}'")
 
-    def set_presenter(self, presenter: Any) -> None:
+    def bind_window_shell(self, window_shell: Any) -> None:
         if self.controller:
-
-            if hasattr(presenter, "export_presenter"):
-                self.controller.presenter = presenter.export_presenter
+            if hasattr(window_shell, "get_feature"):
+                self.controller.presenter = window_shell.get_feature("export")
             else:
-
-                self.controller.presenter = presenter
+                self.controller.presenter = window_shell
 
     def get_service(self) -> Any:
         return self.recorder

@@ -6,7 +6,6 @@ from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QIcon, QImage, QMouseEvent, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QColorDialog,
-    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -22,8 +21,13 @@ from domain.qt_adapters import color_to_qcolor
 from plugins.export.models import ExportDialogState
 from resources.translations import tr as app_tr
 from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from shared_toolkit.ui.widgets.atomic import FluentCheckBox, FluentSlider
+from shared_toolkit.ui.widgets.atomic import (
+    FluentCheckBox,
+    FluentComboBox,
+    FluentSlider,
+)
 from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from shared_toolkit.ui.widgets.composite import DialogActionBar, OutputPathSection
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -124,48 +128,42 @@ class ExportDialog(QDialog):
         right_layout.setContentsMargins(8, 8, 8, 8)
         right_layout.setSpacing(10)
 
-        dir_label = QLabel(
-            self.tr("label.output_directory", self.dialog_state.current_language)
-            + ":"
+        self.output_section = OutputPathSection(
+            directory_label_text=self.tr(
+                "label.output_directory", self.dialog_state.current_language
+            )
+            + ":",
+            browse_text=self.tr("button.browse", self.dialog_state.current_language),
+            set_favorite_text=self.tr(
+                "misc.set_as_favorite", self.dialog_state.current_language
+            ),
+            use_favorite_text=self.tr(
+                "tooltip.use_favorite", self.dialog_state.current_language
+            ),
+            filename_label_text=self.tr(
+                "label.file_name", self.dialog_state.current_language
+            )
+            + ":",
+            on_browse=self._choose_directory,
+            on_set_favorite=self._set_favorite_from_current,
+            on_use_favorite=self._use_favorite_dir,
+            use_custom_line_edit=False,
+            filename_editor_factory=QLineEdit,
+            button_fixed_height=32,
         )
-        self.edit_dir = QLineEdit()
-
-        self.btn_browse_dir = CustomButton(
-            None, self.tr("button.browse", self.dialog_state.current_language)
-        )
-        self.btn_browse_dir.setFixedHeight(32)
-        self.btn_browse_dir.clicked.connect(self._choose_directory)
-
-        dir_row = QHBoxLayout()
-        dir_row.addWidget(self.edit_dir, 1)
-        dir_row.addWidget(self.btn_browse_dir)
-
-        fav_row = QHBoxLayout()
-
-        self.btn_set_favorite = CustomButton(
-            None, self.tr("misc.set_as_favorite", self.dialog_state.current_language)
-        )
-        self.btn_use_favorite = CustomButton(
-            None, self.tr("tooltip.use_favorite", self.dialog_state.current_language)
-        )
-
-        self.btn_set_favorite.setFixedHeight(32)
-        self.btn_use_favorite.setFixedHeight(32)
-
-        self.btn_set_favorite.clicked.connect(self._set_favorite_from_current)
-        self.btn_use_favorite.clicked.connect(self._use_favorite_dir)
-        fav_row.addWidget(self.btn_set_favorite)
-        fav_row.addWidget(self.btn_use_favorite)
-
-        name_label = QLabel(
-            self.tr("label.file_name", self.dialog_state.current_language) + ":"
-        )
-        self.edit_name = QLineEdit()
+        self.dir_picker_row = self.output_section.dir_picker_row
+        self.edit_dir = self.output_section.edit_dir
+        self.btn_browse_dir = self.output_section.btn_browse_dir
+        self.favorite_actions = self.output_section.favorite_actions
+        self.btn_set_favorite = self.output_section.btn_set_favorite
+        self.btn_use_favorite = self.output_section.btn_use_favorite
+        self.name_label = self.output_section.filename_label
+        self.edit_name = self.output_section.filename_edit
 
         fmt_label = QLabel(
             self.tr("label.format", self.dialog_state.current_language) + ":"
         )
-        self.combo_format = QComboBox()
+        self.combo_format = FluentComboBox()
         for fmt in ["PNG", "JPEG", "WEBP", "BMP", "TIFF", "JXL"]:
             self.combo_format.addItem(fmt)
         self.combo_format.currentIndexChanged.connect(
@@ -247,32 +245,17 @@ class ExportDialog(QDialog):
             self.tr("export.remember_by_default", self.dialog_state.current_language)
         )
 
-        btns_row = QHBoxLayout()
-        btns_row.addStretch()
-
-        self.btn_ok = CustomButton(
-            None, self.tr("common.ok", self.dialog_state.current_language)
+        self.action_bar = DialogActionBar(
+            self.tr("common.ok", self.dialog_state.current_language),
+            self.tr("common.cancel", self.dialog_state.current_language),
+            primary_min_size=(100, 36),
+            secondary_min_size=(100, 36),
         )
-        self.btn_ok.setProperty("class", "primary")
-        self.btn_ok.setMinimumSize(100, 36)
-
-        self.btn_cancel = CustomButton(
-            None, self.tr("common.cancel", self.dialog_state.current_language)
-        )
-        self.btn_cancel.setMinimumSize(100, 36)
-
+        self.btn_ok = self.action_bar.primary_button
+        self.btn_cancel = self.action_bar.secondary_button
         self.btn_ok.clicked.connect(self.accept)
         self.btn_cancel.clicked.connect(self.reject)
-
-        btns_row.addWidget(self.btn_ok)
-        btns_row.addWidget(self.btn_cancel)
-
-        right_layout.addWidget(dir_label)
-        right_layout.addLayout(dir_row)
-        right_layout.addLayout(fav_row)
-        right_layout.addSpacing(6)
-        right_layout.addWidget(name_label)
-        right_layout.addWidget(self.edit_name)
+        right_layout.addWidget(self.output_section)
         right_layout.addSpacing(6)
         right_layout.addWidget(fmt_label)
         right_layout.addWidget(self.combo_format)
@@ -284,7 +267,7 @@ class ExportDialog(QDialog):
         right_layout.addWidget(self.edit_comment)
         right_layout.addWidget(self.checkbox_comment_default)
         right_layout.addStretch()
-        right_layout.addLayout(btns_row)
+        right_layout.addWidget(self.action_bar)
 
         main_layout.addWidget(left_frame, 1)
         main_layout.addWidget(right_frame, 0)

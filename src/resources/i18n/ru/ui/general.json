@@ -1,0 +1,20 @@
+{
+  "ui": {
+    "choose_capture_ring_color": "Выберите цвет кольца захвата",
+    "choose_divider_line_color": "Выберите цвет линии разделения",
+    "choose_magnifier_border_color": "Выберите цвет границы лупы",
+    "choose_magnifier_divider_line_color": "Выберите цвет линии разделителя лупы",
+    "choose_magnifier_guides_color": "Выберите цвет направляющих лупы",
+    "drop_images_1_here": "Перетащите Изобр(ы) 1 сюда",
+    "drop_images_2_here": "Перетащите Изобр(ы) 2 сюда",
+    "edit_current_image_1_name": "Редактировать имя Изобр. 1",
+    "edit_current_image_2_name": "Редактировать имя Изобр. 2",
+    "include_file_names_in_saved_image": "Вкл. имена в изображ.",
+    "psnr": "PSNR",
+    "select_color": "Выберите цвет",
+    "showhide_window": "Показать/Скрыть окно",
+    "ssim": "SSIM",
+    "toggle_split_orientation": "Переключить ориентацию разделения (Горизонтальная/Вертикальная)",
+    "choose_magnifier_base_color": "Выберите базовый цвет для элементов лупы"
+  }
+}

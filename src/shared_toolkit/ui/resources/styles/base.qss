@@ -190,6 +190,15 @@ QWidget#ToastNotification QPushButton {
     border-radius: 6px;
     padding: 4px 10px;
 }
+QWidget#ToastNotification QProgressBar#ToastProgressBar {
+    background-color: @toast.progress.background;
+    border: none;
+    border-radius: 3px;
+}
+QWidget#ToastNotification QProgressBar#ToastProgressBar::chunk {
+    background-color: @accent;
+    border-radius: 3px;
+}
 /* --- Стили для PathTooltip --- */
 QLabel#TooltipContentWidget {
     background-color: @tooltip.background;
@@ -282,9 +291,9 @@ QLabel[class="option-label"] {
 /* --- Дополнительные стили для новых классов --- */
 /* Стили для debug markers */
 QLabel[class="debug-marker"] {
-    background-color: #FF0000;
-    border: 1px solid black;
-    color: white;
+    background-color: @accent;
+    border: 1px solid @dialog.border;
+    color: @HighlightedText;
     font-weight: bold;
 }
 

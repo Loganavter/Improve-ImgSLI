@@ -1,0 +1,29 @@
+{
+  "msg": {
+    "edge_comparison_done": "Сравнение краев готово",
+    "edge_comparison_in_progress": "Сравнение краев...",
+    "error_normalizing_path": "Ошибка нормализации пути",
+    "error_processing_path": "Ошибка обработки пути",
+    "error_saving": "Ошибка сохранения",
+    "failed_to_load_image": "Не удалось загрузить изображение",
+    "failed_to_quick_save_image": "Не удалось быстро сохранить изображение",
+    "failed_to_save_image": "Не удалось сохранить изображение",
+    "grayscale_diff_done": "Градации серого готовы",
+    "grayscale_diff_in_progress": "Сравнение в градациях серого...",
+    "highlight_diff_done": "Подсветка различий готова",
+    "highlight_diff_in_progress": "Подсветка различий...",
+    "invalid_data": "Неверные данные",
+    "invalid_item_type_or_empty_path": "Неверный тип элемента или пустой путь",
+    "loading_images_from_clipboard": "Загрузка изображений из буфера обмена...",
+    "no_image_in_clipboard": "В буфере обмена нет изображения",
+    "saved": "Сохранено",
+    "saving": "Сохранение",
+    "saving_canceled": "Сохранение отменено",
+    "some_images_could_not_be_loaded": "Некоторые изображения не удалось загрузить",
+    "ssim_calculation_done": "SSIM готово",
+    "ssim_calculation_in_progress": "Расчет SSIM...",
+    "starting_video_export_please_wait": "Начало экспорта видео... Пожалуйста, подождите.",
+    "select_both_images_first": "Пожалуйста, сначала загрузите и выберите изображения в обеих панелях.",
+    "specify_output_directory_and_file_name": "Укажите выходную директорию и имя файла."
+  }
+}

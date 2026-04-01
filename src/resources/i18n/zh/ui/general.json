@@ -1,0 +1,20 @@
+{
+  "ui": {
+    "choose_capture_ring_color": "选择捕获环颜色",
+    "choose_divider_line_color": "选择分隔线颜色",
+    "choose_magnifier_border_color": "选择放大镜边框颜色",
+    "choose_magnifier_divider_line_color": "选择放大镜分隔线颜色",
+    "choose_magnifier_guides_color": "选择放大镜引导线颜色",
+    "drop_images_1_here": "在此处拖放图像1",
+    "drop_images_2_here": "在此处拖放图像2",
+    "edit_current_image_1_name": "编辑当前图像1名称",
+    "edit_current_image_2_name": "编辑当前图像2名称",
+    "include_file_names_in_saved_image": "在保存的图像中包含文件名",
+    "psnr": "PSNR",
+    "select_color": "选择颜色",
+    "showhide_window": "显示/隐藏窗口",
+    "ssim": "SSIM",
+    "toggle_split_orientation": "切换分割方向（水平/垂直）",
+    "choose_magnifier_base_color": "选择放大镜元素的基础颜色"
+  }
+}

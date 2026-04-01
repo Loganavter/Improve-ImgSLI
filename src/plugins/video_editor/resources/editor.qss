@@ -204,12 +204,12 @@
 
 #VideoEditorExportProgress {
     border: none;
-    background-color: #2d2d2d;
+    background-color: @dialog.input.background;
     border-radius: 2px;
 }
 
 #VideoEditorExportProgress::chunk {
-    background-color: #0078D4;
+    background-color: @accent;
     border-radius: 2px;
 }
 

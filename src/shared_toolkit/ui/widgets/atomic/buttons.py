@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 
 from ...icon_manager import AppIcon, get_app_icon
 from ...managers.theme_manager import ThemeManager
+from .tooltips import install_custom_tooltip
 from .tool_button import ToolButton
 
 class ButtonType(Enum):
@@ -90,6 +91,7 @@ class IconButton(QWidget):
 
         self._update_icon()
         self.theme_manager.theme_changed.connect(self._update_icon)
+        install_custom_tooltip(self)
 
         self.style().polish(self)
 
@@ -191,6 +193,7 @@ class LongPressIconButton(QWidget):
 
         self._update_icon()
         self.theme_manager.theme_changed.connect(self._update_icon)
+        install_custom_tooltip(self)
 
         self._long_press_timer = QTimer(self)
         self._long_press_timer.setSingleShot(True)

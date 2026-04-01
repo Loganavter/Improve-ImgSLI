@@ -1,0 +1,29 @@
+{
+  "msg": {
+    "edge_comparison_done": "Comparação de bordas concluída",
+    "edge_comparison_in_progress": "Comparação de bordas...",
+    "error_normalizing_path": "Erro ao normalizar caminho",
+    "error_processing_path": "Erro ao processar caminho",
+    "error_saving": "Erro ao salvar",
+    "failed_to_load_image": "Falha ao carregar imagem",
+    "failed_to_quick_save_image": "Falha ao salvar imagem rapidamente",
+    "failed_to_save_image": "Falha ao salvar imagem",
+    "grayscale_diff_done": "Diferença em escala de cinza concluída",
+    "grayscale_diff_in_progress": "Diferença em escala de cinza...",
+    "highlight_diff_done": "Destaque de diferenças concluído",
+    "highlight_diff_in_progress": "Destaque de diferenças...",
+    "invalid_data": "Dados Inválidos",
+    "invalid_item_type_or_empty_path": "Tipo de item inválido ou caminho vazio",
+    "loading_images_from_clipboard": "Carregando imagens do clipboard...",
+    "no_image_in_clipboard": "Nenhuma imagem no clipboard",
+    "saved": "Salvo",
+    "saving": "Salvando",
+    "saving_canceled": "Salvamento cancelado",
+    "some_images_could_not_be_loaded": "Algumas imagens não puderam ser carregadas",
+    "ssim_calculation_done": "SSIM concluído",
+    "ssim_calculation_in_progress": "Cálculo de SSIM...",
+    "starting_video_export_please_wait": "Iniciando exportação de vídeo... Por favor, aguarde.",
+    "select_both_images_first": "Por favor, carregue e selecione imagens em ambos os slots primeiro.",
+    "specify_output_directory_and_file_name": "Por favor, especifique o diretório de saída e o nome do arquivo."
+  }
+}

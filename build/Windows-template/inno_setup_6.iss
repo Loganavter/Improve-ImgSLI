@@ -1,11 +1,11 @@
 ; -- Improve_ImgSLI Inno Setup Script --
 
 #define MyAppName "Improve ImgSLI"
-#define MyAppVersion "8.0.0"
+#define MyAppVersion "8.1.0"
 #define MyAppPublisher "Loganavter"
 #define MyAppURL "https://github.com/Loganavter/Improve-ImgSLI"
 #define MyAppExeName "Improve_ImgSLI.exe"
-#define MyAppSetupName "Improve_ImgSLI_Setup_v8.0.0"
+#define MyAppSetupName "Improve_ImgSLI_Setup_v8.1.0"
 
 [Setup]
 AppName={#MyAppName}
@@ -33,6 +33,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\..\dist\Improve_ImgSLI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Registry]
+Root: HKCU; Subkey: "Software\improve-imgsli\improve-imgsli"; ValueType: string; ValueName: "is_first_run"; ValueData: "true"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\improve-imgsli\improve-imgsli"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\improve-imgsli"; Flags: uninsdeletekeyifempty
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
