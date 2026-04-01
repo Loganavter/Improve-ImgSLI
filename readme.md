@@ -31,7 +31,7 @@
 ## 📸 Preview
 
 <div align="center">
-   <img width="1920" height="994" alt="Снимок экрана от 2025-10-21 02-47-54" src="https://github.com/user-attachments/assets/3b800ba4-6d37-4a74-aa19-58c2e2ae3ec9" width="75%">
+   <img width="1920" height="994" src="https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_1.png" width="75%">
 </div>
 
 <details>
