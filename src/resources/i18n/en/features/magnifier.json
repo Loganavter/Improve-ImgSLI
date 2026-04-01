@@ -1,0 +1,17 @@
+{
+  "magnifier": {
+    "bicubic": "Bicubic",
+    "bilinear": "Bilinear",
+    "capture_ring": "Capture Ring",
+    "change_magnifier_colors": "Change Magnifier Colors",
+    "ewa_lanczos": "EWA Lanczos (Superior Anti-Aliasing)",
+    "freeze_magnifier_position": "Freeze Magnifier Position",
+    "lanczos": "Lanczos (High Quality)",
+    "magnifier_interpolation": "Magnifier Interpolation",
+    "move_speed": "Move Speed",
+    "nearest_neighbor": "Nearest Neighbor",
+    "toggle_magnifier": "Toggle Magnifier",
+    "toggle_magnifier_guide_lines": "Toggle Magnifier Guide Lines",
+    "fit_mode_toggle": "Off: Crop to Image\nOn: Fit Magnifier (Expand Canvas)"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "magnifier": {
+    "bicubic": "双三次",
+    "bilinear": "双线性",
+    "capture_ring": "捕捉环",
+    "change_magnifier_colors": "更改放大镜颜色",
+    "ewa_lanczos": "EWA Lanczos (高级抗锯齿)",
+    "freeze_magnifier_position": "冻结放大镜位置",
+    "lanczos": "Lanczos (高质量)",
+    "magnifier_interpolation": "放大镜插值",
+    "move_speed": "移动速度",
+    "nearest_neighbor": "最近邻",
+    "toggle_magnifier": "切换放大镜",
+    "toggle_magnifier_guide_lines": "切换放大镜引导线",
+    "fit_mode_toggle": "关闭：裁剪到图像\n开启：适合放大镜（扩展画布）"
+  }
+}

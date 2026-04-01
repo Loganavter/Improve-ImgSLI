@@ -1,11 +1,14 @@
-from PyQt6.QtCore import QEvent, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QMouseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
+from core.constants import AppConstants
 from domain.qt_adapters import color_to_qcolor
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
 from shared_toolkit.ui.icon_manager import AppIcon
+from shared_toolkit.ui.managers.flyout_timer_service import DelayedActionTimer
 from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
+from shared_toolkit.ui.widgets.atomic.tooltips import install_custom_tooltip
 from shared_toolkit.ui.widgets.composite.color_options_flyout import ColorOptionsFlyout
 
 class ColorSettingsButton(QWidget):
@@ -20,6 +23,7 @@ class ColorSettingsButton(QWidget):
         self.setFixedSize(36, 36)
         self.current_language = current_language
         self.store = store
+        install_custom_tooltip(self)
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -36,15 +40,16 @@ class ColorSettingsButton(QWidget):
         self.flyout.elementHovered.connect(self.elementHovered.emit)
         self.flyout.elementHoverEnded.connect(self.elementHoverEnded.emit)
 
-        self.flyout_timer = QTimer(self)
-        self.flyout_timer.setSingleShot(True)
-        self.flyout_timer.setInterval(250)
-        self.flyout_timer.timeout.connect(self._show_flyout)
-
-        self.hide_timer = QTimer(self)
-        self.hide_timer.setSingleShot(True)
-        self.hide_timer.setInterval(300)
-        self.hide_timer.timeout.connect(self._check_and_hide_flyout)
+        self.flyout_timer = DelayedActionTimer(
+            self._show_flyout,
+            parent=self,
+            interval_ms=AppConstants.TRANSIENT_FLYOUT_SHOW_DELAY_MS,
+        )
+        self.hide_timer = DelayedActionTimer(
+            self._check_and_hide_flyout,
+            parent=self,
+            interval_ms=AppConstants.TRANSIENT_FLYOUT_HIDE_CHECK_DELAY_MS,
+        )
 
         self.button.installEventFilter(self)
         self.flyout.installEventFilter(self)
@@ -113,7 +118,9 @@ class ColorSettingsButton(QWidget):
 
                 if self.flyout.isVisible():
                     if hasattr(self.flyout, "schedule_auto_hide"):
-                        self.flyout.schedule_auto_hide(1000)
+                        self.flyout.schedule_auto_hide(
+                            AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
+                        )
                 else:
                     self.hide_timer.start()
 
@@ -126,7 +133,9 @@ class ColorSettingsButton(QWidget):
             elif event.type() == QEvent.Type.Leave:
 
                 if hasattr(self.flyout, "schedule_auto_hide"):
-                    self.flyout.schedule_auto_hide(1000)
+                    self.flyout.schedule_auto_hide(
+                        AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
+                    )
                 else:
                     self.hide_timer.start()
 
@@ -196,7 +205,7 @@ class ColorSettingsButton(QWidget):
 
         vp = self.store.viewport
 
-        use_mag = getattr(vp, "use_magnifier", False)
+        use_mag = getattr(vp.view_state, "use_magnifier", False)
 
         if not use_mag:
             default_col = QColor(255, 255, 255, 100)
@@ -204,7 +213,7 @@ class ColorSettingsButton(QWidget):
             return
 
         def _get_col(attr_name, default_alpha=255):
-            col = getattr(vp, attr_name, QColor(255, 255, 255))
+            col = getattr(vp.render_config, attr_name, QColor(255, 255, 255))
             c = color_to_qcolor(col) if hasattr(col, "r") else QColor(col)
 
             c.setAlpha(default_alpha)
@@ -215,12 +224,16 @@ class ColorSettingsButton(QWidget):
         col_border = _get_col("magnifier_border_color", 230)
         col_divider = _get_col("magnifier_divider_color", 230)
 
-        is_combined = getattr(vp, "is_magnifier_combined", False)
+        is_combined = getattr(vp.view_state, "is_magnifier_combined", False)
 
-        show_lasers = getattr(vp, "show_magnifier_guides", False)
+        show_lasers = getattr(vp.render_config, "show_magnifier_guides", False)
 
-        divider_visible_setting = getattr(vp, "magnifier_divider_visible", True)
-        divider_thickness = getattr(vp, "magnifier_divider_thickness", 2)
+        divider_visible_setting = getattr(
+            vp.render_config, "magnifier_divider_visible", True
+        )
+        divider_thickness = getattr(
+            vp.render_config, "magnifier_divider_thickness", 2
+        )
 
         show_divider = (
             is_combined and divider_visible_setting and (divider_thickness > 0)
@@ -238,7 +251,7 @@ class ColorSettingsButton(QWidget):
         self.button.set_color(active_colors)
 
     def _on_store_state_changed(self, domain: str):
-        if domain in ("viewport", "settings"):
+        if domain == "settings" or domain == "viewport" or domain.startswith("viewport."):
             self.refresh_visual_state()
 
             was_visible = self.flyout.isVisible()

@@ -1,0 +1,9 @@
+{
+  "misc": {
+    "export": "导出",
+    "select_an_image": "选择一个图像",
+    "set_as_favorite": "设为收藏",
+    "settings": "设置",
+    "name_length_limit_exceeded": "名称长度超出限制 ({limit})！"
+  }
+}

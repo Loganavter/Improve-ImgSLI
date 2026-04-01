@@ -1,6 +1,5 @@
 import logging
 import os
-
 import PIL.Image
 from PyQt6.QtCore import (
     QEvent,
@@ -12,37 +11,16 @@ from PyQt6.QtGui import (
     QIcon,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 
 from core.bootstrap import ApplicationContext
 from shared_toolkit.ui.managers.font_manager import FontManager
 from shared_toolkit.ui.overlay_layer import OverlayLayer
+from ui.main_window_lifecycle import MainWindowShutdownPipeline
 from ui.main_window_ui import Ui_ImageComparisonApp
+from ui.onboarding import OnboardingOverlay
 from utils.resource_loader import resource_path
-
-try:
-    from desktop_notifier import Attachment, DesktopNotifier, Icon, Urgency
-except Exception:
-    DesktopNotifier = None
-    Icon = None
-    Attachment = None
-    Urgency = None
-
-try:
-    from plugins.settings.dialog import SettingsDialog
-
-    _SETTINGS_DIALOG_AVAILABLE = True
-except ImportError:
-    logging.getLogger("ImproveImgSLI").warning("settings_dialog.py not found.")
-    _SETTINGS_DIALOG_AVAILABLE = False
-
-try:
-    from ui.onboarding import OnboardingOverlay
-
-    _ONBOARDING_OVERLAY_AVAILABLE = True
-except ImportError:
-    logging.getLogger("ImproveImgSLI").warning("onboarding.py not found.")
-    _ONBOARDING_OVERLAY_AVAILABLE = False
+from utils.geometry import GeometryManager
 
 PIL.Image.MAX_IMAGE_PIXELS = None
 logger = logging.getLogger("ImproveImgSLI")
@@ -54,6 +32,8 @@ class MainWindow(QWidget):
 
         self._is_ui_stable = False
         self._application_initialized = False
+        self._main_app_bootstrapped = False
+        self._shutdown_pipeline = MainWindowShutdownPipeline()
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
 
         self.app_context = ApplicationContext(debug_mode)
@@ -70,11 +50,22 @@ class MainWindow(QWidget):
             self.theme_manager.apply_theme_to_app(app)
             self.theme_manager.theme_changed.connect(self._on_theme_changed)
 
-        self.ui = Ui_ImageComparisonApp()
-        self.ui.setupUi(self)
+        self.ui = None
         self.overlay_layer = OverlayLayer(self)
+        self.tray_manager = None
+        self.main_controller = None
+        self.event_handler = None
+        self.presenter = None
+        self.ui_resource_manager = None
+        self._toast_manager = None
+        self.save_task_counter = 0
 
-        self.ui.install_rating_wheel_handlers()
+        self.geometry_manager = GeometryManager(
+            self,
+            self.settings_manager.settings,
+            self.store,
+        )
+        self._build_startup_shell()
 
         try:
             self.font_path_absolute = (
@@ -83,17 +74,6 @@ class MainWindow(QWidget):
         except Exception:
             self.font_path_absolute = None
 
-        components = self.app_context.create_window_dependent_components(self)
-
-        self.geometry_manager = components["geometry_manager"]
-        self.tray_manager = components["tray_manager"]
-        self.main_controller = components["main_controller"]
-        self.event_handler = components["event_handler"]
-        self.presenter = components["presenter"]
-
-        self._toast_manager = None
-        self.save_task_counter = 0
-
         self.setAcceptDrops(True)
 
         self._debounced_resize_timer = QTimer(self)
@@ -101,76 +81,123 @@ class MainWindow(QWidget):
         self._debounced_resize_timer.setInterval(150)
         self._debounced_resize_timer.timeout.connect(self._handle_debounced_resize)
 
+    def _build_startup_shell(self):
+        self._root_layout = QVBoxLayout(self)
+        self._root_layout.setContentsMargins(0, 0, 0, 0)
+        self._root_layout.setSpacing(0)
+        self._startup_stack = QStackedWidget(self)
+        self._root_layout.addWidget(self._startup_stack)
+        self._app_host = QWidget(self)
+        self._startup_stack.addWidget(self._app_host)
+        self.onboarding_overlay = None
+
+    def _should_show_onboarding(self) -> bool:
+        return self.settings_manager.is_first_run()
+
+    def _show_onboarding_page(self):
+        if self.onboarding_overlay is None:
+            self.onboarding_overlay = OnboardingOverlay(
+                self.settings_manager,
+                self.store,
+                self,
+            )
+            self.onboarding_overlay.completed.connect(self._on_onboarding_completed)
+            self._startup_stack.insertWidget(0, self.onboarding_overlay)
+        self.onboarding_overlay.resize(self.size())
+        self._startup_stack.setCurrentWidget(self.onboarding_overlay)
+
+    def _bootstrap_main_app(self):
+        if self._main_app_bootstrapped:
+            self._startup_stack.setCurrentWidget(self._app_host)
+            return
+
+        self.ui = Ui_ImageComparisonApp()
+        self.ui.setupUi(self._app_host)
+        self.ui.main_window = self
+        self._update_image_label_background()
+        if hasattr(self.ui.image_label, "firstFrameRendered"):
+            self.ui.image_label.firstFrameRendered.connect(
+                self.ui.hide_image_startup_placeholder
+            )
+
+        self.ui.install_rating_wheel_handlers()
+
+        components = self.app_context.create_window_dependent_components(self)
+        self.geometry_manager = components["geometry_manager"]
+        self.tray_manager = components["tray_manager"]
+        self.main_controller = components["main_controller"]
+        self.event_handler = components["event_handler"]
+        self.presenter = components["presenter"]
+        self.ui_resource_manager = components["ui_resource_manager"]
+
         self.installEventFilter(self.event_handler)
         self.ui.image_label.installEventFilter(self.event_handler)
-        QApplication.instance().installEventFilter(self.event_handler)
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self.event_handler)
 
-        QTimer.singleShot(0, self.initialize_application)
+        self._update_image_label_background()
+        if self.main_controller and self.main_controller.sessions:
+            self.main_controller.sessions.initialize_app_display()
+        self.ui.reapply_button_styles()
+        for attr_name in (
+            "btn_magnifier_color_settings",
+            "btn_magnifier_color_settings_beginner",
+        ):
+            button = getattr(self.ui, attr_name, None)
+            if button is not None and hasattr(button, "refresh_visual_state"):
+                button.refresh_visual_state()
+
+        self._startup_stack.setCurrentWidget(self._app_host)
+        self._main_app_bootstrapped = True
 
     @property
     def toast_manager(self):
         if self._toast_manager is not None:
             return self._toast_manager
         try:
-            layout_plugin = self.main_controller.plugin_coordinator.get_plugin("layout")
-            if layout_plugin is not None:
-                self._toast_manager = layout_plugin.toast_manager
+            layout_plugin = getattr(self.main_controller, "layout", None)
+            toast_manager = (
+                getattr(layout_plugin, "toast_manager", None)
+                if layout_plugin is not None
+                else None
+            )
+            if toast_manager is not None:
+                self._toast_manager = toast_manager
                 return self._toast_manager
         except Exception:
-            pass
+            logger.exception("Failed to resolve toast manager from layout plugin")
         return None
 
     def initialize_application(self):
         if self._application_initialized:
             return
-        self._application_initialized = True
         self.geometry_manager.load_and_apply()
-
         theme_from_env = os.getenv("APP_THEME", "auto").lower()
         final_theme_setting = (
-            theme_from_env if theme_from_env != "auto" else self.store.settings.theme
+            theme_from_env
+            if theme_from_env != "auto"
+            else self.store.settings.theme
         )
         self.apply_application_theme(final_theme_setting)
-
         try:
             FontManager.get_instance().apply_from_state(self.store)
         except Exception:
             pass
 
-        self._update_image_label_background()
-
-        if self.main_controller and self.main_controller.session_ctrl:
-            self.main_controller.session_ctrl.initialize_app_display()
-
-        self.ui.reapply_button_styles()
-
-        if hasattr(self.ui, "btn_magnifier_color_settings") and hasattr(
-            self.ui.btn_magnifier_color_settings, "refresh_visual_state"
-        ):
-            self.ui.btn_magnifier_color_settings.refresh_visual_state()
-
-        if hasattr(self.ui, "btn_magnifier_color_settings_beginner") and hasattr(
-            self.ui.btn_magnifier_color_settings_beginner, "refresh_visual_state"
-        ):
-            self.ui.btn_magnifier_color_settings_beginner.refresh_visual_state()
-
-        if _ONBOARDING_OVERLAY_AVAILABLE and self.settings_manager.is_first_run():
-
-            self.onboarding_overlay = OnboardingOverlay(
-                self.settings_manager, self.store, self
-            )
-
-            self.onboarding_overlay.resize(self.size())
-            self.onboarding_overlay.show()
-
-            self.onboarding_overlay.completed.connect(self._on_onboarding_completed)
+        if self._should_show_onboarding():
+            self._show_onboarding_page()
+        else:
+            self._bootstrap_main_app()
+        self._application_initialized = True
 
     def apply_application_theme(self, theme_name: str):
         app = QApplication.instance()
         self.theme_manager.set_theme(theme_name, app)
         if self.store.settings.theme != theme_name:
             self.store.settings.theme = theme_name
-        self.ui.reapply_button_styles()
+        if self.ui is not None:
+            self.ui.reapply_button_styles()
 
     def changeEvent(self, event: QEvent):
         super().changeEvent(event)
@@ -179,108 +206,83 @@ class MainWindow(QWidget):
             QTimer.singleShot(0, self.schedule_update)
 
     def _handle_debounced_resize(self):
-        if self.store.viewport.resize_in_progress:
-            self.store.viewport.resize_in_progress = False
+        if self.store.viewport.interaction_state.resize_in_progress:
+            self.store.viewport.interaction_state.resize_in_progress = False
             self.schedule_update()
         if not self.isMaximized() and not self.isFullScreen():
             self.geometry_manager.update_normal_geometry_if_needed()
 
     def resizeEvent(self, event: QResizeEvent):
         super().resizeEvent(event)
+        if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
+            self.ui.sync_image_startup_placeholder()
 
         if hasattr(self, "onboarding_overlay") and self.onboarding_overlay:
             self.onboarding_overlay.resize(self.size())
 
-        if hasattr(self, "presenter") and self.presenter:
-            self.presenter.ui_manager.unified_flyout.hide()
+        if self.presenter is not None:
+            flyout = getattr(self.presenter.ui_manager, "unified_flyout", None)
+            if flyout is not None:
+                try:
+                    flyout.hide()
+                except RuntimeError as exc:
+                    if "UnifiedFlyout has been deleted" in str(exc):
+                        self.presenter.ui_manager.transient.host.unified_flyout = None
+                    else:
+                        raise
 
-        if not self.store.viewport.resize_in_progress:
-            self.store.viewport.resize_in_progress = True
+        if not self.store.viewport.interaction_state.resize_in_progress:
+            self.store.viewport.interaction_state.resize_in_progress = True
 
-        self.ui.update_drag_overlays(
-            self.store.viewport.is_horizontal, self.ui.is_drag_overlay_visible()
-        )
+        if self.ui is not None:
+            self.ui.update_drag_overlays(
+                self.store.viewport.view_state.is_horizontal,
+                self.ui.is_drag_overlay_visible(),
+            )
         self._debounced_resize_timer.start()
 
     def closeEvent(self, event: QEvent):
         logger.debug("Начало закрытия главного окна...")
-
-        self._closing = True
-
-        if hasattr(self, "app_context") and self.app_context:
-            self.app_context._is_shutting_down = True
-
-        if hasattr(self, "presenter") and self.presenter:
-
-            if hasattr(self.presenter, "export_presenter"):
-                try:
-                    self.presenter.export_presenter.cancel_all_exports()
-                except Exception as e:
-                    logger.error(f"Ошибка при отмене экспортов: {e}")
-
-            if hasattr(self.presenter, "image_canvas_presenter"):
-                image_presenter = self.presenter.image_canvas_presenter
-                if hasattr(image_presenter, "_update_scheduler_timer"):
-                    image_presenter._update_scheduler_timer.stop()
-
-        if hasattr(self, "_debounced_resize_timer"):
-            self._debounced_resize_timer.stop()
-
-        self._close_derived_windows()
-
-        try:
-            self.geometry_manager.update_normal_geometry_if_needed()
-            self.geometry_manager.save_on_close()
-            self.settings_manager.save_all_settings(self.store)
-        except Exception as e:
-            logger.error(f"Ошибка при сохранении настроек: {e}")
-
-        if self.tray_manager:
-            try:
-                self.tray_manager.shutdown()
-            except Exception as e:
-                logger.error(f"Ошибка при остановке TrayManager: {e}")
-
-        if hasattr(self, "app_context") and self.app_context:
-            try:
-                self.app_context.shutdown()
-            except Exception as e:
-                logger.error(f"Ошибка при завершении ApplicationContext: {e}")
+        self._shutdown_pipeline.run(self)
 
         logger.debug("Завершение закрытия главного окна")
+        try:
+            self.hide()
+        except Exception:
+            pass
+        event.accept()
         super().closeEvent(event)
-
-    def _close_derived_windows(self):
+        try:
+            self.deleteLater()
+        except Exception:
+            pass
         app = QApplication.instance()
-        if app is None:
-            return
-
-        for widget in list(app.topLevelWidgets()):
-            if widget is None or widget is self:
-                continue
-            try:
-                widget.close()
-            except Exception as e:
-                logger.error(f"Ошибка при закрытии производного окна {widget}: {e}")
-            try:
-                if widget.isVisible():
-                    widget.hide()
-            except Exception:
-                pass
-            try:
-                widget.deleteLater()
-            except Exception:
-                pass
+        if app is not None:
+            QTimer.singleShot(0, lambda: app.exit(0))
 
     def moveEvent(self, event: QEvent):
         super().moveEvent(event)
-        if hasattr(self, "presenter") and self.presenter:
-            self.presenter.ui_manager.unified_flyout.hide()
+        if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
+            self.ui.sync_image_startup_placeholder()
+        if hasattr(self, "onboarding_overlay") and self.onboarding_overlay:
+            self.onboarding_overlay.resize(self.size())
+        if self.presenter is not None:
+            flyout = getattr(self.presenter.ui_manager, "unified_flyout", None)
+            if flyout is not None:
+                try:
+                    flyout.hide()
+                except RuntimeError as exc:
+                    if "UnifiedFlyout has been deleted" in str(exc):
+                        self.presenter.ui_manager.transient.host.unified_flyout = None
+                    else:
+                        raise
         if not self.isMaximized() and not self.isFullScreen():
             self.geometry_manager.update_normal_geometry_if_needed()
 
     def showEvent(self, event: QEvent):
         super().showEvent(event)
+        if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
+            self.ui.sync_image_startup_placeholder()
         if not self._is_ui_stable:
             QTimer.singleShot(
                 50,
@@ -288,26 +290,30 @@ class MainWindow(QWidget):
             )
 
     def mousePressEvent(self, event):
-
         focused = self.focusWidget()
-        if focused in (self.ui.edit_name1, self.ui.edit_name2):
+        if self.ui is not None and focused in (self.ui.edit_name1, self.ui.edit_name2):
             focused.clearFocus()
         super().mousePressEvent(event)
 
     def schedule_update(self):
-        if (
-            hasattr(self, "presenter")
-            and self.presenter
-            and hasattr(self.presenter, "image_canvas_presenter")
-        ):
-            self.presenter.image_canvas_presenter.schedule_update()
+        if self.presenter is not None:
+            self.presenter.schedule_canvas_update()
 
     def _update_image_label_background(self):
-        if hasattr(self.ui, "image_label"):
+        if self.ui is not None and hasattr(self.ui, "image_label"):
             bg = self.theme_manager.get_color("label.image.background")
             pal = self.ui.image_label.palette()
             pal.setColor(self.ui.image_label.backgroundRole(), bg)
+            pal.setColor(self.ui.image_label.foregroundRole(), bg)
+            from PyQt6.QtGui import QPalette
+            pal.setColor(QPalette.ColorRole.Window, bg)
+            pal.setColor(QPalette.ColorRole.Base, bg)
             self.ui.image_label.setPalette(pal)
+            self.ui.image_label.setStyleSheet(
+                f"background-color: {bg.name(QColor.NameFormat.HexArgb)};"
+            )
+            if hasattr(self.ui, "set_image_startup_placeholder_color"):
+                self.ui.set_image_startup_placeholder_color(bg)
 
     def _on_theme_changed(self):
         self._update_image_label_background()
@@ -333,17 +339,21 @@ class MainWindow(QWidget):
         image_path: str | None = None,
         timeout_ms: int = 4000,
     ):
-        if getattr(self.store.settings, "system_notifications_enabled", True):
-            self.notification_service.send(title, message, image_path, timeout_ms)
+        enabled = getattr(self.store.settings, "system_notifications_enabled", True)
+        if enabled:
+            try:
+                self.notification_service.send(title, message, image_path, timeout_ms)
+            except Exception:
+                logger.exception("notify_system send failed")
 
     def set_divider_button_color(self, color: QColor):
-        if hasattr(self.ui, "btn_orientation"):
+        if self.ui is not None and hasattr(self.ui, "btn_orientation"):
             self.ui.btn_orientation.set_color(color)
 
     def update_interpolation_combo_state(
         self, count: int, current_index: int, text: str, items: list[str]
     ):
-        if hasattr(self.ui, "combo_interpolation"):
+        if self.ui is not None and hasattr(self.ui, "combo_interpolation"):
             self.ui.combo_interpolation.updateState(
                 count=count,
                 current_index=current_index,
@@ -352,12 +362,12 @@ class MainWindow(QWidget):
             )
 
     def configure_diff_mode_actions(self, actions, current_value):
-        if hasattr(self.ui, "btn_diff_mode"):
+        if self.ui is not None and hasattr(self.ui, "btn_diff_mode"):
             self.ui.btn_diff_mode.set_actions(actions)
             self.ui.btn_diff_mode.set_current_by_data(current_value)
 
     def configure_channel_mode_actions(self, actions, current_value):
-        if hasattr(self.ui, "btn_channel_mode"):
+        if self.ui is not None and hasattr(self.ui, "btn_channel_mode"):
             self.ui.btn_channel_mode.set_actions(actions)
             self.ui.btn_channel_mode.set_current_by_data(current_value)
 
@@ -400,24 +410,14 @@ class MainWindow(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
     def _on_onboarding_completed(self, mode_key: str):
-
         self.store.settings.ui_mode = mode_key
-        if self.presenter and self.presenter.main_controller:
-
-            layout_plugin = (
-                self.presenter.main_controller.plugin_coordinator.get_plugin("layout")
-            )
-            if layout_plugin and layout_plugin.manager:
-                layout_plugin.manager.apply_mode(mode_key)
-
-            if self.presenter.main_controller.event_bus:
-                from core.events import SettingsUIModeChangedEvent
-
-                self.presenter.main_controller.event_bus.emit(
-                    SettingsUIModeChangedEvent(mode_key)
-                )
-
         if hasattr(self, "onboarding_overlay") and self.onboarding_overlay:
+            try:
+                self._startup_stack.removeWidget(self.onboarding_overlay)
+            except Exception:
+                pass
             self.onboarding_overlay.hide()
             self.onboarding_overlay.deleteLater()
         self.onboarding_overlay = None
+        self._bootstrap_main_app()
+        self.schedule_update()

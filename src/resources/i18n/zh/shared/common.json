@@ -1,0 +1,26 @@
+{
+  "common": {
+    "cancel": "取消",
+    "error": "错误",
+    "file_type": {
+      "all_files": "所有文件",
+      "image_files": "图像文件"
+    },
+    "ok": "确定",
+    "position": {
+      "bottom": "底部",
+      "center": "居中",
+      "down": "向下",
+      "left": "左侧",
+      "right": "右侧",
+      "top": "顶部",
+      "up": "向上"
+    },
+    "switch": {
+      "off": "关闭",
+      "switch_off": "关闭",
+      "switch_on": "开启"
+    },
+    "warning": "警告"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "msg": {
+    "edge_comparison_done": "Edge comparison done",
+    "edge_comparison_in_progress": "Edge comparison...",
+    "error_normalizing_path": "Error normalizing path",
+    "error_processing_path": "Error processing path",
+    "error_saving": "Error saving",
+    "failed_to_load_image": "Failed to load image",
+    "failed_to_quick_save_image": "Failed to quick save image",
+    "failed_to_save_image": "Failed to save image",
+    "grayscale_diff_done": "Grayscale diff done",
+    "grayscale_diff_in_progress": "Grayscale diff...",
+    "highlight_diff_done": "Highlight diff done",
+    "highlight_diff_in_progress": "Highlight diff...",
+    "invalid_data": "Invalid Data",
+    "invalid_item_type_or_empty_path": "Invalid item type or empty path",
+    "loading_images_from_clipboard": "Loading images from clipboard...",
+    "no_image_in_clipboard": "No image in clipboard",
+    "saved": "Saved",
+    "saving": "Saving",
+    "saving_canceled": "Saving canceled",
+    "some_images_could_not_be_loaded": "Some images could not be loaded",
+    "ssim_calculation_done": "SSIM done",
+    "ssim_calculation_in_progress": "SSIM calculation...",
+    "starting_video_export_please_wait": "Starting video export... Please wait.",
+    "select_both_images_first": "Please load and select images in both slots first.",
+    "specify_output_directory_and_file_name": "Please specify output directory and file name."
+  }
+}

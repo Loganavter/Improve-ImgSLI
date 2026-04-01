@@ -1,0 +1,17 @@
+{
+  "export": {
+    "at_edges": "At Edges",
+    "background_color": "Background Color",
+    "comment": "Comment",
+    "draw_text_background": "Draw text background",
+    "fill_background": "Fill background",
+    "include_metadata": "Include metadata",
+    "near_split_line": "Near Split Line",
+    "optimize_png": "Optimize PNG",
+    "png_compression_level": "PNG Compression Level",
+    "preview": "Preview",
+    "remember_by_default": "Remember by default",
+    "select_background_color": "Select Background Color",
+    "select_output_directory": "Select Output Directory"
+  }
+}

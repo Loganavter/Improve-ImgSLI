@@ -1,10 +1,14 @@
-from PyQt6.QtCore import QPoint, QTimer
+import logging
+
 from PyQt6.QtWidgets import QHBoxLayout, QWidget
 
+from shared_toolkit.ui.managers.flyout_timer_service import AnchoredFlyoutAutoHide
 from shared_toolkit.ui.widgets.atomic.numbered_toggle_icon_button import (
     NumberedToggleIconButton,
 )
 from shared_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
+
+logger = logging.getLogger("ImproveImgSLI")
 
 class MagnifierVisibilityFlyout(BaseFlyout):
     def __init__(self, parent_widget: QWidget):
@@ -26,9 +30,11 @@ class MagnifierVisibilityFlyout(BaseFlyout):
             self.h_layout.addWidget(b)
 
         self._count = 3
-        self._auto_hide_timer = QTimer(self)
-        self._auto_hide_timer.setSingleShot(True)
-        self._auto_hide_timer.timeout.connect(self._on_auto_hide_timeout)
+        self._auto_hide = AnchoredFlyoutAutoHide(
+            flyout=self,
+            anchor_getter=lambda: self._anchor_button,
+            parent=self,
+        )
 
         self.hide()
 
@@ -53,28 +59,9 @@ class MagnifierVisibilityFlyout(BaseFlyout):
     def update_display_numbers(
         self, left_on: bool, center_on: bool, right_on: bool, show_center: bool
     ):
-
-        self.btn_left.set_display_number(None)
-        self.btn_center.set_display_number(None)
-        self.btn_right.set_display_number(None)
-
-        next_num = 1
-
-        if left_on:
-            self.btn_left.set_display_number(next_num)
-            next_num += 1
-
-        if show_center:
-            if center_on:
-                self.btn_center.set_display_number(next_num)
-                next_num += 1
-            else:
-
-                self.btn_center.set_display_number(None)
-
-        if right_on:
-            self.btn_right.set_display_number(next_num)
-            next_num += 1
+        self.btn_left.set_display_number(1)
+        self.btn_center.set_display_number(2 if show_center else None)
+        self.btn_right.set_display_number(3 if show_center else 2)
 
     def show_for_button(
         self, anchor_btn: QWidget, parent_widget: QWidget, hover_delay_ms: int = 0
@@ -89,42 +76,10 @@ class MagnifierVisibilityFlyout(BaseFlyout):
             _do_show()
 
     def schedule_auto_hide(self, ms: int):
-        if ms <= 0:
-            self._auto_hide_timer.stop()
-            return
-        self._auto_hide_timer.start(ms)
+        self._auto_hide.schedule(ms)
 
     def cancel_auto_hide(self):
-        self._auto_hide_timer.stop()
-
-    def _on_auto_hide_timeout(self):
-        if not self.isVisible():
-            return
-
-        from PyQt6.QtGui import QCursor
-
-        cursor_pos = QCursor.pos()
-
-        try:
-            if self.contains_global(cursor_pos):
-                self.schedule_auto_hide(1000)
-                return
-        except Exception:
-            pass
-
-        if self._anchor_button:
-            try:
-                button_global_pos = self._anchor_button.mapToGlobal(QPoint(0, 0))
-                button_rect = self._anchor_button.rect()
-                button_global_rect = button_rect.translated(button_global_pos)
-                if button_global_rect.contains(cursor_pos):
-
-                    self.schedule_auto_hide(1000)
-                    return
-            except Exception:
-                pass
-
-        self.hide()
+        self._auto_hide.cancel()
 
     def hide(self):
         self.cancel_auto_hide()

@@ -7,6 +7,7 @@ from PyQt6.QtCore import (
     pyqtSignal,
 )
 from PyQt6.QtGui import (
+    QCursor,
     QFont,
     QFontMetrics,
     QMouseEvent,
@@ -409,7 +410,7 @@ class RatingListItem(QWidget):
     def _show_tooltip(self):
         if self.full_path:
             PathTooltip.get_instance().show_tooltip(
-                self.mapToGlobal(self.rect().center()), self.full_path
+                QCursor.pos(), self.full_path
             )
 
     def _notify_flyout_drop_indicator(self, global_pos):

@@ -1,0 +1,17 @@
+{
+  "export": {
+    "at_edges": "靠边",
+    "background_color": "背景颜色",
+    "comment": "评论",
+    "draw_text_background": "绘制文本背景",
+    "fill_background": "填充背景",
+    "include_metadata": "包含元数据",
+    "near_split_line": "靠分割线",
+    "optimize_png": "优化PNG",
+    "png_compression_level": "PNG压缩级别",
+    "preview": "预览",
+    "remember_by_default": "默认记住",
+    "select_background_color": "选择背景颜色",
+    "select_output_directory": "选择输出目录"
+  }
+}

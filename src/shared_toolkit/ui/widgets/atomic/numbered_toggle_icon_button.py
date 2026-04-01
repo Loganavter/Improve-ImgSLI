@@ -38,7 +38,7 @@ class NumberedToggleIconButton(ToggleIconButton):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         is_dark = self._theme_manager.is_dark()
-        text_color = QColor("#ffffff" if is_dark else "#2d2d2d")
+        text_color = QColor(self._theme_manager.get_color("dialog.text"))
 
         if self.isChecked():
             text_color.setAlpha(140)

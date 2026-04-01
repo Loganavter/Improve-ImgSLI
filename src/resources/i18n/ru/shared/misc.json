@@ -1,0 +1,9 @@
+{
+  "misc": {
+    "export": "Экспорт",
+    "select_an_image": "Выберите изображение",
+    "set_as_favorite": "Установить как избранное",
+    "settings": "Настройки",
+    "name_length_limit_exceeded": "Превышен лимит длины имени ({limit})!"
+  }
+}

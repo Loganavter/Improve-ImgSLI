@@ -117,12 +117,8 @@ class ClipboardService:
     def show_paste_direction_dialog(self, items_to_process: list):
         try:
             main_window = None
-            if (
-                self.main_controller
-                and hasattr(self.main_controller, "presenter")
-                and self.main_controller.presenter
-            ):
-                main_window = self.main_controller.presenter.main_window_app
+            if self.main_controller and self.main_controller.window_shell:
+                main_window = self.main_controller.window_shell.main_window_app
             if not main_window:
                 return False
 
@@ -133,11 +129,10 @@ class ClipboardService:
                 local_files = [i for i in items_to_process if os.path.exists(i)]
                 urls = [i for i in items_to_process if i.startswith("http")]
 
-                if local_files:
-                    if self.main_controller and self.main_controller.session_ctrl:
-                        self.main_controller.session_ctrl.load_images_from_paths(
-                            local_files, slot_number
-                        )
+                if local_files and self.main_controller and self.main_controller.sessions:
+                    self.main_controller.sessions.load_images_from_paths(
+                        local_files, slot_number
+                    )
 
                 if urls:
                     if self.main_controller:
@@ -149,14 +144,14 @@ class ClipboardService:
                         )
                     worker = GenericWorker(self.download_images_from_urls, urls, 15)
 
-                    if self.main_controller and self.main_controller.session_ctrl:
+                    if self.main_controller and self.main_controller.sessions:
                         worker.signals.result.connect(
                             lambda paths: (
-                                self.main_controller.session_ctrl.load_images_from_paths(
+                                self.main_controller.sessions.load_images_from_paths(
                                     paths, slot_number
                                 )
                                 if self.main_controller
-                                and self.main_controller.session_ctrl
+                                and self.main_controller.sessions
                                 else None
                             )
                         )
@@ -174,7 +169,7 @@ class ClipboardService:
                 )
                 image_label.set_paste_overlay_state(
                     True,
-                    is_horizontal=self.store.viewport.is_horizontal,
+                    is_horizontal=self.store.viewport.view_state.is_horizontal,
                     texts={
                         "up": tr("common.position.up", self.store.settings.current_language),
                         "down": tr("common.position.down", self.store.settings.current_language),
@@ -192,7 +187,7 @@ class ClipboardService:
             overlay = PasteDirectionOverlay(
                 main_window,
                 main_window.ui.image_label,
-                is_horizontal=self.store.viewport.is_horizontal,
+                is_horizontal=self.store.viewport.view_state.is_horizontal,
             )
             overlay.set_language(self.store.settings.current_language)
             self._paste_dialog = overlay

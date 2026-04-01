@@ -1,0 +1,19 @@
+{
+  "button": {
+    "add_images_1": "Доб. Изобр(ы) 1",
+    "add_images_2": "Доб. Изобр(ы) 2",
+    "browse": "Обзор...",
+    "hold_clear_entire_list": "Удержание: Очистить весь список",
+    "pause": "Пауза",
+    "pauseresume_recording": "Приостановить/Возобновить запись",
+    "play": "Воспроизведение",
+    "record": "Запись",
+    "redo": "Повторить",
+    "save_result": "Сохранить результат",
+    "select_images": "Выбрать изображение(я)",
+    "startstop_recording": "Начать/Остановить запись",
+    "stop": "Остановить",
+    "trim_to_selection": "Обрезать по выделению",
+    "undo_ctrlz": "Отменить (Ctrl+Z)"
+  }
+}

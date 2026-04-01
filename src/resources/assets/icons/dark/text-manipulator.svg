@@ -46,21 +46,21 @@
      stroke-width="1"
      fill="none"
      fill-rule="evenodd"
-     style="fill:none;stroke:#dfdfdf;stroke-width:1.79751;stroke-dasharray:none;stroke-opacity:1"
+     style="fill:none;stroke:#ffffff;stroke-width:1.79751;stroke-dasharray:none;stroke-opacity:1"
      transform="matrix(0.91869015,0,0,0.95896617,0.85307082,0.42738079)">
     <g
        id="Dribbble-Light-Preview"
        transform="translate(-259,-840)"
-       fill="#dfdfdf"
-       style="fill:none;stroke:#dfdfdf;stroke-width:1.79751;stroke-dasharray:none;stroke-opacity:1">
+       fill="#ffffff"
+       style="fill:none;stroke:#ffffff;stroke-width:1.79751;stroke-dasharray:none;stroke-opacity:1">
       <g
          id="icons"
          transform="translate(56,160)"
-         style="fill:none;stroke:#dfdfdf;stroke-width:1.79751;stroke-dasharray:none;stroke-opacity:1">
+         style="fill:none;stroke:#ffffff;stroke-width:1.79751;stroke-dasharray:none;stroke-opacity:1">
         <path
            d="m 211.26106,690.69476 c -1.638,1.55967 -4.29425,1.55967 -5.93225,0 l -1.71456,-1.63256 c -0.819,-0.77983 -0.819,-2.04394 0,-2.82378 0.819,-0.77983 2.14765,-0.77983 2.96665,0 1.14094,1.08638 2.39199,0.98653 3.19631,0.21968 0.81062,-0.77185 0.90814,-1.96007 -0.23594,-3.04845 -0.81901,-0.77983 -0.81901,-2.04494 0,-2.82477 0.82005,-0.77984 2.14765,-0.77984 2.96665,0 l 1.71875,1.63655 c 1.638,1.55967 1.638,4.08889 0,5.64856 l 9.12962,8.694 c 1.96203,1.86721 -1.00567,4.68999 -2.96561,2.82378 z"
            id="settings-[#1365]"
-           style="fill:none;stroke:#dfdfdf;stroke-width:1.79751;stroke-dasharray:none;stroke-opacity:1" />
+           style="fill:none;stroke:#ffffff;stroke-width:1.79751;stroke-dasharray:none;stroke-opacity:1" />
       </g>
     </g>
   </g>

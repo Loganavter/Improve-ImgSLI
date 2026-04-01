@@ -1,0 +1,11 @@
+{
+  "action": {
+    "export_video": "Export Video",
+    "open_application_settings": "Open Application Settings",
+    "open_last_file": "Open last file",
+    "open_save_folder": "Open save folder",
+    "open_video_editor_exporter": "Open Video Editor & Exporter",
+    "quit": "Quit",
+    "show_help": "Show Help"
+  }
+}

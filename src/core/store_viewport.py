@@ -157,9 +157,28 @@ class RenderConfig:
         }
 
 @dataclass
-class SessionData:
+class ImageSessionState:
     image1: Optional[Any] = None
     image2: Optional[Any] = None
+
+    loaded_image1_paths: list[str] = field(default_factory=list)
+    loaded_image2_paths: list[str] = field(default_factory=list)
+    loaded_current_index1: int = -1
+    loaded_current_index2: int = -1
+
+    auto_calculate_psnr: bool = False
+    auto_calculate_ssim: bool = False
+    psnr_value: Optional[float] = None
+    ssim_value: Optional[float] = None
+
+    def clone(self):
+        new_obj = copy.copy(self)
+        new_obj.loaded_image1_paths = list(self.loaded_image1_paths)
+        new_obj.loaded_image2_paths = list(self.loaded_image2_paths)
+        return new_obj
+
+@dataclass
+class RenderCacheState:
 
     display_cache_image1: Optional[Any] = None
     display_cache_image2: Optional[Any] = None
@@ -178,15 +197,88 @@ class SessionData:
     last_split_cached_params: Optional[tuple] = None
     cached_diff_image: Optional[Any] = None
 
-    loaded_image1_paths: list[str] = field(default_factory=list)
-    loaded_image2_paths: list[str] = field(default_factory=list)
-    loaded_current_index1: int = -1
-    loaded_current_index2: int = -1
+    def clone(self):
+        new_obj = copy.copy(self)
+        new_obj.unified_image_cache = self.unified_image_cache.__class__(
+            self.unified_image_cache
+        )
+        new_obj.caches = dict(self.caches)
+        new_obj.magnifier_cache = dict(self.magnifier_cache)
+        return new_obj
 
-    auto_calculate_psnr: bool = False
-    auto_calculate_ssim: bool = False
-    psnr_value: Optional[float] = None
-    ssim_value: Optional[float] = None
+class SessionData:
+    __slots__ = ("_image_state", "_render_cache")
+
+    def __init__(
+        self,
+        image_state: Optional[ImageSessionState] = None,
+        render_cache: Optional[RenderCacheState] = None,
+    ):
+        self._image_state = image_state or ImageSessionState()
+        self._render_cache = render_cache or RenderCacheState()
+
+    @property
+    def image_state(self) -> ImageSessionState:
+        return self._image_state
+
+    @image_state.setter
+    def image_state(self, val):
+        self._image_state = val
+
+    @property
+    def render_cache(self) -> RenderCacheState:
+        return self._render_cache
+
+    @render_cache.setter
+    def render_cache(self, val):
+        self._render_cache = val
+
+    def clone(self):
+        return SessionData(
+            image_state=self._image_state.clone(),
+            render_cache=self._render_cache.clone(),
+        )
+
+@dataclass
+class GeometryState:
+    pixmap_width: int = 0
+    pixmap_height: int = 0
+    image_display_rect_on_label: Rect = field(default_factory=lambda: Rect())
+    fixed_label_width: Optional[int] = None
+    fixed_label_height: Optional[int] = None
+
+    magnifier_screen_center: Point = field(default_factory=lambda: Point())
+    magnifier_screen_size: int = 0
+
+    loaded_geometry: bytes = b""
+    loaded_was_maximized: bool = False
+    loaded_previous_geometry: bytes = b""
+    loaded_debug_mode_enabled: bool = False
+
+    def clone(self):
+        return copy.copy(self)
+
+@dataclass
+class InteractionState:
+    resize_in_progress: bool = False
+
+    is_interactive_mode: bool = False
+    is_dragging_split_line: bool = False
+    is_dragging_capture_point: bool = False
+    is_dragging_split_in_magnifier: bool = False
+    is_dragging_any_slider: bool = False
+    interaction_session_id: int = 0
+    is_user_interacting: bool = False
+    pressed_keys: Set[int] = field(default_factory=set)
+    last_horizontal_movement_key: int | None = None
+    last_vertical_movement_key: int | None = None
+    last_spacing_movement_key: int | None = None
+    space_bar_pressed: bool = False
+
+    def clone(self):
+        new_obj = copy.copy(self)
+        new_obj.pressed_keys = set(self.pressed_keys)
+        return new_obj
 
 @dataclass
 class ViewState:
@@ -216,27 +308,8 @@ class ViewState:
     magnifier_visible_center: bool = True
     magnifier_visible_right: bool = True
     magnifier_internal_split: float = 0.5
-    magnifier_screen_center: Point = field(default_factory=lambda: Point())
-    magnifier_screen_size: int = 0
     is_magnifier_combined: bool = False
     optimize_magnifier_movement: bool = True
-
-    pixmap_width: int = 0
-    pixmap_height: int = 0
-    image_display_rect_on_label: Rect = field(default_factory=lambda: Rect())
-    fixed_label_width: Optional[int] = None
-    fixed_label_height: Optional[int] = None
-    resize_in_progress: bool = False
-
-    is_interactive_mode: bool = False
-    is_dragging_split_line: bool = False
-    is_dragging_capture_point: bool = False
-    is_dragging_split_in_magnifier: bool = False
-    is_dragging_any_slider: bool = False
-    interaction_session_id: int = 0
-    is_user_interacting: bool = False
-    pressed_keys: Set[int] = field(default_factory=set)
-    space_bar_pressed: bool = False
 
     highlighted_magnifier_element: Optional[str] = None
 
@@ -245,15 +318,9 @@ class ViewState:
     text_bg_visual_height: float = 0.0
     text_bg_visual_width: float = 0.0
 
-    loaded_geometry: bytes = b""
-    loaded_was_maximized: bool = False
-    loaded_previous_geometry: bytes = b""
-    loaded_debug_mode_enabled: bool = False
-
     def clone(self):
         new_obj = copy.copy(self)
         new_obj.magnifiers = {key: value.clone() for key, value in self.magnifiers.items()}
-        new_obj.pressed_keys = set(self.pressed_keys)
         return new_obj
 
 class ViewportState:
@@ -261,6 +328,8 @@ class ViewportState:
         "_render_config",
         "_session_data",
         "_view_state",
+        "_interaction_state",
+        "_geometry_state",
         "_viewport_plugin_state",
         "_analysis_plugin_state",
         "_last_source1_id",
@@ -274,10 +343,14 @@ class ViewportState:
         render_config: Optional[RenderConfig] = None,
         session_data: Optional[SessionData] = None,
         view_state: Optional[ViewState] = None,
+        interaction_state: Optional[InteractionState] = None,
+        geometry_state: Optional[GeometryState] = None,
     ):
         self._render_config = render_config or RenderConfig()
         self._session_data = session_data or SessionData()
         self._view_state = view_state or ViewState()
+        self._interaction_state = interaction_state or InteractionState()
+        self._geometry_state = geometry_state or GeometryState()
         self._viewport_plugin_state = None
         self._analysis_plugin_state = None
         self._last_source1_id = 0
@@ -310,6 +383,22 @@ class ViewportState:
         self._view_state = val
 
     @property
+    def interaction_state(self) -> InteractionState:
+        return self._interaction_state
+
+    @interaction_state.setter
+    def interaction_state(self, val):
+        self._interaction_state = val
+
+    @property
+    def geometry_state(self) -> GeometryState:
+        return self._geometry_state
+
+    @geometry_state.setter
+    def geometry_state(self, val):
+        self._geometry_state = val
+
+    @property
     def divider_clip_rect(self):
         return self._divider_clip_rect
 
@@ -319,78 +408,25 @@ class ViewportState:
 
     def set_viewport_plugin_state(self, state: Any):
         self._viewport_plugin_state = state
+        if state is not None:
+            for field_name in getattr(state, "__dataclass_fields__", {}):
+                if hasattr(self, field_name):
+                    setattr(state, field_name, getattr(self, field_name))
 
     def set_analysis_plugin_state(self, state: Any):
         self._analysis_plugin_state = state
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name in self.__slots__:
-            object.__setattr__(self, name, value)
-            return
-
-        try:
-            view_state = object.__getattribute__(self, "_view_state")
-            session_data = object.__getattribute__(self, "_session_data")
-            render_config = object.__getattribute__(self, "_render_config")
-            viewport_plugin_state = object.__getattribute__(
-                self, "_viewport_plugin_state"
-            )
-            analysis_plugin_state = object.__getattribute__(
-                self, "_analysis_plugin_state"
-            )
-        except AttributeError:
-            object.__setattr__(self, name, value)
-            return
-
-        for target in (
-            view_state,
-            session_data,
-            render_config,
-            viewport_plugin_state,
-            analysis_plugin_state,
-        ):
-            if target is not None and hasattr(target, name):
-                setattr(target, name, value)
-                return
-
-        object.__setattr__(self, name, value)
-
-    def __getattr__(self, name: str):
-        try:
-            _view_state = object.__getattribute__(self, "_view_state")
-            _session_data = object.__getattribute__(self, "_session_data")
-            _render_config = object.__getattribute__(self, "_render_config")
-            _viewport_plugin_state = object.__getattribute__(
-                self, "_viewport_plugin_state"
-            )
-            _analysis_plugin_state = object.__getattribute__(
-                self, "_analysis_plugin_state"
-            )
-        except AttributeError as exc:
-            raise AttributeError(
-                f"'ViewportState' object has no attribute '{name}'"
-            ) from exc
-
-        sentinel = object()
-        for source in (
-            _view_state,
-            _session_data,
-            _render_config,
-            _viewport_plugin_state,
-            _analysis_plugin_state,
-        ):
-            if source is None:
-                continue
-            value = getattr(source, name, sentinel)
-            if value is not sentinel:
-                return value
-        raise AttributeError(f"'ViewportState' object has no attribute '{name}'")
+        if state is not None:
+            for field_name in getattr(state, "__dataclass_fields__", {}):
+                if hasattr(self.view_state, field_name):
+                    setattr(state, field_name, getattr(self.view_state, field_name))
 
     def clone(self):
         new_obj = ViewportState(
             render_config=self._render_config.clone(),
-            session_data=SessionData(),
+            session_data=self._session_data.clone(),
             view_state=self._view_state.clone(),
+            interaction_state=self._interaction_state.clone(),
+            geometry_state=self._geometry_state.clone(),
         )
         new_obj._viewport_plugin_state = self._viewport_plugin_state
         new_obj._analysis_plugin_state = self._analysis_plugin_state
@@ -406,12 +442,14 @@ class ViewportState:
     def freeze_for_export(self):
         frozen = self.clone()
         frozen.view_state.showing_single_image_mode = 0
-        frozen.view_state.space_bar_pressed = False
-        frozen.view_state.pressed_keys = set()
-        frozen.view_state.is_dragging_split_line = False
-        frozen.view_state.is_dragging_capture_point = False
-        frozen.view_state.is_dragging_split_in_magnifier = False
-        frozen.view_state.is_dragging_any_slider = False
+        frozen.interaction_state.space_bar_pressed = False
+        frozen.interaction_state.pressed_keys = set()
+        frozen.interaction_state.is_dragging_split_line = False
+        frozen.interaction_state.is_dragging_capture_point = False
+        frozen.interaction_state.is_dragging_split_in_magnifier = False
+        frozen.interaction_state.is_dragging_any_slider = False
+        frozen.interaction_state.is_interactive_mode = False
+        frozen.interaction_state.is_user_interacting = False
         return frozen
 
     def get_render_params(self) -> dict:
@@ -422,7 +460,8 @@ class ViewportState:
         capture_pos = view.capture_position_relative
         mag_pos = (capture_pos.x, capture_pos.y)
 
-        is_interactive = view.is_interactive_mode
+        interaction = self._interaction_state
+        is_interactive = interaction.is_interactive_mode
 
         mag_offset_real = view.magnifier_offset_relative
         mag_offset_visual_obj = view.magnifier_offset_relative_visual
@@ -493,25 +532,11 @@ class ViewportState:
                 "is_magnifier_combined": view.is_magnifier_combined,
                 "diff_mode": view.diff_mode,
                 "channel_view_mode": view.channel_view_mode,
-                "is_interactive_mode": view.is_interactive_mode,
+                "is_interactive_mode": interaction.is_interactive_mode,
                 "highlighted_magnifier_element": view.highlighted_magnifier_element,
                 "movement_interpolation_method": eff_mag_mov,
                 "magnifier_movement_interpolation_method": eff_mag_mov,
                 "laser_smoothing_interpolation_method": eff_laser,
             }
         )
-        if view.use_magnifier and view.diff_mode in (
-            "highlight",
-            "grayscale",
-            "ssim",
-            "edges",
-        ):
-            logger.debug(
-                "[MAG-OPT] store params diff=%s raw_interactive=%s optimize=%s eff_interp=%s main_interp=%s",
-                view.diff_mode,
-                view.is_interactive_mode,
-                optimize_mag_mov,
-                eff_mag_mov,
-                main_interp,
-            )
         return params

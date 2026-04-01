@@ -3,19 +3,19 @@ from typing import Optional, Tuple
 
 from PIL import Image
 
+from plugins.analysis.services.runtime import AnalysisRuntime
 from shared_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
 class MetricsService:
 
-    def __init__(self, store, main_controller):
+    def __init__(self, store, runtime: AnalysisRuntime):
         self.store = store
-        self.main_controller = main_controller
+        self.runtime = runtime
 
     def calculate_metrics_async(self, calc_psnr: bool, calc_ssim: bool):
-        img1 = self.store.viewport.image1
-        img2 = self.store.viewport.image2
+        img1, img2 = self._get_metric_source_images()
         if not img1 or not img2 or img1.size != img2.size:
             self.on_metrics_calculated(None)
             return
@@ -24,8 +24,30 @@ class MetricsService:
             self.metrics_worker_task, img1.copy(), img2.copy(), calc_psnr, calc_ssim
         )
         worker.signals.result.connect(self.on_metrics_calculated)
-        if self.main_controller:
-            self.main_controller.thread_pool.start(worker)
+        if self.runtime.thread_pool:
+            self.runtime.thread_pool.start(worker)
+
+    def _get_metric_source_images(self):
+        session_data = self.store.viewport.session_data
+        render_cache = session_data.render_cache
+        image_state = session_data.image_state
+
+        cache_img1 = (
+            render_cache.display_cache_image1
+            or render_cache.scaled_image1_for_display
+        )
+        cache_img2 = (
+            render_cache.display_cache_image2
+            or render_cache.scaled_image2_for_display
+        )
+        if (
+            cache_img1 is not None
+            and cache_img2 is not None
+            and getattr(cache_img1, "size", None) == getattr(cache_img2, "size", None)
+        ):
+            return cache_img1, cache_img2
+
+        return image_state.image1, image_state.image2
 
     def metrics_worker_task(
         self, img1: Image.Image, img2: Image.Image, calc_psnr: bool, calc_ssim: bool
@@ -51,29 +73,28 @@ class MetricsService:
             psnr_val, ssim_val = result
 
             if (
-                self.store.viewport.auto_calculate_psnr
-                or self.store.viewport.diff_mode == "ssim"
+                self.store.viewport.session_data.image_state.auto_calculate_psnr
+                or self.store.viewport.view_state.diff_mode == "ssim"
             ):
-                self.store.viewport.psnr_value = psnr_val
+                self.store.viewport.session_data.image_state.psnr_value = psnr_val
             if (
-                self.store.viewport.auto_calculate_ssim
-                or self.store.viewport.diff_mode == "ssim"
+                self.store.viewport.session_data.image_state.auto_calculate_ssim
+                or self.store.viewport.view_state.diff_mode == "ssim"
             ):
-                self.store.viewport.ssim_value = ssim_val
+                self.store.viewport.session_data.image_state.ssim_value = ssim_val
         else:
-            if not self.store.viewport.auto_calculate_psnr:
-                self.store.viewport.psnr_value = None
-            if not self.store.viewport.auto_calculate_ssim:
-                self.store.viewport.ssim_value = None
+            if not self.store.viewport.session_data.image_state.auto_calculate_psnr:
+                self.store.viewport.session_data.image_state.psnr_value = None
+            if not self.store.viewport.session_data.image_state.auto_calculate_ssim:
+                self.store.viewport.session_data.image_state.ssim_value = None
 
-        if self.main_controller:
-            self.main_controller.ui_update_requested.emit(["resolution"])
+        self.runtime.ui_updates.emit(("resolution",))
 
     def trigger_metrics_calculation_if_needed(self):
-        calc_psnr = self.store.viewport.auto_calculate_psnr
-        calc_ssim = self.store.viewport.auto_calculate_ssim
+        calc_psnr = self.store.viewport.session_data.image_state.auto_calculate_psnr
+        calc_ssim = self.store.viewport.session_data.image_state.auto_calculate_ssim
 
-        if self.store.viewport.diff_mode == "ssim":
+        if self.store.viewport.view_state.diff_mode == "ssim":
             calc_ssim = True
 
         if calc_psnr or calc_ssim:

@@ -1,0 +1,30 @@
+{
+  "onboarding": {
+    "advanced": {
+      "button": {
+        "color": "颜色",
+        "rotate_width_hint": "左键：旋转\n滚轮：宽度"
+      }
+    },
+    "advanced_description": "屏幕上更多设置。\n适合想要控制一切的用户。",
+    "beginner": {
+      "button": {
+        "color": "颜色",
+        "rotate": "旋转",
+        "view": "查看",
+        "width": "宽度"
+      }
+    },
+    "beginner_description": "简单界面。鼠标控制。\n非常适合首次使用的用户。",
+    "expert": {
+      "button": {
+        "info": "左键：旋转 | 滚轮：宽度\n右键：颜色 | 中键：重置"
+      }
+    },
+    "expert_description": "极简主义。键盘控制（WASD，QE）。\n图像的最大空间。",
+    "magnifier_controls_hint": "使用 WASD 和 QE 控制放大镜",
+    "mode_hint": "界面模式始终可以在设置中更改",
+    "start_button": "开始使用",
+    "welcome": "欢迎"
+  }
+}

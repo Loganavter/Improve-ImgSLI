@@ -8,11 +8,13 @@ QDialog#HelpDialog QListWidget {
     font-size: 14px;
     padding-top: 5px;
     outline: 0;
+    color: @dialog.text;
 }
 
 QDialog#HelpDialog QListWidget::item {
     padding-left: 15px;
     padding-right: 5px;
+    color: @dialog.text;
 }
 
 QDialog#HelpDialog QListWidget::item:hover {

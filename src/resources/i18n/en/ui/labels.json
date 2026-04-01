@@ -1,0 +1,31 @@
+{
+  "label": {
+    "background": "Background",
+    "bold": "Bold",
+    "border": "Border",
+    "capture_size": "Capture Size (%)",
+    "color": "Color",
+    "container": "Container",
+    "details": "Details",
+    "file_name": "File name",
+    "font_size": "Font Size",
+    "format": "Format",
+    "fps": "FPS",
+    "guides": "Guides",
+    "language": "Language",
+    "line": "Line",
+    "magnifier": "Magnifier",
+    "magnifier_size": "Magnifier Size (%)",
+    "name_1": "Name 1",
+    "name_2": "Name 2",
+    "opacity": "Opacity",
+    "output": "Output",
+    "output_directory": "Output directory",
+    "quality": "Quality",
+    "resolution": "Resolution",
+    "text_position": "Text Position",
+    "theme": "Theme",
+    "video_codec": "Video Codec",
+    "view": "View"
+  }
+}

@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -8,9 +9,12 @@ try:
     current_dir = Path(__file__).resolve().parent
 
     project_dir = current_dir.parent
+    bundled_src_dir = current_dir / "src"
 
     if str(project_dir) not in sys.path:
         sys.path.insert(0, str(project_dir))
+    if bundled_src_dir.is_dir() and str(bundled_src_dir) not in sys.path:
+        sys.path.insert(0, str(bundled_src_dir))
 except Exception:
 
     pass
@@ -72,15 +76,15 @@ def main():
     window.show()
 
     def on_quit():
-
         QThreadPool.globalInstance().clear()
 
-        if not QThreadPool.globalInstance().waitForDone(2000):
-
-            QThreadPool.globalInstance().clear()
-
     app.aboutToQuit.connect(on_quit)
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    try:
+        logging.shutdown()
+    except Exception:
+        pass
+    os._exit(int(exit_code) if isinstance(exit_code, int) else 0)
 
 if __name__ == "__main__":
     main()

@@ -22,16 +22,16 @@ def draw_file_names_on_canvas(
     img_h: int,
 ):
     temp_store = Store()
-    temp_store.viewport.include_file_names_in_saved = True
-    temp_store.viewport.is_horizontal = ctx.is_horizontal
-    temp_store.viewport.text_placement_mode = ctx.text_placement_mode
-    temp_store.viewport.draw_text_background = ctx.draw_text_background
-    temp_store.viewport.font_size_percent = ctx.font_size_percent
-    temp_store.viewport.font_weight = ctx.font_weight
-    temp_store.viewport.text_alpha_percent = ctx.text_alpha_percent
-    temp_store.viewport.file_name_color = QColor(*ctx.file_name_color)
-    temp_store.viewport.file_name_bg_color = QColor(*ctx.file_name_bg_color)
-    temp_store.viewport.max_name_length = ctx.max_name_length
+    temp_store.viewport.render_config.include_file_names_in_saved = True
+    temp_store.viewport.view_state.is_horizontal = ctx.is_horizontal
+    temp_store.viewport.render_config.text_placement_mode = ctx.text_placement_mode
+    temp_store.viewport.render_config.draw_text_background = ctx.draw_text_background
+    temp_store.viewport.render_config.font_size_percent = ctx.font_size_percent
+    temp_store.viewport.render_config.font_weight = ctx.font_weight
+    temp_store.viewport.render_config.text_alpha_percent = ctx.text_alpha_percent
+    temp_store.viewport.render_config.file_name_color = QColor(*ctx.file_name_color)
+    temp_store.viewport.render_config.file_name_bg_color = QColor(*ctx.file_name_bg_color)
+    temp_store.viewport.render_config.max_name_length = ctx.max_name_length
     split_pos = (
         padding_left + int(img_w * ctx.split_pos)
         if not ctx.is_horizontal

@@ -1,0 +1,19 @@
+{
+  "button": {
+    "add_images_1": "添加图像1",
+    "add_images_2": "添加图像2",
+    "browse": "浏览...",
+    "hold_clear_entire_list": "长按：清除整个列表",
+    "pause": "暂停",
+    "pauseresume_recording": "暂停/恢复录制",
+    "play": "播放",
+    "record": "录制",
+    "redo": "重做",
+    "save_result": "保存结果",
+    "select_images": "选择图像",
+    "startstop_recording": "开始/停止录制",
+    "stop": "停止",
+    "trim_to_selection": "裁剪到选择",
+    "undo_ctrlz": "撤销 (Ctrl+Z)"
+  }
+}

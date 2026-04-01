@@ -55,6 +55,9 @@ class ViewportState:
     interaction_session_id: int = 0
     is_user_interacting: bool = False
     pressed_keys: set[int] = field(default_factory=set)
+    last_horizontal_movement_key: int | None = None
+    last_vertical_movement_key: int | None = None
+    last_spacing_movement_key: int | None = None
     space_bar_pressed: bool = False
 
     showing_single_image_mode: int = 0

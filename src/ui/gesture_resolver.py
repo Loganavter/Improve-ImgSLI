@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+def _get_session_handler(main_controller):
+    if main_controller is None:
+        return None
+    if hasattr(main_controller, "increment_rating") or hasattr(
+        main_controller, "set_rating"
+    ):
+        return main_controller
+    return getattr(main_controller, "sessions", None)
+
 @dataclass
 class RatingGestureTransaction:
     main_controller: object
@@ -15,16 +24,21 @@ class RatingGestureTransaction:
         if self._is_finalized:
             return
         self._accumulated_delta += delta
+        session_handler = _get_session_handler(self.main_controller)
         if delta > 0:
             for _ in range(delta):
-                if self.main_controller and self.main_controller.session_ctrl:
-                    self.main_controller.session_ctrl.increment_rating(
+                if session_handler is not None and hasattr(
+                    session_handler, "increment_rating"
+                ):
+                    session_handler.increment_rating(
                         self.image_number, self.item_index
                     )
         elif delta < 0:
             for _ in range(-delta):
-                if self.main_controller and self.main_controller.session_ctrl:
-                    self.main_controller.session_ctrl.decrement_rating(
+                if session_handler is not None and hasattr(
+                    session_handler, "decrement_rating"
+                ):
+                    session_handler.decrement_rating(
                         self.image_number, self.item_index
                     )
 
@@ -32,9 +46,9 @@ class RatingGestureTransaction:
         if self._is_finalized:
             return
         if self._accumulated_delta != 0:
-
-            if self.main_controller and self.main_controller.session_ctrl:
-                self.main_controller.session_ctrl.set_rating(
+            session_handler = _get_session_handler(self.main_controller)
+            if session_handler is not None and hasattr(session_handler, "set_rating"):
+                session_handler.set_rating(
                     self.image_number, self.item_index, self.starting_score
                 )
         self._accumulated_delta = 0

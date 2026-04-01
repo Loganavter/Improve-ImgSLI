@@ -8,91 +8,104 @@ def apply_initial_settings_to_ui(presenter):
     viewport = presenter.store.viewport
     settings = presenter.store.settings
 
-    ui.slider_size.setValue(int(viewport.magnifier_size_relative * 100))
-    ui.slider_capture.setValue(int(viewport.capture_size_relative * 100))
-    ui.slider_speed.setValue(int(viewport.movement_speed_per_sec * 10))
+    ui.slider_size.setValue(int(viewport.view_state.magnifier_size_relative * 100))
+    ui.slider_capture.setValue(int(viewport.view_state.capture_size_relative * 100))
+    ui.slider_speed.setValue(int(viewport.view_state.movement_speed_per_sec * 10))
 
-    divider_thickness = 0 if not viewport.divider_line_visible else viewport.divider_line_thickness
+    divider_thickness = 0 if not viewport.render_config.divider_line_visible else viewport.render_config.divider_line_thickness
     magnifier_thickness = (
         0
-        if not viewport.magnifier_divider_visible
-        else viewport.magnifier_divider_thickness
+        if not viewport.render_config.magnifier_divider_visible
+        else viewport.render_config.magnifier_divider_thickness
     )
 
     ui.btn_orientation.set_value(divider_thickness)
     ui.btn_magnifier_orientation.set_value(magnifier_thickness)
-    ui.btn_orientation.setChecked(viewport.is_horizontal, emit_signal=False)
+    ui.btn_orientation.setChecked(viewport.view_state.is_horizontal, emit_signal=False)
     ui.btn_magnifier_orientation.setChecked(
-        viewport.magnifier_is_horizontal, emit_signal=False
+        viewport.view_state.magnifier_is_horizontal, emit_signal=False
     )
 
     if hasattr(ui, "btn_orientation_simple"):
-        ui.btn_orientation_simple.setChecked(viewport.is_horizontal, emit_signal=False)
+        ui.btn_orientation_simple.setChecked(viewport.view_state.is_horizontal, emit_signal=False)
     if hasattr(ui, "btn_divider_visible"):
         ui.btn_divider_visible.setChecked(
-            not viewport.divider_line_visible, emit_signal=False
+            not viewport.render_config.divider_line_visible, emit_signal=False
         )
     if hasattr(ui, "btn_divider_width"):
         ui.btn_divider_width.set_value(divider_thickness)
     if hasattr(ui, "btn_divider_color") and hasattr(ui.btn_divider_color, "set_color"):
-        ui.btn_divider_color.set_color(color_to_qcolor(viewport.divider_line_color))
+        ui.btn_divider_color.set_color(color_to_qcolor(viewport.render_config.divider_line_color))
     if hasattr(ui, "btn_magnifier_orientation_simple"):
         ui.btn_magnifier_orientation_simple.setChecked(
-            viewport.magnifier_is_horizontal, emit_signal=False
+            viewport.view_state.magnifier_is_horizontal, emit_signal=False
         )
     if hasattr(ui, "btn_magnifier_divider_visible"):
         ui.btn_magnifier_divider_visible.setChecked(
-            not viewport.magnifier_divider_visible, emit_signal=False
+            not viewport.render_config.magnifier_divider_visible, emit_signal=False
         )
     if hasattr(ui, "btn_magnifier_divider_width"):
         ui.btn_magnifier_divider_width.set_value(magnifier_thickness)
     if hasattr(ui, "btn_magnifier_guides_simple"):
         ui.btn_magnifier_guides_simple.setChecked(
-            viewport.show_magnifier_guides, emit_signal=False
+            viewport.render_config.show_magnifier_guides, emit_signal=False
         )
     if hasattr(ui, "btn_magnifier_guides_width"):
-        ui.btn_magnifier_guides_width.set_value(viewport.magnifier_guides_thickness)
+        ui.btn_magnifier_guides_width.set_value(viewport.render_config.magnifier_guides_thickness)
 
-    ui.btn_magnifier.setChecked(viewport.use_magnifier, emit_signal=False)
-    ui.btn_freeze.setChecked(viewport.freeze_magnifier, emit_signal=False)
+    ui.btn_magnifier.setChecked(viewport.view_state.use_magnifier, emit_signal=False)
+    ui.btn_freeze.setChecked(viewport.view_state.freeze_magnifier, emit_signal=False)
     ui.btn_magnifier_guides.setChecked(
-        viewport.show_magnifier_guides, emit_signal=False
+        viewport.render_config.show_magnifier_guides, emit_signal=False
     )
-    ui.btn_magnifier_guides.set_value(viewport.magnifier_guides_thickness)
-    ui.btn_file_names.setChecked(viewport.include_file_names_in_saved, emit_signal=False)
+    ui.btn_magnifier_guides.set_value(viewport.render_config.magnifier_guides_thickness)
+    ui.btn_file_names.setChecked(viewport.render_config.include_file_names_in_saved, emit_signal=False)
 
     _apply_mode_specific_colors(presenter)
-    ui.toggle_edit_layout_visibility(viewport.include_file_names_in_saved)
-    ui.toggle_magnifier_panel_visibility(viewport.use_magnifier)
+    ui.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
+    ui.toggle_magnifier_panel_visibility(viewport.view_state.use_magnifier)
 
     if presenter.font_settings_flyout:
         presenter.font_settings_flyout.set_values(
-            viewport.font_size_percent,
-            viewport.font_weight,
-            color_to_qcolor(viewport.file_name_color),
-            color_to_qcolor(viewport.file_name_bg_color),
-            viewport.draw_text_background,
-            viewport.text_placement_mode,
-            viewport.text_alpha_percent,
+            viewport.render_config.font_size_percent,
+            viewport.render_config.font_weight,
+            color_to_qcolor(viewport.render_config.file_name_color),
+            color_to_qcolor(viewport.render_config.file_name_bg_color),
+            viewport.render_config.draw_text_background,
+            viewport.render_config.text_placement_mode,
+            viewport.render_config.text_alpha_percent,
             settings.current_language,
         )
 
-    presenter.settings_presenter.update_interpolation_combo_box_ui()
-    presenter.settings_presenter.setup_view_buttons()
-    presenter.update_file_names_display()
-    presenter.on_language_changed()
+    settings_presenter = presenter.get_feature("settings")
+    settings_presenter.update_interpolation_combo_box_ui()
+    settings_presenter.setup_view_buttons()
+    do_update_file_names_display(presenter)
+    on_language_changed(presenter)
 
 def on_store_state_changed(presenter, domain: str):
+    is_viewport_domain = domain == "viewport" or domain.startswith("viewport.")
+
     if domain == "workspace":
-        presenter.sync_workspace_tabs()
-        presenter.sync_session_mode()
-        presenter.sync_video_session_view()
+        from ui.presenters.main_window.workspace import (
+            sync_session_mode,
+            sync_video_session_view,
+            sync_workspace_tabs,
+        )
+
+        sync_workspace_tabs(presenter)
+        sync_session_mode(presenter)
+        sync_video_session_view(presenter)
         presenter.ui_batcher.schedule_batch_update(
             ["file_names", "resolution", "combobox", "slider_tooltips", "ratings", "window_schedule"]
         )
         return
 
-    if domain not in ("viewport", "document", "settings"):
+    if not is_viewport_domain and domain not in ("document", "settings"):
+        return
+
+    viewport_subdomain = domain.split(".", 1)[1] if is_viewport_domain and "." in domain else None
+    if viewport_subdomain in {"interaction", "geometry"}:
         return
 
     if domain == "settings":
@@ -100,53 +113,53 @@ def on_store_state_changed(presenter, domain: str):
 
     ui = presenter.ui
     viewport = presenter.store.viewport
-    ui.toggle_magnifier_panel_visibility(viewport.use_magnifier)
+    ui.toggle_magnifier_panel_visibility(viewport.view_state.use_magnifier)
 
-    if ui.btn_orientation.isChecked() != viewport.is_horizontal:
-        ui.btn_orientation.setChecked(viewport.is_horizontal, emit_signal=False)
-    if ui.btn_magnifier_orientation.isChecked() != viewport.magnifier_is_horizontal:
+    if ui.btn_orientation.isChecked() != viewport.view_state.is_horizontal:
+        ui.btn_orientation.setChecked(viewport.view_state.is_horizontal, emit_signal=False)
+    if ui.btn_magnifier_orientation.isChecked() != viewport.view_state.magnifier_is_horizontal:
         ui.btn_magnifier_orientation.setChecked(
-            viewport.magnifier_is_horizontal, emit_signal=False
+            viewport.view_state.magnifier_is_horizontal, emit_signal=False
         )
 
-    divider_thickness = 0 if not viewport.divider_line_visible else viewport.divider_line_thickness
+    divider_thickness = 0 if not viewport.render_config.divider_line_visible else viewport.render_config.divider_line_thickness
     magnifier_thickness = (
-        0 if not viewport.magnifier_divider_visible else viewport.magnifier_divider_thickness
+        0 if not viewport.render_config.magnifier_divider_visible else viewport.render_config.magnifier_divider_thickness
     )
     if ui.btn_orientation.get_value() != divider_thickness:
         ui.btn_orientation.set_value(divider_thickness)
     if ui.btn_magnifier_orientation.get_value() != magnifier_thickness:
         ui.btn_magnifier_orientation.set_value(magnifier_thickness)
 
-    if ui.btn_magnifier_guides.isChecked() != viewport.show_magnifier_guides:
-        ui.btn_magnifier_guides.setChecked(viewport.show_magnifier_guides, emit_signal=False)
-    if ui.btn_magnifier_guides.get_value() != viewport.magnifier_guides_thickness:
-        ui.btn_magnifier_guides.set_value(viewport.magnifier_guides_thickness)
+    if ui.btn_magnifier_guides.isChecked() != viewport.render_config.show_magnifier_guides:
+        ui.btn_magnifier_guides.setChecked(viewport.render_config.show_magnifier_guides, emit_signal=False)
+    if ui.btn_magnifier_guides.get_value() != viewport.render_config.magnifier_guides_thickness:
+        ui.btn_magnifier_guides.set_value(viewport.render_config.magnifier_guides_thickness)
 
     _apply_mode_specific_colors(presenter)
 
     if hasattr(ui, "btn_divider_visible"):
-        should_be_checked = not viewport.divider_line_visible
+        should_be_checked = not viewport.render_config.divider_line_visible
         if ui.btn_divider_visible.isChecked() != should_be_checked:
             ui.btn_divider_visible.setChecked(should_be_checked, emit_signal=False)
 
     if hasattr(ui, "btn_magnifier_divider_visible"):
-        should_be_checked = not viewport.magnifier_divider_visible
+        should_be_checked = not viewport.render_config.magnifier_divider_visible
         if ui.btn_magnifier_divider_visible.isChecked() != should_be_checked:
             ui.btn_magnifier_divider_visible.setChecked(
                 should_be_checked, emit_signal=False
             )
 
     if hasattr(ui, "btn_magnifier_guides_simple"):
-        if ui.btn_magnifier_guides_simple.isChecked() != viewport.show_magnifier_guides:
+        if ui.btn_magnifier_guides_simple.isChecked() != viewport.render_config.show_magnifier_guides:
             ui.btn_magnifier_guides_simple.setChecked(
-                viewport.show_magnifier_guides, emit_signal=False
+                viewport.render_config.show_magnifier_guides, emit_signal=False
             )
     if hasattr(ui, "btn_magnifier_guides_width"):
-        if ui.btn_magnifier_guides_width.get_value() != viewport.magnifier_guides_thickness:
-            ui.btn_magnifier_guides_width.set_value(viewport.magnifier_guides_thickness)
+        if ui.btn_magnifier_guides_width.get_value() != viewport.render_config.magnifier_guides_thickness:
+            ui.btn_magnifier_guides_width.set_value(viewport.render_config.magnifier_guides_thickness)
 
-    ui.toggle_edit_layout_visibility(viewport.include_file_names_in_saved)
+    ui.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
     presenter.ui_batcher.schedule_batch_update(
         ["file_names", "resolution", "combobox", "slider_tooltips", "ratings", "window_schedule"]
     )
@@ -159,16 +172,16 @@ def do_update_resolution_labels(presenter):
     res1_text = ""
     res2_text = ""
     if has_both_images:
-        if dim := presenter._get_image_dimensions(1):
+        if dim := get_image_dimensions(presenter, 1):
             res1_text = f"{dim[0]}x{dim[1]}"
-        if dim := presenter._get_image_dimensions(2):
+        if dim := get_image_dimensions(presenter, 2):
             res2_text = f"{dim[0]}x{dim[1]}"
     presenter.ui.update_resolution_labels(res1_text, res1_text, res2_text, res2_text)
 
-    psnr_visible = presenter.store.viewport.auto_calculate_psnr
+    psnr_visible = presenter.store.viewport.session_data.image_state.auto_calculate_psnr
     presenter.ui.psnr_label.setVisible(psnr_visible)
     if psnr_visible:
-        psnr = presenter.store.viewport.psnr_value
+        psnr = presenter.store.viewport.session_data.image_state.psnr_value
         if psnr is not None:
             presenter.ui.psnr_label.setText(
                 f"{tr('ui.psnr', presenter.store.settings.current_language)}: {psnr:.2f} dB"
@@ -179,12 +192,12 @@ def do_update_resolution_labels(presenter):
             )
 
     ssim_visible = (
-        presenter.store.viewport.auto_calculate_ssim
-        or presenter.store.viewport.diff_mode == "ssim"
+        presenter.store.viewport.session_data.image_state.auto_calculate_ssim
+        or presenter.store.viewport.view_state.diff_mode == "ssim"
     )
     presenter.ui.ssim_label.setVisible(ssim_visible)
     if ssim_visible:
-        ssim = presenter.store.viewport.ssim_value
+        ssim = presenter.store.viewport.session_data.image_state.ssim_value
         if ssim is not None:
             presenter.ui.ssim_label.setText(
                 f"{tr('ui.ssim', presenter.store.settings.current_language)}: {ssim:.4f}"
@@ -203,7 +216,7 @@ def do_update_file_names_display(presenter):
     presenter.ui.update_file_names_display(
         name1_text=name1,
         name2_text=name2,
-        is_horizontal=presenter.store.viewport.is_horizontal,
+        is_horizontal=presenter.store.viewport.view_state.is_horizontal,
         current_language=lang,
         show_labels=show_labels,
     )
@@ -228,7 +241,7 @@ def do_update_combobox_displays(presenter):
     count1 = len(presenter.store.document.image_list1)
     idx1 = presenter.store.document.current_index1
     text1 = (
-        presenter._get_current_display_name(1)
+        get_current_display_name(presenter, 1)
         if 0 <= idx1 < count1
         else tr("misc.select_an_image", presenter.store.settings.current_language)
     )
@@ -237,51 +250,58 @@ def do_update_combobox_displays(presenter):
     count2 = len(presenter.store.document.image_list2)
     idx2 = presenter.store.document.current_index2
     text2 = (
-        presenter._get_current_display_name(2)
+        get_current_display_name(presenter, 2)
         if 0 <= idx2 < count2
         else tr("misc.select_an_image", presenter.store.settings.current_language)
     )
     presenter.ui.update_combobox_display(2, count2, idx2, text2, "")
 
-    if presenter.ui_manager and presenter.ui_manager.unified_flyout.isVisible():
-        presenter.ui_manager.unified_flyout.sync_from_store()
+    if presenter.ui_manager and presenter.ui_manager.transient.unified_flyout.isVisible():
+        presenter.ui_manager.transient.unified_flyout.sync_from_store()
 
 def do_update_slider_tooltips(presenter):
     presenter.ui.update_slider_tooltips(
-        presenter.store.viewport.movement_speed_per_sec,
-        presenter.store.viewport.magnifier_size_relative,
-        presenter.store.viewport.capture_size_relative,
+        presenter.store.viewport.view_state.movement_speed_per_sec,
+        presenter.store.viewport.view_state.magnifier_size_relative,
+        presenter.store.viewport.view_state.capture_size_relative,
         presenter.store.settings.current_language,
     )
 
 def do_update_rating_displays(presenter):
     presenter.ui.update_rating_display(
-        1, presenter._get_current_score(1), presenter.store.settings.current_language
+        1, get_current_score(presenter, 1), presenter.store.settings.current_language
     )
     presenter.ui.update_rating_display(
-        2, presenter._get_current_score(2), presenter.store.settings.current_language
+        2, get_current_score(presenter, 2), presenter.store.settings.current_language
     )
 
-    if presenter.ui_manager and presenter.ui_manager.unified_flyout.isVisible():
+    if presenter.ui_manager and presenter.ui_manager.transient.unified_flyout.isVisible():
         current_idx1 = presenter.store.document.current_index1
         current_idx2 = presenter.store.document.current_index2
         if current_idx1 >= 0:
-            presenter.ui_manager.unified_flyout.update_rating_for_item(1, current_idx1)
+            presenter.ui_manager.transient.unified_flyout.update_rating_for_item(1, current_idx1)
         if current_idx2 >= 0:
-            presenter.ui_manager.unified_flyout.update_rating_for_item(2, current_idx2)
-        QTimer.singleShot(0, presenter.ui_manager.unified_flyout.refreshGeometry)
+            presenter.ui_manager.transient.unified_flyout.update_rating_for_item(2, current_idx2)
+        QTimer.singleShot(0, presenter.ui_manager.transient.unified_flyout.refreshGeometry)
 
 def on_language_changed(presenter):
-    presenter.ui.update_translations(presenter.store.settings.current_language)
-    presenter.settings_presenter.on_language_changed()
+    lang_code = presenter.store.settings.current_language
+    presenter.ui.update_translations(lang_code)
+    presenter.get_feature("settings").on_language_changed()
     if (
         hasattr(presenter.main_window_app, "tray_manager")
         and presenter.main_window_app.tray_manager
     ):
-        presenter.main_window_app.tray_manager.update_language(
-            presenter.store.settings.current_language
-        )
+        presenter.main_window_app.tray_manager.update_language(lang_code)
+    dialogs = getattr(getattr(presenter, "ui_manager", None), "dialogs", None)
+    settings_dialog = getattr(dialogs, "settings_dialog", None) if dialogs else None
+    if settings_dialog is not None:
+        settings_dialog.update_language(lang_code)
     do_update_combobox_displays(presenter)
+    do_update_slider_tooltips(presenter)
+    do_update_rating_displays(presenter)
+    do_update_file_names_display(presenter)
+    presenter.repopulate_flyouts()
     presenter.ui.reapply_button_styles()
 
 def get_current_display_name(presenter, image_number: int) -> str:
@@ -317,20 +337,20 @@ def _apply_mode_specific_colors(presenter):
 
     if hasattr(ui.btn_orientation, "set_color"):
         show_divider_underline = (
-            getattr(viewport, "divider_line_visible", True)
-            and getattr(viewport, "divider_line_thickness", 0) > 0
+            getattr(viewport.render_config, "divider_line_visible", True)
+            and getattr(viewport.render_config, "divider_line_thickness", 0) > 0
         )
         ui.btn_orientation.set_color(
-            color_to_qcolor(viewport.divider_line_color)
+            color_to_qcolor(viewport.render_config.divider_line_color)
             if show_divider_underline
             else None
         )
     if hasattr(ui.btn_magnifier_orientation, "set_color"):
         ui.btn_magnifier_orientation.set_color(
-            color_to_qcolor(viewport.magnifier_divider_color)
+            color_to_qcolor(viewport.render_config.magnifier_divider_color)
         )
     if hasattr(ui, "btn_divider_color") and hasattr(ui.btn_divider_color, "set_color"):
-        ui.btn_divider_color.set_color(color_to_qcolor(viewport.divider_line_color))
+        ui.btn_divider_color.set_color(color_to_qcolor(viewport.render_config.divider_line_color))
     if hasattr(ui, "btn_magnifier_color_settings") and hasattr(
         ui.btn_magnifier_color_settings, "refresh_visual_state"
     ):

@@ -1,7 +1,7 @@
 import logging
 
 from PyQt6.QtCore import QObject, QPoint, Qt, QTimer
-from PyQt6.QtGui import QCursor, QDragEnterEvent, QDragMoveEvent, QDropEvent
+from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -31,8 +31,8 @@ class WindowEventHandler(QObject):
             if not is_stable:
                 QTimer.singleShot(delay_ms, _try_load)
                 return
-            if self.main_controller and self.main_controller.session_ctrl:
-                self.main_controller.session_ctrl.load_images_from_paths(
+            if self.main_controller and self.main_controller.sessions:
+                self.main_controller.sessions.load_images_from_paths(
                     image_paths, slot_num
                 )
             self._first_external_load_pending = False
@@ -56,7 +56,7 @@ class WindowEventHandler(QObject):
         if self.ui is not None and hasattr(self.ui, "update_drag_overlays"):
             try:
                 self.ui.update_drag_overlays(
-                    self.store.viewport.is_horizontal, visible=visible
+                    self.store.viewport.view_state.is_horizontal, visible=visible
                 )
             except (AttributeError, RuntimeError) as e:
                 logger.warning(
@@ -100,10 +100,10 @@ class WindowEventHandler(QObject):
             QTimer.singleShot(
                 150,
                 lambda: (
-                    self.main_controller.session_ctrl.load_images_from_paths(
+                    self.main_controller.sessions.load_images_from_paths(
                         image_paths, slot
                     )
-                    if self.main_controller and self.main_controller.session_ctrl
+                    if self.main_controller and self.main_controller.sessions
                     else None
                 ),
             )
@@ -112,11 +112,10 @@ class WindowEventHandler(QObject):
 
     def handle_resize(self, event):
         self.ui.update_drag_overlays(
-            self.store.viewport.is_horizontal, self.ui.is_drag_overlay_visible()
+            self.store.viewport.view_state.is_horizontal, self.ui.is_drag_overlay_visible()
         )
 
     def handle_close(self, event):
-        self.main_window.thread_pool.waitForDone()
         event.accept()
 
     def _is_in_left_area(self, pos: QPoint) -> bool:
@@ -124,7 +123,7 @@ class WindowEventHandler(QObject):
             return True
         label_rect = self.ui.image_label.geometry()
 
-        if not self.store.viewport.is_horizontal:
+        if not self.store.viewport.view_state.is_horizontal:
 
             mid_x = label_rect.x() + label_rect.width() / 2
             return pos.x() < mid_x
@@ -134,12 +133,4 @@ class WindowEventHandler(QObject):
             return pos.y() < mid_y
 
     def _handle_deferred_drag_leave(self):
-        if self.main_window is None:
-            self._safe_update_drag_overlays(False)
-            return
-
-        cursor_pos = self.main_window.mapFromGlobal(QCursor.pos())
-        if self.main_window.rect().contains(cursor_pos):
-            return
-
         self._safe_update_drag_overlays(False)

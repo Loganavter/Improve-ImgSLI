@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ImproveImgSLI")
 
 def is_effective_magnifier_interactive(ctx: "RenderContext") -> bool:
-    return bool(ctx.is_interactive_mode and getattr(ctx, "optimize_magnifier_movement", True))
+    return bool(ctx.is_interactive_mode and getattr(ctx.view_state, "optimize_magnifier_movement", True))
 
 def render_magnifier_if_needed(
     pipeline,
@@ -51,27 +51,16 @@ def render_magnifier_if_needed(
 
 def _build_temp_store(ctx: "RenderContext") -> Store:
     temp_store = Store()
-    temp_store.viewport.magnifier_visible_left = ctx.magnifier_visible_left
-    temp_store.viewport.magnifier_visible_center = ctx.magnifier_visible_center
-    temp_store.viewport.magnifier_visible_right = ctx.magnifier_visible_right
-    temp_store.viewport.magnifier_is_horizontal = ctx.magnifier_is_horizontal
-    temp_store.viewport.diff_mode = ctx.diff_mode
+    temp_store.viewport.view_state.magnifier_visible_left = ctx.magnifier_visible_left
+    temp_store.viewport.view_state.magnifier_visible_center = ctx.magnifier_visible_center
+    temp_store.viewport.view_state.magnifier_visible_right = ctx.magnifier_visible_right
+    temp_store.viewport.view_state.magnifier_is_horizontal = ctx.magnifier_is_horizontal
+    temp_store.viewport.view_state.diff_mode = ctx.diff_mode
     return temp_store
 
 def _resolve_magnifier_interpolation(pipeline, ctx: "RenderContext") -> str:
     magnifier_interpolation = ctx.interpolation_method
     effective_interactive = is_effective_magnifier_interactive(ctx)
-    if ctx.diff_mode in ("highlight", "grayscale", "ssim", "edges"):
-        logger.debug(
-            "[MAG-OPT] pipeline diff=%s raw_interactive=%s effective_interactive=%s optimize=%s chosen_interp=%s",
-            ctx.diff_mode,
-            ctx.is_interactive_mode,
-            effective_interactive,
-            getattr(ctx, "optimize_magnifier_movement", True),
-            ctx.magnifier_movement_interpolation_method
-            if effective_interactive and ctx.magnifier_movement_interpolation_method
-            else ctx.interpolation_method,
-        )
     if effective_interactive and ctx.magnifier_movement_interpolation_method:
         magnifier_interpolation = ctx.magnifier_movement_interpolation_method
     return magnifier_interpolation
@@ -337,6 +326,7 @@ def draw_aa_laser(
     thickness: int = 1,
     interpolation_method: str = "BILINEAR",
 ):
+    line_width = max(1, int(round(thickness)))
     dx, dy = p2.x() - p1.x(), p2.y() - p1.y()
     dist = math.hypot(dx, dy)
     if dist <= (r1 + r2):
@@ -347,7 +337,7 @@ def draw_aa_laser(
     if is_interactive:
         draw = ImageDraw.Draw(canvas)
         opaque_color = (*color[:3], 255)
-        draw.line([(ax, ay), (bx, by)], fill=opaque_color, width=thickness)
+        draw.line([(ax, ay), (bx, by)], fill=opaque_color, width=line_width)
         return
     scale = 4
     padding = 4
@@ -366,6 +356,10 @@ def draw_aa_laser(
     hr_bx = (bx - left) * scale
     hr_by = (by - top) * scale
     opaque_color = (*color[:3], 255)
-    draw.line([(hr_ax, hr_ay), (hr_bx, hr_by)], fill=opaque_color, width=thickness * scale)
+    draw.line(
+        [(hr_ax, hr_ay), (hr_bx, hr_by)],
+        fill=opaque_color,
+        width=max(1, int(round(line_width * scale))),
+    )
     smooth_line = hr_canvas.resize((bbox_w, bbox_h), get_resize_filter(interpolation_method))
     canvas.alpha_composite(smooth_line, (left, top))

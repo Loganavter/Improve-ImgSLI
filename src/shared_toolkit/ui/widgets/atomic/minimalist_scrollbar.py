@@ -211,6 +211,7 @@ class OverlayScrollArea(QScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._corner_radius = 8
+        self._reserve_scrollbar_space = True
         self.setFrameShape(QScrollArea.Shape.NoFrame)
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -235,6 +236,10 @@ class OverlayScrollArea(QScrollArea):
         self.custom_v_scrollbar.setVisible(False)
         self._sync_steps_from_native()
         self._apply_viewport_mask()
+
+    def set_reserve_scrollbar_space(self, reserve: bool):
+        self._reserve_scrollbar_space = bool(reserve)
+        self._update_scrollbar_visibility()
 
     def set_corner_radius(self, radius: int):
         radius = max(0, int(radius))
@@ -305,9 +310,12 @@ class OverlayScrollArea(QScrollArea):
                 need_scrollbar = content_doesnt_fit
 
             if need_scrollbar:
-                self.setViewportMargins(
-                    0, 0, self._scrollbar_width + self._scrollbar_gap, 0
-                )
+                if self._reserve_scrollbar_space:
+                    self.setViewportMargins(
+                        0, 0, self._scrollbar_width + self._scrollbar_gap, 0
+                    )
+                else:
+                    self.setViewportMargins(0, 0, 0, 0)
                 self.custom_v_scrollbar.setVisible(True)
             else:
                 self.setViewportMargins(0, 0, 0, 0)

@@ -1,0 +1,9 @@
+{
+  "tooltip": {
+    "click_remove_current_image": "Clique: Remover imagem atual",
+    "click_swap_current_images": "Clique: Trocar imagens atuais",
+    "hold_swap_entire_lists": "Segure: Trocar listas inteiras",
+    "use_favorite": "Usar Favorito",
+    "file_names_hidden_on_zoom": "Os nomes no canvas ficam ocultos durante o zoom. Volte para 100% para vê-los novamente."
+  }
+}

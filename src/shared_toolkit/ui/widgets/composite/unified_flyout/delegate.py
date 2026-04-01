@@ -47,6 +47,7 @@ class RatingDelegate(QStyledItemDelegate):
         self.margin = 2
 
         self._hovered_index = None
+        self._tooltip_global_pos = None
         self._tooltip_timer = QTimer(self)
         self._tooltip_timer.setSingleShot(True)
         self._tooltip_timer.setInterval(500)
@@ -57,6 +58,16 @@ class RatingDelegate(QStyledItemDelegate):
         self._is_drag_initiated = False
         self._active_button = None
         self._gesture_tx = None
+
+    def _get_session_handler(self):
+        controller = self.main_controller
+        if controller is None:
+            return None
+        if hasattr(controller, "increment_rating") or hasattr(
+            controller, "decrement_rating"
+        ):
+            return controller
+        return getattr(controller, "sessions", None)
 
     def sizeHint(self, option, index):
         return QSize(option.rect.width(), self.item_height)
@@ -267,9 +278,11 @@ class RatingDelegate(QStyledItemDelegate):
                     self._gesture_tx.commit()
                     self._gesture_tx = None
                 elif not self._gesture_tx:
-
-                    if self.main_controller and self.main_controller.session_ctrl:
-                        self.main_controller.session_ctrl.increment_rating(
+                    session_handler = self._get_session_handler()
+                    if session_handler is not None and hasattr(
+                        session_handler, "increment_rating"
+                    ):
+                        session_handler.increment_rating(
                             self.image_number, index.row()
                         )
                 self._update_rating_in_model(model, index)
@@ -282,9 +295,11 @@ class RatingDelegate(QStyledItemDelegate):
                     self._gesture_tx.commit()
                     self._gesture_tx = None
                 elif not self._gesture_tx:
-
-                    if self.main_controller and self.main_controller.session_ctrl:
-                        self.main_controller.session_ctrl.decrement_rating(
+                    session_handler = self._get_session_handler()
+                    if session_handler is not None and hasattr(
+                        session_handler, "decrement_rating"
+                    ):
+                        session_handler.decrement_rating(
                             self.image_number, index.row()
                         )
                 self._update_rating_in_model(model, index)
@@ -312,10 +327,13 @@ class RatingDelegate(QStyledItemDelegate):
         if self._hovered_index and self._hovered_index.isValid():
             full_path = self._hovered_index.data(PathRole)
             if full_path:
-                view = self.parent()
-                if view:
-                    rect = view.visualRect(self._hovered_index)
-                    global_pos = view.mapToGlobal(rect.center())
+                global_pos = self._tooltip_global_pos
+                if global_pos is None:
+                    view = self.parent()
+                    if view:
+                        rect = view.visualRect(self._hovered_index)
+                        global_pos = view.mapToGlobal(rect.center())
+                if global_pos is not None:
                     PathTooltip.get_instance().show_tooltip(global_pos, full_path)
 
     def helpEvent(self, event, view, option, index):
@@ -323,15 +341,18 @@ class RatingDelegate(QStyledItemDelegate):
             full_path = index.data(PathRole)
             if full_path:
                 self._hovered_index = index
+                self._tooltip_global_pos = event.globalPos()
                 self._tooltip_timer.start()
             else:
                 self._tooltip_timer.stop()
                 PathTooltip.get_instance().hide_tooltip()
+                self._tooltip_global_pos = None
             return True
         elif event.type() == QEvent.Type.Leave:
             self._tooltip_timer.stop()
             PathTooltip.get_instance().hide_tooltip()
             self._hovered_index = None
+            self._tooltip_global_pos = None
         return super().helpEvent(event, view, option, index)
 
     def createEditor(self, parent, option, index):

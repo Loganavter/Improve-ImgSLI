@@ -1,0 +1,31 @@
+{
+  "label": {
+    "background": "Фон",
+    "bold": "Жирный",
+    "border": "Граница",
+    "capture_size": "Размер Захвата (%)",
+    "color": "Цвет",
+    "container": "Контейнер",
+    "details": "Подробности",
+    "file_name": "Имя файла",
+    "font_size": "Размер шрифта",
+    "format": "Формат",
+    "fps": "Кадры/сек",
+    "guides": "Направляющие",
+    "language": "Язык",
+    "line": "Линия",
+    "magnifier": "Лупа",
+    "magnifier_size": "Размер Лупы (%)",
+    "name_1": "Имя 1",
+    "name_2": "Имя 2",
+    "opacity": "Непрозрачность",
+    "output": "Вывод",
+    "output_directory": "Выходная директория",
+    "quality": "Качество",
+    "resolution": "Разрешение",
+    "text_position": "Позиция текста",
+    "theme": "Тема",
+    "video_codec": "Видеокодек",
+    "view": "Вид"
+  }
+}

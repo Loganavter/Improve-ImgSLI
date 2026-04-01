@@ -20,7 +20,12 @@ class BaseFlyout(QWidget):
             self.overlay_layer.attach(self)
 
         self._main_layout = QVBoxLayout(self)
-        self._main_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_layout.setContentsMargins(
+            self.SHADOW_RADIUS,
+            self.SHADOW_RADIUS,
+            self.SHADOW_RADIUS,
+            self.SHADOW_RADIUS,
+        )
 
         self.container = QWidget(self)
         self.container.setObjectName("FlyoutContainer")
@@ -59,6 +64,7 @@ class BaseFlyout(QWidget):
         painter.end()
 
     def show_aligned(self, anchor_widget: QWidget, position="top", offset=5):
+        visual_offset = offset - self.SHADOW_RADIUS
 
         self.flyout_manager.request_show(self)
 
@@ -72,7 +78,7 @@ class BaseFlyout(QWidget):
                 anchor_widget,
                 self.size(),
                 position=position,
-                offset=offset,
+                offset=visual_offset,
             )
             self.setGeometry(rect)
         else:
@@ -87,9 +93,9 @@ class BaseFlyout(QWidget):
             target_y = anchor_pos.y()
 
             if position == "top":
-                target_y = anchor_pos.y() - my_h - offset
+                target_y = anchor_pos.y() - my_h - visual_offset
             elif position == "bottom":
-                target_y = anchor_pos.y() + anchor_h + offset
+                target_y = anchor_pos.y() + anchor_h + visual_offset
 
             screen = QGuiApplication.screenAt(anchor_pos)
             if screen:
@@ -97,7 +103,7 @@ class BaseFlyout(QWidget):
                 target_x = max(geo.left(), target_x)
                 target_x = min(geo.right() - my_w, target_x)
                 if target_y < geo.top() and position == "top":
-                    target_y = anchor_pos.y() + anchor_h + offset
+                    target_y = anchor_pos.y() + anchor_h + visual_offset
 
             self.move(target_x, target_y)
         self.show()

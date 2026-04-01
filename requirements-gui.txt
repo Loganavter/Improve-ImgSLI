@@ -1,0 +1,10 @@
+Markdown==3.8
+pillow==12.1.1
+numpy>=1.24,<2.4
+PyQt6==6.11.0
+PyQt6_sip==13.11.1
+Wand==0.6.13
+desktop-notifier==6.2.0
+scikit-image==0.26.0
+imagecodecs>=2024.1.1
+PyOpenGL>=3.1.0

@@ -1,0 +1,17 @@
+{
+  "export": {
+    "at_edges": "Nas Bordas",
+    "background_color": "Cor de Fundo",
+    "comment": "Comentário",
+    "draw_text_background": "Desenhar fundo do texto",
+    "fill_background": "Preencher fundo",
+    "include_metadata": "Incluir metadados",
+    "near_split_line": "Perto da Linha de Divisão",
+    "optimize_png": "Otimizar PNG",
+    "png_compression_level": "Nível de Compressão PNG",
+    "preview": "Pré-visualização",
+    "remember_by_default": "Lembrar por padrão",
+    "select_background_color": "Selecionar Cor de Fundo",
+    "select_output_directory": "Selecionar Diretório de Saída"
+  }
+}

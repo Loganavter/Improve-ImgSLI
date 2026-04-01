@@ -3,6 +3,8 @@ from __future__ import annotations
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen, QPolygonF
 
+from .i18n import localize_token
+
 def draw_gutter_background(widget, painter: QPainter, rect: QRectF, gutter_bg: QColor, sep_soft: QColor) -> None:
     painter.save()
     painter.fillRect(rect, gutter_bg)
@@ -110,7 +112,7 @@ def draw_channel_label(widget, painter: QPainter, rect: QRectF, label: str, text
     painter.drawText(
         text_rect,
         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-        painter.fontMetrics().elidedText(str(label), Qt.TextElideMode.ElideRight, int(text_rect.width())),
+        painter.fontMetrics().elidedText(localize_token(label), Qt.TextElideMode.ElideRight, int(text_rect.width())),
     )
     painter.restore()
 

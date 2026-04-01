@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 BASE_VERTEX_SHADER = """
 #version 330 core
 layout (location = 0) in vec2 aPos;
@@ -88,11 +90,6 @@ out vec2 TexCoord;
 void main() {
     float x = mix(quadBounds.x, quadBounds.z, aTexCoord.x);
     float y = mix(quadBounds.y, quadBounds.w, 1.0 - aTexCoord.y);
-    // Transform from widget-NDC to screen-NDC:
-    // ndc_norm = (ndc + 1) / 2; screen_norm = (ndc_norm - 0.5 + pan) * zoom + 0.5;
-    // screen_ndc = screen_norm * 2 - 1 = (ndc_norm - 0.5 + pan) * zoom * 2
-    //            = ((ndc+1)/2 - 0.5 + pan) * zoom * 2 = (ndc/2 + pan) * zoom * 2
-    //            = ndc * zoom + pan * zoom * 2
     x = x * magZoom + magPan.x * magZoom * 2.0;
     y = y * magZoom - magPan.y * magZoom * 2.0;
     gl_Position = vec4(x, y, 0.0, 1.0);
@@ -100,11 +97,55 @@ void main() {
 }
 """
 
-MAGNIFIER_FRAGMENT_SHADER = """
-#version 330 core
-#ifdef GL_OES_standard_derivatives
-#extension GL_OES_standard_derivatives : enable
-#endif
+@dataclass(frozen=True, slots=True)
+class MagnifierShaderVariantKey:
+    gpu_sampling: bool
+    combined: bool
+    interp_mode: int = 1
+    diff_mode: int = 0
+    channel_mode: int = 0
+    source_mode: int = 0
+
+def _normalize_interp_mode(mode: int) -> int:
+    return mode if mode in (0, 1, 2, 3, 4) else 1
+
+def _normalize_diff_mode(mode: int) -> int:
+    return mode if mode in (0, 1, 2, 3, 4) else 0
+
+def _normalize_channel_mode(mode: int) -> int:
+    return mode if mode in (0, 1, 2, 3, 4) else 0
+
+def _normalize_source_mode(mode: int) -> int:
+    return mode if mode in (0, 1, 2) else 0
+
+def build_magnifier_fragment_shader(key: MagnifierShaderVariantKey) -> str:
+    combined = bool(key.combined)
+    gpu_sampling = bool(key.gpu_sampling)
+    interp_mode = _normalize_interp_mode(key.interp_mode if gpu_sampling else 1)
+    channel_mode = _normalize_channel_mode(key.channel_mode)
+    source_mode = _normalize_source_mode(key.source_mode if gpu_sampling and not combined else 0)
+    diff_mode = _normalize_diff_mode(
+        key.diff_mode if gpu_sampling and not combined and source_mode == 2 else 0
+    )
+
+    defines = [
+        "#version 330 core",
+        "#ifdef GL_OES_standard_derivatives",
+        "#extension GL_OES_standard_derivatives : enable",
+        "#endif",
+    ]
+    if gpu_sampling:
+        defines.append("#define MAG_GPU_SAMPLING 1")
+    if combined:
+        defines.append("#define MAG_COMBINED 1")
+    defines.append(f"#define MAG_INTERP_MODE {interp_mode}")
+    defines.append(f"#define MAG_DIFF_MODE {diff_mode}")
+    defines.append(f"#define MAG_CHANNEL_MODE {channel_mode}")
+    defines.append(f"#define MAG_SOURCE_MODE {source_mode}")
+    defines.append(MAGNIFIER_FRAGMENT_SHADER_TEMPLATE)
+    return "\n".join(defines)
+
+MAGNIFIER_FRAGMENT_SHADER_TEMPLATE = """
 in vec2 TexCoord;
 out vec4 FragColor;
 
@@ -117,30 +158,32 @@ uniform float borderWidth;
 uniform vec4  borderColor;
 uniform bool  useCircleMask;
 
-uniform bool  isCombined;
 uniform float internalSplit;
 uniform bool  combHorizontal;
 uniform bool  showCombDivider;
 uniform vec4  combDividerColor;
 uniform float combDividerThickness;
 
-uniform bool  gpuSampling;
 uniform sampler2D bgTex1;
 uniform sampler2D bgTex2;
+uniform sampler2D bgTexDiff;
 uniform vec4  uvRect1;
 uniform vec4  uvRect2;
-uniform int   sourceMode;
-uniform int   channelMode;
-uniform int   diffMode;
 uniform float diffThreshold;
-uniform int   interpMode; // 0=nearest, 1=bilinear, 2=bicubic, 3=lanczos, 4=ewa_lanczos
 
-vec4 applyChannel(vec4 c, int mode) {
-    if (mode == 1) return vec4(c.r, 0.0, 0.0, c.a);
-    if (mode == 2) return vec4(0.0, c.g, 0.0, c.a);
-    if (mode == 3) return vec4(0.0, 0.0, c.b, c.a);
-    if (mode == 4) { float l = dot(c.rgb, vec3(0.299, 0.587, 0.114)); return vec4(l, l, l, c.a); }
+vec4 applyChannel(vec4 c) {
+#if MAG_CHANNEL_MODE == 1
+    return vec4(c.r, 0.0, 0.0, c.a);
+#elif MAG_CHANNEL_MODE == 2
+    return vec4(0.0, c.g, 0.0, c.a);
+#elif MAG_CHANNEL_MODE == 3
+    return vec4(0.0, 0.0, c.b, c.a);
+#elif MAG_CHANNEL_MODE == 4
+    float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+    return vec4(l, l, l, c.a);
+#else
     return c;
+#endif
 }
 
 float luminance(vec3 c) {
@@ -168,7 +211,6 @@ vec4 sampleBicubic(sampler2D tex, vec2 uv) {
     vec2 pos = uv * texSize - 0.5;
     vec2 base = floor(pos);
     vec2 f = fract(pos);
-    vec2 step = 1.0 / texSize;
     vec4 result = vec4(0.0);
     float totalWeight = 0.0;
     for (int j = -1; j <= 2; j++) {
@@ -236,7 +278,6 @@ vec4 sampleEwaLanczos(sampler2D tex, vec2 uv) {
     vec2 texSize = vec2(texSizeI);
     vec2 pos = uv * texSize - 0.5;
 
-    // Estimate elliptical footprint in texel space from screen-space derivatives.
     vec2 dx = dFdx(pos);
     vec2 dy = dFdy(pos);
     mat2 footprint = mat2(
@@ -282,24 +323,43 @@ vec4 sampleEwaLanczos(sampler2D tex, vec2 uv) {
 }
 
 vec4 sampleInterp(sampler2D tex, vec2 uv) {
-    if (interpMode == 0) return sampleNearest(tex, uv);
-    if (interpMode == 2) return sampleBicubic(tex, uv);
-    if (interpMode == 3) return sampleLanczos(tex, uv);
-    if (interpMode == 4) return sampleEwaLanczos(tex, uv);
+#if MAG_INTERP_MODE == 0
+    return sampleNearest(tex, uv);
+#elif MAG_INTERP_MODE == 2
+    return sampleBicubic(tex, uv);
+#elif MAG_INTERP_MODE == 3
+    return sampleLanczos(tex, uv);
+#elif MAG_INTERP_MODE == 4
+    return sampleEwaLanczos(tex, uv);
+#else
     return texture(tex, uv);
+#endif
 }
 
-vec4 sampleBg(int source, vec2 tc) {
+vec4 sampleBgFromSource(int source, vec2 tc) {
     vec2 uv;
     vec4 c;
     if (source == 0) {
         uv = mix(uvRect1.xy, uvRect1.zw, tc);
         c = sampleInterp(bgTex1, uv);
-    } else {
+    } else if (source == 1) {
         uv = mix(uvRect2.xy, uvRect2.zw, tc);
         c = sampleInterp(bgTex2, uv);
+    } else {
+        uv = mix(uvRect1.xy, uvRect1.zw, tc);
+        c = sampleInterp(bgTexDiff, uv);
     }
-    return applyChannel(c, channelMode);
+    return applyChannel(c);
+}
+
+vec4 sampleSelectedBg(vec2 tc) {
+#if MAG_SOURCE_MODE == 1
+    return sampleBgFromSource(1, tc);
+#elif MAG_SOURCE_MODE == 2
+    return sampleBgFromSource(2, tc);
+#else
+    return sampleBgFromSource(0, tc);
+#endif
 }
 
 vec4 computeDiff(vec2 tc) {
@@ -308,78 +368,83 @@ vec4 computeDiff(vec2 tc) {
     vec4 c1 = sampleInterp(bgTex1, uv1);
     vec4 c2 = sampleInterp(bgTex2, uv2);
 
-    if (diffMode == 1) {
-        vec3 diff = abs(c1.rgb - c2.rgb);
-        float maxDiff = max(diff.r, max(diff.g, diff.b));
-        if (maxDiff > diffThreshold) {
-            return vec4(1.0, 0.35, 0.47, 1.0);
-        }
-        return applyChannel(c1, channelMode);
+#if MAG_DIFF_MODE == 1
+    vec3 diff = abs(c1.rgb - c2.rgb);
+    float maxDiff = max(diff.r, max(diff.g, diff.b));
+    if (maxDiff > diffThreshold) {
+        return vec4(1.0, 0.35, 0.47, 1.0);
     }
-    if (diffMode == 2) {
-        vec3 diff = abs(c1.rgb - c2.rgb);
-        float g = luminance(diff);
-        g = clamp(g * 4.0, 0.0, 1.0);
-        return vec4(g, g, g, 1.0);
-    }
-    if (diffMode == 3) {
-        vec2 uv = mix(uvRect1.xy, uvRect1.zw, tc);
-        vec2 step = (uvRect1.zw - uvRect1.xy) / vec2(textureSize(bgTex1, 0));
-        float tl = luminance(texture(bgTex1, uv + vec2(-step.x, -step.y)).rgb);
-        float t  = luminance(texture(bgTex1, uv + vec2(0.0,     -step.y)).rgb);
-        float tr = luminance(texture(bgTex1, uv + vec2( step.x, -step.y)).rgb);
-        float l  = luminance(texture(bgTex1, uv + vec2(-step.x,  0.0)).rgb);
-        float r  = luminance(texture(bgTex1, uv + vec2( step.x,  0.0)).rgb);
-        float bl = luminance(texture(bgTex1, uv + vec2(-step.x,  step.y)).rgb);
-        float b  = luminance(texture(bgTex1, uv + vec2(0.0,      step.y)).rgb);
-        float br = luminance(texture(bgTex1, uv + vec2( step.x,  step.y)).rgb);
-        float gx = -tl - 2.0*l - bl + tr + 2.0*r + br;
-        float gy = -tl - 2.0*t - tr + bl + 2.0*b + br;
-        float edge = sqrt(gx*gx + gy*gy);
-        edge = smoothstep(0.05, 0.3, edge);
-        return vec4(edge, edge, edge, 1.0);
-    }
-    return applyChannel(c1, channelMode);
+    return applyChannel(c1);
+#elif MAG_DIFF_MODE == 2
+    vec3 diff = abs(c1.rgb - c2.rgb);
+    float g = luminance(diff);
+    g = clamp(g * 4.0, 0.0, 1.0);
+    return vec4(g, g, g, 1.0);
+#elif MAG_DIFF_MODE == 3
+    vec2 uv = mix(uvRect1.xy, uvRect1.zw, tc);
+    vec2 step = (uvRect1.zw - uvRect1.xy) / vec2(textureSize(bgTex1, 0));
+    float tl = luminance(texture(bgTex1, uv + vec2(-step.x, -step.y)).rgb);
+    float t  = luminance(texture(bgTex1, uv + vec2(0.0,     -step.y)).rgb);
+    float tr = luminance(texture(bgTex1, uv + vec2( step.x, -step.y)).rgb);
+    float l  = luminance(texture(bgTex1, uv + vec2(-step.x,  0.0)).rgb);
+    float r  = luminance(texture(bgTex1, uv + vec2( step.x,  0.0)).rgb);
+    float bl = luminance(texture(bgTex1, uv + vec2(-step.x,  step.y)).rgb);
+    float b  = luminance(texture(bgTex1, uv + vec2(0.0,      step.y)).rgb);
+    float br = luminance(texture(bgTex1, uv + vec2( step.x,  step.y)).rgb);
+    float gx = -tl - 2.0*l - bl + tr + 2.0*r + br;
+    float gy = -tl - 2.0*t - tr + bl + 2.0*b + br;
+    float edge = sqrt(gx*gx + gy*gy);
+    edge = smoothstep(0.05, 0.3, edge);
+    return vec4(edge, edge, edge, 1.0);
+#elif MAG_DIFF_MODE == 4
+    vec2 uv = mix(uvRect1.xy, uvRect1.zw, tc);
+    vec4 c = sampleInterp(bgTexDiff, uv);
+    return applyChannel(c);
+#else
+    return applyChannel(c1);
+#endif
 }
 
 void main() {
     vec4 col;
 
-    if (gpuSampling) {
-        if (isCombined) {
-            float coord = combHorizontal ? TexCoord.y : TexCoord.x;
-            if (coord < internalSplit) {
-                col = sampleBg(0, TexCoord);
-            } else {
-                col = sampleBg(1, TexCoord);
-            }
-            if (showCombDivider && combDividerThickness > 0.0) {
-                if (abs(coord - internalSplit) < combDividerThickness) {
-                    col = mix(col, combDividerColor, combDividerColor.a);
-                }
-            }
-        } else if (sourceMode == 2) {
-            col = computeDiff(TexCoord);
+#ifdef MAG_GPU_SAMPLING
+    #ifdef MAG_COMBINED
+        float coord = combHorizontal ? TexCoord.y : TexCoord.x;
+        if (coord < internalSplit) {
+            col = sampleBgFromSource(0, TexCoord);
         } else {
-            col = sampleBg(sourceMode, TexCoord);
+            col = sampleBgFromSource(1, TexCoord);
         }
-    } else {
-        if (isCombined) {
-            float coord = combHorizontal ? TexCoord.y : TexCoord.x;
-            if (coord < internalSplit) {
-                col = texture(magTex, TexCoord);
-            } else {
-                col = texture(magTex2, TexCoord);
+        if (showCombDivider && combDividerThickness > 0.0) {
+            float dist = abs(coord - internalSplit);
+            if (dist < combDividerThickness) {
+                col = mix(col, combDividerColor, combDividerColor.a);
             }
-            if (showCombDivider && combDividerThickness > 0.0) {
-                if (abs(coord - internalSplit) < combDividerThickness) {
-                    col = mix(col, combDividerColor, combDividerColor.a);
-                }
-            }
-        } else {
+        }
+    #elif MAG_SOURCE_MODE == 2 && MAG_DIFF_MODE != 0
+        col = computeDiff(TexCoord);
+    #else
+        col = sampleSelectedBg(TexCoord);
+    #endif
+#else
+    #ifdef MAG_COMBINED
+        float coord = combHorizontal ? TexCoord.y : TexCoord.x;
+        if (coord < internalSplit) {
             col = texture(magTex, TexCoord);
+        } else {
+            col = texture(magTex2, TexCoord);
         }
-    }
+        if (showCombDivider && combDividerThickness > 0.0) {
+            float dist = abs(coord - internalSplit);
+            if (dist < combDividerThickness) {
+                col = mix(col, combDividerColor, combDividerColor.a);
+            }
+        }
+    #else
+        col = texture(magTex, TexCoord);
+    #endif
+#endif
 
     if (useCircleMask) {
         float outer_mask = texture(circleMaskTex, TexCoord).r;
@@ -405,9 +470,6 @@ void main() {
             }
         }
 
-        // Match the original CPU composition:
-        // 1. draw the whole bordered disk with the outer mask
-        // 2. alpha-composite content on top inside the inner mask
         float border_mask = smoothstep(0.42, 0.92, outer_mask);
         float border_alpha = border_mask * borderColor.a;
         float fill_alpha = col.a * inner_mask;

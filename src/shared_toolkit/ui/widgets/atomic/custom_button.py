@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from ...icon_manager import AppIcon, get_app_icon
 from ...managers.theme_manager import ThemeManager
+from .tooltips import install_custom_tooltip
 from ..helpers.underline_painter import (
     UnderlineConfig,
     draw_bottom_underline,
@@ -27,7 +28,6 @@ class CustomButton(QWidget):
         self._override_bg_color: Optional[QColor] = None
         self.theme_manager = ThemeManager.get_instance()
         self._icon = icon
-        self._app_icon: Optional[AppIcon] = icon if isinstance(icon, AppIcon) else None
         self._icon_size = QSize(16, 16)
 
         self._is_footer = False
@@ -45,6 +45,7 @@ class CustomButton(QWidget):
         self._rebuild_layout()
         self.setProperty("class", "custom-button")
         self.setProperty("state", "normal")
+        install_custom_tooltip(self)
 
         self.theme_manager.theme_changed.connect(self._on_theme_changed)
         self._on_theme_changed()
@@ -60,12 +61,22 @@ class CustomButton(QWidget):
 
     def _update_icon_pixmap(self):
         if self._icon:
-            if self._app_icon is not None:
-                icon = get_app_icon(self._app_icon)
-            else:
-                icon = self._icon
+            icon = self._resolve_icon(self._icon)
             pixmap = icon.pixmap(self._icon_size, QIcon.Mode.Normal, QIcon.State.Off)
             self.icon_label.setPixmap(pixmap)
+
+    def _resolve_icon(self, icon: Optional[Union[QIcon, AppIcon]]) -> QIcon:
+        if icon is None:
+            return QIcon()
+        if isinstance(icon, QIcon):
+            return icon
+        try:
+            resolved_icon = get_app_icon(icon)
+            if isinstance(resolved_icon, QIcon):
+                return resolved_icon
+        except Exception:
+            pass
+        return QIcon()
 
     def _on_theme_changed(self):
         self._update_icon_pixmap()
@@ -139,7 +150,6 @@ class CustomButton(QWidget):
 
     def setIcon(self, icon: Optional[Union[QIcon, AppIcon]]):
         self._icon = icon
-        self._app_icon = icon if isinstance(icon, AppIcon) else None
         self._rebuild_layout()
         self._update_icon_pixmap()
 

@@ -7,12 +7,7 @@ from PIL import Image
 
 from core.store import Store
 from domain.types import Color
-from shared.image_processing.pipeline import (
-    RenderingPipeline,
-    create_render_context_from_store,
-)
-from shared.image_processing.resize import resize_images_processor
-from utils.resource_loader import get_magnifier_drawing_coords
+from plugins.export.scene_builder import ExportSceneBuilder
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -28,8 +23,9 @@ except ImportError as e:
 
 class ExportService:
 
-    def __init__(self, font_path_absolute: str):
+    def __init__(self, font_path_absolute: str, gpu_export_service=None):
         self.font_path_absolute = font_path_absolute
+        self.gpu_export_service = gpu_export_service
 
     def export_image(
         self,
@@ -37,6 +33,8 @@ class ExportService:
         original_image1: Image.Image,
         original_image2: Image.Image,
         export_options: dict,
+        render_context=None,
+        magnifier_drawing_coords=None,
         cancel_event: Optional[threading.Event] = None,
         progress_callback: Optional[Any] = None,
     ) -> str:
@@ -54,48 +52,33 @@ class ExportService:
         if progress_callback:
             progress_callback(10)
 
-        image1_for_save, image2_for_save = resize_images_processor(
-            original_image1, original_image2
-        )
-        if not image1_for_save or not image2_for_save:
-            raise ValueError("Failed to unify images for saving.")
-
-        store.viewport.image1 = image1_for_save
-        store.viewport.image2 = image2_for_save
-
-        save_width, save_height = image1_for_save.size
-
-        magnifier_coords = None
-        if store.viewport.use_magnifier:
-            magnifier_coords = get_magnifier_drawing_coords(
-                store=store,
-                drawing_width=save_width,
-                drawing_height=save_height,
-                container_width=save_width,
-                container_height=save_height,
+        scene_builder = ExportSceneBuilder(store)
+        current_render_context = render_context
+        if current_render_context is None:
+            image1_for_save, image2_for_save = scene_builder.build_resized_pair(
+                original_image1, original_image2
             )
+            current_render_context = scene_builder.build_render_context(
+                image1_for_save,
+                image2_for_save,
+                source_image1=original_image1,
+                source_image2=original_image2,
+                magnifier_drawing_coords=magnifier_drawing_coords,
+            )
+        else:
+            image1_for_save = current_render_context.image1
+            image2_for_save = current_render_context.image2
 
         if progress_callback:
             progress_callback(30)
 
-        ctx = create_render_context_from_store(
+        if self.gpu_export_service is None:
+            raise RuntimeError("GPU export service is not configured")
+
+        final_img, _gpu_debug = self.gpu_export_service.render_image(
             store=store,
-            width=save_width,
-            height=save_height,
-            magnifier_drawing_coords=magnifier_coords,
-            image1_scaled=image1_for_save,
-            image2_scaled=image2_for_save,
+            render_context=current_render_context,
         )
-
-        ctx.is_interactive_mode = False
-        ctx.file_name1 = self._get_current_display_name(store, 1)
-        ctx.file_name2 = self._get_current_display_name(store, 2)
-
-        from shared_toolkit.ui.managers.font_manager import FontManager
-
-        font_path = FontManager.get_instance().get_font_path_for_image_text(store)
-        pipeline = RenderingPipeline(font_path)
-        final_img, _, _, _, _, _ = pipeline.render_frame(ctx)
 
         if final_img is None:
             raise ValueError("Failed to create the base image for saving.")
@@ -299,12 +282,12 @@ class ExportService:
         }
 
         return self.export_image(
-            store,
-            original_image1,
-            original_image2,
-            export_options,
-            cancel_event,
-            progress_callback,
+            store=store,
+            original_image1=original_image1,
+            original_image2=original_image2,
+            export_options=export_options,
+            cancel_event=cancel_event,
+            progress_callback=progress_callback,
         )
 
     def _generate_base_filename(self, store: Store) -> str:

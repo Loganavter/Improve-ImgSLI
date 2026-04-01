@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QLabel, QPushButton
 from ...icon_manager import AppIcon, get_app_icon
 from ...managers.theme_manager import ThemeManager
 from ...overlay_layer import get_overlay_layer
+from .tooltips import install_custom_tooltip
 from ..helpers.underline_painter import (
     UnderlineConfig,
     draw_bottom_underline,
@@ -33,6 +34,7 @@ class ScrollableIconButton(QPushButton):
         self._popup_timer.setSingleShot(True)
         self._popup_timer.setInterval(1000)
         self._popup_timer.timeout.connect(self._hide_value_popup)
+        install_custom_tooltip(self)
 
         self._update_style()
 
@@ -81,6 +83,12 @@ class ScrollableIconButton(QPushButton):
             self.update()
             event.accept()
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._popup_timer.stop()
+            self._hide_value_popup()
+        super().mousePressEvent(event)
+
     def _show_value_popup(self, value: int):
         if not self.isVisible():
             return
@@ -128,14 +136,11 @@ class ScrollableIconButton(QPushButton):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        is_dark = self.theme_manager.is_dark()
-        text_color_str = "#ffffff" if is_dark else "#2d2d2d"
-
         font = QFont()
         font.setPixelSize(9)
         font.setBold(True)
         painter.setFont(font)
-        painter.setPen(QColor(text_color_str))
+        painter.setPen(QColor(self.theme_manager.get_color("dialog.text")))
 
         text_rect = QRect(0, 24, 36, 12)
         painter.drawText(
