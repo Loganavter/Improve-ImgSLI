@@ -7,15 +7,19 @@ def activate_single_image_mode(controller, image_number: int):
         if image_number == 1
         else (doc.full_res_image2 or doc.preview_image2 or doc.original_image2)
     )
-    controller.store.viewport.showing_single_image_mode = image_number if img else 0
+    controller.store.viewport.view_state.showing_single_image_mode = image_number if img else 0
     controller.store.emit_state_change("viewport")
+    if controller.event_bus:
+        controller.event_bus.emit(CoreUpdateRequestedEvent())
+    else:
+        controller.update_requested.emit()
 
 def deactivate_single_image_mode(controller):
     vp = controller.store.viewport
-    vp.showing_single_image_mode = 0
-    vp.is_dragging_split_line = False
-    vp.is_dragging_capture_point = False
-    vp.is_dragging_split_in_magnifier = False
+    vp.view_state.showing_single_image_mode = 0
+    vp.interaction_state.is_dragging_split_line = False
+    vp.interaction_state.is_dragging_capture_point = False
+    vp.interaction_state.is_dragging_split_in_magnifier = False
     controller.store.emit_state_change("viewport")
     if controller.event_bus:
         controller.event_bus.emit(CoreUpdateRequestedEvent())
@@ -48,22 +52,20 @@ def on_combobox_changed(controller, image_number: int, index: int, scroll_delta:
 
 def on_interpolation_changed(controller, index: int):
     try:
-        from shared.image_processing.resize import WAND_AVAILABLE
-    except Exception:
-        WAND_AVAILABLE = False
-    try:
         from core.constants import AppConstants
 
         all_keys = list(AppConstants.INTERPOLATION_METHODS_MAP.keys())
-        visible_keys = [k for k in all_keys if k != "EWA_LANCZOS" or WAND_AVAILABLE]
+        visible_keys = all_keys
         if not (0 <= index < len(visible_keys)):
             return
         selected_method_key = visible_keys[index]
-        if controller.store.viewport.interpolation_method == selected_method_key:
+        if controller.store.viewport.render_config.interpolation_method == selected_method_key:
             return
-        controller.store.viewport.interpolation_method = selected_method_key
+        controller.store.viewport.render_config.interpolation_method = selected_method_key
         if hasattr(controller.store.viewport, "render_config") and controller.store.viewport.render_config is not None:
             controller.store.viewport.render_config.interpolation_method = selected_method_key
+        if hasattr(controller.store, "invalidate_render_cache"):
+            controller.store.invalidate_render_cache()
         main_controller = getattr(controller, "main_controller", None)
         if (
             main_controller is not None
@@ -74,13 +76,19 @@ def on_interpolation_changed(controller, index: int):
                 "interpolation_method", selected_method_key
             )
         controller.store.emit_state_change("viewport")
+        if controller.event_bus:
+            controller.event_bus.emit(CoreUpdateRequestedEvent())
+        else:
+            controller.update_requested.emit()
         recorder = getattr(controller.store, "recorder", None)
         if recorder is not None and getattr(recorder, "is_recording", False) and not getattr(recorder, "is_paused", False):
             recorder.capture_frame()
         if controller.presenter:
-            controller.presenter._update_interpolation_combo_box_ui()
+            settings_presenter = controller.presenter.get_feature("settings")
+            if settings_presenter is not None:
+                settings_presenter.update_interpolation_combo_box_ui()
             ui_manager = getattr(controller.presenter, "ui_manager", None)
-            if getattr(ui_manager, "_settings_dialog", None):
-                ui_manager._settings_dialog.update_main_interpolation(selected_method_key)
+            if getattr(ui_manager.dialogs, "settings_dialog", None):
+                ui_manager.dialogs.settings_dialog.update_main_interpolation(selected_method_key)
     except Exception:
         pass

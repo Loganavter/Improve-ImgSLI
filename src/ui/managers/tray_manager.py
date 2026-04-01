@@ -22,11 +22,14 @@ class TrayManager(QObject):
         parent=None,
         app_name: str = "Improve-ImgSLI",
         current_language: str = "en",
+        resource_manager=None,
     ):
         super().__init__(parent)
         self.app_name = app_name
         self.current_language = current_language
+        self.resource_manager = resource_manager
         self.tray_icon: QSystemTrayIcon = None
+        self.tray_menu: QMenu | None = None
         self._last_saved_path: str = ""
         self._actions = {}
 
@@ -44,8 +47,14 @@ class TrayManager(QObject):
                 logger.warning(f"Не удалось загрузить иконку трея из {icon_path}")
                 icon = QIcon.fromTheme("application", QIcon())
 
-            self.tray_icon = QSystemTrayIcon(icon)
+            self.tray_icon = QSystemTrayIcon(icon, self)
             self.tray_icon.setToolTip(self.app_name)
+            if self.resource_manager is not None:
+                self.resource_manager.register(
+                    self.tray_icon,
+                    name="tray_icon",
+                    delete=True,
+                )
 
             self._build_context_menu()
             self.tray_icon.activated.connect(self._on_tray_activated)
@@ -62,18 +71,21 @@ class TrayManager(QObject):
         if self.tray_icon is None:
             return
 
-        tray_menu = QMenu()
+        tray_menu = QMenu(self.parent())
+        self.tray_menu = tray_menu
+        if self.resource_manager is not None:
+            self.resource_manager.register_menu(self.tray_menu, name="tray_menu")
 
         self._actions["toggle"] = QAction(
-            tr("ui.showhide_window", self.current_language)
+            tr("ui.showhide_window", self.current_language), tray_menu
         )
         self._actions["open_file"] = QAction(
-            tr("action.open_last_file", self.current_language)
+            tr("action.open_last_file", self.current_language), tray_menu
         )
         self._actions["open_folder"] = QAction(
-            tr("action.open_save_folder", self.current_language)
+            tr("action.open_save_folder", self.current_language), tray_menu
         )
-        self._actions["quit"] = QAction(tr("action.quit", self.current_language))
+        self._actions["quit"] = QAction(tr("action.quit", self.current_language), tray_menu)
 
         self._actions["toggle"].triggered.connect(self.toggle_visibility_requested.emit)
         self._actions["open_file"].triggered.connect(self.open_last_file_requested.emit)
@@ -84,14 +96,14 @@ class TrayManager(QObject):
 
         self._actions["open_file"].setVisible(False)
 
-        tray_menu.addAction(self._actions["toggle"])
-        tray_menu.addSeparator()
-        tray_menu.addAction(self._actions["open_file"])
-        tray_menu.addAction(self._actions["open_folder"])
-        tray_menu.addSeparator()
-        tray_menu.addAction(self._actions["quit"])
+        self.tray_menu.addAction(self._actions["toggle"])
+        self.tray_menu.addSeparator()
+        self.tray_menu.addAction(self._actions["open_file"])
+        self.tray_menu.addAction(self._actions["open_folder"])
+        self.tray_menu.addSeparator()
+        self.tray_menu.addAction(self._actions["quit"])
 
-        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setContextMenu(self.tray_menu)
 
     def set_last_saved_path(self, path: str):
         self._last_saved_path = path
@@ -147,3 +159,22 @@ class TrayManager(QObject):
             except Exception:
                 pass
             self.tray_icon = None
+        if self.tray_menu:
+            try:
+                self.tray_menu.hide()
+            except Exception:
+                pass
+            try:
+                self.tray_menu.close()
+            except Exception:
+                pass
+            try:
+                self.tray_menu.clear()
+            except Exception:
+                pass
+            try:
+                self.tray_menu.deleteLater()
+            except Exception:
+                pass
+            self.tray_menu = None
+        self._actions.clear()

@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QLabel, QWidget
 from ...icon_manager import AppIcon, get_app_icon
 from ...managers.theme_manager import ThemeManager
 from ...overlay_layer import get_overlay_layer
+from .tooltips import install_custom_tooltip
 from ..helpers.underline_painter import (
     UnderlineConfig,
     draw_bottom_underline,
@@ -49,6 +50,7 @@ class ToggleScrollableIconButton(QWidget):
 
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self.update)
+        install_custom_tooltip(self)
 
         self._underline_color = None
         self._show_underline = show_underline
@@ -101,6 +103,9 @@ class ToggleScrollableIconButton(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            self._is_scrolling = False
+            self._scroll_end_timer.stop()
+            self._hide_value_popup()
             self._is_pressed = True
             self.update()
         elif event.button() == Qt.MouseButton.MiddleButton:
@@ -149,7 +154,7 @@ class ToggleScrollableIconButton(QWidget):
             if self._saved_value is None:
                 self._saved_value = old_value
 
-        elif old_value == 0 and delta != 0:
+        elif old_value == 0 and delta > 0:
             if self._saved_value is not None and self._saved_value > 0:
                 restored_value = self._saved_value
                 self._saved_value = None

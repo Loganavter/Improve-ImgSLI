@@ -11,16 +11,17 @@ class DialogManager:
     def __init__(self, host):
         self.host = host
 
+    @property
+    def settings_dialog(self):
+        return self.host._settings_dialog
+
     def show_help_dialog(self):
-        if (
-            self.host.main_controller is None
-            or self.host.main_controller.plugin_coordinator is None
-        ):
+        if self.host.main_controller is None:
             logger.warning("UIManager.show_help_dialog: plugin coordinator is unavailable")
             return
 
         try:
-            self.host.main_controller.plugin_coordinator.execute_command(
+            self.host.main_controller.execute_plugin_command(
                 "help",
                 "show_dialog",
                 parent=self.host.parent_widget,
@@ -41,9 +42,9 @@ class DialogManager:
                 "zoom_interpolation_method",
                 None,
             ),
-            getattr(self.host.store.viewport, "interpolation_method", None),
-            getattr(self.host.store.viewport, "optimize_magnifier_movement", None),
-            getattr(self.host.store.viewport, "optimize_laser_smoothing", None),
+            getattr(self.host.store.viewport.render_config, "interpolation_method", None),
+            getattr(self.host.store.viewport.view_state, "optimize_magnifier_movement", None),
+            getattr(self.host.store.viewport.render_config, "optimize_laser_smoothing", None),
         )
 
         if self.host._settings_dialog is None:
@@ -57,14 +58,14 @@ class DialogManager:
             self.host._settings_dialog = SettingsDialog(
                 current_language=self.host.store.settings.current_language,
                 current_theme=self.host.store.settings.theme,
-                current_max_length=self.host.store.viewport.max_name_length,
+                current_max_length=self.host.store.viewport.render_config.max_name_length,
                 min_limit=AppConstants.MIN_NAME_LENGTH_LIMIT,
                 max_limit=AppConstants.MAX_NAME_LENGTH_LIMIT,
                 debug_mode_enabled=self.host.store.settings.debug_mode_enabled,
                 system_notifications_enabled=getattr(
                     self.host.store.settings, "system_notifications_enabled", True
                 ),
-                current_resolution_limit=self.host.store.viewport.display_resolution_limit,
+                current_resolution_limit=self.host.store.viewport.render_config.display_resolution_limit,
                 parent=self.host.parent_widget,
                 tr_func=tr,
                 current_ui_font_mode=getattr(
@@ -76,13 +77,13 @@ class DialogManager:
                 current_ui_mode=getattr(
                     self.host.store.settings, "ui_mode", "beginner"
                 ),
-                optimize_magnifier_movement=self.host.store.viewport.optimize_magnifier_movement,
+                optimize_magnifier_movement=self.host.store.viewport.view_state.optimize_magnifier_movement,
                 movement_interpolation_method=self.host.store.viewport.render_config.magnifier_movement_interpolation_method,
-                optimize_laser_smoothing=self.host.store.viewport.optimize_laser_smoothing,
-                interpolation_method=self.host.store.viewport.interpolation_method,
+                optimize_laser_smoothing=self.host.store.viewport.render_config.optimize_laser_smoothing,
+                interpolation_method=self.host.store.viewport.render_config.interpolation_method,
                 zoom_interpolation_method=self.host.store.viewport.render_config.zoom_interpolation_method,
-                auto_calculate_psnr=self.host.store.viewport.auto_calculate_psnr,
-                auto_calculate_ssim=self.host.store.viewport.auto_calculate_ssim,
+                auto_calculate_psnr=self.host.store.viewport.session_data.image_state.auto_calculate_psnr,
+                auto_calculate_ssim=self.host.store.viewport.session_data.image_state.auto_calculate_ssim,
                 auto_crop_black_borders=getattr(
                     self.host.store.settings, "auto_crop_black_borders", True
                 ),

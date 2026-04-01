@@ -5,21 +5,18 @@ from typing import Optional
 from PyQt6.QtCore import QThreadPool
 from PyQt6.QtWidgets import QApplication
 
-from core.main_controller import MainController
 from core.plugin_coordinator import PluginCoordinator
 from core.session_manager import SessionManager
 from core.plugin_system import EventBus, PluginRegistry
 from core.plugin_system.ui_integration import PluginUIRegistry
 from core.store import Store
 from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
-from events.app_event_handler import EventHandler
 from plugins.settings.manager import SettingsManager
 from services.system.notifications import NotificationService
 from shared_toolkit.core import setup_logging
+from shared_toolkit.ui.managers.ui_resource_manager import UIResourceManager
 from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from ui.managers.tray_manager import TrayManager
-from ui.presenters.main_window_presenter import MainWindowPresenter
-from utils.geometry import GeometryManager
+from ui.main_window_composer import MainWindowComposer
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -37,6 +34,7 @@ class ApplicationContext:
         self.plugin_ui_registry: Optional[PluginUIRegistry] = None
         self.plugin_coordinator: Optional[PluginCoordinator] = None
         self.session_manager: Optional[SessionManager] = None
+        self.ui_resource_manager: Optional[UIResourceManager] = None
         self._initialized = False
         self._is_shutting_down = False
 
@@ -44,6 +42,17 @@ class ApplicationContext:
         if self._initialized:
             return
 
+        self._build_core_services()
+        self._load_persistent_state()
+        self._configure_logging()
+        self._configure_theme_manager()
+        self._build_runtime_services()
+        self._initialize_plugins()
+
+        self._initialized = True
+        logger.debug("ApplicationContext initialized")
+
+    def _build_core_services(self):
         self.store = Store()
 
         from core.state_management.dispatcher import Dispatcher
@@ -54,10 +63,21 @@ class ApplicationContext:
         from ui.store_bridge import QtStoreBridge
 
         self.bridge = QtStoreBridge(self.store)
+        self.event_bus = EventBus()
+        self.plugin_ui_registry = PluginUIRegistry()
+        self.notification_service = NotificationService()
+        self.thread_pool = QThreadPool()
+        self.thread_pool.setMaxThreadCount(4)
 
+    def _load_persistent_state(self):
         self.settings_manager = SettingsManager("improve-imgsli", "improve-imgsli")
         self.settings_manager.load_all_settings(self.store)
+        if self.notification_service is not None:
+            self.notification_service.set_enabled(
+                getattr(self.store.settings, "system_notifications_enabled", True)
+            )
 
+    def _configure_logging(self):
         effective_debug = self.debug_mode or getattr(
             self.store.settings, "debug_mode_enabled", False
         )
@@ -66,30 +86,21 @@ class ApplicationContext:
         if os.getenv("IMPROVE_DEBUG", "0") == "1":
             self.store.settings.debug_mode_enabled = True
 
+    def _configure_theme_manager(self):
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
 
-        toolkit_base_qss = self._resource_path(
-            "shared_toolkit/ui/resources/styles/base.qss"
-        )
-        self.theme_manager.register_qss_path(toolkit_base_qss)
+        for qss_path in (
+            self._resource_path("shared_toolkit/ui/resources/styles/base.qss"),
+            self._resource_path("shared_toolkit/ui/resources/styles/widgets.qss"),
+            self._resource_path("resources/styles/app.qss"),
+        ):
+            self.theme_manager.register_qss_path(qss_path)
 
-        toolkit_qss = self._resource_path(
-            "shared_toolkit/ui/resources/styles/widgets.qss"
-        )
-        self.theme_manager.register_qss_path(toolkit_qss)
-
-        app_qss = self._resource_path("resources/styles/app.qss")
-        self.theme_manager.register_qss_path(app_qss)
-
-        self.notification_service = NotificationService()
-
-        self.thread_pool = QThreadPool()
-        self.thread_pool.setMaxThreadCount(4)
-
-        self.event_bus = EventBus()
-        self.plugin_ui_registry = PluginUIRegistry()
+    def _build_runtime_services(self):
         self.plugin_registry = PluginRegistry(self)
+
+    def _initialize_plugins(self):
         discovered_plugins = self.plugin_registry.discover_plugins()
         for plugin in discovered_plugins:
             for qss_path in plugin.get_qss_paths():
@@ -100,9 +111,6 @@ class ApplicationContext:
         self.plugin_coordinator.initialize(self)
         self.session_manager = SessionManager(self.store, self.plugin_coordinator)
 
-        self._initialized = True
-        logger.debug("ApplicationContext initialized")
-
     def _resource_path(self, relative_path: str) -> str:
         from utils.resource_loader import resource_path
 
@@ -111,49 +119,16 @@ class ApplicationContext:
     def create_window_dependent_components(self, window):
         if not self._initialized:
             raise RuntimeError("ApplicationContext not initialized")
-
-        geometry_manager = GeometryManager(
-            window, self.settings_manager.settings, self.store
-        )
-
-        from events.drag_drop_handler import DragAndDropService
-
-        if DragAndDropService._instance is None:
-            DragAndDropService._instance = DragAndDropService(self.store, window)
-
-        tray_manager = TrayManager(
-            window, current_language=self.store.settings.current_language
-        )
-        tray_manager.toggle_visibility_requested.connect(
-            window._toggle_main_window_visibility
-        )
-        tray_manager.open_last_file_requested.connect(window._open_last_saved_file)
-        tray_manager.open_last_folder_requested.connect(window._open_last_saved_folder)
-        tray_manager.quit_requested.connect(QApplication.instance().quit)
-
-        main_controller = MainController(self)
-
-        event_handler = EventHandler(self.store, None)
-
-        presenter = MainWindowPresenter(
-            window,
-            window.ui,
-            self.store,
-            main_controller,
-            plugin_ui_registry=self.plugin_ui_registry,
-        )
-        event_handler.presenter = presenter
-        main_controller.set_presenter(presenter)
-        presenter.connect_event_handler_signals(event_handler)
-
-        self.notification_service.set_tray_icon(tray_manager.tray_icon)
-
+        composer = MainWindowComposer(self)
+        components = composer.compose(window)
+        self.ui_resource_manager = components.ui_resource_manager
         return {
-            "geometry_manager": geometry_manager,
-            "tray_manager": tray_manager,
-            "main_controller": main_controller,
-            "event_handler": event_handler,
-            "presenter": presenter,
+            "geometry_manager": components.geometry_manager,
+            "tray_manager": components.tray_manager,
+            "main_controller": components.main_controller,
+            "event_handler": components.event_handler,
+            "presenter": components.presenter,
+            "ui_resource_manager": components.ui_resource_manager,
         }
 
     def apply_theme_to_app(self, app: QApplication):
@@ -186,5 +161,11 @@ class ApplicationContext:
                 self.notification_service.shutdown()
             except Exception as e:
                 logger.error(f"Ошибка при остановке NotificationService: {e}")
+
+        if self.ui_resource_manager:
+            try:
+                self.ui_resource_manager.shutdown()
+            except Exception as e:
+                logger.error(f"Ошибка при остановке UIResourceManager: {e}")
 
         logger.debug("ApplicationContext завершен")

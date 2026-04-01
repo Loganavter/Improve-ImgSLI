@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QScrollArea, QWidget
 
 from shared_toolkit.ui.widgets.atomic.tooltips import PathTooltip
 from . import layout as timeline_layout
+from .i18n import localize_token, localize_value
 
 def footer_height(widget) -> int:
     return 42 + widget.SCROLLBAR_STRIP_HEIGHT
@@ -348,12 +349,8 @@ def tooltip_for_keyframe(widget, group, track, channel, keyframe) -> str:
     return (
         f"{group.label} / {track.label}"
         f"\nTime: {format_time(keyframe.timestamp)}"
-        f"\n{channel.label}: {format_value(keyframe.value)}"
+        f"\n{localize_token(channel.label)}: {format_value(keyframe.value)}"
     )
 
 def format_value(value) -> str:
-    if isinstance(value, bool):
-        return "On" if value else "Off"
-    if isinstance(value, float):
-        return f"{value:.2f}"
-    return str(value)
+    return localize_value(value)

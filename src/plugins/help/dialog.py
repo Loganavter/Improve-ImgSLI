@@ -10,9 +10,7 @@ from PyQt6.QtGui import QFontMetrics, QIcon
 from PyQt6.QtWidgets import (
     QDialog,
     QFrame,
-    QHBoxLayout,
     QLabel,
-    QListWidget,
     QListWidgetItem,
     QScrollArea,
     QStackedWidget,
@@ -21,6 +19,7 @@ from markdown import markdown
 
 from shared_toolkit.ui.managers.theme_manager import ThemeManager
 from shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import MinimalistScrollBar
+from shared_toolkit.ui.widgets.composite import SidebarDialogShell
 from shared_toolkit.utils.paths import resource_path
 from ui.icon_manager import AppIcon, get_app_icon
 
@@ -89,17 +88,15 @@ class HelpDialog(QDialog):
         self.theme_manager.theme_changed.connect(self._apply_styles)
 
     def _setup_ui(self) -> None:
+        from PyQt6.QtWidgets import QHBoxLayout
+
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        self.nav_widget = QListWidget()
-        self.nav_widget.setFrameShape(QFrame.Shape.NoFrame)
-        self.nav_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.nav_widget.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self.nav_widget.setVerticalScrollBar(MinimalistScrollBar())
+        self.shell = SidebarDialogShell(content_margins=(0, 0, 0, 0), content_spacing=0)
+        self.nav_widget = self.shell.sidebar
+        self.nav_widget.enable_minimal_scrollbar()
         self.nav_widget.currentRowChanged.connect(self.change_page)
 
         self.scroll_area = QScrollArea()
@@ -111,8 +108,9 @@ class HelpDialog(QDialog):
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBar(MinimalistScrollBar())
 
-        main_layout.addWidget(self.nav_widget)
-        main_layout.addWidget(self.scroll_area, 1)
+        self.shell.pages_stack.hide()
+        self.shell.content_layout.addWidget(self.scroll_area, 1)
+        main_layout.addWidget(self.shell)
 
     def _reload_sections(self) -> None:
         self._sections = self._discover_sections(self.current_language)

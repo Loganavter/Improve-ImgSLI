@@ -30,26 +30,35 @@ class SettingsManager:
 
     def load_all_settings(self, store: Store):
         v, s = store.viewport, store.settings
-        v.max_name_length = self._get_setting("max_name_length", 50, int)
-        v.display_resolution_limit = self._get_setting(
+        render = v.render_config
+        view = v.view_state
+
+        render.max_name_length = self._get_setting("max_name_length", 50, int)
+        render.display_resolution_limit = self._get_setting(
             "display_resolution_limit", 2160, int
         )
 
-        v.magnifier_size_relative = self._get_setting(
+        view.magnifier_size_relative = self._get_setting(
             "magnifier_size_relative", 0.4, float
         )
-        v.capture_size_relative = self._get_setting("capture_size_relative", 0.1, float)
-        v.magnifier_spacing_relative = self._get_setting(
+        view.capture_size_relative = self._get_setting("capture_size_relative", 0.1, float)
+        view.magnifier_spacing_relative = self._get_setting(
             "magnifier_spacing_relative", AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE, float
         )
-        v.magnifier_spacing_relative_visual = v.magnifier_spacing_relative
-        v.movement_speed_per_sec = self._get_setting(
+        view.magnifier_spacing_relative_visual = view.magnifier_spacing_relative
+        view.is_magnifier_combined = (
+            view.magnifier_visible_left
+            and view.magnifier_visible_right
+            and view.magnifier_spacing_relative
+            <= AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE + 1e-5
+        )
+        view.movement_speed_per_sec = self._get_setting(
             "movement_speed_per_sec", 2.0, float
         )
 
-        v.capture_position_relative = AppConstants.DEFAULT_CAPTURE_POS_RELATIVE
-        v.magnifier_offset_relative = AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE
-        v.magnifier_offset_relative_visual = v.magnifier_offset_relative
+        view.capture_position_relative = AppConstants.DEFAULT_CAPTURE_POS_RELATIVE
+        view.magnifier_offset_relative = AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE
+        view.magnifier_offset_relative_visual = view.magnifier_offset_relative
 
         s.theme = self._get_setting("theme", "auto", str)
         s.current_language = self._get_setting("language", "en", str)
@@ -62,68 +71,73 @@ class SettingsManager:
             "auto_crop_black_borders", True, bool
         )
         s.video_recording_fps = self._get_setting("video_recording_fps", 60, int)
+        v.session_data.image_state.auto_calculate_psnr = self._get_setting(
+            "auto_calculate_psnr", False, bool
+        )
+        v.session_data.image_state.auto_calculate_ssim = self._get_setting(
+            "auto_calculate_ssim", False, bool
+        )
 
-        v.divider_line_thickness = self._get_setting("divider_line_thickness", 3, int)
-        v.divider_line_color = hex_to_color(
+        render.divider_line_thickness = self._get_setting("divider_line_thickness", 3, int)
+        render.divider_line_color = hex_to_color(
             self._get_setting("divider_line_color", "#FFFFFFFF", str)
         )
-        v.divider_line_visible = self._get_setting("divider_line_visible", True, bool)
+        render.divider_line_visible = self._get_setting("divider_line_visible", True, bool)
 
-        v.magnifier_divider_thickness = self._get_setting(
+        render.magnifier_divider_thickness = self._get_setting(
             "magnifier_divider_thickness", 2, int
         )
-        v.magnifier_divider_color = hex_to_color(
+        render.magnifier_divider_color = hex_to_color(
             self._get_setting("magnifier_divider_color", "#E6FFFFFF", str)
         )
-        v.magnifier_divider_visible = self._get_setting(
+        render.magnifier_divider_visible = self._get_setting(
             "magnifier_divider_visible", True, bool
         )
-        v.magnifier_border_color = hex_to_color(
+        render.magnifier_border_color = hex_to_color(
             self._get_setting("magnifier_border_color", "#F8FFFFFF", str)
         )
-        v.magnifier_laser_color = hex_to_color(
+        render.magnifier_laser_color = hex_to_color(
             self._get_setting("magnifier_laser_color", "#FFFFFFFF", str)
         )
-        v.capture_ring_color = hex_to_color(
+        render.capture_ring_color = hex_to_color(
             self._get_setting("capture_ring_color", "#E6FF3264", str)
         )
 
-        v.magnifier_guides_thickness = self._get_setting(
+        render.magnifier_guides_thickness = self._get_setting(
             "magnifier_guides_thickness", 1, int
         )
 
-        v.font_size_percent = self._get_setting("font_size_percent", 100, int)
-        v.font_weight = self._get_setting("font_weight", 0, int)
-        v.text_alpha_percent = self._get_setting("text_alpha_percent", 100, int)
-        v.file_name_color = hex_to_color(
+        render.font_size_percent = self._get_setting("font_size_percent", 100, int)
+        render.font_weight = self._get_setting("font_weight", 0, int)
+        render.text_alpha_percent = self._get_setting("text_alpha_percent", 100, int)
+        render.file_name_color = hex_to_color(
             self._get_setting("filename_color", "#FFFF0000", str)
         )
-        v.file_name_bg_color = hex_to_color(
+        render.file_name_bg_color = hex_to_color(
             self._get_setting("filename_bg_color", "#50000000", str)
         )
-        v.draw_text_background = self._get_setting("draw_text_background", True, bool)
-        v.text_placement_mode = self._get_setting("text_placement_mode", "edges", str)
-        v.include_file_names_in_saved = self._get_setting(
+        render.draw_text_background = self._get_setting("draw_text_background", True, bool)
+        render.text_placement_mode = self._get_setting("text_placement_mode", "edges", str)
+        render.include_file_names_in_saved = self._get_setting(
             "include_file_names_in_saved", False, bool
         )
 
-        v.optimize_laser_smoothing = self._get_setting(
+        render.optimize_laser_smoothing = self._get_setting(
             "optimize_laser_smoothing", False, bool
         )
-        v.optimize_magnifier_movement = self._get_setting(
+        view.optimize_magnifier_movement = self._get_setting(
             "optimize_magnifier_movement", True, bool
         )
 
         main_interp = self._get_setting("interpolation_method", "BILINEAR", str)
-        v.render_config.interpolation_method = main_interp
-        v.interpolation_method = main_interp
-        v.render_config.zoom_interpolation_method = self._get_setting(
+        render.interpolation_method = main_interp
+        render.zoom_interpolation_method = self._get_setting(
             "zoom_interpolation_method", "BILINEAR", str
         )
         logger.debug(
             "SettingsManager.load_all_settings interpolation main=%s zoom=%s",
             main_interp,
-            v.render_config.zoom_interpolation_method,
+            render.zoom_interpolation_method,
         )
 
         magnifier_movement_interp = self._get_setting(
@@ -140,15 +154,14 @@ class SettingsManager:
             magnifier_movement_interp = movement_interp
             laser_smoothing_interp = movement_interp
 
-        v.render_config.magnifier_movement_interpolation_method = (
+        render.magnifier_movement_interpolation_method = (
             magnifier_movement_interp
         )
-        v.render_config.laser_smoothing_interpolation_method = (
+        render.laser_smoothing_interpolation_method = (
             laser_smoothing_interp or "BILINEAR"
         )
 
-        v.render_config.movement_interpolation_method = magnifier_movement_interp
-        v.movement_interpolation_method = magnifier_movement_interp
+        render.movement_interpolation_method = magnifier_movement_interp
 
         s.window_width = self._get_setting("window_width", 1024, int)
         s.window_height = self._get_setting("window_height", 768, int)
@@ -205,13 +218,15 @@ class SettingsManager:
 
     def save_all_settings(self, store: Store):
         v, s = store.viewport, store.settings
-        self._save_setting("max_name_length", v.max_name_length)
-        self._save_setting("display_resolution_limit", v.display_resolution_limit)
+        render = v.render_config
+        view = v.view_state
+        self._save_setting("max_name_length", render.max_name_length)
+        self._save_setting("display_resolution_limit", render.display_resolution_limit)
 
-        self._save_setting("magnifier_size_relative", v.magnifier_size_relative)
-        self._save_setting("capture_size_relative", v.capture_size_relative)
-        self._save_setting("magnifier_spacing_relative", v.magnifier_spacing_relative)
-        self._save_setting("movement_speed_per_sec", v.movement_speed_per_sec)
+        self._save_setting("magnifier_size_relative", view.magnifier_size_relative)
+        self._save_setting("capture_size_relative", view.capture_size_relative)
+        self._save_setting("magnifier_spacing_relative", view.magnifier_spacing_relative)
+        self._save_setting("movement_speed_per_sec", view.movement_speed_per_sec)
 
         self._save_setting("theme", s.theme)
         self._save_setting("language", s.current_language)
@@ -221,55 +236,61 @@ class SettingsManager:
         )
         self._save_setting("auto_crop_black_borders", s.auto_crop_black_borders)
         self._save_setting("video_recording_fps", s.video_recording_fps)
-
-        self._save_setting("divider_line_thickness", v.divider_line_thickness)
-        self._save_setting("divider_line_color", color_to_hex(v.divider_line_color))
-        self._save_setting("divider_line_visible", v.divider_line_visible)
-
-        self._save_setting("magnifier_divider_thickness", v.magnifier_divider_thickness)
         self._save_setting(
-            "magnifier_divider_color", color_to_hex(v.magnifier_divider_color)
-        )
-        self._save_setting("magnifier_divider_visible", v.magnifier_divider_visible)
-        self._save_setting(
-            "magnifier_border_color", color_to_hex(v.magnifier_border_color)
+            "auto_calculate_psnr", store.viewport.session_data.image_state.auto_calculate_psnr
         )
         self._save_setting(
-            "magnifier_laser_color", color_to_hex(v.magnifier_laser_color)
-        )
-        self._save_setting(
-            "capture_ring_color", color_to_hex(v.capture_ring_color)
+            "auto_calculate_ssim", store.viewport.session_data.image_state.auto_calculate_ssim
         )
 
-        self._save_setting("magnifier_guides_thickness", v.magnifier_guides_thickness)
+        self._save_setting("divider_line_thickness", render.divider_line_thickness)
+        self._save_setting("divider_line_color", color_to_hex(render.divider_line_color))
+        self._save_setting("divider_line_visible", render.divider_line_visible)
 
-        self._save_setting("font_size_percent", v.font_size_percent)
-        self._save_setting("font_weight", v.font_weight)
-        self._save_setting("text_alpha_percent", v.text_alpha_percent)
-        self._save_setting("filename_color", color_to_hex(v.file_name_color))
-        self._save_setting("filename_bg_color", color_to_hex(v.file_name_bg_color))
-        self._save_setting("draw_text_background", v.draw_text_background)
-        self._save_setting("text_placement_mode", v.text_placement_mode)
-        self._save_setting("include_file_names_in_saved", v.include_file_names_in_saved)
-
-        self._save_setting("optimize_laser_smoothing", v.optimize_laser_smoothing)
-        self._save_setting("optimize_magnifier_movement", v.optimize_magnifier_movement)
-        self._save_setting("interpolation_method", v.interpolation_method)
+        self._save_setting("magnifier_divider_thickness", render.magnifier_divider_thickness)
         self._save_setting(
-            "zoom_interpolation_method", v.render_config.zoom_interpolation_method
+            "magnifier_divider_color", color_to_hex(render.magnifier_divider_color)
+        )
+        self._save_setting("magnifier_divider_visible", render.magnifier_divider_visible)
+        self._save_setting(
+            "magnifier_border_color", color_to_hex(render.magnifier_border_color)
+        )
+        self._save_setting(
+            "magnifier_laser_color", color_to_hex(render.magnifier_laser_color)
+        )
+        self._save_setting(
+            "capture_ring_color", color_to_hex(render.capture_ring_color)
+        )
+
+        self._save_setting("magnifier_guides_thickness", render.magnifier_guides_thickness)
+
+        self._save_setting("font_size_percent", render.font_size_percent)
+        self._save_setting("font_weight", render.font_weight)
+        self._save_setting("text_alpha_percent", render.text_alpha_percent)
+        self._save_setting("filename_color", color_to_hex(render.file_name_color))
+        self._save_setting("filename_bg_color", color_to_hex(render.file_name_bg_color))
+        self._save_setting("draw_text_background", render.draw_text_background)
+        self._save_setting("text_placement_mode", render.text_placement_mode)
+        self._save_setting("include_file_names_in_saved", render.include_file_names_in_saved)
+
+        self._save_setting("optimize_laser_smoothing", render.optimize_laser_smoothing)
+        self._save_setting("optimize_magnifier_movement", view.optimize_magnifier_movement)
+        self._save_setting("interpolation_method", render.interpolation_method)
+        self._save_setting(
+            "zoom_interpolation_method", render.zoom_interpolation_method
         )
 
         self._save_setting(
             "magnifier_movement_interpolation_method",
-            v.render_config.magnifier_movement_interpolation_method,
+            render.magnifier_movement_interpolation_method,
         )
         self._save_setting(
             "laser_smoothing_interpolation_method",
-            v.render_config.laser_smoothing_interpolation_method,
+            render.laser_smoothing_interpolation_method,
         )
 
         self._save_setting(
-            "movement_interpolation_method", v.movement_interpolation_method
+            "movement_interpolation_method", render.movement_interpolation_method
         )
 
         self._save_setting("window_width", s.window_width)

@@ -1,0 +1,9 @@
+{
+  "misc": {
+    "export": "Exportar",
+    "select_an_image": "Selecione uma imagem",
+    "set_as_favorite": "Definir como Favorito",
+    "settings": "Configurações",
+    "name_length_limit_exceeded": "Limite de comprimento do nome ({limit}) excedido!"
+  }
+}

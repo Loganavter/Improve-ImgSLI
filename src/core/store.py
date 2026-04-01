@@ -6,8 +6,12 @@ from core.store_document import DocumentModel, ImageItem
 from core.store_settings import SettingsState, WorkerStoreSnapshot
 from core.store_operations import StoreOperationsMixin
 from core.store_viewport import (
+    GeometryState,
+    ImageSessionState,
+    InteractionState,
     MagnifierModel,
     RenderConfig,
+    RenderCacheState,
     SessionData,
     ViewState,
     ViewportState,
@@ -18,9 +22,13 @@ logger = logging.getLogger("ImproveImgSLI")
 
 __all__ = [
     "DocumentModel",
+    "GeometryState",
     "ImageItem",
+    "ImageSessionState",
+    "InteractionState",
     "MagnifierModel",
     "RenderConfig",
+    "RenderCacheState",
     "SessionData",
     "SettingsState",
     "Store",
@@ -56,6 +64,12 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
     def emit_state_change(self, scope: str = "viewport"):
         for cb in self._change_callbacks:
             cb(scope)
+
+    def emit_viewport_change(self, subdomain: str | None = None) -> None:
+        scope = "viewport"
+        if subdomain:
+            scope = f"viewport.{subdomain}"
+        self.emit_state_change(scope)
 
     def _build_worker_snapshot(self, viewport: ViewportState, document: DocumentModel):
         return WorkerStoreSnapshot(

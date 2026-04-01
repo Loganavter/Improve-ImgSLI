@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QPushButton
 
 from ...icon_manager import AppIcon, get_app_icon
 from ...managers.theme_manager import ThemeManager
+from .tooltips import install_custom_tooltip
 
 class ToggleIconButton(QPushButton):
     rightClicked = pyqtSignal()
@@ -21,6 +22,7 @@ class ToggleIconButton(QPushButton):
 
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self._update_style)
+        install_custom_tooltip(self)
 
         self._update_style()
         self.clicked.connect(self._on_clicked)

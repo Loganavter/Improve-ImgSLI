@@ -125,8 +125,7 @@ class ButtonPainter:
     def _draw_badge(
         painter: QPainter, widget, text: str, is_checked: bool, tm: ThemeManager
     ):
-        is_dark = tm.is_dark()
-        text_color = QColor("#ffffff" if is_dark else "#2d2d2d")
+        text_color = QColor(tm.get_color("dialog.text"))
         if is_checked:
             text_color.setAlpha(140)
 
@@ -159,14 +158,11 @@ class ButtonPainter:
     def _draw_scroll_value_always(
         painter: QPainter, widget, value: int, tm: ThemeManager
     ):
-        is_dark = tm.is_dark()
-        text_color_str = "#ffffff" if is_dark else "#2d2d2d"
-
         font = QFont()
         font.setPixelSize(9)
         font.setBold(True)
         painter.setFont(font)
-        painter.setPen(QColor(text_color_str))
+        painter.setPen(QColor(tm.get_color("dialog.text")))
 
         text_rect = QRect(0, 24, widget.width(), 12)
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, str(value))

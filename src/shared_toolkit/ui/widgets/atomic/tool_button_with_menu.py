@@ -9,6 +9,7 @@ from core.constants import AppConstants
 from ...icon_manager import AppIcon, get_app_icon
 from ...managers.theme_manager import ThemeManager
 from ...overlay_layer import get_overlay_layer
+from .tooltips import install_custom_tooltip
 from ..helpers import draw_rounded_shadow
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -297,6 +298,7 @@ class ToolButtonWithMenu(QWidget):
         self.menu.item_selected.connect(self._on_action_triggered)
 
         self.theme_manager = ThemeManager.get_instance()
+        install_custom_tooltip(self)
         self.theme_manager.theme_changed.connect(self.update)
 
     def mousePressEvent(self, event):

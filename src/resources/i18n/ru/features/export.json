@@ -1,0 +1,17 @@
+{
+  "export": {
+    "at_edges": "По краям",
+    "background_color": "Цвет фона",
+    "comment": "Комментарий",
+    "draw_text_background": "Рисовать фон текста",
+    "fill_background": "Залить фон",
+    "include_metadata": "Включить метаданные",
+    "near_split_line": "У линии разделения",
+    "optimize_png": "Оптимизировать PNG",
+    "png_compression_level": "Уровень сжатия PNG",
+    "preview": "Предпросмотр",
+    "remember_by_default": "Запоминать по умолчанию",
+    "select_background_color": "Выбрать цвет фона",
+    "select_output_directory": "Выбрать выходную директорию"
+  }
+}

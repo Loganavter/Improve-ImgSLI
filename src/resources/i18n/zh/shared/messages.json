@@ -1,0 +1,29 @@
+{
+  "msg": {
+    "edge_comparison_done": "边缘比较完成",
+    "edge_comparison_in_progress": "边缘比较中...",
+    "error_normalizing_path": "规范化路径时出错",
+    "error_processing_path": "处理路径错误",
+    "error_saving": "保存错误",
+    "failed_to_load_image": "加载图像失败",
+    "failed_to_quick_save_image": "快速保存图像失败",
+    "failed_to_save_image": "保存图像失败",
+    "grayscale_diff_done": "灰度差异已完成",
+    "grayscale_diff_in_progress": "灰度差异中...",
+    "highlight_diff_done": "高亮差异已完成",
+    "highlight_diff_in_progress": "高亮差异中...",
+    "invalid_data": "无效数据",
+    "invalid_item_type_or_empty_path": "无效的项目类型或空路径",
+    "loading_images_from_clipboard": "从剪贴板加载图像...",
+    "no_image_in_clipboard": "剪贴板中没有图像",
+    "saved": "已保存",
+    "saving": "正在保存",
+    "saving_canceled": "保存已取消",
+    "some_images_could_not_be_loaded": "某些图像无法加载",
+    "ssim_calculation_done": "SSIM 已完成",
+    "ssim_calculation_in_progress": "SSIM 计算中...",
+    "starting_video_export_please_wait": "开始导出视频... 请稍候。",
+    "select_both_images_first": "请先在两个插槽中加载并选择图像。",
+    "specify_output_directory_and_file_name": "请指定输出目录和文件名。"
+  }
+}

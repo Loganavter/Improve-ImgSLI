@@ -1,3 +1,7 @@
+from plugins.analysis.processing.background_layers import (
+    build_cached_diff_image,
+    prepare_gl_background_layers_for_mode,
+)
 from plugins.analysis.processing.channel_analyzer import extract_channel
 from plugins.analysis.processing.differ import (
     create_grayscale_diff,
@@ -20,4 +24,6 @@ __all__ = [
     "create_ssim_map",
     "create_edge_map",
     "extract_channel",
+    "build_cached_diff_image",
+    "prepare_gl_background_layers_for_mode",
 ]

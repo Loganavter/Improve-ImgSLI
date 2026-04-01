@@ -139,8 +139,8 @@ class ImageLoaderService:
                         or self.store.document.original_image2
                     )
                     if source1 and source2:
-                        self.store.viewport.unification_in_progress = True
-                        self.store.viewport.pending_unification_paths = (
+                        self.store.viewport.session_data.render_cache.unification_in_progress = True
+                        self.store.viewport.session_data.render_cache.pending_unification_paths = (
                             self.store.document.image1_path,
                             self.store.document.image2_path,
                         )
@@ -151,7 +151,7 @@ class ImageLoaderService:
                             source2.copy(),
                             self.store.document.image1_path,
                             self.store.document.image2_path,
-                            self.store.viewport.display_resolution_limit,
+                            self.store.viewport.render_config.display_resolution_limit,
                         )
                         worker.signals.result.connect(self.on_unified_images_ready)
                         if self.main_controller:
@@ -219,35 +219,35 @@ class ImageLoaderService:
                     self.store.document.image2_path,
                 )
                 if (path1 != current_paths_now[0]) or (path2 != current_paths_now[1]):
-                    self.store.viewport.unification_in_progress = False
+                    self.store.viewport.session_data.render_cache.unification_in_progress = False
 
                     self.store.invalidate_geometry_cache()
                     return
             except Exception:
                 pass
             if u1 and u2:
-                self.store.viewport.image1 = u1
-                self.store.viewport.image2 = u2
+                self.store.viewport.session_data.image_state.image1 = u1
+                self.store.viewport.session_data.image_state.image2 = u2
 
                 if cached_u1 is not None and cached_u2 is not None:
 
-                    self.store.viewport.display_cache_image1 = cached_u1
-                    self.store.viewport.display_cache_image2 = cached_u2
+                    self.store.viewport.session_data.render_cache.display_cache_image1 = cached_u1
+                    self.store.viewport.session_data.render_cache.display_cache_image2 = cached_u2
 
                     current_cache_params = (
                         id(u1),
                         id(u2),
-                        self.store.viewport.display_resolution_limit,
+                        self.store.viewport.render_config.display_resolution_limit,
                     )
-                    self.store.viewport.last_display_cache_params = current_cache_params
+                    self.store.viewport.session_data.render_cache.last_display_cache_params = current_cache_params
 
                 try:
                     cache_key = (path1, path2)
-                    cache = self.store.viewport.session_data.unified_image_cache
+                    cache = self.store.viewport.session_data.render_cache.unified_image_cache
 
                     if not isinstance(cache, OrderedDict):
                         cache = OrderedDict(cache)
-                        self.store.viewport.session_data.unified_image_cache = cache
+                        self.store.viewport.session_data.render_cache.unified_image_cache = cache
 
                     if cache_key in cache:
                         cache.move_to_end(cache_key)
@@ -260,7 +260,7 @@ class ImageLoaderService:
                 except Exception:
                     pass
 
-                self.store.viewport.unification_in_progress = False
+                self.store.viewport.session_data.render_cache.unification_in_progress = False
 
                 self._trigger_metrics_calculation_if_needed()
                 try:
@@ -269,11 +269,11 @@ class ImageLoaderService:
                 except Exception:
                     pass
             else:
-                self.store.viewport.unification_in_progress = False
+                self.store.viewport.session_data.render_cache.unification_in_progress = False
                 self._trigger_metrics_calculation_if_needed()
         except Exception as e:
             logger.error(f"Error in unified images ready handler: {e}")
-            self.store.viewport.unification_in_progress = False
+            self.store.viewport.session_data.render_cache.unification_in_progress = False
             self._trigger_metrics_calculation_if_needed()
 
     def _trigger_metrics_calculation_if_needed(self):
@@ -285,9 +285,9 @@ class ImageLoaderService:
             self.store.state_changed.emit()
 
     def cancel_pending_unification(self, new_path1: str, new_path2: str) -> bool:
-        if not self.store.viewport.unification_in_progress:
+        if not self.store.viewport.session_data.render_cache.unification_in_progress:
             return False
-        pending = self.store.viewport.pending_unification_paths
+        pending = self.store.viewport.session_data.render_cache.pending_unification_paths
         if pending and (pending[0] != new_path1 or pending[1] != new_path2):
             return True
         return False
@@ -312,8 +312,8 @@ class ImageLoaderService:
                 ):
                     pass
 
-                self.store.viewport.unification_in_progress = True
-                self.store.viewport.pending_unification_paths = (
+                self.store.viewport.session_data.render_cache.unification_in_progress = True
+                self.store.viewport.session_data.render_cache.pending_unification_paths = (
                     self.store.document.image1_path,
                     self.store.document.image2_path,
                 )
@@ -324,14 +324,14 @@ class ImageLoaderService:
                     source2.copy(),
                     self.store.document.image1_path,
                     self.store.document.image2_path,
-                    self.store.viewport.display_resolution_limit,
+                    self.store.viewport.render_config.display_resolution_limit,
                 )
                 worker.signals.result.connect(self.on_unified_images_ready)
 
                 if self.main_controller:
                     self.main_controller.thread_pool.start(worker, priority=1)
             except Exception:
-                self.store.viewport.unification_in_progress = False
+                self.store.viewport.session_data.render_cache.unification_in_progress = False
                 self._trigger_metrics_calculation_if_needed()
         else:
             self._trigger_metrics_calculation_if_needed()

@@ -18,6 +18,17 @@ class GenericWorker(QRunnable):
         self.kwargs = kwargs
         self.signals = WorkerSignals()
 
+    def _safe_emit(self, signal_name: str, *args):
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None:
+                signal.emit(*args)
+        except RuntimeError as exc:
+            if "wrapped C/C++ object of type WorkerSignals has been deleted" not in str(
+                exc
+            ):
+                raise
+
     @pyqtSlot()
     def run(self):
         try:
@@ -27,10 +38,10 @@ class GenericWorker(QRunnable):
             if not (isinstance(e, RuntimeError) and str(e) == "Save canceled by user"):
                 traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
+            self._safe_emit("error", (exctype, value, traceback.format_exc()))
         else:
 
             if not (result is None):
-                self.signals.result.emit(result)
+                self._safe_emit("result", result)
         finally:
-            self.signals.finished.emit()
+            self._safe_emit("finished")

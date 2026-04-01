@@ -2,7 +2,7 @@ from PyQt6.QtCore import QPoint
 
 def set_magnifier_combined_mode(store, combined: bool):
     try:
-        store.viewport.is_magnifier_combined = combined
+        store.viewport.view_state.is_magnifier_combined = combined
     except Exception:
         pass
 

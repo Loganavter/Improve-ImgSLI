@@ -1,11 +1,30 @@
 import logging
 import threading
+from dataclasses import fields, is_dataclass
 from typing import Callable, List
 
 from .actions import Action
 from .reducers import RootReducer
 
 logger = logging.getLogger("ImproveImgSLI")
+
+def _sync_dataclass_fields(source, target) -> None:
+    if source is None or target is None or not is_dataclass(target):
+        return
+    for field_info in fields(target):
+        name = field_info.name
+        if hasattr(source, name):
+            setattr(target, name, getattr(source, name))
+
+def _sync_plugin_states(viewport) -> None:
+    viewport_plugin_state = getattr(viewport, "_viewport_plugin_state", None)
+    analysis_plugin_state = getattr(viewport, "_analysis_plugin_state", None)
+
+    if viewport_plugin_state is not None:
+        _sync_dataclass_fields(viewport, viewport_plugin_state)
+
+    if analysis_plugin_state is not None:
+        _sync_dataclass_fields(viewport.view_state, analysis_plugin_state)
 
 class Dispatcher:
 
@@ -46,78 +65,12 @@ class Dispatcher:
                             old_viewport_plugin_state
                         )
 
-                        view_state = self._store.viewport.view_state
-                        for attr in [
-                            "split_position",
-                            "split_position_visual",
-                            "is_horizontal",
-                            "use_magnifier",
-                            "magnifiers",
-                            "active_magnifier_id",
-                            "magnifier_size_relative",
-                            "capture_size_relative",
-                            "capture_position_relative",
-                            "freeze_magnifier",
-                            "frozen_capture_point_relative",
-                            "magnifier_offset_relative",
-                            "magnifier_spacing_relative",
-                            "magnifier_offset_relative_visual",
-                            "magnifier_spacing_relative_visual",
-                            "magnifier_is_horizontal",
-                            "magnifier_visible_left",
-                            "magnifier_visible_center",
-                            "magnifier_visible_right",
-                            "magnifier_internal_split",
-                            "magnifier_screen_center",
-                            "magnifier_screen_size",
-                            "is_magnifier_combined",
-                            "optimize_magnifier_movement",
-                            "pixmap_width",
-                            "pixmap_height",
-                            "image_display_rect_on_label",
-                            "fixed_label_width",
-                            "fixed_label_height",
-                            "resize_in_progress",
-                            "is_interactive_mode",
-                            "is_dragging_split_line",
-                            "is_dragging_capture_point",
-                            "is_dragging_split_in_magnifier",
-                            "is_dragging_any_slider",
-                            "pressed_keys",
-                            "space_bar_pressed",
-                            "showing_single_image_mode",
-                            "movement_speed_per_sec",
-                            "text_bg_visual_height",
-                            "text_bg_visual_width",
-                            "loaded_geometry",
-                            "loaded_was_maximized",
-                            "loaded_previous_geometry",
-                            "loaded_debug_mode_enabled",
-                        ]:
-                            if hasattr(view_state, attr) and hasattr(
-                                old_viewport_plugin_state, attr
-                            ):
-                                setattr(
-                                    old_viewport_plugin_state,
-                                    attr,
-                                    getattr(view_state, attr),
-                                )
-
                     if old_analysis_plugin_state:
                         self._store.viewport._analysis_plugin_state = (
                             old_analysis_plugin_state
                         )
 
-                        view_state = self._store.viewport.view_state
-                        for attr in ["diff_mode", "channel_view_mode"]:
-                            if hasattr(view_state, attr) and hasattr(
-                                old_analysis_plugin_state, attr
-                            ):
-                                setattr(
-                                    old_analysis_plugin_state,
-                                    attr,
-                                    getattr(view_state, attr),
-                                )
+                    _sync_plugin_states(self._store.viewport)
 
                     self._action_history.append(action)
                     if len(self._action_history) > self._max_history_size:

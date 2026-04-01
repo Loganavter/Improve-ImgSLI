@@ -92,9 +92,12 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
     def provides_capability(self, capability: str) -> bool:
         return capability == "settings_management"
 
-    def set_presenter(self, presenter: Any) -> None:
+    def bind_window_shell(self, window_shell: Any) -> None:
         if self.controller:
-            self.controller.presenter = presenter
+            if hasattr(window_shell, "get_feature"):
+                self.controller.presenter = window_shell.get_feature("settings")
+            else:
+                self.controller.presenter = window_shell
 
     def handle_command(self, command: str, *args: Any, **kwargs: Any) -> Any:
         if not self.controller:

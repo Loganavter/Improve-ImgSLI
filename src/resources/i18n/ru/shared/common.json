@@ -1,0 +1,26 @@
+{
+  "common": {
+    "cancel": "Отмена",
+    "error": "Ошибка",
+    "file_type": {
+      "all_files": "Все файлы",
+      "image_files": "Файлы изображений"
+    },
+    "ok": "ОК",
+    "position": {
+      "bottom": "Нижнее",
+      "center": "Центр",
+      "down": "Вниз",
+      "left": "Левое",
+      "right": "Правое",
+      "top": "Верхнее",
+      "up": "Вверх"
+    },
+    "switch": {
+      "off": "Выкл",
+      "switch_off": "Выкл",
+      "switch_on": "Вкл"
+    },
+    "warning": "Предупреждение"
+  }
+}

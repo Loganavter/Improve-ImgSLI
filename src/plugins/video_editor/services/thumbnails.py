@@ -51,8 +51,8 @@ def _render_thumbnail_using_pipeline(
 
         temp_store.settings.auto_crop_black_borders = auto_crop
 
-        temp_store.viewport.image1 = img1
-        temp_store.viewport.image2 = img2
+        temp_store.viewport.session_data.image_state.image1 = img1
+        temp_store.viewport.session_data.image_state.image2 = img2
         temp_store.document.full_res_image1 = img1
         temp_store.document.full_res_image2 = img2
 
@@ -62,8 +62,8 @@ def _render_thumbnail_using_pipeline(
         render_w = max(1, int(base_w * fit_scale))
         render_h = target_h_render
 
-        temp_store.viewport.pixmap_width = render_w
-        temp_store.viewport.pixmap_height = render_h
+        temp_store.viewport.geometry_state.pixmap_width = render_w
+        temp_store.viewport.geometry_state.pixmap_height = render_h
 
         mag_coords = (
             get_magnifier_drawing_coords(
@@ -73,7 +73,7 @@ def _render_thumbnail_using_pipeline(
                 container_width=render_w,
                 container_height=render_h,
             )
-            if temp_store.viewport.use_magnifier
+            if temp_store.viewport.view_state.use_magnifier
             else None
         )
 
@@ -88,8 +88,8 @@ def _render_thumbnail_using_pipeline(
             image1_scaled=img1_s,
             image2_scaled=img2_s,
         )
-        ctx.file_name1 = snap.name1
-        ctx.file_name2 = snap.name2
+        ctx.images.file_name1 = snap.name1 or ""
+        ctx.images.file_name2 = snap.name2 or ""
 
         pipeline = RenderingPipeline(font_path=None)
         frame_pil, p_l, p_t, _, _, _ = pipeline.render_frame(ctx)

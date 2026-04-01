@@ -1,8 +1,67 @@
 from __future__ import annotations
 
+from PyQt6 import sip
 from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtGui import QPainter, QPixmap
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+from shared_toolkit.ui.widgets.helpers import draw_rounded_shadow
+
+class _PopupBubble(QWidget):
+    SHADOW_RADIUS = 8
+    CONTENT_RADIUS = 6
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(
+            self.SHADOW_RADIUS,
+            self.SHADOW_RADIUS,
+            self.SHADOW_RADIUS,
+            self.SHADOW_RADIUS,
+        )
+        self._layout.setSpacing(0)
+
+        self.label = QLabel(self)
+        self.label.setObjectName("ValuePopupLabel")
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._layout.addWidget(self.label)
+        self.hide()
+
+    def set_content(
+        self,
+        *,
+        text: str = "",
+        pixmap: QPixmap | None = None,
+        size: QSize | None = None,
+    ) -> None:
+        if pixmap is not None:
+            self.label.setText("")
+            self.label.setPixmap(pixmap)
+        else:
+            self.label.setPixmap(QPixmap())
+            self.label.setText(text)
+
+        if size is not None:
+            self.label.setFixedSize(size)
+        else:
+            self.label.adjustSize()
+
+        self.adjustSize()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        draw_rounded_shadow(
+            painter,
+            self.label.geometry(),
+            steps=self.SHADOW_RADIUS,
+            radius=self.CONTENT_RADIUS,
+        )
+        painter.end()
 
 def get_overlay_layer(widget: QWidget | None):
     current = widget
@@ -21,9 +80,13 @@ class OverlayLayer(QObject):
     def __init__(self, host: QWidget):
         super().__init__(host)
         self._host = host
-        self._value_popups: dict[str, QLabel] = {}
+        self._value_popups: dict[str, _PopupBubble] = {}
         self._popup_timers: dict[str, QTimer] = {}
         self._host.installEventFilter(self)
+
+    @staticmethod
+    def _is_deleted(obj) -> bool:
+        return obj is None or sip.isdeleted(obj)
 
     @property
     def host(self) -> QWidget:
@@ -31,11 +94,23 @@ class OverlayLayer(QObject):
 
     def attach(self, widget: QWidget):
         if widget is None or widget.parentWidget() is self._host:
+            resource_manager = getattr(self._host, "ui_resource_manager", None)
+            if resource_manager is not None and widget is not None:
+                resource_manager.register_widget(
+                    widget,
+                    name=f"overlay:{type(widget).__name__}",
+                )
             return
 
         was_visible = widget.isVisible()
         geometry = widget.geometry()
         widget.setParent(self._host)
+        resource_manager = getattr(self._host, "ui_resource_manager", None)
+        if resource_manager is not None:
+            resource_manager.register_widget(
+                widget,
+                name=f"overlay:{type(widget).__name__}",
+            )
         if geometry.isValid():
             widget.setGeometry(geometry)
         if was_visible:
@@ -89,23 +164,48 @@ class OverlayLayer(QObject):
             return False
         return widget.rect().contains(widget.mapFromGlobal(global_pos))
 
-    def _popup_label(self, key: str) -> QLabel:
-        label = self._value_popups.get(key)
-        if label is None:
-            label = QLabel(self._host)
-            label.setObjectName("ValuePopupLabel")
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.hide()
-            self._value_popups[key] = label
-        return label
+    def _popup_label(self, key: str) -> _PopupBubble:
+        popup = self._value_popups.get(key)
+        if popup is not None:
+            if self._is_deleted(popup):
+                self._forget_popup(key)
+                popup = None
+        if popup is not None:
+            try:
+                popup.parentWidget()
+            except RuntimeError:
+                self._forget_popup(key)
+                popup = None
+        if popup is None:
+            popup = _PopupBubble(self._host)
+            popup.hide()
+            self._value_popups[key] = popup
+            popup.destroyed.connect(lambda *_args, popup_key=key: self._forget_popup(popup_key))
+            resource_manager = getattr(self._host, "ui_resource_manager", None)
+            if resource_manager is not None:
+                resource_manager.register_widget(
+                    popup,
+                    name=f"overlay_popup:{key}",
+                )
+        return popup
 
     def _popup_timer(self, key: str) -> QTimer:
         timer = self._popup_timers.get(key)
+        if timer is not None and self._is_deleted(timer):
+            self._popup_timers.pop(key, None)
+            timer = None
+        if timer is not None:
+            try:
+                timer.parent()
+            except RuntimeError:
+                self._popup_timers.pop(key, None)
+                timer = None
         if timer is None:
             timer = QTimer(self)
             timer.setSingleShot(True)
             timer.timeout.connect(lambda popup_key=key: self.hide_popup(popup_key))
             self._popup_timers[key] = timer
+            timer.destroyed.connect(lambda *_args, popup_key=key: self._popup_timers.pop(popup_key, None))
         return timer
 
     def show_popup(
@@ -120,44 +220,70 @@ class OverlayLayer(QObject):
         offset: int = 6,
         timeout_ms: int = 800,
     ):
-        label = self._popup_label(key)
-        if pixmap is not None:
-            label.setText("")
-            label.setPixmap(pixmap)
-        else:
-            label.setPixmap(QPixmap())
-            label.setText(text)
-        if size is not None:
-            label.setFixedSize(size)
-        else:
-            label.adjustSize()
+        popup = self._popup_label(key)
+        try:
+            popup.set_content(text=text, pixmap=pixmap, size=size)
 
-        label.style().unpolish(label)
-        label.style().polish(label)
-        label.update()
-        label.setGeometry(
-            self.place_rect_relative_to_anchor(
-                anchor_widget,
-                label.size(),
-                position=position,
-                offset=offset,
+            popup.label.style().unpolish(popup.label)
+            popup.label.style().polish(popup.label)
+            popup.label.update()
+            popup.setGeometry(
+                self.place_rect_relative_to_anchor(
+                    anchor_widget,
+                    popup.size(),
+                    position=position,
+                    offset=offset,
+                )
             )
-        )
-        label.show()
-        label.raise_()
+            popup.show()
+            popup.raise_()
+        except RuntimeError:
+            self._forget_popup(key)
+            return
 
         timer = self._popup_timer(key)
+        if self._is_deleted(timer):
+            self._popup_timers.pop(key, None)
+            return
         timer.stop()
         if timeout_ms > 0:
             timer.start(timeout_ms)
 
+    def _forget_popup(self, key: str):
+        self._value_popups.pop(key, None)
+        timer = self._popup_timers.pop(key, None)
+        if timer is not None and not self._is_deleted(timer):
+            try:
+                timer.stop()
+            except RuntimeError:
+                pass
+
     def hide_popup(self, key: str):
-        label = self._value_popups.get(key)
-        if label is not None:
-            label.hide()
+        popup = self._value_popups.get(key)
+        if popup is not None and self._is_deleted(popup):
+            self._value_popups.pop(key, None)
+            popup = None
+        if popup is not None:
+            try:
+                popup.hide()
+            except RuntimeError:
+                pass
         timer = self._popup_timers.get(key)
+        if timer is not None and self._is_deleted(timer):
+            self._popup_timers.pop(key, None)
+            timer = None
         if timer is not None:
-            timer.stop()
+            try:
+                timer.stop()
+            except RuntimeError:
+                self._popup_timers.pop(key, None)
+        if popup is None:
+            self._forget_popup(key)
+            return
+        try:
+            popup.parentWidget()
+        except RuntimeError:
+            self._forget_popup(key)
 
     def hide_all_popups(self):
         for key in list(self._value_popups.keys()):

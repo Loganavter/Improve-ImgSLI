@@ -60,6 +60,7 @@
     "toast.background": "#ffffff",
     "toast.text": "#000000",
     "toast.border": "#19000000",
+    "toast.progress.background": "#24000000",
     "slider.track.background": "#929292",
     "slider.track.unfilled": "#706f6f",
     "slider.thumb.outer": "#ffffff",
@@ -114,7 +115,7 @@
     "button.primary.background.pressed": "#555555",
     "button.primary.border": "#26FFFFFF",
     "button.primary.bottom.edge": "#1EFFFFFF",
-    "button.primary.text": "#dfdfdf",
+    "button.primary.text": "#ffffff",
     "input.border.thin": "#3CFFFFFF",
     "flyout.background": "#383838",
     "flyout.border": "#4a4a4a",
@@ -125,7 +126,7 @@
     "separator.color": "#4f4f4f",
     "shadow.color": "#50000000",
     "dialog.background": "#2b2b2b",
-    "dialog.text": "#dfdfdf",
+    "dialog.text": "#ffffff",
     "dialog.border": "#555",
     "dialog.input.background": "#3c3c3c",
     "dialog.button.background": "#3c3c3c",
@@ -142,6 +143,7 @@
     "toast.background": "#F0323232",
     "toast.text": "#ffffff",
     "toast.border": "#19FFFFFF",
+    "toast.progress.background": "#40FFFFFF",
     "slider.track.background": "#5a5a5a",
     "slider.track.unfilled": "#9a9a9a",
     "slider.thumb.outer": "#454545",
@@ -164,5 +166,3 @@
     "button.toggle.background.checked.hover": "#606060"
   }
 }
-
-

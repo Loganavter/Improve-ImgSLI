@@ -1,0 +1,17 @@
+{
+  "magnifier": {
+    "bicubic": "Бикубическая",
+    "bilinear": "Билинейная",
+    "capture_ring": "Кольцо захвата",
+    "change_magnifier_colors": "Изменение цвета лупы",
+    "ewa_lanczos": "EWA Lanczos (Улучшенное сглаживание)",
+    "freeze_magnifier_position": "Заморозить позицию лупы",
+    "lanczos": "Ланцош (Высокое качество)",
+    "magnifier_interpolation": "Интерполяция Лупы",
+    "move_speed": "Скорость движ.",
+    "nearest_neighbor": "Ближайший сосед",
+    "toggle_magnifier": "Переключить лупу",
+    "toggle_magnifier_guide_lines": "Переключить направляющие линии лупы",
+    "fit_mode_toggle": "Выкл: Обрезка по изображению\nВкл: Подогнать лупу (Расширить холст)"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "tooltip": {
+    "click_remove_current_image": "单击：移除当前图像",
+    "click_swap_current_images": "单击：交换当前图像",
+    "hold_swap_entire_lists": "长按：交换整个列表",
+    "use_favorite": "使用收藏",
+    "file_names_hidden_on_zoom": "缩放时画布上的文件名会被隐藏。将缩放恢复到100%即可再次显示。"
+  }
+}

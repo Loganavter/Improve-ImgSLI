@@ -1,0 +1,19 @@
+{
+  "button": {
+    "add_images_1": "Add Img(s) 1",
+    "add_images_2": "Add Img(s) 2",
+    "browse": "Browse...",
+    "hold_clear_entire_list": "Hold: Clear entire list",
+    "pause": "Pause",
+    "pauseresume_recording": "Pause/Resume Recording",
+    "play": "Play",
+    "record": "Record",
+    "redo": "Redo",
+    "save_result": "Save Result",
+    "select_images": "Select Image(s)",
+    "startstop_recording": "Start/Stop Recording",
+    "stop": "Stop",
+    "trim_to_selection": "Trim to Selection",
+    "undo_ctrlz": "Undo (Ctrl+Z)"
+  }
+}
