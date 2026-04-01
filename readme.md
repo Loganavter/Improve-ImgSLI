@@ -31,7 +31,7 @@
 ## 📸 Preview
 
 <div align="center">
-   <img width="1920" height="994" src="https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_1.png" width="75%">
+   <img width="1920" height="994" src="https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_1.jpg" width="75%">
 </div>
 
 <details>
