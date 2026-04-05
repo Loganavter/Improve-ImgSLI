@@ -27,7 +27,6 @@ sys.path.insert(0, application_path)
 
 from PyQt6.QtCore import QThreadPool
 from PyQt6.QtWidgets import QApplication
-
 from plugins.settings.manager import SettingsManager
 from ui.main_window import MainWindow
 
@@ -72,8 +71,7 @@ def main():
     app.setOrganizationDomain("improve-imgsli.local")
 
     window = MainWindow(debug_mode=args.debug)
-    window.initialize_application()
-    window.show()
+    window.start()
 
     def on_quit():
         QThreadPool.globalInstance().clear()

@@ -2,7 +2,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QPixmap, QSurfaceFormat
+from PyQt6.QtGui import QColor, QPixmap
+
+from .runtime import build_canvas_surface_format
 
 @dataclass(slots=True)
 class GLCanvasRuntimeState:
@@ -84,6 +86,7 @@ class GLCanvasRuntimeState:
             "cancel": QRectF(),
         }
     )
+    _pending_texture_uploads: list = field(default_factory=list)
 
 def init_widget_state(widget):
     widget.setMouseTracking(True)
@@ -92,14 +95,7 @@ def init_widget_state(widget):
     widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
     widget.setAutoFillBackground(True)
 
-    fmt = QSurfaceFormat()
-    fmt.setVersion(3, 3)
-    fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
-    fmt.setAlphaBufferSize(8)
-    fmt.setDepthBufferSize(24)
-    fmt.setStencilBufferSize(8)
-    fmt.setSamples(0)
-    widget.setFormat(fmt)
+    widget.setFormat(build_canvas_surface_format())
 
     widget._quad_vertices = np.array(
         [
@@ -112,6 +108,7 @@ def init_widget_state(widget):
     )
 
     widget.split_position = 0.5
+    widget.display_split_position = 0.5
     widget.is_horizontal = False
 
     widget.zoom_level = 1.0

@@ -155,7 +155,7 @@ run)
 
         python "$APP_MAIN" "${gui_args[@]}"
         app_exit_code=$?
-        
+
         deactivate_venv
         log_info "Application completed with exit code: $app_exit_code"
         exit $app_exit_code

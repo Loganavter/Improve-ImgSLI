@@ -223,11 +223,15 @@ def paint_divider_overlay_pass(widget, cfg):
     try:
         color = cfg["div_color"]
         thickness = max(1, int(round(cfg["div_thickness"])))
+        display_split = float(
+            getattr(widget, "display_split_position", getattr(widget, "split_position", 0.5))
+            or 0.5
+        )
         if widget.is_horizontal:
-            y = int(round(widget.split_position * h))
+            y = int(round(display_split * h))
             painter.fillRect(clip_x, y - thickness // 2, clip_w, thickness, color)
         else:
-            x = int(round(widget.split_position * w))
+            x = int(round(display_split * w))
             painter.fillRect(x - thickness // 2, clip_y, thickness, clip_h, color)
     finally:
         painter.end()
@@ -425,10 +429,28 @@ def paint_magnifier_pass(widget, ctx, border_color, render_magnifiers):
 def paint_magnifier_shadow_pass(widget, render_magnifiers):
     return
 
+def _flush_pending_uploads(widget):
+    state = widget.runtime_state
+    if not state._pending_texture_uploads:
+        return
+    for raw, w, h, tex_id, _slot in state._pending_texture_uploads:
+        gl.glBindTexture(gl.GL_TEXTURE_2D, tex_id)
+        gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
+        gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGBA, w, h, 0, gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, raw)
+    state._pending_texture_uploads.clear()
+
 def paint_gl(widget):
     if not widget.shader_program:
+        from .render_context import logger
+        logger.error(
+            "paint_gl: shader_program is None (initializeGL did not run or failed). "
+            "context=%s isValid=%s",
+            widget.context(),
+            widget.context().isValid() if widget.context() else "no-ctx",
+        )
         return
 
+    _flush_pending_uploads(widget)
     ctx = build_render_runtime_context(widget)
 
     if should_render_blank_white(widget):
@@ -486,7 +508,10 @@ def paint_gl(widget):
 
     widget.shader_program.setUniformValue(
         "splitPosition",
-        float(getattr(widget, "split_position", ctx.split_position) or ctx.split_position),
+        float(
+            getattr(widget, "display_split_position", getattr(widget, "split_position", ctx.split_position))
+            or ctx.split_position
+        ),
     )
     widget.shader_program.setUniformValue("isHorizontal", ctx.is_horizontal)
     widget.shader_program.setUniformValue("zoom", ctx.zoom_level)

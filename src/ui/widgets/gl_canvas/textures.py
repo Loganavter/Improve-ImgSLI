@@ -11,23 +11,10 @@ def _upload_pil_to_texture_id(widget, pil_image, texture_id: int, slot_index: in
     if pil_image is None or not texture_id:
         return
 
-    widget.makeCurrent()
     img = pil_image.convert("RGBA")
     raw = img.tobytes("raw", "RGBA")
-    gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-    gl.glTexImage2D(
-        gl.GL_TEXTURE_2D,
-        0,
-        gl.GL_RGBA,
-        img.width,
-        img.height,
-        0,
-        gl.GL_RGBA,
-        gl.GL_UNSIGNED_BYTE,
-        raw,
-    )
     state = widget.runtime_state
+    state._pending_texture_uploads.append((raw, img.width, img.height, texture_id, slot_index))
     if slot_index is not None and 0 <= slot_index < len(state._images_uploaded):
         state._images_uploaded[slot_index] = True
 
@@ -37,24 +24,14 @@ def upload_image(widget, qimage: QImage, slot_index: int):
         return
 
     state._images_uploaded[slot_index] = True
-    widget.makeCurrent()
 
     converted_img = qimage.convertToFormat(QImage.Format.Format_RGBA8888)
     ptr = converted_img.constBits()
     ptr.setsize(converted_img.sizeInBytes())
+    raw = bytes(ptr)
 
-    gl.glBindTexture(gl.GL_TEXTURE_2D, widget.texture_ids[slot_index])
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-    gl.glTexImage2D(
-        gl.GL_TEXTURE_2D,
-        0,
-        gl.GL_RGBA,
-        converted_img.width(),
-        converted_img.height(),
-        0,
-        gl.GL_RGBA,
-        gl.GL_UNSIGNED_BYTE,
-        bytes(ptr),
+    state._pending_texture_uploads.append(
+        (raw, converted_img.width(), converted_img.height(), widget.texture_ids[slot_index], slot_index)
     )
     widget.update()
 
@@ -67,22 +44,9 @@ def upload_source_pil_image(widget, pil_image, slot_index: int):
     if not texture_id:
         return
 
-    widget.makeCurrent()
     img = pil_image.convert("RGBA")
     raw = img.tobytes("raw", "RGBA")
-    gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-    gl.glTexImage2D(
-        gl.GL_TEXTURE_2D,
-        0,
-        gl.GL_RGBA,
-        img.width,
-        img.height,
-        0,
-        gl.GL_RGBA,
-        gl.GL_UNSIGNED_BYTE,
-        raw,
-    )
+    widget.runtime_state._pending_texture_uploads.append((raw, img.width, img.height, texture_id, None))
 
 def upload_diff_source_pil_image(widget, pil_image):
     state = widget.runtime_state
@@ -96,22 +60,9 @@ def upload_diff_source_pil_image(widget, pil_image):
     if state._diff_source_ready and state._diff_source_image_id == image_id:
         return
 
-    widget.makeCurrent()
     img = pil_image.convert("RGBA")
     raw = img.tobytes("raw", "RGBA")
-    gl.glBindTexture(gl.GL_TEXTURE_2D, widget._diff_source_texture_id)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-    gl.glTexImage2D(
-        gl.GL_TEXTURE_2D,
-        0,
-        gl.GL_RGBA,
-        img.width,
-        img.height,
-        0,
-        gl.GL_RGBA,
-        gl.GL_UNSIGNED_BYTE,
-        raw,
-    )
+    state._pending_texture_uploads.append((raw, img.width, img.height, widget._diff_source_texture_id, None))
     state._diff_source_pil_image = pil_image
     state._diff_source_image_id = image_id
     state._diff_source_ready = True

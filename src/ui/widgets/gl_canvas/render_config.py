@@ -125,9 +125,9 @@ def compute_render_config(widget, ctx: GLRenderRuntimeContext):
         else:
             base = (img_x + nw * scene.split_position_visual) / w
             pan = ctx.viewport.pan_offset_x
-        widget.split_position = (base - 0.5 + pan) * ctx.viewport.zoom_level + 0.5
+        widget.display_split_position = (base - 0.5 + pan) * ctx.viewport.zoom_level + 0.5
     else:
-        widget.split_position = scene.split_position_visual
+        widget.display_split_position = scene.split_position_visual
 
     return {
         "show_div": scene.show_divider,
