@@ -754,8 +754,12 @@ class Ui_ImageComparisonApp:
             if hasattr(self, "drag_overlay"):
                 self.drag_overlay.hide()
             return
+        uses_internal_canvas_overlay = (
+            self.image_label.__class__.__module__.endswith("quick_canvas")
+            or self.image_label.__class__.__module__.endswith("software_widget")
+        )
         self.image_label.set_drag_overlay_state(
-            visible=False,
+            visible=visible if uses_internal_canvas_overlay else False,
             horizontal=horizontal,
             text1=tr(
                 "ui.drop_images_1_here",
@@ -768,7 +772,7 @@ class Ui_ImageComparisonApp:
         )
         if hasattr(self, "drag_overlay"):
             self.drag_overlay.set_overlay_state(
-                visible=visible,
+                visible=visible if not uses_internal_canvas_overlay else False,
                 target_rect=self.image_label.geometry(),
                 horizontal=horizontal,
                 text1=tr(

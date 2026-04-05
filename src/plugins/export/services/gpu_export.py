@@ -13,9 +13,9 @@ from PyQt6.QtWidgets import QApplication
 from domain.types import Rect
 from plugins.export.models import ExportRenderContext
 from shared.regions import build_square_tile_grid, pad_image_to_size
+from ui.widgets.gl_canvas import GLCanvas
 from ui.widgets.gl_canvas.render import paint_gl
 from ui.widgets.gl_canvas.scene import build_gl_render_scene
-from ui.widgets.gl_canvas.widget import GLCanvas
 from utils.resource_loader import get_magnifier_drawing_coords
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -162,12 +162,25 @@ class _GpuExportProxy(QObject):
         viewport.geometry_state.image_display_rect_on_label = state["image_display_rect_on_label"]
 
     def _get_max_texture_size(self, widget) -> int:
+        if not hasattr(widget, "makeCurrent"):
+            return 4096
         widget.makeCurrent()
         try:
             value = int(gl.glGetIntegerv(gl.GL_MAX_TEXTURE_SIZE))
         finally:
             widget.doneCurrent()
         return max(1, value)
+
+    def _render_widget_frame(self, widget):
+        if hasattr(widget, "makeCurrent"):
+            widget.makeCurrent()
+            try:
+                paint_gl(widget)
+            finally:
+                widget.doneCurrent()
+        else:
+            widget.update()
+        QApplication.processEvents()
 
     def _prepare_scene_images(
         self,
@@ -876,10 +889,7 @@ class _GpuExportProxy(QObject):
                 widget.clear_magnifier_gpu()
 
             paint_started = time.perf_counter()
-            widget.makeCurrent()
-            paint_gl(widget)
-            widget.doneCurrent()
-            QApplication.processEvents()
+            self._render_widget_frame(widget)
             tile_paint_total += (time.perf_counter() - paint_started) * 1000.0
 
             grab_started = time.perf_counter()
@@ -1012,10 +1022,7 @@ class _GpuExportProxy(QObject):
             ) * 1000.0
 
             paint_started = time.perf_counter()
-            widget.makeCurrent()
-            paint_gl(widget)
-            widget.doneCurrent()
-            QApplication.processEvents()
+            self._render_widget_frame(widget)
             debug_timings["paint_gl_ms"] = (
                 time.perf_counter() - paint_started
             ) * 1000.0

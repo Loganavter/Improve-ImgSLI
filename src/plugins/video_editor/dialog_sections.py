@@ -251,7 +251,6 @@ def create_export_tabs(dialog):
 
     return tabs
 
-
 def create_log_tab(dialog) -> QWidget:
     tab = QWidget()
     tab.setObjectName("VideoEditorTabContent")

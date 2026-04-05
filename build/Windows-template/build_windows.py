@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = REPO_ROOT / "build" / "Windows-template" / "Improve_ImgSLI.spec"
 INNO_PATH = REPO_ROOT / "build" / "Windows-template" / "inno_setup_6.iss"
 REQUIREMENTS_PATH = REPO_ROOT / "requirements.txt"
-SETUP_EXE = REPO_ROOT / "build" / "Windows-template" / "Output" / "Improve_ImgSLI_Setup_v8.1.0.exe"
+SETUP_EXE = REPO_ROOT / "build" / "Windows-template" / "Output" / "Improve_ImgSLI_Setup_v8.2.0.exe"
 
 FFMPEG_ZIP_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 FFMPEG_EXE_SUBPATH = "ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe"
@@ -106,6 +106,13 @@ def build_inno_setup() -> int:
     iscc_path = Path(program_files_x86) / "Inno Setup 6" / "ISCC.exe"
     if not iscc_path.exists():
         print("Inno Setup 6 not found. Installer skipped.")
+        return 0
+
+    build_inno = os.environ.get("BUILD_INNO_SETUP", "").strip().lower()
+    if build_inno in {"1", "true", "yes", "y"}:
+        return run_command([str(iscc_path), str(INNO_PATH)])
+    if build_inno in {"0", "false", "no", "n"}:
+        print("Installer build skipped.")
         return 0
 
     answer = input("Build Inno Setup installer? (y/n): ").strip().lower()

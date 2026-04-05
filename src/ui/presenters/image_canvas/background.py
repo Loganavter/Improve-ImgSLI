@@ -6,7 +6,7 @@ from domain.types import Rect
 from resources.translations import tr
 from shared_toolkit.ui.managers.font_manager import FontManager
 from shared_toolkit.workers import GenericWorker
-from utils.resource_loader import get_scaled_pixmap_dimensions
+from ui.widgets.gl_canvas.helpers import get_gl_like_canvas, reset_canvas_overlays
 from workers.image_rendering_worker import ImageRenderingWorker
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -168,8 +168,8 @@ def _complete_diff_toast(presenter, request_key):
         presenter._active_diff_toast_key = None
 
 def _sync_gl_diff_texture(presenter, diff_mode):
-    image_label = getattr(getattr(presenter, "ui", None), "image_label", None)
-    if image_label is None or not hasattr(image_label, "upload_diff_source_pil_image"):
+    image_label = get_gl_like_canvas(getattr(presenter, "ui", None))
+    if image_label is None:
         return
 
     if diff_mode not in {"highlight", "grayscale", "ssim", "edges"} and getattr(presenter, "_active_diff_toast_id", None) is not None:
@@ -344,9 +344,16 @@ def update_comparison_if_needed(presenter):
 
     src_resize1 = presenter.store.viewport.session_data.render_cache.display_cache_image1 or presenter.store.viewport.session_data.image_state.image1
     src_resize2 = presenter.store.viewport.session_data.render_cache.display_cache_image2 or presenter.store.viewport.session_data.image_state.image2
-    scaled_w, scaled_h = get_scaled_pixmap_dimensions(
-        src_resize1, src_resize2, label_width, label_height
-    )
+    if src_resize1 and src_resize2:
+        img1_w, img1_h = src_resize1.size
+        img2_w, img2_h = src_resize2.size
+        scale1 = min(label_width / img1_w, label_height / img1_h)
+        scale2 = min(label_width / img2_w, label_height / img2_h)
+        scale = min(scale1, scale2)
+        scaled_w = max(1, int(img1_w * scale))
+        scaled_h = max(1, int(img1_h * scale))
+    else:
+        scaled_w, scaled_h = label_width, label_height
 
     if not presenter.view.is_gl_canvas() and not presenter.background.ensure_images_scaled(scaled_w, scaled_h):
         return False
@@ -389,6 +396,7 @@ def update_comparison_if_needed(presenter):
 
     if bg_is_dirty:
         if presenter.view.is_gl_canvas():
+            image_label = get_gl_like_canvas(presenter.ui)
             img1 = (
                 presenter.store.viewport.session_data.render_cache.display_cache_image1
                 or presenter.store.viewport.session_data.render_cache.scaled_image1_for_display
@@ -452,8 +460,7 @@ def update_comparison_if_needed(presenter):
             if gl_img_sig != getattr(presenter, "_gl_last_img_sig", None):
                 presenter._gl_last_img_sig = gl_img_sig
                 if gl_img1 and gl_img2:
-                    if hasattr(presenter.ui.image_label, "set_apply_channel_mode_in_shader"):
-                        presenter.ui.image_label.set_apply_channel_mode_in_shader(False)
+                    image_label.set_apply_channel_mode_in_shader(False)
                     kwargs = {}
                     if gui_source1 is not None and gui_source2 is not None:
                         kwargs = {
@@ -461,7 +468,7 @@ def update_comparison_if_needed(presenter):
                             "source_image2": gui_source2,
                             "source_key": source_key,
                         }
-                    presenter.ui.image_label.set_pil_layers(
+                    image_label.set_pil_layers(
                         gl_img1,
                         gl_img2,
                         shader_letterbox=True,
@@ -486,7 +493,8 @@ def update_comparison_if_needed(presenter):
         current_mag_sig = presenter.magnifier.get_signature()
         last_mag_sig = getattr(presenter, "_last_mag_signature", None)
         mag_pixmap = getattr(presenter.ui.image_label, "_magnifier_pixmap", None)
-        if presenter.view.is_gl_canvas():
+        if presenter.view.supports_legacy_gl_magnifier():
+            image_label = presenter.ui.image_label
             current_mag_state = (
                 current_mag_sig,
                 getattr(image_label, "_source_images_ready", False),
@@ -498,7 +506,7 @@ def update_comparison_if_needed(presenter):
             current_mag_state = current_mag_sig
 
         if mag_is_dirty:
-            if presenter.view.is_gl_canvas():
+            if presenter.view.supports_legacy_gl_magnifier():
                 presenter.magnifier.render_gl_fast()
                 presenter._last_mag_signature = current_mag_state
                 return True
@@ -508,24 +516,15 @@ def update_comparison_if_needed(presenter):
                 return True
             return False
     else:
-        if presenter.view.is_gl_canvas():
-            if hasattr(presenter.ui.image_label, "clear_magnifier_gpu"):
-                presenter.ui.image_label.clear_magnifier_gpu()
-            if hasattr(presenter.ui.image_label, "set_overlay_coords"):
-                presenter.ui.image_label.set_overlay_coords(None, 0, [], 0)
+        if presenter.view.supports_legacy_gl_magnifier():
+            reset_canvas_overlays(presenter.ui.image_label)
             presenter._last_mag_signature = None
         else:
             mag_pixmap = getattr(presenter.ui.image_label, "_magnifier_pixmap", None)
             if mag_pixmap is not None:
-                if hasattr(presenter.ui.image_label, "set_magnifier_content"):
-                    presenter.ui.image_label.set_magnifier_content(None, None)
-                else:
-                    presenter.view.set_image_layers(presenter._cached_base_pixmap)
+                reset_canvas_overlays(presenter.ui.image_label)
+                presenter.view.set_image_layers(presenter._cached_base_pixmap)
                 presenter._last_mag_signature = None
-                if hasattr(presenter.ui.image_label, "set_overlay_coords"):
-                    presenter.ui.image_label.set_overlay_coords(None, 0, [], 0)
-                elif hasattr(presenter.ui.image_label, "set_capture_area"):
-                    presenter.ui.image_label.set_capture_area(None, 0)
     return False
 
 def ensure_images_unified(presenter, source1, source2):

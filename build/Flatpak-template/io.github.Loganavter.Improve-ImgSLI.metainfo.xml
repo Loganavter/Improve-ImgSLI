@@ -7,24 +7,21 @@
   <summary>Image comparison with magnifier</summary>
   <description>
     <p>
-      Improve ImgSLI is a versatile open-source tool designed for detailed side-by-side image comparison. Easily spot differences and inspect fine details using its synchronized magnifying glass feature. Ideal for designers, photographers, AI art/upscaling enthusiasts, and anyone needing precise visual analysis.
+      Improve ImgSLI is an open-source image comparison tool focused on precise visual inspection, responsive interaction, and advanced rendering workflows. It is designed for artists, photographers, retouchers, AI upscaling workflows, quality control, and anyone who needs to compare images at pixel level without losing context.
     </p>
     <p>Key features include:</p>
     <ul>
-      <li>Compare images with an adjustable horizontal or vertical split line.</li>
-      <li>Use the powerful synchronized magnifier with flexible controls: adjustable capture/display size, position control (mouse and WASD/QE keys), view freezing, and combined magnifiers.</li>
-      <li>Load single or multiple images per comparison panel via drag-and-drop or file dialogs.</li>
-      <li>Easily switch between loaded images using dropdown selectors.</li>
-      <li>Save the complete comparison view (including split line, magnifier markers, and optional filenames) as a full-resolution image.</li>
-      <li>Swap image lists between panels with a single click.</li>
-      <li>Edit displayed file names directly within the interface.</li>
-      <li>Multi-language interface (English, Russian, Chinese, Brazilian Portuguese) with persistent settings.</li>
-      <li>Selectable interpolation methods for the magnifier (Nearest Neighbor, Bilinear, Bicubic, Lanczos).</li>
-      <li>Quick preview of individual images using Space + Mouse Buttons.</li>
-      <li>Improved performance with image caching.</li>
+      <li>Compare images with a movable horizontal or vertical split line, including zooming and panning in the main canvas.</li>
+      <li>Use a synchronized magnifier with adjustable capture area, display size, freeze mode, combined layouts, internal split, and keyboard-assisted positioning.</li>
+      <li>Load and manage multiple images per side with drag-and-drop, list switching, swapping, and direct filename editing.</li>
+      <li>Inspect visual differences with rendering-aware preview controls and selectable interpolation modes.</li>
+      <li>Export full-resolution comparison images with overlays, labels, and comparison state preserved.</li>
+      <li>Edit recorded comparison sessions in the built-in video editor with timeline selection, trimming, preview playback, and export.</li>
+      <li>Run on multiple rendering backends with improved compatibility across Wayland, X11, and Windows environments.</li>
+      <li>Use persistent settings, multilingual interface support, and structured diagnostics for advanced troubleshooting.</li>
     </ul>
     <p>
-      The application is intuitive and distributed under the free MIT License.
+      The application is distributed under the MIT License.
     </p>
   </description>
   <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>
@@ -32,15 +29,15 @@
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_1.jpg</image>
-      <caption>Vertical caption</caption>
+      <caption>Magnifier</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_2.jpg</image>
-      <caption>Horizontal caption</caption>
+      <caption>Difference View</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_3.jpg</image>
-      <caption>List option</caption>
+      <caption>Video Editor</caption>
     </screenshot>
   </screenshots>
   <developer id="io.github.loganavter">
@@ -48,6 +45,19 @@
   </developer>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="8.2.0" date="2026-04-05">
+      <description>
+        <p>A compatibility and rendering patch release focused on startup stability, backend behavior, and high-DPI correctness.</p>
+        <ul>
+          <li>Improved startup behavior by removing problematic top-level prewarm and reveal paths that could cause compositor artifacts on KDE Wayland and transient miniature windows on Windows.</li>
+          <li>Switched the application toward the Quick canvas path for more predictable cross-platform behavior and reduced native OpenGL window-management issues.</li>
+          <li>Fixed multiple rendering and interaction edge cases related to split view synchronization during zoom and pan.</li>
+          <li>Improved high-DPI and viewport mapping correctness, reducing geometry mismatches between rendered content and interactive hit areas.</li>
+          <li>Fixed magnifier edge behavior, overlay clamping, and capture-ring rendering so interaction near image borders remains accurate.</li>
+          <li>Aligned export, preview, and canvas backend behavior more closely after the rendering-layer refactor.</li>
+        </ul>
+      </description>
+    </release>
     <release version="8.1.0" date="2026-03-30">
       <description>
         <p>A major release consolidating months of deep architectural work and introducing significant new features.</p>

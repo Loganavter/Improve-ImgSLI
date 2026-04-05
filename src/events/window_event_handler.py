@@ -122,14 +122,24 @@ class WindowEventHandler(QObject):
         if not self.ui.image_label.isVisible():
             return True
         label_rect = self.ui.image_label.geometry()
+        local_to_label = (
+            0 <= pos.x() <= self.ui.image_label.width()
+            and 0 <= pos.y() <= self.ui.image_label.height()
+        )
 
         if not self.store.viewport.view_state.is_horizontal:
-
-            mid_x = label_rect.x() + label_rect.width() / 2
+            mid_x = (
+                self.ui.image_label.width() / 2
+                if local_to_label
+                else label_rect.x() + label_rect.width() / 2
+            )
             return pos.x() < mid_x
         else:
-
-            mid_y = label_rect.y() + label_rect.height() / 2
+            mid_y = (
+                self.ui.image_label.height() / 2
+                if local_to_label
+                else label_rect.y() + label_rect.height() / 2
+            )
             return pos.y() < mid_y
 
     def _handle_deferred_drag_leave(self):

@@ -13,8 +13,14 @@ class _PopupBubble(QWidget):
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
+        self.setWindowFlags(
+            Qt.WindowType.ToolTip
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(
@@ -123,6 +129,10 @@ class OverlayLayer(QObject):
         top_left = anchor_widget.mapTo(self._host, QPoint(0, 0))
         return QRect(top_left, anchor_widget.size())
 
+    def anchor_global_rect(self, anchor_widget: QWidget) -> QRect:
+        top_left = anchor_widget.mapToGlobal(QPoint(0, 0))
+        return QRect(top_left, anchor_widget.size())
+
     def clamp_rect(self, rect: QRect, margin: int = 8) -> QRect:
         bounds = self._host.rect().adjusted(margin, margin, -margin, -margin)
         if bounds.width() <= 0 or bounds.height() <= 0:
@@ -156,6 +166,34 @@ class OverlayLayer(QObject):
 
         return self.clamp_rect(QRect(x, y, size.width(), size.height()), margin=margin)
 
+    def place_global_rect_relative_to_anchor(
+        self,
+        anchor_widget: QWidget,
+        size: QSize,
+        position: str = "top",
+        offset: int = 6,
+        margin: int = 8,
+    ) -> QRect:
+        anchor_rect = self.anchor_global_rect(anchor_widget)
+        host_window = self._host.window()
+        bounds = host_window.frameGeometry().adjusted(margin, margin, -margin, -margin)
+
+        if position == "bottom":
+            x = anchor_rect.x() + (anchor_rect.width() - size.width()) // 2
+            y = anchor_rect.bottom() + 1 + offset
+        elif position == "left-top":
+            x = anchor_rect.left() - size.width() - offset
+            y = anchor_rect.top() - size.height() - offset
+        else:
+            x = anchor_rect.x() + (anchor_rect.width() - size.width()) // 2
+            y = anchor_rect.y() - size.height() - offset
+
+        width = min(size.width(), bounds.width())
+        height = min(size.height(), bounds.height())
+        x = max(bounds.left(), min(x, bounds.right() - width + 1))
+        y = max(bounds.top(), min(y, bounds.bottom() - height + 1))
+        return QRect(x, y, width, height)
+
     def ensure_visible(self, widget: QWidget, margin: int = 8):
         widget.setGeometry(self.clamp_rect(widget.geometry(), margin=margin))
 
@@ -177,7 +215,7 @@ class OverlayLayer(QObject):
                 self._forget_popup(key)
                 popup = None
         if popup is None:
-            popup = _PopupBubble(self._host)
+            popup = _PopupBubble(self._host.window())
             popup.hide()
             self._value_popups[key] = popup
             popup.destroyed.connect(lambda *_args, popup_key=key: self._forget_popup(popup_key))
@@ -228,7 +266,7 @@ class OverlayLayer(QObject):
             popup.label.style().polish(popup.label)
             popup.label.update()
             popup.setGeometry(
-                self.place_rect_relative_to_anchor(
+                self.place_global_rect_relative_to_anchor(
                     anchor_widget,
                     popup.size(),
                     position=position,
