@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from PyQt6.QtWidgets import QApplication
 
 from shared_toolkit.ui.managers.font_manager import FontManager
@@ -47,10 +48,21 @@ class ApplyFontSettingsStep(WindowStartupStep):
         except Exception:
             pass
 
+class BootstrapContentStep(WindowStartupStep):
+    name = "bootstrap_content"
+
+    def run(self, window) -> None:
+        if window._should_show_onboarding():
+            window._show_onboarding_page()
+        else:
+            window._bootstrap_main_app()
+
 class RefreshWindowUiStep(WindowStartupStep):
     name = "refresh_ui"
 
     def run(self, window) -> None:
+        if window.ui is None:
+            return
         window._update_image_label_background()
 
         if window.main_controller and window.main_controller.sessions:
@@ -164,12 +176,38 @@ class MainWindowStartupPipeline:
         LoadWindowStateStep(),
         ApplyThemeStep(),
         ApplyFontSettingsStep(),
+        BootstrapContentStep(),
         RefreshWindowUiStep(),
     )
 
     def run(self, window) -> None:
         for step in self.steps:
+            logger.debug("Main window startup step: %s", step.name)
             step.run(window)
+
+@dataclass(slots=True)
+class MainWindowStartupController:
+    pipeline: MainWindowStartupPipeline = field(
+        default_factory=MainWindowStartupPipeline
+    )
+
+    def prepare(self, window) -> None:
+        if getattr(window, "_application_initialized", False):
+            return
+        logger.debug("Main window startup controller: prepare")
+        self.pipeline.run(window)
+        window._application_initialized = True
+
+    def show(self, window) -> None:
+        logger.debug("Main window startup controller: show")
+        self.prepare(window)
+        window.show()
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents()
+
+    def start(self, window) -> None:
+        self.show(window)
 
 @dataclass(slots=True)
 class MainWindowShutdownPipeline:

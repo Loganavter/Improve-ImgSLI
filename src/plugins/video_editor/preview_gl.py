@@ -9,6 +9,7 @@ from shared.image_processing.resize import resize_images_processor
 from ui.presenters.image_canvas.magnifier import render_magnifier_gl_fast
 from ui.presenters.image_canvas.signatures import get_divider_color_tuple
 from ui.widgets.gl_canvas.scene import build_gl_render_scene
+from ui.widgets.gl_canvas.helpers import reset_canvas_overlays
 
 class _PreviewPresenterAdapter:
     def __init__(self, store, image_label):
@@ -246,23 +247,20 @@ def apply_preview_to_canvas(
 
     try:
         canvas._store = preview_store
-        if hasattr(canvas, "set_render_scene"):
-            canvas.set_render_scene(
-                build_gl_render_scene(
-                    preview_store,
-                    apply_channel_mode_in_shader=getattr(
-                        canvas, "_apply_channel_mode_in_shader", True
-                    ),
-                    clip_overlays_to_image_bounds=True,
-                )
+        canvas.set_render_scene(
+            build_gl_render_scene(
+                preview_store,
+                apply_channel_mode_in_shader=getattr(
+                    canvas, "_apply_channel_mode_in_shader", True
+                ),
+                clip_overlays_to_image_bounds=True,
             )
-        if hasattr(canvas, "set_split_position_sync"):
-            canvas.set_split_position_sync(
-                lambda split: _sync_preview_split_position(preview_store, split)
-            )
+        )
+        canvas.set_split_position_sync(
+            lambda split: _sync_preview_split_position(preview_store, split)
+        )
         canvas._clip_overlays_to_content_rect = not fit_content
-        if hasattr(canvas, "reset_view"):
-            canvas.reset_view()
+        canvas.reset_view()
         display_w, display_h = _compute_display_size(canvas, image1)
         preview_store.viewport.geometry_state.pixmap_width = display_w
         preview_store.viewport.geometry_state.pixmap_height = display_h
@@ -304,17 +302,9 @@ def apply_preview_to_canvas(
         if preview_store.viewport.view_state.use_magnifier:
             render_magnifier_gl_fast(adapter)
         else:
-            if hasattr(canvas, "clear_magnifier_gpu"):
-                canvas.clear_magnifier_gpu()
-            if hasattr(canvas, "set_magnifier_content"):
-                canvas.set_magnifier_content(None, None)
-            if hasattr(canvas, "set_overlay_coords"):
-                canvas.set_overlay_coords(None, 0, [], 0)
-            if hasattr(canvas, "set_capture_area"):
-                canvas.set_capture_area(None, 0)
+            reset_canvas_overlays(canvas)
     finally:
-        if hasattr(canvas, "end_update_batch"):
-            canvas.end_update_batch()
+        canvas.end_update_batch()
 
 def _sync_preview_split_position(preview_store, split_position: float):
     viewport = preview_store.viewport

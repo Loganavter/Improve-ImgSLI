@@ -1,8 +1,53 @@
 from __future__ import annotations
 
+import logging
+
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
 
 CAPTURE_RING_AA_PX = 1.15
+logger = logging.getLogger("ImproveImgSLI")
+
+def _float_attr(obj, attr: str, default: float) -> float:
+    if obj is None:
+        return float(default)
+    value = getattr(obj, attr, None)
+    if value is None:
+        return float(default)
+    return float(value)
+
+def _image_dimensions(image) -> tuple[int, int] | None:
+    if image is None:
+        return None
+    width = getattr(image, "width", None)
+    height = getattr(image, "height", None)
+    if callable(width):
+        width = width()
+    if callable(height):
+        height = height()
+    if width is None or height is None:
+        return None
+    return int(width), int(height)
+
+def _sync_split_to_store(widget, split_position: float) -> bool:
+    state = widget.runtime_state
+    store = getattr(state, "_store", None)
+    viewport = getattr(store, "viewport", None) if store is not None else None
+    view_state = getattr(viewport, "view_state", None) if viewport is not None else None
+    if view_state is None:
+        return False
+    split = max(0.0, min(1.0, float(split_position)))
+    old_split = _float_attr(view_state, "split_position", 0.5)
+    old_split_visual = _float_attr(view_state, "split_position_visual", 0.5)
+    if (
+        abs(old_split - split) <= 1e-6
+        and abs(old_split_visual - split) <= 1e-6
+    ):
+        return True
+    view_state.split_position = split
+    view_state.split_position_visual = split
+    if hasattr(store, "emit_viewport_change"):
+        store.emit_viewport_change("interaction")
+    return True
 
 def compute_split_position_for_view_transform(
     *,
@@ -35,8 +80,32 @@ def compute_split_position_for_view_transform(
         base = (image_x + scaled_width * split_position_visual) / widget_width
         old_pan = current_pan_x
 
+    axis_widget_size = float(widget_height if is_horizontal else widget_width)
+    axis_content_size = float(scaled_height if is_horizontal else scaled_width)
+    axis_content_offset = float(image_y if is_horizontal else image_x)
+    current_pan = float(current_pan_y if is_horizontal else current_pan_x)
+    new_pan = float(new_pan_y if is_horizontal else new_pan_x)
+
+    def _visible_axis_range(zoom: float, pan: float) -> tuple[float, float]:
+        local_start = ((0.0 - 0.5) / max(float(zoom), 1e-6)) + 0.5 - pan
+        local_end = ((1.0 - 0.5) / max(float(zoom), 1e-6)) + 0.5 - pan
+        rel_start = ((local_start * axis_widget_size) - axis_content_offset) / max(axis_content_size, 1.0)
+        rel_end = ((local_end * axis_widget_size) - axis_content_offset) / max(axis_content_size, 1.0)
+        lo = max(0.0, min(1.0, min(rel_start, rel_end)))
+        hi = max(0.0, min(1.0, max(rel_start, rel_end)))
+        return lo, hi
+
+    current_visible_min, current_visible_max = _visible_axis_range(current_zoom, current_pan)
+    edge_epsilon = max(0.0025, 3.0 / max(axis_content_size, 1.0))
+    explicit_edge_epsilon = 1e-6
+    if split_position_visual <= explicit_edge_epsilon:
+        new_visible_min, _ = _visible_axis_range(new_zoom, new_pan)
+        return max(0.0, min(1.0, new_visible_min))
+    if split_position_visual >= 1.0 - explicit_edge_epsilon:
+        _, new_visible_max = _visible_axis_range(new_zoom, new_pan)
+        return max(0.0, min(1.0, new_visible_max))
+
     screen_pos = (base - 0.5 + old_pan) * current_zoom + 0.5
-    new_pan = new_pan_y if is_horizontal else new_pan_x
     new_base = (screen_pos - 0.5) / new_zoom + 0.5 - new_pan
 
     if is_horizontal:
@@ -44,7 +113,8 @@ def compute_split_position_for_view_transform(
     else:
         new_split = (new_base * widget_width - image_x) / scaled_width if scaled_width > 0 else 0.5
 
-    return max(0.0, min(1.0, new_split))
+    clamped_split = max(0.0, min(1.0, new_split))
+    return clamped_split
 
 def update_paste_overlay_rects(widget):
     state = widget.runtime_state
@@ -172,21 +242,40 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
     state = widget.runtime_state
     scene = state._render_scene
     sync_callback = state._split_position_sync
-    if scene is None or sync_callback is None:
+    store = getattr(state, "_store", None)
+    view_state = getattr(getattr(store, "viewport", None), "view_state", None) if store is not None else None
+    if scene is None and view_state is None:
         return
 
     w, h = widget.width(), widget.height()
     img1 = state._stored_pil_images[0] if state._stored_pil_images else None
-    if not img1 or w <= 0 or h <= 0:
+    dims = _image_dimensions(img1)
+    if dims is None or w <= 0 or h <= 0:
         return
+    image_width, image_height = dims
+    is_horizontal = bool(
+        getattr(scene, "is_horizontal", getattr(view_state, "is_horizontal", False))
+    )
+    scene_split_visual = _float_attr(
+        scene,
+        "split_position_visual",
+        _float_attr(widget, "split_position", 0.5),
+    )
+    view_split = _float_attr(view_state, "split_position", scene_split_visual)
+    view_split_visual = _float_attr(
+        view_state,
+        "split_position_visual",
+        scene_split_visual,
+    )
+    split_visual = view_split_visual
 
     new_split = compute_split_position_for_view_transform(
         widget_width=w,
         widget_height=h,
-        image_width=img1.width,
-        image_height=img1.height,
-        is_horizontal=bool(scene.is_horizontal),
-        split_position_visual=float(scene.split_position_visual),
+        image_width=image_width,
+        image_height=image_height,
+        is_horizontal=is_horizontal,
+        split_position_visual=split_visual,
         current_zoom=float(widget.zoom_level),
         current_pan_x=float(widget.pan_offset_x),
         current_pan_y=float(widget.pan_offset_y),
@@ -195,7 +284,15 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
         new_pan_y=float(new_pan_y),
     )
     if new_split is not None:
-        sync_callback(new_split)
+        synced = False
+        if sync_callback is not None:
+            try:
+                sync_callback(new_split)
+                synced = True
+            except Exception:
+                logger.exception("Split sync callback failed during view transform")
+        if not synced:
+            _sync_split_to_store(widget, new_split)
 
 def set_split_line_params(
     widget,
@@ -216,7 +313,7 @@ def set_split_line_params(
     if visible:
         widget_size = widget.width() if not is_horizontal else widget.height()
         if widget_size > 0:
-            widget.split_position = pos / widget_size
+            widget.display_split_position = pos / widget_size
 
     widget._request_update()
 
@@ -295,11 +392,25 @@ def set_zoom(widget, zoom: float):
     new_zoom = max(1.0, min(zoom, 50.0))
     if abs(new_zoom - widget.zoom_level) <= 1e-6:
         return
+    update_split_for_zoom(
+        widget,
+        new_zoom,
+        float(getattr(widget, "pan_offset_x", 0.0) or 0.0),
+        float(getattr(widget, "pan_offset_y", 0.0) or 0.0),
+    )
     widget.zoom_level = new_zoom
     widget.zoomChanged.emit(widget.zoom_level)
     widget.update()
 
 def set_pan(widget, x: float, y: float):
+    new_pan_x = float(x or 0.0)
+    new_pan_y = float(y or 0.0)
+    update_split_for_zoom(
+        widget,
+        float(getattr(widget, "zoom_level", 1.0) or 1.0),
+        new_pan_x,
+        new_pan_y,
+    )
     widget.pan_offset_x = x
     widget.pan_offset_y = y
     widget.update()

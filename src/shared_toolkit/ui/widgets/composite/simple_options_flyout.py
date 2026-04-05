@@ -233,7 +233,7 @@ class SimpleOptionsFlyout(BaseFlyout):
         self._update_size(match_width=anchor_width, exact_match=exact_width_match)
 
         total_width, total_height = self.width(), self.height()
-        if self.overlay_layer is not None:
+        if self.overlay_layer is not None and not self.isWindow():
             rect = self.overlay_layer.place_rect_relative_to_anchor(
                 anchor_widget,
                 self.size(),

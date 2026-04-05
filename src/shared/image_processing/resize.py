@@ -7,7 +7,6 @@ from core.constants import AppConstants
 
 logger = logging.getLogger("ImproveImgSLI")
 
-
 def resample_image(
     pil_image: Image.Image,
     target_size: tuple[int, int],

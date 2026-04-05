@@ -1,5 +1,7 @@
 import logging
+import time
 
+from PyQt6 import sip
 from PyQt6.QtCore import QPoint, QPointF, QRect
 from PyQt6.QtGui import QPainter
 
@@ -7,10 +9,36 @@ from domain.types import Point, Rect
 from domain.qt_adapters import color_to_qcolor
 from shared_toolkit.ui.managers.font_manager import FontManager
 from shared_toolkit.workers import GenericWorker
+from ui.widgets.gl_canvas.helpers import (
+    reset_canvas_overlays,
+    uses_quick_overlay,
+)
 from utils.resource_loader import get_magnifier_drawing_coords
 
 logger = logging.getLogger("ImproveImgSLI")
 CAPTURE_RING_AA_PX = 1.15
+_invalid_magnifier_bbox_log_count = 0
+
+def _get_live_image_label(presenter):
+    image_label = getattr(getattr(presenter, "ui", None), "image_label", None)
+    if image_label is None or sip.isdeleted(image_label):
+        return None
+    return image_label
+
+def _start_pending_magnifier_layer(presenter) -> bool:
+    pending_sig = getattr(presenter, "_pending_magnifier_signature", None)
+    if pending_sig is None:
+        presenter._magnifier_update_pending = False
+        presenter._pending_magnifier_request_seq = 0
+        presenter._pending_magnifier_requested_at = 0.0
+        return False
+
+    presenter._magnifier_update_pending = False
+    presenter._pending_magnifier_signature = None
+    presenter._pending_magnifier_request_seq = 0
+    presenter._pending_magnifier_requested_at = 0.0
+    presenter._last_mag_signature = None
+    return render_magnifier_layer(presenter, pending_sig)
 
 def _build_cached_diff_image_task(
     source1,
@@ -157,8 +185,19 @@ def _ensure_cached_diff_image(
     return None
 
 def _is_effective_magnifier_interactive(vp) -> bool:
+    interaction = getattr(vp, "interaction_state", None)
+    is_pointer_interacting = bool(
+        interaction
+        and (
+            getattr(interaction, "is_interactive_mode", False)
+            or getattr(interaction, "is_dragging_capture_point", False)
+            or getattr(interaction, "is_dragging_split_in_magnifier", False)
+            or getattr(interaction, "is_dragging_split_line", False)
+            or bool(getattr(interaction, "pressed_keys", set()))
+        )
+    )
     return bool(
-        getattr(vp.interaction_state, "is_interactive_mode", False)
+        is_pointer_interacting
         and getattr(vp.view_state, "optimize_magnifier_movement", True)
     )
 
@@ -206,6 +245,13 @@ def _clamp_capture_overlay_geometry(
     return clamped_x, clamped_y, clamped_radius
 
 def _get_effective_overlay_bounds_rect(vp, image_label) -> Rect | None:
+    state = getattr(image_label, "runtime_state", None) if image_label is not None else None
+    content_rect = getattr(state, "_content_rect_px", None) if state is not None else None
+    if content_rect:
+        x, y, w, h = content_rect
+        if int(w) > 0 and int(h) > 0:
+            return Rect(int(x), int(y), int(w), int(h))
+
     geometry = getattr(vp, "geometry_state", None)
     if geometry is None:
         return None
@@ -251,12 +297,13 @@ def _get_effective_overlay_bounds_rect(vp, image_label) -> Rect | None:
 
     scale_x = base_rect.w / float(img_w)
     scale_y = base_rect.h / float(img_h)
-    return Rect(
+    clipped_rect = Rect(
         int(round(base_rect.x + (clip_x * scale_x))),
         int(round(base_rect.y + (clip_y * scale_y))),
         max(1, int(round(clip_w * scale_x))),
         max(1, int(round(clip_h * scale_y))),
     )
+    return clipped_rect
 
 def sync_widget_overlay_coords(presenter):
     vp = presenter.store.viewport
@@ -264,11 +311,13 @@ def sync_widget_overlay_coords(presenter):
     render = vp.render_config
     geometry = vp.geometry_state
     image_state = vp.session_data.image_state
-    image_label = presenter.ui.image_label
+    image_label = _get_live_image_label(presenter)
+    if image_label is None:
+        return
+    uses_quick_canvas_overlay = uses_quick_overlay(image_label)
 
     if not view.use_magnifier or not image_state.image1 or geometry.pixmap_width <= 0:
-        if hasattr(image_label, "set_overlay_coords"):
-            image_label.set_overlay_coords(None, 0, [], 0)
+        image_label.set_overlay_coords(None, 0, [], 0)
         return
 
     pix_w, pix_h = geometry.pixmap_width, geometry.pixmap_height
@@ -296,9 +345,11 @@ def sync_widget_overlay_coords(presenter):
     zoom_level = float(getattr(image_label, "zoom_level", 1.0) or 1.0)
     scaled_radius = capture_radius * zoom_level
     line_width_px = max(2.0, float(scaled_radius * 2.0) * 0.0105)
-    stroke_margin = max(1.0, (line_width_px / 2.0) + CAPTURE_RING_AA_PX)
-    capture_center_before = QPointF(cap_center_x, cap_center_y)
-    capture_radius_before = capture_radius
+    stroke_margin = ((line_width_px / 2.0) + CAPTURE_RING_AA_PX) / max(
+        zoom_level,
+        1e-6,
+    )
+    actual_capture_center = QPointF(cap_center_x, cap_center_y)
     cap_center_x, cap_center_y, capture_radius = _clamp_capture_overlay_geometry(
         vp,
         image_label,
@@ -322,8 +373,8 @@ def sync_widget_overlay_coords(presenter):
         base_x = offset_x + (view.frozen_capture_point_relative.x * pix_w)
         base_y = offset_y + (view.frozen_capture_point_relative.y * pix_h)
     else:
-        base_x = cap_center_x
-        base_y = cap_center_y
+        base_x = actual_capture_center.x()
+        base_y = actual_capture_center.y()
 
     base_mag_x = base_x + (offset_visual.x * target_max_dim)
     base_mag_y = base_y + (offset_visual.y * target_max_dim)
@@ -376,13 +427,12 @@ def sync_widget_overlay_coords(presenter):
             if view.magnifier_visible_right:
                 mag_centers.append(c2)
 
-    if hasattr(image_label, "set_overlay_coords"):
-        if render.show_capture_area_on_main_image:
-            image_label.set_overlay_coords(
-                capture_center, capture_radius, mag_centers, mag_radius
-            )
-        else:
-            image_label.set_overlay_coords(None, 0, mag_centers, mag_radius)
+    if render.show_capture_area_on_main_image:
+        image_label.set_overlay_coords(
+            capture_center, capture_radius, mag_centers, mag_radius
+        )
+    else:
+        image_label.set_overlay_coords(None, 0, mag_centers, mag_radius)
 
     if mag_radius > 0 and mag_centers:
         interactive_center = None
@@ -400,15 +450,13 @@ def sync_widget_overlay_coords(presenter):
             )
             geometry.magnifier_screen_size = int(round(mag_radius * 2.0))
 
-    if hasattr(image_label, "set_guides_params"):
-        image_label.set_guides_params(
-            render.show_magnifier_guides,
-            color_to_qcolor(render.magnifier_laser_color),
-            render.magnifier_guides_thickness,
-        )
-    if hasattr(image_label, "set_capture_color"):
-        image_label.set_capture_color(color_to_qcolor(render.capture_ring_color))
-    if hasattr(image_label, "set_split_pos"):
+    image_label.set_guides_params(
+        render.show_magnifier_guides,
+        color_to_qcolor(render.magnifier_laser_color),
+        render.magnifier_guides_thickness,
+    )
+    image_label.set_capture_color(color_to_qcolor(render.capture_ring_color))
+    if not uses_quick_canvas_overlay:
         image_label.set_split_pos(view.split_position_visual)
 
 def render_magnifier_gl_fast(presenter):
@@ -417,9 +465,10 @@ def render_magnifier_gl_fast(presenter):
     render = vp.render_config
     geometry = vp.geometry_state
     session = vp.session_data
-    image_label = presenter.ui.image_label
-    if hasattr(image_label, "begin_update_batch"):
-        image_label.begin_update_batch()
+    image_label = _get_live_image_label(presenter)
+    if image_label is None:
+        return
+    image_label.begin_update_batch()
     try:
         source_ready = getattr(image_label, "_source_images_ready", False)
 
@@ -429,11 +478,13 @@ def render_magnifier_gl_fast(presenter):
         tex_img2 = None
         using_source_images = source_ready
         if using_source_images:
-            if hasattr(image_label, "_source_pil_images") and len(image_label._source_pil_images) >= 2:
-                tex_img1, tex_img2 = image_label._source_pil_images[:2]
+            source_pil_images = getattr(image_label, "_source_pil_images", ())
+            if len(source_pil_images) >= 2:
+                tex_img1, tex_img2 = source_pil_images[:2]
         else:
-            if hasattr(image_label, "_stored_pil_images") and len(image_label._stored_pil_images) >= 2:
-                tex_img1, tex_img2 = image_label._stored_pil_images[:2]
+            stored_pil_images = getattr(image_label, "_stored_pil_images", ())
+            if len(stored_pil_images) >= 2:
+                tex_img1, tex_img2 = stored_pil_images[:2]
         tex_img1 = tex_img1 or session.render_cache.scaled_image1_for_display or session.image_state.image1
         tex_img2 = tex_img2 or session.render_cache.scaled_image2_for_display or session.image_state.image2
         if not tex_img1 or not tex_img2:
@@ -441,8 +492,8 @@ def render_magnifier_gl_fast(presenter):
 
         from shared.image_processing.pipeline import _clamp_capture_position
 
-        disp_w = max(1, int(geometry.pixmap_width or presenter.ui.image_label.width() or tex_img1.width))
-        disp_h = max(1, int(geometry.pixmap_height or presenter.ui.image_label.height() or tex_img1.height))
+        disp_w = max(1, int(geometry.pixmap_width or image_label.width() or tex_img1.width))
+        disp_h = max(1, int(geometry.pixmap_height or image_label.height() or tex_img1.height))
         cap_x, cap_y = _clamp_capture_position(
             view.capture_position_relative.x,
             view.capture_position_relative.y,
@@ -461,8 +512,8 @@ def render_magnifier_gl_fast(presenter):
             cap_y + cap_half_v_img,
         )
         uv_rect2 = uv_rect1
-        pix_w = geometry.pixmap_width or presenter.ui.image_label.width()
-        pix_h = geometry.pixmap_height or presenter.ui.image_label.height()
+        pix_w = geometry.pixmap_width or image_label.width()
+        pix_h = geometry.pixmap_height or image_label.height()
         target_max = float(max(pix_w, pix_h))
         mag_px = int(view.magnifier_size_relative * target_max)
         if mag_px < 4:
@@ -642,8 +693,7 @@ def render_magnifier_gl_fast(presenter):
             slots, channel_mode_int, diff_mode_int, 20.0 / 255.0, border_color, 2.0, interp_mode_int
         )
     finally:
-        if hasattr(image_label, "end_update_batch"):
-            image_label.end_update_batch()
+        image_label.end_update_batch()
 
 def render_magnifier_diff_fallback(
     presenter,
@@ -718,8 +768,19 @@ def render_magnifier_diff_fallback(
 def render_magnifier_layer(presenter, sig):
     if not presenter._cached_base_pixmap:
         return False
+    now = time.monotonic()
+    if presenter._is_magnifier_worker_running:
+        if sig == getattr(presenter, "_active_magnifier_signature", None):
+            return True
+        if sig == getattr(presenter, "_pending_magnifier_signature", None):
+            return True
+    presenter._magnifier_request_seq += 1
+    request_seq = presenter._magnifier_request_seq
     if presenter._is_magnifier_worker_running:
         presenter._magnifier_update_pending = True
+        presenter._pending_magnifier_signature = sig
+        presenter._pending_magnifier_request_seq = request_seq
+        presenter._pending_magnifier_requested_at = now
         return True
 
     presenter.view.sync_widget_overlay_coords()
@@ -738,7 +799,10 @@ def render_magnifier_layer(presenter, sig):
             return False
         magnifier_bbox = magnifier_coords[5] if len(magnifier_coords) > 5 else None
         if magnifier_bbox is None or (hasattr(magnifier_bbox, "isValid") and not magnifier_bbox.isValid()):
-            logger.warning("[RENDER] Invalid magnifier bbox in coordinates")
+            global _invalid_magnifier_bbox_log_count
+            if _invalid_magnifier_bbox_log_count < 3:
+                _invalid_magnifier_bbox_log_count += 1
+                logger.warning("[RENDER] Invalid magnifier bbox in coordinates")
             return False
     except Exception as exc:
         logger.error(f"[RENDER] Geometry calculation failed: {exc}", exc_info=True)
@@ -750,12 +814,22 @@ def render_magnifier_layer(presenter, sig):
         logger.warning("[RENDER] Missing images for magnifier rendering")
         return False
 
-    render_params = presenter.store.viewport.get_render_params()
-    render_params["is_interactive_mode"] = _is_effective_magnifier_interactive(
-        presenter.store.viewport
+    viewport = presenter.store.viewport
+    interaction = getattr(viewport, "interaction_state", None)
+    live_interaction = bool(
+        interaction
+        and (
+            getattr(interaction, "is_interactive_mode", False)
+            or getattr(interaction, "is_dragging_capture_point", False)
+            or getattr(interaction, "is_dragging_split_in_magnifier", False)
+            or getattr(interaction, "is_dragging_split_line", False)
+            or bool(getattr(interaction, "pressed_keys", set()))
+        )
     )
+    render_params = viewport.get_render_params()
+    render_params["is_interactive_mode"] = live_interaction
     render_params["optimize_magnifier_movement"] = getattr(
-        presenter.store.viewport, "optimize_magnifier_movement", True
+        viewport.view_state, "optimize_magnifier_movement", True
     )
     render_width, render_height = image1.size if image1 else (w, h)
     caches = {
@@ -784,7 +858,14 @@ def render_magnifier_layer(presenter, sig):
 
     presenter._is_magnifier_worker_running = True
     presenter._magnifier_update_pending = False
-    priority = 0 if _is_effective_magnifier_interactive(presenter.store.viewport) else 2
+    presenter._pending_magnifier_signature = None
+    presenter._pending_magnifier_request_seq = 0
+    presenter._pending_magnifier_requested_at = 0.0
+    presenter._active_magnifier_task_id = task_id
+    presenter._active_magnifier_request_seq = request_seq
+    presenter._active_magnifier_signature = sig
+    presenter._active_magnifier_started_at = now
+    priority = 0 if live_interaction else 2
     presenter.main_window_app.thread_pool.start(worker, priority=priority)
     return True
 
@@ -969,21 +1050,39 @@ def magnifier_worker_task(payload):
 
 def on_magnifier_worker_error(presenter, error_tuple):
     presenter._is_magnifier_worker_running = False
+    presenter._active_magnifier_task_id = 0
+    presenter._active_magnifier_request_seq = 0
+    presenter._active_magnifier_signature = None
+    presenter._active_magnifier_started_at = 0.0
     exctype, value, traceback_str = error_tuple
     error_msg = f"{exctype.__name__}: {value}"
     if traceback_str:
         logger.error(f"[RENDER] Magnifier worker error: {error_msg}\n{traceback_str}")
     else:
         logger.error(f"[RENDER] Magnifier worker error: {error_msg}")
+    if presenter._magnifier_update_pending:
+        _start_pending_magnifier_layer(presenter)
 
 def on_magnifier_layer_ready(presenter, result):
-    presenter._is_magnifier_worker_running = False
     data, task_id = result
+    active_task_id = getattr(presenter, "_active_magnifier_task_id", 0)
+    active_seq = getattr(presenter, "_active_magnifier_request_seq", 0)
+    started_at = getattr(presenter, "_active_magnifier_started_at", 0.0)
+    age_ms = max(0.0, (time.monotonic() - started_at) * 1000.0) if started_at else 0.0
+    presenter._is_magnifier_worker_running = False
+    presenter._active_magnifier_task_id = 0
+    presenter._active_magnifier_request_seq = 0
+    presenter._active_magnifier_signature = None
+    presenter._active_magnifier_started_at = 0.0
+
+    if active_task_id and task_id != active_task_id:
+        if presenter._magnifier_update_pending:
+            _start_pending_magnifier_layer(presenter)
+        return
+
     if task_id < presenter._last_displayed_task_id:
         if presenter._magnifier_update_pending:
-            presenter._magnifier_update_pending = False
-            presenter._last_mag_signature = None
-            presenter.update_comparison_if_needed()
+            _start_pending_magnifier_layer(presenter)
         return
     presenter._last_displayed_task_id = task_id
 
@@ -994,25 +1093,27 @@ def on_magnifier_layer_ready(presenter, result):
     mag_pixmap = pil_to_qpixmap_optimized(mag_patch, copy=False) if mag_patch else None
 
     if not mag_pixmap or mag_pixmap.isNull() or not mag_pos:
-        if hasattr(presenter.ui.image_label, "set_magnifier_content"):
-            presenter.ui.image_label.set_magnifier_content(None, None)
+        image_label = _get_live_image_label(presenter)
+        if image_label is None:
+            if presenter._magnifier_update_pending:
+                _start_pending_magnifier_layer(presenter)
+            return
+        image_label.set_magnifier_content(None, None)
     else:
+        image_label = _get_live_image_label(presenter)
+        if image_label is None:
+            if presenter._magnifier_update_pending:
+                _start_pending_magnifier_layer(presenter)
+            return
         label_w, label_h = presenter.get_current_label_dimensions()
         pix_w, pix_h = presenter.store.viewport.geometry_state.pixmap_width, presenter.store.viewport.geometry_state.pixmap_height
         offset_x = (label_w - pix_w) // 2
         offset_y = (label_h - pix_h) // 2
         final_mag_pos_screen = QPoint(offset_x + mag_pos.x(), offset_y + mag_pos.y())
-        if hasattr(presenter.ui.image_label, "set_magnifier_content"):
-            presenter.ui.image_label.set_magnifier_content(mag_pixmap, final_mag_pos_screen)
-        else:
-            presenter.view.set_image_layers(
-                presenter._cached_base_pixmap, mag_pixmap, final_mag_pos_screen
-            )
+        image_label.set_magnifier_content(mag_pixmap, final_mag_pos_screen)
 
     if presenter._magnifier_update_pending:
-        presenter._magnifier_update_pending = False
-        presenter._last_mag_signature = None
-        presenter.update_comparison_if_needed()
+        _start_pending_magnifier_layer(presenter)
 
 def on_magnifier_patch_ready(presenter, result):
     if not result:
@@ -1038,14 +1139,10 @@ def on_magnifier_patch_ready(presenter, result):
         offset_y = (label_h - pix_h) // 2
         mag_pos_on_label = QPoint(offset_x + mag_pos_on_image.x(), offset_y + mag_pos_on_image.y())
 
-        if hasattr(presenter.ui.image_label, "set_magnifier_content"):
-            presenter.ui.image_label.set_magnifier_content(magnifier_pixmap, mag_pos_on_label)
-        elif hasattr(presenter.ui.image_label, "update_magnifier"):
-            presenter.ui.image_label.update_magnifier(magnifier_pixmap, mag_pos_on_label)
-        else:
-            presenter.view.set_image_layers(
-                presenter._cached_base_pixmap, magnifier_pixmap, mag_pos_on_label, used_coords
-            )
+        image_label = _get_live_image_label(presenter)
+        if image_label is None:
+            return
+        image_label.set_magnifier_content(magnifier_pixmap, mag_pos_on_label)
     except Exception as exc:
         logger.error(f"Error displaying magnifier patch: {exc}", exc_info=True)
 
@@ -1059,14 +1156,9 @@ def stop_interactive_movement(presenter, log_gate):
 
     if not presenter.store.viewport.view_state.use_magnifier:
         if presenter.view.is_gl_canvas():
-            if hasattr(presenter.ui.image_label, "clear_magnifier_gpu"):
-                presenter.ui.image_label.clear_magnifier_gpu()
-            if hasattr(presenter.ui.image_label, "set_magnifier_content"):
-                presenter.ui.image_label.set_magnifier_content(None, None)
-            if hasattr(presenter.ui.image_label, "set_overlay_coords"):
-                presenter.ui.image_label.set_overlay_coords(None, 0, [], 0)
-            if hasattr(presenter.ui.image_label, "set_capture_area"):
-                presenter.ui.image_label.set_capture_area(None, 0)
+            image_label = _get_live_image_label(presenter)
+            if image_label is not None:
+                reset_canvas_overlays(image_label)
         else:
             presenter.view.sync_widget_overlay_coords()
     else:
@@ -1076,3 +1168,5 @@ def stop_interactive_movement(presenter, log_gate):
 def update_capture_area_display(presenter):
     if presenter.store.viewport.view_state.use_magnifier:
         presenter.view.sync_widget_overlay_coords()
+        if presenter.view.is_gl_canvas() and not presenter.view.supports_legacy_gl_magnifier():
+            presenter.magnifier.render_layer(presenter.magnifier.get_signature())

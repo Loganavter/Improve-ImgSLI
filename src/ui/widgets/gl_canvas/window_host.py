@@ -1,21 +1,25 @@
+from __future__ import annotations
+
+import logging
+
 from PIL import Image as PilImage
 from PyQt6.QtCore import QPoint, QPointF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QImage, QPixmap
-from PyQt6.QtOpenGLWidgets import QOpenGLWidget
+from PyQt6.QtGui import QColor, QImage, QPalette, QPixmap
+from PyQt6.QtOpenGL import QOpenGLWindow
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from .interaction import (
     handle_key_press_event,
     handle_key_release_event,
-    handle_leave_event,
     handle_mouse_move_event,
     handle_mouse_press_event,
     handle_mouse_release_event,
     handle_wheel_event,
     paste_overlay_button_at,
     reset_view as reset_view_impl,
-    set_drag_overlay_state as set_drag_overlay_state_impl,
     set_capture_area as set_capture_area_impl,
     set_capture_color as set_capture_color_impl,
+    set_drag_overlay_state as set_drag_overlay_state_impl,
     set_guides_params as set_guides_params_impl,
     set_overlay_coords as set_overlay_coords_impl,
     set_pan as set_pan_impl,
@@ -61,7 +65,53 @@ from .textures import (
     update_letterbox_geometry,
 )
 
-class GLCanvas(QOpenGLWidget):
+logger = logging.getLogger("ImproveImgSLI")
+
+class _CanvasWindow(QOpenGLWindow):
+    def __init__(self, host):
+        super().__init__()
+        self._host = host
+        self.setFlags(Qt.WindowType.FramelessWindowHint)
+        if hasattr(self, "setColor"):
+            self.setColor(QColor(0, 0, 0, 0))
+        self.frameSwapped.connect(self._on_frame_swapped)
+
+    def _on_frame_swapped(self):
+        self._host._emit_first_frame_rendered()
+
+    def initializeGL(self):
+        initialize_gl_resources(self._host)
+
+    def paintGL(self):
+        return paint_gl(self._host)
+
+    def resizeGL(self, w, h):
+        resize_gl(self._host, w, h)
+
+    def mousePressEvent(self, event):
+        handle_mouse_press_event(self._host, event)
+
+    def mouseReleaseEvent(self, event):
+        handle_mouse_release_event(self._host, event)
+
+    def mouseMoveEvent(self, event):
+        handle_mouse_move_event(self._host, event)
+
+    def wheelEvent(self, event):
+        handle_wheel_event(self._host, event)
+
+    def keyPressEvent(self, event):
+        handle_key_press_event(self._host, event)
+
+    def keyReleaseEvent(self, event):
+        handle_key_release_event(self._host, event)
+
+    def leaveEvent(self, event):
+        if self._host.runtime_state._paste_overlay_visible:
+            set_paste_overlay_hover(self._host, None)
+        super().leaveEvent(event)
+
+class GLCanvas(QWidget):
     supports_legacy_gl_magnifier = True
     uses_quick_canvas_overlay = False
 
@@ -78,11 +128,142 @@ class GLCanvas(QOpenGLWidget):
     firstVisualFrameReady = pyqtSignal()
 
     _alignment = Qt.AlignmentFlag.AlignCenter
+    _PROXY_ATTRS = {
+        "_store",
+        "_render_scene",
+        "_split_position_sync",
+        "_clip_overlays_to_content_rect",
+        "_preview_source_key",
+        "_preview_fit_content",
+        "_apply_channel_mode_in_shader",
+        "_source_images_ready",
+        "_source_pil_images",
+        "_stored_pil_images",
+        "_source_texture_ids",
+        "_diff_source_texture_id",
+        "_mag_tex_ids",
+        "_mag_combined_tex_ids",
+        "_circle_mask_tex_id",
+        "_mag_tex_id",
+        "_circle_shader",
+        "_guides_tex_id",
+        "_ui_overlay_tex_id",
+        "_quad_vertices",
+        "shader_program",
+        "vao",
+        "vbo",
+        "textures",
+        "texture_ids",
+        "zoom_level",
+        "pan_offset_x",
+        "pan_offset_y",
+        "split_position",
+        "is_horizontal",
+        "runtime_state",
+        "_pan_dragging",
+        "_pan_last_pos",
+    }
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._first_frame_rendered_emitted = False
+        object.__setattr__(self, "_first_frame_rendered_emitted", False)
+        object.__setattr__(self, "_canvas_window", _CanvasWindow(self))
+        object.__setattr__(
+            self,
+            "_window_container",
+            QWidget.createWindowContainer(self._canvas_window, self),
+        )
+        self.setAcceptDrops(True)
+        self._window_container.setAcceptDrops(True)
+        self._window_container.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
+        self._window_container.setAutoFillBackground(True)
+        self._window_container.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._window_container.setMouseTracking(True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._window_container)
         init_widget_state(self)
+        self.setFocusProxy(self._window_container)
+        self._sync_native_background()
+
+    def _emit_first_frame_rendered(self):
+        if self._first_frame_rendered_emitted:
+            return
+        self._first_frame_rendered_emitted = True
+        self.firstFrameRendered.emit()
+        self.firstVisualFrameReady.emit()
+
+    def __getattr__(self, name):
+        if name in self._PROXY_ATTRS:
+            window = object.__getattribute__(self, "_canvas_window")
+            return getattr(window, name)
+        raise AttributeError(name)
+
+    def __setattr__(self, name, value):
+        if name in {"_canvas_window", "_window_container", "_first_frame_rendered_emitted"}:
+            object.__setattr__(self, name, value)
+            return
+        if name in type(self)._PROXY_ATTRS and "_canvas_window" in self.__dict__:
+            setattr(self._canvas_window, name, value)
+            return
+        super().__setattr__(name, value)
+
+    def installEventFilter(self, obj):
+        super().installEventFilter(obj)
+        self._window_container.installEventFilter(obj)
+        self._canvas_window.installEventFilter(obj)
+
+    def removeEventFilter(self, obj):
+        super().removeEventFilter(obj)
+        self._window_container.removeEventFilter(obj)
+        self._canvas_window.removeEventFilter(obj)
+
+    def setCursor(self, cursor):
+        super().setCursor(cursor)
+        self._window_container.setCursor(cursor)
+
+    def unsetCursor(self):
+        super().unsetCursor()
+        self._window_container.unsetCursor()
+
+    def update(self):
+        super().update()
+        self._window_container.update()
+        self._canvas_window.update()
+
+    def setPalette(self, palette):
+        super().setPalette(palette)
+        self._sync_native_background()
+
+    def _sync_native_background(self):
+        palette = self.palette()
+        self._window_container.setPalette(palette)
+        bg = palette.color(QPalette.ColorRole.Window)
+        if not bg.isValid():
+            bg = palette.color(QPalette.ColorRole.Base)
+        if not bg.isValid():
+            bg = QColor(245, 245, 245)
+        if hasattr(self._canvas_window, "setColor"):
+            self._canvas_window.setColor(QColor(bg))
+
+    def setFormat(self, fmt):
+        self._canvas_window.setFormat(fmt)
+
+    def context(self):
+        return self._canvas_window.context()
+
+    def makeCurrent(self):
+        self._canvas_window.makeCurrent()
+
+    def doneCurrent(self):
+        self._canvas_window.doneCurrent()
+
+    def defaultFramebufferObject(self):
+        return self._canvas_window.defaultFramebufferObject()
+
+    def grabFramebuffer(self):
+        return self._canvas_window.grabFramebuffer()
 
     def set_store(self, store):
         state = self.runtime_state
@@ -154,9 +335,6 @@ class GLCanvas(QOpenGLWidget):
     def _set_paste_overlay_hover(self, hovered: str | None):
         set_paste_overlay_hover(self, hovered)
 
-    def initializeGL(self):
-        initialize_gl_resources(self)
-
     def upload_image(self, qimage: QImage, slot_index: int):
         return upload_image(self, qimage, slot_index)
 
@@ -184,17 +362,6 @@ class GLCanvas(QOpenGLWidget):
             source_key,
             shader_letterbox,
         )
-
-    def paintGL(self):
-        result = paint_gl(self)
-        if not self._first_frame_rendered_emitted:
-            self._first_frame_rendered_emitted = True
-            self.firstFrameRendered.emit()
-            self.firstVisualFrameReady.emit()
-        return result
-
-    def resizeGL(self, w, h):
-        resize_gl(self, w, h)
 
     def _request_update(self):
         request_update(self)
@@ -250,19 +417,36 @@ class GLCanvas(QOpenGLWidget):
     def clear_magnifier_gpu(self):
         return clear_magnifier_gpu(self)
 
-    def upload_magnifier_crop(self, pil_image, center: QPointF, radius: float,
-                               border_color: QColor | None = None, border_width: float = 2.0,
-                               index: int = 0, gl_filter: int = None):
+    def upload_magnifier_crop(
+        self,
+        pil_image,
+        center: QPointF,
+        radius: float,
+        border_color: QColor | None = None,
+        border_width: float = 2.0,
+        index: int = 0,
+        gl_filter: int = None,
+    ):
         return upload_magnifier_crop(
             self, pil_image, center, radius, border_color, border_width, index, gl_filter
         )
 
-    def upload_combined_magnifier(self, pil1, pil2, center: QPointF, radius: float,
-                                   split: float = 0.5, horizontal: bool = False,
-                                   divider_visible: bool = True, divider_color: tuple = (1.0, 1.0, 1.0, 0.9),
-                                   divider_thickness: int = 2,
-                                   border_color: QColor | None = None, border_width: float = 2.0,
-                                   index: int = 0, gl_filter: int = None):
+    def upload_combined_magnifier(
+        self,
+        pil1,
+        pil2,
+        center: QPointF,
+        radius: float,
+        split: float = 0.5,
+        horizontal: bool = False,
+        divider_visible: bool = True,
+        divider_color: tuple = (1.0, 1.0, 1.0, 0.9),
+        divider_thickness: int = 2,
+        border_color: QColor | None = None,
+        border_width: float = 2.0,
+        index: int = 0,
+        gl_filter: int = None,
+    ):
         return upload_combined_magnifier(
             self,
             pil1,
@@ -373,19 +557,6 @@ class GLCanvas(QOpenGLWidget):
     def alignment(self):
         return self._alignment
 
-    def setAutoFillBackground(self, enabled):
-
-        pass
-
-    def setFocusPolicy(self, policy):
-        super().setFocusPolicy(policy)
-
-    def setAttribute(self, attribute, on=True):
-        super().setAttribute(attribute, on)
-
-    def contentsRect(self):
-        return self.rect()
-
     def _update_split_for_zoom(self, new_zoom, new_pan_x, new_pan_y):
         update_split_for_zoom(self, new_zoom, new_pan_x, new_pan_y)
 
@@ -397,24 +568,3 @@ class GLCanvas(QOpenGLWidget):
 
     def reset_view(self):
         reset_view_impl(self)
-
-    def wheelEvent(self, event):
-        handle_wheel_event(self, event)
-
-    def mousePressEvent(self, event):
-        handle_mouse_press_event(self, event)
-
-    def mouseReleaseEvent(self, event):
-        handle_mouse_release_event(self, event)
-
-    def mouseMoveEvent(self, event):
-        handle_mouse_move_event(self, event)
-
-    def keyPressEvent(self, event):
-        handle_key_press_event(self, event)
-
-    def keyReleaseEvent(self, event):
-        handle_key_release_event(self, event)
-
-    def leaveEvent(self, event):
-        handle_leave_event(self, event)
