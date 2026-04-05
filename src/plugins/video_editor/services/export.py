@@ -273,7 +273,7 @@ class FFmpegProcessManager:
                             key, _, value = line.partition("=")
                             key = key.strip()
                             value = value.strip()
-                            # progress=continue|end marks end of a block
+
                             if key == "progress":
                                 if progress_block:
                                     _emit_progress_block(progress_block)
@@ -281,7 +281,7 @@ class FFmpegProcessManager:
                             else:
                                 progress_block[key] = value
                         else:
-                            # plain warning/error line from -loglevel warning
+
                             self._stderr_lines.append(line)
                             if stderr_line_callback:
                                 try:

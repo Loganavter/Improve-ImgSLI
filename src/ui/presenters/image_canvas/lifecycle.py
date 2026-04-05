@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QSizePolicy
 
 from events.image_label_event_handler import ImageLabelEventHandler
 from events.window_event_handler import WindowEventHandler
+from ui.widgets.gl_canvas.helpers import clear_canvas_diff_source, get_canvas
 
 _last_debug_log_time = 0
 _debug_log_interval = 1.0
@@ -36,6 +37,14 @@ def initialize_canvas_presenter(presenter) -> None:
     presenter._is_generating_background = False
     presenter._is_magnifier_worker_running = False
     presenter._magnifier_update_pending = False
+    presenter._magnifier_request_seq = 0
+    presenter._active_magnifier_task_id = 0
+    presenter._active_magnifier_request_seq = 0
+    presenter._active_magnifier_signature = None
+    presenter._active_magnifier_started_at = 0.0
+    presenter._pending_magnifier_signature = None
+    presenter._pending_magnifier_request_seq = 0
+    presenter._pending_magnifier_requested_at = 0.0
     presenter._cached_gl_background_layers_key = None
     presenter._cached_gl_background_layers = None
     presenter._cached_gl_diff_image_key = None
@@ -65,8 +74,9 @@ def debug_log_gate():
     }
 
 def get_current_label_dimensions(presenter) -> tuple[int, int]:
-    if hasattr(presenter.ui, "image_label"):
-        size = presenter.ui.image_label.size()
+    canvas = get_canvas(presenter.ui)
+    if canvas is not None:
+        size = canvas.size()
         return (size.width(), size.height())
     return (0, 0)
 
@@ -75,10 +85,11 @@ def update_minimum_window_size(presenter):
         return
 
     layout = presenter.main_window_app.layout()
-    if not layout or not hasattr(presenter.ui, "image_label"):
+    canvas = get_canvas(presenter.ui)
+    if not layout or canvas is None:
         return
 
-    original_policy = presenter.ui.image_label.sizePolicy()
+    original_policy = canvas.sizePolicy()
     temp_policy = QSizePolicy(
         QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
     )
@@ -96,8 +107,8 @@ def update_minimum_window_size(presenter):
     )
 
     try:
-        presenter.ui.image_label.setSizePolicy(temp_policy)
-        presenter.ui.image_label.updateGeometry()
+        canvas.setSizePolicy(temp_policy)
+        canvas.updateGeometry()
         layout.invalidate()
         layout.activate()
 
@@ -108,9 +119,9 @@ def update_minimum_window_size(presenter):
         if current_min.width() != new_min_w or current_min.height() != new_min_h:
             presenter.main_window_app.setMinimumSize(new_min_w, new_min_h)
     finally:
-        if presenter.ui.image_label.sizePolicy() != original_policy:
-            presenter.ui.image_label.setSizePolicy(original_policy)
-            presenter.ui.image_label.updateGeometry()
+        if canvas.sizePolicy() != original_policy:
+            canvas.setSizePolicy(original_policy)
+            canvas.updateGeometry()
             layout.invalidate()
             layout.activate()
 
@@ -141,9 +152,9 @@ def invalidate_render_state(presenter):
             pass
     presenter._active_diff_toast_id = None
 
-    image_label = getattr(getattr(presenter, "ui", None), "image_label", None)
-    if image_label is not None and hasattr(image_label, "upload_diff_source_pil_image"):
-        image_label.upload_diff_source_pil_image(None)
+    image_label = get_canvas(getattr(presenter, "ui", None))
+    if image_label is not None:
+        clear_canvas_diff_source(image_label)
 
 def start_interactive_movement(presenter):
     if not presenter.store.viewport.view_state.optimize_magnifier_movement:

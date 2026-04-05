@@ -6,8 +6,17 @@ from PyQt6.QtGui import QImage, QPixmap
 
 from plugins.analysis.processing import prepare_gl_background_layers_for_mode
 from ui.widgets.gl_canvas.scene import build_gl_render_scene
+from ui.widgets.gl_canvas.helpers import get_canvas, get_gl_like_canvas, reset_canvas_overlays
 
 logger = logging.getLogger("ImproveImgSLI")
+
+def _float_attr(obj, attr: str, default: float) -> float:
+    if obj is None:
+        return float(default)
+    value = getattr(obj, attr, None)
+    if value is None:
+        return float(default)
+    return float(value)
 
 def _gl_source_kwargs(presenter):
     source1 = presenter.store.document.full_res_image1 or presenter.store.document.original_image1
@@ -28,12 +37,19 @@ def _gl_source_kwargs(presenter):
     }
 
 def is_gl_canvas(presenter):
-    return hasattr(presenter.ui.image_label, "set_pil_layers")
+    return get_gl_like_canvas(presenter.ui) is not None
+
+def supports_legacy_gl_magnifier(presenter):
+    if not is_gl_canvas(presenter):
+        return False
+    image_label = get_gl_like_canvas(presenter.ui)
+    return bool(image_label.supports_legacy_gl_magnifier)
 
 def _apply_gl_render_scene(presenter):
     image_label = getattr(presenter.ui, "image_label", None)
-    if image_label is None or not hasattr(image_label, "set_render_scene"):
+    if image_label is None or not is_gl_canvas(presenter):
         return
+    image_label = get_gl_like_canvas(presenter.ui)
     image_label.set_render_scene(
         build_gl_render_scene(
             presenter.store,
@@ -42,16 +58,19 @@ def _apply_gl_render_scene(presenter):
             ),
         )
     )
-    if hasattr(image_label, "set_split_position_sync"):
-        image_label.set_split_position_sync(
-            lambda split: _sync_gl_split_position(presenter, split)
-        )
+    image_label.set_split_position_sync(
+        lambda split: _sync_gl_split_position(presenter, split)
+    )
 
 def _sync_gl_split_position(presenter, split_position: float):
     viewport = presenter.store.viewport
+    old_split = _float_attr(viewport.view_state, "split_position", 0.5)
+    old_split_visual = _float_attr(
+        viewport.view_state, "split_position_visual", 0.5
+    )
     if (
-        abs(float(getattr(viewport.view_state, "split_position", 0.5)) - split_position) <= 1e-6
-        and abs(float(getattr(viewport.view_state, "split_position_visual", 0.5)) - split_position) <= 1e-6
+        abs(old_split - split_position) <= 1e-6
+        and abs(old_split_visual - split_position) <= 1e-6
     ):
         return
     viewport.view_state.split_position = split_position
@@ -102,25 +121,20 @@ def prepare_gl_background_layers(presenter, image1, image2):
     return image1, image2
 
 def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
-    if not hasattr(presenter.ui, "image_label") or presenter.ui.image_label is None:
+    image_label = get_canvas(presenter.ui)
+    if image_label is None:
         return
     if not pil_image:
-        presenter.ui.image_label.clear()
+        image_label.clear()
         presenter.current_displayed_pixmap = None
         return
 
     try:
         if is_gl_canvas(presenter):
+            image_label = get_gl_like_canvas(presenter.ui)
             _apply_gl_render_scene(presenter)
-            if hasattr(presenter.ui.image_label, "clear_magnifier_gpu"):
-                presenter.ui.image_label.clear_magnifier_gpu()
-            if hasattr(presenter.ui.image_label, "set_magnifier_content"):
-                presenter.ui.image_label.set_magnifier_content(None, None)
-            if hasattr(presenter.ui.image_label, "set_overlay_coords"):
-                presenter.ui.image_label.set_overlay_coords(None, 0, [], 0)
-            if hasattr(presenter.ui.image_label, "set_capture_area"):
-                presenter.ui.image_label.set_capture_area(None, 0)
-            presenter.ui.image_label.set_pil_layers(
+            reset_canvas_overlays(image_label)
+            image_label.set_pil_layers(
                 pil_image,
                 pil_image,
                 source_image1=pil_image,
@@ -149,7 +163,7 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            presenter.ui.image_label.setPixmap(pix)
+            image_label.setPixmap(pix)
             presenter.current_displayed_pixmap = pix
     except Exception as exc:
         logger.error(

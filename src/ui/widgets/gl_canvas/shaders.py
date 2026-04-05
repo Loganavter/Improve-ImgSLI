@@ -1,7 +1,14 @@
 from dataclasses import dataclass
 
-BASE_VERTEX_SHADER = """
-#version 330 core
+def _shader_prolog(is_gles: bool, *, fragment: bool = False) -> str:
+    if not is_gles:
+        return "#version 330 core"
+    lines = ["#version 300 es", "precision highp float;", "precision highp int;"]
+    if fragment:
+        lines.append("precision mediump sampler2D;")
+    return "\n".join(lines)
+
+BASE_VERTEX_SHADER_TEMPLATE = """
 layout (location = 0) in vec2 aPos;
 layout (location = 1) in vec2 aTexCoord;
 out vec2 TexCoord;
@@ -11,8 +18,7 @@ void main() {
 }
 """
 
-BASE_FRAGMENT_SHADER = """
-#version 330 core
+BASE_FRAGMENT_SHADER_TEMPLATE = """
 in vec2 TexCoord;
 out vec4 FragColor;
 
@@ -79,8 +85,7 @@ void main() {
 }
 """
 
-MAGNIFIER_VERTEX_SHADER = """
-#version 330 core
+MAGNIFIER_VERTEX_SHADER_TEMPLATE = """
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec2 aTexCoord;
 uniform vec4 quadBounds; // xMin, yMin, xMax, yMax in NDC
@@ -96,6 +101,15 @@ void main() {
     TexCoord = aTexCoord;
 }
 """
+
+def build_base_vertex_shader(is_gles: bool) -> str:
+    return f"{_shader_prolog(is_gles)}\n{BASE_VERTEX_SHADER_TEMPLATE}"
+
+def build_base_fragment_shader(is_gles: bool) -> str:
+    return f"{_shader_prolog(is_gles, fragment=True)}\n{BASE_FRAGMENT_SHADER_TEMPLATE}"
+
+def build_magnifier_vertex_shader(is_gles: bool) -> str:
+    return f"{_shader_prolog(is_gles)}\n{MAGNIFIER_VERTEX_SHADER_TEMPLATE}"
 
 @dataclass(frozen=True, slots=True)
 class MagnifierShaderVariantKey:
@@ -118,7 +132,7 @@ def _normalize_channel_mode(mode: int) -> int:
 def _normalize_source_mode(mode: int) -> int:
     return mode if mode in (0, 1, 2) else 0
 
-def build_magnifier_fragment_shader(key: MagnifierShaderVariantKey) -> str:
+def build_magnifier_fragment_shader(key: MagnifierShaderVariantKey, *, is_gles: bool = False) -> str:
     combined = bool(key.combined)
     gpu_sampling = bool(key.gpu_sampling)
     interp_mode = _normalize_interp_mode(key.interp_mode if gpu_sampling else 1)
@@ -128,12 +142,26 @@ def build_magnifier_fragment_shader(key: MagnifierShaderVariantKey) -> str:
         key.diff_mode if gpu_sampling and not combined and source_mode == 2 else 0
     )
 
-    defines = [
-        "#version 330 core",
-        "#ifdef GL_OES_standard_derivatives",
-        "#extension GL_OES_standard_derivatives : enable",
-        "#endif",
-    ]
+    defines = ["#version 300 es" if is_gles else "#version 330 core"]
+    if is_gles:
+        defines.extend(
+            [
+                "#ifdef GL_OES_standard_derivatives",
+                "#extension GL_OES_standard_derivatives : enable",
+                "#endif",
+                "precision highp float;",
+                "precision highp int;",
+                "precision mediump sampler2D;",
+            ]
+        )
+    else:
+        defines.extend(
+            [
+                "#ifdef GL_OES_standard_derivatives",
+                "#extension GL_OES_standard_derivatives : enable",
+                "#endif",
+            ]
+        )
     if gpu_sampling:
         defines.append("#define MAG_GPU_SAMPLING 1")
     if combined:
@@ -488,8 +516,7 @@ void main() {
 }
 """
 
-CIRCLE_VERTEX_SHADER = """
-#version 330 core
+CIRCLE_VERTEX_SHADER_TEMPLATE = """
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec2 aTexCoord;
 out vec2 TexCoord;
@@ -499,8 +526,7 @@ void main() {
 }
 """
 
-CIRCLE_FRAGMENT_SHADER = """
-#version 330 core
+CIRCLE_FRAGMENT_SHADER_TEMPLATE = """
 in vec2 TexCoord;
 out vec4 FragColor;
 uniform vec2 resolution;
@@ -520,3 +546,9 @@ void main() {
     FragColor = vec4(color.rgb, color.a * ring);
 }
 """
+
+def build_circle_vertex_shader(is_gles: bool) -> str:
+    return f"{_shader_prolog(is_gles)}\n{CIRCLE_VERTEX_SHADER_TEMPLATE}"
+
+def build_circle_fragment_shader(is_gles: bool) -> str:
+    return f"{_shader_prolog(is_gles, fragment=True)}\n{CIRCLE_FRAGMENT_SHADER_TEMPLATE}"

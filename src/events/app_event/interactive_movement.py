@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-
+from PyQt6 import sip
 from PyQt6.QtCore import QElapsedTimer, QTimer, Qt
 
 from core.constants import AppConstants
@@ -280,8 +280,16 @@ class InteractiveMovementController:
         image_canvas_presenter = get_image_canvas_presenter(self.presenter)
         if image_canvas_presenter is None:
             return
+        image_label = getattr(getattr(image_canvas_presenter, "ui", None), "image_label", None)
+        if image_label is None or sip.isdeleted(image_label):
+            return
         if hasattr(image_canvas_presenter, "view") and image_canvas_presenter.view.is_gl_canvas():
-            image_canvas_presenter.magnifier.render_gl_fast()
+            if image_canvas_presenter.view.supports_legacy_gl_magnifier():
+                image_canvas_presenter.magnifier.render_gl_fast()
+            else:
+                image_canvas_presenter.magnifier.render_layer(
+                    image_canvas_presenter.magnifier.get_signature()
+                )
         elif hasattr(image_canvas_presenter, "view"):
             image_canvas_presenter.view.sync_widget_overlay_coords()
 

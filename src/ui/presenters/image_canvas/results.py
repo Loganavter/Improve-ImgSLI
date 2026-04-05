@@ -4,6 +4,7 @@ from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtGui import QPainter, QPixmap
 
 from domain.qt_adapters import color_to_qcolor, qpoint_to_point
+from ui.widgets.gl_canvas.helpers import get_gl_like_canvas
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -51,7 +52,8 @@ def handle_background_result(presenter, result, params):
     base_painter.end()
 
     presenter._cached_base_pixmap = base_pixmap
-    if hasattr(presenter.ui.image_label, "set_pil_layers"):
+    image_label = get_gl_like_canvas(presenter.ui)
+    if image_label is not None:
         img1 = (
             presenter.store.viewport.session_data.render_cache.display_cache_image1
             or presenter.store.viewport.session_data.render_cache.scaled_image1_for_display
@@ -78,7 +80,7 @@ def handle_background_result(presenter, result, params):
                     source2.size,
                 ),
             }
-        presenter.ui.image_label.set_pil_layers(
+        image_label.set_pil_layers(
             img1,
             img2,
             shader_letterbox=True,
@@ -96,9 +98,8 @@ def handle_magnifier_result(presenter, result, params, debug_state):
 
     if not mag_pix or mag_pix.isNull() or not mag_pos:
         presenter.view.sync_widget_overlay_coords()
-        if hasattr(presenter.ui.image_label, "set_magnifier_content"):
+        if presenter._cached_base_pixmap:
             presenter.ui.image_label.set_magnifier_content(None, None)
-        elif presenter._cached_base_pixmap:
             presenter.view.set_image_layers(presenter._cached_base_pixmap)
         return
 
@@ -112,15 +113,7 @@ def handle_magnifier_result(presenter, result, params, debug_state):
     offset_y = (label_h - pix_h) // 2
     mag_pos_on_label = QPoint(offset_x + mag_pos.x(), offset_y + mag_pos.y())
 
-    if hasattr(presenter.ui.image_label, "set_magnifier_content"):
-        presenter.ui.image_label.set_magnifier_content(mag_pix, mag_pos_on_label)
-    else:
-        presenter.view.set_image_layers(
-            presenter._cached_base_pixmap if presenter._cached_base_pixmap else None,
-            mag_pix,
-            mag_pos_on_label,
-            coords_snapshot,
-        )
+    presenter.ui.image_label.set_magnifier_content(mag_pix, mag_pos_on_label)
 
 def handle_legacy_result(presenter, result, params, debug_state):
     presenter._is_generating_background = False
@@ -221,8 +214,7 @@ def handle_legacy_result(presenter, result, params, debug_state):
                     )
                     presenter.view.set_image_layers(bg_to_use, magnifier_pixmap, mag_pos_on_label)
                 else:
-                    if hasattr(presenter.ui.image_label, "set_capture_area"):
-                        presenter.ui.image_label.set_capture_area(None, 0)
+                    presenter.ui.image_label.set_capture_area(None, 0)
                     bg_to_use = (
                         presenter._cached_base_pixmap
                         if is_interactive and presenter._cached_base_pixmap and not presenter._cached_base_pixmap.isNull()
@@ -230,8 +222,7 @@ def handle_legacy_result(presenter, result, params, debug_state):
                     )
                     presenter.view.set_image_layers(bg_to_use)
             else:
-                if hasattr(presenter.ui.image_label, "set_capture_area"):
-                    presenter.ui.image_label.set_capture_area(None, 0)
+                presenter.ui.image_label.set_capture_area(None, 0)
                 bg_to_use = (
                     presenter._cached_base_pixmap
                     if is_interactive and presenter._cached_base_pixmap and not presenter._cached_base_pixmap.isNull()
@@ -239,8 +230,7 @@ def handle_legacy_result(presenter, result, params, debug_state):
                 )
                 presenter.view.set_image_layers(bg_to_use)
         else:
-            if hasattr(presenter.ui.image_label, "set_capture_area"):
-                presenter.ui.image_label.set_capture_area(None, 0)
+            presenter.ui.image_label.set_capture_area(None, 0)
             bg_to_use = (
                 presenter._cached_base_pixmap
                 if is_interactive and presenter._cached_base_pixmap and not presenter._cached_base_pixmap.isNull()

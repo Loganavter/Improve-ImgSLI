@@ -325,7 +325,7 @@ class FontSettingsFlyout(QWidget):
         total_height = content_size.height() + self._outer_margin * 2
 
         margin = 10
-        if self.overlay_layer is not None:
+        if self.overlay_layer is not None and not self.isWindow():
             anchor_rect = self.overlay_layer.anchor_rect(anchor_widget)
             preferred_rect = QRect(
                 anchor_rect.left() - total_width - margin,
