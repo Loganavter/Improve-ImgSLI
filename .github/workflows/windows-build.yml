@@ -1,0 +1,63 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache Pip
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python Dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path "requirements.txt") {
+            pip install -r requirements.txt
+          }
+          pip install --upgrade pyinstaller
+
+      - name: Build PyInstaller Bundle And Fetch FFmpeg
+        shell: pwsh
+        env:
+          BUILD_INNO_SETUP: "0"
+        run: |
+          python build/Windows-template/build_windows.py
+
+      - name: Build Inno Setup Installer
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
+        with:
+          path: build/Windows-template/inno_setup_6.iss
+
+      - name: Upload Windows Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Improve_ImgSLI_windows_bundle
+          path: dist/Improve_ImgSLI/**
+          if-no-files-found: error
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Improve_ImgSLI_windows_installer
+          path: build/Windows-template/Output/*.exe
+          if-no-files-found: error

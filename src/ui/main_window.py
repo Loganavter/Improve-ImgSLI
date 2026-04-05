@@ -1,10 +1,10 @@
 import logging
-import os
 import PIL.Image
 from PyQt6.QtCore import (
     QEvent,
     Qt,
     QTimer,
+    pyqtSignal,
 )
 from PyQt6.QtGui import (
     QColor,
@@ -16,9 +16,14 @@ from PyQt6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 from core.bootstrap import ApplicationContext
 from shared_toolkit.ui.managers.font_manager import FontManager
 from shared_toolkit.ui.overlay_layer import OverlayLayer
-from ui.main_window_lifecycle import MainWindowShutdownPipeline
+from ui.main_window_lifecycle import (
+    MainWindowShutdownPipeline,
+    MainWindowStartupController,
+)
 from ui.main_window_ui import Ui_ImageComparisonApp
 from ui.onboarding import OnboardingOverlay
+from ui.widgets.gl_canvas.contracts import BaseCanvasProtocol
+from ui.widgets.gl_canvas.helpers import get_canvas
 from utils.resource_loader import resource_path
 from utils.geometry import GeometryManager
 
@@ -26,6 +31,8 @@ PIL.Image.MAX_IMAGE_PIXELS = None
 logger = logging.getLogger("ImproveImgSLI")
 
 class MainWindow(QWidget):
+    startupVisualReady = pyqtSignal()
+
     def __init__(self, parent=None, debug_mode: bool = False):
         super().__init__(parent)
         self.setObjectName("ImageComparisonApp")
@@ -33,6 +40,11 @@ class MainWindow(QWidget):
         self._is_ui_stable = False
         self._application_initialized = False
         self._main_app_bootstrapped = False
+        self._main_app_revealed = False
+        self._startup_expects_initial_canvas_content = False
+        self._startup_visual_ready_emitted = False
+        self._offscreen_prewarm_active = False
+        self._startup_controller = MainWindowStartupController()
         self._shutdown_pipeline = MainWindowShutdownPipeline()
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
 
@@ -87,8 +99,11 @@ class MainWindow(QWidget):
         self._root_layout.setSpacing(0)
         self._startup_stack = QStackedWidget(self)
         self._root_layout.addWidget(self._startup_stack)
+        self._startup_placeholder = QWidget(self)
+        self._startup_stack.addWidget(self._startup_placeholder)
         self._app_host = QWidget(self)
         self._startup_stack.addWidget(self._app_host)
+        self._startup_stack.setCurrentWidget(self._startup_placeholder)
         self.onboarding_overlay = None
 
     def _should_show_onboarding(self) -> bool:
@@ -114,11 +129,25 @@ class MainWindow(QWidget):
         self.ui = Ui_ImageComparisonApp()
         self.ui.setupUi(self._app_host)
         self.ui.main_window = self
+        image_label: BaseCanvasProtocol = self.ui.image_label
+        logger.debug("Main window UI bootstrapped")
+        self._startup_expects_initial_canvas_content = self._has_initial_canvas_content()
         self._update_image_label_background()
-        if hasattr(self.ui.image_label, "firstFrameRendered"):
-            self.ui.image_label.firstFrameRendered.connect(
-                self.ui.hide_image_startup_placeholder
-            )
+        image_label.firstFrameRendered.connect(
+            self.ui.hide_image_startup_placeholder
+        )
+        image_label.firstFrameRendered.connect(
+            self._emit_startup_visual_ready
+        )
+        image_label.firstFrameRendered.connect(
+            lambda: logger.debug("Main window received image_label.firstFrameRendered")
+        )
+        image_label.firstVisualFrameReady.connect(
+            lambda: logger.debug("Main window received image_label.firstVisualFrameReady")
+        )
+        image_label.firstVisualFrameReady.connect(
+            self._on_image_label_first_visual_frame_ready
+        )
 
         self.ui.install_rating_wheel_handlers()
 
@@ -149,7 +178,42 @@ class MainWindow(QWidget):
                 button.refresh_visual_state()
 
         self._startup_stack.setCurrentWidget(self._app_host)
+        self._main_app_revealed = True
         self._main_app_bootstrapped = True
+
+    def _has_initial_canvas_content(self) -> bool:
+        document = getattr(self.store, "document", None)
+        viewport = getattr(self.store, "viewport", None)
+        if document is None:
+            return False
+        if getattr(document, "image1_path", None) and getattr(document, "image2_path", None):
+            return True
+        single_mode = int(getattr(getattr(viewport, "view_state", None), "showing_single_image_mode", 0) or 0)
+        if single_mode == 1:
+            return bool(getattr(document, "image1_path", None) or getattr(document, "original_image1", None))
+        if single_mode == 2:
+            return bool(getattr(document, "image2_path", None) or getattr(document, "original_image2", None))
+        return False
+
+    def _on_image_label_first_visual_frame_ready(self):
+        if self._startup_expects_initial_canvas_content:
+            return
+        logger.debug("Main window hiding startup placeholder on first visual frame (empty startup)")
+        self.ui.hide_image_startup_placeholder()
+        self._emit_startup_visual_ready()
+
+    def _emit_startup_visual_ready(self):
+        if self._startup_visual_ready_emitted:
+            return
+        self._startup_visual_ready_emitted = True
+        logger.debug("Main window startupVisualReady emitted")
+        self.startupVisualReady.emit()
+
+    def begin_offscreen_prewarm(self):
+        self._offscreen_prewarm_active = True
+
+    def end_offscreen_prewarm(self):
+        self._offscreen_prewarm_active = False
 
     @property
     def toast_manager(self):
@@ -170,26 +234,10 @@ class MainWindow(QWidget):
         return None
 
     def initialize_application(self):
-        if self._application_initialized:
-            return
-        self.geometry_manager.load_and_apply()
-        theme_from_env = os.getenv("APP_THEME", "auto").lower()
-        final_theme_setting = (
-            theme_from_env
-            if theme_from_env != "auto"
-            else self.store.settings.theme
-        )
-        self.apply_application_theme(final_theme_setting)
-        try:
-            FontManager.get_instance().apply_from_state(self.store)
-        except Exception:
-            pass
+        self._startup_controller.prepare(self)
 
-        if self._should_show_onboarding():
-            self._show_onboarding_page()
-        else:
-            self._bootstrap_main_app()
-        self._application_initialized = True
+    def start(self):
+        self._startup_controller.start(self)
 
     def apply_application_theme(self, theme_name: str):
         app = QApplication.instance()
@@ -281,8 +329,16 @@ class MainWindow(QWidget):
 
     def showEvent(self, event: QEvent):
         super().showEvent(event)
+        if self._offscreen_prewarm_active:
+            logger.debug("Main window showEvent (offscreen prewarm)")
+        else:
+            logger.debug("Main window showEvent")
         if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
             self.ui.sync_image_startup_placeholder()
+        if self.onboarding_overlay is not None and not self._startup_visual_ready_emitted:
+            self._emit_startup_visual_ready()
+        if self._offscreen_prewarm_active:
+            return
         if not self._is_ui_stable:
             QTimer.singleShot(
                 50,
@@ -300,17 +356,19 @@ class MainWindow(QWidget):
             self.presenter.schedule_canvas_update()
 
     def _update_image_label_background(self):
-        if self.ui is not None and hasattr(self.ui, "image_label"):
-            bg = self.theme_manager.get_color("label.image.background")
-            pal = self.ui.image_label.palette()
-            pal.setColor(self.ui.image_label.backgroundRole(), bg)
-            pal.setColor(self.ui.image_label.foregroundRole(), bg)
+        bg = self.theme_manager.get_color("label.image.background")
+        bg_hex = bg.name(QColor.NameFormat.HexArgb)
+        image_label = get_canvas(self.ui) if self.ui is not None else None
+        if image_label is not None:
+            pal = image_label.palette()
+            pal.setColor(image_label.backgroundRole(), bg)
+            pal.setColor(image_label.foregroundRole(), bg)
             from PyQt6.QtGui import QPalette
             pal.setColor(QPalette.ColorRole.Window, bg)
             pal.setColor(QPalette.ColorRole.Base, bg)
-            self.ui.image_label.setPalette(pal)
-            self.ui.image_label.setStyleSheet(
-                f"background-color: {bg.name(QColor.NameFormat.HexArgb)};"
+            image_label.setPalette(pal)
+            image_label.setStyleSheet(
+                f"background-color: {bg_hex};"
             )
             if hasattr(self.ui, "set_image_startup_placeholder_color"):
                 self.ui.set_image_startup_placeholder_color(bg)

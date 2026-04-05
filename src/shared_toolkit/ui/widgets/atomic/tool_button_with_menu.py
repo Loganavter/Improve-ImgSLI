@@ -147,7 +147,10 @@ class _DropdownMenu(QWidget):
     def _ensure_overlay_parent(self, anchor_widget: QWidget):
         if self.overlay_layer is None:
             self.overlay_layer = get_overlay_layer(anchor_widget)
-        if self.overlay_layer is not None and self.parentWidget() is not self.overlay_layer.host:
+        if (
+            self.overlay_layer is not None
+            and self.parentWidget() is not self.overlay_layer.host
+        ):
             was_visible = self.isVisible()
             self.overlay_layer.attach(self)
             if was_visible:
@@ -202,9 +205,10 @@ class _DropdownMenu(QWidget):
 
         self.container_widget.setFixedSize(max_width, container_height)
         self.setFixedSize(max_width + 16, container_height + 16)
+        use_overlay_coords = self.overlay_layer is not None
         anchor_rect = (
             self.overlay_layer.anchor_rect(anchor_widget)
-            if self.overlay_layer is not None
+            if use_overlay_coords
             else QRect(
                 anchor_widget.mapToGlobal(QPoint(0, 0)),
                 anchor_widget.size(),
@@ -213,7 +217,7 @@ class _DropdownMenu(QWidget):
         final_pos = QPoint(anchor_rect.x() - 8, anchor_rect.bottom() - 4 + self.APPEAR_EXTRA_Y)
         start_pos = QPoint(final_pos.x(), final_pos.y() - self.DROP_OFFSET_PX)
 
-        if self.overlay_layer is not None:
+        if use_overlay_coords:
             final_rect = self.overlay_layer.clamp_rect(
                 QRect(final_pos, QSize(max_width + 16, container_height + 16))
             )

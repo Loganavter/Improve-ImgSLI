@@ -62,6 +62,9 @@ from .textures import (
 )
 
 class GLCanvas(QOpenGLWidget):
+    supports_legacy_gl_magnifier = True
+    uses_quick_canvas_overlay = False
+
     mousePressed = pyqtSignal(object)
     mouseMoved = pyqtSignal(object)
     mouseReleased = pyqtSignal(object)
@@ -72,6 +75,7 @@ class GLCanvas(QOpenGLWidget):
     pasteOverlayDirectionSelected = pyqtSignal(str)
     pasteOverlayCancelled = pyqtSignal()
     firstFrameRendered = pyqtSignal()
+    firstVisualFrameReady = pyqtSignal()
 
     _alignment = Qt.AlignmentFlag.AlignCenter
 
@@ -186,6 +190,7 @@ class GLCanvas(QOpenGLWidget):
         if not self._first_frame_rendered_emitted:
             self._first_frame_rendered_emitted = True
             self.firstFrameRendered.emit()
+            self.firstVisualFrameReady.emit()
         return result
 
     def resizeGL(self, w, h):

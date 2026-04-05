@@ -258,6 +258,9 @@ class VideoEditorDialog(QDialog):
     def get_selection_range(self) -> tuple:
         return self.timeline.get_selection_range()
 
+    def has_selection(self) -> bool:
+        return self.timeline.has_selection()
+
     def get_export_options(self) -> dict:
         return self.export_ui.get_export_options()
 

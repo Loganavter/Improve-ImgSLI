@@ -56,6 +56,7 @@ from ui.presenters.image_canvas.view import (
     is_gl_canvas,
     prepare_gl_background_layers,
     set_image_layers,
+    supports_legacy_gl_magnifier,
 )
 
 class CanvasLifecycleCoordinator:
@@ -127,6 +128,9 @@ class CanvasViewCoordinator:
 
     def is_gl_canvas(self):
         return is_gl_canvas(self.presenter)
+
+    def supports_legacy_gl_magnifier(self):
+        return supports_legacy_gl_magnifier(self.presenter)
 
     def set_image_layers(
         self, background=None, magnifier=None, mag_pos=None, coords_snapshot=None
