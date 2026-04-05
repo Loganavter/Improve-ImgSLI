@@ -53,13 +53,14 @@
 
 ## 🚀 Key Features
 
-- 🖼️ Comparison & Viewing: vertical/horizontal split, synced pan/zoom, quick preview with Space + mouse buttons.
-- 🔍 Magnifier: dual or split circle, multiple interpolation modes (Nearest, Bilinear, Bicubic, Lanczos), precise WASD/QE controls, freeze position, "laser" guides.
-- 🗂️ Workflow & file management: drag-n-drop, reorder across left/right lists, short/long press actions, ratings, filename editing, clipboard paste (Ctrl+V).
-- 🎥 Video Recording & Editing: record comparison sessions, basic trimming, and export to popular formats (MP4, WebM, etc.).
-- 🎨 Overlays & UI: Fully custom interface with customizable comparison and magnifier dividers (visibility, color, thickness), custom icon buttons, light/dark themes, and custom UI font.
-- 📤 Export: WYSIWYG export of the current composite (splitter, magnifier, text), multiple formats (PNG/JPEG/WEBP/BMP/TIFF/JXL), quality controls, text overlays with styling.
-- ⚙️ UX & settings: persistent window/layout, multilingual UI (EN/RU/zh/pt_BR), auto-cropping of black borders, robust launcher for venv, debug, profiling.
+- 🔬 Analysis beyond a simple slider: live diff modes for Highlight, Grayscale, Edge Comparison, and SSIM Map, plus optional PSNR/SSIM metrics for objective image checks.
+- 📤 WYSIWYG export built for real comparisons: save the exact composed view with splitters, magnifier, overlays, and styled file names, with support for PNG, JPEG, WEBP, BMP, TIFF, and JXL.
+- 🎬 Session recording, timeline editing, and video export: capture comparison sessions, trim or delete timeline ranges, keyframe comparison states, and export to MP4, WebM, AVI, GIF, ProRes, AV1, and more.
+- 🔍 High-precision magnifier: dual or combined circle, internal split control, subpixel-stable rendering, EWA Lanczos support, freeze mode, guide "lasers", and precise WASD/QE navigation.
+- 🖼️ Fast interactive comparison: vertical/horizontal split, synced pan and zoom, channel view modes, and instant single-image preview with Space + mouse buttons.
+- 🗂️ File workflow tuned for large batches: drag and drop, reorder across left/right lists, clipboard paste, ratings, filename editing, and quick side switching with the mouse wheel.
+- 🎨 Deep UI customization: adjustable divider visibility/color/thickness, magnifier styling, text overlay styling, custom icon-based controls, light/dark themes, and custom UI fonts.
+- ⚙️ Polished desktop UX: persistent layout and settings, multilingual UI (EN/RU/zh/pt_BR), tray integration, save notifications, auto-cropping options, and a robust launcher for source-based runs.
 
 ---
 
