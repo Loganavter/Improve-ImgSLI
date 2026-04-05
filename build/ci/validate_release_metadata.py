@@ -3,9 +3,8 @@ from __future__ import annotations
 import re
 import sys
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +32,8 @@ def _extract(pattern: str, text: str, label: str) -> str:
 
 
 def main() -> int:
-    today_moscow = datetime.now(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d")
+    moscow_tz = timezone(timedelta(hours=3))
+    today_moscow = datetime.now(timezone.utc).astimezone(moscow_tz).strftime("%Y-%m-%d")
 
     root = ET.parse(METAINFO_PATH).getroot()
     releases = root.find("releases")
