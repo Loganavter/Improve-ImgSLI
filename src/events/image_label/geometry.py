@@ -3,7 +3,15 @@ from __future__ import annotations
 from PyQt6.QtCore import QPointF
 
 from domain.qt_adapters import color_to_qcolor
-from domain.types import Point
+from domain.types import Point, Rect
+
+def _float_attr(obj, attr: str, default: float) -> float:
+    if obj is None:
+        return float(default)
+    value = getattr(obj, attr, None)
+    if value is None:
+        return float(default)
+    return float(value)
 
 class ImageLabelGeometry:
     def __init__(self, handler):
@@ -32,12 +40,16 @@ class ImageLabelGeometry:
         )
 
     def screen_to_image_rel(self, cursor_pos):
-        viewport = self.handler.store.viewport
-        rect = viewport.geometry_state.image_display_rect_on_label
-        if rect.w <= 0 or rect.h <= 0:
+        label = self._get_image_label()
+        if label is not None and hasattr(label, "map_cursor_to_image_rel"):
+            mapped = label.map_cursor_to_image_rel(cursor_pos)
+            if mapped is not None:
+                return mapped
+
+        rect = self._get_effective_interaction_rect()
+        if rect is None or rect.w <= 0 or rect.h <= 0:
             return None, None
 
-        label = self._get_image_label()
         local_pos = self._screen_to_widget_local_px(cursor_pos)
         clamped_local_x = max(float(rect.x), min(float(local_pos.x), float(rect.x + rect.w)))
         clamped_local_y = max(float(rect.y), min(float(local_pos.y), float(rect.y + rect.h)))
@@ -65,6 +77,18 @@ class ImageLabelGeometry:
         else:
             rel_pos = raw_rel_x if not viewport.view_state.is_horizontal else raw_rel_y
             new_split_pos = max(0.0, min(1.0, rel_pos))
+            old_split = _float_attr(viewport.view_state, "split_position", 0.5)
+            old_split_visual = _float_attr(
+                viewport.view_state, "split_position_visual", 0.5
+            )
+            rect = self._get_effective_interaction_rect()
+            if rect is None or rect.w <= 0 or rect.h <= 0:
+                return
+            pixel_pos = (
+                int(rect.x + (rect.w * new_split_pos))
+                if not viewport.view_state.is_horizontal
+                else int(rect.y + (rect.h * new_split_pos))
+            )
             viewport.view_state.split_position = new_split_pos
             if viewport.interaction_state.is_dragging_split_line:
                 viewport.view_state.split_position_visual = new_split_pos
@@ -73,12 +97,6 @@ class ImageLabelGeometry:
                 and self.handler.presenter
                 and hasattr(self.handler.presenter, "ui")
             ):
-                rect = viewport.geometry_state.image_display_rect_on_label
-                pixel_pos = (
-                    int(rect.x + (rect.w * new_split_pos))
-                    if not viewport.view_state.is_horizontal
-                    else int(rect.y + (rect.h * new_split_pos))
-                )
                 if hasattr(self.handler.presenter.ui, "image_label"):
                     self.handler.presenter.ui.image_label.set_split_line_params(
                         visible=True,
@@ -137,12 +155,21 @@ class ImageLabelGeometry:
     def get_magnifier_geometry_at_position(
         self, pos: QPointF, use_internal_coords: bool = True
     ) -> tuple[Point, float] | None:
-        mag_centers, mag_radius, _ = self._get_magnifier_centers_and_radius()
+        mag_centers, mag_radius, use_local_coords = self._get_magnifier_centers_and_radius()
         if mag_radius <= 0 or not mag_centers:
             return None
         compare_pos = self.get_magnifier_compare_pos(
             pos, use_internal_coords=use_internal_coords
         )
+        if use_internal_coords and use_local_coords:
+            label = self._get_image_label()
+            zoom = float(getattr(label, "zoom_level", 1.0) or 1.0) if label is not None else 1.0
+            zoom = max(zoom, 1e-6)
+            mag_centers = [
+                self._screen_to_widget_local_px(QPointF(float(center.x), float(center.y)))
+                for center in mag_centers
+            ]
+            mag_radius = float(mag_radius) / zoom
         radius_squared = mag_radius * mag_radius
         best_center = None
         best_distance = None
@@ -173,13 +200,27 @@ class ImageLabelGeometry:
         return None
 
     def _clamp_pos_to_image_display_rect(self, cursor_pos: QPointF) -> QPointF:
-        rect = self.handler.store.viewport.geometry_state.image_display_rect_on_label
-        if rect.w <= 0 or rect.h <= 0:
+        rect = self._get_effective_interaction_rect()
+        if rect is None or rect.w <= 0 or rect.h <= 0:
             return cursor_pos
         return QPointF(
             max(float(rect.x), min(float(cursor_pos.x()), float(rect.x + rect.w))),
             max(float(rect.y), min(float(cursor_pos.y()), float(rect.y + rect.h))),
         )
+
+    def _get_effective_interaction_rect(self):
+        label = self._get_image_label()
+        state = getattr(label, "runtime_state", None) if label is not None else None
+        content_rect = getattr(state, "_content_rect_px", None) if state is not None else None
+        if content_rect:
+            x, y, w, h = content_rect
+            if int(w) > 0 and int(h) > 0:
+                return Rect(int(x), int(y), int(w), int(h))
+
+        rect = self.handler.store.viewport.geometry_state.image_display_rect_on_label
+        if rect.w <= 0 or rect.h <= 0:
+            return None
+        return Rect(int(rect.x), int(rect.y), int(rect.w), int(rect.h))
 
     def _screen_to_widget_local_px(self, cursor_pos: QPointF) -> Point:
         label = self._get_image_label()

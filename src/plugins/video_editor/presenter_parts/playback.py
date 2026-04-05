@@ -66,6 +66,8 @@ class PlaybackCoordinator:
     def trim_selection(self):
         if self.view is None:
             return
+        if hasattr(self.view, "has_selection") and not self.view.has_selection():
+            return
         start_frame, end_frame = self.view.get_selection_range()
         if self.editor_service.delete_selection(start_frame, end_frame):
             self.on_data_changed()

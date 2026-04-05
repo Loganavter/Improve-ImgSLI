@@ -405,6 +405,9 @@ class VideoTimelineWidget(QWidget):
             return 0, max(0, self._total_frames - 1)
         return min(self._anchor_index, self._drag_index), max(self._anchor_index, self._drag_index)
 
+    def has_selection(self) -> bool:
+        return bool(self._has_selection)
+
     def set_current_frame(self, index):
         self._current_index = max(0, min(index, self._total_frames - 1))
         if abs(self._current_index - self._visual_index) > 2.0:

@@ -16,12 +16,12 @@ from PyQt6.QtOpenGL import (
 )
 
 from .shaders import (
-    BASE_FRAGMENT_SHADER,
-    BASE_VERTEX_SHADER,
-    CIRCLE_FRAGMENT_SHADER,
-    CIRCLE_VERTEX_SHADER,
-    MAGNIFIER_VERTEX_SHADER,
     MagnifierShaderVariantKey,
+    build_base_fragment_shader,
+    build_base_vertex_shader,
+    build_circle_fragment_shader,
+    build_circle_vertex_shader,
+    build_magnifier_vertex_shader,
     build_magnifier_fragment_shader,
 )
 from .textures import (
@@ -162,12 +162,31 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
 def initialize_gl_resources(widget):
     state = widget.runtime_state
 
+    ctx = widget.context()
+    if ctx and ctx.isValid():
+        fmt = ctx.format()
+        is_gles = bool(ctx.isOpenGLES())
+        logger.warning(
+            "GL context created: version=%d.%d profile=%s gles=%s renderer=%s vendor=%s",
+            fmt.majorVersion(), fmt.minorVersion(), fmt.profile(),
+            is_gles, gl.glGetString(gl.GL_RENDERER), gl.glGetString(gl.GL_VENDOR),
+        )
+    else:
+        logger.error(
+            "initializeGL called without a valid context: ctx=%s valid=%s",
+            ctx,
+            ctx.isValid() if ctx is not None else False,
+        )
+        return
+
+    is_gles = bool(ctx.isOpenGLES())
+
     widget.shader_program = QOpenGLShaderProgram()
     ok_vert = widget.shader_program.addShaderFromSourceCode(
-        QOpenGLShader.ShaderTypeBit.Vertex, BASE_VERTEX_SHADER
+        QOpenGLShader.ShaderTypeBit.Vertex, build_base_vertex_shader(is_gles)
     )
     ok_frag = widget.shader_program.addShaderFromSourceCode(
-        QOpenGLShader.ShaderTypeBit.Fragment, BASE_FRAGMENT_SHADER
+        QOpenGLShader.ShaderTypeBit.Fragment, build_base_fragment_shader(is_gles)
     )
     linked = widget.shader_program.link()
     if not (ok_vert and ok_frag and linked):
@@ -211,10 +230,10 @@ def initialize_gl_resources(widget):
 
     widget._circle_shader = QOpenGLShaderProgram()
     ok_vert2 = widget._circle_shader.addShaderFromSourceCode(
-        QOpenGLShader.ShaderTypeBit.Vertex, CIRCLE_VERTEX_SHADER
+        QOpenGLShader.ShaderTypeBit.Vertex, build_circle_vertex_shader(is_gles)
     )
     ok_frag2 = widget._circle_shader.addShaderFromSourceCode(
-        QOpenGLShader.ShaderTypeBit.Fragment, CIRCLE_FRAGMENT_SHADER
+        QOpenGLShader.ShaderTypeBit.Fragment, build_circle_fragment_shader(is_gles)
     )
     linked2 = widget._circle_shader.link()
     if not (ok_vert2 and ok_frag2 and linked2):
@@ -237,12 +256,14 @@ def get_magnifier_shader_program(widget, key: MagnifierShaderVariantKey) -> QOpe
         return program
 
     program = QOpenGLShaderProgram()
+    context = widget.context()
+    is_gles = bool(context.isOpenGLES()) if context is not None and context.isValid() else False
     if not program.addShaderFromSourceCode(
-        QOpenGLShader.ShaderTypeBit.Vertex, MAGNIFIER_VERTEX_SHADER
+        QOpenGLShader.ShaderTypeBit.Vertex, build_magnifier_vertex_shader(is_gles)
     ):
         raise RuntimeError(program.log())
     if not program.addShaderFromSourceCode(
-        QOpenGLShader.ShaderTypeBit.Fragment, build_magnifier_fragment_shader(key)
+        QOpenGLShader.ShaderTypeBit.Fragment, build_magnifier_fragment_shader(key, is_gles=is_gles)
     ):
         raise RuntimeError(program.log())
     if not program.link():
@@ -252,6 +273,11 @@ def get_magnifier_shader_program(widget, key: MagnifierShaderVariantKey) -> QOpe
 
 def resize_gl(widget, w: int, h: int):
     state = widget.runtime_state
+    dpr = widget.devicePixelRatioF()
+    logger.warning(
+        "resizeGL: w=%d h=%d | widget.width=%d widget.height=%d | dpr=%.2f",
+        w, h, widget.width(), widget.height(), dpr,
+    )
     gl.glViewport(0, 0, w, h)
     widget._update_paste_overlay_rects()
     clear_magnifier_gpu(widget)

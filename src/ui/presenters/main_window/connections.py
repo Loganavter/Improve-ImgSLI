@@ -19,6 +19,8 @@ from ui.presenters.main_window.workspace import (
     on_workspace_session_triggered,
     on_workspace_tab_changed,
 )
+from ui.widgets.gl_canvas.contracts import BaseCanvasProtocol
+from ui.widgets.gl_canvas.helpers import get_canvas
 
 def connect_signals(presenter):
     image_canvas = presenter.get_feature("image_canvas")
@@ -109,31 +111,30 @@ def connect_event_handler_signals(presenter, event_handler):
     toolbar_presenter = presenter.get_feature("toolbar")
     image_canvas.connect_event_handler_signals(event_handler)
 
-    if hasattr(presenter.ui, "image_label"):
-        if hasattr(presenter.ui.image_label, "set_store"):
-            presenter.ui.image_label.set_store(presenter.store)
-        presenter.ui.image_label.mousePressed.connect(
+    image_label: BaseCanvasProtocol | None = get_canvas(presenter.ui)
+    if image_label is not None:
+        image_label.set_store(presenter.store)
+        image_label.mousePressed.connect(
             event_handler.mouse_press_event_on_image_label_signal.emit
         )
-        presenter.ui.image_label.mouseMoved.connect(
+        image_label.mouseMoved.connect(
             event_handler.mouse_move_event_on_image_label_signal.emit
         )
-        presenter.ui.image_label.mouseReleased.connect(
+        image_label.mouseReleased.connect(
             event_handler.mouse_release_event_on_image_label_signal.emit
         )
-        presenter.ui.image_label.keyPressed.connect(
+        image_label.keyPressed.connect(
             event_handler.keyboard_press_event_signal.emit
         )
-        presenter.ui.image_label.keyReleased.connect(
+        image_label.keyReleased.connect(
             event_handler.keyboard_release_event_signal.emit
         )
-        presenter.ui.image_label.wheelScrolled.connect(
+        image_label.wheelScrolled.connect(
             event_handler.mouse_wheel_event_on_image_label_signal.emit
         )
-        if hasattr(presenter.ui.image_label, "zoomChanged"):
-            presenter.ui.image_label.zoomChanged.connect(
-                lambda _zoom: toolbar_presenter.update_toolbar_states()
-            )
+        image_label.zoomChanged.connect(
+            lambda _zoom: toolbar_presenter.update_toolbar_states()
+        )
 
     event_handler.mouse_press_event_signal.connect(
         lambda event: handle_global_mouse_press(presenter, event)

@@ -15,7 +15,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ImproveImgSLI")
 
 def is_effective_magnifier_interactive(ctx: "RenderContext") -> bool:
-    return bool(ctx.is_interactive_mode and getattr(ctx.view_state, "optimize_magnifier_movement", True))
+    return bool(
+        getattr(ctx, "is_interactive_mode", False)
+        and getattr(ctx, "optimize_magnifier_movement", True)
+    )
 
 def render_magnifier_if_needed(
     pipeline,
