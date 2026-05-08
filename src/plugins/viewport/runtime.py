@@ -17,7 +17,7 @@ class ViewportRuntime:
 
     def dispatch(self, action, *, clear_caches: bool = False) -> bool:
         if self.dispatcher is None:
-            logger.warning("Dispatcher not available, using legacy state modification")
+            logger.warning("Dispatcher not available, state action was not dispatched")
             return False
 
         self.dispatcher.dispatch(action, scope="viewport")

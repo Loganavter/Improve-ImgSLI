@@ -4,20 +4,20 @@
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
   <name>Improve ImgSLI</name>
-  <summary>Image comparison with magnifier</summary>
+  <summary>Image comparison with advanced magnifiers</summary>
   <description>
     <p>
-      Improve ImgSLI is an open-source image comparison tool focused on precise visual inspection, responsive interaction, and advanced rendering workflows. It is designed for artists, photographers, retouchers, AI upscaling workflows, quality control, and anyone who needs to compare images at pixel level without losing context.
+      Improve ImgSLI is an open-source image comparison tool focused on precise visual inspection, responsive interaction, and advanced canvas rendering workflows. It is designed for artists, photographers, retouchers, AI upscaling workflows, quality control, and anyone who needs to compare images at pixel level without losing context.
     </p>
     <p>Key features include:</p>
     <ul>
       <li>Compare images with a movable horizontal or vertical split line, including zooming and panning in the main canvas.</li>
-      <li>Use a synchronized magnifier with adjustable capture area, display size, freeze mode, combined layouts, internal split, and keyboard-assisted positioning.</li>
+      <li>Use one or more synchronized magnifiers with adjustable capture areas, display sizes, freeze mode, combined layouts, internal split, per-instance colors, and keyboard-assisted positioning.</li>
       <li>Load and manage multiple images per side with drag-and-drop, list switching, swapping, and direct filename editing.</li>
       <li>Inspect visual differences with rendering-aware preview controls and selectable interpolation modes.</li>
       <li>Export full-resolution comparison images with overlays, labels, and comparison state preserved.</li>
       <li>Edit recorded comparison sessions in the built-in video editor with timeline selection, trimming, preview playback, and export.</li>
-      <li>Run on multiple rendering backends with improved compatibility across Wayland, X11, and Windows environments.</li>
+      <li>Use a feature-contract based canvas architecture that keeps overlays, magnifiers, guide lines, settings, and export behavior synchronized.</li>
       <li>Use persistent settings, multilingual interface support, and structured diagnostics for advanced troubleshooting.</li>
     </ul>
     <p>
@@ -45,16 +45,17 @@
   </developer>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="8.2.0" date="2026-04-05">
+    <release version="9.0.0" date="2026-05-09">
       <description>
-        <p>A compatibility and rendering patch release focused on startup stability, backend behavior, and high-DPI correctness.</p>
+        <p>A major release focused on the canvas feature contract, multi-magnifier behavior, and rendering consistency.</p>
         <ul>
-          <li>Improved startup behavior by removing problematic top-level prewarm and reveal paths that could cause compositor artifacts on KDE Wayland and transient miniature windows on Windows.</li>
-          <li>Switched the application toward the Quick canvas path for more predictable cross-platform behavior and reduced native OpenGL window-management issues.</li>
-          <li>Fixed multiple rendering and interaction edge cases related to split view synchronization during zoom and pan.</li>
-          <li>Improved high-DPI and viewport mapping correctness, reducing geometry mismatches between rendered content and interactive hit areas.</li>
-          <li>Fixed magnifier edge behavior, overlay clamping, and capture-ring rendering so interaction near image borders remains accurate.</li>
-          <li>Aligned export, preview, and canvas backend behavior more closely after the rendering-layer refactor.</li>
+          <li>Refactored canvas features toward a self-contained registration contract for scene building, rendering, hit testing, settings, and editor tracks.</li>
+          <li>Improved multi-magnifier lifecycle behavior, including hidden instances, deletion, canvas refreshes, and per-instance colors.</li>
+          <li>Added optional automatic color assignment for new magnifiers and optional intersection highlighting while dragging capture areas.</li>
+          <li>Consolidated canvas rendering around the OpenGL widget path and removed unused fallback backends.</li>
+          <li>Fixed multiple zoom, comparison-mode, guide-line, capture-ring, and export consistency issues.</li>
+          <li>Removed the direct DBus notification path to avoid Flatpak integration problems.</li>
+          <li>Updated in-app help for the expanded magnifier behavior and canvas feature contract.</li>
         </ul>
       </description>
     </release>

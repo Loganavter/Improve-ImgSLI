@@ -10,6 +10,9 @@ from shared_toolkit.ui.managers.flyout_timer_service import DelayedActionTimer
 from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
 from shared_toolkit.ui.widgets.atomic.tooltips import install_custom_tooltip
 from shared_toolkit.ui.widgets.composite.color_options_flyout import ColorOptionsFlyout
+from ui.canvas_features.guides.state import get_guides_widget_state
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import magnifier_enabled
 
 class ColorSettingsButton(QWidget):
 
@@ -205,38 +208,35 @@ class ColorSettingsButton(QWidget):
 
         vp = self.store.viewport
 
-        use_mag = getattr(vp.view_state, "use_magnifier", False)
+        use_mag = magnifier_enabled(vp.view_state)
 
         if not use_mag:
             default_col = QColor(255, 255, 255, 100)
             self.button.set_color(default_col)
             return
 
-        def _get_col(attr_name, default_alpha=255):
-            col = getattr(vp.render_config, attr_name, QColor(255, 255, 255))
-            c = color_to_qcolor(col) if hasattr(col, "r") else QColor(col)
+        magnifier_service = MagnifierStoreService(self.store)
+        active_magnifier = magnifier_service.get_active_or_first_magnifier()
+        guides_state = get_guides_widget_state(vp.view_state)
 
+        def _model_col(attr_name, fallback: QColor, default_alpha=255):
+            col = getattr(active_magnifier, attr_name, None)
+            c = color_to_qcolor(col) if hasattr(col, "r") else QColor(fallback)
             c.setAlpha(default_alpha)
             return c
 
-        col_capture = _get_col("capture_ring_color", 230)
-        col_laser = _get_col("magnifier_laser_color", 230)
-        col_border = _get_col("magnifier_border_color", 230)
-        col_divider = _get_col("magnifier_divider_color", 230)
+        col_capture = _model_col("capture_ring_color", QColor(255, 50, 100), 230)
+        col_laser = _model_col("laser_color", QColor(255, 255, 255), 230)
+        col_border = _model_col("border_color", QColor(255, 255, 255), 230)
+        col_divider = _model_col("divider_color", QColor(255, 255, 255), 230)
 
-        is_combined = getattr(vp.view_state, "is_magnifier_combined", False)
-
-        show_lasers = getattr(vp.render_config, "show_magnifier_guides", False)
-
-        divider_visible_setting = getattr(
-            vp.render_config, "magnifier_divider_visible", True
-        )
-        divider_thickness = getattr(
-            vp.render_config, "magnifier_divider_thickness", 2
-        )
-
-        show_divider = (
-            is_combined and divider_visible_setting and (divider_thickness > 0)
+        is_combined = magnifier_service.is_active_magnifier_combined()
+        show_lasers = bool(guides_state.enabled)
+        show_divider = bool(
+            is_combined
+            and active_magnifier is not None
+            and active_magnifier.divider_visible
+            and active_magnifier.divider_thickness > 0
         )
 
         zones = [

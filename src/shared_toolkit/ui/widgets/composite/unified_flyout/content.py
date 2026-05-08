@@ -1,5 +1,3 @@
-from PyQt6.QtCore import QTimer
-
 from shared_toolkit.ui.widgets.composite.unified_flyout.common import FlyoutMode
 
 class _UnifiedFlyoutContentMixin:
@@ -40,7 +38,7 @@ class _UnifiedFlyoutContentMixin:
             "image",
             self.store.document.current_index2,
         )
-        QTimer.singleShot(0, lambda: self.refreshGeometry(immediate=True))
+        self.refreshGeometry(immediate=True)
 
     def update_rating_for_item(self, image_number: int, index: int):
         if not self.isVisible():

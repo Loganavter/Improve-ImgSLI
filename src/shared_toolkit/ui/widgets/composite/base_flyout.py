@@ -1,11 +1,14 @@
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QGuiApplication, QPainter
-from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QWidget
 
+from shared_toolkit.ui.in_window_surface import (
+    attach_in_window_widget,
+    create_shadow_surface,
+    paint_shadowed_surface,
+)
 from shared_toolkit.ui.managers.flyout_manager import FlyoutManager
 from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from shared_toolkit.ui.overlay_layer import get_overlay_layer
-from shared_toolkit.ui.widgets.helpers import draw_rounded_shadow
 
 class BaseFlyout(QWidget):
     SHADOW_RADIUS = 8
@@ -15,26 +18,13 @@ class BaseFlyout(QWidget):
         super().__init__(parent)
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.overlay_layer = get_overlay_layer(parent)
-        if self.overlay_layer is not None:
-            self.overlay_layer.attach(self)
+        self.overlay_layer = attach_in_window_widget(self, parent)
 
-        self._main_layout = QVBoxLayout(self)
-        self._main_layout.setContentsMargins(
-            self.SHADOW_RADIUS,
-            self.SHADOW_RADIUS,
-            self.SHADOW_RADIUS,
-            self.SHADOW_RADIUS,
+        self._main_layout, self.container, self.content_layout = create_shadow_surface(
+            self,
+            shadow_radius=self.SHADOW_RADIUS,
+            container_object_name="FlyoutContainer",
         )
-
-        self.container = QWidget(self)
-        self.container.setObjectName("FlyoutContainer")
-        self.container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._main_layout.addWidget(self.container)
-
-        self.content_layout = QVBoxLayout(self.container)
-        self.content_layout.setContentsMargins(4, 4, 4, 4)
-        self.content_layout.setSpacing(4)
 
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self._apply_base_style)
@@ -53,13 +43,11 @@ class BaseFlyout(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-        draw_rounded_shadow(
+        paint_shadowed_surface(
             painter,
             self.container.geometry(),
-            steps=self.SHADOW_RADIUS,
-            radius=self.CONTENT_RADIUS,
+            shadow_radius=self.SHADOW_RADIUS,
+            corner_radius=self.CONTENT_RADIUS,
         )
         painter.end()
 

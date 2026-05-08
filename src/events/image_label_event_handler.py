@@ -3,6 +3,7 @@ import logging
 from PyQt6.QtCore import QElapsedTimer, QObject, QPointF, Qt
 from PyQt6.QtGui import QKeyEvent, QMouseEvent, QWheelEvent
 
+from events.canvas_input import CanvasInputSessionService
 from events.image_label import (
     ImageLabelGeometry,
     ImageLabelKeyboardHandler,
@@ -18,6 +19,8 @@ class ImageLabelEventHandler(QObject):
         self.store = store
         self.main_controller = main_controller
         self.presenter = parent
+        self.keyboard_state_service = None
+        self.input_session = CanvasInputSessionService(main_controller)
 
         self._mouse_move_timer = QElapsedTimer()
         self._mouse_move_timer.start()

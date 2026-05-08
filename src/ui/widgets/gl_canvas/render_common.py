@@ -7,6 +7,7 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPalette
 
 from shared.image_processing.pipeline import RenderingPipeline
+from ui.canvas_infra.viewport.state import get_pan_offset_x, get_pan_offset_y, get_zoom_level
 
 logger = logging.getLogger("ImproveImgSLI")
 _pipeline_cache: dict[str, RenderingPipeline] = {}
@@ -16,9 +17,9 @@ def widget_px_to_screen_px(widget, px_x, px_y):
     w, h = widget.width(), widget.height()
     if w <= 0 or h <= 0:
         return px_x, px_y
-    zoom = widget.zoom_level
-    pan_x = widget.pan_offset_x
-    pan_y = widget.pan_offset_y
+    zoom = get_zoom_level(widget)
+    pan_x = get_pan_offset_x(widget)
+    pan_y = get_pan_offset_y(widget)
 
     sx = ((px_x / w) - 0.5 + pan_x) * zoom + 0.5
     sy = ((px_y / h) - 0.5 + pan_y) * zoom + 0.5

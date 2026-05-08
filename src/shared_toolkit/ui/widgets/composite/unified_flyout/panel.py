@@ -255,25 +255,6 @@ class _Panel(QWidget):
             self._refresh_widgets_from_list(image_list, current_app_index)
             return
 
-        if len(existing_paths) == len(target_paths) + 1:
-            removal_index = self._find_removed_index(existing_paths, target_paths)
-            if removal_index is not None:
-                self._remove_widget_at(removal_index)
-                self._refresh_widgets_from_list(image_list, current_app_index)
-                return
-
-        if len(existing_paths) + 1 == len(target_paths):
-            insert_index = self._find_inserted_index(existing_paths, target_paths)
-            if insert_index is not None:
-                self._insert_widget_at(insert_index, image_list[insert_index], current_app_index)
-                self._refresh_widgets_from_list(image_list, current_app_index)
-                return
-
-        if len(existing_paths) == len(target_paths) and set(existing_paths) == set(target_paths):
-            self._reorder_widgets_to_match(target_paths)
-            self._refresh_widgets_from_list(image_list, current_app_index)
-            return
-
         self.clear_and_rebuild(
             image_list, owner_proxy, item_height, item_font, list_type, current_index
         )

@@ -42,10 +42,10 @@ def compute_canvas_geometry(ctx: "RenderContext", image: "Image.Image") -> Canva
     canvas_h = img_h
     magnifier_bbox_on_canvas = None
 
-    if ctx.use_magnifier and ctx.magnifier_drawing_coords:
+    if ctx.magnifier.enabled and ctx.magnifier.drawing_coords:
         magnifier_bbox = (
-            ctx.magnifier_drawing_coords[5]
-            if len(ctx.magnifier_drawing_coords) > 5
+            ctx.magnifier.drawing_coords[5]
+            if len(ctx.magnifier.drawing_coords) > 5
             else None
         )
         if magnifier_bbox and magnifier_bbox.isValid():
@@ -68,4 +68,3 @@ def compute_canvas_geometry(ctx: "RenderContext", image: "Image.Image") -> Canva
         canvas_h=canvas_h,
         magnifier_bbox_on_canvas=magnifier_bbox_on_canvas,
     )
-

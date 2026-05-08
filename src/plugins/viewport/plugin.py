@@ -24,7 +24,109 @@ from core.plugin_system.interfaces import IControllablePlugin, IVideoTrackProvid
 from core.plugin_system.ui_integration import get_plugin_name
 from plugins.viewport.controller import ViewportController
 from plugins.viewport.state import ViewportState as ViewportPluginState
-from plugins.video_editor.services.track_defs import ViewportTrackSpec, track
+from plugins.video_editor.services.keyframing import (
+    ChannelDescriptor,
+    KeyframeToolAdapter,
+    StaticToolAdapter,
+    StaticToolBinding,
+    StaticTrackBinding,
+    ToolDescriptor,
+    TrackDescriptor,
+)
+from plugins.video_editor.services.keyframing.types import FrameSnapshot
+from ui.canvas_features.magnifier import MagnifierStoreService
+
+def _active_magnifier(viewport):
+    proxy = type("StoreProxy", (), {"viewport": viewport})()
+    return MagnifierStoreService(proxy).get_active_or_first_magnifier()
+
+def _read_active_magnifier_freeze(snapshot: FrameSnapshot):
+    magnifier = _active_magnifier(snapshot.viewport_state)
+    return {"value": bool(magnifier.freeze) if magnifier is not None else False}
+
+def _write_active_magnifier_freeze(snapshot: FrameSnapshot, channels):
+    magnifier = _active_magnifier(snapshot.viewport_state)
+    if magnifier is None:
+        return
+    magnifier.freeze = bool(channels["value"])
+
+def _read_active_magnifier_combined(snapshot: FrameSnapshot):
+    proxy = type("StoreProxy", (), {"viewport": snapshot.viewport_state})()
+    scene_state = MagnifierStoreService(proxy)
+    return {"value": scene_state.is_active_magnifier_combined()}
+
+def _write_active_magnifier_combined(snapshot: FrameSnapshot, channels):
+    magnifier = _active_magnifier(snapshot.viewport_state)
+    if magnifier is None:
+        return
+    magnifier.spacing_relative = (
+        0.0 if bool(channels["value"]) else max(magnifier.spacing_relative, 0.05)
+    )
+
+def _read_magnifier_movement_speed(snapshot: FrameSnapshot):
+    return {"value": float(snapshot.viewport_state.view_state.movement_speed_per_sec)}
+
+def _write_magnifier_movement_speed(snapshot: FrameSnapshot, channels):
+    snapshot.viewport_state.view_state.movement_speed_per_sec = float(channels["value"])
+
+def _read_magnifier_movement_optimized(snapshot: FrameSnapshot):
+    return {"value": bool(snapshot.viewport_state.view_state.optimize_magnifier_movement)}
+
+def _write_magnifier_movement_optimized(snapshot: FrameSnapshot, channels):
+    snapshot.viewport_state.view_state.optimize_magnifier_movement = bool(
+        channels["value"]
+    )
+
+def _build_keyframe_adapter() -> StaticToolAdapter:
+    tool = ToolDescriptor(
+        id="viewport.magnifier_runtime",
+        tool_type="magnifier_runtime",
+        label="Magnifier Runtime",
+        group_id="magnifier.runtime",
+        group_label="Magnifier Runtime",
+        subclass_id="runtime",
+        subclass_label="Runtime",
+        tracks=(
+            TrackDescriptor(
+                id="magnifier.default.freeze",
+                label="Freeze",
+                kind="bool",
+                channels=(ChannelDescriptor("value", "Value", "bool", interpolate_values=False),),
+            ),
+            TrackDescriptor(
+                id="magnifier.default.combined",
+                label="Combined",
+                kind="bool",
+                channels=(ChannelDescriptor("value", "Value", "bool", interpolate_values=False),),
+            ),
+            TrackDescriptor(
+                id="magnifier.movement.speed",
+                label="Speed",
+                kind="scalar",
+                channels=(ChannelDescriptor("value", "Value", "scalar"),),
+            ),
+            TrackDescriptor(
+                id="magnifier.movement.optimized",
+                label="Optimized",
+                kind="bool",
+                channels=(ChannelDescriptor("value", "Value", "bool", interpolate_values=False),),
+            ),
+        ),
+    )
+    return StaticToolAdapter(
+        adapter_id="viewport.magnifier_runtime",
+        tools=(
+            StaticToolBinding(
+                descriptor=tool,
+                tracks=(
+                    StaticTrackBinding(tool.tracks[0], _read_active_magnifier_freeze, _write_active_magnifier_freeze),
+                    StaticTrackBinding(tool.tracks[1], _read_active_magnifier_combined, _write_active_magnifier_combined),
+                    StaticTrackBinding(tool.tracks[2], _read_magnifier_movement_speed, _write_magnifier_movement_speed),
+                    StaticTrackBinding(tool.tracks[3], _read_magnifier_movement_optimized, _write_magnifier_movement_optimized),
+                ),
+            ),
+        ),
+    )
 
 @plugin(name="viewport", version="1.0")
 class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
@@ -132,38 +234,5 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
             return target(*args, **kwargs)
         raise AttributeError(f"Viewport controller has no command '{command}'")
 
-    def get_video_track_specs(self) -> tuple[ViewportTrackSpec, ...]:
-        return (
-            track(
-                "magnifier.default.freeze",
-                "magnifier.default",
-                "Magnifier 1",
-                "Freeze",
-                "bool",
-                attr="view_state.freeze_magnifier",
-            ),
-            track(
-                "magnifier.default.combined",
-                "magnifier.default",
-                "Magnifier 1",
-                "Combined",
-                "bool",
-                attr="view_state.is_magnifier_combined",
-            ),
-            track(
-                "magnifier.movement.speed",
-                "magnifier.movement",
-                "Magnifier Motion",
-                "Speed",
-                "scalar",
-                attr="view_state.movement_speed_per_sec",
-            ),
-            track(
-                "magnifier.movement.optimized",
-                "magnifier.movement",
-                "Magnifier Motion",
-                "Optimized",
-                "bool",
-                attr="view_state.optimize_magnifier_movement",
-            ),
-        )
+    def get_video_keyframe_adapters(self) -> tuple[KeyframeToolAdapter, ...]:
+        return (_build_keyframe_adapter(),)

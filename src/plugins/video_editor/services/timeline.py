@@ -48,6 +48,8 @@ class TimelineTrack:
     label: str
     kind: str = "scalar"
     enabled: bool = True
+    accent_color: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     channels: dict[str, TimelineChannel] = field(default_factory=dict)
 
     def clear(self) -> None:
@@ -84,6 +86,8 @@ class TimelineGroup:
     id: str
     label: str
     kind: str = "group"
+    accent_color: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     tracks: dict[str, TimelineTrack] = field(default_factory=dict)
 
     def clear(self) -> None:
@@ -96,11 +100,24 @@ class TimelineGroup:
         *,
         label: str | None = None,
         kind: str = "scalar",
+        accent_color: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> TimelineTrack:
         track = self.tracks.get(track_id)
         if track is None:
-            track = TimelineTrack(id=track_id, label=label or track_id, kind=kind)
+            track = TimelineTrack(
+                id=track_id,
+                label=label or track_id,
+                kind=kind,
+                accent_color=accent_color,
+                metadata=dict(metadata or {}),
+            )
             self.tracks[track_id] = track
+        else:
+            if accent_color is not None:
+                track.accent_color = accent_color
+            if metadata:
+                track.metadata.update(metadata)
         return track
 
 class TimelineModel:
@@ -119,11 +136,24 @@ class TimelineModel:
         *,
         label: str | None = None,
         kind: str = "group",
+        accent_color: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> TimelineGroup:
         group = self.groups.get(group_id)
         if group is None:
-            group = TimelineGroup(id=group_id, label=label or group_id, kind=kind)
+            group = TimelineGroup(
+                id=group_id,
+                label=label or group_id,
+                kind=kind,
+                accent_color=accent_color,
+                metadata=dict(metadata or {}),
+            )
             self.groups[group_id] = group
+        else:
+            if accent_color is not None:
+                group.accent_color = accent_color
+            if metadata:
+                group.metadata.update(metadata)
         return group
 
     def ensure_track(
@@ -134,9 +164,24 @@ class TimelineModel:
         group_label: str | None = None,
         track_label: str | None = None,
         track_kind: str = "scalar",
+        group_accent_color: str | None = None,
+        track_accent_color: str | None = None,
+        group_metadata: dict[str, Any] | None = None,
+        track_metadata: dict[str, Any] | None = None,
     ) -> TimelineTrack:
-        group = self.ensure_group(group_id, label=group_label)
-        return group.ensure_track(track_id, label=track_label, kind=track_kind)
+        group = self.ensure_group(
+            group_id,
+            label=group_label,
+            accent_color=group_accent_color,
+            metadata=group_metadata,
+        )
+        return group.ensure_track(
+            track_id,
+            label=track_label,
+            kind=track_kind,
+            accent_color=track_accent_color,
+            metadata=track_metadata,
+        )
 
     def iter_tracks(self) -> list[TimelineTrack]:
         tracks: list[TimelineTrack] = []

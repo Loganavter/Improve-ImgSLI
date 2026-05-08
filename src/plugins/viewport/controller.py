@@ -25,6 +25,8 @@ from core.events import (
 from plugins.viewport.interaction_service import ViewportInteractionService
 from plugins.viewport.magnifier_service import ViewportMagnifierService
 from plugins.viewport.runtime import ViewportRuntime
+from ui.canvas_features.magnifier import MagnifierModeService, MagnifierStoreService
+from ui.canvas_features.magnifier.store import active_magnifier_id
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -44,6 +46,8 @@ class ViewportController(QObject):
             event_bus=event_bus,
             update_requested_signal=self.update_requested,
         )
+        self.scene_state = MagnifierStoreService(store)
+        self.mode_state = MagnifierModeService(store)
         self.interaction_service = ViewportInteractionService(self.runtime, store)
         self.magnifier_service = ViewportMagnifierService(
             self.runtime, store, self.interaction_service
@@ -82,47 +86,30 @@ class ViewportController(QObject):
         self._dispatch_action(ToggleOrientationAction(is_horizontal))
 
     def update_magnifier_size_relative(self, relative_size: float):
-        from core.state_management.actions import SetMagnifierSizeRelativeAction
-
-        self._dispatch_action(SetMagnifierSizeRelativeAction(relative_size))
+        self.scene_state.set_active_magnifier_size(relative_size)
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     def update_capture_size_relative(self, relative_size: float):
-        from core.state_management.actions import SetCaptureSizeRelativeAction
-
-        self._dispatch_action(
-            SetCaptureSizeRelativeAction(relative_size),
-            clear_caches=True,
-            clamp_pos=True,
-        )
+        self.scene_state.set_active_capture_size(relative_size)
+        self.interaction_service.clamp_capture_position()
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     def toggle_magnifier(self, enabled: bool):
-        from core.state_management.actions import (
-            SetActiveMagnifierIdAction,
-            ToggleMagnifierAction,
-        )
-
-        self._dispatch_action(ToggleMagnifierAction(enabled), clear_caches=True)
-
-        if enabled and not self.store.viewport.view_state.active_magnifier_id:
-            self._dispatch_action(SetActiveMagnifierIdAction("default"))
-
+        self.mode_state.toggle_from_button(enabled)
         self.magnifier_service.update_combined_state()
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     def toggle_magnifier_part(self, part: str, visible: bool):
         part = (part or "").strip().lower()
-        mapping = {
-            "left": "magnifier_visible_left",
-            "center": "magnifier_visible_center",
-            "right": "magnifier_visible_right",
-        }
-        if part not in mapping:
+        if part not in {"left", "center", "right"}:
             return
-
-        from core.state_management.actions import SetMagnifierVisibilityAction
-
-        kwargs = {part: visible}
-        self._dispatch_action(SetMagnifierVisibilityAction(**kwargs), clear_caches=True)
+        self.scene_state.set_active_magnifier_visibility_parts(**{part: visible})
         self.magnifier_service.update_combined_state()
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     def set_magnifier_visibility(
         self,
@@ -130,18 +117,19 @@ class ViewportController(QObject):
         center: bool | None = None,
         right: bool | None = None,
     ):
-        from core.state_management.actions import SetMagnifierVisibilityAction
-
-        self._dispatch_action(
-            SetMagnifierVisibilityAction(left=left, center=center, right=right),
-            clear_caches=True,
+        self.scene_state.set_active_magnifier_visibility_parts(
+            left=left,
+            center=center,
+            right=right,
         )
         self.magnifier_service.update_combined_state()
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     def toggle_magnifier_orientation(self, is_horizontal: bool):
-        from core.state_management.actions import ToggleMagnifierOrientationAction
-
-        self._dispatch_action(ToggleMagnifierOrientationAction(is_horizontal))
+        self.scene_state.set_active_magnifier_orientation(is_horizontal)
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     def toggle_freeze_magnifier(self, freeze_checked: bool):
         self.magnifier_service.toggle_freeze_magnifier(freeze_checked)
@@ -155,9 +143,12 @@ class ViewportController(QObject):
         self._dispatch_action(SetMovementSpeedAction(speed))
 
     def set_magnifier_position(self, position: Point):
-        from core.state_management.actions import SetMagnifierPositionAction
-
-        self._dispatch_action(SetMagnifierPositionAction(position))
+        self.scene_state.move_object_source_position(
+            active_magnifier_id(self.store.viewport.view_state),
+            position,
+        )
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     def set_magnifier_internal_split(self, location):
         self.magnifier_service.set_magnifier_internal_split(location)

@@ -25,10 +25,38 @@ else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, application_path)
 
-from PyQt6.QtCore import QThreadPool
+from PyQt6.QtCore import QLoggingCategory, QThreadPool, Qt
 from PyQt6.QtWidgets import QApplication
 from plugins.settings.manager import SettingsManager
 from ui.main_window import MainWindow
+
+def _configure_qt_logging() -> None:
+    current_rules = os.environ.get("QT_LOGGING_RULES", "").strip()
+    extra_rules = [
+        "qt.qpa.wayland.warning=false",
+    ]
+    merged_rules = "\n".join(
+        rule for rule in [current_rules, *extra_rules] if rule
+    )
+    if merged_rules:
+        os.environ["QT_LOGGING_RULES"] = merged_rules
+        try:
+            QLoggingCategory.setFilterRules(merged_rules)
+        except Exception:
+            pass
+
+def _configure_linux_desktop_integrations() -> None:
+    if os.name != "posix":
+        return
+
+    os.environ.setdefault("UBUNTU_MENUPROXY", "0")
+    try:
+        QApplication.setAttribute(
+            Qt.ApplicationAttribute.AA_DontUseNativeMenuBar,
+            True,
+        )
+    except Exception:
+        pass
 
 def main():
     parser = argparse.ArgumentParser(description="Improve ImgSLI - Main entry point")
@@ -49,6 +77,8 @@ def main():
     )
 
     args = parser.parse_args()
+    _configure_qt_logging()
+    _configure_linux_desktop_integrations()
 
     if args.enable_logging or args.disable_logging:
         app_instance = QApplication.instance()

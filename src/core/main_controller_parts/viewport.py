@@ -4,11 +4,7 @@ from PyQt6.QtCore import QTimer
 
 from core.events import (
     AnalysisSetDiffModeEvent,
-    SettingsSetDividerLineThicknessEvent,
-    SettingsSetMagnifierDividerThicknessEvent,
-    SettingsToggleDividerLineVisibilityEvent,
     SettingsToggleIncludeFilenamesInSavedEvent,
-    SettingsToggleMagnifierDividerVisibilityEvent,
     ViewportOnSliderReleasedEvent,
     ViewportSetMagnifierVisibilityEvent,
     ViewportToggleFreezeMagnifierEvent,
@@ -18,10 +14,43 @@ from core.events import (
     ViewportUpdateMagnifierCombinedStateEvent,
 )
 from domain.types import Point
+from ui.canvas_features.magnifier import MagnifierModeService, MagnifierStoreService
+from ui.canvas_features.magnifier.events import (
+    SettingsSetMagnifierDividerThicknessEvent,
+    SettingsToggleMagnifierDividerVisibilityEvent,
+)
+from ui.canvas_features.magnifier.store import active_magnifier_id, magnifier_enabled
 
 class ViewportActions:
     def __init__(self, controller):
         self.controller = controller
+        self._scene_state = MagnifierStoreService(controller.store)
+        self._mode_state = MagnifierModeService(controller.store)
+
+    @staticmethod
+    def _resolve_new_magnifier_position(active) -> Point:
+        if active is None or getattr(active, "position", None) is None:
+            return Point(0.5, 0.5)
+
+        base_x = float(active.position.x)
+        base_y = float(active.position.y)
+        size = float(getattr(active, "size_relative", 0.2) or 0.2)
+        step = max(0.06, min(0.32, size * 1.25))
+
+        dir_x = -1.0 if base_x >= 0.7 else 1.0
+        dir_y = -1.0 if base_y >= 0.7 else 1.0
+
+        capture_size = float(getattr(active, "capture_size_relative", 0.1) or 0.1)
+        safe_margin = max(0.05, min(0.2, capture_size * 0.6))
+        min_pos = safe_margin
+        max_pos = 1.0 - safe_margin
+        if min_pos > max_pos:
+            min_pos, max_pos = 0.1, 0.9
+
+        return Point(
+            max(min_pos, min(max_pos, base_x + (dir_x * step))),
+            max(min_pos, min(max_pos, base_y + (dir_y * step))),
+        )
 
     def toggle_orientation(self, is_horizontal_checked: bool):
         if self.controller.event_bus:
@@ -39,7 +68,7 @@ class ViewportActions:
             "is_horizontal", is_horizontal_checked
         )
         self.controller.settings_manager._save_setting(
-            "magnifier_is_horizontal", is_horizontal_checked
+            "magnifier_layout_horizontal", is_horizontal_checked
         )
 
     def toggle_magnifier(self, use_magnifier_checked: bool):
@@ -48,46 +77,21 @@ class ViewportActions:
                 ViewportToggleMagnifierEvent(use_magnifier_checked)
             )
         else:
-            dispatcher = getattr(self.controller.store, "_dispatcher", None)
-            if dispatcher:
-                from core.state_management.actions import (
-                    SetActiveMagnifierIdAction,
-                    ToggleMagnifierAction,
-                )
-
-                dispatcher.dispatch(
-                    ToggleMagnifierAction(use_magnifier_checked), scope="viewport"
-                )
-                if (
-                    use_magnifier_checked
-                    and not self.controller.store.viewport.view_state.active_magnifier_id
-                ):
-                    dispatcher.dispatch(
-                        SetActiveMagnifierIdAction("default"), scope="viewport"
-                    )
-            elif (
-                self.controller.store
-                and self.controller.store.viewport.view_state.use_magnifier
-                != use_magnifier_checked
-            ):
-                self.controller.store.viewport.view_state.use_magnifier = use_magnifier_checked
-                if (
-                    use_magnifier_checked
-                    and not self.controller.store.viewport.view_state.active_magnifier_id
-                ):
-                    self.controller.store.viewport.view_state.active_magnifier_id = "default"
+            if self.controller.store:
+                self._mode_state.toggle_from_button(use_magnifier_checked)
                 self.controller.store.emit_state_change()
                 self.controller.update_requested.emit()
-
+                return
         self.controller.settings_manager._save_setting(
-            "use_magnifier", use_magnifier_checked
+            "use_magnifier",
+            magnifier_enabled(self.controller.store.viewport.view_state),
         )
         self.controller.settings_manager.settings.sync()
 
         window_shell = self.controller.window_shell
         if window_shell is not None:
             def update_ui():
-                actual_state = self.controller.store.viewport.view_state.use_magnifier
+                actual_state = self._mode_state.should_show_panel()
                 window_shell.toggle_magnifier_panel_visibility(actual_state)
 
             QTimer.singleShot(10, update_ui)
@@ -135,7 +139,7 @@ class ViewportActions:
                 ViewportToggleMagnifierOrientationEvent(is_horizontal_checked)
             )
         self.controller.settings_manager._save_setting(
-            "magnifier_is_horizontal", is_horizontal_checked
+            "magnifier_layout_horizontal", is_horizontal_checked
         )
 
     def toggle_freeze_magnifier(self, freeze_checked: bool):
@@ -144,7 +148,7 @@ class ViewportActions:
                 ViewportToggleFreezeMagnifierEvent(freeze_checked)
             )
         self.controller.settings_manager._save_setting(
-            "freeze_magnifier", freeze_checked
+            "magnifier_freeze", freeze_checked
         )
 
     def on_slider_released(self, setting_name: str, value_to_save_provider):
@@ -176,27 +180,6 @@ class ViewportActions:
             self.controller.event_bus.emit(AnalysisSetDiffModeEvent(mode))
             self.controller.event_bus.emit(ViewportUpdateMagnifierCombinedStateEvent())
 
-    def toggle_divider_line_visibility(self, visible: bool):
-        if self.controller.event_bus:
-            self.controller.event_bus.emit(
-                SettingsToggleDividerLineVisibilityEvent(visible)
-            )
-        elif self.controller.settings and hasattr(
-            self.controller.settings, "toggle_divider_line_visibility"
-        ):
-            self.controller.settings.toggle_divider_line_visibility(visible)
-
-    def set_divider_line_thickness(self, thickness: int):
-        is_visible = thickness > 0
-        if self.controller.event_bus:
-            self.controller.event_bus.emit(
-                SettingsToggleDividerLineVisibilityEvent(is_visible)
-            )
-            self.controller.event_bus.emit(
-                SettingsSetDividerLineThicknessEvent(thickness)
-            )
-        self.controller.update_requested.emit()
-
     def set_magnifier_divider_thickness(self, thickness: int):
         is_visible = thickness > 0
         if self.controller.event_bus:
@@ -213,13 +196,16 @@ class ViewportActions:
         if dispatcher:
             from core.state_management.actions import (
                 InvalidateRenderCacheAction,
-                SetShowMagnifierGuidesAction,
             )
+            from ui.canvas_features.guides.actions import SetGuidesEnabledAction
 
-            dispatcher.dispatch(SetShowMagnifierGuidesAction(enabled), scope="viewport")
+            dispatcher.dispatch(SetGuidesEnabledAction(enabled), scope="viewport")
             dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
         else:
-            self.controller.store.viewport.render_config.show_magnifier_guides = enabled
+            from ui.canvas_features.guides.state import get_guides_widget_state
+
+            state = get_guides_widget_state(self.controller.store.viewport.view_state)
+            state.enabled = bool(enabled)
             self.controller.store.invalidate_render_cache()
         self.controller.store.emit_state_change()
         self.controller.update_requested.emit()
@@ -229,20 +215,25 @@ class ViewportActions:
         if dispatcher:
             from core.state_management.actions import (
                 InvalidateRenderCacheAction,
-                SetMagnifierGuidesThicknessAction,
-                SetShowMagnifierGuidesAction,
+            )
+            from ui.canvas_features.guides.actions import (
+                SetGuidesEnabledAction,
+                SetGuidesThicknessAction,
             )
 
             dispatcher.dispatch(
-                SetMagnifierGuidesThicknessAction(thickness), scope="viewport"
+                SetGuidesThicknessAction(thickness), scope="viewport"
             )
             dispatcher.dispatch(
-                SetShowMagnifierGuidesAction(thickness != 0), scope="viewport"
+                SetGuidesEnabledAction(thickness != 0), scope="viewport"
             )
             dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
         else:
-            self.controller.store.viewport.render_config.magnifier_guides_thickness = thickness
-            self.controller.store.viewport.render_config.show_magnifier_guides = thickness != 0
+            from ui.canvas_features.guides.state import get_guides_widget_state
+
+            state = get_guides_widget_state(self.controller.store.viewport.view_state)
+            state.thickness = max(0, int(thickness))
+            state.enabled = thickness != 0
             self.controller.store.invalidate_render_cache()
         self.controller.store.emit_state_change()
         self.controller.update_requested.emit()
@@ -250,27 +241,31 @@ class ViewportActions:
     def add_magnifier(self, position: Point = None):
         if not self.controller.magnifier:
             return
-        self.controller.magnifier.add_magnifier(position=position or Point(0.5, 0.5))
+        self._mode_state.prepare_for_add()
+        if position is None:
+            active = self._scene_state.get_active_or_first_magnifier()
+            position = self._resolve_new_magnifier_position(active)
+        self.controller.magnifier.add_magnifier(position=position)
+        self.controller.store.invalidate_render_cache()
         self.controller.store.emit_state_change()
         self.controller.update_requested.emit()
 
     def remove_active_magnifier(self):
         if not self.controller.magnifier:
             return
-        active = self.controller.store.viewport.view_state.active_magnifier_id
+        if len(self._scene_state.iter_magnifiers()) <= 1:
+            return
+        active = active_magnifier_id(self.controller.store.viewport.view_state)
         if active:
             self.controller.magnifier.remove_magnifier(active)
+            self._mode_state.normalize_after_remove()
+            self.controller.store.invalidate_render_cache()
             self.controller.store.emit_state_change()
             self.controller.update_requested.emit()
 
     def set_active_magnifier(self, mag_id: str):
-        dispatcher = getattr(self.controller.store, "_dispatcher", None)
-        if dispatcher:
-            from core.state_management.actions import SetActiveMagnifierIdAction
-
-            dispatcher.dispatch(SetActiveMagnifierIdAction(mag_id), scope="viewport")
-        else:
-            self.controller.store.viewport.view_state.active_magnifier_id = mag_id
+        self._scene_state.set_active_object(mag_id)
+        self.controller.store.invalidate_render_cache()
         self.controller.store.emit_state_change()
         self.controller.update_requested.emit()
 
@@ -278,6 +273,7 @@ class ViewportActions:
         if not self.controller.magnifier:
             return
         self.controller.magnifier.set_magnifier_visibility(mag_id, visible)
+        self.controller.store.invalidate_render_cache()
         self.controller.store.emit_state_change()
         self.controller.update_requested.emit()
 

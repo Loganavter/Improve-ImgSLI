@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import logging
 from PyQt6 import sip
 from PyQt6.QtCore import QElapsedTimer, QTimer, Qt
 
@@ -15,11 +16,25 @@ from events.app_event.common import (
     get_main_controller,
     schedule_image_canvas_update,
 )
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import magnifier_enabled
+
+logger = logging.getLogger("ImproveImgSLI")
 
 class InteractiveMovementController:
+    MAGNIFIER_KEYS = {
+        Qt.Key.Key_A,
+        Qt.Key.Key_D,
+        Qt.Key.Key_W,
+        Qt.Key.Key_S,
+        Qt.Key.Key_Q,
+        Qt.Key.Key_E,
+    }
+
     def __init__(self, store, presenter_provider, parent=None):
         self.store = store
         self._presenter_provider = presenter_provider
+        self._scene_state = MagnifierStoreService(store)
 
         self.movement_timer = QTimer(parent)
 
@@ -29,6 +44,7 @@ class InteractiveMovementController:
         self.movement_elapsed_timer = QElapsedTimer()
         self.last_update_elapsed = 0
         self._last_input_dirs = (0, 0, 0)
+        self._last_debug_signature = None
 
     @property
     def presenter(self):
@@ -38,6 +54,18 @@ class InteractiveMovementController:
         viewport_ctrl = getattr(get_main_controller(self.presenter), "viewport_plugin", None)
         if viewport_ctrl is not None and hasattr(viewport_ctrl, "begin_user_interaction"):
             viewport_ctrl.begin_user_interaction()
+
+        active_magnifier = self._scene_state.get_active_or_first_magnifier()
+        if active_magnifier is not None:
+            self.store.viewport.interaction_state.magnifier_offset_relative_visual = (
+                active_magnifier.offset_relative
+            )
+            self.store.viewport.interaction_state.magnifier_spacing_relative_visual = (
+                active_magnifier.spacing_relative
+            )
+            self.store.viewport.interaction_state.magnifier_internal_split_visual = (
+                active_magnifier.internal_split
+            )
 
         if not self.store.viewport.view_state.optimize_magnifier_movement:
             self.store.viewport.interaction_state.is_interactive_mode = False
@@ -106,11 +134,15 @@ class InteractiveMovementController:
         emit_update_request(self.presenter)
 
     def _apply_keyboard_input(self, delta_time_sec: float) -> bool:
-        if not self.store.viewport.interaction_state.pressed_keys or not self.store.viewport.view_state.use_magnifier:
+        keys = {
+            key
+            for key in self.store.viewport.interaction_state.pressed_keys
+            if key in self.MAGNIFIER_KEYS
+        }
+        if not keys or not magnifier_enabled(self.store.viewport.view_state):
+            self._log_input_resolution(keys, 0, 0, 0, note="no_keys_or_disabled")
             self._last_input_dirs = (0, 0, 0)
             return False
-
-        keys = self.store.viewport.interaction_state.pressed_keys
         dx_dir = self._resolve_axis_direction(
             keys,
             self.store.viewport.interaction_state.last_horizontal_movement_key,
@@ -131,8 +163,11 @@ class InteractiveMovementController:
         )
 
         if dx_dir == 0 and dy_dir == 0 and ds_dir == 0:
+            self._log_input_resolution(keys, dx_dir, dy_dir, ds_dir, note="zero_dirs")
             self._last_input_dirs = (0, 0, 0)
             return False
+
+        self._log_input_resolution(keys, dx_dir, dy_dir, ds_dir)
 
         speed_factor = (
             self.store.viewport.view_state.movement_speed_per_sec * AppConstants.BASE_MOVEMENT_SPEED
@@ -140,7 +175,11 @@ class InteractiveMovementController:
 
         previous_dirs = self._last_input_dirs
         self._last_input_dirs = (dx_dir, dy_dir, ds_dir)
-        new_offset = self.store.viewport.view_state.magnifier_offset_relative
+        active_magnifier = self._scene_state.get_active_or_first_magnifier()
+        if active_magnifier is None:
+            return False
+        current_offset = active_magnifier.offset_relative
+        new_offset = current_offset
         offset_changed = False
         if dx_dir != 0 or dy_dir != 0:
             length = math.sqrt(dx_dir**2 + dy_dir**2)
@@ -148,7 +187,7 @@ class InteractiveMovementController:
                 dx_dir /= length
                 dy_dir /= length
 
-            old_offset = self.store.viewport.view_state.magnifier_offset_relative
+            old_offset = current_offset
             delta_x = dx_dir * speed_factor * delta_time_sec
             delta_y = dy_dir * speed_factor * delta_time_sec
             new_offset = Point(old_offset.x + delta_x, old_offset.y + delta_y)
@@ -158,13 +197,14 @@ class InteractiveMovementController:
             )
 
         if offset_changed:
-            self.store.viewport.view_state.magnifier_offset_relative = new_offset
+            self._scene_state.set_active_magnifier_offset(new_offset)
             self._snap_visual_offset_on_direction_change(previous_dirs, self._last_input_dirs)
             self.store.emit_viewport_change("interaction")
 
-        after_emit = self.store.viewport.view_state.magnifier_offset_relative
+        refreshed_magnifier = self._scene_state.get_active_or_first_magnifier()
+        after_emit = refreshed_magnifier.offset_relative if refreshed_magnifier is not None else new_offset
         if after_emit != new_offset:
-            self.store.viewport.view_state.magnifier_offset_relative = after_emit
+            self._scene_state.set_active_magnifier_offset(after_emit)
 
         spacing_changed = False
         if ds_dir != 0:
@@ -175,18 +215,22 @@ class InteractiveMovementController:
         self, speed_factor: float, delta_time_sec: float, ds_dir: int
     ) -> bool:
         viewport = self.store.viewport
-        if not (viewport.view_state.magnifier_visible_left and viewport.view_state.magnifier_visible_right):
+        active_magnifier = self._scene_state.get_active_or_first_magnifier()
+        if active_magnifier is None:
+            return False
+        if not (active_magnifier.visible_left and active_magnifier.visible_right):
             return False
 
         delta_spacing = ds_dir * speed_factor * delta_time_sec * 0.35
-        old_spacing = viewport.view_state.magnifier_spacing_relative
-        new_spacing = viewport.view_state.magnifier_spacing_relative + delta_spacing
-        viewport.view_state.magnifier_spacing_relative = max(
+        old_spacing = active_magnifier.spacing_relative
+        new_spacing = active_magnifier.spacing_relative + delta_spacing
+        clamped_spacing = max(
             AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE,
             min(AppConstants.MAX_MAGNIFIER_SPACING_RELATIVE, new_spacing),
         )
+        self._scene_state.set_active_magnifier_spacing(clamped_spacing)
         changed = not math.isclose(
-            viewport.view_state.magnifier_spacing_relative,
+            clamped_spacing,
             old_spacing,
             abs_tol=1e-9,
         )
@@ -195,7 +239,7 @@ class InteractiveMovementController:
         return changed
 
     def _emit_magnifier_combined_state(self) -> None:
-        if not self.store.viewport.view_state.use_magnifier:
+        if not magnifier_enabled(self.store.viewport.view_state):
             return
         event_bus = get_event_bus(self.presenter)
         if event_bus is not None:
@@ -208,29 +252,44 @@ class InteractiveMovementController:
             if interaction_state is not None
             else set()
         )
+        movement_keys_pressed = any(key in self.MAGNIFIER_KEYS for key in pressed_keys_set)
         is_user_inputting = (
             self.store.viewport.interaction_state.is_dragging_split_line
             or self.store.viewport.interaction_state.is_dragging_capture_point
             or self.store.viewport.interaction_state.is_dragging_split_in_magnifier
             or self.store.viewport.interaction_state.is_dragging_any_slider
-            or bool(pressed_keys_set)
+            or movement_keys_pressed
         )
 
         optimize_movement = self.store.viewport.view_state.optimize_magnifier_movement
-        target_offset = self.store.viewport.view_state.magnifier_offset_relative
+        active_magnifier = self._scene_state.get_active_or_first_magnifier()
+        if active_magnifier is None:
+            return not is_user_inputting
+        target_offset = active_magnifier.offset_relative
+        target_spacing = active_magnifier.spacing_relative
+        target_internal_split = active_magnifier.internal_split
         if optimize_movement:
             new_offset_visual = self._damp_vector(
-                self.store.viewport.view_state.magnifier_offset_relative_visual,
+                self.store.viewport.interaction_state.magnifier_offset_relative_visual,
                 target_offset,
                 20.0,
                 delta_time_sec,
             )
             new_spacing_visual = self._damp(
-                self.store.viewport.view_state.magnifier_spacing_relative_visual,
-                self.store.viewport.view_state.magnifier_spacing_relative,
+                self.store.viewport.interaction_state.magnifier_spacing_relative_visual,
+                target_spacing,
                 25.0,
                 delta_time_sec,
             )
+            if self.store.viewport.interaction_state.is_dragging_split_in_magnifier:
+                new_internal_split_visual = target_internal_split
+            else:
+                new_internal_split_visual = self._damp(
+                    self.store.viewport.interaction_state.magnifier_internal_split_visual,
+                    target_internal_split,
+                    25.0,
+                    delta_time_sec,
+                )
             if self.store.viewport.interaction_state.is_dragging_split_line:
                 new_split_visual = self.store.viewport.view_state.split_position
             else:
@@ -242,18 +301,24 @@ class InteractiveMovementController:
                 )
         else:
             new_offset_visual = target_offset
-            new_spacing_visual = self.store.viewport.view_state.magnifier_spacing_relative
+            new_spacing_visual = target_spacing
+            new_internal_split_visual = target_internal_split
             new_split_visual = self.store.viewport.view_state.split_position
 
-        self.store.viewport.view_state.magnifier_offset_relative_visual = new_offset_visual
-        self.store.viewport.view_state.magnifier_spacing_relative_visual = new_spacing_visual
+        self.store.viewport.interaction_state.magnifier_offset_relative_visual = new_offset_visual
+        self.store.viewport.interaction_state.magnifier_spacing_relative_visual = new_spacing_visual
+        self.store.viewport.interaction_state.magnifier_internal_split_visual = (
+            new_internal_split_visual
+        )
         self.store.viewport.view_state.split_position_visual = new_split_visual
         self._sync_fast_magnifier_preview()
 
         stop_threshold = 0.0005
         is_converged = (
             self._is_close(new_offset_visual, target_offset, stop_threshold)
-            and abs(new_spacing_visual - self.store.viewport.view_state.magnifier_spacing_relative)
+            and abs(new_spacing_visual - target_spacing)
+            < stop_threshold
+            and abs(new_internal_split_visual - target_internal_split)
             < stop_threshold
             and abs(new_split_visual - self.store.viewport.view_state.split_position)
             < stop_threshold
@@ -262,11 +327,21 @@ class InteractiveMovementController:
 
     def _finish_interactive_cycle(self) -> None:
         self.movement_timer.stop()
-        self.store.viewport.view_state.magnifier_offset_relative_visual = (
-            self.store.viewport.view_state.magnifier_offset_relative
+        active_magnifier = self._scene_state.get_active_or_first_magnifier()
+        self.store.viewport.interaction_state.magnifier_offset_relative_visual = (
+            active_magnifier.offset_relative
+            if active_magnifier is not None
+            else Point(0.0, 0.0)
         )
-        self.store.viewport.view_state.magnifier_spacing_relative_visual = (
-            self.store.viewport.view_state.magnifier_spacing_relative
+        self.store.viewport.interaction_state.magnifier_spacing_relative_visual = (
+            active_magnifier.spacing_relative
+            if active_magnifier is not None
+            else 0.0
+        )
+        self.store.viewport.interaction_state.magnifier_internal_split_visual = (
+            active_magnifier.internal_split
+            if active_magnifier is not None
+            else 0.5
         )
         self.store.viewport.view_state.split_position_visual = self.store.viewport.view_state.split_position
         self.store.viewport.interaction_state.is_interactive_mode = False
@@ -284,12 +359,7 @@ class InteractiveMovementController:
         if image_label is None or sip.isdeleted(image_label):
             return
         if hasattr(image_canvas_presenter, "view") and image_canvas_presenter.view.is_gl_canvas():
-            if image_canvas_presenter.view.supports_legacy_gl_magnifier():
-                image_canvas_presenter.magnifier.render_gl_fast()
-            else:
-                image_canvas_presenter.magnifier.render_layer(
-                    image_canvas_presenter.magnifier.get_signature()
-                )
+            image_canvas_presenter.magnifier.render_gl_fast()
         elif hasattr(image_canvas_presenter, "view"):
             image_canvas_presenter.view.sync_widget_overlay_coords()
 
@@ -297,12 +367,47 @@ class InteractiveMovementController:
         prev_dx, prev_dy, _ = previous_dirs
         cur_dx, cur_dy, _ = current_dirs
         viewport = self.store.viewport
-        visual = viewport.view_state.magnifier_offset_relative_visual
-        target = viewport.view_state.magnifier_offset_relative
+        visual = viewport.interaction_state.magnifier_offset_relative_visual
+        active_magnifier = self._scene_state.get_active_or_first_magnifier()
+        if active_magnifier is None:
+            return
+        target = active_magnifier.offset_relative
         snapped_x = target.x if prev_dx and cur_dx and prev_dx != cur_dx else visual.x
         snapped_y = target.y if prev_dy and cur_dy and prev_dy != cur_dy else visual.y
         if snapped_x != visual.x or snapped_y != visual.y:
-            viewport.view_state.magnifier_offset_relative_visual = Point(snapped_x, snapped_y)
+            viewport.interaction_state.magnifier_offset_relative_visual = Point(
+                snapped_x, snapped_y
+            )
+
+    def _log_input_resolution(
+        self,
+        keys,
+        dx_dir: int,
+        dy_dir: int,
+        ds_dir: int,
+        *,
+        note: str | None = None,
+    ) -> None:
+        interaction = self.store.viewport.interaction_state
+        signature = (
+            tuple(sorted(int(key) for key in keys)),
+            None
+            if interaction.last_horizontal_movement_key is None
+            else int(interaction.last_horizontal_movement_key),
+            None
+            if interaction.last_vertical_movement_key is None
+            else int(interaction.last_vertical_movement_key),
+            None
+            if interaction.last_spacing_movement_key is None
+            else int(interaction.last_spacing_movement_key),
+            int(dx_dir),
+            int(dy_dir),
+            int(ds_dir),
+            note or "",
+        )
+        if signature == self._last_debug_signature:
+            return
+        self._last_debug_signature = signature
 
     @staticmethod
     def _resolve_axis_direction(keys, last_key, *, negative_key: int, positive_key: int) -> int:

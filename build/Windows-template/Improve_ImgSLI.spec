@@ -5,6 +5,8 @@ import importlib.util
 import os
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules
+
 block_cipher = None
 
 SPEC_DIR = Path(SPEC).resolve().parent
@@ -316,6 +318,11 @@ APP_HIDDENIMPORTS = [
     "workers.image_rendering_worker",
     "resources.translations",
 ]
+
+APP_HIDDENIMPORTS.extend(collect_submodules("plugins"))
+APP_HIDDENIMPORTS.extend(collect_submodules("ui.canvas_features"))
+APP_HIDDENIMPORTS.extend(collect_submodules("ui.canvas_infra.scene"))
+APP_HIDDENIMPORTS.extend(collect_submodules("ui.widgets.gl_canvas"))
 
 a = Analysis(
     [str(REPO_ROOT / "src" / "__main__.py")],

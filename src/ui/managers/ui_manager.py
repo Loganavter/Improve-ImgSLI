@@ -33,10 +33,10 @@ class UIManager(QObject):
         self._unified_flyout_ref = None
 
         self._active_message_boxes = []
+        self.transient = TransientUIManager(self)
         initialize_ui_manager(self)
         self.dialogs = DialogManager(self)
         self.messages = MessageManager(self)
-        self.transient = TransientUIManager(self)
 
     def get_plugin_action(self, action_id: str) -> Callable[..., Any] | None:
         if self.plugin_ui_registry:
@@ -110,6 +110,15 @@ class UIManager(QObject):
 
     def _hide_magnifier_visibility_flyout(self):
         self.transient.hide_magnifier_visibility_flyout()
+
+    def _show_magnifier_instances_popup(self):
+        self.transient.show_magnifier_instances_popup()
+
+    def _hide_magnifier_instances_popup(self):
+        self.transient.hide_magnifier_instances_popup()
+
+    def _on_magnifier_instances_count_changed(self):
+        self.transient.on_magnifier_instances_count_changed()
 
     def eventFilter(self, watched, event):
         app = QApplication.instance()

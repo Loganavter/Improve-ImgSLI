@@ -1,15 +1,27 @@
 import logging
+from PyQt6.QtCore import QSignalBlocker
 from resources.translations import tr
 from shared_toolkit.ui.icon_manager import AppIcon
+from ui.canvas_features.magnifier import MagnifierModeService, MagnifierStoreService
+from ui.canvas_features.magnifier.store import (
+    active_or_default_divider_thickness,
+    active_or_default_divider_visible,
+    default_capture_size,
+    default_magnifier_size,
+)
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_bindings
+from ui.canvas_infra.viewport.state import get_zoom_level
 
 logger = logging.getLogger("ImproveImgSLI")
 
-def show_divider_color_picker(presenter):
-    settings_presenter = _get_settings_presenter_from_window(presenter)
-    if settings_presenter:
-        settings_presenter.show_divider_color_picker()
-    else:
-        logger.warning("ToolbarPresenter: settings_presenter not found")
+def _set_slider_value_quietly(slider, value: int) -> None:
+    if slider.value() == value:
+        return
+    blocker = QSignalBlocker(slider)
+    try:
+        slider.setValue(value)
+    finally:
+        del blocker
 
 def show_magnifier_divider_color_picker(presenter):
     settings_presenter = _get_settings_presenter_from_window(presenter)
@@ -35,23 +47,38 @@ def check_name_lengths(presenter):
         presenter.ui.update_name_length_warning("", "", False)
 
 def update_toolbar_states(presenter):
-    presenter.ui.btn_orientation.setChecked(
-        presenter.store.viewport.view_state.is_horizontal, emit_signal=False
+    scene_state = MagnifierStoreService(presenter.store)
+    mode_service = MagnifierModeService(presenter.store)
+    active_magnifier = scene_state.get_active_or_first_magnifier()
+    magnifier_is_horizontal = bool(active_magnifier.is_horizontal) if active_magnifier is not None else False
+    magnifier_size = (
+        float(active_magnifier.size_relative)
+        if active_magnifier is not None
+        else float(default_magnifier_size(presenter.store.viewport.view_state))
+    )
+    capture_size = (
+        float(active_magnifier.capture_size_relative)
+        if active_magnifier is not None
+        else float(default_capture_size(presenter.store.viewport.view_state))
     )
     presenter.ui.btn_magnifier_orientation.setChecked(
-        presenter.store.viewport.view_state.magnifier_is_horizontal, emit_signal=False
+        magnifier_is_horizontal, emit_signal=False
     )
     presenter.ui.btn_magnifier.setChecked(
-        presenter.store.viewport.view_state.use_magnifier, emit_signal=False
+        mode_service.resolve_button_checked(active_magnifier), emit_signal=False
     )
+    if hasattr(presenter.ui, "btn_magnifier_instances"):
+        count = len(scene_state.iter_magnifiers())
+        presenter.ui.btn_magnifier_instances.set_magnifier_count(count if count > 0 else 1)
+        presenter.ui.btn_magnifier_instances.set_can_remove(count > 1)
     presenter.ui.btn_freeze.setChecked(
-        presenter.store.viewport.view_state.freeze_magnifier, emit_signal=False
+        scene_state.are_all_magnifiers_frozen(), emit_signal=False
     )
     presenter.ui.btn_file_names.setChecked(
         presenter.store.viewport.render_config.include_file_names_in_saved, emit_signal=False
     )
     image_label = getattr(presenter.ui, "image_label", None)
-    zoom_level = float(getattr(image_label, "zoom_level", 1.0)) if image_label is not None else 1.0
+    zoom_level = get_zoom_level(image_label) if image_label is not None else 1.0
     file_names_temporarily_hidden = (
         presenter.store.viewport.render_config.include_file_names_in_saved and abs(zoom_level - 1.0) > 1e-6
     )
@@ -66,28 +93,27 @@ def update_toolbar_states(presenter):
         else tr("ui.include_file_names_in_saved_image", lang)
     )
 
-    divider_thickness = (
-        0
-        if not presenter.store.viewport.render_config.divider_line_visible
-        else presenter.store.viewport.render_config.divider_line_thickness
-    )
     magnifier_thickness = (
         0
-        if not presenter.store.viewport.render_config.magnifier_divider_visible
-        else presenter.store.viewport.render_config.magnifier_divider_thickness
+        if not active_or_default_divider_visible(presenter.store.viewport.view_state)
+        else active_or_default_divider_thickness(presenter.store.viewport.view_state)
     )
-
-    presenter.ui.btn_orientation.set_value(divider_thickness)
     presenter.ui.btn_magnifier_orientation.set_value(magnifier_thickness)
-    presenter.ui.slider_size.setValue(
-        int(presenter.store.viewport.view_state.magnifier_size_relative * 100)
+    _set_slider_value_quietly(
+        presenter.ui.slider_size,
+        int(magnifier_size * 100),
     )
-    presenter.ui.slider_capture.setValue(
-        int(presenter.store.viewport.view_state.capture_size_relative * 100)
+    _set_slider_value_quietly(
+        presenter.ui.slider_capture,
+        int(capture_size * 100),
     )
-    presenter.ui.slider_speed.setValue(
-        int(presenter.store.viewport.view_state.movement_speed_per_sec * 10)
+    _set_slider_value_quietly(
+        presenter.ui.slider_speed,
+        int(presenter.store.viewport.view_state.movement_speed_per_sec * 10),
     )
+    for binding in get_canvas_feature_toolbar_bindings():
+        if binding.sync_state is not None:
+            binding.sync_state(presenter)
 
 def on_color_option_clicked(presenter, option: str):
     settings_presenter = _get_settings_presenter_from_window(presenter)

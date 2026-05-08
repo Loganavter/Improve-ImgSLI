@@ -29,6 +29,12 @@
 - Clique no botão com ícone de laser na barra de ferramentas da lupa para ativá-las ou desativá-las.
 - A espessura dessas linhas pode ser ajustada rolando a roda do mouse sobre o mesmo botão.
 
+### Múltiplas Lupas
+- Lupas adicionais têm sua própria área de captura, linhas guia e cores individuais.
+- Quando **Colorir novas lupas automaticamente** está habilitado, cada nova lupa extra recebe o próximo conjunto de cores para facilitar a diferenciação entre instâncias.
+- Quando **Destacar interseções de lupas** está habilitado, arrastar uma área de captura destaca as partes cobertas por outras lupas.
+- Esse destaque é apenas uma sobreposição auxiliar do canvas e não entra no render/export final.
+
 ### Menu de Visibilidade (Esquerda/Centro/Direita)
 - Passe o mouse sobre o botão da Lupa para revelar um pequeno menu que permite alternar a visibilidade das partes esquerda, central e direita.
 - Você também pode abrir este menu rolando a roda do mouse sobre o botão da Lupa; neste caso, ele se oculta automaticamente após um curto período.

@@ -71,8 +71,8 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     ) -> None:
         if self.controller:
             return
-        extra_specs = self._collect_video_track_specs()
-        self.recorder = Recorder(self.store, extra_specs=extra_specs)
+        extra_adapters = self._collect_video_keyframe_adapters()
+        self.recorder = Recorder(self.store, extra_adapters=extra_adapters)
         self.video_exporter = VideoExporterService(
             self.recorder,
             self.store,
@@ -204,17 +204,17 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     def get_service(self) -> Any:
         return self.recorder
 
-    def _collect_video_track_specs(self) -> tuple[Any, ...]:
+    def _collect_video_keyframe_adapters(self) -> tuple[Any, ...]:
         if not self.plugin_coordinator:
             return ()
 
-        specs: list[Any] = []
+        adapters: list[Any] = []
         for plugin in self.plugin_coordinator.iter_plugins():
             if plugin is self:
                 continue
             if isinstance(plugin, IVideoTrackProvider):
-                specs.extend(plugin.get_video_track_specs())
-        return tuple(specs)
+                adapters.extend(plugin.get_video_keyframe_adapters())
+        return tuple(adapters)
 
     def provides_capability(self, capability: str) -> bool:
         return capability in self.capabilities

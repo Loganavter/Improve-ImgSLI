@@ -66,7 +66,7 @@ class VideoExportActions:
     def get_video_export_image(self, path: str, auto_crop: bool = False):
         if not self.controller.video_exporter:
             return None
-        return self.controller.video_exporter._get_image(path, auto_crop)
+        return self.controller.video_exporter.get_image(path, auto_crop)
 
     def cancel_video_export(self):
         if self.controller.video_exporter:

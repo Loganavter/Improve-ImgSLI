@@ -2,37 +2,26 @@ from __future__ import annotations
 
 from core.state_management.actions import (
     InvalidateRenderCacheAction,
-    SetCaptureRingColorAction,
-    SetDividerLineColorAction,
-    SetDividerLineThicknessAction,
-    SetDividerLineVisibleAction,
     SetDrawTextBackgroundAction,
     SetFileNameBgColorAction,
     SetFileNameColorAction,
     SetFontSizePercentAction,
     SetFontWeightAction,
     SetIncludeFileNamesInSavedAction,
-    SetMagnifierBorderColorAction,
-    SetMagnifierDividerColorAction,
-    SetMagnifierDividerThicknessAction,
-    SetMagnifierDividerVisibleAction,
-    SetMagnifierLaserColorAction,
     SetTextAlphaPercentAction,
     SetTextPlacementModeAction,
 )
 from domain.qt_adapters import color_to_hex
+from ui.canvas_infra.scene.property_access import (
+    deserialize_canvas_feature_setting,
+    get_canvas_feature_property_by_setting_key,
+    read_canvas_feature_property,
+    serialize_canvas_feature_setting,
+    write_canvas_feature_property,
+)
 
 VIEWPORT_GETTERS = {
     "include_file_names_in_saved": lambda store: store.viewport.render_config.include_file_names_in_saved,
-    "divider_line_visible": lambda store: store.viewport.render_config.divider_line_visible,
-    "divider_line_color": lambda store: store.viewport.render_config.divider_line_color,
-    "divider_line_thickness": lambda store: store.viewport.render_config.divider_line_thickness,
-    "magnifier_divider_visible": lambda store: store.viewport.render_config.magnifier_divider_visible,
-    "magnifier_divider_color": lambda store: store.viewport.render_config.magnifier_divider_color,
-    "magnifier_divider_thickness": lambda store: store.viewport.render_config.magnifier_divider_thickness,
-    "magnifier_border_color": lambda store: store.viewport.render_config.magnifier_border_color,
-    "magnifier_laser_color": lambda store: store.viewport.render_config.magnifier_laser_color,
-    "capture_ring_color": lambda store: store.viewport.render_config.capture_ring_color,
     "font_size_percent": lambda store: store.viewport.render_config.font_size_percent,
     "font_weight": lambda store: store.viewport.render_config.font_weight,
     "file_name_color": lambda store: store.viewport.render_config.file_name_color,
@@ -44,15 +33,6 @@ VIEWPORT_GETTERS = {
 
 VIEWPORT_ACTIONS = {
     "include_file_names_in_saved": SetIncludeFileNamesInSavedAction,
-    "divider_line_visible": SetDividerLineVisibleAction,
-    "divider_line_color": SetDividerLineColorAction,
-    "divider_line_thickness": SetDividerLineThicknessAction,
-    "magnifier_divider_visible": SetMagnifierDividerVisibleAction,
-    "magnifier_divider_color": SetMagnifierDividerColorAction,
-    "magnifier_divider_thickness": SetMagnifierDividerThicknessAction,
-    "magnifier_border_color": SetMagnifierBorderColorAction,
-    "magnifier_laser_color": SetMagnifierLaserColorAction,
-    "capture_ring_color": SetCaptureRingColorAction,
     "font_size_percent": SetFontSizePercentAction,
     "font_weight": SetFontWeightAction,
     "file_name_color": SetFileNameColorAction,
@@ -134,6 +114,36 @@ class SettingsMutationService:
             emit_scope=emit_scope,
             request_core_update=request_core_update,
         )
+
+    def set_canvas_feature_setting(
+        self,
+        setting_key: str,
+        raw_value,
+        *,
+        invalidate_render_cache: bool = False,
+        emit_scope: str | None = None,
+        request_core_update: bool = False,
+    ) -> bool:
+        prop = get_canvas_feature_property_by_setting_key(setting_key)
+        if prop is None:
+            raise KeyError(f"Unknown canvas feature setting key: {setting_key}")
+
+        current_channels = read_canvas_feature_property(self.store.viewport, prop)
+        next_channels = deserialize_canvas_feature_setting(prop, raw_value)
+        if current_channels == next_channels:
+            return False
+
+        write_canvas_feature_property(self.store.viewport, prop, next_channels)
+        self.settings_manager._save_setting(
+            setting_key,
+            serialize_canvas_feature_setting(prop, next_channels),
+        )
+        if invalidate_render_cache:
+            self.notifier.invalidate_render_cache()
+        self.notifier.emit_state_change(emit_scope)
+        if request_core_update:
+            self.notifier.request_core_update()
+        return True
 
     def apply_font_settings(
         self,

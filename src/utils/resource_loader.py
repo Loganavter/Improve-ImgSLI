@@ -6,6 +6,7 @@ from PIL import Image, ImageFont
 from PyQt6.QtCore import QPoint, QPointF, QRect
 
 from core.store import Store
+from ui.canvas_features.magnifier import MagnifierStoreService
 
 MIN_CAPTURE_THICKNESS = 2.0
 
@@ -167,8 +168,13 @@ def get_magnifier_drawing_coords(
     ):
         return empty_result
 
+    scene_state = MagnifierStoreService(store)
+    magnifier = scene_state.get_active_or_first_magnifier()
+    if magnifier is None:
+        return empty_result
+
     unified_ref_dim = min(unified_width, unified_height)
-    capture_size_on_unified = store.viewport.view_state.capture_size_relative * unified_ref_dim
+    capture_size_on_unified = float(magnifier.capture_size_relative) * unified_ref_dim
 
     drawing_ref_dim = max(1, min(drawing_width, drawing_height))
     thickness_on_unified = max(
@@ -188,7 +194,14 @@ def get_magnifier_drawing_coords(
         (capture_size_on_unified / 2.0) / unified_height if unified_height > 0 else 0.0
     )
 
-    raw_pos = store.viewport.view_state.capture_position_relative
+    interaction = getattr(store.viewport, "interaction_state", None)
+    use_visual_motion = bool(
+        interaction
+        and getattr(interaction, "is_interactive_mode", False)
+        and getattr(store.viewport.view_state, "optimize_magnifier_movement", True)
+    )
+
+    raw_pos = magnifier.position
 
     eff_rel_x = max(radius_rel_x, min(raw_pos.x, 1.0 - radius_rel_x))
     eff_rel_y = max(radius_rel_y, min(raw_pos.y, 1.0 - radius_rel_y))
@@ -229,31 +242,36 @@ def get_magnifier_drawing_coords(
     magnifier_size_pixels = 0
     edge_spacing_pixels = 0
 
-    if store.viewport.view_state.use_magnifier:
+    if bool(magnifier.visible):
         target_max_dim_drawing = float(max(drawing_width, drawing_height))
-        magnifier_size_pixels = max(
-            10,
-            int(round(store.viewport.view_state.magnifier_size_relative * target_max_dim_drawing)),
-        )
+        magnifier_size_pixels = max(10, int(round(magnifier.size_relative * target_max_dim_drawing)))
 
+        spacing_visual = (
+            float(getattr(interaction, "magnifier_spacing_relative_visual", magnifier.spacing_relative))
+            if use_visual_motion
+            else float(magnifier.spacing_relative)
+        )
         edge_spacing_pixels = max(
             0,
             int(
                 round(
-                    store.viewport.view_state.magnifier_spacing_relative_visual
-                    * target_max_dim_drawing
+                    spacing_visual * target_max_dim_drawing
                 )
             ),
         )
 
-        if store.viewport.view_state.freeze_magnifier and store.viewport.view_state.frozen_capture_point_relative:
-            base_pos_x = store.viewport.view_state.frozen_capture_point_relative.x
-            base_pos_y = store.viewport.view_state.frozen_capture_point_relative.y
+        if magnifier.freeze and magnifier.frozen_position:
+            base_pos_x = magnifier.frozen_position.x
+            base_pos_y = magnifier.frozen_position.y
         else:
             base_pos_x = eff_rel_x
             base_pos_y = eff_rel_y
 
-        offset_visual = store.viewport.view_state.magnifier_offset_relative_visual
+        offset_visual = (
+            getattr(interaction, "magnifier_offset_relative_visual", magnifier.offset_relative)
+            if use_visual_motion
+            else magnifier.offset_relative
+        )
 
         mid_x = int(
             round(
@@ -284,13 +302,13 @@ def get_magnifier_drawing_coords(
         )
 
         if is_visual_diff:
-            show_left = getattr(store.viewport.view_state, "magnifier_visible_left", True)
-            show_right = getattr(store.viewport.view_state, "magnifier_visible_right", True)
+            show_left = bool(magnifier.visible_left)
+            show_right = bool(magnifier.visible_right)
 
-            if store.viewport.view_state.is_magnifier_combined:
+            if scene_state.is_active_magnifier_combined():
 
                 shift = magnifier_size_pixels + 8
-                if not store.viewport.view_state.is_horizontal:
+                if not magnifier.is_horizontal:
 
                     rect_combined = safe_rect(
                         mid_x - r,
@@ -315,7 +333,7 @@ def get_magnifier_drawing_coords(
                     magnifier_size_pixels, magnifier_size_pixels + spacing_f
                 )
 
-                if not store.viewport.view_state.is_horizontal:
+                if not magnifier.is_horizontal:
 
                     center_left = safe_point(mid_x - offset_dist, mid_y)
                     center_right = safe_point(mid_x + offset_dist, mid_y)
@@ -343,14 +361,14 @@ def get_magnifier_drawing_coords(
                     magnifier_bbox_on_image = magnifier_bbox_on_image.united(rect_right)
 
         else:
-            if store.viewport.view_state.is_magnifier_combined:
+            if scene_state.is_active_magnifier_combined():
 
                 magnifier_bbox_on_image = rect_center
             else:
 
                 dist = r + int(round(edge_spacing_pixels / 2.0))
 
-                if not store.viewport.view_state.magnifier_is_horizontal:
+                if not magnifier.is_horizontal:
                     rect1 = safe_rect(
                         mid_x - dist - r,
                         mid_y - r,

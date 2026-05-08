@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 
 from PIL import Image
 
@@ -84,19 +83,7 @@ def build_cached_diff_image(
             progress_callback=progress_callback,
         ),
     }
-    started_at = time.perf_counter()
-    result = builders.get(diff_mode, lambda: None)()
-    elapsed_ms = (time.perf_counter() - started_at) * 1000.0
-    logger.debug(
-        "[DIFF_BUILD] mode=%s channel=%s size1=%s size2=%s result=%s elapsed_ms=%.1f",
-        diff_mode,
-        channel_mode,
-        getattr(processed1, "size", None),
-        getattr(prepared_image2, "size", None),
-        getattr(result, "size", None),
-        elapsed_ms,
-    )
-    return result
+    return builders.get(diff_mode, lambda: None)()
 
 def prepare_gl_background_layers_for_mode(
     image1,

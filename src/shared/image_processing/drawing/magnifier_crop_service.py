@@ -4,6 +4,7 @@ from PIL import Image
 
 from shared.image_processing.regions import compute_centered_box
 from shared.image_processing.resize import resample_image, resample_image_subpixel
+from ui.canvas_features.magnifier import MagnifierStoreService
 
 MIN_CAPTURE_THICKNESS = 2.0
 
@@ -26,20 +27,23 @@ class MagnifierCropService:
         try:
             w1, h1 = image1.size
             w2, h2 = image2.size
+            model = MagnifierStoreService(store).get_active_or_first_magnifier()
+            if model is None:
+                return ((0.0, 0.0, 1.0, 1.0), (0.0, 0.0, 1.0, 1.0))
 
             box1 = self.compute_single_crop_box_subpixel(
                 w1,
                 h1,
-                store.viewport.view_state.capture_position_relative.x,
-                store.viewport.view_state.capture_position_relative.y,
-                store.viewport.view_state.capture_size_relative,
+                model.position.x,
+                model.position.y,
+                model.capture_size_relative,
             )
             box2 = self.compute_single_crop_box_subpixel(
                 w2,
                 h2,
-                store.viewport.view_state.capture_position_relative.x,
-                store.viewport.view_state.capture_position_relative.y,
-                store.viewport.view_state.capture_size_relative,
+                model.position.x,
+                model.position.y,
+                model.capture_size_relative,
             )
 
             return box1, box2

@@ -43,6 +43,8 @@ class MainWindow(QWidget):
         self._main_app_revealed = False
         self._startup_expects_initial_canvas_content = False
         self._startup_visual_ready_emitted = False
+        self._startup_canvas_first_frame_rendered = False
+        self._startup_canvas_first_visual_ready = False
         self._offscreen_prewarm_active = False
         self._startup_controller = MainWindowStartupController()
         self._shutdown_pipeline = MainWindowShutdownPipeline()
@@ -104,7 +106,31 @@ class MainWindow(QWidget):
         self._app_host = QWidget(self)
         self._startup_stack.addWidget(self._app_host)
         self._startup_stack.setCurrentWidget(self._startup_placeholder)
+        self._startup_cover = QWidget(self)
+        self._startup_cover.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
+        self._startup_cover.hide()
         self.onboarding_overlay = None
+        self._sync_startup_cover_geometry()
+
+    def _sync_startup_cover_geometry(self):
+        if getattr(self, "_startup_cover", None) is None:
+            return
+        self._startup_cover.setGeometry(self.rect())
+        self._startup_cover.raise_()
+
+    def _show_startup_cover(self):
+        if getattr(self, "_startup_cover", None) is None:
+            return
+        self._sync_startup_cover_geometry()
+        self._startup_cover.show()
+        self._startup_cover.raise_()
+
+    def _hide_startup_cover(self):
+        if getattr(self, "_startup_cover", None) is None:
+            return
+        self._startup_cover.hide()
 
     def _should_show_onboarding(self) -> bool:
         return self.settings_manager.is_first_run()
@@ -120,10 +146,12 @@ class MainWindow(QWidget):
             self._startup_stack.insertWidget(0, self.onboarding_overlay)
         self.onboarding_overlay.resize(self.size())
         self._startup_stack.setCurrentWidget(self.onboarding_overlay)
+        self._hide_startup_cover()
 
     def _bootstrap_main_app(self):
         if self._main_app_bootstrapped:
             self._startup_stack.setCurrentWidget(self._app_host)
+            self._reveal_main_app_if_ready()
             return
 
         self.ui = Ui_ImageComparisonApp()
@@ -132,12 +160,12 @@ class MainWindow(QWidget):
         image_label: BaseCanvasProtocol = self.ui.image_label
         logger.debug("Main window UI bootstrapped")
         self._startup_expects_initial_canvas_content = self._has_initial_canvas_content()
+        self._startup_canvas_first_frame_rendered = False
+        self._startup_canvas_first_visual_ready = False
         self._update_image_label_background()
+        self._show_startup_cover()
         image_label.firstFrameRendered.connect(
-            self.ui.hide_image_startup_placeholder
-        )
-        image_label.firstFrameRendered.connect(
-            self._emit_startup_visual_ready
+            self._on_image_label_first_frame_rendered
         )
         image_label.firstFrameRendered.connect(
             lambda: logger.debug("Main window received image_label.firstFrameRendered")
@@ -178,8 +206,8 @@ class MainWindow(QWidget):
                 button.refresh_visual_state()
 
         self._startup_stack.setCurrentWidget(self._app_host)
-        self._main_app_revealed = True
         self._main_app_bootstrapped = True
+        self._reveal_main_app_if_ready()
 
     def _has_initial_canvas_content(self) -> bool:
         document = getattr(self.store, "document", None)
@@ -195,11 +223,70 @@ class MainWindow(QWidget):
             return bool(getattr(document, "image2_path", None) or getattr(document, "original_image2", None))
         return False
 
+    def _on_image_label_first_frame_rendered(self):
+        self._startup_canvas_first_frame_rendered = True
+        self._reveal_main_app_if_ready()
+
     def _on_image_label_first_visual_frame_ready(self):
+        self._startup_canvas_first_visual_ready = True
+        self._reveal_main_app_if_ready()
+
+    def _is_startup_canvas_ready(self) -> bool:
+        if self.onboarding_overlay is not None:
+            return True
+        if self.ui is None:
+            return False
         if self._startup_expects_initial_canvas_content:
+            return (
+                self._startup_canvas_first_frame_rendered
+                and self._startup_canvas_first_visual_ready
+                and self._is_startup_canvas_content_ready()
+            )
+        return self._startup_canvas_first_visual_ready
+
+    def _is_startup_canvas_content_ready(self) -> bool:
+        if self.ui is None:
+            return False
+        image_label = get_canvas(self.ui)
+        if image_label is None:
+            return False
+
+        source_ready = bool(getattr(image_label, "_source_images_ready", False))
+        if source_ready:
+            return True
+
+        uploaded = getattr(image_label, "_images_uploaded", None)
+        if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
+            return True
+
+        runtime_state = getattr(image_label, "runtime_state", None)
+        if runtime_state is not None:
+            uploaded = getattr(runtime_state, "_images_uploaded", None)
+            if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
+                return True
+            background = getattr(runtime_state, "_background_pixmap", None)
+            if background is not None and not background.isNull():
+                return True
+
+        stored_qimages = getattr(image_label, "_stored_qimages", None)
+        if isinstance(stored_qimages, (list, tuple)):
+            for image in stored_qimages:
+                if image is not None and not image.isNull():
+                    return True
+
+        return False
+
+    def _reveal_main_app_if_ready(self):
+        if self.ui is None:
             return
-        logger.debug("Main window hiding startup placeholder on first visual frame (empty startup)")
-        self.ui.hide_image_startup_placeholder()
+        if not self._is_startup_canvas_ready():
+            return
+        if not self._main_app_revealed:
+            self._startup_stack.setCurrentWidget(self._app_host)
+            self._main_app_revealed = True
+        if hasattr(self.ui, "hide_image_startup_placeholder"):
+            self.ui.hide_image_startup_placeholder()
+        self._hide_startup_cover()
         self._emit_startup_visual_ready()
 
     def _emit_startup_visual_ready(self):
@@ -262,6 +349,7 @@ class MainWindow(QWidget):
 
     def resizeEvent(self, event: QResizeEvent):
         super().resizeEvent(event)
+        self._sync_startup_cover_geometry()
         if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
             self.ui.sync_image_startup_placeholder()
 
@@ -310,6 +398,7 @@ class MainWindow(QWidget):
 
     def moveEvent(self, event: QEvent):
         super().moveEvent(event)
+        self._sync_startup_cover_geometry()
         if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
             self.ui.sync_image_startup_placeholder()
         if hasattr(self, "onboarding_overlay") and self.onboarding_overlay:
@@ -333,6 +422,7 @@ class MainWindow(QWidget):
             logger.debug("Main window showEvent (offscreen prewarm)")
         else:
             logger.debug("Main window showEvent")
+        self._sync_startup_cover_geometry()
         if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
             self.ui.sync_image_startup_placeholder()
         if self.onboarding_overlay is not None and not self._startup_visual_ready_emitted:
@@ -358,6 +448,8 @@ class MainWindow(QWidget):
     def _update_image_label_background(self):
         bg = self.theme_manager.get_color("label.image.background")
         bg_hex = bg.name(QColor.NameFormat.HexArgb)
+        self._startup_placeholder.setStyleSheet(f"background-color: {bg_hex};")
+        self._startup_cover.setStyleSheet(f"background-color: {bg_hex};")
         image_label = get_canvas(self.ui) if self.ui is not None else None
         if image_label is not None:
             pal = image_label.palette()
