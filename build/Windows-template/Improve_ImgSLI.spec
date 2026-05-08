@@ -3,6 +3,7 @@
 import importlib
 import importlib.util
 import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
@@ -11,6 +12,9 @@ block_cipher = None
 
 SPEC_DIR = Path(SPEC).resolve().parent
 REPO_ROOT = SPEC_DIR.parents[1]
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 ICON_PATH = SPEC_DIR / "icons" / "icon.ico"
 QT_RUNTIME_HOOK = SPEC_DIR / "pyi_rth_pyqt6_windows.py"
 QT_CONF_PATH = SPEC_DIR / "qt.conf"
