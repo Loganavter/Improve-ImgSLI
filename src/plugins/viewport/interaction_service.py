@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from domain.types import Point
+from ui.canvas_features.magnifier import MagnifierStoreService
 
 class ViewportInteractionService:
     def __init__(self, runtime, store):
         self.runtime = runtime
         self.store = store
+        self.scene_state = MagnifierStoreService(store)
         self._interaction_session_counter = int(
             getattr(self.store.viewport.interaction_state, "interaction_session_id", 0)
         )
@@ -32,7 +34,11 @@ class ViewportInteractionService:
         self.runtime.capture_recording_checkpoint(force_advance_frame=True)
 
     def clamp_capture_position(self):
-        capture_pos = self.store.viewport.view_state.capture_position_relative
+        model = self.scene_state.get_active_or_first_magnifier()
+        if model is None:
+            return
+        capture_pos = model.position
+        capture_size_relative = model.capture_size_relative
         if not self.store.viewport.session_data.image_state.image1:
             return
 
@@ -41,17 +47,24 @@ class ViewportInteractionService:
             return
 
         ref_dim = min(unified_w, unified_h)
-        capture_size_px = self.store.viewport.view_state.capture_size_relative * ref_dim
+        capture_size_px = capture_size_relative * ref_dim
         radius_rel_x = (capture_size_px / 2.0) / unified_w if unified_w > 0 else 0
         radius_rel_y = (capture_size_px / 2.0) / unified_h if unified_h > 0 else 0
 
-        self.store.viewport.view_state.capture_position_relative = Point(
+        clamped = Point(
             max(radius_rel_x, min(capture_pos.x, 1.0 - radius_rel_x)),
             max(radius_rel_y, min(capture_pos.y, 1.0 - radius_rel_y)),
         )
+        self.scene_state.move_object_source_position(model.id, clamped)
 
     def compute_unfreeze_offset(self):
-        frozen = self.store.viewport.view_state.frozen_capture_point_relative
+        model = self.scene_state.get_active_magnifier()
+        return self.compute_unfreeze_offset_for(model)
+
+    def compute_unfreeze_offset_for(self, model):
+        if model is None:
+            return None
+        frozen = model.frozen_position
         if not frozen:
             return None
 
@@ -61,8 +74,8 @@ class ViewportInteractionService:
             return None
 
         target_max_dim = float(max(drawing_width, drawing_height))
-        offset = self.store.viewport.view_state.magnifier_offset_relative
-        capture = self.store.viewport.view_state.capture_position_relative
+        offset = model.offset_relative
+        capture = model.position
 
         frozen_px_x = frozen.x * drawing_width
         frozen_px_y = frozen.y * drawing_height

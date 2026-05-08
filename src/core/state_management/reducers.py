@@ -1,4 +1,5 @@
 from dataclasses import replace
+from domain.types import Point
 
 from core.store import (
     DocumentModel,
@@ -12,6 +13,8 @@ from core.store import (
     ViewState,
     ViewportState,
 )
+from core.store_viewport import MagnifierModel
+from ui.canvas_infra.scene.widget_registry import get_canvas_widget_features
 
 from .actions import (
     Action,
@@ -25,16 +28,12 @@ from .actions import (
     SetAutoCropBlackBordersAction,
     SetCachedDiffImageAction,
     SetCachedScaledImageDimsAction,
-    SetCaptureRingColorAction,
     SetCaptureSizeRelativeAction,
     SetChannelViewModeAction,
     SetCurrentIndexAction,
     SetDiffModeAction,
     SetDisplayCacheImageAction,
     SetDisplayResolutionLimitAction,
-    SetDividerLineColorAction,
-    SetDividerLineThicknessAction,
-    SetDividerLineVisibleAction,
     SetDraggingCapturePointAction,
     SetDraggingSplitInMagnifierAction,
     SetDraggingSplitLineAction,
@@ -59,14 +58,7 @@ from .actions import (
     SetLastHorizontalMovementKeyAction,
     SetLastSpacingMovementKeyAction,
     SetLastVerticalMovementKeyAction,
-    SetLaserSmoothingInterpolationMethodAction,
-    SetMagnifierBorderColorAction,
-    SetMagnifierDividerColorAction,
-    SetMagnifierDividerThicknessAction,
-    SetMagnifierDividerVisibleAction,
-    SetMagnifierGuidesThicknessAction,
     SetMagnifierInternalSplitAction,
-    SetMagnifierLaserColorAction,
     SetMagnifierMovementInterpolationMethodAction,
     SetMagnifierOffsetRelativeAction,
     SetMagnifierOffsetRelativeVisualAction,
@@ -80,7 +72,6 @@ from .actions import (
     SetMaxNameLengthAction,
     SetMovementInterpolationMethodAction,
     SetMovementSpeedAction,
-    SetOptimizeLaserSmoothingAction,
     SetOptimizeMagnifierMovementAction,
     SetOriginalImageAction,
     SetPendingUnificationPathsAction,
@@ -90,8 +81,6 @@ from .actions import (
     SetResizeInProgressAction,
     SetScaledImageForDisplayAction,
     SetShowingSingleImageModeAction,
-    SetShowCaptureAreaOnMainImageAction,
-    SetShowMagnifierGuidesAction,
     SetSpaceBarPressedAction,
     SetSplitPositionAction,
     SetSplitPositionVisualAction,
@@ -139,70 +128,18 @@ class ViewStateReducer:
             )
         if isinstance(action, ToggleOrientationAction):
             return replace(view_state, is_horizontal=action.is_horizontal)
-        if isinstance(action, SetMagnifierSizeRelativeAction):
-            return replace(view_state, magnifier_size_relative=action.size)
-        if isinstance(action, SetCaptureSizeRelativeAction):
-            return replace(view_state, capture_size_relative=action.size)
-        if isinstance(action, ToggleMagnifierAction):
-            kwargs = {"use_magnifier": action.enabled}
-            if action.enabled and not view_state.active_magnifier_id:
-                kwargs["active_magnifier_id"] = "default"
-            return replace(view_state, **kwargs)
-        if isinstance(action, SetMagnifierVisibilityAction):
-            payload = action.get_payload()
-            kwargs = {}
-            if payload.get("left") is not None:
-                kwargs["magnifier_visible_left"] = payload["left"]
-            if payload.get("center") is not None:
-                kwargs["magnifier_visible_center"] = payload["center"]
-            if payload.get("right") is not None:
-                kwargs["magnifier_visible_right"] = payload["right"]
-            return view_state if not kwargs else replace(view_state, **kwargs)
-        if isinstance(action, ToggleMagnifierOrientationAction):
-            return replace(view_state, magnifier_is_horizontal=action.is_horizontal)
-        if isinstance(action, ToggleFreezeMagnifierAction):
-            payload = action.get_payload()
-            return replace(
-                view_state,
-                freeze_magnifier=payload["freeze"],
-                frozen_capture_point_relative=payload.get("frozen_position"),
-                magnifier_offset_relative=payload.get("new_offset")
-                or view_state.magnifier_offset_relative,
-                magnifier_offset_relative_visual=payload.get("new_offset")
-                or view_state.magnifier_offset_relative_visual,
-            )
-        if isinstance(action, SetMagnifierPositionAction):
-            return replace(view_state, capture_position_relative=action.position)
-        if isinstance(action, SetMagnifierInternalSplitAction):
-            return replace(
-                view_state, magnifier_internal_split=max(0.0, min(1.0, action.split))
-            )
         if isinstance(action, SetMovementSpeedAction):
             return replace(view_state, movement_speed_per_sec=action.speed)
-        if isinstance(action, UpdateMagnifierCombinedStateAction):
-            return replace(view_state, is_magnifier_combined=action.is_combined)
-        if isinstance(action, SetActiveMagnifierIdAction):
-            return replace(view_state, active_magnifier_id=action.magnifier_id)
         if isinstance(action, SetDiffModeAction):
             return replace(view_state, diff_mode=action.mode)
         if isinstance(action, SetChannelViewModeAction):
             return replace(view_state, channel_view_mode=action.mode)
         if isinstance(action, SetShowingSingleImageModeAction):
             return replace(view_state, showing_single_image_mode=action.mode)
-        if isinstance(action, SetMagnifierOffsetRelativeAction):
-            return replace(view_state, magnifier_offset_relative=action.offset)
-        if isinstance(action, SetMagnifierSpacingRelativeAction):
-            return replace(view_state, magnifier_spacing_relative=action.spacing)
-        if isinstance(action, SetMagnifierOffsetRelativeVisualAction):
-            return replace(view_state, magnifier_offset_relative_visual=action.offset)
-        if isinstance(action, SetMagnifierSpacingRelativeVisualAction):
-            return replace(
-                view_state, magnifier_spacing_relative_visual=action.spacing
-            )
-        if isinstance(action, SetOptimizeMagnifierMovementAction):
-            return replace(view_state, optimize_magnifier_movement=action.enabled)
-        if isinstance(action, SetHighlightedMagnifierElementAction):
-            return replace(view_state, highlighted_magnifier_element=action.element)
+        for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+            reduced = feature.reduce_view_state(view_state, action)
+            if reduced is not view_state:
+                return reduced
         if isinstance(action, InvalidateRenderCacheAction):
             return replace(view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0)
         if isinstance(action, ClearAllCachesAction):
@@ -385,24 +322,10 @@ class SessionDataReducer:
 class RenderConfigReducer:
     @staticmethod
     def reduce(config: RenderConfig, action: Action) -> RenderConfig:
-        if isinstance(action, SetDividerLineVisibleAction):
-            return replace(config, divider_line_visible=action.visible)
-        if isinstance(action, SetDividerLineColorAction):
-            return replace(config, divider_line_color=action.color)
-        if isinstance(action, SetDividerLineThicknessAction):
-            return replace(config, divider_line_thickness=action.thickness)
-        if isinstance(action, SetMagnifierDividerVisibleAction):
-            return replace(config, magnifier_divider_visible=action.visible)
-        if isinstance(action, SetMagnifierDividerColorAction):
-            return replace(config, magnifier_divider_color=action.color)
-        if isinstance(action, SetMagnifierDividerThicknessAction):
-            return replace(config, magnifier_divider_thickness=action.thickness)
-        if isinstance(action, SetMagnifierBorderColorAction):
-            return replace(config, magnifier_border_color=action.color)
-        if isinstance(action, SetMagnifierLaserColorAction):
-            return replace(config, magnifier_laser_color=action.color)
-        if isinstance(action, SetCaptureRingColorAction):
-            return replace(config, capture_ring_color=action.color)
+        for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+            reduced = feature.reduce_render_config(config, action)
+            if reduced is not config:
+                return reduced
         if isinstance(action, SetInterpolationMethodAction):
             return replace(config, interpolation_method=action.method)
         if isinstance(action, SetMovementInterpolationMethodAction):
@@ -413,10 +336,6 @@ class RenderConfigReducer:
                 magnifier_movement_interpolation_method=action.method,
                 movement_interpolation_method=action.method,
             )
-        if isinstance(action, SetLaserSmoothingInterpolationMethodAction):
-            return replace(config, laser_smoothing_interpolation_method=action.method)
-        if isinstance(action, SetOptimizeLaserSmoothingAction):
-            return replace(config, optimize_laser_smoothing=action.enabled)
         if isinstance(action, SetZoomInterpolationMethodAction):
             return replace(config, zoom_interpolation_method=action.method)
         if isinstance(action, SetIncludeFileNamesInSavedAction):
@@ -435,14 +354,8 @@ class RenderConfigReducer:
             return replace(config, draw_text_background=action.enabled)
         if isinstance(action, SetTextPlacementModeAction):
             return replace(config, text_placement_mode=action.mode)
-        if isinstance(action, SetShowMagnifierGuidesAction):
-            return replace(config, show_magnifier_guides=action.enabled)
-        if isinstance(action, SetMagnifierGuidesThicknessAction):
-            return replace(config, magnifier_guides_thickness=action.thickness)
         if isinstance(action, SetMaxNameLengthAction):
             return replace(config, max_name_length=action.length)
-        if isinstance(action, SetShowCaptureAreaOnMainImageAction):
-            return replace(config, show_capture_area_on_main_image=action.enabled)
         if isinstance(action, SetDisplayResolutionLimitAction):
             return replace(config, display_resolution_limit=action.limit)
         return config

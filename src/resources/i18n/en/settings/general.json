@@ -13,6 +13,8 @@
     "interactive_optimization": "Interactive Optimization",
     "light": "Light",
     "maximum_name_length_ui": "Maximum Name Length (UI)",
+    "magnifier_auto_color_new_instances": "Auto-color new magnifiers",
+    "magnifier_intersection_highlight": "Red highlight for overlapping magnifiers",
     "optimization": "Optimization",
     "optimize_laser_smoothing": "Laser smoothing",
     "optimize_magnifier_movement": "Magnifier movement",

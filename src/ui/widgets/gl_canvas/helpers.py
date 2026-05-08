@@ -16,17 +16,21 @@ def get_gl_like_canvas(ui) -> GlLikeCanvasProtocol | None:
 def get_export_canvas(canvas) -> ExportCanvasProtocol | None:
     return canvas if isinstance(canvas, ExportCanvasProtocol) else None
 
-def uses_quick_overlay(canvas) -> bool:
-    return bool(getattr(canvas, "uses_quick_canvas_overlay", False))
-
-def supports_legacy_magnifier(canvas) -> bool:
-    return bool(getattr(canvas, "supports_legacy_gl_magnifier", False))
+def supports_patch_magnifier(canvas) -> bool:
+    return True
 
 def reset_canvas_overlays(canvas: BaseCanvasProtocol) -> None:
     canvas.clear_magnifier_gpu()
     canvas.set_magnifier_content(None, None)
     canvas.set_overlay_coords(None, 0, [], 0)
     canvas.set_capture_area(None, 0)
+    runtime_state = getattr(canvas, "runtime_state", None)
+    if runtime_state is not None and hasattr(runtime_state, "_capture_circles"):
+        runtime_state._capture_circles = []
+        runtime_state._guide_sets = []
+        runtime_state._hidden_capture_circles = []
+        runtime_state._occluded_capture_arcs = []
+        runtime_state._hidden_magnifier_circles = []
 
 def clear_canvas_diff_source(canvas: BaseCanvasProtocol) -> None:
     canvas.upload_diff_source_pil_image(None)

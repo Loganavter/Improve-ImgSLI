@@ -28,6 +28,9 @@ from shared_toolkit.ui.widgets.atomic.buttons import (
 from shared_toolkit.ui.widgets.atomic.comboboxes import ScrollableComboBox
 from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
 from shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
+from shared_toolkit.ui.widgets.atomic.magnifier_instances_button import (
+    MagnifierInstancesButton,
+)
 from shared_toolkit.ui.widgets.atomic.scrollable_icon_button import ScrollableIconButton
 from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
 from shared_toolkit.ui.widgets.atomic.toggle_icon_button import ToggleIconButton
@@ -110,6 +113,7 @@ class Ui_ImageComparisonApp:
             AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20, parent=parent
         )
         self.btn_magnifier = ToggleIconButton(AppIcon.MAGNIFIER, parent=parent)
+        self.btn_magnifier_instances = MagnifierInstancesButton(parent=parent)
         self.btn_freeze = ToggleIconButton(AppIcon.FREEZE, parent=parent)
         self.btn_file_names = ToggleIconButton(AppIcon.TEXT_FILENAME, parent=parent)
 
@@ -476,6 +480,7 @@ class Ui_ImageComparisonApp:
         self.magnifier_group_container = self._create_button_group_container(
             [
                 self.btn_magnifier,
+                self.btn_magnifier_instances,
                 self.btn_freeze,
                 self.btn_magnifier_orientation,
                 self.btn_magnifier_color_settings,
@@ -705,6 +710,7 @@ class Ui_ImageComparisonApp:
             tr("ui.toggle_split_orientation", lang_code)
         )
         self.btn_magnifier.setToolTip(tr("magnifier.toggle_magnifier", lang_code))
+        self.btn_magnifier_instances.setToolTip("Add or remove magnifier")
         self.btn_freeze.setToolTip(tr("magnifier.freeze_magnifier_position", lang_code))
         self.btn_magnifier_orientation.setToolTip(
             tr("ui.toggle_split_orientation", lang_code)
@@ -754,12 +760,8 @@ class Ui_ImageComparisonApp:
             if hasattr(self, "drag_overlay"):
                 self.drag_overlay.hide()
             return
-        uses_internal_canvas_overlay = (
-            self.image_label.__class__.__module__.endswith("quick_canvas")
-            or self.image_label.__class__.__module__.endswith("software_widget")
-        )
         self.image_label.set_drag_overlay_state(
-            visible=visible if uses_internal_canvas_overlay else False,
+            visible=False,
             horizontal=horizontal,
             text1=tr(
                 "ui.drop_images_1_here",
@@ -772,7 +774,7 @@ class Ui_ImageComparisonApp:
         )
         if hasattr(self, "drag_overlay"):
             self.drag_overlay.set_overlay_state(
-                visible=visible if not uses_internal_canvas_overlay else False,
+                visible=visible,
                 target_rect=self.image_label.geometry(),
                 horizontal=horizontal,
                 text1=tr(

@@ -5,12 +5,15 @@ from PyQt6.QtGui import QAction, QBrush, QColor, QGuiApplication, QPainter, QPen
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from core.constants import AppConstants
+from shared_toolkit.ui.in_window_surface import (
+    attach_in_window_widget,
+    paint_shadowed_surface,
+)
 
 from ...icon_manager import AppIcon, get_app_icon
 from ...managers.theme_manager import ThemeManager
 from ...overlay_layer import get_overlay_layer
 from .tooltips import install_custom_tooltip
-from ..helpers import draw_rounded_shadow
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -104,9 +107,7 @@ class _DropdownMenu(QWidget):
         self._menu_items = []
         self._current_index = -1
         self._anim = None
-        self.overlay_layer = get_overlay_layer(parent)
-        if self.overlay_layer is not None:
-            self.overlay_layer.attach(self)
+        self.overlay_layer = attach_in_window_widget(self, parent)
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
@@ -134,13 +135,11 @@ class _DropdownMenu(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-        draw_rounded_shadow(
+        paint_shadowed_surface(
             painter,
             self.container_widget.geometry(),
-            steps=self.SHADOW_RADIUS,
-            radius=self.CONTENT_RADIUS,
+            shadow_radius=self.SHADOW_RADIUS,
+            corner_radius=self.CONTENT_RADIUS,
         )
         painter.end()
 

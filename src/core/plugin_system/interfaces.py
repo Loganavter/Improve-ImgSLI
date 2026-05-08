@@ -38,7 +38,7 @@ class IServicePlugin(ABC):
 class IVideoTrackProvider(ABC):
 
     @abstractmethod
-    def get_video_track_specs(self) -> tuple[Any, ...]:
+    def get_video_keyframe_adapters(self) -> tuple[Any, ...]:
         raise NotImplementedError
 
 class IRenderPlugin(ABC):

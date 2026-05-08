@@ -51,6 +51,8 @@ class SettingsDialog(QDialog):
         optimize_laser_smoothing: bool = False,
         interpolation_method: str = "LANCZOS",
         zoom_interpolation_method: str = "BILINEAR",
+        magnifier_intersection_highlight_enabled: bool = True,
+        magnifier_auto_color_new_instances: bool = True,
         auto_calculate_psnr: bool = False,
         auto_calculate_ssim: bool = False,
         auto_crop_black_borders: bool = True,
@@ -81,6 +83,8 @@ class SettingsDialog(QDialog):
             optimize_laser_smoothing=optimize_laser_smoothing,
             interpolation_method=interpolation_method,
             zoom_interpolation_method=zoom_interpolation_method,
+            magnifier_intersection_highlight_enabled=magnifier_intersection_highlight_enabled,
+            magnifier_auto_color_new_instances=magnifier_auto_color_new_instances,
             auto_calculate_psnr=auto_calculate_psnr,
             auto_calculate_ssim=auto_calculate_ssim,
             auto_crop_black_borders=auto_crop_black_borders,
@@ -204,6 +208,8 @@ class SettingsDialog(QDialog):
             or "BILINEAR",
             zoom_interpolation_method=self.combo_zoom_interp.currentData()
             or "BILINEAR",
+            magnifier_intersection_highlight_enabled=self.magnifier_intersection_highlight_checkbox.isChecked(),
+            magnifier_auto_color_new_instances=self.magnifier_auto_color_checkbox.isChecked(),
             auto_calculate_psnr=self.auto_psnr_checkbox.isChecked(),
             auto_calculate_ssim=self.auto_ssim_checkbox.isChecked(),
             auto_crop_black_borders=self.crop_checkbox.isChecked(),
@@ -317,6 +323,14 @@ class SettingsDialog(QDialog):
         if hasattr(self, "laser_smoothing_checkbox"):
             self.laser_smoothing_checkbox.setText(
                 self.tr("settings.optimize_laser_smoothing", lang_code)
+            )
+        if hasattr(self, "magnifier_intersection_highlight_checkbox"):
+            self.magnifier_intersection_highlight_checkbox.setText(
+                self.tr("settings.magnifier_intersection_highlight", lang_code)
+            )
+        if hasattr(self, "magnifier_auto_color_checkbox"):
+            self.magnifier_auto_color_checkbox.setText(
+                self.tr("settings.magnifier_auto_color_new_instances", lang_code)
             )
         if hasattr(self, "combo_mag_interp"):
             current_mag_interp = self.combo_mag_interp.currentData()

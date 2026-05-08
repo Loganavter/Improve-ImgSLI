@@ -5,19 +5,21 @@ from typing import Any
 from core.events import (
     SettingsApplyFontSettingsEvent,
     SettingsChangeLanguageEvent,
-    SettingsSetDividerLineColorEvent,
-    SettingsSetDividerLineThicknessEvent,
-    SettingsSetMagnifierDividerColorEvent,
-    SettingsSetMagnifierDividerThicknessEvent,
     SettingsToggleAutoCropBlackBordersEvent,
-    SettingsToggleDividerLineVisibilityEvent,
     SettingsToggleIncludeFilenamesInSavedEvent,
-    SettingsToggleMagnifierDividerVisibilityEvent,
 )
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IServicePlugin, IUIPlugin
 from plugins.settings.controller import SettingsController
 from plugins.settings.manager import SettingsManager
+from ui.canvas_features.magnifier.events import (
+    SettingsSetMagnifierDividerColorEvent,
+    SettingsSetMagnifierDividerThicknessEvent,
+    SettingsToggleMagnifierDividerVisibilityEvent,
+)
+from ui.canvas_infra.scene.widget_registry import (
+    get_canvas_feature_settings_event_bindings,
+)
 
 @plugin(name="settings", version="1.0")
 class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
@@ -40,6 +42,12 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
             )
 
         if self.event_bus and self.controller:
+            def _run_canvas_feature_command(feature_name: str, command_id: str, *args):
+                self.controller.execute_canvas_feature_command(
+                    feature_name,
+                    command_id,
+                    *args,
+                )
 
             self.event_bus.subscribe(
                 SettingsChangeLanguageEvent, self.controller.on_change_language
@@ -50,14 +58,6 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
             )
             self.event_bus.subscribe(
                 SettingsApplyFontSettingsEvent, self.controller.on_apply_font_settings
-            )
-            self.event_bus.subscribe(
-                SettingsToggleDividerLineVisibilityEvent,
-                self.controller.on_toggle_divider_line_visibility,
-            )
-            self.event_bus.subscribe(
-                SettingsSetDividerLineColorEvent,
-                self.controller.on_set_divider_line_color,
             )
             self.event_bus.subscribe(
                 SettingsToggleMagnifierDividerVisibilityEvent,
@@ -72,13 +72,19 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
                 self.controller.on_toggle_auto_crop_black_borders,
             )
             self.event_bus.subscribe(
-                SettingsSetDividerLineThicknessEvent,
-                self.controller.on_set_divider_line_thickness,
-            )
-            self.event_bus.subscribe(
                 SettingsSetMagnifierDividerThicknessEvent,
                 self.controller.on_set_magnifier_divider_thickness,
             )
+            for feature_name, bindings in get_canvas_feature_settings_event_bindings().items():
+                for binding in bindings:
+                    self.event_bus.subscribe(
+                        binding.event_type,
+                        lambda event, feature_name=feature_name, binding=binding: _run_canvas_feature_command(
+                            feature_name,
+                            binding.command_id,
+                            *binding.extract_args(event),
+                        ),
+                    )
 
     def get_qss_paths(self) -> tuple[str, ...]:
         return (self.plugin_resource_path("resources", "settings.qss"),)

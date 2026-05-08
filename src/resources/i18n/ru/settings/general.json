@@ -13,6 +13,8 @@
     "interactive_optimization": "Интерактивная оптимизация",
     "light": "Светлая",
     "maximum_name_length_ui": "Макс. длина имени (в UI)",
+    "magnifier_auto_color_new_instances": "Автопокраска новых луп",
+    "magnifier_intersection_highlight": "Красная подсветка пересечения луп",
     "optimization": "Оптимизация",
     "optimize_laser_smoothing": "Сглаживание лазеров",
     "optimize_magnifier_movement": "Перемещение лупы",

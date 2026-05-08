@@ -147,32 +147,8 @@ class SettingsApplyFontSettingsEvent:
     alpha: int
 
 @dataclass(frozen=True)
-class SettingsToggleDividerLineVisibilityEvent:
-    visible: bool
-
-@dataclass(frozen=True)
-class SettingsSetDividerLineColorEvent:
-    color: Color
-
-@dataclass(frozen=True)
-class SettingsToggleMagnifierDividerVisibilityEvent:
-    visible: bool
-
-@dataclass(frozen=True)
-class SettingsSetMagnifierDividerColorEvent:
-    color: Color
-
-@dataclass(frozen=True)
 class SettingsToggleAutoCropBlackBordersEvent:
     enabled: bool
-
-@dataclass(frozen=True)
-class SettingsSetDividerLineThicknessEvent:
-    thickness: int
-
-@dataclass(frozen=True)
-class SettingsSetMagnifierDividerThicknessEvent:
-    thickness: int
 
 @dataclass(frozen=True)
 class SettingsUIModeChangedEvent:

@@ -39,32 +39,33 @@ from .render_context import (
 )
 from .scene import build_gl_render_scene
 from .state import init_widget_state
-from .textures import (
-    clear as clear_textures_and_layers,
-    clear_magnifier_gpu,
+from .texture_parts.base_images import (
     configure_offscreen_render,
     get_letterbox_params,
     letterbox_pil,
-    set_background,
-    set_layers,
-    set_magnifier_content,
-    set_magnifier_gpu_params,
-    set_pil_layers,
-    set_pixmap,
-    set_texture_filter,
-    upload_combined_magnifier,
+    update_letterbox_geometry,
     upload_diff_source_pil_image,
     upload_image,
-    upload_magnifier_crop,
     upload_pil_images,
     upload_source_pil_image,
-    update_letterbox_geometry,
+)
+from .texture_parts.common import set_texture_filter
+from .texture_parts.layers import (
+    clear as clear_textures_and_layers,
+    set_background,
+    set_layers,
+    set_pil_layers,
+    set_pixmap,
+)
+from .texture_parts.magnifier import (
+    clear_magnifier_gpu,
+    set_magnifier_content,
+    set_magnifier_gpu_params,
+    upload_combined_magnifier,
+    upload_magnifier_crop,
 )
 
 class GLCanvas(QOpenGLWidget):
-    supports_legacy_gl_magnifier = True
-    uses_quick_canvas_overlay = False
-
     mousePressed = pyqtSignal(object)
     mouseMoved = pyqtSignal(object)
     mouseReleased = pyqtSignal(object)
@@ -173,6 +174,7 @@ class GLCanvas(QOpenGLWidget):
         source_image1=None,
         source_image2=None,
         source_key=None,
+        display_cache_key=None,
         shader_letterbox: bool = False,
     ):
         return upload_pil_images(
@@ -182,6 +184,7 @@ class GLCanvas(QOpenGLWidget):
             source_image1,
             source_image2,
             source_key,
+            display_cache_key,
             shader_letterbox,
         )
 
@@ -347,6 +350,7 @@ class GLCanvas(QOpenGLWidget):
         source_image1=None,
         source_image2=None,
         source_key=None,
+        display_cache_key=None,
         shader_letterbox: bool = False,
     ):
         return set_pil_layers(
@@ -358,6 +362,7 @@ class GLCanvas(QOpenGLWidget):
             source_image1,
             source_image2,
             source_key,
+            display_cache_key,
             shader_letterbox,
         )
 

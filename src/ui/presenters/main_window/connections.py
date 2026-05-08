@@ -123,12 +123,6 @@ def connect_event_handler_signals(presenter, event_handler):
         image_label.mouseReleased.connect(
             event_handler.mouse_release_event_on_image_label_signal.emit
         )
-        image_label.keyPressed.connect(
-            event_handler.keyboard_press_event_signal.emit
-        )
-        image_label.keyReleased.connect(
-            event_handler.keyboard_release_event_signal.emit
-        )
         image_label.wheelScrolled.connect(
             event_handler.mouse_wheel_event_on_image_label_signal.emit
         )

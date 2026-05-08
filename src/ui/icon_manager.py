@@ -24,6 +24,7 @@ class AppIcon(Enum):
     DIVIDER_COLOR = "divider_color.svg"
     DIVIDER_WIDTH = "divider_width.svg"
     ADD = "add.svg"
+    ADD_CIRCLE = "add_circle.svg"
     REMOVE = "remove.svg"
     CHECK = "check.svg"
 

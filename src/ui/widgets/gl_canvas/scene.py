@@ -4,6 +4,13 @@ from dataclasses import dataclass, field
 
 from PyQt6.QtGui import QColor
 
+from domain.qt_adapters import color_to_qcolor
+from ui.canvas_features.capture.state import get_capture_widget_state
+from ui.canvas_features.guides.state import get_guides_widget_state
+from ui.canvas_features.magnifier import MagnifierModeService
+from ui.canvas_features.magnifier.store import active_or_default_border_color
+from ui.canvas_infra.scene.widget_registry import build_canvas_feature_render_scene_overrides
+
 @dataclass(frozen=True)
 class GLFilenameOverlayConfig:
     enabled: bool = False
@@ -43,7 +50,7 @@ class GLRenderScene:
         default_factory=lambda: QColor(255, 50, 100, 230)
     )
     laser_color: QColor = field(
-        default_factory=lambda: QColor(255, 255, 255, 120)
+        default_factory=lambda: QColor(255, 255, 255, 255)
     )
     show_guides: bool = False
     guides_thickness: int = 1
@@ -65,12 +72,11 @@ def build_gl_render_scene(
     if store is None:
         return GLRenderScene()
 
-    from domain.qt_adapters import color_to_qcolor
-
     viewport = getattr(store, "viewport", None)
     document = getattr(store, "document", None)
     if viewport is None:
         return GLRenderScene()
+    mode_service = MagnifierModeService(store)
 
     diff_mode = str(getattr(viewport.view_state, "diff_mode", "off") or "off")
     is_horizontal = bool(getattr(viewport.view_state, "is_horizontal", False))
@@ -80,6 +86,7 @@ def build_gl_render_scene(
         getattr(getattr(viewport, "render_config", None), "zoom_interpolation_method", "BILINEAR")
         or "BILINEAR"
     )
+    feature_overrides = build_canvas_feature_render_scene_overrides(store)
 
     image_display_rect = getattr(viewport.geometry_state, "image_display_rect_on_label", None)
     if image_display_rect is not None:
@@ -96,7 +103,7 @@ def build_gl_render_scene(
         text_placement_mode=str(getattr(viewport.render_config, "text_placement_mode", "edges")),
         split_position=split_position_visual,
         is_horizontal=is_horizontal,
-        divider_thickness=int(getattr(viewport.render_config, "divider_line_thickness", 0)),
+        divider_thickness=int(feature_overrides.get("filename_divider_thickness", 0)),
         is_interactive_mode=bool(getattr(viewport.interaction_state, "is_interactive_mode", False)),
         draw_text_background=bool(getattr(viewport.render_config, "draw_text_background", True)),
         font_size_percent=int(getattr(viewport.render_config, "font_size_percent", 100)),
@@ -107,6 +114,9 @@ def build_gl_render_scene(
         name1=document.get_current_display_name(1) if document is not None else "",
         name2=document.get_current_display_name(2) if document is not None else "",
     )
+
+    capture_state = get_capture_widget_state(viewport.view_state)
+    guides_state = get_guides_widget_state(viewport.view_state)
 
     return GLRenderScene(
         blank_white=not bool(
@@ -119,21 +129,17 @@ def build_gl_render_scene(
         is_horizontal=is_horizontal,
         split_position_visual=split_position_visual,
         divider_clip_rect=divider_clip_rect,
-        show_divider=bool(
-            getattr(viewport.render_config, "divider_line_visible", False)
-            and diff_mode == "off"
-            and getattr(viewport.view_state, "showing_single_image_mode", 0) == 0
-        ),
-        divider_color=color_to_qcolor(getattr(viewport.render_config, "divider_line_color", None)),
-        divider_thickness=int(getattr(viewport.render_config, "divider_line_thickness", 2)),
-        render_magnifiers=bool(getattr(viewport.view_state, "use_magnifier", False)),
-        border_color=color_to_qcolor(getattr(viewport.render_config, "magnifier_border_color", None)),
-        capture_color=color_to_qcolor(getattr(viewport.render_config, "capture_ring_color", None)),
-        laser_color=color_to_qcolor(getattr(viewport.render_config, "magnifier_laser_color", None)),
-        show_guides=bool(getattr(viewport.render_config, "show_capture_area_on_main_image", False)),
-        guides_thickness=int(getattr(viewport, "magnifier_laser_thickness", 1)),
+        show_divider=bool(feature_overrides.get("show_divider", False)),
+        divider_color=feature_overrides.get("divider_color", QColor(255, 255, 255, 255)),
+        divider_thickness=int(feature_overrides.get("divider_thickness", 2)),
+        render_magnifiers=mode_service.should_render_magnifiers(),
+        border_color=color_to_qcolor(active_or_default_border_color(viewport.view_state)),
+        capture_color=color_to_qcolor(capture_state.color),
+        laser_color=color_to_qcolor(guides_state.color),
+        show_guides=bool(capture_state.visible),
+        guides_thickness=int(guides_state.thickness),
         interactive_mode=bool(getattr(viewport.interaction_state, "is_interactive_mode", False)),
-        optimize_laser_smoothing=bool(getattr(viewport.render_config, "optimize_laser_smoothing", False)),
+        optimize_laser_smoothing=bool(guides_state.smoothing_enabled),
         channel_mode_int=(
             {"RGB": 0, "R": 1, "G": 2, "B": 3, "L": 4}.get(
                 str(getattr(viewport.view_state, "channel_view_mode", "RGB") or "RGB"),

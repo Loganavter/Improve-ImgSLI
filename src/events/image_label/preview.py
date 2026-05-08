@@ -3,12 +3,14 @@ from __future__ import annotations
 import logging
 
 from core.events import ViewportUpdateMagnifierCombinedStateEvent
+from ui.canvas_features.magnifier import MagnifierStoreService
 
 logger = logging.getLogger("ImproveImgSLI")
 
 class MagnifierPreviewController:
     def __init__(self, handler):
         self.handler = handler
+        self._scene_state = MagnifierStoreService(handler.store)
         self._magnifier_quick_preview_active = False
         self._magnifier_quick_preview_prev_visibility = (True, True)
 
@@ -25,33 +27,38 @@ class MagnifierPreviewController:
         return self._magnifier_quick_preview_active
 
     def begin(self) -> None:
-        viewport = self.handler.store.viewport
+        model = self._scene_state.ensure_active_magnifier()
+        if model is None:
+            return
         self._magnifier_quick_preview_active = True
         self._magnifier_quick_preview_prev_visibility = (
-            viewport.view_state.magnifier_visible_left,
-            viewport.view_state.magnifier_visible_right,
+            model.visible_left,
+            model.visible_right,
         )
         self.log_preview_debug(
             "begin_shift_preview",
-            prev_left=viewport.view_state.magnifier_visible_left,
-            prev_right=viewport.view_state.magnifier_visible_right,
+            prev_left=model.visible_left,
+            prev_right=model.visible_right,
         )
 
     def restore(self) -> None:
         if not self._magnifier_quick_preview_active:
             return
 
-        viewport = self.handler.store.viewport
         prev_left, prev_right = self._magnifier_quick_preview_prev_visibility
         self._magnifier_quick_preview_active = False
         self._magnifier_quick_preview_prev_visibility = (True, True)
 
-        if (
-            viewport.view_state.magnifier_visible_left != prev_left
-            or viewport.view_state.magnifier_visible_right != prev_right
+        model = self._scene_state.ensure_active_magnifier(create_if_missing=False)
+        if model is None:
+            return
+        if model is not None and (
+            model.visible_left != prev_left or model.visible_right != prev_right
         ):
-            viewport.view_state.magnifier_visible_left = prev_left
-            viewport.view_state.magnifier_visible_right = prev_right
+            self._scene_state.set_active_magnifier_visibility_parts(
+                left=prev_left,
+                right=prev_right,
+            )
             self.log_preview_debug(
                 "restore_shift_preview",
                 left=prev_left,
@@ -64,9 +71,10 @@ class MagnifierPreviewController:
                 self.handler.main_controller.update_requested.emit()
 
     def switch_side(self, side: str) -> None:
-        viewport = self.handler.store.viewport
-        viewport.view_state.magnifier_visible_left = side == "left"
-        viewport.view_state.magnifier_visible_right = side == "right"
+        self._scene_state.set_active_magnifier_visibility_parts(
+            left=(side == "left"),
+            right=(side == "right"),
+        )
         self.log_preview_debug("shift_preview_switched", side=side)
         self.handler.store.emit_state_change()
         if self.handler.event_bus:
@@ -76,9 +84,10 @@ class MagnifierPreviewController:
 
     def start_side_preview(self, side: str) -> None:
         self.begin()
-        viewport = self.handler.store.viewport
-        viewport.view_state.magnifier_visible_left = side == "left"
-        viewport.view_state.magnifier_visible_right = side == "right"
+        self._scene_state.set_active_magnifier_visibility_parts(
+            left=(side == "left"),
+            right=(side == "right"),
+        )
         self.log_preview_debug("shift_preview_started", side=side)
         self.handler.store.emit_state_change()
         if self.handler.event_bus:

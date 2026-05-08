@@ -6,36 +6,44 @@ from core.events import (
     ExportOpenVideoEditorEvent,
     ExportTogglePauseRecordingEvent,
     ExportToggleRecordingEvent,
-    SettingsSetDividerLineThicknessEvent,
-    SettingsSetMagnifierDividerThicknessEvent,
-    SettingsToggleDividerLineVisibilityEvent,
     SettingsToggleIncludeFilenamesInSavedEvent,
-    SettingsToggleMagnifierDividerVisibilityEvent,
     ViewportOnSliderPressedEvent,
     ViewportOnSliderReleasedEvent,
     ViewportToggleFreezeMagnifierEvent,
     ViewportToggleMagnifierEvent,
     ViewportToggleMagnifierOrientationEvent,
-    ViewportToggleOrientationEvent,
     ViewportUpdateCaptureSizeRelativeEvent,
     ViewportUpdateMagnifierSizeRelativeEvent,
     ViewportUpdateMovementSpeedEvent,
 )
+from ui.canvas_features.magnifier.events import (
+    SettingsSetMagnifierDividerThicknessEvent,
+    SettingsToggleMagnifierDividerVisibilityEvent,
+)
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import default_capture_size, default_magnifier_size
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_binding
 from ui.presenters.toolbar.orientation import (
     on_interpolation_combo_clicked,
     on_magnifier_orientation_middle_clicked,
     on_magnifier_orientation_right_clicked,
-    on_orientation_middle_clicked,
     on_orientation_right_clicked,
-    on_ui_divider_thickness_changed,
     on_ui_magnifier_thickness_changed,
-    show_divider_color_picker,
     show_magnifier_divider_color_picker,
     toggle_magnifier_divider_visibility,
 )
 from ui.presenters.toolbar.state import check_name_lengths
 
 logger = logging.getLogger("ImproveImgSLI")
+
+def _invoke_toolbar_binding(control_id: str, hook_name: str, presenter, *args):
+    binding = get_canvas_feature_toolbar_binding(control_id)
+    if binding is None:
+        return
+    hook = getattr(binding, hook_name, None)
+    if hook is None:
+        return
+    hook(presenter, *args)
 
 def _resolve_session_handler(controller):
     if controller is None:
@@ -115,10 +123,20 @@ def _connect_viewport_controls(presenter):
     if controller:
         if event_bus:
             ui.btn_orientation.toggled.connect(
-                lambda checked: event_bus.emit(ViewportToggleOrientationEvent(checked))
+                lambda checked: _invoke_toolbar_binding(
+                    "divider.orientation",
+                    "on_toggled",
+                    presenter,
+                    checked,
+                )
             )
             ui.btn_orientation.valueChanged.connect(
-                lambda thickness: on_ui_divider_thickness_changed(presenter, thickness)
+                lambda thickness: _invoke_toolbar_binding(
+                    "divider.orientation",
+                    "on_value_changed",
+                    presenter,
+                    thickness,
+                )
             )
             ui.btn_magnifier_orientation.toggled.connect(
                 lambda checked: event_bus.emit(
@@ -131,6 +149,13 @@ def _connect_viewport_controls(presenter):
             ui.btn_magnifier.toggled.connect(
                 lambda checked: event_bus.emit(ViewportToggleMagnifierEvent(checked))
             )
+            if hasattr(ui, "btn_magnifier_instances"):
+                ui.btn_magnifier_instances.addClicked.connect(
+                    controller.viewport.add_magnifier
+                )
+                ui.btn_magnifier_instances.removeClicked.connect(
+                    controller.viewport.remove_active_magnifier
+                )
             ui.btn_file_names.toggled.connect(
                 lambda checked: event_bus.emit(
                     SettingsToggleIncludeFilenamesInSavedEvent(checked)
@@ -158,7 +183,13 @@ def _connect_viewport_controls(presenter):
                 lambda: event_bus.emit(
                     ViewportOnSliderReleasedEvent(
                         "magnifier_size_relative",
-                        lambda: presenter.store.viewport.view_state.magnifier_size_relative,
+                        lambda: (
+                            MagnifierStoreService(presenter.store)
+                            .get_active_or_first_magnifier()
+                            .size_relative
+                            if MagnifierStoreService(presenter.store).get_active_or_first_magnifier() is not None
+                            else default_magnifier_size(presenter.store.viewport.view_state)
+                        ),
                     )
                 )
             )
@@ -169,7 +200,13 @@ def _connect_viewport_controls(presenter):
                 lambda: event_bus.emit(
                     ViewportOnSliderReleasedEvent(
                         "capture_size_relative",
-                        lambda: presenter.store.viewport.view_state.capture_size_relative,
+                        lambda: (
+                            MagnifierStoreService(presenter.store)
+                            .get_active_or_first_magnifier()
+                            .capture_size_relative
+                            if MagnifierStoreService(presenter.store).get_active_or_first_magnifier() is not None
+                            else default_capture_size(presenter.store.viewport.view_state)
+                        ),
                     )
                 )
             )
@@ -179,9 +216,21 @@ def _connect_viewport_controls(presenter):
                 )
             )
         else:
-            ui.btn_orientation.toggled.connect(controller.viewport.toggle_orientation)
+            ui.btn_orientation.toggled.connect(
+                lambda checked: _invoke_toolbar_binding(
+                    "divider.orientation",
+                    "on_toggled",
+                    presenter,
+                    checked,
+                )
+            )
             ui.btn_orientation.valueChanged.connect(
-                controller.viewport.set_divider_line_thickness
+                lambda thickness: _invoke_toolbar_binding(
+                    "divider.orientation",
+                    "on_value_changed",
+                    presenter,
+                    thickness,
+                )
             )
             ui.btn_magnifier_orientation.toggled.connect(
                 controller.viewport.toggle_magnifier_orientation
@@ -190,6 +239,13 @@ def _connect_viewport_controls(presenter):
                 controller.viewport.set_magnifier_divider_thickness
             )
             ui.btn_magnifier.toggled.connect(controller.viewport.toggle_magnifier)
+            if hasattr(ui, "btn_magnifier_instances"):
+                ui.btn_magnifier_instances.addClicked.connect(
+                    controller.viewport.add_magnifier
+                )
+                ui.btn_magnifier_instances.removeClicked.connect(
+                    controller.viewport.remove_active_magnifier
+                )
             ui.btn_file_names.toggled.connect(
                 controller.viewport.toggle_include_filenames_in_saved
             )
@@ -223,7 +279,11 @@ def _connect_orientation_controls(presenter):
 
     if hasattr(ui.btn_orientation, "middleClicked"):
         ui.btn_orientation.middleClicked.connect(
-            lambda: on_orientation_middle_clicked(presenter)
+            lambda: _invoke_toolbar_binding(
+                "divider.orientation",
+                "on_middle_clicked",
+                presenter,
+            )
         )
     if hasattr(ui.btn_magnifier_orientation, "middleClicked"):
         ui.btn_magnifier_orientation.middleClicked.connect(
@@ -245,22 +305,37 @@ def _connect_mode_specific_controls(presenter):
     if event_bus:
         if hasattr(ui, "btn_orientation_simple"):
             ui.btn_orientation_simple.toggled.connect(
-                lambda checked: event_bus.emit(ViewportToggleOrientationEvent(checked))
+                lambda checked: _invoke_toolbar_binding(
+                    "divider.orientation_simple",
+                    "on_toggled",
+                    presenter,
+                    checked,
+                )
             )
         if hasattr(ui, "btn_divider_visible"):
             ui.btn_divider_visible.toggled.connect(
-                lambda checked: event_bus.emit(
-                    SettingsToggleDividerLineVisibilityEvent(not checked)
+                lambda checked: _invoke_toolbar_binding(
+                    "divider.visible",
+                    "on_toggled",
+                    presenter,
+                    checked,
                 )
             )
         if hasattr(ui, "btn_divider_color"):
             ui.btn_divider_color.clicked.connect(
-                lambda: show_divider_color_picker(presenter)
+                lambda: _invoke_toolbar_binding(
+                    "divider.color",
+                    "on_right_clicked",
+                    presenter,
+                )
             )
         if hasattr(ui, "btn_divider_width"):
             ui.btn_divider_width.valueChanged.connect(
-                lambda thickness: event_bus.emit(
-                    SettingsSetDividerLineThicknessEvent(thickness)
+                lambda thickness: _invoke_toolbar_binding(
+                    "divider.width",
+                    "on_value_changed",
+                    presenter,
+                    thickness,
                 )
             )
         if hasattr(ui, "btn_magnifier_orientation_simple"):
@@ -293,21 +368,38 @@ def _connect_mode_specific_controls(presenter):
 
     if hasattr(ui, "btn_orientation_simple"):
         ui.btn_orientation_simple.toggled.connect(
-            controller.viewport.toggle_orientation
+            lambda checked: _invoke_toolbar_binding(
+                "divider.orientation_simple",
+                "on_toggled",
+                presenter,
+                checked,
+            )
         )
     if hasattr(ui, "btn_divider_visible"):
         ui.btn_divider_visible.toggled.connect(
-            lambda checked: controller.viewport.toggle_divider_line_visibility(
-                not checked
+            lambda checked: _invoke_toolbar_binding(
+                "divider.visible",
+                "on_toggled",
+                presenter,
+                checked,
             )
         )
     if hasattr(ui, "btn_divider_color"):
         ui.btn_divider_color.clicked.connect(
-            lambda: show_divider_color_picker(presenter)
+            lambda: _invoke_toolbar_binding(
+                "divider.color",
+                "on_right_clicked",
+                presenter,
+            )
         )
     if hasattr(ui, "btn_divider_width"):
         ui.btn_divider_width.valueChanged.connect(
-            controller.viewport.set_divider_line_thickness
+            lambda thickness: _invoke_toolbar_binding(
+                "divider.width",
+                "on_value_changed",
+                presenter,
+                thickness,
+            )
         )
     if hasattr(ui, "btn_magnifier_orientation_simple"):
         ui.btn_magnifier_orientation_simple.toggled.connect(

@@ -24,12 +24,13 @@ from .shaders import (
     build_magnifier_vertex_shader,
     build_magnifier_fragment_shader,
 )
-from .textures import (
-    clear_magnifier_gpu,
+from ui.canvas_infra.viewport.state import get_pan_offset_x, get_pan_offset_y, get_zoom_level
+from .texture_parts.base_images import (
     update_letterbox_geometry,
     upload_pil_images,
     upload_source_pil_image,
 )
+from .texture_parts.magnifier import clear_magnifier_gpu
 
 @dataclass(slots=True)
 class GLViewportContext:
@@ -59,6 +60,11 @@ class GLTextureContext:
 class GLMagnifierContext:
     capture_center: object
     capture_radius: float
+    capture_circles: list
+    guide_sets: list
+    hidden_capture_circles: list
+    occluded_capture_arcs: list
+    hidden_magnifier_circles: list
     magnifier_centers: list
     magnifier_radius: float
     magnifier_border_width: float
@@ -104,9 +110,9 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
         viewport=GLViewportContext(
             width=widget.width(),
             height=widget.height(),
-            zoom_level=float(getattr(widget, "zoom_level", 1.0) or 1.0),
-            pan_offset_x=float(getattr(widget, "pan_offset_x", 0.0) or 0.0),
-            pan_offset_y=float(getattr(widget, "pan_offset_y", 0.0) or 0.0),
+            zoom_level=get_zoom_level(widget),
+            pan_offset_x=get_pan_offset_x(widget),
+            pan_offset_y=get_pan_offset_y(widget),
             is_horizontal=bool(
                 getattr(view_state, "is_horizontal", getattr(widget, "is_horizontal", False))
             ),
@@ -131,6 +137,11 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
         magnifier=GLMagnifierContext(
             capture_center=state._capture_center,
             capture_radius=float(state._capture_radius or 0.0),
+            capture_circles=list(getattr(state, "_capture_circles", [])),
+            guide_sets=list(getattr(state, "_guide_sets", [])),
+            hidden_capture_circles=list(getattr(state, "_hidden_capture_circles", [])),
+            occluded_capture_arcs=list(getattr(state, "_occluded_capture_arcs", [])),
+            hidden_magnifier_circles=list(getattr(state, "_hidden_magnifier_circles", [])),
             magnifier_centers=list(state._magnifier_centers),
             magnifier_radius=float(state._magnifier_radius or 0.0),
             magnifier_border_width=float(state._magnifier_border_width or 2.0),
@@ -164,13 +175,7 @@ def initialize_gl_resources(widget):
 
     ctx = widget.context()
     if ctx and ctx.isValid():
-        fmt = ctx.format()
-        is_gles = bool(ctx.isOpenGLES())
-        logger.warning(
-            "GL context created: version=%d.%d profile=%s gles=%s renderer=%s vendor=%s",
-            fmt.majorVersion(), fmt.minorVersion(), fmt.profile(),
-            is_gles, gl.glGetString(gl.GL_RENDERER), gl.glGetString(gl.GL_VENDOR),
-        )
+        pass
     else:
         logger.error(
             "initializeGL called without a valid context: ctx=%s valid=%s",
@@ -273,11 +278,6 @@ def get_magnifier_shader_program(widget, key: MagnifierShaderVariantKey) -> QOpe
 
 def resize_gl(widget, w: int, h: int):
     state = widget.runtime_state
-    dpr = widget.devicePixelRatioF()
-    logger.warning(
-        "resizeGL: w=%d h=%d | widget.width=%d widget.height=%d | dpr=%.2f",
-        w, h, widget.width(), widget.height(), dpr,
-    )
     gl.glViewport(0, 0, w, h)
     widget._update_paste_overlay_rects()
     clear_magnifier_gpu(widget)

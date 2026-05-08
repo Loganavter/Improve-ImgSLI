@@ -6,15 +6,17 @@ from PIL import Image
 from PyQt6.QtCore import QObject, QThreadPool, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 
-from core.store import Store
-from plugins.video_editor.services.keyframes import KeyframedRecording
+from plugins.video_editor.services.keyframing import KeyframedRecording
 from shared.image_processing.pipeline import (
     RenderingPipeline,
     create_render_context_from_store,
 )
 from shared.image_processing.progressive_loader import load_preview_image
 from shared_toolkit.workers.generic_worker import GenericWorker
-from utils.resource_loader import get_magnifier_drawing_coords
+from ui.canvas_presentation import (
+    build_render_frame_presentation,
+    build_snapshot_store_presentation,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -42,51 +44,26 @@ def _render_thumbnail_using_pipeline(
         if not img2:
             img2 = Image.new("RGBA", (target_w, target_h), (80, 80, 80, 255))
 
-        base_w, base_h = img1.size
-
-        temp_store = Store()
-
-        temp_store.viewport = snap.viewport_state.clone()
-        temp_store.settings = snap.settings_state.freeze_for_export()
-
-        temp_store.settings.auto_crop_black_borders = auto_crop
-
-        temp_store.viewport.session_data.image_state.image1 = img1
-        temp_store.viewport.session_data.image_state.image2 = img2
-        temp_store.document.full_res_image1 = img1
-        temp_store.document.full_res_image2 = img2
-
-        _, out_h = thumbnail_size
-        target_h_render = max(1, int(round(out_h * render_scale)))
-        fit_scale = target_h_render / base_h if base_h > 0 else 1.0
-        render_w = max(1, int(base_w * fit_scale))
-        render_h = target_h_render
-
-        temp_store.viewport.geometry_state.pixmap_width = render_w
-        temp_store.viewport.geometry_state.pixmap_height = render_h
-
-        mag_coords = (
-            get_magnifier_drawing_coords(
-                store=temp_store,
-                drawing_width=render_w,
-                drawing_height=render_h,
-                container_width=render_w,
-                container_height=render_h,
-            )
-            if temp_store.viewport.view_state.use_magnifier
-            else None
+        presentation = build_snapshot_store_presentation(
+            snap,
+            img1,
+            img2,
+            fit_content=False,
+        )
+        presentation.store.settings.auto_crop_black_borders = auto_crop
+        frame = build_render_frame_presentation(
+            presentation,
+            output_width=target_w,
+            output_height=target_h,
         )
 
-        img1_s = img1.resize((render_w, render_h), Image.Resampling.BILINEAR)
-        img2_s = img2.resize((render_w, render_h), Image.Resampling.BILINEAR)
-
         ctx = create_render_context_from_store(
-            store=temp_store,
-            width=render_w,
-            height=render_h,
-            magnifier_drawing_coords=mag_coords,
-            image1_scaled=img1_s,
-            image2_scaled=img2_s,
+            store=frame.store,
+            width=frame.render_width,
+            height=frame.render_height,
+            magnifier_drawing_coords=frame.magnifier_drawing_coords,
+            image1_scaled=frame.scaled_image1,
+            image2_scaled=frame.scaled_image2,
         )
         ctx.images.file_name1 = snap.name1 or ""
         ctx.images.file_name2 = snap.name2 or ""
@@ -95,13 +72,13 @@ def _render_thumbnail_using_pipeline(
         frame_pil, p_l, p_t, _, _, _ = pipeline.render_frame(ctx)
 
         if not frame_pil:
-            return Image.new("RGBA", (render_w, out_h), (0, 0, 0, 255))
+            return Image.new("RGBA", (frame.render_width, out_h), (0, 0, 0, 255))
 
         crop_rect = (
             max(0, p_l),
             max(0, p_t),
-            min(frame_pil.width, p_l + render_w),
-            min(frame_pil.height, p_t + render_h),
+            min(frame_pil.width, p_l + frame.render_width),
+            min(frame_pil.height, p_t + frame.render_height),
         )
 
         base_image_content = frame_pil.crop(crop_rect)
@@ -115,6 +92,34 @@ def _render_thumbnail_using_pipeline(
 
     except Exception as e:
         logger.error(f"Error rendering thumbnail using pipeline: {e}", exc_info=True)
+        return None
+
+def _render_thumbnail_using_renderer(
+    snap,
+    thumbnail_size: Tuple[int, int],
+    auto_crop: bool,
+    render_scale: float,
+    render_snapshot: Callable[..., Optional[Image.Image]],
+) -> Optional[Image.Image]:
+    try:
+        out_w, out_h = thumbnail_size
+        render_scale = max(1.0, float(render_scale))
+        target_w = max(1, int(round(out_w * render_scale)))
+        target_h = max(1, int(round(out_h * render_scale)))
+        rendered = render_snapshot(
+            snap,
+            target_w,
+            target_h,
+            auto_crop=auto_crop,
+        )
+        if rendered is None:
+            return None
+        rendered = rendered.convert("RGBA")
+        if rendered.size == (out_w, out_h):
+            return rendered
+        return rendered.resize((out_w, out_h), Image.Resampling.LANCZOS)
+    except Exception as e:
+        logger.error(f"Error rendering thumbnail using shared renderer: {e}", exc_info=True)
         return None
 
 class ThumbnailService(QObject):
@@ -133,6 +138,7 @@ class ThumbnailService(QObject):
         self._thumbnail_size = (160, 90)
         self._thumbnail_render_scale = DEFAULT_THUMBNAIL_RENDER_SCALE
         self._image_loader: Optional[Callable[[str, bool], Optional[Image.Image]]] = None
+        self._render_snapshot: Optional[Callable[..., Optional[Image.Image]]] = None
         self._auto_crop = False
         self._active_workers = 0
         self._generation_cancelled = False
@@ -255,13 +261,22 @@ class ThumbnailService(QObject):
         """Генерирует одно превью и возвращает PIL Image."""
         try:
             snap = self._recording.evaluate_at(float(index) / float(max(1, fps)))
-            composed_pil = _render_thumbnail_using_pipeline(
-                snap,
-                thumbnail_size,
-                auto_crop,
-                render_scale,
-                self._image_loader,
-            )
+            if self._render_snapshot is not None:
+                composed_pil = _render_thumbnail_using_renderer(
+                    snap,
+                    thumbnail_size,
+                    auto_crop,
+                    render_scale,
+                    self._render_snapshot,
+                )
+            else:
+                composed_pil = _render_thumbnail_using_pipeline(
+                    snap,
+                    thumbnail_size,
+                    auto_crop,
+                    render_scale,
+                    self._image_loader,
+                )
             return composed_pil
         except Exception as e:
             logger.error(
@@ -274,7 +289,11 @@ class ThumbnailService(QObject):
             return recording
         if hasattr(recording, "evaluate_at") and hasattr(recording, "get_duration"):
             return recording
-        return KeyframedRecording.from_snapshots(list(recording or []))
+        extra_adapters = tuple(getattr(recording, "extra_adapters", ()))
+        return KeyframedRecording.from_snapshots(
+            list(recording or []),
+            extra_adapters=extra_adapters,
+        )
 
     def _get_frame_count(self) -> int:
         if not self._recording:
@@ -291,6 +310,11 @@ class ThumbnailService(QObject):
         self, loader: Optional[Callable[[str, bool], Optional[Image.Image]]]
     ):
         self._image_loader = loader
+
+    def set_snapshot_renderer(
+        self, renderer: Optional[Callable[..., Optional[Image.Image]]]
+    ):
+        self._render_snapshot = renderer
 
     def _on_thumbnail_generated(self, index: int, pil_image):
         if self._generation_cancelled:

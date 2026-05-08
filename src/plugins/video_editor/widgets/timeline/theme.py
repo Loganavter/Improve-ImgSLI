@@ -42,7 +42,26 @@ def build_theme_colors(widget) -> dict[str, Any]:
         "sb_hover": QColor(0, 0, 0, 95),
     }
 
-def track_color(widget, track_kind: str, channel_kind: str | None = None) -> QColor:
+def _explicit_accent_color(*candidates) -> QColor | None:
+    for candidate in candidates:
+        if not candidate:
+            continue
+        color = QColor(candidate)
+        if color.isValid():
+            return color
+    return None
+
+def track_color(
+    widget,
+    track_kind: str,
+    channel_kind: str | None = None,
+    *,
+    track_accent_color: str | None = None,
+    channel_accent_color: str | None = None,
+) -> QColor:
+    explicit = _explicit_accent_color(channel_accent_color, track_accent_color)
+    if explicit is not None:
+        return explicit
     accent = QColor(widget.theme_manager.get_color("accent"))
     if channel_kind == "bool" or track_kind == "bool":
         return QColor(0, 140, 198)
@@ -54,10 +73,24 @@ def track_color(widget, track_kind: str, channel_kind: str | None = None) -> QCo
         return QColor(34, 140, 94)
     return accent
 
-def track_line_color(widget, track_id: str, track_kind: str, channel_kind: str | None = None) -> QColor:
+def track_line_color(
+    widget,
+    track_id: str,
+    track_kind: str,
+    channel_kind: str | None = None,
+    *,
+    track_accent_color: str | None = None,
+    channel_accent_color: str | None = None,
+) -> QColor:
     if track_id == "comparison.diff_mode":
         return QColor(0, 140, 198)
-    return track_color(widget, track_kind, channel_kind)
+    return track_color(
+        widget,
+        track_kind,
+        channel_kind,
+        track_accent_color=track_accent_color,
+        channel_accent_color=channel_accent_color,
+    )
 
 def track_value_color(
     widget,
@@ -83,10 +116,19 @@ def mix_colors(base: QColor, overlay: QColor, alpha: int) -> QColor:
     )
 
 def group_content_bg(widget, base_bg: QColor, group, strength: int) -> QColor:
+    explicit = _explicit_accent_color(getattr(group, "accent_color", None))
+    if explicit is not None:
+        return mix_colors(base_bg, explicit, strength)
     for track in group.tracks.values():
         visible_channels = getattr(widget, "_visible_channels")(track)
         if visible_channels:
-            accent = track_color(widget, track.kind, visible_channels[0].kind)
+            accent = track_color(
+                widget,
+                track.kind,
+                visible_channels[0].kind,
+                track_accent_color=getattr(track, "accent_color", None),
+                channel_accent_color=getattr(visible_channels[0], "accent_color", None),
+            )
             break
     else:
         accent = QColor(widget.theme_manager.get_color("accent"))

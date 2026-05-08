@@ -1,81 +1,69 @@
 from __future__ import annotations
 
 from domain.types import Point
-
-try:
-    from core.constants import AppConstants
-
-    THRESHOLD = AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
-except ImportError:
-    THRESHOLD = 0.02
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import magnifier_enabled
 
 class ViewportMagnifierService:
     def __init__(self, runtime, store, interaction_service):
         self.runtime = runtime
         self.store = store
         self.interaction_service = interaction_service
+        self.scene_state = MagnifierStoreService(store)
 
     def set_magnifier_internal_split(self, location):
+        model = self.scene_state.get_active_magnifier()
+        if model is None:
+            return
         val = 0.5
         if isinstance(location, Point):
             val = (
                 location.x
-                if not self.store.viewport.view_state.magnifier_is_horizontal
+                if not model.is_horizontal
                 else location.y
             )
         elif isinstance(location, (float, int)):
             val = float(location)
 
         val = max(0.0, min(1.0, val))
-        if self.store.viewport.view_state.magnifier_internal_split == val:
+        if model.internal_split == val:
             return
 
-        from core.state_management.actions import SetMagnifierInternalSplitAction
-
-        self.runtime.dispatch(SetMagnifierInternalSplitAction(val))
+        self.scene_state.set_object_internal_split(model.id, val)
         self.runtime.emit_update(scope="viewport")
         self.runtime.capture_recording_checkpoint()
 
     def toggle_freeze_magnifier(self, freeze_checked: bool):
-        from core.state_management.actions import ToggleFreezeMagnifierAction
-
+        models = list(self.scene_state.iter_magnifiers())
+        if not models:
+            return
         if freeze_checked:
-            frozen_point = self.store.viewport.view_state.capture_position_relative
-            self.runtime.dispatch(
-                ToggleFreezeMagnifierAction(freeze=True, frozen_position=frozen_point)
+            self.scene_state.set_all_magnifiers_freeze(
+                True,
+                frozen_positions={model.id: model.position for model in models},
             )
         else:
-            self.runtime.dispatch(
-                ToggleFreezeMagnifierAction(
-                    freeze=False,
-                    new_offset=self.interaction_service.compute_unfreeze_offset(),
-                )
+            self.scene_state.set_all_magnifiers_freeze(
+                False,
+                new_offsets={
+                    model.id: self.interaction_service.compute_unfreeze_offset_for(model)
+                    for model in models
+                },
             )
+        self.store.invalidate_render_cache()
         self.runtime.emit_update(scope="viewport")
         self.runtime.capture_recording_checkpoint()
 
     def update_combined_state(self):
-        from core.state_management.actions import UpdateMagnifierCombinedStateAction
-
-        if not self.store.viewport.view_state.use_magnifier:
-            self.runtime.dispatch(
-                UpdateMagnifierCombinedStateAction(False), clear_caches=True
-            )
+        if not magnifier_enabled(self.store.viewport.view_state):
             self.runtime.emit_update(scope="viewport")
             self.runtime.capture_recording_checkpoint()
             return
 
-        spacing = self.store.viewport.view_state.magnifier_spacing_relative
-        both_sides_visible = (
-            self.store.viewport.view_state.magnifier_visible_left
-            and self.store.viewport.view_state.magnifier_visible_right
-        )
-        should_combine = both_sides_visible and spacing <= THRESHOLD + 1e-5
-        if self.store.viewport.view_state.is_magnifier_combined == should_combine:
+        current = self.scene_state.is_active_magnifier_combined()
+        should_combine = self.scene_state.update_active_magnifier_combined_state()
+        if current == should_combine:
             return
 
-        self.runtime.dispatch(
-            UpdateMagnifierCombinedStateAction(should_combine), clear_caches=True
-        )
         self.runtime.emit_update(scope="viewport")
         self.runtime.capture_recording_checkpoint()

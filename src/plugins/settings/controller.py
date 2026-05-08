@@ -5,17 +5,17 @@ import logging
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from domain.types import Color
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command
 
 from core.events import (
     SettingsApplyFontSettingsEvent,
     SettingsChangeLanguageEvent,
-    SettingsSetDividerLineColorEvent,
-    SettingsSetDividerLineThicknessEvent,
+    SettingsToggleAutoCropBlackBordersEvent,
+    SettingsToggleIncludeFilenamesInSavedEvent,
+)
+from ui.canvas_features.magnifier.events import (
     SettingsSetMagnifierDividerColorEvent,
     SettingsSetMagnifierDividerThicknessEvent,
-    SettingsToggleAutoCropBlackBordersEvent,
-    SettingsToggleDividerLineVisibilityEvent,
-    SettingsToggleIncludeFilenamesInSavedEvent,
     SettingsToggleMagnifierDividerVisibilityEvent,
 )
 from plugins.settings.color_actions import SettingsColorActions
@@ -97,45 +97,32 @@ class SettingsController(QObject):
             text_alpha_percent=text_alpha_percent,
         )
 
-    def toggle_divider_line_visibility(self, visible: bool):
-        self.mutations.set_viewport_value(
-            "divider_line_visible",
+    def execute_canvas_feature_command(
+        self,
+        feature_name: str,
+        command_id: str,
+        *args,
+    ):
+        command = get_canvas_feature_command(feature_name, command_id)
+        if command is None:
+            raise KeyError(
+                f"Unknown canvas feature command: {feature_name}.{command_id}"
+            )
+        return command(self, *args)
+
+    def toggle_magnifier_divider_visibility(self, visible: bool):
+        self.mutations.set_canvas_feature_setting(
+            "magnifier.divider.visible",
             visible,
-            setting_key="divider_line_visible",
-            request_core_update=True,
-        )
-
-    def set_divider_line_color(self, color: Color):
-        self.mutations.set_viewport_color(
-            "divider_line_color",
-            color,
-            setting_key="divider_line_color",
-            request_core_update=True,
-        )
-
-    def set_divider_line_thickness(self, thickness: int):
-        thickness = max(0, min(20, int(thickness)))
-        self.mutations.set_viewport_value(
-            "divider_line_thickness",
-            thickness,
-            setting_key="divider_line_thickness",
             invalidate_render_cache=True,
             request_core_update=True,
         )
 
-    def toggle_magnifier_divider_visibility(self, visible: bool):
-        self.mutations.set_viewport_value(
-            "magnifier_divider_visible",
-            visible,
-            setting_key="magnifier_divider_visible",
-            request_core_update=True,
-        )
-
     def set_magnifier_divider_color(self, color: Color):
-        self.mutations.set_viewport_color(
-            "magnifier_divider_color",
+        self.mutations.set_canvas_feature_setting(
+            "magnifier.divider.color",
             color,
-            setting_key="magnifier_divider_color",
+            invalidate_render_cache=True,
             request_core_update=True,
         )
 
@@ -146,10 +133,9 @@ class SettingsController(QObject):
 
     def set_magnifier_divider_thickness(self, thickness: int):
         thickness = max(0, min(10, int(thickness)))
-        self.mutations.set_viewport_value(
-            "magnifier_divider_thickness",
+        self.mutations.set_canvas_feature_setting(
+            "magnifier.divider.thickness",
             thickness,
-            setting_key="magnifier_divider_thickness",
             invalidate_render_cache=True,
             request_core_update=True,
         )
@@ -165,36 +151,39 @@ class SettingsController(QObject):
     def apply_smart_magnifier_colors(self):
         self.color_actions.apply_smart_magnifier_colors(
             set_divider_color=self.set_magnifier_divider_color,
-            set_laser_color=self.set_magnifier_laser_color,
-            set_capture_ring_color=self.set_capture_ring_color,
+            set_laser_color=self.set_guides_color,
+            set_capture_ring_color=self.set_capture_color,
         )
 
     def set_magnifier_border_color(self, color: Color):
-        self.mutations.set_viewport_color(
-            "magnifier_border_color",
+        self.mutations.set_canvas_feature_setting(
+            "magnifier.border.color",
             color,
-            setting_key="magnifier_border_color",
+            invalidate_render_cache=True,
+            request_core_update=True,
+        )
+
+    def set_guides_color(self, color: Color):
+        self.mutations.set_canvas_feature_setting(
+            "magnifier.laser.color",
+            color,
+            invalidate_render_cache=True,
+            request_core_update=True,
+        )
+
+    def set_capture_color(self, color: Color):
+        self.mutations.set_canvas_feature_setting(
+            "magnifier.capture.color",
+            color,
             invalidate_render_cache=True,
             request_core_update=True,
         )
 
     def set_magnifier_laser_color(self, color: Color):
-        self.mutations.set_viewport_color(
-            "magnifier_laser_color",
-            color,
-            setting_key="magnifier_laser_color",
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self.set_guides_color(color)
 
     def set_capture_ring_color(self, color: Color):
-        self.mutations.set_viewport_color(
-            "capture_ring_color",
-            color,
-            setting_key="capture_ring_color",
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self.set_capture_color(color)
 
     def set_ui_mode(self, mode: str):
 
@@ -236,14 +225,6 @@ class SettingsController(QObject):
             event.alpha,
         )
 
-    def on_toggle_divider_line_visibility(
-        self, event: SettingsToggleDividerLineVisibilityEvent
-    ):
-        self.toggle_divider_line_visibility(event.visible)
-
-    def on_set_divider_line_color(self, event: SettingsSetDividerLineColorEvent):
-        self.set_divider_line_color(event.color)
-
     def on_toggle_magnifier_divider_visibility(
         self, event: SettingsToggleMagnifierDividerVisibilityEvent
     ):
@@ -258,11 +239,6 @@ class SettingsController(QObject):
         self, event: SettingsToggleAutoCropBlackBordersEvent
     ):
         self.toggle_auto_crop_black_borders(event.enabled)
-
-    def on_set_divider_line_thickness(
-        self, event: SettingsSetDividerLineThicknessEvent
-    ):
-        self.set_divider_line_thickness(event.thickness)
 
     def on_set_magnifier_divider_thickness(
         self, event: SettingsSetMagnifierDividerThicknessEvent

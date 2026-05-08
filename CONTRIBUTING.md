@@ -52,6 +52,7 @@ Useful entry points:
 - Settings: src/core/settings.py
 - Image composing: src/image_processing/composer.py
 - Help Index (EN): src/resources/help/en/introduction.md
+- Canvas feature architecture: docs/CANVAS_FEATURES.md
 
 ## Architectural notes
 

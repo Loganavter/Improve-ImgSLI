@@ -3,8 +3,41 @@ from typing import Optional, Tuple
 from PIL import Image
 from PyQt6.QtCore import QPoint, QPointF
 
+from domain.types import Point
 from domain.qt_adapters import point_to_qpointf
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+from ui.canvas_features.magnifier.store import (
+    default_capture_size,
+    default_magnifier_size,
+    magnifier_enabled,
+    iter_magnifier_models,
+)
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command
 from .geometry import resolve_interpolation
+
+def _build_divider_canvas_payload_from_store(store) -> dict:
+    command = get_canvas_feature_command("divider", "render.canvas_payload")
+    if command is None:
+        return {"visible": False, "color": (255, 255, 255, 255), "thickness": 0}
+    return command(store)
+
+def _build_canvas_payload_from_store(store, feature_name: str, default: dict) -> dict:
+    command = get_canvas_feature_command(feature_name, "render.canvas_payload")
+    if command is None:
+        return dict(default)
+    return dict(command(store))
+
+def _build_canvas_payload_from_params(params: dict, feature_name: str, default: dict) -> dict:
+    payloads = params.get("canvas_feature_render_payloads", {}) or {}
+    return dict(payloads.get(feature_name, default))
+
+def _build_divider_canvas_payload_from_params(params: dict) -> dict:
+    return _build_canvas_payload_from_params(
+        params,
+        "divider",
+        {"visible": False, "color": (255, 255, 255, 255), "thickness": 0},
+    )
 
 def create_render_context_from_store(
     store,
@@ -28,16 +61,43 @@ def create_render_context_from_store(
     render = getattr(viewport, "render_config", getattr(store, "settings", None))
     session = getattr(viewport, "session_data", viewport)
     interaction = getattr(viewport, "interaction_state", viewport)
+    scene_state = MagnifierStoreService(store)
+    magnifier_model = scene_state.get_active_or_first_magnifier()
+    magnifier_state = get_magnifier_widget_state(view)
+    divider_payload = _build_divider_canvas_payload_from_store(store)
+    capture_payload = _build_canvas_payload_from_store(
+        store,
+        "capture",
+        {"visible": True, "color": (255, 50, 100, 230)},
+    )
+    guides_payload = _build_canvas_payload_from_store(
+        store,
+        "guides",
+        {
+            "enabled": False,
+            "thickness": 1,
+            "color": (255, 255, 255, 255),
+            "smoothing_enabled": False,
+            "smoothing_interpolation_method": "BILINEAR",
+        },
+    )
+    capture_areas = tuple(
+        (
+            float(model.position.x),
+            float(model.position.y),
+            float(model.capture_size_relative),
+        )
+        for model in iter_magnifier_models(view, render)
+        if bool(model.visible) and bool(getattr(model, "show_capture_area", True))
+    )
 
-    optimize_laser = getattr(render, "optimize_laser_smoothing", False)
+    optimize_laser = bool(guides_payload.get("smoothing_enabled", False))
     optimize_mag_mov = getattr(view, "optimize_magnifier_movement", True)
     main_interp = render.interpolation_method
     magnifier_movement_interp = getattr(
         render, "magnifier_movement_interpolation_method", "BILINEAR"
     )
-    laser_smoothing_interp = getattr(
-        render, "laser_smoothing_interpolation_method", "BILINEAR"
-    )
+    laser_smoothing_interp = str(guides_payload.get("smoothing_interpolation_method", "BILINEAR"))
     eff_mag_interp = (
         resolve_interpolation(main_interp, magnifier_movement_interp)
         if optimize_mag_mov
@@ -68,10 +128,15 @@ def create_render_context_from_store(
         pass
 
     magnifier_offset = None
-    if view.use_magnifier:
+    if magnifier_enabled(view) and magnifier_model is not None:
         ref_dim = min(width, height)
-        offset_x = int(view.magnifier_offset_relative_visual.x * ref_dim)
-        offset_y = int(view.magnifier_offset_relative_visual.y * ref_dim)
+        visual_offset = (
+            interaction.magnifier_offset_relative_visual
+            if getattr(interaction, "is_interactive_mode", False)
+            else magnifier_model.offset_relative
+        )
+        offset_x = int(visual_offset.x * ref_dim)
+        offset_y = int(visual_offset.y * ref_dim)
         magnifier_offset = QPoint(offset_x, offset_y)
 
     return RenderContext(
@@ -80,14 +145,9 @@ def create_render_context_from_store(
             height=height,
             split_pos=view.split_position_visual,
             is_horizontal=view.is_horizontal,
-            divider_line_visible=render.divider_line_visible,
-            divider_line_color=(
-                render.divider_line_color.r,
-                render.divider_line_color.g,
-                render.divider_line_color.b,
-                render.divider_line_color.a,
-            ),
-            divider_line_thickness=render.divider_line_thickness,
+            divider_line_visible=bool(divider_payload.get("visible", False)),
+            divider_line_color=tuple(divider_payload.get("color", (255, 255, 255, 255))),
+            divider_line_thickness=int(divider_payload.get("thickness", 0)),
             divider_clip_rect=getattr(view, "divider_clip_rect", None),
         ),
         images=RenderImageContext(
@@ -106,56 +166,74 @@ def create_render_context_from_store(
             interpolation_method=render.interpolation_method,
         ),
         magnifier=RenderMagnifierContext(
-            magnifier_pos=point_to_qpointf(view.capture_position_relative),
-            magnifier_offset=magnifier_offset,
-            use_magnifier=view.use_magnifier,
-            magnifier_size=view.magnifier_size_relative,
-            capture_size=view.capture_size_relative,
-            show_capture_area=render.show_capture_area_on_main_image,
-            magnifier_drawing_coords=magnifier_drawing_coords,
-            magnifier_visible_left=view.magnifier_visible_left,
-            magnifier_visible_center=view.magnifier_visible_center,
-            magnifier_visible_right=view.magnifier_visible_right,
-            is_magnifier_combined=view.is_magnifier_combined,
-            magnifier_is_horizontal=view.magnifier_is_horizontal,
-            magnifier_divider_visible=render.magnifier_divider_visible,
-            magnifier_divider_color=(
-                render.magnifier_divider_color.r,
-                render.magnifier_divider_color.g,
-                render.magnifier_divider_color.b,
-                render.magnifier_divider_color.a,
+            position=point_to_qpointf(magnifier_model.position if magnifier_model is not None else Point(0.5, 0.5)),
+            offset=magnifier_offset,
+            enabled=magnifier_enabled(view),
+            size_relative=magnifier_model.size_relative if magnifier_model is not None else default_magnifier_size(view),
+            capture_size_relative=magnifier_model.capture_size_relative if magnifier_model is not None else default_capture_size(view),
+            show_capture_area=bool(capture_payload.get("visible", True)),
+            capture_areas=capture_areas,
+            drawing_coords=magnifier_drawing_coords,
+            visible_left=bool(magnifier_model.visible_left) if magnifier_model is not None else True,
+            visible_center=bool(magnifier_model.visible_center) if magnifier_model is not None else True,
+            visible_right=bool(magnifier_model.visible_right) if magnifier_model is not None else True,
+            combined=scene_state.is_active_magnifier_combined(),
+            layout_horizontal=bool(magnifier_model.is_horizontal) if magnifier_model is not None else False,
+            divider_visible=(
+                bool(magnifier_model.divider_visible)
+                if magnifier_model is not None
+                else bool(magnifier_state.default_divider_visible)
             ),
-            magnifier_divider_thickness=render.magnifier_divider_thickness,
-            magnifier_internal_split=view.magnifier_internal_split,
-            magnifier_border_color=(
-                render.magnifier_border_color.r,
-                render.magnifier_border_color.g,
-                render.magnifier_border_color.b,
-                render.magnifier_border_color.a,
+            divider_color=(
+                (magnifier_model.divider_color.r if magnifier_model is not None else magnifier_state.default_divider_color.r),
+                (magnifier_model.divider_color.g if magnifier_model is not None else magnifier_state.default_divider_color.g),
+                (magnifier_model.divider_color.b if magnifier_model is not None else magnifier_state.default_divider_color.b),
+                (magnifier_model.divider_color.a if magnifier_model is not None else magnifier_state.default_divider_color.a),
             ),
-            magnifier_laser_color=(
-                render.magnifier_laser_color.r,
-                render.magnifier_laser_color.g,
-                render.magnifier_laser_color.b,
-                render.magnifier_laser_color.a,
+            divider_thickness=(
+                int(magnifier_model.divider_thickness)
+                if magnifier_model is not None
+                else int(magnifier_state.default_divider_thickness)
             ),
-            capture_ring_color=(
-                render.capture_ring_color.r,
-                render.capture_ring_color.g,
-                render.capture_ring_color.b,
-                render.capture_ring_color.a,
+            internal_split=(
+                interaction.magnifier_internal_split_visual
+                if getattr(interaction, "is_interactive_mode", False)
+                and magnifier_model is not None
+                else (magnifier_model.internal_split if magnifier_model is not None else 0.5)
             ),
-            show_magnifier_guides=render.show_magnifier_guides,
-            magnifier_guides_thickness=render.magnifier_guides_thickness,
-            is_interactive_mode=getattr(interaction, "is_interactive_mode", False),
-            optimize_magnifier_movement=optimize_mag_mov,
+            border_color=(
+                (magnifier_model.border_color.r if magnifier_model is not None else magnifier_state.default_border_color.r),
+                (magnifier_model.border_color.g if magnifier_model is not None else magnifier_state.default_border_color.g),
+                (magnifier_model.border_color.b if magnifier_model is not None else magnifier_state.default_border_color.b),
+                (magnifier_model.border_color.a if magnifier_model is not None else magnifier_state.default_border_color.a),
+            ),
+            laser_color=tuple(guides_payload.get("color", (255, 255, 255, 255))),
+            capture_ring_color=tuple(capture_payload.get("color", (255, 50, 100, 230))),
+            show_guides=bool(guides_payload.get("enabled", False)),
+            guides_thickness=int(guides_payload.get("thickness", 1)),
+            interactive_mode=getattr(interaction, "is_interactive_mode", False),
+            optimize_movement=optimize_mag_mov,
             optimize_laser_smoothing=optimize_laser,
             movement_interpolation_method=eff_mag_interp,
-            magnifier_movement_interpolation_method=eff_mag_interp,
-            laser_smoothing_interpolation_method=eff_laser_interp,
-            magnifier_offset_relative_visual=view.magnifier_offset_relative_visual,
-            magnifier_spacing_relative_visual=view.magnifier_spacing_relative_visual,
-            highlighted_magnifier_element=getattr(view, "highlighted_magnifier_element", None),
+            laser_interpolation_method=eff_laser_interp,
+            visual_offset_relative=(
+                interaction.magnifier_offset_relative_visual
+                if getattr(interaction, "is_interactive_mode", False)
+                else magnifier_model.offset_relative
+            )
+            if magnifier_model is not None
+            else None,
+            visual_spacing_relative=(
+                interaction.magnifier_spacing_relative_visual
+                if getattr(interaction, "is_interactive_mode", False)
+                else magnifier_model.spacing_relative
+            )
+            if magnifier_model is not None
+            else 0.05,
+            highlighted_element=getattr(view, "highlighted_magnifier_element", None),
+            highlight_capture=bool(
+                getattr(interaction, "is_dragging_capture_point", False)
+            ),
         ),
         text=RenderTextContext(
             include_file_names=render.include_file_names_in_saved,
@@ -206,7 +284,16 @@ def create_render_context_from_params(
     img1 = image1_scaled or original_image1 or Image.new("RGBA", (width, height), (0, 0, 0, 255))
     img2 = image2_scaled or original_image2 or Image.new("RGBA", (width, height), (0, 0, 0, 255))
 
-    mag_pos_tuple = params.get("magnifier_pos", (0.5, 0.5))
+    mag_pos_tuple = params.get("magnifier_position", (0.5, 0.5))
+    capture_areas = tuple(
+        (
+            float(item[0]),
+            float(item[1]),
+            float(item[2]),
+        )
+        for item in params.get("magnifier_capture_areas", ())
+        if len(item) >= 3
+    )
     if isinstance(mag_pos_tuple, tuple) and len(mag_pos_tuple) >= 2:
         mag_pos = QPointF(float(mag_pos_tuple[0]), float(mag_pos_tuple[1]))
     elif isinstance(mag_pos_tuple, QPointF):
@@ -215,9 +302,9 @@ def create_render_context_from_params(
         mag_pos = QPointF(0.5, 0.5)
 
     magnifier_offset = None
-    if params.get("use_magnifier") and params.get("magnifier_offset_relative_visual"):
+    if params.get("magnifier_enabled") and params.get("magnifier_visual_offset"):
         ref_dim = min(width, height)
-        mag_offset_visual = params["magnifier_offset_relative_visual"]
+        mag_offset_visual = params["magnifier_visual_offset"]
         if isinstance(mag_offset_visual, tuple):
             offset_x = int(mag_offset_visual[0] * ref_dim)
             offset_y = int(mag_offset_visual[1] * ref_dim)
@@ -229,8 +316,8 @@ def create_render_context_from_params(
         magnifier_offset = QPoint(offset_x, offset_y)
 
     mag_offset_relative_visual_qpoint = None
-    if params.get("magnifier_offset_relative_visual"):
-        mag_offset_visual = params["magnifier_offset_relative_visual"]
+    if params.get("magnifier_visual_offset"):
+        mag_offset_visual = params["magnifier_visual_offset"]
         if isinstance(mag_offset_visual, tuple):
             mag_offset_relative_visual_qpoint = QPointF(
                 float(mag_offset_visual[0]), float(mag_offset_visual[1])
@@ -239,15 +326,32 @@ def create_render_context_from_params(
             mag_offset_relative_visual_qpoint = QPointF(mag_offset_visual)
 
     caches = session_caches or {}
+    divider_payload = _build_divider_canvas_payload_from_params(params)
+    capture_payload = _build_canvas_payload_from_params(
+        params,
+        "capture",
+        {"visible": True, "color": (255, 50, 100, 230)},
+    )
+    guides_payload = _build_canvas_payload_from_params(
+        params,
+        "guides",
+        {
+            "enabled": False,
+            "thickness": 1,
+            "color": (255, 255, 255, 255),
+            "smoothing_enabled": False,
+            "smoothing_interpolation_method": "BILINEAR",
+        },
+    )
     return RenderContext(
         canvas=RenderCanvasContext(
             width=width,
             height=height,
             split_pos=params.get("split_pos", 0.5),
             is_horizontal=params.get("is_horizontal", False),
-            divider_line_visible=params.get("divider_line_visible", True),
-            divider_line_color=params.get("divider_line_color", (255, 255, 255, 255)),
-            divider_line_thickness=params.get("divider_line_thickness", 3),
+            divider_line_visible=bool(divider_payload.get("visible", False)),
+            divider_line_color=tuple(divider_payload.get("color", (255, 255, 255, 255))),
+            divider_line_thickness=int(divider_payload.get("thickness", 0)),
             divider_clip_rect=params.get("divider_clip_rect"),
         ),
         images=RenderImageContext(
@@ -265,37 +369,38 @@ def create_render_context_from_params(
             interpolation_method=params.get("interpolation_method", "BILINEAR"),
         ),
         magnifier=RenderMagnifierContext(
-            magnifier_pos=mag_pos,
-            magnifier_offset=magnifier_offset,
-            use_magnifier=params.get("use_magnifier", False),
-            magnifier_size=params.get("magnifier_size", 0.2),
-            capture_size=params.get("capture_size", 0.1),
-            show_capture_area=params.get("show_capture_area", True),
-            magnifier_drawing_coords=magnifier_drawing_coords,
-            magnifier_visible_left=params.get("magnifier_visible_left", True),
-            magnifier_visible_center=params.get("magnifier_visible_center", True),
-            magnifier_visible_right=params.get("magnifier_visible_right", True),
-            is_magnifier_combined=params.get("is_magnifier_combined", False),
-            magnifier_is_horizontal=params.get("magnifier_is_horizontal", False),
-            magnifier_divider_visible=params.get("magnifier_divider_visible", True),
-            magnifier_divider_color=params.get("magnifier_divider_color", (255, 255, 255, 230)),
-            magnifier_divider_thickness=params.get("magnifier_divider_thickness", 2),
-            magnifier_internal_split=params.get("magnifier_internal_split", 0.5),
-            magnifier_border_color=params.get("magnifier_border_color", (255, 255, 255, 248)),
-            magnifier_laser_color=params.get("magnifier_laser_color", (255, 255, 255, 255)),
-            capture_ring_color=params.get("capture_ring_color", (255, 50, 100, 230)),
-            show_magnifier_guides=params.get("show_magnifier_guides", False),
-            magnifier_guides_thickness=params.get("magnifier_guides_thickness", 1),
-            is_interactive_mode=params.get("is_interactive_mode", False),
-            optimize_magnifier_movement=params.get("optimize_magnifier_movement", True),
-            optimize_laser_smoothing=params.get("optimize_laser_smoothing", False),
+            position=mag_pos,
+            offset=magnifier_offset,
+            enabled=params.get("magnifier_enabled", False),
+            size_relative=params.get("magnifier_size", 0.2),
+            capture_size_relative=params.get("capture_size", 0.1),
+            show_capture_area=bool(capture_payload.get("visible", params.get("show_capture_area", True))),
+            capture_areas=capture_areas,
+            drawing_coords=magnifier_drawing_coords,
+            visible_left=params.get("magnifier_show_left", True),
+            visible_center=params.get("magnifier_show_center", True),
+            visible_right=params.get("magnifier_show_right", True),
+            combined=params.get("magnifier_combined", False),
+            layout_horizontal=params.get("magnifier_layout_horizontal", False),
+            divider_visible=params.get("magnifier_divider_visible", True),
+            divider_color=params.get("magnifier_divider_color", (255, 255, 255, 230)),
+            divider_thickness=params.get("magnifier_divider_thickness", 2),
+            internal_split=params.get("magnifier_split", 0.5),
+            border_color=params.get("magnifier_border_color", (255, 255, 255, 248)),
+            laser_color=tuple(guides_payload.get("color", params.get("magnifier_laser_color", (255, 255, 255, 255)))),
+            capture_ring_color=tuple(capture_payload.get("color", params.get("capture_ring_color", (255, 50, 100, 230)))),
+            show_guides=bool(guides_payload.get("enabled", params.get("magnifier_show_guides", False))),
+            guides_thickness=int(guides_payload.get("thickness", params.get("magnifier_guides_thickness", 1))),
+            interactive_mode=params.get("is_interactive_mode", False),
+            optimize_movement=params.get("optimize_magnifier_movement", True),
+            optimize_laser_smoothing=bool(guides_payload.get("smoothing_enabled", params.get("optimize_laser_smoothing", False))),
             movement_interpolation_method=params.get("movement_interpolation_method", "BILINEAR"),
-            magnifier_movement_interpolation_method=params.get("magnifier_movement_interpolation_method", "BILINEAR"),
-            laser_smoothing_interpolation_method=params.get("laser_smoothing_interpolation_method", "BILINEAR"),
-            magnifier_offset_relative_visual=mag_offset_relative_visual_qpoint,
-            magnifier_spacing_relative_visual=params.get("magnifier_spacing_relative_visual", 0.05),
-            highlighted_magnifier_element=params.get("highlighted_magnifier_element"),
-            magnifier_cache_dict=caches.get("magnifier_cache_dict"),
+            laser_interpolation_method=str(guides_payload.get("smoothing_interpolation_method", params.get("laser_smoothing_interpolation_method", "BILINEAR"))),
+            visual_offset_relative=mag_offset_relative_visual_qpoint,
+            visual_spacing_relative=params.get("magnifier_visual_spacing", 0.05),
+            highlighted_element=params.get("highlighted_magnifier_element"),
+            highlight_capture=bool(params.get("highlight_capture", False)),
+            cache_dict=caches.get("magnifier_cache_dict"),
         ),
         text=RenderTextContext(
             include_file_names=params.get("include_file_names", False),

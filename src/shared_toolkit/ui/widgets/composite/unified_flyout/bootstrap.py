@@ -31,6 +31,7 @@ class _UnifiedFlyoutBootstrapMixin(_UnifiedFlyoutSessionMixin):
         self._anim = None
         self._is_simple_mode = False
         self._is_refreshing = False
+        self._structure_sync_scheduled = False
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self._do_refresh_geometry)

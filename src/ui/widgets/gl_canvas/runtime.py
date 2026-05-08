@@ -7,29 +7,6 @@ from PyQt6.QtGui import QSurfaceFormat
 
 logger = logging.getLogger("ImproveImgSLI")
 
-def quick_canvas_backend_name() -> str:
-    return os.getenv("IMPROVE_IMGSLI_CANVAS_BACKEND", "").strip().lower()
-
-def should_use_quick_probe_canvas() -> bool:
-    return quick_canvas_backend_name() in {"quick", "quick-probe", "qml"}
-
-def should_use_opengl_widget_canvas() -> bool:
-    backend = quick_canvas_backend_name()
-    if backend in {"opengl-widget", "widget", "qopenglwidget"}:
-        return True
-    if backend in {"opengl-window", "window", "qopenglwindow"}:
-        return False
-    if backend:
-        return False
-    return True
-
-def should_use_software_canvas() -> bool:
-    force_sw = os.getenv("IMPROVE_IMGSLI_FORCE_SOFTWARE_CANVAS", "").strip().lower()
-    if force_sw in {"1", "true", "yes", "on"}:
-        return True
-
-    return False
-
 def should_prefer_gles() -> bool:
     force_desktop = os.getenv("IMPROVE_IMGSLI_FORCE_DESKTOP_GL", "").strip().lower()
     if force_desktop in {"1", "true", "yes", "on"}:

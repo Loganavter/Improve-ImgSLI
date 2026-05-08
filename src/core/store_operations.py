@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from core.store_document import DocumentModel
 from core.store_viewport import SessionData, ViewportState
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import update_magnifier_model
 
 class StoreOperationsMixin:
     def clear_all_caches(self):
@@ -137,16 +139,29 @@ class StoreOperationsMixin:
     def copy_for_worker(self):
         src_render = self.viewport.render_config
         new_render_config = src_render.clone()
-
         src_view = self.viewport.view_state
         new_view_state = src_view.clone()
+        scene_state = MagnifierStoreService(self)
+        active_magnifier = scene_state.get_active_or_first_magnifier()
 
         new_view_state.split_position = src_view.split_position_visual
-        new_view_state.magnifier_offset_relative = src_view.magnifier_offset_relative_visual
-        new_view_state.magnifier_spacing_relative = (
-            src_view.magnifier_spacing_relative_visual
-        )
-
+        if active_magnifier is not None:
+            interaction = self.viewport.interaction_state
+            cloned = active_magnifier.clone()
+            if interaction.is_interactive_mode:
+                cloned.offset_relative = interaction.magnifier_offset_relative_visual
+                cloned.spacing_relative = interaction.magnifier_spacing_relative_visual
+                cloned.internal_split = interaction.magnifier_internal_split_visual
+            else:
+                cloned.offset_relative = active_magnifier.offset_relative
+                cloned.spacing_relative = active_magnifier.spacing_relative
+                cloned.internal_split = active_magnifier.internal_split
+            update_magnifier_model(
+                new_view_state,
+                new_render_config,
+                cloned.id,
+                **cloned.__dict__,
+            )
         src_session = self.viewport.session_data
         new_session_data = SessionData()
 

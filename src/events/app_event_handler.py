@@ -7,12 +7,17 @@ from PyQt6.QtGui import (
     QMouseEvent,
     QWheelEvent,
 )
+from PyQt6.QtWidgets import QApplication
 from events.app_event import (
     route_main_window_event,
 )
 from events.drag_drop_handler import DragAndDropService
 from events.router import route_drag_and_drop_override, route_global_keyboard_event
 from events.runtime import build_event_handler_runtime
+
+import logging
+
+logger = logging.getLogger("ImproveImgSLI")
 
 class EventHandler(QObject):
     drag_enter_event_signal = pyqtSignal(QDragEnterEvent)
@@ -22,8 +27,10 @@ class EventHandler(QObject):
     resize_event_signal = pyqtSignal(QEvent)
     close_event_signal = pyqtSignal(QEvent)
     mouse_press_event_signal = pyqtSignal(QMouseEvent)
-    keyboard_press_event_signal = pyqtSignal(QKeyEvent)
-    keyboard_release_event_signal = pyqtSignal(QKeyEvent)
+    global_keyboard_press_event_signal = pyqtSignal(QKeyEvent)
+    global_keyboard_release_event_signal = pyqtSignal(QKeyEvent)
+    canvas_keyboard_press_event_signal = pyqtSignal(QKeyEvent)
+    canvas_keyboard_release_event_signal = pyqtSignal(QKeyEvent)
     mouse_press_event_on_image_label_signal = pyqtSignal(QMouseEvent)
     mouse_move_event_on_image_label_signal = pyqtSignal(QMouseEvent)
     mouse_release_event_on_image_label_signal = pyqtSignal(QMouseEvent)
@@ -40,11 +47,12 @@ class EventHandler(QObject):
         )
         self.interactive_movement = self.runtime.interactive_movement
         self.keyboard_handler = self.runtime.keyboard_handler
+        self.keyboard_state = self.runtime.keyboard_state
         self.resize_timer = self.runtime.resize_timer
         self.resize_timer.timeout.connect(self._finish_resize)
 
-        self.keyboard_press_event_signal.connect(self.handle_key_press)
-        self.keyboard_release_event_signal.connect(self.handle_key_release)
+        self.global_keyboard_press_event_signal.connect(self.handle_key_press)
+        self.global_keyboard_release_event_signal.connect(self.handle_key_release)
 
     def eventFilter(self, watched_obj, event: QEvent) -> bool:
         event_type = event.type()
@@ -52,6 +60,17 @@ class EventHandler(QObject):
         dnd_service = DragAndDropService.get_instance()
         if route_drag_and_drop_override(self, event, dnd_service):
             return True
+
+        if event_type == QEvent.Type.ApplicationDeactivate:
+            self._reset_keyboard_state(f"event:{int(event_type)}")
+        elif event_type == QEvent.Type.WindowDeactivate:
+            app = QApplication.instance()
+            active_window = app.activeWindow() if app is not None else None
+            if watched_obj is self.presenter.main_window_app or watched_obj is active_window:
+                self._reset_keyboard_state(f"event:{int(event_type)}")
+        elif event_type == QEvent.Type.FocusOut:
+            if watched_obj is self.presenter.main_window_app:
+                self._reset_keyboard_state(f"event:{int(event_type)}")
 
         if event_type == QEvent.Type.MouseButtonPress:
             self.mouse_press_event_signal.emit(event)
@@ -78,3 +97,21 @@ class EventHandler(QObject):
 
     def _finish_resize(self):
         self.presenter.finish_resize_delay()
+
+    def _reset_keyboard_state(self, reason: str) -> None:
+        result = self.keyboard_state.reset()
+        session_reset = False
+        image_label_handler = getattr(self.presenter, "image_label_handler", None)
+        if image_label_handler is not None:
+            try:
+                session_reset = image_label_handler.input_session.reset()
+            except Exception:
+                pass
+        if not result.applied and not session_reset:
+            return
+        self.store.emit_viewport_change("interaction")
+        if not session_reset:
+            try:
+                self.stop_interactive_movement()
+            except Exception:
+                pass
