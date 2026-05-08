@@ -539,9 +539,9 @@ void main() {
     float dist = distance(frag_px, center_px);
     float half_w = max(0.5, lineWidth_px * 0.5);
     float aa = 1.15;
-    float outer = 1.0 - smoothstep(radius_px + half_w - aa, radius_px + half_w + aa, dist);
-    float inner = 1.0 - smoothstep(radius_px - half_w - aa, radius_px - half_w + aa, dist);
-    float ring = clamp(outer - inner, 0.0, 1.0);
+    float delta = abs(dist - radius_px);
+    float solid_w = max(0.0, half_w - aa);
+    float ring = 1.0 - smoothstep(solid_w, half_w + aa, delta);
     if (ring <= 0.01) discard;
     FragColor = vec4(color.rgb, color.a * ring);
 }

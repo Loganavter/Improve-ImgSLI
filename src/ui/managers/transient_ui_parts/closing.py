@@ -68,6 +68,11 @@ class PopupClosingController:
         except Exception:
             pass
         try:
+            if host._magn_instances_popup_open:
+                self.manager.magnifier_instances.hide()
+        except Exception:
+            pass
+        try:
             overlay_layer = getattr(host.parent_widget, "overlay_layer", None)
             if overlay_layer is not None:
                 overlay_layer.hide_all_popups()

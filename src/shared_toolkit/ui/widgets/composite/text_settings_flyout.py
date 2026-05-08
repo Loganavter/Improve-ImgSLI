@@ -21,14 +21,16 @@ from PyQt6.QtWidgets import (
 
 from core.constants import AppConstants
 from resources.translations import tr
+from shared_toolkit.ui.in_window_surface import (
+    attach_in_window_widget,
+    paint_shadowed_surface,
+)
 from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from shared_toolkit.ui.overlay_layer import get_overlay_layer
 from shared_toolkit.ui.widgets.atomic import (
     FluentRadioButton,
     FluentSlider,
     FluentSwitch,
 )
-from shared_toolkit.ui.widgets.helpers import draw_rounded_shadow
 
 class FontSettingsFlyout(QWidget):
     settings_changed = pyqtSignal(int, int, QColor, QColor, bool, str, int)
@@ -41,9 +43,7 @@ class FontSettingsFlyout(QWidget):
         self.parent_widget = parent_widget
 
         self._theme = ThemeManager.get_instance()
-        self.overlay_layer = get_overlay_layer(parent_widget)
-        if self.overlay_layer is not None:
-            self.overlay_layer.attach(self)
+        self.overlay_layer = attach_in_window_widget(self, parent_widget)
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
@@ -447,13 +447,11 @@ class FontSettingsFlyout(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-        draw_rounded_shadow(
+        paint_shadowed_surface(
             painter,
             self.container.geometry(),
-            steps=self.SHADOW_RADIUS,
-            radius=self.CONTENT_RADIUS,
+            shadow_radius=self.SHADOW_RADIUS,
+            corner_radius=self.CONTENT_RADIUS,
         )
         painter.end()
 

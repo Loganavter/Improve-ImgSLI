@@ -6,6 +6,7 @@ from plugins.analysis.processing import (
 )
 from plugins.export.models import ExportRenderContext
 from shared.image_processing.resize import resize_images_processor
+from ui.canvas_features.magnifier import iter_magnifier_models
 from utils.resource_loader import get_magnifier_drawing_coords
 
 class ExportSceneBuilder:
@@ -44,7 +45,12 @@ class ExportSceneBuilder:
             source_image2 = image2
         if source_key is None:
             source_key = self._build_source_key(source_image1, source_image2)
-        if magnifier_drawing_coords is None and getattr(viewport.view_state, "use_magnifier", False):
+        visible_models = [
+            model
+            for model in iter_magnifier_models(viewport.view_state, viewport.render_config)
+            if bool(model.visible)
+        ]
+        if magnifier_drawing_coords is None and visible_models:
             magnifier_drawing_coords = get_magnifier_drawing_coords(
                 store=self.store,
                 drawing_width=width,

@@ -1,10 +1,7 @@
 from PyQt6.QtCore import QPoint
 
 def set_magnifier_combined_mode(store, combined: bool):
-    try:
-        store.viewport.view_state.is_magnifier_combined = combined
-    except Exception:
-        pass
+    return combined
 
 def compute_axis_pair_centers(
     midpoint: QPoint, offset: float, layout_horizontal: bool

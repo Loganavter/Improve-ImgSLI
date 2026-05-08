@@ -1,16 +1,18 @@
 import PIL.Image
 
-from ui.presenters.image_canvas.background import (
+from ui.presenters.image_canvas.background_parts.image_cache import (
     create_preview_cache_async,
     ensure_images_scaled,
     ensure_images_unified,
-    finish_resize_delay,
     on_display_scaling_ready,
     on_preview_cache_ready,
+    start_scaling_worker,
+)
+from ui.presenters.image_canvas.background_parts.render_flow import (
+    finish_resize_delay,
     render_background,
     schedule_update as schedule_update_impl,
     should_use_dirty_rects_optimization,
-    start_scaling_worker,
     update_comparison_if_needed as update_comparison_if_needed_impl,
 )
 from ui.presenters.image_canvas.lifecycle import (
@@ -21,25 +23,29 @@ from ui.presenters.image_canvas.lifecycle import (
     start_interactive_movement,
     update_minimum_window_size,
 )
-from ui.presenters.image_canvas.magnifier import (
-    magnifier_worker_task,
+from ui.presenters.image_canvas.magnifier_parts.gl_render import (
+    render_magnifier_diff_fallback,
+    render_magnifier_gl_fast,
+    sync_widget_overlay_coords,
+)
+from ui.presenters.image_canvas.magnifier_parts.result_handlers import (
     on_capture_patch_ready,
     on_magnifier_layer_ready,
     on_magnifier_patch_ready,
     on_magnifier_worker_error,
-    render_capture_area_only_optimized,
-    render_magnifier_diff_fallback,
-    render_magnifier_gl_fast,
-    render_magnifier_layer,
-    start_magnifier_only_worker,
     stop_interactive_movement as stop_interactive_movement_impl,
-    sync_widget_overlay_coords,
     update_capture_area_display as update_capture_area_display_impl,
     update_widget_capture_area_geometry,
 )
+from ui.presenters.image_canvas.magnifier_parts.worker_flow import (
+    magnifier_worker_task,
+    render_capture_area_only_optimized,
+    render_magnifier_layer,
+    start_magnifier_only_worker,
+)
 from ui.presenters.image_canvas.results import (
     handle_background_result,
-    handle_legacy_result,
+    handle_patch_result,
     handle_magnifier_result,
     on_generic_worker_error,
     on_worker_error,
@@ -56,7 +62,6 @@ from ui.presenters.image_canvas.view import (
     is_gl_canvas,
     prepare_gl_background_layers,
     set_image_layers,
-    supports_legacy_gl_magnifier,
 )
 
 class CanvasLifecycleCoordinator:
@@ -70,6 +75,9 @@ class CanvasLifecycleCoordinator:
         return debug_log_gate()
 
     def connect_event_handler_signals(self, event_handler):
+        self.presenter.image_label_handler.keyboard_state_service = (
+            event_handler.keyboard_state
+        )
         event_handler.mouse_press_event_on_image_label_signal.connect(
             self.presenter.image_label_handler.handle_mouse_press
         )
@@ -79,10 +87,10 @@ class CanvasLifecycleCoordinator:
         event_handler.mouse_release_event_on_image_label_signal.connect(
             self.presenter.image_label_handler.handle_mouse_release
         )
-        event_handler.keyboard_press_event_signal.connect(
+        event_handler.canvas_keyboard_press_event_signal.connect(
             self.presenter.image_label_handler.handle_key_press
         )
-        event_handler.keyboard_release_event_signal.connect(
+        event_handler.canvas_keyboard_release_event_signal.connect(
             self.presenter.image_label_handler.handle_key_release
         )
         event_handler.mouse_wheel_event_on_image_label_signal.connect(
@@ -128,9 +136,6 @@ class CanvasViewCoordinator:
 
     def is_gl_canvas(self):
         return is_gl_canvas(self.presenter)
-
-    def supports_legacy_gl_magnifier(self):
-        return supports_legacy_gl_magnifier(self.presenter)
 
     def set_image_layers(
         self, background=None, magnifier=None, mag_pos=None, coords_snapshot=None
@@ -314,8 +319,8 @@ class CanvasResultCoordinator:
             self.presenter, result, params, self.presenter.lifecycle.debug_log_gate()
         )
 
-    def handle_legacy_result(self, result: dict, params: dict):
-        return handle_legacy_result(
+    def handle_patch_result(self, result: dict, params: dict):
+        return handle_patch_result(
             self.presenter, result, params, self.presenter.lifecycle.debug_log_gate()
         )
 

@@ -6,6 +6,21 @@ from PyQt6.QtGui import QColor
 from core.constants import AppConstants
 from core.store import Store
 from domain.qt_adapters import hex_to_color, color_to_hex, qcolor_to_color
+from domain.types import Point
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import (
+    default_capture_size,
+    default_magnifier_size,
+    set_default_capture_size,
+    set_default_magnifier_size,
+)
+from ui.canvas_infra.scene.property_access import (
+    deserialize_canvas_feature_setting,
+    read_canvas_feature_property,
+    write_canvas_feature_property,
+    serialize_canvas_feature_setting,
+)
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_properties
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -32,33 +47,27 @@ class SettingsManager:
         v, s = store.viewport, store.settings
         render = v.render_config
         view = v.view_state
+        scene_state = MagnifierStoreService(store)
 
         render.max_name_length = self._get_setting("max_name_length", 50, int)
         render.display_resolution_limit = self._get_setting(
             "display_resolution_limit", 2160, int
         )
 
-        view.magnifier_size_relative = self._get_setting(
-            "magnifier_size_relative", 0.4, float
+        set_default_magnifier_size(
+            view,
+            self._get_setting("magnifier_size_relative", 0.4, float),
         )
-        view.capture_size_relative = self._get_setting("capture_size_relative", 0.1, float)
-        view.magnifier_spacing_relative = self._get_setting(
+        set_default_capture_size(
+            view,
+            self._get_setting("capture_size_relative", 0.1, float),
+        )
+        initial_spacing = self._get_setting(
             "magnifier_spacing_relative", AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE, float
-        )
-        view.magnifier_spacing_relative_visual = view.magnifier_spacing_relative
-        view.is_magnifier_combined = (
-            view.magnifier_visible_left
-            and view.magnifier_visible_right
-            and view.magnifier_spacing_relative
-            <= AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE + 1e-5
         )
         view.movement_speed_per_sec = self._get_setting(
             "movement_speed_per_sec", 2.0, float
         )
-
-        view.capture_position_relative = AppConstants.DEFAULT_CAPTURE_POS_RELATIVE
-        view.magnifier_offset_relative = AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE
-        view.magnifier_offset_relative_visual = view.magnifier_offset_relative
 
         s.theme = self._get_setting("theme", "auto", str)
         s.current_language = self._get_setting("language", "en", str)
@@ -78,35 +87,6 @@ class SettingsManager:
             "auto_calculate_ssim", False, bool
         )
 
-        render.divider_line_thickness = self._get_setting("divider_line_thickness", 3, int)
-        render.divider_line_color = hex_to_color(
-            self._get_setting("divider_line_color", "#FFFFFFFF", str)
-        )
-        render.divider_line_visible = self._get_setting("divider_line_visible", True, bool)
-
-        render.magnifier_divider_thickness = self._get_setting(
-            "magnifier_divider_thickness", 2, int
-        )
-        render.magnifier_divider_color = hex_to_color(
-            self._get_setting("magnifier_divider_color", "#E6FFFFFF", str)
-        )
-        render.magnifier_divider_visible = self._get_setting(
-            "magnifier_divider_visible", True, bool
-        )
-        render.magnifier_border_color = hex_to_color(
-            self._get_setting("magnifier_border_color", "#F8FFFFFF", str)
-        )
-        render.magnifier_laser_color = hex_to_color(
-            self._get_setting("magnifier_laser_color", "#FFFFFFFF", str)
-        )
-        render.capture_ring_color = hex_to_color(
-            self._get_setting("capture_ring_color", "#E6FF3264", str)
-        )
-
-        render.magnifier_guides_thickness = self._get_setting(
-            "magnifier_guides_thickness", 1, int
-        )
-
         render.font_size_percent = self._get_setting("font_size_percent", 100, int)
         render.font_weight = self._get_setting("font_weight", 0, int)
         render.text_alpha_percent = self._get_setting("text_alpha_percent", 100, int)
@@ -122,9 +102,6 @@ class SettingsManager:
             "include_file_names_in_saved", False, bool
         )
 
-        render.optimize_laser_smoothing = self._get_setting(
-            "optimize_laser_smoothing", False, bool
-        )
         view.optimize_magnifier_movement = self._get_setting(
             "optimize_magnifier_movement", True, bool
         )
@@ -143,9 +120,7 @@ class SettingsManager:
         magnifier_movement_interp = self._get_setting(
             "magnifier_movement_interpolation_method", None, str
         )
-        laser_smoothing_interp = self._get_setting(
-            "laser_smoothing_interpolation_method", None, str
-        )
+        laser_smoothing_interp = None
 
         if magnifier_movement_interp is None:
             movement_interp = self._get_setting(
@@ -157,11 +132,23 @@ class SettingsManager:
         render.magnifier_movement_interpolation_method = (
             magnifier_movement_interp
         )
-        render.laser_smoothing_interpolation_method = (
+        from ui.canvas_features.guides.state import get_guides_widget_state
+
+        get_guides_widget_state(v.view_state).smoothing_interpolation_method = (
             laser_smoothing_interp or "BILINEAR"
         )
 
         render.movement_interpolation_method = magnifier_movement_interp
+
+        self._load_canvas_feature_settings(v)
+
+        default_magnifier = scene_state.ensure_active_magnifier(create_if_missing=False)
+        if default_magnifier is not None:
+            scene_state.move_object_source_position(default_magnifier.id, AppConstants.DEFAULT_CAPTURE_POS_RELATIVE)
+            scene_state.set_active_magnifier_offset(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
+            scene_state.set_active_magnifier_spacing(initial_spacing)
+            scene_state.set_active_magnifier_size(default_magnifier_size(view))
+            scene_state.set_active_capture_size(default_capture_size(view))
 
         s.window_width = self._get_setting("window_width", 1024, int)
         s.window_height = self._get_setting("window_height", 768, int)
@@ -220,12 +207,23 @@ class SettingsManager:
         v, s = store.viewport, store.settings
         render = v.render_config
         view = v.view_state
+        scene_state = MagnifierStoreService(store)
+        active_magnifier = scene_state.get_active_or_first_magnifier()
         self._save_setting("max_name_length", render.max_name_length)
         self._save_setting("display_resolution_limit", render.display_resolution_limit)
 
-        self._save_setting("magnifier_size_relative", view.magnifier_size_relative)
-        self._save_setting("capture_size_relative", view.capture_size_relative)
-        self._save_setting("magnifier_spacing_relative", view.magnifier_spacing_relative)
+        self._save_setting(
+            "magnifier_size_relative",
+            active_magnifier.size_relative if active_magnifier is not None else default_magnifier_size(view),
+        )
+        self._save_setting(
+            "capture_size_relative",
+            active_magnifier.capture_size_relative if active_magnifier is not None else default_capture_size(view),
+        )
+        self._save_setting(
+            "magnifier_spacing_relative",
+            active_magnifier.spacing_relative if active_magnifier is not None else AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE,
+        )
         self._save_setting("movement_speed_per_sec", view.movement_speed_per_sec)
 
         self._save_setting("theme", s.theme)
@@ -243,27 +241,6 @@ class SettingsManager:
             "auto_calculate_ssim", store.viewport.session_data.image_state.auto_calculate_ssim
         )
 
-        self._save_setting("divider_line_thickness", render.divider_line_thickness)
-        self._save_setting("divider_line_color", color_to_hex(render.divider_line_color))
-        self._save_setting("divider_line_visible", render.divider_line_visible)
-
-        self._save_setting("magnifier_divider_thickness", render.magnifier_divider_thickness)
-        self._save_setting(
-            "magnifier_divider_color", color_to_hex(render.magnifier_divider_color)
-        )
-        self._save_setting("magnifier_divider_visible", render.magnifier_divider_visible)
-        self._save_setting(
-            "magnifier_border_color", color_to_hex(render.magnifier_border_color)
-        )
-        self._save_setting(
-            "magnifier_laser_color", color_to_hex(render.magnifier_laser_color)
-        )
-        self._save_setting(
-            "capture_ring_color", color_to_hex(render.capture_ring_color)
-        )
-
-        self._save_setting("magnifier_guides_thickness", render.magnifier_guides_thickness)
-
         self._save_setting("font_size_percent", render.font_size_percent)
         self._save_setting("font_weight", render.font_weight)
         self._save_setting("text_alpha_percent", render.text_alpha_percent)
@@ -273,7 +250,6 @@ class SettingsManager:
         self._save_setting("text_placement_mode", render.text_placement_mode)
         self._save_setting("include_file_names_in_saved", render.include_file_names_in_saved)
 
-        self._save_setting("optimize_laser_smoothing", render.optimize_laser_smoothing)
         self._save_setting("optimize_magnifier_movement", view.optimize_magnifier_movement)
         self._save_setting("interpolation_method", render.interpolation_method)
         self._save_setting(
@@ -285,13 +261,10 @@ class SettingsManager:
             render.magnifier_movement_interpolation_method,
         )
         self._save_setting(
-            "laser_smoothing_interpolation_method",
-            render.laser_smoothing_interpolation_method,
-        )
-
-        self._save_setting(
             "movement_interpolation_method", render.movement_interpolation_method
         )
+
+        self._save_canvas_feature_settings(v)
 
         self._save_setting("window_width", s.window_width)
         self._save_setting("window_height", s.window_height)
@@ -324,6 +297,22 @@ class SettingsManager:
         self._save_setting("export_video_manual_args", s.export_video_manual_args)
 
         self.settings.sync()
+
+    def _load_canvas_feature_settings(self, viewport_state) -> None:
+        for prop in get_canvas_feature_properties():
+            if not prop.setting_key or not self.settings.contains(prop.setting_key):
+                continue
+            raw_value = self.settings.value(prop.setting_key)
+            channels = deserialize_canvas_feature_setting(prop, raw_value)
+            write_canvas_feature_property(viewport_state, prop, channels)
+
+    def _save_canvas_feature_settings(self, viewport_state) -> None:
+        for prop in get_canvas_feature_properties():
+            if not prop.setting_key:
+                continue
+            channels = read_canvas_feature_property(viewport_state, prop)
+            raw_value = serialize_canvas_feature_setting(prop, channels)
+            self._save_setting(prop.setting_key, raw_value)
 
     def _save_setting(self, key, value):
         if value is None:

@@ -6,6 +6,7 @@ from ui.managers.transient_ui_parts import (
     FlyoutController,
     FontSettingsController,
     InterpolationFlyoutController,
+    MagnifierInstancesPopupController,
     MagnifierVisibilityController,
     PopupClosingController,
 )
@@ -18,6 +19,7 @@ class TransientUIManager:
         self.interpolation = InterpolationFlyoutController(self)
         self.font_settings = FontSettingsController(self)
         self.magnifier = MagnifierVisibilityController(self)
+        self.magnifier_instances = MagnifierInstancesPopupController(self)
         self.closing = PopupClosingController(self)
 
     @property
@@ -89,8 +91,19 @@ class TransientUIManager:
     def hide_magnifier_visibility_flyout(self, reason: str = "explicit"):
         self.magnifier.hide(reason)
 
+    def show_magnifier_instances_popup(self):
+        self.magnifier_instances.show()
+
+    def hide_magnifier_instances_popup(self):
+        self.magnifier_instances.hide()
+
+    def on_magnifier_instances_count_changed(self):
+        self.magnifier_instances.on_count_changed()
+
     def event_filter(self, watched, event):
-        return self.magnifier.event_filter(watched, event)
+        if self.magnifier.event_filter(watched, event):
+            return True
+        return self.magnifier_instances.event_filter(watched, event)
 
     def close_all_flyouts_if_needed(self, global_pos: QPointF):
         self.closing.close_all_flyouts_if_needed(global_pos)

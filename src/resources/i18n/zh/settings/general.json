@@ -13,6 +13,8 @@
     "interactive_optimization": "交互式优化",
     "light": "浅色",
     "maximum_name_length_ui": "最大名称长度 (UI)",
+    "magnifier_auto_color_new_instances": "自动为新放大镜着色",
+    "magnifier_intersection_highlight": "放大镜重叠红色高亮",
     "optimization": "优化",
     "optimize_laser_smoothing": "激光平滑",
     "optimize_magnifier_movement": "放大镜移动",

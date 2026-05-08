@@ -29,6 +29,12 @@
 - Click the laser icon button on the magnifier toolbar to toggle them on or off.
 - The thickness of these lines can be adjusted by scrolling the mouse wheel over the same button.
 
+### Multiple Magnifiers
+- Additional magnifiers each have their own capture area, guide lines, and individual colors.
+- When **Auto-color new magnifiers** is enabled, every new extra magnifier receives the next color set so instances are easier to distinguish.
+- When **Highlight magnifier intersections** is enabled, dragging a capture area highlights parts that are covered by other magnifiers.
+- This highlight is a canvas-only helper overlay and is not included in final render/export output.
+
 ### Visibility Flyout (Left/Center/Right)
 - Hover over the Magnifier button to reveal a small flyout that lets you toggle visibility of the left, center, and right parts.
 - You can also open this flyout by scrolling the mouse wheel over the Magnifier button; in this case it auto-hides shortly after.

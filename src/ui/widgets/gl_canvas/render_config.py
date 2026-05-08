@@ -3,6 +3,9 @@ from PyQt6.QtCore import QRect
 
 from .render_common import widget_px_to_screen_px
 from .render_context import GLRenderRuntimeContext
+from ui.canvas_infra.viewport.contract import DisplaySplitPositionRequest
+from ui.canvas_infra.viewport.pipeline import compute_display_split_position
+from ui.canvas_infra.viewport.state import set_display_split_position
 
 def get_divider_clip_uv(widget) -> tuple[float, float, float, float]:
     state = widget.runtime_state
@@ -113,21 +116,21 @@ def compute_render_config(widget, ctx: GLRenderRuntimeContext):
     w, h = ctx.viewport.width, ctx.viewport.height
     img1 = ctx.textures.stored_pil_images[0]
     if img1 and w > 0 and h > 0:
-        ratio = min(w / img1.width, h / img1.height)
-        nw = max(1, int(img1.width * ratio))
-        nh = max(1, int(img1.height * ratio))
-        img_x = (w - nw) // 2
-        img_y = (h - nh) // 2
-
-        if scene.is_horizontal:
-            base = (img_y + nh * scene.split_position_visual) / h
-            pan = ctx.viewport.pan_offset_y
-        else:
-            base = (img_x + nw * scene.split_position_visual) / w
-            pan = ctx.viewport.pan_offset_x
-        widget.display_split_position = (base - 0.5 + pan) * ctx.viewport.zoom_level + 0.5
+        set_display_split_position(widget, compute_display_split_position(
+            DisplaySplitPositionRequest(
+                widget_width=w,
+                widget_height=h,
+                image_width=img1.width,
+                image_height=img1.height,
+                split_visual=scene.split_position_visual,
+                is_horizontal=scene.is_horizontal,
+                zoom_level=ctx.viewport.zoom_level,
+                pan_offset_x=ctx.viewport.pan_offset_x,
+                pan_offset_y=ctx.viewport.pan_offset_y,
+            )
+        ))
     else:
-        widget.display_split_position = scene.split_position_visual
+        set_display_split_position(widget, scene.split_position_visual)
 
     return {
         "show_div": scene.show_divider,

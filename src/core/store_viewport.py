@@ -21,7 +21,7 @@ class MagnifierModel:
 
     border_color: Color = field(default_factory=lambda: Color(255, 255, 255, 230))
     divider_color: Color = field(default_factory=lambda: Color(255, 255, 255, 230))
-    laser_color: Color = field(default_factory=lambda: Color(255, 255, 255, 120))
+    laser_color: Color = field(default_factory=lambda: Color(255, 255, 255, 255))
     capture_ring_color: Color = field(default_factory=lambda: Color(255, 50, 100, 230))
 
     offset_relative: Point = field(default_factory=lambda: Point(0.0, 0.0))
@@ -44,32 +44,10 @@ class MagnifierModel:
 
 @dataclass
 class RenderConfig:
-    divider_line_visible: bool = True
-    divider_line_color: Color = field(default_factory=lambda: Color(255, 255, 255, 255))
-    divider_line_thickness: int = 3
-
-    magnifier_divider_visible: bool = True
-    magnifier_divider_color: Color = field(
-        default_factory=lambda: Color(255, 255, 255, 230)
-    )
-    magnifier_divider_thickness: int = 2
-
-    magnifier_border_color: Color = field(
-        default_factory=lambda: Color(255, 255, 255, 248)
-    )
-    magnifier_laser_color: Color = field(
-        default_factory=lambda: Color(255, 255, 255, 255)
-    )
-    capture_ring_color: Color = field(default_factory=lambda: Color(255, 50, 100, 230))
-    show_magnifier_guides: bool = False
-    magnifier_guides_thickness: int = 1
-
     interpolation_method: str = "BILINEAR"
     zoom_interpolation_method: str = "BILINEAR"
     movement_interpolation_method: str = "BILINEAR"
     magnifier_movement_interpolation_method: str = "BILINEAR"
-    laser_smoothing_interpolation_method: str = "BILINEAR"
-    optimize_laser_smoothing: bool = False
     display_resolution_limit: int = 0
     jpeg_quality: int = 95
 
@@ -83,55 +61,15 @@ class RenderConfig:
     text_placement_mode: str = "edges"
     max_name_length: int = 50
 
-    show_capture_area_on_main_image: bool = True
-
     def clone(self):
         return copy.copy(self)
 
     def to_dict(self) -> dict:
         return {
-            "divider_line_visible": self.divider_line_visible,
-            "divider_line_color": (
-                self.divider_line_color.r,
-                self.divider_line_color.g,
-                self.divider_line_color.b,
-                self.divider_line_color.a,
-            ),
-            "divider_line_thickness": self.divider_line_thickness,
-            "magnifier_divider_visible": self.magnifier_divider_visible,
-            "magnifier_divider_color": (
-                self.magnifier_divider_color.r,
-                self.magnifier_divider_color.g,
-                self.magnifier_divider_color.b,
-                self.magnifier_divider_color.a,
-            ),
-            "magnifier_divider_thickness": self.magnifier_divider_thickness,
-            "magnifier_border_color": (
-                self.magnifier_border_color.r,
-                self.magnifier_border_color.g,
-                self.magnifier_border_color.b,
-                self.magnifier_border_color.a,
-            ),
-            "magnifier_laser_color": (
-                self.magnifier_laser_color.r,
-                self.magnifier_laser_color.g,
-                self.magnifier_laser_color.b,
-                self.magnifier_laser_color.a,
-            ),
-            "capture_ring_color": (
-                self.capture_ring_color.r,
-                self.capture_ring_color.g,
-                self.capture_ring_color.b,
-                self.capture_ring_color.a,
-            ),
-            "show_magnifier_guides": self.show_magnifier_guides,
-            "magnifier_guides_thickness": self.magnifier_guides_thickness,
             "interpolation_method": self.interpolation_method,
             "zoom_interpolation_method": self.zoom_interpolation_method,
             "movement_interpolation_method": self.movement_interpolation_method,
             "magnifier_movement_interpolation_method": self.magnifier_movement_interpolation_method,
-            "laser_smoothing_interpolation_method": self.laser_smoothing_interpolation_method,
-            "optimize_laser_smoothing": self.optimize_laser_smoothing,
             "display_resolution_limit": self.display_resolution_limit,
             "jpeg_quality": self.jpeg_quality,
             "include_file_names_in_saved": self.include_file_names_in_saved,
@@ -153,7 +91,6 @@ class RenderConfig:
             "draw_text_background": self.draw_text_background,
             "text_placement_mode": self.text_placement_mode,
             "max_name_length": self.max_name_length,
-            "show_capture_area_on_main_image": self.show_capture_area_on_main_image,
         }
 
 @dataclass
@@ -274,6 +211,11 @@ class InteractionState:
     last_vertical_movement_key: int | None = None
     last_spacing_movement_key: int | None = None
     space_bar_pressed: bool = False
+    magnifier_offset_relative_visual: Point = field(
+        default_factory=lambda: Point(0.0, 0.0)
+    )
+    magnifier_spacing_relative_visual: float = 0.1
+    magnifier_internal_split_visual: float = 0.5
 
     def clone(self):
         new_obj = copy.copy(self)
@@ -289,26 +231,7 @@ class ViewState:
     diff_mode: str = "off"
     channel_view_mode: str = "RGB"
 
-    use_magnifier: bool = False
-    magnifiers: dict[str, MagnifierModel] = field(default_factory=dict)
-    active_magnifier_id: Optional[str] = None
-    magnifier_size_relative: float = 0.2
-    capture_size_relative: float = 0.1
-    capture_position_relative: Point = field(default_factory=lambda: Point(0.5, 0.5))
-    freeze_magnifier: bool = False
-    frozen_capture_point_relative: Optional[Point] = None
-    magnifier_offset_relative: Point = field(default_factory=lambda: Point(0.0, 0.0))
-    magnifier_spacing_relative: float = 0.1
-    magnifier_offset_relative_visual: Point = field(
-        default_factory=lambda: Point(0.0, 0.0)
-    )
-    magnifier_spacing_relative_visual: float = 0.1
-    magnifier_is_horizontal: bool = False
-    magnifier_visible_left: bool = True
-    magnifier_visible_center: bool = True
-    magnifier_visible_right: bool = True
-    magnifier_internal_split: float = 0.5
-    is_magnifier_combined: bool = False
+    canvas_widget_state: dict[str, Any] = field(default_factory=dict)
     optimize_magnifier_movement: bool = True
 
     highlighted_magnifier_element: Optional[str] = None
@@ -320,7 +243,7 @@ class ViewState:
 
     def clone(self):
         new_obj = copy.copy(self)
-        new_obj.magnifiers = {key: value.clone() for key, value in self.magnifiers.items()}
+        new_obj.canvas_widget_state = copy.deepcopy(self.canvas_widget_state)
         return new_obj
 
 class ViewportState:
@@ -454,25 +377,82 @@ class ViewportState:
 
     def get_render_params(self) -> dict:
         params = self._render_config.to_dict()
+        from ui.canvas_infra.scene.widget_registry import get_canvas_feature_commands
+        from ui.canvas_features.magnifier import MagnifierStoreService
+        from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+        from ui.canvas_features.magnifier.store import (
+            default_capture_size,
+            default_magnifier_size,
+            magnifier_enabled,
+        )
 
         view = self._view_state
         render = self._render_config
-        capture_pos = view.capture_position_relative
-        mag_pos = (capture_pos.x, capture_pos.y)
+        scene_state = MagnifierStoreService(type("StoreProxy", (), {"viewport": self})())
+        store_proxy = type("StoreProxy", (), {"viewport": self})()
+        magnifier = scene_state.get_active_or_first_magnifier()
+        magnifier_state = get_magnifier_widget_state(view)
+        all_models = iter_magnifier_models(view, render)
+        magnifier_capture_areas = [
+            (
+                float(model.position.x),
+                float(model.position.y),
+                float(model.capture_size_relative),
+            )
+            for model in all_models
+            if bool(model.visible) and bool(getattr(model, "show_capture_area", True))
+        ]
+        if magnifier is None:
+            mag_pos = (0.5, 0.5)
+            mag_offset_visual = (0.0, 0.0)
+            mag_spacing = 0.0
+            magnifier_size = default_magnifier_size(view)
+            capture_size = default_capture_size(view)
+            magnifier_is_horizontal = False
+            magnifier_internal_split = 0.5
+            magnifier_visible_left = True
+            magnifier_visible_center = True
+            magnifier_visible_right = True
+            is_magnifier_combined = False
+            magnifier_divider_visible = magnifier_state.default_divider_visible
+            magnifier_divider_color = magnifier_state.default_divider_color
+            magnifier_divider_thickness = magnifier_state.default_divider_thickness
+            magnifier_border_color = magnifier_state.default_border_color
+        else:
+            mag_pos = (magnifier.position.x, magnifier.position.y)
+            mag_offset_obj = magnifier.offset_relative
+            mag_spacing = magnifier.spacing_relative
+            mag_offset_visual = (mag_offset_obj.x, mag_offset_obj.y)
+            magnifier_size = magnifier.size_relative
+            capture_size = magnifier.capture_size_relative
+            magnifier_is_horizontal = magnifier.is_horizontal
+            magnifier_internal_split = magnifier.internal_split
+            magnifier_visible_left = magnifier.visible_left
+            magnifier_visible_center = magnifier.visible_center
+            magnifier_visible_right = magnifier.visible_right
+            is_magnifier_combined = scene_state.is_active_magnifier_combined()
+            magnifier_divider_visible = magnifier.divider_visible
+            magnifier_divider_color = magnifier.divider_color
+            magnifier_divider_thickness = magnifier.divider_thickness
+            magnifier_border_color = magnifier.border_color
 
         interaction = self._interaction_state
-        is_interactive = interaction.is_interactive_mode
+        mag_offset_real = magnifier.offset_relative if magnifier is not None else Point(0.0, 0.0)
+        mag_spacing_real = magnifier.spacing_relative if magnifier is not None else 0.0
+        mag_offset_visual_obj = interaction.magnifier_offset_relative_visual
+        mag_spacing_visual = interaction.magnifier_spacing_relative_visual
 
-        mag_offset_real = view.magnifier_offset_relative
-        mag_offset_visual_obj = view.magnifier_offset_relative_visual
-        mag_spacing_real = view.magnifier_spacing_relative
-        mag_spacing_visual = view.magnifier_spacing_relative_visual
+        if magnifier_enabled(view) and interaction.is_interactive_mode:
+            mag_offset_visual = (
+                interaction.magnifier_offset_relative_visual.x,
+                interaction.magnifier_offset_relative_visual.y,
+            )
+            mag_spacing = interaction.magnifier_spacing_relative_visual
+        is_interactive = interaction.is_interactive_mode
         split_pos_real = view.split_position
         split_pos_visual = view.split_position_visual
 
         if is_interactive:
-            mag_offset_obj = mag_offset_real
-            mag_spacing = mag_spacing_real
             split_pos = split_pos_real
         else:
             offset_match = (
@@ -482,16 +462,11 @@ class ViewportState:
             spacing_match = abs(mag_spacing_real - mag_spacing_visual) < 0.001
             split_match = abs(split_pos_real - split_pos_visual) < 0.001
 
-            if not (offset_match and spacing_match and split_match):
-                mag_offset_obj = mag_offset_real
-                mag_spacing = mag_spacing_real
-                split_pos = split_pos_real
-            else:
-                mag_offset_obj = mag_offset_visual_obj
-                mag_spacing = mag_spacing_visual
-                split_pos = split_pos_visual
-
-        mag_offset_visual = (mag_offset_obj.x, mag_offset_obj.y)
+            split_pos = (
+                split_pos_visual
+                if (offset_match and spacing_match and split_match)
+                else split_pos_real
+            )
 
         from core.constants import AppConstants
 
@@ -500,9 +475,10 @@ class ViewportState:
         magnifier_movement_interp = getattr(
             render, "magnifier_movement_interpolation_method", "BILINEAR"
         )
-        laser_smoothing_interp = getattr(
-            render, "laser_smoothing_interpolation_method", "BILINEAR"
-        )
+        from ui.canvas_features.guides.state import get_guides_widget_state
+
+        guides_state = get_guides_widget_state(view)
+        laser_smoothing_interp = guides_state.smoothing_interpolation_method
 
         def resolve(option: str) -> str:
             main_speed = AppConstants.INTERPOLATION_SPEED_ORDER.get(main_interp, 999)
@@ -514,26 +490,50 @@ class ViewportState:
         )
         eff_laser = resolve(laser_smoothing_interp)
 
+        canvas_feature_render_payloads = {}
+        for feature_name, commands in get_canvas_feature_commands().items():
+            payload_command = commands.get("render.canvas_payload")
+            if payload_command is None:
+                continue
+            canvas_feature_render_payloads[feature_name] = payload_command(store_proxy)
+
         params.update(
             {
+                "canvas_feature_render_payloads": canvas_feature_render_payloads,
                 "split_pos": split_pos,
-                "magnifier_pos": mag_pos,
-                "magnifier_offset_relative_visual": mag_offset_visual,
-                "magnifier_spacing_relative_visual": mag_spacing,
-                "magnifier_size_relative": view.magnifier_size_relative,
-                "capture_size_relative": view.capture_size_relative,
+                "magnifier_position": mag_pos,
+                "magnifier_visual_offset": mag_offset_visual,
+                "magnifier_visual_spacing": mag_spacing,
+                "magnifier_size": magnifier_size,
+                "capture_size": capture_size,
                 "is_horizontal": view.is_horizontal,
-                "magnifier_is_horizontal": view.magnifier_is_horizontal,
-                "magnifier_internal_split": view.magnifier_internal_split,
-                "use_magnifier": view.use_magnifier,
-                "magnifier_visible_left": view.magnifier_visible_left,
-                "magnifier_visible_center": view.magnifier_visible_center,
-                "magnifier_visible_right": view.magnifier_visible_right,
-                "is_magnifier_combined": view.is_magnifier_combined,
+                "magnifier_layout_horizontal": magnifier_is_horizontal,
+                "magnifier_split": magnifier_internal_split,
+                "magnifier_enabled": magnifier_enabled(view),
+                "magnifier_show_left": magnifier_visible_left,
+                "magnifier_show_center": magnifier_visible_center,
+                "magnifier_show_right": magnifier_visible_right,
+                "magnifier_combined": is_magnifier_combined,
+                "magnifier_divider_visible": bool(magnifier_divider_visible),
+                "magnifier_divider_color": (
+                    int(magnifier_divider_color.r),
+                    int(magnifier_divider_color.g),
+                    int(magnifier_divider_color.b),
+                    int(magnifier_divider_color.a),
+                ),
+                "magnifier_divider_thickness": int(magnifier_divider_thickness),
+                "magnifier_border_color": (
+                    int(magnifier_border_color.r),
+                    int(magnifier_border_color.g),
+                    int(magnifier_border_color.b),
+                    int(magnifier_border_color.a),
+                ),
+                "magnifier_capture_areas": magnifier_capture_areas,
                 "diff_mode": view.diff_mode,
                 "channel_view_mode": view.channel_view_mode,
                 "is_interactive_mode": interaction.is_interactive_mode,
                 "highlighted_magnifier_element": view.highlighted_magnifier_element,
+                "highlight_capture": interaction.is_dragging_capture_point,
                 "movement_interpolation_method": eff_mag_mov,
                 "magnifier_movement_interpolation_method": eff_mag_mov,
                 "laser_smoothing_interpolation_method": eff_laser,

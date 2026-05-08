@@ -17,6 +17,7 @@ def initialize_ui_manager(manager) -> None:
     _init_popup_state(manager)
     _wrap_button_menus(manager)
     _init_magnifier_flyout(manager)
+    _init_magnifier_instances_popup(manager)
     _connect_services(manager)
 
 def _init_unified_flyout(manager) -> None:
@@ -52,6 +53,7 @@ def _init_popup_state(manager) -> None:
 
     manager._magn_popup_open = False
     manager._magn_popup_last_open_ts = 0.0
+    manager._magn_instances_popup_open = False
 
 def _wrap_button_menus(manager) -> None:
     ui = manager.ui
@@ -173,6 +175,19 @@ def _connect_magnifier_visibility_buttons(manager) -> None:
     logger.warning(
         "UIManager: Cannot connect magnifier visibility flyout buttons - no event_bus or viewport_plugin available"
     )
+
+def _init_magnifier_instances_popup(manager) -> None:
+    button = getattr(manager.ui, "btn_magnifier_instances", None)
+    if button is None:
+        return
+
+    button.countChanged.connect(
+        lambda _count: manager._on_magnifier_instances_count_changed()
+    )
+
+    for target in button.popup_targets():
+        target.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        target.installEventFilter(manager)
 
 def _connect_services(manager) -> None:
     font_manager = FontManager.get_instance()

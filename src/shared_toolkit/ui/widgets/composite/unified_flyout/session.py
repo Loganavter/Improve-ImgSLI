@@ -2,7 +2,19 @@ from PyQt6.QtCore import QTimer
 
 class _UnifiedFlyoutSessionMixin:
     def _schedule_structure_sync(self):
-        QTimer.singleShot(0, lambda: self.sync_from_store())
+        if self.isVisible() and not getattr(self, "_is_refreshing", False):
+            self.sync_from_store()
+            return
+
+        if getattr(self, "_structure_sync_scheduled", False):
+            return
+        self._structure_sync_scheduled = True
+
+        def _run_sync():
+            self._structure_sync_scheduled = False
+            self.sync_from_store()
+
+        QTimer.singleShot(0, _run_sync)
 
     def _get_session_handler(self):
         controller = self.main_controller

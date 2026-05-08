@@ -443,7 +443,14 @@ def draw_rows(widget, painter: QPainter, *, width: int, rows_top: int, rows_bott
                 continue
             if y >= rows_bottom:
                 break
-            line_col = timeline_theme.track_line_color(widget, track.id, track.kind, channel.kind)
+            line_col = timeline_theme.track_line_color(
+                widget,
+                track.id,
+                track.kind,
+                channel.kind,
+                track_accent_color=getattr(track, "accent_color", None),
+                channel_accent_color=getattr(channel, "accent_color", None),
+            )
             gutter_track_bg = timeline_theme.group_content_bg(widget, track_bg, group, 46 if is_dark else 22)
             painter.fillRect(QRectF(0, y, width, row_h), gutter_track_bg)
             painter.fillRect(QRectF(content_start_x, y, width - content_start_x, row_h), lane_bg)
@@ -465,7 +472,14 @@ def draw_rows(widget, painter: QPainter, *, width: int, rows_top: int, rows_bott
             continue
         if y >= rows_bottom:
             break
-        line_col = timeline_theme.track_line_color(widget, track.id, track.kind, channel.kind)
+        line_col = timeline_theme.track_line_color(
+            widget,
+            track.id,
+            track.kind,
+            channel.kind,
+            track_accent_color=getattr(track, "accent_color", None),
+            channel_accent_color=getattr(channel, "accent_color", None),
+        )
         if is_first_channel:
             painter.fillRect(QRectF(0, y, width, row_h), timeline_theme.group_content_bg(widget, track_bg, group, 42 if is_dark else 18))
         else:
@@ -578,7 +592,13 @@ def draw_sticky_gutter_overlay(widget, painter: QPainter, *, scroll_offset: int,
                 continue
             if y >= rows_bottom:
                 break
-            line_col = timeline_theme.track_color(widget, track.kind, channel.kind)
+            line_col = timeline_theme.track_color(
+                widget,
+                track.kind,
+                channel.kind,
+                track_accent_color=getattr(track, "accent_color", None),
+                channel_accent_color=getattr(channel, "accent_color", None),
+            )
             if is_first_channel:
                 painter.fillRect(QRectF(gx, y, widget.LEFT_GUTTER, row_h), timeline_theme.group_content_bg(widget, track_bg, group, 42 if widget.theme_manager.is_dark() else 18))
                 timeline_primitives.draw_track_title_label(widget, painter, QRectF(gx + 18, y, max(40.0, widget.LEFT_GUTTER * 0.44 - 22), row_h), track.label, text_col)

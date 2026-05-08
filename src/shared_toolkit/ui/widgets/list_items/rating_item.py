@@ -129,6 +129,14 @@ class RatingListItem(QWidget):
 
             self.btn_plus.clicked.connect(self._on_plus_clicked)
             self.btn_minus.clicked.connect(self._on_minus_clicked)
+            self.btn_plus.pressed.connect(lambda: self._on_button_pressed(self.btn_plus))
+            self.btn_minus.pressed.connect(lambda: self._on_button_pressed(self.btn_minus))
+            self.btn_plus.released.connect(
+                lambda: self._on_button_released(self.btn_plus)
+            )
+            self.btn_minus.released.connect(
+                lambda: self._on_button_released(self.btn_minus)
+            )
             self._gesture_tx = None
             self._active_button = None
             self._is_drag_initiated = False
@@ -149,25 +157,7 @@ class RatingListItem(QWidget):
             return super().eventFilter(obj, event)
 
         if obj in (self.btn_plus, self.btn_minus):
-
-            if (
-                event.type() == QEvent.Type.MouseButtonPress
-                and event.button() == Qt.MouseButton.LeftButton
-            ):
-                self._active_button = obj
-                global_point = event.globalPosition().toPoint()
-                self.drag_start_pos = self.mapFromGlobal(global_point)
-                self._drag_start_pos_global = event.globalPosition()
-
-                starting_score = self._get_rating(self.image_number, self.index)
-
-                self._gesture_tx = self._create_rating_gesture(
-                    self.image_number,
-                    self.index,
-                    starting_score,
-                )
-
-            elif event.type() == QEvent.Type.MouseMove and (
+            if event.type() == QEvent.Type.MouseMove and (
                 event.buttons() & Qt.MouseButton.LeftButton
             ):
                 if self._active_button is obj and not self._is_drag_initiated:
@@ -180,19 +170,9 @@ class RatingListItem(QWidget):
                         event.globalPosition() - self._drag_start_pos_global
                     ).manhattanLength()
                     if distance >= QApplication.startDragDistance():
-                        if self._gesture_tx is not None:
-                            self._gesture_tx.rollback()
-                            self._gesture_tx = None
+                        self._cancel_button_interaction()
 
                 return True
-
-            elif (
-                event.type() == QEvent.Type.MouseButtonRelease
-                and event.button() == Qt.MouseButton.LeftButton
-            ):
-                if self._gesture_tx is not None and not self._is_drag_initiated:
-                    self._gesture_tx.commit()
-                    self._gesture_tx = None
 
         return super().eventFilter(obj, event)
 
@@ -298,11 +278,8 @@ class RatingListItem(QWidget):
 
         if event.button() == Qt.MouseButton.LeftButton:
             if self.item_type == "image":
-
                 child = self.childAt(event.pos())
-                if child is self.btn_plus or child is self.btn_minus:
-                    self._active_button = None
-                else:
+                if child is not self.btn_plus and child is not self.btn_minus:
                     self.drag_start_pos = event.pos()
                     self._drag_start_pos_global = event.globalPosition()
             else:
@@ -374,7 +351,11 @@ class RatingListItem(QWidget):
                 elif event.button() == Qt.MouseButton.RightButton:
                     self.itemRightClicked.emit(self.index)
 
-        if self.item_type == "image" and self._gesture_tx is not None:
+        if (
+            self.item_type == "image"
+            and self._gesture_tx is not None
+            and self._active_button is None
+        ):
             self._gesture_tx.commit()
             self._gesture_tx = None
             self._update_label_from_store()
@@ -385,7 +366,7 @@ class RatingListItem(QWidget):
         super().mouseReleaseEvent(event)
 
     def _on_plus_clicked(self):
-        if self._is_drag_initiated:
+        if self._is_drag_initiated or self._active_button not in (None, self.btn_plus):
             return
         if self._gesture_tx is not None:
             self._gesture_tx.apply_delta(+1)
@@ -394,13 +375,41 @@ class RatingListItem(QWidget):
         self._update_label_from_store()
 
     def _on_minus_clicked(self):
-        if self._is_drag_initiated:
+        if self._is_drag_initiated or self._active_button not in (None, self.btn_minus):
             return
         if self._gesture_tx is not None:
             self._gesture_tx.apply_delta(-1)
         else:
             self._decrement_rating(self.image_number, self.index)
         self._update_label_from_store()
+
+    def _on_button_pressed(self, button):
+        if self.item_type != "image":
+            return
+        self._active_button = button
+        self._drag_start_pos_global = QPointF(QCursor.pos())
+        self.drag_start_pos = self.mapFromGlobal(QCursor.pos())
+        starting_score = self._get_rating(self.image_number, self.index)
+        self._gesture_tx = self._create_rating_gesture(
+            self.image_number,
+            self.index,
+            starting_score,
+        )
+
+    def _on_button_released(self, button):
+        if self._active_button is not button:
+            return
+        if self._gesture_tx is not None and not self._is_drag_initiated:
+            self._gesture_tx.commit()
+            self._gesture_tx = None
+            self._update_label_from_store()
+        self._active_button = None
+
+    def _cancel_button_interaction(self):
+        if self._gesture_tx is not None:
+            self._gesture_tx.rollback()
+            self._gesture_tx = None
+        self._active_button = None
 
     def _update_label_from_store(self):
         if self.item_type != "image":

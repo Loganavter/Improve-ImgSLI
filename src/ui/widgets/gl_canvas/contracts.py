@@ -4,9 +4,6 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class BaseCanvasProtocol(Protocol):
-    supports_legacy_gl_magnifier: bool
-    uses_quick_canvas_overlay: bool
-
     firstFrameRendered: object
     firstVisualFrameReady: object
     zoomChanged: object

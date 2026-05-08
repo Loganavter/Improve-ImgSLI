@@ -1,24 +1,18 @@
 from PyQt6.QtCore import QSize
 
 from core.events import (
-    SettingsSetDividerLineThicknessEvent,
-    SettingsSetMagnifierDividerThicknessEvent,
-    SettingsToggleDividerLineVisibilityEvent,
-    SettingsToggleMagnifierDividerVisibilityEvent,
     ViewportToggleMagnifierOrientationEvent,
 )
 from ui.icon_manager import AppIcon, get_app_icon
-from ui.presenters.toolbar.state import (
-    show_divider_color_picker,
-    show_magnifier_divider_color_picker,
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.events import (
+    SettingsSetMagnifierDividerThicknessEvent,
+    SettingsToggleMagnifierDividerVisibilityEvent,
 )
+from ui.canvas_features.magnifier.store import active_or_default_divider_visible
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_binding
+from ui.presenters.toolbar.state import show_magnifier_divider_color_picker
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
-
-def on_ui_divider_thickness_changed(presenter, thickness):
-    presenter.event_bus.emit(SettingsSetDividerLineThicknessEvent(thickness))
-    presenter.event_bus.emit(
-        SettingsToggleDividerLineVisibilityEvent(thickness > 0)
-    )
 
 def on_ui_magnifier_thickness_changed(presenter, thickness):
     presenter.event_bus.emit(SettingsSetMagnifierDividerThicknessEvent(thickness))
@@ -36,10 +30,13 @@ def on_orientation_right_clicked(presenter):
         show_magnifier_orientation_popup(presenter)
         _toggle_magnifier_orientation(presenter)
         return
-    show_divider_color_picker(presenter)
+    binding = get_canvas_feature_toolbar_binding("divider.orientation")
+    if binding is not None and binding.on_right_clicked is not None:
+        binding.on_right_clicked(presenter)
 
 def show_magnifier_orientation_popup(presenter):
-    current_orientation = presenter.store.viewport.view_state.magnifier_is_horizontal
+    model = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
+    current_orientation = bool(model.is_horizontal) if model is not None else False
     icon_enum = (
         AppIcon.HORIZONTAL_SPLIT
         if not current_orientation
@@ -65,38 +62,6 @@ def on_magnifier_orientation_right_clicked(presenter):
         _toggle_magnifier_orientation(presenter)
         return
     show_magnifier_divider_color_picker(presenter)
-
-def on_orientation_middle_clicked(presenter):
-    current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
-    if current_mode != "expert":
-        return
-
-    button = presenter.ui.btn_orientation
-    current_value = button.get_value()
-    if current_value == 0:
-        saved_value = button.restore_saved_value()
-        target_value = saved_value if (saved_value is not None and saved_value > 0) else 3
-        button.blockSignals(True)
-        button.set_value(target_value)
-        button.blockSignals(False)
-        if presenter.event_bus:
-            presenter.event_bus.emit(SettingsToggleDividerLineVisibilityEvent(True))
-            presenter.event_bus.emit(SettingsSetDividerLineThicknessEvent(target_value))
-        elif presenter.main_controller:
-            presenter.main_controller.viewport.toggle_divider_line_visibility(True)
-            presenter.main_controller.viewport.set_divider_line_thickness(target_value)
-        return
-
-    button.set_saved_value(current_value)
-    button.blockSignals(True)
-    button.set_value(0)
-    button.blockSignals(False)
-    if presenter.event_bus:
-        presenter.event_bus.emit(SettingsToggleDividerLineVisibilityEvent(False))
-        presenter.event_bus.emit(SettingsSetDividerLineThicknessEvent(0))
-    elif presenter.main_controller:
-        presenter.main_controller.viewport.toggle_divider_line_visibility(False)
-        presenter.main_controller.viewport.set_divider_line_thickness(0)
 
 def on_magnifier_orientation_middle_clicked(presenter):
     current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
@@ -141,7 +106,7 @@ def on_magnifier_orientation_middle_clicked(presenter):
         presenter.main_controller.viewport.set_magnifier_divider_thickness(0)
 
 def toggle_magnifier_divider_visibility(presenter):
-    visible = not presenter.store.viewport.render_config.magnifier_divider_visible
+    visible = not active_or_default_divider_visible(presenter.store.viewport.view_state)
     if presenter.event_bus is not None:
         presenter.event_bus.emit(
             SettingsToggleMagnifierDividerVisibilityEvent(visible)
@@ -161,13 +126,15 @@ def toggle_magnifier_divider_visibility(presenter):
         )
 
 def update_magnifier_orientation_button_state(presenter):
+    model = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
     presenter.ui.btn_magnifier_orientation.setChecked(
-        presenter.store.viewport.view_state.magnifier_is_horizontal,
+        bool(model.is_horizontal) if model is not None else False,
         emit_signal=False,
     )
 
 def _toggle_magnifier_orientation(presenter):
-    current_orientation = presenter.store.viewport.view_state.magnifier_is_horizontal
+    model = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
+    current_orientation = bool(model.is_horizontal) if model is not None else False
     new_value = not current_orientation
     if presenter.event_bus:
         presenter.event_bus.emit(ViewportToggleMagnifierOrientationEvent(new_value))

@@ -7,6 +7,7 @@ from PyQt6.QtGui import QColor, QImage, QPainter, QPen
 from shared.image_processing.qt_conversion import pil_to_qimage_zero_copy
 from shared_toolkit.ui.managers.font_manager import FontManager
 
+from ui.canvas_infra.viewport.state import get_zoom_level
 from .render_common import (
     draw_qimage_overlay_texture,
     draw_raster_shape,
@@ -30,7 +31,7 @@ def build_filename_overlay_image(widget) -> QImage | None:
     height = widget.height()
     if width <= 0 or height <= 0:
         return None
-    if not math.isclose(float(getattr(widget, "zoom_level", 1.0)), 1.0, rel_tol=0.0, abs_tol=1e-6):
+    if not math.isclose(get_zoom_level(widget), 1.0, rel_tol=0.0, abs_tol=1e-6):
         return None
 
     content_rect = get_content_rect_screen_px(widget)

@@ -22,6 +22,8 @@ class SettingsDialogContext:
     optimize_laser_smoothing: bool = False
     interpolation_method: str = "LANCZOS"
     zoom_interpolation_method: str = "BILINEAR"
+    magnifier_intersection_highlight_enabled: bool = True
+    magnifier_auto_color_new_instances: bool = True
     auto_calculate_psnr: bool = False
     auto_calculate_ssim: bool = False
     auto_crop_black_borders: bool = True

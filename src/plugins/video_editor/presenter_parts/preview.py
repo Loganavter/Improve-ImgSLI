@@ -4,8 +4,11 @@ from PIL import Image
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
 
-from plugins.video_editor.preview_gl import apply_preview_to_canvas, build_preview_store
 from shared_toolkit.workers.generic_worker import GenericWorker
+from ui.canvas_presentation import (
+    apply_store_to_gl_canvas,
+    build_snapshot_store_presentation,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -139,14 +142,7 @@ class PreviewCoordinator:
 
         img1, img2 = self.get_preview_images(snap, VIDEO_EDITOR_AUTO_CROP)
         fill_color = getattr(self.view, "fit_content_fill_color", None)
-        (
-            preview_store,
-            display_img1,
-            display_img2,
-            source_img1,
-            source_img2,
-            source_key,
-        ) = build_preview_store(
+        presentation = build_snapshot_store_presentation(
             snap,
             img1,
             img2,
@@ -161,15 +157,17 @@ class PreviewCoordinator:
             if fill_color is not None
             else None,
         )
-        apply_preview_to_canvas(
+        apply_store_to_gl_canvas(
             self.view.preview_label,
-            preview_store,
-            display_img1,
-            display_img2,
+            presentation.store,
+            presentation.display_image1,
+            presentation.display_image2,
             fit_content=self.fit_content_mode,
-            source_image1=source_img1,
-            source_image2=source_img2,
-            source_key=source_key,
+            source_image1=presentation.source_image1,
+            source_image2=presentation.source_image2,
+            source_key=presentation.source_key,
+            display_cache_key=presentation.display_cache_key,
+            clip_overlays_to_image_bounds=True,
         )
         if not self._preview_ready_emitted:
             self._preview_ready_emitted = True

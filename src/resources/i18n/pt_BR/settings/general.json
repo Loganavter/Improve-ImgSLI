@@ -13,6 +13,8 @@
     "interactive_optimization": "Otimização Interativa",
     "light": "Claro",
     "maximum_name_length_ui": "Comp. Máx. Nome (UI)",
+    "magnifier_auto_color_new_instances": "Colorir novas lupas automaticamente",
+    "magnifier_intersection_highlight": "Destaque vermelho para lupas sobrepostas",
     "optimization": "Otimização",
     "optimize_laser_smoothing": "Suavização de laser",
     "optimize_magnifier_movement": "Movimento da lupa",

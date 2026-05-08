@@ -115,17 +115,7 @@ class Events(StrEnum):
         "settings.toggle_include_filenames_in_saved"
     )
     SETTINGS_APPLY_FONT_SETTINGS = "settings.apply_font_settings"
-    SETTINGS_TOGGLE_DIVIDER_LINE_VISIBILITY = "settings.toggle_divider_line_visibility"
-    SETTINGS_SET_DIVIDER_LINE_COLOR = "settings.set_divider_line_color"
-    SETTINGS_TOGGLE_MAGNIFIER_DIVIDER_VISIBILITY = (
-        "settings.toggle_magnifier_divider_visibility"
-    )
-    SETTINGS_SET_MAGNIFIER_DIVIDER_COLOR = "settings.set_magnifier_divider_color"
     SETTINGS_TOGGLE_AUTO_CROP_BLACK_BORDERS = "settings.toggle_auto_crop_black_borders"
-    SETTINGS_SET_DIVIDER_LINE_THICKNESS = "settings.set_divider_line_thickness"
-    SETTINGS_SET_MAGNIFIER_DIVIDER_THICKNESS = (
-        "settings.set_magnifier_divider_thickness"
-    )
     SETTINGS_UI_MODE_CHANGED = "settings.ui_mode_changed"
 
     COMPARISON_UI_UPDATE = "comparison.ui_update"

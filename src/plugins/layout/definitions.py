@@ -11,6 +11,7 @@ LAYOUT_DEFINITIONS: Dict[str, Dict[str, List[str]]] = {
         "view_group": ["btn_diff_mode", "btn_channel_mode", "btn_file_names"],
         "magnifier_group": [
             "btn_magnifier",
+            "btn_magnifier_instances",
             "btn_freeze",
             "btn_magnifier_orientation_simple",
             "btn_magnifier_divider_visible",
@@ -26,6 +27,7 @@ LAYOUT_DEFINITIONS: Dict[str, Dict[str, List[str]]] = {
         "view_group": ["btn_diff_mode", "btn_channel_mode", "btn_file_names"],
         "magnifier_group": [
             "btn_magnifier",
+            "btn_magnifier_instances",
             "btn_freeze",
             "btn_magnifier_orientation",
             "btn_magnifier_color_settings",
@@ -38,6 +40,7 @@ LAYOUT_DEFINITIONS: Dict[str, Dict[str, List[str]]] = {
         "view_group": ["btn_diff_mode", "btn_channel_mode", "btn_file_names"],
         "magnifier_group": [
             "btn_magnifier",
+            "btn_magnifier_instances",
             "btn_magnifier_orientation",
             "btn_freeze",
             "btn_magnifier_color_settings",
@@ -48,7 +51,7 @@ LAYOUT_DEFINITIONS: Dict[str, Dict[str, List[str]]] = {
     "minimal": {
         "line_group": ["btn_orientation_simple"],
         "view_group": [],
-        "magnifier_group": ["btn_magnifier"],
+        "magnifier_group": ["btn_magnifier", "btn_magnifier_instances"],
         "record_group": [],
     },
 }
@@ -68,6 +71,7 @@ ALL_KNOWN_WIDGETS = {
     "btn_magnifier_guides",
     "btn_magnifier_guides_simple",
     "btn_magnifier_guides_width",
+    "btn_magnifier_instances",
     "btn_diff_mode",
     "btn_channel_mode",
     "btn_file_names",

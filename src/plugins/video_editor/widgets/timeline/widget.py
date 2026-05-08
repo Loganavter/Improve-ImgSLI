@@ -201,10 +201,19 @@ class VideoTimelineWidget(QWidget):
         self.update()
 
     def _group_accent_color(self, group) -> QColor:
+        explicit = QColor(getattr(group, "accent_color", None) or "")
+        if explicit.isValid():
+            return explicit
         for track in group.tracks.values():
             visible_channels = self._visible_channels(track)
             if visible_channels:
-                return timeline_theme.track_color(self, track.kind, visible_channels[0].kind)
+                return timeline_theme.track_color(
+                    self,
+                    track.kind,
+                    visible_channels[0].kind,
+                    track_accent_color=getattr(track, "accent_color", None),
+                    channel_accent_color=getattr(visible_channels[0], "accent_color", None),
+                )
         return QColor(self.theme_manager.get_color("accent"))
 
     def _group_header_rect(self, left: float, top: float) -> QRectF:

@@ -33,6 +33,11 @@ class DialogManager:
     def show_settings_dialog(self):
         from plugins.settings.application_service import SettingsApplicationService
         from plugins.settings.dialog import SettingsDialog
+        from ui.canvas_features.guides.state import get_guides_widget_state
+        from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+
+        guides_state = get_guides_widget_state(self.host.store.viewport.view_state)
+        magnifier_state = get_magnifier_widget_state(self.host.store.viewport.view_state)
 
         logger.debug(
             "UIManager.show_settings_dialog existing=%s zoom_interp=%s main_interp=%s optimize_mag=%s optimize_laser=%s",
@@ -44,7 +49,7 @@ class DialogManager:
             ),
             getattr(self.host.store.viewport.render_config, "interpolation_method", None),
             getattr(self.host.store.viewport.view_state, "optimize_magnifier_movement", None),
-            getattr(self.host.store.viewport.render_config, "optimize_laser_smoothing", None),
+            guides_state.smoothing_enabled,
         )
 
         if self.host._settings_dialog is None:
@@ -79,9 +84,11 @@ class DialogManager:
                 ),
                 optimize_magnifier_movement=self.host.store.viewport.view_state.optimize_magnifier_movement,
                 movement_interpolation_method=self.host.store.viewport.render_config.magnifier_movement_interpolation_method,
-                optimize_laser_smoothing=self.host.store.viewport.render_config.optimize_laser_smoothing,
+                optimize_laser_smoothing=guides_state.smoothing_enabled,
                 interpolation_method=self.host.store.viewport.render_config.interpolation_method,
                 zoom_interpolation_method=self.host.store.viewport.render_config.zoom_interpolation_method,
+                magnifier_intersection_highlight_enabled=magnifier_state.intersection_highlight_enabled,
+                magnifier_auto_color_new_instances=magnifier_state.auto_color_new_instances,
                 auto_calculate_psnr=self.host.store.viewport.session_data.image_state.auto_calculate_psnr,
                 auto_calculate_ssim=self.host.store.viewport.session_data.image_state.auto_calculate_ssim,
                 auto_crop_black_borders=getattr(

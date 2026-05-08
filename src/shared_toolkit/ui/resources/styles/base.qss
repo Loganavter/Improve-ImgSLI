@@ -208,20 +208,20 @@ QLabel#TooltipContentWidget {
     border-radius: 5px;
 }
 
-/* --- ToggleIconButton / SimpleIconButton / ScrollableIconButton --- */
+/* --- ToggleIconButton / SimpleIconButton / ScrollableIconButton / MagnifierInstancesButton --- */
 /* Используем селектор по типу класса, так как они наследуются от QPushButton */
-ToggleIconButton, SimpleIconButton, ScrollableIconButton {
+ToggleIconButton, SimpleIconButton, ScrollableIconButton, MagnifierInstancesButton {
     background-color: @button.toggle.background.normal;
     border: none;
     border-radius: 6px;
     padding: 0px;
 }
 
-ToggleIconButton:hover, SimpleIconButton:hover, ScrollableIconButton:hover {
+ToggleIconButton:hover, SimpleIconButton:hover, ScrollableIconButton:hover, MagnifierInstancesButton:hover {
     background-color: @button.toggle.background.hover;
 }
 
-ToggleIconButton:pressed, SimpleIconButton:pressed, ScrollableIconButton:pressed {
+ToggleIconButton:pressed, SimpleIconButton:pressed, ScrollableIconButton:pressed, MagnifierInstancesButton:pressed {
     background-color: @button.toggle.background.pressed;
 }
 
@@ -231,6 +231,38 @@ ToggleIconButton:checked {
 
 ToggleIconButton:checked:hover {
     background-color: @button.toggle.background.checked.hover;
+}
+
+QPushButton[magnifier-segment="true"] {
+    background-color: @button.toggle.background.normal;
+    border: none;
+    padding: 0px;
+}
+
+QPushButton[magnifier-segment="true"]:hover {
+    background-color: @button.toggle.background.hover;
+}
+
+QPushButton[magnifier-segment="true"]:pressed {
+    background-color: @button.toggle.background.pressed;
+}
+
+QPushButton[magnifier-segment="true"][segment="single"] {
+    border-radius: 6px;
+}
+
+QPushButton[magnifier-segment="true"][segment="top"] {
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}
+
+QPushButton[magnifier-segment="true"][segment="bottom"] {
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
 }
 
 /* Дополнительные стили для ScrollableIconButton */

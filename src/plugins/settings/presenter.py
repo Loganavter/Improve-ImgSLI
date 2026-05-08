@@ -32,8 +32,22 @@ class SettingsPresenter(QObject):
             tr_func=self._tr,
         )
 
-    def show_divider_color_picker(self):
-        self.color_pickers.show_divider_color_picker()
+    def show_canvas_feature_color_picker(
+        self,
+        *,
+        key: str,
+        setting_key: str,
+        title_key: str,
+        on_selected,
+        post_apply=None,
+    ):
+        self.color_pickers.show_canvas_feature_color_picker(
+            key=key,
+            setting_key=setting_key,
+            title_key=title_key,
+            on_selected=on_selected,
+            post_apply=post_apply,
+        )
 
     def show_magnifier_divider_color_picker(self):
         self.color_pickers.show_magnifier_divider_color_picker()

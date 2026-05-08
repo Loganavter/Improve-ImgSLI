@@ -54,26 +54,36 @@ def draw_divider_line_on_canvas(
     )
 
 def draw_capture_area_if_needed(pipeline, ctx: "RenderContext", final_canvas: Image.Image, geometry, is_separated_layers: bool):
-    if not (ctx.use_magnifier and ctx.show_capture_area and not is_separated_layers):
+    if not (ctx.magnifier.enabled and ctx.magnifier.show_capture_area and not is_separated_layers):
         return
+    capture_areas = tuple(getattr(ctx.magnifier, "capture_areas", ()) or ())
+    if not capture_areas:
+        capture_areas = (
+            (
+                float(ctx.magnifier.position.x()),
+                float(ctx.magnifier.position.y()),
+                float(ctx.magnifier.capture_size_relative),
+            ),
+        )
     ref_dim = min(geometry.img_w, geometry.img_h)
-    cap_size = max(5, int(round(ctx.capture_size * ref_dim)))
-    clamped_x, clamped_y = clamp_capture_position(
-        ctx.magnifier_pos.x(),
-        ctx.magnifier_pos.y(),
-        geometry.img_w,
-        geometry.img_h,
-        ctx.capture_size,
-    )
-    cap_x = geometry.padding_left + int(round(clamped_x * geometry.img_w))
-    cap_y = geometry.padding_top + int(round(clamped_y * geometry.img_h))
     capture_color = pipeline._get_highlighted_color(
-        ctx.capture_ring_color,
-        ctx.highlighted_magnifier_element == "capture",
+        ctx.magnifier.capture_ring_color,
+        getattr(ctx.magnifier, "highlight_capture", False),
     )
-    pipeline.magnifier_drawer.draw_capture_area(
-        final_canvas, QPoint(cap_x, cap_y), cap_size, color=capture_color
-    )
+    for rel_x, rel_y, capture_size_relative in capture_areas:
+        cap_size = max(5, int(round(float(capture_size_relative) * ref_dim)))
+        clamped_x, clamped_y = clamp_capture_position(
+            float(rel_x),
+            float(rel_y),
+            geometry.img_w,
+            geometry.img_h,
+            float(capture_size_relative),
+        )
+        cap_x = geometry.padding_left + int(round(clamped_x * geometry.img_w))
+        cap_y = geometry.padding_top + int(round(clamped_y * geometry.img_h))
+        pipeline.magnifier_drawer.draw_capture_area(
+            final_canvas, QPoint(cap_x, cap_y), cap_size, color=capture_color
+        )
 
 def render_divider_patch(ctx: "RenderContext", img_rect: QRect):
     if (

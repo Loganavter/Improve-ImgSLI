@@ -6,6 +6,8 @@ from shared_toolkit.ui.icon_manager import AppIcon
 from shared_toolkit.ui.managers.flyout_timer_service import AnchoredFlyoutAutoHide
 from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
 from shared_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import magnifier_enabled
 
 class ColorOptionsFlyout(BaseFlyout):
     colorOptionClicked = pyqtSignal(str)
@@ -89,7 +91,7 @@ class ColorOptionsFlyout(BaseFlyout):
     def _is_magnifier_active(self):
         if not self.store:
             return False
-        return getattr(self.store.viewport.view_state, "use_magnifier", False)
+        return magnifier_enabled(self.store.viewport.view_state)
 
     def _is_capture_active(self):
         if not self._is_magnifier_active():
@@ -99,13 +101,13 @@ class ColorOptionsFlyout(BaseFlyout):
     def _is_laser_active(self):
         if not self._is_magnifier_active():
             return False
-        return getattr(self.store.viewport.render_config, "show_magnifier_guides", False)
+        return True
 
     def _is_divider_active(self):
 
         if not self._is_magnifier_active():
             return False
-        return getattr(self.store.viewport.view_state, "is_magnifier_combined", False)
+        return MagnifierStoreService(self.store).is_active_magnifier_combined()
 
     def _update_buttons_visibility(self):
         is_magnifier_active = self._is_magnifier_active()

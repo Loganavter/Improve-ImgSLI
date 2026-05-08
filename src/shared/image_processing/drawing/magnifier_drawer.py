@@ -29,6 +29,7 @@ from shared.image_processing.drawing.magnifier_strategies import (
     draw_strategy_two_magnifiers,
     draw_visible_side_magnifiers,
 )
+from ui.canvas_features.magnifier import MagnifierStoreService
 
 class MagnifierDrawer:
     def __init__(self):
@@ -211,9 +212,10 @@ class MagnifierDrawer:
             return None
 
     def _get_magnifier_visibility(self, store: Store, show_center_required: bool) -> dict:
-        show_left = getattr(store.viewport.view_state, "magnifier_visible_left", True)
-        show_center = getattr(store.viewport.view_state, "magnifier_visible_center", True)
-        show_right = getattr(store.viewport.view_state, "magnifier_visible_right", True)
+        model = MagnifierStoreService(store).get_active_or_first_magnifier()
+        show_left = bool(getattr(model, "visible_left", True))
+        show_center = bool(getattr(model, "visible_center", True))
+        show_right = bool(getattr(model, "visible_right", True))
         diff_mode = getattr(store.viewport.view_state, "diff_mode", "off")
         is_visual_diff = diff_mode in ("highlight", "grayscale", "ssim", "edges")
         if show_center_required and is_visual_diff and not show_center:
@@ -228,6 +230,8 @@ class MagnifierDrawer:
 
     def _draw_combined_magnifier_strategy(self, **kwargs) -> QPoint | None:
         visibility = kwargs.pop("visibility")
+        model = MagnifierStoreService(kwargs["store"]).get_active_or_first_magnifier()
+        magnifier_is_horizontal = bool(model.is_horizontal) if model is not None else False
         if visibility["is_visual_diff"] and visibility["show_center"]:
             return self._draw_strategy_diff_top_combined_bottom(
                 image_to_draw_on=kwargs["image_to_draw_on"],
@@ -240,7 +244,7 @@ class MagnifierDrawer:
                 interpolation_method=kwargs["interpolation_method"],
                 is_interactive=kwargs["is_interactive_render"],
                 diff_mode=visibility["diff_mode"],
-                comb_is_horizontal=kwargs["store"].viewport.view_state.magnifier_is_horizontal,
+                comb_is_horizontal=magnifier_is_horizontal,
                 comb_split=kwargs["internal_split"],
                 comb_divider_visible=kwargs["divider_visible"],
                 comb_divider_color=kwargs["divider_color"],
@@ -264,7 +268,7 @@ class MagnifierDrawer:
             magnifier_size=kwargs["magnifier_size_pixels"],
             interpolation_method=kwargs["interpolation_method"],
             is_interactive=kwargs["is_interactive_render"],
-            is_horizontal=kwargs["store"].viewport.view_state.magnifier_is_horizontal,
+            is_horizontal=magnifier_is_horizontal,
             internal_split=kwargs["internal_split"],
             divider_visible=kwargs["divider_visible"],
             divider_color=kwargs["divider_color"],
@@ -287,6 +291,8 @@ class MagnifierDrawer:
         return kwargs
 
     def _dispatch_magnifier_render(self, context: dict) -> QPoint | None:
+        model = MagnifierStoreService(context["store"]).get_active_or_first_magnifier()
+        magnifier_is_horizontal = bool(model.is_horizontal) if model is not None else False
         if context["force_combine"]:
             return self._draw_combined_magnifier_strategy(**context)
         if context["visibility"]["is_visual_diff"]:
@@ -323,7 +329,7 @@ class MagnifierDrawer:
             spacing=context["edge_spacing_pixels"],
             interpolation_method=context["interpolation_method"],
             is_interactive=context["is_interactive_render"],
-            layout_horizontal=context["store"].viewport.view_state.magnifier_is_horizontal,
+            layout_horizontal=magnifier_is_horizontal,
             store=context["store"],
             show_left=context["visibility"]["show_left"],
             show_right=context["visibility"]["show_right"],

@@ -4,6 +4,7 @@ import numpy as np
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QPixmap
 
+from ui.canvas_infra.viewport.state import ensure_zoom_viewport_state
 from .runtime import build_canvas_surface_format
 
 @dataclass(slots=True)
@@ -13,6 +14,11 @@ class GLCanvasRuntimeState:
     _magnifier_top_left: QPoint | None = None
     _capture_center: QPointF | None = None
     _capture_radius: float = 0.0
+    _capture_circles: list = field(default_factory=list)
+    _guide_sets: list = field(default_factory=list)
+    _hidden_capture_circles: list = field(default_factory=list)
+    _occluded_capture_arcs: list = field(default_factory=list)
+    _hidden_magnifier_circles: list = field(default_factory=list)
     _magnifier_centers: list[QPointF] = field(default_factory=list)
     _magnifier_radius: float = 0.0
     _magnifier_border_color: QColor = field(
@@ -26,10 +32,11 @@ class GLCanvasRuntimeState:
     _divider_thickness: int = 2
     _capture_color: QColor = field(default_factory=lambda: QColor(255, 50, 100, 230))
     _show_guides: bool = False
-    _laser_color: QColor = field(default_factory=lambda: QColor(255, 255, 255, 120))
+    _laser_color: QColor = field(default_factory=lambda: QColor(255, 255, 255, 255))
     _guides_thickness: int = 1
     _images_uploaded: list[bool] = field(default_factory=lambda: [False, False])
     _stored_pil_images: list = field(default_factory=lambda: [None, None])
+    _stored_image_ids: object | None = None
     _source_pil_images: list = field(default_factory=lambda: [None, None])
     _source_image_ids: list = field(default_factory=lambda: [0, 0])
     _source_images_ready: bool = False
@@ -41,15 +48,16 @@ class GLCanvasRuntimeState:
     _content_rect_px: tuple[int, int, int, int] | None = None
     _clip_overlays_to_content_rect: bool = False
     _content_scissor_depth: int = 0
-    _mag_quads: list = field(default_factory=lambda: [None, None, None])
-    _mag_use_circle_mask: list[bool] = field(default_factory=lambda: [True, True, True])
-    _mag_combined_params: list = field(default_factory=lambda: [None, None, None])
+    _mag_quads: list = field(default_factory=list)
+    _mag_use_circle_mask: list[bool] = field(default_factory=list)
+    _mag_combined_params: list = field(default_factory=list)
     _circle_mask_overlay_image: object | None = None
     _circle_mask_shadow_image: object | None = None
     _circle_mask_shadow_cache: dict = field(default_factory=dict)
+    _canvas_scene_graph: object | None = None
     _mag_quad_ndc: tuple[float, float, float, float] | None = None
     _mag_gpu_active: bool = False
-    _mag_gpu_slots: list = field(default_factory=lambda: [None, None, None])
+    _mag_gpu_slots: list = field(default_factory=list)
     _mag_gpu_channel_mode: int = 0
     _mag_gpu_diff_mode: int = 0
     _mag_gpu_diff_threshold: float = 20.0 / 255.0
@@ -87,6 +95,7 @@ class GLCanvasRuntimeState:
         }
     )
     _pending_texture_uploads: list = field(default_factory=list)
+    _zoom_viewport_state: object | None = None
 
 def init_widget_state(widget):
     widget.setMouseTracking(True)
@@ -108,12 +117,7 @@ def init_widget_state(widget):
     )
 
     widget.split_position = 0.5
-    widget.display_split_position = 0.5
     widget.is_horizontal = False
-
-    widget.zoom_level = 1.0
-    widget.pan_offset_x = 0.0
-    widget.pan_offset_y = 0.0
 
     widget.shader_program = None
     widget.vao = None
@@ -124,8 +128,8 @@ def init_widget_state(widget):
     widget._source_texture_ids = [0, 0]
     widget._diff_source_texture_id = 0
     widget._mag_shader_cache = {}
-    widget._mag_tex_ids = [0, 0, 0]
-    widget._mag_combined_tex_ids = [0, 0, 0]
+    widget._mag_tex_ids = []
+    widget._mag_combined_tex_ids = []
     widget._circle_mask_tex_id = 0
     widget._mag_tex_id = 0
 
@@ -134,3 +138,4 @@ def init_widget_state(widget):
     widget._ui_overlay_tex_id = 0
 
     widget.runtime_state = GLCanvasRuntimeState()
+    ensure_zoom_viewport_state(widget)

@@ -4,8 +4,26 @@ import logging
 
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
 
+from ui.canvas_infra.viewport.state import (
+    get_pan_offset_x,
+    get_pan_offset_y,
+    get_zoom_level,
+    set_display_split_position,
+    set_pan_offsets,
+    set_zoom_level,
+)
+from ui.canvas_infra.viewport.contract import (
+    PanDragRequest,
+    SplitPositionForViewTransformRequest,
+    WheelZoomRequest,
+)
+from ui.canvas_infra.viewport.pipeline import (
+    compute_pan_drag_transform,
+    compute_split_position_for_view_transform as compute_split_position_for_view_transform_via_feature,
+    compute_wheel_zoom_transform,
+)
+
 CAPTURE_RING_AA_PX = 1.15
-logger = logging.getLogger("ImproveImgSLI")
 
 def _float_attr(obj, attr: str, default: float) -> float:
     if obj is None:
@@ -64,57 +82,22 @@ def compute_split_position_for_view_transform(
     new_pan_x: float,
     new_pan_y: float,
 ) -> float | None:
-    if image_width <= 0 or image_height <= 0 or widget_width <= 0 or widget_height <= 0:
-        return None
-
-    ratio = min(widget_width / image_width, widget_height / image_height)
-    scaled_width = max(1, int(image_width * ratio))
-    scaled_height = max(1, int(image_height * ratio))
-    image_x = (widget_width - scaled_width) // 2
-    image_y = (widget_height - scaled_height) // 2
-
-    if is_horizontal:
-        base = (image_y + scaled_height * split_position_visual) / widget_height
-        old_pan = current_pan_y
-    else:
-        base = (image_x + scaled_width * split_position_visual) / widget_width
-        old_pan = current_pan_x
-
-    axis_widget_size = float(widget_height if is_horizontal else widget_width)
-    axis_content_size = float(scaled_height if is_horizontal else scaled_width)
-    axis_content_offset = float(image_y if is_horizontal else image_x)
-    current_pan = float(current_pan_y if is_horizontal else current_pan_x)
-    new_pan = float(new_pan_y if is_horizontal else new_pan_x)
-
-    def _visible_axis_range(zoom: float, pan: float) -> tuple[float, float]:
-        local_start = ((0.0 - 0.5) / max(float(zoom), 1e-6)) + 0.5 - pan
-        local_end = ((1.0 - 0.5) / max(float(zoom), 1e-6)) + 0.5 - pan
-        rel_start = ((local_start * axis_widget_size) - axis_content_offset) / max(axis_content_size, 1.0)
-        rel_end = ((local_end * axis_widget_size) - axis_content_offset) / max(axis_content_size, 1.0)
-        lo = max(0.0, min(1.0, min(rel_start, rel_end)))
-        hi = max(0.0, min(1.0, max(rel_start, rel_end)))
-        return lo, hi
-
-    current_visible_min, current_visible_max = _visible_axis_range(current_zoom, current_pan)
-    edge_epsilon = max(0.0025, 3.0 / max(axis_content_size, 1.0))
-    explicit_edge_epsilon = 1e-6
-    if split_position_visual <= explicit_edge_epsilon:
-        new_visible_min, _ = _visible_axis_range(new_zoom, new_pan)
-        return max(0.0, min(1.0, new_visible_min))
-    if split_position_visual >= 1.0 - explicit_edge_epsilon:
-        _, new_visible_max = _visible_axis_range(new_zoom, new_pan)
-        return max(0.0, min(1.0, new_visible_max))
-
-    screen_pos = (base - 0.5 + old_pan) * current_zoom + 0.5
-    new_base = (screen_pos - 0.5) / new_zoom + 0.5 - new_pan
-
-    if is_horizontal:
-        new_split = (new_base * widget_height - image_y) / scaled_height if scaled_height > 0 else 0.5
-    else:
-        new_split = (new_base * widget_width - image_x) / scaled_width if scaled_width > 0 else 0.5
-
-    clamped_split = max(0.0, min(1.0, new_split))
-    return clamped_split
+    return compute_split_position_for_view_transform_via_feature(
+        SplitPositionForViewTransformRequest(
+            widget_width=widget_width,
+            widget_height=widget_height,
+            image_width=image_width,
+            image_height=image_height,
+            is_horizontal=is_horizontal,
+            split_position_visual=split_position_visual,
+            current_zoom=current_zoom,
+            current_pan_x=current_pan_x,
+            current_pan_y=current_pan_y,
+            new_zoom=new_zoom,
+            new_pan_x=new_pan_x,
+            new_pan_y=new_pan_y,
+        )
+    )
 
 def update_paste_overlay_rects(widget):
     state = widget.runtime_state
@@ -276,9 +259,9 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
         image_height=image_height,
         is_horizontal=is_horizontal,
         split_position_visual=split_visual,
-        current_zoom=float(widget.zoom_level),
-        current_pan_x=float(widget.pan_offset_x),
-        current_pan_y=float(widget.pan_offset_y),
+        current_zoom=get_zoom_level(widget),
+        current_pan_x=get_pan_offset_x(widget),
+        current_pan_y=get_pan_offset_y(widget),
         new_zoom=float(new_zoom),
         new_pan_x=float(new_pan_x),
         new_pan_y=float(new_pan_y),
@@ -290,7 +273,9 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
                 sync_callback(new_split)
                 synced = True
             except Exception:
-                logger.exception("Split sync callback failed during view transform")
+                logging.getLogger("ImproveImgSLI").exception(
+                    "Split sync callback failed during view transform"
+                )
         if not synced:
             _sync_split_to_store(widget, new_split)
 
@@ -303,6 +288,14 @@ def set_split_line_params(
     thickness: int,
 ):
     state = widget.runtime_state
+    if (
+        bool(state._show_divider) == bool(visible)
+        and int(state._split_pos or 0) == int(pos or 0)
+        and bool(state._is_horizontal_split) == bool(is_horizontal)
+        and state._divider_color == color
+        and int(state._divider_thickness or 0) == int(thickness or 0)
+    ):
+        return
     state._show_divider = visible
     state._split_pos = pos
     state._is_horizontal_split = is_horizontal
@@ -313,18 +306,26 @@ def set_split_line_params(
     if visible:
         widget_size = widget.width() if not is_horizontal else widget.height()
         if widget_size > 0:
-            widget.display_split_position = pos / widget_size
+            set_display_split_position(widget, pos / widget_size)
 
     widget._request_update()
 
 def set_guides_params(widget, visible: bool, color, thickness: int):
     state = widget.runtime_state
+    if (
+        bool(state._show_guides) == bool(visible)
+        and state._laser_color == color
+        and int(state._guides_thickness or 0) == int(thickness or 0)
+    ):
+        return
     state._show_guides = visible
     state._laser_color = color
     state._guides_thickness = thickness
     widget._request_update()
 
 def set_capture_color(widget, color):
+    if widget.runtime_state._capture_color == color:
+        return
     widget.runtime_state._capture_color = color
     widget._request_update()
 
@@ -334,7 +335,7 @@ def set_capture_area(widget, center: QPoint | None, size: int, color=None):
         capture_center = QPointF(center)
         capture_radius = size / 2.0
         content_rect = state._content_rect_px
-        zoom_level = float(getattr(widget, "zoom_level", 1.0) or 1.0)
+        zoom_level = get_zoom_level(widget)
         scaled_radius = capture_radius * zoom_level
         line_width_px = max(2.0, float(scaled_radius * 2.0) * 0.0105)
         stroke_margin_widget = ((line_width_px / 2.0) + CAPTURE_RING_AA_PX) / max(
@@ -374,32 +375,56 @@ def set_overlay_coords(
     mag_radius: float,
 ):
     state = widget.runtime_state
+    current_capture_center = state._capture_center
+    current_mag_centers = state._magnifier_centers
+    same_capture_center = (
+        (current_capture_center is None and capture_center is None)
+        or (
+            current_capture_center is not None
+            and capture_center is not None
+            and abs(current_capture_center.x() - capture_center.x()) <= 1e-6
+            and abs(current_capture_center.y() - capture_center.y()) <= 1e-6
+        )
+    )
+    same_mag_centers = len(current_mag_centers) == len(mag_centers) and all(
+        abs(existing.x() - incoming.x()) <= 1e-6
+        and abs(existing.y() - incoming.y()) <= 1e-6
+        for existing, incoming in zip(current_mag_centers, mag_centers)
+    )
+    if (
+        same_capture_center
+        and abs(float(state._capture_radius or 0.0) - float(capture_radius or 0.0)) <= 1e-6
+        and same_mag_centers
+        and abs(float(state._magnifier_radius or 0.0) - float(mag_radius or 0.0)) <= 1e-6
+    ):
+        return
     state._capture_center = capture_center
     state._capture_radius = capture_radius
     state._magnifier_centers = mag_centers
     state._magnifier_radius = mag_radius
     if capture_center is None:
-        state._mag_quads[0] = None
-        state._mag_quads[1] = None
-        state._mag_quads[2] = None
-        state._mag_combined_params[0] = None
-        state._mag_combined_params[1] = None
-        state._mag_combined_params[2] = None
+        state._capture_circles = []
+        state._guide_sets = []
+        state._occluded_capture_arcs = []
+        for i in range(len(state._mag_quads)):
+            state._mag_quads[i] = None
+        for i in range(len(state._mag_combined_params)):
+            state._mag_combined_params[i] = None
         state._mag_quad_ndc = None
     widget._request_update()
 
 def set_zoom(widget, zoom: float):
     new_zoom = max(1.0, min(zoom, 50.0))
-    if abs(new_zoom - widget.zoom_level) <= 1e-6:
+    if abs(new_zoom - get_zoom_level(widget)) <= 1e-6:
         return
     update_split_for_zoom(
         widget,
         new_zoom,
-        float(getattr(widget, "pan_offset_x", 0.0) or 0.0),
-        float(getattr(widget, "pan_offset_y", 0.0) or 0.0),
+        get_pan_offset_x(widget),
+        get_pan_offset_y(widget),
     )
-    widget.zoom_level = new_zoom
-    widget.zoomChanged.emit(widget.zoom_level)
+    set_zoom_level(widget, new_zoom)
+    widget.zoomChanged.emit(get_zoom_level(widget))
     widget.update()
 
 def set_pan(widget, x: float, y: float):
@@ -407,57 +432,43 @@ def set_pan(widget, x: float, y: float):
     new_pan_y = float(y or 0.0)
     update_split_for_zoom(
         widget,
-        float(getattr(widget, "zoom_level", 1.0) or 1.0),
+        get_zoom_level(widget),
         new_pan_x,
         new_pan_y,
     )
-    widget.pan_offset_x = x
-    widget.pan_offset_y = y
+    set_pan_offsets(widget, x, y)
     widget.update()
 
 def reset_view(widget):
-    zoom_changed = abs(widget.zoom_level - 1.0) > 1e-6
-    widget.zoom_level = 1.0
-    widget.pan_offset_x = 0.0
-    widget.pan_offset_y = 0.0
+    zoom_changed = abs(get_zoom_level(widget) - 1.0) > 1e-6
+    set_zoom_level(widget, 1.0)
+    set_pan_offsets(widget, 0.0, 0.0)
     if zoom_changed:
-        widget.zoomChanged.emit(widget.zoom_level)
+        widget.zoomChanged.emit(get_zoom_level(widget))
     widget.update()
 
 def handle_wheel_event(widget, event):
     modifiers = event.modifiers()
 
     if modifiers & Qt.KeyboardModifier.ControlModifier:
-        angle = event.angleDelta().y()
-        factor = 1.1 if angle > 0 else 0.9
-        new_zoom = max(1.0, min(widget.zoom_level * factor, 50.0))
-
-        if new_zoom != widget.zoom_level:
-            w, h = widget.width(), widget.height()
-            if w > 0 and h > 0:
-                mx = event.position().x() / w
-                my = event.position().y() / h
-
-                uv_x = (mx - 0.5) / widget.zoom_level + 0.5 - widget.pan_offset_x
-                uv_y = (my - 0.5) / widget.zoom_level + 0.5 - widget.pan_offset_y
-                uv_x = max(0.0, min(1.0, uv_x))
-                uv_y = max(0.0, min(1.0, uv_y))
-
-                new_pan_x = 0.5 - uv_x + (mx - 0.5) / new_zoom
-                new_pan_y = 0.5 - uv_y + (my - 0.5) / new_zoom
-
-                if new_zoom < 1.5:
-                    t = max(0.0, (new_zoom - 1.0) / 0.5)
-                    new_pan_x *= t
-                    new_pan_y *= t
-
-                update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y)
-
-                widget.pan_offset_x = new_pan_x
-                widget.pan_offset_y = new_pan_y
-
-            widget.zoom_level = new_zoom
-            widget.zoomChanged.emit(widget.zoom_level)
+        result = compute_wheel_zoom_transform(
+            WheelZoomRequest(
+                widget_width=widget.width(),
+                widget_height=widget.height(),
+                mouse_x=float(event.position().x()),
+                mouse_y=float(event.position().y()),
+                current_zoom=get_zoom_level(widget),
+                current_pan_x=get_pan_offset_x(widget),
+                current_pan_y=get_pan_offset_y(widget),
+                angle_delta_y=int(event.angleDelta().y()),
+            )
+        )
+        if result is not None:
+            new_zoom, new_pan_x, new_pan_y = result
+            update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y)
+            set_pan_offsets(widget, new_pan_x, new_pan_y)
+            set_zoom_level(widget, new_zoom)
+            widget.zoomChanged.emit(get_zoom_level(widget))
             widget.update()
 
         event.accept()
@@ -493,16 +504,24 @@ def handle_mouse_release_event(widget, event):
     widget.mouseReleased.emit(event)
 
 def handle_mouse_move_event(widget, event):
-    if getattr(widget, "_pan_dragging", False) and widget.zoom_level > 1.0:
-        w, h = widget.width(), widget.height()
-        if w > 0 and h > 0:
-            dx = (event.position().x() - widget._pan_last_pos.x()) / (w * widget.zoom_level)
-            dy = (event.position().y() - widget._pan_last_pos.y()) / (h * widget.zoom_level)
-            new_pan_x = widget.pan_offset_x + dx
-            new_pan_y = widget.pan_offset_y + dy
-            update_split_for_zoom(widget, widget.zoom_level, new_pan_x, new_pan_y)
-            widget.pan_offset_x = new_pan_x
-            widget.pan_offset_y = new_pan_y
+    if getattr(widget, "_pan_dragging", False) and get_zoom_level(widget) > 1.0:
+        result = compute_pan_drag_transform(
+            PanDragRequest(
+                widget_width=widget.width(),
+                widget_height=widget.height(),
+                current_zoom=get_zoom_level(widget),
+                current_pan_x=get_pan_offset_x(widget),
+                current_pan_y=get_pan_offset_y(widget),
+                last_mouse_x=float(widget._pan_last_pos.x()),
+                last_mouse_y=float(widget._pan_last_pos.y()),
+                mouse_x=float(event.position().x()),
+                mouse_y=float(event.position().y()),
+            )
+        )
+        if result is not None:
+            new_pan_x, new_pan_y = result
+            update_split_for_zoom(widget, get_zoom_level(widget), new_pan_x, new_pan_y)
+            set_pan_offsets(widget, new_pan_x, new_pan_y)
             widget._pan_last_pos = event.position()
             widget.update()
         event.accept()

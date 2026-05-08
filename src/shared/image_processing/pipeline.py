@@ -88,37 +88,38 @@ class RenderModeContext:
 
 @dataclass
 class RenderMagnifierContext:
-    magnifier_pos: QPoint
-    magnifier_offset: Optional[QPoint] = None
-    use_magnifier: bool = False
-    magnifier_size: float = 0.2
-    capture_size: float = 0.1
+    position: QPoint
+    offset: Optional[QPoint] = None
+    enabled: bool = False
+    size_relative: float = 0.2
+    capture_size_relative: float = 0.1
     show_capture_area: bool = True
-    magnifier_drawing_coords: Optional[Tuple] = None
-    magnifier_visible_left: bool = True
-    magnifier_visible_center: bool = True
-    magnifier_visible_right: bool = True
-    is_magnifier_combined: bool = False
-    magnifier_is_horizontal: bool = False
-    magnifier_divider_visible: bool = True
-    magnifier_divider_color: Tuple[int, int, int, int] = (255, 255, 255, 230)
-    magnifier_divider_thickness: int = 2
-    magnifier_internal_split: float = 0.5
-    magnifier_border_color: Tuple[int, int, int, int] = (255, 255, 255, 248)
-    magnifier_laser_color: Tuple[int, int, int, int] = (255, 255, 255, 255)
+    capture_areas: tuple[tuple[float, float, float], ...] = ()
+    drawing_coords: Optional[Tuple] = None
+    visible_left: bool = True
+    visible_center: bool = True
+    visible_right: bool = True
+    combined: bool = False
+    layout_horizontal: bool = False
+    divider_visible: bool = True
+    divider_color: Tuple[int, int, int, int] = (255, 255, 255, 230)
+    divider_thickness: int = 2
+    internal_split: float = 0.5
+    border_color: Tuple[int, int, int, int] = (255, 255, 255, 248)
+    laser_color: Tuple[int, int, int, int] = (255, 255, 255, 255)
     capture_ring_color: Tuple[int, int, int, int] = (255, 50, 100, 230)
-    show_magnifier_guides: bool = False
-    magnifier_guides_thickness: int = 1
-    is_interactive_mode: bool = False
-    optimize_magnifier_movement: bool = True
+    show_guides: bool = False
+    guides_thickness: int = 1
+    interactive_mode: bool = False
+    optimize_movement: bool = True
     optimize_laser_smoothing: bool = False
     movement_interpolation_method: str = "BILINEAR"
-    magnifier_movement_interpolation_method: str = "BILINEAR"
-    laser_smoothing_interpolation_method: str = "BILINEAR"
-    magnifier_offset_relative_visual: Optional[QPoint] = None
-    magnifier_spacing_relative_visual: float = 0.05
-    highlighted_magnifier_element: Optional[str] = None
-    magnifier_cache_dict: dict | None = None
+    laser_interpolation_method: str = "BILINEAR"
+    visual_offset_relative: Optional[QPoint] = None
+    visual_spacing_relative: float = 0.05
+    highlighted_element: Optional[str] = None
+    highlight_capture: bool = False
+    cache_dict: dict | None = None
 
 @dataclass
 class RenderTextContext:
@@ -161,16 +162,16 @@ class RenderContext:
         return self.canvas.split_pos
 
     @property
-    def magnifier_pos(self):
-        return self.magnifier.magnifier_pos
+    def magnifier_position(self):
+        return self.magnifier.position
 
     @property
     def diff_mode(self):
         return self.mode.diff_mode
 
     @property
-    def magnifier_offset(self):
-        return self.magnifier.magnifier_offset
+    def magnifier_offset_pixels(self):
+        return self.magnifier.offset
 
     @property
     def channel_view_mode(self):
@@ -181,16 +182,16 @@ class RenderContext:
         return self.canvas.is_horizontal
 
     @property
-    def use_magnifier(self):
-        return self.magnifier.use_magnifier
+    def magnifier_enabled(self):
+        return self.magnifier.enabled
 
     @property
-    def magnifier_size(self):
-        return self.magnifier.magnifier_size
+    def magnifier_size_relative(self):
+        return self.magnifier.size_relative
 
     @property
-    def capture_size(self):
-        return self.magnifier.capture_size
+    def capture_size_relative(self):
+        return self.magnifier.capture_size_relative
 
     @property
     def show_capture_area(self):

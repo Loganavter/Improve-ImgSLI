@@ -4,6 +4,7 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QColorDialog
 
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
+from ui.canvas_infra.scene.property_access import read_canvas_feature_color_by_setting_key
 
 class SettingsColorActions:
     def __init__(self, store, presenter, main_window_getter):
@@ -13,7 +14,7 @@ class SettingsColorActions:
 
     def show_magnifier_divider_color_picker(self, on_selected):
         dialog = QColorDialog(
-            color_to_qcolor(self.store.viewport.render_config.magnifier_divider_color),
+            color_to_qcolor(read_canvas_feature_color_by_setting_key(self.store.viewport, "magnifier.divider.color")),
             self.main_window_getter(),
         )
         if dialog.exec():
@@ -27,7 +28,7 @@ class SettingsColorActions:
         set_capture_ring_color,
     ):
         dialog = QColorDialog(
-            color_to_qcolor(self.store.viewport.render_config.magnifier_divider_color),
+            color_to_qcolor(read_canvas_feature_color_by_setting_key(self.store.viewport, "magnifier.divider.color")),
             self.main_window_getter(),
         )
         if not dialog.exec():
@@ -36,9 +37,7 @@ class SettingsColorActions:
         base_color = dialog.selectedColor()
         set_divider_color(qcolor_to_color(base_color))
 
-        laser_color = QColor(base_color)
-        laser_color.setAlpha(120)
-        set_laser_color(qcolor_to_color(laser_color))
+        set_laser_color(qcolor_to_color(QColor(base_color)))
 
         capture_ring_color = QColor(base_color)
         capture_ring_color.setAlpha(230)

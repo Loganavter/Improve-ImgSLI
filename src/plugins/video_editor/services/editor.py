@@ -5,13 +5,16 @@ import logging
 from dataclasses import replace
 from typing import Any
 
-from plugins.video_editor.services.keyframes import FrameSnapshot, KeyframedRecording
+from plugins.video_editor.services.keyframing import FrameSnapshot, KeyframedRecording
 
 logger = logging.getLogger("ImproveImgSLI")
 
 class VideoEditorService:
     def __init__(self, initial_snapshots: list[Any], fps: int = 60):
         self._source_recording = None
+        self._extra_adapters = tuple(
+            getattr(initial_snapshots, "extra_adapters", ())
+        )
         if hasattr(initial_snapshots, "evaluate_at") and hasattr(
             initial_snapshots, "get_duration"
         ):
@@ -100,7 +103,9 @@ class VideoEditorService:
                 self._cached_recording = self._source_recording
             else:
                 self._cached_recording = KeyframedRecording.from_snapshots(
-                    self._ensure_materialized_snapshots(), fps=self._fps
+                    self._ensure_materialized_snapshots(),
+                    fps=self._fps,
+                    extra_adapters=self._extra_adapters,
                 )
                 self._cached_recording.apply_cut_markers(self._cut_timestamps)
         return self._cached_recording

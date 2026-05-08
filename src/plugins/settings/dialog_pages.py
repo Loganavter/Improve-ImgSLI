@@ -230,6 +230,24 @@ def _build_interactive_optimization_group(dialog, layout, p):
     row_laser.addWidget(dialog.combo_laser_interp)
     dialog.interactive_opt_group.add_layout(row_laser)
 
+    dialog.magnifier_intersection_highlight_checkbox = FluentCheckBox(
+        dialog.tr("settings.magnifier_intersection_highlight", dialog.current_language)
+    )
+    dialog.magnifier_intersection_highlight_checkbox.setChecked(
+        p.magnifier_intersection_highlight_enabled
+    )
+    dialog.interactive_opt_group.add_widget(
+        dialog.magnifier_intersection_highlight_checkbox
+    )
+
+    dialog.magnifier_auto_color_checkbox = FluentCheckBox(
+        dialog.tr("settings.magnifier_auto_color_new_instances", dialog.current_language)
+    )
+    dialog.magnifier_auto_color_checkbox.setChecked(
+        p.magnifier_auto_color_new_instances
+    )
+    dialog.interactive_opt_group.add_widget(dialog.magnifier_auto_color_checkbox)
+
     _populate_interpolation_combos(dialog, p)
     dialog.optimize_movement_checkbox.toggled.connect(dialog.combo_mag_interp.setEnabled)
     dialog.laser_smoothing_checkbox.toggled.connect(dialog.combo_laser_interp.setEnabled)

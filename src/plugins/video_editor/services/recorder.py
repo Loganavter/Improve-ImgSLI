@@ -5,8 +5,11 @@ import time
 
 from PyQt6.QtCore import QObject, QTimer
 
-from plugins.video_editor.services.keyframes import FrameSnapshot, KeyframedRecording
-from plugins.video_editor.services.track_defs import ViewportTrackSpec
+from plugins.video_editor.services.keyframing import (
+    FrameSnapshot,
+    KeyframeToolAdapter,
+    KeyframedRecording,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -14,11 +17,11 @@ class Recorder(QObject):
     def __init__(
         self,
         store,
-        extra_specs: tuple[ViewportTrackSpec, ...] = (),
+        extra_adapters: tuple[KeyframeToolAdapter, ...] = (),
     ):
         super().__init__()
         self.store = store
-        self._extra_specs = tuple(extra_specs)
+        self._extra_adapters = tuple(extra_adapters)
         self.is_recording = False
         self.is_paused = False
         self.start_time = 0.0
@@ -27,7 +30,7 @@ class Recorder(QObject):
         initial_fps = getattr(self.store.settings, "video_recording_fps", 60)
         self._recording = KeyframedRecording(
             fps=initial_fps,
-            extra_specs=self._extra_specs,
+            extra_adapters=self._extra_adapters,
         )
 
         self.sample_timer = QTimer(self)
@@ -60,7 +63,7 @@ class Recorder(QObject):
         target_fps = max(10, min(144, target_fps))
         self._recording = KeyframedRecording(
             fps=target_fps,
-            extra_specs=self._extra_specs,
+            extra_adapters=self._extra_adapters,
         )
 
         interval = int(1000 / target_fps)

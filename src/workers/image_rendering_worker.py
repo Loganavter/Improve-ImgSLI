@@ -125,7 +125,6 @@ class ImageRenderingWorker(QRunnable):
             result_payload = {
                 "final_canvas": final_canvas,
                 "magnifier_pil": magnifier_pil,
-                "magnifier_pos_rel": combined_center,
                 "padding_left": padding_left,
                 "padding_top": padding_top,
                 "magnifier_bbox": magnifier_bbox_on_canvas,

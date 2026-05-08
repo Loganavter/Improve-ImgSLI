@@ -12,14 +12,18 @@ from core.state_management.actions import (
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
     SetDisplayResolutionLimitAction,
-    SetLaserSmoothingInterpolationMethodAction,
     SetMagnifierMovementInterpolationMethodAction,
     SetMaxNameLengthAction,
-    SetOptimizeLaserSmoothingAction,
     SetOptimizeMagnifierMovementAction,
     SetZoomInterpolationMethodAction,
 )
 from shared_toolkit.ui.managers.font_manager import FontManager
+from ui.canvas_features.guides.actions import (
+    SetGuidesSmoothingEnabledAction,
+    SetGuidesSmoothingInterpolationMethodAction,
+)
+from ui.canvas_features.guides.state import get_guides_widget_state
+from ui.canvas_features.magnifier.state import get_magnifier_widget_state
 
 from .models import SettingsDialogData
 
@@ -192,7 +196,40 @@ class SettingsApplicationService(QObject):
         render_update_needed = self._apply_zoom_interpolation(
             data, render_update_needed
         )
+        render_update_needed = self._apply_magnifier_behavior_settings(
+            data, render_update_needed
+        )
         return render_update_needed
+
+    def _apply_magnifier_behavior_settings(
+        self, data: SettingsDialogData, render_update_needed: bool
+    ) -> bool:
+        state = get_magnifier_widget_state(self.store.viewport.view_state)
+        changed = False
+        if (
+            data.magnifier_intersection_highlight_enabled
+            != state.intersection_highlight_enabled
+        ):
+            state.intersection_highlight_enabled = (
+                data.magnifier_intersection_highlight_enabled
+            )
+            self._save_setting(
+                "magnifier.intersection_highlight.enabled",
+                data.magnifier_intersection_highlight_enabled,
+            )
+            changed = True
+        if data.magnifier_auto_color_new_instances != state.auto_color_new_instances:
+            state.auto_color_new_instances = data.magnifier_auto_color_new_instances
+            self._save_setting(
+                "magnifier.auto_color_new_instances.enabled",
+                data.magnifier_auto_color_new_instances,
+            )
+            changed = True
+        if not changed:
+            return render_update_needed
+        self.store.emit_state_change("viewport")
+        self._emit_update_requested()
+        return True
 
     def _apply_magnifier_interpolation(
         self, data: SettingsDialogData, render_update_needed: bool
@@ -234,44 +271,43 @@ class SettingsApplicationService(QObject):
     ) -> bool:
         vp = self.store.viewport
         render = vp.render_config
+        guides_state = get_guides_widget_state(vp.view_state)
         dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
 
-        if data.optimize_laser_smoothing != render.optimize_laser_smoothing:
+        if data.optimize_laser_smoothing != guides_state.smoothing_enabled:
             if dispatcher is not None:
                 dispatcher.dispatch(
-                    SetOptimizeLaserSmoothingAction(data.optimize_laser_smoothing),
+                    SetGuidesSmoothingEnabledAction(data.optimize_laser_smoothing),
                     scope="viewport",
                 )
             else:
-                render.optimize_laser_smoothing = data.optimize_laser_smoothing
+                guides_state.smoothing_enabled = data.optimize_laser_smoothing
             self.store.invalidate_render_cache()
             render_update_needed = True
             self._save_setting(
-                "optimize_laser_smoothing",
+                "guides.smoothing.enabled",
                 data.optimize_laser_smoothing,
             )
 
         if (
             data.laser_interpolation_method
-            == vp.render_config.laser_smoothing_interpolation_method
+            == guides_state.smoothing_interpolation_method
         ):
             return render_update_needed
 
         if dispatcher is not None:
             dispatcher.dispatch(
-                SetLaserSmoothingInterpolationMethodAction(
+                SetGuidesSmoothingInterpolationMethodAction(
                     data.laser_interpolation_method
                 ),
                 scope="viewport",
             )
         else:
-            vp.render_config.laser_smoothing_interpolation_method = (
-                data.laser_interpolation_method
-            )
+            guides_state.smoothing_interpolation_method = data.laser_interpolation_method
         self.store.invalidate_render_cache()
         self.store.emit_state_change()
         self._save_setting(
-            "laser_smoothing_interpolation_method",
+            "guides.smoothing.interpolation_method",
             data.laser_interpolation_method,
         )
         self._emit_update_requested()

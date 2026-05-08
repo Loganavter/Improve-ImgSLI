@@ -5,7 +5,10 @@ from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer
 from PyQt6.QtGui import QPainter, QPixmap
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from shared_toolkit.ui.widgets.helpers import draw_rounded_shadow
+from shared_toolkit.ui.in_window_surface import (
+    create_shadow_surface,
+    paint_shadowed_surface,
+)
 
 class _PopupBubble(QWidget):
     SHADOW_RADIUS = 8
@@ -22,19 +25,19 @@ class _PopupBubble(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(
-            self.SHADOW_RADIUS,
-            self.SHADOW_RADIUS,
-            self.SHADOW_RADIUS,
-            self.SHADOW_RADIUS,
+        self._layout, self.container, self.content_layout = create_shadow_surface(
+            self,
+            shadow_radius=self.SHADOW_RADIUS,
+            container_object_name="ValuePopupContainer",
+            content_margins=(0, 0, 0, 0),
+            content_spacing=0,
         )
         self._layout.setSpacing(0)
 
-        self.label = QLabel(self)
+        self.label = QLabel(self.container)
         self.label.setObjectName("ValuePopupLabel")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._layout.addWidget(self.label)
+        self.content_layout.addWidget(self.label)
         self.hide()
 
     def set_content(
@@ -60,12 +63,11 @@ class _PopupBubble(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        draw_rounded_shadow(
+        paint_shadowed_surface(
             painter,
-            self.label.geometry(),
-            steps=self.SHADOW_RADIUS,
-            radius=self.CONTENT_RADIUS,
+            self.container.geometry(),
+            shadow_radius=self.SHADOW_RADIUS,
+            corner_radius=self.CONTENT_RADIUS,
         )
         painter.end()
 
@@ -246,6 +248,11 @@ class OverlayLayer(QObject):
             timer.destroyed.connect(lambda *_args, popup_key=key: self._popup_timers.pop(popup_key, None))
         return timer
 
+    def _hide_other_popups(self, keep_key: str) -> None:
+        for key in list(self._value_popups.keys()):
+            if key != keep_key:
+                self.hide_popup(key)
+
     def show_popup(
         self,
         key: str,
@@ -258,6 +265,8 @@ class OverlayLayer(QObject):
         offset: int = 6,
         timeout_ms: int = 800,
     ):
+
+        self._hide_other_popups(key)
         popup = self._popup_label(key)
         try:
             popup.set_content(text=text, pixmap=pixmap, size=size)

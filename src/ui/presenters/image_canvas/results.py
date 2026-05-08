@@ -4,6 +4,10 @@ from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtGui import QPainter, QPixmap
 
 from domain.qt_adapters import color_to_qcolor, qpoint_to_point
+from ui.canvas_features.capture.state import get_capture_widget_state
+from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import default_capture_size
+from ui.canvas_presentation import apply_store_to_gl_canvas, build_live_store_presentation
 from ui.widgets.gl_canvas.helpers import get_gl_like_canvas
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -23,7 +27,7 @@ def on_worker_finished(presenter, result_payload, params, finished_task_id):
     else:
         final_canvas_pil = result_payload.get("final_canvas")
         if final_canvas_pil:
-            handle_legacy_result(presenter, result_payload, params)
+            handle_patch_result(presenter, result_payload, params)
 
 def handle_background_result(presenter, result, params):
     presenter._is_generating_background = False
@@ -54,37 +58,17 @@ def handle_background_result(presenter, result, params):
     presenter._cached_base_pixmap = base_pixmap
     image_label = get_gl_like_canvas(presenter.ui)
     if image_label is not None:
-        img1 = (
-            presenter.store.viewport.session_data.render_cache.display_cache_image1
-            or presenter.store.viewport.session_data.render_cache.scaled_image1_for_display
-            or presenter.store.viewport.session_data.image_state.image1
-        )
-        img2 = (
-            presenter.store.viewport.session_data.render_cache.display_cache_image2
-            or presenter.store.viewport.session_data.render_cache.scaled_image2_for_display
-            or presenter.store.viewport.session_data.image_state.image2
-        )
-        source1 = presenter.store.document.full_res_image1 or presenter.store.document.original_image1
-        source2 = presenter.store.document.full_res_image2 or presenter.store.document.original_image2
-        kwargs = {}
-        if source1 is not None and source2 is not None:
-            kwargs = {
-                "source_image1": source1,
-                "source_image2": source2,
-                "source_key": (
-                    presenter.store.document.image1_path,
-                    presenter.store.document.image2_path,
-                    id(source1),
-                    id(source2),
-                    source1.size,
-                    source2.size,
-                ),
-            }
-        image_label.set_pil_layers(
-            img1,
-            img2,
-            shader_letterbox=True,
-            **kwargs,
+        presentation = build_live_store_presentation(presenter.store)
+        apply_store_to_gl_canvas(
+            image_label,
+            presenter.store,
+            presentation.display_image1,
+            presentation.display_image2,
+            fit_content=False,
+            source_image1=presentation.source_image1,
+            source_image2=presentation.source_image2,
+            source_key=presentation.source_key,
+            clip_overlays_to_image_bounds=False,
         )
     else:
         presenter.ui.image_label.set_layers(presenter._cached_base_pixmap, None, None, None)
@@ -93,7 +77,7 @@ def handle_background_result(presenter, result, params):
 def handle_magnifier_result(presenter, result, params, debug_state):
     current_time = debug_state["time_fn"]()
     mag_pix = result.get("magnifier_pixmap")
-    mag_pos = result.get("magnifier_pos")
+    mag_pos = result.get("magnifier_patch_top_left")
     coords_snapshot = result.get("drawing_coords_snapshot")
 
     if not mag_pix or mag_pix.isNull() or not mag_pos:
@@ -115,7 +99,7 @@ def handle_magnifier_result(presenter, result, params, debug_state):
 
     presenter.ui.image_label.set_magnifier_content(mag_pix, mag_pos_on_label)
 
-def handle_legacy_result(presenter, result, params, debug_state):
+def handle_patch_result(presenter, result, params, debug_state):
     presenter._is_generating_background = False
     current_time = debug_state["time_fn"]()
 
@@ -196,15 +180,28 @@ def handle_legacy_result(presenter, result, params, debug_state):
                     )
                     if len(magnifier_coords) > 2:
                         presenter._last_magnifier_pos = magnifier_coords[2]
-                    if presenter.store.viewport.render_config.show_capture_area_on_main_image and len(magnifier_coords) > 6:
+                    capture_state = get_capture_widget_state(presenter.store.viewport.view_state)
+                    if capture_state.visible and len(magnifier_coords) > 6:
                         capture_center_on_img = magnifier_coords[6]
                         if capture_center_on_img:
                             cap_x = target_rect.x() + int(capture_center_on_img.x())
                             cap_y = target_rect.y() + int(capture_center_on_img.y())
                             unified_w, unified_h = presenter.store.viewport.geometry_state.pixmap_width, presenter.store.viewport.geometry_state.pixmap_height
                             ref_dim = min(unified_w, unified_h)
-                            cap_size = max(5, int(round(presenter.store.viewport.view_state.capture_size_relative * ref_dim)))
-                            col = color_to_qcolor(presenter.store.viewport.render_config.capture_ring_color)
+                            active_magnifier = MagnifierStoreService(
+                                presenter.store
+                            ).get_active_or_first_magnifier()
+                            capture_size_relative = (
+                                float(active_magnifier.capture_size_relative)
+                                if active_magnifier is not None
+                                else float(
+                                    default_capture_size(presenter.store.viewport.view_state)
+                                )
+                            )
+                            cap_size = max(
+                                5, int(round(capture_size_relative * ref_dim))
+                            )
+                            col = color_to_qcolor(capture_state.color)
                             presenter.ui.image_label.set_capture_area(QPoint(cap_x, cap_y), cap_size, col)
 
                     bg_to_use = (
