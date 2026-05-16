@@ -8,7 +8,7 @@ from events.image_label import (
     ImageLabelGeometry,
     ImageLabelKeyboardHandler,
     ImageLabelMouseHandler,
-    MagnifierPreviewController,
+    OverlayPreviewController,
 )
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -24,7 +24,7 @@ class ImageLabelEventHandler(QObject):
 
         self._mouse_move_timer = QElapsedTimer()
         self._mouse_move_timer.start()
-        self.preview = MagnifierPreviewController(self)
+        self.preview = OverlayPreviewController(self)
         self.geometry = ImageLabelGeometry(self)
         self.mouse = ImageLabelMouseHandler(self)
         self.keyboard = ImageLabelKeyboardHandler(self)

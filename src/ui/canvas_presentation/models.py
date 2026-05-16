@@ -80,7 +80,7 @@ class RenderFramePresentation:
     render_height: int
     image_dest_x: int
     image_dest_y: int
-    magnifier_drawing_coords: tuple | None
+    feature_extras: dict
     scaled_image1: Image.Image
     scaled_image2: Image.Image
 

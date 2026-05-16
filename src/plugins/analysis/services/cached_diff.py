@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Any
 
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 from plugins.analysis.services.runtime import AnalysisRuntime
 
@@ -29,7 +29,10 @@ class CachedDiffService:
         diff_mode = self.store.viewport.view_state.diff_mode
         channel_mode = getattr(self.store.viewport.view_state, "channel_view_mode", "RGB")
 
-        if not image1 or (not image2 and diff_mode != "edges"):
+        if diff_mode != "ssim":
+            self.invalidate()
+            return
+        if not image1 or image2 is None:
             return
 
         request_key = (

@@ -7,7 +7,7 @@ from domain.types import Point
 
 from .context import CanvasSceneApplyContext, CanvasSceneBuildContext
 from .models import CanvasSceneGraph, CanvasSceneObject
-from .stacking import CanvasStackHint, CanvasStackLayer
+from .stacking_policy import CanvasStackHint, CanvasStackLayer, CanvasStackRole, resolve_scene_object_order
 
 BuildPrimaryFn = Callable[[CanvasSceneBuildContext], tuple[CanvasSceneObject, ...]]
 BuildOverlayFn = Callable[[CanvasSceneGraph, CanvasSceneBuildContext], tuple[CanvasSceneObject, ...]]
@@ -18,6 +18,7 @@ SyncGeometryFn = Callable[[CanvasSceneGraph, object], None]
 
 @dataclass(frozen=True, slots=True)
 class CanvasFeatureZOrder:
+    stack_role: CanvasStackRole | None = None
     layer: CanvasStackLayer = CanvasStackLayer.OBJECT
     priority: int = 0
     always_on_top: bool = False
@@ -26,6 +27,11 @@ class CanvasFeatureZOrder:
     selectable_when_hidden: bool = False
     tags: tuple[str, ...] = ()
 
+    def _resolved_layer_and_priority(self) -> tuple[CanvasStackLayer, int]:
+        if self.stack_role is not None:
+            return resolve_scene_object_order(self.stack_role)
+        return (self.layer, self.priority)
+
     def stack_hint(
         self,
         *,
@@ -33,9 +39,10 @@ class CanvasFeatureZOrder:
         priority: int | None = None,
         active_bias: bool | None = None,
     ) -> CanvasStackHint:
+        resolved_layer, resolved_priority = self._resolved_layer_and_priority()
         return CanvasStackHint(
-            layer=self.layer if layer is None else layer,
-            priority=self.priority if priority is None else int(priority),
+            layer=resolved_layer if layer is None else layer,
+            priority=resolved_priority if priority is None else int(priority),
             always_on_top=self.always_on_top,
             always_on_bottom=self.always_on_bottom,
             active_bias=self.active_bias if active_bias is None else bool(active_bias),

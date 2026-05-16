@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from core.events import ComparisonUIUpdateEvent, CoreUpdateRequestedEvent
+from core.events import CoreUpdateRequestedEvent
+from plugins.comparison.events import ComparisonUIUpdateEvent
 
 class UIUpdateDispatcher:
     def __init__(self, event_bus: Any | None = None, signal: Any | None = None):

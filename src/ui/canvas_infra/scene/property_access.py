@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from core.store_viewport import ViewportState
@@ -10,6 +11,8 @@ from .widget_registry import get_canvas_feature_properties
 
 if TYPE_CHECKING:
     from plugins.video_editor.services.keyframing.types import FrameSnapshot
+
+_log = logging.getLogger("ImproveImgSLI.canvas.properties")
 
 def get_canvas_feature_property_by_id(property_id: str) -> CanvasFeatureProperty | None:
     for item in get_canvas_feature_properties():
@@ -117,5 +120,47 @@ def read_canvas_feature_color_by_setting_key(
 ):
     prop = get_canvas_feature_property_by_setting_key(setting_key)
     if prop is None:
+        available_keys = tuple(
+            item.setting_key
+            for item in get_canvas_feature_properties()
+            if item.setting_key is not None
+        )
+        _log.error(
+            "Unknown canvas feature color setting key '%s'. Available keys: %s",
+            setting_key,
+            available_keys,
+        )
         raise KeyError(f"Unknown canvas feature setting key: {setting_key}")
     return channels_to_color(read_canvas_feature_property(viewport_state, prop))
+
+def read_canvas_feature_setting_by_key(
+    viewport_state: ViewportState,
+    setting_key: str,
+):
+    prop = get_canvas_feature_property_by_setting_key(setting_key)
+    if prop is None:
+        available_keys = tuple(
+            item.setting_key
+            for item in get_canvas_feature_properties()
+            if item.setting_key is not None
+        )
+        _log.error(
+            "Unknown canvas feature setting key '%s'. Available keys: %s",
+            setting_key,
+            available_keys,
+        )
+        raise KeyError(f"Unknown canvas feature setting key: {setting_key}")
+    channels = read_canvas_feature_property(viewport_state, prop)
+    if prop.kind == "color":
+        return channels_to_color(channels)
+    if prop.kind in {"bool", "scalar", "enum"}:
+        return channels["value"]
+    if prop.kind == "vec2":
+        return {"x": float(channels["x"]), "y": float(channels["y"])}
+    if prop.kind == "mask3":
+        return {
+            "left": bool(channels["left"]),
+            "center": bool(channels["center"]),
+            "right": bool(channels["right"]),
+        }
+    raise ValueError(f"Unsupported property kind for readback: {prop.kind}")

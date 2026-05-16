@@ -1,6 +1,6 @@
 import logging
 
-from shared_toolkit.ui.widgets.composite.toast import ToastManager
+from sli_ui_toolkit.widgets import ToastManager
 
 from .definitions import ALL_KNOWN_WIDGETS, LAYOUT_DEFINITIONS
 

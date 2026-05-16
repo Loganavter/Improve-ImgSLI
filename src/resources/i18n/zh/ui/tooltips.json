@@ -1,9 +1,23 @@
 {
   "tooltip": {
+    "add_images_1": "将图像添加到第一侧",
+    "add_images_2": "将图像添加到第二侧",
+    "adjust_divider_width": "调整分隔线宽度",
+    "adjust_magnifier_divider_width": "调整放大镜分隔线宽度",
+    "adjust_magnifier_guides_width": "调整放大镜引导线粗细",
+    "add_or_remove_magnifier": "添加或移除放大镜",
+    "change_channel_mode": "切换通道模式",
+    "change_diff_mode": "切换差异模式",
     "click_remove_current_image": "单击：移除当前图像",
     "click_swap_current_images": "单击：交换当前图像",
+    "create_workspace_session": "创建工作区会话",
     "hold_swap_entire_lists": "长按：交换整个列表",
-    "use_favorite": "使用收藏",
-    "file_names_hidden_on_zoom": "缩放时画布上的文件名会被隐藏。将缩放恢复到100%即可再次显示。"
+    "file_names_hidden_on_zoom": "缩放时画布上的文件名会被隐藏。将缩放恢复到100%即可再次显示。",
+    "open_file_name_text_settings": "打开文件名文本设置",
+    "quick_save_image": "快速保存图像",
+    "save_result": "保存结果",
+    "toggle_divider_visibility": "切换分隔线可见性",
+    "toggle_magnifier_divider_visibility": "切换放大镜分隔线可见性",
+    "use_favorite": "使用收藏"
   }
 }

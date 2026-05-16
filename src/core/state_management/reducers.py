@@ -1,5 +1,4 @@
 from dataclasses import replace
-from domain.types import Point
 
 from core.store import (
     DocumentModel,
@@ -13,7 +12,6 @@ from core.store import (
     ViewState,
     ViewportState,
 )
-from core.store_viewport import MagnifierModel
 from ui.canvas_infra.scene.widget_registry import get_canvas_widget_features
 
 from .actions import (
@@ -22,20 +20,16 @@ from .actions import (
     ClearImageSlotDataAction,
     InvalidateGeometryCacheAction,
     InvalidateRenderCacheAction,
-    SetActiveMagnifierIdAction,
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
     SetAutoCropBlackBordersAction,
     SetCachedDiffImageAction,
     SetCachedScaledImageDimsAction,
-    SetCaptureSizeRelativeAction,
     SetChannelViewModeAction,
     SetCurrentIndexAction,
     SetDiffModeAction,
     SetDisplayCacheImageAction,
     SetDisplayResolutionLimitAction,
-    SetDraggingCapturePointAction,
-    SetDraggingSplitInMagnifierAction,
     SetDraggingSplitLineAction,
     SetDrawTextBackgroundAction,
     SetFileNameBgColorAction,
@@ -44,7 +38,6 @@ from .actions import (
     SetFontSizePercentAction,
     SetFontWeightAction,
     SetFullResImageAction,
-    SetHighlightedMagnifierElementAction,
     SetImageDisplayRectAction,
     SetImagePathAction,
     SetImageSessionImageAction,
@@ -58,21 +51,9 @@ from .actions import (
     SetLastHorizontalMovementKeyAction,
     SetLastSpacingMovementKeyAction,
     SetLastVerticalMovementKeyAction,
-    SetMagnifierInternalSplitAction,
-    SetMagnifierMovementInterpolationMethodAction,
-    SetMagnifierOffsetRelativeAction,
-    SetMagnifierOffsetRelativeVisualAction,
-    SetMagnifierPositionAction,
-    SetMagnifierScreenCenterAction,
-    SetMagnifierScreenSizeAction,
-    SetMagnifierSizeRelativeAction,
-    SetMagnifierSpacingRelativeAction,
-    SetMagnifierSpacingRelativeVisualAction,
-    SetMagnifierVisibilityAction,
     SetMaxNameLengthAction,
     SetMovementInterpolationMethodAction,
     SetMovementSpeedAction,
-    SetOptimizeMagnifierMovementAction,
     SetOriginalImageAction,
     SetPendingUnificationPathsAction,
     SetPixmapDimensionsAction,
@@ -91,11 +72,7 @@ from .actions import (
     SetUnificationInProgressAction,
     SetUserInteractingAction,
     SetZoomInterpolationMethodAction,
-    ToggleFreezeMagnifierAction,
-    ToggleMagnifierAction,
-    ToggleMagnifierOrientationAction,
     ToggleOrientationAction,
-    UpdateMagnifierCombinedStateAction,
 )
 
 def _build_viewport_state(
@@ -159,12 +136,6 @@ class InteractionStateReducer:
             return replace(interaction_state, is_interactive_mode=action.enabled)
         if isinstance(action, SetDraggingSplitLineAction):
             return replace(interaction_state, is_dragging_split_line=action.enabled)
-        if isinstance(action, SetDraggingCapturePointAction):
-            return replace(interaction_state, is_dragging_capture_point=action.enabled)
-        if isinstance(action, SetDraggingSplitInMagnifierAction):
-            return replace(
-                interaction_state, is_dragging_split_in_magnifier=action.enabled
-            )
         if isinstance(action, SetPressedKeysAction):
             return replace(interaction_state, pressed_keys=set(action.keys))
         if isinstance(action, SetSpaceBarPressedAction):
@@ -179,6 +150,12 @@ class InteractionStateReducer:
             return replace(interaction_state, last_vertical_movement_key=action.key)
         if isinstance(action, SetLastSpacingMovementKeyAction):
             return replace(interaction_state, last_spacing_movement_key=action.key)
+        for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+            if feature.reduce_interaction_state is None:
+                continue
+            reduced = feature.reduce_interaction_state(interaction_state, action)
+            if reduced is not interaction_state:
+                return reduced
         return interaction_state
 
 class GeometryStateReducer:
@@ -196,10 +173,12 @@ class GeometryStateReducer:
                 fixed_label_width=action.width,
                 fixed_label_height=action.height,
             )
-        if isinstance(action, SetMagnifierScreenCenterAction):
-            return replace(geometry_state, magnifier_screen_center=action.center)
-        if isinstance(action, SetMagnifierScreenSizeAction):
-            return replace(geometry_state, magnifier_screen_size=action.size)
+        for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+            if feature.reduce_geometry_state is None:
+                continue
+            reduced = feature.reduce_geometry_state(geometry_state, action)
+            if reduced is not geometry_state:
+                return reduced
         return geometry_state
 
 class ImageSessionReducer:
@@ -245,13 +224,16 @@ class RenderCacheReducer:
         if isinstance(action, SetPendingUnificationPathsAction):
             return replace(cache_state, pending_unification_paths=action.paths)
         if isinstance(action, InvalidateRenderCacheAction):
-            return replace(
+            cache_state = replace(
                 cache_state,
                 caches={},
-                magnifier_cache={},
                 cached_split_base_image=None,
                 last_split_cached_params=None,
             )
+            for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+                if feature.reduce_cache_state is not None:
+                    cache_state = feature.reduce_cache_state(cache_state, action)
+            return cache_state
         if isinstance(action, InvalidateGeometryCacheAction):
             return replace(
                 cache_state,
@@ -263,7 +245,7 @@ class RenderCacheReducer:
                 last_display_cache_params=None,
             )
         if isinstance(action, ClearAllCachesAction):
-            return replace(
+            cache_state = replace(
                 cache_state,
                 unified_image_cache=cache_state.unified_image_cache.__class__(),
                 scaled_image1_for_display=None,
@@ -273,10 +255,13 @@ class RenderCacheReducer:
                 display_cache_image2=None,
                 last_display_cache_params=None,
                 caches={},
-                magnifier_cache={},
                 cached_split_base_image=None,
                 last_split_cached_params=None,
             )
+            for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+                if feature.reduce_cache_state is not None:
+                    cache_state = feature.reduce_cache_state(cache_state, action)
+            return cache_state
         if isinstance(action, ClearImageSlotDataAction):
             kwargs = (
                 {
@@ -330,12 +315,6 @@ class RenderConfigReducer:
             return replace(config, interpolation_method=action.method)
         if isinstance(action, SetMovementInterpolationMethodAction):
             return replace(config, movement_interpolation_method=action.method)
-        if isinstance(action, SetMagnifierMovementInterpolationMethodAction):
-            return replace(
-                config,
-                magnifier_movement_interpolation_method=action.method,
-                movement_interpolation_method=action.method,
-            )
         if isinstance(action, SetZoomInterpolationMethodAction):
             return replace(config, zoom_interpolation_method=action.method)
         if isinstance(action, SetIncludeFileNamesInSavedAction):

@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QKeySequence, QPixmap, QPalette
 from PyQt6.QtWidgets import QLineEdit
 
-from shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
+from sli_ui_toolkit.widgets import CustomLineEdit
 
 logger = logging.getLogger("ImproveImgSLI")
 

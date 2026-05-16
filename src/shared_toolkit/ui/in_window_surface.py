@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import QBoxLayout, QVBoxLayout, QWidget
 
-from shared_toolkit.ui.widgets.helpers import draw_rounded_shadow
+from sli_ui_toolkit.ui.widgets.helpers import draw_rounded_shadow
 
 def attach_in_window_widget(widget: QWidget, anchor: QWidget | None) -> object | None:
     from shared_toolkit.ui.overlay_layer import get_overlay_layer

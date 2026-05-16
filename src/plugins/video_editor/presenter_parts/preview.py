@@ -4,13 +4,17 @@ from PIL import Image
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
 
-from shared_toolkit.workers.generic_worker import GenericWorker
+from shared.image_processing.prescale import prescale_pair
+from sli_ui_toolkit.workers import GenericWorker
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.canvas_presentation import (
-    apply_store_to_gl_canvas,
+    apply_render_plan_to_canvas,
+    build_canvas_plan,
     build_snapshot_store_presentation,
 )
 
 logger = logging.getLogger("ImproveImgSLI")
+_mlog = logging.getLogger("ImproveImgSLI.magnifier.preview")
 
 class PreviewCoordinator:
     def __init__(
@@ -39,6 +43,9 @@ class PreviewCoordinator:
         self._cached_global_bounds = None
         self._bounds_calculation_pending = False
         self._stored_crop_resolution = None
+
+        self._preview_frame_cache = None
+        self._prescaled_cache = None
 
         self._preview_updater = QTimer(timer_parent)
         self._preview_updater.setSingleShot(True)
@@ -70,6 +77,8 @@ class PreviewCoordinator:
 
     def reset_render_state(self):
         self._last_render_params = (None, None, None)
+        self._preview_frame_cache = None
+        self._prescaled_cache = None
 
     def do_update_preview_heavy(self):
         if self._is_rendering_preview or not self.has_live_view():
@@ -137,38 +146,100 @@ class PreviewCoordinator:
 
         return img1, img2
 
+    def _resolve_fill_color_tuple(self):
+        fill_color = getattr(self.view, "fit_content_fill_color", None)
+        if fill_color is None:
+            return None
+        return (fill_color.red(), fill_color.green(), fill_color.blue(), fill_color.alpha())
+
+    def _update_cached_store_viewport(self, store, snap, display1, display2):
+        """Update viewport/settings on a cached store without rebuilding images."""
+        store.viewport = snap.viewport_state.clone()
+        store.settings = snap.settings_state.freeze_for_export()
+        store.viewport.overlay_clip_rect = None
+        store.viewport.session_data.image_state.image1 = display1
+        store.viewport.session_data.image_state.image2 = display2
+        normalize = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
+        if normalize is not None:
+            normalize(store)
+        store.viewport.interaction_state.is_interactive_mode = False
+
     def render_preview_gpu(self, snap) -> bool:
         from .common import VIDEO_EDITOR_AUTO_CROP
 
-        img1, img2 = self.get_preview_images(snap, VIDEO_EDITOR_AUTO_CROP)
-        fill_color = getattr(self.view, "fit_content_fill_color", None)
-        presentation = build_snapshot_store_presentation(
-            snap,
-            img1,
-            img2,
-            fit_content=self.fit_content_mode,
-            global_bounds=self._cached_global_bounds if self.fit_content_mode else None,
-            fill_color=(
-                fill_color.red(),
-                fill_color.green(),
-                fill_color.blue(),
-                fill_color.alpha(),
+        preview_w, preview_h = self.get_preview_size_safe()
+        prescale_key = (snap.image1_path, snap.image2_path, preview_w, preview_h, self.fit_content_mode)
+        if self._prescaled_cache and self._prescaled_cache[0] == prescale_key:
+            img1, img2 = self._prescaled_cache[1], self._prescaled_cache[2]
+        else:
+            img1, img2 = self.get_preview_images(snap, VIDEO_EDITOR_AUTO_CROP)
+            if preview_w > 0 and preview_h > 0 and not self.fit_content_mode:
+                img1, img2 = prescale_pair(img1, img2, preview_w, preview_h)
+            self._prescaled_cache = (prescale_key, img1, img2)
+
+        fill_color_tuple = self._resolve_fill_color_tuple()
+        global_bounds = self._cached_global_bounds if self.fit_content_mode else None
+
+        image_cache_key = (
+            snap.image1_path,
+            snap.image2_path,
+            img1.size if img1 else None,
+            img2.size if img2 else None,
+            self.fit_content_mode,
+            fill_color_tuple,
+            global_bounds,
+        )
+
+        cache = self._preview_frame_cache
+        cache_hit = cache is not None and cache["key"] == image_cache_key
+        if cache_hit:
+            store = cache["store"]
+            self._update_cached_store_viewport(
+                store, snap, cache["display1"], cache["display2"],
             )
-            if fill_color is not None
-            else None,
-        )
-        apply_store_to_gl_canvas(
-            self.view.preview_label,
-            presentation.store,
-            presentation.display_image1,
-            presentation.display_image2,
-            fit_content=self.fit_content_mode,
-            source_image1=presentation.source_image1,
-            source_image2=presentation.source_image2,
-            source_key=presentation.source_key,
-            display_cache_key=presentation.display_cache_key,
-            clip_overlays_to_image_bounds=True,
-        )
+            plan = build_canvas_plan(
+                store,
+                cache["display1"],
+                cache["display2"],
+                source_image1=cache["source1"],
+                source_image2=cache["source2"],
+                source_key=cache["source_key"],
+                display_cache_key=cache["display_cache_key"],
+            )
+        else:
+            presentation = build_snapshot_store_presentation(
+                snap,
+                img1,
+                img2,
+                fit_content=self.fit_content_mode,
+                global_bounds=global_bounds,
+                fill_color=fill_color_tuple,
+            )
+            plan = build_canvas_plan(
+                presentation.store,
+                presentation.display_image1,
+                presentation.display_image2,
+                source_image1=presentation.source_image1,
+                source_image2=presentation.source_image2,
+                source_key=presentation.source_key,
+                display_cache_key=presentation.display_cache_key,
+            )
+            self._preview_frame_cache = {
+                "key": image_cache_key,
+                "store": presentation.store,
+                "display1": presentation.display_image1,
+                "display2": presentation.display_image2,
+                "source1": presentation.source_image1,
+                "source2": presentation.source_image2,
+                "source_key": presentation.source_key,
+                "display_cache_key": presentation.display_cache_key,
+            }
+        apply_render_plan_to_canvas(self.view.preview_label, plan)
+
+        runtime_state = getattr(self.view.preview_label, "runtime_state", None)
+        if runtime_state is not None:
+            runtime_state._hidden_magnifier_circles = []
+            runtime_state._hidden_capture_circles = []
         if not self._preview_ready_emitted:
             self._preview_ready_emitted = True
             self.emit_preview_ready()
@@ -284,6 +355,8 @@ class PreviewCoordinator:
     def cleanup(self):
         self._view_destroyed = True
         self._preview_updater.stop()
+        self._preview_frame_cache = None
+        self._prescaled_cache = None
         if self.has_live_view() and hasattr(self.view, "preview_label"):
             self.view.preview_label._preview_source_key = None
         self.view = None

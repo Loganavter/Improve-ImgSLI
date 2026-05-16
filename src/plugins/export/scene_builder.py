@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-from plugins.analysis.processing import (
-    build_cached_diff_image,
-    prepare_gl_background_layers_for_mode,
-)
+from plugins.analysis.processing import build_cached_diff_image
 from plugins.export.models import ExportRenderContext
 from shared.image_processing.resize import resize_images_processor
-from ui.canvas_features.magnifier import iter_magnifier_models
-from utils.resource_loader import get_magnifier_drawing_coords
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 class ExportSceneBuilder:
     def __init__(self, store):
@@ -27,7 +23,7 @@ class ExportSceneBuilder:
         source_image1=None,
         source_image2=None,
         source_key=None,
-        magnifier_drawing_coords=None,
+        overlay_drawing_coords=None,
         prepared_background_layers=None,
         cached_diff_image=None,
     ) -> ExportRenderContext:
@@ -45,31 +41,20 @@ class ExportSceneBuilder:
             source_image2 = image2
         if source_key is None:
             source_key = self._build_source_key(source_image1, source_image2)
-        visible_models = [
-            model
-            for model in iter_magnifier_models(viewport.view_state, viewport.render_config)
-            if bool(model.visible)
-        ]
-        if magnifier_drawing_coords is None and visible_models:
-            magnifier_drawing_coords = get_magnifier_drawing_coords(
-                store=self.store,
-                drawing_width=width,
-                drawing_height=height,
-                container_width=width,
-                container_height=height,
+        if overlay_drawing_coords is None:
+            build_drawing_coords = get_canvas_feature_command_by_alias(
+                "overlay.render_drawing_coords"
             )
+            if build_drawing_coords is not None:
+                overlay_drawing_coords = build_drawing_coords(
+                    self.store,
+                    drawing_width=width,
+                    drawing_height=height,
+                    container_width=width,
+                    container_height=height,
+                )
 
-        if prepared_background_layers is None and (
-            diff_mode != "off" or channel_mode != "RGB"
-        ):
-            prepared_background_layers = prepare_gl_background_layers_for_mode(
-                image1,
-                image2,
-                diff_mode,
-                channel_mode,
-            )
-
-        if cached_diff_image is None and diff_mode != "off":
+        if cached_diff_image is None and diff_mode == "ssim":
             cached_diff_image = build_cached_diff_image(
                 image1,
                 image2,
@@ -85,7 +70,7 @@ class ExportSceneBuilder:
             source_image1=source_image1,
             source_image2=source_image2,
             source_key=source_key,
-            magnifier_drawing_coords=magnifier_drawing_coords,
+            overlay_drawing_coords=overlay_drawing_coords,
             prepared_background_layers=prepared_background_layers,
             cached_diff_image=cached_diff_image,
         )

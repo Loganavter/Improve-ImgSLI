@@ -43,8 +43,7 @@ class PlaybackCoordinator:
             self.playback_engine.set_current_frame(start_frame)
             self.emit_timeline_position(start_frame)
 
-        self.playback_engine.set_fps(self.model.fps)
-        self.editor_service.set_fps(self.model.fps)
+        self.playback_engine.set_fps(self.editor_service.get_fps())
         self.playback_engine.play()
 
     def pause_playback(self):
@@ -122,11 +121,6 @@ class PlaybackCoordinator:
 
     def on_fps_changed(self, fps: int):
         self.model.fps = max(1, fps)
-        self.editor_service.set_fps(self.model.fps)
-        self.playback_engine.set_total_frames(self.editor_service.get_frame_count())
-        self.playback_engine.set_fps(self.model.fps)
-        self.thumbnail_coordinator.generate_thumbnails()
-        self.preview_coordinator.schedule_update()
 
     def on_aspect_ratio_lock_changed(self, locked: bool):
         self.model.aspect_ratio_locked = locked

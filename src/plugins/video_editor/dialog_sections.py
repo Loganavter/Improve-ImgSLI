@@ -18,16 +18,18 @@ from PyQt6.QtWidgets import (
 
 from plugins.video_editor.services.export_config import ExportConfigBuilder
 from plugins.video_editor.widgets.timeline import VideoTimelineWidget
-from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
-from shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
-from shared_toolkit.ui.widgets.atomic.fluent_combobox import FluentComboBox
-from shared_toolkit.ui.widgets.atomic.fluent_spinbox import FluentSpinBox
-from shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import OverlayScrollArea
-from shared_toolkit.ui.widgets.composite import OutputPathSection
-from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
-from shared_toolkit.ui.widgets.atomic.text_labels import BodyLabel, CaptionLabel
-from shared_toolkit.ui.widgets.atomic.toggle_icon_button import ToggleIconButton
-from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
+from sli_ui_toolkit.widgets import (
+    BodyLabel,
+    CustomButton,
+    CustomLineEdit,
+    ComboBox,
+    SpinBox,
+    OutputPathSection,
+    SimpleIconButton,
+    OverlayScrollArea,
+    CaptionLabel,
+    ToggleIconButton,
+)
 from ui.icon_manager import AppIcon, get_app_icon
 
 class _NoWheelEventFilter(QObject):
@@ -56,7 +58,7 @@ def _install_no_wheel_filter_recursive(root: QWidget, event_filter: QObject) -> 
     if event_filter is None:
         return
     for child in root.findChildren(QWidget):
-        if isinstance(child, (CustomLineEdit, FluentSpinBox, FluentComboBox)):
+        if isinstance(child, (CustomLineEdit, SpinBox, ComboBox)):
             child.installEventFilter(event_filter)
 
 def build_settings_panel(dialog):
@@ -214,7 +216,7 @@ def create_fps_settings(dialog):
             )
             max_fps = initial_fps
 
-    dialog.edit_fps = FluentSpinBox(default_value=initial_fps)
+    dialog.edit_fps = SpinBox(default_value=initial_fps)
     dialog.edit_fps.setRange(1, max_fps)
     dialog.edit_fps.setValue(initial_fps)
     dialog.edit_fps.setFixedWidth(100)
@@ -291,14 +293,14 @@ def create_standard_export_tab(dialog):
     layout.setSpacing(12)
 
     layout.addWidget(CaptionLabel(dialog._tr("label.container") + ":"))
-    dialog.combo_container = FluentComboBox()
+    dialog.combo_container = ComboBox()
     for container in ExportConfigBuilder.get_available_containers():
         dialog.combo_container.addItem(dialog._tr(container), container)
     dialog.combo_container.setCurrentIndex(max(0, dialog.combo_container.findData("mp4")))
     layout.addWidget(dialog.combo_container)
 
     layout.addWidget(CaptionLabel(dialog._tr("label.video_codec") + ":"))
-    dialog.combo_codec = FluentComboBox()
+    dialog.combo_codec = ComboBox()
     for codec in ExportConfigBuilder.get_codecs_for_container("mp4"):
         dialog.combo_codec.addItem(
             dialog._tr(ExportConfigBuilder.get_codec_display_key(codec)), codec
@@ -311,7 +313,7 @@ def create_standard_export_tab(dialog):
     pf_layout.setSpacing(12)
     dialog.lbl_pix_fmt = CaptionLabel(dialog._tr("video.pixel_format") + ":")
     pf_layout.addWidget(dialog.lbl_pix_fmt)
-    dialog.combo_pix_fmt = FluentComboBox()
+    dialog.combo_pix_fmt = ComboBox()
     for pix_fmt in ExportConfigBuilder.get_pixel_formats_for_codec("h264 (AVC)"):
         dialog.combo_pix_fmt.addItem(pix_fmt, pix_fmt)
     dialog.combo_pix_fmt.setCurrentText("yuv420p")
@@ -324,7 +326,7 @@ def create_standard_export_tab(dialog):
     qc_layout.setSpacing(12)
 
     qc_layout.addWidget(CaptionLabel(dialog._tr("video.quality_control") + ":"))
-    dialog.combo_quality_mode = FluentComboBox()
+    dialog.combo_quality_mode = ComboBox()
     dialog.combo_quality_mode.addItem(dialog._tr("video.crf_constant_quality"), "crf")
     dialog.combo_quality_mode.addItem(dialog._tr("video.bitrate_cbrvbr"), "bitrate")
     qc_layout.addWidget(dialog.combo_quality_mode)
@@ -341,7 +343,7 @@ def create_standard_export_tab(dialog):
 
     dialog.lbl_preset = CaptionLabel(dialog._tr("video.encoding_speed_preset") + ":")
     p_layout.addWidget(dialog.lbl_preset)
-    dialog.combo_preset = FluentComboBox()
+    dialog.combo_preset = ComboBox()
     for preset in ExportConfigBuilder.get_encoding_presets():
         dialog.combo_preset.addItem(dialog._tr_preset(preset), preset)
     dialog.combo_preset.setCurrentIndex(max(0, dialog.combo_preset.findData("medium")))

@@ -2,7 +2,6 @@ import logging
 import PIL.Image
 from PyQt6.QtCore import (
     QEvent,
-    Qt,
     QTimer,
     pyqtSignal,
 )
@@ -11,21 +10,20 @@ from PyQt6.QtGui import (
     QIcon,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from core.bootstrap import ApplicationContext
-from shared_toolkit.ui.managers.font_manager import FontManager
 from shared_toolkit.ui.overlay_layer import OverlayLayer
+from ui.main_window_actions import MainWindowActions
+from ui.main_window_appearance import MainWindowAppearance
 from ui.main_window_lifecycle import (
     MainWindowShutdownPipeline,
     MainWindowStartupController,
 )
-from ui.main_window_ui import Ui_ImageComparisonApp
-from ui.onboarding import OnboardingOverlay
-from ui.widgets.gl_canvas.contracts import BaseCanvasProtocol
-from ui.widgets.gl_canvas.helpers import get_canvas
-from utils.resource_loader import resource_path
+from ui.main_window_runtime import MainWindowRuntime
+from ui.main_window_startup import MainWindowStartupRuntime
 from utils.geometry import GeometryManager
+from utils.resource_loader import resource_path
 
 PIL.Image.MAX_IMAGE_PIXELS = None
 logger = logging.getLogger("ImproveImgSLI")
@@ -48,6 +46,10 @@ class MainWindow(QWidget):
         self._offscreen_prewarm_active = False
         self._startup_controller = MainWindowStartupController()
         self._shutdown_pipeline = MainWindowShutdownPipeline()
+        self.appearance = MainWindowAppearance(self)
+        self.runtime = MainWindowRuntime(self)
+        self.startup_runtime = MainWindowStartupRuntime(self)
+        self.actions = MainWindowActions(self)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
 
         self.app_context = ApplicationContext(debug_mode)
@@ -61,8 +63,8 @@ class MainWindow(QWidget):
 
         app = QApplication.instance()
         if app:
-            self.theme_manager.apply_theme_to_app(app)
-            self.theme_manager.theme_changed.connect(self._on_theme_changed)
+            self.app_context.apply_theme_to_app(app)
+            self.theme_manager.theme_changed.connect(self.appearance.on_theme_changed)
 
         self.ui = None
         self.overlay_layer = OverlayLayer(self)
@@ -79,12 +81,12 @@ class MainWindow(QWidget):
             self.settings_manager.settings,
             self.store,
         )
-        self._build_startup_shell()
+        self.startup_runtime.build_shell()
 
         try:
-            self.font_path_absolute = (
-                FontManager.get_instance().get_font_path_for_image_text(self.store)
-            )
+            from shared_toolkit.ui.managers.font_manager import FontManager
+
+            self.font_path_absolute = FontManager.get_instance().get_font_path_for_image_text(self.store)
         except Exception:
             self.font_path_absolute = None
 
@@ -93,208 +95,9 @@ class MainWindow(QWidget):
         self._debounced_resize_timer = QTimer(self)
         self._debounced_resize_timer.setSingleShot(True)
         self._debounced_resize_timer.setInterval(150)
-        self._debounced_resize_timer.timeout.connect(self._handle_debounced_resize)
-
-    def _build_startup_shell(self):
-        self._root_layout = QVBoxLayout(self)
-        self._root_layout.setContentsMargins(0, 0, 0, 0)
-        self._root_layout.setSpacing(0)
-        self._startup_stack = QStackedWidget(self)
-        self._root_layout.addWidget(self._startup_stack)
-        self._startup_placeholder = QWidget(self)
-        self._startup_stack.addWidget(self._startup_placeholder)
-        self._app_host = QWidget(self)
-        self._startup_stack.addWidget(self._app_host)
-        self._startup_stack.setCurrentWidget(self._startup_placeholder)
-        self._startup_cover = QWidget(self)
-        self._startup_cover.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        self._debounced_resize_timer.timeout.connect(
+            self.runtime.handle_debounced_resize
         )
-        self._startup_cover.hide()
-        self.onboarding_overlay = None
-        self._sync_startup_cover_geometry()
-
-    def _sync_startup_cover_geometry(self):
-        if getattr(self, "_startup_cover", None) is None:
-            return
-        self._startup_cover.setGeometry(self.rect())
-        self._startup_cover.raise_()
-
-    def _show_startup_cover(self):
-        if getattr(self, "_startup_cover", None) is None:
-            return
-        self._sync_startup_cover_geometry()
-        self._startup_cover.show()
-        self._startup_cover.raise_()
-
-    def _hide_startup_cover(self):
-        if getattr(self, "_startup_cover", None) is None:
-            return
-        self._startup_cover.hide()
-
-    def _should_show_onboarding(self) -> bool:
-        return self.settings_manager.is_first_run()
-
-    def _show_onboarding_page(self):
-        if self.onboarding_overlay is None:
-            self.onboarding_overlay = OnboardingOverlay(
-                self.settings_manager,
-                self.store,
-                self,
-            )
-            self.onboarding_overlay.completed.connect(self._on_onboarding_completed)
-            self._startup_stack.insertWidget(0, self.onboarding_overlay)
-        self.onboarding_overlay.resize(self.size())
-        self._startup_stack.setCurrentWidget(self.onboarding_overlay)
-        self._hide_startup_cover()
-
-    def _bootstrap_main_app(self):
-        if self._main_app_bootstrapped:
-            self._startup_stack.setCurrentWidget(self._app_host)
-            self._reveal_main_app_if_ready()
-            return
-
-        self.ui = Ui_ImageComparisonApp()
-        self.ui.setupUi(self._app_host)
-        self.ui.main_window = self
-        image_label: BaseCanvasProtocol = self.ui.image_label
-        logger.debug("Main window UI bootstrapped")
-        self._startup_expects_initial_canvas_content = self._has_initial_canvas_content()
-        self._startup_canvas_first_frame_rendered = False
-        self._startup_canvas_first_visual_ready = False
-        self._update_image_label_background()
-        self._show_startup_cover()
-        image_label.firstFrameRendered.connect(
-            self._on_image_label_first_frame_rendered
-        )
-        image_label.firstFrameRendered.connect(
-            lambda: logger.debug("Main window received image_label.firstFrameRendered")
-        )
-        image_label.firstVisualFrameReady.connect(
-            lambda: logger.debug("Main window received image_label.firstVisualFrameReady")
-        )
-        image_label.firstVisualFrameReady.connect(
-            self._on_image_label_first_visual_frame_ready
-        )
-
-        self.ui.install_rating_wheel_handlers()
-
-        components = self.app_context.create_window_dependent_components(self)
-        self.geometry_manager = components["geometry_manager"]
-        self.tray_manager = components["tray_manager"]
-        self.main_controller = components["main_controller"]
-        self.event_handler = components["event_handler"]
-        self.presenter = components["presenter"]
-        self.ui_resource_manager = components["ui_resource_manager"]
-
-        self.installEventFilter(self.event_handler)
-        self.ui.image_label.installEventFilter(self.event_handler)
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self.event_handler)
-
-        self._update_image_label_background()
-        if self.main_controller and self.main_controller.sessions:
-            self.main_controller.sessions.initialize_app_display()
-        self.ui.reapply_button_styles()
-        for attr_name in (
-            "btn_magnifier_color_settings",
-            "btn_magnifier_color_settings_beginner",
-        ):
-            button = getattr(self.ui, attr_name, None)
-            if button is not None and hasattr(button, "refresh_visual_state"):
-                button.refresh_visual_state()
-
-        self._startup_stack.setCurrentWidget(self._app_host)
-        self._main_app_bootstrapped = True
-        self._reveal_main_app_if_ready()
-
-    def _has_initial_canvas_content(self) -> bool:
-        document = getattr(self.store, "document", None)
-        viewport = getattr(self.store, "viewport", None)
-        if document is None:
-            return False
-        if getattr(document, "image1_path", None) and getattr(document, "image2_path", None):
-            return True
-        single_mode = int(getattr(getattr(viewport, "view_state", None), "showing_single_image_mode", 0) or 0)
-        if single_mode == 1:
-            return bool(getattr(document, "image1_path", None) or getattr(document, "original_image1", None))
-        if single_mode == 2:
-            return bool(getattr(document, "image2_path", None) or getattr(document, "original_image2", None))
-        return False
-
-    def _on_image_label_first_frame_rendered(self):
-        self._startup_canvas_first_frame_rendered = True
-        self._reveal_main_app_if_ready()
-
-    def _on_image_label_first_visual_frame_ready(self):
-        self._startup_canvas_first_visual_ready = True
-        self._reveal_main_app_if_ready()
-
-    def _is_startup_canvas_ready(self) -> bool:
-        if self.onboarding_overlay is not None:
-            return True
-        if self.ui is None:
-            return False
-        if self._startup_expects_initial_canvas_content:
-            return (
-                self._startup_canvas_first_frame_rendered
-                and self._startup_canvas_first_visual_ready
-                and self._is_startup_canvas_content_ready()
-            )
-        return self._startup_canvas_first_visual_ready
-
-    def _is_startup_canvas_content_ready(self) -> bool:
-        if self.ui is None:
-            return False
-        image_label = get_canvas(self.ui)
-        if image_label is None:
-            return False
-
-        source_ready = bool(getattr(image_label, "_source_images_ready", False))
-        if source_ready:
-            return True
-
-        uploaded = getattr(image_label, "_images_uploaded", None)
-        if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
-            return True
-
-        runtime_state = getattr(image_label, "runtime_state", None)
-        if runtime_state is not None:
-            uploaded = getattr(runtime_state, "_images_uploaded", None)
-            if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
-                return True
-            background = getattr(runtime_state, "_background_pixmap", None)
-            if background is not None and not background.isNull():
-                return True
-
-        stored_qimages = getattr(image_label, "_stored_qimages", None)
-        if isinstance(stored_qimages, (list, tuple)):
-            for image in stored_qimages:
-                if image is not None and not image.isNull():
-                    return True
-
-        return False
-
-    def _reveal_main_app_if_ready(self):
-        if self.ui is None:
-            return
-        if not self._is_startup_canvas_ready():
-            return
-        if not self._main_app_revealed:
-            self._startup_stack.setCurrentWidget(self._app_host)
-            self._main_app_revealed = True
-        if hasattr(self.ui, "hide_image_startup_placeholder"):
-            self.ui.hide_image_startup_placeholder()
-        self._hide_startup_cover()
-        self._emit_startup_visual_ready()
-
-    def _emit_startup_visual_ready(self):
-        if self._startup_visual_ready_emitted:
-            return
-        self._startup_visual_ready_emitted = True
-        logger.debug("Main window startupVisualReady emitted")
-        self.startupVisualReady.emit()
 
     def begin_offscreen_prewarm(self):
         self._offscreen_prewarm_active = True
@@ -340,42 +143,9 @@ class MainWindow(QWidget):
 
             QTimer.singleShot(0, self.schedule_update)
 
-    def _handle_debounced_resize(self):
-        if self.store.viewport.interaction_state.resize_in_progress:
-            self.store.viewport.interaction_state.resize_in_progress = False
-            self.schedule_update()
-        if not self.isMaximized() and not self.isFullScreen():
-            self.geometry_manager.update_normal_geometry_if_needed()
-
     def resizeEvent(self, event: QResizeEvent):
         super().resizeEvent(event)
-        self._sync_startup_cover_geometry()
-        if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
-            self.ui.sync_image_startup_placeholder()
-
-        if hasattr(self, "onboarding_overlay") and self.onboarding_overlay:
-            self.onboarding_overlay.resize(self.size())
-
-        if self.presenter is not None:
-            flyout = getattr(self.presenter.ui_manager, "unified_flyout", None)
-            if flyout is not None:
-                try:
-                    flyout.hide()
-                except RuntimeError as exc:
-                    if "UnifiedFlyout has been deleted" in str(exc):
-                        self.presenter.ui_manager.transient.host.unified_flyout = None
-                    else:
-                        raise
-
-        if not self.store.viewport.interaction_state.resize_in_progress:
-            self.store.viewport.interaction_state.resize_in_progress = True
-
-        if self.ui is not None:
-            self.ui.update_drag_overlays(
-                self.store.viewport.view_state.is_horizontal,
-                self.ui.is_drag_overlay_visible(),
-            )
-        self._debounced_resize_timer.start()
+        self.runtime.handle_resize()
 
     def closeEvent(self, event: QEvent):
         logger.debug("Начало закрытия главного окна...")
@@ -398,42 +168,11 @@ class MainWindow(QWidget):
 
     def moveEvent(self, event: QEvent):
         super().moveEvent(event)
-        self._sync_startup_cover_geometry()
-        if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
-            self.ui.sync_image_startup_placeholder()
-        if hasattr(self, "onboarding_overlay") and self.onboarding_overlay:
-            self.onboarding_overlay.resize(self.size())
-        if self.presenter is not None:
-            flyout = getattr(self.presenter.ui_manager, "unified_flyout", None)
-            if flyout is not None:
-                try:
-                    flyout.hide()
-                except RuntimeError as exc:
-                    if "UnifiedFlyout has been deleted" in str(exc):
-                        self.presenter.ui_manager.transient.host.unified_flyout = None
-                    else:
-                        raise
-        if not self.isMaximized() and not self.isFullScreen():
-            self.geometry_manager.update_normal_geometry_if_needed()
+        self.runtime.handle_move()
 
     def showEvent(self, event: QEvent):
         super().showEvent(event)
-        if self._offscreen_prewarm_active:
-            logger.debug("Main window showEvent (offscreen prewarm)")
-        else:
-            logger.debug("Main window showEvent")
-        self._sync_startup_cover_geometry()
-        if self.ui is not None and hasattr(self.ui, "sync_image_startup_placeholder"):
-            self.ui.sync_image_startup_placeholder()
-        if self.onboarding_overlay is not None and not self._startup_visual_ready_emitted:
-            self._emit_startup_visual_ready()
-        if self._offscreen_prewarm_active:
-            return
-        if not self._is_ui_stable:
-            QTimer.singleShot(
-                50,
-                lambda: setattr(self, "_is_ui_stable", True) or self.schedule_update(),
-            )
+        self.runtime.handle_show()
 
     def mousePressEvent(self, event):
         focused = self.focusWidget()
@@ -444,57 +183,6 @@ class MainWindow(QWidget):
     def schedule_update(self):
         if self.presenter is not None:
             self.presenter.schedule_canvas_update()
-
-    def _update_image_label_background(self):
-        bg = self.theme_manager.get_color("label.image.background")
-        bg_hex = bg.name(QColor.NameFormat.HexArgb)
-        self._startup_placeholder.setStyleSheet(f"background-color: {bg_hex};")
-        self._startup_cover.setStyleSheet(f"background-color: {bg_hex};")
-        image_label = get_canvas(self.ui) if self.ui is not None else None
-        if image_label is not None:
-            pal = image_label.palette()
-            pal.setColor(image_label.backgroundRole(), bg)
-            pal.setColor(image_label.foregroundRole(), bg)
-            from PyQt6.QtGui import QPalette
-            pal.setColor(QPalette.ColorRole.Window, bg)
-            pal.setColor(QPalette.ColorRole.Base, bg)
-            image_label.setPalette(pal)
-            image_label.setStyleSheet(
-                f"background-color: {bg_hex};"
-            )
-            if hasattr(self.ui, "set_image_startup_placeholder_color"):
-                self.ui.set_image_startup_placeholder_color(bg)
-
-    def _on_theme_changed(self):
-        self._update_image_label_background()
-
-        try:
-
-            FontManager.get_instance().apply_from_state(self.store)
-
-            current_font = QApplication.font()
-            self.setFont(current_font)
-
-        except Exception as e:
-            logger.error(f"Error enforcing font style: {e}")
-
-        self.style().unpolish(self)
-        self.style().polish(self)
-        self.update()
-
-    def notify_system(
-        self,
-        title: str,
-        message: str,
-        image_path: str | None = None,
-        timeout_ms: int = 4000,
-    ):
-        enabled = getattr(self.store.settings, "system_notifications_enabled", True)
-        if enabled:
-            try:
-                self.notification_service.send(title, message, image_path, timeout_ms)
-            except Exception:
-                logger.exception("notify_system send failed")
 
     def set_divider_button_color(self, color: QColor):
         if self.ui is not None and hasattr(self.ui, "btn_orientation"):
@@ -520,54 +208,3 @@ class MainWindow(QWidget):
         if self.ui is not None and hasattr(self.ui, "btn_channel_mode"):
             self.ui.btn_channel_mode.set_actions(actions)
             self.ui.btn_channel_mode.set_current_by_data(current_value)
-
-    def update_tray_actions_visibility(self):
-        if self.tray_manager:
-            path = getattr(self, "_last_saved_path", None)
-            self.tray_manager.set_last_saved_path(path)
-
-    def _toggle_main_window_visibility(self):
-        if self.isVisible() and not self.isMinimized():
-            self.showMinimized()
-        else:
-            self.show()
-            self.setWindowState(
-                (self.windowState() & ~Qt.WindowState.WindowMinimized)
-                | Qt.WindowState.WindowActive
-            )
-            self.raise_()
-            self.activateWindow()
-
-    def _open_last_saved_file(self):
-        path = getattr(self, "_last_saved_path", None)
-        if path and os.path.isfile(path):
-            from PyQt6.QtCore import QUrl
-            from PyQt6.QtGui import QDesktopServices
-
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-
-    def _open_last_saved_folder(self):
-        path = getattr(self, "_last_saved_path", None)
-        folder = (
-            os.path.dirname(path)
-            if path
-            else (self.store.settings.export_default_dir or os.path.expanduser("~"))
-        )
-        if folder and os.path.isdir(folder):
-            from PyQt6.QtCore import QUrl
-            from PyQt6.QtGui import QDesktopServices
-
-            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
-
-    def _on_onboarding_completed(self, mode_key: str):
-        self.store.settings.ui_mode = mode_key
-        if hasattr(self, "onboarding_overlay") and self.onboarding_overlay:
-            try:
-                self._startup_stack.removeWidget(self.onboarding_overlay)
-            except Exception:
-                pass
-            self.onboarding_overlay.hide()
-            self.onboarding_overlay.deleteLater()
-        self.onboarding_overlay = None
-        self._bootstrap_main_app()
-        self.schedule_update()

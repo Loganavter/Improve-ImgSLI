@@ -57,7 +57,7 @@ from .texture_parts.layers import (
     set_pil_layers,
     set_pixmap,
 )
-from .texture_parts.magnifier import (
+from .feature_overlay_gpu import (
     clear_magnifier_gpu,
     set_magnifier_content,
     set_magnifier_gpu_params,
@@ -99,6 +99,12 @@ class GLCanvas(QOpenGLWidget):
         state._render_scene = build_gl_render_scene(
             state._store, apply_channel_mode_in_shader=state._apply_channel_mode_in_shader
         )
+        plan = getattr(self, "_active_render_plan", None)
+        if plan is not None and state._store is not None:
+            from ui.canvas_infra.scene.widget_registry import (
+                apply_canvas_feature_live_runtime_overlays,
+            )
+            apply_canvas_feature_live_runtime_overlays(state._store, self)
         self.update()
 
     def set_apply_channel_mode_in_shader(self, enabled: bool):
@@ -227,8 +233,11 @@ class GLCanvas(QOpenGLWidget):
     def set_pixmap(self, pixmap: QPixmap | None):
         return set_pixmap(self, pixmap)
 
-    def set_magnifier_content(self, pixmap: QPixmap | None, top_left: QPoint | None):
+    def set_feature_overlay_content(self, pixmap: QPixmap | None, top_left: QPoint | None):
         return set_magnifier_content(self, pixmap, top_left)
+
+    def set_magnifier_content(self, pixmap: QPixmap | None, top_left: QPoint | None):
+        return self.set_feature_overlay_content(pixmap, top_left)
 
     def get_letterbox_params(self, slot: int = 0) -> tuple:
         return get_letterbox_params(self, slot)
@@ -250,8 +259,11 @@ class GLCanvas(QOpenGLWidget):
     def _set_texture_filter(self, texture_id: int, gl_filter: int):
         return set_texture_filter(self, texture_id, gl_filter)
 
-    def clear_magnifier_gpu(self):
+    def clear_feature_overlay_gpu(self):
         return clear_magnifier_gpu(self)
+
+    def clear_magnifier_gpu(self):
+        return self.clear_feature_overlay_gpu()
 
     def upload_magnifier_crop(self, pil_image, center: QPointF, radius: float,
                                border_color: QColor | None = None, border_width: float = 2.0,

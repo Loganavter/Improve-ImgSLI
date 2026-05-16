@@ -4,8 +4,8 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from plugins.video_editor.model import VideoSessionSnapshot
-from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
-from shared_toolkit.ui.widgets.atomic.text_labels import BodyLabel, CaptionLabel
+from sli_ui_toolkit.widgets import CustomButton
+from sli_ui_toolkit.widgets import BodyLabel, CaptionLabel
 from ui.icon_manager import AppIcon
 
 class VideoSessionWidget(QWidget):

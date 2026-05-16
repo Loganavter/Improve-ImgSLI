@@ -1,0 +1,165 @@
+Metadata-Version: 2.4
+Name: sli-ui-toolkit
+Version: 0.1.0
+Summary: Reusable PyQt UI toolkit primitives for SLI desktop tools.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: PyQt6>=6.6
+
+# SLI UI Toolkit
+
+`sli-ui-toolkit` is the standalone PyQt UI toolkit used by Improve-ImgSLI and other desktop tools built on the same widget layer.
+
+The package is designed to be imported like a normal Python library. It provides reusable widgets, styling helpers, theme and icon services, generic worker primitives, and small utility helpers. Application-specific state, canvas logic, feature services, and plugin code stay in the main application.
+
+## Public API
+
+Common entry points are exposed at the top level:
+
+```python
+from sli_ui_toolkit import (
+    AdaptiveLabel,
+    BodyLabel,
+    CaptionLabel,
+    ClickableLabel,
+    CompactLabel,
+    GenericWorker,
+    GroupTitleLabel,
+    ThemeManager,
+    WidgetStyleTokens,
+    get_log_directory,
+    get_unique_filepath,
+    read_widget_style,
+    resource_path,
+    setup_logging,
+    setup_simple_logging,
+    update_widget_style,
+)
+```
+
+Additional reusable modules are available through their package paths, including:
+
+- `sli_ui_toolkit.icons`
+- `sli_ui_toolkit.managers`
+- `sli_ui_toolkit.services`
+- `sli_ui_toolkit.theme`
+- `sli_ui_toolkit.utils`
+- `sli_ui_toolkit.workers`
+- `sli_ui_toolkit.widgets`
+- `sli_ui_toolkit.ui.widgets`
+- `sli_ui_toolkit.ui.managers`
+- `sli_ui_toolkit.ui.services`
+
+## Styling Contract
+
+Toolkit widgets should use standard Qt geometry APIs and Qt dynamic properties for styling.
+
+```python
+button.setFixedSize(44, 44)
+button.setIconSize(QSize(24, 24))
+button.setProperty("variant", "primary")
+button.setProperty("density", "compact")
+button.setProperty("accentColor", QColor("#00BEEF"))
+button.setProperty("foregroundColor", QColor("#FFFFFF"))
+button.setProperty("backgroundColor", QColor("#1E1E1E"))
+button.setProperty("cornerRadiusPx", 8)
+button.setProperty("showUnderline", True)
+```
+
+Supported style properties are intentionally generic:
+
+- `variant`
+- `tone`
+- `density`
+- `shape`
+- `accentColor`
+- `backgroundColor`
+- `foregroundColor` / `textColor`
+- `underlineColor`
+- `iconSizePx`
+- `cornerRadiusPx`
+- `showUnderline`
+
+For custom-painted widgets, `read_widget_style()` is the bridge between Qt properties and painter state. Use that contract instead of hardcoding application theme colors or geometry.
+
+## Boundary Rules
+
+Code inside `packages/sli-ui-toolkit/src/sli_ui_toolkit` must not import application packages such as:
+
+- `core`
+- `domain`
+- `events`
+- `features`
+- `plugins`
+- `services`
+- `ui`
+- `workers`
+- `shared_toolkit`
+
+It also must not directly depend on application concepts such as:
+
+- store objects;
+- viewport state;
+- document state;
+- canvas state;
+- magnifier state;
+- guide state;
+- settings models.
+
+## Allowed Inputs
+
+Toolkit widgets receive application behavior through:
+
+- constructor parameters;
+- callbacks;
+- small protocol objects;
+- plain dataclasses;
+- Qt signals;
+- icons and other resources passed from application code.
+
+If a widget needs to reach into `store.viewport` or call a feature service, it does not belong in the toolkit yet.
+
+## Package Layout
+
+The package is organized around these reusable areas:
+
+- `core`: logging helpers.
+- `icons`: icon loading service and related helpers.
+- `managers`: flyout and other generic UI managers.
+- `services`: widget and window lifecycle helpers.
+- `theme`: palette and QSS theme management.
+- `utils`: generic file and path helpers.
+- `workers`: reusable Qt worker primitives.
+- `widgets`: reusable labels, buttons, overlays, composites, and style bridge helpers.
+- `ui.widgets`: lower-level widget implementations and painter helpers.
+- `ui.managers`: manager implementations.
+- `ui.services`: service implementations.
+
+## Example
+
+```python
+from PyQt6.QtGui import QColor
+from sli_ui_toolkit.widgets import UnifiedIconButton, ButtonMode
+
+button = UnifiedIconButton("magnifier", mode=ButtonMode.TOGGLE)
+button.setFixedSize(44, 44)
+button.setProperty("variant", "primary")
+button.setProperty("accentColor", QColor("#00BEEF"))
+button.setProperty("foregroundColor", QColor("#FFFFFF"))
+button.setProperty("iconSizePx", 24)
+button.setProperty("cornerRadiusPx", 8)
+```
+
+The intended integration model is simple:
+
+- application code owns state, icons, and wiring;
+- toolkit widgets own rendering and interaction;
+- styling flows through standard Qt properties first.
+
+## Extension Rule
+
+Before adding a module to the toolkit, verify that it:
+
+- imports only Python stdlib, PyQt, and `sli_ui_toolkit` modules;
+- does not reference Improve-ImgSLI-specific state, names, features, or plugins;
+- accepts app-specific behavior through parameters, callbacks, protocols, or plain data objects.

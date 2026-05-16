@@ -20,9 +20,7 @@ class InterpolationFlyoutController:
         self.show()
 
     def show(self):
-        from shared_toolkit.ui.widgets.composite.simple_options_flyout import (
-            SimpleOptionsFlyout,
-        )
+        from sli_ui_toolkit.widgets import SimpleOptionsFlyout
 
         host = self.manager.host
         if host._interp_flyout is None:

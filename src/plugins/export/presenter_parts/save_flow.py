@@ -5,7 +5,7 @@ import os
 import threading
 
 from PyQt6.QtWidgets import QMessageBox
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -84,7 +84,7 @@ class ExportSaveFlowCoordinator:
             image2_for_save=save_ctx.image2_for_save,
             original1_full=save_ctx.original1_full,
             original2_full=save_ctx.original2_full,
-            magnifier_drawing_coords=save_ctx.magnifier_coords_for_save,
+            overlay_drawing_coords=save_ctx.overlay_coords_for_save,
             render_context=save_ctx.render_context,
             export_options=export_opts,
             cancel_event=cancel_event,
@@ -197,9 +197,8 @@ class ExportSaveFlowCoordinator:
             duration=4000,
         )
         try:
-            setattr(self.main_window_app, "_last_saved_path", out_path)
-            if hasattr(self.main_window_app, "update_tray_actions_visibility"):
-                self.main_window_app.update_tray_actions_visibility()
+            self.main_window_app.actions.set_last_saved_path(out_path)
+            self.main_window_app.actions.update_tray_actions_visibility()
             notifications_enabled = getattr(
                 self.store.settings, "system_notifications_enabled", True
             )
@@ -209,7 +208,7 @@ class ExportSaveFlowCoordinator:
                     if isinstance(out_path, str) and os.path.isfile(out_path)
                     else None
                 )
-                self.main_window_app.notify_system(
+                self.main_window_app.actions.notify_system(
                     self.tr("msg.saved"),
                     f"{self.tr('msg.saved')}: {out_path}",
                     image_path=image_for_icon,

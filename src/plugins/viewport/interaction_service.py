@@ -1,13 +1,25 @@
 from __future__ import annotations
 
 from domain.types import Point
-from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+
+def _execute_magnifier_command(store, command_id: str, *args, **kwargs):
+    command = get_canvas_feature_command_by_alias(command_id)
+    if command is None:
+        return None
+    return command(store, *args, **kwargs)
+
+def _query_magnifier(store, query_id: str, default=None, *args, **kwargs):
+    command = get_canvas_feature_command_by_alias(query_id)
+    if command is None:
+        return default
+    result = command(store, *args, **kwargs)
+    return default if result is None else result
 
 class ViewportInteractionService:
     def __init__(self, runtime, store):
         self.runtime = runtime
         self.store = store
-        self.scene_state = MagnifierStoreService(store)
         self._interaction_session_counter = int(
             getattr(self.store.viewport.interaction_state, "interaction_session_id", 0)
         )
@@ -34,11 +46,11 @@ class ViewportInteractionService:
         self.runtime.capture_recording_checkpoint(force_advance_frame=True)
 
     def clamp_capture_position(self):
-        model = self.scene_state.get_active_or_first_magnifier()
+        model = _query_magnifier(self.store, "overlay.active_state")
         if model is None:
             return
-        capture_pos = model.position
-        capture_size_relative = model.capture_size_relative
+        capture_pos = model["position"]
+        capture_size_relative = float(model["capture_size_relative"])
         if not self.store.viewport.session_data.image_state.image1:
             return
 
@@ -55,16 +67,20 @@ class ViewportInteractionService:
             max(radius_rel_x, min(capture_pos.x, 1.0 - radius_rel_x)),
             max(radius_rel_y, min(capture_pos.y, 1.0 - radius_rel_y)),
         )
-        self.scene_state.move_object_source_position(model.id, clamped)
+        _execute_magnifier_command(
+            self.store,
+            "overlay.move_active_position",
+            clamped,
+        )
 
     def compute_unfreeze_offset(self):
-        model = self.scene_state.get_active_magnifier()
+        model = _query_magnifier(self.store, "overlay.active_state")
         return self.compute_unfreeze_offset_for(model)
 
     def compute_unfreeze_offset_for(self, model):
         if model is None:
             return None
-        frozen = model.frozen_position
+        frozen = model["frozen_position"] if isinstance(model, dict) else model.frozen_position
         if not frozen:
             return None
 
@@ -74,8 +90,8 @@ class ViewportInteractionService:
             return None
 
         target_max_dim = float(max(drawing_width, drawing_height))
-        offset = model.offset_relative
-        capture = model.position
+        offset = model["offset_relative"] if isinstance(model, dict) else model.offset_relative
+        capture = model["position"] if isinstance(model, dict) else model.position
 
         frozen_px_x = frozen.x * drawing_width
         frozen_px_y = frozen.y * drawing_height

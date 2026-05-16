@@ -25,28 +25,6 @@ class SetDraggingSplitLineAction(Action):
         return {"enabled": self.enabled}
 
 @dataclass
-class SetDraggingCapturePointAction(Action):
-    enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type=ActionType.SET_IS_DRAGGING_CAPTURE_POINT)
-        self.enabled = enabled
-
-    def get_payload(self):
-        return {"enabled": self.enabled}
-
-@dataclass
-class SetDraggingSplitInMagnifierAction(Action):
-    enabled: bool
-
-    def __init__(self, enabled: bool):
-        super().__init__(type=ActionType.SET_IS_DRAGGING_SPLIT_IN_MAGNIFIER)
-        self.enabled = enabled
-
-    def get_payload(self):
-        return {"enabled": self.enabled}
-
-@dataclass
 class SetResizeInProgressAction(Action):
     enabled: bool
 

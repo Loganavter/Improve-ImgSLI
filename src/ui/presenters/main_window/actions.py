@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QFileDialog, QMessageBox
 from core.events import CoreUpdateRequestedEvent
 from resources.translations import tr
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_binding
 
 def open_image_dialog(presenter, image_number: int):
     start_dir = presenter.store.settings.export_default_dir or os.path.expanduser("~")
@@ -81,15 +82,19 @@ def stop_interactive_movement(presenter):
         image_canvas.stop_interactive_movement()
 
 def on_magnifier_guides_toggled(presenter, checked: bool):
-    presenter.main_controller.viewport.toggle_magnifier_guides(checked)
+    binding = get_canvas_feature_toolbar_binding("guides.enabled")
+    if binding is not None and binding.on_toggled is not None:
+        binding.on_toggled(presenter, checked)
 
 def on_magnifier_guides_thickness_changed(presenter, thickness: int):
-    presenter.main_controller.viewport.set_magnifier_guides_thickness(thickness)
+    binding = get_canvas_feature_toolbar_binding("guides.enabled")
+    if binding is not None and binding.on_value_changed is not None:
+        binding.on_value_changed(presenter, thickness)
 
 def on_magnifier_element_hovered(presenter, element_name: str):
     if not presenter.store:
         return
-    presenter.store.viewport.view_state.highlighted_magnifier_element = element_name
+    presenter.store.viewport.view_state.highlighted_overlay_element = element_name
     presenter.store.emit_state_change()
     if presenter.event_bus:
         presenter.event_bus.emit(CoreUpdateRequestedEvent())
@@ -99,7 +104,7 @@ def on_magnifier_element_hovered(presenter, element_name: str):
 def on_magnifier_element_hover_ended(presenter):
     if not presenter.store:
         return
-    presenter.store.viewport.view_state.highlighted_magnifier_element = None
+    presenter.store.viewport.view_state.highlighted_overlay_element = None
     presenter.store.emit_state_change()
     if presenter.event_bus:
         presenter.event_bus.emit(CoreUpdateRequestedEvent())

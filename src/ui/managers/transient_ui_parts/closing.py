@@ -79,11 +79,6 @@ class PopupClosingController:
         except Exception:
             pass
         try:
-            from shared_toolkit.ui.widgets.atomic.tooltips import PathTooltip
-            PathTooltip.get_instance().hide_tooltip()
-        except Exception:
-            pass
-        try:
             from events.drag_drop_handler import DragAndDropService
             service = DragAndDropService.get_instance()
             if service.is_dragging():
@@ -112,6 +107,15 @@ class PopupClosingController:
                 if parent == host.magnifier_visibility_flyout:
                     return
                 parent = parent.parent()
+        if self._is_widget_alive_and_visible(host.font_settings_flyout):
+            if new_widget is not None:
+                parent = new_widget
+                while parent is not None:
+                    if parent is host.font_settings_flyout:
+                        return
+                    parent = parent.parent()
+            if hasattr(host.font_settings_flyout, "has_active_dialog") and host.font_settings_flyout.has_active_dialog():
+                return
         self.hide_transient_same_window_ui()
 
     def _is_widget_alive_and_visible(self, widget) -> bool:

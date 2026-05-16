@@ -11,7 +11,7 @@ from shared.image_processing.progressive_loader import (
     should_use_progressive_load,
 )
 from shared.image_processing.resize import crop_black_borders, resize_images_processor
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 

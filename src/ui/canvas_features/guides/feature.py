@@ -5,45 +5,57 @@ from domain.types import Color
 
 from ui.canvas_infra.scene.context import CanvasSceneApplyContext, CanvasSceneBuildContext
 from ui.canvas_infra.scene.feature_contract import CanvasFeatureZOrder, CanvasSceneFeature
-from ui.canvas_infra.scene.models import CanvasSceneGraph
-from ui.canvas_infra.scene.stacking import CanvasStackLayer
-from ui.canvas_features.magnifier.scene_objects import MagnifierSceneObject
+from ui.canvas_infra.scene.models import CanvasSceneGraph, CanvasSceneObject
+from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 from .scene_objects import GuidesSceneObject
 from .state import get_guides_widget_state
 
 GUIDES_Z_ORDER = CanvasFeatureZOrder(
-    layer=CanvasStackLayer.GUIDES,
-    priority=110,
+    stack_role=CanvasStackRole.ANNOTATION_GUIDE,
     always_on_top=True,
 )
 
-def get_visible_magnifiers(scene: CanvasSceneGraph) -> tuple[MagnifierSceneObject, ...]:
+def _is_visible_magnifier_object(obj: CanvasSceneObject) -> bool:
+    return bool(
+        getattr(obj, "kind", None) == "magnifier"
+        and getattr(obj, "visible", False)
+    )
+
+def get_visible_magnifiers(scene: CanvasSceneGraph) -> tuple[CanvasSceneObject, ...]:
     return tuple(
         obj
         for obj in scene.iter_objects(kind="magnifier")
-        if isinstance(obj, MagnifierSceneObject) and obj.visible
+        if _is_visible_magnifier_object(obj)
     )
 
 def build_guides_object(
     *,
     context: CanvasSceneBuildContext,
-    magnifier: MagnifierSceneObject | None,
+    magnifier: CanvasSceneObject | None,
     z_index: int,
 ) -> GuidesSceneObject | None:
     view_state = context.store.viewport.view_state
     guides_state = get_guides_widget_state(view_state)
     diff_mode = getattr(view_state, "diff_mode", "off")
+    circles = tuple(getattr(magnifier, "circles", ()) or ()) if magnifier is not None else ()
+    capture_center = getattr(magnifier, "capture_center", None) if magnifier is not None else None
+    capture_radius = float(getattr(magnifier, "capture_radius", 0.0) or 0.0)
+    show_laser = bool(getattr(magnifier, "show_laser", True)) if magnifier is not None else True
+    guides_color = getattr(magnifier, "guides_color", None) if magnifier is not None else None
     if (
         magnifier is None
         or not guides_state.enabled
-        or magnifier.capture_center is None
-        or magnifier.capture_radius <= 0
-        or not magnifier.circles
+        or not show_laser
+        or capture_center is None
+        or capture_radius <= 0
+        or not circles
     ):
         return None
 
-    visible_circles = tuple(circle for circle in magnifier.circles if circle.visible)
+    visible_circles = tuple(
+        circle for circle in circles if getattr(circle, "visible", False)
+    )
     if not visible_circles:
         return None
 
@@ -64,12 +76,12 @@ def build_guides_object(
         visible=True,
         z_index=z_index,
         stack_hint=GUIDES_Z_ORDER.stack_hint(priority=z_index),
-        source_center=magnifier.capture_center,
+        source_center=capture_center,
         target_centers=target_centers,
-        source_radius=magnifier.capture_radius,
+        source_radius=capture_radius,
         target_radius=target_radius,
         target_radii=target_radii,
-        color=magnifier.laser_color,
+        color=guides_color or guides_state.color,
         thickness=guides_state.thickness,
     )
 
@@ -120,12 +132,15 @@ def apply_guides_object(scene, context: CanvasSceneApplyContext) -> None:
         runtime_state._guide_sets = []
     canvas.set_guides_params(False, color_to_qcolor(Color()), 1)
 
-FEATURE = CanvasSceneFeature(
-    name="guides",
-    build_primary=lambda context: (),
-    build_overlay=build_guides_objects,
-    apply=apply_guides_object,
-    z_order=GUIDES_Z_ORDER,
-    overlay_order=30,
-    apply_order=20,
-)
+def build_scene_feature() -> CanvasSceneFeature:
+    return CanvasSceneFeature(
+        name="guides",
+        build_primary=lambda context: (),
+        build_overlay=build_guides_objects,
+        apply=apply_guides_object,
+        z_order=GUIDES_Z_ORDER,
+        overlay_order=30,
+        apply_order=20,
+    )
+
+FEATURE = build_scene_feature()

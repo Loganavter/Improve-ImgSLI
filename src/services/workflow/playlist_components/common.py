@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.events import ComparisonUIUpdateEvent
+from plugins.comparison.events import ComparisonUIUpdateEvent
 
 def get_presenter(main_controller):
     if main_controller and getattr(main_controller, "window_shell", None):

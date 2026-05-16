@@ -1,6 +1,6 @@
 from typing import Any
 
-from core.events import SettingsUIModeChangedEvent
+from plugins.settings.events import SettingsUIModeChangedEvent
 from core.plugin_system import Plugin, plugin
 
 from .manager import LayoutManager

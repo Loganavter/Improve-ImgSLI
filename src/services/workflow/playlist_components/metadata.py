@@ -33,14 +33,15 @@ class PlaylistMetadataController:
     def on_edit_name_changed(self, image_number, new_name) -> None:
         target_list = get_target_list(self.store, image_number)
         current_index = get_current_index(self.store, image_number)
-        new_name = new_name.strip()
+        raw_name = str(new_name)
+        new_name = raw_name.strip()
 
         if 0 <= current_index < len(target_list):
             item = target_list[current_index]
             if new_name != item.display_name:
                 item.display_name = new_name
                 self.store.state_changed.emit("document")
-                emit_ui_update(self.main_controller, ["combobox"])
+                emit_ui_update(self.main_controller, ["combobox", "file_names"])
 
     def _change_rating(self, image_number: int, index_to_change: int, delta: int) -> None:
         target_list = get_target_list(self.store, image_number)

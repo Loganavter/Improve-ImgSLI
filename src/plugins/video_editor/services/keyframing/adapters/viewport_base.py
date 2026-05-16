@@ -119,10 +119,10 @@ def _track_descriptor(
             ChannelDescriptor("y", "Y", "scalar"),
         ),
         "color": (
-            ChannelDescriptor("r", "R", "color"),
-            ChannelDescriptor("g", "G", "color"),
-            ChannelDescriptor("b", "B", "color"),
-            ChannelDescriptor("a", "A", "color"),
+            ChannelDescriptor("r", "R", "color", interpolate_values=False),
+            ChannelDescriptor("g", "G", "color", interpolate_values=False),
+            ChannelDescriptor("b", "B", "color", interpolate_values=False),
+            ChannelDescriptor("a", "A", "color", interpolate_values=False),
         ),
         "mask3": (
             ChannelDescriptor("left", "Left", "bool", interpolate_values=False),

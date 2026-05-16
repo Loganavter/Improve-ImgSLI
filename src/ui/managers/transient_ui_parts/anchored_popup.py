@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QSize
 
-from shared_toolkit.ui.managers.flyout_timer_service import DelayedActionTimer
+from sli_ui_toolkit.managers import DelayedActionTimer
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
 
 class AnchoredPopupBubbleController:

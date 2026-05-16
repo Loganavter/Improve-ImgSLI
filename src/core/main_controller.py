@@ -4,13 +4,12 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from core.events import (
-    ComparisonUIUpdateEvent,
     CoreErrorOccurredEvent,
+    CoreUIComponentsUpdateEvent,
     CoreUpdateRequestedEvent,
 )
 from core.main_controller_parts import (
     VideoExportActions,
-    ViewportActions,
     WorkspaceSessionActions,
 )
 
@@ -45,7 +44,6 @@ class MainController(QObject):
         self._export_controller = None
         self._analysis_controller = None
         self._metrics_service = None
-        self._magnifier_plugin = None
         self._viewport_controller = None
         self._layout_plugin = None
         self._recorder = None
@@ -53,7 +51,6 @@ class MainController(QObject):
         self._clipboard_service = None
 
         self.workspace = WorkspaceSessionActions(self)
-        self.viewport = ViewportActions(self)
         self.video_export = VideoExportActions(self)
         self.refresh_runtime_bindings()
 
@@ -66,7 +63,7 @@ class MainController(QObject):
                 CoreErrorOccurredEvent, self._on_core_error_occurred
             )
             self.event_bus.subscribe(
-                ComparisonUIUpdateEvent, self._on_comparison_ui_update
+                CoreUIComponentsUpdateEvent, self._on_comparison_ui_update
             )
 
     def _on_core_update_requested(self, event: CoreUpdateRequestedEvent):
@@ -75,7 +72,7 @@ class MainController(QObject):
     def _on_core_error_occurred(self, event: CoreErrorOccurredEvent):
         self.error_occurred.emit(event.error)
 
-    def _on_comparison_ui_update(self, event: ComparisonUIUpdateEvent):
+    def _on_comparison_ui_update(self, event: CoreUIComponentsUpdateEvent):
 
         self.ui_update_requested.emit(list(event.components))
 
@@ -130,8 +127,6 @@ class MainController(QObject):
             else None
         )
 
-        self._magnifier_plugin = self._get_plugin("magnifier")
-
         viewport_plugin = self._get_plugin("viewport")
         self._viewport_controller = (
             viewport_plugin.get_controller()
@@ -172,10 +167,6 @@ class MainController(QObject):
     @property
     def metrics_service(self):
         return self._metrics_service
-
-    @property
-    def magnifier(self):
-        return self._magnifier_plugin
 
     @property
     def viewport_plugin(self):

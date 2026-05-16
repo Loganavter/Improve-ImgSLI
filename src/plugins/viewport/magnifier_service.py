@@ -1,52 +1,71 @@
 from __future__ import annotations
 
 from domain.types import Point
-from ui.canvas_features.magnifier import MagnifierStoreService
-from ui.canvas_features.magnifier.store import magnifier_enabled
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+
+def _execute_magnifier_command(store, command_id: str, *args, **kwargs):
+    command = get_canvas_feature_command_by_alias(command_id)
+    if command is None:
+        return None
+    return command(store, *args, **kwargs)
+
+def _query_magnifier(store, query_id: str, default=None, *args, **kwargs):
+    command = get_canvas_feature_command_by_alias(query_id)
+    if command is None:
+        return default
+    result = command(store, *args, **kwargs)
+    return default if result is None else result
 
 class ViewportMagnifierService:
     def __init__(self, runtime, store, interaction_service):
         self.runtime = runtime
         self.store = store
         self.interaction_service = interaction_service
-        self.scene_state = MagnifierStoreService(store)
 
     def set_magnifier_internal_split(self, location):
-        model = self.scene_state.get_active_magnifier()
+        model = _query_magnifier(self.store, "overlay.active_state")
         if model is None:
             return
         val = 0.5
         if isinstance(location, Point):
             val = (
                 location.x
-                if not model.is_horizontal
+                if not model["is_horizontal"]
                 else location.y
             )
         elif isinstance(location, (float, int)):
             val = float(location)
 
         val = max(0.0, min(1.0, val))
-        if model.internal_split == val:
+        if float(model["internal_split"]) == val:
             return
 
-        self.scene_state.set_object_internal_split(model.id, val)
+        _execute_magnifier_command(
+            self.store,
+            "overlay.set_internal_split",
+            val,
+        )
         self.runtime.emit_update(scope="viewport")
         self.runtime.capture_recording_checkpoint()
 
     def toggle_freeze_magnifier(self, freeze_checked: bool):
-        models = list(self.scene_state.iter_magnifiers())
+        models = tuple(_query_magnifier(self.store, "overlay.all_states", ()) or ())
         if not models:
             return
         if freeze_checked:
-            self.scene_state.set_all_magnifiers_freeze(
+            _execute_magnifier_command(
+                self.store,
+                "overlay.set_all_freeze",
                 True,
-                frozen_positions={model.id: model.position for model in models},
+                frozen_positions={model["id"]: model["position"] for model in models},
             )
         else:
-            self.scene_state.set_all_magnifiers_freeze(
+            _execute_magnifier_command(
+                self.store,
+                "overlay.set_all_freeze",
                 False,
                 new_offsets={
-                    model.id: self.interaction_service.compute_unfreeze_offset_for(model)
+                    model["id"]: self.interaction_service.compute_unfreeze_offset_for(model)
                     for model in models
                 },
             )
@@ -55,13 +74,13 @@ class ViewportMagnifierService:
         self.runtime.capture_recording_checkpoint()
 
     def update_combined_state(self):
-        if not magnifier_enabled(self.store.viewport.view_state):
+        if not bool(_query_magnifier(self.store, "overlay.enabled", False)):
             self.runtime.emit_update(scope="viewport")
             self.runtime.capture_recording_checkpoint()
             return
 
-        current = self.scene_state.is_active_magnifier_combined()
-        should_combine = self.scene_state.update_active_magnifier_combined_state()
+        current = bool(_query_magnifier(self.store, "overlay.active_combined", False))
+        should_combine = bool(_query_magnifier(self.store, "overlay.active_combined", False))
         if current == should_combine:
             return
 

@@ -25,6 +25,7 @@
     "resolution_8k": "8K (4320p)",
     "resolution_full_hd": "Full HD (1080p)",
     "system_default": "Системный",
+    "show_workspace_tabs": "Вкладки рабочего пространства (в разработке)",
     "system_notifications": "Системные уведомления",
     "ui_font": "Шрифт интерфейса",
     "ui_mode": "Режим интерфейса",

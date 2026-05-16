@@ -9,7 +9,7 @@ from .models import (
     CanvasSceneGraph,
 )
 from .pipeline import SCENE_APPLIERS, SCENE_HIT_TESTERS, SCENE_OVERLAY_BUILDERS, SCENE_PRIMARY_BUILDERS
-from .stacking import CanvasStackHint, CanvasStackLayer, resolve_pick_order, resolve_render_order
+from .stacking import CanvasStackHint, CanvasStackLayer, CanvasStackRole, resolve_pick_order, resolve_render_order
 
 __all__ = [
     "CanvasSceneApplyContext",
@@ -20,6 +20,7 @@ __all__ = [
     "CanvasSceneGraph",
     "CanvasStackHint",
     "CanvasStackLayer",
+    "CanvasStackRole",
     "SCENE_APPLIERS",
     "SCENE_HIT_TESTERS",
     "SCENE_OVERLAY_BUILDERS",

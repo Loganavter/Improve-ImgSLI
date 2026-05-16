@@ -20,8 +20,8 @@ def supports_patch_magnifier(canvas) -> bool:
     return True
 
 def reset_canvas_overlays(canvas: BaseCanvasProtocol) -> None:
-    canvas.clear_magnifier_gpu()
-    canvas.set_magnifier_content(None, None)
+    canvas.clear_feature_overlay_gpu()
+    canvas.set_feature_overlay_content(None, None)
     canvas.set_overlay_coords(None, 0, [], 0)
     canvas.set_capture_area(None, 0)
     runtime_state = getattr(canvas, "runtime_state", None)

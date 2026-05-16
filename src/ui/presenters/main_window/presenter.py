@@ -67,9 +67,7 @@ class MainWindowPresenter(QObject):
         self.ui_manager = features.ui_manager
         self.ui_batcher = UIUpdateBatcher(self)
 
-        from shared_toolkit.ui.widgets.composite.text_settings_flyout import (
-            FontSettingsFlyout,
-        )
+        from sli_ui_toolkit.widgets import FontSettingsFlyout
 
         self.font_settings_flyout = FontSettingsFlyout(main_window_app)
         self.font_settings_flyout.hide()

@@ -29,6 +29,7 @@ class UIUpdateBatcher:
 
         if "file_names" in updates:
             self._presenter._do_update_file_names_display()
+            self._presenter.schedule_canvas_update()
 
         if "resolution" in updates:
             self._presenter._do_update_resolution_labels()

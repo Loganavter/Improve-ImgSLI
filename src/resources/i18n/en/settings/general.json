@@ -25,6 +25,7 @@
     "resolution_8k": "8K (4320p)",
     "resolution_full_hd": "Full HD (1080p)",
     "system_default": "System default",
+    "show_workspace_tabs": "Workspace tabs (in development)",
     "system_notifications": "System notifications",
     "ui_font": "UI Font",
     "ui_mode": "UI Mode",

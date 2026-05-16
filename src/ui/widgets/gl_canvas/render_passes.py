@@ -1,574 +1,12 @@
-import math
-import logging
-
 from OpenGL import GL as gl
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QImage, QPainter, QPen
 
 from .render_common import (
     clear_with_widget_background,
-    draw_qimage_overlay_texture,
-    draw_supersampled_line,
     get_zoom_texture_filter,
-    new_overlay_image,
     should_render_blank_white,
-    widget_px_to_screen_px,
 )
-from .render_config import (
-    begin_content_scissor,
-    compute_render_config,
-    end_content_scissor,
-    get_divider_clip_rect_px,
-    get_divider_clip_uv,
-)
-from .render_context import build_render_runtime_context, get_magnifier_shader_program
-from ui.canvas_infra.viewport.state import get_display_split_position
-from .render_overlays import (
-    paint_drag_overlay_pass,
-    paint_filename_overlay_pass,
-    paint_paste_overlay_pass,
-)
-from .shaders import MagnifierShaderVariantKey
-
-logger = logging.getLogger("ImproveImgSLI")
-
-def _build_magnifier_shader_key(ctx, gpu_slot, combined: bool) -> MagnifierShaderVariantKey:
-    if gpu_slot:
-        source_mode = int(gpu_slot.get("source", 0) or 0)
-        diff_mode = int(ctx.mag_gpu_diff_mode or 0) if source_mode == 2 and not combined else 0
-        return MagnifierShaderVariantKey(
-            gpu_sampling=True,
-            combined=combined,
-            interp_mode=(
-                int(ctx.mag_gpu_interp_mode)
-                if ctx.mag_gpu_interp_mode is not None
-                else 1
-            ),
-            diff_mode=diff_mode,
-            channel_mode=int(ctx.mag_gpu_channel_mode or 0),
-            source_mode=source_mode if not combined else 0,
-        )
-    return MagnifierShaderVariantKey(gpu_sampling=False, combined=combined)
-
-def paint_capture_ring_pass(widget, ctx, capture_color):
-    w, h = ctx.width, ctx.height
-    capture_circles = list(getattr(ctx, "capture_circles", []) or [])
-    if not capture_circles and ctx.capture_center is not None and ctx.capture_radius > 0:
-        capture_circles = [(ctx.capture_center, ctx.capture_radius)]
-    if not (widget._circle_shader and w > 0 and h > 0 and capture_circles):
-        return
-
-    scissor_enabled = begin_content_scissor(
-        widget,
-        force=bool(getattr(ctx.render_scene, "clip_overlays_to_image_bounds", False)),
-    )
-    pid = widget._circle_shader.programId()
-    widget._circle_shader.bind()
-    widget.vao.bind()
-
-    gl.glUniform2f(gl.glGetUniformLocation(pid, "resolution"), float(w), float(h))
-    for item in capture_circles:
-        if len(item) >= 3:
-            capture_center, capture_radius, item_color = item[0], item[1], item[2]
-        else:
-            capture_center, capture_radius = item[0], item[1]
-            item_color = capture_color
-        if capture_center is None or capture_radius <= 0:
-            continue
-        draw_color = QColor(item_color)
-        draw_color.setAlpha(255)
-        gl.glUniform4f(
-            gl.glGetUniformLocation(pid, "color"),
-            draw_color.redF(),
-            draw_color.greenF(),
-            draw_color.blueF(),
-            draw_color.alphaF(),
-        )
-        cx, cy = widget_px_to_screen_px(widget, capture_center.x(), capture_center.y())
-        scaled_radius = capture_radius * ctx.zoom_level
-        divider_width_px = float(ctx.divider_thickness or 0) if ctx.show_divider else 0.0
-        line_width_px = max(2.0, divider_width_px + 2.0, float(scaled_radius * 2.0) * 0.0105)
-        gl.glUniform2f(gl.glGetUniformLocation(pid, "center_px"), float(cx), float(cy))
-        gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), float(scaled_radius))
-        gl.glUniform1f(gl.glGetUniformLocation(pid, "lineWidth_px"), float(line_width_px))
-        gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-
-    widget.vao.release()
-    widget._circle_shader.release()
-    end_content_scissor(widget, scissor_enabled)
-
-def paint_hidden_magnifier_selection_pass(widget, ctx):
-    hidden_capture_circles = list(getattr(ctx, "hidden_capture_circles", []) or [])
-    occluded_capture_arcs = list(getattr(ctx, "occluded_capture_arcs", []) or [])
-    hidden_magnifier_circles = list(getattr(ctx, "hidden_magnifier_circles", []) or [])
-    if not hidden_capture_circles and not occluded_capture_arcs and not hidden_magnifier_circles:
-        return
-
-    overlay = new_overlay_image(ctx.width, ctx.height)
-    painter = QPainter(overlay)
-    try:
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-        def _draw_ring(center, radius, *, active: bool, capture: bool):
-            if center is None or radius <= 0:
-                return
-            cx, cy = widget_px_to_screen_px(widget, center.x(), center.y())
-            scaled_radius = float(radius) * ctx.zoom_level
-            if scaled_radius <= 0:
-                return
-            dash_color = QColor(70, 190, 255, 255 if active else 210)
-            if capture:
-                dash_color = QColor(255, 105, 170, 255 if active else 210)
-            dash_pen = QPen(dash_color, 2.0)
-            dash_pen.setCosmetic(True)
-            dash_pen.setStyle(Qt.PenStyle.DashLine)
-            painter.setPen(dash_pen)
-            painter.drawEllipse(QPointF(cx, cy), scaled_radius, scaled_radius)
-
-        for center, radius, is_active in hidden_capture_circles:
-            _draw_ring(center, radius, active=bool(is_active), capture=True)
-        for center, radius, start_deg, span_deg, is_active in occluded_capture_arcs:
-            if center is None or radius <= 0 or span_deg <= 0:
-                continue
-            cx, cy = widget_px_to_screen_px(widget, center.x(), center.y())
-            scaled_radius = float(radius) * ctx.zoom_level
-            if scaled_radius <= 0:
-                continue
-            dash_color = QColor(255, 105, 170, 255 if is_active else 210)
-            dash_pen = QPen(dash_color, 2.0)
-            dash_pen.setCosmetic(True)
-            dash_pen.setStyle(Qt.PenStyle.DashLine)
-            painter.setPen(dash_pen)
-            rect = QRectF(
-                cx - scaled_radius,
-                cy - scaled_radius,
-                scaled_radius * 2.0,
-                scaled_radius * 2.0,
-            )
-            painter.drawArc(
-                rect,
-                int(round(start_deg * 16.0)),
-                int(round(span_deg * 16.0)),
-            )
-        for center, radius, is_active in hidden_magnifier_circles:
-            _draw_ring(center, radius, active=bool(is_active), capture=False)
-    finally:
-        painter.end()
-
-    draw_qimage_overlay_texture(widget, overlay)
-
-def paint_guides_pass(widget, ctx):
-    if not (ctx.show_guides and ctx.guides_thickness > 0):
-        return
-
-    def _coord(value, axis: str) -> float:
-        attr = getattr(value, axis, None)
-        if callable(attr):
-            return float(attr())
-        if attr is not None:
-            return float(attr)
-        if isinstance(value, (tuple, list)):
-            return float(value[0 if axis == "x" else 1])
-        return 0.0
-
-    def draw_line(painter, p1, p2, r1, r2, color, interactive, thickness):
-        dx = p2.x() - p1.x()
-        dy = p2.y() - p1.y()
-        dist = math.hypot(dx, dy)
-        if dist <= (r1 + r2) or dist <= 1e-6:
-            return
-
-        nx, ny = dx / dist, dy / dist
-        overlap1 = max(float(thickness) * 2.0, float(r1) * 0.08)
-        cutoff1 = max(0.0, float(r1) - overlap1)
-        cutoff2 = float(r2)
-        if dist <= (cutoff1 + cutoff2) or dist <= 1e-6:
-            return
-        ax, ay = p1.x() + nx * cutoff1, p1.y() + ny * cutoff1
-        bx, by = p2.x() - nx * cutoff2, p2.y() - ny * cutoff2
-
-        if interactive:
-            pen = QPen(color, float(thickness))
-            pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-            pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-            painter.setPen(pen)
-            painter.drawLine(QPointF(ax, ay), QPointF(bx, by))
-            return
-
-        draw_supersampled_line(
-            painter,
-            QPointF(ax, ay),
-            QPointF(bx, by),
-            color,
-            float(thickness),
-        )
-
-    scene = ctx.render_scene
-    is_interactive = bool(getattr(scene, "interactive_mode", False))
-    optimize_smoothing = bool(getattr(scene, "optimize_laser_smoothing", False))
-    interactive_line = bool(is_interactive and not optimize_smoothing)
-
-    guide_sets = list(getattr(ctx, "guide_sets", []) or [])
-    if not guide_sets and (
-        ctx.capture_center is not None
-        and ctx.capture_radius > 0
-        and ctx.magnifier_centers
-        and ctx.magnifier_radius > 0
-    ):
-        guide_sets = [
-            (
-                ctx.capture_center,
-                float(ctx.capture_radius),
-                list(ctx.magnifier_centers),
-                float(ctx.magnifier_radius),
-            )
-        ]
-    if not guide_sets:
-        return
-    w = ctx.width
-    h = ctx.height
-    overlay = new_overlay_image(w, h)
-    painter = QPainter(overlay)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    base_color = getattr(scene, "laser_color", ctx.laser_color)
-    color = QColor(base_color.red(), base_color.green(), base_color.blue(), 255)
-    zoom = ctx.zoom_level
-    thickness = max(1, int(ctx.guides_thickness))
-    try:
-        for item in guide_sets:
-            if len(item) >= 5:
-                capture_center, capture_radius_raw, magnifier_centers, magnifier_radius_raw, line_color = item[:5]
-            else:
-                capture_center, capture_radius_raw, magnifier_centers, magnifier_radius_raw = item[:4]
-                line_color = color
-            line_color = QColor(line_color)
-            line_color.setAlpha(255)
-            if capture_center is None or capture_radius_raw <= 0 or not magnifier_centers:
-                continue
-            if isinstance(magnifier_radius_raw, (tuple, list)):
-                magnifier_radii = [
-                    float(value) * zoom
-                    for value in magnifier_radius_raw
-                    if float(value) > 0.0
-                ]
-            elif magnifier_radius_raw > 0:
-                magnifier_radii = [float(magnifier_radius_raw) * zoom for _ in magnifier_centers]
-            else:
-                magnifier_radii = []
-            if not magnifier_radii:
-                continue
-            cc_x, cc_y = widget_px_to_screen_px(
-                widget,
-                _coord(capture_center, "x"),
-                _coord(capture_center, "y"),
-            )
-            cap_center = QPointF(cc_x, cc_y)
-            cap_radius = float(capture_radius_raw) * zoom
-            for index, mag_center in enumerate(magnifier_centers):
-                if mag_center is None:
-                    continue
-                mag_radius = magnifier_radii[index] if index < len(magnifier_radii) else magnifier_radii[-1]
-                mc_x, mc_y = widget_px_to_screen_px(
-                    widget,
-                    _coord(mag_center, "x"),
-                    _coord(mag_center, "y"),
-                )
-                draw_line(
-                    painter,
-                    QPointF(mc_x, mc_y),
-                    cap_center,
-                    mag_radius,
-                    cap_radius,
-                    line_color,
-                    interactive_line,
-                    thickness,
-                )
-    finally:
-        painter.end()
-
-    if not getattr(widget, "_guides_tex_id", 0):
-        return
-
-    qimg = overlay.convertToFormat(QImage.Format.Format_RGBA8888)
-    ptr = qimg.constBits()
-    ptr.setsize(qimg.sizeInBytes())
-    gl.glBindTexture(gl.GL_TEXTURE_2D, widget._guides_tex_id)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-    gl.glTexImage2D(
-        gl.GL_TEXTURE_2D,
-        0,
-        gl.GL_RGBA,
-        qimg.width(),
-        qimg.height(),
-        0,
-        gl.GL_RGBA,
-        gl.GL_UNSIGNED_BYTE,
-        bytes(ptr),
-    )
-
-    widget.shader_program.bind()
-    widget.vao.bind()
-
-    gl.glActiveTexture(gl.GL_TEXTURE0)
-    gl.glBindTexture(gl.GL_TEXTURE_2D, widget._guides_tex_id)
-    widget.shader_program.setUniformValue("image1", 0)
-    gl.glActiveTexture(gl.GL_TEXTURE1)
-    gl.glBindTexture(gl.GL_TEXTURE_2D, widget._guides_tex_id)
-    widget.shader_program.setUniformValue("image2", 1)
-
-    widget.shader_program.setUniformValue("splitPosition", 1.0)
-    widget.shader_program.setUniformValue("isHorizontal", False)
-    widget.shader_program.setUniformValue("zoom", 1.0)
-    widget.shader_program.setUniformValue("offset", 0.0, 0.0)
-    widget.shader_program.setUniformValue("showDivider", False)
-    widget.shader_program.setUniformValue("dividerColor", 0.0, 0.0, 0.0, 0.0)
-    widget.shader_program.setUniformValue("dividerThickness", 0.0)
-    widget.shader_program.setUniformValue("dividerClip", 0.0, 0.0, 1.0, 1.0)
-    widget.shader_program.setUniformValue("channelMode", 0)
-    widget.shader_program.setUniformValue("useSourceTex", False)
-    widget.shader_program.setUniformValue("letterbox1", 0.0, 0.0, 1.0, 1.0)
-    widget.shader_program.setUniformValue("letterbox2", 0.0, 0.0, 1.0, 1.0)
-
-    gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-    widget.vao.release()
-    widget.shader_program.release()
-
-def paint_divider_overlay_pass(widget, cfg):
-    if not cfg.get("show_div", False):
-        return
-
-    clip_rect = get_divider_clip_rect_px(widget)
-    if not clip_rect:
-        return
-
-    clip_x, clip_y, clip_w, clip_h = clip_rect
-    if clip_w <= 0 or clip_h <= 0:
-        return
-
-    w = widget.width()
-    h = widget.height()
-    if w <= 0 or h <= 0:
-        return
-
-    overlay = new_overlay_image(w, h)
-    painter = QPainter(overlay)
-    try:
-        color = cfg["div_color"]
-        thickness = max(1, int(round(cfg["div_thickness"])))
-        display_split = float(get_display_split_position(widget) or 0.5)
-        if widget.is_horizontal:
-            y = int(round(display_split * h))
-            painter.fillRect(clip_x, y - thickness // 2, clip_w, thickness, color)
-        else:
-            x = int(round(display_split * w))
-            painter.fillRect(x - thickness // 2, clip_y, thickness, clip_h, color)
-    finally:
-        painter.end()
-
-    draw_qimage_overlay_texture(widget, overlay)
-
-def paint_magnifier_pass(widget, ctx, border_color, render_magnifiers):
-    w, h = ctx.width, ctx.height
-    if not (w > 0 and h > 0 and render_magnifiers):
-        return
-
-    is_gpu = ctx.mag_gpu_active
-    use_source_textures = bool(
-        is_gpu
-        and ctx.shader_letterbox_mode
-        and ctx.source_images_ready
-        and ctx.source_texture_ids[0]
-        and ctx.source_texture_ids[1]
-    )
-    bg_filter = gl.GL_LINEAR if ctx.mag_gpu_interp_mode == 1 else gl.GL_NEAREST
-
-    zoom = ctx.zoom_level
-    pan_x = ctx.pan_offset_x
-    pan_y = ctx.pan_offset_y
-
-    for i, quad in enumerate(ctx.mag_quads):
-        if not quad:
-            continue
-        x0, y0, x1, y1, _cx_px, _cy_px, r_px = quad
-
-        gpu_slot = ctx.mag_gpu_slots[i] if is_gpu and i < len(ctx.mag_gpu_slots) else None
-        if not gpu_slot:
-            tid = widget._mag_tex_ids[i] if i < len(widget._mag_tex_ids) else 0
-            if not tid:
-                continue
-
-        comb_params = None
-        if gpu_slot:
-            combined = bool(gpu_slot.get("is_combined", False))
-        else:
-            comb_params = ctx.mag_combined_params[i] if i < len(ctx.mag_combined_params) else None
-            combined = comb_params is not None
-
-        shader = get_magnifier_shader_program(
-            widget,
-            _build_magnifier_shader_key(ctx, gpu_slot, combined),
-        )
-        pid = shader.programId()
-
-        slot_border_color = gpu_slot.get("border_color", border_color) if gpu_slot else border_color
-        slot_border_width = (
-            float(gpu_slot.get("border_width", ctx.magnifier_border_width))
-            if gpu_slot
-            else float(ctx.magnifier_border_width)
-        )
-        border_width = max(slot_border_width, float(r_px * 2.0) * 0.0105)
-        content_radius = max(1.0, r_px - border_width + 1.0)
-
-        def _combined_divider_thickness_uv(params, fallback_uv: float = 0.005) -> float:
-            if not params:
-                return 0.0
-            divider_px = float(params.get("divider_thickness_px", 0.0) or 0.0)
-            if divider_px <= 0.0:
-                return float(params.get("divider_thickness_uv", 0.0) or 0.0)
-            content_diameter_px = max(1.0, content_radius * 2.0)
-            return (divider_px / content_diameter_px) * 0.5 if content_diameter_px > 0.0 else fallback_uv
-
-        shader.bind()
-        shader.setUniformValue("quadBounds", x0, y0, x1, y1)
-        shader.setUniformValue("magZoom", zoom)
-        gl.glUniform2f(gl.glGetUniformLocation(pid, "magPan"), pan_x, pan_y)
-        shader.setUniformValue("useCircleMask", True)
-        gl.glActiveTexture(gl.GL_TEXTURE4)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, widget._circle_mask_tex_id)
-        gl.glUniform1i(gl.glGetUniformLocation(pid, "circleMaskTex"), 4)
-
-        gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), r_px)
-        gl.glUniform1f(gl.glGetUniformLocation(pid, "borderWidth"), border_width)
-        gl.glUniform4f(
-            gl.glGetUniformLocation(pid, "borderColor"),
-            slot_border_color.redF(),
-            slot_border_color.greenF(),
-            slot_border_color.blueF(),
-            slot_border_color.alphaF(),
-        )
-
-        if gpu_slot:
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "diffThreshold"), ctx.mag_gpu_diff_threshold)
-
-            uv1 = gpu_slot.get("uv_rect", (0, 0, 1, 1))
-            uv2 = gpu_slot.get("uv_rect2", uv1)
-            gl.glUniform4f(gl.glGetUniformLocation(pid, "uvRect1"), *uv1)
-            gl.glUniform4f(gl.glGetUniformLocation(pid, "uvRect2"), *uv2)
-
-            if combined:
-                gl.glUniform1f(gl.glGetUniformLocation(pid, "internalSplit"), gpu_slot.get("internal_split", 0.5))
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "combHorizontal"), int(gpu_slot.get("horizontal", False)))
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "showCombDivider"), 0)
-                dc2 = gpu_slot.get("divider_color", (1.0, 1.0, 1.0, 0.9))
-                gl.glUniform4f(gl.glGetUniformLocation(pid, "combDividerColor"), *dc2)
-                gl.glUniform1f(gl.glGetUniformLocation(pid, "combDividerThickness"), 0.0)
-            else:
-                gl.glUniform1f(gl.glGetUniformLocation(pid, "internalSplit"), 0.5)
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "combHorizontal"), 0)
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "showCombDivider"), 0)
-                gl.glUniform4f(gl.glGetUniformLocation(pid, "combDividerColor"), 1.0, 1.0, 1.0, 0.9)
-                gl.glUniform1f(gl.glGetUniformLocation(pid, "combDividerThickness"), 0.0)
-
-            tex1 = ctx.source_texture_ids[0] if use_source_textures else ctx.texture_ids[0]
-            tex2 = ctx.source_texture_ids[1] if use_source_textures else ctx.texture_ids[1]
-            gl.glActiveTexture(gl.GL_TEXTURE2)
-            widget._set_texture_filter(tex1, bg_filter)
-            gl.glBindTexture(gl.GL_TEXTURE_2D, tex1)
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "bgTex1"), 2)
-            gl.glActiveTexture(gl.GL_TEXTURE3)
-            widget._set_texture_filter(tex2, bg_filter)
-            gl.glBindTexture(gl.GL_TEXTURE_2D, tex2)
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "bgTex2"), 3)
-            gl.glActiveTexture(gl.GL_TEXTURE5)
-            if ctx.diff_source_ready and ctx.diff_source_texture_id:
-                widget._set_texture_filter(ctx.diff_source_texture_id, bg_filter)
-                gl.glBindTexture(gl.GL_TEXTURE_2D, ctx.diff_source_texture_id)
-            else:
-                gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "bgTexDiff"), 5)
-        else:
-            gl.glActiveTexture(gl.GL_TEXTURE5)
-            gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "bgTexDiff"), 5)
-
-            if combined:
-                gl.glUniform1f(gl.glGetUniformLocation(pid, "internalSplit"), comb_params.get("split", 0.5))
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "combHorizontal"), int(comb_params.get("horizontal", False)))
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "showCombDivider"), int(comb_params.get("divider_visible", True)))
-                dc2 = comb_params.get("divider_color", (1.0, 1.0, 1.0, 0.9))
-                gl.glUniform4f(gl.glGetUniformLocation(pid, "combDividerColor"), *dc2)
-                gl.glUniform1f(gl.glGetUniformLocation(pid, "combDividerThickness"), comb_params.get("divider_thickness_uv", 0.005))
-            else:
-                gl.glUniform1f(gl.glGetUniformLocation(pid, "internalSplit"), 0.5)
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "combHorizontal"), 0)
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "showCombDivider"), 0)
-                gl.glUniform4f(gl.glGetUniformLocation(pid, "combDividerColor"), 1.0, 1.0, 1.0, 0.9)
-                gl.glUniform1f(gl.glGetUniformLocation(pid, "combDividerThickness"), 0.0)
-
-            gl.glActiveTexture(gl.GL_TEXTURE0)
-            gl.glBindTexture(gl.GL_TEXTURE_2D, widget._mag_tex_ids[i])
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "magTex"), 0)
-            if combined:
-                comb_tid = widget._mag_combined_tex_ids[i] if i < len(widget._mag_combined_tex_ids) else 0
-                gl.glActiveTexture(gl.GL_TEXTURE2)
-                gl.glBindTexture(gl.GL_TEXTURE_2D, comb_tid)
-                gl.glUniform1i(gl.glGetUniformLocation(pid, "magTex2"), 2)
-
-        widget.vao.bind()
-        gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-        widget.vao.release()
-        shader.release()
-
-        content_x0 = ((_cx_px - content_radius) / w) * 2.0 - 1.0
-        content_x1 = ((_cx_px + content_radius) / w) * 2.0 - 1.0
-        content_y1 = 1.0 - (((_cy_px - content_radius) / h) * 2.0)
-        content_y0 = 1.0 - (((_cy_px + content_radius) / h) * 2.0)
-
-        shader.bind()
-        shader.setUniformValue("quadBounds", content_x0, content_y0, content_x1, content_y1)
-        shader.setUniformValue("magZoom", zoom)
-        gl.glUniform2f(gl.glGetUniformLocation(pid, "magPan"), pan_x, pan_y)
-        shader.setUniformValue("useCircleMask", True)
-        gl.glActiveTexture(gl.GL_TEXTURE4)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, widget._circle_mask_tex_id)
-        gl.glUniform1i(gl.glGetUniformLocation(pid, "circleMaskTex"), 4)
-        gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), content_radius)
-        gl.glUniform1f(gl.glGetUniformLocation(pid, "borderWidth"), 0.0)
-        gl.glUniform4f(gl.glGetUniformLocation(pid, "borderColor"), 0.0, 0.0, 0.0, 0.0)
-        if gpu_slot and combined:
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "internalSplit"), gpu_slot.get("internal_split", 0.5))
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "combHorizontal"), int(gpu_slot.get("horizontal", False)))
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "showCombDivider"), int(gpu_slot.get("divider_visible", True)))
-            dc2 = gpu_slot.get("divider_color", (1.0, 1.0, 1.0, 0.9))
-            gl.glUniform4f(gl.glGetUniformLocation(pid, "combDividerColor"), *dc2)
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "combDividerThickness"), _combined_divider_thickness_uv(gpu_slot))
-        elif combined:
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "internalSplit"), comb_params.get("split", 0.5))
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "combHorizontal"), int(comb_params.get("horizontal", False)))
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "showCombDivider"), int(comb_params.get("divider_visible", True)))
-            dc2 = comb_params.get("divider_color", (1.0, 1.0, 1.0, 0.9))
-            gl.glUniform4f(gl.glGetUniformLocation(pid, "combDividerColor"), *dc2)
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "combDividerThickness"), _combined_divider_thickness_uv(comb_params))
-        else:
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "internalSplit"), 0.5)
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "combHorizontal"), 0)
-            gl.glUniform1i(gl.glGetUniformLocation(pid, "showCombDivider"), 0)
-            gl.glUniform4f(gl.glGetUniformLocation(pid, "combDividerColor"), 1.0, 1.0, 1.0, 0.9)
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "combDividerThickness"), 0.0)
-
-        widget.vao.bind()
-        gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-        widget.vao.release()
-        shader.release()
-
-    if is_gpu:
-        tex1 = ctx.source_texture_ids[0] if use_source_textures else ctx.texture_ids[0]
-        tex2 = ctx.source_texture_ids[1] if use_source_textures else ctx.texture_ids[1]
-        widget._set_texture_filter(tex1, gl.GL_LINEAR)
-        widget._set_texture_filter(tex2, gl.GL_LINEAR)
-
-def paint_magnifier_shadow_pass(widget, render_magnifiers):
-    return
+from .render_executor import execute_render_passes
+from .render_context import build_render_runtime_context
 
 def _flush_pending_uploads(widget):
     state = widget.runtime_state
@@ -594,38 +32,27 @@ def paint_gl(widget):
     _flush_pending_uploads(widget)
     ctx = build_render_runtime_context(widget)
 
-    if should_render_blank_white(widget):
+    if should_render_blank_white(ctx.scene_frame):
         clear_with_widget_background(widget)
-        paint_drag_overlay_pass(widget)
-        paint_paste_overlay_pass(widget)
         return
 
     clear_with_widget_background(widget)
     if not any(ctx.images_uploaded):
-        paint_drag_overlay_pass(widget)
-        paint_paste_overlay_pass(widget)
         return
 
     gl.glEnable(gl.GL_BLEND)
     gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
 
+    base_image = getattr(ctx.render_list, "base_image", None)
+    if base_image is None:
+        return
+
     widget.shader_program.bind()
     widget.vao.bind()
 
-    cfg = compute_render_config(widget, ctx)
-    ctx = build_render_runtime_context(widget)
-    diff_mode_active = bool(cfg["diff_mode_active"])
-    use_hires = bool(
-        ctx.shader_letterbox_mode
-        and not diff_mode_active
-        and ctx.zoom_level > 1.0
-        and ctx.source_images_ready
-        and ctx.source_texture_ids[0]
-        and ctx.source_texture_ids[1]
-    )
-    tex1 = ctx.source_texture_ids[0] if use_hires else ctx.texture_ids[0]
-    tex2 = ctx.source_texture_ids[1] if use_hires else ctx.texture_ids[1]
-    zoom_filter = get_zoom_texture_filter(widget)
+    tex1 = ctx.source_texture_ids[0] if base_image.use_hires else ctx.texture_ids[0]
+    tex2 = ctx.source_texture_ids[1] if base_image.use_hires else ctx.texture_ids[1]
+    zoom_filter = get_zoom_texture_filter(ctx.scene_frame)
     widget._set_texture_filter(tex1, zoom_filter)
     widget._set_texture_filter(tex2, zoom_filter)
 
@@ -637,48 +64,28 @@ def paint_gl(widget):
     gl.glBindTexture(gl.GL_TEXTURE_2D, tex2)
     widget.shader_program.setUniformValue("image2", 1)
 
-    widget.shader_program.setUniformValue(
-        "splitPosition",
-        float(get_display_split_position(widget) or ctx.split_position),
-    )
-    widget.shader_program.setUniformValue("isHorizontal", ctx.is_horizontal)
-    widget.shader_program.setUniformValue("zoom", ctx.zoom_level)
-    widget.shader_program.setUniformValue("offset", ctx.pan_offset_x, ctx.pan_offset_y)
-    widget.shader_program.setUniformValue("showDivider", False)
-
-    dc = cfg["div_color"]
-    dim = ctx.height if ctx.is_horizontal else ctx.width
-    thickness_ndc = ((cfg["div_thickness"] * 0.5) / dim) if dim > 0 else 0.001
-    divider_clip = get_divider_clip_uv(widget)
-    widget.shader_program.setUniformValue("dividerColor", dc.redF(), dc.greenF(), dc.blueF(), dc.alphaF())
-    widget.shader_program.setUniformValue("dividerThickness", thickness_ndc)
-    widget.shader_program.setUniformValue("dividerClip", *divider_clip)
-    widget.shader_program.setUniformValue("channelMode", cfg["channel_mode_int"])
-    widget.shader_program.setUniformValue("useSourceTex", use_hires)
-    if ctx.shader_letterbox_mode:
-        lb1 = widget.get_letterbox_params(0) if hasattr(widget, "get_letterbox_params") else (0.0, 0.0, 1.0, 1.0)
-        lb2 = widget.get_letterbox_params(1) if hasattr(widget, "get_letterbox_params") else (0.0, 0.0, 1.0, 1.0)
+    gl.glActiveTexture(gl.GL_TEXTURE2)
+    if ctx.diff_source_ready and ctx.diff_source_texture_id:
+        gl.glBindTexture(gl.GL_TEXTURE_2D, ctx.diff_source_texture_id)
     else:
-        lb1 = (0.0, 0.0, 1.0, 1.0)
-        lb2 = (0.0, 0.0, 1.0, 1.0)
-    widget.shader_program.setUniformValue("letterbox1", *lb1)
-    widget.shader_program.setUniformValue("letterbox2", *lb2)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+    widget.shader_program.setUniformValue("imageDiff", 2)
+
+    widget.shader_program.setUniformValue("splitPosition", float(base_image.split_position))
+    widget.shader_program.setUniformValue("isHorizontal", bool(base_image.is_horizontal))
+    widget.shader_program.setUniformValue("zoom", float(base_image.zoom))
+    widget.shader_program.setUniformValue("offset", float(base_image.pan_offset_x), float(base_image.pan_offset_y))
+    widget.shader_program.setUniformValue("diffMode", int(base_image.diff_mode_int))
+    widget.shader_program.setUniformValue("diffSourceReady", bool(ctx.diff_source_ready))
+    widget.shader_program.setUniformValue("diffThreshold", 20.0 / 255.0)
+
+    widget.shader_program.setUniformValue("channelMode", int(base_image.channel_mode_int))
+    widget.shader_program.setUniformValue("useSourceTex", bool(base_image.use_hires))
+    widget.shader_program.setUniformValue("letterbox1", *base_image.letterbox1)
+    widget.shader_program.setUniformValue("letterbox2", *base_image.letterbox2)
 
     gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
     widget.vao.release()
     widget.shader_program.release()
 
-    overlay_scissor_enabled = begin_content_scissor(
-        widget,
-        force=bool(getattr(ctx.render_scene, "clip_overlays_to_image_bounds", False)),
-    )
-    paint_divider_overlay_pass(widget, cfg)
-    paint_guides_pass(widget, ctx)
-    paint_capture_ring_pass(widget, ctx, cfg["capture_color"])
-    paint_magnifier_shadow_pass(widget, cfg["render_magnifiers"])
-    paint_magnifier_pass(widget, ctx, cfg["border_color"], cfg["render_magnifiers"])
-    paint_hidden_magnifier_selection_pass(widget, ctx)
-    paint_filename_overlay_pass(widget)
-    end_content_scissor(widget, overlay_scissor_enabled)
-    paint_drag_overlay_pass(widget)
-    paint_paste_overlay_pass(widget)
+    execute_render_passes(widget, ctx, getattr(widget, "_feature_gl_passes", ()))

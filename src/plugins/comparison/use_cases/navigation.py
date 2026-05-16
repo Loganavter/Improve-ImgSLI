@@ -18,8 +18,8 @@ def deactivate_single_image_mode(controller):
     vp = controller.store.viewport
     vp.view_state.showing_single_image_mode = 0
     vp.interaction_state.is_dragging_split_line = False
-    vp.interaction_state.is_dragging_capture_point = False
-    vp.interaction_state.is_dragging_split_in_magnifier = False
+    vp.interaction_state.is_dragging_overlay_handle = False
+    vp.interaction_state.is_dragging_overlay_split = False
     controller.store.emit_state_change("viewport")
     if controller.event_bus:
         controller.event_bus.emit(CoreUpdateRequestedEvent())

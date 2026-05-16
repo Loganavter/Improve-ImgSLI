@@ -233,32 +233,32 @@ ToggleIconButton:checked:hover {
     background-color: @button.toggle.background.checked.hover;
 }
 
-QPushButton[magnifier-segment="true"] {
+QPushButton[counter-segment="true"] {
     background-color: @button.toggle.background.normal;
     border: none;
     padding: 0px;
 }
 
-QPushButton[magnifier-segment="true"]:hover {
+QPushButton[counter-segment="true"]:hover {
     background-color: @button.toggle.background.hover;
 }
 
-QPushButton[magnifier-segment="true"]:pressed {
+QPushButton[counter-segment="true"]:pressed {
     background-color: @button.toggle.background.pressed;
 }
 
-QPushButton[magnifier-segment="true"][segment="single"] {
+QPushButton[counter-segment="true"][segment="single"] {
     border-radius: 6px;
 }
 
-QPushButton[magnifier-segment="true"][segment="top"] {
+QPushButton[counter-segment="true"][segment="top"] {
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
     border-bottom-left-radius: 0px;
     border-bottom-right-radius: 0px;
 }
 
-QPushButton[magnifier-segment="true"][segment="bottom"] {
+QPushButton[counter-segment="true"][segment="bottom"] {
     border-top-left-radius: 0px;
     border-top-right-radius: 0px;
     border-bottom-left-radius: 6px;

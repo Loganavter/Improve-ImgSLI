@@ -1,7 +1,5 @@
 from enum import StrEnum
 
-from domain.types import Point
-
 class AppConstants:
     DISPLAY_RESOLUTION_OPTIONS = {
         "Original": 0,
@@ -14,22 +12,9 @@ class AppConstants:
 
     MIN_NAME_LENGTH_LIMIT = 10
     MAX_NAME_LENGTH_LIMIT = 150
-    DEFAULT_MAGNIFIER_SIZE_RELATIVE = 0.4
-    DEFAULT_CAPTURE_SIZE_RELATIVE = 0.1
-    DEFAULT_CAPTURE_POS_RELATIVE = Point(0.5, 0.5)
-    DEFAULT_MAGNIFIER_OFFSET_RELATIVE = Point(0.0, -0.15)
-    DEFAULT_MAGNIFIER_SPACING_RELATIVE = 0.1
-
-    MIN_MAGNIFIER_SPACING_RELATIVE = 0.0
-    MAX_MAGNIFIER_SPACING_RELATIVE = 0.5
-
-    MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE = 0.004
-
     DEFAULT_JPEG_QUALITY = 93
     DEFAULT_INTERPOLATION_METHOD = "LANCZOS"
     BASE_MOVEMENT_SPEED = 0.5
-    CAPTURE_THICKNESS_FACTOR = 0.35
-
     MIN_CHANGE_THRESHOLD = 0.0001
     SMOOTHING_FACTOR_POS = 0.15
     SMOOTHING_FACTOR_SPACING = 0.2
@@ -37,10 +22,6 @@ class AppConstants:
     LERP_STOP_THRESHOLD = 0.001
     MAX_TARGET_DELTA_PER_TICK = 0.1
 
-    MIN_CAPTURE_THICKNESS = 1
-    MAX_CAPTURE_THICKNESS = 4
-    MIN_MAG_BORDER_THICKNESS = 1
-    MAX_MAG_BORDER_THICKNESS = 4
     INTERPOLATION_METHODS_MAP = {
         "NEAREST": "Nearest Neighbor",
         "BILINEAR": "Bilinear",
@@ -79,24 +60,6 @@ class Events(StrEnum):
     CORE_UPDATE_REQUESTED = "core.update_requested"
     CORE_ERROR_OCCURRED = "core.error_occurred"
 
-    VIEWPORT_SET_SPLIT_POSITION = "viewport.set_split_position"
-    VIEWPORT_UPDATE_MAGNIFIER_SIZE_RELATIVE = "viewport.update_magnifier_size_relative"
-    VIEWPORT_UPDATE_CAPTURE_SIZE_RELATIVE = "viewport.update_capture_size_relative"
-    VIEWPORT_UPDATE_MOVEMENT_SPEED = "viewport.update_movement_speed"
-    VIEWPORT_SET_MAGNIFIER_POSITION = "viewport.set_magnifier_position"
-    VIEWPORT_SET_MAGNIFIER_INTERNAL_SPLIT = "viewport.set_magnifier_internal_split"
-    VIEWPORT_TOGGLE_MAGNIFIER_PART = "viewport.toggle_magnifier_part"
-    VIEWPORT_UPDATE_MAGNIFIER_COMBINED_STATE = (
-        "viewport.update_magnifier_combined_state"
-    )
-    VIEWPORT_TOGGLE_ORIENTATION = "viewport.toggle_orientation"
-    VIEWPORT_TOGGLE_MAGNIFIER_ORIENTATION = "viewport.toggle_magnifier_orientation"
-    VIEWPORT_TOGGLE_FREEZE_MAGNIFIER = "viewport.toggle_freeze_magnifier"
-    VIEWPORT_ON_SLIDER_PRESSED = "viewport.on_slider_pressed"
-    VIEWPORT_ON_SLIDER_RELEASED = "viewport.on_slider_released"
-    VIEWPORT_SET_MAGNIFIER_VISIBILITY = "viewport.set_magnifier_visibility"
-    VIEWPORT_TOGGLE_MAGNIFIER = "viewport.toggle_magnifier"
-
     EXPORT_TOGGLE_RECORDING = "export.toggle_recording"
     EXPORT_TOGGLE_PAUSE_RECORDING = "export.toggle_pause_recording"
     EXPORT_EXPORT_RECORDED_VIDEO = "export.export_recorded_video"
@@ -121,9 +84,6 @@ class Events(StrEnum):
     COMPARISON_UI_UPDATE = "comparison.ui_update"
     COMPARISON_ERROR = "comparison.error"
     COMPARISON_UPDATE_REQUESTED = "comparison.update_requested"
-
-    MAGNIFIER_ADDED = "magnifier.added"
-    MAGNIFIER_REMOVED = "magnifier.removed"
 
     @staticmethod
     def plugin_event(plugin_name: str, stage: str) -> str:

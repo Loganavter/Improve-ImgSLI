@@ -7,7 +7,7 @@ from core.events import CoreErrorOccurredEvent
 from plugins.analysis.services.cached_diff import CachedDiffService
 from resources.translations import tr
 from plugins.comparison.use_cases import list_ops, loading, navigation
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 

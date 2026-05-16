@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt
 
 from core.constants import AppConstants
 from resources.translations import tr
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -14,6 +15,13 @@ class DialogManager:
     @property
     def settings_dialog(self):
         return self.host._settings_dialog
+
+    def _query_overlay(self, capability_id: str, default=None):
+        command = get_canvas_feature_command_by_alias(capability_id)
+        if command is None:
+            return default
+        result = command(self.host.store)
+        return default if result is None else result
 
     def show_help_dialog(self):
         if self.host.main_controller is None:
@@ -33,11 +41,10 @@ class DialogManager:
     def show_settings_dialog(self):
         from plugins.settings.application_service import SettingsApplicationService
         from plugins.settings.dialog import SettingsDialog
-        from ui.canvas_features.guides.state import get_guides_widget_state
-        from ui.canvas_features.magnifier.state import get_magnifier_widget_state
 
-        guides_state = get_guides_widget_state(self.host.store.viewport.view_state)
-        magnifier_state = get_magnifier_widget_state(self.host.store.viewport.view_state)
+        _get_guides_state = get_canvas_feature_command_by_alias("guides.widget_state")
+        guides_state = _get_guides_state(self.host.store.viewport.view_state) if _get_guides_state is not None else type("_Fallback", (), {"smoothing_enabled": False})()
+        magnifier_settings = self._query_overlay("overlay.behavior_settings", {}) or {}
 
         logger.debug(
             "UIManager.show_settings_dialog existing=%s zoom_interp=%s main_interp=%s optimize_mag=%s optimize_laser=%s",
@@ -48,7 +55,7 @@ class DialogManager:
                 None,
             ),
             getattr(self.host.store.viewport.render_config, "interpolation_method", None),
-            getattr(self.host.store.viewport.view_state, "optimize_magnifier_movement", None),
+            getattr(self.host.store.viewport.view_state, "optimize_interactive_movement", None),
             guides_state.smoothing_enabled,
         )
 
@@ -82,13 +89,17 @@ class DialogManager:
                 current_ui_mode=getattr(
                     self.host.store.settings, "ui_mode", "beginner"
                 ),
-                optimize_magnifier_movement=self.host.store.viewport.view_state.optimize_magnifier_movement,
-                movement_interpolation_method=self.host.store.viewport.render_config.magnifier_movement_interpolation_method,
+                optimize_magnifier_movement=self.host.store.viewport.view_state.optimize_interactive_movement,
+                movement_interpolation_method=self.host.store.viewport.render_config.interactive_movement_interpolation_method,
                 optimize_laser_smoothing=guides_state.smoothing_enabled,
                 interpolation_method=self.host.store.viewport.render_config.interpolation_method,
                 zoom_interpolation_method=self.host.store.viewport.render_config.zoom_interpolation_method,
-                magnifier_intersection_highlight_enabled=magnifier_state.intersection_highlight_enabled,
-                magnifier_auto_color_new_instances=magnifier_state.auto_color_new_instances,
+                magnifier_intersection_highlight_enabled=bool(
+                    magnifier_settings.get("intersection_highlight_enabled", False)
+                ),
+                magnifier_auto_color_new_instances=bool(
+                    magnifier_settings.get("auto_color_new_instances", False)
+                ),
                 auto_calculate_psnr=self.host.store.viewport.session_data.image_state.auto_calculate_psnr,
                 auto_calculate_ssim=self.host.store.viewport.session_data.image_state.auto_calculate_ssim,
                 auto_crop_black_borders=getattr(

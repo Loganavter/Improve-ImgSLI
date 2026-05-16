@@ -8,7 +8,6 @@ from core.state_management.appearance_actions import (
     SetFontWeightAction,
     SetIncludeFileNamesInSavedAction,
     SetInterpolationMethodAction,
-    SetMagnifierMovementInterpolationMethodAction,
     SetMaxNameLengthAction,
     SetMovementInterpolationMethodAction,
     SetTextAlphaPercentAction,
@@ -29,13 +28,9 @@ from core.state_management.document_actions import (
 from core.state_management.geometry_actions import (
     SetFixedLabelDimensionsAction,
     SetImageDisplayRectAction,
-    SetMagnifierScreenCenterAction,
-    SetMagnifierScreenSizeAction,
     SetPixmapDimensionsAction,
 )
 from core.state_management.interaction_actions import (
-    SetDraggingCapturePointAction,
-    SetDraggingSplitInMagnifierAction,
     SetDraggingSplitLineAction,
     SetInteractionSessionIdAction,
     SetInteractiveModeAction,
@@ -68,30 +63,14 @@ from core.state_management.settings_actions import (
     SetUIModeAction,
 )
 from core.state_management.viewport_actions import (
-    SetActiveMagnifierIdAction,
-    SetCaptureSizeRelativeAction,
     SetChannelViewModeAction,
     SetDiffModeAction,
-    SetHighlightedMagnifierElementAction,
     SetIsDraggingSliderAction,
-    SetMagnifierInternalSplitAction,
-    SetMagnifierOffsetRelativeAction,
-    SetMagnifierOffsetRelativeVisualAction,
-    SetMagnifierPositionAction,
-    SetMagnifierSizeRelativeAction,
-    SetMagnifierSpacingRelativeAction,
-    SetMagnifierSpacingRelativeVisualAction,
-    SetMagnifierVisibilityAction,
     SetMovementSpeedAction,
-    SetOptimizeMagnifierMovementAction,
     SetShowingSingleImageModeAction,
     SetSplitPositionAction,
     SetSplitPositionVisualAction,
-    ToggleFreezeMagnifierAction,
-    ToggleMagnifierAction,
-    ToggleMagnifierOrientationAction,
     ToggleOrientationAction,
-    UpdateMagnifierCombinedStateAction,
 )
 
 __all__ = [name for name in globals() if name.endswith("Action")] + ["Action", "ActionType"]

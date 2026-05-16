@@ -1,34 +1,30 @@
 from __future__ import annotations
 
-import logging
 import time
 
 from PIL import Image
 
 from plugins.export.scene_builder import ExportSceneBuilder
-from plugins.export.services.gpu_export import _compute_canvas_plan
+from shared.image_processing.prescale import prescale_pair
+from ui.canvas_presentation.plan_builder import compute_canvas_plan
 from plugins.video_editor.services.video_export_models import RenderedFrame, VideoRenderRequest
-from shared.image_processing.pipeline import RenderingPipeline, create_render_context_from_store
 from ui.canvas_presentation import build_render_frame_presentation, build_snapshot_store_presentation
-
-logger = logging.getLogger("ImproveImgSLI")
 
 class SnapshotFrameRenderer:
     def __init__(self, image_loader, gpu_export_service=None) -> None:
         self._image_loader = image_loader
         self._gpu_export_service = gpu_export_service
-        self._gpu_render_failed = False
-        self._cpu_pipeline: RenderingPipeline | None = None
-        self._cpu_pipeline_font_path: str | None = None
-        self._last_backend = "cpu"
+        self._last_backend = "gpu"
         self._last_debug: dict = {}
+        self._prescaled_cache: tuple | None = None
 
     @property
     def last_backend(self) -> str:
         return self._last_backend
 
     def reset_backend_state(self) -> None:
-        self._gpu_render_failed = False
+        self._last_backend = "gpu"
+        self._prescaled_cache = None
 
     def drain_last_debug(self) -> dict:
         data = self._last_debug
@@ -36,20 +32,10 @@ class SnapshotFrameRenderer:
         return data
 
     def render(self, snap, request: VideoRenderRequest) -> RenderedFrame:
-        if self._gpu_export_service is not None and not self._gpu_render_failed:
-            try:
-                result = self._render_gpu(snap, request)
-                self._last_backend = result.backend
-                self._last_debug = result.debug
-                return result
-            except Exception as exc:
-                self._gpu_render_failed = True
-                logger.warning(
-                    "GPU video render path failed, switching to CPU fallback: %s",
-                    exc,
-                )
+        if self._gpu_export_service is None:
+            raise RuntimeError("GPU export service is not configured")
 
-        result = self._render_cpu(snap, request)
+        result = self._render_gpu(snap, request)
         self._last_backend = result.backend
         self._last_debug = result.debug
         return result
@@ -78,9 +64,26 @@ class SnapshotFrameRenderer:
 
     def _render_gpu(self, snap, request: VideoRenderRequest) -> RenderedFrame:
         debug = {}
-        started = time.perf_counter()
-        img1, img2 = self._resolve_images(snap, request)
-        debug["load_ms"] = (time.perf_counter() - started) * 1000.0
+        skip_prescale = request.fit_content and request.global_bounds is not None
+        cache_key = (
+            snap.image1_path, snap.image2_path,
+            request.output_width, request.output_height,
+            skip_prescale,
+        )
+        if self._prescaled_cache is not None and self._prescaled_cache[0] == cache_key:
+            img1, img2 = self._prescaled_cache[1], self._prescaled_cache[2]
+            debug["load_ms"] = 0.0
+            debug["prescale_ms"] = 0.0
+        else:
+            started = time.perf_counter()
+            img1, img2 = self._resolve_images(snap, request)
+            debug["load_ms"] = (time.perf_counter() - started) * 1000.0
+
+            prescale_started = time.perf_counter()
+            if not skip_prescale:
+                img1, img2 = prescale_pair(img1, img2, request.output_width, request.output_height)
+            debug["prescale_ms"] = (time.perf_counter() - prescale_started) * 1000.0
+            self._prescaled_cache = (cache_key, img1, img2)
 
         build_store_started = time.perf_counter()
         presentation = build_snapshot_store_presentation(
@@ -109,7 +112,7 @@ class SnapshotFrameRenderer:
             source_image1=frame.source_image1,
             source_image2=frame.source_image2,
             source_key=frame.source_key,
-            magnifier_drawing_coords=frame.magnifier_drawing_coords,
+            overlay_drawing_coords=frame.feature_extras.get("overlay_drawing_coords"),
         )
         debug["scene_ctx_ms"] = (time.perf_counter() - scene_ctx_started) * 1000.0
 
@@ -134,14 +137,14 @@ class SnapshotFrameRenderer:
             )
 
         composite_started = time.perf_counter()
-        canvas_plan = _compute_canvas_plan(
+        canvas_plan = compute_canvas_plan(
             frame.store,
             frame.render_width,
             frame.render_height,
-            magnifier_drawing_coords=frame.magnifier_drawing_coords,
+            overlay_drawing_coords=frame.feature_extras.get("overlay_drawing_coords"),
         )
-        pad_left = int(canvas_plan["padding_left"])
-        pad_top = int(canvas_plan["padding_top"])
+        pad_left = int(canvas_plan.padding_left)
+        pad_top = int(canvas_plan.padding_top)
         crop_rect = (
             max(0, pad_left),
             max(0, pad_top),
@@ -171,97 +174,6 @@ class SnapshotFrameRenderer:
         final_frame.alpha_composite(base_image_content, (frame.image_dest_x, frame.image_dest_y))
         debug["composite_ms"] = (time.perf_counter() - composite_started) * 1000.0
         return RenderedFrame(image=final_frame, backend="gpu", debug=debug)
-
-    def _render_cpu(self, snap, request: VideoRenderRequest) -> RenderedFrame:
-        debug = {}
-        started = time.perf_counter()
-        img1, img2 = self._resolve_images(snap, request)
-        debug["load_ms"] = (time.perf_counter() - started) * 1000.0
-
-        build_store_started = time.perf_counter()
-        presentation = build_snapshot_store_presentation(
-            snap,
-            img1,
-            img2,
-            fit_content=request.fit_content,
-            global_bounds=self._bounds_tuple(request),
-            fill_color=request.fill_rgba,
-        )
-        debug["build_store_ms"] = (time.perf_counter() - build_store_started) * 1000.0
-
-        fit_resize_started = time.perf_counter()
-        frame = build_render_frame_presentation(
-            presentation,
-            output_width=request.output_width,
-            output_height=request.output_height,
-        )
-        debug["fit_resize_ms"] = (time.perf_counter() - fit_resize_started) * 1000.0
-
-        scene_ctx_started = time.perf_counter()
-        ctx = create_render_context_from_store(
-            store=frame.store,
-            width=frame.render_width,
-            height=frame.render_height,
-            magnifier_drawing_coords=frame.magnifier_drawing_coords,
-            image1_scaled=frame.scaled_image1,
-            image2_scaled=frame.scaled_image2,
-        )
-        debug["scene_ctx_ms"] = (time.perf_counter() - scene_ctx_started) * 1000.0
-
-        ctx.magnifier.is_interactive_mode = False
-        ctx.images.file_name1 = snap.name1 or ""
-        ctx.images.file_name2 = snap.name2 or ""
-
-        pipeline = self._get_cpu_pipeline(request.font_path)
-        cpu_render_started = time.perf_counter()
-        frame_pil, p_l, p_t, _, _, _ = pipeline.render_frame(ctx)
-        debug["cpu_render_ms"] = (time.perf_counter() - cpu_render_started) * 1000.0
-
-        if not frame_pil:
-            return RenderedFrame(
-                image=Image.new("RGBA", (request.output_width, request.output_height), request.fill_rgba),
-                backend="cpu",
-                debug=debug,
-            )
-
-        composite_started = time.perf_counter()
-        crop_rect = (
-            max(0, p_l),
-            max(0, p_t),
-            min(frame_pil.width, p_l + frame.render_width),
-            min(frame_pil.height, p_t + frame.render_height),
-        )
-        base_image_content = frame_pil.crop(crop_rect)
-
-        if base_image_content.size != (frame.render_width, frame.render_height):
-            base_image_content = base_image_content.resize(
-                (frame.render_width, frame.render_height),
-                Image.Resampling.LANCZOS,
-            )
-
-        if (
-            frame.image_dest_x == 0
-            and frame.image_dest_y == 0
-            and base_image_content.size == (request.output_width, request.output_height)
-        ):
-            debug["composite_ms"] = (time.perf_counter() - composite_started) * 1000.0
-            return RenderedFrame(image=base_image_content, backend="cpu", debug=debug)
-
-        final_frame = Image.new(
-            "RGBA",
-            (request.output_width, request.output_height),
-            request.fill_rgba,
-        )
-        final_frame.alpha_composite(base_image_content, (frame.image_dest_x, frame.image_dest_y))
-        debug["composite_ms"] = (time.perf_counter() - composite_started) * 1000.0
-        return RenderedFrame(image=final_frame, backend="cpu", debug=debug)
-
-    def _get_cpu_pipeline(self, font_path: str | None) -> RenderingPipeline:
-        font_path_str = font_path or ""
-        if self._cpu_pipeline is None or self._cpu_pipeline_font_path != font_path_str:
-            self._cpu_pipeline = RenderingPipeline(font_path)
-            self._cpu_pipeline_font_path = font_path_str
-        return self._cpu_pipeline
 
     @staticmethod
     def _get_gpu_tiling_config(width: int, height: int) -> tuple[bool, int]:

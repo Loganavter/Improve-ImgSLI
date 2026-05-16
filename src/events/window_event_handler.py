@@ -88,6 +88,10 @@ class WindowEventHandler(QObject):
                 event.ignore()
                 return
 
+            if self._try_tab_registry_drop(image_paths):
+                event.acceptProposedAction()
+                return
+
             pos = (
                 event.position().toPoint()
                 if hasattr(event, "position")
@@ -109,6 +113,20 @@ class WindowEventHandler(QObject):
             )
         else:
             event.ignore()
+
+    def _try_tab_registry_drop(self, image_paths: list[str]) -> bool:
+        try:
+            session = self.store.get_active_workspace_session()
+            if session is None:
+                return False
+            registry = getattr(self.ui, "_tab_registry", None)
+            if registry is None:
+                return False
+            from pathlib import Path
+            paths = [Path(p) for p in image_paths]
+            return registry.route_drop(session.session_type, paths)
+        except Exception:
+            return False
 
     def handle_resize(self, event):
         self.ui.update_drag_overlays(

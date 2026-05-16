@@ -25,6 +25,7 @@
     "resolution_8k": "8K (4320p)",
     "resolution_full_hd": "Full HD (1080p)",
     "system_default": "系统默认",
+    "show_workspace_tabs": "工作区标签页（开发中）",
     "system_notifications": "系统通知",
     "ui_font": "UI字体",
     "ui_mode": "UI模式",

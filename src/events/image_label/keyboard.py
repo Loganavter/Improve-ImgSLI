@@ -5,12 +5,11 @@ import logging
 from PyQt6.QtCore import Qt
 
 from events.canvas_input.session_service import KEYBOARD_MOVE_OWNER
-from ui.canvas_features.magnifier.store import magnifier_enabled
 
 logger = logging.getLogger("ImproveImgSLI")
 
 class ImageLabelKeyboardHandler:
-    MAGNIFIER_KEYS = {
+    OVERLAY_MOVEMENT_KEYS = {
         Qt.Key.Key_W,
         Qt.Key.Key_A,
         Qt.Key.Key_S,
@@ -26,7 +25,7 @@ class ImageLabelKeyboardHandler:
     def _should_log_suppressed_reason(reason: str) -> bool:
         return reason not in {
             "ignored_untracked",
-            "magnifier_auto_repeat",
+            "overlay_auto_repeat",
             "space_auto_repeat",
             "stray_release",
             "space_stray_release",
@@ -62,7 +61,7 @@ class ImageLabelKeyboardHandler:
             event.accept()
             return
 
-        if key in self.MAGNIFIER_KEYS and magnifier_enabled(viewport.view_state):
+        if key in self.OVERLAY_MOVEMENT_KEYS and self.handler.store.viewport.view_state.overlay_enabled:
             self.handler.input_session.activate(KEYBOARD_MOVE_OWNER)
 
         self.handler.store.emit_viewport_change("interaction")
@@ -109,7 +108,7 @@ class ImageLabelKeyboardHandler:
 
         self.handler.store.emit_viewport_change("interaction")
         if (
-            magnifier_enabled(viewport.view_state)
-            and not keyboard_state.has_active_magnifier_keys()
+            self.handler.store.viewport.view_state.overlay_enabled
+            and not keyboard_state.has_active_overlay_keys()
         ):
             self.handler.input_session.deactivate(KEYBOARD_MOVE_OWNER)

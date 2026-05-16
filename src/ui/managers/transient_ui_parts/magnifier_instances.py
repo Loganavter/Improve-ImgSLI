@@ -3,7 +3,7 @@ from __future__ import annotations
 from PyQt6.QtCore import QEvent, QSize
 
 from core.constants import AppConstants
-from shared_toolkit.ui.managers.flyout_timer_service import DelayedActionTimer
+from sli_ui_toolkit.managers import DelayedActionTimer
 
 from .anchored_popup import AnchoredPopupBubbleController
 

@@ -1,28 +1,15 @@
+"""
+Scene object stacking — sorting helpers.
+
+``CanvasStackLayer``, ``CanvasStackHint``, and ``CanvasStackRole`` are
+defined in ``stacking_policy.py`` (the single source of truth for all
+stacking order decisions).  This module re-exports them and provides
+the sort helpers used by the scene graph.
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import IntEnum
-
-class CanvasStackLayer(IntEnum):
-    ALWAYS_BOTTOM = 0
-    DIVIDER = 10
-    OBJECT = 20
-    OBJECT_ACTIVE = 30
-    CAPTURE = 40
-    GUIDES = 50
-    HUD = 60
-    DEBUG = 70
-    ALWAYS_TOP = 100
-
-@dataclass(frozen=True)
-class CanvasStackHint:
-    layer: CanvasStackLayer = CanvasStackLayer.OBJECT
-    priority: int = 0
-    always_on_top: bool = False
-    always_on_bottom: bool = False
-    selectable_when_hidden: bool = False
-    active_bias: bool = False
-    tags: tuple[str, ...] = field(default_factory=tuple)
+from .stacking_policy import CanvasStackHint, CanvasStackLayer, CanvasStackRole  # noqa: F401
 
 def _stack_sort_key(obj, active_object_id: str | None):
     hint = getattr(obj, "stack_hint", None)

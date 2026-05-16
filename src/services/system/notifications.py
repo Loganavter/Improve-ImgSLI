@@ -4,15 +4,6 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtWidgets import QSystemTrayIcon
-try:
-    from PyQt6.QtDBus import QDBusConnection, QDBusMessage, QDBusVariant
-
-    QT_DBUS_AVAILABLE = True
-except Exception:
-    QDBusConnection = None
-    QDBusMessage = None
-    QDBusVariant = None
-    QT_DBUS_AVAILABLE = False
 
 from utils.resource_loader import resource_path
 
@@ -48,64 +39,93 @@ class NotificationService:
     def _is_linux(self) -> bool:
         return os.name == "posix"
 
-    def _prefer_portal_notifications(self) -> bool:
-        if not self._is_linux():
-            return False
-        if os.environ.get("FLATPAK_ID"):
-            return True
-        if os.path.exists("/.flatpak-info"):
-            return True
-        if os.environ.get("GTK_USE_PORTAL") == "1":
-            return True
-        return True
+    def _is_flatpak(self) -> bool:
+        return bool(os.environ.get("FLATPAK_ID") or os.path.exists("/.flatpak-info"))
 
-    def _build_portal_notification_id(self) -> str:
-        self._portal_notification_seq += 1
-        return f"notification-{self._portal_notification_seq}"
-
-    def _send_via_portal(
+    def _send_via_dbus(
         self,
         title: str,
         message: str,
         image_path: Optional[str] = None,
         timeout_ms: int = 4000,
     ) -> bool:
-        del image_path, timeout_ms
-        if not QT_DBUS_AVAILABLE or QDBusConnection is None or QDBusMessage is None or QDBusVariant is None:
+        try:
+            import dbus
+
+            bus = dbus.SessionBus()
+            notify_iface = dbus.Interface(
+                bus.get_object(
+                    "org.freedesktop.Notifications",
+                    "/org/freedesktop/Notifications",
+                ),
+                "org.freedesktop.Notifications",
+            )
+
+            hints = {}
+            preview_path = None
+            if image_path and Path(image_path).is_file():
+                preview_path = str(image_path)
+                hints["image-path"] = dbus.String(preview_path)
+
+            icon_str = preview_path
+            if not icon_str:
+                icon_str = (
+                    str(self.app_icon_path)
+                    if self.app_icon_path.is_file()
+                    else self.app_name
+                )
+
+            notify_iface.Notify(
+                self.app_name,
+                dbus.UInt32(0),
+                icon_str,
+                title or "",
+                message or "",
+                dbus.Array([], signature="s"),
+                dbus.Dictionary(hints, signature="sv"),
+                dbus.Int32(timeout_ms),
+            )
+            return True
+        except ImportError:
+            logger.debug("python-dbus not available")
+            return False
+        except Exception as exc:
+            logger.debug("D-Bus notification failed: %s", exc)
+            return False
+
+    def _send_via_notify_send(
+        self,
+        title: str,
+        message: str,
+        image_path: Optional[str] = None,
+        timeout_ms: int = 4000,
+    ) -> bool:
+        import shutil
+        import subprocess
+
+        notify_send = shutil.which("notify-send")
+        if not notify_send:
             return False
 
         try:
-            bus = QDBusConnection.sessionBus()
-            if not bus.isConnected():
-                return False
+            cmd = [
+                notify_send,
+                "--app-name", self.app_name,
+                "-t", str(max(0, int(timeout_ms))),
+            ]
 
-            notification_id = self._build_portal_notification_id()
-            payload = {
-                "title": QDBusVariant(title or ""),
-                "body": QDBusVariant(message or ""),
-                "priority": QDBusVariant("normal"),
-                "display-hint": QDBusVariant(["transient"]),
-            }
-            if self.app_id:
-                payload["icon"] = QDBusVariant(self.app_id)
-
-            dbus_message = QDBusMessage.createMethodCall(
-                "org.freedesktop.portal.Desktop",
-                "/org/freedesktop/portal/desktop",
-                "org.freedesktop.portal.Notification",
-                "AddNotification",
-            )
-            dbus_message.setArguments([self.app_id, notification_id, payload])
-            reply = bus.call(dbus_message)
-            if reply.type() == QDBusMessage.MessageType.ErrorMessage:
-                logger.warning(
-                    "Portal notification failed: %s",
-                    reply.errorMessage(),
-                )
-                return False
+            icon = None
+            if image_path and Path(image_path).is_file():
+                icon = image_path
+            elif self.app_icon_path.is_file():
+                icon = str(self.app_icon_path)
+            if icon:
+                cmd.extend(["-i", icon])
+            cmd.extend([title or "", message or ""])
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return True
         except Exception as exc:
-            logger.error("Portal notification failed: %s", exc)
+            logger.error("notify-send failed: %s", exc)
             return False
 
     def set_tray_icon(self, tray_icon: Optional[QSystemTrayIcon]):
@@ -124,22 +144,23 @@ class NotificationService:
         image_path: Optional[str] = None,
         timeout_ms: int = 4000,
     ) -> bool:
-        """
-        Отправляет системное уведомление.
-        Возвращает True, если уведомление было отправлено хотя бы одним способом.
-        """
         if not self._enabled:
             return False
 
-        if self._prefer_portal_notifications():
+        if self._is_linux():
+
             try:
-                if self._send_via_portal(title, message, image_path, timeout_ms):
+                if self._send_via_dbus(title, message, image_path, timeout_ms):
                     return True
             except Exception as e:
-                logger.error(f"Ошибка отправки через portal: {e}")
+                logger.debug("D-Bus notification error: %s", e)
 
-        if self._is_linux():
-            return False
+            if not self._is_flatpak():
+                try:
+                    if self._send_via_notify_send(title, message, image_path, timeout_ms):
+                        return True
+                except Exception as e:
+                    logger.debug("notify-send error: %s", e)
 
         try:
             if self.tray_icon and self.tray_icon.isVisible():
@@ -151,10 +172,9 @@ class NotificationService:
                 )
                 return True
         except Exception as e:
-            logger.error(f"Ошибка уведомления через трей (fallback): {e}")
+            logger.error("Tray notification error: %s", e)
 
         return False
 
     def shutdown(self):
-        logger.debug("Начало остановки NotificationService...")
-        logger.debug("NotificationService остановлен.")
+        pass

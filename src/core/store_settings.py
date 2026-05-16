@@ -21,6 +21,7 @@ class SettingsState:
     system_notifications_enabled: bool = True
     auto_crop_black_borders: bool = True
     video_recording_fps: int = 60
+    show_workspace_tabs: bool = False
 
     export_use_default_dir: bool = True
     export_default_dir: str | None = None
