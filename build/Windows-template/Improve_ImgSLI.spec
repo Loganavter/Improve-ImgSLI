@@ -13,8 +13,11 @@ block_cipher = None
 SPEC_DIR = Path(SPEC).resolve().parent
 REPO_ROOT = SPEC_DIR.parents[1]
 SRC_ROOT = REPO_ROOT / "src"
+TOOLKIT_ROOT = REPO_ROOT / "packages" / "sli-ui-toolkit" / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+if TOOLKIT_ROOT.is_dir() and str(TOOLKIT_ROOT) not in sys.path:
+    sys.path.insert(0, str(TOOLKIT_ROOT))
 ICON_PATH = SPEC_DIR / "icons" / "icon.ico"
 QT_RUNTIME_HOOK = SPEC_DIR / "pyi_rth_pyqt6_windows.py"
 QT_CONF_PATH = SPEC_DIR / "qt.conf"
@@ -227,63 +230,30 @@ APP_HIDDENIMPORTS = [
     "shared.image_processing.rendering.overlays",
     "shared.image_processing.rendering.text_renderer",
     "shared.image_processing.resize",
-    "shared_toolkit.core.logging",
-    "shared_toolkit.ui.dialogs.dialog_helpers",
+    "sli_ui_toolkit.ui.dialogs.dialog_helpers",
     "shared_toolkit.ui.gesture_resolver",
     "shared_toolkit.ui.icon_manager",
-    "shared_toolkit.ui.managers.flyout_manager",
     "shared_toolkit.ui.managers.font_manager",
-    "shared_toolkit.ui.managers.icon_manager",
-    "shared_toolkit.ui.managers.theme_manager",
     "shared_toolkit.ui.overlay_layer",
-    "shared_toolkit.ui.services.icon_service",
-    "shared_toolkit.ui.widgets.atomic.button_group_container",
-    "shared_toolkit.ui.widgets.atomic.button_painter",
-    "shared_toolkit.ui.widgets.atomic.buttons",
-    "shared_toolkit.ui.widgets.atomic.clickable_label",
-    "shared_toolkit.ui.widgets.atomic.comboboxes",
-    "shared_toolkit.ui.widgets.atomic.custom_button",
-    "shared_toolkit.ui.widgets.atomic.custom_group_widget",
-    "shared_toolkit.ui.widgets.atomic.custom_line_edit",
-    "shared_toolkit.ui.widgets.atomic.fluent_checkbox",
-    "shared_toolkit.ui.widgets.atomic.fluent_combobox",
-    "shared_toolkit.ui.widgets.atomic.fluent_radio",
-    "shared_toolkit.ui.widgets.atomic.fluent_slider",
-    "shared_toolkit.ui.widgets.atomic.fluent_spinbox",
-    "shared_toolkit.ui.widgets.atomic.fluent_switch",
-    "shared_toolkit.ui.widgets.atomic.minimalist_scrollbar",
-    "shared_toolkit.ui.widgets.atomic.numbered_toggle_icon_button",
-    "shared_toolkit.ui.widgets.atomic.scrollable_icon_button",
-    "shared_toolkit.ui.widgets.atomic.simple_icon_button",
-    "shared_toolkit.ui.widgets.atomic.text_labels",
-    "shared_toolkit.ui.widgets.atomic.toggle_icon_button",
-    "shared_toolkit.ui.widgets.atomic.toggle_scrollable_icon_button",
-    "shared_toolkit.ui.widgets.atomic.tool_button",
-    "shared_toolkit.ui.widgets.atomic.tool_button_with_menu",
-    "shared_toolkit.ui.widgets.atomic.tooltips",
-    "shared_toolkit.ui.widgets.atomic.unified_icon_button",
-    "shared_toolkit.ui.widgets.composite.base_flyout",
-    "shared_toolkit.ui.widgets.composite.color_options_flyout",
-    "shared_toolkit.ui.widgets.composite.color_settings_button",
-    "shared_toolkit.ui.widgets.composite.drag_ghost_widget",
-    "shared_toolkit.ui.widgets.composite.magnifier_visibility_flyout",
-    "shared_toolkit.ui.widgets.composite.simple_options_flyout",
-    "shared_toolkit.ui.widgets.composite.text_settings_flyout",
-    "shared_toolkit.ui.widgets.composite.toast",
-    "shared_toolkit.ui.widgets.composite.unified_flyout",
-    "shared_toolkit.ui.widgets.composite.unified_flyout.delegate",
-    "shared_toolkit.ui.widgets.composite.unified_flyout.model",
-    "shared_toolkit.ui.widgets.composite.unified_flyout.overlay_list_view",
-    "shared_toolkit.ui.widgets.composite.unified_flyout.panel",
-    "shared_toolkit.ui.widgets.drag_drop_overlay",
-    "shared_toolkit.ui.widgets.helpers.overlay_geometry",
-    "shared_toolkit.ui.widgets.helpers.shadow_painter",
-    "shared_toolkit.ui.widgets.helpers.underline_painter",
-    "shared_toolkit.ui.widgets.list_items.rating_item",
-    "shared_toolkit.ui.widgets.paste_direction_overlay",
-    "shared_toolkit.utils.file_utils",
-    "shared_toolkit.utils.paths",
-    "shared_toolkit.workers.generic_worker",
+    "sli_ui_toolkit.managers",
+    "sli_ui_toolkit.ui.managers.flyout_timer_service",
+    "sli_ui_toolkit.ui.widgets.atomic.tooltips",
+    "sli_ui_toolkit.ui.widgets.composite.base_flyout",
+    "sli_ui_toolkit.ui.widgets.composite.color_options_flyout",
+    "sli_ui_toolkit.ui.widgets.composite.color_settings_button",
+    "sli_ui_toolkit.ui.widgets.composite.drag_ghost_widget",
+    "sli_ui_toolkit.ui.widgets.composite.magnifier_visibility_flyout",
+    "sli_ui_toolkit.ui.widgets.composite.simple_options_flyout",
+    "sli_ui_toolkit.ui.widgets.composite.text_settings_flyout",
+    "sli_ui_toolkit.ui.widgets.composite.toast",
+    "sli_ui_toolkit.ui.widgets.composite.unified_flyout",
+    "sli_ui_toolkit.ui.widgets.composite.unified_flyout.delegate",
+    "sli_ui_toolkit.ui.widgets.composite.unified_flyout.model",
+    "sli_ui_toolkit.ui.widgets.composite.unified_flyout.overlay_list_view",
+    "sli_ui_toolkit.ui.widgets.composite.unified_flyout.panel",
+    "sli_ui_toolkit.ui.widgets.overlays.drag_drop_overlay",
+    "sli_ui_toolkit.ui.widgets.list_items.rating_item",
+    "sli_ui_toolkit.ui.widgets.overlays.paste_direction_overlay",
     "services.io.image_loader",
     "services.system.clipboard",
     "services.system.notifications",
@@ -324,13 +294,14 @@ APP_HIDDENIMPORTS = [
 ]
 
 APP_HIDDENIMPORTS.extend(collect_submodules("plugins"))
+APP_HIDDENIMPORTS.extend(collect_submodules("sli_ui_toolkit"))
 APP_HIDDENIMPORTS.extend(collect_submodules("ui.canvas_features"))
 APP_HIDDENIMPORTS.extend(collect_submodules("ui.canvas_infra.scene"))
 APP_HIDDENIMPORTS.extend(collect_submodules("ui.widgets.gl_canvas"))
 
 a = Analysis(
     [str(REPO_ROOT / "src" / "__main__.py")],
-    pathex=[str(REPO_ROOT), str(REPO_ROOT / "src")],
+    pathex=[str(REPO_ROOT), str(REPO_ROOT / "src"), str(TOOLKIT_ROOT)],
     binaries=PYQT6_BINARIES,
     datas=APP_DATAS + PYQT6_DATAS,
     hiddenimports=sorted(set(APP_HIDDENIMPORTS)),

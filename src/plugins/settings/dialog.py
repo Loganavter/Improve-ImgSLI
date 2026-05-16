@@ -23,8 +23,8 @@ from plugins.settings.dialog_shell import (
 )
 from plugins.settings.models import SettingsDialogData
 from resources.translations import tr as app_tr
-from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from shared_toolkit.ui.widgets.atomic import CustomGroupWidget
+from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import CustomGroupWidget
 from ui.icon_manager import AppIcon
 from utils.resource_loader import resource_path
 
@@ -215,6 +215,7 @@ class SettingsDialog(QDialog):
             auto_crop_black_borders=self.crop_checkbox.isChecked(),
             ui_mode=ui_mode,
             video_recording_fps=self.spin_fps.value(),
+            show_workspace_tabs=self.show_workspace_tabs_checkbox.isChecked(),
         )
 
     def update_language(self, lang_code: str):
@@ -247,6 +248,10 @@ class SettingsDialog(QDialog):
         if hasattr(self, "debug_checkbox"):
             self.debug_checkbox.setText(
                 self.tr("settings.enable_debug_logging", lang_code)
+            )
+        if hasattr(self, "show_workspace_tabs_checkbox"):
+            self.show_workspace_tabs_checkbox.setText(
+                self.tr("settings.show_workspace_tabs", lang_code)
             )
         if hasattr(self, "ui_mode_group"):
             self.ui_mode_group.set_title(self.tr("settings.ui_mode", lang_code))

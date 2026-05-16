@@ -1,8 +1,14 @@
 from enum import Enum
+from pathlib import Path
 
 from PyQt6.QtGui import QIcon
 
-from shared_toolkit.ui.services import get_icon_service
+from events.drag_drop_handler import DragAndDropService
+import resources.translations  # noqa: F401  — triggers i18n_root configuration
+from shared_toolkit.ui.gesture_resolver import RatingGestureTransaction
+from shared_toolkit.ui.overlay_layer import get_overlay_layer
+from sli_ui_toolkit.config import FlyoutTimingConfig, configure_toolkit
+from sli_ui_toolkit.icons import configure_icon_resolver, get_icon_service
 
 class AppIcon(Enum):
     SETTINGS = "settings.svg"
@@ -46,6 +52,38 @@ class AppIcon(Enum):
     CAPTURE_AREA_COLOR = "circle_outline.svg"
     MAGNIFIER_BORDER_COLOR = "magnifier.svg"
 
-def get_app_icon(icon: AppIcon) -> QIcon:
-    service = get_icon_service("Improve-ImgSLI")
-    return service.get_icon(icon.value)
+def get_app_icon(icon: AppIcon | str) -> QIcon:
+    project_root = Path(__file__).resolve().parents[1]
+    service = get_icon_service("Improve-ImgSLI", project_root=str(project_root))
+    if isinstance(icon, AppIcon):
+        return service.get_icon(icon.value)
+    if isinstance(icon, str):
+        return service.get_icon(icon)
+    value = getattr(icon, "value", None)
+    if isinstance(value, str):
+        return service.get_icon(value)
+    return QIcon()
+
+configure_icon_resolver(
+    get_app_icon,
+    named_icons={
+        "divider_hidden": AppIcon.DIVIDER_HIDDEN,
+        "magnifier": AppIcon.MAGNIFIER,
+        "add": AppIcon.ADD,
+        "add_circle": AppIcon.ADD_CIRCLE,
+        "remove": AppIcon.REMOVE,
+        "check": AppIcon.CHECK,
+    },
+)
+
+configure_toolkit(
+    timings=FlyoutTimingConfig(
+        transient_auto_hide_delay_ms=300,
+        flyout_animation_duration_ms=150,
+        text_settings_flyout_animation_duration_ms=150,
+    ),
+    overlay_resolver=get_overlay_layer,
+    rating_gesture_factory=lambda **kwargs: RatingGestureTransaction(**kwargs),
+    dragdrop_service_getter=DragAndDropService.get_instance,
+)
+

@@ -34,7 +34,6 @@ def initialize_canvas_presenter(presenter) -> None:
     presenter._last_capture_pos: QPoint | None = None
     presenter._last_label_dims = None
     presenter._pending_interactive_mode = None
-    presenter._is_generating_background = False
     presenter._is_magnifier_worker_running = False
     presenter._magnifier_update_pending = False
     presenter._magnifier_request_seq = 0
@@ -45,16 +44,7 @@ def initialize_canvas_presenter(presenter) -> None:
     presenter._pending_magnifier_signature = None
     presenter._pending_magnifier_request_seq = 0
     presenter._pending_magnifier_requested_at = 0.0
-    presenter._cached_gl_background_layers_key = None
-    presenter._cached_gl_background_layers = None
-    presenter._cached_gl_diff_image_key = None
-    presenter._cached_gl_diff_image = None
-    presenter._pending_gl_background_layers_key = None
-    presenter._pending_gl_background_layers_started_at = None
     presenter._pending_cached_diff_request_key = None
-    presenter._pending_magnifier_cached_diff_request_key = None
-    presenter._magnifier_cached_diff_request_key = None
-    presenter._magnifier_cached_diff_image = None
     presenter._active_diff_toast_id = None
     presenter._active_diff_toast_key = None
 
@@ -132,16 +122,7 @@ def invalidate_render_state(presenter):
     presenter._cached_base_pixmap = None
     presenter.current_displayed_pixmap = None
     presenter._pending_interactive_mode = None
-    presenter._cached_gl_background_layers_key = None
-    presenter._cached_gl_background_layers = None
-    presenter._cached_gl_diff_image_key = None
-    presenter._cached_gl_diff_image = None
-    presenter._pending_gl_background_layers_key = None
-    presenter._pending_gl_background_layers_started_at = None
     presenter._pending_cached_diff_request_key = None
-    presenter._pending_magnifier_cached_diff_request_key = None
-    presenter._magnifier_cached_diff_request_key = None
-    presenter._magnifier_cached_diff_image = None
     presenter._active_diff_toast_key = None
     toast_manager = getattr(presenter.main_window_app, "toast_manager", None)
     active_toast_id = getattr(presenter, "_active_diff_toast_id", None)
@@ -157,7 +138,7 @@ def invalidate_render_state(presenter):
         clear_canvas_diff_source(image_label)
 
 def start_interactive_movement(presenter):
-    if not presenter.store.viewport.view_state.optimize_magnifier_movement:
+    if not presenter.store.viewport.view_state.optimize_interactive_movement:
         presenter.store.viewport.interaction_state.is_interactive_mode = False
         presenter.store.emit_state_change()
         if presenter.main_controller is not None:

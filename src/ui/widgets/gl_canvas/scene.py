@@ -4,30 +4,7 @@ from dataclasses import dataclass, field
 
 from PyQt6.QtGui import QColor
 
-from domain.qt_adapters import color_to_qcolor
-from ui.canvas_features.capture.state import get_capture_widget_state
-from ui.canvas_features.guides.state import get_guides_widget_state
-from ui.canvas_features.magnifier import MagnifierModeService
-from ui.canvas_features.magnifier.store import active_or_default_border_color
 from ui.canvas_infra.scene.widget_registry import build_canvas_feature_render_scene_overrides
-
-@dataclass(frozen=True)
-class GLFilenameOverlayConfig:
-    enabled: bool = False
-    image_display_rect: tuple[int, int, int, int] | None = None
-    text_placement_mode: str = "edges"
-    split_position: float = 0.5
-    is_horizontal: bool = False
-    divider_thickness: int = 0
-    is_interactive_mode: bool = False
-    draw_text_background: bool = True
-    font_size_percent: int = 100
-    font_weight: int = 0
-    text_alpha_percent: int = 100
-    file_name_color: object | None = None
-    file_name_bg_color: object | None = None
-    name1: str = ""
-    name2: str = ""
 
 @dataclass(frozen=True)
 class GLRenderScene:
@@ -42,26 +19,11 @@ class GLRenderScene:
         default_factory=lambda: QColor(255, 255, 255, 255)
     )
     divider_thickness: int = 2
-    render_magnifiers: bool = True
-    border_color: QColor = field(
-        default_factory=lambda: QColor(255, 255, 255, 248)
-    )
-    capture_color: QColor = field(
-        default_factory=lambda: QColor(255, 50, 100, 230)
-    )
-    laser_color: QColor = field(
-        default_factory=lambda: QColor(255, 255, 255, 255)
-    )
-    show_guides: bool = False
-    guides_thickness: int = 1
-    interactive_mode: bool = False
-    optimize_laser_smoothing: bool = False
     channel_mode_int: int = 0
     diff_mode_active: bool = False
+    diff_mode_int: int = 0
     zoom_interpolation_method: str = "BILINEAR"
-    filename_overlay: GLFilenameOverlayConfig = field(
-        default_factory=GLFilenameOverlayConfig
-    )
+    feature_overrides: dict = field(default_factory=dict)
 
 def build_gl_render_scene(
     store,
@@ -73,50 +35,24 @@ def build_gl_render_scene(
         return GLRenderScene()
 
     viewport = getattr(store, "viewport", None)
-    document = getattr(store, "document", None)
     if viewport is None:
         return GLRenderScene()
-    mode_service = MagnifierModeService(store)
 
     diff_mode = str(getattr(viewport.view_state, "diff_mode", "off") or "off")
     is_horizontal = bool(getattr(viewport.view_state, "is_horizontal", False))
     split_position_visual = float(getattr(viewport.view_state, "split_position_visual", 0.5))
-    divider_clip_rect = getattr(viewport, "divider_clip_rect", None)
+    divider_clip_rect = getattr(viewport, "overlay_clip_rect", None)
     zoom_method = str(
         getattr(getattr(viewport, "render_config", None), "zoom_interpolation_method", "BILINEAR")
         or "BILINEAR"
     )
     feature_overrides = build_canvas_feature_render_scene_overrides(store)
 
-    image_display_rect = getattr(viewport.geometry_state, "image_display_rect_on_label", None)
-    if image_display_rect is not None:
-        image_display_rect = (
-            int(getattr(image_display_rect, "x", 0)),
-            int(getattr(image_display_rect, "y", 0)),
-            int(getattr(image_display_rect, "w", 0)),
-            int(getattr(image_display_rect, "h", 0)),
-        )
-
-    filename_overlay = GLFilenameOverlayConfig(
-        enabled=bool(getattr(viewport.render_config, "include_file_names_in_saved", False)),
-        image_display_rect=image_display_rect,
-        text_placement_mode=str(getattr(viewport.render_config, "text_placement_mode", "edges")),
-        split_position=split_position_visual,
-        is_horizontal=is_horizontal,
-        divider_thickness=int(feature_overrides.get("filename_divider_thickness", 0)),
-        is_interactive_mode=bool(getattr(viewport.interaction_state, "is_interactive_mode", False)),
-        draw_text_background=bool(getattr(viewport.render_config, "draw_text_background", True)),
-        font_size_percent=int(getattr(viewport.render_config, "font_size_percent", 100)),
-        font_weight=int(getattr(viewport.render_config, "font_weight", 0)),
-        text_alpha_percent=int(getattr(viewport.render_config, "text_alpha_percent", 100)),
-        file_name_color=getattr(viewport.render_config, "file_name_color", None),
-        file_name_bg_color=getattr(viewport.render_config, "file_name_bg_color", None),
-        name1=document.get_current_display_name(1) if document is not None else "",
-        name2=document.get_current_display_name(2) if document is not None else "",
+    diff_mode_int = {"off": 0, "highlight": 1, "grayscale": 2, "edges": 3, "ssim": 4}.get(
+        diff_mode, 0,
     )
 
-    capture_state = get_capture_widget_state(viewport.view_state)
-    guides_state = get_guides_widget_state(viewport.view_state)
+    document = getattr(store, "document", None)
 
     return GLRenderScene(
         blank_white=not bool(
@@ -132,14 +68,6 @@ def build_gl_render_scene(
         show_divider=bool(feature_overrides.get("show_divider", False)),
         divider_color=feature_overrides.get("divider_color", QColor(255, 255, 255, 255)),
         divider_thickness=int(feature_overrides.get("divider_thickness", 2)),
-        render_magnifiers=mode_service.should_render_magnifiers(),
-        border_color=color_to_qcolor(active_or_default_border_color(viewport.view_state)),
-        capture_color=color_to_qcolor(capture_state.color),
-        laser_color=color_to_qcolor(guides_state.color),
-        show_guides=bool(capture_state.visible),
-        guides_thickness=int(guides_state.thickness),
-        interactive_mode=bool(getattr(viewport.interaction_state, "is_interactive_mode", False)),
-        optimize_laser_smoothing=bool(guides_state.smoothing_enabled),
         channel_mode_int=(
             {"RGB": 0, "R": 1, "G": 2, "B": 3, "L": 4}.get(
                 str(getattr(viewport.view_state, "channel_view_mode", "RGB") or "RGB"),
@@ -149,6 +77,7 @@ def build_gl_render_scene(
             else 0
         ),
         diff_mode_active=diff_mode != "off",
+        diff_mode_int=diff_mode_int,
         zoom_interpolation_method=zoom_method,
-        filename_overlay=filename_overlay,
+        feature_overrides=feature_overrides,
     )

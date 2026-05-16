@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from core.store import Store
 from plugins.video_editor.services.video_export_models import GlobalCanvasBounds
-from ui.canvas_features.magnifier import compute_magnifier_padding, iter_magnifier_models
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 class CanvasBoundsAnalyzer:
     def __init__(self, image_loader) -> None:
@@ -34,18 +34,20 @@ class CanvasBoundsAnalyzer:
         if base_w == 0 or base_h == 0:
             return None
 
-        for snap in snapshots:
-            visible_models = [
-                model
-                for model in iter_magnifier_models(
-                    snap.viewport_state.view_state,
-                    snap.viewport_state.render_config,
-                )
-                if bool(model.visible)
-            ]
-            if not visible_models:
-                continue
+        compute_padding = get_canvas_feature_command_by_alias(
+            "overlay.render_compute_padding"
+        )
+        if compute_padding is None:
+            return GlobalCanvasBounds(
+                pad_left=0,
+                pad_right=0,
+                pad_top=0,
+                pad_bottom=0,
+                base_width=base_w,
+                base_height=base_h,
+            )
 
+        for snap in snapshots:
             img1 = self._image_loader(snap.image1_path, auto_crop)
             img2 = self._image_loader(snap.image2_path, auto_crop)
             if not img1 or not img2:
@@ -61,7 +63,7 @@ class CanvasBoundsAnalyzer:
             temp_store.viewport.geometry_state.pixmap_width = base_w
             temp_store.viewport.geometry_state.pixmap_height = base_h
 
-            pad_left, pad_right, pad_top, pad_bottom = compute_magnifier_padding(
+            pad_left, pad_right, pad_top, pad_bottom = compute_padding(
                 temp_store,
                 drawing_width=base_w,
                 drawing_height=base_h,

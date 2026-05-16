@@ -30,7 +30,7 @@ class MainWindowComposer:
         override = os.environ.get("IMPROVE_ENABLE_TRAY")
         if override is not None:
             return override == "1"
-        return os.name != "posix"
+        return True
 
     def compose(self, window) -> MainWindowComponents:
         geometry_manager = GeometryManager(
@@ -54,10 +54,14 @@ class MainWindowComposer:
                 resource_manager=ui_resource_manager,
             )
             tray_manager.toggle_visibility_requested.connect(
-                window._toggle_main_window_visibility
+                window.actions.toggle_main_window_visibility
             )
-            tray_manager.open_last_file_requested.connect(window._open_last_saved_file)
-            tray_manager.open_last_folder_requested.connect(window._open_last_saved_folder)
+            tray_manager.open_last_file_requested.connect(
+                window.actions.open_last_saved_file
+            )
+            tray_manager.open_last_folder_requested.connect(
+                window.actions.open_last_saved_folder
+            )
             tray_manager.quit_requested.connect(QApplication.instance().quit)
 
         main_controller = MainController(self.context)

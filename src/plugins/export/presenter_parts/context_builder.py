@@ -54,7 +54,7 @@ class ExportContextBuilder:
             original2_full=original2_full,
             image1_for_save=image1_for_save,
             image2_for_save=image2_for_save,
-            magnifier_coords_for_save=render_context.magnifier_drawing_coords,
+            overlay_coords_for_save=render_context.overlay_drawing_coords,
             render_context=render_context,
             preview_img=preview_img,
             suggested_filename=self.state.build_suggested_export_filename(),

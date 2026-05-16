@@ -10,11 +10,14 @@ try:
 
     project_dir = current_dir.parent
     bundled_src_dir = current_dir / "src"
+    toolkit_src_dir = project_dir / "packages" / "sli-ui-toolkit" / "src"
 
     if str(project_dir) not in sys.path:
         sys.path.insert(0, str(project_dir))
     if bundled_src_dir.is_dir() and str(bundled_src_dir) not in sys.path:
         sys.path.insert(0, str(bundled_src_dir))
+    if toolkit_src_dir.is_dir() and str(toolkit_src_dir) not in sys.path:
+        sys.path.insert(0, str(toolkit_src_dir))
 except Exception:
 
     pass
@@ -28,12 +31,14 @@ sys.path.insert(0, application_path)
 from PyQt6.QtCore import QLoggingCategory, QThreadPool, Qt
 from PyQt6.QtWidgets import QApplication
 from plugins.settings.manager import SettingsManager
+from sli_ui_toolkit.widgets import install_application_tooltips
 from ui.main_window import MainWindow
 
 def _configure_qt_logging() -> None:
     current_rules = os.environ.get("QT_LOGGING_RULES", "").strip()
     extra_rules = [
         "qt.qpa.wayland.warning=false",
+        "qt.qpa.services.warning=false",
     ]
     merged_rules = "\n".join(
         rule for rule in [current_rules, *extra_rules] if rule
@@ -48,6 +53,8 @@ def _configure_qt_logging() -> None:
 def _configure_linux_desktop_integrations() -> None:
     if os.name != "posix":
         return
+
+    os.environ.setdefault("RESOURCE_NAME", "improve-imgsli")
 
     os.environ.setdefault("UBUNTU_MENUPROXY", "0")
     try:
@@ -92,13 +99,22 @@ def main():
             settings_manager._save_setting("debug_mode_enabled", False)
         sys.exit(0)
 
-    app = QApplication(sys.argv)
+    argv = sys.argv[:]
+    if os.name == "posix" and not getattr(sys, "frozen", False):
+        argv[0] = "improve-imgsli"
+    app = QApplication(argv)
+    install_application_tooltips(app)
 
     app.setApplicationName("Improve ImgSLI")
-    app.setApplicationDisplayName("")
+    app.setApplicationDisplayName("Improve ImgSLI")
     app.setApplicationVersion("1.0.0")
     app.setOrganizationName("improve-imgsli")
     app.setOrganizationDomain("improve-imgsli.local")
+    app.setDesktopFileName("improve-imgsli")
+
+    from PyQt6.QtGui import QIcon
+    from utils.resource_loader import resource_path
+    app.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
 
     window = MainWindow(debug_mode=args.debug)
     window.start()

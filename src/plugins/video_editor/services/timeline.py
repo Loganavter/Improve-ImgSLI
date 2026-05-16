@@ -17,10 +17,13 @@ class TimelineChannel:
     interpolate_values: bool = True
     source_track_id: str | None = None
     accent_color: str | None = None
+    prefer_continuous_curve: bool = False
     keyframes: list[ChannelKeyframe] = field(default_factory=list)
+    hold_compact_pending: bool = False
 
     def clear(self) -> None:
         self.keyframes.clear()
+        self.hold_compact_pending = False
 
     def add_keyframe(
         self,
@@ -65,6 +68,7 @@ class TimelineTrack:
         interpolate_values: bool = True,
         source_track_id: str | None = None,
         accent_color: str | None = None,
+        prefer_continuous_curve: bool = False,
     ) -> TimelineChannel:
         channel = self.channels.get(channel_id)
         if channel is None:
@@ -75,10 +79,13 @@ class TimelineTrack:
                 interpolate_values=interpolate_values,
                 source_track_id=source_track_id or self.id,
                 accent_color=accent_color,
+                prefer_continuous_curve=prefer_continuous_curve,
             )
             self.channels[channel_id] = channel
         elif source_track_id and channel.source_track_id != source_track_id:
             channel.source_track_id = source_track_id
+        if prefer_continuous_curve:
+            channel.prefer_continuous_curve = True
         return channel
 
 @dataclass

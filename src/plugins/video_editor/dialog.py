@@ -22,8 +22,8 @@ from plugins.video_editor.dialog_persistence import VideoEditorDialogPersistence
 from plugins.video_editor.dialog_runtime import VideoEditorDialogRuntime
 from plugins.video_editor.presenter import VideoEditorPresenter
 from resources.translations import tr
-from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
+from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import CustomLineEdit
 from ui.widgets.gl_canvas import GLCanvas
 
 logger = logging.getLogger("ImproveImgSLI")

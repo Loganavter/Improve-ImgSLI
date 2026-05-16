@@ -46,14 +46,17 @@ class GLCanvasRuntimeState:
     _source_preload_scheduled: bool = False
     _shader_letterbox_mode: bool = False
     _content_rect_px: tuple[int, int, int, int] | None = None
+
+    _inner_content_rect_px: tuple[int, int, int, int] | None = None
+
+    _inner_split_position: float | None = None
+
+    _content_sr: float = 1.0
     _clip_overlays_to_content_rect: bool = False
     _content_scissor_depth: int = 0
     _mag_quads: list = field(default_factory=list)
     _mag_use_circle_mask: list[bool] = field(default_factory=list)
     _mag_combined_params: list = field(default_factory=list)
-    _circle_mask_overlay_image: object | None = None
-    _circle_mask_shadow_image: object | None = None
-    _circle_mask_shadow_cache: dict = field(default_factory=dict)
     _canvas_scene_graph: object | None = None
     _mag_quad_ndc: tuple[float, float, float, float] | None = None
     _mag_gpu_active: bool = False
@@ -74,8 +77,6 @@ class GLCanvasRuntimeState:
     _drag_overlay_texts: tuple[str, str] = ("", "")
     _drag_overlay_cache_key: object | None = None
     _drag_overlay_cached_image: object | None = None
-    _filename_overlay_cache_key: object | None = None
-    _filename_overlay_cached_image: object | None = None
     _paste_overlay_visible: bool = False
     _paste_overlay_horizontal: bool = False
     _paste_overlay_texts: dict = field(
@@ -127,15 +128,12 @@ def init_widget_state(widget):
     widget.texture_ids = [0, 0]
     widget._source_texture_ids = [0, 0]
     widget._diff_source_texture_id = 0
-    widget._mag_shader_cache = {}
     widget._mag_tex_ids = []
     widget._mag_combined_tex_ids = []
     widget._circle_mask_tex_id = 0
     widget._mag_tex_id = 0
-
-    widget._circle_shader = None
-    widget._guides_tex_id = 0
     widget._ui_overlay_tex_id = 0
 
+    widget._feature_gl_passes = []
     widget.runtime_state = GLCanvasRuntimeState()
     ensure_zoom_viewport_state(widget)

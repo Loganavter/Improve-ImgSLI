@@ -13,7 +13,7 @@ class KeyboardStateResult:
     reason: str
 
 class KeyboardStateService:
-    MAGNIFIER_KEYS = {
+    OVERLAY_MOVEMENT_KEYS = {
         Qt.Key.Key_A,
         Qt.Key.Key_D,
         Qt.Key.Key_W,
@@ -31,10 +31,10 @@ class KeyboardStateService:
 
     @classmethod
     def is_managed_key(cls, key_code: int) -> bool:
-        return key_code == Qt.Key.Key_Space or key_code in cls.MAGNIFIER_KEYS
+        return key_code == Qt.Key.Key_Space or key_code in cls.OVERLAY_MOVEMENT_KEYS
 
-    def has_active_magnifier_keys(self) -> bool:
-        return any(key in self.interaction.pressed_keys for key in self.MAGNIFIER_KEYS)
+    def has_active_overlay_keys(self) -> bool:
+        return any(key in self.interaction.pressed_keys for key in self.OVERLAY_MOVEMENT_KEYS)
 
     def press(self, key_code: int, *, is_auto_repeat: bool = False) -> KeyboardStateResult:
         interaction = self.interaction
@@ -48,8 +48,8 @@ class KeyboardStateService:
             interaction.space_bar_pressed = True
             return KeyboardStateResult(True, "space_pressed")
 
-        if key_code in self.MAGNIFIER_KEYS and is_auto_repeat:
-            return KeyboardStateResult(False, "magnifier_auto_repeat")
+        if key_code in self.OVERLAY_MOVEMENT_KEYS and is_auto_repeat:
+            return KeyboardStateResult(False, "overlay_auto_repeat")
         if key_code in interaction.pressed_keys:
             return KeyboardStateResult(False, "duplicate_press")
 
@@ -70,8 +70,8 @@ class KeyboardStateService:
             interaction.space_bar_pressed = False
             return KeyboardStateResult(True, "space_released")
 
-        if key_code in self.MAGNIFIER_KEYS and is_auto_repeat:
-            return KeyboardStateResult(False, "magnifier_auto_repeat")
+        if key_code in self.OVERLAY_MOVEMENT_KEYS and is_auto_repeat:
+            return KeyboardStateResult(False, "overlay_auto_repeat")
         if key_code not in interaction.pressed_keys:
             return KeyboardStateResult(False, "stray_release")
 
@@ -104,9 +104,9 @@ class KeyboardStateService:
         managed_pressed = sorted(
             int(key)
             for key in interaction.pressed_keys
-            if key in self.MAGNIFIER_KEYS
+            if key in self.OVERLAY_MOVEMENT_KEYS
         )
-        logger.warning(
+        logger.debug(
             "KeyboardState %s key=%s pressed=%s horiz=%s vert=%s spacing=%s space=%s",
             action,
             None if key_code is None else int(key_code),

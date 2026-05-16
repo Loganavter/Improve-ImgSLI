@@ -84,39 +84,3 @@ def build_cached_diff_image(
         ),
     }
     return builders.get(diff_mode, lambda: None)()
-
-def prepare_gl_background_layers_for_mode(
-    image1,
-    image2,
-    diff_mode: str,
-    channel_mode: str = "RGB",
-    optimize_ssim: bool = False,
-    progress_callback=None,
-):
-    processed1 = image1
-    processed2 = image2
-
-    if channel_mode != "RGB":
-        processed1 = extract_channel(processed1, channel_mode) or processed1
-        processed2 = extract_channel(processed2, channel_mode) or processed2
-
-    if diff_mode == "off":
-        return processed1, processed2
-
-    if diff_mode == "edges":
-        edge1 = create_edge_map(processed1) or processed1
-        edge2 = create_edge_map(processed2) or processed2
-        return (edge1, edge2)
-
-    diff_image = build_cached_diff_image(
-        processed1,
-        processed2,
-        diff_mode,
-        channel_mode="RGB",
-        optimize_ssim=optimize_ssim,
-        progress_callback=progress_callback,
-    )
-    if diff_image is not None:
-        return diff_image, diff_image
-
-    return processed1, processed2

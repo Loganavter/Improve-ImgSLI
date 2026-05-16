@@ -55,6 +55,8 @@ show_help() {
     echo "  install            Create the virtual environment and/or install dependencies."
     echo "  recreate           Forcibly recreate the virtual environment."
     echo "  delete             Delete the virtual environment and caches."
+    echo "  install-desktop    Install .desktop entry for app launcher integration."
+    echo "  uninstall-desktop  Remove .desktop entry."
     echo "  --enable-logging   Permanently enable debug logging."
     echo "  --disable-logging  Permanently disable debug logging."
     echo "  help               Show this help message."
@@ -76,6 +78,33 @@ recreate_action() {
         log_status "Failed to recreate environment." 1
         cleanup_broken_venv
         exit 1
+    fi
+}
+
+install_desktop_action() {
+    local template="$SCRIPT_DIR/improve-imgsli.desktop.in"
+    local target="$HOME/.local/share/applications/improve-imgsli.desktop"
+    if [ ! -f "$template" ]; then
+        log_status "Desktop template not found: $template" 1
+        exit 1
+    fi
+    mkdir -p "$HOME/.local/share/applications"
+    sed -e "s|@LAUNCHER_PATH@|$SCRIPT_DIR/launcher.sh|g" \
+        -e "s|@ICON_PATH@|$SCRIPT_DIR/src/resources/icons/icon.png|g" \
+        "$template" >"$target"
+    chmod +x "$target"
+    update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+    log_status "Desktop entry installed to $target" 0
+}
+
+uninstall_desktop_action() {
+    local target="$HOME/.local/share/applications/improve-imgsli.desktop"
+    if [ -f "$target" ]; then
+        rm "$target"
+        update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+        log_status "Desktop entry removed" 0
+    else
+        log_info "Desktop entry not found, nothing to remove."
     fi
 }
 
@@ -182,6 +211,14 @@ delete)
 --disable-logging)
     disable_logging_action
     ;;
+install-desktop)
+    install_desktop_action
+    ;;
+
+uninstall-desktop)
+    uninstall_desktop_action
+    ;;
+
 "" | help | --help)
     show_help
     ;;

@@ -1,9 +1,9 @@
-from shared_toolkit.ui.services.icon_service import (
+from sli_ui_toolkit.icons import (
     IconService,
     get_icon_by_name,
     get_icon_service,
 )
-from shared_toolkit.ui.services.window_prewarm import (
+from sli_ui_toolkit.services import (
     OffscreenPrewarmAware,
     prewarm_widget_window,
     prewarm_widget_window_once,

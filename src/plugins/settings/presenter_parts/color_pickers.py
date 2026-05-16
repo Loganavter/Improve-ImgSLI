@@ -6,7 +6,6 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QColorDialog
 
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
-from ui.canvas_features.magnifier.events import SettingsSetMagnifierDividerColorEvent
 from ui.canvas_infra.scene.property_access import read_canvas_feature_color_by_setting_key
 
 class SettingsColorPickerCoordinator:
@@ -50,23 +49,23 @@ class SettingsColorPickerCoordinator:
             key="magnifier_border",
             current_color=read_canvas_feature_color_by_setting_key(self.store.viewport, "magnifier.border.color"),
             title_key="ui.choose_magnifier_border_color",
-            on_selected=self._apply_via_settings("set_magnifier_border_color"),
+            on_selected=self._apply_magnifier_border_color,
         )
 
     def show_laser_color_picker(self):
         self._show_dialog(
             key="laser",
-            current_color=read_canvas_feature_color_by_setting_key(self.store.viewport, "magnifier.laser.color"),
+            current_color=read_canvas_feature_color_by_setting_key(self.store.viewport, "guides.color"),
             title_key="ui.choose_magnifier_guides_color",
-            on_selected=self._apply_via_settings("set_guides_color"),
+            on_selected=self._apply_guides_color,
         )
 
     def show_capture_ring_color_picker(self):
         self._show_dialog(
             key="capture_ring",
-            current_color=read_canvas_feature_color_by_setting_key(self.store.viewport, "magnifier.capture.color"),
+            current_color=read_canvas_feature_color_by_setting_key(self.store.viewport, "capture.color"),
             title_key="ui.choose_capture_ring_color",
-            on_selected=self._apply_via_settings("set_capture_color"),
+            on_selected=self._apply_capture_color,
         )
 
     def apply_smart_magnifier_colors(self):
@@ -131,11 +130,24 @@ class SettingsColorPickerCoordinator:
         self._dialogs[key] = dialog
 
     def _apply_magnifier_divider_color(self, color):
-        event_bus = getattr(self.main_controller, "event_bus", None)
-        if event_bus:
-            event_bus.emit(
-                SettingsSetMagnifierDividerColorEvent(qcolor_to_color(color))
-            )
+        settings_controller = self._settings_controller()
+        if settings_controller is not None:
+            settings_controller.set_magnifier_divider_color(qcolor_to_color(color))
+
+    def _apply_magnifier_border_color(self, color):
+        settings_controller = self._settings_controller()
+        if settings_controller is not None:
+            settings_controller.set_magnifier_border_color(qcolor_to_color(color))
+
+    def _apply_capture_color(self, color):
+        settings_controller = self._settings_controller()
+        if settings_controller is not None:
+            settings_controller.set_capture_color(qcolor_to_color(color))
+
+    def _apply_guides_color(self, color):
+        settings_controller = self._settings_controller()
+        if settings_controller is not None:
+            settings_controller.set_guides_color(qcolor_to_color(color))
 
     def _apply_via_settings(self, method_name: str) -> Callable:
         def apply(color):

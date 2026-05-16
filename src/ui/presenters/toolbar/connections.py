@@ -1,47 +1,51 @@
 import logging
 
-from core.events import (
+from PyQt6.QtWidgets import QMessageBox
+
+from plugins.analysis.events import (
     AnalysisSetChannelViewModeEvent,
     AnalysisSetDiffModeEvent,
+)
+from plugins.export.events import (
     ExportOpenVideoEditorEvent,
     ExportTogglePauseRecordingEvent,
     ExportToggleRecordingEvent,
-    SettingsToggleIncludeFilenamesInSavedEvent,
-    ViewportOnSliderPressedEvent,
-    ViewportOnSliderReleasedEvent,
-    ViewportToggleFreezeMagnifierEvent,
-    ViewportToggleMagnifierEvent,
-    ViewportToggleMagnifierOrientationEvent,
-    ViewportUpdateCaptureSizeRelativeEvent,
-    ViewportUpdateMagnifierSizeRelativeEvent,
+)
+from plugins.viewport.events import (
     ViewportUpdateMovementSpeedEvent,
 )
-from ui.canvas_features.magnifier.events import (
-    SettingsSetMagnifierDividerThicknessEvent,
-    SettingsToggleMagnifierDividerVisibilityEvent,
-)
-from ui.canvas_features.magnifier import MagnifierStoreService
-from ui.canvas_features.magnifier.store import default_capture_size, default_magnifier_size
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_binding
 from ui.presenters.toolbar.orientation import (
     on_interpolation_combo_clicked,
-    on_magnifier_orientation_middle_clicked,
-    on_magnifier_orientation_right_clicked,
     on_orientation_right_clicked,
-    on_ui_magnifier_thickness_changed,
-    show_magnifier_divider_color_picker,
-    toggle_magnifier_divider_visibility,
 )
 from ui.presenters.toolbar.state import check_name_lengths
 
 logger = logging.getLogger("ImproveImgSLI")
+_WARNED_UNAVAILABLE_TOOLBAR_CONTROLS: set[str] = set()
+
+def _show_unavailable_toolbar_capability(presenter, control_id: str) -> None:
+    if control_id in _WARNED_UNAVAILABLE_TOOLBAR_CONTROLS:
+        return
+    _WARNED_UNAVAILABLE_TOOLBAR_CONTROLS.add(control_id)
+    logger.warning("Toolbar capability '%s' is unavailable", control_id)
+    ui_manager = getattr(presenter, "ui_manager", None)
+    if ui_manager is None or getattr(ui_manager, "messages", None) is None:
+        return
+    ui_manager.messages.show_non_modal_message(
+        QMessageBox.Icon.Warning,
+        "Feature unavailable",
+        f"The '{control_id}' capability is not available in this build.",
+    )
 
 def _invoke_toolbar_binding(control_id: str, hook_name: str, presenter, *args):
     binding = get_canvas_feature_toolbar_binding(control_id)
     if binding is None:
+        _show_unavailable_toolbar_capability(presenter, control_id)
         return
     hook = getattr(binding, hook_name, None)
     if hook is None:
+        _show_unavailable_toolbar_capability(presenter, control_id)
         return
     hook(presenter, *args)
 
@@ -117,150 +121,135 @@ def _connect_viewport_controls(presenter):
     controller = presenter.main_controller
     ui = presenter.ui
     event_bus = presenter.event_bus
-    viewport_ctrl = getattr(controller, "viewport_plugin", None) if controller else None
     interpolation_handler = _resolve_interpolation_handler(controller)
 
     if controller:
-        if event_bus:
-            ui.btn_orientation.toggled.connect(
-                lambda checked: _invoke_toolbar_binding(
-                    "divider.orientation",
+        ui.btn_orientation.toggled.connect(
+            lambda checked: _invoke_toolbar_binding(
+                "divider.orientation",
+                "on_toggled",
+                presenter,
+                checked,
+            )
+        )
+        ui.btn_orientation.valueChanged.connect(
+            lambda thickness: _invoke_toolbar_binding(
+                "divider.orientation",
+                "on_value_changed",
+                presenter,
+                thickness,
+            )
+        )
+        ui.btn_magnifier_orientation.toggled.connect(
+            lambda checked: _invoke_toolbar_binding(
+                "magnifier.orientation",
+                "on_toggled",
+                presenter,
+                checked,
+            )
+        )
+        ui.btn_magnifier_orientation.valueChanged.connect(
+            lambda thickness: _invoke_toolbar_binding(
+                "magnifier.divider.thickness",
+                "on_value_changed",
+                presenter,
+                thickness,
+            )
+        )
+        ui.btn_magnifier.toggled.connect(
+            lambda checked: _invoke_toolbar_binding(
+                "magnifier.enabled",
+                "on_toggled",
+                presenter,
+                checked,
+            )
+        )
+        if hasattr(ui, "btn_magnifier_instances"):
+            ui.btn_magnifier_instances.addClicked.connect(
+                lambda: _invoke_toolbar_binding(
+                    "magnifier.instances.add",
                     "on_toggled",
                     presenter,
-                    checked,
+                    True,
                 )
             )
-            ui.btn_orientation.valueChanged.connect(
-                lambda thickness: _invoke_toolbar_binding(
-                    "divider.orientation",
-                    "on_value_changed",
+            ui.btn_magnifier_instances.removeClicked.connect(
+                lambda: _invoke_toolbar_binding(
+                    "magnifier.instances.remove",
+                    "on_toggled",
                     presenter,
-                    thickness,
+                    True,
                 )
             )
-            ui.btn_magnifier_orientation.toggled.connect(
-                lambda checked: event_bus.emit(
-                    ViewportToggleMagnifierOrientationEvent(checked)
-                )
+        ui.btn_file_names.toggled.connect(
+            lambda checked: _invoke_toolbar_binding(
+                "filename_overlay.visible",
+                "on_toggled",
+                presenter,
+                checked,
             )
-            ui.btn_magnifier_orientation.valueChanged.connect(
-                lambda thickness: on_ui_magnifier_thickness_changed(presenter, thickness)
+        )
+        ui.btn_freeze.toggled.connect(
+            lambda checked: _invoke_toolbar_binding(
+                "magnifier.freeze",
+                "on_toggled",
+                presenter,
+                checked,
             )
-            ui.btn_magnifier.toggled.connect(
-                lambda checked: event_bus.emit(ViewportToggleMagnifierEvent(checked))
+        )
+        ui.slider_size.valueChanged.connect(
+            lambda value: _invoke_toolbar_binding(
+                "magnifier.size",
+                "on_value_changed",
+                presenter,
+                value,
             )
-            if hasattr(ui, "btn_magnifier_instances"):
-                ui.btn_magnifier_instances.addClicked.connect(
-                    controller.viewport.add_magnifier
-                )
-                ui.btn_magnifier_instances.removeClicked.connect(
-                    controller.viewport.remove_active_magnifier
-                )
-            ui.btn_file_names.toggled.connect(
-                lambda checked: event_bus.emit(
-                    SettingsToggleIncludeFilenamesInSavedEvent(checked)
-                )
+        )
+        ui.slider_capture.valueChanged.connect(
+            lambda value: _invoke_toolbar_binding(
+                "capture.size",
+                "on_value_changed",
+                presenter,
+                value,
             )
-            ui.btn_freeze.toggled.connect(
-                lambda checked: event_bus.emit(
-                    ViewportToggleFreezeMagnifierEvent(checked)
-                )
+        )
+        ui.slider_size.sliderPressed.connect(
+            lambda: _invoke_toolbar_binding(
+                "magnifier.size",
+                "on_pressed",
+                presenter,
             )
-            ui.slider_size.valueChanged.connect(
-                lambda value: event_bus.emit(
-                    ViewportUpdateMagnifierSizeRelativeEvent(value / 100.0)
-                )
+        )
+        ui.slider_size.sliderReleased.connect(
+            lambda: _invoke_toolbar_binding(
+                "magnifier.size",
+                "on_released",
+                presenter,
             )
-            ui.slider_capture.valueChanged.connect(
-                lambda value: event_bus.emit(
-                    ViewportUpdateCaptureSizeRelativeEvent(value / 100.0)
-                )
+        )
+        ui.slider_capture.sliderPressed.connect(
+            lambda: _invoke_toolbar_binding(
+                "capture.size",
+                "on_pressed",
+                presenter,
             )
-            ui.slider_size.sliderPressed.connect(
-                lambda: event_bus.emit(ViewportOnSliderPressedEvent("magnifier_size"))
+        )
+        ui.slider_capture.sliderReleased.connect(
+            lambda: _invoke_toolbar_binding(
+                "capture.size",
+                "on_released",
+                presenter,
             )
-            ui.slider_size.sliderReleased.connect(
-                lambda: event_bus.emit(
-                    ViewportOnSliderReleasedEvent(
-                        "magnifier_size_relative",
-                        lambda: (
-                            MagnifierStoreService(presenter.store)
-                            .get_active_or_first_magnifier()
-                            .size_relative
-                            if MagnifierStoreService(presenter.store).get_active_or_first_magnifier() is not None
-                            else default_magnifier_size(presenter.store.viewport.view_state)
-                        ),
-                    )
-                )
-            )
-            ui.slider_capture.sliderPressed.connect(
-                lambda: event_bus.emit(ViewportOnSliderPressedEvent("capture_size"))
-            )
-            ui.slider_capture.sliderReleased.connect(
-                lambda: event_bus.emit(
-                    ViewportOnSliderReleasedEvent(
-                        "capture_size_relative",
-                        lambda: (
-                            MagnifierStoreService(presenter.store)
-                            .get_active_or_first_magnifier()
-                            .capture_size_relative
-                            if MagnifierStoreService(presenter.store).get_active_or_first_magnifier() is not None
-                            else default_capture_size(presenter.store.viewport.view_state)
-                        ),
-                    )
-                )
-            )
+        )
+        if event_bus:
             ui.slider_speed.valueChanged.connect(
                 lambda value: event_bus.emit(
                     ViewportUpdateMovementSpeedEvent(value / 10.0)
                 )
             )
         else:
-            ui.btn_orientation.toggled.connect(
-                lambda checked: _invoke_toolbar_binding(
-                    "divider.orientation",
-                    "on_toggled",
-                    presenter,
-                    checked,
-                )
-            )
-            ui.btn_orientation.valueChanged.connect(
-                lambda thickness: _invoke_toolbar_binding(
-                    "divider.orientation",
-                    "on_value_changed",
-                    presenter,
-                    thickness,
-                )
-            )
-            ui.btn_magnifier_orientation.toggled.connect(
-                controller.viewport.toggle_magnifier_orientation
-            )
-            ui.btn_magnifier_orientation.valueChanged.connect(
-                controller.viewport.set_magnifier_divider_thickness
-            )
-            ui.btn_magnifier.toggled.connect(controller.viewport.toggle_magnifier)
-            if hasattr(ui, "btn_magnifier_instances"):
-                ui.btn_magnifier_instances.addClicked.connect(
-                    controller.viewport.add_magnifier
-                )
-                ui.btn_magnifier_instances.removeClicked.connect(
-                    controller.viewport.remove_active_magnifier
-                )
-            ui.btn_file_names.toggled.connect(
-                controller.viewport.toggle_include_filenames_in_saved
-            )
-            ui.btn_freeze.toggled.connect(controller.viewport.toggle_freeze_magnifier)
+            viewport_ctrl = getattr(controller, "viewport_plugin", None)
             if viewport_ctrl is not None:
-                ui.slider_size.valueChanged.connect(
-                    lambda value: viewport_ctrl.update_magnifier_size_relative(
-                        value / 100.0
-                    )
-                )
-                ui.slider_capture.valueChanged.connect(
-                    lambda value: viewport_ctrl.update_capture_size_relative(
-                        value / 100.0
-                    )
-                )
                 ui.slider_speed.valueChanged.connect(
                     lambda value: viewport_ctrl.update_movement_speed(value / 10.0)
                 )
@@ -274,7 +263,11 @@ def _connect_orientation_controls(presenter):
         lambda: on_orientation_right_clicked(presenter)
     )
     ui.btn_magnifier_orientation.rightClicked.connect(
-        lambda: on_magnifier_orientation_right_clicked(presenter)
+        lambda: _invoke_toolbar_binding(
+            "magnifier.orientation",
+            "on_right_clicked",
+            presenter,
+        )
     )
 
     if hasattr(ui.btn_orientation, "middleClicked"):
@@ -287,83 +280,26 @@ def _connect_orientation_controls(presenter):
         )
     if hasattr(ui.btn_magnifier_orientation, "middleClicked"):
         ui.btn_magnifier_orientation.middleClicked.connect(
-            lambda: on_magnifier_orientation_middle_clicked(presenter)
+            lambda: _invoke_toolbar_binding(
+                "magnifier.orientation",
+                "on_middle_clicked",
+                presenter,
+            )
         )
     if hasattr(ui.btn_magnifier, "rightClicked"):
         ui.btn_magnifier.rightClicked.connect(
-            lambda: toggle_magnifier_divider_visibility(presenter)
+            lambda: _invoke_toolbar_binding(
+                "magnifier.enabled",
+                "on_right_clicked",
+                presenter,
+            )
         )
 
 def _connect_mode_specific_controls(presenter):
     controller = presenter.main_controller
-    event_bus = presenter.event_bus
     ui = presenter.ui
 
     if not controller:
-        return
-
-    if event_bus:
-        if hasattr(ui, "btn_orientation_simple"):
-            ui.btn_orientation_simple.toggled.connect(
-                lambda checked: _invoke_toolbar_binding(
-                    "divider.orientation_simple",
-                    "on_toggled",
-                    presenter,
-                    checked,
-                )
-            )
-        if hasattr(ui, "btn_divider_visible"):
-            ui.btn_divider_visible.toggled.connect(
-                lambda checked: _invoke_toolbar_binding(
-                    "divider.visible",
-                    "on_toggled",
-                    presenter,
-                    checked,
-                )
-            )
-        if hasattr(ui, "btn_divider_color"):
-            ui.btn_divider_color.clicked.connect(
-                lambda: _invoke_toolbar_binding(
-                    "divider.color",
-                    "on_right_clicked",
-                    presenter,
-                )
-            )
-        if hasattr(ui, "btn_divider_width"):
-            ui.btn_divider_width.valueChanged.connect(
-                lambda thickness: _invoke_toolbar_binding(
-                    "divider.width",
-                    "on_value_changed",
-                    presenter,
-                    thickness,
-                )
-            )
-        if hasattr(ui, "btn_magnifier_orientation_simple"):
-            ui.btn_magnifier_orientation_simple.toggled.connect(
-                lambda checked: event_bus.emit(
-                    ViewportToggleMagnifierOrientationEvent(checked)
-                )
-            )
-        if hasattr(ui, "btn_magnifier_divider_visible"):
-            ui.btn_magnifier_divider_visible.toggled.connect(
-                lambda checked: event_bus.emit(
-                    SettingsToggleMagnifierDividerVisibilityEvent(not checked)
-                )
-            )
-        if hasattr(ui, "btn_magnifier_divider_width"):
-            ui.btn_magnifier_divider_width.valueChanged.connect(
-                lambda thickness: event_bus.emit(
-                    SettingsSetMagnifierDividerThicknessEvent(thickness)
-                )
-            )
-        if hasattr(ui, "btn_magnifier_guides_simple"):
-            ui.btn_magnifier_guides_simple.toggled.connect(
-                controller.viewport.toggle_magnifier_guides
-            )
-        if hasattr(ui, "btn_magnifier_guides_width"):
-            ui.btn_magnifier_guides_width.valueChanged.connect(
-                controller.viewport.set_magnifier_guides_thickness
-            )
         return
 
     if hasattr(ui, "btn_orientation_simple"):
@@ -403,25 +339,48 @@ def _connect_mode_specific_controls(presenter):
         )
     if hasattr(ui, "btn_magnifier_orientation_simple"):
         ui.btn_magnifier_orientation_simple.toggled.connect(
-            controller.viewport.toggle_magnifier_orientation
+            lambda checked: _invoke_toolbar_binding(
+                "magnifier.orientation",
+                "on_toggled",
+                presenter,
+                checked,
+            )
         )
-    if hasattr(ui, "btn_magnifier_divider_visible") and hasattr(controller, "settings"):
+    if hasattr(ui, "btn_magnifier_divider_visible"):
         ui.btn_magnifier_divider_visible.toggled.connect(
-            lambda checked: controller.settings.toggle_magnifier_divider_visibility(
-                not checked
+            lambda checked: _invoke_toolbar_binding(
+                "magnifier.divider.visibility",
+                "on_toggled",
+                presenter,
+                checked,
             )
         )
     if hasattr(ui, "btn_magnifier_divider_width"):
         ui.btn_magnifier_divider_width.valueChanged.connect(
-            controller.viewport.set_magnifier_divider_thickness
+            lambda thickness: _invoke_toolbar_binding(
+                "magnifier.divider.thickness",
+                "on_value_changed",
+                presenter,
+                thickness,
+            )
         )
     if hasattr(ui, "btn_magnifier_guides_simple"):
         ui.btn_magnifier_guides_simple.toggled.connect(
-            controller.viewport.toggle_magnifier_guides
+            lambda checked: _invoke_toolbar_binding(
+                "guides.enabled_simple",
+                "on_toggled",
+                presenter,
+                checked,
+            )
         )
     if hasattr(ui, "btn_magnifier_guides_width"):
         ui.btn_magnifier_guides_width.valueChanged.connect(
-            controller.viewport.set_magnifier_guides_thickness
+            lambda thickness: _invoke_toolbar_binding(
+                "guides.thickness",
+                "on_value_changed",
+                presenter,
+                thickness,
+            )
         )
 
 def _connect_ui_manager_controls(presenter):

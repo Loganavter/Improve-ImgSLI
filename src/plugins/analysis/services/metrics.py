@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 from PIL import Image
 
 from plugins.analysis.services.runtime import AnalysisRuntime
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 

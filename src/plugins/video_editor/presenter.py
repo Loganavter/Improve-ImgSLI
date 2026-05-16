@@ -38,10 +38,10 @@ class VideoEditorPresenter(QObject):
         self.playback_engine.set_playback_speed(1.0)
         self.thumbnail_service = ThumbnailService()
         if self.main_controller is not None and getattr(
-            self.main_controller, "video_export", None
+            self.main_controller, "video_exporter", None
         ):
-            self.thumbnail_service.set_image_loader(
-                self.main_controller.video_export.get_video_export_image
+            self.thumbnail_service.set_snapshot_renderer(
+                self.main_controller.video_exporter.render_snapshot_to_pil
             )
 
         self.preview_coordinator = PreviewCoordinator(

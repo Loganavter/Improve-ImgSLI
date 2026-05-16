@@ -13,6 +13,21 @@ from plugins.video_editor.services.timeline import (
     TimelineTrack,
 )
 
+_CONTINUOUS_CURVE_TRACK_IDS = {
+    "filename_overlay.font_size",
+    "filename_overlay.font_weight",
+    "filename_overlay.text_alpha",
+    "splitter.main.position",
+    "text.font_size",
+    "text.font_weight",
+    "text.alpha",
+}
+
+def _prefers_continuous_curve(track_id: str | None) -> bool:
+    if not track_id:
+        return False
+    return track_id in _CONTINUOUS_CURVE_TRACK_IDS
+
 def add_value_to_track(track: TimelineTrack, timestamp: float, value: Any, *, fps: int = 60) -> bool:
     payload = value if isinstance(value, dict) else split_value_to_channels(value)
     if track.kind == "vec2" and {"x", "y"}.issubset(payload.keys()):
@@ -21,12 +36,14 @@ def add_value_to_track(track: TimelineTrack, timestamp: float, value: Any, *, fp
     for channel_id, channel_value in payload.items():
         channel = track.channels.get(channel_id)
         if channel is None:
+            channel_kind_name = track.kind if track.kind == "color" else channel_kind(channel_value)
             channel = track.ensure_channel(
                 channel_id,
                 label=channel_id.upper() if len(channel_id) <= 2 else channel_id.title(),
-                kind=channel_kind(channel_value),
-                interpolate_values=channel_interpolates(channel_value),
+                kind=channel_kind_name,
+                interpolate_values=(False if channel_kind_name == "color" else channel_interpolates(channel_value)),
                 source_track_id=track.id,
+                prefer_continuous_curve=_prefers_continuous_curve(track.id),
             )
         added = append_channel_keyframe(channel, timestamp, channel_value, fps=fps) or added
     return added
@@ -116,12 +133,15 @@ def append_channel_keyframe(channel: TimelineChannel, timestamp: float, value: A
     interpolation = "linear" if channel.interpolate_values else "hold"
     keyframes = channel.keyframes
     timestamp = float(timestamp)
+    step_threshold = 3.0 / max(1, fps)
 
     if not keyframes:
         keyframes.append(ChannelKeyframe(timestamp=timestamp, value=clone_value(value), interpolation=interpolation))
+        channel.hold_compact_pending = False
         return True
     if math.isclose(keyframes[-1].timestamp, timestamp, abs_tol=1e-9):
         keyframes[-1] = ChannelKeyframe(timestamp=timestamp, value=clone_value(value), interpolation=interpolation)
+        channel.hold_compact_pending = False
         return True
 
     if channel.interpolate_values and values_close(keyframes[-1].value, value, kind=channel.kind):
@@ -132,22 +152,41 @@ def append_channel_keyframe(channel: TimelineChannel, timestamp: float, value: A
 
     if not channel.interpolate_values:
         if values_equal(keyframes[-1].value, value):
+            channel.hold_compact_pending = False
             return False
+        if (
+            channel.hold_compact_pending
+            and len(keyframes) >= 2
+            and (timestamp - float(keyframes[-1].timestamp)) <= step_threshold
+        ):
+            previous_value = clone_value(keyframes[-2].value)
+            keyframes[-2] = ChannelKeyframe(timestamp=timestamp, value=previous_value, interpolation=interpolation)
+            keyframes[-1] = ChannelKeyframe(timestamp=timestamp, value=clone_value(value), interpolation=interpolation)
+            channel.hold_compact_pending = True
+            return True
         previous_value = clone_value(keyframes[-1].value)
         keyframes.append(ChannelKeyframe(timestamp=timestamp, value=previous_value, interpolation=interpolation))
         keyframes.append(ChannelKeyframe(timestamp=timestamp, value=clone_value(value), interpolation=interpolation))
+        channel.hold_compact_pending = True
         return True
 
     time_gap = timestamp - float(keyframes[-1].timestamp)
-    step_threshold = 3.0 / max(1, fps)
-    if time_gap > step_threshold and should_insert_linear_step(channel.kind, keyframes[-1].value, value):
+    if (
+        not channel.prefer_continuous_curve
+        and time_gap > step_threshold
+        and should_insert_linear_step(channel.kind, keyframes[-1].value, value)
+    ):
         previous_value = clone_value(keyframes[-1].value)
         keyframes.append(ChannelKeyframe(timestamp=timestamp, value=previous_value, interpolation=interpolation))
         keyframes.append(ChannelKeyframe(timestamp=timestamp, value=clone_value(value), interpolation=interpolation))
         return True
 
     new_keyframe = ChannelKeyframe(timestamp=timestamp, value=clone_value(value), interpolation=interpolation)
-    if len(keyframes) >= 2 and is_redundant_linear_keyframe(keyframes[-2], keyframes[-1], new_keyframe, kind=channel.kind):
+    if (
+        not channel.prefer_continuous_curve
+        and len(keyframes) >= 2
+        and is_redundant_linear_keyframe(keyframes[-2], keyframes[-1], new_keyframe, kind=channel.kind)
+    ):
         keyframes[-1] = new_keyframe
         return True
     keyframes.append(new_keyframe)
@@ -179,7 +218,7 @@ def channel_kind(value: Any) -> str:
     return "state"
 
 def channel_interpolates(value: Any) -> bool:
-    return not isinstance(value, (bool, str)) and value is not None
+    return not isinstance(value, (bool, str, Color)) and value is not None
 
 def values_close(left: Any, right: Any, *, kind: str) -> bool:
     if kind == "scalar" and isinstance(left, (int, float)) and isinstance(right, (int, float)):
@@ -294,7 +333,7 @@ def viewport_fingerprint(state: ViewportState) -> Any:
     return (
         frozen_value(state.render_config),
         frozen_value(state.view_state),
-        frozen_value(getattr(state, "divider_clip_rect", None)),
+        frozen_value(getattr(state, "overlay_clip_rect", None)),
     )
 
 @lru_cache(maxsize=64)
@@ -374,8 +413,8 @@ def interpolate_viewport_state(start: ViewportState, end: ViewportState, factor:
     interpolated = start.clone()
     interpolated.render_config = interpolate_value(start.render_config, end.render_config, factor)
     interpolated.view_state = interpolate_value(start.view_state, end.view_state, factor)
-    interpolated.divider_clip_rect = clone_value(
-        start.divider_clip_rect if factor < 1.0 else end.divider_clip_rect
+    interpolated.overlay_clip_rect = clone_value(
+        start.overlay_clip_rect if factor < 1.0 else end.overlay_clip_rect
     )
     return interpolated
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.events import SettingsChangeLanguageEvent
+from plugins.settings.events import SettingsChangeLanguageEvent
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IControllablePlugin, IUIPlugin
 from plugins.help.dialog import HelpDialog

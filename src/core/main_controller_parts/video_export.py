@@ -1,10 +1,80 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
+
+def _generate_video_notification_preview(
+    video_exporter,
+    frames,
+    resolution: tuple[int, int],
+    options: dict | None = None,
+) -> str | None:
+    try:
+        if video_exporter is None:
+            return None
+
+        recording = (
+            frames
+            if hasattr(frames, "evaluate_at")
+            else video_exporter._coerce_recording(frames)
+        )
+        if recording is None:
+            return None
+
+        snapshot = recording.evaluate_at(0.0)
+        export_options = dict(options or {})
+        fit_content = bool(export_options.get("fit_content", False))
+        fill_rgba = (0, 0, 0, 0)
+        fill_color = export_options.get("fit_content_fill_color")
+        if isinstance(fill_color, str) and fill_color:
+            from PyQt6.QtGui import QColor
+
+            qcolor = QColor(fill_color)
+            fill_rgba = (
+                qcolor.red(),
+                qcolor.green(),
+                qcolor.blue(),
+                qcolor.alpha(),
+            )
+
+        global_bounds = None
+        if fit_content:
+            global_bounds = video_exporter.get_cached_global_bounds(recording, False)
+
+        frame = video_exporter.render_snapshot_to_pil(
+            snapshot,
+            resolution[0],
+            resolution[1],
+            auto_crop=False,
+            fit_content=fit_content,
+            global_bounds=global_bounds,
+            fill_color=fill_rgba,
+        )
+        if frame is None:
+            return None
+
+        max_dim = 256
+        frame = frame.convert("RGBA")
+        w, h = frame.size
+        if max(h, w) > max_dim:
+            scale = max_dim / max(h, w)
+            frame = frame.resize((int(w * scale), int(h * scale)))
+        thumb_file = tempfile.NamedTemporaryFile(
+            prefix="imgsli_video_thumb_",
+            suffix=".png",
+            delete=False,
+        )
+        thumb_path = thumb_file.name
+        thumb_file.close()
+        frame.save(thumb_path, format="PNG")
+        return thumb_path
+    except Exception:
+        return None
 
 class VideoExportActions:
     def __init__(self, controller):
@@ -41,9 +111,15 @@ class VideoExportActions:
                 logger.info("Video export finished: %s", path)
                 self.controller.video_export_finished.emit(True)
                 window_shell = self.controller.window_shell
-                if window_shell and hasattr(window_shell.main_window_app, "notify_system"):
-                    window_shell.main_window_app.notify_system(
-                        "Video Exported", f"Saved to: {path}", image_path=None
+                if window_shell and hasattr(window_shell.main_window_app, "actions"):
+                    preview_path = _generate_video_notification_preview(
+                        video_exporter,
+                        frames,
+                        safe_resolution,
+                        options,
+                    )
+                    window_shell.main_window_app.actions.notify_system(
+                        "Video Exported", f"Saved to: {path}", image_path=preview_path
                     )
             else:
                 self.controller.video_export_finished.emit(False)

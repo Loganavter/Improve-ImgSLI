@@ -72,6 +72,7 @@ class VideoRenderLoop:
                 timings["evaluate_ms"]
                 + timings["render_ms"]
                 + timings["resize_ms"]
+                + timings.get("prescale_ms", 0.0)
                 + write_ms
             )
             stats.add(
@@ -125,6 +126,7 @@ class VideoRenderLoop:
             breakdown_parts = []
             for key in (
                 "load_ms",
+                "prescale_ms",
                 "build_store_ms",
                 "fit_resize_ms",
                 "scene_ctx_ms",
@@ -145,7 +147,6 @@ class VideoRenderLoop:
                 "tile_grab_ms",
                 "tile_paste_ms",
                 "gpu_render_ms",
-                "cpu_render_ms",
                 "composite_ms",
             ):
                 value = breakdown.get(key)
@@ -190,7 +191,7 @@ class VideoExporterService:
         self._cached_bounds_snapshots_hash = None
         self._active_processes = []
         self._cancel_requested = False
-        self._last_render_backend = "cpu"
+        self._last_render_backend = "gpu"
 
         self._image_repository = VideoExportImageRepository()
         self._bounds_analyzer = CanvasBoundsAnalyzer(self._image_repository.get_image)

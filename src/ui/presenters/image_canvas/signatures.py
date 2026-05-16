@@ -1,15 +1,24 @@
-from ui.canvas_features.capture.state import get_capture_widget_state
-from ui.canvas_features.guides.state import get_guides_widget_state
-from ui.canvas_features.magnifier import MagnifierStoreService
-from ui.canvas_features.magnifier.store import (
-    active_or_default_border_color,
-    active_or_default_divider_color,
-    active_or_default_divider_thickness,
-    active_or_default_divider_visible,
-    magnifier_enabled,
+from ui.canvas_infra.scene.property_access import (
+    read_canvas_feature_color_by_setting_key,
+    read_canvas_feature_property,
 )
-from ui.canvas_infra.scene.property_access import read_canvas_feature_property
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_properties
+from ui.canvas_infra.scene.widget_registry import (
+    get_canvas_feature_command_by_alias,
+    get_canvas_feature_properties,
+)
+
+class _FallbackGuidesState:
+    enabled = False
+    thickness = 1
+    color = None
+    smoothing_enabled = False
+    smoothing_interpolation_method = "BILINEAR"
+
+def _get_guides_state(view_state):
+    query = get_canvas_feature_command_by_alias("guides.widget_state")
+    if query is not None:
+        return query(view_state)
+    return _FallbackGuidesState()
 
 def _get_effective_main_interpolation_method(vp):
     viewport_value = getattr(vp.render_config, "interpolation_method", None)
@@ -18,32 +27,40 @@ def _get_effective_main_interpolation_method(vp):
     render_cfg = getattr(vp, "render_config", None)
     return getattr(render_cfg, "interpolation_method", "BILINEAR") if render_cfg else "BILINEAR"
 
-def _magnifier_models_signature(scene_state: MagnifierStoreService):
-    models = []
-    for model in scene_state.iter_magnifiers():
-        models.append(
+def _query_overlay(store, capability_id: str, default=None):
+    command = get_canvas_feature_command_by_alias(capability_id)
+    if command is None:
+        return default
+    result = command(store)
+    return default if result is None else result
+
+def _query_overlay_from_viewport(vp, capability_id: str, default=None):
+    store = type("StoreProxy", (), {"viewport": vp})()
+    return _query_overlay(store, capability_id, default)
+
+def _magnifier_models_signature(magnifier_models):
+    signature = []
+    for model in magnifier_models:
+        signature.append(
             (
-                model.id,
-                bool(model.visible),
-                model.position,
-                float(model.size_relative),
-                float(model.capture_size_relative),
-                model.offset_relative,
-                float(model.spacing_relative),
-                float(model.internal_split),
-                bool(model.is_horizontal),
-                bool(model.visible_left),
-                bool(model.visible_center),
-                bool(model.visible_right),
-                bool(model.freeze),
-                model.frozen_position,
-                model.divider_color,
-                model.border_color,
-                model.laser_color,
-                model.capture_ring_color,
+                model["id"],
+                bool(model["visible"]),
+                model["position"],
+                float(model["size_relative"]),
+                float(model["capture_size_relative"]),
+                model["offset_relative"],
+                float(model["spacing_relative"]),
+                float(model["internal_split"]),
+                bool(model["is_horizontal"]),
+                bool(model["visible_left"]),
+                bool(model["visible_center"]),
+                bool(model["visible_right"]),
+                bool(model["freeze"]),
+                model["frozen_position"],
+                model["border_color"],
             )
         )
-    return tuple(models)
+    return tuple(signature)
 
 def _canvas_feature_properties_signature(viewport):
     signature = []
@@ -57,19 +74,29 @@ def get_render_params_signature(presenter, s1, s2):
     view = vp.view_state
     render = vp.render_config
     doc = presenter.store.document
-    scene_state = MagnifierStoreService(presenter.store)
-    capture_state = get_capture_widget_state(view)
-    guides_state = get_guides_widget_state(view)
-    magnifier = scene_state.get_active_or_first_magnifier()
-    magnifier_models_sig = _magnifier_models_signature(scene_state)
+    capture_color = read_canvas_feature_color_by_setting_key(vp, "capture.color")
+    guides_state = _get_guides_state(view)
+    magnifier = _query_overlay(presenter.store, "overlay.active_state")
+    magnifier_models = tuple(_query_overlay(presenter.store, "overlay.all_states", ()) or ())
+    magnifier_models_sig = _magnifier_models_signature(magnifier_models)
     feature_props_sig = _canvas_feature_properties_signature(vp)
+    magnifier_enabled = bool(_query_overlay(presenter.store, "overlay.enabled", False))
+    divider_thickness = int(
+        _query_overlay(presenter.store, "overlay.active_divider_thickness", 0) or 0
+    )
+    divider_color = _query_overlay(presenter.store, "overlay.active_divider_color")
+    divider_visible = bool(
+        _query_overlay(presenter.store, "overlay.active_divider_visible", False)
+    )
+    border_color = _query_overlay(presenter.store, "overlay.active_border_color")
+    combined = bool(_query_overlay(presenter.store, "overlay.active_combined", False))
     if magnifier is None:
         return (
             None,
             feature_props_sig,
             magnifier_models_sig,
             view.split_position_visual,
-            magnifier_enabled(view),
+            magnifier_enabled,
             guides_state.enabled,
             guides_state.thickness,
             None,
@@ -83,12 +110,12 @@ def get_render_params_signature(presenter, s1, s2):
             None,
             None,
             None,
-            active_or_default_divider_thickness(view),
-            active_or_default_divider_color(view),
-            active_or_default_divider_visible(view),
-            active_or_default_border_color(view),
+            divider_thickness,
+            divider_color,
+            divider_visible,
+            border_color,
             guides_state.color,
-            capture_state.color,
+            capture_color,
             None,
             None,
             render.include_file_names_in_saved,
@@ -100,9 +127,9 @@ def get_render_params_signature(presenter, s1, s2):
             render.draw_text_background,
             render.text_placement_mode,
             render.max_name_length,
-            render.magnifier_movement_interpolation_method,
+            render.interactive_movement_interpolation_method,
             guides_state.smoothing_interpolation_method,
-            view.optimize_magnifier_movement,
+            view.optimize_interactive_movement,
             guides_state.smoothing_enabled,
             doc.get_current_display_name(1),
             doc.get_current_display_name(2),
@@ -110,33 +137,33 @@ def get_render_params_signature(presenter, s1, s2):
             id(s2),
         )
     return (
-        magnifier.position,
+        magnifier["position"],
         feature_props_sig,
         magnifier_models_sig,
-        magnifier.visible,
+        magnifier["visible"],
         view.split_position_visual,
-        magnifier_enabled(view),
+        magnifier_enabled,
         guides_state.enabled,
         guides_state.thickness,
-        magnifier.capture_size_relative,
-        magnifier.size_relative,
-        scene_state.is_active_magnifier_combined(),
-        magnifier.internal_split,
-        magnifier.is_horizontal,
+        magnifier["capture_size_relative"],
+        magnifier["size_relative"],
+        combined,
+        magnifier["internal_split"],
+        magnifier["is_horizontal"],
         view.diff_mode,
         view.channel_view_mode,
         view.is_horizontal,
-        magnifier.visible_left,
-        magnifier.visible_center,
-        magnifier.visible_right,
-        active_or_default_divider_thickness(view),
-        active_or_default_divider_color(view),
-        active_or_default_divider_visible(view),
-        active_or_default_border_color(view),
+        magnifier["visible_left"],
+        magnifier["visible_center"],
+        magnifier["visible_right"],
+        divider_thickness,
+        divider_color,
+        divider_visible,
+        border_color,
         guides_state.color,
-        capture_state.color,
-        magnifier.offset_relative,
-        magnifier.spacing_relative,
+        capture_color,
+        magnifier["offset_relative"],
+        magnifier["spacing_relative"],
         render.include_file_names_in_saved,
         render.font_size_percent,
         render.font_weight,
@@ -146,9 +173,9 @@ def get_render_params_signature(presenter, s1, s2):
         render.draw_text_background,
         render.text_placement_mode,
         render.max_name_length,
-        render.magnifier_movement_interpolation_method,
+        render.interactive_movement_interpolation_method,
         guides_state.smoothing_interpolation_method,
-        view.optimize_magnifier_movement,
+        view.optimize_interactive_movement,
         guides_state.smoothing_enabled,
         doc.get_current_display_name(1),
         doc.get_current_display_name(2),
@@ -190,59 +217,72 @@ def get_magnifier_signature(presenter):
     vp = presenter.store.viewport
     view = vp.view_state
     render = vp.render_config
-    scene_state = MagnifierStoreService(presenter.store)
-    capture_state = get_capture_widget_state(view)
-    guides_state = get_guides_widget_state(view)
-    magnifier = scene_state.get_active_or_first_magnifier()
-    magnifier_models_sig = _magnifier_models_signature(scene_state)
+    capture_color = read_canvas_feature_color_by_setting_key(vp, "capture.color")
+    guides_state = _get_guides_state(view)
+    magnifier = _query_overlay(presenter.store, "overlay.active_state")
+    magnifier_models_sig = _magnifier_models_signature(
+        tuple(_query_overlay(presenter.store, "overlay.all_states", ()) or ())
+    )
+    magnifier_enabled = bool(_query_overlay(presenter.store, "overlay.enabled", False))
+    combined = bool(_query_overlay(presenter.store, "overlay.active_combined", False))
+    border_color = _query_overlay(presenter.store, "overlay.active_border_color")
+    divider_visible = bool(
+        _query_overlay(presenter.store, "overlay.active_divider_visible", False)
+    )
+    divider_color = _query_overlay(presenter.store, "overlay.active_divider_color")
+    divider_thickness = int(
+        _query_overlay(presenter.store, "overlay.active_divider_thickness", 0) or 0
+    )
     if magnifier is None:
-        return (magnifier_enabled(view), magnifier_models_sig, None, None)
+        return (magnifier_enabled, magnifier_models_sig, None, None)
     interaction = vp.interaction_state
     is_interactive = interaction.is_interactive_mode
     interp_method = (
-        render.magnifier_movement_interpolation_method
+        render.interactive_movement_interpolation_method
         if is_interactive
         else _get_effective_main_interpolation_method(vp)
     )
 
     if is_interactive:
-        offset_for_sig = interaction.magnifier_offset_relative_visual
-        spacing_for_sig = interaction.magnifier_spacing_relative_visual
-        internal_split_for_sig = interaction.magnifier_internal_split_visual
+        offset_for_sig = interaction.interactive_offset_relative_visual
+        spacing_for_sig = interaction.interactive_spacing_relative_visual
+        internal_split_for_sig = interaction.interactive_internal_split_visual
     else:
-        offset_for_sig = magnifier.offset_relative
-        spacing_for_sig = magnifier.spacing_relative
-        internal_split_for_sig = magnifier.internal_split
+        offset_for_sig = magnifier["offset_relative"]
+        spacing_for_sig = magnifier["spacing_relative"]
+        internal_split_for_sig = magnifier["internal_split"]
 
     sig = (
-        magnifier_enabled(view),
+        magnifier_enabled,
         magnifier_models_sig,
-        magnifier.visible,
-        magnifier.position,
-        magnifier.size_relative,
-        magnifier.capture_size_relative,
+        magnifier["visible"],
+        magnifier["position"],
+        magnifier["size_relative"],
+        magnifier["capture_size_relative"],
         offset_for_sig,
         spacing_for_sig,
         internal_split_for_sig,
-        scene_state.is_active_magnifier_combined(),
-        magnifier.is_horizontal,
-        magnifier.visible_left,
-        magnifier.visible_center,
-        magnifier.visible_right,
-        active_or_default_border_color(view),
-        capture_state.color,
+        combined,
+        magnifier["is_horizontal"],
+        magnifier["visible_left"],
+        magnifier["visible_center"],
+        magnifier["visible_right"],
+        border_color,
+        capture_color,
         guides_state.color,
         guides_state.enabled,
         guides_state.thickness,
         interp_method,
         view.diff_mode,
         view.channel_view_mode,
-        active_or_default_divider_visible(view),
-        active_or_default_divider_color(view),
-        active_or_default_divider_thickness(view),
+        divider_visible,
+        divider_color,
+        divider_thickness,
     )
     return sig
 
 def get_divider_color_tuple(vp):
-    dc = active_or_default_divider_color(vp.view_state)
+    dc = _query_overlay_from_viewport(vp, "overlay.active_divider_color")
+    if dc is None:
+        return (1.0, 1.0, 1.0, 1.0)
     return (dc.r / 255.0, dc.g / 255.0, dc.b / 255.0, dc.a / 255.0)

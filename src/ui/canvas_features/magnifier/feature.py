@@ -1,29 +1,34 @@
 from __future__ import annotations
 
+import logging
 import math
 
 from PyQt6.QtCore import QPointF
 
-from core.constants import AppConstants
+_log = logging.getLogger("ImproveImgSLI.magnifier.feature")
+
 from domain.qt_adapters import color_to_qcolor
-from domain.types import Point, Rect
+from domain.types import Color, Point, Rect
 
 from ui.canvas_infra.scene.context import CanvasSceneApplyContext, CanvasSceneBuildContext
 from ui.canvas_infra.scene.feature_contract import CanvasFeatureZOrder, CanvasSceneFeature
 from ui.canvas_infra.scene.models import CanvasSceneGraph
-from ui.canvas_infra.scene.stacking import CanvasStackLayer
+from ui.canvas_infra.scene.stacking_policy import CanvasStackLayer, CanvasStackRole
+from ui.canvas_features.capture.state import get_capture_widget_state
+from ui.canvas_features.divider.state import get_divider_widget_state
 from ui.canvas_features.magnifier.mode import MagnifierModeService
 from ui.canvas_features.magnifier.state import get_magnifier_widget_state
 from ui.canvas_features.magnifier.store import active_magnifier_id, iter_magnifier_models
 from ui.canvas_infra.viewport.state import get_zoom_level
+from ui.widgets.gl_canvas.render_metrics import resolve_relative_px
+from ui.widgets.gl_canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 
 from .scene_objects import MagnifierCircle, MagnifierSceneObject
 
-THRESHOLD = AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+from ui.canvas_features.magnifier.constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE as THRESHOLD
 CAPTURE_RING_AA_PX = 1.15
 MAGNIFIER_Z_ORDER = CanvasFeatureZOrder(
-    layer=CanvasStackLayer.OBJECT,
-    priority=0,
+    stack_role=CanvasStackRole.IMAGE_OVERLAY_CONTENT,
     active_bias=True,
     selectable_when_hidden=True,
 )
@@ -89,26 +94,28 @@ def build_magnifier_object(
     pix_h = context.pix_h
     view = store.viewport.view_state
     interaction = getattr(store.viewport, "interaction_state", None)
+    divider_state = get_divider_widget_state(view)
+    capture_state = get_capture_widget_state(view)
     diff_mode = getattr(view, "diff_mode", "off")
     is_visual_diff = diff_mode in ("highlight", "grayscale", "ssim", "edges")
     use_visual_motion = bool(
         is_active
         and interaction
         and getattr(interaction, "is_interactive_mode", False)
-        and getattr(view, "optimize_magnifier_movement", True)
+        and getattr(view, "optimize_interactive_movement", True)
     )
     effective_offset = (
-        getattr(interaction, "magnifier_offset_relative_visual", None)
+        getattr(interaction, "interactive_offset_relative_visual", None)
         if use_visual_motion
         else None
     ) or model.offset_relative
     effective_spacing = (
-        float(getattr(interaction, "magnifier_spacing_relative_visual", model.spacing_relative))
+        float(getattr(interaction, "interactive_spacing_relative_visual", model.spacing_relative))
         if use_visual_motion
         else float(model.spacing_relative)
     )
     effective_internal_split = (
-        float(getattr(interaction, "magnifier_internal_split_visual", model.internal_split))
+        float(getattr(interaction, "interactive_internal_split_visual", model.internal_split))
         if use_visual_motion
         else float(model.internal_split)
     )
@@ -127,8 +134,10 @@ def build_magnifier_object(
     center_y = bounds.y + (rel_y * pix_h)
 
     zoom_level = get_zoom_level(image_label) if image_label is not None else 1.0
-    scaled_radius = capture_radius * zoom_level
-    line_width_px = max(2.0, float(scaled_radius * 2.0) * 0.0105)
+    line_width_px = resolve_relative_px(
+        DEFAULT_CANVAS_STYLE_TOKENS.capture_ring_stroke_du,
+        short_edge_px=min(float(pix_w), float(pix_h)),
+    )
     stroke_margin = ((line_width_px / 2.0) + CAPTURE_RING_AA_PX) / max(zoom_level, 1e-6)
     center_x, center_y, capture_radius = clamp_capture_overlay_geometry(
         bounds=bounds,
@@ -234,13 +243,21 @@ def build_magnifier_object(
         internal_split=effective_internal_split,
         is_horizontal=bool(model.is_horizontal),
         is_combined=is_combined,
-        divider_visible=bool(model.divider_visible),
-        divider_thickness=int(model.divider_thickness),
+        divider_visible=bool(divider_state.visible),
+        divider_thickness=int(divider_state.thickness),
         border_thickness=int(model.border_thickness),
         divider_color=model.divider_color,
         border_color=model.border_color,
-        laser_color=model.laser_color,
-        capture_ring_color=model.capture_ring_color,
+        capture_color=(
+            getattr(model, "capture_color", None)
+            or getattr(model, "capture_ring_color", None)
+            or capture_state.color
+        ),
+        guides_color=(
+            getattr(model, "guides_color", None)
+            or getattr(model, "laser_color", None)
+        ),
+        show_laser=bool(getattr(model, "show_laser", True)),
     )
 
 def build_magnifier_objects(
@@ -424,24 +441,31 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
     visible_magnifiers = [obj for obj in all_magnifiers if getattr(obj, "visible", False)]
     dragging_capture = bool(
         getattr(getattr(store, "viewport", None), "interaction_state", None)
-        and getattr(store.viewport.interaction_state, "is_dragging_capture_point", False)
+        and getattr(store.viewport.interaction_state, "is_dragging_overlay_handle", False)
     )
     capture_circles = []
     hidden_capture_circles = []
     occluded_capture_arcs = []
     hidden_magnifier_circles = []
     magnifier_state = get_magnifier_widget_state(store.viewport.view_state) if store is not None else None
+    capture_state = (
+        get_capture_widget_state(store.viewport.view_state)
+        if store is not None
+        else None
+    )
+    fallback_capture_color = capture_state.color if capture_state is not None else Color()
 
     for obj in visible_magnifiers:
         center = getattr(obj, "capture_center", None)
         radius = float(getattr(obj, "capture_radius", 0.0) or 0.0)
         if center is None or radius <= 0:
             continue
+        capture_color_q = color_to_qcolor(getattr(obj, "capture_color", None) or fallback_capture_color)
         capture_circles.append(
             (
                 QPointF(center.x, center.y),
                 radius,
-                color_to_qcolor(obj.capture_ring_color),
+                capture_color_q,
             )
         )
 
@@ -488,7 +512,7 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
                 (
                     active_center,
                     active_radius,
-                    color_to_qcolor(active_magnifier.capture_ring_color),
+                    color_to_qcolor(getattr(active_magnifier, "capture_color", None) or fallback_capture_color),
                 )
             )
 
@@ -500,6 +524,10 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
         runtime_state._hidden_magnifier_circles = hidden_magnifier_circles
 
     if active_magnifier is None:
+        _log.debug(
+            "apply_magnifier_objects: active_magnifier=None (all_mags=%d, visible_mags=%d, active_object_id=%s) → set_overlay_coords(None)",
+            len(all_magnifiers), len(visible_magnifiers), scene.active_object_id,
+        )
         canvas.set_overlay_coords(None, 0, [], 0)
         sync_active_magnifier_geometry(scene, geometry_state)
         return
@@ -526,27 +554,30 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
 def sync_active_magnifier_geometry(scene: CanvasSceneGraph, geometry_state) -> None:
     active_magnifier = get_active_magnifier(scene)
     if active_magnifier is None:
-        geometry_state.magnifier_screen_center = Point()
-        geometry_state.magnifier_screen_size = 0
+        geometry_state.active_overlay_screen_center = Point()
+        geometry_state.active_overlay_screen_size = 0
         return
     interactive_circle = active_magnifier.interactive_circle()
     if interactive_circle is not None:
-        geometry_state.magnifier_screen_center = interactive_circle.center
-        geometry_state.magnifier_screen_size = int(round(interactive_circle.radius * 2.0))
+        geometry_state.active_overlay_screen_center = interactive_circle.center
+        geometry_state.active_overlay_screen_size = int(round(interactive_circle.radius * 2.0))
         return
-    geometry_state.magnifier_screen_center = Point()
-    geometry_state.magnifier_screen_size = 0
+    geometry_state.active_overlay_screen_center = Point()
+    geometry_state.active_overlay_screen_size = 0
 
-FEATURE = CanvasSceneFeature(
-    name="magnifier",
-    build_primary=build_magnifier_objects,
-    build_overlay=lambda scene, context: (),
-    apply=apply_magnifier_objects,
-    hit_test=find_magnifier_at_position,
-    resolve_active_object_id=active_magnifier_id,
-    sync_geometry=sync_active_magnifier_geometry,
-    z_order=MAGNIFIER_Z_ORDER,
-    primary_order=10,
-    apply_order=10,
-    hit_order=10,
-)
+def build_scene_feature() -> CanvasSceneFeature:
+    return CanvasSceneFeature(
+        name="magnifier",
+        build_primary=build_magnifier_objects,
+        build_overlay=lambda scene, context: (),
+        apply=apply_magnifier_objects,
+        hit_test=find_magnifier_at_position,
+        resolve_active_object_id=active_magnifier_id,
+        sync_geometry=sync_active_magnifier_geometry,
+        z_order=MAGNIFIER_Z_ORDER,
+        primary_order=10,
+        apply_order=10,
+        hit_order=10,
+    )
+
+FEATURE = build_scene_feature()

@@ -7,15 +7,16 @@ from PyQt6.QtWidgets import QApplication
 
 from core.plugin_coordinator import PluginCoordinator
 from core.session_manager import SessionManager
-from core.plugin_system import EventBus, PluginRegistry
+from core.plugin_system import EventBus, PluginDefinitionRegistry, PluginRegistry
 from core.plugin_system.ui_integration import PluginUIRegistry
 from core.store import Store
 from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
 from plugins.settings.manager import SettingsManager
 from services.system.notifications import NotificationService
-from shared_toolkit.core import setup_logging
+from sli_ui_toolkit.core import setup_logging
+from sli_ui_toolkit.widgets import install_application_tooltips
 from shared_toolkit.ui.managers.ui_resource_manager import UIResourceManager
-from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from sli_ui_toolkit.theme import ThemeManager
 from ui.main_window_composer import MainWindowComposer
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -31,6 +32,7 @@ class ApplicationContext:
         self.thread_pool: Optional[QThreadPool] = None
         self.event_bus: Optional[EventBus] = None
         self.plugin_registry: Optional[PluginRegistry] = None
+        self.plugin_definition_registry: Optional[PluginDefinitionRegistry] = None
         self.plugin_ui_registry: Optional[PluginUIRegistry] = None
         self.plugin_coordinator: Optional[PluginCoordinator] = None
         self.session_manager: Optional[SessionManager] = None
@@ -99,9 +101,11 @@ class ApplicationContext:
 
     def _build_runtime_services(self):
         self.plugin_registry = PluginRegistry(self)
+        self.plugin_definition_registry = PluginDefinitionRegistry()
 
     def _initialize_plugins(self):
         discovered_plugins = self.plugin_registry.discover_plugins()
+        self.plugin_definition_registry.register_plugins(discovered_plugins)
         for plugin in discovered_plugins:
             for qss_path in plugin.get_qss_paths():
                 self.theme_manager.register_qss_path(qss_path)
@@ -132,6 +136,7 @@ class ApplicationContext:
         }
 
     def apply_theme_to_app(self, app: QApplication):
+        install_application_tooltips(app)
         self.theme_manager.apply_theme_to_app(app)
         self.theme_manager.theme_changed.connect(self._on_theme_changed)
 

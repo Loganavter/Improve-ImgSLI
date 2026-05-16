@@ -17,10 +17,9 @@ from PyQt6.QtWidgets import (
 )
 from markdown import markdown
 
-from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from shared_toolkit.ui.widgets.atomic.minimalist_scrollbar import MinimalistScrollBar
-from shared_toolkit.ui.widgets.composite import SidebarDialogShell
-from shared_toolkit.utils.paths import resource_path
+from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import MinimalistScrollBar, SidebarDialogShell
+from utils.resource_loader import resource_path
 from ui.icon_manager import AppIcon, get_app_icon
 
 logging.getLogger("markdown").setLevel(logging.WARNING)
@@ -80,7 +79,7 @@ class HelpDialog(QDialog):
         )
         self.setSizeGripEnabled(True)
         self.resize(800, 600)
-        self.setMinimumSize(640, 480)
+        self.setMinimumSize(300, 200)
 
         self._setup_ui()
         self._reload_sections()
@@ -102,11 +101,10 @@ class HelpDialog(QDialog):
         self.scroll_area = QScrollArea()
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBar(MinimalistScrollBar())
+        self.scroll_area.setHorizontalScrollBar(MinimalistScrollBar())
 
         self.shell.pages_stack.hide()
         self.shell.content_layout.addWidget(self.scroll_area, 1)

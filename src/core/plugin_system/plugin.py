@@ -59,6 +59,9 @@ class Plugin(ABC):
     def get_qss_paths(self) -> tuple[str, ...]:
         return ()
 
+    def get_definition(self) -> Any | None:
+        return None
+
     def plugin_resource_path(self, *parts: str) -> str:
         module_file = inspect.getfile(self.__class__)
         plugin_root = os.path.dirname(module_file)

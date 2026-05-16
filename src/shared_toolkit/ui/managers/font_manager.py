@@ -162,6 +162,13 @@ class FontManager(QObject):
     def is_builtin_available(self) -> bool:
         return self._ensure_builtin_loaded() is not None
 
+    def get_current_font_path(self) -> str | None:
+        if self._current_mode == "builtin":
+            path = str(self._built_in_font_path)
+            if os.path.exists(path):
+                return path
+        return None
+
     def get_font_path_for_image_text(self, store) -> str | None:
         try:
             if hasattr(store, "settings"):

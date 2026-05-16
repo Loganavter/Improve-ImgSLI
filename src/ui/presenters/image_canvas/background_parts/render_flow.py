@@ -1,13 +1,25 @@
+import logging
+
 from PyQt6.QtGui import QPixmap
 
 from domain.types import Rect
-from shared_toolkit.ui.managers.font_manager import FontManager
-from ui.canvas_features.magnifier import MagnifierModeService, iter_magnifier_models
-from ui.canvas_presentation import apply_store_to_gl_canvas
-from ui.widgets.gl_canvas.helpers import get_gl_like_canvas, reset_canvas_overlays
-from workers.image_rendering_worker import ImageRenderingWorker
+from ui.canvas_infra.scene.widget_registry import (
+    get_canvas_feature_command_by_alias,
+)
 
-from .gl_diff import request_gl_background_layers_async, sync_gl_diff_texture
+_mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
+from ui.canvas_presentation import apply_store_to_gl_canvas
+from ui.widgets.gl_canvas.scene import build_gl_render_scene
+from ui.widgets.gl_canvas.helpers import get_gl_like_canvas, reset_canvas_overlays
+
+from .gl_diff import sync_gl_diff_texture
+
+def _query_overlay(store, capability_id: str, default=None):
+    command = get_canvas_feature_command_by_alias(capability_id)
+    if command is None:
+        return default
+    result = command(store)
+    return default if result is None else result
 
 def schedule_update(presenter):
     if hasattr(presenter.main_window_app, "_closing") and presenter.main_window_app._closing:
@@ -116,17 +128,19 @@ def update_comparison_if_needed(presenter):
     diff_mode = getattr(presenter.store.viewport.view_state, "diff_mode", "off")
     if (
         presenter.view.is_gl_canvas()
-        and diff_mode in ("highlight", "grayscale", "ssim", "edges")
+        and diff_mode == "ssim"
         and getattr(presenter.store.viewport.session_data.render_cache, "cached_diff_image", None) is None
     ):
-        from ui.presenters.image_canvas.magnifier_parts.diff_cache import request_cached_diff_image_async
-
-        request_cached_diff_image_async(
-            presenter,
-            source1,
-            source2,
-            diff_mode,
+        request_cached_diff = get_canvas_feature_command_by_alias(
+            "overlay.request_cached_diff",
         )
+        if request_cached_diff is not None:
+            request_cached_diff(
+                presenter,
+                source1,
+                source2,
+                diff_mode,
+            )
 
     if presenter.view.is_gl_canvas():
         sync_gl_diff_texture(presenter, diff_mode)
@@ -144,32 +158,7 @@ def update_comparison_if_needed(presenter):
                 or presenter.store.viewport.session_data.render_cache.scaled_image2_for_display
                 or presenter.store.viewport.session_data.image_state.image2
             )
-            channel_mode = getattr(presenter.store.viewport.view_state, "channel_view_mode", "RGB")
-            if diff_mode != "off":
-                bg_layers_key = (
-                    id(img1),
-                    id(img2),
-                    getattr(img1, "size", None),
-                    getattr(img2, "size", None),
-                    diff_mode,
-                    channel_mode,
-                )
-                if getattr(presenter, "_cached_gl_background_layers_key", None) != bg_layers_key:
-                    request_gl_background_layers_async(
-                        presenter,
-                        img1,
-                        img2,
-                        diff_mode,
-                        channel_mode,
-                        bg_layers_key,
-                        optimize_ssim=False,
-                    )
-                    return False
-                gl_img1, gl_img2 = getattr(
-                    presenter, "_cached_gl_background_layers", (img1, img2)
-                )
-            else:
-                gl_img1, gl_img2 = presenter.view.prepare_gl_background_layers(img1, img2)
+            gl_img1, gl_img2 = img1, img2
             gui_source1 = (
                 presenter.store.document.full_res_image1
                 or presenter.store.document.original_image1
@@ -207,7 +196,19 @@ def update_comparison_if_needed(presenter):
                         source_image2=gui_source2,
                         source_key=source_key,
                         clip_overlays_to_image_bounds=False,
-                        layers_are_prepared=True,
+                    )
+            else:
+                runtime_state = getattr(image_label, "runtime_state", None)
+                if runtime_state is not None:
+                    runtime_state._store = presenter.store
+                    image_label.set_render_scene(
+                        build_gl_render_scene(
+                            presenter.store,
+                            apply_channel_mode_in_shader=bool(
+                                getattr(runtime_state, "_apply_channel_mode_in_shader", True)
+                            ),
+                            clip_overlays_to_image_bounds=False,
+                        )
                     )
             presenter._last_mag_signature = None
             presenter._last_bg_signature = current_bg_sig
@@ -215,26 +216,15 @@ def update_comparison_if_needed(presenter):
             if presenter._cached_base_pixmap is None:
                 presenter._cached_base_pixmap = QPixmap(1, 1)
         else:
-            if presenter._is_generating_background:
-                return False
-
-            presenter._is_generating_background = True
-            presenter._last_bg_signature = current_bg_sig
-            presenter._last_label_dims = current_label_dims
-            presenter._last_mag_signature = None
-            presenter.background.render_background(current_bg_sig)
-            return True
-    mode_service = MagnifierModeService(presenter.store)
+            return False
     visible_models = [
         model
-        for model in iter_magnifier_models(
-            presenter.store.viewport.view_state,
-            presenter.store.viewport.render_config,
-        )
-        if bool(model.visible)
+        for model in (_query_overlay(presenter.store, "overlay.all_states", ()) or ())
+        if bool(model.get("visible", False))
     ]
-    if mode_service.should_render_magnifiers() and visible_models:
-        current_mag_sig = presenter.magnifier.get_signature()
+    _should_render = bool(_query_overlay(presenter.store, "overlay.enabled", False))
+    if _should_render and visible_models:
+        current_mag_sig = presenter.overlay.get_signature()
         last_mag_sig = getattr(presenter, "_last_mag_signature", None)
         image_label = presenter.ui.image_label
         current_mag_state = (
@@ -245,7 +235,7 @@ def update_comparison_if_needed(presenter):
         mag_is_dirty = current_mag_state != last_mag_sig
 
         if mag_is_dirty:
-            presenter.magnifier.render_gl_fast()
+            presenter.overlay.rebuild_overlay()
             presenter._last_mag_signature = current_mag_state
             return True
     else:
@@ -273,40 +263,6 @@ def should_use_dirty_rects_optimization(presenter, render_params_dict, label_dim
     if presenter._cached_render_params and presenter._cached_render_params[:4] != current_params[:4]:
         return False
     return True
-
-def render_background(presenter, sig):
-    presenter.current_rendering_task_id += 1
-    task_id = presenter.current_rendering_task_id
-
-    render_params = presenter.store.viewport.get_render_params()
-    render_params["use_magnifier"] = False
-    render_params["is_interactive_mode"] = presenter.store.viewport.interaction_state.is_interactive_mode
-
-    image1 = presenter.store.viewport.session_data.render_cache.scaled_image1_for_display
-    image2 = presenter.store.viewport.session_data.render_cache.scaled_image2_for_display
-    if not image1 or not image2:
-        return
-
-    params_wrapper = {
-        "render_params_dict": render_params,
-        "image1_scaled_for_display": image1,
-        "image2_scaled_for_display": image2,
-        "original_image1_pil": presenter.store.document.full_res_image1,
-        "original_image2_pil": presenter.store.document.full_res_image2,
-        "magnifier_coords": None,
-        "font_path_absolute": FontManager.get_instance().get_font_path_for_image_text(presenter.store),
-        "file_name1_text": presenter.store.document.get_current_display_name(1),
-        "file_name2_text": presenter.store.document.get_current_display_name(2),
-        "finished_signal": presenter._worker_finished_signal,
-        "error_signal": presenter._worker_error_signal,
-        "task_id": task_id,
-        "label_dims": presenter.get_current_label_dimensions(),
-        "type": "background",
-        "session_caches": {"background": presenter.store.viewport.session_data.render_cache.caches},
-    }
-    worker = ImageRenderingWorker(params_wrapper, lambda: presenter.current_rendering_task_id)
-    priority = 1 if not presenter.store.viewport.interaction_state.is_interactive_mode else 0
-    presenter.main_window_app.thread_pool.start(worker, priority=priority)
 
 def finish_resize_delay(presenter):
     if presenter.store.viewport.interaction_state.resize_in_progress:

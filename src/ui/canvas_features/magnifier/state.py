@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
-from core.store_viewport import MagnifierModel
+from ui.canvas_features.magnifier.models import MagnifierModel
 from domain.types import Color
 
 @dataclass

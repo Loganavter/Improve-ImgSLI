@@ -6,7 +6,7 @@ from PyQt6.QtCore import QTimer
 from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
 from core.store import ImageItem
 from resources.translations import tr
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 def _invalidate_diff_cache(controller) -> None:
     if getattr(controller, "diff_service", None) is not None:
@@ -249,7 +249,7 @@ def _finalize_loaded_paths(controller, image_number: int, newly_added_indices: l
         QTimer.singleShot(50, lambda: controller.set_current_image(image_number))
 
         if controller.presenter:
-            from shared_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
+            from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
             QTimer.singleShot(0, controller.presenter.repopulate_flyouts)
             if controller.presenter.ui_manager.transient.unified_flyout.mode == FlyoutMode.DOUBLE:
                 QTimer.singleShot(

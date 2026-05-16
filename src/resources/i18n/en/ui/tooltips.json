@@ -1,9 +1,23 @@
 {
   "tooltip": {
+    "add_images_1": "Add images to the first side",
+    "add_images_2": "Add images to the second side",
+    "adjust_divider_width": "Adjust divider width",
+    "adjust_magnifier_divider_width": "Adjust magnifier divider width",
+    "adjust_magnifier_guides_width": "Adjust magnifier guide line thickness",
+    "add_or_remove_magnifier": "Add or remove magnifier",
+    "change_channel_mode": "Change channel mode",
+    "change_diff_mode": "Change difference mode",
     "click_remove_current_image": "Click: Remove current image",
     "click_swap_current_images": "Click: Swap current images",
+    "create_workspace_session": "Create workspace session",
     "hold_swap_entire_lists": "Hold: Swap entire lists",
-    "use_favorite": "Use Favorite",
-    "file_names_hidden_on_zoom": "File names on the canvas are hidden while zoomed. Return to 100% zoom to see them again."
+    "file_names_hidden_on_zoom": "File names on the canvas are hidden while zoomed. Return to 100% zoom to see them again.",
+    "open_file_name_text_settings": "Open file name text settings",
+    "quick_save_image": "Quick save image",
+    "save_result": "Save result",
+    "toggle_divider_visibility": "Toggle divider visibility",
+    "toggle_magnifier_divider_visibility": "Toggle magnifier divider visibility",
+    "use_favorite": "Use Favorite"
   }
 }

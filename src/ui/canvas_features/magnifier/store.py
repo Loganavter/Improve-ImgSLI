@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from core.constants import AppConstants
-from core.store_viewport import MagnifierModel
+from core.store_viewport import RenderConfig
+from ui.canvas_features.magnifier.models import MagnifierModel
+from ui.canvas_features.magnifier.constants import (
+    DEFAULT_MAGNIFIER_SPACING_RELATIVE,
+    MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE,
+)
 from domain.types import Color, Point
+from ui.canvas_features.divider.state import get_divider_widget_state
 from ui.canvas_features.capture.state import get_capture_widget_state
 from ui.canvas_features.magnifier.state import (
     MagnifierWidgetState,
@@ -16,38 +21,38 @@ _AUTO_COLOR_PALETTE: tuple[dict[str, tuple[int, int, int, int]], ...] = (
     {
         "border": (0, 190, 255, 248),
         "divider": (110, 225, 255, 235),
-        "laser": (0, 190, 255, 255),
         "capture": (0, 190, 255, 230),
+        "guides": (110, 225, 255, 255),
     },
     {
         "border": (255, 184, 0, 248),
         "divider": (255, 214, 92, 235),
-        "laser": (255, 184, 0, 255),
         "capture": (255, 184, 0, 230),
+        "guides": (255, 214, 92, 255),
     },
     {
         "border": (58, 220, 122, 248),
         "divider": (134, 245, 174, 235),
-        "laser": (58, 220, 122, 255),
         "capture": (58, 220, 122, 230),
+        "guides": (134, 245, 174, 255),
     },
     {
         "border": (255, 92, 150, 248),
         "divider": (255, 150, 190, 235),
-        "laser": (255, 92, 150, 255),
         "capture": (255, 92, 150, 230),
+        "guides": (255, 150, 190, 255),
     },
     {
         "border": (178, 120, 255, 248),
         "divider": (210, 172, 255, 235),
-        "laser": (178, 120, 255, 255),
         "capture": (178, 120, 255, 230),
+        "guides": (210, 172, 255, 255),
     },
     {
         "border": (255, 126, 64, 248),
         "divider": (255, 174, 126, 235),
-        "laser": (255, 126, 64, 255),
         "capture": (255, 126, 64, 230),
+        "guides": (255, 174, 126, 255),
     },
 )
 
@@ -70,9 +75,8 @@ def _build_default_magnifier_model(view_state, render_config, magnifier_id: str 
         capture_size_relative=float(state.default_capture_size_relative or 0.1),
         border_color=state.default_border_color,
         divider_color=state.default_divider_color,
-        capture_ring_color=capture_state.color,
         offset_relative=Point(0.0, 0.0),
-        spacing_relative=AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE,
+        spacing_relative=DEFAULT_MAGNIFIER_SPACING_RELATIVE,
         is_horizontal=False,
         internal_split=0.5,
         divider_visible=state.default_divider_visible,
@@ -100,8 +104,8 @@ def _apply_auto_instance_color(state: MagnifierWidgetState, model: MagnifierMode
     palette = _AUTO_COLOR_PALETTE[palette_index]
     model.border_color = _color_from_rgba(palette["border"])
     model.divider_color = _color_from_rgba(palette["divider"])
-    model.laser_color = _color_from_rgba(palette["laser"])
-    model.capture_ring_color = _color_from_rgba(palette["capture"])
+    model.capture_color = _color_from_rgba(palette["capture"])
+    model.guides_color = _color_from_rgba(palette["guides"])
 
 def _state(view_state) -> MagnifierWidgetState:
     return get_magnifier_widget_state(view_state)
@@ -111,6 +115,7 @@ def magnifier_enabled(view_state) -> bool:
 
 def set_magnifier_enabled_flag(view_state, enabled: bool) -> None:
     _state(view_state).enabled = bool(enabled)
+    view_state.overlay_enabled = bool(enabled)
 
 def active_magnifier_id(view_state) -> str | None:
     return _state(view_state).active_id
@@ -128,19 +133,13 @@ def default_capture_size(view_state) -> float:
     return float(_state(view_state).default_capture_size_relative)
 
 def active_or_default_divider_visible(view_state) -> bool:
-    state = _state(view_state)
-    active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
-    return bool(active.divider_visible) if active is not None else bool(state.default_divider_visible)
+    return bool(get_divider_widget_state(view_state).visible)
 
 def active_or_default_divider_thickness(view_state) -> int:
-    state = _state(view_state)
-    active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
-    return int(active.divider_thickness) if active is not None else int(state.default_divider_thickness)
+    return int(get_divider_widget_state(view_state).thickness)
 
 def active_or_default_divider_color(view_state):
-    state = _state(view_state)
-    active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
-    return active.divider_color if active is not None else state.default_divider_color
+    return get_divider_widget_state(view_state).color
 
 def active_or_default_border_color(view_state):
     state = _state(view_state)
@@ -217,7 +216,7 @@ def remove_magnifier_model(view_state, render_config, magnifier_id: str) -> None
             set_magnifier_enabled_flag(view_state, False)
 
 class MagnifierStoreService:
-    THRESHOLD = AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+    THRESHOLD = MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
 
     def __init__(self, store):
         self.store = store
@@ -228,13 +227,24 @@ class MagnifierStoreService:
 
     @property
     def _render(self):
-        return self.store.viewport.render_config
+        viewport = getattr(self.store, "viewport", None)
+        render = getattr(viewport, "render_config", None) if viewport is not None else None
+        return render if render is not None else RenderConfig()
+
+    def _next_magnifier_id(self) -> str:
+        models = _state(self._view).models
+        if DEFAULT_MAGNIFIER_ID not in models:
+            return DEFAULT_MAGNIFIER_ID
+        index = 2
+        while f"magnifier-{index}" in models:
+            index += 1
+        return f"magnifier-{index}"
 
     def add_magnifier(self, magnifier_id: str | None = None, position: Point | None = None):
         return add_magnifier_model(
             self._view,
             self._render,
-            magnifier_id=magnifier_id or DEFAULT_MAGNIFIER_ID,
+            magnifier_id=magnifier_id or self._next_magnifier_id(),
             position=position,
         )
 

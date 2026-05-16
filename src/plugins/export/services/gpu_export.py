@@ -4,8 +4,8 @@ from PIL import Image
 from PyQt6.QtWidgets import QApplication
 
 from plugins.export.models import ExportRenderContext
+from ui.canvas_presentation.plan_builder import compute_canvas_plan as _compute_canvas_plan
 
-from .gpu_export_layout import compute_canvas_plan as _compute_canvas_plan
 from .gpu_export_proxy import GpuExportProxy
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -42,7 +42,7 @@ class GpuExportService:
         width: int | None = None,
         height: int | None = None,
         render_context: ExportRenderContext | None = None,
-        magnifier_drawing_coords=None,
+        overlay_drawing_coords=None,
         prepared_background_layers=None,
         force_tiled: bool = False,
         min_tiles_per_axis: int = 2,
@@ -64,7 +64,7 @@ class GpuExportService:
                 source_image1=image1,
                 source_image2=image2,
                 source_key=None,
-                magnifier_drawing_coords=magnifier_drawing_coords,
+                overlay_drawing_coords=overlay_drawing_coords,
                 prepared_background_layers=prepared_background_layers,
                 cached_diff_image=None,
             )

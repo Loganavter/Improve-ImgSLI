@@ -31,11 +31,17 @@ def connect_signals(presenter):
     presenter.font_settings_flyout.closed.connect(
         lambda: on_font_flyout_closed(presenter)
     )
+    presenter.font_settings_flyout.interaction_started.connect(
+        lambda slider_name: _on_font_flyout_interaction_started(presenter, slider_name)
+    )
+    presenter.font_settings_flyout.interaction_finished.connect(
+        lambda slider_name: _on_font_flyout_interaction_finished(presenter, slider_name)
+    )
     presenter.store.state_changed.connect(
         lambda domain: on_store_state_changed(presenter, domain)
     )
 
-    from core.events import SettingsApplyFontSettingsEvent
+    from plugins.settings.events import SettingsApplyFontSettingsEvent
     from domain.qt_adapters import qcolor_to_color
 
     if presenter.event_bus:
@@ -194,7 +200,7 @@ def _connect_magnifier_color_controls(presenter):
         )
 
     presenter.ui.btn_magnifier_guides.toggled.connect(
-        lambda checked: on_magnifier_guides_toggled(presenter, checked)
+        lambda checked: on_magnifier_guides_toggled(presenter, not checked)
     )
     presenter.ui.btn_magnifier_guides.valueChanged.connect(
         lambda thickness: on_magnifier_guides_thickness_changed(presenter, thickness)
@@ -208,3 +214,13 @@ def _connect_magnifier_color_controls(presenter):
         presenter.ui.btn_magnifier_guides_width.valueChanged.connect(
             lambda thickness: on_magnifier_guides_thickness_changed(presenter, thickness)
         )
+
+def _on_font_flyout_interaction_started(presenter, slider_name: str) -> None:
+    viewport_ctrl = getattr(getattr(presenter, "main_controller", None), "viewport_plugin", None)
+    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_pressed"):
+        viewport_ctrl.on_slider_pressed(slider_name)
+
+def _on_font_flyout_interaction_finished(presenter, slider_name: str) -> None:
+    viewport_ctrl = getattr(getattr(presenter, "main_controller", None), "viewport_plugin", None)
+    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_released"):
+        viewport_ctrl.on_slider_released(slider_name)

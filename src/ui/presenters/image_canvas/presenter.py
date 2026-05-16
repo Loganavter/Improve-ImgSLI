@@ -12,9 +12,6 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class ImageCanvasPresenter(QObject):
 
-    _worker_finished_signal = pyqtSignal(dict, dict, int)
-    _worker_error_signal = pyqtSignal(str)
-
     def __init__(self, store: Store, main_controller, ui, main_window_app, parent=None):
         super().__init__(parent)
         self.store = store
@@ -25,14 +22,12 @@ class ImageCanvasPresenter(QObject):
         self.lifecycle = components.lifecycle
         self.view = components.view
         self.background = components.background
-        self.magnifier = components.magnifier
-        self.results = components.results
+        self.overlay = components.overlay
         self.lifecycle.initialize()
         connect_image_canvas_runtime(self)
 
     def _on_action(self, action):
-        from core.state_management.actions import UpdateMagnifierCombinedStateAction
-        if isinstance(action, UpdateMagnifierCombinedStateAction):
+        if getattr(action, "type", None) == "UPDATE_MAGNIFIER_COMBINED_STATE":
             self._last_mag_signature = None
 
     def connect_event_handler_signals(self, event_handler):
@@ -57,7 +52,7 @@ class ImageCanvasPresenter(QObject):
         return self.lifecycle.start_interactive_movement()
 
     def stop_interactive_movement(self):
-        return self.magnifier.stop_interactive_movement()
+        return self.overlay.stop_interactive_movement()
 
     def update_capture_area_display(self):
-        return self.magnifier.update_capture_area_display()
+        return self.overlay.update_capture_area_display()

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Improve ImgSLI
+Comment=Image comparison tool
+Exec=@LAUNCHER_PATH@ run
+Icon=@ICON_PATH@
+Terminal=false
+Categories=Graphics;Photography;
+StartupWMClass=improve-imgsli
+StartupNotify=true

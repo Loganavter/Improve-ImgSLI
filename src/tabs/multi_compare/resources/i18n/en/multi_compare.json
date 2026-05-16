@@ -1,0 +1,8 @@
+{
+  "tab_name": "Multi Compare",
+  "drop_hint": "Drop images here to compare\n(3–12 images)",
+  "slot_limit_reached": "Maximum number of images reached",
+  "reset_zoom": "Reset zoom",
+  "focus_mode": "Focus mode",
+  "grid_mode": "Grid mode"
+}
