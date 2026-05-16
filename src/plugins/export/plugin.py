@@ -4,11 +4,11 @@ import logging
 from threading import Event
 from typing import Any, Callable
 
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
-from core.events import (
+from plugins.export.events import (
     ExportExportRecordedVideoEvent,
     ExportOpenVideoEditorEvent,
     ExportPasteImageFromClipboardEvent,

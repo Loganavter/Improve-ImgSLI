@@ -1,9 +1,23 @@
 {
   "tooltip": {
+    "add_images_1": "Добавить изображения в первую сторону",
+    "add_images_2": "Добавить изображения во вторую сторону",
+    "adjust_divider_width": "Изменить толщину разделителя",
+    "adjust_magnifier_divider_width": "Изменить толщину разделителя лупы",
+    "adjust_magnifier_guides_width": "Изменить толщину направляющих лупы",
+    "add_or_remove_magnifier": "Добавить или удалить лупу",
+    "change_channel_mode": "Изменить режим каналов",
+    "change_diff_mode": "Изменить режим сравнения",
     "click_remove_current_image": "Нажатие: Удалить текущее изображение",
     "click_swap_current_images": "Нажатие: Поменять текущие изображения",
+    "create_workspace_session": "Создать сессию рабочего пространства",
     "hold_swap_entire_lists": "Удержание: Поменять списки целиком",
-    "use_favorite": "Использовать избранное",
-    "file_names_hidden_on_zoom": "Названия на холсте скрыты при зуме. Верните масштаб к 100%, чтобы снова их увидеть."
+    "file_names_hidden_on_zoom": "Названия на холсте скрыты при зуме. Верните масштаб к 100%, чтобы снова их увидеть.",
+    "open_file_name_text_settings": "Открыть настройки текста имен файлов",
+    "quick_save_image": "Быстро сохранить изображение",
+    "save_result": "Сохранить результат",
+    "toggle_divider_visibility": "Переключить видимость разделителя",
+    "toggle_magnifier_divider_visibility": "Переключить видимость разделителя лупы",
+    "use_favorite": "Использовать избранное"
   }
 }

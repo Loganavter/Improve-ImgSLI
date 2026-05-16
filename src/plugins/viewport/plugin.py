@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.events import (
+from core.plugin_system import Plugin, plugin
+from core.plugin_system.interfaces import IControllablePlugin, IVideoTrackProvider
+from core.plugin_system.ui_integration import get_plugin_name
+from plugins.viewport.controller import ViewportController
+from plugins.viewport.definition import build_plugin_definition
+from plugins.viewport.events import (
     ViewportOnSliderPressedEvent,
     ViewportOnSliderReleasedEvent,
     ViewportSetMagnifierInternalSplitEvent,
@@ -11,6 +16,7 @@ from core.events import (
     ViewportSetSplitPositionEvent,
     ViewportToggleFreezeMagnifierEvent,
     ViewportToggleMagnifierEvent,
+    ViewportToggleMagnifierLaserEvent,
     ViewportToggleMagnifierOrientationEvent,
     ViewportToggleMagnifierPartEvent,
     ViewportToggleOrientationEvent,
@@ -19,10 +25,6 @@ from core.events import (
     ViewportUpdateMagnifierSizeRelativeEvent,
     ViewportUpdateMovementSpeedEvent,
 )
-from core.plugin_system import Plugin, plugin
-from core.plugin_system.interfaces import IControllablePlugin, IVideoTrackProvider
-from core.plugin_system.ui_integration import get_plugin_name
-from plugins.viewport.controller import ViewportController
 from plugins.viewport.state import ViewportState as ViewportPluginState
 from plugins.video_editor.services.keyframing import (
     ChannelDescriptor,
@@ -34,33 +36,50 @@ from plugins.video_editor.services.keyframing import (
     TrackDescriptor,
 )
 from plugins.video_editor.services.keyframing.types import FrameSnapshot
-from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
-def _active_magnifier(viewport):
-    proxy = type("StoreProxy", (), {"viewport": viewport})()
-    return MagnifierStoreService(proxy).get_active_or_first_magnifier()
+def _store_proxy(viewport):
+    return type("StoreProxy", (), {"viewport": viewport})()
+
+def _execute_magnifier_command(store, command_id: str, *args, **kwargs):
+    command = get_canvas_feature_command_by_alias(command_id)
+    if command is None:
+        return None
+    return command(store, *args, **kwargs)
+
+def _query_magnifier(store, query_id: str, default=None, *args, **kwargs):
+    command = get_canvas_feature_command_by_alias(query_id)
+    if command is None:
+        return default
+    result = command(store, *args, **kwargs)
+    return default if result is None else result
+
+def _active_magnifier_state(viewport):
+    return _query_magnifier(_store_proxy(viewport), "overlay.active_state")
 
 def _read_active_magnifier_freeze(snapshot: FrameSnapshot):
-    magnifier = _active_magnifier(snapshot.viewport_state)
-    return {"value": bool(magnifier.freeze) if magnifier is not None else False}
+    magnifier = _active_magnifier_state(snapshot.viewport_state)
+    return {"value": bool(magnifier["freeze"]) if magnifier is not None else False}
 
 def _write_active_magnifier_freeze(snapshot: FrameSnapshot, channels):
-    magnifier = _active_magnifier(snapshot.viewport_state)
-    if magnifier is None:
-        return
-    magnifier.freeze = bool(channels["value"])
+    _execute_magnifier_command(
+        _store_proxy(snapshot.viewport_state),
+        "overlay.set_active_freeze",
+        bool(channels["value"]),
+    )
 
 def _read_active_magnifier_combined(snapshot: FrameSnapshot):
-    proxy = type("StoreProxy", (), {"viewport": snapshot.viewport_state})()
-    scene_state = MagnifierStoreService(proxy)
-    return {"value": scene_state.is_active_magnifier_combined()}
+    return {
+        "value": bool(
+            _query_magnifier(_store_proxy(snapshot.viewport_state), "overlay.active_combined", False)
+        )
+    }
 
 def _write_active_magnifier_combined(snapshot: FrameSnapshot, channels):
-    magnifier = _active_magnifier(snapshot.viewport_state)
-    if magnifier is None:
-        return
-    magnifier.spacing_relative = (
-        0.0 if bool(channels["value"]) else max(magnifier.spacing_relative, 0.05)
+    _execute_magnifier_command(
+        _store_proxy(snapshot.viewport_state),
+        "overlay.set_active_combined",
+        bool(channels["value"]),
     )
 
 def _read_magnifier_movement_speed(snapshot: FrameSnapshot):
@@ -70,10 +89,10 @@ def _write_magnifier_movement_speed(snapshot: FrameSnapshot, channels):
     snapshot.viewport_state.view_state.movement_speed_per_sec = float(channels["value"])
 
 def _read_magnifier_movement_optimized(snapshot: FrameSnapshot):
-    return {"value": bool(snapshot.viewport_state.view_state.optimize_magnifier_movement)}
+    return {"value": bool(snapshot.viewport_state.view_state.optimize_interactive_movement)}
 
 def _write_magnifier_movement_optimized(snapshot: FrameSnapshot, channels):
-    snapshot.viewport_state.view_state.optimize_magnifier_movement = bool(
+    snapshot.viewport_state.view_state.optimize_interactive_movement = bool(
         channels["value"]
     )
 
@@ -136,7 +155,6 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
         super().__init__()
         self.controller: ViewportController | None = None
         self.store: Any | None = None
-        self._magnifier_plugin: Any | None = None
         self.event_bus: Any | None = None
         self._domain_state: ViewportPluginState | None = None
 
@@ -144,16 +162,13 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
         super().initialize(context)
         self.store = getattr(context, "store", None)
         self.event_bus = getattr(context, "event_bus", None)
-        coordinator = getattr(context, "plugin_coordinator", None)
-        self._magnifier_plugin = (
-            coordinator.get_plugin("magnifier") if coordinator else None
-        )
-
         if self.store:
             self._domain_state = ViewportPluginState()
             self.store.viewport.set_viewport_plugin_state(self._domain_state)
             self.controller = ViewportController(
-                self.store, self._magnifier_plugin, self.event_bus
+                self.store,
+                self.event_bus,
+                settings_manager=getattr(context, "settings_manager", None),
             )
         ui_registry = getattr(context, "plugin_ui_registry", None)
         if ui_registry and self.controller:
@@ -193,6 +208,10 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
                 self.controller.on_toggle_magnifier_part,
             )
             self.event_bus.subscribe(
+                ViewportToggleMagnifierLaserEvent,
+                self.controller.on_toggle_magnifier_laser,
+            )
+            self.event_bus.subscribe(
                 ViewportUpdateMagnifierCombinedStateEvent,
                 self.controller.on_update_magnifier_combined_state,
             )
@@ -225,6 +244,9 @@ class ViewportPlugin(Plugin, IControllablePlugin, IVideoTrackProvider):
 
     def get_controller(self) -> ViewportController | None:
         return self.controller
+
+    def get_definition(self):
+        return build_plugin_definition()
 
     def handle_command(self, command: str, *args: Any, **kwargs: Any) -> Any:
         if not self.controller:

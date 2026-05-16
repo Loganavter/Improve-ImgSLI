@@ -1,4 +1,5 @@
 import PIL.Image
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 from ui.presenters.image_canvas.background_parts.image_cache import (
     create_preview_cache_async,
@@ -10,7 +11,6 @@ from ui.presenters.image_canvas.background_parts.image_cache import (
 )
 from ui.presenters.image_canvas.background_parts.render_flow import (
     finish_resize_delay,
-    render_background,
     schedule_update as schedule_update_impl,
     should_use_dirty_rects_optimization,
     update_comparison_if_needed as update_comparison_if_needed_impl,
@@ -23,34 +23,6 @@ from ui.presenters.image_canvas.lifecycle import (
     start_interactive_movement,
     update_minimum_window_size,
 )
-from ui.presenters.image_canvas.magnifier_parts.gl_render import (
-    render_magnifier_diff_fallback,
-    render_magnifier_gl_fast,
-    sync_widget_overlay_coords,
-)
-from ui.presenters.image_canvas.magnifier_parts.result_handlers import (
-    on_capture_patch_ready,
-    on_magnifier_layer_ready,
-    on_magnifier_patch_ready,
-    on_magnifier_worker_error,
-    stop_interactive_movement as stop_interactive_movement_impl,
-    update_capture_area_display as update_capture_area_display_impl,
-    update_widget_capture_area_geometry,
-)
-from ui.presenters.image_canvas.magnifier_parts.worker_flow import (
-    magnifier_worker_task,
-    render_capture_area_only_optimized,
-    render_magnifier_layer,
-    start_magnifier_only_worker,
-)
-from ui.presenters.image_canvas.results import (
-    handle_background_result,
-    handle_patch_result,
-    handle_magnifier_result,
-    on_generic_worker_error,
-    on_worker_error,
-    on_worker_finished,
-)
 from ui.presenters.image_canvas.signatures import (
     get_background_signature,
     get_divider_color_tuple,
@@ -60,9 +32,11 @@ from ui.presenters.image_canvas.signatures import (
 from ui.presenters.image_canvas.view import (
     display_single_image_on_label,
     is_gl_canvas,
-    prepare_gl_background_layers,
     set_image_layers,
 )
+
+def _get_overlay_runtime_command(capability_id: str):
+    return get_canvas_feature_command_by_alias(capability_id)
 
 class CanvasLifecycleCoordinator:
     def __init__(self, presenter):
@@ -144,14 +118,8 @@ class CanvasViewCoordinator:
             self.presenter, background, magnifier, mag_pos, coords_snapshot
         )
 
-    def prepare_gl_background_layers(self, image1, image2):
-        return prepare_gl_background_layers(self.presenter, image1, image2)
-
     def display_single_image_on_label(self, pil_image: PIL.Image.Image | None):
         return display_single_image_on_label(self.presenter, pil_image)
-
-    def sync_widget_overlay_coords(self):
-        return sync_widget_overlay_coords(self.presenter)
 
     def get_divider_color_tuple(self, vp):
         return get_divider_color_tuple(vp)
@@ -191,141 +159,33 @@ class CanvasBackgroundCoordinator:
             self.presenter, render_params_dict, label_dims
         )
 
-    def render_background(self, sig):
-        return render_background(self.presenter, sig)
-
     def create_preview_cache_async(self, img1, img2):
         return create_preview_cache_async(self.presenter, img1, img2)
 
     def on_preview_cache_ready(self, result):
         return on_preview_cache_ready(self.presenter, result)
 
-class CanvasMagnifierCoordinator:
+class CanvasOverlayCoordinator:
     def __init__(self, presenter):
         self.presenter = presenter
 
     def get_signature(self):
         return get_magnifier_signature(self.presenter)
 
-    def render_gl_fast(self):
-        return render_magnifier_gl_fast(self.presenter)
-
-    def render_diff_fallback(
-        self, vp, orig1, orig2, diff_mode, slots, mag_px, border_color, radius, interp_key
-    ):
-        return render_magnifier_diff_fallback(
-            self.presenter,
-            vp,
-            orig1,
-            orig2,
-            diff_mode,
-            slots,
-            mag_px,
-            border_color,
-            radius,
-            interp_key,
-        )
+    def rebuild_overlay(self):
+        command = _get_overlay_runtime_command("overlay.rebuild")
+        return command(self.presenter) if command is not None else None
 
     def render_layer(self, sig) -> bool:
-        return render_magnifier_layer(self.presenter, sig)
-
-    def start_worker(
-        self,
-        render_params_dict: dict,
-        image1_scaled_for_display,
-        image2_scaled_for_display,
-        original_image1_pil,
-        original_image2_pil,
-        magnifier_coords,
-        label_width: int,
-        label_height: int,
-    ):
-        return start_magnifier_only_worker(
-            self.presenter,
-            render_params_dict,
-            image1_scaled_for_display,
-            image2_scaled_for_display,
-            original_image1_pil,
-            original_image2_pil,
-            magnifier_coords,
-            label_width,
-            label_height,
-        )
-
-    def render_capture_area_only_optimized(
-        self,
-        render_params_dict: dict,
-        image1_scaled_for_display,
-        image2_scaled_for_display,
-        original_image1_pil,
-        original_image2_pil,
-        magnifier_coords,
-        label_width: int,
-        label_height: int,
-    ):
-        return render_capture_area_only_optimized(
-            self.presenter,
-            render_params_dict,
-            image1_scaled_for_display,
-            image2_scaled_for_display,
-            original_image1_pil,
-            original_image2_pil,
-            magnifier_coords,
-            label_width,
-            label_height,
-        )
-
-    def on_capture_patch_ready(self, result):
-        return on_capture_patch_ready(self.presenter, result)
-
-    @staticmethod
-    def worker_task(payload):
-        return magnifier_worker_task(payload)
-
-    def on_worker_error(self, error_tuple):
-        return on_magnifier_worker_error(self.presenter, error_tuple)
-
-    def on_layer_ready(self, result):
-        return on_magnifier_layer_ready(self.presenter, result)
-
-    def on_patch_ready(self, result):
-        return on_magnifier_patch_ready(self.presenter, result)
-
-    def update_widget_capture_area_geometry(self, magnifier_coords, w, h):
-        return update_widget_capture_area_geometry(self.presenter, magnifier_coords, w, h)
+        command = _get_overlay_runtime_command("overlay.render_layer")
+        return bool(command(self.presenter, sig)) if command is not None else False
 
     def stop_interactive_movement(self):
-        return stop_interactive_movement_impl(
-            self.presenter, self.presenter.lifecycle.debug_log_gate()
-        )
+        command = _get_overlay_runtime_command("overlay.stop_interactive_movement")
+        if command is None:
+            return None
+        return command(self.presenter, self.presenter.lifecycle.debug_log_gate())
 
     def update_capture_area_display(self):
-        return update_capture_area_display_impl(self.presenter)
-
-class CanvasResultCoordinator:
-    def __init__(self, presenter):
-        self.presenter = presenter
-
-    def on_worker_finished(
-        self, result_payload: dict, params: dict, finished_task_id: int
-    ):
-        return on_worker_finished(self.presenter, result_payload, params, finished_task_id)
-
-    def handle_background_result(self, result: dict, params: dict):
-        return handle_background_result(self.presenter, result, params)
-
-    def handle_magnifier_result(self, result: dict, params: dict):
-        return handle_magnifier_result(
-            self.presenter, result, params, self.presenter.lifecycle.debug_log_gate()
-        )
-
-    def handle_patch_result(self, result: dict, params: dict):
-        return handle_patch_result(
-            self.presenter, result, params, self.presenter.lifecycle.debug_log_gate()
-        )
-
-    def on_worker_error(self, msg: str):
-        return on_worker_error(self.presenter, msg)
-
-    def on_generic_worker_error(self, error_tuple: tuple):
-        return on_generic_worker_error(error_tuple)
+        command = _get_overlay_runtime_command("overlay.update_capture_area_display")
+        return command(self.presenter) if command is not None else None

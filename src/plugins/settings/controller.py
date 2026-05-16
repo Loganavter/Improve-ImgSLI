@@ -5,18 +5,15 @@ import logging
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from domain.types import Color
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command
+from ui.canvas_infra.scene.widget_registry import (
+    get_canvas_feature_command,
+    get_canvas_feature_command_by_alias,
+)
 
-from core.events import (
+from plugins.settings.events import (
     SettingsApplyFontSettingsEvent,
     SettingsChangeLanguageEvent,
     SettingsToggleAutoCropBlackBordersEvent,
-    SettingsToggleIncludeFilenamesInSavedEvent,
-)
-from ui.canvas_features.magnifier.events import (
-    SettingsSetMagnifierDividerColorEvent,
-    SettingsSetMagnifierDividerThicknessEvent,
-    SettingsToggleMagnifierDividerVisibilityEvent,
 )
 from plugins.settings.color_actions import SettingsColorActions
 from plugins.settings.mutations import SettingsMutationService
@@ -70,12 +67,7 @@ class SettingsController(QObject):
             self.presenter.on_language_changed()
 
     def toggle_include_filenames_in_saved(self, checked: bool):
-        self.mutations.set_viewport_value(
-            "include_file_names_in_saved",
-            checked,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self._execute_by_alias("labels.settings.toggle_visibility", bool(checked))
 
     def apply_font_settings(
         self,
@@ -87,15 +79,21 @@ class SettingsController(QObject):
         placement_mode: str,
         text_alpha_percent: int,
     ):
-        self.mutations.apply_font_settings(
-            size=size,
-            font_weight=font_weight,
+        changed = self.mutations.apply_font_settings(
+            size=max(1, int(size)),
+            font_weight=max(0, int(font_weight)),
             color=color,
             bg_color=bg_color,
-            draw_background=draw_background,
-            placement_mode=placement_mode,
-            text_alpha_percent=text_alpha_percent,
+            draw_background=bool(draw_background),
+            placement_mode=str(placement_mode),
+            text_alpha_percent=max(0, min(100, int(text_alpha_percent))),
         )
+        if not changed:
+            return
+        self.notifier.request_core_update()
+        recorder = getattr(self.store, "recorder", None)
+        if recorder is not None and getattr(recorder, "is_recording", False) and not getattr(recorder, "is_paused", False):
+            recorder.capture_frame()
 
     def execute_canvas_feature_command(
         self,
@@ -110,21 +108,18 @@ class SettingsController(QObject):
             )
         return command(self, *args)
 
+    def _execute_by_alias(self, alias: str, *args):
+        command = get_canvas_feature_command_by_alias(alias)
+        if command is None:
+            logger.warning("Canvas feature command unavailable: %s", alias)
+            return None
+        return command(self, *args)
+
     def toggle_magnifier_divider_visibility(self, visible: bool):
-        self.mutations.set_canvas_feature_setting(
-            "magnifier.divider.visible",
-            visible,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self._execute_by_alias("overlay.settings.toggle_divider_visibility", visible)
 
     def set_magnifier_divider_color(self, color: Color):
-        self.mutations.set_canvas_feature_setting(
-            "magnifier.divider.color",
-            color,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self._execute_by_alias("overlay.settings.set_divider_color", color)
 
     def show_magnifier_divider_color_picker(self):
         self.color_actions.show_magnifier_divider_color_picker(
@@ -133,12 +128,7 @@ class SettingsController(QObject):
 
     def set_magnifier_divider_thickness(self, thickness: int):
         thickness = max(0, min(10, int(thickness)))
-        self.mutations.set_canvas_feature_setting(
-            "magnifier.divider.thickness",
-            thickness,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self._execute_by_alias("overlay.settings.set_divider_thickness", thickness)
 
     def toggle_auto_crop_black_borders(self, enabled: bool):
         self.mutations.set_settings_value(
@@ -156,28 +146,22 @@ class SettingsController(QObject):
         )
 
     def set_magnifier_border_color(self, color: Color):
-        self.mutations.set_canvas_feature_setting(
-            "magnifier.border.color",
-            color,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self._execute_by_alias("overlay.settings.set_border_color", color)
 
     def set_guides_color(self, color: Color):
-        self.mutations.set_canvas_feature_setting(
-            "magnifier.laser.color",
-            color,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self._execute_by_alias("guides.settings.set_color", color)
+
+    def toggle_guides_visibility(self, enabled: bool):
+        self._execute_by_alias("guides.settings.toggle_visibility", bool(enabled))
+
+    def set_guides_thickness(self, thickness: int):
+        self._execute_by_alias("guides.settings.set_thickness", max(0, int(thickness)))
 
     def set_capture_color(self, color: Color):
-        self.mutations.set_canvas_feature_setting(
-            "magnifier.capture.color",
-            color,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        )
+        self._execute_by_alias("capture.settings.set_color", color)
+
+    def toggle_capture_visibility(self, visible: bool):
+        self._execute_by_alias("capture.settings.toggle_visibility", bool(visible))
 
     def set_magnifier_laser_color(self, color: Color):
         self.set_guides_color(color)
@@ -209,11 +193,6 @@ class SettingsController(QObject):
     def on_change_language(self, event: SettingsChangeLanguageEvent):
         self.change_language(event.lang_code)
 
-    def on_toggle_include_filenames_in_saved(
-        self, event: SettingsToggleIncludeFilenamesInSavedEvent
-    ):
-        self.toggle_include_filenames_in_saved(event.include)
-
     def on_apply_font_settings(self, event: SettingsApplyFontSettingsEvent):
         self.apply_font_settings(
             event.size,
@@ -225,22 +204,7 @@ class SettingsController(QObject):
             event.alpha,
         )
 
-    def on_toggle_magnifier_divider_visibility(
-        self, event: SettingsToggleMagnifierDividerVisibilityEvent
-    ):
-        self.toggle_magnifier_divider_visibility(event.visible)
-
-    def on_set_magnifier_divider_color(
-        self, event: SettingsSetMagnifierDividerColorEvent
-    ):
-        self.set_magnifier_divider_color(event.color)
-
     def on_toggle_auto_crop_black_borders(
         self, event: SettingsToggleAutoCropBlackBordersEvent
     ):
         self.toggle_auto_crop_black_borders(event.enabled)
-
-    def on_set_magnifier_divider_thickness(
-        self, event: SettingsSetMagnifierDividerThicknessEvent
-    ):
-        self.set_magnifier_divider_thickness(event.thickness)

@@ -63,7 +63,7 @@ class DragAndDropService(QObject):
             return
 
         try:
-            from shared_toolkit.ui.widgets.atomic.tooltips import PathTooltip
+            from sli_ui_toolkit.ui.widgets.atomic.tooltips import PathTooltip
 
             PathTooltip.get_instance().hide_tooltip()
         except Exception:
@@ -109,9 +109,7 @@ class DragAndDropService(QObject):
         pixmap = source_widget.grab()
 
         if DragGhostWidget is None:
-            from shared_toolkit.ui.widgets.composite.drag_ghost_widget import (
-                DragGhostWidget,
-            )
+            from sli_ui_toolkit.widgets import DragGhostWidget
 
         ghost_parent = None
         if self.main_window is not None:

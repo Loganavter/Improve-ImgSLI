@@ -3,7 +3,7 @@ from __future__ import annotations
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QScrollArea, QSizePolicy
 
-from shared_toolkit.ui.widgets.composite import (
+from sli_ui_toolkit.widgets import (
     DialogActionBar,
     ScrollableDialogPage,
     SidebarDialogShell,
@@ -100,7 +100,7 @@ def calculate_and_apply_geometry(dialog):
     final_height = min(required_height, screen_h - 100) + 5
 
     dialog.resize(final_width, final_height)
-    dialog.setMinimumSize(final_width, final_height)
+    dialog.setMinimumSize(300, 200)
     if dialog.parent():
         geo = dialog.geometry()
         geo.moveCenter(dialog.parent().geometry().center())

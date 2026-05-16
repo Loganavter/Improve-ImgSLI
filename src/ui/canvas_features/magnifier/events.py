@@ -15,3 +15,7 @@ class SettingsSetMagnifierDividerColorEvent:
 @dataclass(frozen=True)
 class SettingsSetMagnifierDividerThicknessEvent:
     thickness: int
+
+@dataclass(frozen=True)
+class SettingsSetMagnifierBorderColorEvent:
+    color: Color

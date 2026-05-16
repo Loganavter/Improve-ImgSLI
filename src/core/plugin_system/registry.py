@@ -17,13 +17,8 @@ class PluginRegistry:
         self._plugins: dict[str, Plugin] = {}
 
     def discover_plugins(self) -> Iterable[Plugin]:
-        try:
-            import plugins
-        except ImportError:
-            return []
-
-        for finder, module_name, is_pkg in pkgutil.iter_modules(plugins.__path__):
-            importlib.import_module(f"plugins.{module_name}")
+        self._scan_package("plugins")
+        self._scan_package("tabs")
 
         created: list[Plugin] = []
         for plugin_cls in get_registered_plugins():
@@ -36,6 +31,22 @@ class PluginRegistry:
             created.append(plugin_instance)
 
         return created
+
+    def _scan_package(self, package_name: str) -> None:
+        try:
+            package = importlib.import_module(package_name)
+        except ImportError:
+            return
+
+        for finder, module_name, is_pkg in pkgutil.iter_modules(package.__path__):
+            module = None
+            try:
+                module = importlib.import_module(f"{package_name}.{module_name}.plugin")
+            except ModuleNotFoundError as exc:
+                if exc.name != f"{package_name}.{module_name}.plugin":
+                    raise
+            if module is None:
+                importlib.import_module(f"{package_name}.{module_name}")
 
     def get_plugin(self, name: str) -> Plugin | None:
         return self._plugins.get(name)

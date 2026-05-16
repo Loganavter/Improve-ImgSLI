@@ -7,7 +7,7 @@ import urllib.request
 from PyQt6.QtWidgets import QApplication
 
 from resources.translations import tr
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -180,7 +180,7 @@ class ClipboardService:
                 image_label.setFocus()
                 return True
 
-            from shared_toolkit.ui.widgets.paste_direction_overlay import (
+            from sli_ui_toolkit.ui.widgets.overlays.paste_direction_overlay import (
                 PasteDirectionOverlay,
             )
 

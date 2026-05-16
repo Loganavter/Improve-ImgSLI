@@ -144,4 +144,25 @@ class Recorder(QObject):
             name1=doc.get_current_display_name(1),
             name2=doc.get_current_display_name(2),
         )
+        try:
+            from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+
+            proxy = type("StoreProxy", (), {"viewport": vp_snapshot})()
+            query_total_count = get_canvas_feature_command_by_alias("overlay.total_count")
+            query_enabled = get_canvas_feature_command_by_alias("overlay.enabled")
+            n_models = int(query_total_count(proxy) or 0) if query_total_count is not None else 0
+            enabled = bool(query_enabled(proxy)) if query_enabled is not None else False
+            if n_models != getattr(self, "_last_recorded_mag_count", n_models) or enabled != getattr(self, "_last_recorded_mag_enabled", enabled):
+                logger.debug(
+                    "capture_frame: mag count=%d→%d, enabled=%s→%s at t=%.3f",
+                    getattr(self, "_last_recorded_mag_count", n_models),
+                    n_models,
+                    getattr(self, "_last_recorded_mag_enabled", enabled),
+                    enabled,
+                    elapsed,
+                )
+            self._last_recorded_mag_count = n_models
+            self._last_recorded_mag_enabled = enabled
+        except Exception:
+            pass
         self._recording.append(snapshot)

@@ -4,13 +4,13 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from core.constants import AppConstants
-from shared_toolkit.ui.widgets.atomic import (
+from sli_ui_toolkit.widgets import (
+    CheckBox,
+    ComboBox,
     CustomGroupWidget,
-    FluentCheckBox,
-    FluentRadioButton,
+    RadioButton,
+    SpinBox,
 )
-from shared_toolkit.ui.widgets.atomic.fluent_combobox import FluentComboBox
-from shared_toolkit.ui.widgets.atomic.fluent_spinbox import FluentSpinBox
 
 def init_general_page(dialog, p):
     dialog.page_general, layout = dialog._create_scrollable_page()
@@ -18,10 +18,10 @@ def init_general_page(dialog, p):
     dialog.lang_group = CustomGroupWidget(dialog.tr("label.language", dialog.current_language))
     lang_layout = QHBoxLayout()
     lang_layout.setContentsMargins(5, 5, 5, 5)
-    dialog.radio_en = FluentRadioButton("English")
-    dialog.radio_ru = FluentRadioButton("Русский")
-    dialog.radio_zh = FluentRadioButton("中文")
-    dialog.radio_pt_br = FluentRadioButton("Português")
+    dialog.radio_en = RadioButton("English")
+    dialog.radio_ru = RadioButton("Русский")
+    dialog.radio_zh = RadioButton("中文")
+    dialog.radio_pt_br = RadioButton("Português")
     dialog._lang_group = QButtonGroup(dialog)
     for rb in (dialog.radio_en, dialog.radio_ru, dialog.radio_zh, dialog.radio_pt_br):
         dialog._lang_group.addButton(rb)
@@ -36,7 +36,7 @@ def init_general_page(dialog, p):
     theme_row = QHBoxLayout()
     theme_row.setContentsMargins(5, 5, 5, 5)
     dialog.theme_label = QLabel(dialog.tr("label.theme", dialog.current_language) + ":")
-    dialog.combo_theme = FluentComboBox()
+    dialog.combo_theme = ComboBox()
     dialog.combo_theme.setFixedWidth(140)
     for key in ("auto", "light", "dark"):
         dialog.combo_theme.addItem(dialog.tr(f"settings.{key}", dialog.current_language), key)
@@ -48,12 +48,19 @@ def init_general_page(dialog, p):
     theme_row.addStretch()
     dialog.sys_group.add_layout(theme_row)
 
-    dialog.system_notifications_checkbox = FluentCheckBox(dialog.tr("settings.system_notifications", dialog.current_language))
+    dialog.system_notifications_checkbox = CheckBox(dialog.tr("settings.system_notifications", dialog.current_language))
     dialog.system_notifications_checkbox.setChecked(p.system_notifications_enabled)
     dialog.sys_group.add_widget(dialog.system_notifications_checkbox)
-    dialog.debug_checkbox = FluentCheckBox(dialog.tr("settings.enable_debug_logging", dialog.current_language))
+    dialog.debug_checkbox = CheckBox(dialog.tr("settings.enable_debug_logging", dialog.current_language))
     dialog.debug_checkbox.setChecked(p.debug_mode_enabled)
     dialog.sys_group.add_widget(dialog.debug_checkbox)
+    dialog.show_workspace_tabs_checkbox = CheckBox(
+        dialog.tr("settings.show_workspace_tabs", dialog.current_language)
+    )
+    dialog.show_workspace_tabs_checkbox.setChecked(
+        getattr(p.store.settings, "show_workspace_tabs", False) if p.store else False
+    )
+    dialog.sys_group.add_widget(dialog.show_workspace_tabs_checkbox)
     layout.addWidget(dialog.sys_group)
     dialog.pages_stack.addWidget(dialog.page_general)
 
@@ -62,9 +69,9 @@ def init_interface_page(dialog, p):
     dialog.ui_mode_group = CustomGroupWidget(dialog.tr("settings.ui_mode", dialog.current_language))
     row = QHBoxLayout()
     row.setContentsMargins(5, 5, 5, 5)
-    dialog.radio_ui_mode_beginner = FluentRadioButton(dialog.tr("settings.ui_mode_beginner", dialog.current_language))
-    dialog.radio_ui_mode_advanced = FluentRadioButton(dialog.tr("settings.ui_mode_advanced", dialog.current_language))
-    dialog.radio_ui_mode_expert = FluentRadioButton(dialog.tr("settings.ui_mode_expert", dialog.current_language))
+    dialog.radio_ui_mode_beginner = RadioButton(dialog.tr("settings.ui_mode_beginner", dialog.current_language))
+    dialog.radio_ui_mode_advanced = RadioButton(dialog.tr("settings.ui_mode_advanced", dialog.current_language))
+    dialog.radio_ui_mode_expert = RadioButton(dialog.tr("settings.ui_mode_expert", dialog.current_language))
     dialog._ui_mode_group = QButtonGroup(dialog)
     for rb in (dialog.radio_ui_mode_beginner, dialog.radio_ui_mode_advanced, dialog.radio_ui_mode_expert):
         dialog._ui_mode_group.addButton(rb)
@@ -78,14 +85,14 @@ def init_interface_page(dialog, p):
     dialog.font_group = CustomGroupWidget(dialog.tr("settings.ui_font", dialog.current_language))
     font_radio_layout = QVBoxLayout()
     font_radio_layout.setContentsMargins(5, 5, 5, 5)
-    dialog.radio_font_builtin = FluentRadioButton(dialog.tr("settings.builtin_font", dialog.current_language))
-    dialog.radio_font_system_default = FluentRadioButton(dialog.tr("settings.system_default", dialog.current_language))
-    dialog.radio_font_system_custom = FluentRadioButton(dialog.tr("settings.custom", dialog.current_language))
+    dialog.radio_font_builtin = RadioButton(dialog.tr("settings.builtin_font", dialog.current_language))
+    dialog.radio_font_system_default = RadioButton(dialog.tr("settings.system_default", dialog.current_language))
+    dialog.radio_font_system_custom = RadioButton(dialog.tr("settings.custom", dialog.current_language))
     for rb in (dialog.radio_font_builtin, dialog.radio_font_system_default, dialog.radio_font_system_custom):
         font_radio_layout.addWidget(rb)
     dialog.font_group.add_layout(font_radio_layout)
 
-    dialog.combo_font_family = FluentComboBox()
+    dialog.combo_font_family = ComboBox()
     dialog.combo_font_family.setFixedWidth(320)
     dialog.combo_font_family.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     from PyQt6.QtGui import QFontDatabase
@@ -133,7 +140,7 @@ def init_interface_page(dialog, p):
     len_layout = QHBoxLayout()
     len_layout.setContentsMargins(12, 5, 12, 5)
     value = max(p.min_limit, min(p.max_limit, p.current_max_length))
-    dialog.spin_max_length = FluentSpinBox(default_value=value)
+    dialog.spin_max_length = SpinBox(default_value=value)
     dialog.spin_max_length.setRange(p.min_limit, p.max_limit)
     dialog.spin_max_length.setValue(value)
     dialog.spin_max_length.setFixedWidth(100)
@@ -154,17 +161,17 @@ def init_performance_page(dialog, p):
 def init_analysis_page(dialog, p):
     dialog.page_analysis, layout = dialog._create_scrollable_page()
     dialog.auto_group = CustomGroupWidget(dialog.tr("settings.auto", dialog.current_language))
-    dialog.crop_checkbox = FluentCheckBox(dialog.tr("settings.autocrop_black_borders_on_load", dialog.current_language))
+    dialog.crop_checkbox = CheckBox(dialog.tr("settings.autocrop_black_borders_on_load", dialog.current_language))
     dialog.crop_checkbox.setChecked(p.auto_crop_black_borders)
     dialog.crop_checkbox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     dialog.auto_group.add_widget(dialog.crop_checkbox)
     layout.addWidget(dialog.auto_group)
 
     dialog.metrics_group = CustomGroupWidget(dialog.tr("label.details", dialog.current_language))
-    dialog.auto_psnr_checkbox = FluentCheckBox(dialog.tr("settings.autocalculate_psnr", dialog.current_language))
+    dialog.auto_psnr_checkbox = CheckBox(dialog.tr("settings.autocalculate_psnr", dialog.current_language))
     dialog.auto_psnr_checkbox.setChecked(p.auto_calculate_psnr)
     dialog.metrics_group.add_widget(dialog.auto_psnr_checkbox)
-    dialog.auto_ssim_checkbox = FluentCheckBox(dialog.tr("settings.autocalculate_ssim", dialog.current_language))
+    dialog.auto_ssim_checkbox = CheckBox(dialog.tr("settings.autocalculate_ssim", dialog.current_language))
     dialog.auto_ssim_checkbox.setChecked(p.auto_calculate_ssim)
     dialog.metrics_group.add_widget(dialog.auto_ssim_checkbox)
     layout.addWidget(dialog.metrics_group)
@@ -174,7 +181,7 @@ def _build_resolution_group(dialog, layout, p):
     dialog.res_group = CustomGroupWidget(dialog.tr("settings.display_cache_resolution", dialog.current_language))
     res_layout = QHBoxLayout()
     res_layout.setContentsMargins(5, 5, 5, 5)
-    dialog.combo_resolution = FluentComboBox()
+    dialog.combo_resolution = ComboBox()
     dialog.combo_resolution.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     mapping = {
         "Original": "settings.original",
@@ -198,7 +205,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
     row_zoom = QHBoxLayout()
     row_zoom.setContentsMargins(5, 5, 5, 5)
     dialog.lbl_zoom_interp = QLabel(dialog.tr("settings.zoom_interpolation", dialog.current_language))
-    dialog.combo_zoom_interp = FluentComboBox()
+    dialog.combo_zoom_interp = ComboBox()
     dialog.combo_zoom_interp.setMinimumWidth(140)
     dialog.combo_zoom_interp.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
     row_zoom.addWidget(dialog.lbl_zoom_interp)
@@ -208,9 +215,9 @@ def _build_interactive_optimization_group(dialog, layout, p):
 
     row_mag = QHBoxLayout()
     row_mag.setContentsMargins(5, 5, 5, 5)
-    dialog.optimize_movement_checkbox = FluentCheckBox(dialog.tr("settings.optimize_magnifier_movement", dialog.current_language))
+    dialog.optimize_movement_checkbox = CheckBox(dialog.tr("settings.optimize_magnifier_movement", dialog.current_language))
     dialog.optimize_movement_checkbox.setChecked(p.optimize_magnifier_movement)
-    dialog.combo_mag_interp = FluentComboBox()
+    dialog.combo_mag_interp = ComboBox()
     dialog.combo_mag_interp.setMinimumWidth(140)
     dialog.combo_mag_interp.setEnabled(p.optimize_magnifier_movement)
     row_mag.addWidget(dialog.optimize_movement_checkbox)
@@ -220,9 +227,9 @@ def _build_interactive_optimization_group(dialog, layout, p):
 
     row_laser = QHBoxLayout()
     row_laser.setContentsMargins(5, 5, 5, 5)
-    dialog.laser_smoothing_checkbox = FluentCheckBox(dialog.tr("settings.optimize_laser_smoothing", dialog.current_language))
+    dialog.laser_smoothing_checkbox = CheckBox(dialog.tr("settings.optimize_laser_smoothing", dialog.current_language))
     dialog.laser_smoothing_checkbox.setChecked(p.optimize_laser_smoothing)
-    dialog.combo_laser_interp = FluentComboBox()
+    dialog.combo_laser_interp = ComboBox()
     dialog.combo_laser_interp.setMinimumWidth(140)
     dialog.combo_laser_interp.setEnabled(p.optimize_laser_smoothing)
     row_laser.addWidget(dialog.laser_smoothing_checkbox)
@@ -230,7 +237,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
     row_laser.addWidget(dialog.combo_laser_interp)
     dialog.interactive_opt_group.add_layout(row_laser)
 
-    dialog.magnifier_intersection_highlight_checkbox = FluentCheckBox(
+    dialog.magnifier_intersection_highlight_checkbox = CheckBox(
         dialog.tr("settings.magnifier_intersection_highlight", dialog.current_language)
     )
     dialog.magnifier_intersection_highlight_checkbox.setChecked(
@@ -240,7 +247,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
         dialog.magnifier_intersection_highlight_checkbox
     )
 
-    dialog.magnifier_auto_color_checkbox = FluentCheckBox(
+    dialog.magnifier_auto_color_checkbox = CheckBox(
         dialog.tr("settings.magnifier_auto_color_new_instances", dialog.current_language)
     )
     dialog.magnifier_auto_color_checkbox.setChecked(
@@ -297,7 +304,7 @@ def _build_video_group(dialog, layout, p):
     video_layout = QHBoxLayout()
     video_layout.setContentsMargins(5, 5, 5, 5)
     dialog.lbl_fps = QLabel(dialog.tr("settings.recording_fps", dialog.current_language) + ":")
-    dialog.spin_fps = FluentSpinBox(default_value=60)
+    dialog.spin_fps = SpinBox(default_value=60)
     dialog.spin_fps.setRange(10, 144)
     dialog.spin_fps.setValue(p.current_video_fps)
     dialog.spin_fps.setFixedWidth(100)

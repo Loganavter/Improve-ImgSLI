@@ -7,7 +7,10 @@ from .base_images import (
     upload_image,
     upload_pil_images,
 )
-from .magnifier import clear_magnifier_gpu, set_magnifier_content
+from ui.widgets.gl_canvas.feature_overlay_gpu import (
+    clear_magnifier_gpu,
+    set_magnifier_content,
+)
 
 def set_background(widget, pixmap: QPixmap | None):
     widget.runtime_state._background_pixmap = pixmap

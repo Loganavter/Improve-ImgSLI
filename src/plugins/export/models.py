@@ -23,7 +23,7 @@ class ExportSaveContext:
     original2_full: object
     image1_for_save: object
     image2_for_save: object
-    magnifier_coords_for_save: object
+    overlay_coords_for_save: object
     render_context: object
     preview_img: object | None
     suggested_filename: str
@@ -37,6 +37,6 @@ class ExportRenderContext:
     source_image1: object
     source_image2: object
     source_key: object
-    magnifier_drawing_coords: object | None
+    overlay_drawing_coords: object | None
     prepared_background_layers: tuple[object, object] | None
     cached_diff_image: object | None

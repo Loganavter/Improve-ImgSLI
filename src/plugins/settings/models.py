@@ -24,3 +24,4 @@ class SettingsDialogData:
     auto_crop_black_borders: bool
     ui_mode: str
     video_recording_fps: int
+    show_workspace_tabs: bool = False

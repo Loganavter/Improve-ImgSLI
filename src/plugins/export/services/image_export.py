@@ -34,7 +34,7 @@ class ExportService:
         original_image2: Image.Image,
         export_options: dict,
         render_context=None,
-        magnifier_drawing_coords=None,
+        overlay_drawing_coords=None,
         cancel_event: Optional[threading.Event] = None,
         progress_callback: Optional[Any] = None,
     ) -> str:
@@ -63,7 +63,7 @@ class ExportService:
                 image2_for_save,
                 source_image1=original_image1,
                 source_image2=original_image2,
-                magnifier_drawing_coords=magnifier_drawing_coords,
+                overlay_drawing_coords=overlay_drawing_coords,
             )
         else:
             image1_for_save = current_render_context.image1
@@ -127,31 +127,27 @@ class ExportService:
             bg_flat.paste(img_to_save, mask=img_to_save.split()[3])
             img_to_save = bg_flat.convert("RGB")
 
+        comment_text = (export_options.get("comment_text") or "").strip()
+        include_metadata = bool(export_options.get("include_metadata", True))
+
         if pil_format == "JPEG":
             save_kwargs["quality"] = int(export_options.get("quality", 95))
-            try:
-                comment_text = (export_options.get("comment_text") or "").strip()
-                if comment_text and bool(export_options.get("include_metadata", True)):
-                    exif = img_to_save.getexif()
-                    exif[0x9286] = comment_text
-                    save_kwargs["exif"] = exif.tobytes()
-            except Exception:
-                pass
+            if comment_text and include_metadata:
+                self._attach_comment_metadata(img_to_save, save_kwargs, pil_format, comment_text)
         elif pil_format == "PNG":
             save_kwargs["compress_level"] = int(
                 export_options.get("png_compress_level", 9)
             )
             save_kwargs["optimize"] = bool(export_options.get("png_optimize", True))
-            try:
-                comment_text = (export_options.get("comment_text") or "").strip()
-                if comment_text and bool(export_options.get("include_metadata", True)):
-                    import PIL.PngImagePlugin as PngImagePlugin
-
-                    meta = PngImagePlugin.PngInfo()
-                    meta.add_text("Comment", comment_text)
-                    save_kwargs["pnginfo"] = meta
-            except Exception:
-                pass
+            if comment_text and include_metadata:
+                self._attach_comment_metadata(img_to_save, save_kwargs, pil_format, comment_text)
+        elif pil_format in {"TIFF", "WEBP"}:
+            if comment_text and include_metadata:
+                self._attach_comment_metadata(img_to_save, save_kwargs, pil_format, comment_text)
+        elif pil_format == "JXL" and comment_text and include_metadata:
+            logger.warning(
+                "JXL export currently does not embed textual metadata; comment_text will not be saved."
+            )
 
         if cancel_event and cancel_event.is_set():
             raise RuntimeError("Export canceled by user")
@@ -241,6 +237,26 @@ class ExportService:
             progress_callback(100)
 
         return full_path
+
+    def _attach_comment_metadata(self, img_to_save, save_kwargs: dict, pil_format: str, comment_text: str) -> None:
+        try:
+            if pil_format == "PNG":
+                import PIL.PngImagePlugin as PngImagePlugin
+
+                meta = PngImagePlugin.PngInfo()
+                meta.add_text("Comment", comment_text)
+                save_kwargs["pnginfo"] = meta
+                return
+
+            exif = img_to_save.getexif()
+            exif[0x9286] = comment_text
+            save_kwargs["exif"] = exif.tobytes()
+        except Exception:
+            logger.debug(
+                "Failed to attach export comment metadata for format=%s",
+                pil_format,
+                exc_info=True,
+            )
 
     def quick_export(
         self,

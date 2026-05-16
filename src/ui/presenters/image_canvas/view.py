@@ -4,7 +4,6 @@ import PIL.Image
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QImage, QPixmap
 
-from plugins.analysis.processing import prepare_gl_background_layers_for_mode
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
     get_pan_offset_y,
@@ -12,6 +11,7 @@ from ui.canvas_infra.viewport.state import (
     set_pan_offsets,
     set_zoom_level,
 )
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.canvas_presentation import apply_store_to_gl_canvas, build_live_store_presentation
 from ui.widgets.gl_canvas.scene import build_gl_render_scene
 from ui.widgets.gl_canvas.helpers import get_canvas, get_gl_like_canvas, reset_canvas_overlays
@@ -56,8 +56,9 @@ def _sync_gl_split_position(presenter, split_position: float):
         <= 1e-6
     ):
         return
-    viewport.view_state.split_position = split_position
-    viewport.view_state.split_position_visual = split_position
+    command = get_canvas_feature_command_by_alias("splitter.sync_split_position")
+    if command is not None:
+        command(presenter, split_position)
     image_label = get_gl_like_canvas(presenter.ui)
     if image_label is not None:
         image_label.set_render_scene(
@@ -68,7 +69,6 @@ def _sync_gl_split_position(presenter, split_position: float):
                 ),
             )
         )
-    presenter.store.emit_viewport_change("interaction")
 
 def set_image_layers(
     presenter, background=None, magnifier=None, mag_pos=None, coords_snapshot=None
@@ -105,21 +105,6 @@ def set_image_layers(
         presenter.ui.image_label.set_layers(
             background, magnifier, mag_pos, coords_snapshot
         )
-
-def prepare_gl_background_layers(presenter, image1, image2):
-    vp = presenter.store.viewport
-    try:
-        return prepare_gl_background_layers_for_mode(
-            image1,
-            image2,
-            getattr(vp.view_state, "diff_mode", "off"),
-            getattr(vp.view_state, "channel_view_mode", "RGB"),
-            optimize_ssim=False,
-        )
-    except Exception:
-        logger.exception("Failed to prepare GL background layers")
-
-    return image1, image2
 
 def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
     image_label = get_canvas(presenter.ui)

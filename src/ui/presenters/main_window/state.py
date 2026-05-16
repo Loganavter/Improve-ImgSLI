@@ -1,43 +1,7 @@
 from PyQt6.QtCore import QSignalBlocker, QTimer
 
-from domain.qt_adapters import color_to_qcolor
 from resources.translations import tr
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_bindings
-from ui.canvas_features.guides.state import get_guides_widget_state
-from ui.canvas_features.magnifier import MagnifierModeService, MagnifierStoreService
-from ui.canvas_features.magnifier.store import default_capture_size, default_magnifier_size
-from ui.canvas_features.magnifier.store import (
-    active_or_default_divider_color,
-    active_or_default_divider_thickness,
-    active_or_default_divider_visible,
-)
-
-def _update_magnifier_instances_button(ui, scene_state: MagnifierStoreService):
-    button = getattr(ui, "btn_magnifier_instances", None)
-    if button is None:
-        return
-    count = len(scene_state.iter_magnifiers())
-    button.set_magnifier_count(count if count > 0 else 1)
-    button.set_can_remove(count > 1)
-
-def _resolve_magnifier_ui_state(viewport, scene_state: MagnifierStoreService):
-    mode_service = MagnifierModeService(scene_state.store)
-    active = scene_state.get_active_or_first_magnifier()
-    panel_visible = mode_service.should_show_panel()
-    button_checked = mode_service.resolve_button_checked(active)
-    return button_checked, panel_visible
-
-def _get_active_magnifier_sizes(scene_state: MagnifierStoreService, viewport):
-    active = scene_state.get_active_or_first_magnifier()
-    if active is None:
-        return (
-            float(default_magnifier_size(viewport.view_state)),
-            float(default_capture_size(viewport.view_state)),
-        )
-    return (
-        float(active.size_relative),
-        float(active.capture_size_relative),
-    )
 
 def _set_slider_value_quietly(slider, value: int) -> None:
     if slider.value() == value:
@@ -56,58 +20,15 @@ def _sync_canvas_feature_bindings(presenter) -> None:
 def apply_initial_settings_to_ui(presenter):
     ui = presenter.ui
     viewport = presenter.store.viewport
-    settings = presenter.store.settings
-    scene_state = MagnifierStoreService(presenter.store)
-    guides_state = get_guides_widget_state(viewport.view_state)
-    active_magnifier = scene_state.get_active_or_first_magnifier()
-    magnifier_is_horizontal = bool(active_magnifier.is_horizontal) if active_magnifier is not None else False
-    magnifier_size, capture_size = _get_active_magnifier_sizes(scene_state, viewport)
 
-    _set_slider_value_quietly(ui.slider_size, int(magnifier_size * 100))
-    _set_slider_value_quietly(ui.slider_capture, int(capture_size * 100))
     _set_slider_value_quietly(ui.slider_speed, int(viewport.view_state.movement_speed_per_sec * 10))
-
-    magnifier_thickness = (
-        0
-        if not active_or_default_divider_visible(viewport.view_state)
-        else active_or_default_divider_thickness(viewport.view_state)
-    )
-
-    ui.btn_magnifier_orientation.set_value(magnifier_thickness)
-    ui.btn_magnifier_orientation.setChecked(
-        magnifier_is_horizontal, emit_signal=False
-    )
-    if hasattr(ui, "btn_magnifier_orientation_simple"):
-        ui.btn_magnifier_orientation_simple.setChecked(
-            magnifier_is_horizontal, emit_signal=False
-        )
-    if hasattr(ui, "btn_magnifier_divider_visible"):
-        ui.btn_magnifier_divider_visible.setChecked(
-            not active_or_default_divider_visible(viewport.view_state), emit_signal=False
-        )
-    if hasattr(ui, "btn_magnifier_divider_width"):
-        ui.btn_magnifier_divider_width.set_value(magnifier_thickness)
-    if hasattr(ui, "btn_magnifier_guides_simple"):
-        ui.btn_magnifier_guides_simple.setChecked(
-            guides_state.enabled, emit_signal=False
-        )
-    if hasattr(ui, "btn_magnifier_guides_width"):
-        ui.btn_magnifier_guides_width.set_value(guides_state.thickness)
-
-    magnifier_button_checked, magnifier_panel_visible = _resolve_magnifier_ui_state(viewport, scene_state)
-    ui.btn_magnifier.setChecked(magnifier_button_checked, emit_signal=False)
-    _update_magnifier_instances_button(ui, scene_state)
-    ui.btn_freeze.setChecked(scene_state.are_all_magnifiers_frozen(), emit_signal=False)
-    ui.btn_magnifier_guides.setChecked(
-        guides_state.enabled, emit_signal=False
-    )
-    ui.btn_magnifier_guides.set_value(guides_state.thickness)
     ui.btn_file_names.setChecked(viewport.render_config.include_file_names_in_saved, emit_signal=False)
 
     _sync_canvas_feature_bindings(presenter)
-    _apply_mode_specific_colors(presenter)
+    _apply_orientation_underline_mode(presenter)
     ui.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
-    ui.toggle_magnifier_panel_visibility(magnifier_panel_visible)
+
+    from domain.qt_adapters import color_to_qcolor
 
     if presenter.font_settings_flyout:
         presenter.font_settings_flyout.set_values(
@@ -118,7 +39,7 @@ def apply_initial_settings_to_ui(presenter):
             viewport.render_config.draw_text_background,
             viewport.render_config.text_placement_mode,
             viewport.render_config.text_alpha_percent,
-            settings.current_language,
+            presenter.store.settings.current_language,
         )
 
     settings_presenter = presenter.get_feature("settings")
@@ -157,60 +78,14 @@ def on_store_state_changed(presenter, domain: str):
 
     ui = presenter.ui
     viewport = presenter.store.viewport
-    scene_state = MagnifierStoreService(presenter.store)
-    guides_state = get_guides_widget_state(viewport.view_state)
-    active_magnifier = scene_state.get_active_or_first_magnifier()
-    magnifier_is_horizontal = bool(active_magnifier.is_horizontal) if active_magnifier is not None else False
-    magnifier_size, capture_size = _get_active_magnifier_sizes(scene_state, viewport)
-    magnifier_button_checked, magnifier_panel_visible = _resolve_magnifier_ui_state(viewport, scene_state)
-    ui.toggle_magnifier_panel_visibility(magnifier_panel_visible)
-    _update_magnifier_instances_button(ui, scene_state)
-    if ui.btn_magnifier.isChecked() != magnifier_button_checked:
-        ui.btn_magnifier.setChecked(magnifier_button_checked, emit_signal=False)
-
-    if ui.btn_magnifier_orientation.isChecked() != magnifier_is_horizontal:
-        ui.btn_magnifier_orientation.setChecked(
-            magnifier_is_horizontal, emit_signal=False
-        )
-    magnifier_thickness = (
-        0
-        if not active_or_default_divider_visible(viewport.view_state)
-        else active_or_default_divider_thickness(viewport.view_state)
-    )
-    if ui.btn_magnifier_orientation.get_value() != magnifier_thickness:
-        ui.btn_magnifier_orientation.set_value(magnifier_thickness)
-
-    if ui.btn_magnifier_guides.isChecked() != guides_state.enabled:
-        ui.btn_magnifier_guides.setChecked(guides_state.enabled, emit_signal=False)
-    if ui.btn_magnifier_guides.get_value() != guides_state.thickness:
-        ui.btn_magnifier_guides.set_value(guides_state.thickness)
 
     _sync_canvas_feature_bindings(presenter)
-    _apply_mode_specific_colors(presenter)
-
-    if hasattr(ui, "btn_magnifier_divider_visible"):
-        should_be_checked = not active_or_default_divider_visible(viewport.view_state)
-        if ui.btn_magnifier_divider_visible.isChecked() != should_be_checked:
-            ui.btn_magnifier_divider_visible.setChecked(
-                should_be_checked, emit_signal=False
-            )
-
-    if hasattr(ui, "btn_magnifier_guides_simple"):
-        if ui.btn_magnifier_guides_simple.isChecked() != guides_state.enabled:
-            ui.btn_magnifier_guides_simple.setChecked(
-                guides_state.enabled, emit_signal=False
-            )
-    if hasattr(ui, "btn_magnifier_guides_width"):
-        if ui.btn_magnifier_guides_width.get_value() != guides_state.thickness:
-            ui.btn_magnifier_guides_width.set_value(guides_state.thickness)
+    _apply_orientation_underline_mode(presenter)
 
     ui.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
     presenter.ui_batcher.schedule_batch_update(
         ["file_names", "resolution", "combobox", "slider_tooltips", "ratings", "window_schedule"]
     )
-
-    _set_slider_value_quietly(ui.slider_size, int(magnifier_size * 100))
-    _set_slider_value_quietly(ui.slider_capture, int(capture_size * 100))
 
 def do_update_resolution_labels(presenter):
     has_both_images = bool(
@@ -308,10 +183,15 @@ def do_update_combobox_displays(presenter):
         presenter.ui_manager.transient.unified_flyout.sync_from_store()
 
 def do_update_slider_tooltips(presenter):
-    scene_state = MagnifierStoreService(presenter.store)
-    magnifier_size, capture_size = _get_active_magnifier_sizes(
-        scene_state, presenter.store.viewport
-    )
+    from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+
+    magnifier_size = 0.2
+    capture_size = 0.1
+    build_payload = get_canvas_feature_command_by_alias("overlay.canvas_payload")
+    if build_payload is not None:
+        payload = build_payload(presenter.store)
+        magnifier_size = float(payload.get("size", 0.2))
+        capture_size = float(payload.get("capture_size", 0.1))
     presenter.ui.update_slider_tooltips(
         presenter.store.viewport.view_state.movement_speed_per_sec,
         magnifier_size,
@@ -382,32 +262,7 @@ def get_image_dimensions(presenter, image_number: int) -> tuple[int, int] | None
         return img.size
     return None
 
-def _apply_mode_specific_colors(presenter):
-    viewport = presenter.store.viewport
-    ui = presenter.ui
-    _apply_orientation_underline_mode(presenter)
-    if hasattr(ui.btn_magnifier_orientation, "set_color"):
-        active_magnifier = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
-        ui.btn_magnifier_orientation.set_color(
-            color_to_qcolor(
-                active_magnifier.divider_color
-                if active_magnifier is not None
-                else active_or_default_divider_color(viewport.view_state)
-            )
-        )
-    if hasattr(ui, "btn_magnifier_color_settings") and hasattr(
-        ui.btn_magnifier_color_settings, "refresh_visual_state"
-    ):
-        ui.btn_magnifier_color_settings.refresh_visual_state()
-    if hasattr(ui, "btn_magnifier_color_settings_beginner") and hasattr(
-        ui.btn_magnifier_color_settings_beginner, "refresh_visual_state"
-    ):
-        ui.btn_magnifier_color_settings_beginner.refresh_visual_state()
-
 def _apply_orientation_underline_mode(presenter):
     current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
-    viewport = presenter.store.viewport
     if hasattr(presenter.ui.btn_orientation, "set_show_underline"):
         presenter.ui.btn_orientation.set_show_underline(current_mode != "advanced")
-    active_magnifier = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
-    magnifier_is_horizontal = bool(active_magnifier.is_horizontal) if active_magnifier is not None else False

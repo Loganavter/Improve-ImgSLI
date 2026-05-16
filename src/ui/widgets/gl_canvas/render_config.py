@@ -2,28 +2,39 @@ from OpenGL import GL as gl
 from PyQt6.QtCore import QRect
 
 from .render_common import widget_px_to_screen_px
-from .render_context import GLRenderRuntimeContext
 from ui.canvas_infra.viewport.contract import DisplaySplitPositionRequest
+from ui.canvas_infra.viewport.geometry import QuickContentRect
 from ui.canvas_infra.viewport.pipeline import compute_display_split_position
 from ui.canvas_infra.viewport.state import set_display_split_position
 
-def get_divider_clip_uv(widget) -> tuple[float, float, float, float]:
-    state = widget.runtime_state
-    scene = state._render_scene
-    clip_rect = getattr(scene, "divider_clip_rect", None)
-    img = state._stored_pil_images[0] if state._stored_pil_images else None
-    if clip_rect and img is not None and getattr(img, "width", 0) > 0 and getattr(img, "height", 0) > 0:
-        x, y, w, h = clip_rect
-        return (
-            x / float(img.width),
-            y / float(img.height),
-            (x + w) / float(img.width),
-            (y + h) / float(img.height),
-        )
-    if hasattr(widget, "get_letterbox_params"):
-        lb = widget.get_letterbox_params(0)
-        return (lb[0], lb[1], lb[0] + lb[2], lb[1] + lb[3])
-    return (0.0, 0.0, 1.0, 1.0)
+def update_display_split_position(widget, *, scene, zoom_level: float, pan_offset_x: float, pan_offset_y: float) -> float:
+    if scene is None:
+        return set_display_split_position(widget, getattr(widget, "split_position", 0.5))
+
+    w, h = widget.width(), widget.height()
+    img1 = widget.runtime_state._stored_pil_images[0]
+    if img1 and w > 0 and h > 0:
+        content_rect = None
+        content_rect_px = widget.runtime_state._content_rect_px
+        if content_rect_px:
+            cx, cy, cw, ch = content_rect_px
+            if cw > 0 and ch > 0:
+                content_rect = QuickContentRect(x=cx, y=cy, width=cw, height=ch)
+        return set_display_split_position(widget, compute_display_split_position(
+            DisplaySplitPositionRequest(
+                widget_width=w,
+                widget_height=h,
+                image_width=img1.width,
+                image_height=img1.height,
+                split_visual=scene.split_position_visual,
+                is_horizontal=scene.is_horizontal,
+                zoom_level=zoom_level,
+                pan_offset_x=pan_offset_x,
+                pan_offset_y=pan_offset_y,
+                content_rect=content_rect,
+            )
+        ))
+    return set_display_split_position(widget, scene.split_position_visual)
 
 def get_divider_clip_rect_px(widget) -> tuple[int, int, int, int] | None:
     state = widget.runtime_state
@@ -90,65 +101,6 @@ def get_local_visible_image_rect(
         int(visible_right - visible_left),
         int(visible_bottom - visible_top),
     )
-
-def compute_render_config(widget, ctx: GLRenderRuntimeContext):
-    scene = ctx.viewport.render_scene
-    if scene is None:
-        return {
-            "show_div": ctx.overlays.show_divider,
-            "div_color": ctx.overlays.divider_color,
-            "div_thickness": ctx.overlays.divider_thickness,
-            "render_magnifiers": True,
-            "border_color": ctx.magnifier.magnifier_border_color,
-            "capture_color": ctx.overlays.capture_color,
-            "channel_mode_int": 0,
-            "diff_mode_active": False,
-            "laser_color": ctx.overlays.laser_color,
-            "show_guides": ctx.overlays.show_guides,
-            "guides_thickness": ctx.overlays.guides_thickness,
-            "interactive_mode": False,
-            "optimize_laser_smoothing": False,
-            "is_horizontal": ctx.viewport.is_horizontal,
-            "split_position_visual": ctx.viewport.split_position,
-        }
-
-    widget.is_horizontal = scene.is_horizontal
-    w, h = ctx.viewport.width, ctx.viewport.height
-    img1 = ctx.textures.stored_pil_images[0]
-    if img1 and w > 0 and h > 0:
-        set_display_split_position(widget, compute_display_split_position(
-            DisplaySplitPositionRequest(
-                widget_width=w,
-                widget_height=h,
-                image_width=img1.width,
-                image_height=img1.height,
-                split_visual=scene.split_position_visual,
-                is_horizontal=scene.is_horizontal,
-                zoom_level=ctx.viewport.zoom_level,
-                pan_offset_x=ctx.viewport.pan_offset_x,
-                pan_offset_y=ctx.viewport.pan_offset_y,
-            )
-        ))
-    else:
-        set_display_split_position(widget, scene.split_position_visual)
-
-    return {
-        "show_div": scene.show_divider,
-        "div_color": scene.divider_color,
-        "div_thickness": scene.divider_thickness,
-        "render_magnifiers": scene.render_magnifiers,
-        "border_color": scene.border_color,
-        "capture_color": scene.capture_color,
-        "channel_mode_int": scene.channel_mode_int,
-        "diff_mode_active": scene.diff_mode_active,
-        "laser_color": scene.laser_color,
-        "show_guides": scene.show_guides,
-        "guides_thickness": scene.guides_thickness,
-        "interactive_mode": scene.interactive_mode,
-        "optimize_laser_smoothing": scene.optimize_laser_smoothing,
-        "is_horizontal": scene.is_horizontal,
-        "split_position_visual": scene.split_position_visual,
-    }
 
 def begin_content_scissor(widget, force: bool = False):
     state = widget.runtime_state

@@ -1,4 +1,4 @@
-from shared_toolkit.ui.managers.flyout_manager import FlyoutManager
-from shared_toolkit.ui.managers.theme_manager import ThemeManager
+from sli_ui_toolkit.managers import FlyoutManager
+from sli_ui_toolkit.theme import ThemeManager
 
 __all__ = ["ThemeManager", "FlyoutManager"]

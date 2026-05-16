@@ -1,7 +1,7 @@
 from __future__ import annotations
 import math
 
-from core.constants import AppConstants
+from .constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
 from .store import iter_magnifier_models
 
 def _clamp_capture_position(
@@ -51,7 +51,7 @@ def compute_magnifier_union_bbox(
 
     diff_mode = str(getattr(view, "diff_mode", "off") or "off")
     diff_enabled = diff_mode in ("highlight", "grayscale", "ssim", "edges")
-    combine_threshold = AppConstants.MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+    combine_threshold = MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
     target_max = float(max(drawing_width, drawing_height))
     bounds: tuple[float, float, float, float] | None = None
 

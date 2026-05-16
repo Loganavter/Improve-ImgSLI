@@ -1,36 +1,45 @@
-from .managers import FlyoutManager, ThemeManager
+from sli_ui_toolkit.managers import FlyoutManager
+
+from .managers import ThemeManager
 from .services import IconService, get_icon_by_name, get_icon_service
-from .widgets.atomic import (
+from sli_ui_toolkit.widgets import (
     AdaptiveLabel,
     BodyLabel,
     ButtonMode,
     CaptionLabel,
+    CheckBox,
+    ComboBox,
     CompactLabel,
     CustomButton,
     CustomGroupBuilder,
     CustomGroupWidget,
     CustomLineEdit,
-    FluentCheckBox,
-    FluentComboBox,
-    FluentRadioButton,
-    FluentSlider,
-    FluentSpinBox,
-    FluentSwitch,
     GroupTitleLabel,
     MinimalistScrollBar,
     OverlayScrollArea,
+    RadioButton,
+    Slider,
+    SpinBox,
+    Switch,
     UnifiedIconButton,
 )
 
+FluentCheckBox = CheckBox
+FluentComboBox = ComboBox
+FluentRadioButton = RadioButton
+FluentSlider = Slider
+FluentSpinBox = SpinBox
+FluentSwitch = Switch
+
 __all__ = [
-    "FluentCheckBox",
+    "CheckBox",
+    "ComboBox",
     "CustomButton",
     "CustomLineEdit",
-    "FluentComboBox",
-    "FluentRadioButton",
-    "FluentSwitch",
-    "FluentSlider",
-    "FluentSpinBox",
+    "RadioButton",
+    "Switch",
+    "Slider",
+    "SpinBox",
     "BodyLabel",
     "CaptionLabel",
     "AdaptiveLabel",
@@ -47,4 +56,11 @@ __all__ = [
     "IconService",
     "get_icon_by_name",
     "get_icon_service",
+
+    "FluentCheckBox",
+    "FluentComboBox",
+    "FluentRadioButton",
+    "FluentSlider",
+    "FluentSpinBox",
+    "FluentSwitch",
 ]

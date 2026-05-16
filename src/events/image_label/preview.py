@@ -2,95 +2,80 @@ from __future__ import annotations
 
 import logging
 
-from core.events import ViewportUpdateMagnifierCombinedStateEvent
-from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 logger = logging.getLogger("ImproveImgSLI")
 
-class MagnifierPreviewController:
+class OverlayPreviewController:
     def __init__(self, handler):
         self.handler = handler
-        self._scene_state = MagnifierStoreService(handler.store)
-        self._magnifier_quick_preview_active = False
-        self._magnifier_quick_preview_prev_visibility = (True, True)
+        self._quick_preview_active = False
+        self._quick_preview_prev_visibility = (True, True)
 
     def log_preview_debug(self, message: str, **extra) -> None:
-        details = ", ".join(f"{key}={value}" for key, value in extra.items())
-        logger.debug(
-            "[PreviewDebug] %s%s",
-            message,
-            f" | {details}" if details else "",
-        )
+        pass
 
     @property
     def is_active(self) -> bool:
-        return self._magnifier_quick_preview_active
+        return self._quick_preview_active
 
     def begin(self) -> None:
-        model = self._scene_state.ensure_active_magnifier()
-        if model is None:
+        command = get_canvas_feature_command_by_alias("overlay.preview_begin")
+        if command is None:
             return
-        self._magnifier_quick_preview_active = True
-        self._magnifier_quick_preview_prev_visibility = (
-            model.visible_left,
-            model.visible_right,
+        result = command(self.handler.store)
+        if result is None:
+            return
+        self._quick_preview_active = True
+        self._quick_preview_prev_visibility = (
+            result["prev_left"],
+            result["prev_right"],
         )
         self.log_preview_debug(
             "begin_shift_preview",
-            prev_left=model.visible_left,
-            prev_right=model.visible_right,
+            prev_left=result["prev_left"],
+            prev_right=result["prev_right"],
         )
 
     def restore(self) -> None:
-        if not self._magnifier_quick_preview_active:
+        if not self._quick_preview_active:
             return
 
-        prev_left, prev_right = self._magnifier_quick_preview_prev_visibility
-        self._magnifier_quick_preview_active = False
-        self._magnifier_quick_preview_prev_visibility = (True, True)
+        prev_left, prev_right = self._quick_preview_prev_visibility
+        self._quick_preview_active = False
+        self._quick_preview_prev_visibility = (True, True)
 
-        model = self._scene_state.ensure_active_magnifier(create_if_missing=False)
-        if model is None:
+        command = get_canvas_feature_command_by_alias("overlay.preview_restore")
+        if command is None:
             return
-        if model is not None and (
-            model.visible_left != prev_left or model.visible_right != prev_right
-        ):
-            self._scene_state.set_active_magnifier_visibility_parts(
-                left=prev_left,
-                right=prev_right,
-            )
+        changed = command(self.handler.store, prev_left=prev_left, prev_right=prev_right)
+        if changed:
             self.log_preview_debug(
                 "restore_shift_preview",
                 left=prev_left,
                 right=prev_right,
             )
-            self.handler.store.emit_state_change()
-            if self.handler.event_bus:
-                self.handler.event_bus.emit(ViewportUpdateMagnifierCombinedStateEvent())
-            if self.handler.main_controller:
-                self.handler.main_controller.update_requested.emit()
+            self._notify_state_change()
 
     def switch_side(self, side: str) -> None:
-        self._scene_state.set_active_magnifier_visibility_parts(
-            left=(side == "left"),
-            right=(side == "right"),
-        )
+        command = get_canvas_feature_command_by_alias("overlay.preview_set_side")
+        if command is not None:
+            command(self.handler.store, side=side)
         self.log_preview_debug("shift_preview_switched", side=side)
-        self.handler.store.emit_state_change()
-        if self.handler.event_bus:
-            self.handler.event_bus.emit(ViewportUpdateMagnifierCombinedStateEvent())
-        if self.handler.main_controller:
-            self.handler.main_controller.update_requested.emit()
+        self._notify_state_change()
 
     def start_side_preview(self, side: str) -> None:
         self.begin()
-        self._scene_state.set_active_magnifier_visibility_parts(
-            left=(side == "left"),
-            right=(side == "right"),
-        )
+        command = get_canvas_feature_command_by_alias("overlay.preview_set_side")
+        if command is not None:
+            command(self.handler.store, side=side)
         self.log_preview_debug("shift_preview_started", side=side)
+        self._notify_state_change()
+
+    def _notify_state_change(self) -> None:
         self.handler.store.emit_state_change()
-        if self.handler.event_bus:
-            self.handler.event_bus.emit(ViewportUpdateMagnifierCombinedStateEvent())
+        emit_cmd = get_canvas_feature_command_by_alias("overlay.emit_changed")
+        if emit_cmd is not None:
+            emit_cmd(self.handler.store, event_bus=self.handler.event_bus)
         if self.handler.main_controller:
             self.handler.main_controller.update_requested.emit()

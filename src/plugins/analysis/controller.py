@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from core.events import (
+from plugins.analysis.events import (
     AnalysisSetChannelViewModeEvent,
     AnalysisSetDiffModeEvent,
     AnalysisToggleDiffModeEvent,
-    ViewportUpdateMagnifierCombinedStateEvent,
 )
 from core.state_management.actions import (
     SetChannelViewModeAction,
@@ -15,6 +14,7 @@ from core.state_management.actions import (
 )
 from plugins.analysis.services.cached_diff import CachedDiffService
 from plugins.analysis.services.runtime import AnalysisRuntime
+from plugins.viewport.events import ViewportUpdateMagnifierCombinedStateEvent
 
 class AnalysisController(QObject):
     update_requested = pyqtSignal()

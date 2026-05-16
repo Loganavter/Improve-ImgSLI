@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.events import (
+from plugins.comparison.events import (
     ComparisonErrorEvent,
     ComparisonUpdateRequestedEvent,
 )

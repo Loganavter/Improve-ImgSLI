@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import traceback
 from dataclasses import dataclass, field
 from PyQt6.QtWidgets import QApplication
 
@@ -52,10 +53,7 @@ class BootstrapContentStep(WindowStartupStep):
     name = "bootstrap_content"
 
     def run(self, window) -> None:
-        if window._should_show_onboarding():
-            window._show_onboarding_page()
-        else:
-            window._bootstrap_main_app()
+        window.startup_runtime.bootstrap_content()
 
 class RefreshWindowUiStep(WindowStartupStep):
     name = "refresh_ui"
@@ -63,7 +61,7 @@ class RefreshWindowUiStep(WindowStartupStep):
     def run(self, window) -> None:
         if window.ui is None:
             return
-        window._update_image_label_background()
+        window.appearance.update_image_label_background()
 
         if window.main_controller and window.main_controller.sessions:
             window.main_controller.sessions.initialize_app_display()
@@ -183,7 +181,18 @@ class MainWindowStartupPipeline:
     def run(self, window) -> None:
         for step in self.steps:
             logger.debug("Main window startup step: %s", step.name)
-            step.run(window)
+            try:
+                step.run(window)
+            except Exception as exc:
+                formatted = "".join(
+                    traceback.format_exception(type(exc), exc, exc.__traceback__)
+                )
+                logger.error(
+                    "Main window startup step failed: %s\n%s",
+                    step.name,
+                    formatted,
+                )
+                raise
 
 @dataclass(slots=True)
 class MainWindowStartupController:

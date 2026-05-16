@@ -5,8 +5,14 @@ import time
 from PyQt6.QtCore import QEvent, QTimer
 
 from core.constants import AppConstants
-from ui.canvas_features.magnifier import MagnifierStoreService
-from ui.canvas_features.magnifier.store import magnifier_enabled
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+
+def _query_overlay(store, capability_id: str, default=None):
+    command = get_canvas_feature_command_by_alias(capability_id)
+    if command is None:
+        return default
+    result = command(store)
+    return default if result is None else result
 
 class MagnifierVisibilityController:
     def __init__(self, manager):
@@ -15,11 +21,11 @@ class MagnifierVisibilityController:
     def update_states(self):
         host = self.manager.host
         try:
-            model = MagnifierStoreService(host.store).get_active_or_first_magnifier()
+            model = _query_overlay(host.store, "overlay.active_state")
             show_center = getattr(host.store.viewport.view_state, "diff_mode", "off") != "off"
-            left_on = bool(getattr(model, "visible_left", True)) if model is not None else True
-            center_on = bool(getattr(model, "visible_center", True)) if model is not None else True
-            right_on = bool(getattr(model, "visible_right", True)) if model is not None else True
+            left_on = bool(model.get("visible_left", True)) if model is not None else True
+            center_on = bool(model.get("visible_center", True)) if model is not None else True
+            right_on = bool(model.get("visible_right", True)) if model is not None else True
             host.magnifier_visibility_flyout.set_mode_and_states(
                 show_center, left_on, center_on, right_on
             )
@@ -43,7 +49,7 @@ class MagnifierVisibilityController:
 
     def show(self, reason: str = "hover"):
         host = self.manager.host
-        use_magnifier = magnifier_enabled(host.store.viewport.view_state)
+        use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
         if not use_magnifier:
             return
         try:
@@ -98,7 +104,7 @@ class MagnifierVisibilityController:
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
             host._magn_hover_timer.stop()
-            use_magnifier = magnifier_enabled(host.store.viewport.view_state)
+            use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
             if use_magnifier:
                 host._magn_hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
             else:
@@ -111,7 +117,7 @@ class MagnifierVisibilityController:
             )
             return False
         if et == QEvent.Type.Wheel:
-            use_magnifier = magnifier_enabled(host.store.viewport.view_state)
+            use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
             if not use_magnifier:
                 return True
             self.show(reason="wheel")

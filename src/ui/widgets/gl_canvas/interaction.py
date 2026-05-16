@@ -4,6 +4,8 @@ import logging
 
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
 
+_log = logging.getLogger("ImproveImgSLI.magnifier.interaction")
+
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
     get_pan_offset_y,
@@ -12,6 +14,7 @@ from ui.canvas_infra.viewport.state import (
     set_pan_offsets,
     set_zoom_level,
 )
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.canvas_infra.viewport.contract import (
     PanDragRequest,
     SplitPositionForViewTransformRequest,
@@ -22,6 +25,8 @@ from ui.canvas_infra.viewport.pipeline import (
     compute_split_position_for_view_transform as compute_split_position_for_view_transform_via_feature,
     compute_wheel_zoom_transform,
 )
+from ui.widgets.gl_canvas.render_metrics import resolve_relative_px
+from ui.widgets.gl_canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 
 CAPTURE_RING_AA_PX = 1.15
 
@@ -61,10 +66,9 @@ def _sync_split_to_store(widget, split_position: float) -> bool:
         and abs(old_split_visual - split) <= 1e-6
     ):
         return True
-    view_state.split_position = split
-    view_state.split_position_visual = split
-    if hasattr(store, "emit_viewport_change"):
-        store.emit_viewport_change("interaction")
+    command = get_canvas_feature_command_by_alias("splitter.sync_split_position")
+    if command is not None:
+        command(type("WidgetActions", (), {"store": store})(), split)
     return True
 
 def compute_split_position_for_view_transform(
@@ -336,8 +340,15 @@ def set_capture_area(widget, center: QPoint | None, size: int, color=None):
         capture_radius = size / 2.0
         content_rect = state._content_rect_px
         zoom_level = get_zoom_level(widget)
-        scaled_radius = capture_radius * zoom_level
-        line_width_px = max(2.0, float(scaled_radius * 2.0) * 0.0105)
+        short_edge = (
+            min(float(content_rect[2]), float(content_rect[3]))
+            if content_rect is not None
+            else float(min(widget.width(), widget.height()))
+        )
+        line_width_px = resolve_relative_px(
+            DEFAULT_CANVAS_STYLE_TOKENS.capture_ring_stroke_du,
+            short_edge_px=short_edge,
+        )
         stroke_margin_widget = ((line_width_px / 2.0) + CAPTURE_RING_AA_PX) / max(
             zoom_level, 1e-6
         )

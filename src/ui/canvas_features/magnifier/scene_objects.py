@@ -28,8 +28,9 @@ class MagnifierSceneObject(CanvasSceneObject):
     border_thickness: int = 2
     divider_color: Color = field(default_factory=Color)
     border_color: Color = field(default_factory=Color)
-    laser_color: Color = field(default_factory=Color)
-    capture_ring_color: Color = field(default_factory=Color)
+    capture_color: Color | None = None
+    guides_color: Color | None = None
+    show_laser: bool = True
 
     def interactive_circle(self) -> MagnifierCircle | None:
         if self.interactive_circle_index is None:

@@ -20,14 +20,15 @@ from PyQt6.QtWidgets import (
 from domain.qt_adapters import color_to_qcolor
 from plugins.export.models import ExportDialogState
 from resources.translations import tr as app_tr
-from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from shared_toolkit.ui.widgets.atomic import (
-    FluentCheckBox,
-    FluentComboBox,
-    FluentSlider,
+from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import (
+    CheckBox,
+    ComboBox,
+    CustomButton,
+    DialogActionBar,
+    OutputPathSection,
+    Slider,
 )
-from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
-from shared_toolkit.ui.widgets.composite import DialogActionBar, OutputPathSection
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -163,7 +164,7 @@ class ExportDialog(QDialog):
         fmt_label = QLabel(
             self.tr("label.format", self.dialog_state.current_language) + ":"
         )
-        self.combo_format = FluentComboBox()
+        self.combo_format = ComboBox()
         for fmt in ["PNG", "JPEG", "WEBP", "BMP", "TIFF", "JXL"]:
             self.combo_format.addItem(fmt)
         self.combo_format.currentIndexChanged.connect(
@@ -177,7 +178,7 @@ class ExportDialog(QDialog):
         quality_label = QLabel(
             self.tr("label.quality", self.dialog_state.current_language) + ":"
         )
-        self.slider_quality = FluentSlider(Qt.Orientation.Horizontal)
+        self.slider_quality = Slider(Qt.Orientation.Horizontal)
         self.slider_quality.setRange(1, 100)
         self.slider_quality.setValue(95)
         self.label_quality_value = QLabel("95")
@@ -198,14 +199,14 @@ class ExportDialog(QDialog):
             )
             + ":"
         )
-        self.slider_png_compress = FluentSlider(Qt.Orientation.Horizontal)
+        self.slider_png_compress = Slider(Qt.Orientation.Horizontal)
         self.slider_png_compress.setRange(0, 9)
         self.slider_png_compress.setValue(9)
         self.label_png_compress_value = QLabel("9")
         self.slider_png_compress.valueChanged.connect(
             lambda v: self.label_png_compress_value.setText(str(v))
         )
-        self.checkbox_png_optimize = FluentCheckBox(
+        self.checkbox_png_optimize = CheckBox(
             self.tr("export.optimize_png", self.dialog_state.current_language)
         )
         png_layout.addWidget(self.label_png_compress)
@@ -213,7 +214,7 @@ class ExportDialog(QDialog):
         png_layout.addWidget(self.label_png_compress_value)
         png_layout.addWidget(self.checkbox_png_optimize)
 
-        self.checkbox_fill_bg = FluentCheckBox(
+        self.checkbox_fill_bg = CheckBox(
             self.tr("export.fill_background", self.dialog_state.current_language)
         )
 
@@ -230,7 +231,7 @@ class ExportDialog(QDialog):
         bg_row.addWidget(self.btn_bg_color)
         self.current_bg_color = QColor(255, 255, 255, 255)
 
-        self.checkbox_include_metadata = FluentCheckBox(
+        self.checkbox_include_metadata = CheckBox(
             self.tr("export.include_metadata", self.dialog_state.current_language)
         )
         self.checkbox_include_metadata.toggled.connect(
@@ -241,7 +242,7 @@ class ExportDialog(QDialog):
             self.tr("export.comment", self.dialog_state.current_language) + ":"
         )
         self.edit_comment = QLineEdit()
-        self.checkbox_comment_default = FluentCheckBox(
+        self.checkbox_comment_default = CheckBox(
             self.tr("export.remember_by_default", self.dialog_state.current_language)
         )
 

@@ -2,7 +2,7 @@ import logging
 
 import PIL.Image
 
-from shared_toolkit.workers import GenericWorker
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 

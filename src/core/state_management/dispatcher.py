@@ -88,7 +88,7 @@ class Dispatcher:
 
             except Exception as e:
                 logger.error(
-                    f"Error dispatching action {action.type.value}: {e}", exc_info=True
+                    f"Error dispatching action {action.type}: {e}", exc_info=True
                 )
                 raise
 

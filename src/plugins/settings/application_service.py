@@ -3,8 +3,8 @@ from __future__ import annotations
 from PyQt6.QtCore import QObject
 from PyQt6.QtWidgets import QApplication
 
-from core.events import (
-    AnalysisRequestMetricsEvent,
+from plugins.analysis.events import AnalysisRequestMetricsEvent
+from plugins.settings.events import (
     SettingsChangeLanguageEvent,
     SettingsUIModeChangedEvent,
 )
@@ -12,18 +12,15 @@ from core.state_management.actions import (
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
     SetDisplayResolutionLimitAction,
-    SetMagnifierMovementInterpolationMethodAction,
     SetMaxNameLengthAction,
-    SetOptimizeMagnifierMovementAction,
     SetZoomInterpolationMethodAction,
 )
-from shared_toolkit.ui.managers.font_manager import FontManager
-from ui.canvas_features.guides.actions import (
-    SetGuidesSmoothingEnabledAction,
-    SetGuidesSmoothingInterpolationMethodAction,
+from plugins.viewport.actions import (
+    SetMagnifierMovementInterpolationMethodAction,
+    SetOptimizeMagnifierMovementAction,
 )
-from ui.canvas_features.guides.state import get_guides_widget_state
-from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+from shared_toolkit.ui.managers.font_manager import FontManager
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 from .models import SettingsDialogData
 
@@ -86,6 +83,7 @@ class SettingsApplicationService(QObject):
             else:
                 self.store.viewport.render_config.max_name_length = data.max_name_length
             self._save_setting("max_name_length", data.max_name_length)
+            render_update_needed = True
 
         if data.debug_enabled != self.store.settings.debug_mode_enabled:
             self.store.settings.debug_mode_enabled = data.debug_enabled
@@ -110,6 +108,20 @@ class SettingsApplicationService(QObject):
             if notification_service is not None:
                 notification_service.set_enabled(data.system_notifications_enabled)
             self.store.emit_state_change("settings")
+
+        if data.show_workspace_tabs != getattr(
+            self.store.settings, "show_workspace_tabs", False
+        ):
+            self.store.settings.show_workspace_tabs = data.show_workspace_tabs
+            self._save_setting("show_workspace_tabs", data.show_workspace_tabs)
+            window_shell = (
+                self.main_controller.window_shell if self.main_controller else None
+            )
+            window = getattr(window_shell, "main_window_app", None)
+            ui = getattr(window, "ui", None)
+            if ui is not None:
+                ui.workspace_tabs.setVisible(data.show_workspace_tabs)
+                ui.btn_new_session.setVisible(data.show_workspace_tabs)
 
         return render_update_needed
 
@@ -170,7 +182,7 @@ class SettingsApplicationService(QObject):
         render = vp.render_config
         dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
 
-        if data.optimize_magnifier_movement != view.optimize_magnifier_movement:
+        if data.optimize_magnifier_movement != view.optimize_interactive_movement:
             if dispatcher is not None:
                 dispatcher.dispatch(
                     SetOptimizeMagnifierMovementAction(
@@ -179,7 +191,7 @@ class SettingsApplicationService(QObject):
                     scope="viewport",
                 )
             else:
-                view.optimize_magnifier_movement = data.optimize_magnifier_movement
+                view.optimize_interactive_movement = data.optimize_magnifier_movement
             self.store.invalidate_render_cache()
             render_update_needed = True
             self._save_setting(
@@ -204,29 +216,27 @@ class SettingsApplicationService(QObject):
     def _apply_magnifier_behavior_settings(
         self, data: SettingsDialogData, render_update_needed: bool
     ) -> bool:
-        state = get_magnifier_widget_state(self.store.viewport.view_state)
-        changed = False
-        if (
-            data.magnifier_intersection_highlight_enabled
-            != state.intersection_highlight_enabled
-        ):
-            state.intersection_highlight_enabled = (
-                data.magnifier_intersection_highlight_enabled
-            )
+        apply_cmd = get_canvas_feature_command_by_alias(
+            "overlay.settings.apply_behavior"
+        )
+        if apply_cmd is None:
+            return render_update_needed
+        changes = apply_cmd(self.store, {
+            "intersection_highlight_enabled": data.magnifier_intersection_highlight_enabled,
+            "auto_color_new_instances": data.magnifier_auto_color_new_instances,
+        })
+        if not changes:
+            return render_update_needed
+        if "intersection_highlight_enabled" in changes:
             self._save_setting(
                 "magnifier.intersection_highlight.enabled",
-                data.magnifier_intersection_highlight_enabled,
+                changes["intersection_highlight_enabled"],
             )
-            changed = True
-        if data.magnifier_auto_color_new_instances != state.auto_color_new_instances:
-            state.auto_color_new_instances = data.magnifier_auto_color_new_instances
+        if "auto_color_new_instances" in changes:
             self._save_setting(
                 "magnifier.auto_color_new_instances.enabled",
-                data.magnifier_auto_color_new_instances,
+                changes["auto_color_new_instances"],
             )
-            changed = True
-        if not changed:
-            return render_update_needed
         self.store.emit_state_change("viewport")
         self._emit_update_requested()
         return True
@@ -239,7 +249,7 @@ class SettingsApplicationService(QObject):
         dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
         if (
             data.magnifier_interpolation_method
-            == vp.render_config.magnifier_movement_interpolation_method
+            == vp.render_config.interactive_movement_interpolation_method
         ):
             return render_update_needed
 
@@ -251,7 +261,7 @@ class SettingsApplicationService(QObject):
                 scope="viewport",
             )
         else:
-            render.magnifier_movement_interpolation_method = (
+            render.interactive_movement_interpolation_method = (
                 data.magnifier_interpolation_method
             )
             render.movement_interpolation_method = (
@@ -271,18 +281,15 @@ class SettingsApplicationService(QObject):
     ) -> bool:
         vp = self.store.viewport
         render = vp.render_config
-        guides_state = get_guides_widget_state(vp.view_state)
-        dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
+        _get_guides_state = get_canvas_feature_command_by_alias("guides.widget_state")
+        guides_state = _get_guides_state(vp.view_state) if _get_guides_state is not None else type("_F", (), {"smoothing_enabled": False, "smoothing_interpolation_method": "BILINEAR"})()
 
         if data.optimize_laser_smoothing != guides_state.smoothing_enabled:
-            if dispatcher is not None:
-                dispatcher.dispatch(
-                    SetGuidesSmoothingEnabledAction(data.optimize_laser_smoothing),
-                    scope="viewport",
-                )
-            else:
-                guides_state.smoothing_enabled = data.optimize_laser_smoothing
-            self.store.invalidate_render_cache()
+            set_smoothing_cmd = get_canvas_feature_command_by_alias(
+                "guides.set_smoothing_enabled"
+            )
+            if set_smoothing_cmd is not None:
+                set_smoothing_cmd(self.store, data.optimize_laser_smoothing)
             render_update_needed = True
             self._save_setting(
                 "guides.smoothing.enabled",
@@ -295,16 +302,11 @@ class SettingsApplicationService(QObject):
         ):
             return render_update_needed
 
-        if dispatcher is not None:
-            dispatcher.dispatch(
-                SetGuidesSmoothingInterpolationMethodAction(
-                    data.laser_interpolation_method
-                ),
-                scope="viewport",
-            )
-        else:
-            guides_state.smoothing_interpolation_method = data.laser_interpolation_method
-        self.store.invalidate_render_cache()
+        set_interp_cmd = get_canvas_feature_command_by_alias(
+            "guides.set_smoothing_interpolation_method"
+        )
+        if set_interp_cmd is not None:
+            set_interp_cmd(self.store, data.laser_interpolation_method)
         self.store.emit_state_change()
         self._save_setting(
             "guides.smoothing.interpolation_method",

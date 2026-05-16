@@ -20,12 +20,12 @@ from PyQt6.QtWidgets import (
 )
 
 from resources.translations import tr
-from shared_toolkit.ui.managers.theme_manager import ThemeManager
-from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
-from shared_toolkit.ui.widgets.atomic.scrollable_icon_button import ScrollableIconButton
-from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
-from shared_toolkit.ui.widgets.atomic.toggle_icon_button import ToggleIconButton
-from shared_toolkit.ui.widgets.atomic.toggle_scrollable_icon_button import (
+from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import CustomButton
+from sli_ui_toolkit.widgets import (
+    ScrollableIconButton,
+    SimpleIconButton,
+    ToggleIconButton,
     ToggleScrollableIconButton,
 )
 from ui.icon_manager import AppIcon
@@ -492,9 +492,7 @@ class OnboardingOverlay(QWidget):
     def _style_demo_btn(self, btn, checked=False):
         btn.setFixedSize(40, 40)
 
-        from shared_toolkit.ui.widgets.atomic.toggle_scrollable_icon_button import (
-            ToggleScrollableIconButton,
-        )
+        from sli_ui_toolkit.widgets import ToggleScrollableIconButton
 
         is_toggle_scrollable = isinstance(btn, ToggleScrollableIconButton)
 

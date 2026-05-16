@@ -7,92 +7,11 @@ from PyQt6.QtCore import QObject, QThreadPool, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 
 from plugins.video_editor.services.keyframing import KeyframedRecording
-from shared.image_processing.pipeline import (
-    RenderingPipeline,
-    create_render_context_from_store,
-)
-from shared.image_processing.progressive_loader import load_preview_image
-from shared_toolkit.workers.generic_worker import GenericWorker
-from ui.canvas_presentation import (
-    build_render_frame_presentation,
-    build_snapshot_store_presentation,
-)
+from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
 
 DEFAULT_THUMBNAIL_RENDER_SCALE = 2.0
-
-def _render_thumbnail_using_pipeline(
-    snap,
-    thumbnail_size: Tuple[int, int],
-    auto_crop: bool = False,
-    render_scale: float = DEFAULT_THUMBNAIL_RENDER_SCALE,
-    image_loader: Optional[Callable[[str, bool], Optional[Image.Image]]] = None,
-) -> Optional[Image.Image]:
-    try:
-        out_w, out_h = thumbnail_size
-        render_scale = max(1.0, float(render_scale))
-        target_w = max(1, int(round(out_w * render_scale)))
-        target_h = max(1, int(round(out_h * render_scale)))
-
-        loader = image_loader or load_preview_image
-        img1 = loader(snap.image1_path, auto_crop)
-        img2 = loader(snap.image2_path, auto_crop)
-
-        if not img1:
-            img1 = Image.new("RGBA", (target_w, target_h), (50, 50, 50, 255))
-        if not img2:
-            img2 = Image.new("RGBA", (target_w, target_h), (80, 80, 80, 255))
-
-        presentation = build_snapshot_store_presentation(
-            snap,
-            img1,
-            img2,
-            fit_content=False,
-        )
-        presentation.store.settings.auto_crop_black_borders = auto_crop
-        frame = build_render_frame_presentation(
-            presentation,
-            output_width=target_w,
-            output_height=target_h,
-        )
-
-        ctx = create_render_context_from_store(
-            store=frame.store,
-            width=frame.render_width,
-            height=frame.render_height,
-            magnifier_drawing_coords=frame.magnifier_drawing_coords,
-            image1_scaled=frame.scaled_image1,
-            image2_scaled=frame.scaled_image2,
-        )
-        ctx.images.file_name1 = snap.name1 or ""
-        ctx.images.file_name2 = snap.name2 or ""
-
-        pipeline = RenderingPipeline(font_path=None)
-        frame_pil, p_l, p_t, _, _, _ = pipeline.render_frame(ctx)
-
-        if not frame_pil:
-            return Image.new("RGBA", (frame.render_width, out_h), (0, 0, 0, 255))
-
-        crop_rect = (
-            max(0, p_l),
-            max(0, p_t),
-            min(frame_pil.width, p_l + frame.render_width),
-            min(frame_pil.height, p_t + frame.render_height),
-        )
-
-        base_image_content = frame_pil.crop(crop_rect)
-
-        final_w = max(1, int(round(base_image_content.width / render_scale)))
-        final_frame = base_image_content.resize(
-            (final_w, out_h), Image.Resampling.LANCZOS
-        )
-
-        return final_frame
-
-    except Exception as e:
-        logger.error(f"Error rendering thumbnail using pipeline: {e}", exc_info=True)
-        return None
 
 def _render_thumbnail_using_renderer(
     snap,
@@ -137,7 +56,6 @@ class ThumbnailService(QObject):
         self._recording = None
         self._thumbnail_size = (160, 90)
         self._thumbnail_render_scale = DEFAULT_THUMBNAIL_RENDER_SCALE
-        self._image_loader: Optional[Callable[[str, bool], Optional[Image.Image]]] = None
         self._render_snapshot: Optional[Callable[..., Optional[Image.Image]]] = None
         self._auto_crop = False
         self._active_workers = 0
@@ -261,23 +179,15 @@ class ThumbnailService(QObject):
         """Генерирует одно превью и возвращает PIL Image."""
         try:
             snap = self._recording.evaluate_at(float(index) / float(max(1, fps)))
-            if self._render_snapshot is not None:
-                composed_pil = _render_thumbnail_using_renderer(
-                    snap,
-                    thumbnail_size,
-                    auto_crop,
-                    render_scale,
-                    self._render_snapshot,
-                )
-            else:
-                composed_pil = _render_thumbnail_using_pipeline(
-                    snap,
-                    thumbnail_size,
-                    auto_crop,
-                    render_scale,
-                    self._image_loader,
-                )
-            return composed_pil
+            if self._render_snapshot is None:
+                raise RuntimeError("Thumbnail GPU renderer is not configured")
+            return _render_thumbnail_using_renderer(
+                snap,
+                thumbnail_size,
+                auto_crop,
+                render_scale,
+                self._render_snapshot,
+            )
         except Exception as e:
             logger.error(
                 f"Error generating thumbnail at index {index}: {e}", exc_info=True
@@ -305,11 +215,6 @@ class ThumbnailService(QObject):
 
     def set_thumbnail_render_scale(self, scale: float):
         self._thumbnail_render_scale = max(1.0, float(scale))
-
-    def set_image_loader(
-        self, loader: Optional[Callable[[str, bool], Optional[Image.Image]]]
-    ):
-        self._image_loader = loader
 
     def set_snapshot_renderer(
         self, renderer: Optional[Callable[..., Optional[Image.Image]]]

@@ -6,8 +6,11 @@ import time
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-from core.events import ViewportToggleMagnifierPartEvent
-from shared_toolkit.ui.managers.flyout_timer_service import DelayedActionTimer
+from plugins.viewport.events import (
+    ViewportToggleMagnifierLaserEvent,
+    ViewportToggleMagnifierPartEvent,
+)
+from sli_ui_toolkit.managers import DelayedActionTimer
 from shared_toolkit.ui.managers.font_manager import FontManager
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -21,7 +24,7 @@ def initialize_ui_manager(manager) -> None:
     _connect_services(manager)
 
 def _init_unified_flyout(manager) -> None:
-    from shared_toolkit.ui.widgets.composite.unified_flyout import UnifiedFlyout
+    from sli_ui_toolkit.ui.widgets.composite.unified_flyout import UnifiedFlyout
 
     manager.unified_flyout = UnifiedFlyout(
         manager.store, manager.main_controller, manager.parent_widget
@@ -109,9 +112,7 @@ def _install_menu_tracker(
     button.show_menu = wrapped_show_menu
 
 def _init_magnifier_flyout(manager) -> None:
-    from shared_toolkit.ui.widgets.composite.magnifier_visibility_flyout import (
-        MagnifierVisibilityFlyout,
-    )
+    from ui.widgets.magnifier_visibility_flyout import MagnifierVisibilityFlyout
 
     manager.magnifier_visibility_flyout = MagnifierVisibilityFlyout(
         manager.parent_widget

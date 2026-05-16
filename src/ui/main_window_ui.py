@@ -14,34 +14,26 @@ from PyQt6.QtWidgets import (
 )
 
 from resources.translations import tr
-from shared_toolkit.ui.widgets.atomic import (
+from sli_ui_toolkit.widgets import ButtonGroupContainer
+from sli_ui_toolkit.widgets import (
     BodyLabel,
     CaptionLabel,
-    FluentSlider,
-)
-from shared_toolkit.ui.widgets.atomic.button_group_container import ButtonGroupContainer
-from shared_toolkit.ui.widgets.atomic.buttons import (
     ButtonType,
     IconButton,
     LongPressIconButton,
+    Slider,
 )
-from shared_toolkit.ui.widgets.atomic.comboboxes import ScrollableComboBox
-from shared_toolkit.ui.widgets.atomic.custom_button import CustomButton
-from shared_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
-from shared_toolkit.ui.widgets.atomic.magnifier_instances_button import (
-    MagnifierInstancesButton,
-)
-from shared_toolkit.ui.widgets.atomic.scrollable_icon_button import ScrollableIconButton
-from shared_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
-from shared_toolkit.ui.widgets.atomic.toggle_icon_button import ToggleIconButton
-from shared_toolkit.ui.widgets.atomic.toggle_scrollable_icon_button import (
+from sli_ui_toolkit.widgets import CustomButton
+from sli_ui_toolkit.widgets import CustomLineEdit, SimpleIconButton, ToggleIconButton
+from sli_ui_toolkit.widgets import (
+    InstancesCounterButton,
+    ScrollableComboBox,
+    ScrollableIconButton,
     ToggleScrollableIconButton,
 )
-from shared_toolkit.ui.widgets.atomic.tool_button_with_menu import ToolButtonWithMenu
-from shared_toolkit.ui.widgets.composite.color_settings_button import (
-    ColorSettingsButton,
-)
-from shared_toolkit.ui.widgets.drag_drop_overlay import DragDropOverlay
+from sli_ui_toolkit.widgets import ToolButtonWithMenu
+from ui.widgets.magnifier_color_controls import ColorSettingsButton
+from sli_ui_toolkit.ui.widgets.overlays.drag_drop_overlay import DragDropOverlay
 from ui.icon_manager import AppIcon
 from ui.widgets import VideoSessionWidget
 from ui.widgets.gl_canvas import GLCanvas
@@ -75,6 +67,7 @@ class Ui_ImageComparisonApp:
         self.image_session_page = QWidget(main_window)
         self.video_session_page = QWidget(main_window)
         self.video_session_widget = VideoSessionWidget(main_window)
+        self._tab_registry = None
 
     def _create_selection_controls(self, parent: QWidget):
         self.btn_image1 = CustomButton(AppIcon.PHOTO, "", parent)
@@ -113,7 +106,7 @@ class Ui_ImageComparisonApp:
             AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20, parent=parent
         )
         self.btn_magnifier = ToggleIconButton(AppIcon.MAGNIFIER, parent=parent)
-        self.btn_magnifier_instances = MagnifierInstancesButton(parent=parent)
+        self.btn_magnifier_instances = InstancesCounterButton(parent=parent)
         self.btn_freeze = ToggleIconButton(AppIcon.FREEZE, parent=parent)
         self.btn_file_names = ToggleIconButton(AppIcon.TEXT_FILENAME, parent=parent)
 
@@ -163,9 +156,9 @@ class Ui_ImageComparisonApp:
         self.btn_video_editor = SimpleIconButton(AppIcon.EXPORT_VIDEO, parent)
 
     def _create_slider_controls(self, parent: QWidget):
-        self.slider_size = FluentSlider(Qt.Orientation.Horizontal, parent)
-        self.slider_capture = FluentSlider(Qt.Orientation.Horizontal, parent)
-        self.slider_speed = FluentSlider(Qt.Orientation.Horizontal, parent)
+        self.slider_size = Slider(Qt.Orientation.Horizontal, parent)
+        self.slider_capture = Slider(Qt.Orientation.Horizontal, parent)
+        self.slider_speed = Slider(Qt.Orientation.Horizontal, parent)
 
     def _create_text_and_status_widgets(self, parent: QWidget):
         self.edit_name1 = CustomLineEdit(parent)
@@ -306,12 +299,15 @@ class Ui_ImageComparisonApp:
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self.workspace_tabs.setMinimumHeight(36)
-        self.workspace_tabs.setVisible(SHOW_WORKSPACE_TABS)
-        self.btn_new_session.setVisible(SHOW_WORKSPACE_TABS)
+        show = getattr(getattr(self.main_window, "store", None), "settings", None)
+        show = getattr(show, "show_workspace_tabs", SHOW_WORKSPACE_TABS) if show else SHOW_WORKSPACE_TABS
+        self.workspace_tabs.setVisible(show)
+        self.btn_new_session.setVisible(show)
 
     def _configure_session_pages(self):
         self.workspace_stack.addWidget(self.image_session_page)
         self.workspace_stack.addWidget(self.video_session_page)
+        self._install_tab_registry()
 
     def _assemble_image_session_page(self):
         layout = QVBoxLayout(self.image_session_page)
@@ -331,6 +327,19 @@ class Ui_ImageComparisonApp:
         layout.setSpacing(6)
         layout.addWidget(self.video_session_widget)
         layout.addStretch(1)
+
+    def _install_tab_registry(self):
+        from tabs.contract import TabContext
+        from tabs.registry import TabRegistry
+
+        self._tab_registry = TabRegistry()
+        self._tab_registry.discover()
+
+        context = TabContext(
+            store=getattr(self.main_window, "store", None),
+            main_window=self.main_window,
+        )
+        self._tab_registry.install_pages(self.workspace_stack, context)
 
     def _create_workspace_layout(self):
         layout = QHBoxLayout()
@@ -363,14 +372,25 @@ class Ui_ImageComparisonApp:
     def sync_session_mode(self, session_type: str, session_title: str | None = None):
         is_image_session = session_type == "image_compare"
 
-        self.workspace_stack.setCurrentWidget(
-            self.image_session_page if is_image_session else self.video_session_page
+        tab_page = (
+            self._tab_registry.get_page(session_type)
+            if self._tab_registry
+            else None
         )
+        if tab_page is not None:
+            self.workspace_stack.setCurrentWidget(tab_page)
+            if self._tab_registry:
+                self._tab_registry.activate(session_type)
+        elif is_image_session:
+            self.workspace_stack.setCurrentWidget(self.image_session_page)
+        else:
+            self.workspace_stack.setCurrentWidget(self.video_session_page)
+
         self.edit_layout_widget.setVisible(
             is_image_session and self.btn_file_names.isChecked()
         )
 
-        if not is_image_session:
+        if session_type == "video":
             title = session_title or session_type.replace("_", " ").title()
             self.video_session_widget.title_label.setText(title)
 
@@ -543,7 +563,7 @@ class Ui_ImageComparisonApp:
 
     def _configure_slider(
         self,
-        slider: FluentSlider,
+        slider: Slider,
         *,
         minimum: int,
         maximum: int,
@@ -696,6 +716,8 @@ class Ui_ImageComparisonApp:
         self.btn_save.setText(tr("button.save_result", lang_code))
 
     def _update_translation_tooltips(self, lang_code: str):
+        self.btn_image1.setToolTip(tr("tooltip.add_images_1", lang_code))
+        self.btn_image2.setToolTip(tr("tooltip.add_images_2", lang_code))
         self.btn_swap.setToolTip(
             f"{tr('tooltip.click_swap_current_images', lang_code)}\n{tr('tooltip.hold_swap_entire_lists', lang_code)}"
         )
@@ -705,33 +727,75 @@ class Ui_ImageComparisonApp:
         )
         self.btn_clear_list1.setToolTip(clear_tooltip)
         self.btn_clear_list2.setToolTip(clear_tooltip)
-        self.btn_quick_save.setToolTip("")
+        self.btn_color_picker.setToolTip(
+            tr("tooltip.open_file_name_text_settings", lang_code)
+        )
+        self.btn_quick_save.setToolTip(tr("tooltip.quick_save_image", lang_code))
+        self.btn_save.setToolTip(tr("tooltip.save_result", lang_code))
         self.btn_orientation.setToolTip(
             tr("ui.toggle_split_orientation", lang_code)
         )
+        self.btn_orientation_simple.setToolTip(
+            tr("ui.toggle_split_orientation", lang_code)
+        )
         self.btn_magnifier.setToolTip(tr("magnifier.toggle_magnifier", lang_code))
-        self.btn_magnifier_instances.setToolTip("Add or remove magnifier")
+        self.btn_magnifier_instances.setToolTip(
+            tr("tooltip.add_or_remove_magnifier", lang_code)
+        )
         self.btn_freeze.setToolTip(tr("magnifier.freeze_magnifier_position", lang_code))
         self.btn_magnifier_orientation.setToolTip(
+            tr("ui.toggle_split_orientation", lang_code)
+        )
+        self.btn_magnifier_orientation_simple.setToolTip(
             tr("ui.toggle_split_orientation", lang_code)
         )
         self.btn_file_names.setToolTip(
             tr("ui.include_file_names_in_saved_image", lang_code)
         )
+        self.btn_diff_mode.setToolTip(tr("tooltip.change_diff_mode", lang_code))
+        self.btn_channel_mode.setToolTip(tr("tooltip.change_channel_mode", lang_code))
         self.btn_magnifier_color_settings.setToolTip(
+            tr("magnifier.change_magnifier_colors", lang_code)
+        )
+        self.btn_magnifier_color_settings_beginner.setToolTip(
             tr("magnifier.change_magnifier_colors", lang_code)
         )
         if hasattr(self.btn_magnifier_color_settings, "update_language"):
             self.btn_magnifier_color_settings.update_language(lang_code)
+        if hasattr(self.btn_magnifier_color_settings_beginner, "update_language"):
+            self.btn_magnifier_color_settings_beginner.update_language(lang_code)
         self.btn_magnifier_guides.setToolTip(
             tr("magnifier.toggle_magnifier_guide_lines", lang_code)
+        )
+        self.btn_magnifier_guides_simple.setToolTip(
+            tr("magnifier.toggle_magnifier_guide_lines", lang_code)
+        )
+        self.btn_divider_visible.setToolTip(
+            tr("tooltip.toggle_divider_visibility", lang_code)
+        )
+        self.btn_divider_color.setToolTip(
+            tr("ui.choose_divider_line_color", lang_code)
+        )
+        self.btn_divider_width.setToolTip(
+            tr("tooltip.adjust_divider_width", lang_code)
+        )
+        self.btn_magnifier_divider_visible.setToolTip(
+            tr("tooltip.toggle_magnifier_divider_visibility", lang_code)
+        )
+        self.btn_magnifier_divider_width.setToolTip(
+            tr("tooltip.adjust_magnifier_divider_width", lang_code)
+        )
+        self.btn_magnifier_guides_width.setToolTip(
+            tr("tooltip.adjust_magnifier_guides_width", lang_code)
         )
         self.btn_record.setToolTip(tr("button.startstop_recording", lang_code))
         self.btn_pause.setToolTip(tr("button.pauseresume_recording", lang_code))
         self.btn_video_editor.setToolTip(
             tr("action.open_video_editor_exporter", lang_code)
         )
-        self.btn_new_session.setToolTip("Create workspace session")
+        self.btn_new_session.setToolTip(
+            tr("tooltip.create_workspace_session", lang_code)
+        )
         self.btn_settings.setToolTip(tr("action.open_application_settings", lang_code))
         self.help_button.setToolTip(tr("action.show_help", lang_code))
 

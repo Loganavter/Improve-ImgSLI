@@ -2,21 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.events import (
+from plugins.settings.events import (
     SettingsApplyFontSettingsEvent,
     SettingsChangeLanguageEvent,
     SettingsToggleAutoCropBlackBordersEvent,
-    SettingsToggleIncludeFilenamesInSavedEvent,
 )
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IServicePlugin, IUIPlugin
 from plugins.settings.controller import SettingsController
 from plugins.settings.manager import SettingsManager
-from ui.canvas_features.magnifier.events import (
-    SettingsSetMagnifierDividerColorEvent,
-    SettingsSetMagnifierDividerThicknessEvent,
-    SettingsToggleMagnifierDividerVisibilityEvent,
-)
 from ui.canvas_infra.scene.widget_registry import (
     get_canvas_feature_settings_event_bindings,
 )
@@ -53,27 +47,11 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
                 SettingsChangeLanguageEvent, self.controller.on_change_language
             )
             self.event_bus.subscribe(
-                SettingsToggleIncludeFilenamesInSavedEvent,
-                self.controller.on_toggle_include_filenames_in_saved,
-            )
-            self.event_bus.subscribe(
                 SettingsApplyFontSettingsEvent, self.controller.on_apply_font_settings
-            )
-            self.event_bus.subscribe(
-                SettingsToggleMagnifierDividerVisibilityEvent,
-                self.controller.on_toggle_magnifier_divider_visibility,
-            )
-            self.event_bus.subscribe(
-                SettingsSetMagnifierDividerColorEvent,
-                self.controller.on_set_magnifier_divider_color,
             )
             self.event_bus.subscribe(
                 SettingsToggleAutoCropBlackBordersEvent,
                 self.controller.on_toggle_auto_crop_black_borders,
-            )
-            self.event_bus.subscribe(
-                SettingsSetMagnifierDividerThicknessEvent,
-                self.controller.on_set_magnifier_divider_thickness,
             )
             for feature_name, bindings in get_canvas_feature_settings_event_bindings().items():
                 for binding in bindings:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.events import (
+from plugins.analysis.events import (
     AnalysisRequestMetricsEvent,
     AnalysisSetChannelViewModeEvent,
     AnalysisSetDiffModeEvent,

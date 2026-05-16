@@ -151,7 +151,7 @@ QLabel#TooltipContentWidget {
     border-radius: 5px;
 }
 
-/* --- FluentComboBox --- */
+/* --- ComboBox --- */
 QComboBox[fluent-combobox="true"] {
     background-color: @dialog.input.background;
     color: @dialog.text;
@@ -239,32 +239,32 @@ ToggleIconButton:checked:hover {
     background-color: @button.toggle.background.checked.hover;
 }
 
-QPushButton[magnifier-segment="true"] {
+QPushButton[counter-segment="true"] {
     background-color: @button.toggle.background.normal;
     border: none;
     padding: 0px;
 }
 
-QPushButton[magnifier-segment="true"]:hover {
+QPushButton[counter-segment="true"]:hover {
     background-color: @button.toggle.background.hover;
 }
 
-QPushButton[magnifier-segment="true"]:pressed {
+QPushButton[counter-segment="true"]:pressed {
     background-color: @button.toggle.background.pressed;
 }
 
-QPushButton[magnifier-segment="true"][segment="single"] {
+QPushButton[counter-segment="true"][segment="single"] {
     border-radius: 6px;
 }
 
-QPushButton[magnifier-segment="true"][segment="top"] {
+QPushButton[counter-segment="true"][segment="top"] {
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
     border-bottom-left-radius: 0px;
     border-bottom-right-radius: 0px;
 }
 
-QPushButton[magnifier-segment="true"][segment="bottom"] {
+QPushButton[counter-segment="true"][segment="bottom"] {
     border-top-left-radius: 0px;
     border-top-right-radius: 0px;
     border-bottom-left-radius: 6px;
@@ -283,26 +283,26 @@ ScrollableComboBox {
     border: none;
 }
 
-/* --- FluentSpinBox --- */
-FluentSpinBox {
+/* --- SpinBox --- */
+SpinBox {
     background-color: @dialog.input.background;
     border: 1px solid @input.border.thin;
     border-radius: 2px;
 }
 
-FluentSpinBox:focus {
+SpinBox:focus {
     border: 1px solid @accent;
 }
 
-/* Стили для line edit внутри FluentSpinBox */
-FluentSpinBox QLineEdit {
+/* Стили для line edit внутри SpinBox */
+SpinBox QLineEdit {
     border: none;
     background: transparent;
     padding: 0;
     margin: 0;
 }
 
-/* --- Дополнительные стили для FluentComboBox --- */
+/* --- Дополнительные стили для ComboBox --- */
 /* Стили для popup flyout */
 QWidget[fluent-combobox-popup="true"] {
     background-color: @flyout.background;
@@ -316,7 +316,7 @@ QComboBox[fluent-combobox="true"] QScrollArea {
     border: none;
 }
 
-/* Исправление фона для выпадающих списков FluentComboBox */
+/* Исправление фона для выпадающих списков ComboBox */
 QWidget[fluent-combobox-popup="true"],
 QWidget[fluent-combobox-popup="true"] QWidget {
     background-color: @flyout.background;

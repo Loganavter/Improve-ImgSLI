@@ -5,22 +5,17 @@ from PyQt6.QtGui import QColor
 
 from core.constants import AppConstants
 from core.store import Store
-from domain.qt_adapters import hex_to_color, color_to_hex, qcolor_to_color
-from domain.types import Point
-from ui.canvas_features.magnifier import MagnifierStoreService
-from ui.canvas_features.magnifier.store import (
-    default_capture_size,
-    default_magnifier_size,
-    set_default_capture_size,
-    set_default_magnifier_size,
-)
+from domain.qt_adapters import hex_to_color, color_to_hex
 from ui.canvas_infra.scene.property_access import (
     deserialize_canvas_feature_setting,
     read_canvas_feature_property,
     write_canvas_feature_property,
     serialize_canvas_feature_setting,
 )
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_properties
+from ui.canvas_infra.scene.widget_registry import (
+    get_canvas_feature_command_by_alias,
+    get_canvas_feature_properties,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -47,24 +42,12 @@ class SettingsManager:
         v, s = store.viewport, store.settings
         render = v.render_config
         view = v.view_state
-        scene_state = MagnifierStoreService(store)
 
         render.max_name_length = self._get_setting("max_name_length", 50, int)
         render.display_resolution_limit = self._get_setting(
             "display_resolution_limit", 2160, int
         )
 
-        set_default_magnifier_size(
-            view,
-            self._get_setting("magnifier_size_relative", 0.4, float),
-        )
-        set_default_capture_size(
-            view,
-            self._get_setting("capture_size_relative", 0.1, float),
-        )
-        initial_spacing = self._get_setting(
-            "magnifier_spacing_relative", AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE, float
-        )
         view.movement_speed_per_sec = self._get_setting(
             "movement_speed_per_sec", 2.0, float
         )
@@ -80,6 +63,7 @@ class SettingsManager:
             "auto_crop_black_borders", True, bool
         )
         s.video_recording_fps = self._get_setting("video_recording_fps", 60, int)
+        s.show_workspace_tabs = self._get_setting("show_workspace_tabs", False, bool)
         v.session_data.image_state.auto_calculate_psnr = self._get_setting(
             "auto_calculate_psnr", False, bool
         )
@@ -87,7 +71,7 @@ class SettingsManager:
             "auto_calculate_ssim", False, bool
         )
 
-        render.font_size_percent = self._get_setting("font_size_percent", 100, int)
+        render.font_size_percent = self._get_setting("font_size_percent", 120, int)
         render.font_weight = self._get_setting("font_weight", 0, int)
         render.text_alpha_percent = self._get_setting("text_alpha_percent", 100, int)
         render.file_name_color = hex_to_color(
@@ -102,7 +86,7 @@ class SettingsManager:
             "include_file_names_in_saved", False, bool
         )
 
-        view.optimize_magnifier_movement = self._get_setting(
+        view.optimize_interactive_movement = self._get_setting(
             "optimize_magnifier_movement", True, bool
         )
 
@@ -129,26 +113,22 @@ class SettingsManager:
             magnifier_movement_interp = movement_interp
             laser_smoothing_interp = movement_interp
 
-        render.magnifier_movement_interpolation_method = (
+        render.interactive_movement_interpolation_method = (
             magnifier_movement_interp
         )
-        from ui.canvas_features.guides.state import get_guides_widget_state
-
-        get_guides_widget_state(v.view_state).smoothing_interpolation_method = (
-            laser_smoothing_interp or "BILINEAR"
+        _set_smoothing_interp = get_canvas_feature_command_by_alias(
+            "guides.set_smoothing_interpolation_method"
         )
+        if _set_smoothing_interp is not None:
+            _set_smoothing_interp(store, laser_smoothing_interp or "BILINEAR")
 
         render.movement_interpolation_method = magnifier_movement_interp
 
         self._load_canvas_feature_settings(v)
 
-        default_magnifier = scene_state.ensure_active_magnifier(create_if_missing=False)
-        if default_magnifier is not None:
-            scene_state.move_object_source_position(default_magnifier.id, AppConstants.DEFAULT_CAPTURE_POS_RELATIVE)
-            scene_state.set_active_magnifier_offset(AppConstants.DEFAULT_MAGNIFIER_OFFSET_RELATIVE)
-            scene_state.set_active_magnifier_spacing(initial_spacing)
-            scene_state.set_active_magnifier_size(default_magnifier_size(view))
-            scene_state.set_active_capture_size(default_capture_size(view))
+        init_cmd = get_canvas_feature_command_by_alias("overlay.settings_initialize")
+        if init_cmd is not None:
+            init_cmd(store, self._get_setting)
 
         s.window_width = self._get_setting("window_width", 1024, int)
         s.window_height = self._get_setting("window_height", 768, int)
@@ -207,23 +187,13 @@ class SettingsManager:
         v, s = store.viewport, store.settings
         render = v.render_config
         view = v.view_state
-        scene_state = MagnifierStoreService(store)
-        active_magnifier = scene_state.get_active_or_first_magnifier()
         self._save_setting("max_name_length", render.max_name_length)
         self._save_setting("display_resolution_limit", render.display_resolution_limit)
 
-        self._save_setting(
-            "magnifier_size_relative",
-            active_magnifier.size_relative if active_magnifier is not None else default_magnifier_size(view),
-        )
-        self._save_setting(
-            "capture_size_relative",
-            active_magnifier.capture_size_relative if active_magnifier is not None else default_capture_size(view),
-        )
-        self._save_setting(
-            "magnifier_spacing_relative",
-            active_magnifier.spacing_relative if active_magnifier is not None else AppConstants.DEFAULT_MAGNIFIER_SPACING_RELATIVE,
-        )
+        persist_cmd = get_canvas_feature_command_by_alias("overlay.settings.persist")
+        if persist_cmd is not None:
+            persist_cmd(store, self._save_setting)
+
         self._save_setting("movement_speed_per_sec", view.movement_speed_per_sec)
 
         self._save_setting("theme", s.theme)
@@ -234,6 +204,7 @@ class SettingsManager:
         )
         self._save_setting("auto_crop_black_borders", s.auto_crop_black_borders)
         self._save_setting("video_recording_fps", s.video_recording_fps)
+        self._save_setting("show_workspace_tabs", s.show_workspace_tabs)
         self._save_setting(
             "auto_calculate_psnr", store.viewport.session_data.image_state.auto_calculate_psnr
         )
@@ -250,7 +221,7 @@ class SettingsManager:
         self._save_setting("text_placement_mode", render.text_placement_mode)
         self._save_setting("include_file_names_in_saved", render.include_file_names_in_saved)
 
-        self._save_setting("optimize_magnifier_movement", view.optimize_magnifier_movement)
+        self._save_setting("optimize_magnifier_movement", view.optimize_interactive_movement)
         self._save_setting("interpolation_method", render.interpolation_method)
         self._save_setting(
             "zoom_interpolation_method", render.zoom_interpolation_method
@@ -258,7 +229,7 @@ class SettingsManager:
 
         self._save_setting(
             "magnifier_movement_interpolation_method",
-            render.magnifier_movement_interpolation_method,
+            render.interactive_movement_interpolation_method,
         )
         self._save_setting(
             "movement_interpolation_method", render.movement_interpolation_method

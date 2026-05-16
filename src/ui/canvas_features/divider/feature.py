@@ -8,13 +8,12 @@ from domain.types import Color, Rect
 from ui.canvas_infra.scene.context import CanvasSceneApplyContext, CanvasSceneBuildContext
 from ui.canvas_infra.scene.feature_contract import CanvasFeatureZOrder, CanvasSceneFeature
 from ui.canvas_infra.scene.models import CanvasSceneObject
-from ui.canvas_infra.scene.stacking import CanvasStackLayer
+from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
 from .state import get_divider_widget_state
 
 DIVIDER_Z_ORDER = CanvasFeatureZOrder(
-    layer=CanvasStackLayer.DIVIDER,
-    priority=10,
+    stack_role=CanvasStackRole.UNDERLAY_SPLIT,
 )
 
 @dataclass(frozen=True)
@@ -82,12 +81,15 @@ def apply_divider_object(
         1,
     )
 
-FEATURE = CanvasSceneFeature(
-    name="divider",
-    build_primary=lambda context: (),
-    build_overlay=build_divider_objects,
-    apply=apply_divider_object,
-    z_order=DIVIDER_Z_ORDER,
-    overlay_order=10,
-    apply_order=40,
-)
+def build_scene_feature() -> CanvasSceneFeature:
+    return CanvasSceneFeature(
+        name="divider",
+        build_primary=lambda context: (),
+        build_overlay=build_divider_objects,
+        apply=apply_divider_object,
+        z_order=DIVIDER_Z_ORDER,
+        overlay_order=10,
+        apply_order=40,
+    )
+
+FEATURE = build_scene_feature()

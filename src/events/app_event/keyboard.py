@@ -6,14 +6,13 @@ from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import QApplication, QLineEdit, QPlainTextEdit, QTextEdit
 
-from core.events import ExportPasteImageFromClipboardEvent
+from plugins.export.events import ExportPasteImageFromClipboardEvent
 from events.app_event.common import get_event_bus, get_main_controller
-from ui.canvas_features.magnifier.store import magnifier_enabled
 
 logger = logging.getLogger("ImproveImgSLI")
 
 class GlobalKeyboardHandler:
-    MAGNIFIER_KEYS = {
+    OVERLAY_MOVEMENT_KEYS = {
         Qt.Key.Key_Q,
         Qt.Key.Key_E,
         Qt.Key.Key_W,
@@ -36,7 +35,7 @@ class GlobalKeyboardHandler:
     def _should_log_suppressed_reason(reason: str) -> bool:
         return reason not in {
             "ignored_untracked",
-            "magnifier_auto_repeat",
+            "overlay_auto_repeat",
             "space_auto_repeat",
             "stray_release",
             "space_stray_release",
@@ -81,7 +80,7 @@ class GlobalKeyboardHandler:
             return False
 
         key = event.key()
-        if key in self.MAGNIFIER_KEYS:
+        if key in self.OVERLAY_MOVEMENT_KEYS:
             return True
         modifiers = event.modifiers()
         if key == Qt.Key.Key_V and modifiers & Qt.KeyboardModifier.ControlModifier:
@@ -96,7 +95,7 @@ class GlobalKeyboardHandler:
             return True
         if key == Qt.Key.Key_Shift and self.store.viewport.interaction_state.space_bar_pressed:
             return True
-        return key in self.MAGNIFIER_KEYS
+        return key in self.OVERLAY_MOVEMENT_KEYS
 
     def handle_key_press(self, event: QKeyEvent) -> None:
         key_code = event.key()
@@ -108,7 +107,7 @@ class GlobalKeyboardHandler:
             event.accept()
             return
 
-        is_magnifier_key = key_code in self.MAGNIFIER_KEYS
+        is_overlay_key = key_code in self.OVERLAY_MOVEMENT_KEYS
         result = self.keyboard_state.press(key_code, is_auto_repeat=event.isAutoRepeat())
         if not result.applied:
             if not self._should_log_suppressed_reason(result.reason):
@@ -123,7 +122,7 @@ class GlobalKeyboardHandler:
             return
         self.store.emit_viewport_change("interaction")
 
-        if (is_magnifier_key and magnifier_enabled(self.store.viewport.view_state)) or not is_magnifier_key:
+        if (is_overlay_key and self.store.viewport.view_state.overlay_enabled) or not is_overlay_key:
             self._movement_controller.start()
 
     def handle_key_release(self, event: QKeyEvent) -> None:
@@ -143,9 +142,9 @@ class GlobalKeyboardHandler:
         self.store.emit_viewport_change("interaction")
 
         if (
-            key_code in self.MAGNIFIER_KEYS
-            and magnifier_enabled(self.store.viewport.view_state)
-            and not self.keyboard_state.has_active_magnifier_keys()
+            key_code in self.OVERLAY_MOVEMENT_KEYS
+            and self.store.viewport.view_state.overlay_enabled
+            and not self.keyboard_state.has_active_overlay_keys()
         ):
             self._movement_controller.stop()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from core.events import CoreUpdateRequestedEvent, SettingsUIModeChangedEvent
+from core.events import CoreUpdateRequestedEvent
+from plugins.settings.events import SettingsUIModeChangedEvent
 
 class SettingsUpdateNotifier:
     def __init__(self, store, event_bus=None, update_requested_signal=None):

@@ -13,13 +13,6 @@ class SetCachedDiffImageAction(Action):
     def get_payload(self): return {"image": self.image}
 
 @dataclass
-class SetMagnifierMovementInterpolationMethodAction(Action):
-    method: str
-    def __init__(self, method: str):
-        super().__init__(type=ActionType.SET_MAGNIFIER_MOVEMENT_INTERPOLATION_METHOD); self.method = method
-    def get_payload(self): return {"method": self.method}
-
-@dataclass
 class SetIncludeFileNamesInSavedAction(Action):
     enabled: bool
     def __init__(self, enabled: bool):

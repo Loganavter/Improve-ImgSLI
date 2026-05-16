@@ -1,4 +1,3 @@
-from shared.image_processing.pipeline import RenderContext, RenderingPipeline
 from shared.image_processing.progressive_loader import (
     ProgressiveImageLoader,
     get_image_format_info,
@@ -33,8 +32,6 @@ from shared.image_processing.resize import (
 )
 
 __all__ = [
-    "RenderingPipeline",
-    "RenderContext",
     "PreparedAnalysisPair",
     "align_analysis_pair",
     "limit_analysis_pair_size",

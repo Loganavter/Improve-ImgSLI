@@ -15,6 +15,7 @@ from plugins.video_editor.services.keyframing.engine.validation import (
     validate_append_timestamp,
 )
 from plugins.video_editor.services.keyframing.engine.values import (
+    _prefers_continuous_curve,
     add_value_to_track,
     assemble_value_from_track,
     clone_value,
@@ -274,10 +275,11 @@ class KeyframedRecording:
                     interpolate_values=(
                         channel.interpolate_values
                         if channel.interpolate_values is not None
-                        else channel.kind not in {"bool", "enum"}
+                        else channel.kind not in {"bool", "enum", "color"}
                     ),
                     source_track_id=track_descriptor.id,
                     accent_color=channel.accent_color,
+                    prefer_continuous_curve=_prefers_continuous_curve(track_descriptor.id),
                 )
             self.tracks[track_descriptor.id] = KeyframeTrack(timeline_track)
 
