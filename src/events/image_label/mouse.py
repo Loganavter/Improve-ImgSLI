@@ -56,6 +56,10 @@ class ImageLabelMouseHandler:
                 self.handler.preview.switch_side("right")
                 event.accept()
                 return
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.handler.preview.switch_side("left")
+                event.accept()
+                return
             self.handler.preview.log_preview_debug("mouse_press_ignored_active_shift_preview")
             event.accept()
             return
@@ -70,11 +74,15 @@ class ImageLabelMouseHandler:
             and viewport.view_state.showing_single_image_mode == 0
             and not viewport.interaction_state.resize_in_progress
             and self.handler.geometry.is_point_in_overlay(local_pos)
-            and event.button() == Qt.MouseButton.RightButton
         ):
-            self.handler.preview.start_side_preview("right")
-            event.accept()
-            return
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.handler.preview.start_side_preview("left")
+                event.accept()
+                return
+            if event.button() == Qt.MouseButton.RightButton:
+                self.handler.preview.start_side_preview("right")
+                event.accept()
+                return
 
         if viewport.interaction_state.space_bar_pressed:
             if (
@@ -176,12 +184,8 @@ class ImageLabelMouseHandler:
     def handle_mouse_release(self, event) -> None:
         viewport = self.handler.store.viewport
         if self.handler.preview.is_active:
-            preview_buttons = event.buttons() & (
-                Qt.MouseButton.LeftButton | Qt.MouseButton.RightButton
-            )
             if (
-                preview_buttons
-                and viewport.interaction_state.space_bar_pressed
+                viewport.interaction_state.space_bar_pressed
                 and bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
             ):
                 self.handler.preview.log_preview_debug(

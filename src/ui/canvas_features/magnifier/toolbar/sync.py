@@ -136,5 +136,5 @@ def sync_magnifier_size_state(presenter) -> None:
     )
     set_slider_value_quietly(
         getattr(ui, "slider_size", None),
-        int(magnifier_size * 100),
+        int(magnifier_size * 1000),
     )

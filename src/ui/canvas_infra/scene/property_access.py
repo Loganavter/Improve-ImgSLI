@@ -89,6 +89,8 @@ def deserialize_canvas_feature_setting(
         color = hex_to_color(str(raw_value))
         return {"r": color.r, "g": color.g, "b": color.b, "a": color.a}
     if prop.kind == "bool":
+        if isinstance(raw_value, str):
+            return {"value": raw_value.lower() in ("true", "1", "yes")}
         return {"value": bool(raw_value)}
     if prop.kind == "scalar":
         return {"value": float(raw_value)}

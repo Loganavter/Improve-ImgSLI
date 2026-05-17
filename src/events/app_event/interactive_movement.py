@@ -64,6 +64,7 @@ class InteractiveMovementController:
         self.last_update_elapsed = 0
         self._last_input_dirs = (0, 0, 0)
         self._last_debug_signature = None
+        self._spacing_hold_time = 0.0
 
     @property
     def presenter(self):
@@ -236,7 +237,10 @@ class InteractiveMovementController:
 
         spacing_changed = False
         if ds_dir != 0:
+            self._spacing_hold_time += delta_time_sec
             spacing_changed = self._apply_spacing_input(speed_factor, delta_time_sec, ds_dir, handler)
+        else:
+            self._spacing_hold_time = 0.0
         return offset_changed or spacing_changed
 
     def _apply_spacing_input(
@@ -257,6 +261,7 @@ class InteractiveMovementController:
             delta_time_sec,
             min_spacing=min_sp,
             max_spacing=max_sp,
+            hold_time=self._spacing_hold_time,
         )
         handler.set_spacing(clamped_spacing)
         if changed:

@@ -538,8 +538,8 @@ class Ui_ImageComparisonApp:
         sliders_main_layout.setSpacing(10)
         self._configure_slider(
             self.slider_size,
-            minimum=5,
-            maximum=100,
+            minimum=50,
+            maximum=1000,
             label=self.label_magnifier_size,
             layout=sliders_main_layout,
             trailing_spacing=15,
@@ -547,7 +547,7 @@ class Ui_ImageComparisonApp:
         self._configure_slider(
             self.slider_capture,
             minimum=1,
-            maximum=100,
+            maximum=1000,
             label=self.label_capture_size,
             layout=sliders_main_layout,
             trailing_spacing=15,
@@ -555,7 +555,7 @@ class Ui_ImageComparisonApp:
         self._configure_slider(
             self.slider_speed,
             minimum=1,
-            maximum=50,
+            maximum=500,
             label=self.label_movement_speed,
             layout=sliders_main_layout,
         )

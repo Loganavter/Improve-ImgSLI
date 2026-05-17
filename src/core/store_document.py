@@ -30,10 +30,18 @@ class DocumentModel:
     preview_ready2: bool = False
     progressive_load_in_progress1: bool = False
     progressive_load_in_progress2: bool = False
+    _last_display_name1: str = ""
+    _last_display_name2: str = ""
 
     def get_current_display_name(self, slot: int) -> str:
         idx = self.current_index1 if slot == 1 else self.current_index2
         items = self.image_list1 if slot == 1 else self.image_list2
         if 0 <= idx < len(items):
-            return items[idx].display_name
-        return ""
+            name = items[idx].display_name
+            if name:
+                if slot == 1:
+                    self._last_display_name1 = name
+                else:
+                    self._last_display_name2 = name
+                return name
+        return self._last_display_name1 if slot == 1 else self._last_display_name2

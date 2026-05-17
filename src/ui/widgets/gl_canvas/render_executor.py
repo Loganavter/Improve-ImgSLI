@@ -29,6 +29,9 @@ def iter_ordered_render_passes(passes) -> tuple:
     return tuple(sorted(passes, key=_pass_sort_key))
 
 def execute_render_passes(widget, ctx, passes) -> None:
+    is_single_preview = getattr(getattr(ctx, "scene_frame", None), "single_image_preview", False)
     for pass_ in iter_ordered_render_passes(passes):
+        if is_single_preview and getattr(pass_, "hide_in_single_preview", True):
+            continue
         if pass_.should_paint(ctx):
             pass_.paint(widget, ctx)

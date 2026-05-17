@@ -3,15 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from OpenGL import GL as gl
-from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtGui import QColor
 from PyQt6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram
 
 from ui.canvas_infra.scene.gl_pass_contract import CanvasGLRenderPass
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.widgets.gl_canvas.render_common import (
-    draw_qimage_overlay_texture,
-    new_overlay_image,
     widget_px_to_screen_px,
 )
 from ui.widgets.gl_canvas.render_config import begin_content_scissor, end_content_scissor
@@ -547,20 +544,40 @@ class MagnifierPass(CanvasGLRenderPass):
         radius: float,
         border_color: QColor,
     ) -> None:
-        overlay = new_overlay_image(ctx.width, ctx.height)
-        painter = QPainter(overlay)
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            painter.setPen(Qt.PenStyle.NoPen)
-            draw_color = QColor(border_color)
-            draw_color.setAlpha(255)
-            painter.setBrush(draw_color)
-            cx, cy = widget_px_to_screen_px(widget, center_x, center_y)
-            scaled_radius = float(radius) * float(ctx.zoom_level or 1.0)
-            painter.drawEllipse(QPointF(cx, cy), scaled_radius, scaled_radius)
-        finally:
-            painter.end()
-        draw_qimage_overlay_texture(widget, overlay)
+        shader = self._get_disk_shader(widget)
+        if not shader or not shader.programId():
+            return
+        cx, cy = widget_px_to_screen_px(widget, center_x, center_y)
+        scaled_radius = float(radius) * float(ctx.zoom_level or 1.0)
+        draw_color = QColor(border_color)
+        draw_color.setAlpha(255)
+
+        pid = shader.programId()
+        shader.bind()
+        widget.vao.bind()
+        gl.glUniform2f(gl.glGetUniformLocation(pid, "resolution"), float(ctx.width), float(ctx.height))
+        gl.glUniform2f(gl.glGetUniformLocation(pid, "center_px"), float(cx), float(cy))
+        gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), float(scaled_radius))
+        gl.glUniform4f(
+            gl.glGetUniformLocation(pid, "color"),
+            draw_color.redF(), draw_color.greenF(),
+            draw_color.blueF(), draw_color.alphaF(),
+        )
+        gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
+        widget.vao.release()
+        shader.release()
+
+    def _get_disk_shader(self, widget) -> QOpenGLShaderProgram | None:
+        key = "_disk_shader"
+        prog = self._shader_cache.get(key)
+        if prog is not None and prog.isLinked():
+            return prog
+        vert_src = f"{_prolog(self._is_gles)}\n{_ARC_VERT}"
+        frag_src = f"{_prolog(self._is_gles, fragment=True)}\n{_BORDER_DISK_FRAG}"
+        prog = _compile(widget, vert_src, frag_src, "MagnifierSlotFrame")
+        if prog is not None:
+            self._shader_cache[key] = prog
+        return prog
 
     def _get_shader(self, widget, key: _MagShaderKey) -> QOpenGLShaderProgram | None:
         prog = self._shader_cache.get(key)
@@ -788,13 +805,33 @@ class MagnifierPass(CanvasGLRenderPass):
     def cleanup(self, widget) -> None:
         self._shader_cache.clear()
 
+_BORDER_DISK_FRAG = """
+in vec2 TexCoord;
+out vec4 FragColor;
+uniform vec2 resolution;
+uniform vec2 center_px;
+uniform float radius_px;
+uniform vec4 color;
+void main() {
+    vec2 frag_px = TexCoord * resolution;
+    float dist = distance(frag_px, center_px);
+    float aa = 1.15;
+    float alpha = 1.0 - smoothstep(max(0.0, radius_px - aa), radius_px + aa, dist);
+    if (alpha <= 0.01) discard;
+    FragColor = vec4(color.rgb, color.a * alpha);
+}
+"""
+
 class MagnifierBorderPass(CanvasGLRenderPass):
-    """Draw magnifier frames separately from the magnified content."""
+    """Draw magnifier frames separately from the magnified content (pure GL)."""
 
     stack_role = CanvasStackRole.IMAGE_OVERLAY_FRAME
 
     def initialize(self, widget) -> None:
-        return None
+        is_gles = bool(widget.context().isOpenGLES())
+        vert_src = f"{_prolog(is_gles)}\n{_ARC_VERT}"
+        frag_src = f"{_prolog(is_gles, fragment=True)}\n{_BORDER_DISK_FRAG}"
+        self._shader = _compile(widget, vert_src, frag_src, "MagnifierBorderPass")
 
     def should_paint(self, ctx) -> bool:
         magnifier = getattr(ctx.render_list, "magnifier", None)
@@ -803,50 +840,91 @@ class MagnifierBorderPass(CanvasGLRenderPass):
         return bool(getattr(magnifier, "quads", ()))
 
     def paint(self, widget, ctx) -> None:
+        if not self._shader or not self._shader.programId():
+            return
         magnifier = getattr(ctx.render_list, "magnifier", None)
         if magnifier is None:
             return
 
-        overlay = new_overlay_image(ctx.width, ctx.height)
-        painter = QPainter(overlay)
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            painter.setPen(Qt.PenStyle.NoPen)
-            for i, quad in enumerate(magnifier.quads):
-                if not quad:
-                    continue
-                gpu_slot = (
-                    magnifier.gpu_slots[i]
-                    if bool(magnifier.gpu_active) and i < len(magnifier.gpu_slots)
-                    else None
-                )
-                border_color = (
-                    gpu_slot.get("border_color", magnifier.border_color)
-                    if gpu_slot else magnifier.border_color
-                )
-                border_width = (
-                    float(gpu_slot.get("border_width", magnifier.border_width))
-                    if gpu_slot else float(magnifier.border_width)
-                )
-                if border_width <= 0.0:
-                    continue
-                x0, y0, x1, y1, _cx_px, _cy_px, r_px = quad
-                cx, cy = widget_px_to_screen_px(widget, _cx_px, _cy_px)
-                draw_color = QColor(border_color)
+        quads = magnifier.quads
+        if not quads:
+            return
 
-                draw_color.setAlpha(255)
-                painter.setBrush(draw_color)
-                painter.drawEllipse(QPointF(cx, cy), float(r_px), float(r_px))
-        finally:
-            painter.end()
+        pid = self._shader.programId()
+        self._shader.bind()
+        widget.vao.bind()
+        gl.glUniform2f(gl.glGetUniformLocation(pid, "resolution"), float(ctx.width), float(ctx.height))
 
-        draw_qimage_overlay_texture(widget, overlay)
+        for i, quad in enumerate(quads):
+            if not quad:
+                continue
+            gpu_slot = (
+                magnifier.gpu_slots[i]
+                if bool(magnifier.gpu_active) and i < len(magnifier.gpu_slots)
+                else None
+            )
+            border_color = (
+                gpu_slot.get("border_color", magnifier.border_color)
+                if gpu_slot else magnifier.border_color
+            )
+            border_width = (
+                float(gpu_slot.get("border_width", magnifier.border_width))
+                if gpu_slot else float(magnifier.border_width)
+            )
+            if border_width <= 0.0:
+                continue
+            x0, y0, x1, y1, _cx_px, _cy_px, r_px = quad
+            cx, cy = widget_px_to_screen_px(widget, _cx_px, _cy_px)
+            draw_color = QColor(border_color)
+            draw_color.setAlpha(255)
+            gl.glUniform2f(gl.glGetUniformLocation(pid, "center_px"), float(cx), float(cy))
+            gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), float(r_px))
+            gl.glUniform4f(
+                gl.glGetUniformLocation(pid, "color"),
+                draw_color.redF(), draw_color.greenF(),
+                draw_color.blueF(), draw_color.alphaF(),
+            )
+            gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
+
+        widget.vao.release()
+        self._shader.release()
 
     def cleanup(self, widget) -> None:
-        return None
+        self._shader = None
+
+_DASHED_RING_FRAG = """
+in vec2 TexCoord;
+out vec4 FragColor;
+uniform vec2 resolution;
+uniform vec2 center_px;
+uniform float radius_px;
+uniform float lineWidth_px;
+uniform float dashCount;
+uniform vec4 color;
+void main() {
+    vec2 frag_px = TexCoord * resolution;
+    vec2 delta = frag_px - center_px;
+    float dist = length(delta);
+    float half_w = max(0.5, lineWidth_px * 0.5);
+    float aa = 1.15;
+    float ring_delta = abs(dist - radius_px);
+    float ring = 1.0 - smoothstep(max(0.0, half_w - aa), half_w + aa, ring_delta);
+    if (ring <= 0.01) discard;
+    float angle = atan(delta.y, delta.x);
+    float dash = step(0.0, sin(angle * dashCount));
+    if (dash < 0.5) discard;
+    FragColor = vec4(color.rgb, color.a * ring);
+}
+"""
 
 class HiddenSelectionPass(CanvasGLRenderPass):
     stack_role = CanvasStackRole.DEBUG_VIS
+
+    def initialize(self, widget) -> None:
+        is_gles = bool(widget.context().isOpenGLES())
+        vert_src = f"{_prolog(is_gles)}\n{_ARC_VERT}"
+        frag_src = f"{_prolog(is_gles, fragment=True)}\n{_DASHED_RING_FRAG}"
+        self._shader = _compile(widget, vert_src, frag_src, "HiddenSelectionPass")
 
     def should_paint(self, ctx) -> bool:
         magnifier = getattr(ctx.render_list, "magnifier", None)
@@ -855,39 +933,52 @@ class HiddenSelectionPass(CanvasGLRenderPass):
         return bool(hidden_capture_circles or hidden_magnifier_circles)
 
     def paint(self, widget, ctx) -> None:
+        if not self._shader or not self._shader.programId():
+            return
         magnifier = getattr(ctx.render_list, "magnifier", None)
         hidden_capture_circles = list(getattr(magnifier, "hidden_capture_circles", []) or [])
         hidden_magnifier_circles = list(getattr(magnifier, "hidden_magnifier_circles", []) or [])
         if not hidden_capture_circles and not hidden_magnifier_circles:
             return
 
-        overlay = new_overlay_image(ctx.width, ctx.height)
-        painter = QPainter(overlay)
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pid = self._shader.programId()
+        self._shader.bind()
+        widget.vao.bind()
+        gl.glUniform2f(gl.glGetUniformLocation(pid, "resolution"), float(ctx.width), float(ctx.height))
 
-            def _draw_ring(center, radius, *, active: bool, capture: bool):
-                if center is None or radius <= 0:
-                    return
-                cx, cy = widget_px_to_screen_px(widget, center.x(), center.y())
-                scaled_radius = float(radius) * ctx.zoom_level
-                if scaled_radius <= 0:
-                    return
-                color = QColor(255, 105, 170, 255 if active else 210) if capture else QColor(70, 190, 255, 255 if active else 210)
-                pen = QPen(color, max(1.0, float(ctx.resolved_style.hidden_selection_stroke_px)))
-                pen.setCosmetic(True)
-                pen.setStyle(Qt.PenStyle.DashLine)
-                painter.setPen(pen)
-                painter.drawEllipse(QPointF(cx, cy), scaled_radius, scaled_radius)
+        stroke_px = max(1.0, float(ctx.resolved_style.hidden_selection_stroke_px))
 
-            for center, radius, is_active in hidden_capture_circles:
-                _draw_ring(center, radius, active=bool(is_active), capture=True)
-            for center, radius, is_active in hidden_magnifier_circles:
-                _draw_ring(center, radius, active=bool(is_active), capture=False)
-        finally:
-            painter.end()
+        def _draw_ring(center, radius, *, active: bool, capture: bool):
+            if center is None or radius <= 0:
+                return
+            cx, cy = widget_px_to_screen_px(widget, center.x(), center.y())
+            scaled_radius = float(radius) * ctx.zoom_level
+            if scaled_radius <= 0:
+                return
+            if capture:
+                c = QColor(255, 105, 170, 255 if active else 210)
+            else:
+                c = QColor(70, 190, 255, 255 if active else 210)
+            gl.glUniform2f(gl.glGetUniformLocation(pid, "center_px"), float(cx), float(cy))
+            gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), float(scaled_radius))
+            gl.glUniform1f(gl.glGetUniformLocation(pid, "lineWidth_px"), stroke_px)
+            gl.glUniform1f(gl.glGetUniformLocation(pid, "dashCount"), 12.0)
+            gl.glUniform4f(
+                gl.glGetUniformLocation(pid, "color"),
+                c.redF(), c.greenF(), c.blueF(), c.alphaF(),
+            )
+            gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
 
-        draw_qimage_overlay_texture(widget, overlay)
+        for center, radius, is_active in hidden_capture_circles:
+            _draw_ring(center, radius, active=bool(is_active), capture=True)
+        for center, radius, is_active in hidden_magnifier_circles:
+            _draw_ring(center, radius, active=bool(is_active), capture=False)
+
+        widget.vao.release()
+        self._shader.release()
+
+    def cleanup(self, widget) -> None:
+        self._shader = None
 
 GL_RENDER_PASSES: list[CanvasGLRenderPass] = [
     MagnifierPass(),

@@ -158,11 +158,11 @@ def magnifier_size_handler(presenter, value: int) -> None:
 
     event_bus = getattr(presenter, "event_bus", None)
     if event_bus is not None:
-        event_bus.emit(ViewportUpdateMagnifierSizeRelativeEvent(value / 100.0))
+        event_bus.emit(ViewportUpdateMagnifierSizeRelativeEvent(value / 1000.0))
         return
     viewport_ctrl = get_viewport_ctrl(presenter)
     if viewport_ctrl is not None:
-        viewport_ctrl.update_magnifier_size_relative(value / 100.0)
+        viewport_ctrl.update_magnifier_size_relative(value / 1000.0)
 
 def magnifier_size_pressed_handler(presenter) -> None:
     from plugins.viewport.events import ViewportOnSliderPressedEvent
