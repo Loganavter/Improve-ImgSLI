@@ -45,7 +45,7 @@ def _capture_size_from_overlay(view_state: ViewState) -> float:
     return 0.1
 
 def _set_capture_size_on_view_state(view_state: ViewState, size: float) -> ViewState:
-    clamped = max(0.01, min(1.0, float(size)))
+    clamped = max(0.001, min(1.0, float(size)))
     store_proxy = _make_overlay_view_state_proxy(view_state)
     command = get_canvas_feature_command_by_alias("overlay.set_active_capture_size")
     if command is not None:
@@ -160,7 +160,7 @@ def _command_build_render_canvas_payload(store) -> dict[str, Any]:
     }
 
 def _command_set_capture_size(actions, raw_value: int | float) -> None:
-    relative_size = max(0.01, min(1.0, float(raw_value)))
+    relative_size = max(0.001, min(1.0, float(raw_value)))
     event_bus = getattr(actions, "event_bus", None)
     if event_bus is not None:
         event_bus.emit(ViewportUpdateCaptureSizeRelativeEvent(relative_size))
@@ -187,7 +187,7 @@ def _sync_capture_toolbar_state(presenter) -> None:
     if slider is None:
         return
     size = _capture_size_from_overlay(presenter.store.viewport.view_state)
-    _set_slider_value_quietly(slider, int(size * 100))
+    _set_slider_value_quietly(slider, int(size * 1000))
 
 def _capture_size_pressed_handler(presenter) -> None:
     from plugins.viewport.events import ViewportOnSliderPressedEvent
@@ -215,7 +215,7 @@ def build_capture_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:
             control_id="capture.size",
             on_value_changed=lambda presenter, value: _command_set_capture_size(
                 presenter,
-                float(value) / 100.0,
+                float(value) / 1000.0,
             ),
             on_pressed=_capture_size_pressed_handler,
             on_released=_capture_size_released_handler,

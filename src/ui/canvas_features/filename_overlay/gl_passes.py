@@ -238,6 +238,7 @@ class FilenameOverlayPass(CanvasGLRenderPass):
     """
 
     stack_role = CanvasStackRole.HUD_LABEL
+    hide_in_single_preview = False
 
     def __init__(self):
         self._shader: QOpenGLShaderProgram | None = None
@@ -294,7 +295,8 @@ class FilenameOverlayPass(CanvasGLRenderPass):
         overlays = tuple(getattr(ctx.render_list, "filename_overlays", ()))
         if not overlays:
             return False
-        if abs(float(getattr(ctx, "zoom_level", 1.0)) - 1.0) > 1e-6:
+        is_single = bool(getattr(ctx.scene_frame, "single_image_preview", 0))
+        if not is_single and abs(float(getattr(ctx, "zoom_level", 1.0)) - 1.0) > 1e-6:
             return False
         return ctx.width > 0 and ctx.height > 0
 
@@ -317,8 +319,16 @@ class FilenameOverlayPass(CanvasGLRenderPass):
             return
 
         max_name_length = int(getattr(cfg, "max_name_length", 50))
-        name1 = _limit_name(overlay.name1, max_name_length)
-        name2 = _limit_name(overlay.name2, max_name_length)
+        single_preview = int(getattr(ctx.scene_frame, "single_image_preview", 0) or 0)
+        if single_preview == 1:
+            name1 = _limit_name(overlay.name1, max_name_length)
+            name2 = ""
+        elif single_preview == 2:
+            name1 = ""
+            name2 = _limit_name(overlay.name2, max_name_length)
+        else:
+            name1 = _limit_name(overlay.name1, max_name_length)
+            name2 = _limit_name(overlay.name2, max_name_length)
 
         overlay_style = ctx.resolved_style.filename_overlay
 

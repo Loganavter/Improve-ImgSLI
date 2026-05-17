@@ -202,6 +202,11 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
     source_image1 = store.document.full_res_image1 or store.document.original_image1
     source_image2 = store.document.full_res_image2 or store.document.original_image2
 
+    if display_image1 is None and source_image1 is not None:
+        display_image1 = source_image1
+    if display_image2 is None and source_image2 is not None:
+        display_image2 = source_image2
+
     source_key = (
         store.document.image1_path,
         store.document.image2_path,

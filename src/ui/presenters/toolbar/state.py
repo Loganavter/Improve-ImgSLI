@@ -89,7 +89,7 @@ def update_toolbar_states(presenter):
     _update_canvas_feature_control_availability(presenter)
     _set_slider_value_quietly(
         presenter.ui.slider_speed,
-        int(presenter.store.viewport.view_state.movement_speed_per_sec * 10),
+        int(presenter.store.viewport.view_state.movement_speed_per_sec * 100),
     )
     for binding in get_canvas_feature_toolbar_bindings():
         if binding.sync_state is not None:

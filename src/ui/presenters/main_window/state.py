@@ -21,7 +21,7 @@ def apply_initial_settings_to_ui(presenter):
     ui = presenter.ui
     viewport = presenter.store.viewport
 
-    _set_slider_value_quietly(ui.slider_speed, int(viewport.view_state.movement_speed_per_sec * 10))
+    _set_slider_value_quietly(ui.slider_speed, int(viewport.view_state.movement_speed_per_sec * 100))
     ui.btn_file_names.setChecked(viewport.render_config.include_file_names_in_saved, emit_signal=False)
 
     _sync_canvas_feature_bindings(presenter)

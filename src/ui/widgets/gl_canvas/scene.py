@@ -9,7 +9,7 @@ from ui.canvas_infra.scene.widget_registry import build_canvas_feature_render_sc
 @dataclass(frozen=True)
 class GLRenderScene:
     blank_white: bool = False
-    single_image_preview: bool = False
+    single_image_preview: int = 0
     clip_overlays_to_image_bounds: bool = False
     is_horizontal: bool = False
     split_position_visual: float = 0.5
@@ -53,6 +53,7 @@ def build_gl_render_scene(
     )
 
     document = getattr(store, "document", None)
+    is_single_preview = int(getattr(viewport.view_state, "showing_single_image_mode", 0) or 0)
 
     return GLRenderScene(
         blank_white=not bool(
@@ -60,7 +61,7 @@ def build_gl_render_scene(
             and getattr(document, "image1_path", None)
             and getattr(document, "image2_path", None)
         ),
-        single_image_preview=bool(getattr(viewport.view_state, "showing_single_image_mode", 0) != 0),
+        single_image_preview=is_single_preview,
         clip_overlays_to_image_bounds=bool(clip_overlays_to_image_bounds),
         is_horizontal=is_horizontal,
         split_position_visual=split_position_visual,
@@ -76,8 +77,8 @@ def build_gl_render_scene(
             if apply_channel_mode_in_shader
             else 0
         ),
-        diff_mode_active=diff_mode != "off",
-        diff_mode_int=diff_mode_int,
+        diff_mode_active=diff_mode != "off" and not is_single_preview,
+        diff_mode_int=0 if is_single_preview else diff_mode_int,
         zoom_interpolation_method=zoom_method,
         feature_overrides=feature_overrides,
     )

@@ -100,28 +100,7 @@ class KeyboardStateService:
         return KeyboardStateResult(True, "reset")
 
     def _log_state(self, action: str, key_code: int | None) -> None:
-        interaction = self.interaction
-        managed_pressed = sorted(
-            int(key)
-            for key in interaction.pressed_keys
-            if key in self.OVERLAY_MOVEMENT_KEYS
-        )
-        logger.debug(
-            "KeyboardState %s key=%s pressed=%s horiz=%s vert=%s spacing=%s space=%s",
-            action,
-            None if key_code is None else int(key_code),
-            managed_pressed,
-            None
-            if interaction.last_horizontal_movement_key is None
-            else int(interaction.last_horizontal_movement_key),
-            None
-            if interaction.last_vertical_movement_key is None
-            else int(interaction.last_vertical_movement_key),
-            None
-            if interaction.last_spacing_movement_key is None
-            else int(interaction.last_spacing_movement_key),
-            bool(interaction.space_bar_pressed),
-        )
+        pass
 
     def _update_axis_priority_on_press(self, key_code: int) -> None:
         interaction = self.interaction

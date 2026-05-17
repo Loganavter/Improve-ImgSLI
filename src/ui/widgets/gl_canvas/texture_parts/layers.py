@@ -90,6 +90,8 @@ def clear(widget):
     state = widget.runtime_state
     state._background_pixmap = None
     state._magnifier_pixmap = None
+    state._stored_image_ids = None
+    state._stored_pil_images = [None, None]
     for i in range(2):
         gl.glBindTexture(gl.GL_TEXTURE_2D, widget.texture_ids[i])
         gl.glTexImage2D(

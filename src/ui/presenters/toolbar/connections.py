@@ -244,14 +244,14 @@ def _connect_viewport_controls(presenter):
         if event_bus:
             ui.slider_speed.valueChanged.connect(
                 lambda value: event_bus.emit(
-                    ViewportUpdateMovementSpeedEvent(value / 10.0)
+                    ViewportUpdateMovementSpeedEvent(value / 100.0)
                 )
             )
         else:
             viewport_ctrl = getattr(controller, "viewport_plugin", None)
             if viewport_ctrl is not None:
                 ui.slider_speed.valueChanged.connect(
-                    lambda value: viewport_ctrl.update_movement_speed(value / 10.0)
+                    lambda value: viewport_ctrl.update_movement_speed(value / 100.0)
                 )
 
         if interpolation_handler is not None:
