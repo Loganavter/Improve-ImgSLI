@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from services.workflow.playlist_components.common import (
     emit_ui_update,
     find_index_by_path,
@@ -8,6 +10,8 @@ from services.workflow.playlist_components.common import (
     get_target_list,
     set_current_index,
 )
+
+_log = logging.getLogger("ImproveImgSLI.playlist.list_ops")
 
 class PlaylistListOperations:
     def __init__(
@@ -178,15 +182,20 @@ class PlaylistListOperations:
         dest_index = max(0, min(dest_index, len(dest_list)))
         dest_list.insert(dest_index, item_to_move)
 
-        set_current_index(
-            self.store,
-            1,
-            self._resolve_current_index_after_cross_move(1, path1_before, source_list_num, source_index),
-        )
-        set_current_index(
-            self.store,
-            2,
-            self._resolve_current_index_after_cross_move(2, path2_before, source_list_num, source_index),
+        idx1 = self._resolve_current_index_after_cross_move(1, path1_before, source_list_num, source_index)
+        idx2 = self._resolve_current_index_after_cross_move(2, path2_before, source_list_num, source_index)
+        set_current_index(self.store, 1, idx1)
+        set_current_index(self.store, 2, idx2)
+
+        list1 = get_target_list(self.store, 1)
+        list2 = get_target_list(self.store, 2)
+        _log.debug(
+            "move_item_between_lists: src=%d→dest=%d path=%s "
+            "resolved idx1=%d(len=%d) idx2=%d(len=%d) "
+            "path1_before=%s path2_before=%s",
+            source_list_num, dest_list_num, source_path,
+            idx1, len(list1), idx2, len(list2),
+            path1_before, path2_before,
         )
 
         emit_ui_update(self.main_controller, ["combobox"])

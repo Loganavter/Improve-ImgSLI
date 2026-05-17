@@ -50,9 +50,13 @@ class ApplicationContext:
         self._configure_theme_manager()
         self._build_runtime_services()
         self._initialize_plugins()
+        self._load_canvas_feature_settings()
 
         self._initialized = True
         logger.debug("ApplicationContext initialized")
+
+    def _load_canvas_feature_settings(self):
+        self.settings_manager._load_canvas_feature_settings(self.store.viewport)
 
     def _build_core_services(self):
         self.store = Store()

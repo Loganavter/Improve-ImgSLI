@@ -25,7 +25,7 @@ class SceneFrame:
 
     feature_payloads: dict[str, object] = field(default_factory=dict)
     blank_white: bool = False
-    single_image_preview: bool = False
+    single_image_preview: int = 0
     clip_overlays_to_image_bounds: bool = False
     is_horizontal: bool = False
     split_position_visual: float = 0.5
@@ -283,7 +283,7 @@ def build_scene_frame(
     return SceneFrame(
         feature_payloads=dict(feature_overrides),
         blank_white=bool(getattr(render_scene, "blank_white", False)),
-        single_image_preview=bool(getattr(render_scene, "single_image_preview", False)),
+        single_image_preview=int(getattr(render_scene, "single_image_preview", 0) or 0),
         clip_overlays_to_image_bounds=bool(
             getattr(render_scene, "clip_overlays_to_image_bounds", False)
         ),
@@ -417,9 +417,11 @@ def build_render_list(
 
     filename_overlays: tuple[FilenameOverlayPrimitive, ...] = ()
     filename_cfg = scene_frame.filename_overlay
+    _fn_enabled = bool(getattr(filename_cfg, "enabled", False))
+    _fn_force = bool(scene_frame.single_image_preview)
     if (
         filename_cfg is not None
-        and bool(getattr(filename_cfg, "enabled", False))
+        and (_fn_enabled or _fn_force)
         and scene_frame.content_rect_px is not None
     ):
         name1 = str(getattr(filename_cfg, "name1", "") or "")

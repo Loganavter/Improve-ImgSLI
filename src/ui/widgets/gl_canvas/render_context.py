@@ -31,7 +31,7 @@ from ui.canvas_presentation.render_arch import (
     build_scene_frame,
     resolve_canvas_style,
 )
-from .render_metrics import RenderMetrics, resolve_view_px
+from .render_metrics import RenderMetrics, resolve_screen_px, resolve_view_px
 from ui.canvas_infra.scene.widget_registry import (
     apply_canvas_feature_live_runtime_overlays,
     has_canvas_feature_live_runtime_overlays,
@@ -224,11 +224,8 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
             * float(widget.height() if scene_frame.is_horizontal else widget.width())
         ),
         divider_clip_rect_px=get_divider_clip_rect_px(widget),
-        divider_thickness_px=resolve_view_px(float(scene_frame.divider_thickness or 0), render_metrics),
-        guides_thickness_px=(
-            float(max(1, int(state._guides_thickness or 1)))
-            * resolved_style.guides_stroke_px_per_unit
-        ),
+        divider_thickness_px=resolve_screen_px(float(scene_frame.divider_thickness or 0), render_metrics),
+        guides_thickness_px=resolve_screen_px(float(max(1, int(state._guides_thickness or 1))), render_metrics),
         capture_line_width_px=resolved_style.capture_ring_stroke_px,
         zoom_level=float(get_zoom_level(widget) or 1.0),
         widget_px_to_screen=lambda x, y: widget_px_to_screen_px(widget, x, y),

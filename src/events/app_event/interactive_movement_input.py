@@ -71,8 +71,11 @@ def apply_offset_input(current_offset: Point, dirs: MovementDirections, speed_fa
     )
     return new_offset, changed
 
-def apply_spacing_input(current_spacing: float, ds_dir: int, speed_factor: float, delta_time_sec: float, *, min_spacing: float, max_spacing: float) -> tuple[float, bool]:
-    delta_spacing = ds_dir * speed_factor * delta_time_sec * 0.35
+_SPACING_BASE_SPEED = 0.03
+
+def apply_spacing_input(current_spacing: float, ds_dir: int, speed_factor: float, delta_time_sec: float, *, min_spacing: float, max_spacing: float, hold_time: float = 0.0) -> tuple[float, bool]:
+    accel = 1.0 + min(hold_time / 0.8, 3.0)
+    delta_spacing = ds_dir * _SPACING_BASE_SPEED * delta_time_sec * accel
     new_spacing = current_spacing + delta_spacing
     clamped_spacing = max(min_spacing, min(max_spacing, new_spacing))
     changed = not math.isclose(clamped_spacing, current_spacing, abs_tol=1e-9)
