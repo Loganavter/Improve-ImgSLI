@@ -141,7 +141,7 @@ class ButtonPainter:
             config = UnderlineConfig(
                 thickness=2.0 if scroll_value is not None else 1.0,
                 vertical_offset=0.0 if scroll_value is not None else 1.0,
-                arc_radius=2.0,
+                arc_radius=radius,
                 alpha=alpha,
                 color=resolved_underline,
             )
