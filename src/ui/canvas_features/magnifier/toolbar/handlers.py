@@ -181,14 +181,18 @@ def magnifier_size_released_handler(presenter) -> None:
     pass
 
 def magnifier_instances_add_handler(presenter) -> None:
-    viewport_ctrl = get_viewport_ctrl(presenter)
-    if viewport_ctrl is not None:
-        viewport_ctrl.add_magnifier()
+    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+
+    store = getattr(presenter, "store", None)
+    if store is not None:
+        execute_feature_command(store, "magnifier", "add_instance")
 
 def magnifier_instances_remove_handler(presenter) -> None:
-    viewport_ctrl = get_viewport_ctrl(presenter)
-    if viewport_ctrl is not None:
-        viewport_ctrl.remove_active_magnifier()
+    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+
+    store = getattr(presenter, "store", None)
+    if store is not None:
+        execute_feature_command(store, "magnifier", "remove_active_instance")
 
 def do_toggle_magnifier_orientation(presenter) -> None:
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command
