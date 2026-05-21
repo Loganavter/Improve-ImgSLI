@@ -57,6 +57,7 @@ class MagnifierModeService:
         model = self.object_state.set_object_visibility(object_id, True)
         if model is not None:
             set_magnifier_enabled_flag(self._view, True)
+        self.store.emit_viewport_change("interaction")
         return model
 
     def hide_active(self):
@@ -66,6 +67,7 @@ class MagnifierModeService:
         self.object_state.set_object_visibility(active.id, False)
         self.object_state.set_active_object(active.id)
         set_magnifier_enabled_flag(self._view, True)
+        self.store.emit_viewport_change("interaction")
         return active.id
 
     def set_single_enabled(self, enabled: bool):
@@ -73,6 +75,7 @@ class MagnifierModeService:
         model = self.object_state.ensure_active_magnifier(create_if_missing=enabled)
         if model is not None:
             self.object_state.set_object_visibility(model.id, bool(enabled))
+        self.store.emit_viewport_change("interaction")
         return model
 
     def toggle_from_button(self, checked: bool):
