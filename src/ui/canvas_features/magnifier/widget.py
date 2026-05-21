@@ -20,11 +20,111 @@ from .toolbar.bindings import build_magnifier_toolbar_bindings
 from .commands import build_magnifier_commands as assemble_magnifier_commands
 from ui.canvas_infra.scene.widget_contract import (
     CanvasFeatureCommandAlias,
+    CanvasFeatureStateCommand,
+    CanvasFeatureStateQuery,
     CanvasWidgetFeature,
 )
 
 def build_magnifier_commands():
     return assemble_magnifier_commands(command_build_render_canvas_payload)
+
+def build_magnifier_state_queries():
+    """Build state queries for direct feature state access."""
+    from .commands.queries import (
+        query_is_horizontal,
+        query_active_magnifier_state,
+        query_total_count,
+        query_all_magnifier_states,
+        query_spacing_limits,
+        query_behavior_settings,
+        query_should_show_panel,
+        query_are_all_frozen,
+        query_active_combined,
+        query_active_divider_color,
+        query_active_divider_visible,
+        query_active_border_color,
+        query_active_capture_size,
+    )
+
+    return (
+        CanvasFeatureStateQuery(query_id="is_horizontal", handler=query_is_horizontal),
+        CanvasFeatureStateQuery(query_id="active_state", handler=query_active_magnifier_state),
+        CanvasFeatureStateQuery(query_id="total_count", handler=query_total_count),
+        CanvasFeatureStateQuery(query_id="all_states", handler=query_all_magnifier_states),
+        CanvasFeatureStateQuery(query_id="spacing_limits", handler=query_spacing_limits),
+        CanvasFeatureStateQuery(query_id="behavior_settings", handler=query_behavior_settings),
+        CanvasFeatureStateQuery(query_id="should_show_panel", handler=query_should_show_panel),
+        CanvasFeatureStateQuery(query_id="are_all_frozen", handler=query_are_all_frozen),
+        CanvasFeatureStateQuery(query_id="active_combined", handler=query_active_combined),
+        CanvasFeatureStateQuery(query_id="active_divider_color", handler=query_active_divider_color),
+        CanvasFeatureStateQuery(query_id="active_divider_visible", handler=query_active_divider_visible),
+        CanvasFeatureStateQuery(query_id="active_border_color", handler=query_active_border_color),
+        CanvasFeatureStateQuery(query_id="active_capture_size", handler=query_active_capture_size),
+    )
+
+def build_magnifier_state_commands():
+    """Build state commands for direct feature state modification."""
+    from .commands.viewport import (
+        viewport_toggle_enabled,
+        viewport_set_active_size,
+        viewport_set_active_instance,
+        viewport_set_active_capture_size,
+        viewport_set_active_visibility_parts,
+        viewport_set_active_orientation,
+        viewport_move_active_position,
+        viewport_add_instance,
+        viewport_remove_active_instance,
+        viewport_set_instance_visibility,
+        viewport_set_internal_split,
+        viewport_set_all_freeze,
+        viewport_set_active_freeze,
+        viewport_set_active_combined,
+        viewport_set_active_border_color,
+        viewport_set_active_divider_color,
+        viewport_set_active_laser_enabled,
+    )
+    from .commands.interaction import (
+        begin_capture_drag,
+        update_capture_drag,
+        end_capture_drag,
+        begin_internal_split_drag,
+        update_internal_split_drag,
+        end_internal_split_drag,
+    )
+    from .commands.preview import (
+        preview_begin,
+        preview_restore,
+        preview_set_side,
+    )
+
+    return (
+        CanvasFeatureStateCommand(command_id="toggle_enabled", handler=viewport_toggle_enabled),
+        CanvasFeatureStateCommand(command_id="set_active_size", handler=viewport_set_active_size),
+        CanvasFeatureStateCommand(command_id="set_active_instance", handler=viewport_set_active_instance),
+        CanvasFeatureStateCommand(command_id="set_active_capture_size", handler=viewport_set_active_capture_size),
+        CanvasFeatureStateCommand(command_id="set_active_visibility_parts", handler=viewport_set_active_visibility_parts),
+        CanvasFeatureStateCommand(command_id="set_active_orientation", handler=viewport_set_active_orientation),
+        CanvasFeatureStateCommand(command_id="move_active_position", handler=viewport_move_active_position),
+        CanvasFeatureStateCommand(command_id="add_instance", handler=viewport_add_instance),
+        CanvasFeatureStateCommand(command_id="remove_active_instance", handler=viewport_remove_active_instance),
+        CanvasFeatureStateCommand(command_id="set_instance_visibility", handler=viewport_set_instance_visibility),
+        CanvasFeatureStateCommand(command_id="set_internal_split", handler=viewport_set_internal_split),
+        CanvasFeatureStateCommand(command_id="set_all_freeze", handler=viewport_set_all_freeze),
+        CanvasFeatureStateCommand(command_id="set_active_freeze", handler=viewport_set_active_freeze),
+        CanvasFeatureStateCommand(command_id="set_active_combined", handler=viewport_set_active_combined),
+        CanvasFeatureStateCommand(command_id="set_active_border_color", handler=viewport_set_active_border_color),
+        CanvasFeatureStateCommand(command_id="set_active_divider_color", handler=viewport_set_active_divider_color),
+        CanvasFeatureStateCommand(command_id="set_active_laser_enabled", handler=viewport_set_active_laser_enabled),
+        CanvasFeatureStateCommand(command_id="begin_capture_drag", handler=begin_capture_drag),
+        CanvasFeatureStateCommand(command_id="update_capture_drag", handler=update_capture_drag),
+        CanvasFeatureStateCommand(command_id="end_capture_drag", handler=end_capture_drag),
+        CanvasFeatureStateCommand(command_id="begin_internal_split_drag", handler=begin_internal_split_drag),
+        CanvasFeatureStateCommand(command_id="update_internal_split_drag", handler=update_internal_split_drag),
+        CanvasFeatureStateCommand(command_id="end_internal_split_drag", handler=end_internal_split_drag),
+        CanvasFeatureStateCommand(command_id="preview_begin", handler=preview_begin),
+        CanvasFeatureStateCommand(command_id="preview_restore", handler=preview_restore),
+        CanvasFeatureStateCommand(command_id="preview_set_side", handler=preview_set_side),
+    )
 
 MAGNIFIER_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("overlay.enabled", "query.enabled"),
@@ -42,13 +142,12 @@ MAGNIFIER_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("overlay.movement_handler", "query.movement_handler"),
     CanvasFeatureCommandAlias("overlay.canvas_payload", "render.canvas_payload"),
     CanvasFeatureCommandAlias("overlay.render_drawing_coords", "render.drawing_coords"),
-    CanvasFeatureCommandAlias("overlay.render_compute_padding", "render.compute_padding"),
     CanvasFeatureCommandAlias("overlay.render_build_layout", "render.build_layout"),
     CanvasFeatureCommandAlias("overlay.render_shift_layout_to_tile", "render.shift_layout_to_tile"),
     CanvasFeatureCommandAlias("overlay.snapshot_normalize", "snapshot.normalize_store"),
     CanvasFeatureCommandAlias(
-        "overlay.snapshot_retarget_to_padded_canvas",
-        "snapshot.retarget_to_padded_canvas",
+        "overlay.snapshot_apply_virtual_layout",
+        "snapshot.apply_virtual_layout",
     ),
     CanvasFeatureCommandAlias("overlay.settings_initialize", "settings.initialize"),
     CanvasFeatureCommandAlias("overlay.settings.persist", "settings.persist"),
@@ -111,6 +210,8 @@ def build_widget_feature() -> CanvasWidgetFeature:
         build_commands=build_magnifier_commands,
         command_aliases=MAGNIFIER_COMMAND_ALIASES,
         build_settings_event_bindings=build_magnifier_settings_event_bindings,
+        build_state_queries=build_magnifier_state_queries,
+        build_state_commands=build_magnifier_state_commands,
         build_render_scene_overrides=build_magnifier_render_scene_overrides,
         prepare_worker_viewport=prepare_magnifier_worker_viewport,
         apply_plan_runtime_overlay=apply_magnifier_plan_overlay,

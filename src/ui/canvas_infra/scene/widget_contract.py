@@ -45,6 +45,20 @@ RenderSceneOverridesBuilder = Callable[[Any], dict[str, Any]]
 PrepareWorkerViewportFn = Callable[[Any, Any], None]
 ApplyPlanRuntimeOverlayFn = Callable[[Any, Any], None]
 ApplyLiveRuntimeOverlayFn = Callable[[Any, Any], bool]
+FeatureStateQueryHandler = Callable[..., Any]
+FeatureStateCommandHandler = Callable[..., None]
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureStateQuery:
+    """Query to read feature state directly."""
+    query_id: str
+    handler: FeatureStateQueryHandler
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureStateCommand:
+    """Command to modify feature state directly."""
+    command_id: str
+    handler: FeatureStateCommandHandler
 
 @dataclass(frozen=True, slots=True)
 class CanvasFeatureProperty:
@@ -54,14 +68,16 @@ class CanvasFeatureProperty:
     read_snapshot: PropertySnapshotReader
     write_snapshot: PropertySnapshotWriter
     channels: tuple[ChannelDescriptor, ...] | None = None
-    group_id: str = "viewport"
-    group_label: str = "Viewport"
+    group_id: str | None = None
+    group_label: str | None = None
     setting_key: str | None = None
     serialize_setting: PropertySettingSerializer | None = None
     deserialize_setting: PropertySettingDeserializer | None = None
     order: int = 100
 
 BuildCanvasFeaturePropertiesFn = Callable[[], tuple[CanvasFeatureProperty, ...]]
+BuildCanvasFeatureStateQueriesFn = Callable[[], tuple[CanvasFeatureStateQuery, ...]]
+BuildCanvasFeatureStateCommandsFn = Callable[[], tuple[CanvasFeatureStateCommand, ...]]
 
 @dataclass(frozen=True, slots=True)
 class CanvasFeatureToolbarBinding:
@@ -107,6 +123,8 @@ class CanvasWidgetFeature:
     build_commands: BuildCanvasFeatureCommandsFn | None = None
     command_aliases: tuple[CanvasFeatureCommandAlias, ...] = ()
     build_settings_event_bindings: BuildCanvasFeatureSettingsEventsFn | None = None
+    build_state_queries: BuildCanvasFeatureStateQueriesFn | None = None
+    build_state_commands: BuildCanvasFeatureStateCommandsFn | None = None
     build_render_scene_overrides: RenderSceneOverridesBuilder | None = None
     prepare_worker_viewport: PrepareWorkerViewportFn | None = None
     apply_plan_runtime_overlay: ApplyPlanRuntimeOverlayFn | None = None
