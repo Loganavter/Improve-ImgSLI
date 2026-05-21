@@ -46,6 +46,10 @@ class ImageLabelMouseHandler:
         has_right = bool(active_overlay.get("visible_right", False))
         is_enabled = self.handler.store.viewport.view_state.overlay_enabled
 
+        import logging
+        _log = logging.getLogger("ImproveImgSLI.mouse")
+        _log.debug(f"mouse_press: is_enabled={is_enabled}, active_overlay keys={list(active_overlay.keys())}")
+
         if viewport.interaction_state.space_bar_pressed and both_preview_buttons_pressed:
             self.handler.preview.log_preview_debug("mouse_press_ignored_both_buttons")
             event.accept()
@@ -112,7 +116,10 @@ class ImageLabelMouseHandler:
             return
 
         if is_enabled:
+            _log.debug(f"mouse_press: calling get_overlay_at_position")
             self.handler.geometry.get_overlay_at_position(local_pos)
+        else:
+            _log.debug(f"mouse_press: magnifier disabled, not calling get_overlay_at_position")
 
         if event.button() == Qt.MouseButton.LeftButton:
             if is_enabled:

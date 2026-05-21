@@ -38,18 +38,30 @@ def has_visible_renderable_magnifier(store) -> bool:
 def apply_magnifier_gl_overlay(store, canvas) -> bool:
     viewport = getattr(store, "viewport", None)
     if viewport is None:
+        _log.debug("apply_magnifier_gl_overlay: viewport is None")
         reset_canvas_overlays(canvas)
         return False
+
+    overlay_enabled = viewport.view_state.overlay_enabled
+    _log.debug(f"apply_magnifier_gl_overlay: overlay_enabled={overlay_enabled}")
+
     # If magnifier not enabled, don't try to render it
-    if not viewport.view_state.overlay_enabled:
+    if not overlay_enabled:
+        _log.debug("apply_magnifier_gl_overlay: magnifier disabled, resetting overlays")
         reset_canvas_overlays(canvas)
         return False
+
     has_visible = has_visible_renderable_magnifier(store)
+    _log.debug(f"apply_magnifier_gl_overlay: has_visible={has_visible}")
+
     if not has_visible:
+        _log.debug("apply_magnifier_gl_overlay: no visible magnifier, resetting overlays")
         reset_canvas_overlays(canvas)
         return False
+
     from ui.canvas_features.magnifier.workers.scene_update import rebuild_magnifier_overlay
 
+    _log.debug("apply_magnifier_gl_overlay: rebuilding magnifier overlay")
     rebuild_magnifier_overlay(_StorePresenterAdapter(store, canvas))
     return True
 
