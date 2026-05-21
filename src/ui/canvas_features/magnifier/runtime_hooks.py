@@ -19,6 +19,7 @@ def command_build_render_canvas_payload(store) -> dict[str, Any]:
 
     viewport = getattr(store, "viewport", None)
     if viewport is None:
+        _log.debug("build_render_canvas_payload: viewport is None")
         return {}
 
     view = viewport.view_state
@@ -90,7 +91,8 @@ def command_build_render_canvas_payload(store) -> dict[str, Any]:
         resolve_interpolation(movement_interp) if optimize_movement else main_interp
     )
 
-    return {
+    is_mag_enabled = magnifier_enabled(view)
+    payload = {
         "position": position,
         "visual_offset": visual_offset,
         "visual_spacing": visual_spacing,
@@ -98,7 +100,7 @@ def command_build_render_canvas_payload(store) -> dict[str, Any]:
         "capture_size": capture_size,
         "layout_horizontal": layout_horizontal,
         "split": internal_split,
-        "enabled": magnifier_enabled(view),
+        "enabled": is_mag_enabled,
         "show_left": visible_left,
         "show_center": visible_center,
         "show_right": visible_right,
@@ -114,6 +116,8 @@ def command_build_render_canvas_payload(store) -> dict[str, Any]:
         "real_offset": (real_offset.x, real_offset.y),
         "real_spacing": real_spacing,
     }
+    _log.debug(f"build_render_canvas_payload: enabled={is_mag_enabled}, has_models={len(all_models)}, capture_areas={len(payload['capture_areas'])}")
+    return payload
 
 def prepare_magnifier_worker_viewport(source_store, worker_viewport) -> None:
     from .store import MagnifierStoreService, update_magnifier_model
