@@ -6,9 +6,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import AnchoredFlyoutAutoHide
-from sli_ui_toolkit.ui.widgets.atomic.numbered_toggle_icon_button import (
-    NumberedToggleIconButton,
-)
+from sli_ui_toolkit.ui.widgets.buttons import Button
 from sli_ui_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
 
 logger = logging.getLogger(__name__)
@@ -26,7 +24,7 @@ class IndexedToggleFlyout(BaseFlyout):
         self._anchor_button = None
         self._button_size = int(button_size)
         self._slot_icon = slot_icon
-        self._buttons: list[NumberedToggleIconButton] = []
+        self._buttons: list[Button] = []
 
         self.h_layout = QHBoxLayout()
         self.h_layout.setContentsMargins(0, 0, 0, 0)
@@ -43,7 +41,7 @@ class IndexedToggleFlyout(BaseFlyout):
         self.hide()
 
     @property
-    def buttons(self) -> tuple[NumberedToggleIconButton, ...]:
+    def buttons(self) -> tuple[Button, ...]:
         return tuple(self._buttons)
 
     def set_slot_count(self, slot_count: int) -> None:
@@ -51,17 +49,23 @@ class IndexedToggleFlyout(BaseFlyout):
 
         while len(self._buttons) < slot_count:
             index = len(self._buttons) + 1
-            button = NumberedToggleIconButton(index, self.container, icon=self._slot_icon)
-            button.setFixedSize(self._button_size, self._button_size)
+            button = Button(
+                self._slot_icon,
+                toggle=True,
+                badge=index,
+                size=(self._button_size, self._button_size),
+                parent=self.container,
+            )
+            button.set_show_strike_through(True)
             self.h_layout.addWidget(button)
             self._buttons.append(button)
 
         for index, button in enumerate(self._buttons):
             visible = index < slot_count
             button.setVisible(visible)
-            button.set_number(index + 1)
+            button.setBadge(index + 1)
             if not visible:
-                button.set_display_number(None)
+                button.setBadge(None)
 
         self._refresh_layout()
 
@@ -78,7 +82,7 @@ class IndexedToggleFlyout(BaseFlyout):
             display_number = None
             if display_numbers is not None and index < len(display_numbers):
                 display_number = display_numbers[index]
-            button.set_display_number(display_number)
+            button.setBadge(display_number)
         self._refresh_layout()
 
     def _refresh_layout(self) -> None:

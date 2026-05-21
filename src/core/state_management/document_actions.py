@@ -28,6 +28,14 @@ class SetFullResImageAction(Action):
     def get_payload(self): return {"slot": self.slot, "image": self.image}
 
 @dataclass
+class SetPreviewImageAction(Action):
+    slot: int
+    image: Any
+    def __init__(self, slot: int, image: Any):
+        super().__init__(type=ActionType.SET_PREVIEW_IMAGE); self.slot = slot; self.image = image
+    def get_payload(self): return {"slot": self.slot, "image": self.image}
+
+@dataclass
 class SetImagePathAction(Action):
     slot: int
     path: str

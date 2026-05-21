@@ -27,9 +27,10 @@ class VideoEditorPresenter(QObject):
     exportLog = pyqtSignal(str)
     errorOccurred = pyqtSignal(str)
 
-    def __init__(self, view, snapshots, main_controller):
+    def __init__(self, view, snapshots, export_controller, main_controller):
         super().__init__()
         self.view = view
+        self.export_controller = export_controller
         self.main_controller = main_controller
         initial_fps = resolve_initial_fps(view, snapshots, main_controller)
         self.model = VideoProjectModel(fps=initial_fps)
@@ -37,16 +38,16 @@ class VideoEditorPresenter(QObject):
         self.playback_engine = PlaybackEngine()
         self.playback_engine.set_playback_speed(1.0)
         self.thumbnail_service = ThumbnailService()
-        if self.main_controller is not None and getattr(
-            self.main_controller, "video_exporter", None
+        if self.export_controller is not None and getattr(
+            self.export_controller, "video_exporter", None
         ):
             self.thumbnail_service.set_snapshot_renderer(
-                self.main_controller.video_exporter.render_snapshot_to_pil
+                self.export_controller.video_exporter.render_snapshot_thumbnail_to_pil
             )
 
         self.preview_coordinator = PreviewCoordinator(
             view=view,
-            main_controller=main_controller,
+            export_controller=export_controller,
             playback_engine=self.playback_engine,
             model=self.model,
             editor_service=self.editor_service,
@@ -71,7 +72,7 @@ class VideoEditorPresenter(QObject):
             editor_service=self.editor_service,
             playback_engine=self.playback_engine,
             model=self.model,
-            main_controller=main_controller,
+            export_controller=export_controller,
             preview_coordinator=self.preview_coordinator,
             thumbnail_coordinator=self.thumbnail_coordinator,
             emit_timeline_position=self.timelinePositionChanged.emit,
@@ -80,7 +81,7 @@ class VideoEditorPresenter(QObject):
         )
         self.export_coordinator = ExportCoordinator(
             view=view,
-            main_controller=main_controller,
+            export_controller=export_controller,
             model=self.model,
             editor_service=self.editor_service,
             preview_coordinator=self.preview_coordinator,
@@ -124,6 +125,9 @@ class VideoEditorPresenter(QObject):
         self.view.widthChanged.connect(self.preview_coordinator.on_width_changed)
         self.view.heightChanged.connect(self.preview_coordinator.on_height_changed)
         self.view.fpsChanged.connect(self.playback_coordinator.on_fps_changed)
+        self.view.previewScaleChanged.connect(
+            self.preview_coordinator.on_preview_scale_changed
+        )
         self.view.aspectRatioLockChanged.connect(
             self.playback_coordinator.on_aspect_ratio_lock_changed
         )

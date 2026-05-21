@@ -1,29 +1,37 @@
 ## Navegação no Canvas
 
-Esta aba descreve o trabalho com a visualização principal do canvas: zoom, pan e comportamento temporário dos overlays durante a navegação.
+Esta página cobre apenas a movimentação dentro do canvas e os modos temporários de visualização.
 
-### Zoom
-- Segure `Ctrl` e use a roda do mouse sobre o canvas para ampliar ou reduzir.
-- O zoom é centrado no cursor, então você pode aproximar rapidamente a área desejada.
-- Os rótulos com nomes de arquivo no canvas são mostrados apenas em **100% de zoom**. Em qualquer outro nível, eles ficam temporariamente ocultos e voltam automaticamente quando o zoom retorna para **100%**.
+### Zoom {#zoom}
+- Segure `Ctrl` e use a roda do mouse sobre o canvas.
+- O zoom é centrado no cursor, então é fácil focar em um detalhe específico.
 
-### Panorâmica
-- Quando o zoom está acima de `100%`, segure o **botão do meio do mouse** e arraste para mover a visualização.
-- A panorâmica acontece dentro da mesma janela, sem um modo separado.
+### Pan {#pan}
+- Quando o zoom estiver acima de `100%`, segure o botão do meio do mouse e arraste.
+- Não existe um modo separado de navegação; a panorâmica acontece no mesmo canvas.
 
-### Linha Divisória Durante o Zoom
-- A linha de comparação mantém sua posição visual na tela mesmo durante o zoom.
-- Isso permite ampliar uma área e continuar trabalhando com o divisor sem saltos bruscos.
+### Pré-visualização Rápida do Lado {#quick-side-preview}
+- Segure `Espaço`.
+- `Botão Esquerdo do Mouse` mostra a Imagem 1.
+- `Botão Direito do Mouse` mostra a Imagem 2.
+- Solte os botões para voltar à comparação normal.
 
-### Pré-visualização de Uma Imagem
-- A pré-visualização rápida com `Espaço + Botão Esquerdo / Botão Direito` continua sendo a forma mais rápida de ver apenas um lado.
-- Alguns overlays e rótulos podem simplificar ou ocultar temporariamente durante o zoom por motivos de desempenho.
+### Pré-visualização Rápida no Modo Combinado da Lupa {#combined-magnifier-preview}
+- Se a lupa ativa estiver combinada, segure `Espaço + Shift`.
+- `Botão Esquerdo do Mouse` força o lado esquerdo.
+- `Botão Direito do Mouse` força o lado direito.
+- Enquanto `Espaço + Shift` permanecer pressionado, outro clique pode trocar o lado novamente.
 
-### O Que É Controlado pelas Configurações
-- Em **Configurações** você pode ajustar:
-  - a resolução do display cache do preview;
-  - o método principal de interpolação;
-  - um método separado de interpolação durante movimento;
-  - a otimização de movimento da lupa;
-  - o cálculo automático de PSNR / SSIM.
-- Se o preview parecer pesado demais ou suave demais, estes são os primeiros parâmetros a verificar.
+### O Que Muda Temporariamente Durante o Zoom {#zoom-side-effects}
+- Os nomes de arquivo aparecem apenas em **100% de zoom**.
+- Em qualquer outro nível, eles ficam temporariamente ocultos e retornam automaticamente.
+- Alguns overlays podem simplificar durante o movimento interativo por motivos de desempenho.
+
+### Linha Divisória Durante o Zoom {#split-line-while-zoomed}
+- A linha divisória mantém uma posição visual estável na tela enquanto o zoom muda.
+- Isso permite ampliar primeiro e continuar comparando sem saltos bruscos.
+
+### O Que É Configurado em Outro Lugar {#configured-elsewhere}
+- Qualidade de preview e interpolação são descritas em **[Configurações](help://settings#preview-and-quality)**.
+- O comportamento de comparação sem lupa é descrito em **[Comparação](help://comparison)**.
+- A interação específica da lupa é descrita em **[Lupa](help://magnifier)**.

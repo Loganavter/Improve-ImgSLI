@@ -4,9 +4,14 @@ from OpenGL import GL as gl
 from PyQt6.QtGui import QColor
 from PyQt6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram
 
-from ui.canvas_infra.scene.gl_pass_contract import CanvasGLRenderPass
+from ui.canvas_infra.scene.gl_pass_contract import (
+    CanvasGLRenderPass,
+    SceneVisibility,
+    is_single_image_preview_scene,
+)
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.widgets.gl_canvas.render_config import begin_content_scissor, end_content_scissor
+from ui.widgets.gl_canvas.render_common import widget_px_to_screen_px
 
 _VERT = """
 layout(location = 0) in vec2 aPos;
@@ -68,6 +73,7 @@ class GuidesPass(CanvasGLRenderPass):
     """Draws laser guide lines from capture center to each magnifier circle."""
 
     stack_role = CanvasStackRole.ANNOTATION_GUIDE
+    visibility = SceneVisibility.ALL
 
     def initialize(self, widget) -> None:
         is_gles = bool(widget.context().isOpenGLES())
@@ -86,8 +92,11 @@ class GuidesPass(CanvasGLRenderPass):
             self._shader = None
 
     def should_paint(self, ctx) -> bool:
+        state = getattr(ctx.widget, "runtime_state", None) if hasattr(ctx, "widget") else None
         return bool(
-            getattr(ctx.render_list, "guide_lines", ())
+            not is_single_image_preview_scene(ctx)
+            and state is not None
+            and getattr(state, "_guide_sets", ())
             and ctx.width > 0
             and ctx.height > 0
         )
@@ -95,11 +104,14 @@ class GuidesPass(CanvasGLRenderPass):
     def paint(self, widget, ctx) -> None:
         if not self._shader or not self._shader.programId():
             return
-        guide_lines = tuple(getattr(ctx.render_list, "guide_lines", ()))
-        if not guide_lines:
+        guide_sets = tuple(getattr(widget.runtime_state, "_guide_sets", ()))
+        if not guide_sets:
             return
 
-        scissor_enabled = begin_content_scissor(widget, force=bool(guide_lines[0].clip_to_content))
+        scissor_enabled = begin_content_scissor(
+            widget,
+            force=bool(getattr(widget.runtime_state, "_clip_overlays_to_content_rect", False)),
+        )
         pid = self._shader.programId()
         self._shader.bind()
         widget.vao.bind()
@@ -109,18 +121,38 @@ class GuidesPass(CanvasGLRenderPass):
             float(ctx.width), float(ctx.height),
         )
 
-        for line in guide_lines:
-            gl.glUniform4f(
-                gl.glGetUniformLocation(pid, "color"),
-                line.color.redF(), line.color.greenF(),
-                line.color.blueF(), line.color.alphaF(),
-            )
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "endRadius_px"), float(line.end_radius_px))
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "lineWidth_px"), float(line.line_width_px))
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "startRadius_px"), float(line.start_radius_px))
-            gl.glUniform2f(gl.glGetUniformLocation(pid, "start_px"), float(line.start_px[0]), float(line.start_px[1]))
-            gl.glUniform2f(gl.glGetUniformLocation(pid, "end_px"), float(line.end_px[0]), float(line.end_px[1]))
-            gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
+        for capture_center, capture_radius, target_centers, target_radii, color in guide_sets:
+            if capture_center is None:
+                continue
+            end_px = widget_px_to_screen_px(widget, capture_center.x(), capture_center.y())
+            end_radius_px = max(0.0, float(capture_radius or 0.0) * float(ctx.zoom_level))
+            draw_color = QColor(color)
+            for index, target_center in enumerate(tuple(target_centers or ())):
+                if target_center is None:
+                    continue
+                target_radius = (
+                    target_radii[index]
+                    if index < len(target_radii)
+                    else (target_radii[-1] if target_radii else 0.0)
+                )
+                start_px = widget_px_to_screen_px(widget, target_center.x(), target_center.y())
+                gl.glUniform4f(
+                    gl.glGetUniformLocation(pid, "color"),
+                    draw_color.redF(), draw_color.greenF(),
+                    draw_color.blueF(), draw_color.alphaF(),
+                )
+                gl.glUniform1f(gl.glGetUniformLocation(pid, "endRadius_px"), end_radius_px)
+                gl.glUniform1f(
+                    gl.glGetUniformLocation(pid, "lineWidth_px"),
+                    float(ctx.resolved_style.annotation_line_stroke_px),
+                )
+                gl.glUniform1f(
+                    gl.glGetUniformLocation(pid, "startRadius_px"),
+                    max(0.0, float(target_radius or 0.0) * float(ctx.zoom_level)),
+                )
+                gl.glUniform2f(gl.glGetUniformLocation(pid, "start_px"), float(start_px[0]), float(start_px[1]))
+                gl.glUniform2f(gl.glGetUniformLocation(pid, "end_px"), float(end_px[0]), float(end_px[1]))
+                gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
 
         widget.vao.release()
         self._shader.release()

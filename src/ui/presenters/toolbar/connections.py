@@ -67,6 +67,11 @@ def _resolve_interpolation_handler(controller):
         return sessions.on_interpolation_changed
     return None
 
+def _invoke_toolbar_binding_if_scrolling(control, control_id: str, hook_name: str, presenter, *args):
+    if not bool(getattr(control, "_is_scrolling", False)):
+        return
+    _invoke_toolbar_binding(control_id, hook_name, presenter, *args)
+
 def connect_signals(presenter):
     _connect_session_actions(presenter)
     _connect_name_editing(presenter)
@@ -133,7 +138,8 @@ def _connect_viewport_controls(presenter):
             )
         )
         ui.btn_orientation.valueChanged.connect(
-            lambda thickness: _invoke_toolbar_binding(
+            lambda thickness: _invoke_toolbar_binding_if_scrolling(
+                ui.btn_orientation,
                 "divider.orientation",
                 "on_value_changed",
                 presenter,
@@ -149,7 +155,8 @@ def _connect_viewport_controls(presenter):
             )
         )
         ui.btn_magnifier_orientation.valueChanged.connect(
-            lambda thickness: _invoke_toolbar_binding(
+            lambda thickness: _invoke_toolbar_binding_if_scrolling(
+                ui.btn_magnifier_orientation,
                 "magnifier.divider.thickness",
                 "on_value_changed",
                 presenter,
@@ -434,10 +441,10 @@ def _connect_session_comboboxes(presenter):
         return
 
     ui.btn_diff_mode.triggered.connect(
-        lambda action: event_bus.emit(AnalysisSetDiffModeEvent(action.data()))
+        lambda data: event_bus.emit(AnalysisSetDiffModeEvent(data))
     )
     ui.btn_channel_mode.triggered.connect(
-        lambda action: event_bus.emit(AnalysisSetChannelViewModeEvent(action.data()))
+        lambda data: event_bus.emit(AnalysisSetChannelViewModeEvent(data))
     )
     ui.btn_record.toggled.connect(
         lambda checked: event_bus.emit(ExportToggleRecordingEvent())

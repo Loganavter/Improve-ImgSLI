@@ -12,11 +12,10 @@ from domain.types import Color, Point, Rect
 
 from ui.canvas_infra.scene.context import CanvasSceneApplyContext, CanvasSceneBuildContext
 from ui.canvas_infra.scene.feature_contract import CanvasFeatureZOrder, CanvasSceneFeature
+from ui.canvas_infra.scene.gl_pass_contract import SceneVisibility
 from ui.canvas_infra.scene.models import CanvasSceneGraph
 from ui.canvas_infra.scene.stacking_policy import CanvasStackLayer, CanvasStackRole
-from ui.canvas_features.capture.state import get_capture_widget_state
-from ui.canvas_features.divider.state import get_divider_widget_state
-from ui.canvas_features.magnifier.mode import MagnifierModeService
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.canvas_features.magnifier.state import get_magnifier_widget_state
 from ui.canvas_features.magnifier.store import active_magnifier_id, iter_magnifier_models
 from ui.canvas_infra.viewport.state import get_zoom_level
@@ -94,8 +93,8 @@ def build_magnifier_object(
     pix_h = context.pix_h
     view = store.viewport.view_state
     interaction = getattr(store.viewport, "interaction_state", None)
-    divider_state = get_divider_widget_state(view)
-    capture_state = get_capture_widget_state(view)
+    _get_capture_state = get_canvas_feature_command_by_alias("capture.widget_state")
+    capture_state = _get_capture_state(view) if _get_capture_state is not None else None
     diff_mode = getattr(view, "diff_mode", "off")
     is_visual_diff = diff_mode in ("highlight", "grayscale", "ssim", "edges")
     use_visual_motion = bool(
@@ -243,15 +242,15 @@ def build_magnifier_object(
         internal_split=effective_internal_split,
         is_horizontal=bool(model.is_horizontal),
         is_combined=is_combined,
-        divider_visible=bool(divider_state.visible),
-        divider_thickness=int(divider_state.thickness),
+        divider_visible=bool(model.divider_visible),
+        divider_thickness=int(model.divider_thickness),
         border_thickness=int(model.border_thickness),
         divider_color=model.divider_color,
         border_color=model.border_color,
         capture_color=(
             getattr(model, "capture_color", None)
             or getattr(model, "capture_ring_color", None)
-            or capture_state.color
+            or (capture_state.color if capture_state is not None else Color())
         ),
         guides_color=(
             getattr(model, "guides_color", None)
@@ -429,16 +428,16 @@ def _compute_occluded_capture_arcs(
 def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
     canvas = context.canvas
     geometry_state = context.geometry_state
+    scene_visibility = getattr(context, "scene_visibility", SceneVisibility.INTERACTIVE)
+    is_interactive_scene = bool(scene_visibility & SceneVisibility.INTERACTIVE)
     store = None
-    mode_service = None
     if getattr(canvas, "runtime_state", None) is not None:
         store = getattr(canvas.runtime_state, "_store", None)
-        if store is not None:
-            mode_service = MagnifierModeService(store)
 
     active_magnifier = get_active_magnifier(scene)
     all_magnifiers = list(scene.iter_objects(kind="magnifier"))
     visible_magnifiers = [obj for obj in all_magnifiers if getattr(obj, "visible", False)]
+    has_hidden_magnifiers = len(visible_magnifiers) < len(all_magnifiers)
     dragging_capture = bool(
         getattr(getattr(store, "viewport", None), "interaction_state", None)
         and getattr(store.viewport.interaction_state, "is_dragging_overlay_handle", False)
@@ -448,9 +447,10 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
     occluded_capture_arcs = []
     hidden_magnifier_circles = []
     magnifier_state = get_magnifier_widget_state(store.viewport.view_state) if store is not None else None
+    _get_capture_state_fn = get_canvas_feature_command_by_alias("capture.widget_state")
     capture_state = (
-        get_capture_widget_state(store.viewport.view_state)
-        if store is not None
+        _get_capture_state_fn(store.viewport.view_state)
+        if store is not None and _get_capture_state_fn is not None
         else None
     )
     fallback_capture_color = capture_state.color if capture_state is not None else Color()
@@ -469,7 +469,7 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
             )
         )
 
-    if mode_service is None or mode_service.should_show_hidden_selection():
+    if is_interactive_scene and has_hidden_magnifiers:
         for obj in all_magnifiers:
             if getattr(obj, "visible", False):
                 continue
@@ -486,7 +486,7 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
                     (QPointF(circle.center.x, circle.center.y), circle.radius, obj.id == scene.active_object_id)
                 )
 
-    if dragging_capture and bool(
+    if is_interactive_scene and dragging_capture and bool(
         magnifier_state is None or magnifier_state.intersection_highlight_enabled
     ):
         occluded_capture_arcs = _compute_occluded_capture_arcs(
@@ -517,11 +517,17 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
             )
 
     runtime_state = getattr(canvas, "runtime_state", None)
-    if runtime_state is not None and hasattr(runtime_state, "_capture_circles"):
-        runtime_state._capture_circles = capture_circles
-        runtime_state._hidden_capture_circles = hidden_capture_circles
-        runtime_state._occluded_capture_arcs = occluded_capture_arcs
-        runtime_state._hidden_magnifier_circles = hidden_magnifier_circles
+    if runtime_state is not None:
+        render_scene = getattr(runtime_state, "_render_scene", None)
+        if render_scene is not None:
+            feature_overrides = getattr(render_scene, "feature_overrides", None)
+            if feature_overrides is None:
+                feature_overrides = {}
+                render_scene.feature_overrides = feature_overrides
+            feature_overrides["capture_circles"] = capture_circles
+            feature_overrides["hidden_capture_circles"] = hidden_capture_circles
+            feature_overrides["occluded_capture_arcs"] = occluded_capture_arcs
+            feature_overrides["hidden_magnifier_circles"] = hidden_magnifier_circles
 
     if active_magnifier is None:
         _log.debug(

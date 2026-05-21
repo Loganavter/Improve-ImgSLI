@@ -1,31 +1,39 @@
-## Exporting Results
+## Export And Video
 
-- Click the main **Save Result** button to open the feature-rich **Export** dialog.
-- In this dialog, you can configure:
-  - Output directory and file name.
-  - Image format (PNG, JPEG, WEBP, JXL, etc.).
-  - Quality/compression levels.
-  - An option to fill transparent backgrounds with a custom color.
-- **Text Overlays:** If you check **Include file names**, you can use the text settings flyout (✎) to customize the appearance of the filename overlays on the final image, including font size, weight, color, background, and placement.
+This page groups everything related to saving results, recording actions, and editing exported video.
 
+### Saving An Image {#saving-an-image}
+- **Save Result** opens the export dialog.
+- In that dialog you can choose the destination, file name, format, and quality/compression settings.
+- Transparent formats can also use a custom background fill color.
 
-### Quick Save vs Save Result
-- Quick Save (Ctrl+S) uses your last export settings and saves immediately without opening the Export dialog.
-- Save Result (Ctrl+Shift+S) opens the Export dialog, allowing you to configure format, quality/compression, and background fill options before saving.
+### Text Overlays {#text-overlays}
+- If **Include file names** is enabled, filename labels can be written into the exported image.
+- The text settings flyout lets you control font size, weight, color, background, and placement.
 
-### Video Recording and Export
-- Use the **Record**, **Pause**, and **Stop** buttons on the toolbar to record your actions in a comparison session.
-- After stopping a recording, click the **Video Editor** button (video icon with a pencil) to open the editing window.
-- In the editor, you can:
-  - Preview the recorded frames.
-  - Trim the beginning and end of the video using the timeline sliders.
-  - Delete the selected timeline range directly with `Delete` or `Backspace`.
-  - Configure resolution, FPS, and encoding settings.
-  - Export the final video to formats like MP4, WebM, AVI, GIF, etc.
+### Quick Save {#quick-save}
+- `Ctrl+S` saves immediately using the last export settings.
+- `Ctrl+Shift+S` always opens the export dialog.
 
-### System Tray and Notifications on Save
-- After a successful save, the tray icon menu provides quick access:
-  - Open Last Saved File (visible after your first successful save)
-  - Open Last Saved Folder
-- A system notification may appear on save; clicking the notification opens the last saved folder.
-- You can toggle system notifications in Settings.
+### Recording Actions {#recording-actions}
+- **Record**, **Pause**, and **Stop** on the toolbar capture your actions during a comparison session.
+- After stopping a recording, the result can be opened in the video editor.
+
+### Video Editor {#video-editor}
+- The **Video Editor** button opens the recorded session in an editing window.
+- In the editor you can:
+  - preview recorded frames;
+  - trim the beginning and end;
+  - remove the selected range with `Delete` or `Backspace`;
+  - change resolution, FPS, and encoding settings;
+  - export the final file to video formats and GIF.
+
+### Video Editor Preview Quality {#video-editor-preview-quality}
+- **Preview Quality** reduces only the preview render resolution.
+- It exists to make playback and scrubbing smoother on heavy projects.
+- It does not reduce final export quality.
+
+### Last Saved File And Notifications {#last-saved-file-and-notifications}
+- After a successful save, the tray can expose quick access to the last saved file and folder.
+- A system notification may appear on save.
+- Notification behavior is controlled in **[Settings](help://settings#system-and-debugging)**.

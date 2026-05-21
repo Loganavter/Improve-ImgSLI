@@ -7,7 +7,12 @@ from PIL import Image
 
 from core.store import Store
 from domain.types import Color
-from plugins.export.scene_builder import ExportSceneBuilder
+from plugins.video_editor.services.video_export_models import VideoRenderRequest
+from plugins.video_editor.services.video_snapshot_rendering import SnapshotFrameRenderer
+from shared.image_processing.resize import resize_images_processor
+from shared.rendering import TargetSurfaceSpec
+from shared.rendering.live_snapshot import build_live_frame_snapshot
+from shared.rendering import get_effective_main_interpolation_method
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -27,14 +32,22 @@ class ExportService:
         self.font_path_absolute = font_path_absolute
         self.gpu_export_service = gpu_export_service
 
+    @staticmethod
+    def apply_background_fill(image: Image.Image, background_color):
+        if not background_color:
+            return image
+        bg = Image.new("RGBA", image.size, background_color)
+        bg.paste(image, mask=image.split()[3] if image.mode == "RGBA" else None)
+        return bg
+
     def export_image(
         self,
         store: Store,
         original_image1: Image.Image,
         original_image2: Image.Image,
         export_options: dict,
-        render_context=None,
-        overlay_drawing_coords=None,
+        render_plan=None,
+        render_store=None,
         cancel_event: Optional[threading.Event] = None,
         progress_callback: Optional[Any] = None,
     ) -> str:
@@ -52,22 +65,46 @@ class ExportService:
         if progress_callback:
             progress_callback(10)
 
-        scene_builder = ExportSceneBuilder(store)
-        current_render_context = render_context
-        if current_render_context is None:
-            image1_for_save, image2_for_save = scene_builder.build_resized_pair(
-                original_image1, original_image2
+        renderer = SnapshotFrameRenderer(
+            image_loader=lambda _path, _auto_crop=False: None,
+            gpu_export_service=self.gpu_export_service,
+        )
+        current_render_plan = render_plan
+        current_render_store = render_store
+        canvas_fill_rgba = (
+            tuple(export_options.get("background_color") or ())
+            if export_options.get("fill_background", False)
+            else None
+        )
+        if current_render_plan is None:
+            live_snapshot = build_live_frame_snapshot(store)
+            resize_method = get_effective_main_interpolation_method(
+                live_snapshot.viewport_state
             )
-            current_render_context = scene_builder.build_render_context(
+            image1_for_save, image2_for_save = resize_images_processor(
+                original_image1, original_image2, resize_method
+            )
+            if not image1_for_save or not image2_for_save:
+                raise ValueError("Failed to unify images for export.")
+            prepared_frame = renderer.prepare_canvas_frame_from_images(
+                live_snapshot,
+                VideoRenderRequest(
+                    target_surface=TargetSurfaceSpec(
+                        width=image1_for_save.width,
+                        height=image1_for_save.height,
+                        fill_rgba=canvas_fill_rgba,
+                    ),
+                    font_path=None,
+                    auto_crop=False,
+                    fit_content=False,
+                    global_bounds=None,
+                ),
                 image1_for_save,
                 image2_for_save,
-                source_image1=original_image1,
-                source_image2=original_image2,
-                overlay_drawing_coords=overlay_drawing_coords,
+                allow_feature_layout_fallback=True,
             )
-        else:
-            image1_for_save = current_render_context.image1
-            image2_for_save = current_render_context.image2
+            current_render_plan = prepared_frame.plan
+            current_render_store = prepared_frame.store
 
         if progress_callback:
             progress_callback(30)
@@ -75,11 +112,23 @@ class ExportService:
         if self.gpu_export_service is None:
             raise RuntimeError("GPU export service is not configured")
 
-        final_img, _gpu_debug = self.gpu_export_service.render_image(
-            store=store,
-            render_context=current_render_context,
-        )
+        diff_image_for_render = None
+        try:
+            render_cache = getattr(
+                getattr(current_render_store, "viewport", None),
+                "session_data",
+                None,
+            )
+            render_cache = getattr(render_cache, "render_cache", None)
+            diff_image_for_render = getattr(render_cache, "cached_diff_image", None)
+        except Exception:
+            diff_image_for_render = None
 
+        final_img, _gpu_debug = self.gpu_export_service.render_plan(
+            current_render_plan,
+            store=current_render_store or store,
+            diff_image=diff_image_for_render,
+        )
         if final_img is None:
             raise ValueError("Failed to create the base image for saving.")
 
@@ -93,12 +142,7 @@ class ExportService:
         if export_options.get("fill_background", False):
             bg_color_tuple = export_options.get("background_color")
             if bg_color_tuple:
-                bg = Image.new("RGBA", final_img.size, bg_color_tuple)
-                bg.paste(
-                    final_img,
-                    mask=final_img.split()[3] if final_img.mode == "RGBA" else None,
-                )
-                img_to_save = bg
+                img_to_save = self.apply_background_fill(final_img, bg_color_tuple)
 
         target_format = export_options.get("format", "PNG").upper()
         pil_format = "JPEG" if target_format == "JPG" else target_format

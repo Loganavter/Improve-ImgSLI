@@ -5,7 +5,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QWidget
 
-from sli_ui_toolkit.widgets import CustomButton
+from sli_ui_toolkit.widgets import Button
 from ui.icon_manager import AppIcon
 
 class MultiCompareFooter(QWidget):
@@ -23,8 +23,6 @@ class MultiCompareFooter(QWidget):
 
         layout.addStretch()
 
-        self.btn_export = CustomButton(AppIcon.SAVE, "Export", self)
-        self.btn_export.setProperty("class", "primary")
-        self.btn_export.setMinimumHeight(30)
+        self.btn_export = Button(AppIcon.SAVE, text="Export", variant="primary", size=(80, 30), parent=self)
         self.btn_export.clicked.connect(self.export_clicked)
         layout.addWidget(self.btn_export)

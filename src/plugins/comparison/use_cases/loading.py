@@ -282,6 +282,14 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
 
     if not (0 <= current_index < len(target_list)):
         controller.store.clear_image_slot_data(image_number)
+        _invalidate_diff_cache(controller)
+        controller.store.invalidate_geometry_cache()
+        controller._invalidate_image_canvas_render_state(clear_magnifier=True)
+        controller._schedule_image_canvas_update()
+        if controller.presenter:
+            controller.presenter.ui_batcher.schedule_batch_update(
+                ["combobox", "file_names", "resolution", "ratings"]
+            )
         if controller.store.viewport.session_data.render_cache.unification_in_progress:
             pending = controller.store.viewport.session_data.render_cache.pending_unification_paths
             if pending:
@@ -293,6 +301,7 @@ def set_current_image(controller, image_number: int, force_refresh: bool = False
                 if current_path and current_path not in pending:
                     controller.store.viewport.session_data.render_cache.unification_in_progress = False
                     controller.store.viewport.session_data.render_cache.pending_unification_paths = None
+        controller.metrics_service.on_metrics_calculated(None)
         controller.store.emit_state_change("document")
         if controller.event_bus:
             controller.event_bus.emit(CoreUpdateRequestedEvent())

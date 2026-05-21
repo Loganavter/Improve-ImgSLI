@@ -24,6 +24,7 @@ from core.state_management.document_actions import (
     SetFullResImageAction,
     SetImagePathAction,
     SetOriginalImageAction,
+    SetPreviewImageAction,
 )
 from core.state_management.geometry_actions import (
     SetFixedLabelDimensionsAction,
@@ -59,8 +60,18 @@ from core.state_management.session_actions import (
 )
 from core.state_management.settings_actions import (
     SetAutoCropBlackBordersAction,
+    SetDebugModeEnabledAction,
+    SetExportFavoriteDirAction,
     SetLanguageAction,
+    SetShowWorkspaceTabsAction,
+    SetSystemNotificationsEnabledAction,
+    SetThemeAction,
+    SetUIFontFamilyAction,
+    SetUIFontModeAction,
     SetUIModeAction,
+    SetVideoRecordingFpsAction,
+    SetWindowGeometryAction,
+    SetWindowWasMaximizedAction,
 )
 from core.state_management.viewport_actions import (
     SetChannelViewModeAction,

@@ -1,52 +1,50 @@
-## Ferramenta Lupa
+## Lupa
 
-### Fundamentos
-- Marque **"Usar Lupa"** para habilitá-la.
-- **Clique/arraste** na imagem principal para definir o ponto de captura (círculo vermelho).
-- **Congelar Lupa:** bloqueia a posição da lupa na tela. Quando congelada, você ainda pode mover a visualização com `WASD`.
+Esta página descreve a ferramenta de lupa: área de captura, divisão interna, instâncias adicionais e controles relacionados.
 
-### Controles
-- **Controle deslizante Tamanho da Lupa:** controla o nível de zoom.
-- **Controle deslizante Tamanho da Captura:** ajusta o tamanho da área sendo amostrada da imagem original.
-- **Controle deslizante Velocidade de Movimento:** define a velocidade para movimento com teclado.
-- **Teclado `WASD`:** move a visualização ampliada em relação ao ponto de captura (ou move toda a lupa congelada).
-- **Teclado `QE`:** ajusta o espaçamento entre as duas metades da lupa quando elas estão separadas.
-- **Interpolação:** escolha um método de reamostragem (ex.: Vizinho Mais Próximo, Bilinear, Lanczos, EWA Lanczos) para controlar a qualidade de renderização da imagem ampliada.
-  - **EWA Lanczos:** um método avançado usando supersampling para simular EWA (Elliptical Weighted Average) Lanczos. Fornece anti-aliasing superior primeiro aumentando a imagem 2×, depois diminuindo com filtragem Lanczos. Excelente para reduzir moiré e aliasing em imagens detalhadas.
+### Ativação e Uso Básico {#enabling-and-basic-use}
+- Ative **Usar Lupa**.
+- Clique ou arraste na imagem para definir a área de captura.
+- O círculo vermelho mostra a área original que está sendo amostrada.
 
+### Tamanho e Movimento {#size-and-movement}
+- **Tamanho da Lupa** altera o tamanho visível da lupa.
+- **Tamanho da Captura** altera o tamanho da região original amostrada.
+- **Velocidade de Movimento** afeta o deslocamento pelo teclado.
+- `WASD` move a visualização ampliada ou a lupa congelada.
+- `QE` ajusta o espaçamento quando as metades da lupa estão separadas.
 
-### Renderização de Alta Precisão
-- A lupa usa renderização de subpixels para garantir comparações suaves e precisas, mesmo quando as duas imagens têm resoluções diferentes.
-- Isso elimina a trepidação de pixels ao mover o ponto de captura e fornece uma visualização mais precisa dos detalhes.
+### Congelar {#freeze}
+- **Congelar Lupa** trava a posição da lupa na tela.
+- Depois de congelar, você ainda pode fazer ajustes finos com o teclado.
 
+### Modo Combinado e Divisão Interna {#combined-mode-and-internal-split}
+- Quando as duas metades ficam próximas o suficiente, ou quando um modo de diferença está ativo, elas se combinam.
+- No modo combinado, aparece uma linha de divisão interna dentro da lupa.
+- A posição dessa linha pode ser alterada arrastando com o **Botão Direito do Mouse** dentro do círculo da lupa.
 
-### Metades Combinadas e Divisão Interna
-- Quando o espaçamento entre as duas metades da lupa fica pequeno o suficiente, ou quando um modo de diferenças está ativo, as metades se combinam automaticamente em um único círculo com uma linha de divisão interna.
-- Você pode ajustar a posição da divisão interna arrastando com o Botão Direito do Mouse dentro do círculo da lupa.
+### Linhas Guia {#guide-lines}
+- As linhas guia conectam visualmente a lupa à sua área de captura.
+- O botão de laser liga ou desliga essas linhas.
+- Rolar sobre o mesmo botão altera a espessura das linhas.
 
-### Linhas Guia ("Lasers")
-- Para conectar visualmente a lupa ao seu ponto de captura na imagem principal, você pode habilitar linhas guia.
-- Clique no botão com ícone de laser na barra de ferramentas da lupa para ativá-las ou desativá-las.
-- A espessura dessas linhas pode ser ajustada rolando a roda do mouse sobre o mesmo botão.
+### Múltiplas Lupas {#multiple-magnifiers}
+- Instâncias adicionais da lupa podem ser criadas.
+- Cada uma tem sua própria área de captura, cor e linhas guia.
+- **Colorir novas lupas automaticamente** ajuda a distinguir visualmente as instâncias.
+- **Destacar interseções de lupas** mostra sobreposição entre áreas de captura durante o arrasto.
 
-### Múltiplas Lupas
-- Lupas adicionais têm sua própria área de captura, linhas guia e cores individuais.
-- Quando **Colorir novas lupas automaticamente** está habilitado, cada nova lupa extra recebe o próximo conjunto de cores para facilitar a diferenciação entre instâncias.
-- Quando **Destacar interseções de lupas** está habilitado, arrastar uma área de captura destaca as partes cobertas por outras lupas.
-- Esse destaque é apenas uma sobreposição auxiliar do canvas e não entra no render/export final.
+### Partes de Visibilidade {#visibility-parts}
+- Passe o mouse sobre o botão da lupa para abrir o flyout de visibilidade.
+- Ele pode alternar as partes esquerda, central e direita de forma independente.
+- A parte central está disponível apenas quando um modo de diferenças está ativo.
 
-### Menu de Visibilidade (Esquerda/Centro/Direita)
-- Passe o mouse sobre o botão da Lupa para revelar um pequeno menu que permite alternar a visibilidade das partes esquerda, central e direita.
-- Você também pode abrir este menu rolando a roda do mouse sobre o botão da Lupa; neste caso, ele se oculta automaticamente após um curto período.
-- A alternância do Centro está disponível apenas quando um modo de diferenças está ativo.
+### Orientação e Divisor Interno {#orientation-and-internal-divider}
+- Clicar com o botão direito no botão principal de orientação muda rapidamente a orientação da divisão da lupa.
+- Rolar sobre o botão de espessura do divisor interno altera sua espessura.
+- O botão de cor altera a cor do divisor interno.
 
-### Alternância Rápida de Orientação
-- Clique com o botão direito no botão principal de Orientação para alternar rapidamente a orientação da divisão da lupa. Um pequeno indicador popup confirmará a orientação atual.
-
-### Controles da Divisória da Lupa
-- Espessura da divisória (dentro da lupa): role a roda do mouse sobre o botão de Espessura da Divisória da Lupa para ajustar a espessura. Um pequeno popup numérico mostra o valor atual.
-- Cor da divisória (dentro da lupa): clique no botão de Cor da Divisória da Lupa para escolher uma cor.
-
-### Otimização de Performance
-- Para uma experiência mais suave ao mover a lupa (arrastando o ponto de captura ou usando as teclas WASD), você pode habilitar **"Otimizar movimento da lupa"** nas Configurações.
-- Isso usa um método de interpolação mais rápido e de menor qualidade durante o movimento, enquanto o método de alta qualidade selecionado na interface principal é usado assim que a lupa para.
+### Qualidade e Desempenho {#quality-and-performance}
+- O método de interpolação controla a qualidade da imagem ampliada.
+- **Otimizar movimento da lupa** em **Configurações** habilita um modo mais rápido durante o movimento.
+- Quando o movimento para, o método principal de alta qualidade volta a ser usado.

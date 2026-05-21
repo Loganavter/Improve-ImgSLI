@@ -4,7 +4,6 @@ from PyQt6.QtCore import QEvent, QObject, QSize, Qt
 from PyQt6.QtGui import QFont, QIntValidator
 from PyQt6.QtWidgets import (
     QHBoxLayout,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QFrame,
@@ -20,15 +19,14 @@ from plugins.video_editor.services.export_config import ExportConfigBuilder
 from plugins.video_editor.widgets.timeline import VideoTimelineWidget
 from sli_ui_toolkit.widgets import (
     BodyLabel,
-    CustomButton,
+    Button,
     CustomLineEdit,
     ComboBox,
+    LogConsoleWidget,
     SpinBox,
     OutputPathSection,
-    SimpleIconButton,
     OverlayScrollArea,
     CaptionLabel,
-    ToggleIconButton,
 )
 from ui.icon_manager import AppIcon, get_app_icon
 
@@ -77,6 +75,7 @@ def build_settings_panel(dialog):
     static_layout.setSpacing(14)
     static_layout.addLayout(create_resolution_settings(dialog))
     static_layout.addLayout(create_fps_settings(dialog))
+    static_layout.addLayout(create_preview_quality_settings(dialog))
     sp_layout.addWidget(static_container)
 
     content_container = QWidget()
@@ -103,11 +102,10 @@ def build_settings_panel(dialog):
     dialog.export_progress.setFixedHeight(4)
     sp_layout.addWidget(dialog.export_progress)
 
-    dialog.btn_export = CustomButton(
-        get_app_icon(AppIcon.EXPORT_VIDEO), dialog._tr("action.export_video")
+    dialog.btn_export = Button(
+        get_app_icon(AppIcon.EXPORT_VIDEO), text=dialog._tr("action.export_video"),
+        variant="primary", size=(0, 48), corner_radius=8,
     )
-    dialog.btn_export.setProperty("class", "primary")
-    dialog.btn_export.setFixedHeight(48)
     dialog.btn_export.set_footer_mode(True)
     dialog.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
     dialog.btn_export.clicked.connect(dialog._on_export_clicked)
@@ -141,9 +139,8 @@ def create_resolution_settings(dialog):
     dialog.edit_width.installEventFilter(dialog._settings_no_wheel_filter)
     res_layout.addWidget(dialog.edit_width)
 
-    dialog.btn_lock_ratio = ToggleIconButton(AppIcon.UNLINK, AppIcon.LINK)
+    dialog.btn_lock_ratio = Button(icon=(AppIcon.UNLINK, AppIcon.LINK), toggle=True, size=(32, 32))
     dialog.btn_lock_ratio.setObjectName("btnLockRatio")
-    dialog.btn_lock_ratio.setFixedSize(32, 32)
     dialog.btn_lock_ratio.setChecked(True)
     dialog.btn_lock_ratio.setToolTip(dialog._tr("video.lock_aspect_ratio"))
     dialog.btn_lock_ratio.toggled.connect(dialog._on_ratio_lock_toggled)
@@ -157,19 +154,15 @@ def create_resolution_settings(dialog):
     dialog.edit_height.installEventFilter(dialog._settings_no_wheel_filter)
     res_layout.addWidget(dialog.edit_height)
 
-    dialog.btn_fit_content = ToggleIconButton(AppIcon.CROP_IN, AppIcon.CROP_OUT)
+    dialog.btn_fit_content = Button(icon=(AppIcon.CROP_IN, AppIcon.CROP_OUT), toggle=True, size=(32, 32))
     dialog.btn_fit_content.setObjectName("btnFitContent")
-    dialog.btn_fit_content.setFixedSize(32, 32)
     dialog.btn_fit_content.setChecked(False)
-    dialog.btn_fit_content.setToolTip(
-        dialog._tr("magnifier.fit_mode_toggle")
-    )
+    dialog.btn_fit_content.setToolTip(dialog._tr("magnifier.fit_mode_toggle"))
     dialog.btn_fit_content.toggled.connect(dialog._on_fit_content_toggled)
     res_layout.addWidget(dialog.btn_fit_content)
 
-    dialog.btn_fit_fill_color = SimpleIconButton(AppIcon.DIVIDER_COLOR)
+    dialog.btn_fit_fill_color = Button(AppIcon.DIVIDER_COLOR, show_underline=True, size=(32, 32))
     dialog.btn_fit_fill_color.setObjectName("btnFitFillColor")
-    dialog.btn_fit_fill_color.setFixedSize(32, 32)
     dialog.btn_fit_fill_color.setToolTip(dialog._tr("export.select_background_color"))
     dialog.btn_fit_fill_color.clicked.connect(dialog._on_fit_fill_color_clicked)
     dialog.btn_fit_fill_color.setVisible(False)
@@ -230,6 +223,29 @@ def create_fps_settings(dialog):
 
     return fps_layout
 
+def create_preview_quality_settings(dialog):
+    preview_layout = QHBoxLayout()
+    preview_layout.setSpacing(8)
+    preview_layout.addWidget(BodyLabel("Preview Quality:"))
+
+    dialog.combo_preview_scale = ComboBox()
+    for label, value in (
+        ("Full (1.0x)", 1.0),
+        ("Balanced (0.75x)", 0.75),
+        ("Performance (0.5x)", 0.5),
+        ("Draft (0.25x)", 0.25),
+    ):
+        dialog.combo_preview_scale.addItem(label, value)
+    dialog.combo_preview_scale.setCurrentIndex(0)
+    dialog.combo_preview_scale.setFixedWidth(170)
+    dialog.combo_preview_scale.installEventFilter(dialog._settings_no_wheel_filter)
+    dialog.combo_preview_scale.currentIndexChanged.connect(
+        lambda _index: dialog._on_preview_scale_changed()
+    )
+    preview_layout.addWidget(dialog.combo_preview_scale)
+    preview_layout.addStretch()
+    return preview_layout
+
 def create_export_tabs(dialog):
     tabs = QTabWidget()
     tabs.setObjectName("VideoEditorTabs")
@@ -260,14 +276,12 @@ def create_log_tab(dialog) -> QWidget:
     layout.setContentsMargins(8, 8, 8, 8)
     layout.setSpacing(0)
 
-    log_edit = QPlainTextEdit()
+    log_edit = LogConsoleWidget()
     log_edit.setObjectName("VideoExportLog")
-    log_edit.setReadOnly(True)
-    log_edit.setPlaceholderText("Export log will appear here...")
     mono_font = QFont("Monospace")
     mono_font.setStyleHint(QFont.StyleHint.Monospace)
     mono_font.setPointSize(9)
-    log_edit.setFont(mono_font)
+    log_edit.output.setFont(mono_font)
 
     dialog.export_log_edit = log_edit
     layout.addWidget(log_edit)
@@ -456,21 +470,21 @@ def create_toolbar(dialog):
     toolbar_layout.setContentsMargins(10, 5, 10, 5)
     toolbar_layout.setSpacing(8)
 
-    dialog.btn_play = ToggleIconButton(AppIcon.PLAY, AppIcon.PAUSE)
+    dialog.btn_play = Button(icon=(AppIcon.PLAY, AppIcon.PAUSE), toggle=True)
     dialog.btn_play.setToolTip(
         dialog._tr("button.play") + " / " + dialog._tr("button.pause")
     )
     dialog.btn_play.toggled.connect(dialog._on_play_toggled)
 
-    dialog.btn_undo = SimpleIconButton(AppIcon.UNDO)
+    dialog.btn_undo = Button(AppIcon.UNDO)
     dialog.btn_undo.setToolTip(dialog._tr("button.undo_ctrlz"))
     dialog.btn_undo.clicked.connect(dialog._on_undo_clicked)
 
-    dialog.btn_redo = SimpleIconButton(AppIcon.REDO)
+    dialog.btn_redo = Button(AppIcon.REDO)
     dialog.btn_redo.setToolTip(dialog._tr("button.redo"))
     dialog.btn_redo.clicked.connect(dialog._on_redo_clicked)
 
-    dialog.btn_trim = SimpleIconButton(AppIcon.SCISSORS)
+    dialog.btn_trim = Button(AppIcon.SCISSORS)
     dialog.btn_trim.setToolTip(dialog._tr("button.trim_to_selection"))
     dialog.btn_trim.clicked.connect(dialog._on_trim_clicked)
 

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from PyQt6.QtCore import QPoint, QPointF, QRect
 
 from core.store import Store
 
 from .store import MagnifierStoreService
+
+_mlog = logging.getLogger("ImproveImgSLI.video_magnifier_layout")
 
 MIN_CAPTURE_THICKNESS = 2.0
 
@@ -277,6 +281,48 @@ def get_magnifier_drawing_coords(
     capture_center_on_image = QPointF(
         eff_rel_x * unified_width, eff_rel_y * unified_height
     )
+
+    out_of_bounds = (
+        left1 < 0
+        or top1 < 0
+        or left2 < 0
+        or top2 < 0
+        or crop_box1[2] > full1_width
+        or crop_box1[3] > full1_height
+        or crop_box2[2] > full2_width
+        or crop_box2[3] > full2_height
+        or magnifier_bbox_on_image.left() < 0
+        or magnifier_bbox_on_image.top() < 0
+        or magnifier_bbox_on_image.right() > drawing_width
+        or magnifier_bbox_on_image.bottom() > drawing_height
+    )
+    if out_of_bounds:
+        _mlog.debug(
+            "magnifier_drawing_coords drawing=%sx%s full1=%sx%s full2=%sx%s raw_pos=(%.6f,%.6f) eff_pos=(%.6f,%.6f) capture_size=%.6f crop1=%s crop2=%s mag_mid=(%s,%s) mag_size=%s spacing=%s bbox=(%s,%s,%s,%s) capture_center=(%.3f,%.3f)",
+            drawing_width,
+            drawing_height,
+            full1_width,
+            full1_height,
+            full2_width,
+            full2_height,
+            float(raw_pos.x),
+            float(raw_pos.y),
+            float(eff_rel_x),
+            float(eff_rel_y),
+            float(magnifier.capture_size_relative),
+            crop_box1,
+            crop_box2,
+            magnifier_midpoint_on_image.x(),
+            magnifier_midpoint_on_image.y(),
+            magnifier_size_pixels,
+            edge_spacing_pixels,
+            magnifier_bbox_on_image.x(),
+            magnifier_bbox_on_image.y(),
+            magnifier_bbox_on_image.width(),
+            magnifier_bbox_on_image.height(),
+            float(capture_center_on_image.x()),
+            float(capture_center_on_image.y()),
+        )
 
     return (
         crop_box1,

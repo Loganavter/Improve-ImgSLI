@@ -28,7 +28,7 @@ def _compute_inner_content_rect(state, plan):
 
     The *inner* rect is the sub-region of the letterbox display area that contains
     actual image content (i.e. the base image area, excluding fit_content padding).
-    When there is no fit_content padding ``divider_clip_rect`` is ``None`` and the
+    When there is no fit_content padding ``overlay_clip_rect`` is ``None`` and the
     inner rect equals the full letterbox display area.
 
     Returns ``(inner_rect, inner_split)`` where:
@@ -46,7 +46,7 @@ def _compute_inner_content_rect(state, plan):
     sx = dw / plan.canvas_w
     sy = dh / plan.canvas_h
 
-    clip_rect = getattr(plan.gl_scene, "divider_clip_rect", None)
+    clip_rect = getattr(plan.gl_scene, "overlay_clip_rect", None)
     if clip_rect:
         clip_x, clip_y, clip_w, clip_h = clip_rect
         inner = (
@@ -91,10 +91,6 @@ def apply_plan_runtime_overlays(canvas, plan: CanvasRenderPlan) -> None:
 
     apply_canvas_feature_plan_runtime_overlays(canvas, plan)
 
-def apply_plan_magnifier_overlay(canvas, plan: CanvasRenderPlan) -> None:
-    """Backward-compatible alias for older imports."""
-    apply_plan_runtime_overlays(canvas, plan)
-
 def _sync_geometry_state(canvas, store) -> None:
     """Update store.viewport.geometry_state from the canvas letterbox rect."""
     content_rect = canvas.runtime_state._content_rect_px
@@ -121,6 +117,53 @@ def _sync_split_position(store, canvas, split_position: float) -> None:
         )
     )
 
+def _resolve_clip_flag(store, clip_overlays_to_image_bounds: bool, plan) -> bool:
+    if store is not None:
+        return clip_overlays_to_image_bounds
+    return False
+
+def _setup_store_bindings(canvas, plan, *, store, clip_flag: bool) -> None:
+    state = canvas.runtime_state
+
+    if store is not None:
+        canvas._store = store
+    else:
+        state._store = None
+
+    canvas._active_render_plan = plan
+    canvas._clip_overlays_to_content_rect = clip_flag
+    canvas.set_render_scene(plan.gl_scene)
+
+    if store is not None:
+        canvas.set_split_position_sync(
+            lambda split: _sync_split_position(store, canvas, split)
+        )
+        canvas.set_apply_channel_mode_in_shader(True)
+    else:
+        state._apply_channel_mode_in_shader = True
+
+def _apply_overlays(canvas, plan, *, store) -> None:
+    if store is None:
+        canvas.set_guides_params(plan.guides_enabled, plan.guides_color, plan.guides_thickness)
+        canvas.set_capture_color(plan.capture_color)
+
+    if store is not None:
+        _sync_geometry_state(canvas, store)
+
+    apply_plan_runtime_overlays(canvas, plan)
+
+    if store is not None:
+        apply_canvas_feature_live_runtime_overlays(store, canvas)
+
+def _textures_are_current(canvas, plan: CanvasRenderPlan) -> bool:
+    if plan.display_cache_key is None:
+        return False
+    state = canvas.runtime_state
+    if plan.display_cache_key != state._stored_image_ids:
+        return False
+    stored = state._stored_pil_images
+    return bool(stored and stored[0] is not None)
+
 def apply_canvas_render_plan(
     canvas,
     plan: CanvasRenderPlan,
@@ -131,13 +174,39 @@ def apply_canvas_render_plan(
     """
     Unified canvas configurator.
 
+    Automatically detects whether the canvas already holds the same textures
+    described by *plan* (via ``display_cache_key``).  When textures are
+    current, only the GL scene + overlays are refreshed (no ``set_pil_layers``
+    / ``reset_view``).  Otherwise the full texture-upload path runs.
+
     ``store=None``  —  snapshot / export / preview path; the plan fully
                        describes the frame; zoom is reset; guides and capture
                        overlay params are pushed from the plan.
-    ``store=…``     —  interactive path; live store drives magnifier positions,
+    ``store=…``     —  interactive path; live feature overlays drive positions,
                        split sync, and geometry; zoom is preserved when
                        ``plan.preserve_zoom`` is True.
     """
+    if _textures_are_current(canvas, plan):
+        _apply_plan_scene_only(
+            canvas, plan,
+            store=store,
+            clip_overlays_to_image_bounds=clip_overlays_to_image_bounds,
+        )
+    else:
+        _apply_plan_full(
+            canvas, plan,
+            store=store,
+            clip_overlays_to_image_bounds=clip_overlays_to_image_bounds,
+        )
+
+def _apply_plan_full(
+    canvas,
+    plan: CanvasRenderPlan,
+    *,
+    store,
+    clip_overlays_to_image_bounds: bool,
+) -> None:
+    """Full path — uploads textures, resets view, configures everything."""
     from ui.canvas_infra.viewport.state import (
         get_pan_offset_x,
         get_pan_offset_y,
@@ -149,29 +218,8 @@ def apply_canvas_render_plan(
     if hasattr(canvas, "begin_update_batch"):
         canvas.begin_update_batch()
     try:
-        state = canvas.runtime_state
-
-        if store is not None:
-            canvas._store = store
-        else:
-            state._store = None
-
-        canvas._active_render_plan = plan
-        canvas._clip_overlays_to_content_rect = (
-            clip_overlays_to_image_bounds and plan.preserve_zoom
-            if store is not None
-            else False
-        )
-
-        canvas.set_render_scene(plan.gl_scene)
-
-        if store is not None:
-            canvas.set_split_position_sync(
-                lambda split: _sync_split_position(store, canvas, split)
-            )
-            canvas.set_apply_channel_mode_in_shader(True)
-        else:
-            state._apply_channel_mode_in_shader = True
+        clip_flag = _resolve_clip_flag(store, clip_overlays_to_image_bounds, plan)
+        _setup_store_bindings(canvas, plan, store=store, clip_flag=clip_flag)
 
         if plan.preserve_zoom:
             zoom_level = get_zoom_level(canvas)
@@ -195,17 +243,51 @@ def apply_canvas_render_plan(
             shader_letterbox=True,
         )
 
-        if store is None:
-            canvas.set_guides_params(plan.guides_enabled, plan.guides_color, plan.guides_thickness)
-            canvas.set_capture_color(plan.capture_color)
+        _apply_overlays(canvas, plan, store=store)
 
-        if store is not None:
-            _sync_geometry_state(canvas, store)
+    finally:
+        if hasattr(canvas, "end_update_batch"):
+            canvas.end_update_batch()
 
-        apply_plan_runtime_overlays(canvas, plan)
+def _apply_plan_scene_only(
+    canvas,
+    plan: CanvasRenderPlan,
+    *,
+    store,
+    clip_overlays_to_image_bounds: bool,
+) -> None:
+    """
+    Lightweight scene-only update — textures are already current.
 
-        if store is not None:
-            apply_canvas_feature_live_runtime_overlays(store, canvas)
+    Updates GL scene, guides, capture color, runtime overlays, and letterbox
+    geometry without calling ``set_pil_layers`` or ``reset_view``.
+    """
+    from ui.canvas_infra.viewport.state import (
+        get_zoom_level,
+        set_pan_offsets,
+        set_zoom_level,
+    )
+
+    if hasattr(canvas, "begin_update_batch"):
+        canvas.begin_update_batch()
+    try:
+        clip_flag = _resolve_clip_flag(store, clip_overlays_to_image_bounds, plan)
+        _setup_store_bindings(canvas, plan, store=store, clip_flag=clip_flag)
+
+        if not plan.preserve_zoom:
+            if abs(get_zoom_level(canvas) - 1.0) > 1e-6:
+                set_zoom_level(canvas, 1.0)
+            set_pan_offsets(canvas, 0.0, 0.0)
+
+        state = canvas.runtime_state
+        img0 = state._stored_pil_images[0] if state._stored_pil_images else None
+        if img0 is not None and state._shader_letterbox_mode:
+            from ui.widgets.gl_canvas.texture_parts.base_images import (
+                update_letterbox_geometry,
+            )
+            update_letterbox_geometry(canvas, img0, slot_index=0)
+
+        _apply_overlays(canvas, plan, store=store)
 
     finally:
         if hasattr(canvas, "end_update_batch"):

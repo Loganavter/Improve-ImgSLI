@@ -39,16 +39,13 @@ class OverlayLayout:
     guide_sets: tuple[GuideSet, ...] = field(default_factory=tuple)
     capture_center: object | None = None
     capture_radius: float = 0.0
-    magnifier_centers: tuple[tuple[float, float], ...] = field(default_factory=tuple)
-    mag_radius: float = 0.0
+    overlay_centers: tuple[tuple[float, float], ...] = field(default_factory=tuple)
+    overlay_radius: float = 0.0
     border_color: object | None = None
     border_width: float = 2.0
     channel_mode: int = 0
     diff_mode: int = 0
     interp_mode: int = 1
-
-MagnifierSlot = OverlaySlot
-MagnifierLayout = OverlayLayout
 
 @dataclass(frozen=True)
 class CanvasRenderPlan:
@@ -74,6 +71,21 @@ class CanvasRenderPlan:
     guides_enabled: bool
     guides_color: object
     guides_thickness: int
+    fill_rgba: tuple[int, int, int, int] | None = None
     display_cache_key: tuple | None = None
     output_scale: float = 1.0
     preserve_zoom: bool = False
+
+def resolve_plan_logical_image_rect(
+    plan: CanvasRenderPlan,
+) -> tuple[int, int, int, int]:
+    clip_rect = getattr(plan.gl_scene, "overlay_clip_rect", None)
+    if clip_rect is not None:
+        clip_x, clip_y, clip_w, clip_h = clip_rect
+        return (
+            int(clip_x),
+            int(clip_y),
+            max(1, int(clip_w)),
+            max(1, int(clip_h)),
+        )
+    return (0, 0, max(1, int(plan.canvas_w)), max(1, int(plan.canvas_h)))

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PIL import Image
+from shared.rendering import NormalizedBounds, TargetSurfaceSpec, VirtualCanvasLayout
 
 def unique_video_path(directory: str, base_name: str, ext: str) -> str:
     full_path = f"{directory}/{base_name}.{ext}"
@@ -25,26 +26,29 @@ class GlobalCanvasBounds:
     pad_bottom: int
     base_width: int
     base_height: int
+    canvas_x_min: float = 0.0
+    canvas_x_max: float = 1.0
+    canvas_y_min: float = 0.0
+    canvas_y_max: float = 1.0
 
-    def as_tuple(self) -> tuple[int, int, int, int, int, int]:
-        return (
-            self.pad_left,
-            self.pad_right,
-            self.pad_top,
-            self.pad_bottom,
-            self.base_width,
-            self.base_height,
+    def to_virtual_layout(self) -> VirtualCanvasLayout:
+        return VirtualCanvasLayout(
+            canvas_bounds=NormalizedBounds(
+                x_min=float(self.canvas_x_min),
+                x_max=float(self.canvas_x_max),
+                y_min=float(self.canvas_y_min),
+                y_max=float(self.canvas_y_max),
+            ),
+            content_bounds=NormalizedBounds.unit(),
         )
 
 @dataclass(slots=True, frozen=True)
 class VideoRenderRequest:
-    output_width: int
-    output_height: int
+    target_surface: TargetSurfaceSpec
     font_path: str | None
     auto_crop: bool
     fit_content: bool
     global_bounds: GlobalCanvasBounds | None
-    fill_rgba: tuple[int, int, int, int]
 
 @dataclass(slots=True, frozen=True)
 class RenderedFrame:

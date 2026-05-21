@@ -157,33 +157,11 @@ class ClipboardService:
                         )
                         self.main_controller.thread_pool.start(worker)
 
-            image_label = getattr(main_window.ui, "image_label", None)
-            if image_label and hasattr(image_label, "set_paste_overlay_state"):
-                self._clear_canvas_paste_overlay()
-                self._paste_overlay_canvas = image_label
-                image_label.pasteOverlayDirectionSelected.connect(
-                    on_direction_selected
-                )
-                image_label.pasteOverlayCancelled.connect(
-                    self._clear_canvas_paste_overlay
-                )
-                image_label.set_paste_overlay_state(
-                    True,
-                    is_horizontal=self.store.viewport.view_state.is_horizontal,
-                    texts={
-                        "up": tr("common.position.up", self.store.settings.current_language),
-                        "down": tr("common.position.down", self.store.settings.current_language),
-                        "left": tr("common.position.left", self.store.settings.current_language),
-                        "right": tr("common.position.right", self.store.settings.current_language),
-                    },
-                )
-                image_label.setFocus()
-                return True
-
             from sli_ui_toolkit.ui.widgets.overlays.paste_direction_overlay import (
                 PasteDirectionOverlay,
             )
 
+            self._clear_canvas_paste_overlay()
             overlay = PasteDirectionOverlay(
                 main_window,
                 main_window.ui.image_label,

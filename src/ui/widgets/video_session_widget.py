@@ -4,8 +4,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from plugins.video_editor.model import VideoSessionSnapshot
-from sli_ui_toolkit.widgets import CustomButton
-from sli_ui_toolkit.widgets import BodyLabel, CaptionLabel
+from sli_ui_toolkit.widgets import Button, BodyLabel, CaptionLabel
 from ui.icon_manager import AppIcon
 
 class VideoSessionWidget(QWidget):
@@ -43,13 +42,9 @@ class VideoSessionWidget(QWidget):
         actions_layout.setSpacing(8)
         actions_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
-        self.btn_advance_timeline = CustomButton(AppIcon.PLAY, "Advance Timeline", self)
-        self.btn_attach_resource = CustomButton(
-            AppIcon.LINK, "Attach Decoder", self
-        )
-        self.btn_create_image_compare = CustomButton(
-            AppIcon.PHOTO, "Open Image Compare", self
-        )
+        self.btn_advance_timeline = Button(AppIcon.PLAY, text="Advance Timeline", variant="surface", parent=self)
+        self.btn_attach_resource = Button(AppIcon.LINK, text="Attach Decoder", variant="surface", parent=self)
+        self.btn_create_image_compare = Button(AppIcon.PHOTO, text="Open Image Compare", variant="surface", parent=self)
 
         self.btn_advance_timeline.clicked.connect(self.advance_timeline_requested.emit)
         self.btn_attach_resource.clicked.connect(self.attach_resource_requested.emit)

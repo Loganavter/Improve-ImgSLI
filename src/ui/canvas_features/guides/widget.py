@@ -6,6 +6,8 @@ from core.state_management.action_base import Action
 from core.store_viewport import RenderConfig, ViewState
 from ui.canvas_infra.scene.widget_contract import (
     CanvasFeatureCommandAlias,
+    CanvasFeatureStateCommand,
+    CanvasFeatureStateQuery,
     CanvasWidgetFeature,
 )
 
@@ -50,6 +52,32 @@ def reduce_guides_render_config(config: RenderConfig, action: Action) -> RenderC
     del action
     return config
 
+def build_guides_state_queries():
+    """Build state queries for direct feature state access."""
+    from .commands import query_guides_widget_state
+
+    return (
+        CanvasFeatureStateQuery(query_id="widget_state", handler=query_guides_widget_state),
+    )
+
+def build_guides_state_commands():
+    """Build state commands for direct feature state modification."""
+    from .commands import (
+        command_toggle_guides,
+        command_set_guides_thickness,
+        command_viewport_toggle_guides,
+        command_viewport_set_smoothing_enabled,
+        command_viewport_set_smoothing_interpolation_method,
+    )
+
+    return (
+        CanvasFeatureStateCommand(command_id="toggle_enabled", handler=command_toggle_guides),
+        CanvasFeatureStateCommand(command_id="set_thickness", handler=command_set_guides_thickness),
+        CanvasFeatureStateCommand(command_id="toggle_enabled_viewport", handler=command_viewport_toggle_guides),
+        CanvasFeatureStateCommand(command_id="set_smoothing_enabled", handler=command_viewport_set_smoothing_enabled),
+        CanvasFeatureStateCommand(command_id="set_smoothing_method", handler=command_viewport_set_smoothing_interpolation_method),
+    )
+
 GUIDES_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("guides.widget_state", "query.widget_state"),
     CanvasFeatureCommandAlias("guides.enabled", "query.enabled"),
@@ -77,6 +105,8 @@ def build_widget_feature() -> CanvasWidgetFeature:
         build_commands=build_guides_commands,
         command_aliases=GUIDES_COMMAND_ALIASES,
         build_settings_event_bindings=build_guides_settings_event_bindings,
+        build_state_queries=build_guides_state_queries,
+        build_state_commands=build_guides_state_commands,
         build_render_scene_overrides=build_guides_render_scene_overrides,
         i18n_namespace="ui.tooltips",
         reducer_order=20,

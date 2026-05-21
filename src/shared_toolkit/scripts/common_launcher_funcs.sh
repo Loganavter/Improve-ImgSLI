@@ -28,17 +28,17 @@ show_spinner() {
     local delay=0.1
     local spinstr='/-\|'
 
-    tput civis
-    trap 'tput cnorm' EXIT
+    tput civis 2>/dev/null || true
+    trap 'tput cnorm 2>/dev/null || true' EXIT
 
-    while ps -p "$pid" >/dev/null; do
+    while ps -p "$pid" >/dev/null 2>&1; do
         local temp=${spinstr#?}
         printf "\r\033[K%s %c " "$msg" "${spinstr:0:1}"
         spinstr=$temp${spinstr%"$temp"}
         sleep "$delay"
     done
 
-    tput cnorm
+    tput cnorm 2>/dev/null || true
 }
 
 run_with_spinner() {
@@ -59,10 +59,12 @@ run_with_spinner() {
         return $exit_code
     fi
 
-    local terminal_cols=$(tput cols 2>/dev/null)
+    local terminal_cols
+    terminal_cols=$(tput cols 2>/dev/null)
     if [[ -z "$terminal_cols" || "$terminal_cols" -eq 0 ]]; then
         terminal_cols=80
     fi
+
     local max_spinner_msg_len=$((terminal_cols - 10))
     local spinner_msg_content="$base_msg"
     if [[ ${#spinner_msg_content} -gt "$max_spinner_msg_len" ]]; then
@@ -189,14 +191,18 @@ run_pip_with_inline_progress() {
 }
 
 get_canonical_path() {
-    if [[ -z "$1" ]]; then return 1; fi
+    if [[ -z "$1" ]]; then
+        return 1
+    fi
+
     local resolved_path
     if [[ -d "$1" ]]; then
         resolved_path="$(cd "$1" && pwd)"
     elif [[ -f "$1" ]]; then
         resolved_path="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
     else
-        local parent_dir=$(dirname "$1")
+        local parent_dir
+        parent_dir=$(dirname "$1")
         if [[ -d "$parent_dir" ]]; then
             resolved_path="$(cd "$parent_dir" && pwd)/$(basename "$1")"
         else
@@ -204,6 +210,7 @@ get_canonical_path() {
             return 0
         fi
     fi
+
     echo "$resolved_path"
     return 0
 }
@@ -211,17 +218,19 @@ get_canonical_path() {
 activate_venv() {
     local venv_dir="$1"
     local activate_script=""
-    local canonical_venv_dir=$(get_canonical_path "$venv_dir")
+
     if [[ -f "$venv_dir/bin/activate" ]]; then
         activate_script="$venv_dir/bin/activate"
-    elif [[ -f "$venv_dir/Scripts/activate" ]]; then activate_script="$venv_dir/Scripts/activate"; fi
+    elif [[ -f "$venv_dir/Scripts/activate" ]]; then
+        activate_script="$venv_dir/Scripts/activate"
+    fi
 
     if [[ -n "$activate_script" ]]; then
         source "$activate_script"
         return 0
-    else
-        return 1
     fi
+
+    return 1
 }
 
 deactivate_venv() {
@@ -231,14 +240,103 @@ deactivate_venv() {
     unset VIRTUAL_ENV
 }
 
+remove_venv_dir() {
+    local venv_dir="$1"
+    local description="${2:-virtual environment}"
+
+    if [[ -z "$venv_dir" ]]; then
+        log_status "Venv path is empty. Refusing to remove." 1
+        return 1
+    fi
+
+    if [[ ! -d "$venv_dir" ]]; then
+        log_info "${description^} not found, skipping."
+        return 0
+    fi
+
+    log_info "Removing $description in '$venv_dir'..."
+    deactivate_venv 2>/dev/null || true
+
+    if rm -rf "$venv_dir"; then
+        log_status "${description^} removed" 0
+        return 0
+    fi
+
+    log_status "Failed to remove $description. Remove manually: $venv_dir" 1
+    return 1
+}
+
+cleanup_broken_venv() {
+    local venv_dir="$1"
+
+    if [[ -d "$venv_dir" ]]; then
+        log_info "Removing corrupted virtual environment..."
+        remove_venv_dir "$venv_dir" "corrupted virtual environment"
+    fi
+}
+
+cleanup_python_cache() {
+    local root_dir="$1"
+    local exclude_dir="${2:-}"
+
+    if [[ -z "$root_dir" || ! -d "$root_dir" ]]; then
+        log_status "Cache cleanup root does not exist: $root_dir" 1
+        return 1
+    fi
+
+    local canonical_root
+    canonical_root=$(get_canonical_path "$root_dir")
+
+    local canonical_exclude=""
+    if [[ -n "$exclude_dir" ]]; then
+        canonical_exclude=$(get_canonical_path "$exclude_dir")
+    fi
+
+    log_info "Removing Python cache files in '$canonical_root'..."
+
+    local status_dirs=0
+    local status_files=0
+
+    if [[ -n "$canonical_exclude" ]]; then
+        find "$canonical_root" \
+            -path "$canonical_exclude" -prune -o \
+            -type d -name "__pycache__" -prune -exec rm -rf {} +
+        status_dirs=$?
+
+        find "$canonical_root" \
+            -path "$canonical_exclude" -prune -o \
+            -type f \( -name "*.pyc" -o -name "*.pyo" \) -exec rm -f {} +
+        status_files=$?
+    else
+        find "$canonical_root" \
+            -type d -name "__pycache__" -prune -exec rm -rf {} +
+        status_dirs=$?
+
+        find "$canonical_root" \
+            -type f \( -name "*.pyc" -o -name "*.pyo" \) -exec rm -f {} +
+        status_files=$?
+    fi
+
+    if [[ $status_dirs -eq 0 && $status_files -eq 0 ]]; then
+        log_status "Python caches removed" 0
+        return 0
+    fi
+
+    log_status "Failed to remove some Python caches" 1
+    return 1
+}
+
 setup_new_venv() {
     local venv_dir="$1"
     local python_executable=""
-    if command -v python3 &>/dev/null; then
+
+    if command -v python3 >/dev/null 2>&1; then
         python_executable="python3"
-    elif command -v python &>/dev/null; then
+    elif command -v python >/dev/null 2>&1; then
         python_executable="python"
-    else return 1; fi
+    else
+        return 1
+    fi
 
     if ! "$python_executable" -m venv "$venv_dir"; then
         return 1
@@ -257,62 +355,69 @@ ensure_venv_is_ready() {
     local venv_dir="$1"
     local requirements_file="$2"
     local retry_done=false
+
     while true; do
         if [[ ! -d "$venv_dir" ]]; then
             if ! run_with_spinner "Setting up virtual environment at '$venv_dir'" setup_new_venv "$venv_dir"; then
                 log_status "Critical error: Failed to create venv" 1
                 return 1
             fi
+
             if ! activate_venv "$venv_dir"; then
                 log_status "Critical error: Failed to activate newly created venv" 1
                 rm -rf "$venv_dir"
                 return 1
             fi
+
             if ! run_pip_with_inline_progress "Installing dependencies" "$requirements_file" python -m pip install -r "$requirements_file" --disable-pip-version-check; then
                 log_status "Critical error: Failed to install dependencies in new venv" 1
                 rm -rf "$venv_dir"
                 return 1
             fi
+
             touch "$venv_dir/.installed"
             return 0
-        else
-            if ! activate_venv "$venv_dir"; then
-                log_status "Failed to activate existing venv. Considering it corrupted" 1
+        fi
+
+        if ! activate_venv "$venv_dir"; then
+            log_status "Failed to activate existing venv. Considering it corrupted" 1
+            if $retry_done; then
+                log_status "Error: Retry activation also failed" 1
+                return 1
+            fi
+
+            log_info "Removing potentially corrupted venv for recreation..."
+            rm -rf "$venv_dir"
+            retry_done=true
+            continue
+        fi
+
+        local update_needed=false
+        if [[ ! -f "$venv_dir/.installed" ]] || [[ "$requirements_file" -nt "$venv_dir/.installed" ]]; then
+            update_needed=true
+        fi
+
+        if $update_needed; then
+            if ! run_pip_with_inline_progress "Checking/Updating dependencies" "$requirements_file" python -m pip install -r "$requirements_file" --disable-pip-version-check; then
+                log_status "Dependency installation failed. Venv may be corrupted." 1
                 if $retry_done; then
-                    log_status "Error: Retry activation also failed" 1
+                    log_status "Error: Dependency installation failed again" 1
                     return 1
                 fi
-                log_info "Removing potentially corrupted venv for recreation..."
+
+                log_info "Removing venv for recreation..."
+                deactivate_venv
                 rm -rf "$venv_dir"
                 retry_done=true
                 continue
             fi
 
-            local update_needed=false
-            if [[ ! -f "$venv_dir/.installed" ]] || [[ "$requirements_file" -nt "$venv_dir/.installed" ]]; then
-                update_needed=true
-            fi
-
-            if $update_needed; then
-                if ! run_pip_with_inline_progress "Checking/Updating dependencies" "$requirements_file" python -m pip install -r "$requirements_file" --disable-pip-version-check; then
-                    log_status "Dependency installation failed. Venv may be corrupted." 1
-                    if $retry_done; then
-                        log_status "Error: Dependency installation failed again" 1
-                        return 1
-                    fi
-                    log_info "Removing venv for recreation..."
-                    deactivate_venv
-                    rm -rf "$venv_dir"
-                    retry_done=true
-                    continue
-                else
-                    touch "$venv_dir/.installed"
-                fi
-            else
-                log_status "Dependencies are up to date" 0
-            fi
-            return 0
+            touch "$venv_dir/.installed"
+        else
+            log_status "Dependencies are up to date" 0
         fi
+
+        return 0
     done
 }
 

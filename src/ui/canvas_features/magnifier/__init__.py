@@ -1,4 +1,4 @@
-from .bounds import compute_magnifier_padding, compute_magnifier_union_bbox
+from .bounds import compute_magnifier_layout_requirement, compute_magnifier_union_bbox
 from .mode import MagnifierModeService
 from .store import (
     DEFAULT_MAGNIFIER_ID,
@@ -23,7 +23,7 @@ __all__ = [
     "MagnifierStoreService",
     "active_magnifier_id",
     "add_magnifier_model",
-    "compute_magnifier_padding",
+    "compute_magnifier_layout_requirement",
     "compute_magnifier_union_bbox",
     "default_capture_size",
     "default_magnifier_size",

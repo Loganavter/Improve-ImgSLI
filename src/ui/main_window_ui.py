@@ -14,24 +14,16 @@ from PyQt6.QtWidgets import (
 )
 
 from resources.translations import tr
-from sli_ui_toolkit.widgets import ButtonGroupContainer
 from sli_ui_toolkit.widgets import (
     BodyLabel,
+    Button,
+    ButtonGroup,
     CaptionLabel,
-    ButtonType,
-    IconButton,
-    LongPressIconButton,
-    Slider,
-)
-from sli_ui_toolkit.widgets import CustomButton
-from sli_ui_toolkit.widgets import CustomLineEdit, SimpleIconButton, ToggleIconButton
-from sli_ui_toolkit.widgets import (
+    CustomLineEdit,
     InstancesCounterButton,
     ScrollableComboBox,
-    ScrollableIconButton,
-    ToggleScrollableIconButton,
+    Slider,
 )
-from sli_ui_toolkit.widgets import ToolButtonWithMenu
 from ui.widgets.magnifier_color_controls import ColorSettingsButton
 from sli_ui_toolkit.ui.widgets.overlays.drag_drop_overlay import DragDropOverlay
 from ui.icon_manager import AppIcon
@@ -62,7 +54,7 @@ class Ui_ImageComparisonApp:
         self.image_label = GLCanvas(main_window)
         self.length_warning_label = BodyLabel(main_window)
         self.workspace_tabs = QTabBar(main_window)
-        self.btn_new_session = ToolButtonWithMenu(AppIcon.ADD, main_window)
+        self.btn_new_session = Button(AppIcon.ADD, menu=[], parent=main_window)
         self.workspace_stack = QStackedWidget(main_window)
         self.image_session_page = QWidget(main_window)
         self.video_session_page = QWidget(main_window)
@@ -70,29 +62,22 @@ class Ui_ImageComparisonApp:
         self._tab_registry = None
 
     def _create_selection_controls(self, parent: QWidget):
-        self.btn_image1 = CustomButton(AppIcon.PHOTO, "", parent)
-        self.btn_image1.setProperty("class", "primary")
-        self.btn_image2 = CustomButton(AppIcon.PHOTO, "", parent)
-        self.btn_image2.setProperty("class", "primary")
+        self.btn_image1 = Button(AppIcon.PHOTO, text="", variant="primary", parent=parent)
+        self.btn_image2 = Button(AppIcon.PHOTO, text="", variant="primary", parent=parent)
 
-        self.btn_swap = LongPressIconButton(AppIcon.SYNC, ButtonType.DEFAULT, parent)
-        self.btn_clear_list1 = LongPressIconButton(AppIcon.DELETE, ButtonType.DELETE, parent)
-        self.btn_clear_list2 = LongPressIconButton(AppIcon.DELETE, ButtonType.DELETE, parent)
-        self.help_button = IconButton(AppIcon.HELP, ButtonType.DEFAULT, parent)
-        self.btn_settings = IconButton(AppIcon.SETTINGS, ButtonType.DEFAULT, parent)
+        self.btn_swap = Button(AppIcon.SYNC, long_press=True, variant="accent", parent=parent)
+        self.btn_clear_list1 = Button(AppIcon.DELETE, long_press=True, variant="delete", parent=parent)
+        self.btn_clear_list2 = Button(AppIcon.DELETE, long_press=True, variant="delete", parent=parent)
+        self.help_button = Button(AppIcon.HELP, variant="accent", parent=parent)
+        self.btn_settings = Button(AppIcon.SETTINGS, variant="accent", parent=parent)
 
-        self.btn_color_picker = IconButton(AppIcon.TEXT_MANIPULATOR, ButtonType.DEFAULT, parent)
-        self.btn_quick_save = IconButton(AppIcon.QUICK_SAVE, ButtonType.DEFAULT, parent)
-        self.btn_magnifier_orientation = ToggleScrollableIconButton(
-            AppIcon.VERTICAL_SPLIT,
-            AppIcon.HORIZONTAL_SPLIT,
-            min_val=0,
-            max_val=10,
-            show_underline=False,
-            parent=parent,
+        self.btn_text_settings = Button(AppIcon.TEXT_MANIPULATOR, variant="accent", parent=parent)
+        self.btn_quick_save = Button(AppIcon.QUICK_SAVE, variant="accent", parent=parent)
+        self.btn_magnifier_orientation = Button(
+            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+            toggle=True, scrollable=(0, 10), show_underline=True, parent=parent,
         )
-        self.btn_save = CustomButton(AppIcon.SAVE, "", parent)
-        self.btn_save.setProperty("class", "primary")
+        self.btn_save = Button(AppIcon.SAVE, text="", variant="primary", parent=parent)
 
         self.label_rating1 = CaptionLabel("–", parent)
         self.label_rating2 = CaptionLabel("–", parent)
@@ -102,58 +87,60 @@ class Ui_ImageComparisonApp:
         self.combo_interpolation.setAutoWidthEnabled(True)
 
     def _create_view_controls(self, parent: QWidget):
-        self.btn_orientation = ToggleScrollableIconButton(
-            AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20, parent=parent
+        self.btn_orientation = Button(
+            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+            toggle=True, scrollable=(0, 20), show_underline=True, parent=parent,
         )
-        self.btn_magnifier = ToggleIconButton(AppIcon.MAGNIFIER, parent=parent)
+        self.btn_magnifier = Button(AppIcon.MAGNIFIER, toggle=True, parent=parent)
         self.btn_magnifier_instances = InstancesCounterButton(parent=parent)
-        self.btn_freeze = ToggleIconButton(AppIcon.FREEZE, parent=parent)
-        self.btn_file_names = ToggleIconButton(AppIcon.TEXT_FILENAME, parent=parent)
+        self.btn_freeze = Button(AppIcon.FREEZE, toggle=True, parent=parent)
+        self.btn_file_names = Button(AppIcon.TEXT_FILENAME, toggle=True, parent=parent)
 
-        self.btn_diff_mode = ToolButtonWithMenu(AppIcon.HIGHLIGHT_DIFFERENCES, parent)
-        self.btn_channel_mode = ToolButtonWithMenu(AppIcon.PHOTO, parent)
+        self.btn_diff_mode = Button(AppIcon.HIGHLIGHT_DIFFERENCES, menu=[], parent=parent)
+        self.btn_channel_mode = Button(AppIcon.PHOTO, menu=[], parent=parent)
 
         self.btn_magnifier_color_settings = ColorSettingsButton(parent=parent, current_language="en")
 
-        self.btn_magnifier_guides = ToggleScrollableIconButton(
-            AppIcon.MAGNIFIER_GUIDES, min_val=0, max_val=10, parent=parent
+        self.btn_magnifier_guides = Button(
+            AppIcon.MAGNIFIER_GUIDES, toggle=True, scrollable=(0, 10),
+            show_underline=True, parent=parent,
         )
 
-        self.btn_orientation_simple = ToggleIconButton(
-            AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, parent=parent
+        self.btn_orientation_simple = Button(
+            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT), toggle=True, parent=parent,
         )
-        self.btn_divider_visible = ToggleIconButton(
-            AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN, parent=parent
+        self.btn_divider_visible = Button(
+            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN), toggle=True, parent=parent,
         )
-        self.btn_divider_color = SimpleIconButton(AppIcon.DIVIDER_COLOR, parent)
-        self.btn_divider_width = ScrollableIconButton(
-            AppIcon.DIVIDER_WIDTH, min_value=1, max_value=20, parent=parent
+        self.btn_divider_color = Button(AppIcon.DIVIDER_COLOR, show_underline=True, parent=parent)
+        self.btn_divider_width = Button(
+            AppIcon.DIVIDER_WIDTH, scrollable=(1, 20), show_underline=True, parent=parent,
         )
-        self.btn_magnifier_orientation_simple = ToggleIconButton(
-            AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, parent=parent
+        self.btn_magnifier_orientation_simple = Button(
+            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT), toggle=True, parent=parent,
         )
-        self.btn_magnifier_divider_visible = ToggleIconButton(
-            AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN, parent=parent
+        self.btn_magnifier_divider_visible = Button(
+            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN), toggle=True, parent=parent,
         )
 
         self.btn_magnifier_color_settings_beginner = ColorSettingsButton(
             parent=parent, current_language="en"
         )
-        self.btn_magnifier_divider_width = ScrollableIconButton(
-            AppIcon.DIVIDER_WIDTH, min_value=1, max_value=10, parent=parent
+        self.btn_magnifier_divider_width = Button(
+            AppIcon.DIVIDER_WIDTH, scrollable=(1, 10), show_underline=True, parent=parent,
         )
 
-        self.btn_magnifier_guides_simple = ToggleIconButton(AppIcon.MAGNIFIER_GUIDES, parent=parent)
-        self.btn_magnifier_guides_width = ScrollableIconButton(
-            AppIcon.DIVIDER_WIDTH, min_value=1, max_value=10, parent=parent
+        self.btn_magnifier_guides_simple = Button(AppIcon.MAGNIFIER_GUIDES, toggle=True, parent=parent)
+        self.btn_magnifier_guides_width = Button(
+            AppIcon.DIVIDER_WIDTH, scrollable=(1, 10), show_underline=True, parent=parent,
         )
 
     def _create_video_controls(self, parent: QWidget):
-        self.btn_record = ToggleIconButton(AppIcon.RECORD, AppIcon.STOP, parent)
-        self.btn_pause = ToggleIconButton(AppIcon.PAUSE, AppIcon.PLAY, parent)
+        self.btn_record = Button(icon=(AppIcon.RECORD, AppIcon.STOP), toggle=True, parent=parent)
+        self.btn_pause = Button(icon=(AppIcon.PAUSE, AppIcon.PLAY), toggle=True, parent=parent)
         self.btn_pause.setEnabled(False)
 
-        self.btn_video_editor = SimpleIconButton(AppIcon.EXPORT_VIDEO, parent)
+        self.btn_video_editor = Button(AppIcon.EXPORT_VIDEO, show_underline=True, parent=parent)
 
     def _create_slider_controls(self, parent: QWidget):
         self.slider_size = Slider(Qt.Orientation.Horizontal, parent)
@@ -264,28 +251,14 @@ class Ui_ImageComparisonApp:
         return resolution_layout
 
     def _post_init_icons_and_sizes(self):
-
-        self.btn_image1.setIcon(AppIcon.PHOTO)
-        self.btn_image2.setIcon(AppIcon.PHOTO)
-        self.btn_save.setIcon(AppIcon.SAVE)
-
-        self.btn_quick_save.setIconSize(QSize(24, 24))
-        self.help_button.setIconSize(QSize(24, 24))
-        self.btn_clear_list1.setIconSize(QSize(22, 22))
-        self.btn_clear_list2.setIconSize(QSize(22, 22))
-
-        for btn in [
-            self.btn_orientation,
-            self.btn_magnifier,
-            self.btn_freeze,
-            self.btn_file_names,
-        ]:
-            pass
-
-        self.btn_divider_color.setIconSize(QSize(22, 22))
-        self.btn_divider_width.setIconSize(QSize(22, 22))
-        self.btn_magnifier_divider_width.setIconSize(QSize(22, 22))
-        self.btn_magnifier_guides_width.setIconSize(QSize(22, 22))
+        self.btn_quick_save.setIconSizePx(24)
+        self.help_button.setIconSizePx(24)
+        self.btn_clear_list1.setIconSizePx(22)
+        self.btn_clear_list2.setIconSizePx(22)
+        self.btn_divider_color.setIconSizePx(22)
+        self.btn_divider_width.setIconSizePx(22)
+        self.btn_magnifier_divider_width.setIconSizePx(22)
+        self.btn_magnifier_guides_width.setIconSizePx(22)
 
     def _configure_workspace_tabs(self):
         self.workspace_tabs.setObjectName("WorkspaceTabs")
@@ -522,7 +495,7 @@ class Ui_ImageComparisonApp:
         return groups_layout
 
     def _create_button_group_container(self, buttons, label_key: str):
-        return ButtonGroupContainer(buttons, tr(label_key, "en"))
+        return ButtonGroup(buttons, label=tr(label_key, "en"))
 
     def _create_checkbox_actions_layout(self) -> QHBoxLayout:
         buttons_sub_layout = QHBoxLayout()
@@ -656,7 +629,7 @@ class Ui_ImageComparisonApp:
         edit_outer_layout.addWidget(self.label_edit_name2)
         edit_outer_layout.addWidget(self.edit_name2, 1)
         edit_outer_layout.addSpacing(10)
-        edit_outer_layout.addWidget(self.btn_color_picker)
+        edit_outer_layout.addWidget(self.btn_text_settings)
         return edit_outer_layout
 
     def _create_save_buttons_widget(self):
@@ -727,7 +700,7 @@ class Ui_ImageComparisonApp:
         )
         self.btn_clear_list1.setToolTip(clear_tooltip)
         self.btn_clear_list2.setToolTip(clear_tooltip)
-        self.btn_color_picker.setToolTip(
+        self.btn_text_settings.setToolTip(
             tr("tooltip.open_file_name_text_settings", lang_code)
         )
         self.btn_quick_save.setToolTip(tr("tooltip.quick_save_image", lang_code))

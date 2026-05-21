@@ -24,8 +24,11 @@ from plugins.viewport.events import (
     ViewportUpdateMovementSpeedEvent,
 )
 from plugins.viewport.interaction_service import ViewportInteractionService
-from plugins.viewport.magnifier_service import ViewportMagnifierService
 from plugins.viewport.runtime import ViewportRuntime
+from ui.canvas_infra.scene.feature_state_api import (
+    execute_feature_command,
+    query_feature_state,
+)
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -60,9 +63,6 @@ class ViewportController(QObject):
             update_requested_signal=self.update_requested,
         )
         self.interaction_service = ViewportInteractionService(self.runtime, store)
-        self.magnifier_service = ViewportMagnifierService(
-            self.runtime, store, self.interaction_service
-        )
 
     def _save_setting(self, key: str, value) -> None:
         if self._settings_manager is not None:
@@ -87,6 +87,15 @@ class ViewportController(QObject):
             force_advance_frame=force_advance_frame
         )
 
+    def _update_magnifier_combined_state(self) -> None:
+        """Update magnifier combined state (internal split)."""
+        if not bool(query_feature_state(self.store, "magnifier", "enabled", False)):
+            self.runtime.emit_update(scope="viewport")
+            self.runtime.capture_recording_checkpoint()
+            return
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
+
     def begin_user_interaction(self) -> None:
         self.interaction_service.begin_user_interaction()
 
@@ -103,9 +112,7 @@ class ViewportController(QObject):
         from core.state_management.actions import ToggleOrientationAction
 
         self._dispatch_action(ToggleOrientationAction(is_horizontal))
-        self.toggle_magnifier_orientation(is_horizontal)
         self._save_setting("is_horizontal", is_horizontal)
-        self._save_setting("magnifier_layout_horizontal", is_horizontal)
 
     def update_magnifier_size_relative(self, relative_size: float):
         _execute_magnifier_command(self.store, "overlay.set_active_size", relative_size)
@@ -115,7 +122,7 @@ class ViewportController(QObject):
     def update_capture_size_relative(self, relative_size: float):
         _execute_magnifier_command(
             self.store,
-            "overlay.set_active_capture_size",
+            "capture.set_active_size",
             relative_size,
         )
         self.interaction_service.clamp_capture_position()
@@ -123,10 +130,8 @@ class ViewportController(QObject):
         self.runtime.capture_recording_checkpoint()
 
     def toggle_magnifier(self, enabled: bool):
-        _execute_magnifier_command(self.store, "overlay.toggle_enabled", enabled)
-        self.magnifier_service.update_combined_state()
-        self.runtime.emit_update(scope="viewport")
-        self.runtime.capture_recording_checkpoint()
+        execute_feature_command(self.store, "magnifier", "toggle_enabled", enabled)
+        self._update_magnifier_combined_state()
         self._save_setting("use_magnifier", bool(self.is_magnifier_enabled()))
         self._sync_settings()
 
@@ -140,14 +145,13 @@ class ViewportController(QObject):
         part = (part or "").strip().lower()
         if part not in {"left", "center", "right"}:
             return
-        _execute_magnifier_command(
+        execute_feature_command(
             self.store,
-            "overlay.set_active_visibility_parts",
+            "magnifier",
+            "set_active_visibility_parts",
             **{part: visible},
         )
-        self.magnifier_service.update_combined_state()
-        self.runtime.emit_update(scope="viewport")
-        self.runtime.capture_recording_checkpoint()
+        self._update_magnifier_combined_state()
 
     def set_magnifier_visibility(
         self,
@@ -155,16 +159,15 @@ class ViewportController(QObject):
         center: bool | None = None,
         right: bool | None = None,
     ):
-        _execute_magnifier_command(
+        execute_feature_command(
             self.store,
-            "overlay.set_active_visibility_parts",
+            "magnifier",
+            "set_active_visibility_parts",
             left=left,
             center=center,
             right=right,
         )
-        self.magnifier_service.update_combined_state()
-        self.runtime.emit_update(scope="viewport")
-        self.runtime.capture_recording_checkpoint()
+        self._update_magnifier_combined_state()
 
     def toggle_magnifier_orientation(self, is_horizontal: bool):
         _execute_magnifier_command(
@@ -177,11 +180,36 @@ class ViewportController(QObject):
         self._save_setting("magnifier_layout_horizontal", is_horizontal)
 
     def toggle_freeze_magnifier(self, freeze_checked: bool):
-        self.magnifier_service.toggle_freeze_magnifier(freeze_checked)
+        models = tuple(query_feature_state(self.store, "magnifier", "all_states", ()) or ())
+        if not models:
+            self._save_setting("magnifier_freeze", freeze_checked)
+            return
+        if freeze_checked:
+            execute_feature_command(
+                self.store,
+                "magnifier",
+                "set_all_freeze",
+                True,
+                frozen_positions={model["id"]: model["position"] for model in models},
+            )
+        else:
+            execute_feature_command(
+                self.store,
+                "magnifier",
+                "set_all_freeze",
+                False,
+                new_offsets={
+                    model["id"]: self.interaction_service.compute_unfreeze_offset_for(model)
+                    for model in models
+                },
+            )
+        self.store.invalidate_render_cache()
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
         self._save_setting("magnifier_freeze", freeze_checked)
 
     def update_magnifier_combined_state(self):
-        self.magnifier_service.update_combined_state()
+        self._update_magnifier_combined_state()
 
     def update_movement_speed(self, speed: float):
         from core.state_management.actions import SetMovementSpeedAction
@@ -198,7 +226,31 @@ class ViewportController(QObject):
         self.runtime.capture_recording_checkpoint()
 
     def set_magnifier_internal_split(self, location):
-        self.magnifier_service.set_magnifier_internal_split(location)
+        model = query_feature_state(self.store, "magnifier", "active_state")
+        if model is None:
+            return
+        val = 0.5
+        if isinstance(location, Point):
+            val = (
+                location.x
+                if not model["is_horizontal"]
+                else location.y
+            )
+        elif isinstance(location, (float, int)):
+            val = float(location)
+
+        val = max(0.0, min(1.0, val))
+        if float(model["internal_split"]) == val:
+            return
+
+        execute_feature_command(
+            self.store,
+            "magnifier",
+            "set_internal_split",
+            val,
+        )
+        self.runtime.emit_update(scope="viewport")
+        self.runtime.capture_recording_checkpoint()
 
     @staticmethod
     def _resolve_new_magnifier_position(active) -> Point:

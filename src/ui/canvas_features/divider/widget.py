@@ -9,6 +9,8 @@ from core.state_management.viewport_actions import (
 from core.store_viewport import RenderConfig, ViewState
 from ui.canvas_infra.scene.widget_contract import (
     CanvasFeatureCommandAlias,
+    CanvasFeatureStateCommand,
+    CanvasFeatureStateQuery,
     CanvasWidgetFeature,
 )
 
@@ -51,6 +53,34 @@ def reduce_divider_render_config(config: RenderConfig, action: Action) -> Render
     del action
     return config
 
+def build_divider_state_queries():
+    """Build state queries for direct feature state access."""
+    from .commands import query_divider_widget_state
+
+    return (
+        CanvasFeatureStateQuery(query_id="widget_state", handler=query_divider_widget_state),
+    )
+
+def build_divider_state_commands():
+    """Build state commands for direct feature state modification."""
+    from .commands import (
+        command_toggle_divider_visibility,
+        command_set_divider_thickness,
+        command_begin_split_drag,
+        command_end_split_drag,
+        command_update_split_drag,
+        command_sync_split_position,
+    )
+
+    return (
+        CanvasFeatureStateCommand(command_id="toggle_visibility", handler=command_toggle_divider_visibility),
+        CanvasFeatureStateCommand(command_id="set_thickness", handler=command_set_divider_thickness),
+        CanvasFeatureStateCommand(command_id="begin_drag", handler=command_begin_split_drag),
+        CanvasFeatureStateCommand(command_id="end_drag", handler=command_end_split_drag),
+        CanvasFeatureStateCommand(command_id="update_drag", handler=command_update_split_drag),
+        CanvasFeatureStateCommand(command_id="sync_position", handler=command_sync_split_position),
+    )
+
 DIVIDER_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("splitter.begin_drag", "interaction.begin_split_drag"),
     CanvasFeatureCommandAlias("splitter.update_drag", "interaction.update_split_drag"),
@@ -58,6 +88,7 @@ DIVIDER_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("splitter.sync_split_position", "interaction.sync_split_position"),
     CanvasFeatureCommandAlias("splitter.overlay_style", "runtime.overlay_style"),
     CanvasFeatureCommandAlias("splitter.export_overlay", "export.overlay"),
+    CanvasFeatureCommandAlias("splitter.layout_requirement", "render.layout_requirement"),
     CanvasFeatureCommandAlias("splitter.set_thickness", "viewport.set_thickness"),
 )
 
@@ -71,6 +102,8 @@ def build_widget_feature() -> CanvasWidgetFeature:
         build_commands=build_divider_commands,
         command_aliases=DIVIDER_COMMAND_ALIASES,
         build_settings_event_bindings=build_divider_settings_event_bindings,
+        build_state_queries=build_divider_state_queries,
+        build_state_commands=build_divider_state_commands,
         build_render_scene_overrides=build_divider_render_scene_overrides,
         i18n_namespace="ui.tooltips",
         reducer_order=10,

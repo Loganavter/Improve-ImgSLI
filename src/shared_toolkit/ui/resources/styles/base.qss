@@ -176,9 +176,25 @@ RatingListItem > AutoRepeatButton#minusButton {
 
 /* --- Toast --- */
 QWidget#ToastNotification {
+    background: transparent;
+    border: none;
+}
+QWidget#ToastContentWidget {
     background-color: @toast.background;
     border: 1px solid @toast.border;
     border-radius: 8px;
+}
+QWidget#ToastContentWidget[hasProgress="true"] {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom: none;
+}
+QWidget#ToastProgressContainer[hasProgress="true"] {
+    background-color: @toast.background;
+    border: 1px solid @toast.border;
+    border-top: none;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
 }
 QWidget#ToastNotification QLabel {
     color: @toast.text;
@@ -192,8 +208,8 @@ QWidget#ToastNotification QPushButton {
 }
 QWidget#ToastNotification QProgressBar#ToastProgressBar {
     background-color: @toast.progress.background;
-    border: none;
-    border-radius: 3px;
+    border: 1px solid @toast.border;
+    border-radius: 4px;
 }
 QWidget#ToastNotification QProgressBar#ToastProgressBar::chunk {
     background-color: @accent;

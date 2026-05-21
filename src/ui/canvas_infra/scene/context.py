@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from domain.types import Rect
+from .gl_pass_contract import SceneVisibility
 
 @dataclass(frozen=True)
 class CanvasSceneBuildContext:
@@ -19,3 +20,4 @@ class CanvasSceneApplyContext:
     canvas: object
     geometry_state: object
     use_quick_overlay: bool
+    scene_visibility: SceneVisibility = SceneVisibility.INTERACTIVE

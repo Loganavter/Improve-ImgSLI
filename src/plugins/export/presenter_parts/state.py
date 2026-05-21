@@ -82,7 +82,8 @@ class ExportStateCoordinator:
         )
 
     def set_export_favorite_dir(self, path: str) -> None:
-        self.store.settings.export_favorite_dir = path
+        from core.state_management.actions import SetExportFavoriteDirAction
+        self.store.get_dispatcher().dispatch(SetExportFavoriteDirAction(path))
         if (
             self.main_controller is not None
             and self.main_controller.settings_manager is not None

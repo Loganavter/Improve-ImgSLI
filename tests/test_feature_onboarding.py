@@ -49,7 +49,14 @@ class TestAutoDiscovery:
 
         get_canvas_widget_features.cache_clear()
         names = {f.name for f in get_canvas_widget_features()}
-        expected = {"capture", "divider", "filename_overlay", "guides", "magnifier"}
+        expected = {
+            "capture",
+            "divider",
+            "filename_overlay",
+            "guides",
+            "magnifier",
+            "paste_overlay",
+        }
         assert expected <= names, f"Missing features: {expected - names}"
 
     def test_no_central_registration_lists(self):

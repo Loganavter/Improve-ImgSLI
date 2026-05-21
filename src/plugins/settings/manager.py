@@ -63,6 +63,9 @@ class SettingsManager:
             "auto_crop_black_borders", True, bool
         )
         s.video_recording_fps = self._get_setting("video_recording_fps", 60, int)
+        s.video_editor_preview_render_scale = self._get_setting(
+            "video_editor_preview_render_scale", 1.0, float
+        )
         s.show_workspace_tabs = self._get_setting("show_workspace_tabs", False, bool)
         v.session_data.image_state.auto_calculate_psnr = self._get_setting(
             "auto_calculate_psnr", False, bool
@@ -204,6 +207,10 @@ class SettingsManager:
         )
         self._save_setting("auto_crop_black_borders", s.auto_crop_black_borders)
         self._save_setting("video_recording_fps", s.video_recording_fps)
+        self._save_setting(
+            "video_editor_preview_render_scale",
+            s.video_editor_preview_render_scale,
+        )
         self._save_setting("show_workspace_tabs", s.show_workspace_tabs)
         self._save_setting(
             "auto_calculate_psnr", store.viewport.session_data.image_state.auto_calculate_psnr

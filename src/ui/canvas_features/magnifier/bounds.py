@@ -1,7 +1,12 @@
 from __future__ import annotations
-import math
+
+from shared.rendering import (
+    FeatureLayoutRequirement,
+    NormalizedBounds,
+)
 
 from .constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+from .state import get_magnifier_widget_state
 from .store import iter_magnifier_models
 
 def _clamp_capture_position(
@@ -42,6 +47,10 @@ def compute_magnifier_union_bbox(
 ) -> tuple[float, float, float, float] | None:
     view = store.viewport.view_state
     render = store.viewport.render_config
+
+    magnifier_state = get_magnifier_widget_state(view)
+    if not magnifier_state.enabled:
+        return None
 
     visible_models = [
         model for model in iter_magnifier_models(view, render) if bool(model.visible)
@@ -151,23 +160,27 @@ def compute_magnifier_union_bbox(
 
     return bounds
 
-def compute_magnifier_padding(
+def compute_magnifier_layout_requirement(
     store,
     *,
     drawing_width: int,
     drawing_height: int,
-) -> tuple[int, int, int, int]:
+) -> FeatureLayoutRequirement | None:
     bbox = compute_magnifier_union_bbox(
         store,
         drawing_width=drawing_width,
         drawing_height=drawing_height,
     )
-    if bbox is None:
-        return (0, 0, 0, 0)
+    if bbox is None or drawing_width <= 0 or drawing_height <= 0:
+        return None
 
     left, top, right, bottom = bbox
-    pad_left = max(0, int(math.ceil(-left)))
-    pad_top = max(0, int(math.ceil(-top)))
-    pad_right = max(0, int(math.ceil(right - drawing_width)))
-    pad_bottom = max(0, int(math.ceil(bottom - drawing_height)))
-    return (pad_left, pad_right, pad_top, pad_bottom)
+    return FeatureLayoutRequirement(
+        feature_id="magnifier",
+        bounds=NormalizedBounds(
+            x_min=float(left) / float(drawing_width),
+            x_max=float(right) / float(drawing_width),
+            y_min=float(top) / float(drawing_height),
+            y_max=float(bottom) / float(drawing_height),
+        ),
+    )

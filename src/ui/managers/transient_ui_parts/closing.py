@@ -164,7 +164,7 @@ class PopupClosingController:
             host.font_settings_flyout.mapToGlobal(QPoint(0, 0)),
             host.font_settings_flyout.size(),
         )
-        anchor = host._font_anchor_widget or getattr(host.ui, "btn_color_picker", None)
+        anchor = host._font_anchor_widget or getattr(host.ui, "btn_text_settings", None)
         button_rect = QRect()
         if anchor:
             button_rect = anchor.geometry()

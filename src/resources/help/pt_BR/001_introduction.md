@@ -1,17 +1,31 @@
-## Bem-vindo ao Improve ImgSLI!
+## Primeiros Passos
 
-Este aplicativo foi projetado para comparação visual detalhada de imagens, ideal para designers, fotógrafos, entusiastas de arte/upscaling com IA e qualquer pessoa que precise de análise visual precisa.
+Esta página serve para começar rápido: carregar um par de imagens, compará-las, ativar a lupa se necessário e salvar o resultado.
 
-Use o painel de navegação à esquerda para aprender sobre funcionalidades específicas.
+### Fluxo Básico {#basic-workflow}
+- Adicione imagens às listas esquerda e direita.
+- Troque o par atual pelos menus suspensos ou pela roda do mouse.
+- Compare as imagens com a linha divisória ou com a lupa.
+- Ative métricas, nomes de arquivo ou modos de diferença quando necessário.
+- Salve o resultado com **Salvar Resultado** ou `Ctrl+S`.
 
+### Para Onde Ir Depois {#where-to-go-next}
+- **[Gerenciamento de Arquivos](help://file_management)**: carregamento, arrastar e soltar, colar da área de transferência, listas.
+- **[Navegação no Canvas](help://view_navigation)**: zoom, pan e pré-visualização rápida.
+- **[Comparação](help://comparison)**: linha divisória, métricas, nomes de arquivo, fluxo sem lupa.
+- **[Lupa](help://magnifier)**: área de captura, modo combinado, várias instâncias.
+- **[Exportação e Vídeo](help://export)**: salvar imagem, gravar sessão, editor de vídeo.
+- **[Configurações](help://settings)**: desempenho, qualidade, idioma e opções do sistema.
 
-### Integração com a Bandeja do Sistema
+### Quando Abrir Configurações {#when-to-open-settings}
+- Quando o preview estiver pesado demais.
+- Quando precisar trocar idioma, tema ou fonte da interface.
+- Quando quiser alternar entre os modos **Iniciante / Avançado / Especialista**.
+- Quando quiser cálculo automático de PSNR / SSIM.
+- Quando precisar ajustar o comportamento da lupa ou a responsividade.
 
-- Quando suportado pelo seu sistema operacional, o aplicativo exibe um ícone na bandeja para acesso rápido.
-- O menu da bandeja fornece:
-  - Mostrar/Ocultar Janela
-  - Abrir Último Arquivo Salvo (visível após o primeiro salvamento bem-sucedido)
-  - Abrir Pasta do Último Salvamento
-  - Sair
-- Após um salvamento bem-sucedido, pode aparecer uma notificação do sistema; clicar na notificação abre a pasta do último salvamento.
-- Você pode alternar as notificações do sistema em Configurações.
+### Bandeja do Sistema e Notificações {#system-tray-and-notifications}
+- Se o sistema suportar bandeja, o aplicativo pode mostrar ações rápidas ali.
+- O menu da bandeja pode mostrar ou ocultar a janela, abrir o último arquivo ou pasta salvos e encerrar o app.
+- Uma notificação do sistema pode aparecer após um salvamento bem-sucedido.
+- As notificações podem ser ativadas ou desativadas em **Configurações**.

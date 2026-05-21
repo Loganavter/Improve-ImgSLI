@@ -27,6 +27,15 @@ def _get_effective_main_interpolation_method(vp):
     render_cfg = getattr(vp, "render_config", None)
     return getattr(render_cfg, "interpolation_method", "BILINEAR") if render_cfg else "BILINEAR"
 
+def _get_effective_magnifier_interpolation_method(vp, *, is_interactive: bool):
+    render = vp.render_config
+    if is_interactive:
+        return str(
+            getattr(render, "interactive_movement_interpolation_method", "BILINEAR")
+            or "BILINEAR"
+        )
+    return _get_effective_main_interpolation_method(vp)
+
 def _query_overlay(store, capability_id: str, default=None):
     command = get_canvas_feature_command_by_alias(capability_id)
     if command is None:
@@ -127,6 +136,7 @@ def get_render_params_signature(presenter, s1, s2):
             render.draw_text_background,
             render.text_placement_mode,
             render.max_name_length,
+            getattr(render, "movement_interpolation_method", None),
             render.interactive_movement_interpolation_method,
             guides_state.smoothing_interpolation_method,
             view.optimize_interactive_movement,
@@ -173,6 +183,7 @@ def get_render_params_signature(presenter, s1, s2):
         render.draw_text_background,
         render.text_placement_mode,
         render.max_name_length,
+        getattr(render, "movement_interpolation_method", None),
         render.interactive_movement_interpolation_method,
         guides_state.smoothing_interpolation_method,
         view.optimize_interactive_movement,
@@ -237,10 +248,9 @@ def get_magnifier_signature(presenter):
         return (magnifier_enabled, magnifier_models_sig, None, None)
     interaction = vp.interaction_state
     is_interactive = interaction.is_interactive_mode
-    interp_method = (
-        render.interactive_movement_interpolation_method
-        if is_interactive
-        else _get_effective_main_interpolation_method(vp)
+    interp_method = _get_effective_magnifier_interpolation_method(
+        vp,
+        is_interactive=is_interactive,
     )
 
     if is_interactive:

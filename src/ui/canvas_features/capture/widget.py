@@ -16,11 +16,11 @@ from ui.canvas_infra.scene.widget_contract import (
     CanvasFeatureCommandAlias,
     CanvasFeatureProperty,
     CanvasFeatureSettingsEventBinding,
+    CanvasFeatureStateCommand,
+    CanvasFeatureStateQuery,
     CanvasFeatureToolbarBinding,
     CanvasWidgetFeature,
 )
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
-
 from .actions import (
     SetCaptureColorAction,
     SetCaptureSizeRelativeAction,
@@ -29,7 +29,7 @@ from .actions import (
 from .events import SettingsSetCaptureColorEvent, SettingsToggleCaptureVisibilityEvent
 from .state import CaptureWidgetState, get_capture_widget_state, replace_capture_widget_state
 
-def _make_overlay_view_state_proxy(view_state: ViewState):
+def _make_capture_view_state_proxy(view_state: ViewState):
     viewport_proxy = type(
         "ViewportProxy",
         (),
@@ -37,20 +37,30 @@ def _make_overlay_view_state_proxy(view_state: ViewState):
     )()
     return type("StoreProxy", (), {"viewport": viewport_proxy})()
 
-def _capture_size_from_overlay(view_state: ViewState) -> float:
-    store_proxy = _make_overlay_view_state_proxy(view_state)
+def _query_capture_size(store) -> float:
+    from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+
     query = get_canvas_feature_command_by_alias("overlay.active_capture_size")
-    if query is not None:
-        return float(query(store_proxy))
-    return 0.1
+    if query is None:
+        return 0.1
+    return float(query(store))
+
+def _capture_size_from_view_state(view_state: ViewState) -> float:
+    return _query_capture_size(_make_capture_view_state_proxy(view_state))
 
 def _set_capture_size_on_view_state(view_state: ViewState, size: float) -> ViewState:
     clamped = max(0.001, min(1.0, float(size)))
-    store_proxy = _make_overlay_view_state_proxy(view_state)
-    command = get_canvas_feature_command_by_alias("overlay.set_active_capture_size")
-    if command is not None:
-        command(store_proxy, clamped)
+    store_proxy = _make_capture_view_state_proxy(view_state)
+    _set_capture_size(store_proxy, clamped)
     return store_proxy.viewport.view_state
+
+def _set_capture_size(store, size: float) -> None:
+    from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+
+    command = get_canvas_feature_command_by_alias("overlay.set_active_capture_size")
+    if command is None:
+        return
+    command(store, max(0.001, min(1.0, float(size))))
 
 def reduce_capture_view_state(view_state: ViewState, action: Action) -> ViewState:
     if isinstance(action, SetCaptureSizeRelativeAction):
@@ -93,7 +103,7 @@ def build_capture_properties() -> tuple[CanvasFeatureProperty, ...]:
             group_label="Capture",
             setting_key="capture.size",
             read_snapshot=lambda snap: {
-                "value": float(_capture_size_from_overlay(snap.viewport_state.view_state)),
+                "value": float(_capture_size_from_view_state(snap.viewport_state.view_state)),
             },
             write_snapshot=lambda snap, ch: setattr(
                 snap.viewport_state,
@@ -186,7 +196,7 @@ def _sync_capture_toolbar_state(presenter) -> None:
     slider = getattr(getattr(presenter, "ui", None), "slider_capture", None)
     if slider is None:
         return
-    size = _capture_size_from_overlay(presenter.store.viewport.view_state)
+    size = _capture_size_from_view_state(presenter.store.viewport.view_state)
     _set_slider_value_quietly(slider, int(size * 1000))
 
 def _capture_size_pressed_handler(presenter) -> None:
@@ -205,8 +215,21 @@ def _capture_size_released_handler(presenter) -> None:
     event_bus.emit(
         ViewportOnSliderReleasedEvent(
             "capture_size_relative",
-            lambda: _capture_size_from_overlay(presenter.store.viewport.view_state),
+            lambda: _capture_size_from_view_state(presenter.store.viewport.view_state),
         )
+    )
+
+def build_capture_state_queries():
+    """Build state queries for direct feature state access."""
+    return (
+        CanvasFeatureStateQuery(query_id="widget_state", handler=lambda view_state: get_capture_widget_state(view_state)),
+        CanvasFeatureStateQuery(query_id="active_size", handler=_query_capture_size),
+    )
+
+def build_capture_state_commands():
+    """Build state commands for direct feature state modification."""
+    return (
+        CanvasFeatureStateCommand(command_id="set_size", handler=_set_capture_size),
     )
 
 def build_capture_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:
@@ -226,6 +249,7 @@ def build_capture_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:
 def build_capture_commands() -> dict[str, Any]:
     return {
         "query.widget_state": lambda view_state: get_capture_widget_state(view_state),
+        "query.active_size": _query_capture_size,
         "settings.toggle_visibility": lambda settings, visible: settings.mutations.set_canvas_feature_setting(
             "capture.visible",
             bool(visible),
@@ -238,6 +262,7 @@ def build_capture_commands() -> dict[str, Any]:
             invalidate_render_cache=True,
             request_core_update=True,
         ),
+        "viewport.set_active_size": _set_capture_size,
         "toolbar.set_size": _command_set_capture_size,
         "render.canvas_payload": _command_build_render_canvas_payload,
     }
@@ -267,6 +292,8 @@ def build_capture_render_scene_overrides(store) -> dict[str, Any]:
     }
 
 CAPTURE_COMMAND_ALIASES = (
+    CanvasFeatureCommandAlias("capture.active_size", "query.active_size"),
+    CanvasFeatureCommandAlias("capture.set_active_size", "viewport.set_active_size"),
     CanvasFeatureCommandAlias("capture.settings.toggle_visibility", "settings.toggle_visibility"),
     CanvasFeatureCommandAlias("capture.settings.set_color", "settings.set_color"),
     CanvasFeatureCommandAlias("capture.widget_state", "query.widget_state"),
@@ -280,6 +307,8 @@ def build_widget_feature() -> CanvasWidgetFeature:
         build_properties=build_capture_properties,
         build_toolbar_bindings=build_capture_toolbar_bindings,
         build_commands=build_capture_commands,
+        build_state_queries=build_capture_state_queries,
+        build_state_commands=build_capture_state_commands,
         command_aliases=CAPTURE_COMMAND_ALIASES,
         build_settings_event_bindings=build_capture_settings_event_bindings,
         build_render_scene_overrides=build_capture_render_scene_overrides,

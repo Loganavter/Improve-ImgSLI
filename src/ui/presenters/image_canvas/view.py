@@ -71,7 +71,7 @@ def _sync_gl_split_position(presenter, split_position: float):
         )
 
 def set_image_layers(
-    presenter, background=None, magnifier=None, mag_pos=None, coords_snapshot=None
+    presenter, background=None, overlay=None, overlay_pos=None, coords_snapshot=None
 ):
     if is_gl_canvas(presenter):
         presentation = build_live_store_presentation(presenter.store)
@@ -81,7 +81,7 @@ def set_image_layers(
         img2 = (
             presentation.display_image2
         )
-        if magnifier is None and mag_pos is None:
+        if overlay is None and overlay_pos is None:
             apply_store_to_gl_canvas(
                 presenter.ui.image_label,
                 presenter.store,
@@ -96,14 +96,14 @@ def set_image_layers(
             presenter.ui.image_label.set_pil_layers(
                 img1,
                 img2,
-                magnifier,
-                mag_pos,
+                overlay,
+                overlay_pos,
                 shader_letterbox=True,
                 **_gl_source_kwargs(presenter),
             )
     else:
         presenter.ui.image_label.set_layers(
-            background, magnifier, mag_pos, coords_snapshot
+            background, overlay, overlay_pos, coords_snapshot
         )
 
 def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):

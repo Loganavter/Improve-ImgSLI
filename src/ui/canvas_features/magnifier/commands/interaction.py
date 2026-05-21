@@ -32,8 +32,8 @@ def end_capture_drag(actions) -> None:
 
 def update_capture_drag(actions, position: Point) -> None:
     clamped = Point(
-        max(0.0, min(1.0, float(position.x))),
-        max(0.0, min(1.0, float(position.y))),
+        float(position.x),
+        float(position.y),
     )
     if dispatch_viewport_action(actions, SetMagnifierPositionAction(clamped)):
         emit_interaction_update(actions)

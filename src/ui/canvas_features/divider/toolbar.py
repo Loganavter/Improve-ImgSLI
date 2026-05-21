@@ -31,6 +31,9 @@ def toggle_toolbar_orientation(presenter, checked: bool) -> None:
             viewport_ctrl.toggle_orientation(checked)
 
 def set_toolbar_thickness(presenter, thickness: int) -> None:
+
+    if isinstance(thickness, bool):
+        return
     thickness = max(0, int(thickness))
     visible = thickness > 0
     if presenter.event_bus is not None:
@@ -156,4 +159,3 @@ def build_divider_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:
             sync_state=sync_toolbar_state,
         ),
     )
-

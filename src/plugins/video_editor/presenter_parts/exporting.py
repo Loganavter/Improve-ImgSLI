@@ -1,9 +1,9 @@
 from plugins.video_editor.services.export_config import ExportConfigBuilder
 
 class ExportCoordinator:
-    def __init__(self, view, main_controller, model, editor_service, preview_coordinator):
+    def __init__(self, view, export_controller, model, editor_service, preview_coordinator):
         self.view = view
-        self.main_controller = main_controller
+        self.export_controller = export_controller
         self.model = model
         self.editor_service = editor_service
         self.preview_coordinator = preview_coordinator
@@ -26,8 +26,8 @@ class ExportCoordinator:
         config = ExportConfigBuilder.build_export_config(**config_params)
         export_options.update(config)
 
-        if self.main_controller and getattr(self.main_controller, "video_export", None):
-            self.main_controller.video_export.export_video_from_editor(
+        if self.export_controller is not None:
+            self.export_controller.export_video_from_editor(
                 self.editor_service.get_current_recording(),
                 self.model.fps,
                 self.model.get_resolution(),
@@ -36,7 +36,5 @@ class ExportCoordinator:
             emit_export_started()
 
     def stop_export(self):
-        if self.main_controller is not None and getattr(
-            self.main_controller, "video_export", None
-        ):
-            self.main_controller.video_export.cancel_video_export()
+        if self.export_controller is not None:
+            self.export_controller.video_export_flow.cancel_video_export()

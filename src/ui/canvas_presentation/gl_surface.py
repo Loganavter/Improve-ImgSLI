@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-_log = logging.getLogger("ImproveImgSLI.magnifier.gl_surface")
+_log = logging.getLogger("ImproveImgSLI.canvas_presentation.gl_surface")
 
 from .plan_builder import build_canvas_plan, build_live_store_presentation
 

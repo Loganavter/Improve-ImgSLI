@@ -43,7 +43,7 @@
 
 - Скачать: <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest">Windows installer</a> • <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI">Flathub</a> • <a href="https://aur.archlinux.org/packages/improve-imgsli">AUR</a>
 - Установка и запуск из исходников: <a href="docs/INSTALL.md">docs/INSTALL.md</a>
-- Изучить приложение (Справка): <a href="src/resources/help/ru/introduction.md">RU Введение</a> • <a href="src/resources/help/ru/">RU Все разделы</a> • <a href="src/resources/help/en/">EN Docs</a>
+- Изучить приложение (Справка): <a href="src/resources/help/ru/001_introduction.md">RU Введение</a> • <a href="src/resources/help/ru/">RU Все разделы</a> • <a href="src/resources/help/en/">EN Docs</a>
 - Внести вклад: <a href="CONTRIBUTING.md">CONTRIBUTING.md</a>
 - Ещё: <a href="HISTORY.md">История разработки</a> • <a href="VISION.md">Взгляд автора</a>
 
@@ -78,19 +78,23 @@ chmod +x launcher.sh
 ```
 Полные инструкции: <a href="docs/INSTALL.md">docs/INSTALL.md</a>.
 
+Текущее ограничение:
+- Изображения больше `16384 px` по любой стороне пока не поддерживаются. Это временный программный лимит, который в будущем, вероятно, будет снят.
+
 ---
 
 ## 🧪 Быстрый старт (Basic Usage)
 
 1. Запустите Improve-ImgSLI.
-2. Загрузите изображения через «Add Img(s)» или перетаскиванием. Для быстрого просмотра одного изображения используйте Space + ЛКМ/ПКМ.
+2. Загрузите изображения через «Add Img(s)» или перетаскиванием. Для быстрого просмотра одного изображения используйте `Space + ЛКМ/ПКМ`.
 3. Передвигайте линию разделения мышью, при необходимости включите горизонтальный сплит.
 4. Включите лупу, выберите интерполяцию, настройте масштаб/позицию слайдерами или клавишами.
-5. Настройте разделители и текст, затем экспортируйте итоговое изображение.
+5. В объединённой лупе можно принудительно выбрать сторону через `Space + Shift + ЛКМ/ПКМ`.
+6. Настройте разделители и текст, затем экспортируйте итоговое изображение.
 
 Для подробных руководств, горячих клавиш и настроек используйте встроенную справку («?») или откройте:
-- RU: <a href="src/resources/help/ru/introduction.md">Введение</a> • <a href="src/resources/help/ru/">Все разделы</a>
-- EN: <a href="src/resources/help/en/introduction.md">Introduction</a> • <a href="src/resources/help/en/">All topics</a>
+- RU: <a href="src/resources/help/ru/001_introduction.md">Введение</a> • <a href="src/resources/help/ru/">Все разделы</a>
+- EN: <a href="src/resources/help/en/001_introduction.md">Start Here</a> • <a href="src/resources/help/en/">All topics</a>
 
 ---
 

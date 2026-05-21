@@ -1,52 +1,50 @@
-## Magnifier Tool
+## Magnifier
 
-### Basics
-- Check **Use Magnifier** to enable it.
-- **Click/drag** on the main image to set the capture point (red circle).
-- **Freeze Magnifier:** Lock the magnifier position on screen. While frozen, you can still move the view with `WASD`.
+This page describes the magnifier tool: capture area, internal split, additional instances, and related controls.
 
-### Controls
-- **Magnifier Size slider:** Controls the zoom level.
-- **Capture Size slider:** Adjusts the size of the area being sampled from the original image.
-- **Move Speed slider:** Sets the speed for keyboard movement.
-- **Keyboard `WASD`:** Moves the magnified view relative to the capture point (or moves the entire frozen magnifier).
-- **Keyboard `QE`:** Adjusts the spacing between the two magnifier halves when they are separated.
-- **Interpolation:** Choose a resampling method (e.g., Nearest, Bilinear, Lanczos, EWA Lanczos) to control the rendering quality of the zoomed image.
-  - **EWA Lanczos:** An advanced method using supersampling to simulate EWA (Elliptical Weighted Average) Lanczos. Provides superior anti-aliasing by first upscaling the image 2×, then downscaling with Lanczos filtering. Excellent for reducing moiré and aliasing in detailed images.
+### Enabling And Basic Use {#enabling-and-basic-use}
+- Enable **Use Magnifier**.
+- Click or drag on the image to define the capture area.
+- The red circle shows the original area being sampled.
 
+### Size And Movement {#size-and-movement}
+- **Magnifier Size** changes the visible magnifier size.
+- **Capture Size** changes how large the sampled source region is.
+- **Move Speed** affects keyboard movement.
+- `WASD` moves the magnified view or the frozen magnifier.
+- `QE` adjusts spacing when the magnifier halves are separated.
 
-### High-Precision Rendering
-- The magnifier uses subpixel rendering to ensure smooth and accurate comparisons, even when the two images have different resolutions.
-- This eliminates pixel jitter when moving the capture point and provides a more precise view of details.
+### Freeze {#freeze}
+- **Freeze Magnifier** locks the magnifier position on screen.
+- After freezing, you can continue fine adjustments with the keyboard.
 
+### Combined Mode And Internal Split {#combined-mode-and-internal-split}
+- When the two halves become close enough, or when a difference mode is active, they combine.
+- In combined mode, an internal split line appears inside the magnifier.
+- Its position can be changed by dragging with the **Right Mouse Button** inside the magnifier circle.
 
-### Combined Halves and Internal Split
-- When the spacing between the two magnifier halves becomes small enough, or when a difference mode is active, the halves automatically combine into a single circle with an internal split line.
-- You can adjust the internal split position by dragging with the Right Mouse Button inside the magnifier circle.
+### Guide Lines {#guide-lines}
+- Guide lines visually connect the magnifier to its capture area.
+- The laser button toggles them on or off.
+- Scrolling over the same button changes line thickness.
 
-### Guide Lines ("Lasers")
-- To visually connect the magnifier to its capture point on the main image, you can enable guide lines.
-- Click the laser icon button on the magnifier toolbar to toggle them on or off.
-- The thickness of these lines can be adjusted by scrolling the mouse wheel over the same button.
+### Multiple Magnifiers {#multiple-magnifiers}
+- Additional magnifier instances can be created.
+- Each one has its own capture area, color, and guide lines.
+- **Auto-color new magnifiers** helps keep instances visually distinct.
+- **Highlight magnifier intersections** shows overlap between capture areas while dragging.
 
-### Multiple Magnifiers
-- Additional magnifiers each have their own capture area, guide lines, and individual colors.
-- When **Auto-color new magnifiers** is enabled, every new extra magnifier receives the next color set so instances are easier to distinguish.
-- When **Highlight magnifier intersections** is enabled, dragging a capture area highlights parts that are covered by other magnifiers.
-- This highlight is a canvas-only helper overlay and is not included in final render/export output.
+### Visibility Parts {#visibility-parts}
+- Hover the magnifier button to open the visibility flyout.
+- It can toggle the left, center, and right parts independently.
+- The center part is available only when a difference mode is active.
 
-### Visibility Flyout (Left/Center/Right)
-- Hover over the Magnifier button to reveal a small flyout that lets you toggle visibility of the left, center, and right parts.
-- You can also open this flyout by scrolling the mouse wheel over the Magnifier button; in this case it auto-hides shortly after.
-- The Center toggle is available only when a difference mode is active.
+### Orientation And Internal Divider {#orientation-and-internal-divider}
+- Right-clicking the main orientation button quickly changes magnifier split orientation.
+- Scrolling over the internal divider thickness button changes thickness.
+- The divider color button changes the internal divider color.
 
-### Quick Orientation Toggle
-- Right-click the main Orientation button to quickly toggle the magnifier split orientation. A small popup indicator will confirm the current orientation.
-
-### Magnifier Divider Controls
-- Divider thickness (inside the magnifier): scroll the mouse wheel over the Magnifier Divider Thickness button to adjust the thickness. A small numeric popup shows the current value.
-- Divider color (inside the magnifier): click the Magnifier Divider Color button to choose a color.
-
-### Performance Optimization
-- For a smoother experience when moving the magnifier (dragging the capture point or using WASD keys), you can enable **"Optimize magnifier movement"** in the Settings.
-- This uses a faster, lower-quality interpolation method during movement, while the high-quality method selected in the main UI is used as soon as the magnifier stops.
+### Quality And Performance {#quality-and-performance}
+- The interpolation method controls magnified image quality.
+- **Optimize magnifier movement** in **Settings** enables a faster mode during motion.
+- After motion stops, the main high-quality method is used again.

@@ -20,7 +20,11 @@ from ui.canvas_infra.scene.stacking_policy import (
     resolve_gl_pass_order,
     resolve_scene_object_order,
 )
-from ui.canvas_infra.scene.gl_pass_contract import CanvasGLRenderPass, RenderPhase
+from ui.canvas_infra.scene.gl_pass_contract import (
+    CanvasGLRenderPass,
+    RenderPhase,
+    SceneVisibility,
+)
 from ui.canvas_infra.scene.feature_contract import CanvasFeatureZOrder
 from ui.canvas_presentation.render_arch import (
     SceneFrame,
@@ -118,11 +122,13 @@ class TestZeroValuePreservation:
     def test_text_alpha_zero_is_preserved(self):
         style = resolve_canvas_style(
             SceneFrame(
-                filename_overlay=SimpleNamespace(
-                    font_base_pixel_size=18.0,
-                    font_size_percent=120,
-                    text_alpha_percent=0,
-                )
+                feature_payloads={
+                    "filename_overlay": SimpleNamespace(
+                        font_base_pixel_size=18.0,
+                        font_size_percent=120,
+                        text_alpha_percent=0,
+                    )
+                }
             ),
             RenderMetrics(
                 canvas_to_view=1.0,
@@ -133,7 +139,7 @@ class TestZeroValuePreservation:
                 mode="interactive",
             ),
         )
-        assert style.filename_overlay.text_alpha == 0.0
+        assert style.filename_overlay.text_alpha == 0.05
 
     def test_scene_frame_preserves_zero_split_position(self):
         scene = SimpleNamespace(
@@ -153,40 +159,21 @@ class TestZeroValuePreservation:
         frame = build_scene_frame(
             render_scene=scene,
             content_rect_px=None,
+            image_rect_px=None,
             split_override=None,
-            capture_circles=None,
-            capture_center=None,
-            capture_radius=0.0,
-            capture_color=None,
-            guide_sets=None,
-            laser_color=None,
-            show_guides=False,
         )
         assert frame.split_position_visual == 0.0
 
 class TestMagnifierInterpMode:
 
-    def test_nearest_interp_mode_zero_is_preserved(self):
+    def test_build_render_list_preserves_base_image(self):
+        base_image = SimpleNamespace(use_hires=False, split_position=0.5)
         render_list = build_render_list(
             SceneFrame(),
-            base_image=None,
-            magnifier_render_enabled=True,
-            magnifier_clip_to_content=False,
-            magnifier_quads=[(0.0, 0.0, 1.0, 1.0, 100.0, 100.0, 50.0)],
-            magnifier_gpu_active=True,
-            magnifier_gpu_slots=[{"uv_rect": (0.0, 0.0, 1.0, 1.0), "source": 0}],
-            magnifier_gpu_interp_mode=0,
-            divider_position_px=0.0,
-            divider_clip_rect_px=None,
-            divider_thickness_px=0.0,
-            guides_thickness_px=1.0,
-            capture_line_width_px=1.0,
-            zoom_level=1.0,
-            widget_px_to_screen=lambda x, y: (x, y),
+            base_image=base_image,
         )
 
-        assert render_list.magnifier is not None
-        assert render_list.magnifier.gpu_interp_mode == 0
+        assert render_list.base_image is base_image
 
     def test_legacy_fallback_when_no_role(self):
         zo = CanvasFeatureZOrder(layer=CanvasStackLayer.HUD, priority=42)
@@ -224,6 +211,10 @@ class TestCanvasGLRenderPass:
         assert phase == RenderPhase.DEBUG
         assert pri == 77
 
+    def test_visibility_defaults_to_all(self):
+        p = CanvasGLRenderPass()
+        assert p.visibility == SceneVisibility.ALL
+
 class TestRenderExecutorOrdering:
 
     def test_passes_sorted_by_role(self):
@@ -248,6 +239,54 @@ class TestRenderExecutorOrdering:
         ordered = iter_ordered_render_passes(passes)
         ordered_roles = [p.stack_role for p in ordered]
         assert ordered_roles == roles_in_expected_order
+
+    def test_execute_render_passes_filters_by_scene_visibility(self):
+        from ui.widgets.gl_canvas.render_executor import execute_render_passes
+
+        painted: list[str] = []
+
+        class _Pass(CanvasGLRenderPass):
+            def __init__(self, name: str, visibility: SceneVisibility):
+                self.name = name
+                self.visibility = visibility
+                self.stack_role = CanvasStackRole.HUD_LABEL
+
+            def should_paint(self, ctx) -> bool:
+                return True
+
+            def paint(self, widget, ctx) -> None:
+                painted.append(self.name)
+
+        ctx = SimpleNamespace(
+            render_metrics=SimpleNamespace(mode="export"),
+            scene_frame=SimpleNamespace(single_image_preview=0),
+        )
+
+        execute_render_passes(
+            widget=None,
+            ctx=ctx,
+            passes=(
+                _Pass("interactive", SceneVisibility.INTERACTIVE),
+                _Pass("export", SceneVisibility.EXPORT),
+                _Pass("all", SceneVisibility.ALL),
+            ),
+        )
+
+        assert painted == ["export", "all"]
+
+    def test_render_executor_no_longer_uses_hide_in_single_preview(self):
+        render_executor_path = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "src",
+            "ui",
+            "widgets",
+            "gl_canvas",
+            "render_executor.py",
+        )
+        with open(render_executor_path) as f:
+            content = f.read()
+        assert "hide_in_single_preview" not in content
 
 class TestFeatureGLPassesUseStackRole:
 

@@ -16,9 +16,6 @@ def get_gl_like_canvas(ui) -> GlLikeCanvasProtocol | None:
 def get_export_canvas(canvas) -> ExportCanvasProtocol | None:
     return canvas if isinstance(canvas, ExportCanvasProtocol) else None
 
-def supports_patch_magnifier(canvas) -> bool:
-    return True
-
 def reset_canvas_overlays(canvas: BaseCanvasProtocol) -> None:
     canvas.clear_feature_overlay_gpu()
     canvas.set_feature_overlay_content(None, None)
@@ -30,7 +27,7 @@ def reset_canvas_overlays(canvas: BaseCanvasProtocol) -> None:
         runtime_state._guide_sets = []
         runtime_state._hidden_capture_circles = []
         runtime_state._occluded_capture_arcs = []
-        runtime_state._hidden_magnifier_circles = []
+        runtime_state._hidden_overlay_circles = []
 
 def clear_canvas_diff_source(canvas: BaseCanvasProtocol) -> None:
     canvas.upload_diff_source_pil_image(None)

@@ -43,6 +43,7 @@ class VideoEditorDialog(QDialog):
     heightChanged = pyqtSignal(int)
 
     fpsChanged = pyqtSignal(int)
+    previewScaleChanged = pyqtSignal(float)
     aspectRatioLockChanged = pyqtSignal(bool)
     fitContentChanged = pyqtSignal(bool)
     fitContentFillColorChanged = pyqtSignal(object)
@@ -90,7 +91,12 @@ class VideoEditorDialog(QDialog):
             if hasattr(export_controller, "presenter")
             else None
         )
-        self.presenter = VideoEditorPresenter(self, snapshots, main_controller)
+        self.presenter = VideoEditorPresenter(
+            self,
+            snapshots,
+            export_controller,
+            main_controller,
+        )
         self._connect_presenter_signals()
 
         if hasattr(self, "edit_fps") and hasattr(self.presenter, "model"):
@@ -318,6 +324,15 @@ class VideoEditorDialog(QDialog):
     def _on_fps_changed(self, fps: int):
         self.fpsChanged.emit(fps)
 
+    def _on_preview_scale_changed(self):
+        if not hasattr(self, "combo_preview_scale"):
+            return
+        current = self.combo_preview_scale.currentData()
+        try:
+            self.previewScaleChanged.emit(float(current))
+        except (TypeError, ValueError):
+            self.previewScaleChanged.emit(1.0)
+
     def _on_ratio_lock_toggled(self, checked: bool):
         self.aspectRatioLockChanged.emit(checked)
 
@@ -369,7 +384,7 @@ class VideoEditorDialog(QDialog):
         if hasattr(self, "export_log_edit"):
             from datetime import datetime
             ts = datetime.now().strftime("%H:%M:%S")
-            self.export_log_edit.appendPlainText(f"\n── Export started {ts} ──")
+            self.export_log_edit.append_status(f"Export started {ts}")
 
     def set_export_progress(self, value: int):
         self.runtime.set_export_progress(value)
@@ -382,12 +397,12 @@ class VideoEditorDialog(QDialog):
 
     def _on_export_log(self, line: str):
         if hasattr(self, "export_log_edit"):
-            self.export_log_edit.appendPlainText(line)
+            self.export_log_edit.append_info(line)
 
     def _on_error_occurred(self, error_message: str):
         logger.error(f"Video editor error: {error_message}")
         if hasattr(self, "export_log_edit"):
-            self.export_log_edit.appendPlainText(error_message)
+            self.export_log_edit.append_error(error_message)
         if hasattr(self, "tabs") and hasattr(self, "tab_log"):
             self.tabs.setCurrentWidget(self.tab_log)
 
