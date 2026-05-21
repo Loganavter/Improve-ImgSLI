@@ -111,3 +111,43 @@ class SetLastSpacingMovementKeyAction(Action):
 
     def get_payload(self):
         return {"key": self.key}
+
+@dataclass
+class SetInteractiveOffsetVisualAction(Action):
+    """Generic interactive visual state mutation (feature-agnostic)."""
+    offset: tuple[float, float]
+
+    def __init__(self, offset):
+        super().__init__(type=ActionType.SET_INTERACTIVE_OFFSET_VISUAL)
+        # Convert Point to tuple if needed
+        if hasattr(offset, 'x'):
+            self.offset = (offset.x, offset.y)
+        else:
+            self.offset = offset
+
+    def get_payload(self):
+        return {"offset": self.offset}
+
+@dataclass
+class SetInteractiveSpacingVisualAction(Action):
+    """Generic interactive spacing visual state mutation (feature-agnostic)."""
+    spacing: float
+
+    def __init__(self, spacing: float):
+        super().__init__(type=ActionType.SET_INTERACTIVE_SPACING_VISUAL)
+        self.spacing = spacing
+
+    def get_payload(self):
+        return {"spacing": self.spacing}
+
+@dataclass
+class SetInteractiveInternalSplitVisualAction(Action):
+    """Generic interactive split visual state mutation (feature-agnostic)."""
+    split: float
+
+    def __init__(self, split: float):
+        super().__init__(type=ActionType.SET_INTERACTIVE_INTERNAL_SPLIT_VISUAL)
+        self.split = split
+
+    def get_payload(self):
+        return {"split": self.split}

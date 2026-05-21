@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import replace
 
 from core.state_management.action_base import Action
-from ..actions import (
-    SetDraggingCapturePointAction,
-    SetDraggingSplitInMagnifierAction,
+from core.state_management.actions import (
     SetInteractiveInternalSplitVisualAction,
     SetInteractiveOffsetVisualAction,
     SetInteractiveSpacingVisualAction,
+)
+from ..actions import (
+    SetDraggingCapturePointAction,
+    SetDraggingSplitInMagnifierAction,
 )
 
 def reduce_magnifier_interaction_state(interaction_state, action: Action):

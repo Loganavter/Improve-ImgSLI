@@ -6,13 +6,11 @@ from PyQt6.QtCore import QElapsedTimer, QTimer, Qt
 
 from core.constants import AppConstants
 from core.state_management.actions import (
-    SetInteractiveModeAction,
-    SetSplitPositionVisualAction,
-)
-from ui.canvas_features.magnifier.actions import (
     SetInteractiveInternalSplitVisualAction,
     SetInteractiveOffsetVisualAction,
     SetInteractiveSpacingVisualAction,
+    SetInteractiveModeAction,
+    SetSplitPositionVisualAction,
 )
 from domain.types import Point
 from events.app_event.common import (
