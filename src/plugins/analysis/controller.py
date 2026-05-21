@@ -14,7 +14,6 @@ from core.state_management.actions import (
 )
 from plugins.analysis.services.cached_diff import CachedDiffService
 from plugins.analysis.services.runtime import AnalysisRuntime
-from plugins.viewport.events import ViewportUpdateMagnifierCombinedStateEvent
 
 class AnalysisController(QObject):
     update_requested = pyqtSignal()
@@ -61,8 +60,11 @@ class AnalysisController(QObject):
         self.store.invalidate_render_cache()
         self.store.emit_state_change()
 
+        # Trigger magnifier combined state update via Feature State API
+        # This notifies magnifier feature to recalculate its state after diff mode change
         if self.event_bus:
-            self.event_bus.emit(ViewportUpdateMagnifierCombinedStateEvent())
+            from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+            execute_feature_command(self.store, "magnifier", "set_active_combined")
 
     def set_channel_view_mode(self, mode: str):
         if self.store.viewport.view_state.channel_view_mode == mode:

@@ -7,9 +7,6 @@ from core.state_management.action_base import Action
 from core.store_viewport import RenderConfig, ViewState
 from domain.qt_adapters import color_to_qcolor
 from domain.types import Color
-from plugins.viewport.events import (
-    ViewportUpdateCaptureSizeRelativeEvent,
-)
 from plugins.video_editor.services.keyframing.adapters.base import ChannelDescriptor
 
 from ui.canvas_infra.scene.widget_contract import (
@@ -170,18 +167,19 @@ def _command_build_render_canvas_payload(store) -> dict[str, Any]:
     }
 
 def _command_set_capture_size(actions, raw_value: int | float) -> None:
+    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+
     relative_size = max(0.001, min(1.0, float(raw_value)))
+    store = getattr(actions, "store", None)
+    if store is not None:
+        execute_feature_command(store, "capture", "set_size", relative_size)
+        return
     event_bus = getattr(actions, "event_bus", None)
     if event_bus is not None:
+        # Fallback for legacy event bus
+        from plugins.viewport.events import ViewportUpdateCaptureSizeRelativeEvent
         event_bus.emit(ViewportUpdateCaptureSizeRelativeEvent(relative_size))
         return
-    main_controller = getattr(actions, "main_controller", None)
-    if main_controller is not None and hasattr(main_controller, "execute_plugin_command"):
-        main_controller.execute_plugin_command(
-            "viewport",
-            "update_capture_size_relative",
-            relative_size,
-        )
 
 def _set_slider_value_quietly(slider, value: int) -> None:
     if slider is None or slider.value() == value:
@@ -200,24 +198,13 @@ def _sync_capture_toolbar_state(presenter) -> None:
     _set_slider_value_quietly(slider, int(size * 1000))
 
 def _capture_size_pressed_handler(presenter) -> None:
-    from plugins.viewport.events import ViewportOnSliderPressedEvent
-
-    event_bus = getattr(presenter, "event_bus", None)
-    if event_bus is not None:
-        event_bus.emit(ViewportOnSliderPressedEvent("capture_size"))
+    # Slider pressed event - can be used for deferred rendering optimization if needed
+    pass
 
 def _capture_size_released_handler(presenter) -> None:
-    from plugins.viewport.events import ViewportOnSliderReleasedEvent
-
-    event_bus = getattr(presenter, "event_bus", None)
-    if event_bus is None:
-        return
-    event_bus.emit(
-        ViewportOnSliderReleasedEvent(
-            "capture_size_relative",
-            lambda: _capture_size_from_view_state(presenter.store.viewport.view_state),
-        )
-    )
+    # Slider released event - finalize capture size state
+    # The feature_state_api already handles state updates via execute_feature_command
+    pass
 
 def build_capture_state_queries():
     """Build state queries for direct feature state access."""

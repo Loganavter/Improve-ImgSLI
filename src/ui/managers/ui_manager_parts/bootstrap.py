@@ -6,10 +6,6 @@ import time
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-from plugins.viewport.events import (
-    ViewportToggleMagnifierLaserEvent,
-    ViewportToggleMagnifierPartEvent,
-)
 from sli_ui_toolkit.managers import DelayedActionTimer
 from shared_toolkit.ui.managers.font_manager import FontManager
 
@@ -140,22 +136,56 @@ def _connect_magnifier_visibility_buttons(manager) -> None:
     if manager.main_controller is None:
         return
 
-    viewport_ctrl = getattr(manager.main_controller, "viewport_plugin", None)
-    flyout = manager.magnifier_visibility_flyout
+    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
 
-    if manager.event_bus is not None:
+    flyout = manager.magnifier_visibility_flyout
+    store = manager.store
+
+    if store is not None:
         flyout.btn_left.toggled.connect(
-            lambda checked: manager.event_bus.emit(
+            lambda checked: execute_feature_command(
+                store, "magnifier", "set_active_visibility_parts",
+                left=not checked,
+                center=query_current_visibility(store, "center"),
+                right=query_current_visibility(store, "right"),
+            )
+        )
+        flyout.btn_right.toggled.connect(
+            lambda checked: execute_feature_command(
+                store, "magnifier", "set_active_visibility_parts",
+                left=query_current_visibility(store, "left"),
+                center=query_current_visibility(store, "center"),
+                right=not checked,
+            )
+        )
+        flyout.btn_center.toggled.connect(
+            lambda checked: execute_feature_command(
+                store, "magnifier", "set_active_visibility_parts",
+                left=query_current_visibility(store, "left"),
+                center=not checked,
+                right=query_current_visibility(store, "right"),
+            )
+        )
+        return
+
+    event_bus = getattr(manager, "event_bus", None)
+    viewport_ctrl = getattr(manager.main_controller, "viewport_plugin", None)
+
+    if event_bus is not None:
+        # Fallback for legacy event bus
+        from plugins.viewport.events import ViewportToggleMagnifierPartEvent
+        flyout.btn_left.toggled.connect(
+            lambda checked: event_bus.emit(
                 ViewportToggleMagnifierPartEvent("left", not checked)
             )
         )
         flyout.btn_right.toggled.connect(
-            lambda checked: manager.event_bus.emit(
+            lambda checked: event_bus.emit(
                 ViewportToggleMagnifierPartEvent("right", not checked)
             )
         )
         flyout.btn_center.toggled.connect(
-            lambda checked: manager.event_bus.emit(
+            lambda checked: event_bus.emit(
                 ViewportToggleMagnifierPartEvent("center", not checked)
             )
         )
@@ -174,8 +204,17 @@ def _connect_magnifier_visibility_buttons(manager) -> None:
         return
 
     logger.warning(
-        "UIManager: Cannot connect magnifier visibility flyout buttons - no event_bus or viewport_plugin available"
+        "UIManager: Cannot connect magnifier visibility flyout buttons - no store or event_bus available"
     )
+
+def query_current_visibility(store, part: str) -> bool:
+    """Query current visibility of a magnifier part."""
+    from ui.canvas_infra.scene.feature_state_api import query_feature_state
+    state = query_feature_state(store, "magnifier", "active_state")
+    if state is None:
+        return True
+    part_key = f"visible_{part}"
+    return bool(state.get(part_key, True))
 
 def _init_magnifier_instances_popup(manager) -> None:
     button = getattr(manager.ui, "btn_magnifier_instances", None)
