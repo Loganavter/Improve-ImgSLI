@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
-from plugins.viewport.events import ViewportToggleOrientationEvent
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 
 from .commands import (
@@ -21,28 +20,45 @@ def get_settings_presenter_from_window(presenter):
     return None
 
 def toggle_toolbar_orientation(presenter, checked: bool) -> None:
-    if presenter.event_bus is not None:
-        presenter.event_bus.emit(ViewportToggleOrientationEvent(checked))
+    from core.state_management.actions import ToggleOrientationAction
+    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+
+    store = getattr(presenter, "store", None)
+    if store is not None:
+        # Dispatch action directly to viewport state via the reducer
+        dispatcher = getattr(store, "_dispatcher", None)
+        if dispatcher is not None:
+            dispatcher.dispatch(ToggleOrientationAction(checked), scope="viewport")
+            # Emit update notification
+            if hasattr(store, "emit_viewport_change"):
+                store.emit_viewport_change("interaction")
+            return
+    event_bus = getattr(presenter, "event_bus", None)
+    if event_bus is not None:
+        # Fallback for legacy event bus
+        from plugins.viewport.events import ViewportToggleOrientationEvent
+        event_bus.emit(ViewportToggleOrientationEvent(checked))
         return
-    controller = getattr(presenter, "main_controller", None)
-    if controller is not None:
-        viewport_ctrl = getattr(controller, "viewport_plugin", None)
-        if viewport_ctrl is not None:
-            viewport_ctrl.toggle_orientation(checked)
 
 def set_toolbar_thickness(presenter, thickness: int) -> None:
+    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
 
     if isinstance(thickness, bool):
         return
     thickness = max(0, int(thickness))
     visible = thickness > 0
-    if presenter.event_bus is not None:
-        presenter.event_bus.emit(SettingsToggleDividerVisibilityEvent(visible))
-        presenter.event_bus.emit(SettingsSetDividerThicknessEvent(thickness))
+    store = getattr(presenter, "store", None)
+    if store is not None:
+        # Use Feature State API for divider commands
+        execute_feature_command(store, "divider", "toggle_visibility", visible)
+        execute_feature_command(store, "divider", "set_thickness", thickness)
         return
-    controller = getattr(presenter, "main_controller", None)
-    if controller is not None and getattr(controller, "viewport", None) is not None:
-        command_set_divider_thickness(ToolbarViewportAdapter(presenter), thickness)
+    event_bus = getattr(presenter, "event_bus", None)
+    if event_bus is not None:
+        # Fallback for legacy event bus
+        event_bus.emit(SettingsToggleDividerVisibilityEvent(visible))
+        event_bus.emit(SettingsSetDividerThicknessEvent(thickness))
+        return
 
 def show_divider_color_picker(presenter) -> None:
     settings_presenter = get_settings_presenter_from_window(presenter)

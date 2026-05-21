@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from core.state_management.action_base import Action
 from core.store_viewport import ViewState
-from plugins.viewport.actions import (
+from ..actions import (
     SetActiveMagnifierIdAction,
     SetCaptureSizeRelativeAction,
     SetHighlightedMagnifierElementAction,

@@ -182,16 +182,18 @@ class MagnifierMovementHandler:
     def emit_combined_state(self, event_bus=None):
         if event_bus is None:
             return
-        from plugins.viewport.events import ViewportUpdateMagnifierCombinedStateEvent
+        # Notify magnifier to recalculate combined state via Feature State API
+        from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+        if self.store is not None:
+            execute_feature_command(self.store, "magnifier", "set_active_combined")
 
-        event_bus.emit(ViewportUpdateMagnifierCombinedStateEvent())
-
-def emit_overlay_changed(_store, *, event_bus=None):
-    if event_bus is None:
+def emit_overlay_changed(store, *, event_bus=None):
+    if event_bus is None and store is None:
         return
-    from plugins.viewport.events import ViewportUpdateMagnifierCombinedStateEvent
-
-    event_bus.emit(ViewportUpdateMagnifierCombinedStateEvent())
+    # Notify magnifier to recalculate combined state via Feature State API
+    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+    if store is not None:
+        execute_feature_command(store, "magnifier", "set_active_combined")
 
 def get_movement_handler(store):
     if store is None or getattr(store, "viewport", None) is None:

@@ -9,7 +9,7 @@ from core.state_management.actions import (
     SetInteractiveModeAction,
     SetSplitPositionVisualAction,
 )
-from plugins.viewport.actions import (
+from ui.canvas_features.magnifier.actions import (
     SetInteractiveInternalSplitVisualAction,
     SetInteractiveOffsetVisualAction,
     SetInteractiveSpacingVisualAction,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from core.state_management.action_base import Action
-from plugins.viewport.actions import (
+from ..actions import (
     SetDraggingCapturePointAction,
     SetDraggingSplitInMagnifierAction,
     SetInteractiveInternalSplitVisualAction,
