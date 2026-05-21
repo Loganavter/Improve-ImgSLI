@@ -1,4 +1,4 @@
-"""Magnifier-specific action classes owned by the viewport plugin."""
+"""Magnifier-specific action classes."""
 from __future__ import annotations
 
 from dataclasses import dataclass

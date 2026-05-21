@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from domain.types import Point
-from plugins.viewport.actions import (
+from ..actions import (
     SetDraggingCapturePointAction,
     SetDraggingSplitInMagnifierAction,
     SetMagnifierInternalSplitAction,
