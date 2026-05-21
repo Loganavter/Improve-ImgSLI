@@ -547,14 +547,14 @@ class OnboardingOverlay(QWidget):
         for i, btn in enumerate(self.mode_buttons):
             if i == index:
                 btn.set_override_bg_color(accent_color)
-                # Set text color to highlighted for selected state using stylesheet
-                color_hex = highlighted_text.name()
-                btn.setStyleSheet(f"color: {color_hex};")
+                # Set text color to highlighted for selected state via widget property
+                btn.setProperty("textColor", highlighted_text)
+                btn.update()
             else:
                 btn.set_override_bg_color(None)
                 # Reset text color for unselected state
-                color_hex = text_color.name()
-                btn.setStyleSheet(f"color: {color_hex};")
+                btn.setProperty("textColor", text_color)
+                btn.update()
 
     def _get_scale_factor(self):
         width_scale = self.width() / self._base_window_width
