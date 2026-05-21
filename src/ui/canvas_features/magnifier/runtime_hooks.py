@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from core.constants import AppConstants
@@ -7,6 +8,8 @@ from domain.qt_adapters import color_to_qcolor
 from domain.types import Point
 
 from .state import get_magnifier_widget_state
+
+_log = logging.getLogger("ImproveImgSLI.magnifier")
 
 def command_build_render_canvas_payload(store) -> dict[str, Any]:
     from .store import (
