@@ -275,7 +275,15 @@ class ButtonPainter:
         opacity = 0.4 if is_toggle_scroll and scroll_value == 0 else 1.0
         painter.setOpacity(opacity)
         x = (widget.width() - actual_icon_size) // 2
-        y = (widget.height() - actual_icon_size) // 2
+
+        # If scroll value is visible below, shift icon up to make room
+        if scroll_value is not None and scroll_value_always_visible:
+            value_h = 12
+            gap = 2
+            y = max(1, (widget.height() - actual_icon_size - value_h - gap) // 2)
+        else:
+            y = (widget.height() - actual_icon_size) // 2
+
         painter.drawPixmap(x, y, icon_pixmap)
         painter.setOpacity(1.0)
 
