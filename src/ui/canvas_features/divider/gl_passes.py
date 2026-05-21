@@ -4,8 +4,14 @@ from OpenGL import GL as gl
 from PyQt6.QtGui import QColor
 from PyQt6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram
 
-from ui.canvas_infra.scene.gl_pass_contract import CanvasGLRenderPass
+from ui.canvas_infra.scene.gl_pass_contract import (
+    CanvasGLRenderPass,
+    SceneVisibility,
+    is_single_image_preview_scene,
+)
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from ui.canvas_infra.viewport.state import get_display_split_position
+from ui.widgets.gl_canvas.render_config import get_divider_clip_rect_px
 
 _VERT = """
 layout(location = 0) in vec2 aPos;
@@ -69,6 +75,33 @@ def _begin_screen_scissor(widget, rect: tuple[int, int, int, int] | None) -> boo
 
 class DividerPass(CanvasGLRenderPass):
     stack_role = CanvasStackRole.UNDERLAY_SPLIT
+    visibility = SceneVisibility.ALL
+
+    @staticmethod
+    def _resolve_divider_state(widget, ctx) -> tuple[bool, float, float, bool, QColor]:
+        payloads = (
+            ctx.scene_frame.feature_payloads
+            if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
+            else {}
+        )
+        show_divider = bool(payloads.get("show_divider", False))
+        thickness_px = float(payloads.get("divider_thickness", 0) or 0)
+        color = QColor(payloads.get("divider_color", QColor(255, 255, 255, 255)))
+
+        is_horizontal = bool(getattr(ctx.scene_frame, "is_horizontal", False))
+
+        state = getattr(widget, "runtime_state", None)
+        display_split = float(get_display_split_position(widget) or 0.5)
+        position_px = (
+            float(widget.height()) * display_split
+            if is_horizontal
+            else float(widget.width()) * display_split
+        )
+        if getattr(widget, "width", None) is None or getattr(widget, "height", None) is None:
+            position_px = float(getattr(state, "_split_pos", 0) or 0)
+            is_horizontal = bool(getattr(state, "_is_horizontal_split", is_horizontal))
+
+        return show_divider, position_px, thickness_px, is_horizontal, color
 
     def initialize(self, widget) -> None:
         is_gles = bool(widget.context().isOpenGLES())
@@ -86,24 +119,45 @@ class DividerPass(CanvasGLRenderPass):
             self._shader = None
 
     def should_paint(self, ctx) -> bool:
-        return getattr(ctx.render_list, "divider", None) is not None
+        show_divider, _position_px, thickness_px, _is_horizontal, _color = self._resolve_divider_state(
+            ctx.widget,
+            ctx,
+        )
+        if is_single_image_preview_scene(ctx):
+            return False
+        images_uploaded = list(getattr(ctx, "images_uploaded", ()) or ())
+        has_slot1 = bool(images_uploaded[0]) if len(images_uploaded) > 0 else False
+        has_slot2 = bool(images_uploaded[1]) if len(images_uploaded) > 1 else False
+        content_rect = getattr(ctx.scene_frame, "content_rect_px", None)
+        has_content_rect = bool(
+            content_rect is not None and len(content_rect) >= 4 and content_rect[2] > 0 and content_rect[3] > 0
+        )
+        return bool(
+            show_divider
+            and thickness_px > 0.0
+            and has_slot1
+            and has_slot2
+            and has_content_rect
+        )
 
     def paint(self, widget, ctx) -> None:
         if not self._shader or not self._shader.programId():
             return
-        divider = getattr(ctx.render_list, "divider", None)
-        if divider is None:
+        show_divider, position_px, thickness_px, is_horizontal, color = self._resolve_divider_state(
+            widget,
+            ctx,
+        )
+        if not show_divider or thickness_px <= 0.0:
             return
 
-        scissor_enabled = _begin_screen_scissor(widget, divider.clip_rect_px)
+        scissor_enabled = _begin_screen_scissor(widget, get_divider_clip_rect_px(widget))
         pid = self._shader.programId()
         self._shader.bind()
         widget.vao.bind()
         gl.glUniform2f(gl.glGetUniformLocation(pid, "resolution"), float(ctx.width), float(ctx.height))
-        gl.glUniform1f(gl.glGetUniformLocation(pid, "positionPx"), float(divider.position_px))
-        gl.glUniform1f(gl.glGetUniformLocation(pid, "halfThicknessPx"), float(divider.thickness_px) * 0.5)
-        gl.glUniform1i(gl.glGetUniformLocation(pid, "isHorizontal"), 1 if divider.is_horizontal else 0)
-        color = QColor(divider.color)
+        gl.glUniform1f(gl.glGetUniformLocation(pid, "positionPx"), position_px)
+        gl.glUniform1f(gl.glGetUniformLocation(pid, "halfThicknessPx"), thickness_px * 0.5)
+        gl.glUniform1i(gl.glGetUniformLocation(pid, "isHorizontal"), 1 if is_horizontal else 0)
         gl.glUniform4f(
             gl.glGetUniformLocation(pid, "color"),
             color.redF(),

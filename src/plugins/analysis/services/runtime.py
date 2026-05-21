@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from core.events import CoreUpdateRequestedEvent
 from plugins.comparison.events import ComparisonUIUpdateEvent
@@ -29,8 +29,17 @@ class CoreUpdateDispatcher:
         elif self._signal is not None:
             self._signal.emit()
 
-@dataclass(frozen=True)
+@dataclass
 class AnalysisRuntime:
     thread_pool: Any | None
     ui_updates: UIUpdateDispatcher
     core_updates: CoreUpdateDispatcher
+    toast_manager_getter: Callable[[], Any | None] | None = None
+
+    def get_toast_manager(self) -> Any | None:
+        if self.toast_manager_getter is None:
+            return None
+        try:
+            return self.toast_manager_getter()
+        except Exception:
+            return None

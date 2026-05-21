@@ -34,9 +34,6 @@ class MagnifierModeService:
     def is_multi_mode(self) -> bool:
         return self.total_count() > 1
 
-    def should_show_hidden_selection(self) -> bool:
-        return self.is_multi_mode() and self.visible_count() < self.total_count()
-
     def should_show_panel(self) -> bool:
         total = self.total_count()
         if total > 1:

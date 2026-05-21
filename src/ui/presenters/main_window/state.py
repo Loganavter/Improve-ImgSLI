@@ -131,8 +131,10 @@ def do_update_resolution_labels(presenter):
             )
 
 def do_update_file_names_display(presenter):
-    name1 = presenter.store.document.get_current_display_name(1) or "-----"
-    name2 = presenter.store.document.get_current_display_name(2) or "-----"
+    active_name1 = presenter.store.document.get_active_display_name(1)
+    active_name2 = presenter.store.document.get_active_display_name(2)
+    name1 = active_name1 or "-----"
+    name2 = active_name2 or "-----"
     lang = presenter.store.settings.current_language
     show_labels = bool(name1 != "-----" or name2 != "-----")
 
@@ -146,15 +148,13 @@ def do_update_file_names_display(presenter):
 
     if hasattr(presenter.ui, "edit_name1") and not presenter.ui.edit_name1.hasFocus():
         presenter.ui.edit_name1.blockSignals(True)
-        display_name1 = presenter.store.document.get_current_display_name(1)
-        presenter.ui.edit_name1.setText(display_name1 or "")
+        presenter.ui.edit_name1.setText(active_name1)
         presenter.ui.edit_name1.setCursorPosition(0)
         presenter.ui.edit_name1.blockSignals(False)
 
     if hasattr(presenter.ui, "edit_name2") and not presenter.ui.edit_name2.hasFocus():
         presenter.ui.edit_name2.blockSignals(True)
-        display_name2 = presenter.store.document.get_current_display_name(2)
-        presenter.ui.edit_name2.setText(display_name2 or "")
+        presenter.ui.edit_name2.setText(active_name2)
         presenter.ui.edit_name2.setCursorPosition(0)
         presenter.ui.edit_name2.blockSignals(False)
 

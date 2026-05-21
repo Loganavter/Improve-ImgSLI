@@ -33,6 +33,24 @@ class DocumentModel:
     _last_display_name1: str = ""
     _last_display_name2: str = ""
 
+    def has_current_item(self, slot: int) -> bool:
+        idx = self.current_index1 if slot == 1 else self.current_index2
+        items = self.image_list1 if slot == 1 else self.image_list2
+        return 0 <= idx < len(items)
+
+    def get_active_display_name(self, slot: int) -> str:
+        if not self.has_current_item(slot):
+            return ""
+        idx = self.current_index1 if slot == 1 else self.current_index2
+        items = self.image_list1 if slot == 1 else self.image_list2
+        return items[idx].display_name or ""
+
+    def clear_last_display_name(self, slot: int) -> None:
+        if slot == 1:
+            self._last_display_name1 = ""
+        else:
+            self._last_display_name2 = ""
+
     def get_current_display_name(self, slot: int) -> str:
         idx = self.current_index1 if slot == 1 else self.current_index2
         items = self.image_list1 if slot == 1 else self.image_list2

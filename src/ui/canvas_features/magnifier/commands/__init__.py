@@ -56,14 +56,36 @@ from .viewport import (
     viewport_toggle_enabled,
 )
 
+def _settings_set_border_color(settings, color) -> bool:
+    changed = settings.mutations.set_canvas_feature_setting(
+        "magnifier.border.color",
+        color,
+        invalidate_render_cache=True,
+        request_core_update=True,
+    )
+    viewport_set_active_border_color(settings.mutations.store, color)
+    return changed
+
+def _settings_set_divider_color(settings, color) -> bool:
+    changed = settings.mutations.set_canvas_feature_setting(
+        "magnifier.divider.color",
+        color,
+        invalidate_render_cache=True,
+        request_core_update=True,
+    )
+    viewport_set_active_divider_color(settings.mutations.store, color)
+    return changed
+
 def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
-    from ..bounds import compute_magnifier_padding
+    from ..bounds import (
+        compute_magnifier_layout_requirement,
+    )
     from ..gl_overlay import apply_magnifier_gl_overlay, build_magnifier_drawing_coords
     from ..layout_plan import build_magnifier_layout, shift_layout_to_tile
     from ..plan_overlay import apply_magnifier_plan_overlay
     from ..snapshot_store import (
+        apply_virtual_canvas_layout_to_snapshot_store,
         normalize_snapshot_store,
-        retarget_snapshot_store_to_padded_canvas,
     )
     from ..store import active_or_default_divider_thickness, magnifier_enabled
     from ..workers.diff_cache import request_cached_diff_image_async
@@ -87,27 +109,17 @@ def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_divider_color": lambda settings, color: settings.mutations.set_canvas_feature_setting(
-            "magnifier.divider.color",
-            color,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        ),
+        "settings.set_divider_color": lambda settings, color: _settings_set_divider_color(settings, color),
         "settings.set_divider_thickness": lambda settings, thickness: settings.mutations.set_canvas_feature_setting(
             "magnifier.divider.thickness",
             max(0, min(10, int(thickness))),
             invalidate_render_cache=True,
             request_core_update=True,
         ),
-        "settings.set_border_color": lambda settings, color: settings.mutations.set_canvas_feature_setting(
-            "magnifier.border.color",
-            color,
-            invalidate_render_cache=True,
-            request_core_update=True,
-        ),
+        "settings.set_border_color": lambda settings, color: _settings_set_border_color(settings, color),
         "render.canvas_payload": render_canvas_payload,
         "render.drawing_coords": build_magnifier_drawing_coords,
-        "render.compute_padding": lambda store, *, drawing_width, drawing_height: compute_magnifier_padding(
+        "render.layout_requirement": lambda store, *, drawing_width, drawing_height: compute_magnifier_layout_requirement(
             store,
             drawing_width=drawing_width,
             drawing_height=drawing_height,
@@ -178,7 +190,7 @@ def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
         "viewport.set_active_freeze": viewport_set_active_freeze,
         "viewport.set_active_combined": viewport_set_active_combined,
         "snapshot.normalize_store": lambda store: normalize_snapshot_store(store),
-        "snapshot.retarget_to_padded_canvas": lambda store, **kwargs: retarget_snapshot_store_to_padded_canvas(
+        "snapshot.apply_virtual_layout": lambda store, **kwargs: apply_virtual_canvas_layout_to_snapshot_store(
             store,
             **kwargs,
         ),

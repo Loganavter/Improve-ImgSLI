@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any, Callable
 
 from domain.workspace import WorkspaceSession
@@ -31,12 +32,26 @@ class WorkspaceStoreMixin:
         activate: bool = True,
         blueprint: SessionBlueprint | None = None,
     ) -> WorkspaceSession:
+        new_viewport = ViewportState()
+
+        current_view = getattr(getattr(self, "viewport", None), "view_state", None)
+        if current_view is not None and getattr(current_view, "canvas_widget_state", None):
+            new_viewport.view_state.canvas_widget_state = copy.deepcopy(
+                current_view.canvas_widget_state
+            )
+
+            magnifier_state = new_viewport.view_state.canvas_widget_state.get("magnifier")
+            if magnifier_state is not None and hasattr(magnifier_state, "models"):
+                magnifier_state.models.clear()
+                magnifier_state.enabled = False
+                magnifier_state.active_id = None
+
         session = WorkspaceSession(
             id=self.workspace.new_session_id(),
             title=title or self.workspace.next_default_title(session_type),
             session_type=session_type,
             document=DocumentModel(),
-            viewport=ViewportState(),
+            viewport=new_viewport,
         )
         if blueprint is not None:
             self._apply_session_blueprint(session, blueprint)

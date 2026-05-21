@@ -9,8 +9,11 @@ def _make_converters(canvas, plan):
         return None, None, None
 
     ox, oy, dw, dh = content_rect
-    sx = dw / plan.canvas_w
-    sy = dh / plan.canvas_h
+    logical_w = max(1, int(plan.canvas_w))
+    logical_h = max(1, int(plan.canvas_h))
+
+    sx = dw / logical_w
+    sy = dh / logical_h
     sr = min(sx, sy)
 
     def to_wx(cx: float) -> float:
@@ -34,12 +37,12 @@ def apply_magnifier_plan_overlay(canvas, plan) -> None:
     state = canvas.runtime_state
     layout = plan.overlay_layout
     if not layout or not layout.slots:
-        canvas.clear_magnifier_gpu()
+        canvas.clear_feature_overlay_gpu()
         return
 
     to_wx, to_wy, to_wr = _make_converters(canvas, plan)
     if to_wx is None:
-        canvas.clear_magnifier_gpu()
+        canvas.clear_feature_overlay_gpu()
         return
 
     converted_slots = []
@@ -93,11 +96,11 @@ def apply_magnifier_plan_overlay(canvas, plan) -> None:
         else None
     )
 
-    converted_mag_centers = [
+    converted_overlay_centers = [
         _convert_tuple_point(cx, cy, to_wx, to_wy)
-        for cx, cy in layout.magnifier_centers
+        for cx, cy in layout.overlay_centers
     ]
-    mag_radius = to_wr(float(layout.mag_radius))
+    overlay_radius = to_wr(float(layout.overlay_radius))
 
     effective_capture = (
         capture_center if (plan.capture_visible and capture_center is not None) else None
@@ -107,13 +110,13 @@ def apply_magnifier_plan_overlay(canvas, plan) -> None:
     canvas.set_overlay_coords(
         effective_capture,
         effective_cap_r,
-        converted_mag_centers,
-        mag_radius,
+        converted_overlay_centers,
+        overlay_radius,
     )
     state._capture_circles = converted_circles
     state._guide_sets = converted_guides
 
-    canvas.set_magnifier_gpu_params(
+    canvas.set_feature_overlay_gpu_params(
         converted_slots,
         layout.channel_mode,
         layout.diff_mode,

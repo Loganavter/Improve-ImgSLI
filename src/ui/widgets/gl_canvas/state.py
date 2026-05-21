@@ -8,32 +8,29 @@ from ui.canvas_infra.viewport.state import ensure_zoom_viewport_state
 from .runtime import build_canvas_surface_format
 
 @dataclass(slots=True)
-class GLCanvasRuntimeState:
-    _background_pixmap: QPixmap | None = None
-    _magnifier_pixmap: QPixmap | None = None
-    _magnifier_top_left: QPoint | None = None
-    _capture_center: QPointF | None = None
-    _capture_radius: float = 0.0
-    _capture_circles: list = field(default_factory=list)
-    _guide_sets: list = field(default_factory=list)
-    _hidden_capture_circles: list = field(default_factory=list)
-    _occluded_capture_arcs: list = field(default_factory=list)
-    _hidden_magnifier_circles: list = field(default_factory=list)
-    _magnifier_centers: list[QPointF] = field(default_factory=list)
-    _magnifier_radius: float = 0.0
-    _magnifier_border_color: QColor = field(
+class _FeatureOverlayGpuState:
+    _pixmap: QPixmap | None = None
+    _top_left: QPoint | None = None
+    _centers: list[QPointF] = field(default_factory=list)
+    _radius: float = 0.0
+    _border_color: QColor = field(
         default_factory=lambda: QColor(255, 255, 255, 248)
     )
-    _magnifier_border_width: float = 2.0
-    _show_divider: bool = False
-    _split_pos: int = 0
-    _is_horizontal_split: bool = False
-    _divider_color: QColor = field(default_factory=lambda: QColor(255, 255, 255, 255))
-    _divider_thickness: int = 2
-    _capture_color: QColor = field(default_factory=lambda: QColor(255, 50, 100, 230))
-    _show_guides: bool = False
-    _laser_color: QColor = field(default_factory=lambda: QColor(255, 255, 255, 255))
-    _guides_thickness: int = 1
+    _border_width: float = 2.0
+    _quads: list = field(default_factory=list)
+    _use_circle_mask: list[bool] = field(default_factory=list)
+    _combined_params: list = field(default_factory=list)
+    _gpu_active: bool = False
+    _gpu_slots: list = field(default_factory=list)
+    _gpu_channel_mode: int = 0
+    _gpu_diff_mode: int = 0
+    _gpu_diff_threshold: float = 20.0 / 255.0
+    _gpu_interp_mode: int = 1
+    _gpu_widget_geometry_sig: tuple | None = None
+
+@dataclass(slots=True)
+class GLCanvasRuntimeState:
+    _background_pixmap: QPixmap | None = None
     _images_uploaded: list[bool] = field(default_factory=lambda: [False, False])
     _stored_pil_images: list = field(default_factory=lambda: [None, None])
     _stored_image_ids: object | None = None
@@ -46,25 +43,12 @@ class GLCanvasRuntimeState:
     _source_preload_scheduled: bool = False
     _shader_letterbox_mode: bool = False
     _content_rect_px: tuple[int, int, int, int] | None = None
-
     _inner_content_rect_px: tuple[int, int, int, int] | None = None
-
     _inner_split_position: float | None = None
-
     _content_sr: float = 1.0
     _clip_overlays_to_content_rect: bool = False
     _content_scissor_depth: int = 0
-    _mag_quads: list = field(default_factory=list)
-    _mag_use_circle_mask: list[bool] = field(default_factory=list)
-    _mag_combined_params: list = field(default_factory=list)
     _canvas_scene_graph: object | None = None
-    _mag_quad_ndc: tuple[float, float, float, float] | None = None
-    _mag_gpu_active: bool = False
-    _mag_gpu_slots: list = field(default_factory=list)
-    _mag_gpu_channel_mode: int = 0
-    _mag_gpu_diff_mode: int = 0
-    _mag_gpu_diff_threshold: float = 20.0 / 255.0
-    _mag_gpu_interp_mode: int = 1
     _letterbox_params: list = field(default_factory=lambda: [None, None])
     _store: object | None = None
     _render_scene: object | None = None
@@ -97,6 +81,25 @@ class GLCanvasRuntimeState:
     )
     _pending_texture_uploads: list = field(default_factory=list)
     _zoom_viewport_state: object | None = None
+    _dynamic_feature_overrides: dict = field(default_factory=dict)
+    _feature_overlay_gpu: _FeatureOverlayGpuState = field(default_factory=_FeatureOverlayGpuState)
+    _feature_overlay_quad_ndc: tuple[float, float, float, float] | None = None
+    _capture_center: object | None = None
+    _capture_radius: float = 0.0
+    _capture_circles: list = field(default_factory=list)
+    _guide_sets: list = field(default_factory=list)
+    _hidden_capture_circles: list = field(default_factory=list)
+    _occluded_capture_arcs: list = field(default_factory=list)
+    _hidden_overlay_circles: list = field(default_factory=list)
+    _show_divider: bool = False
+    _split_pos: int = 0
+    _is_horizontal_split: bool = False
+    _divider_color: object = field(default_factory=QColor)
+    _divider_thickness: int = 0
+    _show_guides: bool = False
+    _laser_color: object = field(default_factory=QColor)
+    _guides_thickness: int = 0
+    _capture_color: object = field(default_factory=QColor)
 
 def init_widget_state(widget):
     widget.setMouseTracking(True)
@@ -128,11 +131,10 @@ def init_widget_state(widget):
     widget.texture_ids = [0, 0]
     widget._source_texture_ids = [0, 0]
     widget._diff_source_texture_id = 0
-    widget._mag_tex_ids = []
-    widget._mag_combined_tex_ids = []
+    widget._feature_overlay_tex_ids = []
+    widget._feature_overlay_aux_tex_ids = []
     widget._circle_mask_tex_id = 0
-    widget._mag_tex_id = 0
-    widget._ui_overlay_tex_id = 0
+    widget._feature_overlay_tex_id = 0
 
     widget._feature_gl_passes = []
     widget.runtime_state = GLCanvasRuntimeState()

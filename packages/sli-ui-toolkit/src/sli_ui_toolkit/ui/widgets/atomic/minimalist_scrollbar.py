@@ -207,7 +207,7 @@ class OverlayScrollArea(QScrollArea):
     def _update_scrollbar_visibility(self, min_items_count=0):
         native = self.verticalScrollBar()
         should_show = native.maximum() > native.minimum()
-        self.custom_v_scrollbar.setVisible(should_show and self._reserve_scrollbar_space)
+        self.custom_v_scrollbar.setVisible(should_show)
         self._position_scrollbar()
 
     def _position_scrollbar(self):

@@ -3,9 +3,6 @@ import logging
 from PIL import Image
 from PyQt6.QtWidgets import QApplication
 
-from plugins.export.models import ExportRenderContext
-from ui.canvas_presentation.plan_builder import compute_canvas_plan as _compute_canvas_plan
-
 from .gpu_export_proxy import GpuExportProxy
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -13,8 +10,6 @@ logger = logging.getLogger("ImproveImgSLI")
 class GpuExportService:
     def __init__(self, parent=None, resource_manager=None):
         self._proxy = GpuExportProxy(parent, resource_manager=resource_manager)
-        self._max_texture_size = None
-        self._last_tiled_debug = {}
 
     def _request(self, payload: dict):
         import threading
@@ -28,62 +23,23 @@ class GpuExportService:
             raise error
         return payload["result_box"]
 
-    def _get_max_texture_size(self) -> int:
-        if self._max_texture_size is None:
-            result = self._request({"mode": "limits"})
-            self._max_texture_size = int(result.get("max_texture_size", 0) or 0)
-        return max(1, self._max_texture_size)
-
-    def render_image(
+    def render_plan(
         self,
-        store,
-        image1=None,
-        image2=None,
-        width: int | None = None,
-        height: int | None = None,
-        render_context: ExportRenderContext | None = None,
-        overlay_drawing_coords=None,
-        prepared_background_layers=None,
-        force_tiled: bool = False,
-        min_tiles_per_axis: int = 2,
+        plan,
+        *,
+        store=None,
+        diff_image=None,
     ) -> Image.Image:
         app = QApplication.instance()
         if app is None:
             raise RuntimeError("QApplication is not available for GPU export")
 
-        if render_context is None:
-            if image1 is None or image2 is None or width is None or height is None:
-                raise ValueError(
-                    "GPU render_image requires either render_context or explicit image arguments"
-                )
-            render_context = ExportRenderContext(
-                image1=image1,
-                image2=image2,
-                width=width,
-                height=height,
-                source_image1=image1,
-                source_image2=image2,
-                source_key=None,
-                overlay_drawing_coords=overlay_drawing_coords,
-                prepared_background_layers=prepared_background_layers,
-                cached_diff_image=None,
-            )
-
-        mode = "render"
-        max_texture_size = self._get_max_texture_size()
-        if (
-            force_tiled
-            or render_context.width > max_texture_size
-            or render_context.height > max_texture_size
-        ):
-            mode = "render_tiled"
-
         result = self._request(
             {
-                "mode": mode,
+                "mode": "render_plan",
+                "plan": plan,
                 "store": store,
-                "render_context": render_context,
-                "min_tiles_per_axis": max(1, int(min_tiles_per_axis)),
+                "diff_image": diff_image,
             }
         )
         image = result.get("image")

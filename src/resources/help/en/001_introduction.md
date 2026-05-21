@@ -1,17 +1,31 @@
-## Welcome to Improve ImgSLI!
+## Getting Started
 
-This application is designed for detailed visual image comparison, ideal for designers, photographers, AI art/upscaling enthusiasts, and anyone needing precise visual analysis.
+This page is for quick onboarding: load a pair of images, compare them, enable the magnifier if needed, and save the result.
 
-Use the navigation panel on the left to learn about specific features.
+### Basic Workflow {#basic-workflow}
+- Add images to the left and right lists.
+- Switch pairs with the dropdowns or the mouse wheel.
+- Compare them with the split line or the magnifier.
+- Enable metrics, filename labels, or difference modes when needed.
+- Save the result with **Save Result** or `Ctrl+S`.
 
+### Where To Go Next {#where-to-go-next}
+- **[File Management](help://file_management)**: loading, drag and drop, clipboard paste, list operations.
+- **[Canvas Navigation](help://view_navigation)**: zoom, pan, temporary side preview.
+- **[Comparison](help://comparison)**: split line, metrics, filename labels, non-magnifier workflow.
+- **[Magnifier](help://magnifier)**: capture area, combined mode, multiple instances.
+- **[Export and Video](help://export)**: image saving, session recording, video editor.
+- **[Settings](help://settings)**: performance, quality, language, and system behavior.
 
-### System Tray Integration
+### When To Open Settings {#when-to-open-settings}
+- When preview performance is too heavy.
+- When you need to change language, theme, or UI font.
+- When you want to switch between **Beginner / Advanced / Expert** UI modes.
+- When you want automatic PSNR / SSIM calculation.
+- When you need to tune magnifier behavior or responsiveness.
 
-- When supported by your operating system, the application displays a tray icon for quick access.
-- The tray menu provides:
-  - Show/Hide Window
-  - Open Last Saved File (visible after your first successful save)
-  - Open Last Saved Folder
-  - Quit
-- On successful save, a system notification may appear; clicking the notification opens the last saved folder.
-- You can toggle system notifications in Settings.
+### System Tray and Notifications {#system-tray-and-notifications}
+- If your system supports a tray icon, the app can expose quick actions there.
+- The tray menu can show or hide the window, open the last saved file or folder, and quit the app.
+- A system notification may appear after a successful save.
+- Notifications can be enabled or disabled in **Settings**.

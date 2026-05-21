@@ -6,6 +6,7 @@ from sli_ui_toolkit.utils import get_unique_filepath, resource_path
 from sli_ui_toolkit.widgets import (
     AdaptiveLabel,
     BodyLabel,
+    Button,
     ButtonMode,
     CaptionLabel,
     CheckBox,

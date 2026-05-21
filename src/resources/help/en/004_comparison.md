@@ -1,28 +1,31 @@
-## Basic Comparison
+## Comparison
 
-- When the magnifier is off, you can click and drag the split line to compare different parts of the images.
-- Check **Horizontal Split** to change the split orientation.
+This page focuses on the main comparison workflow without centering the explanation around the magnifier.
 
-### Quick Preview
-To quickly see one of the original images in full, hold down the **Spacebar**:
-- While holding Space, press the **Left Mouse Button** to view Image 1.
-- While holding Space, press the **Right Mouse Button** to view Image 2.
-- Release the mouse button and Spacebar to return to the comparison view.
+### Split Line {#split-line}
+- When the magnifier is off, drag the split line to compare different regions of the two images.
+- **Horizontal Split** changes the comparison orientation.
 
+### Mouse Wheel Switching {#mouse-wheel-switching}
+- When the magnifier is off, scrolling over the comparison area switches the current image on the side under the cursor.
+- Which side is active depends on the current split orientation.
 
-### Mouse Wheel Navigation
-- When the magnifier is off, scrolling the mouse wheel over the comparison area switches the currently selected image in the list on the side under the cursor (left/right or top/bottom depending on the split orientation).
+### Split Line Controls {#split-line-controls}
+- Scrolling over the split thickness button changes line thickness.
+- The split color button changes the line color.
 
-### Divider Controls
-- Divider thickness: scroll the mouse wheel over the Divider Thickness button to adjust the value. A small numeric popup will show the current thickness.
-- Divider color: click the Divider Color button to pick a color.
+### Filename Labels {#filename-labels}
+- Filename labels are useful for quick visual identification and exports with text overlays.
+- They are hidden temporarily when zoom is not `100%`.
+- They return automatically when zoom comes back to `100%`.
 
-### File Names While Zoomed
-- Filename labels on the canvas are shown only at **100% zoom**.
-- If file names are enabled but the canvas is zoomed in or out, the filename button temporarily switches to a hidden-state icon.
-- As soon as the zoom returns to **100%**, the labels appear again automatically.
+### Quality Metrics {#quality-metrics}
+- PSNR and SSIM can be shown below the comparison area.
+- They are disabled by default to keep preview responsive.
+- They can be enabled in **Settings**.
+- If **SSIM Map** mode is active, SSIM is still calculated and shown.
 
-### Quality Metrics (PSNR/SSIM)
-- The application can display PSNR (Peak Signal-to-Noise Ratio) and SSIM (Structural Similarity Index) metrics below the main comparison view.
-- By default, these calculations are **disabled** for better performance.
-- To enable them, go to **Settings** and check the **"Auto-calculate PSNR"** and **"Auto-calculate SSIM"** options.
+### When To Use This Mode {#when-to-use-this-mode}
+- When you want a quick high-level comparison without extra tools.
+- When the split line matters more than local zoomed inspection.
+- When you want to assess differences before switching to the magnifier.

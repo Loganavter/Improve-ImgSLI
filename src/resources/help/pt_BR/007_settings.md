@@ -1,18 +1,54 @@
 ## Configurações
 
-Muitos comportamentos interativos do aplicativo são controlados aqui. Se o preview, a lupa, os nomes de arquivo ou a exportação parecerem diferentes do esperado, este é o primeiro lugar a verificar.
+Esta página agrupa as configurações por propósito em vez de repetir toda a interface como uma lista plana.
 
-- **Idioma:** altera o idioma da interface.
-- **Tema:** Escolha entre Automático, Claro ou Escuro.
-- **Fonte da Interface:** Selecione entre a fonte integrada, o padrão do seu sistema ou uma fonte personalizada instalada.
-- **Comprimento Máximo do Nome (UI):** limita o comprimento dos nomes de arquivo exibidos na interface.
-- **Resolução do Cache de Exibição:** define um limite de resolução para a pré-visualização principal para melhorar o desempenho com imagens grandes. A lupa e a exportação final sempre usam qualidade original.
-- **Interpolação de Movimento:** quando "Otimizar movimento da lupa" está habilitado, isso seleciona um método de interpolação mais rápido e de menor qualidade (como Bilinear) para usar *apenas* durante o movimento interativo para uma experiência mais suave. O método de alta qualidade ainda é usado quando estático.
-- **Otimizar movimento da lupa:** habilita o uso do método de interpolação separado e mais rápido acima durante o movimento da lupa. Habilitado por padrão.
-- **Destacar interseções de lupas:** habilita o destaque auxiliar vermelho para áreas de captura cobertas por outras lupas durante o arrasto.
-- **Colorir novas lupas automaticamente:** atribui automaticamente o próximo conjunto de cores a cada nova lupa extra, incluindo borda, divisória interna, área de captura e linhas guia.
-- **Modo de UI:** alterna quantos controles e opções avançadas são mostrados em partes da interface.
-- **Calcular automaticamente PSNR / SSIM:** alterna o cálculo e exibição automáticos das métricas PSNR e SSIM abaixo da imagem. Desabilitado por padrão para melhor desempenho. Nota: SSIM ainda será calculado e mostrado se o modo de diferenças "Mapa SSIM" estiver ativo.
-- **Cortar automaticamente bordas pretas ao carregar:** remove automaticamente as barras pretas das bordas das imagens quando elas são adicionadas às listas.
-- **Habilitar logs de depuração:** alterna o registro detalhado para solução de problemas.
-- **Notificações do sistema:** alterna as notificações do sistema ao salvar.
+### Interface {#interface}
+- **Idioma** altera o idioma do aplicativo.
+- **Tema** alterna entre aparência clara, escura e automática.
+- **Fonte da Interface** seleciona a fonte integrada, do sistema ou uma fonte personalizada instalada.
+- **Comprimento Máximo do Nome (UI)** limita o tamanho dos rótulos na interface.
+- **Modo da UI** muda não apenas a complexidade, mas também a forma como a barra de ferramentas foi pensada para uso.
+
+### Modos da UI {#ui-modes}
+- **Iniciante**:
+  - é o modo mais simples;
+  - mantém a interface mais orientada ao mouse;
+  - serve bem para o primeiro uso e comparações básicas rápidas.
+- **Avançado**:
+  - expõe mais controles diretamente na tela;
+  - serve para quem quer mudar parâmetros com mais frequência sem passos extras.
+- **Especialista**:
+  - torna a interface mais minimalista;
+  - depende mais do controle por teclado, incluindo `WASD` e `QE`;
+  - libera o máximo possível de espaço na tela para a imagem.
+
+### Quando Trocar de Modo {#when-to-switch-modes}
+- Se a interface parecer sobrecarregada, experimente **Iniciante** ou **Especialista**, dependendo do seu fluxo.
+- Se você quiser mais controles visíveis ao mesmo tempo, use **Avançado**.
+- Se prefere um fluxo baseado em teclado e quer mais espaço para o canvas, use **Especialista**.
+
+### Preview e Qualidade {#preview-and-quality}
+- **Resolução do Cache de Exibição** limita a resolução do preview principal para melhorar o desempenho.
+- A lupa e a exportação final continuam usando a qualidade original.
+- O método principal de interpolação afeta a qualidade da imagem estática.
+- O método separado de interpolação durante movimento é usado apenas em cenários interativos quando a otimização está ativa.
+
+### Lupa e Movimento Interativo {#magnifier-and-interactive-motion}
+- **Otimizar movimento da lupa** ativa um modo mais rápido durante o movimento.
+- **Destacar interseções de lupas** mostra sobreposição entre áreas de captura.
+- **Colorir novas lupas automaticamente** ajuda a distinguir múltiplas instâncias.
+
+### Análise e Métricas {#analysis-and-metrics}
+- **Calcular automaticamente PSNR / SSIM** ativa métricas automáticas abaixo da área de comparação.
+- Ela fica desativada por padrão para manter o preview mais leve.
+
+### Carregamento e Fluxo de Trabalho {#loading-and-workflow}
+- **Cortar automaticamente bordas pretas ao carregar** remove barras pretas nas bordas ao carregar arquivos.
+
+### Sistema e Depuração {#system-and-debugging}
+- **Notificações do sistema** controlam notificações após salvar.
+- **Habilitar logs de depuração** adiciona logs detalhados para troubleshooting.
+
+### O Que É Configurado em Outro Lugar {#configured-elsewhere}
+- **Preview Quality** do editor de vídeo é alterado dentro do próprio **[editor de vídeo](help://export#video-editor-preview-quality)**.
+- As opções específicas de saída são escolhidas no diálogo de **[Exportação](help://export#saving-an-image)**.

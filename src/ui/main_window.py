@@ -132,8 +132,6 @@ class MainWindow(QWidget):
     def apply_application_theme(self, theme_name: str):
         app = QApplication.instance()
         self.theme_manager.set_theme(theme_name, app)
-        if self.store.settings.theme != theme_name:
-            self.store.settings.theme = theme_name
         if self.ui is not None:
             self.ui.reapply_button_styles()
 

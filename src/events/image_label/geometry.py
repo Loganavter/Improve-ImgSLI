@@ -40,7 +40,7 @@ class ImageLabelGeometry:
             max(0.0, min(float(local_pos.y()), max_y)),
         )
 
-    def screen_to_image_rel(self, cursor_pos):
+    def screen_to_image_rel(self, cursor_pos, clamp: bool = True):
         label = self._get_image_label()
         if label is not None and hasattr(label, "map_cursor_to_image_rel"):
             mapped = label.map_cursor_to_image_rel(cursor_pos)
@@ -52,24 +52,30 @@ class ImageLabelGeometry:
             return None, None
 
         local_pos = self._screen_to_widget_local_px(cursor_pos)
-        clamped_local_x = max(float(rect.x), min(float(local_pos.x), float(rect.x + rect.w)))
-        clamped_local_y = max(float(rect.y), min(float(local_pos.y), float(rect.y + rect.h)))
-        img_rel_x = (clamped_local_x - float(rect.x)) / float(rect.w)
-        img_rel_y = (clamped_local_y - float(rect.y)) / float(rect.h)
+        local_x = float(local_pos.x)
+        local_y = float(local_pos.y)
+        if clamp:
+            local_x = max(float(rect.x), min(local_x, float(rect.x + rect.w)))
+            local_y = max(float(rect.y), min(local_y, float(rect.y + rect.h)))
+        img_rel_x = (local_x - float(rect.x)) / float(rect.w)
+        img_rel_y = (local_y - float(rect.y)) / float(rect.h)
         return img_rel_x, img_rel_y
 
     def update_state_from_mouse_position(
         self, cursor_pos, respect_overlay: bool = True
     ):
         viewport = self.handler.store.viewport
-        raw_rel_x, raw_rel_y = self.screen_to_image_rel(cursor_pos)
+        raw_rel_x, raw_rel_y = self.screen_to_image_rel(
+            cursor_pos,
+            clamp=not self.handler.store.viewport.view_state.overlay_enabled,
+        )
         if raw_rel_x is None:
             return
 
         if self.handler.store.viewport.view_state.overlay_enabled:
             position = Point(
-                max(0.0, min(1.0, raw_rel_x)),
-                max(0.0, min(1.0, raw_rel_y)),
+                float(raw_rel_x),
+                float(raw_rel_y),
             )
             command = get_canvas_feature_command_by_alias(
                 "overlay.update_capture_drag",

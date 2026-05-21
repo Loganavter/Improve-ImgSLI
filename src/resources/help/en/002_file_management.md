@@ -1,33 +1,41 @@
 ## File Management
 
-### Loading Images
-You can load images in multiple ways:
-- Click the "Add Img(s)" buttons to open a file dialog and select multiple files.
-- Drag and drop one or more image files directly onto the main window. An overlay will appear, allowing you to choose whether to add them to the left or right list.
+This page is about loading images and working with the left and right image lists.
+
+### Loading Images {#loading-images}
+- Click **Add Img(s)** to select one or more files.
+- Drag image files directly into the main window and choose which list receives them.
 - Press `Ctrl+V` to paste an image from the clipboard.
 
-### Managing Image Lists
-Click the dropdown menus to open the image list manager (flyout). It provides:
+### Left and Right Lists {#left-and-right-lists}
+- Each list keeps its own ordered sequence of images.
+- The active pair is selected independently on the left and right sides.
+- Switching the current item does not remove or reorder the other files.
 
-- **Drag & Drop Reordering:** Click and drag an item to reorder it, or drag it to the other list.
+### List Manager {#list-manager}
+- Click a dropdown to open the list flyout.
+- Inside the flyout, items can be reordered by dragging.
+- Items can also be dragged from one list to the other.
+- If a name is truncated, hover it to see the full path.
 
-- **Swap button (⇄):**
-  - A short click swaps only the two currently selected images.
-  - A long press (~0.6s) swaps the entire left and right image lists.
+### Quick List Actions {#quick-list-actions}
+- **`⇄` button**:
+  - short click swaps only the currently selected pair;
+  - long press swaps the two full lists.
+- **`🗑️` button**:
+  - short click removes the current item;
+  - long press clears the whole list.
+- Right-clicking an item in the list manager removes that item.
 
-- **Clear button (🗑️):**
-  - A short click removes only the currently selected image.
-  - A long press clears the entire list.
+### Mouse Wheel Switching {#mouse-wheel-switching}
+- Scrolling over the left or right dropdown changes the current item in that list.
+- Scrolling over the interpolation dropdown quickly changes the resampling method.
 
-- **Rating System:** Use the `[+]` and `[-]` buttons next to each image to change its rating.
-- **Remove Item:** Right-click on any item to remove it.
-- **Full Path Tooltip:** If an item name is truncated, hover over it to see the full file path.
+### Ratings {#ratings}
+- Use `[+]` and `[−]` in the list manager to change an image rating.
+- The mouse wheel over the rating indicator can also increase or decrease the current score.
 
-
-### Mouse Wheel on Lists
-- Scroll the mouse wheel over the image list dropdowns to switch the currently selected item in the corresponding list (left/right).
-- You can also scroll over the Interpolation dropdown to change the resampling method quickly.
-
-### Ratings
-- Use the `[+]` and `[-]` buttons next to each image to change its rating.
-- Additionally, scroll the mouse wheel over the rating display to increase or decrease the current image's score.
+### What This Page Does Not Cover {#not-covered-here}
+- Zoom and pan are described in **[Canvas Navigation](help://view_navigation)**.
+- Split-line comparison and metrics are described in **[Comparison](help://comparison)**.
+- Magnifier-specific behavior is described in **[Magnifier](help://magnifier)**.

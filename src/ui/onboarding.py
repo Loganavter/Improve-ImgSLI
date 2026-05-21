@@ -21,13 +21,7 @@ from PyQt6.QtWidgets import (
 
 from resources.translations import tr
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.widgets import CustomButton
-from sli_ui_toolkit.widgets import (
-    ScrollableIconButton,
-    SimpleIconButton,
-    ToggleIconButton,
-    ToggleScrollableIconButton,
-)
+from sli_ui_toolkit.widgets import Button
 from ui.icon_manager import AppIcon
 
 class DotIndicator(QWidget):
@@ -260,8 +254,7 @@ class OnboardingOverlay(QWidget):
 
         self.mode_buttons = []
         for i, mode in enumerate(self.modes):
-            btn = CustomButton(None, mode["name"])
-            btn.RADIUS = 8
+            btn = Button(text=mode["name"], variant="surface", corner_radius=8)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(
                 lambda checked=False, idx=i: self._on_mode_btn_clicked(idx)
@@ -293,8 +286,7 @@ class OnboardingOverlay(QWidget):
         self.bottom_layout.addWidget(self.welcome_lbl)
 
         start_text = tr("onboarding.start_button", current_lang)
-        self.btn_start = CustomButton(None, start_text)
-        self.btn_start.setProperty("class", "primary")
+        self.btn_start = Button(text=start_text, variant="primary")
         self.btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_start.clicked.connect(self._finish)
 
@@ -338,11 +330,11 @@ class OnboardingOverlay(QWidget):
 
         if key == "beginner":
 
-            b1 = ToggleIconButton(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, demo_container)
+            b1 = Button(icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT), toggle=True, parent=demo_container)
             self._style_demo_btn(b1, checked=True)
-            b2 = ToggleIconButton(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN, demo_container)
+            b2 = Button(icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN), toggle=True, parent=demo_container)
             self._style_demo_btn(b2, checked=True)
-            b3 = SimpleIconButton(AppIcon.DIVIDER_COLOR, demo_container)
+            b3 = Button(AppIcon.DIVIDER_COLOR, show_underline=True, parent=demo_container)
             self._style_demo_btn(b3)
             accent_color = self.theme_manager.get_color("accent")
             b3.set_color(accent_color)
@@ -350,7 +342,7 @@ class OnboardingOverlay(QWidget):
             def _on_beginner_color_clicked():
                 from PyQt6.QtWidgets import QColorDialog
 
-                current_color = b3._current_color if b3._current_color else accent_color
+                current_color = b3._custom_color if b3._custom_color else accent_color
                 color_dialog = QColorDialog(current_color, self)
                 color_dialog.setWindowTitle(tr("ui.select_color", current_lang))
                 self.theme_manager.apply_theme_to_dialog(color_dialog)
@@ -364,7 +356,7 @@ class OnboardingOverlay(QWidget):
 
             b3.clicked.connect(_on_beginner_color_clicked)
 
-            b4 = ScrollableIconButton(AppIcon.DIVIDER_WIDTH, min_value=1, max_value=10, parent=demo_container)
+            b4 = Button(AppIcon.DIVIDER_WIDTH, scrollable=(1, 10), show_underline=True, parent=demo_container)
             self._style_demo_btn(b4)
             b4.set_color(accent_color)
             labels = [
@@ -381,14 +373,15 @@ class OnboardingOverlay(QWidget):
 
         elif key == "advanced":
 
-            b_smart = ToggleScrollableIconButton(
-                AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20, parent=demo_container
+            b_smart = Button(
+                icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+                toggle=True, scrollable=(0, 20), show_underline=True, parent=demo_container,
             )
             self._style_demo_btn(b_smart, checked=True)
             b_smart.set_value(3)
             b_smart.set_color(self.theme_manager.get_color("accent"))
 
-            b_color = SimpleIconButton(AppIcon.DIVIDER_COLOR, demo_container)
+            b_color = Button(AppIcon.DIVIDER_COLOR, show_underline=True, parent=demo_container)
             self._style_demo_btn(b_color)
             accent_color = self.theme_manager.get_color("accent")
             b_color.set_color(accent_color)
@@ -397,7 +390,7 @@ class OnboardingOverlay(QWidget):
                 from PyQt6.QtWidgets import QColorDialog
 
                 current_color = (
-                    b_color._current_color if b_color._current_color else accent_color
+                    b_color._custom_color if b_color._custom_color else accent_color
                 )
                 color_dialog = QColorDialog(current_color, self)
                 color_dialog.setWindowTitle(tr("ui.select_color", current_lang))
@@ -421,8 +414,9 @@ class OnboardingOverlay(QWidget):
 
         elif key == "expert":
 
-            b_expert = ToggleScrollableIconButton(
-                AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT, min_val=0, max_val=20, parent=demo_container
+            b_expert = Button(
+                icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+                toggle=True, scrollable=(0, 20), show_underline=True, parent=demo_container,
             )
             self._style_demo_btn(b_expert, checked=True)
             b_expert.set_value(3)
@@ -492,16 +486,11 @@ class OnboardingOverlay(QWidget):
     def _style_demo_btn(self, btn, checked=False):
         btn.setFixedSize(40, 40)
 
-        from sli_ui_toolkit.widgets import ToggleScrollableIconButton
-
-        is_toggle_scrollable = isinstance(btn, ToggleScrollableIconButton)
-
-        if is_toggle_scrollable:
-
+        has_scroll = getattr(btn, "_has_scroll", False)
+        if has_scroll:
             btn.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
             btn.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         else:
-
             btn.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
             btn.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 

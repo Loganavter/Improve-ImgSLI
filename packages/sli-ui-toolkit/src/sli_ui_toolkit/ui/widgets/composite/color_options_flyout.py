@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QHBoxLayout
 
 from sli_ui_toolkit.icons import resolve_icon
 from sli_ui_toolkit.managers import AnchoredFlyoutAutoHide
-from sli_ui_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
+from sli_ui_toolkit.ui.widgets.buttons import Button
 from sli_ui_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
 
 @dataclass(slots=True)
@@ -38,7 +38,7 @@ class IconActionFlyout(BaseFlyout):
         self._button_size = int(button_size)
         self._icon_size = int(icon_size)
         self._actions: dict[str, IconAction] = {}
-        self._buttons: dict[str, SimpleIconButton] = {}
+        self._buttons: dict[str, Button] = {}
 
         self._auto_hide = AnchoredFlyoutAutoHide(
             flyout=self,
@@ -63,7 +63,7 @@ class IconActionFlyout(BaseFlyout):
 
         for action in actions:
             spec = action if isinstance(action, IconAction) else IconAction(**action)
-            button = SimpleIconButton(spec.icon, self.container)
+            button = Button(spec.icon, parent=self.container)
             button.setFixedSize(self._button_size, self._button_size)
             button.setIconSize(QSize(self._icon_size, self._icon_size))
             button.setToolTip(spec.tooltip)
@@ -82,7 +82,7 @@ class IconActionFlyout(BaseFlyout):
 
         self.update_state()
 
-    def action_button(self, action_id: str) -> SimpleIconButton | None:
+    def action_button(self, action_id: str) -> Button | None:
         return self._buttons.get(action_id)
 
     def set_action_state(

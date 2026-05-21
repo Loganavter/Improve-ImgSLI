@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from PIL import Image
 from PyQt6.QtGui import QColor
 
+from plugins.export.services.gpu_export import GpuExportService
 from plugins.video_editor.services.keyframing import KeyframedRecording
 from plugins.video_editor.services.video_export_bounds import CanvasBoundsAnalyzer
 from plugins.video_editor.services.video_export_encoding import (
@@ -21,8 +22,10 @@ from plugins.video_editor.services.video_export_models import (
     unique_video_path,
 )
 from plugins.video_editor.services.video_snapshot_rendering import SnapshotFrameRenderer
+from shared.rendering import TargetSurfaceSpec
 
 logger = logging.getLogger("ImproveImgSLI")
+_vrlog = logging.getLogger("ImproveImgSLI.video_render")
 
 VIDEO_EDITOR_AUTO_CROP = False
 
@@ -186,6 +189,18 @@ class VideoExporterService:
         self.main_store = store
         self.main_controller = main_controller
         self.gpu_export_service = gpu_export_service
+        thumbnail_resource_manager = None
+        if gpu_export_service is not None:
+            thumbnail_resource_manager = getattr(
+                getattr(gpu_export_service, "_proxy", None),
+                "_resource_manager",
+                None,
+            )
+        self._thumbnail_gpu_export_service = (
+            GpuExportService(resource_manager=thumbnail_resource_manager)
+            if gpu_export_service is not None
+            else None
+        )
 
         self._cached_global_bounds: GlobalCanvasBounds | None = None
         self._cached_bounds_snapshots_hash = None
@@ -199,6 +214,10 @@ class VideoExporterService:
             image_loader=self._image_repository.get_image,
             gpu_export_service=self.gpu_export_service,
         )
+        self._thumbnail_frame_renderer = SnapshotFrameRenderer(
+            image_loader=self._image_repository.get_image,
+            gpu_export_service=self._thumbnail_gpu_export_service,
+        )
         self._ffmpeg_command_builder = FFmpegCommandBuilder()
         self._process_manager = FFmpegProcessManager(self._active_processes)
         self._render_loop = VideoRenderLoop(self)
@@ -208,6 +227,8 @@ class VideoExporterService:
 
     def _clear_frame_caches(self) -> None:
         self._image_repository.clear()
+        self._frame_renderer.reset_backend_state()
+        self._thumbnail_frame_renderer.reset_backend_state()
 
     def request_cancel(self):
         self._cancel_requested = True
@@ -235,8 +256,7 @@ class VideoExporterService:
 
     def calculate_global_canvas_bounds(self, snapshots, auto_crop=False):
         materialized = self._materialize_snapshots(snapshots)
-        bounds = self._bounds_analyzer.calculate(materialized, auto_crop)
-        return bounds.as_tuple() if bounds is not None else None
+        return self._bounds_analyzer.calculate(materialized, auto_crop)
 
     def get_cached_global_bounds(self, snapshots, auto_crop=False):
         materialized = self._materialize_snapshots(snapshots)
@@ -256,11 +276,7 @@ class VideoExporterService:
             )
             self._cached_bounds_snapshots_hash = current_hash
 
-        return (
-            self._cached_global_bounds.as_tuple()
-            if self._cached_global_bounds is not None
-            else None
-        )
+        return self._cached_global_bounds
 
     def invalidate_bounds_cache(self):
         self._cached_global_bounds = None
@@ -278,7 +294,74 @@ class VideoExporterService:
             return None
         if isinstance(global_bounds, GlobalCanvasBounds):
             return global_bounds
-        return GlobalCanvasBounds(*global_bounds)
+        raise TypeError("global_bounds must be GlobalCanvasBounds or None")
+
+    @staticmethod
+    def _build_render_request(
+        out_w,
+        out_h,
+        font_path,
+        auto_crop,
+        fit_content,
+        global_bounds,
+        fill_color,
+    ) -> VideoRenderRequest:
+        return VideoRenderRequest(
+            target_surface=TargetSurfaceSpec(
+                width=max(1, int(out_w)),
+                height=max(1, int(out_h)),
+                fill_rgba=fill_color,
+            ),
+            font_path=font_path,
+            auto_crop=auto_crop,
+            fit_content=fit_content,
+            global_bounds=global_bounds,
+        )
+
+    def _render_snapshot_with_renderer(self, renderer, snap, request: VideoRenderRequest):
+        _vrlog.debug(
+            "render_begin renderer=%s out=%sx%s fit_content=%s ts=%s",
+            "thumbnail" if renderer is self._thumbnail_frame_renderer else "main",
+            request.target_surface.width,
+            request.target_surface.height,
+            request.fit_content,
+            getattr(snap, "timestamp", None),
+        )
+        result = renderer.render(snap, request)
+        _vrlog.debug(
+            "render_done renderer=%s out=%sx%s backend=%s",
+            "thumbnail" if renderer is self._thumbnail_frame_renderer else "main",
+            request.target_surface.width,
+            request.target_surface.height,
+            result.backend,
+        )
+        self._last_render_backend = result.backend
+        return result.image
+
+    def prepare_snapshot_canvas_frame(
+        self,
+        snap,
+        out_w,
+        out_h,
+        font_path=None,
+        auto_crop=False,
+        fit_content=False,
+        global_bounds=None,
+        fill_color=(0, 0, 0, 0),
+        *,
+        thumbnail: bool = False,
+    ):
+        request = self._build_render_request(
+            out_w,
+            out_h,
+            font_path,
+            auto_crop,
+            fit_content,
+            self._coerce_global_bounds(global_bounds),
+            fill_color,
+        )
+        renderer = self._thumbnail_frame_renderer if thumbnail else self._frame_renderer
+        return renderer.prepare_canvas_frame(snap, request)
 
     def render_snapshot_to_pil(
         self,
@@ -291,18 +374,42 @@ class VideoExporterService:
         global_bounds=None,
         fill_color=(0, 0, 0, 0),
     ):
-        request = VideoRenderRequest(
-            output_width=out_w,
-            output_height=out_h,
-            font_path=font_path,
-            auto_crop=auto_crop,
-            fit_content=fit_content,
-            global_bounds=self._coerce_global_bounds(global_bounds),
-            fill_rgba=fill_color,
+        request = self._build_render_request(
+            out_w,
+            out_h,
+            font_path,
+            auto_crop,
+            fit_content,
+            self._coerce_global_bounds(global_bounds),
+            fill_color,
         )
-        result = self._frame_renderer.render(snap, request)
-        self._last_render_backend = result.backend
-        return result.image
+        return self._render_snapshot_with_renderer(self._frame_renderer, snap, request)
+
+    def render_snapshot_thumbnail_to_pil(
+        self,
+        snap,
+        out_w,
+        out_h,
+        font_path=None,
+        auto_crop=False,
+        fit_content=False,
+        global_bounds=None,
+        fill_color=(0, 0, 0, 0),
+    ):
+        request = self._build_render_request(
+            out_w,
+            out_h,
+            font_path,
+            auto_crop,
+            fit_content,
+            self._coerce_global_bounds(global_bounds),
+            fill_color,
+        )
+        return self._render_snapshot_with_renderer(
+            self._thumbnail_frame_renderer,
+            snap,
+            request,
+        )
 
     def _build_export_job(self, recording, resolution, fps, export_options):
         out_w, out_h = resolution
@@ -410,6 +517,7 @@ class VideoExporterService:
 
         self._cancel_requested = False
         self._frame_renderer.reset_backend_state()
+        self._thumbnail_frame_renderer.reset_backend_state()
 
         if not export_options:
             export_options = {
@@ -466,3 +574,5 @@ class VideoExporterService:
 
     def cleanup(self):
         self._process_manager.cleanup()
+        if self._thumbnail_gpu_export_service is not None:
+            self._thumbnail_gpu_export_service.shutdown()

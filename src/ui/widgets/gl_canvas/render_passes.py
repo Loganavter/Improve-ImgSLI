@@ -1,10 +1,6 @@
 from OpenGL import GL as gl
 
-from .render_common import (
-    clear_with_widget_background,
-    get_zoom_texture_filter,
-    should_render_blank_white,
-)
+from .render_common import clear_with_widget_background, get_zoom_texture_filter, should_render_blank_white
 from .render_executor import execute_render_passes
 from .render_context import build_render_runtime_context
 
@@ -34,10 +30,12 @@ def paint_gl(widget):
 
     if should_render_blank_white(ctx.scene_frame):
         clear_with_widget_background(widget)
+        execute_render_passes(widget, ctx, getattr(widget, "_feature_gl_passes", ()))
         return
 
     clear_with_widget_background(widget)
     if not any(ctx.images_uploaded):
+        execute_render_passes(widget, ctx, getattr(widget, "_feature_gl_passes", ()))
         return
 
     gl.glEnable(gl.GL_BLEND)
@@ -55,7 +53,6 @@ def paint_gl(widget):
     zoom_filter = get_zoom_texture_filter(ctx.scene_frame)
     widget._set_texture_filter(tex1, zoom_filter)
     widget._set_texture_filter(tex2, zoom_filter)
-
     gl.glActiveTexture(gl.GL_TEXTURE0)
     gl.glBindTexture(gl.GL_TEXTURE_2D, tex1)
     widget.shader_program.setUniformValue("image1", 0)

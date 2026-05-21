@@ -5,6 +5,7 @@ from typing import Optional
 from PIL import Image
 from PyQt6.QtCore import QTimer
 
+from resources.translations import tr
 from shared.image_processing.progressive_loader import (
     load_full_image,
     load_preview_image,
@@ -14,6 +15,11 @@ from shared.image_processing.resize import crop_black_borders, resize_images_pro
 from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
+
+def _format_worker_error(err) -> str:
+    if isinstance(err, tuple) and len(err) >= 2:
+        return str(err[1])
+    return str(err)
 
 class ImageLoaderService:
 
@@ -76,10 +82,17 @@ class ImageLoaderService:
             )
         )
         worker.signals.error.connect(
-            lambda err: logger.error(f"Failed to load full resolution: {err}")
+            lambda err: self._on_full_resolution_error(path, err)
         )
         if self.main_controller:
             self.main_controller.thread_pool.start(worker)
+
+    def _on_full_resolution_error(self, path: str, err) -> None:
+        logger.error(f"Failed to load full resolution: {err}")
+        if self.main_controller:
+            self.main_controller.error_occurred.emit(
+                f"{tr('msg.failed_to_load_image', self.main_controller.store.settings.current_language)}:\n{path}\n\n{_format_worker_error(err)}"
+            )
 
     def on_full_image_loaded(
         self,

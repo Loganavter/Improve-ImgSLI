@@ -90,6 +90,47 @@ def get_slot_width(widget) -> float:
         return 1.0
     return get_logical_width(widget) / frame_span(widget)
 
+def get_visible_thumbnail_frame_indices(
+    widget,
+    *,
+    overscan_blocks: int = 1,
+) -> list[int]:
+    if widget._total_frames <= 0:
+        return []
+
+    logical_width = get_logical_width(widget)
+    slot_width = get_slot_width(widget)
+    base_tile = get_base_tile_width(widget)
+    if logical_width <= 0 or slot_width <= 0 or base_tile <= 0:
+        return []
+
+    content_start_x = float(widget.LEFT_GUTTER)
+    scroll_area = get_scroll_area(widget)
+    scroll_offset = scroll_area.horizontalScrollBar().value() if scroll_area else 0
+    viewport_width = get_viewport_width(widget)
+    visible_right = scroll_offset + viewport_width
+    content_right = visible_right - right_inset(widget)
+    start_x = max(content_start_x, float(scroll_offset))
+    end_x = min(float(content_right), content_start_x + logical_width)
+    if end_x <= start_x:
+        return []
+
+    frame_step = 1 if slot_width >= base_tile else math.ceil(base_tile / slot_width)
+    draw_w = frame_step * slot_width
+    overscan_w = max(0, int(overscan_blocks)) * draw_w
+    start_x = max(content_start_x, start_x - overscan_w)
+    end_x = min(content_start_x + logical_width, end_x + overscan_w)
+
+    first_frame = max(
+        0,
+        int((start_x - content_start_x) / draw_w) * frame_step,
+    )
+    last_frame = min(
+        widget._total_frames,
+        int((end_x - content_start_x) / draw_w + 1) * frame_step + frame_step,
+    )
+    return list(range(first_frame, last_frame, frame_step))
+
 def compute_total_frames(widget) -> int:
     duration = widget.get_total_duration()
     if duration <= 0:

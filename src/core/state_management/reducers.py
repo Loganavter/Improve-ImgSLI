@@ -27,11 +27,13 @@ from .actions import (
     SetCachedScaledImageDimsAction,
     SetChannelViewModeAction,
     SetCurrentIndexAction,
+    SetDebugModeEnabledAction,
     SetDiffModeAction,
     SetDisplayCacheImageAction,
     SetDisplayResolutionLimitAction,
     SetDraggingSplitLineAction,
     SetDrawTextBackgroundAction,
+    SetExportFavoriteDirAction,
     SetFileNameBgColorAction,
     SetFileNameColorAction,
     SetFixedLabelDimensionsAction,
@@ -58,19 +60,28 @@ from .actions import (
     SetPendingUnificationPathsAction,
     SetPixmapDimensionsAction,
     SetPressedKeysAction,
+    SetPreviewImageAction,
     SetPsnrValueAction,
     SetResizeInProgressAction,
     SetScaledImageForDisplayAction,
     SetShowingSingleImageModeAction,
+    SetShowWorkspaceTabsAction,
     SetSpaceBarPressedAction,
     SetSplitPositionAction,
     SetSplitPositionVisualAction,
     SetSsimValueAction,
+    SetSystemNotificationsEnabledAction,
     SetTextAlphaPercentAction,
     SetTextPlacementModeAction,
+    SetThemeAction,
+    SetUIFontFamilyAction,
+    SetUIFontModeAction,
     SetUIModeAction,
     SetUnificationInProgressAction,
     SetUserInteractingAction,
+    SetVideoRecordingFpsAction,
+    SetWindowGeometryAction,
+    SetWindowWasMaximizedAction,
     SetZoomInterpolationMethodAction,
     ToggleOrientationAction,
 )
@@ -387,6 +398,10 @@ class DocumentReducer:
             if action.slot == 1:
                 return replace(document, full_res_image1=action.image)
             return replace(document, full_res_image2=action.image)
+        if isinstance(action, SetPreviewImageAction):
+            if action.slot == 1:
+                return replace(document, preview_image1=action.image)
+            return replace(document, preview_image2=action.image)
         if isinstance(action, SetImagePathAction):
             if action.slot == 1:
                 return replace(document, image1_path=action.path)
@@ -399,6 +414,7 @@ class DocumentReducer:
                     full_res_image1=None,
                     preview_image1=None,
                     image1_path=None,
+                    _last_display_name1="",
                 )
             return replace(
                 document,
@@ -406,6 +422,7 @@ class DocumentReducer:
                 full_res_image2=None,
                 preview_image2=None,
                 image2_path=None,
+                _last_display_name2="",
             )
         return document
 
@@ -418,6 +435,32 @@ class SettingsReducer:
             return replace(settings, ui_mode=action.mode)
         if isinstance(action, SetAutoCropBlackBordersAction):
             return replace(settings, auto_crop_black_borders=action.enabled)
+        if isinstance(action, SetThemeAction):
+            return replace(settings, theme=action.theme)
+        if isinstance(action, SetUIFontModeAction):
+            return replace(settings, ui_font_mode=action.mode)
+        if isinstance(action, SetUIFontFamilyAction):
+            return replace(settings, ui_font_family=action.family)
+        if isinstance(action, SetDebugModeEnabledAction):
+            return replace(settings, debug_mode_enabled=action.enabled)
+        if isinstance(action, SetSystemNotificationsEnabledAction):
+            return replace(settings, system_notifications_enabled=action.enabled)
+        if isinstance(action, SetVideoRecordingFpsAction):
+            return replace(settings, video_recording_fps=action.fps)
+        if isinstance(action, SetShowWorkspaceTabsAction):
+            return replace(settings, show_workspace_tabs=action.enabled)
+        if isinstance(action, SetWindowWasMaximizedAction):
+            return replace(settings, window_was_maximized=action.was_maximized)
+        if isinstance(action, SetWindowGeometryAction):
+            return replace(
+                settings,
+                window_x=action.x,
+                window_y=action.y,
+                window_width=action.width,
+                window_height=action.height,
+            )
+        if isinstance(action, SetExportFavoriteDirAction):
+            return replace(settings, export_favorite_dir=action.path)
         return settings
 
 class RootReducer:

@@ -45,6 +45,7 @@ from sli_ui_toolkit.ui.widgets.atomic import (
     ButtonMode,
     UnifiedIconButton,
 )
+from sli_ui_toolkit.ui.widgets.buttons import Button, ButtonConfig, ButtonGroup
 from sli_ui_toolkit.ui.widgets.composite import (
     BaseFlyout,
     ColorOptionsFlyout,
@@ -58,6 +59,8 @@ from sli_ui_toolkit.ui.widgets.composite import (
     IconListItem,
     IconListWidget,
     IndexedToggleFlyout,
+    MarkdownHelpDialog,
+    MarkdownHelpSection,
     OutputPathSection,
     FontSettingsFlyout,
     LogConsoleEntry,
@@ -100,6 +103,9 @@ from sli_ui_toolkit.ui.widgets.style_bridge import (
 )
 
 __all__ = [
+    "Button",
+    "ButtonConfig",
+    "ButtonGroup",
     "AdaptiveLabel",
     "AutoRepeatButton",
     "BodyLabel",
@@ -141,6 +147,8 @@ __all__ = [
     "IconListItem",
     "IconListWidget",
     "IndexedToggleFlyout",
+    "MarkdownHelpDialog",
+    "MarkdownHelpSection",
     "LoadingSpinner",
     "LogConsoleEntry",
     "LogConsoleWidget",

@@ -1,31 +1,39 @@
-## Exportando Resultados
+## Exportação e Vídeo
 
-- Clique no botão principal **"Salvar Resultado"** para abrir o diálogo de **Exportação** completo.
-- Neste diálogo, você pode configurar:
-  - Diretório de saída e nome do arquivo.
-  - Formato da imagem (PNG, JPEG, WEBP, JXL, etc.).
-  - Níveis de qualidade/compressão.
-  - Uma opção para preencher fundos transparentes com uma cor personalizada.
-- **Sobreposições de Texto:** Se você marcar **"Incluir nomes de arquivo"**, pode usar o menu de configurações de texto (✎) para personalizar a aparência das sobreposições de nomes de arquivo na imagem final, incluindo tamanho da fonte, peso, cor, fundo e posicionamento.
+Esta página agrupa tudo relacionado a salvar resultados, gravar ações e editar o vídeo exportado.
 
+### Salvar uma Imagem {#saving-an-image}
+- **Salvar Resultado** abre o diálogo de exportação.
+- Nele você pode escolher destino, nome do arquivo, formato e configurações de qualidade/compressão.
+- Formatos com transparência também podem usar uma cor personalizada de preenchimento de fundo.
 
-### Salvamento Rápido vs Salvar Resultado
-- Salvamento Rápido (Ctrl+S) usa suas últimas configurações de exportação e salva imediatamente, sem abrir o diálogo de Exportação.
-- Salvar Resultado (Ctrl+Shift+S) abre o diálogo de Exportação, permitindo configurar formato, qualidade/compressão e opções de preenchimento de fundo antes de salvar.
+### Sobreposições de Texto {#text-overlays}
+- Se **Incluir nomes de arquivo** estiver ativado, os nomes podem ser escritos na imagem exportada.
+- O menu de configurações de texto permite controlar tamanho, peso, cor, fundo e posição.
 
-### Gravação e Exportação de Vídeo
-- Use os botões **Gravar**, **Pausar** e **Parar** na barra de ferramentas para gravar suas ações em uma sessão de comparação.
-- Após parar uma gravação, clique no botão **Editor de Vídeo** (ícone de vídeo com lápis) para abrir a janela de edição.
-- No editor, você pode:
-  - Visualizar os quadros gravados.
-  - Cortar o início e o fim do vídeo usando os controles deslizantes na linha do tempo.
-  - Remover o trecho selecionado da linha do tempo com `Delete` ou `Backspace`.
-  - Configurar resolução, FPS e configurações de codificação.
-  - Exportar o vídeo final para formatos como MP4, WebM, AVI, GIF, etc.
+### Salvamento Rápido {#quick-save}
+- `Ctrl+S` salva imediatamente usando as últimas configurações de exportação.
+- `Ctrl+Shift+S` sempre abre o diálogo de exportação.
 
-### Bandeja do Sistema e Notificações ao Salvar
-- Após um salvamento bem-sucedido, o menu do ícone na bandeja oferece acesso rápido:
-  - Abrir Último Arquivo Salvo (visível após o primeiro salvamento bem-sucedido)
-  - Abrir Pasta do Último Salvamento
-- Pode aparecer uma notificação do sistema ao salvar; clicar na notificação abre a pasta do último salvamento.
-- Você pode alternar as notificações do sistema em Configurações.
+### Gravação de Ações {#recording-actions}
+- **Gravar**, **Pausar** e **Parar** na barra de ferramentas capturam suas ações durante uma sessão de comparação.
+- Depois de parar a gravação, o resultado pode ser aberto no editor de vídeo.
+
+### Editor de Vídeo {#video-editor}
+- O botão **Editor de Vídeo** abre a sessão gravada em uma janela de edição.
+- No editor você pode:
+  - visualizar quadros gravados;
+  - aparar o início e o fim;
+  - remover o intervalo selecionado com `Delete` ou `Backspace`;
+  - alterar resolução, FPS e configurações de codificação;
+  - exportar o arquivo final para formatos de vídeo e GIF.
+
+### Qualidade de Preview do Editor de Vídeo {#video-editor-preview-quality}
+- **Preview Quality** reduz apenas a resolução de renderização do preview.
+- Ela existe para deixar reprodução e scrub mais suaves em projetos pesados.
+- Não reduz a qualidade final da exportação.
+
+### Último Arquivo Salvo e Notificações {#last-saved-file-and-notifications}
+- Após um salvamento bem-sucedido, a bandeja pode oferecer acesso rápido ao último arquivo e pasta salvos.
+- Uma notificação do sistema pode aparecer ao salvar.
+- O comportamento das notificações é controlado em **[Configurações](help://settings#system-and-debugging)**.

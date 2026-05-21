@@ -11,8 +11,17 @@ from plugins.settings.events import (
 from core.state_management.actions import (
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
+    SetAutoCropBlackBordersAction,
+    SetDebugModeEnabledAction,
     SetDisplayResolutionLimitAction,
     SetMaxNameLengthAction,
+    SetShowWorkspaceTabsAction,
+    SetSystemNotificationsEnabledAction,
+    SetThemeAction,
+    SetUIFontFamilyAction,
+    SetUIFontModeAction,
+    SetUIModeAction,
+    SetVideoRecordingFpsAction,
     SetZoomInterpolationMethodAction,
 )
 from plugins.viewport.actions import (
@@ -47,10 +56,10 @@ class SettingsApplicationService(QObject):
 
     def _apply_general_settings(self, data: SettingsDialogData) -> bool:
         render_update_needed = False
-        dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
+        dispatcher = self.store.get_dispatcher()
 
         if data.theme != self.store.settings.theme:
-            self.store.settings.theme = data.theme
+            dispatcher.dispatch(SetThemeAction(data.theme))
             window_shell = (
                 self.main_controller.window_shell if self.main_controller else None
             )
@@ -59,42 +68,31 @@ class SettingsApplicationService(QObject):
             self._save_setting("theme", data.theme)
 
         if data.resolution_limit != self.store.viewport.render_config.display_resolution_limit:
-            if dispatcher is not None:
-                dispatcher.dispatch(
-                    SetDisplayResolutionLimitAction(data.resolution_limit),
-                    scope="viewport",
-                )
-            else:
-                self.store.viewport.render_config.display_resolution_limit = data.resolution_limit
-                self.store.viewport.session_data.render_cache.display_cache_image1 = None
-                self.store.viewport.session_data.render_cache.display_cache_image2 = None
-                self.store.viewport.session_data.render_cache.scaled_image1_for_display = None
-                self.store.viewport.session_data.render_cache.scaled_image2_for_display = None
-                self.store.viewport.session_data.render_cache.cached_scaled_image_dims = None
+            dispatcher.dispatch(
+                SetDisplayResolutionLimitAction(data.resolution_limit),
+                scope="viewport",
+            )
             self.store.invalidate_geometry_cache()
             render_update_needed = True
             self._save_setting("display_resolution_limit", data.resolution_limit)
 
         if data.max_name_length != self.store.viewport.render_config.max_name_length:
-            if dispatcher is not None:
-                dispatcher.dispatch(
-                    SetMaxNameLengthAction(data.max_name_length), scope="viewport"
-                )
-            else:
-                self.store.viewport.render_config.max_name_length = data.max_name_length
+            dispatcher.dispatch(
+                SetMaxNameLengthAction(data.max_name_length), scope="viewport"
+            )
             self._save_setting("max_name_length", data.max_name_length)
             render_update_needed = True
 
         if data.debug_enabled != self.store.settings.debug_mode_enabled:
-            self.store.settings.debug_mode_enabled = data.debug_enabled
+            dispatcher.dispatch(SetDebugModeEnabledAction(data.debug_enabled))
             self._save_setting("debug_mode_enabled", data.debug_enabled)
 
         if (
             getattr(self.store.settings, "system_notifications_enabled", True)
             != data.system_notifications_enabled
         ):
-            self.store.settings.system_notifications_enabled = (
-                data.system_notifications_enabled
+            dispatcher.dispatch(
+                SetSystemNotificationsEnabledAction(data.system_notifications_enabled)
             )
             self._save_setting(
                 "system_notifications_enabled",
@@ -112,7 +110,7 @@ class SettingsApplicationService(QObject):
         if data.show_workspace_tabs != getattr(
             self.store.settings, "show_workspace_tabs", False
         ):
-            self.store.settings.show_workspace_tabs = data.show_workspace_tabs
+            dispatcher.dispatch(SetShowWorkspaceTabsAction(data.show_workspace_tabs))
             self._save_setting("show_workspace_tabs", data.show_workspace_tabs)
             window_shell = (
                 self.main_controller.window_shell if self.main_controller else None
@@ -151,8 +149,9 @@ class SettingsApplicationService(QObject):
         if not (font_mode_changed or font_family_changed):
             return
 
-        self.store.settings.ui_font_mode = font_mode_normalized
-        self.store.settings.ui_font_family = data.ui_font_family or ""
+        dispatcher = self.store.get_dispatcher()
+        dispatcher.dispatch(SetUIFontModeAction(font_mode_normalized))
+        dispatcher.dispatch(SetUIFontFamilyAction(data.ui_font_family or ""))
 
         font_manager = FontManager.get_instance()
         font_manager.apply_from_state(self.store)
@@ -160,8 +159,8 @@ class SettingsApplicationService(QObject):
         if app is not None:
             app.setStyleSheet(app.styleSheet())
 
-        self._save_setting("ui_font_mode", self.store.settings.ui_font_mode)
-        self._save_setting("ui_font_family", self.store.settings.ui_font_family)
+        self._save_setting("ui_font_mode", font_mode_normalized)
+        self._save_setting("ui_font_family", data.ui_font_family or "")
 
         window_shell = self.main_controller.window_shell if self.main_controller else None
         if window_shell is not None:
@@ -179,19 +178,13 @@ class SettingsApplicationService(QObject):
     ) -> bool:
         vp = self.store.viewport
         view = vp.view_state
-        render = vp.render_config
-        dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
+        dispatcher = self.store.get_dispatcher()
 
         if data.optimize_magnifier_movement != view.optimize_interactive_movement:
-            if dispatcher is not None:
-                dispatcher.dispatch(
-                    SetOptimizeMagnifierMovementAction(
-                        data.optimize_magnifier_movement
-                    ),
-                    scope="viewport",
-                )
-            else:
-                view.optimize_interactive_movement = data.optimize_magnifier_movement
+            dispatcher.dispatch(
+                SetOptimizeMagnifierMovementAction(data.optimize_magnifier_movement),
+                scope="viewport",
+            )
             self.store.invalidate_render_cache()
             render_update_needed = True
             self._save_setting(
@@ -245,28 +238,19 @@ class SettingsApplicationService(QObject):
         self, data: SettingsDialogData, render_update_needed: bool
     ) -> bool:
         vp = self.store.viewport
-        render = vp.render_config
-        dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
+        dispatcher = self.store.get_dispatcher()
         if (
             data.magnifier_interpolation_method
             == vp.render_config.interactive_movement_interpolation_method
         ):
             return render_update_needed
 
-        if dispatcher is not None:
-            dispatcher.dispatch(
-                SetMagnifierMovementInterpolationMethodAction(
-                    data.magnifier_interpolation_method
-                ),
-                scope="viewport",
-            )
-        else:
-            render.interactive_movement_interpolation_method = (
+        dispatcher.dispatch(
+            SetMagnifierMovementInterpolationMethodAction(
                 data.magnifier_interpolation_method
-            )
-            render.movement_interpolation_method = (
-                data.magnifier_interpolation_method
-            )
+            ),
+            scope="viewport",
+        )
         self.store.invalidate_render_cache()
         self.store.emit_state_change()
         self._save_setting(
@@ -319,20 +303,17 @@ class SettingsApplicationService(QObject):
         self, data: SettingsDialogData, render_update_needed: bool
     ) -> bool:
         vp = self.store.viewport
-        dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
+        dispatcher = self.store.get_dispatcher()
         if (
             data.zoom_interpolation_method
             == getattr(vp.render_config, "zoom_interpolation_method", "BILINEAR")
         ):
             return render_update_needed
 
-        if dispatcher is not None:
-            dispatcher.dispatch(
-                SetZoomInterpolationMethodAction(data.zoom_interpolation_method),
-                scope="viewport",
-            )
-        else:
-            vp.render_config.zoom_interpolation_method = data.zoom_interpolation_method
+        dispatcher.dispatch(
+            SetZoomInterpolationMethodAction(data.zoom_interpolation_method),
+            scope="viewport",
+        )
         self.store.emit_state_change("viewport")
         self._save_setting(
             "zoom_interpolation_method",
@@ -342,27 +323,21 @@ class SettingsApplicationService(QObject):
         return True
 
     def _apply_metrics_settings(self, data: SettingsDialogData) -> bool:
-        dispatcher = self.store.get_dispatcher() if hasattr(self.store, "get_dispatcher") else None
+        dispatcher = self.store.get_dispatcher()
         metrics_changed = False
         if data.auto_calculate_psnr != self.store.viewport.session_data.image_state.auto_calculate_psnr:
-            if dispatcher is not None:
-                dispatcher.dispatch(
-                    SetAutoCalculatePsnrAction(data.auto_calculate_psnr),
-                    scope="viewport",
-                )
-            else:
-                self.store.viewport.session_data.image_state.auto_calculate_psnr = data.auto_calculate_psnr
+            dispatcher.dispatch(
+                SetAutoCalculatePsnrAction(data.auto_calculate_psnr),
+                scope="viewport",
+            )
             self._save_setting("auto_calculate_psnr", data.auto_calculate_psnr)
             metrics_changed = True
 
         if data.auto_calculate_ssim != self.store.viewport.session_data.image_state.auto_calculate_ssim:
-            if dispatcher is not None:
-                dispatcher.dispatch(
-                    SetAutoCalculateSsimAction(data.auto_calculate_ssim),
-                    scope="viewport",
-                )
-            else:
-                self.store.viewport.session_data.image_state.auto_calculate_ssim = data.auto_calculate_ssim
+            dispatcher.dispatch(
+                SetAutoCalculateSsimAction(data.auto_calculate_ssim),
+                scope="viewport",
+            )
             self._save_setting("auto_calculate_ssim", data.auto_calculate_ssim)
             metrics_changed = True
 
@@ -380,20 +355,17 @@ class SettingsApplicationService(QObject):
         return metrics_changed
 
     def _apply_misc_settings(self, data: SettingsDialogData) -> None:
+        dispatcher = self.store.get_dispatcher()
+
         if (
             getattr(self.store.settings, "auto_crop_black_borders", True)
             != data.auto_crop_black_borders
         ):
-            self.store.settings.auto_crop_black_borders = (
-                data.auto_crop_black_borders
-            )
-            self._save_setting(
-                "auto_crop_black_borders",
-                data.auto_crop_black_borders,
-            )
+            dispatcher.dispatch(SetAutoCropBlackBordersAction(data.auto_crop_black_borders))
+            self._save_setting("auto_crop_black_borders", data.auto_crop_black_borders)
 
         if getattr(self.store.settings, "ui_mode", "beginner") != data.ui_mode:
-            self.store.settings.ui_mode = data.ui_mode
+            dispatcher.dispatch(SetUIModeAction(data.ui_mode))
             self._save_setting("ui_mode", data.ui_mode)
             self._emit_ui_mode_changed(data.ui_mode)
 
@@ -401,7 +373,7 @@ class SettingsApplicationService(QObject):
             getattr(self.store.settings, "video_recording_fps", 60)
             != data.video_recording_fps
         ):
-            self.store.settings.video_recording_fps = data.video_recording_fps
+            dispatcher.dispatch(SetVideoRecordingFpsAction(data.video_recording_fps))
             self._save_setting("video_recording_fps", data.video_recording_fps)
 
     def _emit_ui_mode_changed(self, ui_mode: str) -> None:

@@ -1,33 +1,41 @@
 ## Gerenciamento de Arquivos
 
-### Carregando Imagens
-Você pode carregar imagens de várias maneiras:
-- Clique nos botões "Adicionar Img(s)" para abrir um diálogo de arquivo e selecionar vários arquivos.
-- Arraste e solte um ou mais arquivos de imagem diretamente na janela principal. Um overlay aparecerá, permitindo que você escolha se deseja adicioná-los à lista esquerda ou direita.
+Esta página trata do carregamento de imagens e do trabalho com as listas esquerda e direita.
+
+### Carregando Imagens {#loading-images}
+- Clique em **Adicionar Img(s)** para selecionar um ou mais arquivos.
+- Arraste arquivos de imagem diretamente para a janela principal e escolha qual lista receberá os arquivos.
 - Pressione `Ctrl+V` para colar uma imagem da área de transferência.
 
-### Gerenciando Listas de Imagens
-Clique nos menus suspensos para abrir o gerenciador de lista de imagens (menu flutuante). Ele fornece:
+### Listas Esquerda e Direita {#left-and-right-lists}
+- Cada lista mantém sua própria sequência ordenada de imagens.
+- O par ativo é selecionado de forma independente nos lados esquerdo e direito.
+- Trocar o item atual não remove nem reordena os outros arquivos.
 
-- **Reordenação por Arrastar e Soltar:** Clique e arraste um item para reordená-lo, ou arraste-o para a outra lista.
+### Gerenciador da Lista {#list-manager}
+- Clique em um menu suspenso para abrir o flyout da lista.
+- Dentro do flyout, os itens podem ser reordenados por arrastar.
+- Os itens também podem ser arrastados de uma lista para a outra.
+- Se um nome estiver truncado, passe o mouse para ver o caminho completo.
 
-- **Botão Trocar (⇄):**
-  - Um clique curto troca apenas as duas imagens atualmente selecionadas.
-  - Uma pressão longa (~0.6s) troca as listas de imagens esquerda e direita completamente.
+### Ações Rápidas da Lista {#quick-list-actions}
+- **Botão `⇄`**:
+  - clique curto troca apenas o par atualmente selecionado;
+  - clique longo troca as duas listas completas.
+- **Botão `🗑️`**:
+  - clique curto remove o item atual;
+  - clique longo limpa a lista inteira.
+- Clicar com o botão direito em um item do gerenciador o remove.
 
-- **Botão Limpar (🗑️):**
-  - Um clique curto remove apenas a imagem atualmente selecionada.
-  - Uma pressão longa limpa toda a lista.
+### Troca com a Roda do Mouse {#mouse-wheel-switching}
+- Rolar sobre o menu suspenso esquerdo ou direito muda o item atual daquela lista.
+- Rolar sobre o menu de interpolação muda rapidamente o método de reamostragem.
 
-- **Sistema de Classificação:** Use os botões `[+]` e `[-]` ao lado de cada imagem para alterar sua classificação.
-- **Remover Item:** Clique com o botão direito em qualquer item para removê-lo.
-- **Tooltip do Caminho Completo:** Se o nome do item estiver truncado, passe o mouse sobre ele para ver o caminho completo do arquivo.
+### Classificações {#ratings}
+- Use `[+]` e `[−]` no gerenciador da lista para alterar a classificação de uma imagem.
+- A roda do mouse sobre o indicador de classificação também pode aumentar ou diminuir a pontuação atual.
 
-
-### Roda do Mouse nas Listas
-- Role a roda do mouse sobre os menus suspensos das listas de imagens para alternar o item atualmente selecionado na respectiva lista (esquerda/direita).
-- Você também pode rolar sobre o menu de Interpolação para alterar rapidamente o método de reamostragem.
-
-### Classificações
-- Use os botões `[+]` e `[-]` ao lado de cada imagem para alterar sua classificação.
-- Além disso, role a roda do mouse sobre a exibição da classificação para aumentar ou diminuir a pontuação da imagem atual.
+### O Que Esta Página Não Cobre {#not-covered-here}
+- Zoom e pan são descritos em **[Navegação no Canvas](help://view_navigation)**.
+- Comparação por linha divisória e métricas são descritas em **[Comparação](help://comparison)**.
+- Comportamentos específicos da lupa são descritos em **[Lupa](help://magnifier)**.

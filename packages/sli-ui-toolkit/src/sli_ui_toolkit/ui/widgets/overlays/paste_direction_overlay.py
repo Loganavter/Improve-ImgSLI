@@ -1,6 +1,6 @@
-from PyQt6.QtCore import QRect, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPen
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from sli_ui_toolkit.i18n import tr
 
@@ -11,7 +11,10 @@ class PasteDirectionOverlay(QWidget):
     def __init__(self, parent, image_label_widget, is_horizontal=False):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.image_label_widget = image_label_widget
         self.current_language = "en"
@@ -37,7 +40,22 @@ class PasteDirectionOverlay(QWidget):
 
         if self.parent():
             self.setGeometry(self.parent().rect())
+            self.raise_()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+        if self.window() is not None:
+            self.window().installEventFilter(self)
+        self.setFocus()
         self._update_button_rects()
+
+    def hideEvent(self, event):
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+        if self.window() is not None:
+            self.window().removeEventFilter(self)
+        super().hideEvent(event)
 
     def _update_button_rects(self):
         if self.image_label_widget and self.image_label_widget.isVisible():
@@ -200,3 +218,49 @@ class PasteDirectionOverlay(QWidget):
 
         if old_hovered != self.hovered_button:
             self.update()
+
+    def mousePressEvent(self, event: QMouseEvent):
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        if event.button() != Qt.MouseButton.LeftButton:
+            self.cancelled.emit()
+            self.close()
+            event.accept()
+            return
+
+        if self.btn_up_rect and self.btn_up_rect.contains(pos):
+            self.direction_selected.emit("up")
+        elif self.btn_down_rect and self.btn_down_rect.contains(pos):
+            self.direction_selected.emit("down")
+        elif self.btn_left_rect and self.btn_left_rect.contains(pos):
+            self.direction_selected.emit("left")
+        elif self.btn_right_rect and self.btn_right_rect.contains(pos):
+            self.direction_selected.emit("right")
+        elif self.btn_cancel_rect and self.btn_cancel_rect.contains(pos):
+            self.cancelled.emit()
+        else:
+            self.cancelled.emit()
+        self.close()
+        event.accept()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.cancelled.emit()
+            self.close()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def eventFilter(self, watched, event):
+        event_type = event.type()
+        if event_type in (
+            QEvent.Type.WindowDeactivate,
+            QEvent.Type.ApplicationDeactivate,
+        ):
+            self.cancelled.emit()
+            self.close()
+            return False
+        if watched is self.parent() and event_type == QEvent.Type.Resize:
+            self.setGeometry(self.parent().rect())
+            self._update_button_rects()
+            self.update()
+        return super().eventFilter(watched, event)

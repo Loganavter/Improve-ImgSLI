@@ -2,6 +2,7 @@ import io
 import logging
 
 import PIL.Image
+from PyQt6 import sip
 from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QIcon, QImage, QMouseEvent, QPainter, QPixmap
 from PyQt6.QtWidgets import (
@@ -22,9 +23,9 @@ from plugins.export.models import ExportDialogState
 from resources.translations import tr as app_tr
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
+    Button,
     CheckBox,
     ComboBox,
-    CustomButton,
     DialogActionBar,
     OutputPathSection,
     Slider,
@@ -52,6 +53,7 @@ class ExportDialog(QDialog):
         self.suggested_filename = suggested_filename
         self._on_set_favorite_dir = on_set_favorite_dir
         self.favorite_dir = dialog_state.favorite_dir
+        self._export_options_cache: dict | None = None
 
         self.setWindowTitle(
             self.tr("misc.export", self.dialog_state.current_language)
@@ -218,11 +220,11 @@ class ExportDialog(QDialog):
             self.tr("export.fill_background", self.dialog_state.current_language)
         )
 
-        self.btn_bg_color = CustomButton(
-            None,
-            self.tr("export.background_color", self.dialog_state.current_language),
+        self.btn_bg_color = Button(
+            text=self.tr("export.background_color", self.dialog_state.current_language),
+            variant="surface",
+            size=(0, 32),
         )
-        self.btn_bg_color.setFixedHeight(32)
         self.btn_bg_color.clicked.connect(self._pick_bg_color)
 
         self.checkbox_fill_bg.toggled.connect(lambda _: self._apply_preview_pixmap())
@@ -447,6 +449,13 @@ class ExportDialog(QDialog):
             return QPixmap()
 
     def get_export_options(self) -> dict:
+        if sip.isdeleted(self):
+            return dict(self._export_options_cache or {})
+        if hasattr(self, "edit_dir") and sip.isdeleted(self.edit_dir):
+            return dict(self._export_options_cache or {})
+        return self._snapshot_export_options()
+
+    def _snapshot_export_options(self) -> dict:
         fmt = self.combo_format.currentText().upper()
         bg = (
             self.current_bg_color
@@ -468,6 +477,7 @@ class ExportDialog(QDialog):
         }
 
     def accept(self):
+        self._export_options_cache = self._snapshot_export_options()
         super().accept()
 
     def _on_include_metadata_toggled(self, checked: bool):

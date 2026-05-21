@@ -98,6 +98,7 @@ def sync_magnifier_freeze_state(presenter) -> None:
 def sync_magnifier_orientation_state(presenter) -> None:
     from ..store import (
         MagnifierStoreService,
+        active_or_default_divider_color,
         active_or_default_divider_thickness,
         active_or_default_divider_visible,
     )
@@ -105,23 +106,35 @@ def sync_magnifier_orientation_state(presenter) -> None:
     ui = getattr(presenter, "ui", None)
     model = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
     magnifier_is_horizontal = bool(model.is_horizontal) if model is not None else False
-    set_checked_quietly(
-        getattr(ui, "btn_magnifier_orientation", None),
-        magnifier_is_horizontal,
-    )
+    view_state = presenter.store.viewport.view_state
+    magnifier_thickness = active_or_default_divider_thickness(view_state)
+    magnifier_visible = active_or_default_divider_visible(view_state)
+    divider_hidden = not magnifier_visible or magnifier_thickness == 0
+
+    btn_orientation = getattr(ui, "btn_magnifier_orientation", None)
+    if btn_orientation is not None:
+        if divider_hidden:
+
+            btn_orientation.blockSignals(True)
+            btn_orientation._checked = True
+            btn_orientation._scroll_value = 0
+            btn_orientation.update()
+            btn_orientation.blockSignals(False)
+        else:
+            set_checked_quietly(btn_orientation, magnifier_is_horizontal)
+            if hasattr(btn_orientation, "set_value"):
+                if btn_orientation.get_value() != magnifier_thickness:
+                    btn_orientation.set_value(magnifier_thickness)
+        if hasattr(btn_orientation, "set_color"):
+            btn_orientation.set_color(
+                color_to_qcolor(active_or_default_divider_color(view_state))
+                if not divider_hidden
+                else None
+            )
     set_checked_quietly(
         getattr(ui, "btn_magnifier_orientation_simple", None),
         magnifier_is_horizontal,
     )
-    magnifier_thickness = (
-        0
-        if not active_or_default_divider_visible(presenter.store.viewport.view_state)
-        else active_or_default_divider_thickness(presenter.store.viewport.view_state)
-    )
-    btn_orientation = getattr(ui, "btn_magnifier_orientation", None)
-    if btn_orientation is not None and hasattr(btn_orientation, "set_value"):
-        if btn_orientation.get_value() != magnifier_thickness:
-            btn_orientation.set_value(magnifier_thickness)
 
 def sync_magnifier_size_state(presenter) -> None:
     from ..store import MagnifierStoreService, default_magnifier_size

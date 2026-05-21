@@ -8,7 +8,14 @@ from PyQt6.QtGui import QColor, QImage
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.widgets.gl_canvas.scene import build_gl_render_scene
 
-def build_export_gl_scene(store, divider_thickness_export: int):
+def build_export_gl_scene(
+    store,
+    divider_thickness_export: int,
+    *,
+    virtual_layout=None,
+    image_w: int | None = None,
+    image_h: int | None = None,
+):
     scene = build_gl_render_scene(
         store,
         apply_channel_mode_in_shader=True,
@@ -17,59 +24,57 @@ def build_export_gl_scene(store, divider_thickness_export: int):
     old_overlay = scene.feature_overrides.get("filename_overlay")
     new_feature_overrides = {
         **scene.feature_overrides,
+        "filename_divider_thickness": int(divider_thickness_export),
         **(
             {"filename_overlay": replace(old_overlay, divider_thickness=divider_thickness_export)}
             if old_overlay is not None
             else {}
         ),
     }
-    return replace(
+    scene = replace(
         scene,
-        divider_thickness=divider_thickness_export,
         feature_overrides=new_feature_overrides,
     )
+    if virtual_layout is not None and image_w is not None and image_h is not None:
+        scene = apply_virtual_canvas_layout_to_scene(
+            scene,
+            virtual_layout=virtual_layout,
+            image_w=int(image_w),
+            image_h=int(image_h),
+        )
+    return scene
 
-def adjust_scene_for_padded_canvas(
+def apply_virtual_canvas_layout_to_scene(
     scene,
     *,
-    pad_left: int,
-    pad_top: int,
+    virtual_layout,
     image_w: int,
     image_h: int,
-    canvas_w: int,
-    canvas_h: int,
 ):
-    if pad_left == 0 and pad_top == 0:
-        return scene
-    raw_split = scene.split_position_visual
-    if scene.is_horizontal and canvas_h > 0 and image_h > 0:
-        adjusted = (pad_top + raw_split * image_h) / canvas_h
-    elif not scene.is_horizontal and canvas_w > 0 and image_w > 0:
-        adjusted = (pad_left + raw_split * image_w) / canvas_w
-    else:
-        return scene
-    return replace(scene, split_position_visual=adjusted)
+    canvas_bounds = virtual_layout.canvas_bounds
+    content_bounds = virtual_layout.content_bounds
+    canvas_width_units = max(float(canvas_bounds.width), 1e-6)
+    canvas_height_units = max(float(canvas_bounds.height), 1e-6)
 
-def adjust_scene_split_for_tile(
-    scene,
-    *,
-    pad_left: int,
-    pad_top: int,
-    image_w: int,
-    image_h: int,
-    tile_left: int,
-    tile_top: int,
-    tile_w: int,
-    tile_h: int,
-):
-    raw_split = scene.split_position_visual
-    if scene.is_horizontal and tile_h > 0 and image_h > 0:
-        adjusted = (pad_top + raw_split * image_h - tile_top) / tile_h
-    elif not scene.is_horizontal and tile_w > 0 and image_w > 0:
-        adjusted = (pad_left + raw_split * image_w - tile_left) / tile_w
+    if scene.is_horizontal:
+        adjusted_split = (
+            float(scene.split_position_visual) - float(canvas_bounds.y_min)
+        ) / canvas_height_units
     else:
-        return scene
-    return replace(scene, split_position_visual=adjusted)
+        adjusted_split = (
+            float(scene.split_position_visual) - float(canvas_bounds.x_min)
+        ) / canvas_width_units
+
+    clip_x = int(round((float(content_bounds.x_min) - float(canvas_bounds.x_min)) * float(image_w)))
+    clip_y = int(round((float(content_bounds.y_min) - float(canvas_bounds.y_min)) * float(image_h)))
+    clip_w = max(1, int(round(float(content_bounds.width) * float(image_w))))
+    clip_h = max(1, int(round(float(content_bounds.height) * float(image_h))))
+
+    return replace(
+        scene,
+        split_position_visual=max(0.0, min(1.0, float(adjusted_split))),
+        overlay_clip_rect=(clip_x, clip_y, clip_w, clip_h),
+    )
 
 def build_divider_export_overlay(
     store,

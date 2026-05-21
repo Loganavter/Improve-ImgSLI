@@ -4,6 +4,7 @@ import os
 from PIL import Image
 
 from shared.image_processing.resize import crop_black_borders
+from core.constants import AppConstants
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -19,6 +20,17 @@ except Exception as e:
     JXL_SUPPORTED = False
     logger.error(f"JXL Support: Error during initialization: {e}")
 
+class ImageSizeLimitError(ValueError):
+    pass
+
+def _ensure_supported_dimensions(width: int, height: int, image_path: str) -> None:
+    max_dim = int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 16384))
+    if max(int(width), int(height)) > max_dim:
+        raise ImageSizeLimitError(
+            f"Image exceeds the current software limit of {max_dim}px on either side: "
+            f"{width}x{height}. Support for 16K+ images is not available yet."
+        )
+
 def should_use_progressive_load(
     file_path: str, file_size_bytes: int | None = None
 ) -> bool:
@@ -33,9 +45,6 @@ def should_use_progressive_load(
             file_size_bytes = os.path.getsize(file_path)
         except OSError:
             file_size_bytes = 0
-
-    from core.constants import AppConstants
-
     PROGRESSIVE_SIZE_THRESHOLD = getattr(
         AppConstants, "PROGRESSIVE_LOAD_THRESHOLD_BYTES", 2 * 1024 * 1024
     )
@@ -47,8 +56,11 @@ def should_use_progressive_load(
 
         with Image.open(file_path) as img:
             width, height = img.size
+            _ensure_supported_dimensions(width, height, file_path)
             FULL_HD_PIXELS = 1920 * 1080
             return (width * height) >= FULL_HD_PIXELS
+    except ImageSizeLimitError:
+        raise
     except Exception as e:
 
         if not file_path.lower().endswith(".jxl"):
@@ -64,6 +76,7 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> Image.Image 
             img = Image.fromarray(decoded)
 
             original_width, original_height = img.size
+            _ensure_supported_dimensions(original_width, original_height, image_path)
             max_preview_size = 1024
             scale = min(
                 max_preview_size / original_width, max_preview_size / original_height
@@ -82,6 +95,7 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> Image.Image 
 
         with Image.open(image_path) as img:
             original_width, original_height = img.size
+            _ensure_supported_dimensions(original_width, original_height, image_path)
             max_preview_size = 1024
             scale = min(
                 max_preview_size / original_width, max_preview_size / original_height
@@ -100,6 +114,8 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> Image.Image 
                 preview = crop_black_borders(preview)
             preview.load()
             return preview
+    except ImageSizeLimitError:
+        raise
     except Exception as e:
         logger.error(f"Failed to load preview image {image_path}: {e}")
         return None
@@ -111,18 +127,22 @@ def load_full_image(image_path: str, auto_crop: bool = False) -> Image.Image | N
             logger.info(f"Loading JXL full resolution: {image_path}")
             decoded = imagecodecs.imread(image_path)
             pil_img = Image.fromarray(decoded).convert("RGBA")
+            _ensure_supported_dimensions(pil_img.width, pil_img.height, image_path)
             if auto_crop:
                 pil_img = crop_black_borders(pil_img)
             pil_img.load()
             return pil_img
 
         with Image.open(image_path) as img:
+            _ensure_supported_dimensions(img.width, img.height, image_path)
             img_to_process = img.copy()
             pil_img = img_to_process.convert("RGBA")
             if auto_crop:
                 pil_img = crop_black_borders(pil_img)
             pil_img.load()
             return pil_img
+    except ImageSizeLimitError:
+        raise
     except Exception as e:
         logger.error(f"Failed to load full image {image_path}: {e}")
         return None

@@ -173,9 +173,9 @@ class VideoEditorDialogRuntime:
             from datetime import datetime
             ts = datetime.now().strftime("%H:%M:%S")
             if success:
-                d.export_log_edit.appendPlainText(f"── Export finished {ts} ──")
+                d.export_log_edit.append_status(f"Export finished {ts}")
             else:
-                d.export_log_edit.appendPlainText(f"── Export failed {ts} ──")
+                d.export_log_edit.append_error(f"Export failed {ts}")
         if success:
             d.export_progress.setValue(100)
             d._set_export_progress_state("success")

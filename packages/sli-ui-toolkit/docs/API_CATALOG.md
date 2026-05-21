@@ -2,6 +2,11 @@
 
 All public names are importable from `sli_ui_toolkit.widgets` unless noted otherwise.
 
+This document is the public reference.
+
+If you are onboarding instead of looking up a symbol, start with [../README.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/README.md).
+If you are changing internals, also read [ARCHITECTURE.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/ARCHITECTURE.md).
+
 ---
 
 ## Import Layers
@@ -31,27 +36,109 @@ Main public widget catalog — everything below.
 
 ## Atomic Widgets
 
-### Buttons
+### Button (unified)
+
+A single `Button` class replaces all legacy button widgets via composable parameters.
+
+```python
+from sli_ui_toolkit.widgets import Button, ButtonGroup
+
+# Icon-only toggle
+btn = Button(AppIcon.MAGNIFIER, toggle=True)
+
+# Icon with scroll wheel value
+btn = Button(AppIcon.LINE, toggle=True, scrollable=(0, 10), show_underline=True)
+
+# Icon pair (unchecked/checked icons)
+btn = Button(icon=(AppIcon.VERTICAL, AppIcon.HORIZONTAL), toggle=True)
+
+# Text button in dialog
+btn = Button(text="Browse…", variant="surface")
+
+# Icon + text with accent style
+btn = Button(AppIcon.SAVE, text="Save", variant="accent")
+
+# Long press support
+btn = Button(AppIcon.DELETE, long_press=True, variant="delete")
+
+# Dropdown menu
+btn = Button(AppIcon.MODE, menu=[("Option A", "a"), ("Option B", "b")])
+
+# Badge overlay
+btn = Button(AppIcon.MAGNIFIER, toggle=True, badge="3")
+```
+
+**Constructor parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `icon` | icon / (icon, icon) | Single icon or (unchecked, checked) pair |
+| `text` | str | Text label (with or without icon) |
+| `toggle` | bool | Checkable on/off behavior |
+| `scrollable` | (min, max) | Enable mouse-wheel value adjustment |
+| `long_press` | bool | Emit `longPressed` after hold delay |
+| `badge` | str/int | Small overlay badge text |
+| `show_underline` | bool | Bottom color underline |
+| `menu` | list | Dropdown menu items |
+| `variant` | str | Visual variant (see below) |
+| `size` | (w, h) | Fixed size |
+| `parent` | QWidget | Parent widget |
+
+**Variants:**
+
+| Variant | Theme prefix | Border | Use case |
+|---------|-------------|--------|----------|
+| `"default"` | `button.toggle` | no | Toolbar toggles (default) |
+| `"accent"` | `button.default` | yes, blue | Accent actions (swap, settings, help) |
+| `"delete"` | `button.delete` | yes, red | Destructive actions |
+| `"primary"` | `button.primary` | yes | Text buttons in main UI |
+| `"surface"` | `button.dialog.default` | yes | Dialog buttons |
+| `"ghost"` | transparent | no | Invisible until hovered |
+| `"subtle"` | Window color | no | Blends with background |
+
+**Signals:**
+
+| Signal | Description |
+|--------|-------------|
+| `clicked` | Click or short-click (when `long_press=True`) |
+| `shortClicked` | Alias for click in long-press mode |
+| `toggled(bool)` | Toggle state changed |
+| `valueChanged(int)` | Scroll value changed |
+| `longPressed` | Long press detected |
+| `rightClicked` | Right mouse button |
+| `middleClicked` | Middle mouse button |
+| `menuTriggered(object)` | Menu item selected (emits item data) |
+| `triggered` | Alias for `menuTriggered` |
+
+**Runtime methods:**
+
+| Method | Description |
+|--------|-------------|
+| `set_color(QColor\|list\|None)` | Set underline color (e.g. from color picker) |
+| `set_value(int)` / `get_value()` | Scroll value access |
+| `setBadge(str)` | Update badge text |
+| `set_footer_mode(bool)` | Flat top, rounded bottom (for footer buttons) |
+| `set_show_strike_through(bool)` | Red diagonal strikethrough |
+| `set_override_bg_color(QColor)` | Force background color |
+| `set_actions(list)` | Update menu items |
+| `show_menu()` | Programmatically open menu |
+| `setFlyoutOpen(bool)` | Visual state for attached flyout |
+
+**Underline scaling:** underline thickness and arc radius scale proportionally with widget height (baseline: 32 px). This ensures visibility on high-DPI / large UI modes.
+
+### ButtonGroup
+
+Container that groups buttons with a shared label.
+
+```python
+group = ButtonGroup([btn1, btn2, btn3], label="View")
+```
+
+### Other Button Widgets
 
 | Widget | Description |
 |--------|-------------|
-| `CustomButton` | Text button with primary/secondary/danger variants. |
-| `IconButton` | One-shot icon action button. |
-| `SimpleIconButton` | Minimal icon-only button. |
-| `ToggleIconButton` | On/off toggle icon button. |
-| `ScrollableIconButton` | Icon button with mouse-wheel-adjustable numeric value. |
-| `ToggleScrollableIconButton` | Combined toggle + wheel-adjustable value. |
-| `NumberedToggleIconButton` | Toggle icon button with number badge. |
-| `LongPressIconButton` | Separate short-click and long-press actions. |
-| `AutoRepeatButton` | Button that fires repeatedly while held. |
-| `ToolButton` | Flat tool-style icon button, optionally checkable. |
-| `ToolButtonWithMenu` | Tool button that opens a dropdown menu. |
-| `InstancesCounterButton` | Segmented add/remove counter button (compat alias: `MagnifierInstancesButton`). |
-| `UnifiedIconButton` | Low-level flexible icon control driven by `ButtonMode`. |
-| `ButtonGroupContainer` | Container that groups buttons with shared styling. |
-| `ButtonPainter` | Shared painting logic for custom buttons. |
-| `ButtonType` | Visual style enum (DEFAULT, PRIMARY, DELETE, etc). |
-| `ButtonMode` | Behavior flags for `UnifiedIconButton`. |
+| `InstancesCounterButton` | Segmented add/remove counter button. |
 
 ### Labels
 
@@ -75,7 +162,7 @@ Main public widget catalog — everything below.
 | `Slider` | Custom-painted slider with accent track. |
 | `SpinBox` | Custom-painted spinbox. |
 | `Switch` | Custom-painted toggle switch. |
-| `ComboBox` | Full custom-painted combo box with dropdown popup. |
+| `ComboBox` | Full custom-painted combo box with dropdown popup, type-to-search matching, and keyboard navigation. |
 | `ScrollableComboBox` | Combo box with mouse-wheel cycling. |
 | `TimeLineEdit` | Time input (HH:MM) widget with underline styling. |
 
@@ -117,6 +204,7 @@ Main public widget catalog — everything below.
 | `ScrollableDialogPage` | Ready-made scrollable page for dialog content. |
 | `DialogActionBar` | Primary/secondary action button row. |
 | `SidebarNavList` / `IconListWidget` / `IconListItem` | Icon-based navigation list for sidebar shells. |
+| `MarkdownHelpDialog` / `MarkdownHelpSection` | Markdown-based help/documentation dialog with anchors, generated TOC, and internal `help://slug#anchor` navigation. |
 
 ### Path & File
 
@@ -276,8 +364,9 @@ All widgets are generic and safe for reuse in any PyQt6 application. No widget i
 
 Safe first choices for new code:
 
-- Labels, `CustomLineEdit`, `CustomButton`
-- `IconButton` / `ToggleIconButton` / `ScrollableIconButton`
+- `Button` with appropriate `variant` — covers icons, toggles, scrollable, long-press, menus, text
+- `ButtonGroup` for grouped toolbar sections
+- Labels, `CustomLineEdit`
 - `SidebarDialogShell` + `ScrollableDialogPage` + `DialogActionBar`
 - `DirectoryPickerRow` / `OutputPathSection`
 - `LogConsoleWidget` / `ProcessConsoleWidget`

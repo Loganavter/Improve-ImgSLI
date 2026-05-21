@@ -1,7 +1,7 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QStackedWidget, QVBoxLayout, QWidget
 
-from sli_ui_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from sli_ui_toolkit.ui.widgets.buttons import Button
 from sli_ui_toolkit.ui.widgets.atomic.minimalist_scrollbar import MinimalistScrollBar
 from sli_ui_toolkit.ui.widgets.composite.sidebar_nav_list import SidebarNavList
 
@@ -21,11 +21,11 @@ class DialogActionBar(QWidget):
         layout.setSpacing(8)
         layout.addStretch()
 
-        self.primary_button = CustomButton(None, primary_text)
+        self.primary_button = Button(text=primary_text, variant="surface")
         self.primary_button.setProperty("class", "primary")
         self.primary_button.setMinimumSize(*primary_min_size)
 
-        self.secondary_button = CustomButton(None, secondary_text)
+        self.secondary_button = Button(text=secondary_text, variant="surface")
         self.secondary_button.setMinimumSize(*secondary_min_size)
 
         layout.addWidget(self.primary_button)

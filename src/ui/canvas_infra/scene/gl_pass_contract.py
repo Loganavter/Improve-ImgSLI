@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import IntEnum
+from enum import Flag, IntEnum, auto
 
 class RenderPhase(IntEnum):
     """
@@ -15,6 +15,12 @@ class RenderPhase(IntEnum):
     DEBUG = 50
 
 CanvasGLLayer = RenderPhase
+
+class SceneVisibility(Flag):
+    INTERACTIVE = auto()
+    EXPORT = auto()
+    PREVIEW = auto()
+    ALL = INTERACTIVE | EXPORT | PREVIEW
 
 class CanvasGLRenderPass:
     """
@@ -37,6 +43,7 @@ class CanvasGLRenderPass:
     stack_role = None
     layer: RenderPhase = RenderPhase.VIEW_ANNOTATION
     priority: int = 100
+    visibility: SceneVisibility = SceneVisibility.ALL
 
     def resolved_layer_and_priority(self) -> tuple[RenderPhase, int]:
         """Return concrete ``(RenderPhase, priority)`` for this pass.
@@ -62,3 +69,6 @@ class CanvasGLRenderPass:
 
     def cleanup(self, widget) -> None:
         """Called on GL context destruction.  Release shader programs and textures."""
+
+def is_single_image_preview_scene(ctx) -> bool:
+    return bool(int(getattr(getattr(ctx, "scene_frame", None), "single_image_preview", 0) or 0))

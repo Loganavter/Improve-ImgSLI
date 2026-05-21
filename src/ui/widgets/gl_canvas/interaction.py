@@ -4,7 +4,7 @@ import logging
 
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
 
-_log = logging.getLogger("ImproveImgSLI.magnifier.interaction")
+_log = logging.getLogger("ImproveImgSLI.feature_overlay.interaction")
 
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
@@ -382,12 +382,13 @@ def set_overlay_coords(
     widget,
     capture_center: QPointF | None,
     capture_radius: float,
-    mag_centers: list[QPointF],
-    mag_radius: float,
+    overlay_centers: list[QPointF],
+    overlay_radius: float,
 ):
     state = widget.runtime_state
+    overlay = state._feature_overlay_gpu
     current_capture_center = state._capture_center
-    current_mag_centers = state._magnifier_centers
+    current_overlay_centers = overlay._centers
     same_capture_center = (
         (current_capture_center is None and capture_center is None)
         or (
@@ -397,31 +398,31 @@ def set_overlay_coords(
             and abs(current_capture_center.y() - capture_center.y()) <= 1e-6
         )
     )
-    same_mag_centers = len(current_mag_centers) == len(mag_centers) and all(
+    same_overlay_centers = len(current_overlay_centers) == len(overlay_centers) and all(
         abs(existing.x() - incoming.x()) <= 1e-6
         and abs(existing.y() - incoming.y()) <= 1e-6
-        for existing, incoming in zip(current_mag_centers, mag_centers)
+        for existing, incoming in zip(current_overlay_centers, overlay_centers)
     )
     if (
         same_capture_center
         and abs(float(state._capture_radius or 0.0) - float(capture_radius or 0.0)) <= 1e-6
-        and same_mag_centers
-        and abs(float(state._magnifier_radius or 0.0) - float(mag_radius or 0.0)) <= 1e-6
+        and same_overlay_centers
+        and abs(float(overlay._radius or 0.0) - float(overlay_radius or 0.0)) <= 1e-6
     ):
         return
     state._capture_center = capture_center
     state._capture_radius = capture_radius
-    state._magnifier_centers = mag_centers
-    state._magnifier_radius = mag_radius
+    overlay._centers = overlay_centers
+    overlay._radius = overlay_radius
     if capture_center is None:
         state._capture_circles = []
         state._guide_sets = []
         state._occluded_capture_arcs = []
-        for i in range(len(state._mag_quads)):
-            state._mag_quads[i] = None
-        for i in range(len(state._mag_combined_params)):
-            state._mag_combined_params[i] = None
-        state._mag_quad_ndc = None
+        for i in range(len(overlay._quads)):
+            overlay._quads[i] = None
+        for i in range(len(overlay._combined_params)):
+            overlay._combined_params[i] = None
+        state._feature_overlay_quad_ndc = None
     widget._request_update()
 
 def set_zoom(widget, zoom: float):

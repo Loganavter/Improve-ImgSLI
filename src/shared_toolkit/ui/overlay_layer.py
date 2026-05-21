@@ -202,7 +202,10 @@ class OverlayLayer(QObject):
     def contains_global(self, widget: QWidget, global_pos) -> bool:
         if widget is None or not widget.isVisible():
             return False
-        return widget.rect().contains(widget.mapFromGlobal(global_pos))
+        local = widget.mapFromGlobal(global_pos)
+        if hasattr(local, 'toPoint'):
+            local = local.toPoint()
+        return widget.rect().contains(local)
 
     def _popup_label(self, key: str) -> _PopupBubble:
         popup = self._value_popups.get(key)

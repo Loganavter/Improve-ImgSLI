@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QWidget
 
-from sli_ui_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from sli_ui_toolkit.ui.widgets.buttons import Button
 from sli_ui_toolkit.ui.widgets.atomic.custom_line_edit import CustomLineEdit
 from sli_ui_toolkit.ui.widgets.helpers import apply_editable_text_behavior
 
@@ -32,8 +31,7 @@ class DirectoryPickerRow(QWidget):
             self.line_edit = QLineEdit()
             apply_editable_text_behavior(self.line_edit)
 
-        self.browse_button = CustomButton(None, browse_text)
-        self.browse_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.browse_button = Button(text=browse_text, variant="surface")
         if button_min_size is not None:
             self.browse_button.setMinimumSize(*button_min_size)
         if button_fixed_height is not None:
@@ -60,10 +58,9 @@ class FavoritePathActions(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        self.btn_set_favorite = CustomButton(None, set_favorite_text)
-        self.btn_use_favorite = CustomButton(None, use_favorite_text)
+        self.btn_set_favorite = Button(text=set_favorite_text, variant="surface")
+        self.btn_use_favorite = Button(text=use_favorite_text, variant="surface")
         for button in (self.btn_set_favorite, self.btn_use_favorite):
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
             if button_fixed_height is not None:
                 button.setFixedHeight(button_fixed_height)
 

@@ -68,7 +68,7 @@ class FontSettingsFlyout(QWidget):
         size_layout = QHBoxLayout()
         self.size_label = QLabel(tr("label.font_size", "en") + ":")
         self.size_slider = Slider(Qt.Orientation.Horizontal)
-        self.size_slider.setRange(50, 200)
+        self.size_slider.setRange(50, 400)
         size_layout.addWidget(self.size_label)
         size_layout.addWidget(self.size_slider)
 
@@ -82,7 +82,7 @@ class FontSettingsFlyout(QWidget):
         opacity_layout = QHBoxLayout()
         self.opacity_label = QLabel(tr("label.opacity", "en") + ":")
         self.opacity_slider = Slider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(0, 100)
+        self.opacity_slider.setRange(5, 100)
         self.opacity_slider.setValue(100)
         opacity_layout.addWidget(self.opacity_label)
         opacity_layout.addWidget(self.opacity_slider)

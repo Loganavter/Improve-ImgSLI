@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import tempfile
 
-from core.events import CoreErrorOccurredEvent
 from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -46,7 +45,7 @@ def build_video_notification_preview(
         if fit_content:
             global_bounds = video_exporter.get_cached_global_bounds(recording, False)
 
-        frame = video_exporter.render_snapshot_to_pil(
+        frame = video_exporter.render_snapshot_thumbnail_to_pil(
             snapshot,
             resolution[0],
             resolution[1],
@@ -81,6 +80,13 @@ class VideoExportFlow:
     def __init__(self, controller):
         self.controller = controller
 
+    @staticmethod
+    def normalize_even_resolution(resolution: tuple[int, int]) -> tuple[int, int]:
+        width, height = resolution
+        safe_width = width if width % 2 == 0 else max(2, width - 1)
+        safe_height = height if height % 2 == 0 else max(2, height - 1)
+        return safe_width, safe_height
+
     def export_recorded_video(self, resolution=(1920, 1080), fps=60):
         controller = self.controller
         if (
@@ -88,8 +94,6 @@ class VideoExportFlow:
             or controller._recording_finalize_in_progress
         ):
             return
-
-        self._emit_export_started_message()
 
         worker = GenericWorker(
             controller.video_exporter.export_recorded_video, resolution, fps
@@ -106,13 +110,12 @@ class VideoExportFlow:
         self, frames, fps, resolution=(1920, 1080), options=None
     ):
         controller = self.controller
-        self._emit_export_started_message()
-
-        width, height = resolution
-        safe_resolution = (
-            width if width % 2 == 0 else width - 1,
-            height if height % 2 == 0 else height - 1,
-        )
+        safe_resolution = self.normalize_even_resolution(resolution)
+        log_emit = None
+        if hasattr(controller, "main_controller") and hasattr(
+            controller.main_controller, "video_export_log"
+        ):
+            log_emit = controller.main_controller.video_export_log.emit
 
         def export_task(progress_callback):
             return controller.video_exporter.export_recorded_video(
@@ -121,6 +124,7 @@ class VideoExportFlow:
                 snapshots_override=frames,
                 export_options=options,
                 progress_callback=progress_callback,
+                log_callback=log_emit,
             )
 
         worker = GenericWorker(export_task)
@@ -175,13 +179,10 @@ class VideoExportFlow:
         worker.signals.finished.connect(on_finished)
         controller.thread_pool.start(worker)
 
-    def _emit_export_started_message(self) -> None:
+    def cancel_video_export(self):
         controller = self.controller
-        message = controller._tr("msg.starting_video_export_please_wait")
-        if controller.event_bus:
-            controller.event_bus.emit(CoreErrorOccurredEvent(message))
-        else:
-            controller.error_occurred.emit(message)
+        if controller.video_exporter is not None:
+            controller.video_exporter.request_cancel()
 
     def _emit_export_finished(self, success: bool) -> None:
         controller = self.controller

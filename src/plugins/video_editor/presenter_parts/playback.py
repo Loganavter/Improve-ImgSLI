@@ -5,7 +5,7 @@ class PlaybackCoordinator:
         editor_service,
         playback_engine,
         model,
-        main_controller,
+        export_controller,
         preview_coordinator,
         thumbnail_coordinator,
         emit_timeline_position,
@@ -16,7 +16,7 @@ class PlaybackCoordinator:
         self.editor_service = editor_service
         self.playback_engine = playback_engine
         self.model = model
-        self.main_controller = main_controller
+        self.export_controller = export_controller
         self.preview_coordinator = preview_coordinator
         self.thumbnail_coordinator = thumbnail_coordinator
         self.emit_timeline_position = emit_timeline_position
@@ -105,10 +105,9 @@ class PlaybackCoordinator:
         self.thumbnail_coordinator.generate_thumbnails()
 
         self.preview_coordinator._cached_global_bounds = None
-        if self.main_controller and getattr(
-            self.main_controller, "video_export", None
-        ):
-            self.main_controller.video_export.invalidate_video_export_bounds_cache()
+        exporter = getattr(self.export_controller, "video_exporter", None)
+        if exporter is not None:
+            exporter.invalidate_bounds_cache()
         if self.preview_coordinator.fit_content_mode:
             self.preview_coordinator.recalculate_global_bounds()
 

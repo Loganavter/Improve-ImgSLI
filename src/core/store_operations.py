@@ -59,6 +59,7 @@ class StoreOperationsMixin:
                 self.document.full_res_image1 = None
                 self.document.preview_image1 = None
                 self.document.image1_path = None
+                self.document.clear_last_display_name(1)
                 self.viewport.session_data.image_state.image1 = None
                 self.viewport.session_data.render_cache.display_cache_image1 = None
             else:
@@ -66,6 +67,7 @@ class StoreOperationsMixin:
                 self.document.full_res_image2 = None
                 self.document.preview_image2 = None
                 self.document.image2_path = None
+                self.document.clear_last_display_name(2)
                 self.viewport.session_data.image_state.image2 = None
                 self.viewport.session_data.render_cache.display_cache_image2 = None
 

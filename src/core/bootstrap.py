@@ -90,7 +90,8 @@ class ApplicationContext:
         setup_logging("ImproveImgSLI", effective_debug, "IMPROVE_DEBUG")
 
         if os.getenv("IMPROVE_DEBUG", "0") == "1":
-            self.store.settings.debug_mode_enabled = True
+            from core.state_management.actions import SetDebugModeEnabledAction
+            self.store.get_dispatcher().dispatch(SetDebugModeEnabledAction(True))
 
     def _configure_theme_manager(self):
         self.theme_manager = ThemeManager.get_instance()

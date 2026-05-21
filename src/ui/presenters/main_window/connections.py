@@ -81,9 +81,9 @@ def connect_signals(presenter):
 
     presenter.ui.btn_image1.clicked.connect(lambda: open_image_dialog(presenter, 1))
     presenter.ui.btn_image2.clicked.connect(lambda: open_image_dialog(presenter, 2))
-    presenter.ui.btn_color_picker.clicked.connect(
+    presenter.ui.btn_text_settings.clicked.connect(
         lambda: presenter.ui_manager.transient.toggle_font_settings_flyout(
-            anchor_widget=presenter.ui.btn_color_picker
+            anchor_widget=presenter.ui.btn_text_settings
         )
     )
 
@@ -163,7 +163,7 @@ def handle_global_mouse_press(presenter, event):
 
 def on_font_flyout_closed(presenter):
     presenter.ui_manager.transient.mark_font_popup_closed()
-    presenter.ui.btn_color_picker.setFlyoutOpen(False)
+    presenter.ui.btn_text_settings.setFlyoutOpen(False)
 
 def _connect_magnifier_color_controls(presenter):
     settings_presenter = presenter.get_feature("settings")

@@ -135,13 +135,16 @@ def upload_pil_images(
     state._shader_letterbox_mode = bool(shader_letterbox)
     has_explicit_source = source_image1 is not None and source_image2 is not None
     if has_explicit_source:
+        explicit_source_sig = (
+            id(source_image1) if source_image1 is not None else 0,
+            id(source_image2) if source_image2 is not None else 0,
+            source_image1.size if source_image1 is not None else None,
+            source_image2.size if source_image2 is not None else None,
+        )
         source_ids = (
-            source_key
+            (source_key, explicit_source_sig)
             if source_key is not None
-            else [
-                id(source_image1) if source_image1 is not None else 0,
-                id(source_image2) if source_image2 is not None else 0,
-            ]
+            else explicit_source_sig
         )
         source_changed = source_ids != state._source_image_ids
         state._source_pil_images = [source_image1, source_image2]

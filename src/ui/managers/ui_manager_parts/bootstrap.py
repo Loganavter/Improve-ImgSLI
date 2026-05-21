@@ -186,7 +186,7 @@ def _init_magnifier_instances_popup(manager) -> None:
         lambda _count: manager._on_magnifier_instances_count_changed()
     )
 
-    for target in button.popup_targets():
+    for target in (button._single_button, button._add_button, button._remove_button):
         target.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         target.installEventFilter(manager)
 

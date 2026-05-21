@@ -7,8 +7,7 @@ from ui.canvas_features.magnifier.constants import (
     MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE,
 )
 from domain.types import Color, Point
-from ui.canvas_features.divider.state import get_divider_widget_state
-from ui.canvas_features.capture.state import get_capture_widget_state
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.canvas_features.magnifier.state import (
     MagnifierWidgetState,
     clone_magnifier_widget_state,
@@ -66,7 +65,8 @@ def _copy_model(model: MagnifierModel, *, magnifier_id: str | None = None) -> Ma
 
 def _build_default_magnifier_model(view_state, render_config, magnifier_id: str | None = None) -> MagnifierModel:
     state = get_magnifier_widget_state(view_state)
-    capture_state = get_capture_widget_state(view_state)
+    _get_capture_state = get_canvas_feature_command_by_alias("capture.widget_state")
+    capture_state = _get_capture_state(view_state) if _get_capture_state is not None else None
     return MagnifierModel(
         id=magnifier_id or state.active_id or DEFAULT_MAGNIFIER_ID,
         visible=bool(state.enabled),
@@ -87,7 +87,7 @@ def _build_default_magnifier_model(view_state, render_config, magnifier_id: str 
         visible_right=True,
         freeze=False,
         frozen_position=None,
-        show_capture_area=capture_state.visible,
+        show_capture_area=capture_state.visible if capture_state is not None else True,
         interpolation_method=render_config.interpolation_method,
     )
 
@@ -133,13 +133,23 @@ def default_capture_size(view_state) -> float:
     return float(_state(view_state).default_capture_size_relative)
 
 def active_or_default_divider_visible(view_state) -> bool:
-    return bool(get_divider_widget_state(view_state).visible)
+    state = _state(view_state)
+    active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
+    if active is not None:
+        return bool(active.divider_visible)
+    return bool(state.default_divider_visible)
 
 def active_or_default_divider_thickness(view_state) -> int:
-    return int(get_divider_widget_state(view_state).thickness)
+    state = _state(view_state)
+    active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
+    if active is not None:
+        return int(active.divider_thickness)
+    return int(state.default_divider_thickness)
 
 def active_or_default_divider_color(view_state):
-    return get_divider_widget_state(view_state).color
+    state = _state(view_state)
+    active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
+    return active.divider_color if active is not None else state.default_divider_color
 
 def active_or_default_border_color(view_state):
     state = _state(view_state)

@@ -5,8 +5,7 @@ from dataclasses import replace
 from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QColor
 
-from ui.canvas_features.divider.state import get_divider_widget_state
-from ui.canvas_features.guides.state import get_guides_widget_state
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.canvas_features.magnifier import DEFAULT_MAGNIFIER_ID, iter_magnifier_models
 from ui.canvas_features.magnifier.constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE as _COMBINE_THRESHOLD
 from ui.canvas_features.magnifier.store import (
@@ -18,12 +17,15 @@ from ui.canvas_infra.scene.property_access import (
     read_canvas_feature_setting_by_key,
 )
 from ui.widgets.gl_canvas.render_metrics import resolve_relative_px
+from ui.widgets.gl_canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 from ui.canvas_presentation.plan import (
     CaptureCircle,
     GuideSet,
-    MagnifierLayout,
-    MagnifierSlot,
+    OverlayLayout,
+    OverlaySlot,
 )
+
+CAPTURE_RING_AA_PX = 1.15
 
 def clamp_capture_position(
     rel_x: float, rel_y: float, width: int, height: int, capture_size: float
@@ -34,6 +36,41 @@ def clamp_capture_position(
         max(radius_x, min(rel_x, 1.0 - radius_x)),
         max(radius_y, min(rel_y, 1.0 - radius_y)),
     )
+
+def clamp_capture_overlay_geometry(
+    *,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    center_x: float,
+    center_y: float,
+    radius: float,
+    stroke_margin: float,
+):
+    if width <= 0 or height <= 0 or radius <= 0:
+        return center_x, center_y, max(0.0, radius)
+
+    right = left + width
+    bottom = top + height
+    usable_left = left + stroke_margin
+    usable_top = top + stroke_margin
+    usable_right = right - stroke_margin
+    usable_bottom = bottom - stroke_margin
+
+    max_radius_x = max(0.0, (usable_right - usable_left) / 2.0)
+    max_radius_y = max(0.0, (usable_bottom - usable_top) / 2.0)
+    clamped_radius = min(radius, max_radius_x, max_radius_y)
+
+    clamped_x = min(
+        max(center_x, usable_left + clamped_radius),
+        usable_right - clamped_radius,
+    )
+    clamped_y = min(
+        max(center_y, usable_top + clamped_radius),
+        usable_bottom - clamped_radius,
+    )
+    return clamped_x, clamped_y, clamped_radius
 
 def build_magnifier_layout(
     vp,
@@ -52,9 +89,9 @@ def build_magnifier_layout(
 ):
     view = vp.view_state
     render = vp.render_config
-    divider_state = get_divider_widget_state(view)
     capture_color = read_canvas_feature_color_by_setting_key(vp, "capture.color")
-    guides_state = get_guides_widget_state(view)
+    _get_guides_state = get_canvas_feature_command_by_alias("guides.widget_state")
+    guides_state = _get_guides_state(view) if _get_guides_state is not None else None
     visible_models = [
         model for model in iter_magnifier_models(view, render) if model.visible
     ]
@@ -75,6 +112,12 @@ def build_magnifier_layout(
         visible_models,
         key=lambda model: (model.id == active_id, model.id),
     )
+    has_virtual_canvas_padding = (
+        int(canvas_width) != int(width)
+        or int(canvas_height) != int(height)
+        or abs(float(content_offset_x)) > 1e-6
+        or abs(float(content_offset_y)) > 1e-6
+    )
     canvas_short_edge = float(max(1, min(int(canvas_width), int(canvas_height))))
     local_scale = max(1e-6, float(render_scale or 1.0))
     divider_thickness_canvas_px = (
@@ -84,7 +127,11 @@ def build_magnifier_layout(
         )
         / local_scale
     )
-
+    line_width_px = resolve_relative_px(
+        DEFAULT_CANVAS_STYLE_TOKENS.capture_ring_stroke_du,
+        short_edge_px=float(max(1, min(width, height))),
+    )
+    stroke_margin = ((line_width_px / 2.0) + CAPTURE_RING_AA_PX) / local_scale
     def _resolve_border_width_canvas_px(model) -> float:
         raw_width = float(
             getattr(model, "border_thickness", border_width) or border_width
@@ -95,6 +142,7 @@ def build_magnifier_layout(
         )
 
     def _capture_geometry(model):
+
         cap_x, cap_y = clamp_capture_position(
             model.position.x,
             model.position.y,
@@ -103,11 +151,33 @@ def build_magnifier_layout(
             model.capture_size_relative,
         )
         capture_ref = float(min(width, height))
+        radius = (model.capture_size_relative * capture_ref) / 2.0
         center_x = float(content_offset_x) + (cap_x * width)
         center_y = float(content_offset_y) + (cap_y * height)
-        radius = (model.capture_size_relative * capture_ref) / 2.0
-        uv_half_w = radius / max(1.0, float(canvas_width))
-        uv_half_h = radius / max(1.0, float(canvas_height))
+        if has_virtual_canvas_padding:
+            center_x, center_y, radius = clamp_capture_overlay_geometry(
+                left=0.0,
+                top=0.0,
+                width=float(canvas_width),
+                height=float(canvas_height),
+                center_x=center_x,
+                center_y=center_y,
+                radius=radius,
+                stroke_margin=stroke_margin,
+            )
+        else:
+            center_x, center_y, radius = clamp_capture_overlay_geometry(
+                left=float(content_offset_x),
+                top=float(content_offset_y),
+                width=float(width),
+                height=float(height),
+                center_x=center_x,
+                center_y=center_y,
+                radius=radius,
+                stroke_margin=stroke_margin,
+            )
+        uv_half_w = radius / max(1.0, float(width))
+        uv_half_h = radius / max(1.0, float(height))
         return cap_x, cap_y, center_x, center_y, radius, uv_half_w, uv_half_h
 
     (
@@ -125,7 +195,7 @@ def build_magnifier_layout(
         local_y = center_xy[1] / render_scale
         local_radius = radius / render_scale
         local_mag_px = max(1.0, local_radius * 2.0)
-        return MagnifierSlot(
+        return OverlaySlot(
             center=QPointF(local_x, local_y),
             radius=local_radius,
             uv_rect=uv_rect,
@@ -134,12 +204,12 @@ def build_magnifier_layout(
             is_combined=is_combined,
             internal_split=model.internal_split,
             horizontal=model.is_horizontal,
-            divider_visible=bool(divider_state.visible),
+            divider_visible=bool(model.divider_visible),
             divider_color=(
-                divider_state.color.r / 255.0,
-                divider_state.color.g / 255.0,
-                divider_state.color.b / 255.0,
-                divider_state.color.a / 255.0,
+                model.divider_color.r / 255.0,
+                model.divider_color.g / 255.0,
+                model.divider_color.b / 255.0,
+                model.divider_color.a / 255.0,
             ),
             divider_thickness_uv=(divider_thickness_canvas_px / local_mag_px) * 0.5,
             border_color=QColor(
@@ -151,7 +221,7 @@ def build_magnifier_layout(
             border_width=_resolve_border_width_canvas_px(model),
         )
 
-    slots: list[MagnifierSlot] = []
+    slots: list[OverlaySlot] = []
     magnifier_centers: list[tuple[float, float]] = []
     capture_circles: list[CaptureCircle] = []
     guide_sets: list[GuideSet] = []
@@ -167,23 +237,24 @@ def build_magnifier_layout(
             uv_half_w,
             uv_half_h,
         ) = _capture_geometry(model)
+        _cap_color = getattr(model, "capture_color", None) or capture_color
         capture_circles.append(
             CaptureCircle(
                 center=QPointF(cap_center_x / render_scale, cap_center_y / render_scale),
                 radius=_cap_radius / render_scale,
                 color=QColor(
-                    capture_color.r,
-                    capture_color.g,
-                    capture_color.b,
-                    capture_color.a,
+                    _cap_color.r,
+                    _cap_color.g,
+                    _cap_color.b,
+                    _cap_color.a,
                 ),
             )
         )
         uv_rect = (
-            (cap_center_x / canvas_width) - uv_half_w,
-            (cap_center_y / canvas_height) - uv_half_h,
-            (cap_center_x / canvas_width) + uv_half_w,
-            (cap_center_y / canvas_height) + uv_half_h,
+            float(_cap_x - uv_half_w),
+            float(_cap_y - uv_half_h),
+            float(_cap_x + uv_half_w),
+            float(_cap_y + uv_half_h),
         )
         radius = (model.size_relative * target_max) / 2.0
         mag_radius = max(mag_radius, radius)
@@ -311,7 +382,7 @@ def build_magnifier_layout(
                 local_target_centers.append((cx, cy))
             elif show_right:
                 local_target_centers.append((cx, cy))
-        if local_target_centers and guides_state.enabled:
+        if local_target_centers and guides_state is not None and guides_state.enabled:
             guide_sets.append(
                 GuideSet(
                     capture_center=QPointF(
@@ -326,16 +397,21 @@ def build_magnifier_layout(
                     target_radii=tuple(
                         (radius / render_scale) for _ in local_target_centers
                     ),
-                    color=QColor(
-                        guides_state.color.r,
-                        guides_state.color.g,
-                        guides_state.color.b,
-                        guides_state.color.a,
+                    color=(lambda c: QColor(c.r, c.g, c.b, c.a))(
+                        getattr(model, "guides_color", None) or guides_state.color
                     ),
                 )
             )
 
-    return MagnifierLayout(
+    interp_mode = {
+        "NEAREST": 0,
+        "BILINEAR": 1,
+        "BICUBIC": 2,
+        "LANCZOS": 3,
+        "EWA_LANCZOS": 4,
+    }.get(str(interpolation_method or render.interpolation_method or "BILINEAR").upper(), 1)
+
+    return OverlayLayout(
         slots=tuple(slots),
         capture_circles=tuple(capture_circles),
         guide_sets=tuple(guide_sets),
@@ -344,8 +420,8 @@ def build_magnifier_layout(
             active_center_y / render_scale,
         ),
         capture_radius=active_capture_radius / render_scale,
-        magnifier_centers=tuple(magnifier_centers),
-        mag_radius=mag_radius / render_scale,
+        overlay_centers=tuple(magnifier_centers),
+        overlay_radius=mag_radius / render_scale,
         border_color=border_qcolor,
         border_width=resolve_relative_px(
             float(border_width),
@@ -355,13 +431,7 @@ def build_magnifier_layout(
         channel_mode={"RGB": 0, "R": 1, "G": 2, "B": 3, "L": 4}.get(
             view.channel_view_mode, 0
         ),
-        interp_mode={
-            "NEAREST": 0,
-            "BILINEAR": 1,
-            "BICUBIC": 2,
-            "LANCZOS": 3,
-            "EWA_LANCZOS": 4,
-        }.get(str(interpolation_method or render.interpolation_method or "BILINEAR").upper(), 1),
+        interp_mode=interp_mode,
         diff_mode=(
             int(diff_mode_override)
             if diff_mode_override is not None
@@ -374,20 +444,20 @@ def build_magnifier_layout(
     )
 
 def shift_layout_to_tile(
-    layout: MagnifierLayout,
+    layout: OverlayLayout,
     *,
     tile_left: float,
     tile_top: float,
-) -> MagnifierLayout:
+) -> OverlayLayout:
     def shift_pt(pt: QPointF) -> QPointF:
         return QPointF(pt.x() - tile_left, pt.y() - tile_top)
 
     return replace(
         layout,
         slots=tuple(replace(slot, center=shift_pt(slot.center)) for slot in layout.slots),
-        magnifier_centers=tuple(
+        overlay_centers=tuple(
             (center_x - tile_left, center_y - tile_top)
-            for center_x, center_y in layout.magnifier_centers
+            for center_x, center_y in layout.overlay_centers
         ),
         capture_center=shift_pt(layout.capture_center)
         if layout.capture_center is not None

@@ -33,6 +33,8 @@ class ToastNotification(QWidget):
         self.root_layout.setSpacing(0)
 
         self.content_widget = QWidget(self)
+        self.content_widget.setObjectName("ToastContentWidget")
+        self.content_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.main_layout = QVBoxLayout(self.content_widget)
         self.main_layout.setContentsMargins(12, 10, 12, 10)
         self.main_layout.setSpacing(8)
@@ -60,6 +62,8 @@ class ToastNotification(QWidget):
         self.root_layout.addWidget(self.content_widget)
 
         self.progress_container = QWidget(self)
+        self.progress_container.setObjectName("ToastProgressContainer")
+        self.progress_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.progress_layout = QVBoxLayout(self.progress_container)
         self.progress_layout.setContentsMargins(12, 0, 12, 10)
         self.progress_layout.setSpacing(0)
@@ -75,6 +79,7 @@ class ToastNotification(QWidget):
 
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self._on_theme_changed)
+        self._apply_surface_state()
 
     def _apply_content_layout_state(self):
         if self.action_row.isVisible():
@@ -86,9 +91,22 @@ class ToastNotification(QWidget):
         self.main_layout.setContentsMargins(left, top, right, bottom)
 
     def _on_theme_changed(self):
-        self.style().unpolish(self)
-        self.style().polish(self)
+        self._repolish_surface_widgets()
         self.adjustSize()
+
+    def _repolish_surface_widgets(self):
+        widgets = (self, self.content_widget, self.progress_container, self.progress_bar)
+        for widget in widgets:
+            style = widget.style()
+            style.unpolish(widget)
+            style.polish(widget)
+            widget.update()
+
+    def _apply_surface_state(self):
+        has_progress = not self.progress_container.isHidden()
+        self.content_widget.setProperty("hasProgress", has_progress)
+        self.progress_container.setProperty("hasProgress", has_progress)
+        self._repolish_surface_widgets()
 
     def show_message(
         self,
@@ -182,11 +200,13 @@ class ToastNotification(QWidget):
     def _set_progress(self, progress: int | None):
         if progress is None:
             self.progress_container.hide()
+            self._apply_surface_state()
             return
 
         safe_progress = max(0, min(100, int(progress)))
         self.progress_bar.setValue(safe_progress)
         self.progress_container.show()
+        self._apply_surface_state()
 
     def _apply_duration(self, duration: int):
         self._hide_timer.stop()
