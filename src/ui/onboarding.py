@@ -502,7 +502,7 @@ class OnboardingOverlay(QWidget):
         if hasattr(btn, "update_styles"):
             btn.update_styles()
 
-        if not is_toggle_scrollable:
+        if not has_scroll:
             btn.style().unpolish(btn)
             btn.style().polish(btn)
         btn.update()
