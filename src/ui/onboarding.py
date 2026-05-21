@@ -541,11 +541,20 @@ class OnboardingOverlay(QWidget):
         self.dots.set_current(index)
 
         accent_color = self.theme_manager.get_color("accent")
+        text_color = self.theme_manager.get_color("dialog.text")
+        highlighted_text = self.theme_manager.get_color("HighlightedText")
+
         for i, btn in enumerate(self.mode_buttons):
             if i == index:
                 btn.set_override_bg_color(accent_color)
+                # Set text color to highlighted for selected state using stylesheet
+                color_hex = highlighted_text.name()
+                btn.setStyleSheet(f"color: {color_hex};")
             else:
                 btn.set_override_bg_color(None)
+                # Reset text color for unselected state
+                color_hex = text_color.name()
+                btn.setStyleSheet(f"color: {color_hex};")
 
     def _get_scale_factor(self):
         width_scale = self.width() / self._base_window_width
