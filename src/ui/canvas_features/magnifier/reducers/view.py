@@ -64,32 +64,29 @@ def _replace_widget_state(view_state: ViewState, state) -> ViewState:
     return replace(view_state, canvas_widget_state=canvas_widget_state)
 
 def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewState:
+    # Early return for modification actions if magnifier disabled and no models exist
+    if isinstance(action, (SetMagnifierSizeRelativeAction, SetCaptureSizeRelativeAction,
+                          SetMagnifierVisibilityAction, ToggleMagnifierOrientationAction,
+                          ToggleFreezeMagnifierAction, SetMagnifierPositionAction,
+                          SetMagnifierInternalSplitAction, SetMagnifierOffsetRelativeAction,
+                          SetMagnifierSpacingRelativeAction, SetMagnifierOffsetRelativeVisualAction,
+                          SetMagnifierSpacingRelativeVisualAction, SetMagnifierLaserEnabledAction)):
+        if not _should_modify_magnifier(view_state):
+            # Magnifier disabled and no models exist - don't modify
+            return view_state
+
     if isinstance(action, SetMagnifierSizeRelativeAction):
-        # Don't create magnifier if disabled and no models exist
-        if _should_modify_magnifier(view_state):
-            state, active_id, magnifiers, model = _ensure_active_magnifier_model(view_state)
-            model.size_relative = action.size
-            magnifiers[active_id] = model
-            state.default_size_relative = action.size
-            return _replace_widget_state(view_state, state)
-        else:
-            # Just update default without creating model
-            state = clone_magnifier_widget_state(view_state)
-            state.default_size_relative = action.size
-            return _replace_widget_state(view_state, state)
+        state, active_id, magnifiers, model = _ensure_active_magnifier_model(view_state)
+        model.size_relative = action.size
+        magnifiers[active_id] = model
+        state.default_size_relative = action.size
+        return _replace_widget_state(view_state, state)
     if isinstance(action, SetCaptureSizeRelativeAction):
-        # Don't create magnifier if disabled and no models exist
-        if _should_modify_magnifier(view_state):
-            state, active_id, magnifiers, model = _ensure_active_magnifier_model(view_state)
-            model.capture_size_relative = action.size
-            magnifiers[active_id] = model
-            state.default_capture_size_relative = action.size
-            return _replace_widget_state(view_state, state)
-        else:
-            # Just update default without creating model
-            state = clone_magnifier_widget_state(view_state)
-            state.default_capture_size_relative = action.size
-            return _replace_widget_state(view_state, state)
+        state, active_id, magnifiers, model = _ensure_active_magnifier_model(view_state)
+        model.capture_size_relative = action.size
+        magnifiers[active_id] = model
+        state.default_capture_size_relative = action.size
+        return _replace_widget_state(view_state, state)
     if isinstance(action, ToggleMagnifierAction):
         state = clone_magnifier_widget_state(view_state)
         state.enabled = bool(action.enabled)
