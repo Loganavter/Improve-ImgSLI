@@ -34,7 +34,10 @@ from core.state_management.geometry_actions import (
 from core.state_management.interaction_actions import (
     SetDraggingSplitLineAction,
     SetInteractionSessionIdAction,
+    SetInteractiveInternalSplitVisualAction,
     SetInteractiveModeAction,
+    SetInteractiveOffsetVisualAction,
+    SetInteractiveSpacingVisualAction,
     SetLastHorizontalMovementKeyAction,
     SetLastSpacingMovementKeyAction,
     SetLastVerticalMovementKeyAction,

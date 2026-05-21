@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import replace
 
 from core.state_management.action_base import Action
+from core.state_management.actions import (
+    SetInteractiveInternalSplitVisualAction,
+    SetInteractiveOffsetVisualAction,
+    SetInteractiveSpacingVisualAction,
+)
 from core.store_viewport import ViewState
 from ..actions import (
     SetActiveMagnifierIdAction,
