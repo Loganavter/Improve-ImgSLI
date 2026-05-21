@@ -150,13 +150,30 @@ def viewport_set_internal_split(store, location):
     return scene_state.set_object_internal_split(model.id, value)
 
 def viewport_add_instance(store, position=None):
+    from domain.types import Point
     from ..mode import MagnifierModeService
     from ..store import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
     MagnifierModeService(store).prepare_for_add()
-    return MagnifierStoreService(store).add_magnifier(position=position)
+
+    # If no position specified, calculate offset from existing magnifiers
+    if position is None:
+        existing = list(MagnifierStoreService(store).iter_magnifiers())
+        if existing:
+            # Offset new magnifier slightly from the first one
+            first = existing[0]
+            offset_x = 0.15 if first.position.x < 0.5 else -0.15
+            offset_y = 0.15 if first.position.y < 0.5 else -0.15
+            position = Point(
+                max(0.1, min(0.9, first.position.x + offset_x)),
+                max(0.1, min(0.9, first.position.y + offset_y)),
+            )
+
+    model = MagnifierStoreService(store).add_magnifier(position=position)
+    store.emit_viewport_change("interaction")
+    return model
 
 def viewport_remove_active_instance(store) -> bool:
     from ..mode import MagnifierModeService
@@ -172,6 +189,7 @@ def viewport_remove_active_instance(store) -> bool:
         return False
     scene_state.remove_object(active)
     MagnifierModeService(store).normalize_after_remove()
+    # Note: normalize_after_remove already emits viewport change
     return True
 
 def viewport_set_active_instance(store, magnifier_id: str):
