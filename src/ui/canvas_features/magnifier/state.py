@@ -42,8 +42,11 @@ def get_magnifier_widget_state(view_state) -> MagnifierWidgetState:
     state = (getattr(view_state, "canvas_widget_state", None) or {}).get("magnifier")
     if isinstance(state, MagnifierWidgetState):
         import logging
+        import traceback
         _log = logging.getLogger("ImproveImgSLI.magnifier.state")
-        _log.debug(f"get_magnifier_widget_state: returning existing state with {len(state.models)} models")
+        _log.debug(f"get_magnifier_widget_state: returning existing state with {len(state.models)} models, model_ids={list(state.models.keys())}")
+        if len(state.models) > 0:
+            _log.debug("Stack trace where state has models:\n" + "".join(traceback.format_stack()[-5:-1]))
         return state
     import logging
     _log = logging.getLogger("ImproveImgSLI.magnifier.state")
