@@ -58,8 +58,7 @@ class MainWindowStartupRuntime:
         window._startup_cover.hide()
 
     def should_show_onboarding(self) -> bool:
-        # Force onboarding on every startup
-        return True
+        return self.window.settings_manager.is_first_run()
 
     def bootstrap_content(self) -> None:
         if self.should_show_onboarding():
