@@ -36,6 +36,14 @@ def has_visible_renderable_magnifier(store) -> bool:
     )
 
 def apply_magnifier_gl_overlay(store, canvas) -> bool:
+    viewport = getattr(store, "viewport", None)
+    if viewport is None:
+        reset_canvas_overlays(canvas)
+        return False
+    # If magnifier not enabled, don't try to render it
+    if not viewport.view_state.overlay_enabled:
+        reset_canvas_overlays(canvas)
+        return False
     has_visible = has_visible_renderable_magnifier(store)
     if not has_visible:
         reset_canvas_overlays(canvas)
