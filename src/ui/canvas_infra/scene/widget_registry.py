@@ -8,6 +8,8 @@ from .widget_contract import (
     CanvasFeatureCommandAlias,
     CanvasFeatureProperty,
     CanvasFeatureSettingsEventBinding,
+    CanvasFeatureStateCommand,
+    CanvasFeatureStateQuery,
     CanvasFeatureToolbarBinding,
     CanvasWidgetFeature,
 )
@@ -54,7 +56,7 @@ def get_canvas_feature_properties() -> tuple[CanvasFeatureProperty, ...]:
     return tuple(
         sorted(
             properties,
-            key=lambda item: (item.order, item.group_id, item.id),
+            key=lambda item: (item.order, item.group_id or "", item.id),
         )
     )
 
@@ -179,6 +181,26 @@ def get_canvas_feature_commands_by_id(command_id: str) -> tuple[object, ...]:
         if command is not None:
             commands.append(command)
     return tuple(commands)
+
+@lru_cache(maxsize=1)
+def get_canvas_feature_state_queries() -> dict[str, tuple[CanvasFeatureStateQuery, ...]]:
+    """Return {feature_name: tuple[CanvasFeatureStateQuery, ...]} for features."""
+    queries: dict[str, tuple[CanvasFeatureStateQuery, ...]] = {}
+    for feature in get_canvas_widget_features():
+        if feature.build_state_queries is None:
+            continue
+        queries[feature.name] = tuple(feature.build_state_queries())
+    return queries
+
+@lru_cache(maxsize=1)
+def get_canvas_feature_state_commands() -> dict[str, tuple[CanvasFeatureStateCommand, ...]]:
+    """Return {feature_name: tuple[CanvasFeatureStateCommand, ...]} for features."""
+    commands: dict[str, tuple[CanvasFeatureStateCommand, ...]] = {}
+    for feature in get_canvas_widget_features():
+        if feature.build_state_commands is None:
+            continue
+        commands[feature.name] = tuple(feature.build_state_commands())
+    return commands
 
 @lru_cache(maxsize=1)
 def get_canvas_feature_i18n_namespaces() -> dict[str, str]:
