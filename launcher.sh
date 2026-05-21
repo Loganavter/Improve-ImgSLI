@@ -7,13 +7,6 @@ REQUIREMENTS="$SCRIPT_DIR/requirements-gui.txt"
 
 source "$SCRIPT_DIR/src/shared_toolkit/scripts/common_launcher_funcs.sh"
 
-cleanup_broken_venv() {
-    if [ -d "$VENV_DIR" ]; then
-        log_info "Removing corrupted virtual environment..."
-        rm -rf "$VENV_DIR"
-    fi
-}
-
 enable_logging_action() {
     log_info "Attempting to enable logging..."
     if ensure_venv_is_ready "$VENV_DIR" "$REQUIREMENTS"; then
@@ -23,7 +16,7 @@ enable_logging_action() {
         log_status "Logging settings updated" 0
     else
         log_status "Failed to prepare environment. Aborting." 1
-        cleanup_broken_venv
+        cleanup_broken_venv "$VENV_DIR"
         exit 1
     fi
 }
@@ -37,7 +30,7 @@ disable_logging_action() {
         log_status "Logging settings updated" 0
     else
         log_status "Failed to prepare environment. Aborting." 1
-        cleanup_broken_venv
+        cleanup_broken_venv "$VENV_DIR"
         exit 1
     fi
 }
@@ -54,7 +47,8 @@ show_help() {
     echo "                       --debug, -d          Enable debug logging for this session only."
     echo "  install            Create the virtual environment and/or install dependencies."
     echo "  recreate           Forcibly recreate the virtual environment."
-    echo "  delete             Delete the virtual environment and caches."
+    echo "  delete             Delete the virtual environment and Python caches."
+    echo "  rm-cache           Remove Python caches without deleting the virtual environment."
     echo "  install-desktop    Install .desktop entry for app launcher integration."
     echo "  uninstall-desktop  Remove .desktop entry."
     echo "  --enable-logging   Permanently enable debug logging."
@@ -62,36 +56,62 @@ show_help() {
     echo "  help               Show this help message."
 }
 
-recreate_action() {
-    log_info "Recreating virtual environment..."
-    if [ -d "$VENV_DIR" ]; then
-        log_info "Removing existing venv in '$VENV_DIR'..."
-        deactivate_venv 2>/dev/null || true
-        if rm -rf "$VENV_DIR"; then
-            log_status "Existing venv removed" 0
-        else
-            log_status "Failed to remove venv. Remove manually" 1
-            exit 1
-        fi
-    fi
-    if ! ensure_venv_is_ready "$VENV_DIR" "$REQUIREMENTS"; then
-        log_status "Failed to recreate environment." 1
-        cleanup_broken_venv
+install_action() {
+    if ensure_venv_is_ready "$VENV_DIR" "$REQUIREMENTS"; then
+        log_info "Environment is ready."
+    else
+        log_status "Failed to set up environment." 1
+        cleanup_broken_venv "$VENV_DIR"
         exit 1
     fi
+    deactivate_venv
+}
+
+recreate_action() {
+    log_info "Recreating virtual environment..."
+
+    if ! remove_venv_dir "$VENV_DIR" "existing virtual environment"; then
+        exit 1
+    fi
+
+    if ! ensure_venv_is_ready "$VENV_DIR" "$REQUIREMENTS"; then
+        log_status "Failed to recreate environment." 1
+        cleanup_broken_venv "$VENV_DIR"
+        exit 1
+    fi
+
+    deactivate_venv
+}
+
+rm_cache_action() {
+    cleanup_python_cache "$SCRIPT_DIR" "$VENV_DIR"
+}
+
+delete_action() {
+    log_info "Starting cleanup..."
+
+    if ! remove_venv_dir "$VENV_DIR" "virtual environment"; then
+        exit 1
+    fi
+
+    rm_cache_action
+    log_info "Cleanup completed."
 }
 
 install_desktop_action() {
     local template="$SCRIPT_DIR/improve-imgsli.desktop.in"
     local target="$HOME/.local/share/applications/improve-imgsli.desktop"
-    if [ ! -f "$template" ]; then
+
+    if [[ ! -f "$template" ]]; then
         log_status "Desktop template not found: $template" 1
         exit 1
     fi
+
     mkdir -p "$HOME/.local/share/applications"
     sed -e "s|@LAUNCHER_PATH@|$SCRIPT_DIR/launcher.sh|g" \
         -e "s|@ICON_PATH@|$SCRIPT_DIR/src/resources/icons/icon.png|g" \
         "$template" >"$target"
+
     chmod +x "$target"
     update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
     log_status "Desktop entry installed to $target" 0
@@ -99,7 +119,8 @@ install_desktop_action() {
 
 uninstall_desktop_action() {
     local target="$HOME/.local/share/applications/improve-imgsli.desktop"
-    if [ -f "$target" ]; then
+
+    if [[ -f "$target" ]]; then
         rm "$target"
         update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
         log_status "Desktop entry removed" 0
@@ -108,52 +129,18 @@ uninstall_desktop_action() {
     fi
 }
 
-delete_action() {
-    log_info "Starting cleanup..."
-    if [ -d "$VENV_DIR" ]; then
-        log_info "Removing virtual environment in '$VENV_DIR'..."
-        deactivate_venv 2>/dev/null || true
-        rm -rf "$VENV_DIR"
-        log_status "Virtual environment removed" 0
-    else
-        log_info "Virtual environment not found, skipping."
-    fi
-
-    log_info "Removing '__pycache__' directories..."
-    find "$SCRIPT_DIR" -type d -name "__pycache__" -exec rm -rf {} +
-    log_status "'__pycache__' directories removed" 0
-    log_info "Cleanup completed."
-}
-
-if [[ "$1" == "--debug" || "$1" == "-d" || "$1" == "--theme" ]]; then
-    set -- run "$@"
-fi
-
-COMMAND=$1
-case "$COMMAND" in
-
-install)
-    if ensure_venv_is_ready "$VENV_DIR" "$REQUIREMENTS"; then
-        log_info "Environment is ready."
-    else
-        log_status "Failed to set up environment." 1
-        cleanup_broken_venv
-        exit 1
-    fi
-    deactivate_venv
-    ;;
-
-run)
+run_action() {
     shift
-    gui_args=()
-    THEME_TO_SET=""
-    DEBUG_MODE="false"
+
+    local gui_args=()
+    local theme_to_set=""
+    local debug_mode="false"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
         --theme)
-            if [[ -n "$2" && ("$2" == "dark" || "$2" == "light") ]]; then
-                THEME_TO_SET="$2"
+            if [[ -n "${2:-}" && ("$2" == "dark" || "$2" == "light") ]]; then
+                theme_to_set="$2"
                 shift 2
             else
                 log_info "Error: --theme requires argument (dark or light)"
@@ -161,7 +148,7 @@ run)
             fi
             ;;
         --debug | -d)
-            DEBUG_MODE="true"
+            debug_mode="true"
             shift
             ;;
         *)
@@ -174,36 +161,55 @@ run)
     if ensure_venv_is_ready "$VENV_DIR" "$REQUIREMENTS"; then
         log_info "Starting Improve ImgSLI..."
         export PYTHONPATH="$SCRIPT_DIR/src:$PYTHONPATH"
-        if [[ -n "$THEME_TO_SET" ]]; then
-            export APP_THEME="$THEME_TO_SET"
+
+        if [[ -n "$theme_to_set" ]]; then
+            export APP_THEME="$theme_to_set"
         fi
 
-        if [[ "$DEBUG_MODE" == "true" ]]; then
+        if [[ "$debug_mode" == "true" ]]; then
             gui_args=("--debug" "${gui_args[@]}")
         fi
 
         python "$APP_MAIN" "${gui_args[@]}"
-        app_exit_code=$?
+        local app_exit_code=$?
 
         deactivate_venv
         log_info "Application completed with exit code: $app_exit_code"
-        exit $app_exit_code
-    else
-        deactivate_venv
-        log_status "Failed to prepare environment. Aborting." 1
-        cleanup_broken_venv
-        exit 1
+        exit "$app_exit_code"
     fi
+
+    deactivate_venv
+    log_status "Failed to prepare environment. Aborting." 1
+    cleanup_broken_venv "$VENV_DIR"
+    exit 1
+}
+
+if [[ "${1:-}" == "--debug" || "${1:-}" == "-d" || "${1:-}" == "--theme" ]]; then
+    set -- run "$@"
+fi
+
+COMMAND="${1:-}"
+case "$COMMAND" in
+install)
+    install_action
+    ;;
+
+run)
+    run_action "$@"
     ;;
 
 recreate)
     recreate_action
-    deactivate_venv
     ;;
 
 delete)
     delete_action
     ;;
+
+rm-cache)
+    rm_cache_action
+    ;;
+
 --enable-logging)
     enable_logging_action
     ;;
@@ -211,6 +217,7 @@ delete)
 --disable-logging)
     disable_logging_action
     ;;
+
 install-desktop)
     install_desktop_action
     ;;

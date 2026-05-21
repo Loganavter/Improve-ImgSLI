@@ -61,6 +61,15 @@ class VideoEditorDialogPersistence:
             if idx >= 0:
                 combo.setCurrentIndex(idx)
 
+        if hasattr(d, "combo_preview_scale"):
+            preview_scale = float(
+                getattr(settings, "video_editor_preview_render_scale", 1.0)
+            )
+            idx = d.combo_preview_scale.findData(preview_scale)
+            if idx >= 0:
+                d.combo_preview_scale.setCurrentIndex(idx)
+            d._on_preview_scale_changed()
+
         fill_color_hex = getattr(settings, "export_video_fit_fill_color", None)
         if not fill_color_hex and settings_manager is not None:
             fill_color_hex = settings_manager._get_setting("export_video_fit_fill_color", "#FF000000", str)
@@ -80,6 +89,7 @@ class VideoEditorDialogPersistence:
             d.combo_quality_mode.currentIndexChanged,
             d.combo_preset.currentIndexChanged,
             d.combo_pix_fmt.currentIndexChanged,
+            d.combo_preview_scale.currentIndexChanged,
             d.edit_crf.textChanged,
             d.edit_bitrate.textChanged,
             d.edit_manual_args.textChanged,
@@ -100,6 +110,9 @@ class VideoEditorDialogPersistence:
         settings.export_video_preset = d.combo_preset.currentData() or ""
         settings.export_video_pix_fmt = d.combo_pix_fmt.currentData() or ""
         settings.export_video_manual_args = d.edit_manual_args.text()
+        settings.video_editor_preview_render_scale = float(
+            d.combo_preview_scale.currentData() or 1.0
+        )
         settings.export_video_fit_fill_color = color_to_hex(qcolor_to_color(d.fit_content_fill_color))
         if settings_manager is None:
             return
@@ -117,6 +130,10 @@ class VideoEditorDialogPersistence:
             settings_manager._save_setting(
                 f"export_video_{key}", getattr(settings, f"export_video_{key}")
             )
+        settings_manager._save_setting(
+            "video_editor_preview_render_scale",
+            settings.video_editor_preview_render_scale,
+        )
 
     def browse_output_dir(self):
         d = self.dialog

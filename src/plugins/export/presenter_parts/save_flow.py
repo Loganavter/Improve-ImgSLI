@@ -34,6 +34,7 @@ class ExportSaveFlowCoordinator:
         *,
         success: bool,
         duration: int = 0,
+        progress: int | None = None,
     ) -> None:
         toast_manager = self._get_toast_manager()
         if toast_manager is None or save_task_id is None:
@@ -45,6 +46,7 @@ class ExportSaveFlowCoordinator:
                 message,
                 success=success,
                 duration=duration,
+                progress=progress,
             )
         except Exception as exc:
             logger.error("Toast update failed for %s: %s", save_task_id, exc)
@@ -84,14 +86,22 @@ class ExportSaveFlowCoordinator:
             image2_for_save=save_ctx.image2_for_save,
             original1_full=save_ctx.original1_full,
             original2_full=save_ctx.original2_full,
-            overlay_drawing_coords=save_ctx.overlay_coords_for_save,
-            render_context=save_ctx.render_context,
+            render_plan=save_ctx.render_plan,
+            render_store=save_ctx.render_store,
             export_options=export_opts,
             cancel_event=cancel_event,
             file_name1_text=self.state.get_current_display_name(1),
             file_name2_text=self.state.get_current_display_name(2),
         )
+        worker.kwargs["progress_callback"] = worker.signals.progress
         self._save_workers[save_task_id] = worker
+        worker.signals.progress.connect(
+            lambda value: self._on_save_worker_progress(
+                save_task_id,
+                final_path_for_display,
+                value,
+            )
+        )
         worker.signals.result.connect(
             lambda out_path: self._on_save_worker_done(
                 save_task_id, cancel_event, out_path
@@ -174,6 +184,7 @@ class ExportSaveFlowCoordinator:
                 duration=0,
                 action_text=self.tr("common.cancel"),
                 on_action=on_cancel,
+                progress=0,
             )
         cancel_ctx["id"] = toast_id
         self._save_cancellation[toast_id] = cancel_event
@@ -218,6 +229,24 @@ class ExportSaveFlowCoordinator:
             logger.error("Save notification failed: %s", exc)
         finally:
             self._finalize_save_worker(save_task_id)
+
+    def _on_save_worker_progress(
+        self,
+        save_task_id: int,
+        final_path_for_display: str,
+        progress: int,
+    ) -> None:
+        if save_task_id not in self._save_cancellation:
+            return
+        toast_path_line = self._build_toast_path_line(final_path_for_display)
+        toast_message = f"{self.tr('msg.saving')}\n{toast_path_line}..."
+        self._update_toast_safe(
+            save_task_id,
+            toast_message,
+            success=False,
+            duration=0,
+            progress=progress,
+        )
 
     def _on_save_worker_error(
         self,

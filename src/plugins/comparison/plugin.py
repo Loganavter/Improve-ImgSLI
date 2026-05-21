@@ -93,6 +93,10 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
 
     def bind_window_shell(self, window_shell: Any) -> None:
         self.presenter = window_shell
+        if self.metrics_service is not None:
+            self.metrics_service.runtime.toast_manager_getter = lambda: getattr(
+                window_shell, "toast_manager", None
+            )
         if self.main_controller_proxy:
             self.main_controller_proxy.window_shell = window_shell
         if self.session_ctrl:

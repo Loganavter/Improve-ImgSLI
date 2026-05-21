@@ -115,32 +115,27 @@ def magnifier_orientation_middle_click_handler(presenter) -> None:
 
     button = presenter.ui.btn_magnifier_orientation
     current_value = button.get_value()
+
     if current_value == 0:
-        saved_value = button.restore_saved_value()
+        saved_value = button.get_saved_value()
         target_value = (
             saved_value if (saved_value is not None and saved_value > 0) else 3
         )
+        button.set_saved_value(None)
         button.blockSignals(True)
-        button.set_value(target_value)
+        button._scroll_value = target_value
+        button._checked = False
+        button.update()
         button.blockSignals(False)
-        trigger_toolbar_binding(
-            "magnifier.divider.thickness",
-            presenter,
-            "on_value_changed",
-            target_value,
-        )
-        return
-
-    button.set_saved_value(current_value)
-    button.blockSignals(True)
-    button.set_value(0)
-    button.blockSignals(False)
-    trigger_toolbar_binding(
-        "magnifier.divider.thickness",
-        presenter,
-        "on_value_changed",
-        0,
-    )
+        set_magnifier_divider_thickness(presenter, target_value)
+    else:
+        button.set_saved_value(current_value)
+        button.blockSignals(True)
+        button._scroll_value = 0
+        button._checked = True
+        button.update()
+        button.blockSignals(False)
+        set_magnifier_divider_thickness(presenter, 0)
 
 def magnifier_freeze_handler(presenter, checked: bool) -> None:
     from plugins.viewport.events import ViewportToggleFreezeMagnifierEvent

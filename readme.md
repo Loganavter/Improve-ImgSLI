@@ -45,7 +45,7 @@
 
 - Get Improve-ImgSLI: <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest">Windows installer</a> • <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI">Flathub</a> • <a href="https://aur.archlinux.org/packages/improve-imgsli">AUR</a>
 - Install & run from source: <a href="docs/INSTALL.md">docs/INSTALL.md</a>
-- Learn the app (Help): <a href="src/resources/help/en/introduction.md">EN Introduction</a> • <a href="src/resources/help/en/">EN All topics</a> • <a href="src/resources/help/ru/">RU Docs</a>
+- Learn the app (Help): <a href="src/resources/help/en/001_introduction.md">EN Start Here</a> • <a href="src/resources/help/en/">EN All topics</a> • <a href="src/resources/help/ru/">RU Docs</a>
 - Contribute: <a href="CONTRIBUTING.md">CONTRIBUTING.md</a>
 - More: <a href="HISTORY.md">Development History</a> • <a href="VISION.md">Project Vision</a>
 
@@ -80,19 +80,23 @@ chmod +x launcher.sh
 ```
 See full instructions in <a href="docs/INSTALL.md">docs/INSTALL.md</a>.
 
+Current limitation:
+- Images above `16384 px` on either side are not supported yet. This is a temporary software limit and may be improved in the future.
+
 ---
 
 ## 🧪 Basic Usage
 
 1. Start Improve-ImgSLI.
-2. Load images via “Add Img(s)” or drag-and-drop. Use Space + Left/Right Mouse for quick single-image preview.
+2. Load images via “Add Img(s)” or drag-and-drop. Use `Space + Left/Right Mouse Button` for quick single-image preview.
 3. Move the split line with the mouse; toggle Horizontal Split if needed.
 4. Enable the magnifier, pick interpolation, and adjust zoom/position via sliders or keys.
-5. Customize dividers and text, then export the composite image.
+5. Use `Space + Shift + Left/Right Mouse Button` to force a side in combined magnifier preview when needed.
+6. Customize dividers and text, then export the composite image.
 
 For detailed guides, hotkeys, and settings, use the in-app Help (question mark icon) or open:
-- EN: <a href="src/resources/help/en/introduction.md">Introduction</a> • <a href="src/resources/help/en/">All topics</a>
-- RU: <a href="src/resources/help/ru/introduction.md">Введение</a> • <a href="src/resources/help/ru/">Все разделы</a>
+- EN: <a href="src/resources/help/en/001_introduction.md">Start Here</a> • <a href="src/resources/help/en/">All topics</a>
+- RU: <a href="src/resources/help/ru/001_introduction.md">Введение</a> • <a href="src/resources/help/ru/">Все разделы</a>
 
 ---
 

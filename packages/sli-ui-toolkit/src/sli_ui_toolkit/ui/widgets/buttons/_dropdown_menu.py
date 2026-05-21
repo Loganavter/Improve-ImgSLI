@@ -1,8 +1,8 @@
+"""Dropdown menu widget used by Button when menu mode is active."""
+
 from __future__ import annotations
 
-import logging
-
-from PyQt6.QtCore import QEvent, QEasingCurve, QPoint, QPropertyAnimation, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QEasingCurve, QEvent, QPoint, QPropertyAnimation, QRect, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QGuiApplication, QPainter, QPen
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
@@ -12,10 +12,6 @@ from sli_ui_toolkit.ui.in_window_surface import (
     attach_in_window_widget,
     paint_shadowed_surface,
 )
-from sli_ui_toolkit.ui.widgets.atomic.tooltips import install_custom_tooltip
-from sli_ui_toolkit.ui.widgets.style_bridge import read_widget_style, update_widget_style
-
-logger = logging.getLogger(__name__)
 
 class _MenuItem(QWidget):
     clicked = pyqtSignal()
@@ -77,7 +73,7 @@ class _MenuItem(QWidget):
         text_y = self.rect().center().y() + 5
         painter.drawText(text_x, text_y, self._text)
 
-class _DropdownMenu(QWidget):
+class DropdownMenu(QWidget):
     item_selected = pyqtSignal(QAction)
 
     MARGIN = 8
@@ -205,6 +201,7 @@ class _DropdownMenu(QWidget):
 
     def _on_item_clicked(self, index: int):
         if 0 <= index < len(self._actions):
+            self._current_index = index
             _, data = self._actions[index]
             action = QAction(self)
             action.setData(data)
@@ -217,178 +214,3 @@ class _DropdownMenu(QWidget):
         if self._owner_button is not None and hasattr(self._owner_button, "_menu_visible"):
             self._owner_button._menu_visible = False
         super().hideEvent(event)
-
-class ToolButtonWithMenu(QWidget):
-    triggered = pyqtSignal(QAction)
-
-    def __init__(self, icon, parent=None):
-        super().__init__(parent)
-        self._icon = icon
-        self._actions = []
-        self._current_action = None
-        self._hovered = False
-        self._pressed = False
-        self._menu_visible = False
-        self.setFixedSize(36, 36)
-        self.menu = _DropdownMenu(self)
-        self.menu.item_selected.connect(self._on_action_triggered)
-        self.theme_manager = ThemeManager.get_instance()
-        install_custom_tooltip(self)
-        self.theme_manager.theme_changed.connect(self.update)
-        self._variant = "default"
-        self._density = "normal"
-        self._foreground_color = None
-        self._background_color = None
-        self._accent_color = None
-        self._icon_size_px = 22
-        self._corner_radius_px = 6
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
-            self._pressed = True
-            self.update()
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._pressed = False
-            self.update()
-            if self.rect().contains(event.pos()):
-                self.show_menu()
-        super().mouseReleaseEvent(event)
-
-    def enterEvent(self, event):
-        self._hovered = True
-        self.update()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self._hovered = False
-        self._pressed = False
-        self.update()
-        super().leaveEvent(event)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        tm = self.theme_manager
-        style = read_widget_style(self, default_icon_size=self._icon_size_px, default_corner_radius=self._corner_radius_px)
-        if style.background_color is not None:
-            bg_color = style.background_color
-        elif style.variant == "primary" and style.accent_color is not None:
-            bg_color = style.accent_color
-        elif style.variant == "ghost":
-            bg_color = QColor(0, 0, 0, 0)
-        elif self._pressed:
-            bg_color = tm.get_color("button.toggle.background.pressed")
-        elif self._hovered:
-            bg_color = tm.get_color("button.toggle.background.hover")
-        else:
-            bg_color = tm.get_color("button.toggle.background.normal")
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(bg_color))
-        radius = max(0, int(style.corner_radius_px or self._corner_radius_px))
-        painter.drawRoundedRect(self.rect(), radius, radius)
-        icon = resolve_icon(self._icon)
-        icon_size = int(style.icon_size_px or self._icon_size_px)
-        icon_rect = QRect((self.width() - icon_size) // 2, (self.height() - icon_size) // 2, icon_size, icon_size)
-        painter.drawPixmap(icon_rect, icon.pixmap(icon_size, icon_size))
-
-    def event(self, event):
-        if event.type() == QEvent.Type.DynamicPropertyChange:
-            name = event.propertyName().data().decode("utf-8", errors="ignore")
-            if name == "variant":
-                self._variant = str(self.property("variant") or self._variant)
-            elif name == "density":
-                self._density = str(self.property("density") or self._density)
-            elif name == "foregroundColor":
-                self._foreground_color = self.property("foregroundColor") or self._foreground_color
-            elif name == "backgroundColor":
-                self._background_color = self.property("backgroundColor") or self._background_color
-            elif name == "accentColor":
-                self._accent_color = self.property("accentColor") or self._accent_color
-            elif name == "iconSizePx":
-                self._icon_size_px = max(1, int(self.property("iconSizePx") or self._icon_size_px))
-            elif name == "cornerRadiusPx":
-                self._corner_radius_px = max(0, int(self.property("cornerRadiusPx") or self._corner_radius_px))
-            update_widget_style(self)
-        return super().event(event)
-
-    def getVariant(self) -> str:
-        return self._variant
-
-    def setVariant(self, variant: str):
-        self._variant = str(variant or "default")
-        self.setProperty("variant", self._variant)
-        update_widget_style(self)
-
-    def getDensity(self) -> str:
-        return self._density
-
-    def setDensity(self, density: str):
-        self._density = str(density or "normal")
-        self.setProperty("density", self._density)
-        update_widget_style(self)
-
-    def getForegroundColor(self):
-        return self._foreground_color
-
-    def setForegroundColor(self, color):
-        self._foreground_color = color
-        self.setProperty("foregroundColor", color)
-        update_widget_style(self)
-
-    def getIconSizePx(self) -> int:
-        return int(self._icon_size_px)
-
-    def setIconSizePx(self, size_px: int):
-        self._icon_size_px = max(1, int(size_px))
-        self.setProperty("iconSizePx", self._icon_size_px)
-        update_widget_style(self, update_geometry=True)
-
-    def getCornerRadiusPx(self) -> int:
-        return int(self._corner_radius_px)
-
-    def setCornerRadiusPx(self, radius_px: int):
-        self._corner_radius_px = max(0, int(radius_px))
-        self.setProperty("cornerRadiusPx", self._corner_radius_px)
-        update_widget_style(self)
-
-    def set_actions(self, actions: list[tuple[str, any]]):
-        self._actions = actions
-        self.menu.set_actions(actions)
-
-    def set_current_by_data(self, data: any):
-        for text, action_data in self._actions:
-            if action_data == data:
-                for i, (t, d) in enumerate(self._actions):
-                    if d == data:
-                        self._current_action = (text, data)
-                        self.menu.set_current_by_data(data)
-                        break
-                break
-
-    def show_menu(self):
-        if not self._actions:
-            return
-        if self._menu_visible or self.menu.isVisible():
-            self.hide_menu()
-            return
-        self._menu_visible = True
-        try:
-            self.menu.show_for_anchor(self)
-        except Exception:
-            logger.exception("ToolButtonWithMenu.show_menu failed button=%s actions=%s", self.objectName(), self._actions)
-            self._menu_visible = False
-
-    def _on_action_triggered(self, action: QAction):
-        self.set_current_by_data(action.data())
-        self.triggered.emit(action)
-
-    def hide_menu(self):
-        if self._menu_visible:
-            self._menu_visible = False
-            self.menu.hide()
-
-    def is_menu_visible(self):
-        return self._menu_visible

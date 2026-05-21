@@ -112,10 +112,10 @@ class CanvasViewCoordinator:
         return is_gl_canvas(self.presenter)
 
     def set_image_layers(
-        self, background=None, magnifier=None, mag_pos=None, coords_snapshot=None
+        self, background=None, overlay=None, overlay_pos=None, coords_snapshot=None
     ):
         return set_image_layers(
-            self.presenter, background, magnifier, mag_pos, coords_snapshot
+            self.presenter, background, overlay, overlay_pos, coords_snapshot
         )
 
     def display_single_image_on_label(self, pil_image: PIL.Image.Image | None):

@@ -15,6 +15,11 @@ class UnderlineConfig:
     alpha: Optional[int] = None
     color: Union[QColor, List[QColor], None] = None
 
+def _widget_scale(rect) -> float:
+    """Scale factor based on widget height (baseline: 32px button)."""
+    h = float(rect.height())
+    return max(1.0, h / 32.0)
+
 def draw_bottom_underline(
     painter, rect, theme_manager: ThemeManager, config: UnderlineConfig | None = None
 ):
@@ -49,8 +54,11 @@ def draw_bottom_underline(
     if count == 0:
         return
 
-    arc_radius = float(cfg.arc_radius)
-    base_y = float(rect.bottom()) - cfg.vertical_offset
+    scale = _widget_scale(rect)
+    arc_radius = float(cfg.arc_radius) * scale
+    thickness = cfg.thickness * scale
+    vertical_offset = cfg.vertical_offset * scale
+    base_y = float(rect.bottom()) - vertical_offset
     start_x = float(rect.left())
     end_x = float(rect.right())
     total_width = end_x - start_x
@@ -58,7 +66,7 @@ def draw_bottom_underline(
 
     for i, color in enumerate(final_colors):
         pen = QPen(color)
-        pen.setWidthF(cfg.thickness)
+        pen.setWidthF(thickness)
         pen.setCapStyle(Qt.PenCapStyle.FlatCap)
         painter.setPen(pen)
 

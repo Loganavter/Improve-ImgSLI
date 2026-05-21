@@ -1,5 +1,13 @@
 # SLI UI Toolkit — Design Language
 
+This document describes visual and interaction rules for custom-painted widgets.
+
+For other needs:
+
+- integration overview: [../README.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/README.md)
+- public widget reference: [API_CATALOG.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/API_CATALOG.md)
+- internal layering: [ARCHITECTURE.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/ARCHITECTURE.md)
+
 ## Overview
 
 The toolkit implements a custom dark-first design language with the following principles:
@@ -75,7 +83,7 @@ Three label density levels:
 | `Slider` | 5 px track height, 7 px thumb radius |
 | `SpinBox` | Standard line edit with 2 px radius |
 | `ComboBox` | 8 px radius, 24 px dropdown arrow area |
-| `IconButton` | 44×44 px default, 24×24 px icon |
+| `Button` (icon) | 44×44 px default, 22×22 px icon |
 
 ## Animation Timing
 

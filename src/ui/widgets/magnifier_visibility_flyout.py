@@ -3,10 +3,11 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QWidget
 
 from sli_ui_toolkit.widgets import IndexedToggleFlyout
+from ui.icon_manager import AppIcon
 
 class MagnifierVisibilityFlyout(IndexedToggleFlyout):
     def __init__(self, parent_widget: QWidget):
-        super().__init__(parent_widget, slot_count=3)
+        super().__init__(parent_widget, slot_count=3, slot_icon=AppIcon.MAGNIFIER)
         self.btn_left = self.buttons[0]
         self.btn_center = self.buttons[1]
         self.btn_right = self.buttons[2]
@@ -20,11 +21,9 @@ class MagnifierVisibilityFlyout(IndexedToggleFlyout):
         right_on: bool,
         laser_on: bool = True,
     ):
-        active_states = [left_on, right_on]
-        display_numbers = [1, 2]
-        if show_center:
-            active_states = [left_on, center_on, right_on]
-            display_numbers = [1, 2, 3]
+
+        active_states = [left_on, center_on, right_on]
+        display_numbers = [1, 2, 3]
         self.set_slots(active_states, display_numbers=display_numbers)
         self.btn_center.setVisible(show_center)
         if show_center:

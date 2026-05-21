@@ -175,7 +175,8 @@ class ExportPresenter(QObject):
         original1_full = kwargs["original1_full"]
         original2_full = kwargs["original2_full"]
         export_options = kwargs["export_options"]
-        render_context = kwargs.get("render_context")
+        render_plan = kwargs.get("render_plan")
+        render_store = kwargs.get("render_store")
 
         def emit_progress(val):
             if progress_callback:
@@ -188,7 +189,8 @@ class ExportPresenter(QObject):
                 original_image1=original1_full,
                 original_image2=original2_full,
                 export_options=export_options,
-                render_context=render_context,
+                render_plan=render_plan,
+                render_store=render_store,
                 cancel_event=cancel_event,
                 progress_callback=lambda v: emit_progress(v),
             )

@@ -309,6 +309,7 @@ class VideoProjectModel:
     height: int = 1080
 
     fps: int = 60
+    preview_render_scale: float = 1.0
 
     aspect_ratio_locked: bool = True
     original_ratio: float = 16 / 9

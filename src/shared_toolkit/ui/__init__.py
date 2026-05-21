@@ -5,6 +5,7 @@ from .services import IconService, get_icon_by_name, get_icon_service
 from sli_ui_toolkit.widgets import (
     AdaptiveLabel,
     BodyLabel,
+    Button,
     ButtonMode,
     CaptionLabel,
     CheckBox,

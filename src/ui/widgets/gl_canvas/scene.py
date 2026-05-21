@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from PyQt6.QtGui import QColor
-
 from ui.canvas_infra.scene.widget_registry import build_canvas_feature_render_scene_overrides
 
 @dataclass(frozen=True)
@@ -13,12 +11,7 @@ class GLRenderScene:
     clip_overlays_to_image_bounds: bool = False
     is_horizontal: bool = False
     split_position_visual: float = 0.5
-    divider_clip_rect: tuple[int, int, int, int] | None = None
-    show_divider: bool = False
-    divider_color: QColor = field(
-        default_factory=lambda: QColor(255, 255, 255, 255)
-    )
-    divider_thickness: int = 2
+    overlay_clip_rect: tuple[int, int, int, int] | None = None
     channel_mode_int: int = 0
     diff_mode_active: bool = False
     diff_mode_int: int = 0
@@ -41,7 +34,7 @@ def build_gl_render_scene(
     diff_mode = str(getattr(viewport.view_state, "diff_mode", "off") or "off")
     is_horizontal = bool(getattr(viewport.view_state, "is_horizontal", False))
     split_position_visual = float(getattr(viewport.view_state, "split_position_visual", 0.5))
-    divider_clip_rect = getattr(viewport, "overlay_clip_rect", None)
+    overlay_clip_rect = getattr(viewport, "overlay_clip_rect", None)
     zoom_method = str(
         getattr(getattr(viewport, "render_config", None), "zoom_interpolation_method", "BILINEAR")
         or "BILINEAR"
@@ -65,10 +58,7 @@ def build_gl_render_scene(
         clip_overlays_to_image_bounds=bool(clip_overlays_to_image_bounds),
         is_horizontal=is_horizontal,
         split_position_visual=split_position_visual,
-        divider_clip_rect=divider_clip_rect,
-        show_divider=bool(feature_overrides.get("show_divider", False)),
-        divider_color=feature_overrides.get("divider_color", QColor(255, 255, 255, 255)),
-        divider_thickness=int(feature_overrides.get("divider_thickness", 2)),
+        overlay_clip_rect=overlay_clip_rect,
         channel_mode_int=(
             {"RGB": 0, "R": 1, "G": 2, "B": 3, "L": 4}.get(
                 str(getattr(viewport.view_state, "channel_view_mode", "RGB") or "RGB"),

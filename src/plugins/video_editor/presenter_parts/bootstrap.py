@@ -23,15 +23,26 @@ def initialize_editor_from_snapshots(view, editor_service, playback_engine, mode
     playback_engine.set_range(0, total_frames - 1)
 
     try:
-        first_snap = editor_service.get_snapshot_at_time(0.0)
-        if first_snap is None:
-            raise RuntimeError("Missing initial snapshot")
-        img1 = load_full_image(first_snap.image1_path, auto_crop=VIDEO_EDITOR_AUTO_CROP)
-        img2 = load_full_image(first_snap.image2_path, auto_crop=VIDEO_EDITOR_AUTO_CROP)
-        w1, h1 = img1.size if img1 else (0, 0)
-        w2, h2 = img2.size if img2 else (0, 0)
-        max_w = max(w1, w2)
-        max_h = max(h1, h2)
+        max_w, max_h = 0, 0
+        seen_paths: set[str] = set()
+        snapshots = editor_service.get_current_snapshots()
+        for snap in snapshots:
+            for path in (snap.image1_path, snap.image2_path):
+                if not path or path in seen_paths:
+                    continue
+                seen_paths.add(path)
+                img = load_full_image(path, auto_crop=VIDEO_EDITOR_AUTO_CROP)
+                if img:
+                    max_w = max(max_w, img.size[0])
+                    max_h = max(max_h, img.size[1])
+        if not snapshots:
+            first_snap = editor_service.get_snapshot_at_time(0.0)
+            if first_snap is not None:
+                for path in (first_snap.image1_path, first_snap.image2_path):
+                    img = load_full_image(path, auto_crop=VIDEO_EDITOR_AUTO_CROP)
+                    if img:
+                        max_w = max(max_w, img.size[0])
+                        max_h = max(max_h, img.size[1])
         if max_w > 0 and max_h > 0:
             model.set_resolution(max_w, max_h)
             view.set_resolution(max_w, max_h)

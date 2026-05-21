@@ -52,6 +52,18 @@ class ThemeManager(QObject):
             return QColor(value)
         return QColor("#000000")
 
+    def try_get_color(self, color_key: str) -> QColor | None:
+        """Return the color for *color_key*, or ``None`` if the key is absent."""
+        palette = self._dark_palette if self.is_dark() else self._light_palette
+        value = palette.get(color_key)
+        if value is None:
+            return None
+        if isinstance(value, QColor):
+            return QColor(value)
+        if isinstance(value, str):
+            return QColor(value)
+        return None
+
     def set_color(self, color_key: str, color: QColor):
         color_to_store = (
             QColor(color) if isinstance(color, QColor) else QColor(str(color))

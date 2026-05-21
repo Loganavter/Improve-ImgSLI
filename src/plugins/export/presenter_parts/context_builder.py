@@ -1,16 +1,34 @@
 from __future__ import annotations
 
+import logging
+
 import PIL.Image
 
 from plugins.export.models import ExportSaveContext
-from plugins.export.scene_builder import ExportSceneBuilder
+from plugins.video_editor.services.video_export_models import VideoRenderRequest
+from plugins.video_editor.services.video_snapshot_rendering import SnapshotFrameRenderer
+from shared.image_processing.resize import resize_images_processor
+from shared.rendering.live_snapshot import build_live_frame_snapshot
+from shared.rendering import TargetSurfaceSpec
+from shared.rendering import get_effective_main_interpolation_method
 
 class ExportContextBuilder:
     def __init__(self, store, gpu_export_service, state_coordinator):
         self.store = store
         self.gpu_export_service = gpu_export_service
         self.state = state_coordinator
-        self.scene_builder = ExportSceneBuilder(store)
+        self.renderer = SnapshotFrameRenderer(
+            image_loader=lambda _path, _auto_crop=False: None,
+            gpu_export_service=gpu_export_service,
+        )
+
+    def _current_canvas_fill_rgba(self):
+        dialog_state = self.state.build_export_dialog_state()
+        bg = dialog_state.background_color
+        if not dialog_state.fill_background or bg is None:
+            return None
+        resolved = (bg.r, bg.g, bg.b, bg.a)
+        return resolved
 
     def has_images(self) -> bool:
         doc = self.store.document
@@ -34,19 +52,34 @@ class ExportContextBuilder:
             raise ValueError("Full resolution images are not available for saving.")
 
         preview_img = None
+        live_snapshot = build_live_frame_snapshot(self.store)
+        resize_method = get_effective_main_interpolation_method(live_snapshot.viewport_state)
         if include_preview:
             preview_img = self.build_export_preview_from_sources(
-                original1_full, original2_full
+                original1_full, original2_full, live_snapshot=live_snapshot
             )
 
-        image1_for_save, image2_for_save = self.scene_builder.build_resized_pair(
-            original1_full, original2_full
+        image1_for_save, image2_for_save = resize_images_processor(
+            original1_full, original2_full, resize_method
         )
-        render_context = self.scene_builder.build_render_context(
+        if not image1_for_save or not image2_for_save:
+            raise ValueError("Failed to unify images for export.")
+        prepared_frame = self.renderer.prepare_canvas_frame_from_images(
+            live_snapshot,
+            VideoRenderRequest(
+                target_surface=TargetSurfaceSpec(
+                    width=image1_for_save.width,
+                    height=image1_for_save.height,
+                    fill_rgba=self._current_canvas_fill_rgba(),
+                ),
+                font_path=None,
+                auto_crop=False,
+                fit_content=False,
+                global_bounds=None,
+            ),
             image1_for_save,
             image2_for_save,
-            source_image1=original1_full,
-            source_image2=original2_full,
+            allow_feature_layout_fallback=True,
         )
 
         return ExportSaveContext(
@@ -54,8 +87,8 @@ class ExportContextBuilder:
             original2_full=original2_full,
             image1_for_save=image1_for_save,
             image2_for_save=image2_for_save,
-            overlay_coords_for_save=render_context.overlay_drawing_coords,
-            render_context=render_context,
+            render_plan=prepared_frame.plan,
+            render_store=prepared_frame.store,
             preview_img=preview_img,
             suggested_filename=self.state.build_suggested_export_filename(),
         )
@@ -75,47 +108,31 @@ class ExportContextBuilder:
         )
         return image.resize(preview_size, PIL.Image.Resampling.LANCZOS)
 
-    def build_export_preview_from_sources(self, image1_full, image2_full):
+    def build_export_preview_from_sources(self, image1_full, image2_full, *, live_snapshot=None):
+        live_snapshot = live_snapshot or build_live_frame_snapshot(self.store)
+        resize_method = get_effective_main_interpolation_method(live_snapshot.viewport_state)
         image1_preview_src = self._downscale_for_preview(image1_full)
         image2_preview_src = self._downscale_for_preview(image2_full)
-        image1_preview, image2_preview = self.scene_builder.build_resized_pair(
-            image1_preview_src, image2_preview_src
+        image1_preview, image2_preview = resize_images_processor(
+            image1_preview_src, image2_preview_src, resize_method
         )
-        preview_context = self.scene_builder.build_render_context(
+        if not image1_preview or not image2_preview:
+            raise ValueError("Failed to build preview export pair.")
+        result = self.renderer.render_from_images(
+            live_snapshot,
+            VideoRenderRequest(
+                target_surface=TargetSurfaceSpec(
+                    width=image1_preview.width,
+                    height=image1_preview.height,
+                    fill_rgba=self._current_canvas_fill_rgba(),
+                ),
+                font_path=None,
+                auto_crop=False,
+                fit_content=False,
+                global_bounds=None,
+            ),
             image1_preview,
             image2_preview,
-            source_image1=image1_preview_src,
-            source_image2=image2_preview_src,
+            allow_feature_layout_fallback=True,
         )
-        preview_img, _gpu_debug = self.gpu_export_service.render_image(
-            store=self.store,
-            render_context=preview_context,
-        )
-        if preview_img is None:
-            raise RuntimeError("GPU export preview returned no image")
-        return preview_img
-
-    def build_export_preview(self, render_context):
-        save_width, save_height = render_context.width, render_context.height
-        preview_scale = max(1, min(5, max(save_width, save_height) // 800))
-        preview_w = max(1, save_width // preview_scale)
-        preview_h = max(1, save_height // preview_scale)
-        image1_preview = render_context.image1.resize(
-            (preview_w, preview_h), PIL.Image.Resampling.BILINEAR
-        )
-        image2_preview = render_context.image2.resize(
-            (preview_w, preview_h), PIL.Image.Resampling.BILINEAR
-        )
-        preview_context = self.scene_builder.build_render_context(
-            image1_preview,
-            image2_preview,
-            source_image1=image1_preview,
-            source_image2=image2_preview,
-        )
-        preview_img, _gpu_debug = self.gpu_export_service.render_image(
-            store=self.store,
-            render_context=preview_context,
-        )
-        if preview_img is None:
-            raise RuntimeError("GPU export preview returned no image")
-        return preview_img
+        return result.image

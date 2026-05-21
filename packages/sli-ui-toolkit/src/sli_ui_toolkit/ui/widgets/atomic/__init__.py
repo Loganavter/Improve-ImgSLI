@@ -1,13 +1,4 @@
-from sli_ui_toolkit.ui.widgets.atomic.button_group_container import ButtonGroupContainer
-from sli_ui_toolkit.ui.widgets.atomic.button_painter import ButtonPainter
-from sli_ui_toolkit.ui.widgets.atomic.buttons import (
-    AutoRepeatButton,
-    ButtonType,
-    IconButton,
-    LongPressIconButton,
-)
 from sli_ui_toolkit.ui.widgets.atomic.clickable_label import ClickableLabel
-from sli_ui_toolkit.ui.widgets.atomic.custom_button import CustomButton
 from sli_ui_toolkit.ui.widgets.atomic.custom_group_widget import (
     CustomGroupBuilder,
     CustomGroupWidget,
@@ -29,12 +20,7 @@ from sli_ui_toolkit.ui.widgets.atomic.instances_counter_button import (
     InstancesCounterButton,
     MagnifierInstancesButton,
 )
-from sli_ui_toolkit.ui.widgets.atomic.numbered_toggle_icon_button import (
-    NumberedToggleIconButton,
-)
 from sli_ui_toolkit.ui.widgets.atomic.comboboxes import ScrollableComboBox
-from sli_ui_toolkit.ui.widgets.atomic.scrollable_icon_button import ScrollableIconButton
-from sli_ui_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
 from sli_ui_toolkit.ui.widgets.atomic.text_labels import (
     AdaptiveLabel,
     BodyLabel,
@@ -43,16 +29,31 @@ from sli_ui_toolkit.ui.widgets.atomic.text_labels import (
     GroupTitleLabel,
 )
 from sli_ui_toolkit.ui.widgets.atomic.time_line_edit import TimeLineEdit
-from sli_ui_toolkit.ui.widgets.atomic.toggle_icon_button import ToggleIconButton
-from sli_ui_toolkit.ui.widgets.atomic.toggle_scrollable_icon_button import (
-    ToggleScrollableIconButton,
-)
-from sli_ui_toolkit.ui.widgets.atomic.tool_button import ToolButton
-from sli_ui_toolkit.ui.widgets.atomic.tool_button_with_menu import ToolButtonWithMenu
-from sli_ui_toolkit.ui.widgets.atomic.unified_icon_button import (
-    ButtonMode,
-    UnifiedIconButton,
-)
+
+from sli_ui_toolkit.ui.widgets.buttons import Button, ButtonGroup
+from sli_ui_toolkit.ui.widgets.buttons._painter import ButtonPainter
+
+ButtonGroupContainer = ButtonGroup
+IconButton = Button
+SimpleIconButton = Button
+ToggleIconButton = Button
+ScrollableIconButton = Button
+ToggleScrollableIconButton = Button
+CustomButton = Button
+ToolButton = Button
+ToolButtonWithMenu = Button
+UnifiedIconButton = Button
+NumberedToggleIconButton = Button
+LongPressIconButton = Button
+AutoRepeatButton = Button
+
+class ButtonType:
+    """Compat stub — no longer used."""
+    pass
+
+class ButtonMode:
+    """Compat stub — no longer used."""
+    pass
 
 __all__ = [
     "AdaptiveLabel",

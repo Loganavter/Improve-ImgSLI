@@ -17,6 +17,10 @@ from sli_ui_toolkit.ui.widgets.composite.log_console_widget import (
     LogConsoleEntry,
     LogConsoleWidget,
 )
+from sli_ui_toolkit.ui.widgets.composite.markdown_help_dialog import (
+    MarkdownHelpDialog,
+    MarkdownHelpSection,
+)
 from sli_ui_toolkit.ui.widgets.composite.form_sections import OutputPathSection
 from sli_ui_toolkit.ui.widgets.composite.path_controls import (
     DirectoryPickerRow,
@@ -75,6 +79,8 @@ __all__ = [
     "FontSettingsFlyout",
     "LogConsoleEntry",
     "LogConsoleWidget",
+    "MarkdownHelpDialog",
+    "MarkdownHelpSection",
     "OutputPathSection",
     "ProcessConsoleWidget",
     "ScrollableDialogPage",

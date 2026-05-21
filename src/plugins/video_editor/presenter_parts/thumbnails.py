@@ -82,21 +82,15 @@ class ThumbnailCoordinator:
     def on_timeline_viewport_changed(self):
         visible_indices = self.get_visible_frame_indices()
         if visible_indices:
-            self.thumbnail_service.generate_additional_thumbnails(visible_indices)
+            self.thumbnail_service.generate_additional_thumbnails(
+                visible_indices,
+                fps=self.editor_service.get_fps(),
+            )
 
     def on_timeline_resized(self):
-        total_frames = self.editor_service.get_frame_count()
-        if total_frames <= 0:
-            return
+        self.on_timeline_viewport_changed()
 
-        target_count = self.calculate_optimal_thumbnail_count()
-        step = max(1, total_frames // target_count)
-        indices_to_generate = list(range(0, total_frames, step))
-        self.thumbnail_service.generate_additional_thumbnails(
-            indices_to_generate, fps=self.editor_service.get_fps()
-        )
-
-    def get_visible_frame_indices(self, margin: int = 5) -> List[int]:
+    def get_visible_frame_indices(self, margin: int = 2) -> List[int]:
         if self.view is None or not hasattr(self.view, "timeline"):
             return []
 
@@ -105,6 +99,16 @@ class ThumbnailCoordinator:
             return []
 
         try:
+            timeline = self.view.timeline
+            if hasattr(timeline, "get_visible_thumbnail_frame_indices"):
+                return [
+                    idx
+                    for idx in timeline.get_visible_thumbnail_frame_indices(
+                        overscan_blocks=margin
+                    )
+                    if 0 <= idx < total_frames
+                ]
+
             current_frame = self.playback_engine.get_current_frame()
             visible_range = 5
             start_idx = max(0, current_frame - visible_range - margin)

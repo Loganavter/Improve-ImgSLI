@@ -102,7 +102,9 @@ def resample_image_subpixel(
     return result
 
 def resize_images_processor(
-    original_image1: Image.Image | None, original_image2: Image.Image | None
+    original_image1: Image.Image | None,
+    original_image2: Image.Image | None,
+    method_name: str = "LANCZOS",
 ) -> Tuple[Image.Image | None, Image.Image | None]:
     processed_img1_intermediate = None
     if original_image1:
@@ -137,14 +139,14 @@ def resize_images_processor(
         if processed_img1_intermediate:
             if processed_img1_intermediate.size != target_size_final:
                 final_processed_image1 = resample_image(
-                    processed_img1_intermediate, target_size_final, "LANCZOS", False
+                    processed_img1_intermediate, target_size_final, method_name, False
                 )
             else:
                 final_processed_image1 = processed_img1_intermediate
         if processed_img2_intermediate:
             if processed_img2_intermediate.size != target_size_final:
                 final_processed_image2 = resample_image(
-                    processed_img2_intermediate, target_size_final, "LANCZOS", False
+                    processed_img2_intermediate, target_size_final, method_name, False
                 )
             else:
                 final_processed_image2 = processed_img2_intermediate

@@ -47,6 +47,7 @@ def _track_descriptor(
 def build_magnifier_properties() -> tuple[CanvasFeatureProperty, ...]:
     enabled = _track_descriptor("magnifier.default.enabled", "Enabled", "bool")
     border_color = _track_descriptor("magnifier.border.color", "Border Color", "color")
+    divider_color = _track_descriptor("magnifier.divider.color", "Divider Color", "color")
     intersection_highlight = _track_descriptor(
         "magnifier.intersection_highlight.enabled",
         "Intersection Highlight",
@@ -102,6 +103,32 @@ def build_magnifier_properties() -> tuple[CanvasFeatureProperty, ...]:
             order=51,
         ),
         CanvasFeatureProperty(
+            id=divider_color.id,
+            label=divider_color.label,
+            kind=divider_color.kind,
+            channels=divider_color.channels,
+            group_id="magnifier",
+            group_label="Magnifier",
+            setting_key="magnifier.divider.color",
+            read_snapshot=lambda snap: {
+                "r": int(get_magnifier_widget_state(snap.viewport_state.view_state).default_divider_color.r),
+                "g": int(get_magnifier_widget_state(snap.viewport_state.view_state).default_divider_color.g),
+                "b": int(get_magnifier_widget_state(snap.viewport_state.view_state).default_divider_color.b),
+                "a": int(get_magnifier_widget_state(snap.viewport_state.view_state).default_divider_color.a),
+            },
+            write_snapshot=lambda snap, ch: setattr(
+                get_magnifier_widget_state(snap.viewport_state.view_state),
+                "default_divider_color",
+                Color(
+                    int(ch["r"]),
+                    int(ch["g"]),
+                    int(ch["b"]),
+                    int(ch["a"]),
+                ),
+            ),
+            order=52,
+        ),
+        CanvasFeatureProperty(
             id=intersection_highlight.id,
             label=intersection_highlight.label,
             kind=intersection_highlight.kind,
@@ -121,7 +148,7 @@ def build_magnifier_properties() -> tuple[CanvasFeatureProperty, ...]:
                 "intersection_highlight_enabled",
                 bool(ch["value"]),
             ),
-            order=52,
+            order=53,
         ),
         CanvasFeatureProperty(
             id=auto_color_new.id,
@@ -143,6 +170,6 @@ def build_magnifier_properties() -> tuple[CanvasFeatureProperty, ...]:
                 "auto_color_new_instances",
                 bool(ch["value"]),
             ),
-            order=53,
+            order=54,
         ),
     )

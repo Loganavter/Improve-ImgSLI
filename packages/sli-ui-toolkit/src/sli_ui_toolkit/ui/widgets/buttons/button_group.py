@@ -1,13 +1,20 @@
+"""
+Container that groups buttons with an optional label and border.
+Replaces ButtonGroupContainer from atomic/.
+"""
+
+from __future__ import annotations
+
 from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
 from sli_ui_toolkit.theme import ThemeManager
 
-class ButtonGroupContainer(QWidget):
-    def __init__(self, buttons: list, label_text: str = "", parent=None):
+class ButtonGroup(QWidget):
+    def __init__(self, buttons: list, label: str = "", parent=None):
         super().__init__(parent)
-        self._label_text = label_text
+        self._label = label
         self._border_width = 1
         self._border_radius = 8
 
@@ -15,32 +22,22 @@ class ButtonGroupContainer(QWidget):
         self.setAutoFillBackground(False)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
 
-        self._buttons_layout = QHBoxLayout(self)
-        self._buttons_layout.setContentsMargins(10, 8, 10, 18)
-        self._buttons_layout.setSpacing(2)
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(10, 8, 10, 18)
+        self._layout.setSpacing(2)
 
         for button in buttons:
-            self._buttons_layout.addWidget(button)
+            self._layout.addWidget(button)
 
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.theme_changed.connect(self.update)
 
-    def set_label_text(self, text: str):
-        if self._label_text != text:
-            self._label_text = text
+    def set_label(self, text: str):
+        if self._label != text:
+            self._label = text
             self.update()
 
-    def _get_label_height(self):
-        if not self._label_text:
-            return 0
-        font_metrics = QFontMetrics(self.font())
-        return font_metrics.height()
-
-    def _get_label_width(self):
-        if not self._label_text:
-            return 0
-        font_metrics = QFontMetrics(self.font())
-        return font_metrics.horizontalAdvance(self._label_text)
+    set_label_text = set_label
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -52,7 +49,11 @@ class ButtonGroupContainer(QWidget):
         text_color = self.theme_manager.get_color("WindowText")
 
         rect = self.rect()
-        label_height = self._get_label_height()
+        font = painter.font()
+        font.setPointSize(max(8, font.pointSize() - 2))
+        painter.setFont(font)
+        fm = QFontMetrics(font)
+        label_height = fm.height() if self._label else 0
 
         pen = QPen(border_color, self._border_width)
         painter.setPen(pen)
@@ -63,25 +64,18 @@ class ButtonGroupContainer(QWidget):
         margin_h = 6
         bottom_y = rect.height() - label_height // 2
         draw_rect = QRect(
-            margin_h,
-            margin_v,
+            margin_h, margin_v,
             rect.width() - margin_h * 2 - 1,
             bottom_y - margin_v * 2,
         )
         painter.drawRoundedRect(draw_rect, self._border_radius, self._border_radius)
         painter.translate(-0.5, -0.5)
 
-        if self._label_text:
+        if self._label:
             label_padding = 3
             center_x = rect.width() // 2
-
-            font = painter.font()
-            font.setPointSize(max(8, font.pointSize() - 2))
-            painter.setFont(font)
-
-            font_metrics = QFontMetrics(font)
-            actual_label_width = font_metrics.horizontalAdvance(self._label_text)
-            actual_label_height = font_metrics.height()
+            label_w = fm.horizontalAdvance(self._label)
+            label_h = fm.height()
 
             actual_bottom_y = bottom_y - margin_v
             gap_y = actual_bottom_y - self._border_width
@@ -89,19 +83,15 @@ class ButtonGroupContainer(QWidget):
 
             painter.setPen(Qt.PenStyle.NoPen)
             gap_rect = QRect(
-                center_x - actual_label_width // 2 - label_padding,
-                gap_y,
-                actual_label_width + label_padding * 2,
-                gap_height,
+                center_x - label_w // 2 - label_padding,
+                gap_y, label_w + label_padding * 2, gap_height,
             )
             painter.fillRect(gap_rect, bg_color)
 
             text_rect = QRect(
-                center_x - actual_label_width // 2,
-                rect.height() - actual_label_height - 2,
-                actual_label_width,
-                actual_label_height,
+                center_x - label_w // 2,
+                rect.height() - label_h - 2,
+                label_w, label_h,
             )
             painter.setPen(text_color)
-            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self._label_text)
-
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self._label)

@@ -5,6 +5,7 @@ import logging
 from PyQt6.QtCore import Qt
 
 from events.canvas_input.session_service import KEYBOARD_MOVE_OWNER
+from plugins.export.events import ExportPasteImageFromClipboardEvent
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -37,6 +38,12 @@ class ImageLabelKeyboardHandler:
         keyboard_state = self.handler.keyboard_state_service
         if keyboard_state is None:
             logger.warning("Canvas keyboard state service is not configured")
+            return
+        if key == Qt.Key.Key_V and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            event_bus = self.handler.event_bus
+            if event_bus is not None:
+                event_bus.emit(ExportPasteImageFromClipboardEvent())
+            event.accept()
             return
         result = keyboard_state.press(key, is_auto_repeat=event.isAutoRepeat())
         if not result.applied:

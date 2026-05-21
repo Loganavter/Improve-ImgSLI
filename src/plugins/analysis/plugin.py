@@ -101,6 +101,12 @@ class AnalysisPlugin(Plugin, IControllablePlugin):
             else None
         }
 
+    def bind_window_shell(self, window_shell: Any) -> None:
+        if self.metrics_service is not None:
+            self.metrics_service.runtime.toast_manager_getter = lambda: getattr(
+                window_shell, "toast_manager", None
+            )
+
     def get_controller(self) -> AnalysisController | None:
         return self.controller
 

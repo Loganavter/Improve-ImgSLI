@@ -20,6 +20,8 @@ from ui.canvas_infra.scene.widget_contract import (
     CanvasFeatureCommandAlias,
     CanvasFeatureProperty,
     CanvasFeatureSettingsEventBinding,
+    CanvasFeatureStateCommand,
+    CanvasFeatureStateQuery,
     CanvasFeatureToolbarBinding,
     CanvasWidgetFeature,
 )
@@ -128,7 +130,7 @@ def build_filename_overlay_properties() -> tuple[CanvasFeatureProperty, ...]:
             write_snapshot=lambda snap, ch: setattr(
                 snap.viewport_state.render_config,
                 "text_alpha_percent",
-                max(0, min(100, int(float(ch["value"])))),
+                max(5, min(100, int(float(ch["value"])))),
             ),
             order=43,
         ),
@@ -277,7 +279,7 @@ def build_filename_overlay_commands() -> dict[str, object]:
         ),
         "settings.set_text_alpha": lambda settings, alpha: settings.mutations.set_canvas_feature_setting(
             "text_alpha_percent",
-            max(0, min(100, int(alpha))),
+            max(5, min(100, int(alpha))),
             invalidate_render_cache=True,
             request_core_update=True,
         ),
@@ -361,10 +363,18 @@ def build_filename_overlay_render_scene_overrides(store) -> dict:
             file_name_color=getattr(viewport.render_config, "file_name_color", None),
             file_name_bg_color=getattr(viewport.render_config, "file_name_bg_color", None),
             max_name_length=int(getattr(viewport.render_config, "max_name_length", 50)),
-            name1=document.get_current_display_name(1) if document is not None else "",
-            name2=document.get_current_display_name(2) if document is not None else "",
+            name1=document.get_active_display_name(1) if document is not None else "",
+            name2=document.get_active_display_name(2) if document is not None else "",
         )
     }
+
+def build_filename_overlay_state_queries():
+    """Build state queries for direct feature state access."""
+    return ()
+
+def build_filename_overlay_state_commands():
+    """Build state commands for direct feature state modification."""
+    return ()
 
 FILENAME_OVERLAY_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("labels.settings.toggle_visibility", "settings.toggle_visibility"),
@@ -387,6 +397,8 @@ def build_widget_feature() -> CanvasWidgetFeature:
         build_commands=build_filename_overlay_commands,
         command_aliases=FILENAME_OVERLAY_COMMAND_ALIASES,
         build_settings_event_bindings=build_filename_overlay_settings_event_bindings,
+        build_state_queries=build_filename_overlay_state_queries,
+        build_state_commands=build_filename_overlay_state_commands,
         build_render_scene_overrides=build_filename_overlay_render_scene_overrides,
         i18n_namespace="ui.labels",
         reducer_order=40,

@@ -116,8 +116,8 @@ class RatingListItem(QWidget):
             rating_font.setPixelSize(max(8, base_px - 3))
             self.rating_label.setFont(rating_font)
 
-            self.btn_minus = AutoRepeatButton(resolve_icon(DEFAULT_MINUS_ICON), self)
-            self.btn_plus = AutoRepeatButton(resolve_icon(DEFAULT_PLUS_ICON), self)
+            self.btn_minus = AutoRepeatButton(resolve_icon(DEFAULT_MINUS_ICON), parent=self)
+            self.btn_plus = AutoRepeatButton(resolve_icon(DEFAULT_PLUS_ICON), parent=self)
             self.btn_minus.setObjectName("minusButton")
             self.btn_plus.setObjectName("plusButton")
             for btn in [self.btn_minus, self.btn_plus]:

@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from PIL import Image
+
+_pblog = logging.getLogger("ImproveImgSLI.plan_builder")
 from PyQt6.QtGui import QColor
 
 from core.store import ImageItem, Store
+from shared.rendering import VirtualCanvasLayout, resolve_virtual_canvas_layout
 from ui.canvas_infra.scene.property_access import (
     read_canvas_feature_color_by_setting_key,
     read_canvas_feature_setting_by_key,
 )
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from ui.canvas_infra.scene.widget_registry import (
+    get_canvas_feature_command_by_alias,
+    get_canvas_feature_commands_by_id,
+)
 from ui.widgets.gl_canvas.scene import build_gl_render_scene
 
 from .layout import compute_content_layout
@@ -34,12 +41,53 @@ class CanvasGeometry:
     padding_top: int
     padding_right: int
     padding_bottom: int
-    overlay_coords: object = None
+    virtual_layout: VirtualCanvasLayout | None = None
 
 class _FallbackGuidesState:
     enabled = False
     thickness = 1
     color = type("C", (), {"r": 255, "g": 255, "b": 255, "a": 255})()
+
+def _resolve_overlay_virtual_layout(
+    store,
+    *,
+    drawing_width: int,
+    drawing_height: int,
+) -> VirtualCanvasLayout | None:
+    requirements = []
+    for build_requirement in get_canvas_feature_commands_by_id(
+        "render.layout_requirement"
+    ):
+        requirement = build_requirement(
+            store,
+            drawing_width=drawing_width,
+            drawing_height=drawing_height,
+        )
+        if requirement is not None:
+            requirements.append(requirement)
+    return resolve_virtual_canvas_layout(requirements)
+
+def _resolve_overlay_padding(
+    store,
+    *,
+    drawing_width: int,
+    drawing_height: int,
+) -> tuple[tuple[int, int, int, int], VirtualCanvasLayout | None]:
+    layout = _resolve_overlay_virtual_layout(
+        store,
+        drawing_width=drawing_width,
+        drawing_height=drawing_height,
+    )
+    if layout is None:
+        return (0, 0, 0, 0), None
+    padding = layout.resolve_padding_pixels(
+        base_width=drawing_width,
+        base_height=drawing_height,
+    )
+    return (
+        padding,
+        layout,
+    )
 
 def _pad_image(img, width, height, left, top, fill_color=(0, 0, 0, 0)):
     padded = Image.new("RGBA", (width, height), fill_color)
@@ -47,23 +95,22 @@ def _pad_image(img, width, height, left, top, fill_color=(0, 0, 0, 0)):
         padded.alpha_composite(img.convert("RGBA"), (left, top))
     return padded
 
-def _get_unified_images(image1, image2, fit_content, global_bounds, fill_color=None):
+def _get_unified_images(
+    image1,
+    image2,
+    fit_content,
+    global_bounds,
+    fill_color=None,
+    *,
+    resize_method: str = "LANCZOS",
+):
     from shared.image_processing.resize import resize_images_processor
 
     img1 = image1.convert("RGBA") if image1 is not None else None
     img2 = image2.convert("RGBA") if image2 is not None else None
 
     if img1 is not None and img2 is not None:
-        img1, img2 = resize_images_processor(img1, img2)
-
-    if fit_content and global_bounds:
-        pad_left, pad_right, pad_top, pad_bottom, base_w, base_h = global_bounds
-        virtual_w = base_w + pad_left + pad_right
-        virtual_h = base_h + pad_top + pad_bottom
-        if virtual_w > 0 and virtual_h > 0 and base_w > 0 and base_h > 0:
-            fill = fill_color or (0, 0, 0, 0)
-            img1 = _pad_image(img1, virtual_w, virtual_h, pad_left, pad_top, fill)
-            img2 = _pad_image(img2, virtual_w, virtual_h, pad_left, pad_top, fill)
+        img1, img2 = resize_images_processor(img1, img2, resize_method)
 
     return img1, img2
 
@@ -75,36 +122,83 @@ def _build_snapshot_store(
     fit_content: bool = False,
     global_bounds=None,
     fill_color=None,
+    resize_method: str = "LANCZOS",
 ):
     store = Store()
     store.viewport = snap.viewport_state.clone()
     store.settings = snap.settings_state.freeze_for_export()
     store.viewport.overlay_clip_rect = None
     normalize_snapshot = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
-    if normalize_snapshot is not None:
+    should_normalize_snapshot = not (fit_content and global_bounds is not None)
+    if normalize_snapshot is not None and should_normalize_snapshot:
         normalize_snapshot(store)
 
     source_img1, source_img2 = _get_unified_images(
-        image1, image2, fit_content, global_bounds, fill_color
+        image1,
+        image2,
+        fit_content,
+        global_bounds,
+        fill_color,
+        resize_method=resize_method,
     )
     display_img1, display_img2 = source_img1, source_img2
 
     if fit_content and global_bounds:
-        pad_left, pad_right, pad_top, pad_bottom, base_w, base_h = global_bounds
-        retarget_snapshot = get_canvas_feature_command_by_alias(
-            "overlay.snapshot_retarget_to_padded_canvas"
+        pad_left = int(global_bounds.pad_left)
+        pad_right = int(global_bounds.pad_right)
+        pad_top = int(global_bounds.pad_top)
+        pad_bottom = int(global_bounds.pad_bottom)
+        base_w = int(global_bounds.base_width)
+        base_h = int(global_bounds.base_height)
+        virtual_w = base_w + pad_left + pad_right
+        virtual_h = base_h + pad_top + pad_bottom
+        _pblog.info(
+            "FIT_CONTENT source=%sx%s base=%sx%s virtual=%sx%s "
+            "pad=(%s,%s,%s,%s) fill=%s",
+            source_img1.width if source_img1 else 0,
+            source_img1.height if source_img1 else 0,
+            base_w, base_h, virtual_w, virtual_h,
+            pad_left, pad_right, pad_top, pad_bottom,
+            fill_color,
         )
-        if retarget_snapshot is not None:
-            retarget_snapshot(
+        if virtual_w > 0 and virtual_h > 0 and base_w > 0 and base_h > 0:
+            fill = fill_color or (0, 0, 0, 0)
+            fitted1, fitted2 = source_img1, source_img2
+            img_w = fitted1.width if fitted1 else 0
+            img_h = fitted1.height if fitted1 else 0
+            did_fit_down = False
+            if img_w > base_w or img_h > base_h:
+                fit_r = min(base_w / max(1, img_w), base_h / max(1, img_h))
+                new_w = max(1, int(img_w * fit_r))
+                new_h = max(1, int(img_h * fit_r))
+                if fitted1 is not None:
+                    fitted1 = fitted1.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                if fitted2 is not None:
+                    fitted2 = fitted2.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                img_w, img_h = new_w, new_h
+                did_fit_down = True
+            img_offset_x = (base_w - img_w) // 2
+            img_offset_y = (base_h - img_h) // 2
+            _pblog.info(
+                "FIT_CONTENT_PLACE fitted=%sx%s offset=(%s,%s) fit_down=%s",
+                img_w, img_h, img_offset_x, img_offset_y, did_fit_down,
+            )
+            display_img1 = _pad_image(
+                fitted1, virtual_w, virtual_h, pad_left + img_offset_x, pad_top + img_offset_y, fill
+            )
+            display_img2 = _pad_image(
+                fitted2, virtual_w, virtual_h, pad_left + img_offset_x, pad_top + img_offset_y, fill
+            )
+        apply_virtual_layout = get_canvas_feature_command_by_alias(
+            "overlay.snapshot_apply_virtual_layout"
+        )
+        if apply_virtual_layout is not None:
+            apply_virtual_layout(
                 store,
-                pad_left=pad_left,
-                pad_right=pad_right,
-                pad_top=pad_top,
-                pad_bottom=pad_bottom,
                 base_w=base_w,
                 base_h=base_h,
+                virtual_layout=global_bounds.to_virtual_layout(),
             )
-
     store.viewport.session_data.image_state.image1 = display_img1
     store.viewport.session_data.image_state.image2 = display_img2
     store.document.image1_path = getattr(snap, "image1_path", None)
@@ -127,8 +221,8 @@ def _build_snapshot_store(
     store.document.current_index2 = 0 if store.document.image_list2 else -1
     store.document.original_image1 = source_img1
     store.document.original_image2 = source_img2
-    store.document.full_res_image1 = display_img1 if fit_content else source_img1
-    store.document.full_res_image2 = display_img2 if fit_content else source_img2
+    store.document.full_res_image1 = source_img1
+    store.document.full_res_image2 = source_img2
     store.viewport.interaction_state.is_interactive_mode = False
 
     source_key = (
@@ -139,12 +233,30 @@ def _build_snapshot_store(
         fit_content,
         fill_color or (0, 0, 0, 0),
     )
+    global_bounds_key = None
+    if global_bounds is not None:
+        global_bounds_key = (
+            int(getattr(global_bounds, "pad_left", 0) or 0),
+            int(getattr(global_bounds, "pad_right", 0) or 0),
+            int(getattr(global_bounds, "pad_top", 0) or 0),
+            int(getattr(global_bounds, "pad_bottom", 0) or 0),
+            int(getattr(global_bounds, "base_width", 0) or 0),
+            int(getattr(global_bounds, "base_height", 0) or 0),
+            float(getattr(global_bounds, "canvas_x_min", 0.0) or 0.0),
+            float(getattr(global_bounds, "canvas_x_max", 0.0) or 0.0),
+            float(getattr(global_bounds, "canvas_y_min", 0.0) or 0.0),
+            float(getattr(global_bounds, "canvas_y_max", 0.0) or 0.0),
+        )
     display_cache_key = (
-        id(display_img1) if display_img1 is not None else 0,
-        id(display_img2) if display_img2 is not None else 0,
+        getattr(snap, "image1_path", None),
+        getattr(snap, "image2_path", None),
         display_img1.size if display_img1 is not None else None,
         display_img2.size if display_img2 is not None else None,
+        source_img1.size if source_img1 is not None else None,
+        source_img2.size if source_img2 is not None else None,
         fit_content,
+        fill_color or (0, 0, 0, 0),
+        global_bounds_key,
     )
     return store, display_img1, display_img2, source_img1, source_img2, source_key, display_cache_key
 
@@ -156,6 +268,7 @@ def build_snapshot_store_presentation(
     fit_content: bool = False,
     global_bounds=None,
     fill_color=None,
+    resize_method: str = "LANCZOS",
 ) -> SnapshotStorePresentation:
     (
         store,
@@ -172,6 +285,7 @@ def build_snapshot_store_presentation(
         fit_content=fit_content,
         global_bounds=global_bounds,
         fill_color=fill_color,
+        resize_method=resize_method,
     )
     return SnapshotStorePresentation(
         store=store,
@@ -185,6 +299,7 @@ def build_snapshot_store_presentation(
         ),
         fit_content=fit_content,
         fill_rgba=fill_color or (0, 0, 0, 0),
+        virtual_layout=(global_bounds.to_virtual_layout() if global_bounds is not None else None),
     )
 
 def build_live_store_presentation(store) -> SnapshotStorePresentation:
@@ -232,6 +347,7 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
             source_key=source_key,
             display_cache_key=display_cache_key,
         ),
+        virtual_layout=None,
     )
 
 def build_render_frame_presentation(
@@ -264,19 +380,6 @@ def build_render_frame_presentation(
     presentation.store.viewport.geometry_state.pixmap_width = render_w
     presentation.store.viewport.geometry_state.pixmap_height = render_h
 
-    build_drawing_coords = get_canvas_feature_command_by_alias(
-        "overlay.render_drawing_coords"
-    )
-    overlay_drawing_coords = None
-    if build_drawing_coords is not None:
-        overlay_drawing_coords = build_drawing_coords(
-            presentation.store,
-            drawing_width=render_w,
-            drawing_height=render_h,
-            container_width=render_w,
-            container_height=render_h,
-        )
-
     scaled_image1 = display_img1.resize((render_w, render_h), Image.Resampling.BILINEAR)
     scaled_image2 = display_img2.resize((render_w, render_h), Image.Resampling.BILINEAR)
 
@@ -289,29 +392,22 @@ def build_render_frame_presentation(
         render_height=render_h,
         image_dest_x=image_dest_x,
         image_dest_y=image_dest_y,
-        feature_extras={"overlay_drawing_coords": overlay_drawing_coords},
         scaled_image1=scaled_image1,
         scaled_image2=scaled_image2,
+        virtual_layout=presentation.virtual_layout,
     )
 
 def compute_canvas_plan(
     store,
     image_width: int,
     image_height: int,
-    overlay_drawing_coords=None,
 ) -> CanvasGeometry:
-    compute_padding = get_canvas_feature_command_by_alias(
-        "overlay.render_compute_padding"
+    padding, virtual_layout = _resolve_overlay_padding(
+        store,
+        drawing_width=image_width,
+        drawing_height=image_height,
     )
-    pad_left, pad_right, pad_top, pad_bottom = (
-        compute_padding(
-            store,
-            drawing_width=image_width,
-            drawing_height=image_height,
-        )
-        if compute_padding is not None
-        else (0, 0, 0, 0)
-    )
+    pad_left, pad_right, pad_top, pad_bottom = padding
     return CanvasGeometry(
         image_width=image_width,
         image_height=image_height,
@@ -321,7 +417,7 @@ def compute_canvas_plan(
         padding_top=pad_top,
         padding_right=pad_right,
         padding_bottom=pad_bottom,
-        overlay_coords=overlay_drawing_coords,
+        virtual_layout=virtual_layout,
     )
 
 def build_canvas_plan(
@@ -441,6 +537,7 @@ def build_canvas_plan(
             guides_state.color.a,
         ),
         guides_thickness=guides_px,
+        fill_rgba=fill_color or None,
         output_scale=float(output_scale or 1.0),
         preserve_zoom=preserve_zoom,
     )

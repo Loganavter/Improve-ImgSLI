@@ -5,7 +5,7 @@ from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from sli_ui_toolkit.managers import DelayedActionTimer
-from sli_ui_toolkit.ui.widgets.atomic.simple_icon_button import SimpleIconButton
+from sli_ui_toolkit.ui.widgets.buttons import Button
 from sli_ui_toolkit.ui.widgets.atomic.tooltips import install_custom_tooltip
 from sli_ui_toolkit.ui.widgets.composite.color_options_flyout import IconActionFlyout
 
@@ -35,7 +35,7 @@ class FlyoutIconButton(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        self.button = SimpleIconButton(icon, self)
+        self.button = Button(icon, parent=self)
         self.button.setFixedSize(button_size, button_size)
         self.layout.addWidget(self.button)
 

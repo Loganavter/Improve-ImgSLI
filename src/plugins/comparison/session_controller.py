@@ -4,12 +4,24 @@ from PIL import Image
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from core.events import CoreErrorOccurredEvent
+from core.state_management.actions import (
+    SetFullResImageAction,
+    SetImagePathAction,
+    SetPendingUnificationPathsAction,
+    SetPreviewImageAction,
+    SetUnificationInProgressAction,
+)
 from plugins.analysis.services.cached_diff import CachedDiffService
 from resources.translations import tr
 from plugins.comparison.use_cases import list_ops, loading, navigation
 from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")
+
+def _format_worker_error(err) -> str:
+    if isinstance(err, tuple) and len(err) >= 2:
+        return str(err[1])
+    return str(err)
 
 class SessionController(QObject):
 
@@ -50,21 +62,13 @@ class SessionController(QObject):
         is_preview=False,
         is_full_res=False,
     ):
-        doc = self.store.document
-        if slot_number == 1:
-            if is_full_res:
-                doc.full_res_image1 = image
-            if is_preview:
-                doc.preview_image1 = image
-            if path is not None:
-                doc.image1_path = path
-        else:
-            if is_full_res:
-                doc.full_res_image2 = image
-            if is_preview:
-                doc.preview_image2 = image
-            if path is not None:
-                doc.image2_path = path
+        dispatcher = self.store.get_dispatcher()
+        if is_full_res and image is not None:
+            dispatcher.dispatch(SetFullResImageAction(slot=slot_number, image=image))
+        if is_preview and image is not None:
+            dispatcher.dispatch(SetPreviewImageAction(slot=slot_number, image=image))
+        if path is not None:
+            dispatcher.dispatch(SetImagePathAction(slot=slot_number, path=path))
         if emit:
             self.store.emit_state_change("document")
 
@@ -119,10 +123,9 @@ class SessionController(QObject):
             return False
         pending = self.store.viewport.session_data.render_cache.pending_unification_paths
         if pending and (pending[0] != new_path1 or pending[1] != new_path2):
-
-            self.store.viewport.session_data.render_cache.unification_in_progress = False
-            self.store.viewport.session_data.render_cache.pending_unification_paths = None
-
+            dispatcher = self.store.get_dispatcher()
+            dispatcher.dispatch(SetUnificationInProgressAction(enabled=False))
+            dispatcher.dispatch(SetPendingUnificationPathsAction(paths=None))
             self.store.invalidate_geometry_cache()
             return True
         return False
@@ -224,9 +227,20 @@ class SessionController(QObject):
             )
         )
         worker.signals.error.connect(
-            lambda err: logger.error(f"Failed to load full resolution: {err}")
+            lambda err: self._on_full_resolution_error(path, err)
         )
         self.thread_pool.start(worker)
+
+    def _on_full_resolution_error(self, path: str, err) -> None:
+        logger.error(f"Failed to load full resolution: {err}")
+        message = (
+            f"{tr('msg.failed_to_load_image', self.store.settings.current_language)}:\n"
+            f"{path}\n\n{_format_worker_error(err)}"
+        )
+        if self.event_bus:
+            self.event_bus.emit(CoreErrorOccurredEvent(message))
+        else:
+            self.error_occurred.emit(message)
 
     def _on_full_image_loaded(self, full_img, path, image_number, index_in_list):
         loading.handle_full_image_loaded(self, full_img, path, image_number, index_in_list)

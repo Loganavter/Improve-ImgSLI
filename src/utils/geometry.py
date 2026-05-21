@@ -74,20 +74,19 @@ class GeometryManager:
                 pass
 
     def save_on_close(self):
+        from core.state_management.actions import SetWindowGeometryAction, SetWindowWasMaximizedAction
         is_maximized = self.window.isMaximized() or self.window.isFullScreen()
 
         if self.store and hasattr(self.store.settings, "window_width"):
-            self.store.settings.window_was_maximized = is_maximized
+            dispatcher = self.store.get_dispatcher()
+            dispatcher.dispatch(SetWindowWasMaximizedAction(is_maximized))
 
             if not is_maximized and self.normal_rect_str:
                 try:
                     parts = [int(p) for p in self.normal_rect_str.split(",")]
                     if len(parts) == 4:
                         x, y, w, h = parts
-                        self.store.settings.window_x = x
-                        self.store.settings.window_y = y
-                        self.store.settings.window_width = w
-                        self.store.settings.window_height = h
+                        dispatcher.dispatch(SetWindowGeometryAction(x, y, w, h))
                 except Exception:
                     pass
 

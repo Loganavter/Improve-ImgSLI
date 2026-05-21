@@ -15,5 +15,16 @@ class CanvasStyleTokens:
     guides_stroke_du: float = 1.0
     occluded_arc_stroke_du: float = 3.0
     hidden_selection_stroke_du: float = 2.0
+    overlay_backdrop_alpha: float = 14.0
+    overlay_button_inset_du: float = 14.0
+    overlay_button_radius_du: float = 10.0
+    overlay_button_border_du: float = 1.5
+    overlay_button_border_hover_du: float = 2.5
+    overlay_button_font_base_du: float = 12.0
+    overlay_button_font_hover_base_du: float = 13.0
+    overlay_button_visual_width_du: float = 96.0
+    overlay_button_visual_height_du: float = 34.0
+    overlay_cancel_stroke_du: float = 2.0
+    overlay_cancel_icon_du: float = 15.0
 
 DEFAULT_CANVAS_STYLE_TOKENS = CanvasStyleTokens()

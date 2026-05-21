@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 
 import numpy as np
 from OpenGL import GL as gl
@@ -8,9 +9,9 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPainterPath, QPen
 from PyQt6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram, QOpenGLVertexArrayObject
 
-from ui.canvas_presentation.render_arch import FilenameOverlayStyle
-from ui.canvas_infra.scene.gl_pass_contract import CanvasGLRenderPass
+from ui.canvas_infra.scene.gl_pass_contract import CanvasGLRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from ui.canvas_presentation.render_arch import FilenameOverlayStyle
 from ui.widgets.gl_canvas.render_common import new_overlay_image, upload_qimage_texture
 from ui.widgets.gl_canvas.shader_sources.common import shader_prolog
 
@@ -32,6 +33,8 @@ void main() {
     FragColor = texture(uTex, vUV);
 }
 """
+
+_mlog = logging.getLogger("ImproveImgSLI.video_magnifier_layout")
 
 def _qcolor(value, fallback: QColor) -> QColor:
     if isinstance(value, QColor):
@@ -238,8 +241,7 @@ class FilenameOverlayPass(CanvasGLRenderPass):
     """
 
     stack_role = CanvasStackRole.HUD_LABEL
-    hide_in_single_preview = False
-
+    visibility = SceneVisibility.ALL
     def __init__(self):
         self._shader: QOpenGLShaderProgram | None = None
         self._vao: QOpenGLVertexArrayObject | None = None
@@ -292,9 +294,30 @@ class FilenameOverlayPass(CanvasGLRenderPass):
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
 
     def should_paint(self, ctx) -> bool:
-        overlays = tuple(getattr(ctx.render_list, "filename_overlays", ()))
-        if not overlays:
+        cfg = (
+            ctx.scene_frame.feature_payloads.get("filename_overlay")
+            if isinstance(ctx.scene_frame.feature_payloads, dict)
+            else None
+        )
+        if cfg is None or not bool(getattr(cfg, "enabled", False)):
             return False
+        single_preview = int(getattr(ctx.scene_frame, "single_image_preview", 0) or 0)
+        images_uploaded = list(getattr(ctx, "images_uploaded", ()) or ())
+        has_slot1 = bool(images_uploaded[0]) if len(images_uploaded) > 0 else False
+        has_slot2 = bool(images_uploaded[1]) if len(images_uploaded) > 1 else False
+        raw_name1 = str(getattr(cfg, "name1", "") or "").strip()
+        raw_name2 = str(getattr(cfg, "name2", "") or "").strip()
+        if single_preview == 1:
+            if not has_slot1 or not raw_name1:
+                return False
+        elif single_preview == 2:
+            if not has_slot2 or not raw_name2:
+                return False
+        else:
+            if not (has_slot1 and has_slot2):
+                return False
+            if not (raw_name1 or raw_name2):
+                return False
         is_single = bool(getattr(ctx.scene_frame, "single_image_preview", 0))
         if not is_single and abs(float(getattr(ctx, "zoom_level", 1.0)) - 1.0) > 1e-6:
             return False
@@ -306,14 +329,38 @@ class FilenameOverlayPass(CanvasGLRenderPass):
         if not self._shader.programId():
             return
 
-        overlays = tuple(getattr(ctx.render_list, "filename_overlays", ()))
-        if not overlays:
+        cfg = (
+            ctx.scene_frame.feature_payloads.get("filename_overlay")
+            if isinstance(ctx.scene_frame.feature_payloads, dict)
+            else None
+        )
+        if cfg is None:
             return
-        overlay = overlays[0]
-        cfg = overlay.config
 
-        content_rect = overlay.content_rect_px
-        split_override = overlay.split_override
+        content_rect = ctx.scene_frame.image_rect_px
+        split_override = ctx.scene_frame.split_override
+        if content_rect is None:
+            return
+        name1 = str(getattr(cfg, "name1", "") or "")
+        name2 = str(getattr(cfg, "name2", "") or "")
+        divider_thickness_px = float(
+            (
+                ctx.scene_frame.feature_payloads.get("filename_divider_thickness", 0)
+                if isinstance(ctx.scene_frame.feature_payloads, dict)
+                else 0
+            )
+            or 0
+        )
+
+        _mlog.debug(
+            "filename_overlay_rect content_rect=%s split_override=%s single=%s zoom=%.6f names=(%s,%s)",
+            content_rect,
+            split_override,
+            int(getattr(ctx.scene_frame, "single_image_preview", 0) or 0),
+            float(getattr(ctx, "zoom_level", 1.0) or 1.0),
+            bool(name1),
+            bool(name2),
+        )
 
         if content_rect[2] <= 0 or content_rect[3] <= 0:
             return
@@ -321,14 +368,14 @@ class FilenameOverlayPass(CanvasGLRenderPass):
         max_name_length = int(getattr(cfg, "max_name_length", 50))
         single_preview = int(getattr(ctx.scene_frame, "single_image_preview", 0) or 0)
         if single_preview == 1:
-            name1 = _limit_name(overlay.name1, max_name_length)
+            name1 = _limit_name(name1, max_name_length)
             name2 = ""
         elif single_preview == 2:
             name1 = ""
-            name2 = _limit_name(overlay.name2, max_name_length)
+            name2 = _limit_name(name2, max_name_length)
         else:
-            name1 = _limit_name(overlay.name1, max_name_length)
-            name2 = _limit_name(overlay.name2, max_name_length)
+            name1 = _limit_name(name1, max_name_length)
+            name2 = _limit_name(name2, max_name_length)
 
         overlay_style = ctx.resolved_style.filename_overlay
 
@@ -336,7 +383,7 @@ class FilenameOverlayPass(CanvasGLRenderPass):
         font_metrics = QFontMetrics(font)
         rect1, rect2 = _label_rects(
             cfg, content_rect, font_metrics, name1, name2, overlay_style, split_override,
-            divider_thickness_wx=overlay.divider_thickness_px,
+            divider_thickness_wx=divider_thickness_px,
         )
         rect1 = _snap_rect_to_pixels(rect1)
         rect2 = _snap_rect_to_pixels(rect2)

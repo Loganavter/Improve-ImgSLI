@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from PIL import Image
+from shared.rendering import VirtualCanvasLayout
 
 @dataclass(slots=True, frozen=True)
 class CanvasTarget:
@@ -45,6 +46,7 @@ class SnapshotStorePresentation:
     images: PresentationImageSet
     fit_content: bool = False
     fill_rgba: tuple[int, int, int, int] = (0, 0, 0, 0)
+    virtual_layout: VirtualCanvasLayout | None = None
 
     @property
     def display_image1(self) -> Image.Image | None:
@@ -80,9 +82,9 @@ class RenderFramePresentation:
     render_height: int
     image_dest_x: int
     image_dest_y: int
-    feature_extras: dict
     scaled_image1: Image.Image
     scaled_image2: Image.Image
+    virtual_layout: VirtualCanvasLayout | None = None
 
     @property
     def display_image1(self) -> Image.Image:

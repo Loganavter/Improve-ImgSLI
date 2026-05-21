@@ -320,6 +320,12 @@ def clone_value(value: Any) -> Any:
         return value.freeze_for_export()
     if is_dataclass(value):
         return clone_dataclass_value(value)
+    if isinstance(value, dict):
+        import copy
+        return copy.deepcopy(value)
+    if isinstance(value, (list, set)):
+        import copy
+        return copy.deepcopy(value)
     return value
 
 def values_equal(left: Any, right: Any) -> bool:

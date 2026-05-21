@@ -17,6 +17,19 @@ def widget_px_to_screen_px(widget, px_x, px_y):
     return sx * w, sy * h
 
 def clear_with_widget_background(widget):
+    plan = getattr(widget, "_active_render_plan", None)
+    fill_rgba = getattr(plan, "fill_rgba", None)
+    if bool(getattr(widget, "_use_plan_fill_clear", False)) and fill_rgba is not None:
+        r, g, b, a = fill_rgba
+        gl.glClearColor(
+            float(r) / 255.0,
+            float(g) / 255.0,
+            float(b) / 255.0,
+            float(a) / 255.0,
+        )
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        return
+
     palette = widget.palette()
     bg = palette.color(QPalette.ColorRole.Window)
     if not bg.isValid():
@@ -60,32 +73,3 @@ def upload_qimage_texture(texture_id: int, overlay: QImage) -> bool:
         bytes(ptr),
     )
     return True
-
-def draw_overlay_texture(widget, texture_id: int):
-    if not texture_id:
-        return
-
-    widget.shader_program.bind()
-    widget.vao.bind()
-    gl.glActiveTexture(gl.GL_TEXTURE0)
-    gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
-    widget.shader_program.setUniformValue("image1", 0)
-    gl.glActiveTexture(gl.GL_TEXTURE1)
-    gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
-    widget.shader_program.setUniformValue("image2", 1)
-    widget.shader_program.setUniformValue("splitPosition", 1.0)
-    widget.shader_program.setUniformValue("isHorizontal", False)
-    widget.shader_program.setUniformValue("zoom", 1.0)
-    widget.shader_program.setUniformValue("offset", 0.0, 0.0)
-    widget.shader_program.setUniformValue("channelMode", 0)
-    widget.shader_program.setUniformValue("useSourceTex", False)
-    widget.shader_program.setUniformValue("letterbox1", 0.0, 0.0, 1.0, 1.0)
-    widget.shader_program.setUniformValue("letterbox2", 0.0, 0.0, 1.0, 1.0)
-    gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-    widget.vao.release()
-    widget.shader_program.release()
-
-def draw_qimage_overlay_texture(widget, overlay: QImage):
-    texture_id = int(getattr(widget, "_ui_overlay_tex_id", 0) or 0)
-    if upload_qimage_texture(texture_id, overlay):
-        draw_overlay_texture(widget, texture_id)

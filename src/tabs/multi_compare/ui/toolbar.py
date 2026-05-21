@@ -5,7 +5,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
-from sli_ui_toolkit.widgets import IconButton, ButtonType, ToggleIconButton
+from sli_ui_toolkit.widgets import Button
 from ui.icon_manager import AppIcon
 
 class MultiCompareToolbar(QWidget):
@@ -23,17 +23,17 @@ class MultiCompareToolbar(QWidget):
         layout.setContentsMargins(8, 2, 8, 2)
         layout.setSpacing(8)
 
-        self.btn_reset_zoom = IconButton(AppIcon.CROP_OUT, ButtonType.DEFAULT, self)
+        self.btn_reset_zoom = Button(AppIcon.CROP_OUT, parent=self)
         self.btn_reset_zoom.setToolTip("Reset zoom")
         self.btn_reset_zoom.clicked.connect(self.reset_zoom_clicked)
 
-        self.btn_grid_mode = ToggleIconButton(
-            AppIcon.HORIZONTAL_SPLIT, AppIcon.MAGNIFIER, parent=self
+        self.btn_grid_mode = Button(
+            icon=(AppIcon.HORIZONTAL_SPLIT, AppIcon.MAGNIFIER), toggle=True, parent=self,
         )
         self.btn_grid_mode.setToolTip("Grid / Focus")
         self.btn_grid_mode.toggled.connect(lambda _: self.toggle_grid_clicked.emit())
 
-        self.btn_clear = IconButton(AppIcon.DELETE, ButtonType.DELETE, self)
+        self.btn_clear = Button(AppIcon.DELETE, variant="delete", parent=self)
         self.btn_clear.setToolTip("Clear all")
         self.btn_clear.clicked.connect(self.clear_clicked)
 

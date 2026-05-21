@@ -9,6 +9,7 @@ from core.state_management.viewport_actions import (
 )
 from domain.qt_adapters import color_to_qcolor
 from domain.types import Color
+from shared.rendering import FeatureLayoutRequirement, NormalizedBounds
 
 from .actions import SetDividerThicknessAction, SetDividerVisibleAction
 from .events import (
@@ -106,6 +107,13 @@ def command_build_render_canvas_payload(store) -> dict[str, Any]:
         "color": (int(color.r), int(color.g), int(color.b), int(color.a)),
         "thickness": int(divider_state.thickness),
     }
+
+def command_build_layout_requirement(store, *, drawing_width: int, drawing_height: int):
+    del store, drawing_width, drawing_height
+    return FeatureLayoutRequirement(
+        feature_id="divider",
+        bounds=NormalizedBounds.unit(),
+    )
 
 def command_build_runtime_overlay_style(store) -> dict[str, Any]:
     viewport = getattr(store, "viewport", None)
@@ -212,8 +220,8 @@ def build_divider_commands() -> dict[str, Any]:
             invalidate_render_cache=True,
             request_core_update=True,
         ),
+        "render.layout_requirement": command_build_layout_requirement,
         "export.overlay": command_build_export_overlay,
         "render.canvas_payload": command_build_render_canvas_payload,
         "runtime.overlay_style": command_build_runtime_overlay_style,
     }
-

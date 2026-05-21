@@ -8,10 +8,7 @@ from core.events import (
     CoreUIComponentsUpdateEvent,
     CoreUpdateRequestedEvent,
 )
-from core.main_controller_parts import (
-    VideoExportActions,
-    WorkspaceSessionActions,
-)
+from core.main_controller_parts import WorkspaceSessionActions
 
 if TYPE_CHECKING:
     from core.bootstrap import ApplicationContext
@@ -51,7 +48,6 @@ class MainController(QObject):
         self._clipboard_service = None
 
         self.workspace = WorkspaceSessionActions(self)
-        self.video_export = VideoExportActions(self)
         self.refresh_runtime_bindings()
 
         if self.event_bus:

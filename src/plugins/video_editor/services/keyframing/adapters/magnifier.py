@@ -37,6 +37,15 @@ def _get_model(snapshot: FrameSnapshot, mag_id: str):
             return model
     return None
 
+def _magnifier_globally_enabled(snapshot: FrameSnapshot) -> bool:
+    try:
+        command = get_canvas_feature_command_by_alias("overlay.enabled")
+        if command is None:
+            return True
+        return bool(command(_store_proxy(snapshot.viewport_state)))
+    except Exception:
+        return True
+
 def _bool_ch(channel_id: str, label: str) -> ChannelDescriptor:
     return ChannelDescriptor(channel_id, label, "bool", interpolate_values=False)
 
@@ -159,6 +168,9 @@ class DynamicMagnifierAdapter:
         tool: ToolDescriptor,
         values_by_track_id: Mapping[str, Mapping[str, Any]],
     ) -> None:
+
+        if not _magnifier_globally_enabled(snapshot):
+            return
         mag_id = tool.metadata.get("magnifier_id", "default")
         model = _get_model(snapshot, mag_id)
         if model is None:

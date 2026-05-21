@@ -19,7 +19,7 @@ from .shader_sources.base import (
     build_base_vertex_shader,
 )
 from .render_common import widget_px_to_screen_px
-from .render_config import get_divider_clip_rect_px, update_display_split_position
+from .render_config import update_display_split_position
 from ui.canvas_presentation.render_arch import (
     BaseImagePrimitive,
     RenderIntent,
@@ -31,7 +31,7 @@ from ui.canvas_presentation.render_arch import (
     build_scene_frame,
     resolve_canvas_style,
 )
-from .render_metrics import RenderMetrics, resolve_screen_px, resolve_view_px
+from .render_metrics import RenderMetrics, resolve_screen_px
 from ui.canvas_infra.scene.widget_registry import (
     apply_canvas_feature_live_runtime_overlays,
     has_canvas_feature_live_runtime_overlays,
@@ -46,7 +46,6 @@ from .texture_parts.base_images import (
     upload_pil_images,
     upload_source_pil_image,
 )
-from .feature_overlay_gpu import recalculate_magnifier_quads_after_resize
 
 @dataclass(slots=True)
 class GLViewportContext:
@@ -72,8 +71,23 @@ class GLTextureContext:
     images_uploaded: list[bool]
 
 @dataclass(slots=True)
-class GLMagnifierContext:
-    pass
+class GLFeatureOverlayContext:
+    widget: object
+    render_enabled: bool
+    clip_to_content: bool
+    border_color: object | None
+    border_width: float
+    quads: tuple[object, ...]
+    gpu_active: bool
+    gpu_slots: tuple[object, ...]
+    gpu_channel_mode: int
+    gpu_diff_mode: int
+    gpu_diff_threshold: float
+    gpu_interp_mode: int
+    combined_params: tuple[object, ...]
+    occluded_capture_arcs: tuple[object, ...]
+    hidden_capture_circles: tuple[object, ...]
+    hidden_overlay_circles: tuple[object, ...]
 
 @dataclass(slots=True)
 class GLMetricsContext:
@@ -87,11 +101,11 @@ class GLMetricsContext:
 class GLRenderRuntimeContext:
     viewport: GLViewportContext
     textures: GLTextureContext
-    magnifier: GLMagnifierContext
+    feature_overlay: GLFeatureOverlayContext
     metrics: GLMetricsContext
 
     def __getattr__(self, name):
-        for section in (self.viewport, self.textures, self.magnifier, self.metrics):
+        for section in (self.viewport, self.textures, self.feature_overlay, self.metrics):
             if hasattr(section, name):
                 return getattr(section, name)
         raise AttributeError(name)
@@ -145,17 +159,18 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
         clip_overlays_to_content=bool(getattr(state, "_clip_overlays_to_content_rect", False)),
         preserve_zoom=bool(getattr(plan, "preserve_zoom", False)),
     )
+
+    render_scene = state._render_scene or {}
+    static_fo = dict(getattr(render_scene, "feature_overrides", {}) or {})
+    dynamic_fo = dict(getattr(state, "_dynamic_feature_overrides", {}) or {})
+    feature_payloads = {**static_fo, **dynamic_fo}
+
     scene_frame = build_scene_frame(
-        render_scene=state._render_scene,
+        render_scene=render_scene,
         content_rect_px=content_rect_px,
+        image_rect_px=content_rect_px,
         split_override=split_override,
-        capture_circles=getattr(state, "_capture_circles", []),
-        capture_center=state._capture_center,
-        capture_radius=float(state._capture_radius or 0.0),
-        capture_color=state._capture_color,
-        guide_sets=getattr(state, "_guide_sets", []),
-        laser_color=state._laser_color,
-        show_guides=bool(state._show_guides),
+        feature_payloads=feature_payloads,
     )
     resolved_style = resolve_canvas_style(scene_frame, render_metrics)
     display_split_position = update_display_split_position(
@@ -197,38 +212,10 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
         letterbox1=tuple(float(v) for v in letterbox1),
         letterbox2=tuple(float(v) for v in letterbox2),
     )
+    overlay_state = state._feature_overlay_gpu
     render_list = build_render_list(
         scene_frame,
         base_image=base_image,
-        magnifier_render_enabled=bool(scene_frame.render_magnifiers),
-        magnifier_clip_to_content=bool(scene_frame.clip_overlays_to_image_bounds),
-        magnifier_border_color=state._magnifier_border_color,
-        magnifier_border_width=float(state._magnifier_border_width or 2.0),
-        magnifier_quads=list(state._mag_quads),
-        magnifier_gpu_active=bool(state._mag_gpu_active),
-        magnifier_gpu_slots=list(state._mag_gpu_slots),
-        magnifier_gpu_channel_mode=int(state._mag_gpu_channel_mode or 0),
-        magnifier_gpu_diff_mode=int(state._mag_gpu_diff_mode or 0),
-        magnifier_gpu_diff_threshold=float(state._mag_gpu_diff_threshold or (20.0 / 255.0)),
-        magnifier_gpu_interp_mode=(
-            int(state._mag_gpu_interp_mode)
-            if state._mag_gpu_interp_mode is not None
-            else 1
-        ),
-        magnifier_combined_params=list(state._mag_combined_params),
-        occluded_capture_arcs=list(getattr(state, "_occluded_capture_arcs", [])),
-        hidden_capture_circles=list(getattr(state, "_hidden_capture_circles", [])),
-        hidden_magnifier_circles=list(getattr(state, "_hidden_magnifier_circles", [])),
-        divider_position_px=(
-            resolved_split_position
-            * float(widget.height() if scene_frame.is_horizontal else widget.width())
-        ),
-        divider_clip_rect_px=get_divider_clip_rect_px(widget),
-        divider_thickness_px=resolve_screen_px(float(scene_frame.divider_thickness or 0), render_metrics),
-        guides_thickness_px=resolve_screen_px(float(max(1, int(state._guides_thickness or 1))), render_metrics),
-        capture_line_width_px=resolved_style.capture_ring_stroke_px,
-        zoom_level=float(get_zoom_level(widget) or 1.0),
-        widget_px_to_screen=lambda x, y: widget_px_to_screen_px(widget, x, y),
     )
     return GLRenderRuntimeContext(
         viewport=GLViewportContext(
@@ -257,7 +244,29 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
             clip_overlays_to_content_rect=bool(state._clip_overlays_to_content_rect),
             images_uploaded=list(state._images_uploaded),
         ),
-        magnifier=GLMagnifierContext(
+        feature_overlay=GLFeatureOverlayContext(
+            widget=widget,
+            render_enabled=bool(getattr(overlay_state, "_quads", ())),
+            clip_to_content=bool(getattr(state, "_clip_overlays_to_content_rect", False)),
+            border_color=getattr(overlay_state, "_border_color", None),
+            border_width=float(getattr(overlay_state, "_border_width", 2.0) or 2.0),
+            quads=tuple(getattr(overlay_state, "_quads", ()) or ()),
+            gpu_active=bool(getattr(overlay_state, "_gpu_active", False)),
+            gpu_slots=tuple(getattr(overlay_state, "_gpu_slots", ()) or ()),
+            gpu_channel_mode=int(getattr(overlay_state, "_gpu_channel_mode", 0) or 0),
+            gpu_diff_mode=int(getattr(overlay_state, "_gpu_diff_mode", 0) or 0),
+            gpu_diff_threshold=float(
+                getattr(overlay_state, "_gpu_diff_threshold", 20.0 / 255.0) or 0.0
+            ),
+            gpu_interp_mode=(
+                int(getattr(overlay_state, "_gpu_interp_mode"))
+                if getattr(overlay_state, "_gpu_interp_mode", None) is not None
+                else 1
+            ),
+            combined_params=tuple(getattr(overlay_state, "_combined_params", ()) or ()),
+            occluded_capture_arcs=tuple(getattr(state, "_occluded_capture_arcs", ()) or ()),
+            hidden_capture_circles=tuple(getattr(state, "_hidden_capture_circles", ()) or ()),
+            hidden_overlay_circles=tuple(getattr(state, "_hidden_overlay_circles", ()) or ()),
         ),
         metrics=GLMetricsContext(
             render_metrics=render_metrics,
@@ -315,18 +324,15 @@ def initialize_gl_resources(widget):
     widget.texture_ids = list(gl.glGenTextures(2))
     widget._source_texture_ids = list(gl.glGenTextures(2))
     widget._diff_source_texture_id = int(gl.glGenTextures(1))
-    widget._ui_overlay_tex_id = int(gl.glGenTextures(1))
-
     for tex_id in widget.texture_ids + widget._source_texture_ids + [
         widget._diff_source_texture_id,
-        widget._ui_overlay_tex_id,
     ]:
         _configure_texture_parameters(tex_id)
 
-    widget._mag_tex_ids = [int(t) for t in list(gl.glGenTextures(3))]
-    widget._mag_combined_tex_ids = [int(t) for t in list(gl.glGenTextures(3))]
-    widget._mag_tex_id = widget._mag_tex_ids[0]
-    for texture_id in widget._mag_tex_ids + widget._mag_combined_tex_ids:
+    widget._feature_overlay_tex_ids = [int(t) for t in list(gl.glGenTextures(3))]
+    widget._feature_overlay_aux_tex_ids = [int(t) for t in list(gl.glGenTextures(3))]
+    widget._feature_overlay_tex_id = widget._feature_overlay_tex_ids[0]
+    for texture_id in widget._feature_overlay_tex_ids + widget._feature_overlay_aux_tex_ids:
         _configure_texture_parameters(texture_id)
 
     widget._circle_mask_tex_id = int(gl.glGenTextures(1))
@@ -336,11 +342,7 @@ def initialize_gl_resources(widget):
     _initialize_feature_gl_passes(widget)
 
 def _initialize_feature_gl_passes(widget) -> None:
-    """Discover and initialize all canvas feature GL render passes.
-
-    Each widget gets its own fresh pass instances so GL resources
-    (shaders, VBOs) are isolated per-context.
-    """
+    """Discover and initialize all canvas feature GL render passes."""
     from ui.canvas_infra.scene.gl_pass_registry import get_canvas_gl_render_passes
     passes = [type(p)() for p in get_canvas_gl_render_passes()]
     widget._feature_gl_passes = passes
@@ -354,7 +356,6 @@ def resize_gl(widget, w: int, h: int):
     state = widget.runtime_state
     gl.glViewport(0, 0, w, h)
     widget._update_paste_overlay_rects()
-    recalculate_magnifier_quads_after_resize(widget)
     if has_canvas_feature_live_runtime_overlays():
         QTimer.singleShot(0, widget._emit_viewport_state_change)
     img1, img2 = state._stored_pil_images

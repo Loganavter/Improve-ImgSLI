@@ -18,7 +18,7 @@ class FontSettingsController:
         if not host.font_settings_flyout:
             return
         if anchor_widget is None:
-            anchor_widget = getattr(host.ui, "btn_color_picker", None)
+            anchor_widget = getattr(host.ui, "btn_text_settings", None)
         host._font_anchor_widget = anchor_widget
         host.font_settings_flyout.set_values(
             host.store.viewport.render_config.font_size_percent,

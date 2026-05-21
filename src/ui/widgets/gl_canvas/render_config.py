@@ -44,7 +44,7 @@ def get_divider_clip_rect_px(widget) -> tuple[int, int, int, int] | None:
 
     x, y, w, h = content_rect
     scene = state._render_scene
-    clip_rect = getattr(scene, "divider_clip_rect", None)
+    clip_rect = getattr(scene, "overlay_clip_rect", None)
     img = state._stored_pil_images[0] if state._stored_pil_images else None
 
     if clip_rect and img is not None and getattr(img, "width", 0) > 0 and getattr(img, "height", 0) > 0:

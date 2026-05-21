@@ -1,14 +1,33 @@
 from __future__ import annotations
 
+import logging
 import time
+from dataclasses import dataclass
 
 from PIL import Image
 
-from plugins.export.scene_builder import ExportSceneBuilder
 from shared.image_processing.prescale import prescale_pair
-from ui.canvas_presentation.plan_builder import compute_canvas_plan
+
+_vrlog = logging.getLogger("ImproveImgSLI.video_render")
+from plugins.export.services.snapshot_render_plan_builder import SnapshotRenderPlanBuilder
+from ui.canvas_presentation.models import CanvasTarget
+from ui.canvas_presentation.layout import compute_content_layout
+from ui.canvas_presentation.plan_builder import CanvasGeometry
+from shared.rendering import get_effective_main_interpolation_method
 from plugins.video_editor.services.video_export_models import RenderedFrame, VideoRenderRequest
+from plugins.video_editor.services.video_export_models import GlobalCanvasBounds
 from ui.canvas_presentation import build_render_frame_presentation, build_snapshot_store_presentation
+
+@dataclass(slots=True)
+class PreparedCanvasFrame:
+    store: object
+    plan: object
+    output_width: int
+    output_height: int
+    image_dest_x: int
+    image_dest_y: int
+    fill_rgba: tuple[int, int, int, int]
+    debug: dict
 
 class SnapshotFrameRenderer:
     def __init__(self, image_loader, gpu_export_service=None) -> None:
@@ -17,6 +36,8 @@ class SnapshotFrameRenderer:
         self._last_backend = "gpu"
         self._last_debug: dict = {}
         self._prescaled_cache: tuple | None = None
+        self._image_prep_cache: tuple | None = None
+        self._scene_images_cache: dict = {}
 
     @property
     def last_backend(self) -> str:
@@ -25,11 +46,27 @@ class SnapshotFrameRenderer:
     def reset_backend_state(self) -> None:
         self._last_backend = "gpu"
         self._prescaled_cache = None
+        self._image_prep_cache = None
+        self._scene_images_cache = {}
 
     def drain_last_debug(self) -> dict:
         data = self._last_debug
         self._last_debug = {}
         return data
+
+    @staticmethod
+    def _normalized_prescale_target(width: int, height: int) -> tuple[int, int]:
+        max_dim = max(int(width), int(height))
+        if max_dim <= 640:
+            step = 64
+        elif max_dim <= 1600:
+            step = 128
+        else:
+            step = 256
+
+        normalized_width = max(step, ((max(1, int(width)) + step - 1) // step) * step)
+        normalized_height = max(step, ((max(1, int(height)) + step - 1) // step) * step)
+        return normalized_width, normalized_height
 
     def render(self, snap, request: VideoRenderRequest) -> RenderedFrame:
         if self._gpu_export_service is None:
@@ -47,28 +84,374 @@ class SnapshotFrameRenderer:
         if not img1:
             img1 = Image.new(
                 "RGBA",
-                (max(1, request.output_width), max(1, request.output_height)),
+                (
+                    max(1, request.target_surface.width),
+                    max(1, request.target_surface.height),
+                ),
                 (50, 50, 50, 255),
             )
         if not img2:
             img2 = Image.new(
                 "RGBA",
-                (max(1, request.output_width), max(1, request.output_height)),
+                (
+                    max(1, request.target_surface.width),
+                    max(1, request.target_surface.height),
+                ),
                 (80, 80, 80, 255),
             )
         return img1, img2
 
     @staticmethod
     def _bounds_tuple(request: VideoRenderRequest):
-        return request.global_bounds.as_tuple() if request.global_bounds is not None else None
+        return request.global_bounds
 
-    def _render_gpu(self, snap, request: VideoRenderRequest) -> RenderedFrame:
+    @staticmethod
+    def _fit_source_to_content(
+        source: Image.Image,
+        content_size: tuple[int, int],
+        fill_rgba: tuple[int, int, int, int] | None = None,
+    ) -> Image.Image:
+        cw, ch = content_size
+        sw, sh = source.width, source.height
+        if (sw, sh) == (cw, ch):
+            _vrlog.info("FIT_SOURCE exact=%sx%s", sw, sh)
+            return source
+        did_resize = False
+        if sw > cw or sh > ch:
+            fit_r = min(cw / max(1, sw), ch / max(1, sh))
+            sw = max(1, int(sw * fit_r))
+            sh = max(1, int(sh * fit_r))
+            source = source.resize((sw, sh), Image.Resampling.BILINEAR)
+            did_resize = True
+        canvas = Image.new("RGBA", (cw, ch), fill_rgba or (0, 0, 0, 255))
+        ox = (cw - sw) // 2
+        oy = (ch - sh) // 2
+        _vrlog.info(
+            "FIT_SOURCE source=%sx%s content=%sx%s offset=(%s,%s) resized=%s",
+            sw, sh, cw, ch, ox, oy, did_resize,
+        )
+        canvas.alpha_composite(source.convert("RGBA"), (ox, oy))
+        return canvas
+
+    @staticmethod
+    def _resolve_scaled_content_geometry(frame) -> tuple[tuple[int, int], tuple[int, int], int, int]:
+        if frame.virtual_layout is None:
+            return (
+                (frame.render_width, frame.render_height),
+                (frame.render_width, frame.render_height),
+                0,
+                0,
+            )
+
+        bounds = frame.virtual_layout.canvas_bounds
+        span_x = max(1e-6, float(bounds.x_max - bounds.x_min))
+        span_y = max(1e-6, float(bounds.y_max - bounds.y_min))
+        base_w = max(1, int(round(frame.render_width / span_x)))
+        base_h = max(1, int(round(frame.render_height / span_y)))
+        pad_left = max(0, int(round(-float(bounds.x_min) * base_w)))
+        pad_top = max(0, int(round(-float(bounds.y_min) * base_h)))
+        return (
+            (frame.render_width, frame.render_height),
+            (base_w, base_h),
+            pad_left,
+            pad_top,
+        )
+
+    @staticmethod
+    def _image_prep_cache_key(img1, img2, request, scaled_global_bounds, resize_method):
+        bounds_key = None
+        if scaled_global_bounds is not None:
+            bounds_key = (
+                int(scaled_global_bounds.pad_left),
+                int(scaled_global_bounds.pad_right),
+                int(scaled_global_bounds.pad_top),
+                int(scaled_global_bounds.pad_bottom),
+                int(scaled_global_bounds.base_width),
+                int(scaled_global_bounds.base_height),
+            )
+        return (
+            id(img1), id(img2),
+            img1.size if img1 else None,
+            img2.size if img2 else None,
+            request.fit_content,
+            bounds_key,
+            request.target_surface.fill_rgba,
+            resize_method,
+            request.target_surface.width,
+            request.target_surface.height,
+        )
+
+    @staticmethod
+    def _rebuild_snapshot_store(snap, c, fit_content, scaled_global_bounds):
+        from core.store import ImageItem, Store
+        from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+
+        store = Store()
+        store.viewport = snap.viewport_state.clone()
+        store.settings = snap.settings_state.freeze_for_export()
+        store.viewport.overlay_clip_rect = None
+
+        normalize_snapshot = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
+        if normalize_snapshot is not None and not (fit_content and scaled_global_bounds is not None):
+            normalize_snapshot(store)
+
+        store.viewport.session_data.image_state.image1 = c["display_img1"]
+        store.viewport.session_data.image_state.image2 = c["display_img2"]
+        store.document.image1_path = getattr(snap, "image1_path", None)
+        store.document.image2_path = getattr(snap, "image2_path", None)
+        store.document.image_list1 = [
+            ImageItem(
+                image=c["source_img1"],
+                path=getattr(snap, "image1_path", None) or "",
+                display_name=getattr(snap, "name1", None) or "",
+            )
+        ]
+        store.document.image_list2 = [
+            ImageItem(
+                image=c["source_img2"],
+                path=getattr(snap, "image2_path", None) or "",
+                display_name=getattr(snap, "name2", None) or "",
+            )
+        ]
+        store.document.current_index1 = 0 if store.document.image_list1 else -1
+        store.document.current_index2 = 0 if store.document.image_list2 else -1
+        store.document.original_image1 = c["source_img1"]
+        store.document.original_image2 = c["source_img2"]
+        store.document.full_res_image1 = c["source_img1"]
+        store.document.full_res_image2 = c["source_img2"]
+        store.viewport.interaction_state.is_interactive_mode = False
+        store.viewport.geometry_state.pixmap_width = c["render_w"]
+        store.viewport.geometry_state.pixmap_height = c["render_h"]
+
+        if fit_content and scaled_global_bounds is not None:
+            apply_virtual_layout = get_canvas_feature_command_by_alias(
+                "overlay.snapshot_apply_virtual_layout"
+            )
+            if apply_virtual_layout is not None:
+                apply_virtual_layout(
+                    store,
+                    base_w=int(scaled_global_bounds.base_width),
+                    base_h=int(scaled_global_bounds.base_height),
+                    virtual_layout=scaled_global_bounds.to_virtual_layout(),
+                )
+
+        return store
+
+    def _prepare_canvas_frame_core(
+        self,
+        snap,
+        request: VideoRenderRequest,
+        img1,
+        img2,
+        *,
+        scaled_global_bounds=None,
+        debug: dict | None = None,
+        allow_feature_layout_fallback: bool = False,
+    ) -> PreparedCanvasFrame:
+        debug = {} if debug is None else debug
+        resize_method = get_effective_main_interpolation_method(snap.viewport_state)
+
+        image_prep_key = self._image_prep_cache_key(
+            img1, img2, request, scaled_global_bounds, resize_method,
+        )
+        cached = self._image_prep_cache
+        if cached is not None and cached[0] == image_prep_key:
+            c = cached[1]
+            debug["build_store_ms"] = 0.0
+            debug["pair_resize_method"] = resize_method
+            debug["image_prep_cache"] = "hit"
+
+            store = self._rebuild_snapshot_store(
+                snap, c, request.fit_content, scaled_global_bounds,
+            )
+
+            layout_started = time.perf_counter()
+            plan = SnapshotRenderPlanBuilder(store).build_render_plan(
+                c["scaled_source1"],
+                c["scaled_source2"],
+                source_image1=c["scaled_source1"],
+                source_image2=c["scaled_source2"],
+                source_key=(
+                    c["source_key"],
+                    c["target_size"],
+                    c["content_size"],
+                    c["pad_left"],
+                    c["pad_top"],
+                ),
+                display_cache_key=(
+                    c["display_cache_key"],
+                    c["target_size"],
+                ),
+                target_surface=request.target_surface,
+                canvas_fill_rgba=request.target_surface.fill_rgba,
+                canvas_geometry=c["canvas_geometry"],
+                allow_feature_layout_fallback=allow_feature_layout_fallback,
+                scene_images_cache=self._scene_images_cache,
+            )
+            debug["plan_build_ms"] = (time.perf_counter() - layout_started) * 1000.0
+            debug["frame_canvas_width"] = float(c["target_size"][0])
+            debug["frame_canvas_height"] = float(c["target_size"][1])
+            debug["frame_content_width"] = float(c["content_size"][0])
+            debug["frame_content_height"] = float(c["content_size"][1])
+            debug["frame_content_x"] = float(c["output_layout"].content_x)
+            debug["frame_content_y"] = float(c["output_layout"].content_y)
+            debug["frame_pad_left"] = float(c["canvas_geometry"].padding_left)
+            debug["frame_pad_right"] = float(c["canvas_geometry"].padding_right)
+            debug["frame_pad_top"] = float(c["canvas_geometry"].padding_top)
+            debug["frame_pad_bottom"] = float(c["canvas_geometry"].padding_bottom)
+            return PreparedCanvasFrame(
+                store=store,
+                plan=plan,
+                output_width=request.target_surface.width,
+                output_height=request.target_surface.height,
+                image_dest_x=c["output_layout"].content_x,
+                image_dest_y=c["output_layout"].content_y,
+                fill_rgba=request.target_surface.fill_rgba,
+                debug=debug,
+            )
+
+        debug["image_prep_cache"] = "miss"
+        build_store_started = time.perf_counter()
+        presentation = build_snapshot_store_presentation(
+            snap,
+            img1,
+            img2,
+            fit_content=request.fit_content,
+            global_bounds=scaled_global_bounds,
+            fill_color=request.target_surface.fill_rgba,
+            resize_method=resize_method,
+        )
+        debug["build_store_ms"] = (time.perf_counter() - build_store_started) * 1000.0
+        debug["pair_resize_method"] = resize_method
+        if request.fit_content and request.global_bounds is not None:
+            debug["global_bounds_pad_left"] = float(request.global_bounds.pad_left)
+            debug["global_bounds_pad_right"] = float(request.global_bounds.pad_right)
+            debug["global_bounds_pad_top"] = float(request.global_bounds.pad_top)
+            debug["global_bounds_pad_bottom"] = float(request.global_bounds.pad_bottom)
+
+        layout_started = time.perf_counter()
+        target = CanvasTarget(
+            width=max(1, int(request.target_surface.width)),
+            height=max(1, int(request.target_surface.height)),
+            fill_rgba=request.target_surface.fill_rgba,
+        )
+        output_layout = compute_content_layout(
+            target,
+            image_width=presentation.display_image1.width,
+            image_height=presentation.display_image1.height,
+        )
+        frame = build_render_frame_presentation(
+            presentation,
+            target=target,
+        )
+        target_size, content_size, pad_left, pad_top = self._resolve_scaled_content_geometry(frame)
+        _src1_sz = (presentation.source_image1.width, presentation.source_image1.height) if presentation.source_image1 else None
+        _src2_sz = (presentation.source_image2.width, presentation.source_image2.height) if presentation.source_image2 else None
+        _disp1_sz = (presentation.display_image1.width, presentation.display_image1.height) if presentation.display_image1 else None
+        _vrlog.info(
+            "FRAME_LAYOUT source1=%s source2=%s display1=%s "
+            "target_size=%s content_size=%s pad_lt=(%s,%s) "
+            "fit_content=%s global_bounds=%s scaled_bounds=%s "
+            "virtual_layout=%s",
+            _src1_sz, _src2_sz, _disp1_sz,
+            target_size, content_size, pad_left, pad_top,
+            request.fit_content,
+            request.global_bounds,
+            scaled_global_bounds,
+            frame.virtual_layout,
+        )
+        canvas_geometry = CanvasGeometry(
+            image_width=max(1, int(content_size[0])),
+            image_height=max(1, int(content_size[1])),
+            canvas_width=max(1, int(target_size[0])),
+            canvas_height=max(1, int(target_size[1])),
+            padding_left=max(0, int(pad_left)),
+            padding_top=max(0, int(pad_top)),
+            padding_right=max(0, int(target_size[0] - content_size[0] - pad_left)),
+            padding_bottom=max(0, int(target_size[1] - content_size[1] - pad_top)),
+            virtual_layout=frame.virtual_layout,
+        )
+        scaled_source1 = self._fit_source_to_content(
+            presentation.source_image1, content_size, request.target_surface.fill_rgba,
+        )
+        scaled_source2 = self._fit_source_to_content(
+            presentation.source_image2, content_size, request.target_surface.fill_rgba,
+        )
+
+        self._image_prep_cache = (image_prep_key, {
+            "display_img1": presentation.display_image1,
+            "display_img2": presentation.display_image2,
+            "source_img1": presentation.source_image1,
+            "source_img2": presentation.source_image2,
+            "source_key": presentation.images.source_key,
+            "display_cache_key": presentation.images.display_cache_key,
+            "scaled_source1": scaled_source1,
+            "scaled_source2": scaled_source2,
+            "canvas_geometry": canvas_geometry,
+            "output_layout": output_layout,
+            "target_size": target_size,
+            "content_size": content_size,
+            "pad_left": pad_left,
+            "pad_top": pad_top,
+            "render_w": frame.render_width,
+            "render_h": frame.render_height,
+        })
+
+        plan = SnapshotRenderPlanBuilder(frame.store).build_render_plan(
+            scaled_source1,
+            scaled_source2,
+            source_image1=scaled_source1,
+            source_image2=scaled_source2,
+            source_key=(
+                frame.source_key,
+                target_size,
+                content_size,
+                pad_left,
+                pad_top,
+            ),
+            display_cache_key=(
+                presentation.display_cache_key,
+                target_size,
+            ),
+            target_surface=request.target_surface,
+            canvas_fill_rgba=request.target_surface.fill_rgba,
+            canvas_geometry=canvas_geometry,
+            allow_feature_layout_fallback=allow_feature_layout_fallback,
+            scene_images_cache=self._scene_images_cache,
+        )
+        debug["plan_build_ms"] = (time.perf_counter() - layout_started) * 1000.0
+        debug["frame_canvas_width"] = float(target_size[0])
+        debug["frame_canvas_height"] = float(target_size[1])
+        debug["frame_content_width"] = float(content_size[0])
+        debug["frame_content_height"] = float(content_size[1])
+        debug["frame_content_x"] = float(output_layout.content_x)
+        debug["frame_content_y"] = float(output_layout.content_y)
+        debug["frame_pad_left"] = float(canvas_geometry.padding_left)
+        debug["frame_pad_right"] = float(canvas_geometry.padding_right)
+        debug["frame_pad_top"] = float(canvas_geometry.padding_top)
+        debug["frame_pad_bottom"] = float(canvas_geometry.padding_bottom)
+        return PreparedCanvasFrame(
+            store=frame.store,
+            plan=plan,
+            output_width=request.target_surface.width,
+            output_height=request.target_surface.height,
+            image_dest_x=output_layout.content_x,
+            image_dest_y=output_layout.content_y,
+            fill_rgba=request.target_surface.fill_rgba,
+            debug=debug,
+        )
+
+    def prepare_canvas_frame(self, snap, request: VideoRenderRequest) -> PreparedCanvasFrame:
         debug = {}
-        skip_prescale = request.fit_content and request.global_bounds is not None
+        prescale_target = (
+            self._normalized_prescale_target(
+            request.target_surface.width,
+            request.target_surface.height,
+        )
+        )
         cache_key = (
             snap.image1_path, snap.image2_path,
-            request.output_width, request.output_height,
-            skip_prescale,
+            prescale_target[0], prescale_target[1],
         )
         if self._prescaled_cache is not None and self._prescaled_cache[0] == cache_key:
             img1, img2 = self._prescaled_cache[1], self._prescaled_cache[2]
@@ -80,100 +463,188 @@ class SnapshotFrameRenderer:
             debug["load_ms"] = (time.perf_counter() - started) * 1000.0
 
             prescale_started = time.perf_counter()
-            if not skip_prescale:
-                img1, img2 = prescale_pair(img1, img2, request.output_width, request.output_height)
+            img1, img2 = prescale_pair(
+                img1,
+                img2,
+                prescale_target[0],
+                prescale_target[1],
+            )
             debug["prescale_ms"] = (time.perf_counter() - prescale_started) * 1000.0
             self._prescaled_cache = (cache_key, img1, img2)
+        debug["prescale_target_width"] = float(prescale_target[0])
+        debug["prescale_target_height"] = float(prescale_target[1])
 
-        build_store_started = time.perf_counter()
-        presentation = build_snapshot_store_presentation(
+        scaled_global_bounds = request.global_bounds
+        if request.global_bounds is not None:
+            scaled_global_bounds = self._scale_global_bounds(
+                request.global_bounds,
+                prescale_target,
+            )
+            if scaled_global_bounds is not request.global_bounds:
+                debug["scaled_bounds_base_width"] = float(scaled_global_bounds.base_width)
+                debug["scaled_bounds_base_height"] = float(scaled_global_bounds.base_height)
+                debug["scaled_bounds_pad_left"] = float(scaled_global_bounds.pad_left)
+            debug["scaled_bounds_pad_right"] = float(scaled_global_bounds.pad_right)
+            debug["scaled_bounds_pad_top"] = float(scaled_global_bounds.pad_top)
+            debug["scaled_bounds_pad_bottom"] = float(scaled_global_bounds.pad_bottom)
+        return self._prepare_canvas_frame_core(
             snap,
+            request,
             img1,
             img2,
-            fit_content=request.fit_content,
-            global_bounds=self._bounds_tuple(request),
-            fill_color=request.fill_rgba,
+            scaled_global_bounds=scaled_global_bounds,
+            debug=debug,
+            allow_feature_layout_fallback=False,
         )
-        debug["build_store_ms"] = (time.perf_counter() - build_store_started) * 1000.0
 
-        fit_resize_started = time.perf_counter()
-        frame = build_render_frame_presentation(
-            presentation,
-            output_width=request.output_width,
-            output_height=request.output_height,
+    def prepare_canvas_frame_from_images(
+        self,
+        snap,
+        request: VideoRenderRequest,
+        image1: Image.Image,
+        image2: Image.Image,
+        *,
+        allow_feature_layout_fallback: bool = False,
+    ) -> PreparedCanvasFrame:
+        debug = {
+            "load_ms": 0.0,
+            "prescale_ms": 0.0,
+            "prescale_target_width": float(image1.width),
+            "prescale_target_height": float(image1.height),
+        }
+        return self._prepare_canvas_frame_core(
+            snap,
+            request,
+            image1,
+            image2,
+            scaled_global_bounds=request.global_bounds,
+            debug=debug,
+            allow_feature_layout_fallback=allow_feature_layout_fallback,
         )
-        debug["fit_resize_ms"] = (time.perf_counter() - fit_resize_started) * 1000.0
 
-        scene_ctx_started = time.perf_counter()
-        scene_builder = ExportSceneBuilder(frame.store)
-        render_context = scene_builder.build_render_context(
-            frame.scaled_image1,
-            frame.scaled_image2,
-            source_image1=frame.source_image1,
-            source_image2=frame.source_image2,
-            source_key=frame.source_key,
-            overlay_drawing_coords=frame.feature_extras.get("overlay_drawing_coords"),
-        )
-        debug["scene_ctx_ms"] = (time.perf_counter() - scene_ctx_started) * 1000.0
-
+    def _render_prepared(self, prepared: PreparedCanvasFrame, request: VideoRenderRequest) -> RenderedFrame:
+        debug = dict(prepared.debug)
         gpu_render_started = time.perf_counter()
-        force_tiled, min_tiles_per_axis = self._get_gpu_tiling_config(
-            request.output_width,
-            request.output_height,
-        )
-        frame_pil, gpu_debug = self._gpu_export_service.render_image(
-            store=frame.store,
-            render_context=render_context,
-            force_tiled=force_tiled,
-            min_tiles_per_axis=min_tiles_per_axis,
+        diff_image = None
+        try:
+            render_cache = getattr(
+                getattr(prepared.store, "viewport", None),
+                "session_data",
+                None,
+            )
+            render_cache = getattr(render_cache, "render_cache", None)
+            diff_image = getattr(render_cache, "cached_diff_image", None)
+        except Exception:
+            diff_image = None
+        frame_pil, gpu_debug = self._gpu_export_service.render_plan(
+            prepared.plan,
+            diff_image=diff_image,
         )
         debug["gpu_render_ms"] = (time.perf_counter() - gpu_render_started) * 1000.0
         debug.update(gpu_debug)
         if frame_pil is None:
             return RenderedFrame(
-                image=Image.new("RGBA", (request.output_width, request.output_height), request.fill_rgba),
+                image=Image.new(
+                    "RGBA",
+                    (
+                        request.target_surface.width,
+                        request.target_surface.height,
+                    ),
+                    request.target_surface.fill_rgba,
+                ),
                 backend="gpu",
                 debug=debug,
             )
 
         composite_started = time.perf_counter()
-        canvas_plan = compute_canvas_plan(
-            frame.store,
-            frame.render_width,
-            frame.render_height,
-            overlay_drawing_coords=frame.feature_extras.get("overlay_drawing_coords"),
-        )
-        pad_left = int(canvas_plan.padding_left)
-        pad_top = int(canvas_plan.padding_top)
-        crop_rect = (
-            max(0, pad_left),
-            max(0, pad_top),
-            min(frame_pil.width, pad_left + frame.render_width),
-            min(frame_pil.height, pad_top + frame.render_height),
-        )
-        base_image_content = frame_pil.crop(crop_rect)
-        if base_image_content.size != (frame.render_width, frame.render_height):
-            base_image_content = base_image_content.resize(
-                (frame.render_width, frame.render_height),
-                Image.Resampling.LANCZOS,
-            )
-
-        if (
-            frame.image_dest_x == 0
-            and frame.image_dest_y == 0
-            and base_image_content.size == (request.output_width, request.output_height)
+        if frame_pil.size == (
+            max(1, int(getattr(prepared.plan, "canvas_w", 0) or 0)),
+            max(1, int(getattr(prepared.plan, "canvas_h", 0) or 0)),
         ):
             debug["composite_ms"] = (time.perf_counter() - composite_started) * 1000.0
-            return RenderedFrame(image=base_image_content, backend="gpu", debug=debug)
+            return RenderedFrame(image=frame_pil, backend="gpu", debug=debug)
+        if frame_pil.size == (
+            request.target_surface.width,
+            request.target_surface.height,
+        ):
+            debug["composite_ms"] = (time.perf_counter() - composite_started) * 1000.0
+            return RenderedFrame(image=frame_pil, backend="gpu", debug=debug)
 
         final_frame = Image.new(
             "RGBA",
-            (request.output_width, request.output_height),
-            request.fill_rgba,
+            (
+                request.target_surface.width,
+                request.target_surface.height,
+            ),
+            prepared.fill_rgba,
         )
-        final_frame.alpha_composite(base_image_content, (frame.image_dest_x, frame.image_dest_y))
+        final_frame.alpha_composite(frame_pil, (prepared.image_dest_x, prepared.image_dest_y))
         debug["composite_ms"] = (time.perf_counter() - composite_started) * 1000.0
         return RenderedFrame(image=final_frame, backend="gpu", debug=debug)
+
+    def render_from_images(
+        self,
+        snap,
+        request: VideoRenderRequest,
+        image1: Image.Image,
+        image2: Image.Image,
+        *,
+        allow_feature_layout_fallback: bool = False,
+    ) -> RenderedFrame:
+        prepared = self.prepare_canvas_frame_from_images(
+            snap,
+            request,
+            image1,
+            image2,
+            allow_feature_layout_fallback=allow_feature_layout_fallback,
+        )
+        result = self._render_prepared(prepared, request)
+        self._last_backend = result.backend
+        self._last_debug = result.debug
+        return result
+
+    @staticmethod
+    def _scale_global_bounds(
+        bounds: GlobalCanvasBounds,
+        prescale_target: tuple[int, int],
+    ) -> GlobalCanvasBounds:
+        source_w = max(1, int(bounds.base_width))
+        source_h = max(1, int(bounds.base_height))
+        target_w, target_h = prescale_target
+        ratio = min(float(target_w) / float(source_w), float(target_h) / float(source_h))
+        _vrlog.info(
+            "SCALE_BOUNDS base=%sx%s prescale_target=%sx%s ratio=%.4f "
+            "pad=(%s,%s,%s,%s) canvas_bounds=(%.3f,%.3f,%.3f,%.3f)",
+            source_w, source_h, target_w, target_h, ratio,
+            bounds.pad_left, bounds.pad_right, bounds.pad_top, bounds.pad_bottom,
+            bounds.canvas_x_min, bounds.canvas_x_max,
+            bounds.canvas_y_min, bounds.canvas_y_max,
+        )
+        if ratio >= 0.999:
+            return bounds
+
+        scaled = GlobalCanvasBounds(
+            pad_left=max(0, int(round(bounds.pad_left * ratio))),
+            pad_right=max(0, int(round(bounds.pad_right * ratio))),
+            pad_top=max(0, int(round(bounds.pad_top * ratio))),
+            pad_bottom=max(0, int(round(bounds.pad_bottom * ratio))),
+            base_width=max(1, int(round(source_w * ratio))),
+            base_height=max(1, int(round(source_h * ratio))),
+            canvas_x_min=float(bounds.canvas_x_min),
+            canvas_x_max=float(bounds.canvas_x_max),
+            canvas_y_min=float(bounds.canvas_y_min),
+            canvas_y_max=float(bounds.canvas_y_max),
+        )
+        _vrlog.info(
+            "SCALE_BOUNDS_RESULT base=%sx%s pad=(%s,%s,%s,%s)",
+            scaled.base_width, scaled.base_height,
+            scaled.pad_left, scaled.pad_right, scaled.pad_top, scaled.pad_bottom,
+        )
+        return scaled
+
+    def _render_gpu(self, snap, request: VideoRenderRequest) -> RenderedFrame:
+        prepared = self.prepare_canvas_frame(snap, request)
+        return self._render_prepared(prepared, request)
 
     @staticmethod
     def _get_gpu_tiling_config(width: int, height: int) -> tuple[bool, int]:

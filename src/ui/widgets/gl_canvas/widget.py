@@ -58,11 +58,11 @@ from .texture_parts.layers import (
     set_pixmap,
 )
 from .feature_overlay_gpu import (
-    clear_magnifier_gpu,
-    set_magnifier_content,
-    set_magnifier_gpu_params,
-    upload_combined_magnifier,
-    upload_magnifier_crop,
+    clear_feature_overlay_gpu,
+    set_feature_overlay_content,
+    set_feature_overlay_gpu_params,
+    upload_feature_overlay_crop,
+    upload_feature_overlay_pair,
 )
 
 class GLCanvas(QOpenGLWidget):
@@ -234,15 +234,12 @@ class GLCanvas(QOpenGLWidget):
         return set_pixmap(self, pixmap)
 
     def set_feature_overlay_content(self, pixmap: QPixmap | None, top_left: QPoint | None):
-        return set_magnifier_content(self, pixmap, top_left)
-
-    def set_magnifier_content(self, pixmap: QPixmap | None, top_left: QPoint | None):
-        return self.set_feature_overlay_content(pixmap, top_left)
+        return set_feature_overlay_content(self, pixmap, top_left)
 
     def get_letterbox_params(self, slot: int = 0) -> tuple:
         return get_letterbox_params(self, slot)
 
-    def set_magnifier_gpu_params(
+    def set_feature_overlay_gpu_params(
         self,
         slots: list[dict | None],
         channel_mode: int = 0,
@@ -252,7 +249,7 @@ class GLCanvas(QOpenGLWidget):
         border_width: float = 2.0,
         interp_mode: int = 1,
     ):
-        return set_magnifier_gpu_params(
+        return set_feature_overlay_gpu_params(
             self, slots, channel_mode, diff_mode, diff_threshold, border_color, border_width, interp_mode
         )
 
@@ -260,25 +257,22 @@ class GLCanvas(QOpenGLWidget):
         return set_texture_filter(self, texture_id, gl_filter)
 
     def clear_feature_overlay_gpu(self):
-        return clear_magnifier_gpu(self)
+        return clear_feature_overlay_gpu(self)
 
-    def clear_magnifier_gpu(self):
-        return self.clear_feature_overlay_gpu()
-
-    def upload_magnifier_crop(self, pil_image, center: QPointF, radius: float,
-                               border_color: QColor | None = None, border_width: float = 2.0,
-                               index: int = 0, gl_filter: int = None):
-        return upload_magnifier_crop(
+    def upload_feature_overlay_crop(self, pil_image, center: QPointF, radius: float,
+                                    border_color: QColor | None = None, border_width: float = 2.0,
+                                    index: int = 0, gl_filter: int = None):
+        return upload_feature_overlay_crop(
             self, pil_image, center, radius, border_color, border_width, index, gl_filter
         )
 
-    def upload_combined_magnifier(self, pil1, pil2, center: QPointF, radius: float,
-                                   split: float = 0.5, horizontal: bool = False,
-                                   divider_visible: bool = True, divider_color: tuple = (1.0, 1.0, 1.0, 0.9),
-                                   divider_thickness: int = 2,
-                                   border_color: QColor | None = None, border_width: float = 2.0,
-                                   index: int = 0, gl_filter: int = None):
-        return upload_combined_magnifier(
+    def upload_feature_overlay_pair(self, pil1, pil2, center: QPointF, radius: float,
+                                    split: float = 0.5, horizontal: bool = False,
+                                    divider_visible: bool = True, divider_color: tuple = (1.0, 1.0, 1.0, 0.9),
+                                    divider_thickness: int = 2,
+                                    border_color: QColor | None = None, border_width: float = 2.0,
+                                    index: int = 0, gl_filter: int = None):
+        return upload_feature_overlay_pair(
             self,
             pil1,
             pil2,
@@ -318,10 +312,10 @@ class GLCanvas(QOpenGLWidget):
         self,
         capture_center: QPointF | None,
         capture_radius: float,
-        mag_centers: list[QPointF],
-        mag_radius: float,
+        overlay_centers: list[QPointF],
+        overlay_radius: float,
     ):
-        set_overlay_coords_impl(self, capture_center, capture_radius, mag_centers, mag_radius)
+        set_overlay_coords_impl(self, capture_center, capture_radius, overlay_centers, overlay_radius)
 
     def set_split_line_params(
         self,
@@ -347,18 +341,18 @@ class GLCanvas(QOpenGLWidget):
     def set_layers(
         self,
         background: QPixmap | None,
-        magnifier: QPixmap | None,
-        mag_pos: QPoint | None,
+        overlay: QPixmap | None,
+        overlay_pos: QPoint | None,
         coords_snapshot: tuple | None = None,
     ):
-        return set_layers(self, background, magnifier, mag_pos, coords_snapshot)
+        return set_layers(self, background, overlay, overlay_pos, coords_snapshot)
 
     def set_pil_layers(
         self,
         pil_image1=None,
         pil_image2=None,
-        magnifier=None,
-        mag_pos=None,
+        overlay=None,
+        overlay_pos=None,
         source_image1=None,
         source_image2=None,
         source_key=None,
@@ -369,8 +363,8 @@ class GLCanvas(QOpenGLWidget):
             self,
             pil_image1,
             pil_image2,
-            magnifier,
-            mag_pos,
+            overlay,
+            overlay_pos,
             source_image1,
             source_image2,
             source_key,

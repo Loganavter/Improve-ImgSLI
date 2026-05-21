@@ -34,11 +34,15 @@ class LogConsoleWidget(QWidget):
         self.output = QTextEdit(self)
         self.output.setObjectName("LogConsoleOutput")
         self.output.setReadOnly(True)
+        self.output.setAcceptRichText(False)
+        self.output.setUndoRedoEnabled(False)
+        self.output.setTabChangesFocus(True)
         self.output.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
             | Qt.TextInteractionFlag.TextSelectableByKeyboard
         )
         self.output.viewport().setCursor(Qt.CursorShape.IBeamCursor)
+        self.output.setCursorWidth(0)
 
         scrollbar = MinimalistScrollBar(Qt.Orientation.Vertical, self.output)
         self.output.setVerticalScrollBar(scrollbar)
@@ -152,8 +156,17 @@ class LogConsoleWidget(QWidget):
 
     def _apply_styles(self) -> None:
         info_color = self.theme_manager.get_color("dialog.text").name()
+        bg_color = self.theme_manager.get_color("dialog.background").name()
         error_color = "#D70000" if self.theme_manager.is_dark() else "#FF0000"
         status_color = "#9E9E9E"
+
+        self.output.setStyleSheet(f"""
+            QTextEdit#LogConsoleOutput {{
+                background: {bg_color};
+                border: none;
+                border-radius: 8px;
+            }}
+        """)
 
         stylesheet = f"""
         body {{ color: {info_color}; }}

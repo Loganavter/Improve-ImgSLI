@@ -196,10 +196,12 @@ class TimelineWidget(QWidget):
     def _on_host_horizontal_scroll(self, _value: int) -> None:
         self._update_vertical_scrollbar()
         self.update()
+        self.viewportChanged.emit()
 
     def _on_host_horizontal_scroll_range(self, _min_value: int, _max_value: int) -> None:
         self._update_vertical_scrollbar()
         self.update()
+        self.viewportChanged.emit()
 
     def _rebuild_row_layout(self):
         timeline_layout.rebuild_row_layout(self)
@@ -359,6 +361,12 @@ class TimelineWidget(QWidget):
         if duration <= 0:
             return 50.0
         return timeline_viewport.get_logical_width(self) / duration
+
+    def get_visible_thumbnail_frame_indices(self, overscan_blocks: int = 1) -> list[int]:
+        return timeline_viewport.get_visible_thumbnail_frame_indices(
+            self,
+            overscan_blocks=overscan_blocks,
+        )
 
     def fit_view(self):
         timeline_viewport.fit_view(self)

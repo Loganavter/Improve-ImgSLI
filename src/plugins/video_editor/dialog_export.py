@@ -1,3 +1,4 @@
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QColorDialog
 
@@ -33,12 +34,14 @@ class VideoEditorDialogExport:
 
     def on_fit_fill_color_clicked(self):
         d = self.dialog
-        color = QColorDialog.getColor(
-            d.fit_content_fill_color,
-            d,
-            d._tr("export.select_background_color"),
-            QColorDialog.ColorDialogOption.ShowAlphaChannel,
-        )
+        dialog = QColorDialog(d.fit_content_fill_color, d)
+        dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+        dialog.setWindowTitle(d._tr("export.select_background_color"))
+        dialog.setModal(True)
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        if dialog.exec() != QColorDialog.DialogCode.Accepted:
+            return
+        color = dialog.currentColor()
         if not color.isValid():
             return
         d.fit_content_fill_color = color

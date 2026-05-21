@@ -23,20 +23,7 @@ class ExportSaveContext:
     original2_full: object
     image1_for_save: object
     image2_for_save: object
-    overlay_coords_for_save: object
-    render_context: object
+    render_plan: object | None
+    render_store: object | None
     preview_img: object | None
     suggested_filename: str
-
-@dataclass(slots=True)
-class ExportRenderContext:
-    image1: object
-    image2: object
-    width: int
-    height: int
-    source_image1: object
-    source_image2: object
-    source_key: object
-    overlay_drawing_coords: object | None
-    prepared_background_layers: tuple[object, object] | None
-    cached_diff_image: object | None

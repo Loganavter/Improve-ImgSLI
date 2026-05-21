@@ -1,18 +1,54 @@
 ## Settings
 
-Many interactive behaviors in the app are controlled here. If preview, magnifier behavior, filename labels, or export feel different than expected, this is the first place to check.
+This page groups settings by purpose instead of repeating the full interface as a flat list.
 
-- **Language:** Changes the UI language.
-- **Theme:** Choose between Auto, Light, or Dark mode.
-- **UI Font:** Select between the built-in font, your system default, or a custom installed font.
-- **Max Name Length (UI):** Limits the length of filenames displayed in the UI.
-- **Display Cache Resolution:** Sets a resolution limit for the main preview to improve performance with large images. The magnifier and final export always use original quality.
-- **Movement Interpolation:** When "Optimize magnifier movement" is enabled, this selects a faster, lower-quality interpolation method (like Bilinear) to use *only* during interactive movement for a smoother experience. The high-quality method is still used when static.
-- **Optimize magnifier movement:** Enables the use of the separate, faster interpolation method above during magnifier movement. Enabled by default.
-- **Highlight magnifier intersections:** Enables the red helper highlight for capture areas that are covered by other magnifiers while dragging.
-- **Auto-color new magnifiers:** Automatically assigns the next color set to each new extra magnifier, including border, internal divider, capture area, and guide lines.
-- **UI Mode:** Switches how many controls and advanced options are shown in parts of the interface.
-- **Auto-calculate PSNR / SSIM:** Toggles the automatic calculation and display of PSNR and SSIM metrics below the image. Disabled by default for better performance. Note: SSIM will still be calculated and shown if the "SSIM Map" diff mode is active.
-- **Auto-crop black borders on load:** Automatically removes black bars from the edges of images when they are added to the lists.
-- **Enable debug logging:** Toggles detailed logging for troubleshooting.
-- **System notifications:** Toggles system notifications on save.
+### Interface {#interface}
+- **Language** changes the application language.
+- **Theme** switches between light, dark, and automatic appearance.
+- **UI Font** selects the built-in, system, or custom installed font.
+- **Max Name Length (UI)** limits label length in the interface.
+- **UI Mode** changes not only complexity, but also how the toolbar is meant to be used.
+
+### UI Modes {#ui-modes}
+- **Beginner**:
+  - the simplest mode;
+  - keeps the interface more mouse-oriented;
+  - fits first-time use and quick basic comparisons.
+- **Advanced**:
+  - exposes more controls directly on screen;
+  - fits users who want to change parameters more often without extra steps.
+- **Expert**:
+  - makes the interface more minimal;
+  - leans more heavily on keyboard control, including `WASD` and `QE`;
+  - frees as much screen space as possible for the image.
+
+### When To Switch Modes {#when-to-switch-modes}
+- If the interface feels overloaded, try **Beginner** or **Expert** depending on your workflow.
+- If you want more controls visible at once, switch to **Advanced**.
+- If you prefer keyboard-heavy work and want maximum canvas space, use **Expert**.
+
+### Preview And Quality {#preview-and-quality}
+- **Display Cache Resolution** limits the main preview resolution for better performance.
+- The magnifier and final export still use original quality.
+- The main interpolation method affects static image quality.
+- The separate movement interpolation method is used only for interactive scenarios when optimization is enabled.
+
+### Magnifier And Interactive Motion {#magnifier-and-interactive-motion}
+- **Optimize magnifier movement** enables a faster mode during motion.
+- **Highlight magnifier intersections** shows overlap between capture areas.
+- **Auto-color new magnifiers** helps distinguish multiple instances automatically.
+
+### Analysis And Metrics {#analysis-and-metrics}
+- **Auto-calculate PSNR / SSIM** enables automatic metrics under the comparison area.
+- It is disabled by default to keep the preview lighter.
+
+### Loading And Workflow {#loading-and-workflow}
+- **Auto-crop black borders on load** removes black bars at image edges when loading files.
+
+### System And Debugging {#system-and-debugging}
+- **System notifications** control notifications after save.
+- **Enable debug logging** adds detailed logs for troubleshooting.
+
+### What Is Configured Elsewhere {#configured-elsewhere}
+- Video editor **Preview Quality** is changed inside the **[video editor](help://export#video-editor-preview-quality)** itself.
+- Export-specific output options are chosen in the **[Export](help://export#saving-an-image)** dialog.

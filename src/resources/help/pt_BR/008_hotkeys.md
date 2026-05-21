@@ -1,26 +1,29 @@
 ## Atalhos
 
-- **Pré-visualização Rápida:** Mantenha pressionada a tecla **`Espaço`**.
-  - Enquanto mantém o Espaço pressionado, o **Botão Esquerdo do Mouse** mostra a Imagem 1 em tela cheia.
-  - O **Botão Direito do Mouse** mostra a Imagem 2 em tela cheia.
-  - Solte o botão do mouse e a tecla Espaço para retornar à visualização de comparação.
-- **Movimento da Lupa:** Use `WASD` para mover a visualização e `QE` para ajustar o espaçamento.
-- **Zoom do Canvas:** segure `Ctrl` e use a roda do mouse.
-- **Panorâmica do Canvas:** quando o zoom estiver acima de `100%`, segure o botão do meio do mouse e arraste.
-- **Colar Imagem:** Pressione `Ctrl+V` para colar uma imagem da sua área de transferência.
+Esta página é uma folha de consulta rápida. O comportamento detalhado é descrito nas páginas temáticas.
 
+### Canvas {#canvas}
+- `Ctrl + roda do mouse` — zoom.
+- `Botão do Meio do Mouse` acima de `100%` de zoom — pan.
+- `Espaço + Botão Esquerdo do Mouse` — preview rápido da Imagem 1.
+- `Espaço + Botão Direito do Mouse` — preview rápido da Imagem 2.
+- `Espaço + Shift + Botão Esquerdo/Direito do Mouse` — força um lado no preview combinado da lupa.
 
-### Atalhos de Salvamento
-- Ctrl+S — Salvamento Rápido usando suas últimas configurações de exportação, sem abrir o diálogo.
-- Ctrl+Shift+S — Salvar Resultado com o diálogo de Exportação para controle total sobre formato, qualidade e fundo.
+### Lupa {#magnifier}
+- `WASD` — move a visualização ou a lupa congelada.
+- `QE` — altera o espaçamento entre as metades da lupa.
 
-### Atalhos do Editor de Vídeo
+### Arquivos e Salvamento {#files-and-saving}
+- `Ctrl+V` — cola uma imagem da área de transferência.
+- `Ctrl+S` — salvamento rápido com as últimas configurações de exportação.
+- `Ctrl+Shift+S` — abre o diálogo de exportação.
+
+### Editor de Vídeo {#video-editor}
 - `Espaço` — reproduzir / pausar.
 - `Ctrl+Z` — desfazer.
 - `Ctrl+Y` ou `Ctrl+Shift+Z` — refazer.
-- `Delete` / `Backspace` — remover o intervalo selecionado na linha do tempo.
+- `Delete` / `Backspace` — remover o intervalo selecionado na timeline.
 
-### Controles do Overlay de Colagem
-- Após pressionar Ctrl+V, aparece um overlay de direção de colagem para escolher onde posicionar a imagem.
-- Use as teclas de Setas ou `WASD` para selecionar a direção; pressione o botão do mouse para confirmar o posicionamento.
-- Pressione `Esc` para cancelar o overlay de colagem.
+### Overlay de Colagem {#paste-overlay}
+- `Setas` ou `WASD` — escolher a direção da colagem.
+- `Esc` — cancelar a colagem.

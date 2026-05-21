@@ -8,7 +8,7 @@ from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QHBoxLayout, QLineEdit, QTextEdit, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.ui.widgets.atomic.custom_button import CustomButton
+from sli_ui_toolkit.ui.widgets.buttons import Button
 from sli_ui_toolkit.ui.widgets.atomic.minimalist_scrollbar import MinimalistScrollBar
 
 class ProcessConsoleWidget(QWidget):
@@ -57,7 +57,7 @@ class ProcessConsoleWidget(QWidget):
         self.input_edit.setPlaceholderText("Enter command")
         self.input_edit.setFont(fixed_font)
 
-        self.send_button = CustomButton(None, "Send", self.input_row)
+        self.send_button = Button(text="Send", variant="surface", parent=self.input_row)
         self.send_button.clicked.connect(self.submit_current_input)
         self.input_edit.returnPressed.connect(self.submit_current_input)
 
