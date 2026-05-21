@@ -118,9 +118,12 @@ class SetInteractiveOffsetVisualAction(Action):
     offset: tuple[float, float]
 
     def __init__(self, offset):
+        from domain.types import Point
         super().__init__(type=ActionType.SET_INTERACTIVE_OFFSET_VISUAL)
         # Convert Point to tuple if needed
-        if hasattr(offset, 'x'):
+        if isinstance(offset, Point):
+            self.offset = (offset.x, offset.y)
+        elif hasattr(offset, 'x'):
             self.offset = (offset.x, offset.y)
         else:
             self.offset = offset
