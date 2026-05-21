@@ -52,6 +52,7 @@ class MagnifierModeService:
 
     def prepare_for_add(self) -> None:
         set_magnifier_enabled_flag(self._view, True)
+        self.store.emit_viewport_change("interaction")
 
     def reveal_object(self, object_id: str | None):
         model = self.object_state.set_object_visibility(object_id, True)
@@ -94,11 +95,13 @@ class MagnifierModeService:
         if total <= 0:
             set_magnifier_enabled_flag(self._view, False)
             self.object_state.set_active_object(None)
+            self.store.emit_viewport_change("interaction")
             return None
 
         active = self.object_state.get_active_or_first_magnifier()
         if active is None:
             set_magnifier_enabled_flag(self._view, False)
+            self.store.emit_viewport_change("interaction")
             return None
 
         if total == 1:
@@ -106,7 +109,9 @@ class MagnifierModeService:
                 self.object_state.set_object_visibility(active.id, True)
             self.object_state.set_active_object(active.id)
             set_magnifier_enabled_flag(self._view, True)
+            self.store.emit_viewport_change("interaction")
             return active
 
         set_magnifier_enabled_flag(self._view, True)
+        self.store.emit_viewport_change("interaction")
         return active
