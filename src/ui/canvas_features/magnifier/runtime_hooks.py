@@ -70,10 +70,7 @@ def command_build_render_canvas_payload(store) -> dict[str, Any]:
         real_spacing = magnifier.spacing_relative
 
     if magnifier_enabled(view) and interaction.is_interactive_mode:
-        visual_offset = (
-            interaction.interactive_offset_relative_visual.x,
-            interaction.interactive_offset_relative_visual.y,
-        )
+        visual_offset = interaction.interactive_offset_relative_visual
         visual_spacing = interaction.interactive_spacing_relative_visual
 
     main_interp = render.interpolation_method
