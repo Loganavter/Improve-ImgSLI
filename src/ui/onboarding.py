@@ -497,8 +497,15 @@ class OnboardingOverlay(QWidget):
         btn.setAttribute(Qt.WidgetAttribute.WA_NoMouseReplay, False)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        if hasattr(btn, "setChecked"):
+        # New Button API uses toggle parameter, legacy Button had setChecked
+        if hasattr(btn, "set_value"):
+            # New Button API
+            if checked:
+                btn.set_value(1)
+        elif hasattr(btn, "setChecked"):
+            # Fallback for legacy buttons
             btn.setChecked(checked)
+
         if hasattr(btn, "update_styles"):
             btn.update_styles()
 
@@ -534,29 +541,11 @@ class OnboardingOverlay(QWidget):
         self.dots.set_current(index)
 
         accent_color = self.theme_manager.get_color("accent")
-        text_color = self.theme_manager.get_color("dialog.text")
         for i, btn in enumerate(self.mode_buttons):
             if i == index:
                 btn.set_override_bg_color(accent_color)
-                highlighted_text = self.theme_manager.get_color("HighlightedText").name()
-                btn_palette = btn.text_label.palette()
-                btn_palette.setColor(
-                    btn.text_label.foregroundRole(),
-                    self.theme_manager.get_color("HighlightedText"),
-                )
-                btn.text_label.setPalette(btn_palette)
-                btn.text_label.setStyleSheet(
-                    f"color: {highlighted_text}; background: transparent;"
-                )
             else:
                 btn.set_override_bg_color(None)
-                normal_text = text_color.name()
-                btn_palette = btn.text_label.palette()
-                btn_palette.setColor(btn.text_label.foregroundRole(), text_color)
-                btn.text_label.setPalette(btn_palette)
-                btn.text_label.setStyleSheet(
-                    f"color: {normal_text}; background: transparent;"
-                )
 
     def _get_scale_factor(self):
         width_scale = self.width() / self._base_window_width
@@ -636,8 +625,9 @@ class OnboardingOverlay(QWidget):
 
         for btn in self.mode_buttons:
             btn.setFixedSize(btn_width, btn_height)
-            if hasattr(btn, "text_label"):
-                btn.text_label.setFont(mode_btn_font)
+            # New Button API uses stylesheet for font styling
+            if not hasattr(btn, "text_label"):
+                btn.setFont(mode_btn_font)
 
         welcome_font_size = max(22, int(28 * scale))
         w_font = QFont()
@@ -652,8 +642,9 @@ class OnboardingOverlay(QWidget):
         custom_font = QFont()
         custom_font.setPixelSize(start_font_size)
         custom_font.setBold(True)
-        if hasattr(self.btn_start, "text_label"):
-            self.btn_start.text_label.setFont(custom_font)
+        # New Button API uses stylesheet for font styling
+        if not hasattr(self.btn_start, "text_label"):
+            self.btn_start.setFont(custom_font)
 
         self.btn_start.setFixedSize(start_btn_width, start_btn_height)
 
