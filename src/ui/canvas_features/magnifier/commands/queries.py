@@ -183,17 +183,23 @@ class MagnifierMovementHandler:
         if event_bus is None:
             return
         # Notify magnifier to recalculate combined state via Feature State API
-        from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+        from ui.canvas_infra.scene.feature_state_api import execute_feature_command, query_feature_state
         if self._store is not None:
-            execute_feature_command(self._store, "magnifier", "set_active_combined")
+            # Query current combined state and toggle it
+            current_spacing = query_feature_state(self._store, "magnifier", "active_spacing_relative")
+            combined = current_spacing == 0.0
+            execute_feature_command(self._store, "magnifier", "set_active_combined", not combined)
 
 def emit_overlay_changed(store, *, event_bus=None):
     if event_bus is None and store is None:
         return
     # Notify magnifier to recalculate combined state via Feature State API
-    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+    from ui.canvas_infra.scene.feature_state_api import execute_feature_command, query_feature_state
     if store is not None:
-        execute_feature_command(store, "magnifier", "set_active_combined")
+        # Query current combined state and toggle it
+        current_spacing = query_feature_state(store, "magnifier", "active_spacing_relative")
+        combined = current_spacing == 0.0
+        execute_feature_command(store, "magnifier", "set_active_combined", not combined)
 
 def get_movement_handler(store):
     if store is None or getattr(store, "viewport", None) is None:
