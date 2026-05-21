@@ -184,8 +184,8 @@ class MagnifierMovementHandler:
             return
         # Notify magnifier to recalculate combined state via Feature State API
         from ui.canvas_infra.scene.feature_state_api import execute_feature_command
-        if self.store is not None:
-            execute_feature_command(self.store, "magnifier", "set_active_combined")
+        if self._store is not None:
+            execute_feature_command(self._store, "magnifier", "set_active_combined")
 
 def emit_overlay_changed(store, *, event_bus=None):
     if event_bus is None and store is None:
