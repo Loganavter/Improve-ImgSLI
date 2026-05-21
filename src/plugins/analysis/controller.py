@@ -65,7 +65,8 @@ class AnalysisController(QObject):
         if self.event_bus:
             from ui.canvas_infra.scene.feature_state_api import execute_feature_command, query_feature_state
             # Query current combined state and preserve it
-            current_spacing = query_feature_state(self.store, "magnifier", "active_spacing_relative")
+            active_state = query_feature_state(self.store, "magnifier", "active_state")
+            current_spacing = active_state.get("spacing_relative", 0.05) if active_state else 0.05
             combined = current_spacing == 0.0
             execute_feature_command(self.store, "magnifier", "set_active_combined", combined)
 
