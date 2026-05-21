@@ -167,6 +167,10 @@ def iter_magnifier_models(view_state, render_config) -> list[MagnifierModel]:
     models: list[MagnifierModel] = []
     active_id = active_magnifier_id(view_state) or DEFAULT_MAGNIFIER_ID
 
+    import logging
+    _log_models = logging.getLogger("ImproveImgSLI.magnifier.store")
+    _log_models.debug(f"iter_magnifier_models: raw_models keys={list(raw_models.keys())}, active_id={active_id}, enabled={magnifier_enabled(view_state)}")
+
     for magnifier_id, model in raw_models.items():
         if model is None:
             continue

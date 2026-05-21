@@ -41,11 +41,18 @@ class MagnifierWidgetState:
 def get_magnifier_widget_state(view_state) -> MagnifierWidgetState:
     state = (getattr(view_state, "canvas_widget_state", None) or {}).get("magnifier")
     if isinstance(state, MagnifierWidgetState):
+        import logging
+        _log = logging.getLogger("ImproveImgSLI.magnifier.state")
+        _log.debug(f"get_magnifier_widget_state: returning existing state with {len(state.models)} models")
         return state
+    import logging
+    _log = logging.getLogger("ImproveImgSLI.magnifier.state")
+    _log.debug(f"get_magnifier_widget_state: creating NEW state")
     state = MagnifierWidgetState()
     if getattr(view_state, "canvas_widget_state", None) is None:
         view_state.canvas_widget_state = {}
     view_state.canvas_widget_state["magnifier"] = state
+    _log.debug(f"get_magnifier_widget_state: NEW state has {len(state.models)} models")
     return state
 
 def clone_magnifier_widget_state(view_state) -> MagnifierWidgetState:
