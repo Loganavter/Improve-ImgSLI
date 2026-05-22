@@ -312,14 +312,10 @@ def viewport_set_active_combined(
         # Combined: zero spacing
         target_spacing = 0.0
     else:
-        # Separated: use current spacing if it's reasonable, else use minimum separation
+        # Separated: ensure minimum spacing
         current = float(model.spacing_relative)
-        if current <= 0.005:  # threshold for combining
-            # Was combined, need to separate
-            target_spacing = 0.05
-        else:
-            # Already separated, keep current spacing
-            target_spacing = current
+        # Set to at least minimum separation, but don't increase if already larger
+        target_spacing = max(current, 0.05)
 
     result = scene_state.set_active_magnifier_spacing(target_spacing)
     if hasattr(store, 'emit_viewport_change'):

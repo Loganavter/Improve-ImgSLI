@@ -184,11 +184,14 @@ class MagnifierMovementHandler:
             return
         # Notify magnifier to recalculate combined state via Feature State API
         from ui.canvas_infra.scene.feature_state_api import execute_feature_command, query_feature_state
+        from ..constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+
         if self._store is not None:
             # Query current combined state and preserve it (don't toggle)
             active_state = query_feature_state(self._store, "magnifier", "active_state")
             current_spacing = active_state.get("spacing_relative", 0.05) if active_state else 0.05
-            combined = current_spacing == 0.0
+            # Check if spacing is at or near combine threshold
+            combined = float(current_spacing) <= MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE + 1e-5
             execute_feature_command(self._store, "magnifier", "set_active_combined", combined)
 
 def emit_overlay_changed(store, *, event_bus=None):
@@ -196,11 +199,14 @@ def emit_overlay_changed(store, *, event_bus=None):
         return
     # Notify magnifier to recalculate combined state via Feature State API
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command, query_feature_state
+    from ..constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+
     if store is not None:
         # Query current combined state and preserve it (don't toggle)
         active_state = query_feature_state(store, "magnifier", "active_state")
         current_spacing = active_state.get("spacing_relative", 0.05) if active_state else 0.05
-        combined = current_spacing == 0.0
+        # Check if spacing is at or near combine threshold
+        combined = float(current_spacing) <= MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE + 1e-5
         execute_feature_command(store, "magnifier", "set_active_combined", combined)
 
 def get_movement_handler(store):
