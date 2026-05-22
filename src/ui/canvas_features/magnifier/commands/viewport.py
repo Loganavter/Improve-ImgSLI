@@ -312,10 +312,9 @@ def viewport_set_active_combined(
         # Combined: zero spacing
         target_spacing = 0.0
     else:
-        # Separated: ensure minimum spacing
-        current = float(model.spacing_relative)
-        # Set to at least minimum separation, but don't increase if already larger
-        target_spacing = max(current, 0.05)
+        # Separated: keep current spacing
+        # Don't enforce minimum - let natural spacing constraints handle it
+        target_spacing = float(model.spacing_relative)
 
     result = scene_state.set_active_magnifier_spacing(target_spacing)
     if hasattr(store, 'emit_viewport_change'):
