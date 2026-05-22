@@ -172,7 +172,7 @@ def viewport_add_instance(store, position=None):
             )
 
     model = MagnifierStoreService(store).add_magnifier(position=position)
-    store.emit_viewport_change("interaction")
+    store.emit_viewport_change()
     return model
 
 def viewport_remove_active_instance(store) -> bool:
