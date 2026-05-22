@@ -24,7 +24,8 @@ def viewport_set_active_size(store, size: float):
     if store is None or getattr(store, "viewport", None) is None:
         return None
     result = MagnifierStoreService(store).set_active_magnifier_size(float(size))
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_capture_size(store, size: float):
@@ -33,7 +34,8 @@ def viewport_set_active_capture_size(store, size: float):
     if store is None or getattr(store, "viewport", None) is None:
         return None
     result = MagnifierStoreService(store).set_active_capture_size(float(size))
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_offset(store, offset):
@@ -42,7 +44,8 @@ def viewport_set_active_offset(store, offset):
     if store is None or getattr(store, "viewport", None) is None:
         return None
     result = MagnifierStoreService(store).set_active_magnifier_offset(offset)
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_spacing(store, spacing: float):
@@ -51,7 +54,8 @@ def viewport_set_active_spacing(store, spacing: float):
     if store is None or getattr(store, "viewport", None) is None:
         return None
     result = MagnifierStoreService(store).set_active_magnifier_spacing(float(spacing))
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_border_color(store, color):
@@ -69,7 +73,8 @@ def viewport_set_active_border_color(store, color):
         model.id,
         border_color=color,
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_divider_color(store, color):
@@ -87,7 +92,8 @@ def viewport_set_active_divider_color(store, color):
         model.id,
         divider_color=color,
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_laser_enabled(store, enabled: bool):
@@ -105,7 +111,8 @@ def viewport_set_active_laser_enabled(store, enabled: bool):
         model.id,
         show_laser=bool(enabled),
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_visibility_parts(
@@ -124,7 +131,8 @@ def viewport_set_active_visibility_parts(
         center=center,
         right=right,
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_orientation(store, is_horizontal: bool):
@@ -135,7 +143,8 @@ def viewport_set_active_orientation(store, is_horizontal: bool):
     result = MagnifierStoreService(store).set_active_magnifier_orientation(
         bool(is_horizontal)
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_move_active_position(store, position):
@@ -147,7 +156,8 @@ def viewport_move_active_position(store, position):
         active_magnifier_id(store.viewport.view_state),
         position,
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_internal_split(store, location):
@@ -168,7 +178,8 @@ def viewport_set_internal_split(store, location):
     if model.internal_split == value:
         return model
     result = scene_state.set_object_internal_split(model.id, value)
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_add_instance(store, position=None):
@@ -194,7 +205,8 @@ def viewport_add_instance(store, position=None):
             )
 
     model = MagnifierStoreService(store).add_magnifier(position=position)
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return model
 
 def viewport_remove_active_instance(store) -> bool:
@@ -220,7 +232,8 @@ def viewport_set_active_instance(store, magnifier_id: str):
     if store is None or getattr(store, "viewport", None) is None:
         return None
     result = MagnifierStoreService(store).set_active_object(magnifier_id)
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_instance_visibility(
@@ -236,7 +249,8 @@ def viewport_set_instance_visibility(
         magnifier_id,
         bool(visible),
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_all_freeze(
@@ -255,7 +269,8 @@ def viewport_set_all_freeze(
         frozen_positions=frozen_positions,
         new_offsets=new_offsets,
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_freeze(
@@ -275,7 +290,8 @@ def viewport_set_active_freeze(
         bool(freeze),
         frozen_position=frozen_position,
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
 
 def viewport_set_active_combined(
@@ -293,5 +309,6 @@ def viewport_set_active_combined(
     result = scene_state.set_active_magnifier_spacing(
         0.0 if bool(combined) else max(float(model.spacing_relative), 0.05)
     )
-    store.emit_viewport_change()
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
     return result
