@@ -221,6 +221,49 @@ Shared code must not use `get_canvas_feature_command("feature_name", "cmd")`. In
 
 If the feature is absent, returns `None`.
 
+## Viewport Change Contract
+
+When feature commands modify state that affects UI rendering or panel visibility, they must emit viewport changes to notify the system.
+
+### Pattern
+
+All feature commands that modify state should follow this pattern:
+
+```python
+def viewport_set_feature_property(store, value):
+    if store is None or getattr(store, "viewport", None) is None:
+        return None
+
+    # Modify state via store service
+    result = StoreService(store).update_property(value)
+
+    # Always emit full viewport change after state modification
+    if hasattr(store, 'emit_viewport_change'):
+        store.emit_viewport_change()
+
+    return result
+```
+
+### Rules
+
+1. **Always emit after state changes** — UI panels and buttons won't update without viewport change notification
+2. **Check for `emit_viewport_change` method** — during initialization, store may be wrapped in `StoreProxy` which lacks this method
+3. **Use full viewport change** — call `emit_viewport_change()` without subdomain parameter, not `emit_viewport_change("interaction")`
+4. **Don't emit during read-only operations** — queries and hit-tests should not emit changes
+
+### Why This Matters
+
+Without viewport changes:
+- Toggle buttons won't update their visual state
+- Toolbar panels won't appear/disappear
+- Capture area highlights won't recalculate
+- User must move mouse to trigger re-render
+
+With viewport changes:
+- All UI updates happen immediately
+- State changes are visible instantly
+- No need for user interaction to see feedback
+
 ## Canvas Layout Contract
 
 ### Problem
@@ -349,6 +392,7 @@ Before merging a new canvas feature:
 - [ ] `name` field is unique and does not start with `_`
 - [ ] Reducers are no-op if feature has no state actions
 - [ ] Commands exposed via aliases (not direct feature-name lookups)
+- [ ] **All state-modifying commands emit viewport changes** (see Viewport Change Contract)
 - [ ] GL passes use `stack_role`, not hardcoded `layer`/`priority`
 - [ ] GL passes set `visibility` explicitly
 - [ ] Scene z_order uses `stack_role` via `CanvasFeatureZOrder`
