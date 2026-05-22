@@ -10,7 +10,7 @@ Start with these files in this order:
 2. [CONTRIBUTING.md](/home/jorj/Загрузки/Improve-ImgSLI/CONTRIBUTING.md)
 3. [docs/INSTALL.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/INSTALL.md)
 
-Then read the area-specific docs that match the task.
+Then read the area-specific docs in [docs/dev/](docs/dev/) that match the task.
 
 ## Area Docs
 
@@ -18,9 +18,10 @@ Then read the area-specific docs that match the task.
 
 Read:
 
-1. [docs/CANVAS_FEATURES.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/CANVAS_FEATURES.md)
-2. [src/ui/canvas_presentation](/home/jorj/Загрузки/Improve-ImgSLI/src/ui/canvas_presentation)
-3. [src/ui/widgets/gl_canvas](/home/jorj/Загрузки/Improve-ImgSLI/src/ui/widgets/gl_canvas)
+1. [docs/dev/CANVAS_FEATURES.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/CANVAS_FEATURES.md)
+2. [docs/dev/CONTRACTS.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/CONTRACTS.md) — complete contracts reference
+3. [src/ui/canvas_presentation](/home/jorj/Загрузки/Improve-ImgSLI/src/ui/canvas_presentation)
+4. [src/ui/widgets/gl_canvas](/home/jorj/Загрузки/Improve-ImgSLI/src/ui/widgets/gl_canvas)
 
 Important:
 
@@ -32,7 +33,7 @@ Important:
 
 Read:
 
-1. [docs/HELP_WIDGET.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/HELP_WIDGET.md)
+1. [docs/dev/HELP_WIDGET.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/HELP_WIDGET.md)
 2. [src/plugins/help/dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/dialog.py)
 3. [packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/markdown_help_dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/markdown_help_dialog.py)
 
@@ -136,7 +137,8 @@ Usually this means touching one of:
 - [src/resources/help/en](/home/jorj/Загрузки/Improve-ImgSLI/src/resources/help/en)
 - [packages/sli-ui-toolkit/docs/API_CATALOG.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/API_CATALOG.md)
 - [packages/sli-ui-toolkit/docs/ARCHITECTURE.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/ARCHITECTURE.md)
-- [docs/HELP_WIDGET.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/HELP_WIDGET.md)
+- [docs/dev/HELP_WIDGET.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/HELP_WIDGET.md)
+- [docs/dev/CANVAS_FEATURES.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/CANVAS_FEATURES.md)
 
 ## Good Defaults For Agents
 
