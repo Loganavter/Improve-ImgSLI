@@ -52,13 +52,13 @@ class MagnifierModeService:
 
     def prepare_for_add(self) -> None:
         set_magnifier_enabled_flag(self._view, True)
-        self.store.emit_viewport_change("interaction")
+        self.store.emit_viewport_change()
 
     def reveal_object(self, object_id: str | None):
         model = self.object_state.set_object_visibility(object_id, True)
         if model is not None:
             set_magnifier_enabled_flag(self._view, True)
-        self.store.emit_viewport_change("interaction")
+        self.store.emit_viewport_change()
         return model
 
     def hide_active(self):
@@ -68,7 +68,7 @@ class MagnifierModeService:
         self.object_state.set_object_visibility(active.id, False)
         self.object_state.set_active_object(active.id)
         set_magnifier_enabled_flag(self._view, True)
-        self.store.emit_viewport_change("interaction")
+        self.store.emit_viewport_change()
         return active.id
 
     def set_single_enabled(self, enabled: bool):
@@ -76,7 +76,7 @@ class MagnifierModeService:
         model = self.object_state.ensure_active_magnifier(create_if_missing=enabled)
         if model is not None:
             self.object_state.set_object_visibility(model.id, bool(enabled))
-        self.store.emit_viewport_change("interaction")
+        self.store.emit_viewport_change()
         return model
 
     def toggle_from_button(self, checked: bool):
@@ -95,13 +95,13 @@ class MagnifierModeService:
         if total <= 0:
             set_magnifier_enabled_flag(self._view, False)
             self.object_state.set_active_object(None)
-            self.store.emit_viewport_change("interaction")
+            self.store.emit_viewport_change()
             return None
 
         active = self.object_state.get_active_or_first_magnifier()
         if active is None:
             set_magnifier_enabled_flag(self._view, False)
-            self.store.emit_viewport_change("interaction")
+            self.store.emit_viewport_change()
             return None
 
         if total == 1:
@@ -109,9 +109,9 @@ class MagnifierModeService:
                 self.object_state.set_object_visibility(active.id, True)
             self.object_state.set_active_object(active.id)
             set_magnifier_enabled_flag(self._view, True)
-            self.store.emit_viewport_change("interaction")
+            self.store.emit_viewport_change()
             return active
 
         set_magnifier_enabled_flag(self._view, True)
-        self.store.emit_viewport_change("interaction")
+        self.store.emit_viewport_change()
         return active
