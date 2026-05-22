@@ -1,6 +1,6 @@
-# Reference Documentation
+# Development Documentation
 
-In-depth documentation about architecture, contracts, and component design.
+In-depth guides about architecture, contracts, and component design for contributors.
 
 ## Quick Links
 
