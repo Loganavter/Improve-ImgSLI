@@ -23,28 +23,36 @@ def viewport_set_active_size(store, size: float):
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_active_magnifier_size(float(size))
+    result = MagnifierStoreService(store).set_active_magnifier_size(float(size))
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_capture_size(store, size: float):
     from ..store import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_active_capture_size(float(size))
+    result = MagnifierStoreService(store).set_active_capture_size(float(size))
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_offset(store, offset):
     from ..store import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_active_magnifier_offset(offset)
+    result = MagnifierStoreService(store).set_active_magnifier_offset(offset)
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_spacing(store, spacing: float):
     from ..store import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_active_magnifier_spacing(float(spacing))
+    result = MagnifierStoreService(store).set_active_magnifier_spacing(float(spacing))
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_border_color(store, color):
     from ..store import MagnifierStoreService, update_magnifier_model
@@ -55,12 +63,14 @@ def viewport_set_active_border_color(store, color):
     model = scene_state.get_active_or_first_magnifier()
     if model is None:
         return None
-    return update_magnifier_model(
+    result = update_magnifier_model(
         store.viewport.view_state,
         store.viewport.render_config,
         model.id,
         border_color=color,
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_divider_color(store, color):
     from ..store import MagnifierStoreService, update_magnifier_model
@@ -71,12 +81,14 @@ def viewport_set_active_divider_color(store, color):
     model = scene_state.get_active_or_first_magnifier()
     if model is None:
         return None
-    return update_magnifier_model(
+    result = update_magnifier_model(
         store.viewport.view_state,
         store.viewport.render_config,
         model.id,
         divider_color=color,
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_laser_enabled(store, enabled: bool):
     from ..store import MagnifierStoreService, update_magnifier_model
@@ -87,12 +99,14 @@ def viewport_set_active_laser_enabled(store, enabled: bool):
     model = scene_state.get_active_or_first_magnifier()
     if model is None:
         return None
-    return update_magnifier_model(
+    result = update_magnifier_model(
         store.viewport.view_state,
         store.viewport.render_config,
         model.id,
         show_laser=bool(enabled),
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_visibility_parts(
     store,
@@ -105,30 +119,36 @@ def viewport_set_active_visibility_parts(
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_active_magnifier_visibility_parts(
+    result = MagnifierStoreService(store).set_active_magnifier_visibility_parts(
         left=left,
         center=center,
         right=right,
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_orientation(store, is_horizontal: bool):
     from ..store import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_active_magnifier_orientation(
+    result = MagnifierStoreService(store).set_active_magnifier_orientation(
         bool(is_horizontal)
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_move_active_position(store, position):
     from ..store import MagnifierStoreService, active_magnifier_id
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).move_object_source_position(
+    result = MagnifierStoreService(store).move_object_source_position(
         active_magnifier_id(store.viewport.view_state),
         position,
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_internal_split(store, location):
     from ..store import MagnifierStoreService
@@ -147,7 +167,9 @@ def viewport_set_internal_split(store, location):
     value = max(0.0, min(1.0, value))
     if model.internal_split == value:
         return model
-    return scene_state.set_object_internal_split(model.id, value)
+    result = scene_state.set_object_internal_split(model.id, value)
+    store.emit_viewport_change()
+    return result
 
 def viewport_add_instance(store, position=None):
     from domain.types import Point
@@ -197,7 +219,9 @@ def viewport_set_active_instance(store, magnifier_id: str):
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_active_object(magnifier_id)
+    result = MagnifierStoreService(store).set_active_object(magnifier_id)
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_instance_visibility(
     store,
@@ -208,10 +232,12 @@ def viewport_set_instance_visibility(
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_object_visibility(
+    result = MagnifierStoreService(store).set_object_visibility(
         magnifier_id,
         bool(visible),
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_all_freeze(
     store,
@@ -224,11 +250,13 @@ def viewport_set_all_freeze(
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
-    return MagnifierStoreService(store).set_all_magnifiers_freeze(
+    result = MagnifierStoreService(store).set_all_magnifiers_freeze(
         bool(freeze),
         frozen_positions=frozen_positions,
         new_offsets=new_offsets,
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_freeze(
     store,
@@ -243,10 +271,12 @@ def viewport_set_active_freeze(
     if model is None:
         return None
     frozen_position = model.position if freeze else None
-    return scene_state.set_active_magnifier_freeze(
+    result = scene_state.set_active_magnifier_freeze(
         bool(freeze),
         frozen_position=frozen_position,
     )
+    store.emit_viewport_change()
+    return result
 
 def viewport_set_active_combined(
     store,
@@ -260,6 +290,8 @@ def viewport_set_active_combined(
     model = scene_state.get_active_or_first_magnifier()
     if model is None:
         return None
-    return scene_state.set_active_magnifier_spacing(
+    result = scene_state.set_active_magnifier_spacing(
         0.0 if bool(combined) else max(float(model.spacing_relative), 0.05)
     )
+    store.emit_viewport_change()
+    return result
