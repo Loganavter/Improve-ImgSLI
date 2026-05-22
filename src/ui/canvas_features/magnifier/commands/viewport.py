@@ -195,10 +195,11 @@ def viewport_add_instance(store, position=None):
     if position is None:
         existing = list(MagnifierStoreService(store).iter_magnifiers())
         if existing:
-            # Offset new magnifier slightly from the first one
+            # Offset new magnifier slightly from the first one to show they're separate
+            # Use small offset to allow easy combining when needed
             first = existing[0]
-            offset_x = 0.15 if first.position.x < 0.5 else -0.15
-            offset_y = 0.15 if first.position.y < 0.5 else -0.15
+            offset_x = 0.08 if first.position.x < 0.5 else -0.08
+            offset_y = 0.08 if first.position.y < 0.5 else -0.08
             position = Point(
                 max(0.1, min(0.9, first.position.x + offset_x)),
                 max(0.1, min(0.9, first.position.y + offset_y)),
@@ -306,9 +307,21 @@ def viewport_set_active_combined(
     model = scene_state.get_active_or_first_magnifier()
     if model is None:
         return None
-    result = scene_state.set_active_magnifier_spacing(
-        0.0 if bool(combined) else max(float(model.spacing_relative), 0.05)
-    )
+
+    if bool(combined):
+        # Combined: zero spacing
+        target_spacing = 0.0
+    else:
+        # Separated: use current spacing if it's reasonable, else use minimum separation
+        current = float(model.spacing_relative)
+        if current <= 0.005:  # threshold for combining
+            # Was combined, need to separate
+            target_spacing = 0.05
+        else:
+            # Already separated, keep current spacing
+            target_spacing = current
+
+    result = scene_state.set_active_magnifier_spacing(target_spacing)
     if hasattr(store, 'emit_viewport_change'):
         store.emit_viewport_change()
     return result
