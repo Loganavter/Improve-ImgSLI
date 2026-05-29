@@ -10,7 +10,7 @@ from plugins.video_editor.services.video_snapshot_rendering import SnapshotFrame
 from shared.image_processing.resize import resize_images_processor
 from shared.rendering.live_snapshot import build_live_frame_snapshot
 from shared.rendering import TargetSurfaceSpec
-from shared.rendering import get_effective_main_interpolation_method
+from shared.rendering import get_effective_export_interpolation_method
 
 class ExportContextBuilder:
     def __init__(self, store, gpu_export_service, state_coordinator):
@@ -53,7 +53,7 @@ class ExportContextBuilder:
 
         preview_img = None
         live_snapshot = build_live_frame_snapshot(self.store)
-        resize_method = get_effective_main_interpolation_method(live_snapshot.viewport_state)
+        resize_method = get_effective_export_interpolation_method(live_snapshot.viewport_state)
         if include_preview:
             preview_img = self.build_export_preview_from_sources(
                 original1_full, original2_full, live_snapshot=live_snapshot
@@ -82,15 +82,20 @@ class ExportContextBuilder:
             allow_feature_layout_fallback=True,
         )
 
+        plan = prepared_frame.plan
+        native_w = int(getattr(plan, "canvas_w", 0) or image1_for_save.width)
+        native_h = int(getattr(plan, "canvas_h", 0) or image1_for_save.height)
         return ExportSaveContext(
             original1_full=original1_full,
             original2_full=original2_full,
             image1_for_save=image1_for_save,
             image2_for_save=image2_for_save,
-            render_plan=prepared_frame.plan,
+            render_plan=plan,
             render_store=prepared_frame.store,
             preview_img=preview_img,
             suggested_filename=self.state.build_suggested_export_filename(),
+            native_width=native_w,
+            native_height=native_h,
         )
 
     def _downscale_for_preview(
@@ -110,7 +115,7 @@ class ExportContextBuilder:
 
     def build_export_preview_from_sources(self, image1_full, image2_full, *, live_snapshot=None):
         live_snapshot = live_snapshot or build_live_frame_snapshot(self.store)
-        resize_method = get_effective_main_interpolation_method(live_snapshot.viewport_state)
+        resize_method = get_effective_export_interpolation_method(live_snapshot.viewport_state)
         image1_preview_src = self._downscale_for_preview(image1_full)
         image2_preview_src = self._downscale_for_preview(image2_full)
         image1_preview, image2_preview = resize_images_processor(

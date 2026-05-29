@@ -18,20 +18,6 @@
             ]
         },
         {
-            "name": "python3-darkdetect",
-            "buildsystem": "simple",
-            "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"darkdetect==0.8.0\" --no-build-isolation"
-            ],
-            "sources": [
-                {
-                    "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/f2/f2/728f041460f1b9739b85ee23b45fa5a505962ea11fd85bdbe2a02b021373/darkdetect-0.8.0-py3-none-any.whl",
-                    "sha256": "a7509ccf517eaad92b31c214f593dbcf138ea8a43b2935406bbd565e15527a85"
-                }
-            ]
-        },
-        {
             "name": "python3-Markdown",
             "buildsystem": "simple",
             "build-commands": [
@@ -103,20 +89,6 @@
             ]
         },
         {
-            "name": "python3-Wand",
-            "buildsystem": "simple",
-            "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"Wand==0.6.13\" --no-build-isolation"
-            ],
-            "sources": [
-                {
-                    "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/59/d5/1bdd7c9662d5e9078e25ba0eb69bdb122859295746d40ab8dfef3a7b4d42/Wand-0.6.13-py2.py3-none-any.whl",
-                    "sha256": "e5dda0ac2204a40c29ef5c4cb310770c95d3d05c37b1379e69c94ea79d7d19c0"
-                }
-            ]
-        },
-        {
             "name": "python3-PyOpenGL",
             "buildsystem": "simple",
             "build-commands": [
@@ -127,25 +99,6 @@
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/de/e4/1ba6f44e491c4eece978685230dde56b14d51a0365bc1b774ddaa94d14cd/pyopengl-3.1.10-py3-none-any.whl",
                     "sha256": "794a943daced39300879e4e47bd94525280685f42dbb5a998d336cfff151d74f"
-                }
-            ]
-        },
-        {
-            "name": "python3-snakeviz",
-            "buildsystem": "simple",
-            "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"snakeviz==2.2.2\" --no-build-isolation"
-            ],
-            "sources": [
-                {
-                    "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/cd/f7/83b00cdf4f114f10750a18b64c27dc34636d0ac990ccac98282f5c0fbb43/snakeviz-2.2.2-py3-none-any.whl",
-                    "sha256": "77e7b9c82f6152edc330040319b97612351cd9b48c706434c535c2df31d10ac5"
-                },
-                {
-                    "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/09/ce/1eb500eae19f4648281bb2186927bb062d2438c2e5093d1360391afd2f90/tornado-6.5.2.tar.gz",
-                    "sha256": "ab53c8f9a0fa351e2c0741284e06c7a45da86afb544133201c5cc8578eb076a0"
                 }
             ]
         },

@@ -1,4 +1,7 @@
-from .interpolation import get_effective_main_interpolation_method
+from .interpolation import (
+    get_effective_export_interpolation_method,
+    get_effective_main_interpolation_method,
+)
 from .layout_contract import (
     FeatureLayoutRequirement,
     NormalizedBounds,
@@ -12,6 +15,7 @@ __all__ = [
     "NormalizedBounds",
     "TargetSurfaceSpec",
     "VirtualCanvasLayout",
+    "get_effective_export_interpolation_method",
     "get_effective_main_interpolation_method",
     "resolve_virtual_canvas_layout",
 ]

@@ -26,6 +26,12 @@ from .actions import (
 from .events import SettingsSetCaptureColorEvent, SettingsToggleCaptureVisibilityEvent
 from .state import CaptureWidgetState, get_capture_widget_state, replace_capture_widget_state
 
+def _clone_capture_widget_state(view_state: ViewState) -> CaptureWidgetState:
+    state = (getattr(view_state, "canvas_widget_state", None) or {}).get("capture")
+    if isinstance(state, CaptureWidgetState):
+        return state.clone()
+    return CaptureWidgetState()
+
 def _make_capture_view_state_proxy(view_state: ViewState):
     viewport_proxy = type(
         "ViewportProxy",
@@ -63,11 +69,11 @@ def reduce_capture_view_state(view_state: ViewState, action: Action) -> ViewStat
     if isinstance(action, SetCaptureSizeRelativeAction):
         return _set_capture_size_on_view_state(view_state, action.size)
     if isinstance(action, SetCaptureVisibleAction):
-        state = get_capture_widget_state(view_state).clone()
+        state = _clone_capture_widget_state(view_state)
         state.visible = bool(action.enabled)
         return replace_capture_widget_state(view_state, state)
     if isinstance(action, SetCaptureColorAction):
-        state = get_capture_widget_state(view_state).clone()
+        state = _clone_capture_widget_state(view_state)
         state.color = action.color
         return replace_capture_widget_state(view_state, state)
     return view_state
@@ -173,13 +179,6 @@ def _command_set_capture_size(actions, raw_value: int | float) -> None:
     store = getattr(actions, "store", None)
     if store is not None:
         execute_feature_command(store, "capture", "set_size", relative_size)
-        return
-    event_bus = getattr(actions, "event_bus", None)
-    if event_bus is not None:
-        # Fallback for legacy event bus
-        from plugins.viewport.events import ViewportUpdateCaptureSizeRelativeEvent
-        event_bus.emit(ViewportUpdateCaptureSizeRelativeEvent(relative_size))
-        return
 
 def _set_slider_value_quietly(slider, value: int) -> None:
     if slider is None or slider.value() == value:
@@ -198,12 +197,11 @@ def _sync_capture_toolbar_state(presenter) -> None:
     _set_slider_value_quietly(slider, int(size * 1000))
 
 def _capture_size_pressed_handler(presenter) -> None:
-    # Slider pressed event - can be used for deferred rendering optimization if needed
+
     pass
 
 def _capture_size_released_handler(presenter) -> None:
-    # Slider released event - finalize capture size state
-    # The feature_state_api already handles state updates via execute_feature_command
+
     pass
 
 def build_capture_state_queries():

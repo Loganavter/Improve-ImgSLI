@@ -2,7 +2,7 @@ import logging
 from typing import Tuple
 
 from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtGui import QFontMetrics
+from PyQt6.QtGui import QColor, QFontMetrics, QPainter
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -33,6 +33,29 @@ from ui.widgets.gl_canvas import GLCanvas
 logger = logging.getLogger("ImproveImgSLI")
 
 SHOW_WORKSPACE_TABS = False
+
+class _RoundedOverlayWidget(QWidget):
+    """Child widget that paints its own AA rounded background.
+    Works correctly when hosted over a QOpenGLWidget where QSS border-radius
+    on a child widget leaves a leaking rectangle outside the rounded shape."""
+
+    def __init__(self, parent=None, *, bg_color=QColor(0, 0, 0, 140), radius=6):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._bg_color = bg_color
+        self._radius = float(radius)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._bg_color)
+        painter.drawRoundedRect(self.rect(), self._radius, self._radius)
+        painter.end()
 
 class Ui_ImageComparisonApp:
     def setupUi(self, main_window: QWidget):
@@ -179,6 +202,7 @@ class Ui_ImageComparisonApp:
         self.image_container_layout.addWidget(self.magnifier_settings_panel)
         self.image_container_layout.addWidget(self.image_label)
         self._create_image_startup_placeholder()
+        self._create_zoom_indicator()
         self.drag_overlay = DragDropOverlay(self.image_container_widget)
         self.footer_info_widget = self._create_footer_info_widget(main_window)
         self.edit_layout_widget = QWidget()
@@ -598,6 +622,66 @@ class Ui_ImageComparisonApp:
     def hide_image_startup_placeholder(self):
         if hasattr(self, "image_startup_placeholder"):
             self.image_startup_placeholder.hide()
+
+    def _create_zoom_indicator(self):
+        self.zoom_indicator = _RoundedOverlayWidget(
+            self.image_container_widget,
+            bg_color=QColor(0, 0, 0, 140),
+            radius=6,
+        )
+        self.zoom_indicator.setObjectName("ZoomIndicator")
+        self.zoom_indicator.setStyleSheet(
+            "#ZoomIndicator QLabel { color: white; padding: 0 6px; background: transparent; }"
+        )
+        layout = QHBoxLayout(self.zoom_indicator)
+        layout.setContentsMargins(6, 2, 4, 2)
+        layout.setSpacing(4)
+        self.zoom_indicator_label = QLabel("100%", self.zoom_indicator)
+        layout.addWidget(self.zoom_indicator_label)
+        self.btn_zoom_reset = Button(AppIcon.SYNC, parent=self.zoom_indicator)
+        self.btn_zoom_reset.setFixedSize(QSize(22, 22))
+        self.btn_zoom_reset.setToolTip("Reset zoom")
+        layout.addWidget(self.btn_zoom_reset)
+        self.zoom_indicator.adjustSize()
+        self.zoom_indicator.hide()
+        self.update_zoom_indicator(1.0)
+
+    def _zoom_label_prefix(self) -> str:
+        try:
+            lang = self.main_window.store.settings.current_language
+        except AttributeError:
+            lang = "en"
+        return tr("label.zoom", lang)
+
+    def update_zoom_indicator(self, zoom: float):
+        if not hasattr(self, "zoom_indicator"):
+            return
+        percent = int(round(float(zoom) * 100))
+        self.zoom_indicator_label.setText(f"{self._zoom_label_prefix()}: {percent}%")
+        self.zoom_indicator.adjustSize()
+        pan_x = float(getattr(self.image_label, "pan_offset_x", 0.0) or 0.0)
+        pan_y = float(getattr(self.image_label, "pan_offset_y", 0.0) or 0.0)
+        visible = (
+            abs(float(zoom) - 1.0) > 1e-3
+            or abs(pan_x) > 1e-4
+            or abs(pan_y) > 1e-4
+        )
+        self.zoom_indicator.setVisible(visible)
+        if visible:
+            self.sync_zoom_indicator()
+            self.zoom_indicator.raise_()
+
+    def sync_zoom_indicator(self):
+        if not hasattr(self, "zoom_indicator") or not self.zoom_indicator.isVisible():
+            return
+        label_geo = self.image_label.geometry()
+        margin = 8
+        w = self.zoom_indicator.width()
+        h = self.zoom_indicator.height()
+        x = label_geo.right() - w - margin
+        y = label_geo.top() + margin
+        self.zoom_indicator.move(x, y)
+        self.zoom_indicator.raise_()
 
     def set_image_startup_placeholder_color(self, color):
         if not hasattr(self, "image_startup_placeholder"):

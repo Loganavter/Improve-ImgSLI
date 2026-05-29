@@ -269,7 +269,7 @@ class MagnifierStoreService:
             return models[first_id]
         if models:
             return None
-        # Don't auto-create magnifier if disabled and no models exist
+
         if create_if_missing:
             if not magnifier_enabled(self._view):
                 return None

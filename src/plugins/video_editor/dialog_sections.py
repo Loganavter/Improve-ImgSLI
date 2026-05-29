@@ -226,16 +226,16 @@ def create_fps_settings(dialog):
 def create_preview_quality_settings(dialog):
     preview_layout = QHBoxLayout()
     preview_layout.setSpacing(8)
-    preview_layout.addWidget(BodyLabel("Preview Quality:"))
+    preview_layout.addWidget(BodyLabel(dialog._tr("video.preview_quality") + ":"))
 
     dialog.combo_preview_scale = ComboBox()
-    for label, value in (
-        ("Full (1.0x)", 1.0),
-        ("Balanced (0.75x)", 0.75),
-        ("Performance (0.5x)", 0.5),
-        ("Draft (0.25x)", 0.25),
+    for key, value in (
+        ("video.preview_quality_full", 1.0),
+        ("video.preview_quality_balanced", 0.75),
+        ("video.preview_quality_performance", 0.5),
+        ("video.preview_quality_draft", 0.25),
     ):
-        dialog.combo_preview_scale.addItem(label, value)
+        dialog.combo_preview_scale.addItem(dialog._tr(key), value)
     dialog.combo_preview_scale.setCurrentIndex(0)
     dialog.combo_preview_scale.setFixedWidth(170)
     dialog.combo_preview_scale.installEventFilter(dialog._settings_no_wheel_filter)

@@ -32,6 +32,8 @@ from .settings import (
     settings_apply_behavior,
     settings_initialize,
     settings_persist,
+    settings_set_movement_interpolation,
+    settings_set_optimize_movement,
 )
 from .viewport import (
     viewport_add_instance,
@@ -75,6 +77,11 @@ def _settings_set_divider_color(settings, color) -> bool:
     )
     viewport_set_active_divider_color(settings.mutations.store, color)
     return changed
+
+def _build_keyboard_movement_controller(store, *, presenter_provider, parent=None):
+    from ..keyboard_movement import build_controller
+    return build_controller(store, presenter_provider=presenter_provider, parent=parent)
+
 
 def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
     from ..bounds import (
@@ -197,9 +204,12 @@ def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
         "settings.apply_behavior": settings_apply_behavior,
         "settings.initialize": settings_initialize,
         "settings.persist": settings_persist,
+        "settings.set_optimize_movement": settings_set_optimize_movement,
+        "settings.set_movement_interpolation": settings_set_movement_interpolation,
         "query.movement_handler": get_movement_handler,
         "interaction.preview_begin": preview_begin,
         "interaction.preview_restore": preview_restore,
         "interaction.preview_set_side": preview_set_side,
         "interaction.emit_overlay_changed": emit_overlay_changed,
+        "interaction.build_keyboard_movement_controller": _build_keyboard_movement_controller,
     }

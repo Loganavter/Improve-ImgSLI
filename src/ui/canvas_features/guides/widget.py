@@ -22,28 +22,34 @@ from .commands import build_guides_commands
 from .properties import build_guides_properties
 from .runtime_hooks import build_guides_render_scene_overrides
 from .settings_bindings import build_guides_settings_event_bindings
-from .state import get_guides_widget_state, replace_guides_widget_state
+from .state import GuidesWidgetState, get_guides_widget_state, replace_guides_widget_state
 from .toolbar import build_guides_toolbar_bindings
+
+def _clone_guides_widget_state(view_state: ViewState) -> GuidesWidgetState:
+    state = (getattr(view_state, "canvas_widget_state", None) or {}).get("guides")
+    if isinstance(state, GuidesWidgetState):
+        return state.clone()
+    return GuidesWidgetState()
 
 def reduce_guides_view_state(view_state: ViewState, action: Action) -> ViewState:
     if isinstance(action, SetGuidesEnabledAction):
-        state = get_guides_widget_state(view_state).clone()
+        state = _clone_guides_widget_state(view_state)
         state.enabled = bool(action.enabled)
         return replace_guides_widget_state(view_state, state)
     if isinstance(action, SetGuidesThicknessAction):
-        state = get_guides_widget_state(view_state).clone()
+        state = _clone_guides_widget_state(view_state)
         state.thickness = max(0, int(action.thickness))
         return replace_guides_widget_state(view_state, state)
     if isinstance(action, SetGuidesColorAction):
-        state = get_guides_widget_state(view_state).clone()
+        state = _clone_guides_widget_state(view_state)
         state.color = action.color
         return replace_guides_widget_state(view_state, state)
     if isinstance(action, SetGuidesSmoothingEnabledAction):
-        state = get_guides_widget_state(view_state).clone()
+        state = _clone_guides_widget_state(view_state)
         state.smoothing_enabled = bool(action.enabled)
         return replace_guides_widget_state(view_state, state)
     if isinstance(action, SetGuidesSmoothingInterpolationMethodAction):
-        state = get_guides_widget_state(view_state).clone()
+        state = _clone_guides_widget_state(view_state)
         state.smoothing_interpolation_method = str(action.method)
         return replace_guides_widget_state(view_state, state)
     return view_state

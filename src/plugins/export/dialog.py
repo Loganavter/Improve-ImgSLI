@@ -4,7 +4,7 @@ import logging
 import PIL.Image
 from PyQt6 import sip
 from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QIcon, QImage, QMouseEvent, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QImage, QIntValidator, QMouseEvent, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QColorDialog,
     QDialog,
@@ -30,6 +30,7 @@ from sli_ui_toolkit.widgets import (
     OutputPathSection,
     Slider,
 )
+from ui.icon_manager import AppIcon
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -43,6 +44,7 @@ class ExportDialog(QDialog):
         preview_image: QPixmap | PIL.Image.Image | None = None,
         suggested_filename: str = "",
         on_set_favorite_dir=None,
+        native_size: tuple[int, int] | None = None,
     ):
         super().__init__(parent)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
@@ -54,6 +56,16 @@ class ExportDialog(QDialog):
         self._on_set_favorite_dir = on_set_favorite_dir
         self.favorite_dir = dialog_state.favorite_dir
         self._export_options_cache: dict | None = None
+
+        nw, nh = native_size if native_size and native_size[0] > 0 and native_size[1] > 0 else (0, 0)
+        self._native_width = int(nw)
+        self._native_height = int(nh)
+        self._aspect_ratio = (self._native_width / self._native_height) if self._native_height else 0.0
+        self._suppress_ratio_recalc = False
+        try:
+            self._initial_scale = max(0.05, float(getattr(dialog_state, "resolution_scale", 1.0) or 1.0))
+        except (TypeError, ValueError):
+            self._initial_scale = 1.0
 
         self.setWindowTitle(
             self.tr("misc.export", self.dialog_state.current_language)
@@ -173,6 +185,44 @@ class ExportDialog(QDialog):
             self._update_controls_visity_by_format
         )
 
+        self.resolution_row = QWidget()
+        res_layout = QHBoxLayout(self.resolution_row)
+        res_layout.setContentsMargins(0, 0, 0, 0)
+        res_layout.setSpacing(8)
+        res_layout.addWidget(QLabel(
+            self.tr("label.resolution", self.dialog_state.current_language) + ":"
+        ))
+        self.edit_width = QLineEdit()
+        self.edit_width.setValidator(QIntValidator(1, 32768))
+        self.edit_width.setFixedWidth(72)
+        self.edit_width.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.edit_height = QLineEdit()
+        self.edit_height.setValidator(QIntValidator(1, 32768))
+        self.edit_height.setFixedWidth(72)
+        self.edit_height.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.btn_lock_ratio = Button(
+            icon=(AppIcon.UNLINK, AppIcon.LINK), toggle=True, size=(32, 32)
+        )
+        self.btn_lock_ratio.setChecked(True)
+        self.btn_lock_ratio.setToolTip(
+            self.tr("video.lock_aspect_ratio", self.dialog_state.current_language)
+        )
+        res_layout.addWidget(self.edit_width)
+        res_layout.addWidget(self.btn_lock_ratio)
+        res_layout.addWidget(self.edit_height)
+        res_layout.addStretch()
+
+        if self._native_width > 0 and self._native_height > 0:
+            initial_w = max(1, int(round(self._native_width * self._initial_scale)))
+            initial_h = max(1, int(round(self._native_height * self._initial_scale)))
+        else:
+            initial_w, initial_h = 1920, 1080
+        self.edit_width.setText(str(initial_w))
+        self.edit_height.setText(str(initial_h))
+        self.edit_width.editingFinished.connect(self._on_width_edited)
+        self.edit_height.editingFinished.connect(self._on_height_edited)
+        self.resolution_row.setVisible(self._native_width > 0 and self._native_height > 0)
+
         self.quality_row = QWidget()
         quality_layout = QHBoxLayout(self.quality_row)
         quality_layout.setContentsMargins(0, 0, 0, 0)
@@ -262,6 +312,7 @@ class ExportDialog(QDialog):
         right_layout.addSpacing(6)
         right_layout.addWidget(fmt_label)
         right_layout.addWidget(self.combo_format)
+        right_layout.addWidget(self.resolution_row)
         right_layout.addWidget(self.quality_row)
         right_layout.addWidget(self.png_row)
         right_layout.addLayout(bg_row)
@@ -462,7 +513,7 @@ class ExportDialog(QDialog):
             if isinstance(self.current_bg_color, QColor)
             else QColor(255, 255, 255, 255)
         )
-        return {
+        opts = {
             "output_dir": self.edit_dir.text().strip(),
             "file_name": self.edit_name.text().strip(),
             "format": fmt,
@@ -475,6 +526,65 @@ class ExportDialog(QDialog):
             "comment_text": self.edit_comment.text().strip(),
             "comment_keep_default": bool(self.checkbox_comment_default.isChecked()),
         }
+        try:
+            w = int(self.edit_width.text())
+            h = int(self.edit_height.text())
+            if w > 0 and h > 0:
+                opts["width"] = w
+                opts["height"] = h
+                if self._native_width > 0:
+                    opts["resolution_scale"] = w / float(self._native_width)
+        except (ValueError, AttributeError):
+            pass
+        return opts
+
+    def _on_width_edited(self):
+        if self._suppress_ratio_recalc:
+            return
+        text = self.edit_width.text().strip()
+        if not text:
+            self._reset_resolution_to_native()
+            return
+        try:
+            w = int(text)
+        except ValueError:
+            return
+        if w <= 0:
+            self._reset_resolution_to_native()
+            return
+        if self.btn_lock_ratio.isChecked() and self._aspect_ratio > 0:
+            new_h = max(1, int(round(w / self._aspect_ratio)))
+            self._suppress_ratio_recalc = True
+            self.edit_height.setText(str(new_h))
+            self._suppress_ratio_recalc = False
+
+    def _on_height_edited(self):
+        if self._suppress_ratio_recalc:
+            return
+        text = self.edit_height.text().strip()
+        if not text:
+            self._reset_resolution_to_native()
+            return
+        try:
+            h = int(text)
+        except ValueError:
+            return
+        if h <= 0:
+            self._reset_resolution_to_native()
+            return
+        if self.btn_lock_ratio.isChecked() and self._aspect_ratio > 0:
+            new_w = max(1, int(round(h * self._aspect_ratio)))
+            self._suppress_ratio_recalc = True
+            self.edit_width.setText(str(new_w))
+            self._suppress_ratio_recalc = False
+
+    def _reset_resolution_to_native(self):
+        if self._native_width <= 0 or self._native_height <= 0:
+            return
+        self._suppress_ratio_recalc = True
+        self.edit_width.setText(str(self._native_width))
+        self.edit_height.setText(str(self._native_height))
+        self._suppress_ratio_recalc = False
 
     def accept(self):
         self._export_options_cache = self._snapshot_export_options()

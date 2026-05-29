@@ -48,6 +48,9 @@ def compute_zoom_display_split_position(request: DisplaySplitPositionRequest) ->
         ) / max(1.0, float(request.widget_width))
         pan = float(request.pan_offset_x)
 
+    if float(request.zoom_level) <= 1.0:
+        pan = 0.0
+
     return max(
         0.0,
         min(1.0, (base - 0.5 + pan) * float(request.zoom_level) + 0.5),
@@ -90,6 +93,11 @@ def compute_zoom_split_position_for_view_transform(
     axis_content_offset = float(content_rect.y if request.is_horizontal else content_rect.x)
     current_pan = float(request.current_pan_y if request.is_horizontal else request.current_pan_x)
     new_pan = float(request.new_pan_y if request.is_horizontal else request.new_pan_x)
+    if float(request.current_zoom) <= 1.0:
+        old_pan = 0.0
+        current_pan = 0.0
+    if float(request.new_zoom) <= 1.0:
+        new_pan = 0.0
 
     def _visible_axis_range(zoom: float, pan: float) -> tuple[float, float]:
         local_start = ((0.0 - 0.5) / max(float(zoom), 1e-6)) + 0.5 - pan
@@ -108,6 +116,9 @@ def compute_zoom_split_position_for_view_transform(
         _, new_visible_max = _visible_axis_range(request.new_zoom, new_pan)
         return max(0.0, min(1.0, new_visible_max))
 
+    if float(request.new_zoom) <= 1.0:
+        return float(request.split_position_visual)
+
     screen_pos = (base - 0.5 + old_pan) * float(request.current_zoom) + 0.5
     new_base = (screen_pos - 0.5) / max(float(request.new_zoom), 1e-6) + 0.5 - new_pan
 
@@ -124,9 +135,16 @@ def compute_zoom_split_position_for_view_transform(
 
 def compute_zoom_wheel_transform(request: WheelZoomRequest) -> tuple[float, float, float] | None:
     factor = 1.1 if int(request.angle_delta_y) > 0 else 0.9
-    new_zoom = max(1.0, min(float(request.current_zoom) * factor, 50.0))
+    new_zoom = max(0.1, min(float(request.current_zoom) * factor, 50.0))
     if abs(new_zoom - float(request.current_zoom)) <= 1e-6:
         return None
+
+    # At zoom <= 1 the image fits the widget — "zoom around cursor" is meaningless
+    # and pan must stay zero. Otherwise shader applies a nonzero pan to the image
+    # (it always uses raw offset) while overlay formulas zero pan, which produces
+    # visible drift between image and overlays (split line, magnifier, etc.).
+    if new_zoom <= 1.0:
+        return new_zoom, 0.0, 0.0
 
     new_pan_x = float(request.current_pan_x)
     new_pan_y = float(request.current_pan_y)
@@ -139,16 +157,15 @@ def compute_zoom_wheel_transform(request: WheelZoomRequest) -> tuple[float, floa
         uv_y = max(0.0, min(1.0, uv_y))
         new_pan_x = 0.5 - uv_x + (mx - 0.5) / new_zoom
         new_pan_y = 0.5 - uv_y + (my - 0.5) / new_zoom
-        if new_zoom < 1.5:
-            t = max(0.0, (new_zoom - 1.0) / 0.5)
-            new_pan_x *= t
-            new_pan_y *= t
 
     return new_zoom, new_pan_x, new_pan_y
 
 def compute_zoom_pan_drag_transform(request: PanDragRequest) -> tuple[float, float] | None:
-    if request.widget_width <= 0 or request.widget_height <= 0 or request.current_zoom <= 1.0:
+    if request.widget_width <= 0 or request.widget_height <= 0:
         return None
+    # Pan dragging is a no-op when the image fully fits the widget.
+    if float(request.current_zoom) <= 1.0:
+        return 0.0, 0.0
     dx = (float(request.mouse_x) - float(request.last_mouse_x)) / (
         float(request.widget_width) * max(float(request.current_zoom), 1e-6)
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 from PyQt6.QtCore import QPoint, QPointF, QRect
 
@@ -56,7 +57,7 @@ def get_magnifier_drawing_coords(
     if magnifier is None:
         return empty_result
 
-    unified_ref_dim = min(unified_width, unified_height)
+    unified_ref_dim = math.sqrt(float(unified_width) * float(unified_height))
     capture_size_on_unified = float(magnifier.capture_size_relative) * unified_ref_dim
 
     drawing_ref_dim = max(1, min(drawing_width, drawing_height))
@@ -126,7 +127,7 @@ def get_magnifier_drawing_coords(
     edge_spacing_pixels = 0
 
     if bool(magnifier.visible):
-        target_max_dim_drawing = float(max(drawing_width, drawing_height))
+        target_max_dim_drawing = math.sqrt(float(drawing_width) * float(drawing_height))
         magnifier_size_pixels = max(10, int(round(magnifier.size_relative * target_max_dim_drawing)))
 
         spacing_visual = (

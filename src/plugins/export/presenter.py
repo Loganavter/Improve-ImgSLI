@@ -116,7 +116,9 @@ class ExportPresenter(QObject):
         try:
             save_ctx = self.context_builder.build_save_context(include_preview=True)
             result_code, export_opts = self._open_export_dialog(
-                save_ctx.preview_img, save_ctx.suggested_filename
+                save_ctx.preview_img,
+                save_ctx.suggested_filename,
+                native_size=(save_ctx.native_width, save_ctx.native_height),
             )
             if int(result_code) != int(QDialog.DialogCode.Accepted):
                 return
@@ -139,12 +141,13 @@ class ExportPresenter(QObject):
                 text=f"{self._tr('msg.failed_to_save_image')}: {str(e)}",
             )
 
-    def _open_export_dialog(self, preview_img, suggested_filename: str):
+    def _open_export_dialog(self, preview_img, suggested_filename: str, native_size=None):
         return self.ui_manager.dialogs.show_export_dialog(
             dialog_state=self.state.build_export_dialog_state(),
             preview_image=preview_img,
             suggested_filename=suggested_filename,
             on_set_favorite_dir=self._set_export_favorite_dir,
+            native_size=native_size,
         )
 
     def quick_save(self):

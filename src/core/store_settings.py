@@ -46,6 +46,7 @@ class SettingsState:
     export_png_compress_level: int = 9
     export_comment_text: str = ""
     export_comment_keep_default: bool = False
+    export_resolution_scale: float = 1.0
 
     window_width: int = 1024
     window_height: int = 768

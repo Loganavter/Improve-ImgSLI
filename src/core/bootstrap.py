@@ -44,6 +44,7 @@ class ApplicationContext:
         if self._initialized:
             return
 
+        self._maybe_install_tracer()
         self._build_core_services()
         self._load_persistent_state()
         self._configure_logging()
@@ -54,6 +55,22 @@ class ApplicationContext:
 
         self._initialized = True
         logger.debug("ApplicationContext initialized")
+
+    def _maybe_install_tracer(self):
+        from core.tracing.tracer import is_trace_env_enabled
+        if not (self.debug_mode or is_trace_env_enabled()):
+            return
+        try:
+            from core.tracing.instrumentation import install_instrumentation
+            install_instrumentation()
+        except Exception as exc:
+            logger.warning("tracer install failed: %s", exc, exc_info=True)
+            return
+        try:
+            from core.tracing.file_sink import install_file_sink
+            install_file_sink()
+        except Exception as exc:
+            logger.warning("tracer file sink install failed: %s", exc, exc_info=True)
 
     def _load_canvas_feature_settings(self):
         self.settings_manager._load_canvas_feature_settings(self.store.viewport)

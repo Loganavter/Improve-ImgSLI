@@ -16,6 +16,7 @@ class ExportDialogState:
     background_color: Color | None
     comment_text: str
     comment_keep_default: bool
+    resolution_scale: float = 1.0
 
 @dataclass(slots=True)
 class ExportSaveContext:
@@ -27,3 +28,5 @@ class ExportSaveContext:
     render_store: object | None
     preview_img: object | None
     suggested_filename: str
+    native_width: int = 0
+    native_height: int = 0

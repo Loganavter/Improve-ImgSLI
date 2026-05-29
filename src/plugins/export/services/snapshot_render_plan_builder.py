@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PIL import Image
 
 from plugins.analysis.processing import build_cached_diff_image
@@ -59,20 +61,6 @@ class SnapshotRenderPlanBuilder:
         channel_mode = str(
             getattr(self.store.viewport.view_state, "channel_view_mode", "RGB") or "RGB"
         )
-        cached_diff_image = None
-        if diff_mode in {"highlight", "grayscale", "edges", "ssim"}:
-            cached_diff_image = build_cached_diff_image(
-                image1,
-                image2,
-                diff_mode,
-                channel_mode,
-            )
-            try:
-                self.store.viewport.session_data.render_cache.cached_diff_image = (
-                    cached_diff_image
-                )
-            except Exception:
-                pass
 
         computed_canvas_plan = compute_canvas_plan(
             self.store,
@@ -104,7 +92,16 @@ class SnapshotRenderPlanBuilder:
             and scene_images_cache.get("key") == scene_cache_key
         ):
             scene_images = scene_images_cache["value"]
+            cached_diff_image = scene_images.get("raw_diff")
         else:
+            cached_diff_image = None
+            if diff_mode in {"highlight", "grayscale", "edges", "ssim"}:
+                cached_diff_image = build_cached_diff_image(
+                    image1,
+                    image2,
+                    diff_mode,
+                    channel_mode,
+                )
             scene_images = self._prepare_canvas_scene_images(
                 canvas_plan=canvas_plan,
                 image1=image1,
@@ -117,6 +114,12 @@ class SnapshotRenderPlanBuilder:
             if scene_images_cache is not None:
                 scene_images_cache["key"] = scene_cache_key
                 scene_images_cache["value"] = scene_images
+        try:
+            self.store.viewport.session_data.render_cache.cached_diff_image = (
+                cached_diff_image
+            )
+        except Exception:
+            pass
 
         viewport_state = {
             "pixmap_width": getattr(self.store.viewport.geometry_state, "pixmap_width", 0),
@@ -151,11 +154,29 @@ class SnapshotRenderPlanBuilder:
             image_w=canvas_plan.image_width,
             image_h=canvas_plan.image_height,
         )
+        base_image1 = scene_images["bg1"]
+        base_image2 = scene_images["bg2"]
+        if scene_images["diff"] is not None:
+            base_image1 = scene_images["diff"]
+            base_image2 = scene_images["diff"]
+            display_cache_key = (
+                "diff_base",
+                display_cache_key,
+                diff_mode,
+                channel_mode,
+                scene_cache_key,
+            )
+            gl_scene = replace(
+                gl_scene,
+                diff_mode_active=False,
+                diff_mode_int=0,
+                channel_mode_int=0,
+            )
 
         plan = build_canvas_plan(
             self.store,
-            scene_images["bg1"],
-            scene_images["bg2"],
+            base_image1,
+            base_image2,
             source_image1=scene_images["src1"],
             source_image2=scene_images["src2"],
             source_key=source_key or (),
@@ -227,7 +248,6 @@ class SnapshotRenderPlanBuilder:
         canvas_h = int(canvas_plan.canvas_height)
         pad_left = int(canvas_plan.padding_left)
         pad_top = int(canvas_plan.padding_top)
-        transparent_rgba = (0, 0, 0, 0)
         scene_images = {
             "bg1": self._pad_scene_image(
                 image1,
@@ -253,7 +273,8 @@ class SnapshotRenderPlanBuilder:
                 canvas_h=canvas_h,
                 pad_left=pad_left,
                 pad_top=pad_top,
-                fill_rgba=transparent_rgba,
+                fill_rgba=fill_rgba,
             ) if cached_diff_image is not None else None,
+            "raw_diff": cached_diff_image,
         }
         return scene_images

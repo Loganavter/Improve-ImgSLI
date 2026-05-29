@@ -25,20 +25,13 @@ def toggle_toolbar_orientation(presenter, checked: bool) -> None:
 
     store = getattr(presenter, "store", None)
     if store is not None:
-        # Dispatch action directly to viewport state via the reducer
+
         dispatcher = getattr(store, "_dispatcher", None)
         if dispatcher is not None:
             dispatcher.dispatch(ToggleOrientationAction(checked), scope="viewport")
-            # Emit update notification
+
             if hasattr(store, "emit_viewport_change"):
                 store.emit_viewport_change("interaction")
-            return
-    event_bus = getattr(presenter, "event_bus", None)
-    if event_bus is not None:
-        # Fallback for legacy event bus
-        from plugins.viewport.events import ViewportToggleOrientationEvent
-        event_bus.emit(ViewportToggleOrientationEvent(checked))
-        return
 
 def set_toolbar_thickness(presenter, thickness: int) -> None:
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command
@@ -49,13 +42,13 @@ def set_toolbar_thickness(presenter, thickness: int) -> None:
     visible = thickness > 0
     store = getattr(presenter, "store", None)
     if store is not None:
-        # Use Feature State API for divider commands
+
         execute_feature_command(store, "divider", "toggle_visibility", visible)
         execute_feature_command(store, "divider", "set_thickness", thickness)
         return
     event_bus = getattr(presenter, "event_bus", None)
     if event_bus is not None:
-        # Fallback for legacy event bus
+
         event_bus.emit(SettingsToggleDividerVisibilityEvent(visible))
         event_bus.emit(SettingsSetDividerThicknessEvent(thickness))
         return

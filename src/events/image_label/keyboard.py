@@ -4,7 +4,7 @@ import logging
 
 from PyQt6.QtCore import Qt
 
-from events.canvas_input.session_service import KEYBOARD_MOVE_OWNER
+from events.canvas_input.owner_ids import KEYBOARD_MOVE_OWNER
 from plugins.export.events import ExportPasteImageFromClipboardEvent
 
 logger = logging.getLogger("ImproveImgSLI")

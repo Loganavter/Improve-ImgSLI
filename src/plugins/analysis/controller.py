@@ -60,11 +60,9 @@ class AnalysisController(QObject):
         self.store.invalidate_render_cache()
         self.store.emit_state_change()
 
-        # Trigger magnifier combined state update via Feature State API
-        # This notifies magnifier feature to recalculate its state after diff mode change
         if self.event_bus:
             from ui.canvas_infra.scene.feature_state_api import execute_feature_command, query_feature_state
-            # Query current combined state and preserve it
+
             active_state = query_feature_state(self.store, "magnifier", "active_state")
             current_spacing = active_state.get("spacing_relative", 0.05) if active_state else 0.05
             combined = current_spacing == 0.0

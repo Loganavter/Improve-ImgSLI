@@ -26,6 +26,7 @@
     "text_position": "文本位置",
     "theme": "主题",
     "video_codec": "视频编解码器",
-    "view": "视图"
+    "view": "视图",
+    "zoom": "缩放"
   }
 }

@@ -4,6 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_MAIN="$SCRIPT_DIR/src/__main__.py"
 VENV_DIR="$SCRIPT_DIR/venv"
 REQUIREMENTS="$SCRIPT_DIR/requirements-gui.txt"
+DEV_REQUIREMENTS="$SCRIPT_DIR/requirements-dev.txt"
 
 source "$SCRIPT_DIR/src/shared_toolkit/scripts/common_launcher_funcs.sh"
 
@@ -45,6 +46,8 @@ show_help() {
     echo "                     Additional flags for 'run' (also valid at top-level):"
     echo "                       --theme <dark|light>  Force a specific theme."
     echo "                       --debug, -d          Enable debug logging for this session only."
+    echo "  test [args...]     Run the test suite (pytest). Extra args pass through,"
+    echo "                     e.g. '$0 test tests/runtime -k gesture'."
     echo "  install            Create the virtual environment and/or install dependencies."
     echo "  recreate           Forcibly recreate the virtual environment."
     echo "  delete             Delete the virtual environment and Python caches."
@@ -129,6 +132,33 @@ uninstall_desktop_action() {
     fi
 }
 
+test_action() {
+    shift
+
+    if ! ensure_venv_is_ready "$VENV_DIR" "$REQUIREMENTS"; then
+        log_status "Failed to prepare environment. Aborting." 1
+        cleanup_broken_venv "$VENV_DIR"
+        exit 1
+    fi
+
+    if ! python -c "import pytest, pytest_sugar" >/dev/null 2>&1; then
+        if ! run_pip_with_inline_progress "Installing test dependencies" "$DEV_REQUIREMENTS" \
+            python -m pip install -r "$DEV_REQUIREMENTS"; then
+            deactivate_venv
+            log_status "Failed to install test dependencies." 1
+            exit 1
+        fi
+    fi
+
+    log_info "Running test suite..."
+    (cd "$SCRIPT_DIR" && python -m pytest "$@")
+    local test_exit_code=$?
+
+    deactivate_venv
+    log_info "Tests completed with exit code: $test_exit_code"
+    exit "$test_exit_code"
+}
+
 run_action() {
     shift
 
@@ -196,6 +226,10 @@ install)
 
 run)
     run_action "$@"
+    ;;
+
+test)
+    test_action "$@"
     ;;
 
 recreate)

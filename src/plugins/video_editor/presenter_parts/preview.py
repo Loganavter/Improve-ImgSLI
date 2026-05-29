@@ -1,5 +1,6 @@
 import logging
 
+from core.tracing import Tracer
 from PIL import Image
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
@@ -153,6 +154,11 @@ class PreviewCoordinator:
             return None
         return (fill_color.red(), fill_color.green(), fill_color.blue(), fill_color.alpha())
 
+    @staticmethod
+    def _trace(kind: str, summary: str, payload: dict) -> None:
+        if Tracer.enabled():
+            Tracer.instance().record(kind, summary, payload)
+
     def _resolve_preview_render_size(self, preview_w: int, preview_h: int) -> tuple[int, int]:
         target_w = max(1, int(self.model.width or preview_w or 1))
         target_h = max(1, int(self.model.height or preview_h or 1))
@@ -166,15 +172,15 @@ class PreviewCoordinator:
         preview_phys_w = max(1, int(round(float(preview_w or 1) * dpr)))
         preview_phys_h = max(1, int(round(float(preview_h or 1) * dpr)))
         scale_factor = max(0.25, min(float(self.preview_render_scale or 1.0), 1.0))
-        preview_phys_w = max(1, int(round(preview_phys_w * scale_factor)))
-        preview_phys_h = max(1, int(round(preview_phys_h * scale_factor)))
 
         if self.fit_content_mode:
-            cap_w = max(1, int(preview_phys_w or target_w))
-            cap_h = max(1, int(preview_phys_h or target_h))
+            base_cap_w = max(1, int(preview_phys_w or target_w))
+            base_cap_h = max(1, int(preview_phys_h or target_h))
         else:
-            cap_w = max(1, max(int(preview_phys_w), min(int(preview_phys_w * 2), 1920)))
-            cap_h = max(1, max(int(preview_phys_h), min(int(preview_phys_h * 2), 1080)))
+            base_cap_w = max(1, max(int(preview_phys_w), min(int(preview_phys_w * 2), 1920)))
+            base_cap_h = max(1, max(int(preview_phys_h), min(int(preview_phys_h * 2), 1080)))
+        cap_w = max(1, int(round(base_cap_w * scale_factor)))
+        cap_h = max(1, int(round(base_cap_h * scale_factor)))
         scale = min(
             1.0,
             float(cap_w) / float(max(1, target_w)),
@@ -253,6 +259,31 @@ class PreviewCoordinator:
             store=prepared.store,
             clip_overlays_to_image_bounds=True,
         )
+        self._trace(
+            "video.preview.apply_scene",
+            f"apply preview scene render={render_w}x{render_h}",
+            {
+                "render_size": (int(render_w), int(render_h)),
+                "plan_canvas": (
+                    int(getattr(prepared.plan, "canvas_w", 0) or 0),
+                    int(getattr(prepared.plan, "canvas_h", 0) or 0),
+                ),
+                "plan_image1_size": getattr(
+                    getattr(prepared.plan, "image1", None),
+                    "size",
+                    None,
+                ),
+                "output_size": (
+                    int(getattr(prepared, "output_width", 0) or 0),
+                    int(getattr(prepared, "output_height", 0) or 0),
+                ),
+                "image_dest": (
+                    int(getattr(prepared, "image_dest_x", 0) or 0),
+                    int(getattr(prepared, "image_dest_y", 0) or 0),
+                ),
+                "debug": dict(getattr(prepared, "debug", {}) or {}),
+            },
+        )
 
         canvas._preview_source_key = request_key
         return True
@@ -265,6 +296,22 @@ class PreviewCoordinator:
         render_w, render_h = self._resolve_preview_render_size(preview_w, preview_h)
         fill_color_tuple = self._resolve_fill_color_tuple()
         global_bounds = self._cached_global_bounds if self.fit_content_mode else None
+        self._trace(
+            "video.preview.request",
+            f"preview request render={render_w}x{render_h} display={preview_w}x{preview_h}",
+            {
+                "preview_size": (int(preview_w), int(preview_h)),
+                "render_size": (int(render_w), int(render_h)),
+                "model_size": (
+                    int(getattr(self.model, "width", 0) or 0),
+                    int(getattr(self.model, "height", 0) or 0),
+                ),
+                "fit_content": bool(self.fit_content_mode),
+                "preview_render_scale": float(self.preview_render_scale or 1.0),
+                "global_bounds": repr(global_bounds),
+                "fill_color": fill_color_tuple,
+            },
+        )
         snapshot_signature = (
             getattr(snap, "image1_path", None),
             getattr(snap, "image2_path", None),

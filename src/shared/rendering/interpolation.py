@@ -14,3 +14,9 @@ def get_effective_main_interpolation_method(vp) -> str:
         if render_cfg
         else "BILINEAR"
     )
+
+def get_effective_export_interpolation_method(vp) -> str:
+    method = str(get_effective_main_interpolation_method(vp) or "LANCZOS").upper()
+    if method == "NEAREST":
+        return "LANCZOS"
+    return method

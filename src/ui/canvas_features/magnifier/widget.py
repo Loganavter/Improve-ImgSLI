@@ -15,6 +15,7 @@ from .runtime_hooks import (
     command_build_render_canvas_payload,
     prepare_magnifier_worker_viewport,
 )
+from .gestures import build_magnifier_gesture_bindings
 from .settings_bindings import build_magnifier_settings_event_bindings
 from .toolbar.bindings import build_magnifier_toolbar_bindings
 from .commands import build_magnifier_commands as assemble_magnifier_commands
@@ -181,10 +182,11 @@ MAGNIFIER_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("overlay.begin_internal_split_drag", "interaction.begin_internal_split_drag"),
     CanvasFeatureCommandAlias("overlay.update_internal_split_drag", "interaction.update_internal_split_drag"),
     CanvasFeatureCommandAlias("overlay.end_internal_split_drag", "interaction.end_internal_split_drag"),
-    CanvasFeatureCommandAlias("overlay.preview_begin", "interaction.preview_begin"),
-    CanvasFeatureCommandAlias("overlay.preview_restore", "interaction.preview_restore"),
-    CanvasFeatureCommandAlias("overlay.preview_set_side", "interaction.preview_set_side"),
-    CanvasFeatureCommandAlias("overlay.emit_changed", "interaction.emit_overlay_changed"),
+    CanvasFeatureCommandAlias("preview.snapshot", "interaction.preview_begin"),
+    CanvasFeatureCommandAlias("preview.restore", "interaction.preview_restore"),
+    CanvasFeatureCommandAlias("preview.set_side", "interaction.preview_set_side"),
+    CanvasFeatureCommandAlias("preview.emit_changed", "interaction.emit_overlay_changed"),
+    CanvasFeatureCommandAlias("keyboard_movement.build_controller", "interaction.build_keyboard_movement_controller"),
     CanvasFeatureCommandAlias("overlay.rebuild", "runtime.rebuild_overlay"),
     CanvasFeatureCommandAlias("overlay.render_layer", "runtime.render_layer"),
     CanvasFeatureCommandAlias("overlay.stop_interactive_movement", "runtime.stop_interactive_movement"),
@@ -195,6 +197,8 @@ MAGNIFIER_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias("overlay.settings.set_divider_color", "settings.set_divider_color"),
     CanvasFeatureCommandAlias("overlay.settings.set_divider_thickness", "settings.set_divider_thickness"),
     CanvasFeatureCommandAlias("overlay.settings.set_border_color", "settings.set_border_color"),
+    CanvasFeatureCommandAlias("overlay.settings.set_optimize_movement", "settings.set_optimize_movement"),
+    CanvasFeatureCommandAlias("overlay.settings.set_movement_interpolation", "settings.set_movement_interpolation"),
 )
 
 def build_widget_feature() -> CanvasWidgetFeature:
@@ -210,6 +214,7 @@ def build_widget_feature() -> CanvasWidgetFeature:
         build_commands=build_magnifier_commands,
         command_aliases=MAGNIFIER_COMMAND_ALIASES,
         build_settings_event_bindings=build_magnifier_settings_event_bindings,
+        build_gesture_bindings=build_magnifier_gesture_bindings,
         build_state_queries=build_magnifier_state_queries,
         build_state_commands=build_magnifier_state_commands,
         build_render_scene_overrides=build_magnifier_render_scene_overrides,

@@ -119,8 +119,7 @@ class ButtonPainter:
         if widget.isEnabled():
             edge_key = f"{prefix}.bottom.edge"
             if tm.try_get_color(edge_key) is not None:
-                # Normalize radius for underline scaling: the underline painter scales by _widget_scale
-                # So we pass a value that after scale multiplication matches the button's radius
+
                 scale = max(1.0, widget.rect().height() / 32.0)
                 normalized_radius = radius / scale if scale > 0 else radius
                 draw_bottom_underline(painter, widget.rect(), tm, UnderlineConfig(
@@ -142,7 +141,7 @@ class ButtonPainter:
                     )
             elif isinstance(resolved_underline, list):
                 alpha = None
-            # Normalize radius for underline scaling (same as edge underline above)
+
             scale = max(1.0, widget.rect().height() / 32.0)
             normalized_radius = radius / scale if scale > 0 else radius
             config = UnderlineConfig(
@@ -276,7 +275,6 @@ class ButtonPainter:
         painter.setOpacity(opacity)
         x = (widget.width() - actual_icon_size) // 2
 
-        # If scroll value is visible below, shift icon up to make room
         if scroll_value is not None and scroll_value_always_visible:
             value_h = 12
             gap = 2

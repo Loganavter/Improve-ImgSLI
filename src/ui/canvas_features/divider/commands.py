@@ -192,12 +192,27 @@ def command_viewport_set_divider_thickness(store, thickness: int) -> None:
         state.visible = thickness > 0
         state.thickness = thickness
         store.invalidate_render_cache()
+    if hasattr(store, "emit_viewport_change"):
+        store.emit_viewport_change()
+
+def command_viewport_toggle_divider_visibility(store, visible: bool) -> None:
+    visible = bool(visible)
+    dispatcher = getattr(store, "_dispatcher", None)
+    if dispatcher is not None:
+        dispatcher.dispatch(SetDividerVisibleAction(visible), scope="viewport")
+        dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
+    else:
+        state = get_divider_widget_state(store.viewport.view_state)
+        state.visible = visible
+        store.invalidate_render_cache()
+    if hasattr(store, "emit_viewport_change"):
+        store.emit_viewport_change()
 
 def build_divider_commands() -> dict[str, Any]:
     return {
         "query.widget_state": query_divider_widget_state,
-        "viewport.toggle_visibility": command_toggle_divider_visibility,
-        "viewport.set_thickness": command_set_divider_thickness,
+        "viewport.toggle_visibility": command_viewport_toggle_divider_visibility,
+        "viewport.set_thickness": command_viewport_set_divider_thickness,
         "interaction.begin_split_drag": command_begin_split_drag,
         "interaction.update_split_drag": command_update_split_drag,
         "interaction.end_split_drag": command_end_split_drag,

@@ -12,7 +12,7 @@ from plugins.video_editor.services.video_snapshot_rendering import SnapshotFrame
 from shared.image_processing.resize import resize_images_processor
 from shared.rendering import TargetSurfaceSpec
 from shared.rendering.live_snapshot import build_live_frame_snapshot
-from shared.rendering import get_effective_main_interpolation_method
+from shared.rendering import get_effective_export_interpolation_method
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -76,9 +76,29 @@ class ExportService:
             if export_options.get("fill_background", False)
             else None
         )
-        if current_render_plan is None:
+
+        override_w = export_options.get("width")
+        override_h = export_options.get("height")
+        try:
+            override_w = int(override_w) if override_w else 0
+            override_h = int(override_h) if override_h else 0
+        except (TypeError, ValueError):
+            override_w = override_h = 0
+
+        plan_size = None
+        if current_render_plan is not None:
+            cw = int(getattr(current_render_plan, "canvas_w", 0) or 0)
+            ch = int(getattr(current_render_plan, "canvas_h", 0) or 0)
+            if cw > 0 and ch > 0:
+                plan_size = (cw, ch)
+        needs_rebuild = (
+            current_render_plan is None
+            or (override_w > 0 and override_h > 0 and plan_size is not None and plan_size != (override_w, override_h))
+        )
+
+        if needs_rebuild:
             live_snapshot = build_live_frame_snapshot(store)
-            resize_method = get_effective_main_interpolation_method(
+            resize_method = get_effective_export_interpolation_method(
                 live_snapshot.viewport_state
             )
             image1_for_save, image2_for_save = resize_images_processor(
@@ -86,12 +106,21 @@ class ExportService:
             )
             if not image1_for_save or not image2_for_save:
                 raise ValueError("Failed to unify images for export.")
+            if override_w > 0 and override_h > 0 and plan_size is not None:
+                native_canvas_w, native_canvas_h = plan_size
+                scale_w = override_w / float(native_canvas_w)
+                scale_h = override_h / float(native_canvas_h)
+                target_w = max(1, int(round(image1_for_save.width * scale_w)))
+                target_h = max(1, int(round(image1_for_save.height * scale_h)))
+            else:
+                target_w = override_w if override_w > 0 else image1_for_save.width
+                target_h = override_h if override_h > 0 else image1_for_save.height
             prepared_frame = renderer.prepare_canvas_frame_from_images(
                 live_snapshot,
                 VideoRenderRequest(
                     target_surface=TargetSurfaceSpec(
-                        width=image1_for_save.width,
-                        height=image1_for_save.height,
+                        width=target_w,
+                        height=target_h,
                         fill_rgba=canvas_fill_rgba,
                     ),
                     font_path=None,
