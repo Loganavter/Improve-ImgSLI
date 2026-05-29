@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
+from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
@@ -9,6 +10,7 @@ if TYPE_CHECKING:
 
 from core.plugin_system.decorators import get_registered_plugins
 from core.plugin_system.plugin import Plugin
+from resources.translations import add_i18n_root
 
 class PluginRegistry:
 
@@ -38,7 +40,13 @@ class PluginRegistry:
         except ImportError:
             return
 
+        pkg_path = Path(package.__path__[0])
+
         for finder, module_name, is_pkg in pkgutil.iter_modules(package.__path__):
+            pkg_i18n = pkg_path / module_name / "resources" / "i18n"
+            if pkg_i18n.is_dir():
+                add_i18n_root(pkg_i18n)
+
             module = None
             try:
                 module = importlib.import_module(f"{package_name}.{module_name}.plugin")

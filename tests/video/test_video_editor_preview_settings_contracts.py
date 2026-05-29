@@ -18,7 +18,7 @@ from plugins.video_editor.dialog_persistence import VideoEditorDialogPersistence
 
 
 REPO = Path(__file__).resolve().parents[2]
-I18N_ROOT = REPO / "src" / "resources" / "i18n"
+VIDEO_I18N_ROOT = REPO / "src" / "plugins" / "video_editor" / "resources" / "i18n"
 PREVIEW_QUALITY_KEYS = {
     "preview_quality",
     "preview_quality_full",
@@ -30,7 +30,7 @@ PREVIEW_QUALITY_KEYS = {
 
 def test_video_preview_quality_i18n_keys_exist_for_all_languages():
     """HELP_WIDGET.md: user-facing video editor labels must live in i18n resources."""
-    video_files = sorted(I18N_ROOT.glob("*/features/video.json"))
+    video_files = sorted(VIDEO_I18N_ROOT.glob("*/video.json"))
     assert video_files
 
     for path in video_files:

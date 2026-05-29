@@ -13,6 +13,46 @@ Example:
 - Toolbar doesn't know about feature → queries registered bindings
 - Result: No direct imports, features can be deleted without crashing
 
+## Feature Isolation Model (The Abstraction)
+
+Each feature lives in **its own abstraction layer** — like a plugin in OpenFX. The core infrastructure handles all the complexity; the feature receives a simplified interface.
+
+**What the feature does NOT see or handle:**
+- Multiple coordinate systems (widget-px, canvas-px, image-px, screen-px)
+- Zoom, pan, rotation, or any viewport transformations
+- Raw Qt mouse/keyboard events
+- Texture uploads, buffer management, or GL context state
+- Serialization or deserialization details
+
+**What the feature receives from the core:**
+
+1. **Unified coordinate space** — all geometry in `canvas-px` (a single normalized space where zoom and pan are already applied). Feature never thinks about scale factors.
+   ```python
+   # Feature just works with canvas-px; transformation is handled upstream
+   def on_mouse_move(canvas_x: float, canvas_y: float):
+       self.position = (canvas_x, canvas_y)  # Done!
+   ```
+
+2. **Pre-processed events** — mouse clicks, drags, keyboard input are captured by the core, hit-tested, and routed to the feature as semantic commands. Feature doesn't parse Qt events.
+   ```python
+   # Feature receives a command, not raw QMouseEvent
+   def cmd_move_overlay(store: Store, new_x: float, new_y: float):
+       # Coordinates already validated, already in canvas-px
+   ```
+
+3. **Encapsulated state** — feature state lives in Redux (immutable snapshots). Feature declares properties; core handles persistence, keyframing, and export.
+   ```python
+   # Feature doesn't write settings to disk; core does
+   @dataclass
+   class MagnifierState:
+       zoom: float
+       position: tuple[float, float]
+   ```
+
+4. **Routed events** — when a feature needs to know what another feature is doing (e.g., divider needs magnifier offset), it queries via `CanvasFeatureStateQuery`, not by importing magnifier code.
+
+**Why this matters**: A feature can be written without understanding the rendering pipeline, viewport math, or coordinate systems. The core guarantees that every input is pre-processed and every output is handled correctly. This is similar to how OpenFX plugins work — they operate in a simplified plugin world while the host (Nuke, etc.) handles all the complexity.
+
 ## Canvas Features (The Core Problem)
 
 Canvas features are tools like magnifier, divider, or guides that:

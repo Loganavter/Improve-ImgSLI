@@ -172,7 +172,7 @@ class TestMagnifierInterpMode:
 
         assert render_list.base_image is base_image
 
-    def test_legacy_fallback_when_no_role(self):
+    def test_explicit_scene_layer_priority_override(self):
         zo = CanvasFeatureZOrder(layer=CanvasStackLayer.HUD, priority=42)
         hint = zo.stack_hint()
         assert hint.layer == CanvasStackLayer.HUD
@@ -200,13 +200,10 @@ class TestCanvasGLRenderPass:
         assert phase == expected_phase
         assert pri == expected_pri
 
-    def test_legacy_fallback(self):
+    def test_stack_role_is_required(self):
         p = CanvasGLRenderPass()
-        p.layer = RenderPhase.DEBUG
-        p.priority = 77
-        phase, pri = p.resolved_layer_and_priority()
-        assert phase == RenderPhase.DEBUG
-        assert pri == 77
+        with pytest.raises(ValueError, match="must declare stack_role"):
+            p.resolved_layer_and_priority()
 
     def test_visibility_defaults_to_all(self):
         p = CanvasGLRenderPass()
@@ -297,7 +294,7 @@ class TestFeatureGLPassesUseStackRole:
 
         for p in passes:
             assert p.stack_role is not None, (
-                f"{type(p).__name__} still uses legacy layer/priority "
+                f"{type(p).__name__} still uses raw layer/priority "
                 f"instead of stack_role"
             )
             assert isinstance(p.stack_role, CanvasStackRole), (
