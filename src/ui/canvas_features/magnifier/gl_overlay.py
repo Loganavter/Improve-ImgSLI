@@ -41,7 +41,6 @@ def apply_magnifier_gl_overlay(store, canvas) -> bool:
         reset_canvas_overlays(canvas)
         return False
 
-    # If magnifier not enabled, don't try to render it
     if not viewport.view_state.overlay_enabled:
         reset_canvas_overlays(canvas)
         return False

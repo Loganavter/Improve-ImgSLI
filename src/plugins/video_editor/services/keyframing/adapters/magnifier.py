@@ -179,6 +179,17 @@ class DynamicMagnifierAdapter:
         from domain.types import Color, Point
 
         proxy = _store_proxy(snapshot.viewport_state)
+        # The per-instance "active_*" commands below operate on whatever magnifier
+        # is currently active, so we temporarily switch the active instance to
+        # mag_id. The active id also drives magnifier z-order (the active one
+        # renders on top — see build_magnifier_layout), and apply_tool_values runs
+        # once per magnifier; without restoring, the last-applied instance would
+        # win and the export would layer magnifiers differently than the
+        # interactive scene the user authored.
+        _active_state = _query_magnifier(proxy, "overlay.active_state", None)
+        saved_active_id = (
+            _active_state.get("id") if isinstance(_active_state, dict) else None
+        )
         _execute_magnifier_command(proxy, "overlay.set_active_instance", mag_id)
         if f"{p}.position" in values_by_track_id:
             ch = values_by_track_id[f"{p}.position"]
@@ -239,4 +250,8 @@ class DynamicMagnifierAdapter:
                 proxy,
                 "overlay.set_active_laser_enabled",
                 bool(values_by_track_id[f"{p}.laser_enabled"]["value"]),
+            )
+        if saved_active_id != mag_id:
+            _execute_magnifier_command(
+                proxy, "overlay.set_active_instance", saved_active_id
             )

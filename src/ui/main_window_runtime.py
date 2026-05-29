@@ -23,6 +23,8 @@ class MainWindowRuntime:
         window.startup_runtime.sync_cover_geometry()
         if window.ui is not None and hasattr(window.ui, "sync_image_startup_placeholder"):
             window.ui.sync_image_startup_placeholder()
+        if window.ui is not None and hasattr(window.ui, "sync_zoom_indicator"):
+            window.ui.sync_zoom_indicator()
 
         if getattr(window, "onboarding_overlay", None):
             window.onboarding_overlay.resize(window.size())
@@ -44,6 +46,8 @@ class MainWindowRuntime:
         window.startup_runtime.sync_cover_geometry()
         if window.ui is not None and hasattr(window.ui, "sync_image_startup_placeholder"):
             window.ui.sync_image_startup_placeholder()
+        if window.ui is not None and hasattr(window.ui, "sync_zoom_indicator"):
+            window.ui.sync_zoom_indicator()
         if getattr(window, "onboarding_overlay", None):
             window.onboarding_overlay.resize(window.size())
         self._hide_unified_flyout()
@@ -59,6 +63,8 @@ class MainWindowRuntime:
         window.startup_runtime.sync_cover_geometry()
         if window.ui is not None and hasattr(window.ui, "sync_image_startup_placeholder"):
             window.ui.sync_image_startup_placeholder()
+        if window.ui is not None and hasattr(window.ui, "sync_zoom_indicator"):
+            window.ui.sync_zoom_indicator()
         if window.onboarding_overlay is not None and not window._startup_visual_ready_emitted:
             window.startup_runtime.emit_visual_ready()
         if window._offscreen_prewarm_active:

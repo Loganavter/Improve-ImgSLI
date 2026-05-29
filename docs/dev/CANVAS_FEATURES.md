@@ -221,6 +221,69 @@ Shared code must not use `get_canvas_feature_command("feature_name", "cmd")`. In
 
 If the feature is absent, returns `None`.
 
+## Gesture Bindings (Mouse Routing)
+
+Shared event code (`src/events/image_label/mouse.py`) must not branch on
+feature-specific flags to decide which feature owns a click. Instead each
+feature declares its mouse gestures via `WIDGET_FEATURE.build_gesture_bindings`,
+and `mouse.py` walks them through `GestureResolver`.
+
+### Contract
+
+```python
+from ui.canvas_infra.scene.widget_contract import CanvasFeatureGestureBinding
+
+CanvasFeatureGestureBinding(
+    gesture_id="my_feature.do_thing",   # unique, namespaced by feature
+    button=Qt.MouseButton.LeftButton.value,
+    matches=fn(ctx) -> bool,            # predicate run on press
+    is_active=fn(store) -> bool,        # is this gesture currently driving?
+    begin=fn(handler, local_pos) | None,
+    update=fn(handler, local_pos) | None,
+    end=fn(handler) | None,
+    owner=str | None,                   # input_session owner id
+    priority=int,                       # lower wins; resolver sorts ascending
+)
+```
+
+The `matches`/`is_active`/`begin`/`update`/`end` callables live inside the
+feature package. They are free to call `handler.geometry.*`, `handler.preview.*`,
+and `get_canvas_feature_command_by_alias(...)` — but shared event code must
+not.
+
+### Rules
+
+1. **No feature literals in `mouse.py`.** No alias name starting with
+   `overlay.`, `splitter.`, `magnifier.`, etc. No reads of `view_state.<feature_flag>`
+   or `interaction_state.is_dragging_<feature>`. Enforced by
+   `tests/contracts/test_events_no_feature_branching.py`.
+2. **Predicates gate against app-level workflows.** If the click is part of
+   space-bar / preview / single-image-mode handling, the predicate must
+   return False so the gesture does not fire (see magnifier's
+   `_matches_capture_drag` rejecting space-pressed state).
+3. **Fallback gestures use high priority numbers.** Divider's split-drag has
+   `priority=1000` so any overlay-style feature can claim the click first.
+4. **`begin`/`end` are self-contained.** They wrap the alias call AND any
+   `emit_viewport_change`/geometry calls needed to finalize the gesture.
+   Shared code never combines them.
+
+### Why This Matters
+
+Before the gesture-binding refactor, `mouse.py` had a central if-tree:
+"if overlay enabled and visible → start capture drag, else start split drag."
+That looks innocent but:
+
+- Adding a new overlay feature required editing `mouse.py`.
+- Hiding all magnifier instances broke divider movement, because
+  `is_enabled=True` routed clicks into capture-drag even with nothing visible
+  to drag.
+- `mouse.py` knew the shape of magnifier's `overlay.active_state` payload
+  (`visible_left`/`visible_right`), so any change to that payload silently
+  broke routing.
+
+With gesture bindings, `mouse.py` knows nothing about which features exist —
+it just asks the resolver.
+
 ## Viewport Change Contract
 
 When feature commands modify state that affects UI rendering or panel visibility, they must emit viewport changes to notify the system.
@@ -397,11 +460,145 @@ Before merging a new canvas feature:
 - [ ] GL passes set `visibility` explicitly
 - [ ] Scene z_order uses `stack_role` via `CanvasFeatureZOrder`
 - [ ] No imports of this feature in shared `ui/`, `events/`, or `plugins/` code
+- [ ] Mouse gestures declared via `build_gesture_bindings`, not added to `mouse.py`
 - [ ] User-editable values declared as `CanvasFeatureProperty`
 - [ ] No central registry file was edited
 - [ ] Feature-specific helpers not in `canvas_presentation`
 - [ ] Shader code in `gl_passes.py` alongside draw calls
 - [ ] No new shader source files under `shader_sources/`
+
+## Working with zoom & pan
+
+A surprising number of bugs in canvas features come from getting zoom and pan
+wrong, because there are three coordinate systems in play and several
+non-obvious invariants. Read this section before adding any feature that
+draws geometry or hit-tests at a specific image position.
+
+### Coordinate systems
+
+| Name | Range | Where it lives |
+|---|---|---|
+| **Image-px** | `[0, image_w] × [0, image_h]` | Source PIL image, before any scaling. Used by export, hit-test against image content, plugins that read pixel values. |
+| **Canvas-px** | `[0, canvas_w] × [0, canvas_h]` | The internal logical render target. **All feature-owned geometry (overlays, magnifier centers, capture rect, guide positions, etc.) must be stored here.** |
+| **Widget-px** | `[0, widget.width()] × [0, widget.height()]` | Physical screen coordinates of the GL widget. Used for hit-testing mouse events and for the shader's `TexCoord`. |
+
+Conversions:
+
+- canvas-px → widget-px: applied **once** by the runtime, via a single scale
+  `sr = min(widget_w / canvas_w, widget_h / canvas_h)` (preserves aspect,
+  letterboxes the rest). Defined in the shared runtime-overlay applicator.
+- image-px → canvas-px: handled at upload time; canvas-px is effectively
+  image-px after any letterbox compensation. Use the letterbox params from
+  `widget.runtime_state._letterbox_params` if you need it.
+
+**If you find yourself computing `sr` by hand inside a feature, you're doing
+it wrong.** Store canvas-px, let the runtime convert.
+
+### Where pan and zoom live
+
+There are two separate-but-related concepts:
+
+- **Widget zoom/pan** (`widget.zoom_level`, `widget.pan_offset_x`,
+  `widget.pan_offset_y`) — viewport state owned by `GLCanvas`. The shader
+  reads these to apply zoom-around-cursor:
+  ```glsl
+  vec2 uv = (TexCoord - center) / zoom + center - offset;
+  ```
+- **Store-level split / overlay positions** — semantic positions of overlays
+  in canvas-px (`split_position`, magnifier centers, etc.). Stored in the
+  Store, persisted across sessions.
+
+These two layers are coordinated by **viewport features** in
+`src/ui/canvas_infra/viewport/`. Don't bypass them by reaching into widget
+state from your feature.
+
+### The pan-at-zoom-≤1 invariant
+
+**At `zoom <= 1.0`, `pan` must always be `(0, 0)`.**
+
+Rationale: when the image fully fits the widget, "panning" has no meaning —
+there's nothing to scroll into view. Allowing non-zero pan at `zoom <= 1.0`
+creates desync between the shader (which always uses raw pan) and overlay
+formulas (which conventionally treat pan as zero at this zoom). Image moves,
+overlays don't, user sees overlays "flying away".
+
+This invariant is enforced **at the source** — `compute_zoom_wheel_transform`
+and `compute_zoom_pan_drag_transform` in
+`src/ui/canvas_infra/viewport/zoom.py` clamp pan to `(0, 0)` whenever the new
+zoom is `≤ 1.0`. Don't add a new place that writes to `pan_offset_x/y`
+without respecting this rule.
+
+If you add a feature that:
+- Computes its own pan-like transform — clamp pan at the source, same way.
+- Reads pan to position an overlay at `zoom <= 1.0` — you can rely on it
+  being `0`, no need to gate yourself.
+- Reads pan to position an overlay at `zoom > 1.0` — use the raw widget pan,
+  do not try to "smooth" or "interpolate" it across the boundary.
+
+### The split-position dual-mode behavior
+
+The split line has two distinct modes:
+
+| Mode | Behavior | Where logic lives |
+|---|---|---|
+| `zoom > 1.0` (zoomed in) | Line stays **anchored to the camera** — visually pinned to the same widget position. Store `split_position` actively recomputes as zoom/pan changes to keep visual position constant. | `compute_zoom_split_position_for_view_transform` |
+| `zoom <= 1.0` (fits / zoomed out) | Line stays **anchored to the image-pixel** — moves with the image as it scales. Store `split_position` stays unchanged. | `compute_zoom_display_split_position` (returns `base` directly, with pan=0 from the invariant above) |
+
+If you add an overlay-style feature with similar "where on the image am I?"
+semantics (e.g. magnifier center, crop handles), follow the same pattern:
+
+- Store the canvas-px position in the Store.
+- Read widget zoom/pan in your display-time formula.
+- Let pan-at-zoom-≤1 invariant do its work — don't second-guess it.
+
+### Runtime cache vs reducible state
+
+State held in the Store splits into two categories:
+
+- **Reducible state** (`Store.viewport`, `Store.document`, `Store.settings`):
+  immutable from outside the reducer. Every dispatch creates a new
+  `ViewportState`/`DocumentModel`/etc. — fields not explicitly preserved get
+  reset to their defaults. **Anything derivable from actions belongs here.**
+- **Runtime cache** (`Store.runtime_cache`,
+  `src/core/store_runtime_cache.py`): mutable from presenters/renderers. Lives
+  outside the reducer pipeline by design. Reducers **cannot** touch it.
+  **Anything written as a side effect of rendering belongs here:** texture
+  identity hashes (`last_source1_id`, `last_source2_id`), overlay clip rects
+  computed during plan-apply, etc.
+
+If you add a field that:
+- Comes from a user action / settings / persisted state → reducible state.
+- Is written by the GL renderer or presenter after a successful frame →
+  `ViewportRuntimeCache`.
+
+Historical pitfall: putting a runtime-cache field into reducible state (e.g.
+into `ViewportState.__slots__`) **silently breaks every dispatch** —
+`_build_new_viewport_state` creates a fresh `ViewportState` and your field
+resets to its default, invalidating the cache on every action. This was the
+root cause of a long-standing texture-reupload bug visible only as a subtle
+flicker during zoom. Use `ViewportRuntimeCache` and you cannot reproduce this
+class of bug.
+
+### Debugging zoom/pan issues
+
+Use the [runtime tracer](./TRACING.md). The minimal-noise category set for
+viewport debugging is:
+
+```bash
+IMGSLI_TRACE=1 \
+IMGSLI_TRACE_KINDS="input.wheel,input.mpress,input.mrel,dispatch.begin,dispatch.end,hit_test,render.apply_plan,store.emit_viewport" \
+python src/__main__.py
+```
+
+Then `print_tree --top 3` to see the slowest causal chains. Common symptoms
+and where to look:
+
+| Symptom | Likely cause | Where to look |
+|---|---|---|
+| Overlay drifts during zoom-out | Some code wrote pan at `zoom <= 1.0` | `git grep 'pan_offset' src/ui/widgets/gl_canvas/` |
+| Overlay flickers / jumps during interaction | Reducer reset a runtime-cache field | Check `_build_new_viewport_state` for missing field carryover; move field to `ViewportRuntimeCache` |
+| Mouse hit lands on wrong feature | Hit-test uses widget-px but feature stores widget-px instead of canvas-px | Search for direct `widget.width()` / `widget.height()` in your feature's geometry math |
+| Position correct at `zoom = 1` but wrong otherwise | Feature draws using raw store value instead of going through the viewport display formula | Use `compute_display_split_position` / equivalent contract instead of reading store directly in render |
 
 ## Examples
 

@@ -103,7 +103,9 @@ def append_vec2_track_keyframe(
 
     time_gap = timestamp - float(x_channel.keyframes[-1].timestamp)
     step_threshold = 3.0 / max(1, fps)
-    if time_gap > step_threshold and should_insert_linear_step("vec2", previous_point, current_point):
+    # See append_channel_keyframe: a gap means the position was held, so anchor
+    # the hold before the move regardless of how small the first step is.
+    if time_gap > step_threshold:
         x_channel.keyframes.append(ChannelKeyframe(timestamp=timestamp, value=float(previous_point.x), interpolation=interpolation))
         y_channel.keyframes.append(ChannelKeyframe(timestamp=timestamp, value=float(previous_point.y), interpolation=interpolation))
         x_channel.keyframes.append(ChannelKeyframe(timestamp=timestamp, value=float(payload["x"]), interpolation=interpolation))
@@ -171,11 +173,15 @@ def append_channel_keyframe(channel: TimelineChannel, timestamp: float, value: A
         return True
 
     time_gap = timestamp - float(keyframes[-1].timestamp)
-    if (
-        not channel.prefer_continuous_curve
-        and time_gap > step_threshold
-        and should_insert_linear_step(channel.kind, keyframes[-1].value, value)
-    ):
+    # The value was held constant since the previous keyframe (intermediate
+    # equal frames are deduped, so a gap > step_threshold means a genuine hold).
+    # Anchor that hold with a step keyframe before applying the change, otherwise
+    # the change interpolates all the way back across the hold — making this track
+    # appear to animate at the same time as whatever the user was actually editing
+    # earlier. This must not depend on the *magnitude* of the change: a slow,
+    # gradual edit after a pause starts with a tiny first step and would otherwise
+    # be back-interpolated across the entire pause.
+    if not channel.prefer_continuous_curve and time_gap > step_threshold:
         previous_value = clone_value(keyframes[-1].value)
         keyframes.append(ChannelKeyframe(timestamp=timestamp, value=previous_value, interpolation=interpolation))
         keyframes.append(ChannelKeyframe(timestamp=timestamp, value=clone_value(value), interpolation=interpolation))
@@ -191,18 +197,6 @@ def append_channel_keyframe(channel: TimelineChannel, timestamp: float, value: A
         return True
     keyframes.append(new_keyframe)
     return True
-
-def should_insert_linear_step(kind: str, previous_value: Any, new_value: Any) -> bool:
-    if kind == "scalar":
-        try:
-            return abs(float(new_value) - float(previous_value)) >= 0.08
-        except (TypeError, ValueError):
-            return False
-    if kind == "vec2" and all(hasattr(v, "x") and hasattr(v, "y") for v in (previous_value, new_value)):
-        dx = float(new_value.x) - float(previous_value.x)
-        dy = float(new_value.y) - float(previous_value.y)
-        return math.hypot(dx, dy) >= 0.12
-    return False
 
 def channel_kind(value: Any) -> str:
     if isinstance(value, bool):
@@ -336,10 +330,12 @@ def values_equal(left: Any, right: Any) -> bool:
     return left == right
 
 def viewport_fingerprint(state: ViewportState) -> Any:
+    # ``overlay_clip_rect`` is on ``ViewportRuntimeCache``, not on
+    # ``ViewportState``; ``getattr`` with default returns None here, so this
+    # tuple slot is always None and does not need to be included.
     return (
         frozen_value(state.render_config),
         frozen_value(state.view_state),
-        frozen_value(getattr(state, "overlay_clip_rect", None)),
     )
 
 @lru_cache(maxsize=64)
@@ -419,9 +415,10 @@ def interpolate_viewport_state(start: ViewportState, end: ViewportState, factor:
     interpolated = start.clone()
     interpolated.render_config = interpolate_value(start.render_config, end.render_config, factor)
     interpolated.view_state = interpolate_value(start.view_state, end.view_state, factor)
-    interpolated.overlay_clip_rect = clone_value(
-        start.overlay_clip_rect if factor < 1.0 else end.overlay_clip_rect
-    )
+    # ``overlay_clip_rect`` lives on ``ViewportRuntimeCache`` (slotted Store
+    # attribute), NOT on ``ViewportState`` — assigning it to the cloned
+    # viewport would AttributeError. Runtime cache is rebuilt per render
+    # anyway, so nothing to carry through interpolation.
     return interpolated
 
 def lerp_float(start: float, end: float, factor: float) -> float:

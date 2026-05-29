@@ -7,8 +7,9 @@ from sli_ui_toolkit.workers import GenericWorker
 logger = logging.getLogger("ImproveImgSLI")
 
 def ensure_images_unified(presenter, source1, source2):
-    last_s1 = getattr(presenter.store.viewport, "_last_source1_id", 0)
-    last_s2 = getattr(presenter.store.viewport, "_last_source2_id", 0)
+    runtime_cache = presenter.store.runtime_cache
+    last_s1 = runtime_cache.last_source1_id
+    last_s2 = runtime_cache.last_source2_id
 
     if (
         not presenter.store.viewport.session_data.image_state.image1
@@ -26,8 +27,8 @@ def ensure_images_unified(presenter, source1, source2):
             u1, u2 = cache[cache_key]
             presenter.store.viewport.session_data.image_state.image1 = u1
             presenter.store.viewport.session_data.image_state.image2 = u2
-            setattr(presenter.store.viewport, "_last_source1_id", id(source1))
-            setattr(presenter.store.viewport, "_last_source2_id", id(source2))
+            runtime_cache.last_source1_id = id(source1)
+            runtime_cache.last_source2_id = id(source2)
             presenter.store.viewport.session_data.render_cache.scaled_image1_for_display = None
             presenter.store.viewport.session_data.render_cache.scaled_image2_for_display = None
             presenter.store.viewport.session_data.render_cache.cached_scaled_image_dims = None

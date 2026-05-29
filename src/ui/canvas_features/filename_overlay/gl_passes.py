@@ -299,9 +299,11 @@ class FilenameOverlayPass(CanvasGLRenderPass):
             if isinstance(ctx.scene_frame.feature_payloads, dict)
             else None
         )
-        if cfg is None or not bool(getattr(cfg, "enabled", False)):
+        if cfg is None:
             return False
         single_preview = int(getattr(ctx.scene_frame, "single_image_preview", 0) or 0)
+        if not bool(getattr(cfg, "enabled", False)) and single_preview == 0:
+            return False
         images_uploaded = list(getattr(ctx, "images_uploaded", ()) or ())
         has_slot1 = bool(images_uploaded[0]) if len(images_uploaded) > 0 else False
         has_slot2 = bool(images_uploaded[1]) if len(images_uploaded) > 1 else False
@@ -318,8 +320,11 @@ class FilenameOverlayPass(CanvasGLRenderPass):
                 return False
             if not (raw_name1 or raw_name2):
                 return False
-        is_single = bool(getattr(ctx.scene_frame, "single_image_preview", 0))
-        if not is_single and abs(float(getattr(ctx, "zoom_level", 1.0)) - 1.0) > 1e-6:
+        render_mode = str(
+            getattr(getattr(ctx, "render_metrics", None), "mode", "") or ""
+        )
+        zoom = float(getattr(ctx, "zoom_level", 1.0) or 1.0)
+        if render_mode == "interactive" and single_preview == 0 and zoom > 1.0 + 1e-6:
             return False
         return ctx.width > 0 and ctx.height > 0
 
@@ -341,6 +346,35 @@ class FilenameOverlayPass(CanvasGLRenderPass):
         split_override = ctx.scene_frame.split_override
         if content_rect is None:
             return
+        zoom = float(getattr(ctx, "zoom_level", 1.0) or 1.0)
+        pan_x = float(getattr(ctx, "pan_offset_x", 0.0) or 0.0)
+        pan_y = float(getattr(ctx, "pan_offset_y", 0.0) or 0.0)
+        single_preview = int(getattr(ctx.scene_frame, "single_image_preview", 0) or 0)
+        render_mode = str(
+            getattr(getattr(ctx, "render_metrics", None), "mode", "") or ""
+        )
+        is_interactive_live = render_mode == "interactive"
+        image_anchored = not (single_preview != 0 and is_interactive_live)
+        # Labels are rasterized once at the un-zoomed ("base") size derived from
+        # the image rect; the resulting quad is then scaled to screen by the same
+        # affine (uniform scale about the widget center + pan) that maps the image
+        # under zoom/pan. This keeps the glyph texture zoom-independent and lets GL
+        # downscale it with LINEAR sampling, instead of re-rasterizing the glyphs
+        # at tiny pixel sizes — the latter produced clipped/mis-positioned text and
+        # colour fringing when zoomed out.
+        apply_transform = image_anchored and (
+            abs(zoom - 1.0) > 1e-6 or abs(pan_x) > 1e-9 or abs(pan_y) > 1e-9
+        )
+        wcx = ctx.width / 2.0
+        wcy = ctx.height / 2.0
+
+        def _to_screen_rect(r: QRectF) -> QRectF:
+            if not apply_transform:
+                return r
+            left = wcx + (r.left() - wcx) * zoom + pan_x * float(ctx.width)
+            top = wcy + (r.top() - wcy) * zoom + pan_y * float(ctx.height)
+            return QRectF(left, top, r.width() * zoom, r.height() * zoom)
+
         name1 = str(getattr(cfg, "name1", "") or "")
         name2 = str(getattr(cfg, "name2", "") or "")
         divider_thickness_px = float(
@@ -352,21 +386,10 @@ class FilenameOverlayPass(CanvasGLRenderPass):
             or 0
         )
 
-        _mlog.debug(
-            "filename_overlay_rect content_rect=%s split_override=%s single=%s zoom=%.6f names=(%s,%s)",
-            content_rect,
-            split_override,
-            int(getattr(ctx.scene_frame, "single_image_preview", 0) or 0),
-            float(getattr(ctx, "zoom_level", 1.0) or 1.0),
-            bool(name1),
-            bool(name2),
-        )
-
         if content_rect[2] <= 0 or content_rect[3] <= 0:
             return
 
         max_name_length = int(getattr(cfg, "max_name_length", 50))
-        single_preview = int(getattr(ctx.scene_frame, "single_image_preview", 0) or 0)
         if single_preview == 1:
             name1 = _limit_name(name1, max_name_length)
             name2 = ""
@@ -381,6 +404,10 @@ class FilenameOverlayPass(CanvasGLRenderPass):
 
         font = _font(widget, overlay_style)
         font_metrics = QFontMetrics(font)
+        if single_preview == 1:
+            split_override = 1.0
+        elif single_preview == 2:
+            split_override = 0.0
         rect1, rect2 = _label_rects(
             cfg, content_rect, font_metrics, name1, name2, overlay_style, split_override,
             divider_thickness_wx=divider_thickness_px,
@@ -425,7 +452,9 @@ class FilenameOverlayPass(CanvasGLRenderPass):
                 )
                 self._cache_keys[i] = cache_key
 
-            self._draw_label_quad(ctx, rect, self._tex_ids[i])
+            self._draw_label_quad(
+                ctx, _to_screen_rect(rect), self._tex_ids[i], smooth=apply_transform
+            )
 
     def cleanup(self, widget) -> None:
         self._cache_keys = [None, None]
@@ -494,7 +523,7 @@ class FilenameOverlayPass(CanvasGLRenderPass):
             painter.end()
         upload_qimage_texture(self._tex_ids[slot], img)
 
-    def _draw_label_quad(self, ctx, rect: QRectF, tex_id: int) -> None:
+    def _draw_label_quad(self, ctx, rect: QRectF, tex_id: int, smooth: bool = False) -> None:
         """Upload quad vertices for *rect* (widget-pixel space) and draw."""
         w = float(ctx.width)
         h = float(ctx.height)
@@ -519,6 +548,9 @@ class FilenameOverlayPass(CanvasGLRenderPass):
             self._shader.setUniformValue("uTex", 0)
             gl.glActiveTexture(gl.GL_TEXTURE0)
             gl.glBindTexture(gl.GL_TEXTURE_2D, tex_id)
+            filt = gl.GL_LINEAR if smooth else gl.GL_NEAREST
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, filt)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, filt)
             gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
             self._vao.release()
             self._shader.release()

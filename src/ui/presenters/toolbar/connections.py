@@ -247,30 +247,19 @@ def _connect_viewport_controls(presenter):
         )
         store = presenter.store
         if store is not None:
-            # Movement speed is handled by the magnifier movement_handler
-            # This is a viewport-level control that notifies magnifier of speed changes
+
             def on_speed_changed(value: int):
-                from ui.canvas_infra.scene.feature_state_api import query_feature_state
-                handler = query_feature_state(store, "magnifier", "movement_handler")
-                if handler is not None and hasattr(handler, "set_movement_speed"):
-                    handler.set_movement_speed(value / 100.0)
+                from core.state_management.actions import SetMovementSpeedAction
+                speed = value / 100.0
+                dispatcher = store.get_dispatcher() if hasattr(store, "get_dispatcher") else None
+                if dispatcher is not None:
+                    dispatcher.dispatch(SetMovementSpeedAction(speed), scope="viewport")
+                else:
+                    store.viewport.view_state.movement_speed_per_sec = speed
+                settings_manager = getattr(controller, "settings_manager", None) if controller is not None else None
+                if settings_manager is not None:
+                    settings_manager._save_setting("movement_speed_per_sec", speed)
             ui.slider_speed.valueChanged.connect(on_speed_changed)
-        else:
-            event_bus = getattr(presenter, "event_bus", None) or getattr(controller, "event_bus", None)
-            if event_bus:
-                # Fallback for legacy event bus
-                from plugins.viewport.events import ViewportUpdateMovementSpeedEvent
-                ui.slider_speed.valueChanged.connect(
-                    lambda value: event_bus.emit(
-                        ViewportUpdateMovementSpeedEvent(value / 100.0)
-                    )
-                )
-            else:
-                viewport_ctrl = getattr(controller, "viewport_plugin", None)
-                if viewport_ctrl is not None:
-                    ui.slider_speed.valueChanged.connect(
-                        lambda value: viewport_ctrl.update_movement_speed(value / 100.0)
-                    )
 
         if interpolation_handler is not None:
             ui.combo_interpolation.currentIndexChanged.connect(interpolation_handler)

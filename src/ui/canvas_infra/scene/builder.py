@@ -27,6 +27,15 @@ def _sync_scene_geometry(scene: CanvasSceneGraph, geometry_state) -> None:
 
 def _resolve_bounds(store, image_label, label_width: int, label_height: int) -> Rect:
     state = getattr(image_label, "runtime_state", None) if image_label is not None else None
+    # Prefer the inner image-content rect when a virtual canvas pads the
+    # letterbox (uncrop / fit-content). Falling back to ``_content_rect_px``
+    # would let scene-graph builders position overlays against the padded
+    # canvas instead of the actual image area, putting them into the pad.
+    inner_rect = getattr(state, "_inner_content_rect_px", None) if state is not None else None
+    if inner_rect:
+        x, y, w, h = inner_rect
+        if int(w) > 0 and int(h) > 0:
+            return Rect(int(x), int(y), int(w), int(h))
     content_rect = getattr(state, "_content_rect_px", None) if state is not None else None
     if content_rect:
         x, y, w, h = content_rect

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import logging
 import math
 
 from PyQt6.QtCore import QPointF
-
-_log = logging.getLogger("ImproveImgSLI.magnifier.feature")
 
 from domain.qt_adapters import color_to_qcolor
 from domain.types import Color, Point, Rect
@@ -41,7 +38,7 @@ def clamp_capture_position(
 ):
     if pix_w <= 0 or pix_h <= 0:
         return rel_x, rel_y
-    ref_dim = min(pix_w, pix_h)
+    ref_dim = math.sqrt(float(pix_w) * float(pix_h))
     capture_size_px = capture_size_relative * ref_dim
     radius_rel_x = (capture_size_px / 2.0) / pix_w if pix_w > 0 else 0.0
     radius_rel_y = (capture_size_px / 2.0) / pix_h if pix_h > 0 else 0.0
@@ -126,7 +123,7 @@ def build_magnifier_object(
         pix_h,
         model.capture_size_relative,
     )
-    capture_size_px = model.capture_size_relative * min(pix_w, pix_h)
+    capture_size_px = model.capture_size_relative * math.sqrt(float(pix_w) * float(pix_h))
     capture_radius = capture_size_px / 2.0
 
     center_x = bounds.x + (rel_x * pix_w)
@@ -147,7 +144,7 @@ def build_magnifier_object(
     )
 
     capture_center = Point(center_x, center_y)
-    target_max_dim = float(max(pix_w, pix_h))
+    target_max_dim = math.sqrt(float(pix_w) * float(pix_h))
     mag_radius = max(0.0, (model.size_relative * target_max_dim) / 2.0)
 
     if model.freeze and model.frozen_position is not None:
@@ -160,6 +157,13 @@ def build_magnifier_object(
         )
         base_x = bounds.x + (frozen_x * pix_w)
         base_y = bounds.y + (frozen_y * pix_h)
+        base_x, base_y, _ = clamp_capture_overlay_geometry(
+            bounds=bounds,
+            center_x=base_x,
+            center_y=base_y,
+            radius=capture_radius,
+            stroke_margin=stroke_margin,
+        )
     else:
         base_x = capture_center.x
         base_y = capture_center.y
@@ -530,10 +534,6 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
             feature_overrides["hidden_magnifier_circles"] = hidden_magnifier_circles
 
     if active_magnifier is None:
-        _log.debug(
-            "apply_magnifier_objects: active_magnifier=None (all_mags=%d, visible_mags=%d, active_object_id=%s) → set_overlay_coords(None)",
-            len(all_magnifiers), len(visible_magnifiers), scene.active_object_id,
-        )
         canvas.set_overlay_coords(None, 0, [], 0)
         sync_active_magnifier_geometry(scene, geometry_state)
         return

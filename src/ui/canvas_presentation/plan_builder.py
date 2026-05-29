@@ -127,7 +127,7 @@ def _build_snapshot_store(
     store = Store()
     store.viewport = snap.viewport_state.clone()
     store.settings = snap.settings_state.freeze_for_export()
-    store.viewport.overlay_clip_rect = None
+    store.runtime_cache.overlay_clip_rect = None
     normalize_snapshot = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
     should_normalize_snapshot = not (fit_content and global_bounds is not None)
     if normalize_snapshot is not None and should_normalize_snapshot:

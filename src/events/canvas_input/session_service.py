@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-KEYBOARD_MOVE_OWNER = "keyboard_move"
-CAPTURE_DRAG_OWNER = "capture_drag"
-SPLIT_DRAG_OWNER = "split_drag"
-INTERNAL_SPLIT_DRAG_OWNER = "internal_split_drag"
-
 @dataclass(slots=True)
 class CanvasInputSessionState:
     active_owners: set[str] = field(default_factory=set)

@@ -34,7 +34,7 @@ def build_gl_render_scene(
     diff_mode = str(getattr(viewport.view_state, "diff_mode", "off") or "off")
     is_horizontal = bool(getattr(viewport.view_state, "is_horizontal", False))
     split_position_visual = float(getattr(viewport.view_state, "split_position_visual", 0.5))
-    overlay_clip_rect = getattr(viewport, "overlay_clip_rect", None)
+    overlay_clip_rect = getattr(getattr(store, "runtime_cache", None), "overlay_clip_rect", None)
     zoom_method = str(
         getattr(getattr(viewport, "render_config", None), "zoom_interpolation_method", "BILINEAR")
         or "BILINEAR"

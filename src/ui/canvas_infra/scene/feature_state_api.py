@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("ImproveImgSLI.canvas.feature_state")
 
-
 def query_feature_state(
     store: Any,
     feature_name: str,
@@ -65,7 +64,6 @@ def query_feature_state(
         available_queries,
     )
     return None
-
 
 def execute_feature_command(
     store: Any,
@@ -122,7 +120,6 @@ def execute_feature_command(
         available_commands,
     )
 
-
 def has_feature_command(
     feature_name: str,
     command_id: str,
@@ -136,7 +133,6 @@ def has_feature_command(
         return False
 
     return any(c.command_id == command_id for c in feature_commands)
-
 
 def has_feature_query(
     feature_name: str,

@@ -497,13 +497,12 @@ class OnboardingOverlay(QWidget):
         btn.setAttribute(Qt.WidgetAttribute.WA_NoMouseReplay, False)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        # New Button API uses toggle parameter, legacy Button had setChecked
         if hasattr(btn, "set_value"):
-            # New Button API
+
             if checked:
                 btn.set_value(1)
         elif hasattr(btn, "setChecked"):
-            # Fallback for legacy buttons
+
             btn.setChecked(checked)
 
         if hasattr(btn, "update_styles"):
@@ -547,12 +546,12 @@ class OnboardingOverlay(QWidget):
         for i, btn in enumerate(self.mode_buttons):
             if i == index:
                 btn.set_override_bg_color(accent_color)
-                # Set text color to highlighted for selected state via widget property
+
                 btn.setProperty("textColor", highlighted_text)
                 btn.update()
             else:
                 btn.set_override_bg_color(None)
-                # Reset text color for unselected state
+
                 btn.setProperty("textColor", text_color)
                 btn.update()
 
@@ -634,7 +633,7 @@ class OnboardingOverlay(QWidget):
 
         for btn in self.mode_buttons:
             btn.setFixedSize(btn_width, btn_height)
-            # New Button API uses stylesheet for font styling
+
             if not hasattr(btn, "text_label"):
                 btn.setFont(mode_btn_font)
 
@@ -651,7 +650,7 @@ class OnboardingOverlay(QWidget):
         custom_font = QFont()
         custom_font.setPixelSize(start_font_size)
         custom_font.setBold(True)
-        # New Button API uses stylesheet for font styling
+
         if not hasattr(self.btn_start, "text_label"):
             self.btn_start.setFont(custom_font)
 

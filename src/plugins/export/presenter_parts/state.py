@@ -79,6 +79,9 @@ class ExportStateCoordinator:
             comment_keep_default=bool(
                 getattr(settings, "export_comment_keep_default", False)
             ),
+            resolution_scale=float(
+                getattr(settings, "export_resolution_scale", 1.0) or 1.0
+            ),
         )
 
     def set_export_favorite_dir(self, path: str) -> None:
@@ -130,6 +133,13 @@ class ExportStateCoordinator:
         else:
             settings.export_comment_text = ""
             settings.export_comment_keep_default = False
+
+        scale = export_opts.get("resolution_scale")
+        if scale is not None:
+            try:
+                settings.export_resolution_scale = max(0.05, float(scale))
+            except (TypeError, ValueError):
+                pass
 
         if self.main_controller and hasattr(self.main_controller, "settings_manager"):
             self.main_controller.settings_manager.save_all_settings(self.store)

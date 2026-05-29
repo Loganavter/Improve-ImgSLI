@@ -1,6 +1,43 @@
 from __future__ import annotations
 
+from ..actions import (
+    SetMagnifierMovementInterpolationMethodAction,
+    SetOptimizeMagnifierMovementAction,
+)
 from ..state import get_magnifier_widget_state
+
+def settings_set_optimize_movement(store, enabled: bool) -> bool:
+    if store is None or getattr(store, "viewport", None) is None:
+        return False
+    enabled = bool(enabled)
+    if store.viewport.view_state.optimize_interactive_movement == enabled:
+        return False
+    store.get_dispatcher().dispatch(
+        SetOptimizeMagnifierMovementAction(enabled),
+        scope="viewport",
+    )
+    if hasattr(store, "invalidate_render_cache"):
+        store.invalidate_render_cache()
+    if hasattr(store, "emit_viewport_change"):
+        store.emit_viewport_change()
+    return True
+
+def settings_set_movement_interpolation(store, method: str) -> bool:
+    if store is None or getattr(store, "viewport", None) is None:
+        return False
+    method = str(method)
+    current = store.viewport.render_config.interactive_movement_interpolation_method
+    if current == method:
+        return False
+    store.get_dispatcher().dispatch(
+        SetMagnifierMovementInterpolationMethodAction(method),
+        scope="viewport",
+    )
+    if hasattr(store, "invalidate_render_cache"):
+        store.invalidate_render_cache()
+    if hasattr(store, "emit_viewport_change"):
+        store.emit_viewport_change()
+    return True
 
 def settings_apply_behavior(store, behavior: dict) -> dict:
     state = get_magnifier_widget_state(store.viewport.view_state)

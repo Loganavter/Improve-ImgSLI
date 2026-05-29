@@ -168,43 +168,8 @@ def _connect_magnifier_visibility_buttons(manager) -> None:
         )
         return
 
-    event_bus = getattr(manager, "event_bus", None)
-    viewport_ctrl = getattr(manager.main_controller, "viewport_plugin", None)
-
-    if event_bus is not None:
-        # Fallback for legacy event bus
-        from plugins.viewport.events import ViewportToggleMagnifierPartEvent
-        flyout.btn_left.toggled.connect(
-            lambda checked: event_bus.emit(
-                ViewportToggleMagnifierPartEvent("left", not checked)
-            )
-        )
-        flyout.btn_right.toggled.connect(
-            lambda checked: event_bus.emit(
-                ViewportToggleMagnifierPartEvent("right", not checked)
-            )
-        )
-        flyout.btn_center.toggled.connect(
-            lambda checked: event_bus.emit(
-                ViewportToggleMagnifierPartEvent("center", not checked)
-            )
-        )
-        return
-
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "toggle_magnifier_part"):
-        flyout.btn_left.toggled.connect(
-            lambda checked: viewport_ctrl.toggle_magnifier_part("left", not checked)
-        )
-        flyout.btn_right.toggled.connect(
-            lambda checked: viewport_ctrl.toggle_magnifier_part("right", not checked)
-        )
-        flyout.btn_center.toggled.connect(
-            lambda checked: viewport_ctrl.toggle_magnifier_part("center", not checked)
-        )
-        return
-
     logger.warning(
-        "UIManager: Cannot connect magnifier visibility flyout buttons - no store or event_bus available"
+        "UIManager: Cannot connect magnifier visibility flyout buttons - no store available"
     )
 
 def query_current_visibility(store, part: str) -> bool:

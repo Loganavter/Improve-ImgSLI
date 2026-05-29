@@ -20,11 +20,18 @@ from .actions import (
     SetDividerVisibleAction,
 )
 from .commands import build_divider_commands
+from .gestures import build_divider_gesture_bindings
 from .properties import build_divider_properties
 from .runtime_hooks import build_divider_render_scene_overrides
 from .settings_bindings import build_divider_settings_event_bindings
-from .state import get_divider_widget_state, replace_divider_widget_state
+from .state import DividerWidgetState, get_divider_widget_state, replace_divider_widget_state
 from .toolbar import build_divider_toolbar_bindings
+
+def _clone_divider_widget_state(view_state: ViewState) -> DividerWidgetState:
+    state = (getattr(view_state, "canvas_widget_state", None) or {}).get("divider")
+    if isinstance(state, DividerWidgetState):
+        return state.clone()
+    return DividerWidgetState()
 
 def reduce_divider_view_state(view_state: ViewState, action: Action) -> ViewState:
     from dataclasses import replace
@@ -36,15 +43,15 @@ def reduce_divider_view_state(view_state: ViewState, action: Action) -> ViewStat
     if isinstance(action, ToggleOrientationAction):
         return replace(view_state, is_horizontal=action.is_horizontal)
     if isinstance(action, SetDividerVisibleAction):
-        state = get_divider_widget_state(view_state).clone()
+        state = _clone_divider_widget_state(view_state)
         state.visible = bool(action.visible)
         return replace_divider_widget_state(view_state, state)
     if isinstance(action, SetDividerColorAction):
-        state = get_divider_widget_state(view_state).clone()
+        state = _clone_divider_widget_state(view_state)
         state.color = action.color
         return replace_divider_widget_state(view_state, state)
     if isinstance(action, SetDividerThicknessAction):
-        state = get_divider_widget_state(view_state).clone()
+        state = _clone_divider_widget_state(view_state)
         state.thickness = max(0, int(action.thickness))
         return replace_divider_widget_state(view_state, state)
     return view_state
@@ -64,8 +71,8 @@ def build_divider_state_queries():
 def build_divider_state_commands():
     """Build state commands for direct feature state modification."""
     from .commands import (
-        command_toggle_divider_visibility,
-        command_set_divider_thickness,
+        command_viewport_toggle_divider_visibility,
+        command_viewport_set_divider_thickness,
         command_begin_split_drag,
         command_end_split_drag,
         command_update_split_drag,
@@ -73,8 +80,8 @@ def build_divider_state_commands():
     )
 
     return (
-        CanvasFeatureStateCommand(command_id="toggle_visibility", handler=command_toggle_divider_visibility),
-        CanvasFeatureStateCommand(command_id="set_thickness", handler=command_set_divider_thickness),
+        CanvasFeatureStateCommand(command_id="toggle_visibility", handler=command_viewport_toggle_divider_visibility),
+        CanvasFeatureStateCommand(command_id="set_thickness", handler=command_viewport_set_divider_thickness),
         CanvasFeatureStateCommand(command_id="begin_drag", handler=command_begin_split_drag),
         CanvasFeatureStateCommand(command_id="end_drag", handler=command_end_split_drag),
         CanvasFeatureStateCommand(command_id="update_drag", handler=command_update_split_drag),
@@ -102,6 +109,7 @@ def build_widget_feature() -> CanvasWidgetFeature:
         build_commands=build_divider_commands,
         command_aliases=DIVIDER_COMMAND_ALIASES,
         build_settings_event_bindings=build_divider_settings_event_bindings,
+        build_gesture_bindings=build_divider_gesture_bindings,
         build_state_queries=build_divider_state_queries,
         build_state_commands=build_divider_state_commands,
         build_render_scene_overrides=build_divider_render_scene_overrides,

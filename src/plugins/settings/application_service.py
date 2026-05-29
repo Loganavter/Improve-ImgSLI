@@ -24,10 +24,6 @@ from core.state_management.actions import (
     SetVideoRecordingFpsAction,
     SetZoomInterpolationMethodAction,
 )
-from plugins.viewport.actions import (
-    SetMagnifierMovementInterpolationMethodAction,
-    SetOptimizeMagnifierMovementAction,
-)
 from shared_toolkit.ui.managers.font_manager import FontManager
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
@@ -178,19 +174,17 @@ class SettingsApplicationService(QObject):
     ) -> bool:
         vp = self.store.viewport
         view = vp.view_state
-        dispatcher = self.store.get_dispatcher()
 
         if data.optimize_magnifier_movement != view.optimize_interactive_movement:
-            dispatcher.dispatch(
-                SetOptimizeMagnifierMovementAction(data.optimize_magnifier_movement),
-                scope="viewport",
+            cmd = get_canvas_feature_command_by_alias(
+                "overlay.settings.set_optimize_movement"
             )
-            self.store.invalidate_render_cache()
-            render_update_needed = True
-            self._save_setting(
-                "optimize_magnifier_movement",
-                data.optimize_magnifier_movement,
-            )
+            if cmd is not None and cmd(self.store, data.optimize_magnifier_movement):
+                render_update_needed = True
+                self._save_setting(
+                    "optimize_magnifier_movement",
+                    data.optimize_magnifier_movement,
+                )
 
         render_update_needed = self._apply_magnifier_interpolation(
             data, render_update_needed
@@ -237,21 +231,12 @@ class SettingsApplicationService(QObject):
     def _apply_magnifier_interpolation(
         self, data: SettingsDialogData, render_update_needed: bool
     ) -> bool:
-        vp = self.store.viewport
-        dispatcher = self.store.get_dispatcher()
-        if (
-            data.magnifier_interpolation_method
-            == vp.render_config.interactive_movement_interpolation_method
-        ):
+        cmd = get_canvas_feature_command_by_alias(
+            "overlay.settings.set_movement_interpolation"
+        )
+        if cmd is None or not cmd(self.store, data.magnifier_interpolation_method):
             return render_update_needed
 
-        dispatcher.dispatch(
-            SetMagnifierMovementInterpolationMethodAction(
-                data.magnifier_interpolation_method
-            ),
-            scope="viewport",
-        )
-        self.store.invalidate_render_cache()
         self.store.emit_state_change()
         self._save_setting(
             "magnifier_movement_interpolation_method",
