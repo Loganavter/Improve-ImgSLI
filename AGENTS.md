@@ -10,7 +10,10 @@ Start with these files in this order:
 2. [CONTRIBUTING.md](/home/jorj/Загрузки/Improve-ImgSLI/CONTRIBUTING.md)
 3. [docs/INSTALL.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/INSTALL.md)
 
-Then read the area-specific docs in [docs/dev/](docs/dev/) that match the task.
+Then read the area-specific docs in [docs/dev/](docs/dev/) that match the task. Two cross-cutting docs are always useful:
+
+- [docs/dev/TESTING.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/TESTING.md) — `/tests` layout and conventions before adding or running tests.
+- [docs/dev/TRACING.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/TRACING.md) — runtime tracer for Redux/EventBus/render causal chains when debugging.
 
 ## Area Docs
 
@@ -106,22 +109,41 @@ Use this mental model:
 4. Update docs/help when the user-visible behavior changes.
 5. Run focused tests for the touched subsystem.
 
-## Test Commands
+## Tests
+
+See [docs/dev/TESTING.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/TESTING.md) for full layout and conventions.
+
+Tests are grouped by subsystem under `tests/`:
+
+- `tests/contracts/` — static architectural dogmas (AST scan, no runtime).
+- `tests/runtime/` — registry, Feature State API, stacking policy.
+- `tests/render/` — GL pass behavior with fake `SimpleNamespace` context.
+- `tests/plugins/` — plugin behavior (export, help, settings, toast, clipboard).
+- `tests/toolkit/` — `sli-ui-toolkit` public API.
+- `tests/video/` — video editor preview/timeline/keyframes contracts.
 
 Common focused test pattern:
 
 ```bash
-env QT_QPA_PLATFORM=offscreen pytest -q tests/<target_test>.py
+env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/<target_test>.py
 ```
 
-Examples that are often relevant:
+Examples:
 
 ```bash
-env QT_QPA_PLATFORM=offscreen pytest -q tests/test_export_diff_support.py
-env QT_QPA_PLATFORM=offscreen pytest -q tests/test_toast_and_metrics.py
-env QT_QPA_PLATFORM=offscreen pytest -q tests/test_help_dialog_anchors.py
-env QT_QPA_PLATFORM=offscreen pytest -q tests/test_fluent_combobox_api.py
+env QT_QPA_PLATFORM=offscreen pytest -q tests/plugins/test_export_diff_support.py
+env QT_QPA_PLATFORM=offscreen pytest -q tests/plugins/test_toast_and_metrics.py
+env QT_QPA_PLATFORM=offscreen pytest -q tests/plugins/test_help_dialog_anchors.py
+env QT_QPA_PLATFORM=offscreen pytest -q tests/toolkit/test_fluent_combobox_api.py
+env QT_QPA_PLATFORM=offscreen pytest -q tests/contracts            # all architecture contracts
+env QT_QPA_PLATFORM=offscreen pytest -q tests/render                # render-pass contracts
 ```
+
+When fixing a rendering/export/UI wiring bug, prefer adding a focused regression test in the matching folder rather than at the top level of `tests/`.
+
+## Debugging Runtime Issues
+
+When something goes wrong after a click / zoom / state change and the cause is not obvious from the diff, use the runtime tracer described in [docs/dev/TRACING.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/TRACING.md). It captures the causal chain across Redux dispatches, EventBus publishes, and render frames — much faster than instrumenting with `logger` calls by hand.
 
 ## When To Update Docs
 

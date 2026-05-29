@@ -90,9 +90,10 @@ def sync_magnifier_freeze_state(presenter) -> None:
 
     ui = getattr(presenter, "ui", None)
     scene_state = MagnifierStoreService(presenter.store)
+    active = scene_state.get_active_or_first_magnifier()
     set_checked_quietly(
         getattr(ui, "btn_freeze", None),
-        scene_state.are_all_magnifiers_frozen(),
+        bool(getattr(active, "freeze", False)) if active is not None else False,
     )
 
 def sync_magnifier_orientation_state(presenter) -> None:

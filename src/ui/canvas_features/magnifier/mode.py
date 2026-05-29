@@ -52,7 +52,6 @@ class MagnifierModeService:
 
     def prepare_for_add(self) -> None:
         set_magnifier_enabled_flag(self._view, True)
-        self.store.emit_viewport_change()
 
     def reveal_object(self, object_id: str | None):
         model = self.object_state.set_object_visibility(object_id, True)

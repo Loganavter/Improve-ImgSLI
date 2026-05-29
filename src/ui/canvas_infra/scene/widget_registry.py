@@ -6,6 +6,7 @@ from functools import lru_cache
 
 from .widget_contract import (
     CanvasFeatureCommandAlias,
+    CanvasFeatureGestureBinding,
     CanvasFeatureProperty,
     CanvasFeatureSettingsEventBinding,
     CanvasFeatureStateCommand,
@@ -148,6 +149,18 @@ def get_canvas_feature_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, 
             continue
         bindings.extend(feature.build_toolbar_bindings())
     return tuple(sorted(bindings, key=lambda item: item.control_id))
+
+@lru_cache(maxsize=1)
+def get_canvas_feature_gesture_bindings() -> tuple[CanvasFeatureGestureBinding, ...]:
+    bindings: list[CanvasFeatureGestureBinding] = []
+    for feature in sorted(
+        get_canvas_widget_features(),
+        key=lambda item: (item.property_order, item.name),
+    ):
+        if feature.build_gesture_bindings is None:
+            continue
+        bindings.extend(feature.build_gesture_bindings())
+    return tuple(sorted(bindings, key=lambda b: (b.priority, b.gesture_id)))
 
 @lru_cache(maxsize=32)
 def get_canvas_feature_toolbar_binding(

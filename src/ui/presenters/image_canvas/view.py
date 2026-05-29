@@ -122,6 +122,14 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
             pan_x = get_pan_offset_x(image_label)
             pan_y = get_pan_offset_y(image_label)
             reset_canvas_overlays(image_label)
+            single_key = (
+                "single_image_mode",
+                presenter.store.viewport.view_state.showing_single_image_mode,
+                presenter.store.document.image1_path,
+                presenter.store.document.image2_path,
+                id(pil_image),
+                pil_image.size,
+            )
             apply_store_to_gl_canvas(
                 image_label,
                 presenter.store,
@@ -130,13 +138,8 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
                 fit_content=False,
                 source_image1=pil_image,
                 source_image2=pil_image,
-                source_key=(
-                    presenter.store.viewport.view_state.showing_single_image_mode,
-                    presenter.store.document.image1_path,
-                    presenter.store.document.image2_path,
-                    id(pil_image),
-                    pil_image.size,
-                ),
+                source_key=single_key,
+                display_cache_key=single_key,
                 clip_overlays_to_image_bounds=False,
             )
             set_zoom_level(image_label, zoom_level)

@@ -110,6 +110,40 @@ BuildCanvasFeatureSettingsEventsFn = Callable[
     [], tuple[CanvasFeatureSettingsEventBinding, ...]
 ]
 
+GestureMatchFn = Callable[[Any], bool]
+GestureActiveFn = Callable[[Any], bool]
+GestureBeginFn = Callable[[Any, Any], None]
+GestureUpdateFn = Callable[[Any, Any], None]
+GestureEndFn = Callable[[Any], None]
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureGestureBinding:
+    """A canvas feature declares how it claims a mouse gesture.
+
+    Shared event code (``events/image_label/mouse.py``) must not branch on
+    feature-specific flags. Instead, it walks gesture bindings provided by
+    features, runs ``matches(ctx)`` on press to find the winning candidate,
+    and ``is_active(store)`` on move/release to find the currently-driving
+    gesture. All routing decisions live in the feature, not in shared code.
+
+    ``begin``/``update``/``end`` are feature-owned closures that wrap any
+    alias lookups and event-layer geometry calls; shared code only invokes
+    them as opaque callables.
+    """
+    gesture_id: str
+    button: int
+    matches: GestureMatchFn
+    is_active: GestureActiveFn
+    begin: GestureBeginFn | None = None
+    update: GestureUpdateFn | None = None
+    end: GestureEndFn | None = None
+    owner: str | None = None
+    priority: int = 100
+
+BuildCanvasFeatureGestureBindingsFn = Callable[
+    [], tuple[CanvasFeatureGestureBinding, ...]
+]
+
 @dataclass(frozen=True, slots=True)
 class CanvasWidgetFeature:
     name: str
@@ -123,6 +157,7 @@ class CanvasWidgetFeature:
     build_commands: BuildCanvasFeatureCommandsFn | None = None
     command_aliases: tuple[CanvasFeatureCommandAlias, ...] = ()
     build_settings_event_bindings: BuildCanvasFeatureSettingsEventsFn | None = None
+    build_gesture_bindings: BuildCanvasFeatureGestureBindingsFn | None = None
     build_state_queries: BuildCanvasFeatureStateQueriesFn | None = None
     build_state_commands: BuildCanvasFeatureStateCommandsFn | None = None
     build_render_scene_overrides: RenderSceneOverridesBuilder | None = None

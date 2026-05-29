@@ -5,6 +5,7 @@ from dataclasses import replace
 from PIL import Image
 from PyQt6.QtGui import QColor, QImage
 
+from shared.rendering import get_effective_export_interpolation_method
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.widgets.gl_canvas.scene import build_gl_render_scene
 
@@ -34,6 +35,7 @@ def build_export_gl_scene(
     scene = replace(
         scene,
         feature_overrides=new_feature_overrides,
+        zoom_interpolation_method=get_effective_export_interpolation_method(store.viewport),
     )
     if virtual_layout is not None and image_w is not None and image_h is not None:
         scene = apply_virtual_canvas_layout_to_scene(

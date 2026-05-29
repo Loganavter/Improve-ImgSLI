@@ -135,6 +135,12 @@ def connect_event_handler_signals(presenter, event_handler):
         image_label.zoomChanged.connect(
             lambda _zoom: toolbar_presenter.update_toolbar_states()
         )
+        ui = getattr(presenter, "ui", None)
+        if ui is not None and hasattr(ui, "update_zoom_indicator"):
+            image_label.zoomChanged.connect(ui.update_zoom_indicator)
+        btn_zoom_reset = getattr(ui, "btn_zoom_reset", None) if ui is not None else None
+        if btn_zoom_reset is not None:
+            btn_zoom_reset.clicked.connect(lambda: image_label.reset_view())
 
     event_handler.mouse_press_event_signal.connect(
         lambda event: handle_global_mouse_press(presenter, event)

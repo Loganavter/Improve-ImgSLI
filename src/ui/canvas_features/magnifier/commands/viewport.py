@@ -191,12 +191,10 @@ def viewport_add_instance(store, position=None):
         return None
     MagnifierModeService(store).prepare_for_add()
 
-    # If no position specified, calculate offset from existing magnifiers
     if position is None:
         existing = list(MagnifierStoreService(store).iter_magnifiers())
         if existing:
-            # Offset new magnifier slightly from the first one to show they're separate
-            # Use small offset to allow easy combining when needed
+
             first = existing[0]
             offset_x = 0.08 if first.position.x < 0.5 else -0.08
             offset_y = 0.08 if first.position.y < 0.5 else -0.08
@@ -224,7 +222,7 @@ def viewport_remove_active_instance(store) -> bool:
         return False
     scene_state.remove_object(active)
     MagnifierModeService(store).normalize_after_remove()
-    # Note: normalize_after_remove already emits viewport change
+
     return True
 
 def viewport_set_active_instance(store, magnifier_id: str):
@@ -278,7 +276,9 @@ def viewport_set_active_freeze(
     store,
     freeze: bool,
 ):
-    from ..store import MagnifierStoreService
+    import math
+    from domain.types import Point
+    from ..store import MagnifierStoreService, update_magnifier_model
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
@@ -286,11 +286,37 @@ def viewport_set_active_freeze(
     model = scene_state.get_active_or_first_magnifier()
     if model is None:
         return None
-    frozen_position = model.position if freeze else None
-    result = scene_state.set_active_magnifier_freeze(
-        bool(freeze),
-        frozen_position=frozen_position,
-    )
+    if freeze:
+        result = scene_state.set_active_magnifier_freeze(
+            True,
+            frozen_position=model.position,
+        )
+    else:
+        frozen = model.frozen_position
+        if frozen is None:
+            new_offset = None
+        else:
+            pix_w = int(getattr(store.viewport.geometry_state, "pixmap_width", 0) or 0)
+            pix_h = int(getattr(store.viewport.geometry_state, "pixmap_height", 0) or 0)
+            if pix_w > 0 and pix_h > 0:
+                max_dim = math.sqrt(float(pix_w) * float(pix_h))
+                dx_px = (frozen.x - model.position.x) * pix_w
+                dy_px = (frozen.y - model.position.y) * pix_h
+                new_offset = Point(
+                    model.offset_relative.x + dx_px / max_dim,
+                    model.offset_relative.y + dy_px / max_dim,
+                )
+            else:
+                new_offset = None
+        updates = {"freeze": False, "frozen_position": None}
+        if new_offset is not None:
+            updates["offset_relative"] = new_offset
+        result = update_magnifier_model(
+            store.viewport.view_state,
+            store.viewport.render_config,
+            model.id,
+            **updates,
+        )
     if hasattr(store, 'emit_viewport_change'):
         store.emit_viewport_change()
     return result
@@ -309,11 +335,10 @@ def viewport_set_active_combined(
         return None
 
     if bool(combined):
-        # Combined: zero spacing
+
         target_spacing = 0.0
     else:
-        # Separated: keep current spacing
-        # Don't enforce minimum - let natural spacing constraints handle it
+
         target_spacing = float(model.spacing_relative)
 
     result = scene_state.set_active_magnifier_spacing(target_spacing)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from shared.rendering import (
     FeatureLayoutRequirement,
     NormalizedBounds,
@@ -16,7 +18,7 @@ def _clamp_capture_position(
     height: int,
     capture_size_relative: float,
 ) -> tuple[float, float]:
-    capture_ref = float(min(width, height))
+    capture_ref = math.sqrt(float(width) * float(height))
     radius_x = ((capture_size_relative * capture_ref) / 2.0) / max(1.0, float(width))
     radius_y = ((capture_size_relative * capture_ref) / 2.0) / max(1.0, float(height))
     return (
@@ -61,7 +63,7 @@ def compute_magnifier_union_bbox(
     diff_mode = str(getattr(view, "diff_mode", "off") or "off")
     diff_enabled = diff_mode in ("highlight", "grayscale", "ssim", "edges")
     combine_threshold = MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
-    target_max = float(max(drawing_width, drawing_height))
+    target_max = math.sqrt(float(drawing_width) * float(drawing_height))
     bounds: tuple[float, float, float, float] | None = None
 
     for model in visible_models:

@@ -147,6 +147,7 @@ class DialogManager:
         preview_image: object | None,
         suggested_filename: str = "",
         on_set_favorite_dir=None,
+        native_size: tuple[int, int] | None = None,
     ):
         from plugins.export.dialog import ExportDialog
 
@@ -157,5 +158,6 @@ class DialogManager:
             preview_image=preview_image,
             suggested_filename=suggested_filename,
             on_set_favorite_dir=on_set_favorite_dir,
+            native_size=native_size,
         )
         return dialog.exec(), dialog.get_export_options()

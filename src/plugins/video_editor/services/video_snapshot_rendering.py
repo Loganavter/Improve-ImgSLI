@@ -6,14 +6,16 @@ from dataclasses import dataclass
 
 from PIL import Image
 
+from core.tracing import Tracer
 from shared.image_processing.prescale import prescale_pair
+from shared.image_processing.resize import resample_image
 
 _vrlog = logging.getLogger("ImproveImgSLI.video_render")
 from plugins.export.services.snapshot_render_plan_builder import SnapshotRenderPlanBuilder
 from ui.canvas_presentation.models import CanvasTarget
 from ui.canvas_presentation.layout import compute_content_layout
 from ui.canvas_presentation.plan_builder import CanvasGeometry
-from shared.rendering import get_effective_main_interpolation_method
+from shared.rendering import get_effective_export_interpolation_method
 from plugins.video_editor.services.video_export_models import RenderedFrame, VideoRenderRequest
 from plugins.video_editor.services.video_export_models import GlobalCanvasBounds
 from ui.canvas_presentation import build_render_frame_presentation, build_snapshot_store_presentation
@@ -55,6 +57,11 @@ class SnapshotFrameRenderer:
         return data
 
     @staticmethod
+    def _trace(kind: str, summary: str, payload: dict) -> None:
+        if Tracer.enabled():
+            Tracer.instance().record(kind, summary, payload)
+
+    @staticmethod
     def _normalized_prescale_target(width: int, height: int) -> tuple[int, int]:
         max_dim = max(int(width), int(height))
         if max_dim <= 640:
@@ -67,6 +74,33 @@ class SnapshotFrameRenderer:
         normalized_width = max(step, ((max(1, int(width)) + step - 1) // step) * step)
         normalized_height = max(step, ((max(1, int(height)) + step - 1) // step) * step)
         return normalized_width, normalized_height
+
+    @staticmethod
+    def _resolve_prescale_target(
+        request: VideoRenderRequest,
+    ) -> tuple[int, int]:
+        target_w = max(1, int(request.target_surface.width))
+        target_h = max(1, int(request.target_surface.height))
+        bounds = request.global_bounds
+        if bounds is None:
+            return target_w, target_h
+
+        span_x = max(
+            1.0,
+            float(getattr(bounds, "canvas_x_max", 1.0))
+            - float(getattr(bounds, "canvas_x_min", 0.0)),
+        )
+        span_y = max(
+            1.0,
+            float(getattr(bounds, "canvas_y_max", 1.0))
+            - float(getattr(bounds, "canvas_y_min", 0.0)),
+        )
+        required_base_w = max(1, int(round(float(target_w) / span_x)))
+        required_base_h = max(1, int(round(float(target_h) / span_y)))
+        return (
+            max(target_w, required_base_w),
+            max(target_h, required_base_h),
+        )
 
     def render(self, snap, request: VideoRenderRequest) -> RenderedFrame:
         if self._gpu_export_service is None:
@@ -110,6 +144,7 @@ class SnapshotFrameRenderer:
         source: Image.Image,
         content_size: tuple[int, int],
         fill_rgba: tuple[int, int, int, int] | None = None,
+        resize_method: str = "LANCZOS",
     ) -> Image.Image:
         cw, ch = content_size
         sw, sh = source.width, source.height
@@ -121,7 +156,12 @@ class SnapshotFrameRenderer:
             fit_r = min(cw / max(1, sw), ch / max(1, sh))
             sw = max(1, int(sw * fit_r))
             sh = max(1, int(sh * fit_r))
-            source = source.resize((sw, sh), Image.Resampling.BILINEAR)
+            source = resample_image(
+                source,
+                (sw, sh),
+                resize_method,
+                is_interactive_render=False,
+            )
             did_resize = True
         canvas = Image.new("RGBA", (cw, ch), fill_rgba or (0, 0, 0, 255))
         ox = (cw - sw) // 2
@@ -189,7 +229,7 @@ class SnapshotFrameRenderer:
         store = Store()
         store.viewport = snap.viewport_state.clone()
         store.settings = snap.settings_state.freeze_for_export()
-        store.viewport.overlay_clip_rect = None
+        store.runtime_cache.overlay_clip_rect = None
 
         normalize_snapshot = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
         if normalize_snapshot is not None and not (fit_content and scaled_global_bounds is not None):
@@ -249,7 +289,7 @@ class SnapshotFrameRenderer:
         allow_feature_layout_fallback: bool = False,
     ) -> PreparedCanvasFrame:
         debug = {} if debug is None else debug
-        resize_method = get_effective_main_interpolation_method(snap.viewport_state)
+        resize_method = get_effective_export_interpolation_method(snap.viewport_state)
 
         image_prep_key = self._image_prep_cache_key(
             img1, img2, request, scaled_global_bounds, resize_method,
@@ -348,6 +388,27 @@ class SnapshotFrameRenderer:
         _src1_sz = (presentation.source_image1.width, presentation.source_image1.height) if presentation.source_image1 else None
         _src2_sz = (presentation.source_image2.width, presentation.source_image2.height) if presentation.source_image2 else None
         _disp1_sz = (presentation.display_image1.width, presentation.display_image1.height) if presentation.display_image1 else None
+        self._trace(
+            "video.render.layout",
+            f"layout target={target_size[0]}x{target_size[1]} content={content_size[0]}x{content_size[1]}",
+            {
+                "target_surface": (
+                    int(request.target_surface.width),
+                    int(request.target_surface.height),
+                ),
+                "source1_size": _src1_sz,
+                "source2_size": _src2_sz,
+                "display1_size": _disp1_sz,
+                "target_size": tuple(int(v) for v in target_size),
+                "content_size": tuple(int(v) for v in content_size),
+                "pad_left": int(pad_left),
+                "pad_top": int(pad_top),
+                "fit_content": bool(request.fit_content),
+                "global_bounds": repr(request.global_bounds),
+                "scaled_global_bounds": repr(scaled_global_bounds),
+                "resize_method": resize_method,
+            },
+        )
         _vrlog.info(
             "FRAME_LAYOUT source1=%s source2=%s display1=%s "
             "target_size=%s content_size=%s pad_lt=(%s,%s) "
@@ -372,10 +433,16 @@ class SnapshotFrameRenderer:
             virtual_layout=frame.virtual_layout,
         )
         scaled_source1 = self._fit_source_to_content(
-            presentation.source_image1, content_size, request.target_surface.fill_rgba,
+            presentation.source_image1,
+            content_size,
+            request.target_surface.fill_rgba,
+            resize_method,
         )
         scaled_source2 = self._fit_source_to_content(
-            presentation.source_image2, content_size, request.target_surface.fill_rgba,
+            presentation.source_image2,
+            content_size,
+            request.target_surface.fill_rgba,
+            resize_method,
         )
 
         self._image_prep_cache = (image_prep_key, {
@@ -419,6 +486,30 @@ class SnapshotFrameRenderer:
             allow_feature_layout_fallback=allow_feature_layout_fallback,
             scene_images_cache=self._scene_images_cache,
         )
+        self._trace(
+            "video.render.plan",
+            f"plan canvas={getattr(plan, 'canvas_w', 0)}x{getattr(plan, 'canvas_h', 0)}",
+            {
+                "plan_canvas": (
+                    int(getattr(plan, "canvas_w", 0) or 0),
+                    int(getattr(plan, "canvas_h", 0) or 0),
+                ),
+                "plan_image1_size": getattr(getattr(plan, "image1", None), "size", None),
+                "plan_image2_size": getattr(getattr(plan, "image2", None), "size", None),
+                "display_cache_key": repr(getattr(plan, "display_cache_key", None)),
+                "gl_zoom_interpolation": getattr(
+                    getattr(plan, "gl_scene", None),
+                    "zoom_interpolation_method",
+                    None,
+                ),
+                "gl_diff_mode": getattr(getattr(plan, "gl_scene", None), "diff_mode_int", None),
+                "overlay_clip_rect": getattr(
+                    getattr(plan, "gl_scene", None),
+                    "overlay_clip_rect",
+                    None,
+                ),
+            },
+        )
         debug["plan_build_ms"] = (time.perf_counter() - layout_started) * 1000.0
         debug["frame_canvas_width"] = float(target_size[0])
         debug["frame_canvas_height"] = float(target_size[1])
@@ -443,11 +534,21 @@ class SnapshotFrameRenderer:
 
     def prepare_canvas_frame(self, snap, request: VideoRenderRequest) -> PreparedCanvasFrame:
         debug = {}
-        prescale_target = (
-            self._normalized_prescale_target(
-            request.target_surface.width,
-            request.target_surface.height,
-        )
+        resize_method = get_effective_export_interpolation_method(snap.viewport_state)
+        prescale_target = self._resolve_prescale_target(request)
+        self._trace(
+            "video.render.prescale.begin",
+            f"prescale target={prescale_target[0]}x{prescale_target[1]}",
+            {
+                "target_surface": (
+                    int(request.target_surface.width),
+                    int(request.target_surface.height),
+                ),
+                "prescale_target": tuple(int(v) for v in prescale_target),
+                "resize_method": resize_method,
+                "fit_content": bool(request.fit_content),
+                "global_bounds": repr(request.global_bounds),
+            },
         )
         cache_key = (
             snap.image1_path, snap.image2_path,
@@ -457,20 +558,52 @@ class SnapshotFrameRenderer:
             img1, img2 = self._prescaled_cache[1], self._prescaled_cache[2]
             debug["load_ms"] = 0.0
             debug["prescale_ms"] = 0.0
+            self._trace(
+                "video.render.prescale.cache",
+                f"prescale cache result={getattr(img1, 'size', None)}",
+                {
+                    "result_sizes": (
+                        getattr(img1, "size", None),
+                        getattr(img2, "size", None),
+                    ),
+                    "prescale_target": tuple(int(v) for v in prescale_target),
+                    "resize_method": resize_method,
+                },
+            )
         else:
             started = time.perf_counter()
             img1, img2 = self._resolve_images(snap, request)
             debug["load_ms"] = (time.perf_counter() - started) * 1000.0
 
             prescale_started = time.perf_counter()
+            original_sizes = (
+                getattr(img1, "size", None),
+                getattr(img2, "size", None),
+            )
             img1, img2 = prescale_pair(
                 img1,
                 img2,
                 prescale_target[0],
                 prescale_target[1],
+                resize_method,
             )
             debug["prescale_ms"] = (time.perf_counter() - prescale_started) * 1000.0
             self._prescaled_cache = (cache_key, img1, img2)
+            self._trace(
+                "video.render.prescale.end",
+                f"prescaled {getattr(img1, 'size', None)} / {getattr(img2, 'size', None)}",
+                {
+                    "cache": "miss",
+                    "original_sizes": original_sizes,
+                    "result_sizes": (
+                        getattr(img1, "size", None),
+                        getattr(img2, "size", None),
+                    ),
+                    "prescale_ms": debug["prescale_ms"],
+                    "prescale_target": tuple(int(v) for v in prescale_target),
+                    "resize_method": resize_method,
+                },
+            )
         debug["prescale_target_width"] = float(prescale_target[0])
         debug["prescale_target_height"] = float(prescale_target[1])
 
@@ -479,6 +612,10 @@ class SnapshotFrameRenderer:
             scaled_global_bounds = self._scale_global_bounds(
                 request.global_bounds,
                 prescale_target,
+                output_size=(
+                    request.target_surface.width,
+                    request.target_surface.height,
+                ),
             )
             if scaled_global_bounds is not request.global_bounds:
                 debug["scaled_bounds_base_width"] = float(scaled_global_bounds.base_width)
@@ -607,11 +744,23 @@ class SnapshotFrameRenderer:
     def _scale_global_bounds(
         bounds: GlobalCanvasBounds,
         prescale_target: tuple[int, int],
+        *,
+        output_size: tuple[int, int] | None = None,
     ) -> GlobalCanvasBounds:
         source_w = max(1, int(bounds.base_width))
         source_h = max(1, int(bounds.base_height))
         target_w, target_h = prescale_target
         ratio = min(float(target_w) / float(source_w), float(target_h) / float(source_h))
+        if output_size is not None:
+            out_w, out_h = output_size
+            span_x = max(1.0, float(bounds.canvas_x_max) - float(bounds.canvas_x_min))
+            span_y = max(1.0, float(bounds.canvas_y_max) - float(bounds.canvas_y_min))
+            min_ratio = min(
+                1.0,
+                float(max(1, out_w)) / (float(source_w) * span_x),
+                float(max(1, out_h)) / (float(source_h) * span_y),
+            )
+            ratio = max(ratio, min_ratio)
         _vrlog.info(
             "SCALE_BOUNDS base=%sx%s prescale_target=%sx%s ratio=%.4f "
             "pad=(%s,%s,%s,%s) canvas_bounds=(%.3f,%.3f,%.3f,%.3f)",

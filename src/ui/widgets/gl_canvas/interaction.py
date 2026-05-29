@@ -426,7 +426,7 @@ def set_overlay_coords(
     widget._request_update()
 
 def set_zoom(widget, zoom: float):
-    new_zoom = max(1.0, min(zoom, 50.0))
+    new_zoom = max(0.1, min(zoom, 50.0))
     if abs(new_zoom - get_zoom_level(widget)) <= 1e-6:
         return
     update_split_for_zoom(
@@ -453,9 +453,13 @@ def set_pan(widget, x: float, y: float):
 
 def reset_view(widget):
     zoom_changed = abs(get_zoom_level(widget) - 1.0) > 1e-6
+    pan_changed = (
+        abs(get_pan_offset_x(widget)) > 1e-9
+        or abs(get_pan_offset_y(widget)) > 1e-9
+    )
     set_zoom_level(widget, 1.0)
     set_pan_offsets(widget, 0.0, 0.0)
-    if zoom_changed:
+    if zoom_changed or pan_changed:
         widget.zoomChanged.emit(get_zoom_level(widget))
     widget.update()
 
@@ -516,7 +520,7 @@ def handle_mouse_release_event(widget, event):
     widget.mouseReleased.emit(event)
 
 def handle_mouse_move_event(widget, event):
-    if getattr(widget, "_pan_dragging", False) and get_zoom_level(widget) > 1.0:
+    if getattr(widget, "_pan_dragging", False):
         result = compute_pan_drag_transform(
             PanDragRequest(
                 widget_width=widget.width(),
@@ -535,6 +539,7 @@ def handle_mouse_move_event(widget, event):
             update_split_for_zoom(widget, get_zoom_level(widget), new_pan_x, new_pan_y)
             set_pan_offsets(widget, new_pan_x, new_pan_y)
             widget._pan_last_pos = event.position()
+            widget.zoomChanged.emit(get_zoom_level(widget))
             widget.update()
         event.accept()
         return

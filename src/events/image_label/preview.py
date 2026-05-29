@@ -6,11 +6,21 @@ from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_
 
 logger = logging.getLogger("ImproveImgSLI")
 
+# Aliases in the ``preview.*`` namespace are feature-neutral: any feature
+# can implement them. The magnifier owns the only implementation today.
+
 class OverlayPreviewController:
+    """Orchestrates the shift-hold preview lifecycle.
+
+    The controller is feature-neutral: it calls ``preview.*`` capability
+    aliases and treats the snapshot returned by ``preview.snapshot`` as an
+    opaque dict, restoring it later via ``preview.restore``.
+    """
+
     def __init__(self, handler):
         self.handler = handler
         self._quick_preview_active = False
-        self._quick_preview_prev_visibility = (True, True)
+        self._snapshot: dict | None = None
 
     def log_preview_debug(self, message: str, **extra) -> None:
         pass
@@ -20,45 +30,34 @@ class OverlayPreviewController:
         return self._quick_preview_active
 
     def begin(self) -> None:
-        command = get_canvas_feature_command_by_alias("overlay.preview_begin")
+        command = get_canvas_feature_command_by_alias("preview.snapshot")
         if command is None:
             return
         result = command(self.handler.store)
         if result is None:
             return
         self._quick_preview_active = True
-        self._quick_preview_prev_visibility = (
-            result["prev_left"],
-            result["prev_right"],
-        )
-        self.log_preview_debug(
-            "begin_shift_preview",
-            prev_left=result["prev_left"],
-            prev_right=result["prev_right"],
-        )
+        self._snapshot = dict(result)
+        self.log_preview_debug("begin_shift_preview")
 
     def restore(self) -> None:
         if not self._quick_preview_active:
             return
 
-        prev_left, prev_right = self._quick_preview_prev_visibility
+        snapshot = self._snapshot or {}
         self._quick_preview_active = False
-        self._quick_preview_prev_visibility = (True, True)
+        self._snapshot = None
 
-        command = get_canvas_feature_command_by_alias("overlay.preview_restore")
+        command = get_canvas_feature_command_by_alias("preview.restore")
         if command is None:
             return
-        changed = command(self.handler.store, prev_left=prev_left, prev_right=prev_right)
+        changed = command(self.handler.store, **snapshot)
         if changed:
-            self.log_preview_debug(
-                "restore_shift_preview",
-                left=prev_left,
-                right=prev_right,
-            )
+            self.log_preview_debug("restore_shift_preview")
             self._notify_state_change()
 
     def switch_side(self, side: str) -> None:
-        command = get_canvas_feature_command_by_alias("overlay.preview_set_side")
+        command = get_canvas_feature_command_by_alias("preview.set_side")
         if command is not None:
             command(self.handler.store, side=side)
         self.log_preview_debug("shift_preview_switched", side=side)
@@ -66,7 +65,7 @@ class OverlayPreviewController:
 
     def start_side_preview(self, side: str) -> None:
         self.begin()
-        command = get_canvas_feature_command_by_alias("overlay.preview_set_side")
+        command = get_canvas_feature_command_by_alias("preview.set_side")
         if command is not None:
             command(self.handler.store, side=side)
         self.log_preview_debug("shift_preview_started", side=side)
@@ -74,7 +73,7 @@ class OverlayPreviewController:
 
     def _notify_state_change(self) -> None:
         self.handler.store.emit_state_change()
-        emit_cmd = get_canvas_feature_command_by_alias("overlay.emit_changed")
+        emit_cmd = get_canvas_feature_command_by_alias("preview.emit_changed")
         if emit_cmd is not None:
             emit_cmd(self.handler.store, event_bus=self.handler.event_bus)
         if self.handler.main_controller:

@@ -70,13 +70,6 @@ def magnifier_toggle_handler(presenter, checked: bool) -> None:
     store = getattr(presenter, "store", None)
     if store is not None:
         execute_feature_command(store, "magnifier", "toggle_enabled", checked)
-        return
-    event_bus = getattr(presenter, "event_bus", None)
-    if event_bus is not None:
-        # Fallback for legacy event bus
-        from plugins.viewport.events import ViewportToggleMagnifierEvent
-        event_bus.emit(ViewportToggleMagnifierEvent(checked))
-        return
 
 def magnifier_toggle_right_click_handler(presenter) -> None:
     from ..store import active_or_default_divider_visible
@@ -95,13 +88,6 @@ def magnifier_orientation_toggle_handler(presenter, checked: bool) -> None:
     store = getattr(presenter, "store", None)
     if store is not None:
         execute_feature_command(store, "magnifier", "set_active_orientation", checked)
-        return
-    event_bus = getattr(presenter, "event_bus", None)
-    if event_bus is not None:
-        # Fallback for legacy event bus
-        from plugins.viewport.events import ViewportToggleMagnifierOrientationEvent
-        event_bus.emit(ViewportToggleMagnifierOrientationEvent(checked))
-        return
 
 def magnifier_orientation_right_click_handler(presenter) -> None:
     current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
@@ -149,13 +135,6 @@ def magnifier_freeze_handler(presenter, checked: bool) -> None:
     store = getattr(presenter, "store", None)
     if store is not None:
         execute_feature_command(store, "magnifier", "set_active_freeze", checked)
-        return
-    event_bus = getattr(presenter, "event_bus", None)
-    if event_bus is not None:
-        # Fallback for legacy event bus
-        from plugins.viewport.events import ViewportToggleFreezeMagnifierEvent
-        event_bus.emit(ViewportToggleFreezeMagnifierEvent(checked))
-        return
 
 def magnifier_size_handler(presenter, value: int) -> None:
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command
@@ -163,21 +142,13 @@ def magnifier_size_handler(presenter, value: int) -> None:
     store = getattr(presenter, "store", None)
     if store is not None:
         execute_feature_command(store, "magnifier", "set_active_size", value / 1000.0)
-        return
-    event_bus = getattr(presenter, "event_bus", None)
-    if event_bus is not None:
-        # Fallback for legacy event bus
-        from plugins.viewport.events import ViewportUpdateMagnifierSizeRelativeEvent
-        event_bus.emit(ViewportUpdateMagnifierSizeRelativeEvent(value / 1000.0))
-        return
 
 def magnifier_size_pressed_handler(presenter) -> None:
-    # Slider pressed event - can be used for deferred rendering optimization if needed
+
     pass
 
 def magnifier_size_released_handler(presenter) -> None:
-    # Slider released event - finalize magnifier size state
-    # The feature_state_api already handles state updates via execute_feature_command
+
     pass
 
 def magnifier_instances_add_handler(presenter) -> None:
@@ -204,12 +175,6 @@ def do_toggle_magnifier_orientation(presenter) -> None:
     store = getattr(presenter, "store", None)
     if store is not None:
         execute_feature_command(store, "magnifier", "set_active_orientation", new_value)
-        return
-    event_bus = getattr(presenter, "event_bus", None)
-    if event_bus is not None:
-        # Fallback for legacy event bus
-        from plugins.viewport.events import ViewportToggleMagnifierOrientationEvent
-        event_bus.emit(ViewportToggleMagnifierOrientationEvent(new_value))
 
 __all__ = [
     "do_toggle_magnifier_orientation",

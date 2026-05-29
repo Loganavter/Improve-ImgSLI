@@ -5,6 +5,7 @@ from domain.workspace import WorkspaceState
 from core.store_document import DocumentModel, ImageItem
 from core.store_settings import SettingsState, WorkerStoreSnapshot
 from core.store_operations import StoreOperationsMixin
+from core.store_runtime_cache import ViewportRuntimeCache
 from core.store_viewport import (
     GeometryState,
     ImageSessionState,
@@ -43,6 +44,7 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         self.document = DocumentModel()
         self.viewport = ViewportState()
         self.settings = SettingsState()
+        self.runtime_cache = ViewportRuntimeCache()
         self.recorder = None
         self._dispatcher = None
         self.create_workspace_session(activate=True)

@@ -88,15 +88,30 @@ def apply_plan_runtime_overlays(canvas, plan: CanvasRenderPlan) -> None:
     state._inner_content_rect_px = inner_rect
     state._inner_split_position = inner_split
     state._content_sr = _compute_sr(canvas, plan)
+    # Re-apply the clip policy after letterbox geometry: update_letterbox_geometry
+    # unconditionally resets state._clip_overlays_to_content_rect, so the flag set
+    # in _setup_store_bindings (kept on the canvas for scene rebuilds) must be
+    # mirrored back onto the runtime state that the GL passes actually read.
+    state._clip_overlays_to_content_rect = bool(
+        getattr(canvas, "_clip_overlays_to_content_rect", False)
+    )
 
     apply_canvas_feature_plan_runtime_overlays(canvas, plan)
 
 def _sync_geometry_state(canvas, store) -> None:
-    """Update store.viewport.geometry_state from the canvas letterbox rect."""
-    content_rect = canvas.runtime_state._content_rect_px
-    if not content_rect:
+    """Update store.viewport.geometry_state from the canvas content rect.
+
+    Prefers ``_inner_content_rect_px`` over ``_content_rect_px`` when set —
+    the *inner* rect is the actual image-content area inside a padded
+    virtual canvas (uncrop / fit-content mode). Without this preference,
+    overlay positions in uncrop mode use the full virtual canvas as the
+    reference and end up shifted into the padded area.
+    """
+    state = canvas.runtime_state
+    rect = getattr(state, "_inner_content_rect_px", None) or state._content_rect_px
+    if not rect:
         return
-    cx, cy, cw, ch = content_rect
+    cx, cy, cw, ch = rect
     vp = getattr(store, "viewport", None)
     if vp is not None and cw > 0 and ch > 0:
         vp.geometry_state.pixmap_width = cw
@@ -147,10 +162,14 @@ def _apply_overlays(canvas, plan, *, store) -> None:
         canvas.set_guides_params(plan.guides_enabled, plan.guides_color, plan.guides_thickness)
         canvas.set_capture_color(plan.capture_color)
 
+    # Compute ``_inner_content_rect_px`` BEFORE syncing geometry — the sync
+    # prefers the inner rect when present so feature scene-graph builders
+    # (which read ``geometry_state.pixmap_width/height``) operate in
+    # image-content coordinates instead of full virtual-canvas coordinates.
+    apply_plan_runtime_overlays(canvas, plan)
+
     if store is not None:
         _sync_geometry_state(canvas, store)
-
-    apply_plan_runtime_overlays(canvas, plan)
 
     if store is not None:
         apply_canvas_feature_live_runtime_overlays(store, canvas)
@@ -229,6 +248,9 @@ def _apply_plan_full(
         if plan.preserve_zoom:
             set_zoom_level(canvas, zoom_level)
             set_pan_offsets(canvas, pan_x, pan_y)
+            zoom_signal = getattr(canvas, "zoomChanged", None)
+            if zoom_signal is not None and abs(zoom_level - 1.0) > 1e-6:
+                zoom_signal.emit(zoom_level)
         else:
             set_zoom_level(canvas, 1.0)
             set_pan_offsets(canvas, 0.0, 0.0)

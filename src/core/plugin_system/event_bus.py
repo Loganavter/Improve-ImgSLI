@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import weakref
 from collections import defaultdict
 from typing import Any, Callable, Type, TypeVar, Union
@@ -10,6 +11,16 @@ from core.events import Event
 logger = logging.getLogger("ImproveImgSLI")
 
 T = TypeVar("T", bound=Event)
+
+MAX_EMIT_DEPTH = 10
+
+class EventBusDepthExceeded(RuntimeError):
+    """Raised when EventBus emissions nest deeper than ``MAX_EMIT_DEPTH``.
+
+    A circular event chain (a subscriber re-publishing an event that leads back
+    to itself) would otherwise recurse until a ``RecursionError``. This guard
+    stops it early with the offending event chain in the message.
+    """
 
 class _StrongRefWrapper:
     def __init__(self, callback: Callable[[Any], None]):
@@ -25,6 +36,7 @@ class EventBus:
         self._subscribers: dict[
             type[Event], list[Union[weakref.ref, weakref.WeakMethod, _StrongRefWrapper]]
         ] = defaultdict(list)
+        self._emit_state = threading.local()
 
     def subscribe(self, event_type: Type[T], callback: Callable[[T], None]) -> None:
         weak_cb = None
@@ -90,21 +102,38 @@ class EventBus:
         if event_type not in self._subscribers:
             return
 
-        listeners = self._subscribers[event_type]
-        alive_listeners = []
+        chain = getattr(self._emit_state, "chain", None)
+        if chain is None:
+            chain = self._emit_state.chain = []
 
-        for weak_cb in listeners:
-            cb = weak_cb()
-            if cb is not None:
-                try:
-                    cb(event)
-                    alive_listeners.append(weak_cb)
-                except Exception as e:
-                    logger.error(
-                        f"EventBus error in callback for event '{event_type.__name__}': {e}",
-                        exc_info=True,
-                    )
+        if len(chain) >= MAX_EMIT_DEPTH:
+            trace = " -> ".join([*chain, event_type.__name__])
+            raise EventBusDepthExceeded(
+                f"EventBus emission exceeded max depth {MAX_EMIT_DEPTH}; "
+                f"likely a circular event chain: {trace}"
+            )
 
-                    alive_listeners.append(weak_cb)
+        chain.append(event_type.__name__)
+        try:
+            listeners = self._subscribers[event_type]
+            alive_listeners = []
 
-        self._subscribers[event_type] = alive_listeners
+            for weak_cb in listeners:
+                cb = weak_cb()
+                if cb is not None:
+                    try:
+                        cb(event)
+                        alive_listeners.append(weak_cb)
+                    except EventBusDepthExceeded:
+                        raise
+                    except Exception as e:
+                        logger.error(
+                            f"EventBus error in callback for event '{event_type.__name__}': {e}",
+                            exc_info=True,
+                        )
+
+                        alive_listeners.append(weak_cb)
+
+            self._subscribers[event_type] = alive_listeners
+        finally:
+            chain.pop()

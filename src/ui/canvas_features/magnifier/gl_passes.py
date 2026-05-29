@@ -591,7 +591,7 @@ class MagnifierPass(CanvasGLRenderPass):
         gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), float(scaled_radius))
         gl.glUniform1f(
             gl.glGetUniformLocation(pid, "borderWidth_px"),
-            max(1.0, float(border_width) * float(ctx.zoom_level or 1.0)),
+            float(border_width) * float(ctx.zoom_level or 1.0),
         )
         gl.glUniform4f(
             gl.glGetUniformLocation(pid, "color"),
@@ -876,115 +876,11 @@ void main() {
     float dist = distance(frag_px, center_px);
     float aa = 1.15;
     float outer_alpha = 1.0 - smoothstep(max(0.0, radius_px - aa), radius_px + aa, dist);
-    float inner_radius = max(0.0, radius_px - max(1.0, borderWidth_px));
+    float inner_radius = max(0.0, radius_px - borderWidth_px);
     float inner_alpha = smoothstep(max(0.0, inner_radius - aa), inner_radius + aa, dist);
     float alpha = outer_alpha * inner_alpha;
     if (alpha <= 0.01) discard;
     FragColor = vec4(color.rgb, color.a * alpha);
-}
-"""
-
-class MagnifierBorderPass(CanvasGLRenderPass):
-    """Draw magnifier frames separately from the magnified content (pure GL)."""
-
-    stack_role = CanvasStackRole.IMAGE_OVERLAY_FRAME
-    visibility = SceneVisibility.ALL
-
-    def initialize(self, widget) -> None:
-        is_gles = bool(widget.context().isOpenGLES())
-        vert_src = f"{_prolog(is_gles)}\n{_ARC_VERT}"
-        frag_src = f"{_prolog(is_gles, fragment=True)}\n{_BORDER_DISK_FRAG}"
-        self._shader = _compile(widget, vert_src, frag_src, "MagnifierBorderPass")
-
-    def should_paint(self, ctx) -> bool:
-        if is_single_image_preview_scene(ctx):
-            return False
-        overlay = getattr(ctx, "feature_overlay", None)
-        if overlay is None or not bool(getattr(overlay, "render_enabled", False)):
-            return False
-        return bool(getattr(overlay, "quads", ()))
-
-    def paint(self, widget, ctx) -> None:
-        if not self._shader or not self._shader.programId():
-            return
-        overlay = getattr(ctx, "feature_overlay", None)
-        if overlay is None:
-            return
-
-        quads = overlay.quads
-        if not quads:
-            return
-
-        scissor_enabled = begin_content_scissor(
-            widget,
-            force=bool(getattr(overlay, "clip_to_content", False)),
-        )
-
-        pid = self._shader.programId()
-        self._shader.bind()
-        widget.vao.bind()
-        gl.glUniform2f(gl.glGetUniformLocation(pid, "resolution"), float(ctx.width), float(ctx.height))
-
-        for i, quad in enumerate(quads):
-            if not quad:
-                continue
-            gpu_slot = (
-                overlay.gpu_slots[i]
-                if bool(overlay.gpu_active) and i < len(overlay.gpu_slots)
-                else None
-            )
-            border_color = (
-                gpu_slot.get("border_color", overlay.border_color)
-                if gpu_slot else overlay.border_color
-            )
-            border_width = (
-                float(gpu_slot.get("border_width", overlay.border_width))
-                if gpu_slot else float(overlay.border_width)
-            )
-            if border_width <= 0.0:
-                continue
-            x0, y0, x1, y1, _cx_px, _cy_px, r_px = quad
-            cx, cy = widget_px_to_screen_px(widget, _cx_px, _cy_px)
-            draw_color = _ensure_qcolor(border_color)
-            gl.glUniform2f(gl.glGetUniformLocation(pid, "center_px"), float(cx), float(cy))
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), float(r_px))
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "borderWidth_px"), max(1.0, border_width))
-            gl.glUniform4f(
-                gl.glGetUniformLocation(pid, "color"),
-                draw_color.redF(), draw_color.greenF(),
-                draw_color.blueF(), 1.0,
-            )
-            gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-
-        widget.vao.release()
-        self._shader.release()
-        end_content_scissor(widget, scissor_enabled)
-
-    def cleanup(self, widget) -> None:
-        self._shader = None
-
-_DASHED_RING_FRAG = """
-in vec2 TexCoord;
-out vec4 FragColor;
-uniform vec2 resolution;
-uniform vec2 center_px;
-uniform float radius_px;
-uniform float lineWidth_px;
-uniform float dashCount;
-uniform vec4 color;
-void main() {
-    vec2 frag_px = TexCoord * resolution;
-    vec2 delta = frag_px - center_px;
-    float dist = length(delta);
-    float half_w = max(0.5, lineWidth_px * 0.5);
-    float aa = 1.15;
-    float ring_delta = abs(dist - radius_px);
-    float ring = 1.0 - smoothstep(max(0.0, half_w - aa), half_w + aa, ring_delta);
-    if (ring <= 0.01) discard;
-    float angle = atan(delta.y, delta.x);
-    float dash = step(0.0, sin(angle * dashCount));
-    if (dash < 0.5) discard;
-    FragColor = vec4(color.rgb, color.a * ring);
 }
 """
 
@@ -1021,7 +917,7 @@ class HiddenSelectionPass(CanvasGLRenderPass):
     def initialize(self, widget) -> None:
         is_gles = bool(widget.context().isOpenGLES())
         vert_src = f"{_prolog(is_gles)}\n{_ARC_VERT}"
-        frag_src = f"{_prolog(is_gles, fragment=True)}\n{_DASHED_RING_FRAG}"
+        frag_src = f"{_prolog(is_gles, fragment=True)}\n{_ARC_FRAG}"
         self._shader = _compile(widget, vert_src, frag_src, "HiddenSelectionPass")
 
     def should_paint(self, ctx) -> bool:
@@ -1060,7 +956,8 @@ class HiddenSelectionPass(CanvasGLRenderPass):
             gl.glUniform2f(gl.glGetUniformLocation(pid, "center_px"), float(cx), float(cy))
             gl.glUniform1f(gl.glGetUniformLocation(pid, "radius_px"), float(scaled_radius))
             gl.glUniform1f(gl.glGetUniformLocation(pid, "lineWidth_px"), stroke_px)
-            gl.glUniform1f(gl.glGetUniformLocation(pid, "dashCount"), 12.0)
+            gl.glUniform1f(gl.glGetUniformLocation(pid, "startAngleDeg"), 0.0)
+            gl.glUniform1f(gl.glGetUniformLocation(pid, "spanAngleDeg"), 360.0)
             gl.glUniform4f(
                 gl.glGetUniformLocation(pid, "color"),
                 c.redF(), c.greenF(), c.blueF(), c.alphaF(),

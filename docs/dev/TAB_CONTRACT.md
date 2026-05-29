@@ -123,6 +123,42 @@ registry.dispose_all()                        # Cleanup
 
 Each tab stores its own translations in `resources/i18n/<lang>/<namespace>.json`. Keys are accessible via `context.tr("key")` or directly through the application's translation system after the namespace is registered.
 
+## Isolation Rule: Do Not Borrow App-Level Keys or Theme Tokens
+
+A tab is a self-contained module. Treat the host application's resource
+namespaces as **private to the host** — they can be renamed, removed, or
+restructured at any major update without warning to tabs.
+
+**Do not, under any circumstances:**
+
+- Reference i18n keys from the main app namespace (e.g. `app.*`, `main.*`,
+  `common.*`, `settings.*`, anything outside your tab's own `<namespace>`).
+  Even if a string looks identical to one in the host — copy it into your
+  own JSON.
+- Read QSS classes, theme colors, design tokens, or icon names from
+  `src/shared_toolkit/` or the host's theming layer. If you need a color
+  or icon, vendor it in `resources/icons/` or define it locally.
+- Import constants, enums, or labels from `src/plugins/settings/`,
+  `src/ui/...`, or any host-side UI module purely to reuse a string or
+  a styling value.
+
+**Why this matters.** The host app evolves on its own schedule:
+translation keys get split, theme tokens get renamed, settings namespaces
+get restructured. Nothing in the build or runtime guarantees that a
+borrowed key still resolves after an upgrade — and the breakage is
+silent (missing label shows the key string; missing color falls back to
+black/transparent). Nobody on the host side will notice that a tab quietly
+broke, because the host's own tests pass.
+
+**The rule of thumb:** if you delete `src/resources/` and `src/shared_toolkit/`
+entirely, your tab must still render its UI correctly (modulo the host
+chrome around it). Everything visual or textual that your tab needs lives
+under `src/tabs/<your_tab>/resources/`.
+
+This isolation is part of the tab contract and is enforced by
+`tests/contracts/test_tabs.py`, `tests/contracts/test_tabs_isolation.py` and
+`tests/runtime/test_tabs_lifecycle.py` (see [TESTING.md](TESTING.md) §Каталог).
+
 ## How to Add a New Tab
 
 1. Create a package in `src/tabs/<name>/`.

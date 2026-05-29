@@ -1,5 +1,5 @@
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFontMetrics
+from PyQt6.QtGui import QColor, QFontMetrics, QPainter
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -22,6 +22,8 @@ class ToastNotification(QWidget):
 
         self.setObjectName("ToastNotification")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         self._on_action = None
         self._hide_timer = QTimer(self)
@@ -224,6 +226,13 @@ class ToastNotification(QWidget):
                 self._on_action()
         finally:
             self.hide_and_close()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        painter.end()
+        super().paintEvent(event)
 
     def mousePressEvent(self, event):
         if self.action_button.isVisible() and self.action_button.geometry().contains(

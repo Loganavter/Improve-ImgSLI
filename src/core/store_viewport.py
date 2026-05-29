@@ -224,10 +224,6 @@ class ViewportState:
         "_geometry_state",
         "_viewport_plugin_state",
         "_analysis_plugin_state",
-        "_last_source1_id",
-        "_last_source2_id",
-        "_last_render_params",
-        "_overlay_clip_rect",
     )
 
     def __init__(
@@ -245,10 +241,6 @@ class ViewportState:
         self._geometry_state = geometry_state or GeometryState()
         self._viewport_plugin_state = None
         self._analysis_plugin_state = None
-        self._last_source1_id = 0
-        self._last_source2_id = 0
-        self._last_render_params = None
-        self._overlay_clip_rect = None
 
     @property
     def render_config(self) -> RenderConfig:
@@ -290,14 +282,6 @@ class ViewportState:
     def geometry_state(self, val):
         self._geometry_state = val
 
-    @property
-    def overlay_clip_rect(self):
-        return self._overlay_clip_rect
-
-    @overlay_clip_rect.setter
-    def overlay_clip_rect(self, val):
-        self._overlay_clip_rect = val
-
     def set_viewport_plugin_state(self, state: Any):
         self._viewport_plugin_state = state
         if state is not None:
@@ -322,10 +306,6 @@ class ViewportState:
         )
         new_obj._viewport_plugin_state = self._viewport_plugin_state
         new_obj._analysis_plugin_state = self._analysis_plugin_state
-        new_obj._last_source1_id = self._last_source1_id
-        new_obj._last_source2_id = self._last_source2_id
-        new_obj._last_render_params = self._last_render_params
-        new_obj._overlay_clip_rect = self._overlay_clip_rect
         return new_obj
 
     def clone_visual_state(self):
@@ -333,7 +313,6 @@ class ViewportState:
 
     def freeze_for_export(self):
         frozen = self.clone()
-        frozen.view_state.showing_single_image_mode = 0
         frozen.interaction_state.space_bar_pressed = False
         frozen.interaction_state.pressed_keys = set()
         frozen.interaction_state.is_dragging_split_line = False

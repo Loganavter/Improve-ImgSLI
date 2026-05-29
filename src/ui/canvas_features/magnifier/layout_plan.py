@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 
 from PyQt6.QtCore import QPointF
@@ -30,8 +31,9 @@ CAPTURE_RING_AA_PX = 1.15
 def clamp_capture_position(
     rel_x: float, rel_y: float, width: int, height: int, capture_size: float
 ):
-    radius_x = (capture_size * min(width, height) / 2.0) / max(1.0, float(width))
-    radius_y = (capture_size * min(width, height) / 2.0) / max(1.0, float(height))
+    ref_dim = math.sqrt(float(width) * float(height))
+    radius_x = (capture_size * ref_dim / 2.0) / max(1.0, float(width))
+    radius_y = (capture_size * ref_dim / 2.0) / max(1.0, float(height))
     return (
         max(radius_x, min(rel_x, 1.0 - radius_x)),
         max(radius_y, min(rel_y, 1.0 - radius_y)),
@@ -102,7 +104,7 @@ def build_magnifier_layout(
 
     diff_mode = str(view.diff_mode or "off")
     diff_enabled = diff_mode in ("highlight", "grayscale", "ssim", "edges")
-    target_max = float(max(width, height))
+    target_max = math.sqrt(float(width) * float(height))
     active_id = active_magnifier_id(view) or DEFAULT_MAGNIFIER_ID
     active_model = next(
         (model for model in visible_models if model.id == active_id),
@@ -118,7 +120,11 @@ def build_magnifier_layout(
         or abs(float(content_offset_x)) > 1e-6
         or abs(float(content_offset_y)) > 1e-6
     )
-    canvas_short_edge = float(max(1, min(int(canvas_width), int(canvas_height))))
+    # Stroke thickness is referenced to the image-content short edge, not the
+    # full virtual-canvas short edge. Otherwise uncrop padding grows the
+    # canvas → makes the same model.border_thickness/divider_thickness draw
+    # visually thicker than in the interactive view.
+    canvas_short_edge = float(max(1, min(int(width), int(height))))
     local_scale = max(1e-6, float(render_scale or 1.0))
     divider_thickness_canvas_px = (
         resolve_relative_px(
@@ -150,32 +156,24 @@ def build_magnifier_layout(
             height,
             model.capture_size_relative,
         )
-        capture_ref = float(min(width, height))
+        capture_ref = math.sqrt(float(width) * float(height))
         radius = (model.capture_size_relative * capture_ref) / 2.0
         center_x = float(content_offset_x) + (cap_x * width)
         center_y = float(content_offset_y) + (cap_y * height)
-        if has_virtual_canvas_padding:
-            center_x, center_y, radius = clamp_capture_overlay_geometry(
-                left=0.0,
-                top=0.0,
-                width=float(canvas_width),
-                height=float(canvas_height),
-                center_x=center_x,
-                center_y=center_y,
-                radius=radius,
-                stroke_margin=stroke_margin,
-            )
-        else:
-            center_x, center_y, radius = clamp_capture_overlay_geometry(
-                left=float(content_offset_x),
-                top=float(content_offset_y),
-                width=float(width),
-                height=float(height),
-                center_x=center_x,
-                center_y=center_y,
-                radius=radius,
-                stroke_margin=stroke_margin,
-            )
+        # Always clamp to the image-content rect, not the full virtual canvas.
+        # Clamping to the canvas (including padding) lets the capture rect
+        # extend into the padded area outside the image pair — the user-
+        # visible "capture goes outside the images" bug in uncrop mode.
+        center_x, center_y, radius = clamp_capture_overlay_geometry(
+            left=float(content_offset_x),
+            top=float(content_offset_y),
+            width=float(width),
+            height=float(height),
+            center_x=center_x,
+            center_y=center_y,
+            radius=radius,
+            stroke_margin=stroke_margin,
+        )
         uv_half_w = radius / max(1.0, float(width))
         uv_half_h = radius / max(1.0, float(height))
         return cap_x, cap_y, center_x, center_y, radius, uv_half_w, uv_half_h

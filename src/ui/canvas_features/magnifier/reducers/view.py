@@ -30,13 +30,22 @@ from ..actions import (
 )
 
 from ..models import MagnifierModel
-from ..state import clone_magnifier_widget_state, get_magnifier_widget_state
+from ..state import MagnifierWidgetState
+
+def _read_magnifier_widget_state(view_state: ViewState) -> MagnifierWidgetState:
+    state = (getattr(view_state, "canvas_widget_state", None) or {}).get("magnifier")
+    if isinstance(state, MagnifierWidgetState):
+        return state
+    return MagnifierWidgetState()
+
+def _clone_magnifier_widget_state(view_state: ViewState) -> MagnifierWidgetState:
+    return _read_magnifier_widget_state(view_state).clone()
 
 def _active_magnifier_id(view_state: ViewState) -> str:
-    return get_magnifier_widget_state(view_state).active_id or "default"
+    return _read_magnifier_widget_state(view_state).active_id or "default"
 
 def _ensure_active_magnifier_model(view_state: ViewState):
-    state = clone_magnifier_widget_state(view_state)
+    state = _clone_magnifier_widget_state(view_state)
     magnifiers = state.models
     active_id = _active_magnifier_id(view_state)
     model = magnifiers.get(active_id)
@@ -54,8 +63,8 @@ def _ensure_active_magnifier_model(view_state: ViewState):
 
 def _should_modify_magnifier(view_state: ViewState) -> bool:
     """Check if magnifier should be created/modified based on enabled state."""
-    state = get_magnifier_widget_state(view_state)
-    # Allow modification if magnifier is enabled or models already exist
+    state = _read_magnifier_widget_state(view_state)
+
     return state.enabled or bool(state.models)
 
 def _replace_widget_state(view_state: ViewState, state) -> ViewState:
@@ -64,7 +73,7 @@ def _replace_widget_state(view_state: ViewState, state) -> ViewState:
     return replace(view_state, canvas_widget_state=canvas_widget_state)
 
 def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewState:
-    # Early return for modification actions if magnifier disabled and no models exist
+
     if isinstance(action, (SetMagnifierSizeRelativeAction, SetCaptureSizeRelativeAction,
                           SetMagnifierVisibilityAction, ToggleMagnifierOrientationAction,
                           ToggleFreezeMagnifierAction, SetMagnifierPositionAction,
@@ -72,7 +81,7 @@ def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewSt
                           SetMagnifierSpacingRelativeAction, SetMagnifierOffsetRelativeVisualAction,
                           SetMagnifierSpacingRelativeVisualAction, SetMagnifierLaserEnabledAction)):
         if not _should_modify_magnifier(view_state):
-            # Magnifier disabled and no models exist - don't modify
+
             return view_state
 
     if isinstance(action, SetMagnifierSizeRelativeAction):
@@ -88,7 +97,7 @@ def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewSt
         state.default_capture_size_relative = action.size
         return _replace_widget_state(view_state, state)
     if isinstance(action, ToggleMagnifierAction):
-        state = clone_magnifier_widget_state(view_state)
+        state = _clone_magnifier_widget_state(view_state)
         state.enabled = bool(action.enabled)
         if action.enabled and not state.active_id:
             state.active_id = "default"
@@ -131,7 +140,7 @@ def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewSt
     if isinstance(action, UpdateMagnifierCombinedStateAction):
         return view_state
     if isinstance(action, SetActiveMagnifierIdAction):
-        state = clone_magnifier_widget_state(view_state)
+        state = _clone_magnifier_widget_state(view_state)
         state.active_id = action.magnifier_id
         return _replace_widget_state(view_state, state)
     if isinstance(action, SetMagnifierOffsetRelativeAction):
@@ -155,7 +164,7 @@ def reduce_magnifier_view_state(view_state: ViewState, action: Action) -> ViewSt
         magnifiers[active_id] = model
         return _replace_widget_state(view_state, state)
     if isinstance(action, SetOptimizeMagnifierMovementAction):
-        state = clone_magnifier_widget_state(view_state)
+        state = _clone_magnifier_widget_state(view_state)
         canvas_widget_state = dict(view_state.canvas_widget_state)
         canvas_widget_state["magnifier"] = state
         return replace(

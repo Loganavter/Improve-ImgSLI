@@ -115,21 +115,21 @@ class SetLastSpacingMovementKeyAction(Action):
 @dataclass
 class SetInteractiveOffsetVisualAction(Action):
     """Generic interactive visual state mutation (feature-agnostic)."""
-    offset: tuple[float, float]
+    offset: "Point"
 
     def __init__(self, offset):
         from domain.types import Point
         super().__init__(type=ActionType.SET_INTERACTIVE_OFFSET_VISUAL)
-        # Convert Point to tuple if needed
+
         if isinstance(offset, Point):
-            self.offset = (offset.x, offset.y)
-        elif hasattr(offset, 'x'):
-            self.offset = (offset.x, offset.y)
-        else:
             self.offset = offset
+        elif hasattr(offset, 'x'):
+            self.offset = Point(offset.x, offset.y)
+        else:
+            self.offset = Point(float(offset[0]), float(offset[1]))
 
     def get_payload(self):
-        return {"offset": self.offset}
+        return {"offset": (self.offset.x, self.offset.y)}
 
 @dataclass
 class SetInteractiveSpacingVisualAction(Action):
