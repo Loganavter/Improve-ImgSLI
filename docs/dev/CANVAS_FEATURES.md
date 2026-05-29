@@ -2,6 +2,8 @@
 
 How canvas-related functionality is organized and how to add new features.
 
+**Core idea**: Each feature operates in its own abstraction layer. It doesn't handle zoom, pan, coordinate transforms, raw Qt events, or serialization — the core infrastructure does. See [Feature Isolation Model](./CONTRACTS.md#feature-isolation-model-the-abstraction) in CONTRACTS.md for why this matters.
+
 See also: [Scene Recomposition Plan](./SCENE_RECOMPOSITION_PLAN.md)
 
 ## Quick Start
@@ -72,6 +74,16 @@ src/ui/canvas_features/<name>/
   settings_bindings.py # Settings event integration
   runtime_hooks.py     # Render-scene override and runtime payload helpers
   workers/             # Optional: async compute pipelines (3+ files)
+  resources/
+    i18n/              # Translations: auto-discovered and registered at startup
+      en/
+        {name}.json    # English translations with {name} namespace
+      ru/
+        {name}.json    # Russian, Portuguese, Chinese — same structure
+      pt_BR/
+        {name}.json
+      zh/
+        {name}.json
 ```
 
 ## Auto-Discovery

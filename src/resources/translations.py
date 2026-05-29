@@ -17,7 +17,12 @@ from sli_ui_toolkit.i18n import (
     translation_events,
 )
 
+_manager = TranslationManager()
+
 configure_i18n(i18n_root=Path(resource_path("resources/i18n")))
+
+def add_i18n_root(path: str | Path) -> None:
+    _manager.add_i18n_root(path)
 
 __all__ = [
     "TranslationManager",
@@ -27,4 +32,5 @@ __all__ = [
     "get_current_language",
     "tr",
     "translation_events",
+    "add_i18n_root",
 ]

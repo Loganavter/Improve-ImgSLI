@@ -66,7 +66,6 @@ def test_gl_canvas_clear_resets_runtime_flags(monkeypatch):
         _hidden_capture_circles=[1],
         _occluded_capture_arcs=[1],
         _hidden_overlay_circles=[1],
-        _show_divider=True,
         _drag_overlay_visible=True,
         _drag_overlay_horizontal=True,
         _drag_overlay_texts=("A", "B"),
