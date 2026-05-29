@@ -11,6 +11,7 @@ from typing import Any
 from PyQt6.QtWidgets import QStackedWidget, QWidget
 
 from tabs.contract import TabContext, TabContract
+from resources.translations import add_i18n_root
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -32,13 +33,20 @@ class TabRegistry:
     def discover(self) -> None:
         """Scan tabs/ package for TabContract implementations."""
         try:
-            import tabs
+            import tabs as tabs_pkg
         except ImportError:
             return
 
-        for finder, module_name, is_pkg in pkgutil.iter_modules(tabs.__path__):
+        tabs_path = Path(tabs_pkg.__path__[0])
+
+        for finder, module_name, is_pkg in pkgutil.iter_modules(tabs_pkg.__path__):
             if module_name.startswith("_") or module_name in ("contract", "registry"):
                 continue
+
+            tab_i18n = tabs_path / module_name / "resources" / "i18n"
+            if tab_i18n.is_dir():
+                add_i18n_root(tab_i18n)
+
             try:
                 mod = importlib.import_module(f"tabs.{module_name}.tab")
                 for attr_name in dir(mod):

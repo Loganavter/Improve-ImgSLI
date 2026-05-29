@@ -56,3 +56,15 @@ def test_divider_paints_only_with_two_images_and_content_rect():
     )
 
     assert DividerPass().should_paint(ctx) is True
+
+def test_divider_scene_apply_does_not_write_canvas_runtime_split_line():
+    from ui.canvas_features.divider.feature import apply_divider_object
+
+    class CanvasWithoutLegacySplitLineApi:
+        def set_split_line_params(self, *args, **kwargs):
+            raise AssertionError("divider must render through its feature GL pass")
+
+    context = SimpleNamespace(canvas=CanvasWithoutLegacySplitLineApi())
+    scene = SimpleNamespace(find_first=lambda _kind: object())
+
+    apply_divider_object(scene, context)

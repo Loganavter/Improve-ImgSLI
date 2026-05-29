@@ -31,10 +31,10 @@ Start with [ARCHITECTURE.md](ARCHITECTURE.md) for an overview of design patterns
 
 The application uses:
 - **Redux pattern** for state management (actions → reducers → store)
-- **Plugin system** for modular features
-- **Contract-based architecture** with 24+ defined interfaces
-- **Feature auto-discovery** via registry pattern
+- **Plugin system** for modular features with **feature isolation** (each feature operates in a simplified abstraction layer — no direct coordinate transforms, events, or serialization)
+- **Contract-based architecture** with 24+ defined interfaces (no direct feature imports in shared code)
+- **Feature auto-discovery** via registry pattern (add a feature by copying a template; no central registration needed)
 - **Canvas feature system** for visual editor tools (magnifier, divider, guides, etc.)
 - **Custom PyQt6/OpenGL rendering pipeline**
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for complete details.
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [Feature Isolation Model](./CONTRACTS.md#feature-isolation-model-the-abstraction) for complete details.

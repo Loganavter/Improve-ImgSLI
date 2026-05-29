@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import pkgutil
 from functools import lru_cache
+from pathlib import Path
 
 from .widget_contract import (
     CanvasFeatureCommandAlias,
@@ -15,13 +16,17 @@ from .widget_contract import (
     CanvasWidgetFeature,
 )
 import ui.canvas_features as features_pkg
+from resources.translations import add_i18n_root
 
 @lru_cache(maxsize=1)
 def get_canvas_widget_features() -> tuple[CanvasWidgetFeature, ...]:
     features: list[CanvasWidgetFeature] = []
+    features_path = Path(features_pkg.__path__[0])
+
     for module_info in sorted(pkgutil.iter_modules(features_pkg.__path__), key=lambda item: item.name):
         if module_info.name.startswith("_"):
             continue
+
         module = None
         try:
             module = importlib.import_module(
@@ -39,9 +44,15 @@ def get_canvas_widget_features() -> tuple[CanvasWidgetFeature, ...]:
                 if exc.name == f"{features_pkg.__name__}.{module_info.name}.widget":
                     continue
                 raise
+
         feature = getattr(module, "WIDGET_FEATURE", None)
         if isinstance(feature, CanvasWidgetFeature):
             features.append(feature)
+
+            feature_i18n = features_path / module_info.name / "resources" / "i18n"
+            if feature_i18n.is_dir():
+                add_i18n_root(feature_i18n)
+
     return tuple(features)
 
 @lru_cache(maxsize=1)

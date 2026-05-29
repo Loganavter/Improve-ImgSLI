@@ -53,12 +53,18 @@ class TranslationManager:
             cls._instance._current_lang = "en"
             cls._instance._events = ToolkitTranslationEvents()
             cls._instance._i18n_root: Path | None = None
+            cls._instance._extra_roots: list[Path] = []
         return cls._instance
 
     def set_i18n_root(self, path: str | Path) -> None:
         self._i18n_root = Path(path)
+        self._extra_roots = []
         self._cache.clear()
         self._translations = {}
+
+    def add_i18n_root(self, path: str | Path) -> None:
+        self._extra_roots.append(Path(path))
+        self._cache.clear()
 
     def _load_tree(self, lang_dir: Path) -> dict[str, Any]:
         translations: dict[str, Any] = {}
@@ -103,22 +109,39 @@ class TranslationManager:
 
         translations = self._load_tree(fallback_dir)
 
-        if lang_code == "en":
-            return translations
+        if lang_code != "en":
+            if not requested_dir.is_dir():
+                logger.warning(
+                    "Translation directory not found: %s. Falling back to EN.",
+                    requested_dir,
+                )
+            else:
+                _deep_merge(
+                    translations,
+                    self._load_tree(requested_dir),
+                    requested_dir.relative_to(base_path).as_posix(),
+                    warn_on_override=False,
+                )
 
-        if not requested_dir.is_dir():
-            logger.warning(
-                "Translation directory not found: %s. Falling back to EN.",
-                requested_dir,
-            )
-            return translations
+        for extra_root in self._extra_roots:
+            fallback_dir = extra_root / "en"
+            if fallback_dir.is_dir():
+                _deep_merge(
+                    translations,
+                    self._load_tree(fallback_dir),
+                    fallback_dir.relative_to(extra_root).as_posix(),
+                    warn_on_override=False,
+                )
+            if lang_code != "en":
+                lang_dir = extra_root / lang_code
+                if lang_dir.is_dir():
+                    _deep_merge(
+                        translations,
+                        self._load_tree(lang_dir),
+                        lang_dir.relative_to(extra_root).as_posix(),
+                        warn_on_override=False,
+                    )
 
-        _deep_merge(
-            translations,
-            self._load_tree(requested_dir),
-            requested_dir.relative_to(base_path).as_posix(),
-            warn_on_override=False,
-        )
         return translations
 
     def load_language(self, lang_code: str) -> None:
