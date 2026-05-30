@@ -12,7 +12,6 @@ from ui.canvas_features.magnifier.feature import build_magnifier_object
 from ui.canvas_features.magnifier.models import MagnifierModel
 from ui.canvas_infra.scene.context import CanvasSceneBuildContext
 
-
 def _edge_object():
     model = MagnifierModel(
         id="m1",
@@ -50,7 +49,6 @@ def _edge_object():
         is_active=True,
     )
 
-
 def test_capture_edge_clamp_does_not_depend_on_zoom(monkeypatch):
     """Zooming must not nudge a capture area that is clamped to an image edge."""
     import ui.canvas_features.magnifier.feature as feature
@@ -66,7 +64,6 @@ def test_capture_edge_clamp_does_not_depend_on_zoom(monkeypatch):
     assert zoom_2.capture_center.x == zoom_1.capture_center.x
     assert zoom_2.capture_radius == zoom_1.capture_radius
     assert zoom_1.capture_center.x == zoom_1.capture_radius
-
 
 def test_capture_edge_clamp_has_no_stroke_margin_gap():
     """Capture geometry may touch image bounds; stroke AA is render clipping."""

@@ -68,7 +68,7 @@ def test_dispose_is_idempotent():
     tab = _RecordingTab(accept=True)
     tab.dispose()
     tab.dispose()
-    assert tab.dispose_calls == 2  # no exception on repeat calls
+    assert tab.dispose_calls == 2
 
 def test_registry_dispose_all_is_idempotent():
     tab = _RecordingTab(accept=True)

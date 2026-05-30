@@ -355,13 +355,7 @@ class FilenameOverlayPass(CanvasGLRenderPass):
         )
         is_interactive_live = render_mode == "interactive"
         image_anchored = not (single_preview != 0 and is_interactive_live)
-        # Labels are rasterized once at the un-zoomed ("base") size derived from
-        # the image rect; the resulting quad is then scaled to screen by the same
-        # affine (uniform scale about the widget center + pan) that maps the image
-        # under zoom/pan. This keeps the glyph texture zoom-independent and lets GL
-        # downscale it with LINEAR sampling, instead of re-rasterizing the glyphs
-        # at tiny pixel sizes — the latter produced clipped/mis-positioned text and
-        # colour fringing when zoomed out.
+
         apply_transform = image_anchored and (
             abs(zoom - 1.0) > 1e-6 or abs(pan_x) > 1e-9 or abs(pan_y) > 1e-9
         )

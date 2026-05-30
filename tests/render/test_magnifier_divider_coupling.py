@@ -16,7 +16,6 @@ from ui.canvas_features.magnifier.feature import build_magnifier_object
 from ui.canvas_features.magnifier.models import MagnifierModel
 from ui.canvas_infra.scene.context import CanvasSceneBuildContext
 
-
 def _object_for_spacing(spacing: float):
     model = MagnifierModel(
         id="m1",
@@ -56,7 +55,6 @@ def _object_for_spacing(spacing: float):
         is_active=True,
     )
 
-
 def test_magnifier_combines_at_spacing_threshold():
     """CONTRACTS.md: OverlayMovementHandler combine state follows spacing threshold."""
     obj = _object_for_spacing(MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE)
@@ -64,7 +62,6 @@ def test_magnifier_combines_at_spacing_threshold():
     assert obj.is_combined is True
     assert len(obj.circles) == 1
     assert obj.circles[0].role == "combined"
-
 
 def test_magnifier_separates_above_spacing_threshold():
     """CONTRACTS.md: OverlayMovementHandler separate mode keeps spacing geometry."""

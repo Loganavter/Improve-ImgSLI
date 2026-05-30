@@ -17,7 +17,6 @@ from shared.rendering import get_effective_export_interpolation_method
 from ui.canvas_presentation.plan_builder import CanvasGeometry
 from ui.widgets.gl_canvas.scene import GLRenderScene
 
-
 def _store(*, diff_mode: str, interpolation: str):
     return SimpleNamespace(
         viewport=SimpleNamespace(
@@ -40,7 +39,6 @@ def _store(*, diff_mode: str, interpolation: str):
         runtime_cache=SimpleNamespace(overlay_clip_rect=None),
         document=SimpleNamespace(image1_path="a.png", image2_path="b.png"),
     )
-
 
 @pytest.mark.parametrize("diff_mode", ["off", "highlight", "grayscale", "edges", "ssim"])
 @pytest.mark.parametrize("fit_content", [False, True])
@@ -198,7 +196,6 @@ def test_snapshot_render_plan_export_preview_parity_matrix(
         )
     else:
         assert captured["image1"].getpixel((0, 0)) == (240, 10, 20, 255)
-
 
 def test_prescale_pair_keeps_mismatched_sources_at_one_shared_target_size():
     """CANVAS_FEATURES.md: video prescale must not downscale low-res side then upscale it."""

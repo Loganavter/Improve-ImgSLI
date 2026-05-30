@@ -15,7 +15,6 @@ from ui.canvas_infra.scene.widget_registry import (
     get_canvas_feature_state_queries,
 )
 
-
 def _required_params_after_first(handler):
     params = list(inspect.signature(handler).parameters.values())[1:]
     return [
@@ -30,11 +29,9 @@ def _required_params_after_first(handler):
         )
     ]
 
-
 def _first_param_name(handler) -> str | None:
     params = list(inspect.signature(handler).parameters.values())
     return params[0].name if params else None
-
 
 def test_no_arg_store_feature_commands_emit_viewport_change_once():
     """CANVAS_FEATURES.md: feature state commands that mutate viewport must notify once."""
@@ -75,7 +72,6 @@ def test_no_arg_store_feature_commands_emit_viewport_change_once():
 
     assert exercised
 
-
 def test_feature_state_queries_do_not_emit_viewport_change():
     """CANVAS_FEATURES.md: feature state queries must be read-only."""
     queries = get_canvas_feature_state_queries()
@@ -97,7 +93,6 @@ def test_feature_state_queries_do_not_emit_viewport_change():
             exercised.append(f"{feature_name}.{query.query_id}")
 
     assert exercised
-
 
 def test_storeless_feature_command_does_not_require_emit_viewport_change():
     """CANVAS_FEATURES.md: commands tolerate bootstrap stores without emit_viewport_change."""

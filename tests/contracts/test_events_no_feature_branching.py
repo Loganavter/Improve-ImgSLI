@@ -20,25 +20,16 @@ import pytest
 
 from ._framework import SRC, iter_py, read, rel
 
-# ViewState fields that smell like feature-coupled flat duplicates. Shared
-# event code reading these is a sign that feature state leaked into ViewState.
 FEATURE_VIEWSTATE_FIELDS = (
     "overlay_enabled",
 )
 
-# interaction_state flags that name a specific feature's drag mode. Shared
-# event code branching on these is the old "if magnifier else divider"
-# disguised as a flag check.
 FEATURE_INTERACTION_FLAGS = (
     "is_dragging_overlay_handle",
     "is_dragging_overlay_split",
     "is_dragging_split_line",
 )
 
-# Capability alias namespaces that name a specific canvas feature. Shared
-# event code (``src/events/``) must not look these up directly — features
-# own gestures, preview workflows, and interaction helpers. Feature-neutral
-# namespaces (``preview.*``, ``render.*``) are fine.
 FEATURE_ALIAS_PREFIXES = (
     "overlay.",
     "splitter.",
@@ -51,15 +42,10 @@ FEATURE_ALIAS_PREFIXES = (
 EVENTS_ROOT = SRC / "events"
 MOUSE_FILE = EVENTS_ROOT / "image_label" / "mouse.py"
 
-# Files known to still leak feature aliases pending their own refactor.
-# Each entry is a TODO with the eventual destination noted; do not extend
-# this list without a tracking entry in docs/dev/TEST_COVERAGE_PLAN.md.
 ALIAS_LEAK_ALLOWLIST: set[str] = set()
-
 
 def _events_files() -> list:
     return iter_py(EVENTS_ROOT)
-
 
 def test_mouse_does_not_read_flat_viewstate_feature_flags():
     src = read(MOUSE_FILE)
@@ -75,7 +61,6 @@ def test_mouse_does_not_read_flat_viewstate_feature_flags():
         "predicate, not via shared event code:\n  " + "\n  ".join(leaks)
     )
 
-
 def test_mouse_does_not_branch_on_feature_interaction_flags():
     src = read(MOUSE_FILE)
     leaks: list[str] = []
@@ -88,7 +73,6 @@ def test_mouse_does_not_branch_on_feature_interaction_flags():
         "use ``GestureResolver.iter_active`` + binding.is_active instead:\n  "
         + "\n  ".join(leaks)
     )
-
 
 def test_events_do_not_call_feature_aliases_directly():
     """No file under ``src/events/`` may use feature-named alias prefixes."""

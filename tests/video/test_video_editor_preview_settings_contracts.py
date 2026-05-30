@@ -16,7 +16,6 @@ from PyQt6.QtGui import QColor
 
 from plugins.video_editor.dialog_persistence import VideoEditorDialogPersistence
 
-
 REPO = Path(__file__).resolve().parents[2]
 VIDEO_I18N_ROOT = REPO / "src" / "plugins" / "video_editor" / "resources" / "i18n"
 PREVIEW_QUALITY_KEYS = {
@@ -26,7 +25,6 @@ PREVIEW_QUALITY_KEYS = {
     "preview_quality_performance",
     "preview_quality_draft",
 }
-
 
 def test_video_preview_quality_i18n_keys_exist_for_all_languages():
     """HELP_WIDGET.md: user-facing video editor labels must live in i18n resources."""
@@ -40,7 +38,6 @@ def test_video_preview_quality_i18n_keys_exist_for_all_languages():
         assert not missing, f"{path}: missing {sorted(missing)}"
         for key in PREVIEW_QUALITY_KEYS:
             assert isinstance(video[key], str) and video[key].strip()
-
 
 def test_preview_quality_settings_use_translation_keys_only():
     """HELP_WIDGET.md: UI construction must not hardcode translated preview labels."""
@@ -67,11 +64,9 @@ def test_preview_quality_settings_use_translation_keys_only():
     for key in PREVIEW_QUALITY_KEYS:
         assert f"video.{key}" in constants
 
-
 class _FakeSignal:
     def connect(self, _callback):
         return None
-
 
 class _FakeCombo:
     def __init__(self, values):
@@ -94,7 +89,6 @@ class _FakeCombo:
     def currentText(self):
         return str(self.currentData())
 
-
 class _FakeLineEdit:
     textChanged = _FakeSignal()
 
@@ -107,14 +101,12 @@ class _FakeLineEdit:
     def text(self):
         return self._value
 
-
 class _FakeStack:
     def __init__(self):
         self.index = 0
 
     def setCurrentIndex(self, index):
         self.index = int(index)
-
 
 class _FakeButton:
     def __init__(self):
@@ -126,7 +118,6 @@ class _FakeButton:
     def setVisible(self, visible):
         self.visible = bool(visible)
 
-
 class _FakeSettingsManager:
     def __init__(self):
         self.saved = {}
@@ -136,7 +127,6 @@ class _FakeSettingsManager:
 
     def _get_setting(self, _key, default, _type):
         return default
-
 
 def _settings(preview_scale=1.0):
     return SimpleNamespace(
@@ -151,7 +141,6 @@ def _settings(preview_scale=1.0):
         video_editor_preview_render_scale=preview_scale,
         export_video_fit_fill_color="#FF000000",
     )
-
 
 def _dialog(settings, *, preview_index=0):
     dialog = SimpleNamespace()
@@ -178,7 +167,6 @@ def _dialog(settings, *, preview_index=0):
         float(dialog.combo_preview_scale.currentData())
     )
     return dialog
-
 
 def test_preview_quality_setting_persists_and_loads_roundtrip():
     """TESTING.md: video editor preview settings need a behavior-level roundtrip test."""

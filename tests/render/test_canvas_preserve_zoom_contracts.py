@@ -16,7 +16,6 @@ from ui.canvas_infra.viewport.focus import (
     restore_letterbox_focus,
 )
 
-
 def _canvas(letterbox):
     return SimpleNamespace(
         runtime_state=SimpleNamespace(_letterbox_params=[letterbox]),
@@ -24,7 +23,6 @@ def _canvas(letterbox):
         pan_offset_x=None,
         pan_offset_y=None,
     )
-
 
 def test_preserve_zoom_restores_image_focus_after_letterbox_change():
     canvas = _canvas((0.10, 0.00, 0.80, 1.00))
@@ -37,7 +35,6 @@ def test_preserve_zoom_restores_image_focus_after_letterbox_change():
 
     assert capture_letterbox_focus(canvas) == focus
 
-
 def test_preserve_zoom_clamps_pan_to_zero_when_zoom_fits():
     canvas = _canvas((0.10, 0.00, 0.80, 1.00))
     set_zoom_level(canvas, 1.0)
@@ -49,7 +46,6 @@ def test_preserve_zoom_clamps_pan_to_zero_when_zoom_fits():
 
     assert canvas.pan_offset_x == 0.0
     assert canvas.pan_offset_y == 0.0
-
 
 def test_resize_gl_preserves_image_focus_when_letterbox_changes(monkeypatch):
     """Canvas resize must not preserve raw pan across letterbox changes."""

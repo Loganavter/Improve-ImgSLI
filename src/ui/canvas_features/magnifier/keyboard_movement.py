@@ -47,13 +47,11 @@ from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_
 
 logger = logging.getLogger("ImproveImgSLI")
 
-
 def _get_movement_handler(store):
     cmd = get_canvas_feature_command_by_alias("overlay.movement_handler")
     if cmd is None:
         return None
     return cmd(store)
-
 
 class InteractiveMovementController:
     OVERLAY_MOVEMENT_KEYS = {
@@ -444,7 +442,6 @@ class InteractiveMovementController:
         if signature == self._last_debug_signature:
             return
         self._last_debug_signature = signature
-
 
 def build_controller(store, *, presenter_provider, parent=None):
     return InteractiveMovementController(store, presenter_provider=presenter_provider, parent=parent)

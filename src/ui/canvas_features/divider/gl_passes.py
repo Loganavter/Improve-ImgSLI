@@ -116,13 +116,6 @@ class DividerPass(CanvasGLRenderPass):
 
         is_horizontal = bool(getattr(ctx.scene_frame, "is_horizontal", False))
 
-        # NOTE: ``display_split_position`` is already screen-normalized and
-        # image-locked — produced by ``compute_zoom_display_split_position``
-        # (``ui/canvas_infra/viewport/zoom.py``) from the stored image-relative
-        # ``split_position_visual`` and the current ``content_rect_px`` /
-        # pan / zoom. Multiplying by widget pixel size therefore yields the
-        # final screen-px position. Do NOT re-apply ``widget_px_to_screen_px``
-        # here — that double-transforms and breaks click-to-position alignment.
         display_split = float(get_display_split_position(widget) or 0.5)
         position_px = (
             float(widget.height()) * display_split

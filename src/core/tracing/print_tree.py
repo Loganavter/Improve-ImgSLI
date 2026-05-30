@@ -20,11 +20,9 @@ import sys
 from collections import defaultdict
 from typing import Iterable
 
-
 def _default_path() -> str:
     xdg = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     return os.path.join(xdg, "ImproveImgSLI", "trace.jsonl")
-
 
 def load_records(path: str) -> list[dict]:
     out: list[dict] = []
@@ -39,7 +37,6 @@ def load_records(path: str) -> list[dict]:
                 continue
     return out
 
-
 def group_by_trace(records: Iterable[dict]) -> dict[str, list[dict]]:
     groups: dict[str, list[dict]] = defaultdict(list)
     for r in records:
@@ -49,7 +46,6 @@ def group_by_trace(records: Iterable[dict]) -> dict[str, list[dict]]:
         groups[tid].sort(key=lambda r: r.get("seq", 0))
     return groups
 
-
 def _match_pattern(trace_id: str, pattern: str) -> bool:
     if pattern == trace_id:
         return True
@@ -57,11 +53,9 @@ def _match_pattern(trace_id: str, pattern: str) -> bool:
         return True
     return False
 
-
 def _is_end_record(rec: dict) -> bool:
     kind = rec.get("kind", "")
     return kind.endswith(".end") or kind == "dispatch.end" or kind == "render.apply_end"
-
 
 def _begin_kind_for_end(end_kind: str) -> str:
     if end_kind == "dispatch.end":
@@ -74,7 +68,6 @@ def _begin_kind_for_end(end_kind: str) -> str:
         return end_kind[: -len(".end")]
     return ""
 
-
 def _pair_durations(records: list[dict]) -> dict[int, float]:
     durations: dict[int, float] = {}
     for rec in records:
@@ -86,7 +79,6 @@ def _pair_durations(records: list[dict]) -> dict[int, float]:
             continue
         durations[seq_begin] = dur
     return durations
-
 
 def render_trace(records: list[dict], trace_id: str, min_ms: float = 0.0) -> str:
     durations_by_span = {}
@@ -133,7 +125,6 @@ def render_trace(records: list[dict], trace_id: str, min_ms: float = 0.0) -> str
 
     return "\n".join(lines)
 
-
 def trace_total_ms(records: list[dict]) -> float:
     """Approximate total duration of a trace from first ts to last ts."""
     if not records:
@@ -141,7 +132,6 @@ def trace_total_ms(records: list[dict]) -> float:
     first = records[0].get("ts", 0.0)
     last = records[-1].get("ts", 0.0)
     return (last - first) * 1000.0
-
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
@@ -190,7 +180,6 @@ def main(argv: list[str] | None = None) -> int:
         print(render_trace(recs, tid, min_ms=args.min_ms))
         print()
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -28,9 +28,6 @@ from ui.canvas_infra.scene.widget_registry import get_canvas_feature_properties
 PERSISTED = [p for p in get_canvas_feature_properties() if p.setting_key]
 PERSISTED_IDS = [p.id for p in PERSISTED]
 
-# Representative non-default channel values per property kind. Values are
-# deliberately distinct from defaults so the roundtrip catches "always writes
-# the default" bugs.
 def _mutations(kind: str) -> list[dict]:
     if kind == "bool":
         return [{"value": True}, {"value": False}]
@@ -38,7 +35,7 @@ def _mutations(kind: str) -> list[dict]:
         return [{"value": 7.0}, {"value": 1.0}]
     if kind == "color":
         return [{"r": 10, "g": 20, "b": 30, "a": 200}]
-    return []  # enum/other: default roundtrip below still covers it
+    return []
 
 def _reload_fixpoint(prop, channels: dict) -> tuple:
     """Simulate save->reload and return (raw_in, raw_after_reload)."""
