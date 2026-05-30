@@ -336,3 +336,148 @@ def test_export_gl_scene_coerces_nearest_for_base_filter(monkeypatch):
     scene = build_export_gl_scene(store, divider_thickness_export=0)
 
     assert scene.zoom_interpolation_method == "LANCZOS"
+
+def test_image_export_frame_preserves_edge_magnifier_position_and_expands_canvas():
+    from core.store import Store
+    from domain.types import Point
+    from shared.rendering.live_snapshot import build_live_frame_snapshot
+    from ui.canvas_features.magnifier.models import MagnifierModel
+    from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+
+    store = Store()
+    state = get_magnifier_widget_state(store.viewport.view_state)
+    state.enabled = True
+    model = MagnifierModel(
+        position=Point(0.98, 0.5),
+        capture_size_relative=0.2,
+        size_relative=0.2,
+        offset_relative=Point(0.8, 0.0),
+    )
+    state.models[model.id] = model
+    state.active_id = model.id
+
+    renderer = SnapshotFrameRenderer(
+        image_loader=lambda *_args, **_kwargs: None,
+        gpu_export_service=None,
+    )
+    prepared = renderer.prepare_canvas_frame_from_images(
+        build_live_frame_snapshot(store),
+        VideoRenderRequest(
+            target_surface=TargetSurfaceSpec(
+                width=100,
+                height=100,
+                fill_rgba=(0, 0, 0, 0),
+            ),
+            font_path=None,
+            auto_crop=False,
+            fit_content=False,
+            global_bounds=None,
+        ),
+        Image.new("RGBA", (100, 100), (0, 0, 0, 255)),
+        Image.new("RGBA", (100, 100), (255, 255, 255, 255)),
+        allow_feature_layout_fallback=True,
+        normalize_snapshot=False,
+    )
+
+    prepared_state = get_magnifier_widget_state(prepared.store.viewport.view_state)
+    prepared_model = prepared_state.models[model.id]
+    assert prepared_model.position.x == 0.98
+    assert prepared.plan.canvas_w > 100
+
+def test_crop_snapshot_frame_keeps_default_magnifier_normalization():
+    from core.store import Store
+    from domain.types import Point
+    from shared.rendering.live_snapshot import build_live_frame_snapshot
+    from ui.canvas_features.magnifier.models import MagnifierModel
+    from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+
+    store = Store()
+    state = get_magnifier_widget_state(store.viewport.view_state)
+    state.enabled = True
+    model = MagnifierModel(
+        position=Point(0.98, 0.5),
+        capture_size_relative=0.2,
+    )
+    state.models[model.id] = model
+    state.active_id = model.id
+
+    renderer = SnapshotFrameRenderer(
+        image_loader=lambda *_args, **_kwargs: None,
+        gpu_export_service=None,
+    )
+    prepared = renderer.prepare_canvas_frame_from_images(
+        build_live_frame_snapshot(store),
+        VideoRenderRequest(
+            target_surface=TargetSurfaceSpec(
+                width=100,
+                height=100,
+                fill_rgba=(0, 0, 0, 0),
+            ),
+            font_path=None,
+            auto_crop=False,
+            fit_content=False,
+            global_bounds=None,
+        ),
+        Image.new("RGBA", (100, 100), (0, 0, 0, 255)),
+        Image.new("RGBA", (100, 100), (255, 255, 255, 255)),
+        allow_feature_layout_fallback=False,
+    )
+
+    prepared_state = get_magnifier_widget_state(prepared.store.viewport.view_state)
+    prepared_model = prepared_state.models[model.id]
+    assert abs(prepared_model.position.x - 0.9) < 1e-6
+
+def test_image_export_save_context_uses_video_style_fit_content_bounds():
+    from core.store import Store
+    from domain.types import Point
+    from plugins.export.presenter_parts.context_builder import ExportContextBuilder
+    from ui.canvas_features.magnifier.models import MagnifierModel
+    from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+
+    store = Store()
+    img1 = Image.new("RGBA", (100, 100), (0, 0, 0, 255))
+    img2 = Image.new("RGBA", (100, 100), (255, 255, 255, 255))
+    store.document.full_res_image1 = img1
+    store.document.full_res_image2 = img2
+
+    state = get_magnifier_widget_state(store.viewport.view_state)
+    state.enabled = True
+    model = MagnifierModel(
+        position=Point(0.98, 0.5),
+        capture_size_relative=0.2,
+        size_relative=0.2,
+        offset_relative=Point(0.8, 0.0),
+    )
+    state.models[model.id] = model
+    state.active_id = model.id
+
+    captured = {}
+
+    class FakeRenderer:
+        def prepare_canvas_frame_from_images(self, _snap, request, *_args, **_kwargs):
+            captured["request"] = request
+            return SimpleNamespace(
+                plan=SimpleNamespace(
+                    canvas_w=request.target_surface.width,
+                    canvas_h=request.target_surface.height,
+                ),
+                store=SimpleNamespace(),
+            )
+
+    fake_state = SimpleNamespace(
+        build_export_dialog_state=lambda: SimpleNamespace(
+            background_color=None,
+            fill_background=False,
+        ),
+        build_suggested_export_filename=lambda: "out",
+    )
+    builder = ExportContextBuilder(store, gpu_export_service=None, state_coordinator=fake_state)
+    builder.renderer = FakeRenderer()
+
+    save_ctx = builder.build_save_context(include_preview=False)
+
+    request = captured["request"]
+    assert request.fit_content is True
+    assert request.global_bounds is not None
+    assert request.target_surface.width > 100
+    assert save_ctx.native_width == request.target_surface.width
