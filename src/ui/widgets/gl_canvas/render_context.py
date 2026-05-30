@@ -117,9 +117,10 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
     view_state = getattr(viewport, "view_state", None) if viewport is not None else None
     plan = getattr(widget, "_active_render_plan", None)
     object_name = str(getattr(widget, "objectName", lambda: "")() or "")
+    read_only = bool(getattr(state, "_read_only", False))
     mode = (
         "interactive"
-        if bool(getattr(plan, "preserve_zoom", False))
+        if bool(getattr(plan, "preserve_zoom", False)) and not read_only
         else "export"
         if object_name == "gpu_export_canvas"
         else "preview"
@@ -179,6 +180,7 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
         zoom_level=float(get_zoom_level(widget) or 1.0),
         pan_offset_x=float(get_pan_offset_x(widget) or 0.0),
         pan_offset_y=float(get_pan_offset_y(widget) or 0.0),
+        anchor_to_viewport=(mode == "interactive"),
     )
     diff_mode_active = bool(scene_frame.diff_mode_active)
     use_hires = bool(
@@ -354,6 +356,10 @@ def _initialize_feature_gl_passes(widget) -> None:
 
 def resize_gl(widget, w: int, h: int):
     state = widget.runtime_state
+    letterbox_focus = None
+    if state._shader_letterbox_mode and state._stored_pil_images[0] is not None:
+        from ui.canvas_infra.viewport.focus import capture_letterbox_focus
+        letterbox_focus = capture_letterbox_focus(widget)
     gl.glViewport(0, 0, w, h)
     widget._update_paste_overlay_rects()
     if has_canvas_feature_live_runtime_overlays():
@@ -361,6 +367,8 @@ def resize_gl(widget, w: int, h: int):
     img1, img2 = state._stored_pil_images
     if state._shader_letterbox_mode and img1 is not None:
         update_letterbox_geometry(widget, img1, slot_index=0)
+        from ui.canvas_infra.viewport.focus import restore_letterbox_focus
+        restore_letterbox_focus(widget, letterbox_focus)
     elif img1 is not None:
         upload_pil_images(
             widget,

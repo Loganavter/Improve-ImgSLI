@@ -141,6 +141,15 @@ Rendering is split into two stages:
 
 This keeps export, thumbnails, and interactive preview aligned around the same layout and rendering contracts.
 
+### Viewport focus
+
+`GLCanvas` pan is stored in pre-letterbox UV space, while the sampled image
+point is derived through `_letterbox_params`. When a render plan is re-applied
+or the canvas is resized, preserving raw `pan_offset_x/y` is not enough: a
+one-pixel letterbox/content-rect change moves the camera in image space,
+especially at high zoom. Preserve the image sample point under the viewport
+center, then recompute pan for the new letterbox.
+
 ## Extension Points
 
 If you need to add functionality, use the smallest viable integration point:

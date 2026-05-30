@@ -81,7 +81,6 @@ def set_pixmap(widget, pixmap: QPixmap | None):
         state._capture_radius = 0
         overlay._centers = []
         overlay._radius = 0
-        state._show_divider = False
         state._content_rect_px = (0, 0, max(1, pixmap.width()), max(1, pixmap.height()))
         state._clip_overlays_to_content_rect = False
     else:
@@ -126,7 +125,6 @@ def clear(widget):
     state._hidden_capture_circles = []
     state._occluded_capture_arcs = []
     state._hidden_overlay_circles = []
-    state._show_divider = False
     state._drag_overlay_visible = False
     state._drag_overlay_horizontal = False
     state._drag_overlay_texts = ("", "")

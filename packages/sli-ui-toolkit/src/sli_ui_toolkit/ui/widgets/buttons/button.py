@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
+from PyQt6 import sip
 from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPixmap, QWheelEvent
 from PyQt6.QtWidgets import QLabel, QWidget
@@ -458,17 +459,25 @@ class Button(QWidget):
                 elif self._has_toggle:
                     self.setChecked(not self._checked)
                 self.clicked.emit()
+                if sip.isdeleted(self):
+                    return
                 self.shortClicked.emit()
+                if sip.isdeleted(self):
+                    return
 
             self._lp_triggered = False
 
         elif event.button() == Qt.MouseButton.RightButton:
             if self.rect().contains(event.pos()):
                 self.rightClicked.emit()
+                if sip.isdeleted(self):
+                    return
 
         elif event.button() == Qt.MouseButton.MiddleButton:
             if self.rect().contains(event.pos()):
                 self.middleClicked.emit()
+                if sip.isdeleted(self):
+                    return
 
         super().mouseReleaseEvent(event)
 

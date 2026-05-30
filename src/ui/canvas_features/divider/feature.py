@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from domain.qt_adapters import color_to_qcolor
 from domain.types import Color, Rect
 
 from ui.canvas_infra.scene.context import CanvasSceneApplyContext, CanvasSceneBuildContext
@@ -58,28 +57,7 @@ def apply_divider_object(
     scene,
     context: CanvasSceneApplyContext,
 ) -> None:
-    canvas = context.canvas
-    use_quick_overlay = context.use_quick_overlay
-    divider_object = scene.find_first("divider")
-    if not use_quick_overlay and isinstance(divider_object, DividerSceneObject):
-        pos = scene.bounds.h if divider_object.is_horizontal else scene.bounds.w
-        split_px = int(round(divider_object.position * max(0, pos)))
-        canvas.set_split_line_params(
-            divider_object.visible,
-            split_px,
-            divider_object.is_horizontal,
-            color_to_qcolor(divider_object.color),
-            divider_object.thickness,
-        )
-        return
-
-    canvas.set_split_line_params(
-        False,
-        0,
-        False,
-        color_to_qcolor(Color()),
-        1,
-    )
+    del scene, context
 
 def build_scene_feature() -> CanvasSceneFeature:
     return CanvasSceneFeature(

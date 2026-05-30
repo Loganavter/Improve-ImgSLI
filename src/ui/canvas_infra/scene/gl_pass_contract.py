@@ -14,8 +14,6 @@ class RenderPhase(IntEnum):
     HUD = 40
     DEBUG = 50
 
-CanvasGLLayer = RenderPhase
-
 class SceneVisibility(Flag):
     INTERACTIVE = auto()
     EXPORT = auto()
@@ -33,28 +31,23 @@ class CanvasGLRenderPass:
     Pass instances are persistent across frames.  Store compiled shader
     programs and other GL resources as instance attributes.
 
-    Preferred: set ``stack_role`` to a :class:`CanvasStackRole` value.
-    The central stacking policy resolves it to ``(RenderPhase, priority)``.
-
-    Legacy: ``layer`` and ``priority`` class attributes are still honoured
-    when ``stack_role`` is not set.
+    Set ``stack_role`` to a :class:`CanvasStackRole` value. The central
+    stacking policy resolves it to ``(RenderPhase, priority)``.
     """
 
     stack_role = None
-    layer: RenderPhase = RenderPhase.VIEW_ANNOTATION
-    priority: int = 100
     visibility: SceneVisibility = SceneVisibility.ALL
 
     def resolved_layer_and_priority(self) -> tuple[RenderPhase, int]:
         """Return concrete ``(RenderPhase, priority)`` for this pass.
 
-        If ``stack_role`` is set, delegates to the central stacking policy.
-        Otherwise falls back to the explicit ``layer``/``priority`` attributes.
+        Delegates to the central stacking policy. Feature passes must declare
+        ``stack_role``; raw layer/priority attributes are not supported.
         """
-        if self.stack_role is not None:
-            from .stacking_policy import resolve_gl_pass_order
-            return resolve_gl_pass_order(self.stack_role)
-        return (self.layer, self.priority)
+        if self.stack_role is None:
+            raise ValueError(f"{type(self).__name__} must declare stack_role")
+        from .stacking_policy import resolve_gl_pass_order
+        return resolve_gl_pass_order(self.stack_role)
 
     def initialize(self, widget) -> None:
         """Called once after the GL context is ready."""

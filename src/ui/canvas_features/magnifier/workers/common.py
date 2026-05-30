@@ -1,6 +1,6 @@
 from PyQt6 import sip
 
-from ui.canvas_features.magnifier import MagnifierStoreService
+from ui.canvas_features.magnifier.store import MagnifierStoreService
 
 def get_live_image_label(presenter):
     image_label = getattr(getattr(presenter, "ui", None), "image_label", None)

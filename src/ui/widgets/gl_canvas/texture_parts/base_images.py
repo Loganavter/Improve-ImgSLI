@@ -67,9 +67,16 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
     offset_x = (cw - nw) // 2
     offset_y = (ch - nh) // 2
     if slot_index >= 0:
+        # Align letterbox params with the integer ``_content_rect_px`` used by
+        # scissor/hit-tests below. The mathematically exact center
+        # ``(cw - nw) / (2 * cw)`` differs from ``offset_x / cw`` by up to
+        # 0.5 widget-px when ``cw - nw`` is odd, which produces a one-pixel
+        # mismatch between where the shader draws the image and where the
+        # overlay scissor / interaction rect think the image is. Using the
+        # same floored ``offset_x`` for both keeps every consumer in lockstep.
         state._letterbox_params[slot_index] = (
-            (cw - nw) / (2.0 * cw),
-            (ch - nh) / (2.0 * ch),
+            offset_x / float(cw),
+            offset_y / float(ch),
             nw / float(cw),
             nh / float(ch),
         )
@@ -97,9 +104,16 @@ def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: in
     offset_x = (cw - nw) // 2
     offset_y = (ch - nh) // 2
     if slot_index >= 0:
+        # Align letterbox params with the integer ``_content_rect_px`` used by
+        # scissor/hit-tests below. The mathematically exact center
+        # ``(cw - nw) / (2 * cw)`` differs from ``offset_x / cw`` by up to
+        # 0.5 widget-px when ``cw - nw`` is odd, which produces a one-pixel
+        # mismatch between where the shader draws the image and where the
+        # overlay scissor / interaction rect think the image is. Using the
+        # same floored ``offset_x`` for both keeps every consumer in lockstep.
         state._letterbox_params[slot_index] = (
-            (cw - nw) / (2.0 * cw),
-            (ch - nh) / (2.0 * ch),
+            offset_x / float(cw),
+            offset_y / float(ch),
             nw / float(cw),
             nh / float(ch),
         )

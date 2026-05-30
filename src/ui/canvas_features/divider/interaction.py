@@ -26,35 +26,6 @@ def apply_split_drag(handler, cursor_pos: QPointF) -> None:
 
     rel_pos = raw_rel_x if not viewport.view_state.is_horizontal else raw_rel_y
     new_split_pos = max(0.0, min(1.0, rel_pos))
-    rect = handler.geometry._get_effective_interaction_rect()
-    if rect is None or rect.w <= 0 or rect.h <= 0:
-        return
-    pixel_pos = (
-        int(rect.x + (rect.w * new_split_pos))
-        if not viewport.view_state.is_horizontal
-        else int(rect.y + (rect.h * new_split_pos))
-    )
-
     command = get_canvas_feature_command_by_alias("splitter.update_drag")
     if command is not None:
         command(handler, new_split_pos)
-
-    if (
-        viewport.interaction_state.is_dragging_split_line
-        and handler.presenter
-        and hasattr(handler.presenter, "ui")
-        and hasattr(handler.presenter.ui, "image_label")
-    ):
-        style_command = get_canvas_feature_command_by_alias("splitter.overlay_style")
-        style = (
-            style_command(handler.store)
-            if style_command is not None
-            else {"visible": False, "color": None, "thickness": 0}
-        )
-        handler.presenter.ui.image_label.set_split_line_params(
-            visible=bool(style.get("visible", False)),
-            pos=pixel_pos,
-            is_horizontal=viewport.view_state.is_horizontal,
-            color=style.get("color"),
-            thickness=int(style.get("thickness", 0)),
-        )

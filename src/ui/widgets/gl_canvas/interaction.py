@@ -10,7 +10,6 @@ from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
     get_pan_offset_y,
     get_zoom_level,
-    set_display_split_position,
     set_pan_offsets,
     set_zoom_level,
 )
@@ -25,11 +24,6 @@ from ui.canvas_infra.viewport.pipeline import (
     compute_split_position_for_view_transform as compute_split_position_for_view_transform_via_feature,
     compute_wheel_zoom_transform,
 )
-from ui.widgets.gl_canvas.render_metrics import resolve_relative_px
-from ui.widgets.gl_canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
-
-CAPTURE_RING_AA_PX = 1.15
-
 def _float_attr(obj, attr: str, default: float) -> float:
     if obj is None:
         return float(default)
@@ -283,37 +277,6 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
         if not synced:
             _sync_split_to_store(widget, new_split)
 
-def set_split_line_params(
-    widget,
-    visible: bool,
-    pos: int,
-    is_horizontal: bool,
-    color,
-    thickness: int,
-):
-    state = widget.runtime_state
-    if (
-        bool(state._show_divider) == bool(visible)
-        and int(state._split_pos or 0) == int(pos or 0)
-        and bool(state._is_horizontal_split) == bool(is_horizontal)
-        and state._divider_color == color
-        and int(state._divider_thickness or 0) == int(thickness or 0)
-    ):
-        return
-    state._show_divider = visible
-    state._split_pos = pos
-    state._is_horizontal_split = is_horizontal
-    state._divider_color = color
-    state._divider_thickness = thickness
-
-    widget.is_horizontal = is_horizontal
-    if visible:
-        widget_size = widget.width() if not is_horizontal else widget.height()
-        if widget_size > 0:
-            set_display_split_position(widget, pos / widget_size)
-
-    widget._request_update()
-
 def set_guides_params(widget, visible: bool, color, thickness: int):
     state = widget.runtime_state
     if (
@@ -339,26 +302,13 @@ def set_capture_area(widget, center: QPoint | None, size: int, color=None):
         capture_center = QPointF(center)
         capture_radius = size / 2.0
         content_rect = state._content_rect_px
-        zoom_level = get_zoom_level(widget)
-        short_edge = (
-            min(float(content_rect[2]), float(content_rect[3]))
-            if content_rect is not None
-            else float(min(widget.width(), widget.height()))
-        )
-        line_width_px = resolve_relative_px(
-            DEFAULT_CANVAS_STYLE_TOKENS.capture_ring_stroke_du,
-            short_edge_px=short_edge,
-        )
-        stroke_margin_widget = ((line_width_px / 2.0) + CAPTURE_RING_AA_PX) / max(
-            zoom_level, 1e-6
-        )
 
         if content_rect is not None:
             rect_x, rect_y, rect_w, rect_h = content_rect
-            left = float(rect_x) + stroke_margin_widget
-            top = float(rect_y) + stroke_margin_widget
-            right = float(rect_x + rect_w) - stroke_margin_widget
-            bottom = float(rect_y + rect_h) - stroke_margin_widget
+            left = float(rect_x)
+            top = float(rect_y)
+            right = float(rect_x + rect_w)
+            bottom = float(rect_y + rect_h)
 
             max_radius_x = max(0.0, (right - left) / 2.0)
             max_radius_y = max(0.0, (bottom - top) / 2.0)
@@ -426,6 +376,8 @@ def set_overlay_coords(
     widget._request_update()
 
 def set_zoom(widget, zoom: float):
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        return
     new_zoom = max(0.1, min(zoom, 50.0))
     if abs(new_zoom - get_zoom_level(widget)) <= 1e-6:
         return
@@ -440,6 +392,8 @@ def set_zoom(widget, zoom: float):
     widget.update()
 
 def set_pan(widget, x: float, y: float):
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        return
     new_pan_x = float(x or 0.0)
     new_pan_y = float(y or 0.0)
     update_split_for_zoom(
@@ -464,6 +418,10 @@ def reset_view(widget):
     widget.update()
 
 def handle_wheel_event(widget, event):
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        event.accept()
+        return
+
     modifiers = event.modifiers()
 
     if modifiers & Qt.KeyboardModifier.ControlModifier:
@@ -493,6 +451,10 @@ def handle_wheel_event(widget, event):
     widget.wheelScrolled.emit(event)
 
 def handle_mouse_press_event(widget, event):
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        event.accept()
+        return
+
     if widget.runtime_state._paste_overlay_visible and event.button() == Qt.MouseButton.LeftButton:
         button = paste_overlay_button_at(widget, event.position())
         if button == "cancel" or button is None:
@@ -512,6 +474,11 @@ def handle_mouse_press_event(widget, event):
     widget.mousePressed.emit(event)
 
 def handle_mouse_release_event(widget, event):
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        widget._pan_dragging = False
+        event.accept()
+        return
+
     if event.button() == Qt.MouseButton.MiddleButton and getattr(widget, "_pan_dragging", False):
         widget._pan_dragging = False
         widget.setCursor(Qt.CursorShape.ArrowCursor)
@@ -520,6 +487,10 @@ def handle_mouse_release_event(widget, event):
     widget.mouseReleased.emit(event)
 
 def handle_mouse_move_event(widget, event):
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        event.accept()
+        return
+
     if getattr(widget, "_pan_dragging", False):
         result = compute_pan_drag_transform(
             PanDragRequest(

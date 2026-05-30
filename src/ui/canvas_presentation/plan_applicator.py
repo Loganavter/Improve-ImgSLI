@@ -5,6 +5,10 @@ from ui.canvas_infra.scene.widget_registry import (
     apply_canvas_feature_live_runtime_overlays,
     apply_canvas_feature_plan_runtime_overlays,
 )
+from ui.canvas_infra.viewport.focus import (
+    capture_letterbox_focus,
+    restore_letterbox_focus,
+)
 
 from .plan import CanvasRenderPlan
 
@@ -244,6 +248,7 @@ def _apply_plan_full(
             zoom_level = get_zoom_level(canvas)
             pan_x = get_pan_offset_x(canvas)
             pan_y = get_pan_offset_y(canvas)
+            letterbox_focus = capture_letterbox_focus(canvas)
         canvas.reset_view()
         if plan.preserve_zoom:
             set_zoom_level(canvas, zoom_level)
@@ -264,6 +269,8 @@ def _apply_plan_full(
             display_cache_key=plan.display_cache_key,
             shader_letterbox=True,
         )
+        if plan.preserve_zoom:
+            restore_letterbox_focus(canvas, letterbox_focus)
 
         _apply_overlays(canvas, plan, store=store)
 
@@ -304,10 +311,12 @@ def _apply_plan_scene_only(
         state = canvas.runtime_state
         img0 = state._stored_pil_images[0] if state._stored_pil_images else None
         if img0 is not None and state._shader_letterbox_mode:
+            letterbox_focus = capture_letterbox_focus(canvas) if plan.preserve_zoom else None
             from ui.widgets.gl_canvas.texture_parts.base_images import (
                 update_letterbox_geometry,
             )
             update_letterbox_geometry(canvas, img0, slot_index=0)
+            restore_letterbox_focus(canvas, letterbox_focus)
 
         _apply_overlays(canvas, plan, store=store)
 

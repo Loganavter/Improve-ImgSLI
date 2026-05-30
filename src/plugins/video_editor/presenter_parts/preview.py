@@ -241,6 +241,8 @@ class PreviewCoordinator:
         canvas = getattr(self.view, "preview_label", None)
         if exporter is None or canvas is None:
             return False
+        if hasattr(canvas, "set_read_only"):
+            canvas.set_read_only(True)
 
         prepared = exporter.prepare_snapshot_canvas_frame(
             snap,
