@@ -84,6 +84,18 @@ class GLCanvas(QOpenGLWidget):
         self._first_frame_rendered_emitted = False
         init_widget_state(self)
 
+    def devicePixelRatio(self):
+        forced = getattr(self, "_forced_device_pixel_ratio", None)
+        if forced is not None:
+            return float(forced)
+        return super().devicePixelRatio()
+
+    def devicePixelRatioF(self):
+        forced = getattr(self, "_forced_device_pixel_ratio", None)
+        if forced is not None:
+            return float(forced)
+        return super().devicePixelRatioF()
+
     def set_store(self, store):
         state = self.runtime_state
         state._store = store
