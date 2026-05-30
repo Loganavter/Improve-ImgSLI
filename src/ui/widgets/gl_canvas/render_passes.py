@@ -4,6 +4,15 @@ from .render_common import clear_with_widget_background, get_zoom_texture_filter
 from .render_executor import execute_render_passes
 from .render_context import build_render_runtime_context
 
+def _reset_frame_gl_state(widget) -> None:
+    state = widget.runtime_state
+    state._content_scissor_depth = 0
+    dpr = max(1.0, float(widget.devicePixelRatioF()))
+    framebuffer_w = max(1, int(round(widget.width() * dpr)))
+    framebuffer_h = max(1, int(round(widget.height() * dpr)))
+    gl.glDisable(gl.GL_SCISSOR_TEST)
+    gl.glViewport(0, 0, framebuffer_w, framebuffer_h)
+
 def _flush_pending_uploads(widget):
     state = widget.runtime_state
     if not state._pending_texture_uploads:
@@ -25,6 +34,7 @@ def paint_gl(widget):
         )
         return
 
+    _reset_frame_gl_state(widget)
     _flush_pending_uploads(widget)
     ctx = build_render_runtime_context(widget)
 
