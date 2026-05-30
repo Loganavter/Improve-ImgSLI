@@ -1,34 +1,36 @@
-from .apply import apply_scene_to_canvas
-from .builder import build_canvas_scene
-from .context import CanvasSceneApplyContext, CanvasSceneBuildContext
-from .feature_contract import CanvasFeatureZOrder, CanvasSceneFeature
-from .feature_registry import get_canvas_scene_features
-from .hit_test import find_scene_object_at_position
-from .models import (
-    CanvasSceneObject,
-    CanvasSceneGraph,
-)
-from .pipeline import SCENE_APPLIERS, SCENE_HIT_TESTERS, SCENE_OVERLAY_BUILDERS, SCENE_PRIMARY_BUILDERS
-from .stacking import CanvasStackHint, CanvasStackLayer, CanvasStackRole, resolve_pick_order, resolve_render_order
+from __future__ import annotations
 
-__all__ = [
-    "CanvasSceneApplyContext",
-    "CanvasSceneBuildContext",
-    "CanvasSceneFeature",
-    "CanvasFeatureZOrder",
-    "CanvasSceneObject",
-    "CanvasSceneGraph",
-    "CanvasStackHint",
-    "CanvasStackLayer",
-    "CanvasStackRole",
-    "SCENE_APPLIERS",
-    "SCENE_HIT_TESTERS",
-    "SCENE_OVERLAY_BUILDERS",
-    "SCENE_PRIMARY_BUILDERS",
-    "apply_scene_to_canvas",
-    "build_canvas_scene",
-    "find_scene_object_at_position",
-    "get_canvas_scene_features",
-    "resolve_pick_order",
-    "resolve_render_order",
-]
+_EXPORT_MODULES = {
+    "CanvasSceneApplyContext": ".context",
+    "CanvasSceneBuildContext": ".context",
+    "CanvasFeatureZOrder": ".feature_contract",
+    "CanvasSceneFeature": ".feature_contract",
+    "CanvasSceneObject": ".models",
+    "CanvasSceneGraph": ".models",
+    "CanvasStackHint": ".stacking",
+    "CanvasStackLayer": ".stacking",
+    "CanvasStackRole": ".stacking",
+    "SCENE_APPLIERS": ".pipeline",
+    "SCENE_HIT_TESTERS": ".pipeline",
+    "SCENE_OVERLAY_BUILDERS": ".pipeline",
+    "SCENE_PRIMARY_BUILDERS": ".pipeline",
+    "apply_scene_to_canvas": ".apply",
+    "build_canvas_scene": ".builder",
+    "find_scene_object_at_position": ".hit_test",
+    "get_canvas_scene_features": ".feature_registry",
+    "resolve_pick_order": ".stacking",
+    "resolve_render_order": ".stacking",
+}
+
+__all__ = sorted(_EXPORT_MODULES)
+
+
+def __getattr__(name: str):
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    from importlib import import_module
+
+    module = import_module(module_name, __name__)
+    return getattr(module, name)

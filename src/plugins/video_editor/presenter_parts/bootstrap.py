@@ -1,8 +1,6 @@
 import logging
 
-from shared.image_processing.progressive_loader import load_full_image
-
-from .common import VIDEO_EDITOR_AUTO_CROP
+from shared.image_processing.progressive_loader import get_image_dimensions
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -31,18 +29,18 @@ def initialize_editor_from_snapshots(view, editor_service, playback_engine, mode
                 if not path or path in seen_paths:
                     continue
                 seen_paths.add(path)
-                img = load_full_image(path, auto_crop=VIDEO_EDITOR_AUTO_CROP)
-                if img:
-                    max_w = max(max_w, img.size[0])
-                    max_h = max(max_h, img.size[1])
+                size = get_image_dimensions(path)
+                if size:
+                    max_w = max(max_w, size[0])
+                    max_h = max(max_h, size[1])
         if not snapshots:
             first_snap = editor_service.get_snapshot_at_time(0.0)
             if first_snap is not None:
                 for path in (first_snap.image1_path, first_snap.image2_path):
-                    img = load_full_image(path, auto_crop=VIDEO_EDITOR_AUTO_CROP)
-                    if img:
-                        max_w = max(max_w, img.size[0])
-                        max_h = max(max_h, img.size[1])
+                    size = get_image_dimensions(path)
+                    if size:
+                        max_w = max(max_w, size[0])
+                        max_h = max(max_h, size[1])
         if max_w > 0 and max_h > 0:
             model.set_resolution(max_w, max_h)
             view.set_resolution(max_w, max_h)

@@ -4,6 +4,7 @@ from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
 from sli_ui_toolkit.icons import resolve_icon
+from sli_ui_toolkit.theme import ThemeManager
 
 class _SegmentButton(QPushButton):
     wheelScrolled = pyqtSignal(int)
@@ -69,6 +70,14 @@ class InstancesCounterButton(QWidget):
         layout.addWidget(self._add_button)
         layout.addWidget(self._remove_button)
         self._update_mode()
+
+        self._theme_manager = ThemeManager.get_instance()
+        self._theme_manager.theme_changed.connect(self._refresh_icons)
+
+    def _refresh_icons(self):
+        self._single_button.setIcon(resolve_icon("add_circle"))
+        self._add_button.setIcon(resolve_icon("add"))
+        self._remove_button.setIcon(resolve_icon("remove"))
 
     def _emit_remove_if_allowed(self):
         if self._can_remove:

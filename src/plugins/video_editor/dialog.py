@@ -163,6 +163,7 @@ class VideoEditorDialog(QDialog):
 
         self.preview_label = GLCanvas()
         self.preview_label.setObjectName("VideoEditorPreviewLabel")
+        self.preview_label.set_read_only(True)
         self.preview_label.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
         )

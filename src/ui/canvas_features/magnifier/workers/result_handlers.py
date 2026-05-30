@@ -1,4 +1,4 @@
-from ui.canvas_features.magnifier import iter_magnifier_models
+from ui.canvas_features.magnifier.store import iter_magnifier_models
 from ui.widgets.gl_canvas.helpers import reset_canvas_overlays
 
 from .common import get_live_image_label

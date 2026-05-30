@@ -7,26 +7,23 @@ from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QColor
 
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
-from ui.canvas_features.magnifier import DEFAULT_MAGNIFIER_ID, iter_magnifier_models
 from ui.canvas_features.magnifier.constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE as _COMBINE_THRESHOLD
 from ui.canvas_features.magnifier.store import (
+    DEFAULT_MAGNIFIER_ID,
     active_magnifier_id,
     active_or_default_border_color,
+    iter_magnifier_models,
 )
 from ui.canvas_infra.scene.property_access import (
     read_canvas_feature_color_by_setting_key,
-    read_canvas_feature_setting_by_key,
 )
 from ui.widgets.gl_canvas.render_metrics import resolve_relative_px
-from ui.widgets.gl_canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 from ui.canvas_presentation.plan import (
     CaptureCircle,
     GuideSet,
     OverlayLayout,
     OverlaySlot,
 )
-
-CAPTURE_RING_AA_PX = 1.15
 
 def clamp_capture_position(
     rel_x: float, rel_y: float, width: int, height: int, capture_size: float
@@ -48,29 +45,23 @@ def clamp_capture_overlay_geometry(
     center_x: float,
     center_y: float,
     radius: float,
-    stroke_margin: float,
 ):
     if width <= 0 or height <= 0 or radius <= 0:
         return center_x, center_y, max(0.0, radius)
 
     right = left + width
     bottom = top + height
-    usable_left = left + stroke_margin
-    usable_top = top + stroke_margin
-    usable_right = right - stroke_margin
-    usable_bottom = bottom - stroke_margin
-
-    max_radius_x = max(0.0, (usable_right - usable_left) / 2.0)
-    max_radius_y = max(0.0, (usable_bottom - usable_top) / 2.0)
+    max_radius_x = max(0.0, (right - left) / 2.0)
+    max_radius_y = max(0.0, (bottom - top) / 2.0)
     clamped_radius = min(radius, max_radius_x, max_radius_y)
 
     clamped_x = min(
-        max(center_x, usable_left + clamped_radius),
-        usable_right - clamped_radius,
+        max(center_x, left + clamped_radius),
+        right - clamped_radius,
     )
     clamped_y = min(
-        max(center_y, usable_top + clamped_radius),
-        usable_bottom - clamped_radius,
+        max(center_y, top + clamped_radius),
+        bottom - clamped_radius,
     )
     return clamped_x, clamped_y, clamped_radius
 
@@ -133,11 +124,6 @@ def build_magnifier_layout(
         )
         / local_scale
     )
-    line_width_px = resolve_relative_px(
-        DEFAULT_CANVAS_STYLE_TOKENS.capture_ring_stroke_du,
-        short_edge_px=float(max(1, min(width, height))),
-    )
-    stroke_margin = ((line_width_px / 2.0) + CAPTURE_RING_AA_PX) / local_scale
     def _resolve_border_width_canvas_px(model) -> float:
         raw_width = float(
             getattr(model, "border_thickness", border_width) or border_width
@@ -172,7 +158,6 @@ def build_magnifier_layout(
             center_x=center_x,
             center_y=center_y,
             radius=radius,
-            stroke_margin=stroke_margin,
         )
         uv_half_w = radius / max(1.0, float(width))
         uv_half_h = radius / max(1.0, float(height))

@@ -54,6 +54,7 @@ class GLCanvasRuntimeState:
     _render_scene: object | None = None
     _split_position_sync: object | None = None
     _apply_channel_mode_in_shader: bool = True
+    _read_only: bool = False
     _update_batch_depth: int = 0
     _update_pending: bool = False
     _drag_overlay_visible: bool = False
@@ -91,11 +92,6 @@ class GLCanvasRuntimeState:
     _hidden_capture_circles: list = field(default_factory=list)
     _occluded_capture_arcs: list = field(default_factory=list)
     _hidden_overlay_circles: list = field(default_factory=list)
-    _show_divider: bool = False
-    _split_pos: int = 0
-    _is_horizontal_split: bool = False
-    _divider_color: object = field(default_factory=QColor)
-    _divider_thickness: int = 0
     _show_guides: bool = False
     _laser_color: object = field(default_factory=QColor)
     _guides_thickness: int = 0

@@ -457,6 +457,10 @@ Image export preview/final and video preview/export differ by snapshot source an
 - Storing shader programs on the widget instead of on `CanvasGLRenderPass`
 - Reintroducing executor-level special flags like `hide_in_single_preview`
 - Using feature-local mode services to decide export/interative visibility when `SceneVisibility` already expresses it
+- Mixing semantic feature geometry with visual paint margins. Stroke width,
+  antialiasing halos, shadows, handles, and selection outlines are render
+  concerns; they must not push stored positions, hit-test anchors, guide
+  endpoints, crop/capture centers, or export/layout geometry inward.
 
 ## Checklist
 
@@ -505,6 +509,36 @@ Conversions:
 
 **If you find yourself computing `sr` by hand inside a feature, you're doing
 it wrong.** Store canvas-px, let the runtime convert.
+
+### Semantic geometry vs paint extents
+
+Feature geometry has two different meanings that must stay separate:
+
+| Kind | Examples | May affect |
+|---|---|---|
+| **Semantic geometry** | overlay center, capture/crop rect, guide endpoint, handle anchor, split position, hit-test shape | store state, scene objects, hit-test, guides, export layout, keyframes |
+| **Paint extent** | stroke width, antialiasing fringe, shadow blur, hover outline, selected border, glow | GL/QPainter draw bounds, scissor/clipping, dirty rect inflation |
+
+Do not use paint extent as a clamp margin for semantic geometry. If a circle is
+allowed to touch the image edge, clamp its center to `edge + radius`, not
+`edge + radius + stroke/2 + aa`. Otherwise every consumer that reads the
+semantic point will inherit a fake offset: guides attach to the wrong place,
+hit-tests disagree with the visual edge, export/live paths diverge, and
+positions can "jump" when a post-interaction rebuild uses a different render
+scale.
+
+Correct pattern:
+- Clamp semantic objects using only semantic size and image/content bounds.
+- Let render passes clip or antialias strokes at the edge.
+- Inflate dirty rects or scissor decisions locally in the renderer if paint
+  can extend outside semantic bounds.
+- Keep live scene geometry and plan/export geometry sourced from the same
+  semantic rect (`_inner_content_rect_px` when fit-content padding is active,
+  otherwise `_content_rect_px`).
+
+When reviewing overlay code, names like `stroke_margin`, `aa`, `border_width`,
+`shadow_radius`, or `hover_padding` inside functions that update store state,
+build scene objects, hit-test, or calculate guide endpoints are a red flag.
 
 ### Where pan and zoom live
 
@@ -611,6 +645,7 @@ and where to look:
 | Overlay flickers / jumps during interaction | Reducer reset a runtime-cache field | Check `_build_new_viewport_state` for missing field carryover; move field to `ViewportRuntimeCache` |
 | Mouse hit lands on wrong feature | Hit-test uses widget-px but feature stores widget-px instead of canvas-px | Search for direct `widget.width()` / `widget.height()` in your feature's geometry math |
 | Position correct at `zoom = 1` but wrong otherwise | Feature draws using raw store value instead of going through the viewport display formula | Use `compute_display_split_position` / equivalent contract instead of reading store directly in render |
+| Overlay can never reach the image edge, or guides attach a few px away from the visual target | Paint margin leaked into semantic geometry clamp | Search for `stroke`, `aa`, `border`, `shadow`, or `padding` in scene/build/hit-test/layout helpers; move it to render-only clipping/draw code |
 
 ## Examples
 
