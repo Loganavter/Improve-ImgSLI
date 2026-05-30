@@ -7,9 +7,9 @@ on:
       - "v*"
 
 jobs:
-  windows-build:
+  validate:
+    name: Validate metadata
     runs-on: windows-latest
-
     steps:
       - name: Check Out Repository
         uses: actions/checkout@v4
@@ -24,12 +24,63 @@ jobs:
         run: |
           python build/ci/validate_release_metadata.py
 
+  tests:
+    name: Run tests
+    runs-on: windows-latest
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
       - name: Cache Pip
         uses: actions/cache@v4
         with:
           path: ~\AppData\Local\pip\Cache
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements-gui.txt') }}
+          key: ${{ runner.os }}-pip-tests-${{ hashFiles('requirements-gui.txt', 'requirements-dev.txt') }}
           restore-keys: |
+            ${{ runner.os }}-pip-tests-
+            ${{ runner.os }}-pip-
+
+      - name: Install Python Dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path "requirements-gui.txt") {
+            pip install -r requirements-gui.txt
+          }
+          if (Test-Path "requirements-dev.txt") {
+            pip install -r requirements-dev.txt
+          }
+
+      - name: Run Pytest
+        shell: pwsh
+        run: |
+          python -m pytest tests --maxfail=1 -q
+
+  build-bundle:
+    name: Build PyInstaller bundle
+    runs-on: windows-latest
+    needs: [validate, tests]
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache Pip
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-build-${{ hashFiles('requirements-gui.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-build-
             ${{ runner.os }}-pip-
 
       - name: Install Python Dependencies
@@ -48,17 +99,31 @@ jobs:
         run: |
           python build/Windows-template/build_windows.py
 
-      - name: Build Inno Setup Installer
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
-        with:
-          path: build/Windows-template/inno_setup_6.iss
-
       - name: Upload Windows Bundle
         uses: actions/upload-artifact@v4
         with:
           name: Improve_ImgSLI_windows_bundle
           path: dist/Improve_ImgSLI/**
           if-no-files-found: error
+
+  installer:
+    name: Build Inno Setup installer
+    runs-on: windows-latest
+    needs: build-bundle
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v4
+
+      - name: Download Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: Improve_ImgSLI_windows_bundle
+          path: dist/Improve_ImgSLI
+
+      - name: Build Inno Setup Installer
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
+        with:
+          path: build/Windows-template/inno_setup_6.iss
 
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
