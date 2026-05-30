@@ -21,7 +21,6 @@ depends=(
 )
 optdepends=(
   'python-imagecodecs: JXL image format support'
-  'python-desktop-notifier: enhanced system notifications'
   'python-snakeviz: for performance profiling'
 )
 makedepends=(
