@@ -35,10 +35,8 @@ void main() {
     vec2 frag_px = TexCoord * resolution;
     float coord = isHorizontal ? frag_px.y : frag_px.x;
     float dist = abs(coord - positionPx);
-    float aa = 1.15;
-    float alpha = 1.0 - smoothstep(max(0.0, halfThicknessPx - aa), halfThicknessPx + aa, dist);
-    if (alpha <= 0.01) discard;
-    FragColor = vec4(color.rgb, color.a * alpha);
+    if (dist > max(0.5, halfThicknessPx)) discard;
+    FragColor = color;
 }
 """
 

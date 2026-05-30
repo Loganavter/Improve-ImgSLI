@@ -122,8 +122,7 @@ class GlobalKeyboardHandler:
             return
         self.store.emit_viewport_change("interaction")
 
-        if (is_overlay_key and self.store.viewport.view_state.overlay_enabled) or not is_overlay_key:
-            self._movement_controller.start()
+        self._movement_controller.start()
 
     def handle_key_release(self, event: QKeyEvent) -> None:
         key_code = event.key()
@@ -143,7 +142,6 @@ class GlobalKeyboardHandler:
 
         if (
             key_code in self.OVERLAY_MOVEMENT_KEYS
-            and self.store.viewport.view_state.overlay_enabled
             and not self.keyboard_state.has_active_overlay_keys()
         ):
             self._movement_controller.stop()

@@ -107,3 +107,48 @@ def test_preview_split_display_ignores_viewport_camera():
     )
 
     assert split == 0.5
+
+def test_live_canvas_with_store_keeps_interactive_render_mode_without_plan():
+    """Live canvas focus changes must not downgrade render passes to preview mode."""
+    from ui.widgets.gl_canvas.render_context import build_render_runtime_context
+
+    store = SimpleNamespace(
+        viewport=SimpleNamespace(
+            view_state=SimpleNamespace(
+                diff_mode="off",
+                is_horizontal=False,
+                split_position=0.5,
+                split_position_visual=0.5,
+                showing_single_image_mode=0,
+                channel_view_mode="RGB",
+            ),
+            render_config=SimpleNamespace(zoom_interpolation_method="BILINEAR"),
+        ),
+        document=SimpleNamespace(image1_path="left.png", image2_path="right.png"),
+        runtime_cache=SimpleNamespace(overlay_clip_rect=None),
+    )
+    canvas = SimpleNamespace(
+        runtime_state=GLCanvasRuntimeState(_store=store),
+        width=lambda: 320,
+        height=lambda: 180,
+        objectName=lambda: "",
+        get_letterbox_params=lambda _slot: (0.0, 0.0, 1.0, 1.0),
+    )
+    canvas.runtime_state._render_scene = SimpleNamespace(
+        blank_white=False,
+        single_image_preview=0,
+        clip_overlays_to_image_bounds=False,
+        is_horizontal=False,
+        split_position_visual=0.5,
+        overlay_clip_rect=None,
+        channel_mode_int=0,
+        diff_mode_active=False,
+        diff_mode_int=0,
+        zoom_interpolation_method="BILINEAR",
+        feature_overrides={},
+    )
+
+    ctx = build_render_runtime_context(canvas)
+
+    assert ctx.render_metrics.mode == "interactive"
+    assert ctx.render_intent.kind == "interactive"
