@@ -39,7 +39,10 @@ def paint_gl(widget):
         return
 
     gl.glEnable(gl.GL_BLEND)
-    gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+    gl.glBlendFuncSeparate(
+        gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA,
+        gl.GL_ONE, gl.GL_ONE_MINUS_SRC_ALPHA,
+    )
 
     base_image = getattr(ctx.render_list, "base_image", None)
     if base_image is None:

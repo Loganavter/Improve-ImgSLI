@@ -427,7 +427,7 @@ class FilenameOverlayPass(CanvasGLRenderPass):
         )
 
         gl.glEnable(gl.GL_BLEND)
-        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+        gl.glBlendFunc(gl.GL_ONE, gl.GL_ONE_MINUS_SRC_ALPHA)
 
         for i, (name, rect) in enumerate([(name1, rect1), (name2, rect2)]):
             if not name or rect is None:
@@ -436,13 +436,14 @@ class FilenameOverlayPass(CanvasGLRenderPass):
 
             rw = max(1, int(rect.width()))
             rh = max(1, int(rect.height()))
-            cache_key = (name, rw, rh, font_key)
+            dpr = max(1.0, float(widget.devicePixelRatioF()))
+            cache_key = (name, rw, rh, font_key, round(dpr, 3))
 
             font_weight = int(getattr(cfg, "font_weight", 0) or 0)
             if self._cache_keys[i] != cache_key:
                 self._rasterize_label(
                     i, name, rw, rh, font, font_metrics, text_color, bg_color,
-                    draw_bg, overlay_style, font_weight,
+                    draw_bg, overlay_style, font_weight, dpr,
                 )
                 self._cache_keys[i] = cache_key
 
@@ -478,12 +479,17 @@ class FilenameOverlayPass(CanvasGLRenderPass):
         draw_bg: bool,
         style: FilenameOverlayStyle,
         font_weight: int = 0,
+        dpr: float = 1.0,
     ) -> None:
-        img = new_overlay_image(rw, rh)
+        dpr = max(1.0, float(dpr))
+        phys_w = max(1, int(round(rw * dpr)))
+        phys_h = max(1, int(round(rh * dpr)))
+        img = new_overlay_image(phys_w, phys_h)
         painter = QPainter(img)
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+            painter.scale(dpr, dpr)
             painter.setFont(font)
             label_rect = QRectF(0.0, 0.0, float(rw), float(rh))
             if draw_bg:

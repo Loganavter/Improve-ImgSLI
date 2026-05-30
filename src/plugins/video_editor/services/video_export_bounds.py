@@ -93,14 +93,6 @@ class CanvasBoundsAnalyzer:
             else:
                 pad_left, pad_right, pad_top, pad_bottom = (0, 0, 0, 0)
                 resolved_canvas_bounds = None
-            _blog.info(
-                "BOUNDS_SNAP img1=%s img2=%s requirements=%s "
-                "pad=(%s,%s,%s,%s) canvas_bounds=%s",
-                snap.image1_path, snap.image2_path,
-                len(requirements),
-                pad_left, pad_right, pad_top, pad_bottom,
-                resolved_canvas_bounds,
-            )
             max_pad_left = max(max_pad_left, pad_left)
             max_pad_right = max(max_pad_right, pad_right)
             max_pad_top = max(max_pad_top, pad_top)
@@ -110,15 +102,6 @@ class CanvasBoundsAnalyzer:
                 have_explicit_layout = True
 
         final_canvas_bounds = canvas_bounds if have_explicit_layout else NormalizedBounds.unit()
-        _blog.info(
-            "BOUNDS_FINAL base=%sx%s max_pad=(%s,%s,%s,%s) "
-            "canvas_bounds=(%.4f,%.4f,%.4f,%.4f) explicit=%s",
-            base_w, base_h,
-            max_pad_left, max_pad_right, max_pad_top, max_pad_bottom,
-            final_canvas_bounds.x_min, final_canvas_bounds.x_max,
-            final_canvas_bounds.y_min, final_canvas_bounds.y_max,
-            have_explicit_layout,
-        )
         return GlobalCanvasBounds(
             pad_left=max_pad_left,
             pad_right=max_pad_right,
