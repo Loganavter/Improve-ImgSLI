@@ -279,7 +279,7 @@ class TestRenderExecutorOrdering:
             "gl_canvas",
             "render_executor.py",
         )
-        with open(render_executor_path) as f:
+        with open(render_executor_path, encoding="utf-8") as f:
             content = f.read()
         assert "hide_in_single_preview" not in content
 
@@ -322,7 +322,7 @@ class TestFeatureGLPassesUseStackRole:
             gl_passes_path = os.path.join(entry.path, "gl_passes.py")
             if not os.path.isfile(gl_passes_path):
                 continue
-            with open(gl_passes_path) as f:
+            with open(gl_passes_path, encoding="utf-8") as f:
                 content = f.read()
             matches = pattern.findall(content)
             if matches:
