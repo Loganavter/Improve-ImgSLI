@@ -95,6 +95,60 @@ def test_preview_scene_uses_main_renderer_not_thumbnail(monkeypatch):
     assert captured["applied"] is True
     assert captured["thumbnail"] is False
 
+def test_preview_scene_forces_canvas_read_only(monkeypatch):
+    from plugins.video_editor.presenter_parts import preview as preview_module
+
+    coordinator = _build_preview_coordinator()
+    read_only_calls = []
+    monkeypatch.setattr(
+        preview_module,
+        "apply_canvas_render_plan",
+        lambda *args, **kwargs: None,
+    )
+
+    class FakeExporter:
+        def prepare_snapshot_canvas_frame(self, snap, out_w, out_h, **kwargs):
+            return SimpleNamespace(plan=object(), store=object())
+
+    coordinator.export_controller = SimpleNamespace(video_exporter=FakeExporter())
+    coordinator.view.preview_label = SimpleNamespace(
+        set_read_only=lambda value: read_only_calls.append(value),
+    )
+
+    assert coordinator._apply_preview_scene(
+        snap=object(),
+        request_key=("req",),
+        global_bounds=None,
+        fill_color_tuple=None,
+        render_w=640,
+        render_h=360,
+    ) is True
+    assert read_only_calls == [True]
+
+def test_video_editor_ready_does_not_activate_from_background(monkeypatch):
+    from PyQt6.QtCore import Qt
+    from plugins.video_editor import plugin as plugin_module
+    from plugins.video_editor.plugin import VideoEditorPlugin
+
+    calls: list[str] = []
+    dialog = SimpleNamespace(
+        isMinimized=lambda: False,
+        show=lambda: calls.append("show"),
+        raise_=lambda: calls.append("raise"),
+        activateWindow=lambda: calls.append("activate"),
+    )
+    app = SimpleNamespace(
+        applicationState=lambda: Qt.ApplicationState.ApplicationInactive,
+        activeWindow=lambda: None,
+    )
+    monkeypatch.setattr(plugin_module.QApplication, "instance", lambda: app)
+
+    editor_plugin = VideoEditorPlugin()
+    editor_plugin._editor_dialog = dialog
+    editor_plugin._show_editor_dialog()
+
+    assert calls == ["show"]
+
 def test_snapshot_frame_renderer_content_fit_uses_requested_resampler(monkeypatch):
     from plugins.video_editor.services import video_snapshot_rendering as rendering
 

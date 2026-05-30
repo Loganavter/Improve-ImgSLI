@@ -147,6 +147,25 @@ def load_full_image(image_path: str, auto_crop: bool = False) -> Image.Image | N
         logger.error(f"Failed to load full image {image_path}: {e}")
         return None
 
+def get_image_dimensions(image_path: str) -> tuple[int, int] | None:
+    try:
+        with Image.open(image_path) as img:
+            width, height = img.size
+            _ensure_supported_dimensions(width, height, image_path)
+            return (width, height)
+    except ImageSizeLimitError:
+        raise
+    except Exception:
+        if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
+            try:
+                decoded = imagecodecs.imread(image_path)
+                height, width = decoded.shape[:2]
+                _ensure_supported_dimensions(width, height, image_path)
+                return (width, height)
+            except Exception as e:
+                logger.error(f"Failed to read JXL dimensions {image_path}: {e}")
+        return None
+
 def get_image_format_info(image_path: str) -> tuple[str, bool, bool]:
     try:
         with Image.open(image_path) as img:

@@ -1,13 +1,20 @@
 from OpenGL import GL as gl
 from PyQt6.QtCore import QRect
 
-from .render_common import widget_px_to_screen_px
 from ui.canvas_infra.viewport.contract import DisplaySplitPositionRequest
 from ui.canvas_infra.viewport.geometry import QuickContentRect
 from ui.canvas_infra.viewport.pipeline import compute_display_split_position
 from ui.canvas_infra.viewport.state import set_display_split_position
 
-def update_display_split_position(widget, *, scene, zoom_level: float, pan_offset_x: float, pan_offset_y: float) -> float:
+def update_display_split_position(
+    widget,
+    *,
+    scene,
+    zoom_level: float,
+    pan_offset_x: float,
+    pan_offset_y: float,
+    anchor_to_viewport: bool = True,
+) -> float:
     if scene is None:
         return set_display_split_position(widget, getattr(widget, "split_position", 0.5))
 
@@ -28,39 +35,13 @@ def update_display_split_position(widget, *, scene, zoom_level: float, pan_offse
                 image_height=img1.height,
                 split_visual=scene.split_position_visual,
                 is_horizontal=scene.is_horizontal,
-                zoom_level=zoom_level,
-                pan_offset_x=pan_offset_x,
-                pan_offset_y=pan_offset_y,
+                zoom_level=zoom_level if anchor_to_viewport else 1.0,
+                pan_offset_x=pan_offset_x if anchor_to_viewport else 0.0,
+                pan_offset_y=pan_offset_y if anchor_to_viewport else 0.0,
                 content_rect=content_rect,
             )
         ))
     return set_display_split_position(widget, scene.split_position_visual)
-
-def get_divider_clip_rect_px(widget) -> tuple[int, int, int, int] | None:
-    state = widget.runtime_state
-    content_rect = state._content_rect_px
-    if not content_rect:
-        return None
-
-    x, y, w, h = content_rect
-    scene = state._render_scene
-    clip_rect = getattr(scene, "overlay_clip_rect", None)
-    img = state._stored_pil_images[0] if state._stored_pil_images else None
-
-    if clip_rect and img is not None and getattr(img, "width", 0) > 0 and getattr(img, "height", 0) > 0:
-        clip_x, clip_y, clip_w, clip_h = clip_rect
-        x = x + int(round((clip_x / float(img.width)) * w))
-        y = y + int(round((clip_y / float(img.height)) * h))
-        w = int(round((clip_w / float(img.width)) * w))
-        h = int(round((clip_h / float(img.height)) * h))
-
-    x0, y0 = widget_px_to_screen_px(widget, x, y)
-    x1, y1 = widget_px_to_screen_px(widget, x + w, y + h)
-    left = int(round(min(x0, x1)))
-    top = int(round(min(y0, y1)))
-    width = max(0, int(round(abs(x1 - x0))))
-    height = max(0, int(round(abs(y1 - y0))))
-    return (left, top, width, height)
 
 def get_content_rect_screen_px(widget) -> tuple[int, int, int, int] | None:
     content_rect = widget.runtime_state._content_rect_px

@@ -15,14 +15,9 @@ from ui.canvas_infra.scene.stacking_policy import CanvasStackLayer, CanvasStackR
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.canvas_features.magnifier.state import get_magnifier_widget_state
 from ui.canvas_features.magnifier.store import active_magnifier_id, iter_magnifier_models
-from ui.canvas_infra.viewport.state import get_zoom_level
-from ui.widgets.gl_canvas.render_metrics import resolve_relative_px
-from ui.widgets.gl_canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
-
 from .scene_objects import MagnifierCircle, MagnifierSceneObject
 
 from ui.canvas_features.magnifier.constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE as THRESHOLD
-CAPTURE_RING_AA_PX = 1.15
 MAGNIFIER_Z_ORDER = CanvasFeatureZOrder(
     stack_role=CanvasStackRole.IMAGE_OVERLAY_CONTENT,
     active_bias=True,
@@ -53,7 +48,6 @@ def clamp_capture_overlay_geometry(
     center_x: float,
     center_y: float,
     radius: float,
-    stroke_margin: float,
 ):
     if bounds.w <= 0 or bounds.h <= 0 or radius <= 0:
         return center_x, center_y, max(0.0, radius)
@@ -63,17 +57,12 @@ def clamp_capture_overlay_geometry(
     right = float(bounds.x + bounds.w)
     bottom = float(bounds.y + bounds.h)
 
-    usable_left = left + stroke_margin
-    usable_top = top + stroke_margin
-    usable_right = right - stroke_margin
-    usable_bottom = bottom - stroke_margin
-
-    max_radius_x = max(0.0, (usable_right - usable_left) / 2.0)
-    max_radius_y = max(0.0, (usable_bottom - usable_top) / 2.0)
+    max_radius_x = max(0.0, (right - left) / 2.0)
+    max_radius_y = max(0.0, (bottom - top) / 2.0)
     clamped_radius = min(radius, max_radius_x, max_radius_y)
 
-    clamped_x = min(max(center_x, usable_left + clamped_radius), usable_right - clamped_radius)
-    clamped_y = min(max(center_y, usable_top + clamped_radius), usable_bottom - clamped_radius)
+    clamped_x = min(max(center_x, left + clamped_radius), right - clamped_radius)
+    clamped_y = min(max(center_y, top + clamped_radius), bottom - clamped_radius)
     return clamped_x, clamped_y, clamped_radius
 
 def build_magnifier_object(
@@ -129,18 +118,11 @@ def build_magnifier_object(
     center_x = bounds.x + (rel_x * pix_w)
     center_y = bounds.y + (rel_y * pix_h)
 
-    zoom_level = get_zoom_level(image_label) if image_label is not None else 1.0
-    line_width_px = resolve_relative_px(
-        DEFAULT_CANVAS_STYLE_TOKENS.capture_ring_stroke_du,
-        short_edge_px=min(float(pix_w), float(pix_h)),
-    )
-    stroke_margin = ((line_width_px / 2.0) + CAPTURE_RING_AA_PX) / max(zoom_level, 1e-6)
     center_x, center_y, capture_radius = clamp_capture_overlay_geometry(
         bounds=bounds,
         center_x=center_x,
         center_y=center_y,
         radius=capture_radius,
-        stroke_margin=stroke_margin,
     )
 
     capture_center = Point(center_x, center_y)
@@ -162,7 +144,6 @@ def build_magnifier_object(
             center_x=base_x,
             center_y=base_y,
             radius=capture_radius,
-            stroke_margin=stroke_margin,
         )
     else:
         base_x = capture_center.x

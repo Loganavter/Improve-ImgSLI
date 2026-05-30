@@ -11,7 +11,7 @@ from ui.canvas_infra.scene.gl_pass_contract import (
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.canvas_infra.viewport.state import get_display_split_position
-from ui.widgets.gl_canvas.render_config import get_divider_clip_rect_px
+from ui.widgets.gl_canvas.render_common import widget_px_to_screen_px
 
 _VERT = """
 layout(location = 0) in vec2 aPos;
@@ -73,6 +73,32 @@ def _begin_screen_scissor(widget, rect: tuple[int, int, int, int] | None) -> boo
     )
     return True
 
+def _divider_clip_rect_px(widget) -> tuple[int, int, int, int] | None:
+    state = widget.runtime_state
+    content_rect = state._content_rect_px
+    if not content_rect:
+        return None
+
+    x, y, w, h = content_rect
+    scene = state._render_scene
+    clip_rect = getattr(scene, "overlay_clip_rect", None)
+    img = state._stored_pil_images[0] if state._stored_pil_images else None
+
+    if clip_rect and img is not None and getattr(img, "width", 0) > 0 and getattr(img, "height", 0) > 0:
+        clip_x, clip_y, clip_w, clip_h = clip_rect
+        x = x + int(round((clip_x / float(img.width)) * w))
+        y = y + int(round((clip_y / float(img.height)) * h))
+        w = int(round((clip_w / float(img.width)) * w))
+        h = int(round((clip_h / float(img.height)) * h))
+
+    x0, y0 = widget_px_to_screen_px(widget, x, y)
+    x1, y1 = widget_px_to_screen_px(widget, x + w, y + h)
+    left = int(round(min(x0, x1)))
+    top = int(round(min(y0, y1)))
+    width = max(0, int(round(abs(x1 - x0))))
+    height = max(0, int(round(abs(y1 - y0))))
+    return (left, top, width, height)
+
 class DividerPass(CanvasGLRenderPass):
     stack_role = CanvasStackRole.UNDERLAY_SPLIT
     visibility = SceneVisibility.ALL
@@ -90,16 +116,19 @@ class DividerPass(CanvasGLRenderPass):
 
         is_horizontal = bool(getattr(ctx.scene_frame, "is_horizontal", False))
 
-        state = getattr(widget, "runtime_state", None)
+        # NOTE: ``display_split_position`` is already screen-normalized and
+        # image-locked — produced by ``compute_zoom_display_split_position``
+        # (``ui/canvas_infra/viewport/zoom.py``) from the stored image-relative
+        # ``split_position_visual`` and the current ``content_rect_px`` /
+        # pan / zoom. Multiplying by widget pixel size therefore yields the
+        # final screen-px position. Do NOT re-apply ``widget_px_to_screen_px``
+        # here — that double-transforms and breaks click-to-position alignment.
         display_split = float(get_display_split_position(widget) or 0.5)
         position_px = (
             float(widget.height()) * display_split
             if is_horizontal
             else float(widget.width()) * display_split
         )
-        if getattr(widget, "width", None) is None or getattr(widget, "height", None) is None:
-            position_px = float(getattr(state, "_split_pos", 0) or 0)
-            is_horizontal = bool(getattr(state, "_is_horizontal_split", is_horizontal))
 
         return show_divider, position_px, thickness_px, is_horizontal, color
 
@@ -150,7 +179,7 @@ class DividerPass(CanvasGLRenderPass):
         if not show_divider or thickness_px <= 0.0:
             return
 
-        scissor_enabled = _begin_screen_scissor(widget, get_divider_clip_rect_px(widget))
+        scissor_enabled = _begin_screen_scissor(widget, _divider_clip_rect_px(widget))
         pid = self._shader.programId()
         self._shader.bind()
         widget.vao.bind()

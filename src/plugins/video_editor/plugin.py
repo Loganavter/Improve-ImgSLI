@@ -3,6 +3,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
+
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import ISessionPlugin
 from core.session_blueprints import (
@@ -75,10 +78,21 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
             if dialog.isMinimized():
                 dialog.showNormal()
             dialog.show()
-            dialog.raise_()
-            dialog.activateWindow()
+            if self._can_activate_deferred_dialog(dialog):
+                dialog.raise_()
+                dialog.activateWindow()
         except RuntimeError:
             self._editor_dialog = None
+
+    @staticmethod
+    def _can_activate_deferred_dialog(dialog) -> bool:
+        app = QApplication.instance()
+        if app is None:
+            return False
+        if app.applicationState() != Qt.ApplicationState.ApplicationActive:
+            return False
+        active_window = app.activeWindow()
+        return active_window is None or active_window is dialog
 
     def _forget_editor(self, *_args) -> None:
         self._editor_dialog = None

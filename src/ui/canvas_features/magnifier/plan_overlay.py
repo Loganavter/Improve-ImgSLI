@@ -2,25 +2,28 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QPointF
 
+from ui.canvas_presentation.plan import resolve_plan_logical_image_rect
+
 def _make_converters(canvas, plan):
     state = canvas.runtime_state
-    content_rect = state._content_rect_px
-    if not content_rect or plan.canvas_w <= 0 or plan.canvas_h <= 0:
+    dst_rect = getattr(state, "_inner_content_rect_px", None) or state._content_rect_px
+    if not dst_rect or plan.canvas_w <= 0 or plan.canvas_h <= 0:
         return None, None, None
 
-    ox, oy, dw, dh = content_rect
-    logical_w = max(1, int(plan.canvas_w))
-    logical_h = max(1, int(plan.canvas_h))
+    ox, oy, dw, dh = dst_rect
+    src_x, src_y, src_w, src_h = resolve_plan_logical_image_rect(plan)
+    logical_w = max(1, int(src_w))
+    logical_h = max(1, int(src_h))
 
     sx = dw / logical_w
     sy = dh / logical_h
     sr = min(sx, sy)
 
     def to_wx(cx: float) -> float:
-        return ox + cx * sx
+        return ox + (cx - src_x) * sx
 
     def to_wy(cy: float) -> float:
-        return oy + cy * sy
+        return oy + (cy - src_y) * sy
 
     def to_wr(r: float) -> float:
         return r * sr

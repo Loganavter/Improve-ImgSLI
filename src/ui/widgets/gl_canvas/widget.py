@@ -21,7 +21,6 @@ from .interaction import (
     set_pan as set_pan_impl,
     set_paste_overlay_hover,
     set_paste_overlay_state as set_paste_overlay_state_impl,
-    set_split_line_params as set_split_line_params_impl,
     set_zoom as set_zoom_impl,
     update_paste_overlay_rects,
     update_split_for_zoom,
@@ -317,16 +316,6 @@ class GLCanvas(QOpenGLWidget):
     ):
         set_overlay_coords_impl(self, capture_center, capture_radius, overlay_centers, overlay_radius)
 
-    def set_split_line_params(
-        self,
-        visible: bool,
-        pos: int,
-        is_horizontal: bool,
-        color: QColor,
-        thickness: int,
-    ):
-        set_split_line_params_impl(self, visible, pos, is_horizontal, color, thickness)
-
     def set_guides_params(self, visible: bool, color: QColor, thickness: int):
         set_guides_params_impl(self, visible, color, thickness)
 
@@ -383,6 +372,18 @@ class GLCanvas(QOpenGLWidget):
 
     def alignment(self):
         return self._alignment
+
+    def set_read_only(self, enabled: bool):
+        self.runtime_state._read_only = bool(enabled)
+        if enabled:
+            from ui.canvas_infra.viewport.state import set_pan_offsets, set_zoom_level
+
+            set_zoom_level(self, 1.0)
+            set_pan_offsets(self, 0.0, 0.0)
+            self.update()
+
+    def is_read_only(self) -> bool:
+        return bool(getattr(self.runtime_state, "_read_only", False))
 
     def setAutoFillBackground(self, enabled):
 

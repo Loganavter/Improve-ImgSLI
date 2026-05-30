@@ -37,9 +37,9 @@ class LogConsoleWidget(QWidget):
         self.output.setAcceptRichText(False)
         self.output.setUndoRedoEnabled(False)
         self.output.setTabChangesFocus(True)
+        self.output.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.output.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.TextSelectableByKeyboard
         )
         self.output.viewport().setCursor(Qt.CursorShape.IBeamCursor)
         self.output.setCursorWidth(0)
@@ -96,8 +96,10 @@ class LogConsoleWidget(QWidget):
         )
         self._entries.append(entry)
         self._entries = self._entries[-self._max_entries :]
+        at_bottom = self._is_scrolled_to_bottom()
         self.output.append(self._entry_to_html(entry))
-        self.output.ensureCursorVisible()
+        if at_bottom:
+            self._scroll_to_bottom()
         return entry
 
     def append_info(self, text: str, **kwargs) -> LogConsoleEntry:
@@ -124,12 +126,25 @@ class LogConsoleWidget(QWidget):
         self._rebuild()
 
     def _rebuild(self) -> None:
+        at_bottom = self._is_scrolled_to_bottom()
+        prev_value = self.output.verticalScrollBar().value()
         self.output.blockSignals(True)
         self.output.clear()
         for entry in self._entries:
             self.output.append(self._entry_to_html(entry))
-        self.output.ensureCursorVisible()
         self.output.blockSignals(False)
+        if at_bottom:
+            self._scroll_to_bottom()
+        else:
+            self.output.verticalScrollBar().setValue(prev_value)
+
+    def _is_scrolled_to_bottom(self) -> bool:
+        bar = self.output.verticalScrollBar()
+        return bar.value() >= bar.maximum() - 2
+
+    def _scroll_to_bottom(self) -> None:
+        bar = self.output.verticalScrollBar()
+        bar.setValue(bar.maximum())
 
     def _normalize_level(self, level: str) -> str:
         return level if level in {"info", "error", "status"} else "info"
