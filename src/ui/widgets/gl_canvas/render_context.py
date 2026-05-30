@@ -119,11 +119,11 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
     object_name = str(getattr(widget, "objectName", lambda: "")() or "")
     read_only = bool(getattr(state, "_read_only", False))
     mode = (
-        "interactive"
-        if bool(getattr(plan, "preserve_zoom", False)) and not read_only
-        else "export"
+        "export"
         if object_name == "gpu_export_canvas"
         else "preview"
+        if read_only or store is None
+        else "interactive"
     )
     inner_rect = getattr(state, "_inner_content_rect_px", None)
     if inner_rect is not None:

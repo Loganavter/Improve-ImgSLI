@@ -68,3 +68,11 @@ def test_divider_scene_apply_does_not_write_canvas_runtime_split_line():
     scene = SimpleNamespace(find_first=lambda _kind: object())
 
     apply_divider_object(scene, context)
+
+def test_divider_shader_uses_solid_edge_not_alpha_feather():
+    """Divider line must not introduce translucent antialias fringes."""
+    from ui.canvas_features.divider import gl_passes
+
+    assert "smoothstep" not in gl_passes._FRAG
+    assert "color.a *" not in gl_passes._FRAG
+    assert "FragColor = color;" in gl_passes._FRAG
