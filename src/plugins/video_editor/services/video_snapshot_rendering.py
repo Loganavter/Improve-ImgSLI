@@ -744,14 +744,6 @@ class SnapshotFrameRenderer:
                 float(max(1, out_h)) / (float(source_h) * span_y),
             )
             ratio = max(ratio, min_ratio)
-        _vrlog.info(
-            "SCALE_BOUNDS base=%sx%s prescale_target=%sx%s ratio=%.4f "
-            "pad=(%s,%s,%s,%s) canvas_bounds=(%.3f,%.3f,%.3f,%.3f)",
-            source_w, source_h, target_w, target_h, ratio,
-            bounds.pad_left, bounds.pad_right, bounds.pad_top, bounds.pad_bottom,
-            bounds.canvas_x_min, bounds.canvas_x_max,
-            bounds.canvas_y_min, bounds.canvas_y_max,
-        )
         if ratio >= 0.999:
             return bounds
 
@@ -766,11 +758,6 @@ class SnapshotFrameRenderer:
             canvas_x_max=float(bounds.canvas_x_max),
             canvas_y_min=float(bounds.canvas_y_min),
             canvas_y_max=float(bounds.canvas_y_max),
-        )
-        _vrlog.info(
-            "SCALE_BOUNDS_RESULT base=%sx%s pad=(%s,%s,%s,%s)",
-            scaled.base_width, scaled.base_height,
-            scaled.pad_left, scaled.pad_right, scaled.pad_top, scaled.pad_bottom,
         )
         return scaled
 

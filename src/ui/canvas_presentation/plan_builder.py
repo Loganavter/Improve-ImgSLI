@@ -152,15 +152,6 @@ def _build_snapshot_store(
         base_h = int(global_bounds.base_height)
         virtual_w = base_w + pad_left + pad_right
         virtual_h = base_h + pad_top + pad_bottom
-        _pblog.info(
-            "FIT_CONTENT source=%sx%s base=%sx%s virtual=%sx%s "
-            "pad=(%s,%s,%s,%s) fill=%s",
-            source_img1.width if source_img1 else 0,
-            source_img1.height if source_img1 else 0,
-            base_w, base_h, virtual_w, virtual_h,
-            pad_left, pad_right, pad_top, pad_bottom,
-            fill_color,
-        )
         if virtual_w > 0 and virtual_h > 0 and base_w > 0 and base_h > 0:
             fill = fill_color or (0, 0, 0, 0)
             fitted1, fitted2 = source_img1, source_img2
@@ -179,10 +170,6 @@ def _build_snapshot_store(
                 did_fit_down = True
             img_offset_x = (base_w - img_w) // 2
             img_offset_y = (base_h - img_h) // 2
-            _pblog.info(
-                "FIT_CONTENT_PLACE fitted=%sx%s offset=(%s,%s) fit_down=%s",
-                img_w, img_h, img_offset_x, img_offset_y, did_fit_down,
-            )
             display_img1 = _pad_image(
                 fitted1, virtual_w, virtual_h, pad_left + img_offset_x, pad_top + img_offset_y, fill
             )

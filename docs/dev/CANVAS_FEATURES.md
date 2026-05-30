@@ -388,6 +388,26 @@ Exception: SSIM map is CPU-generated/cached and uploaded as a texture. This is a
 
 Do not reintroduce: `RenderingPipeline`, PIL/ImageDraw/QPainter canvas overlays, CPU fallback workers for static canvas rendering, GPU failure fallback to CPU for canvas/video snapshots.
 
+### Alpha / Blending Contract — DO NOT BREAK
+
+The main window has `WA_TranslucentBackground`. The QOpenGLWidget's FBO alpha channel is read by the compositor AND by Wayland xdg-portal screenshot tools. The compositor often masks subtle alpha errors; portal capture does not. A bug that "looks fine on screen but garbage on a screenshot" is almost always an alpha-channel error in the FBO.
+
+Two hard rules:
+
+1. **FBO alpha must end every frame at 1.0 wherever something has been drawn.** The base clear sets α=1 (`clear_with_widget_background`). Any blend func used during the frame must preserve this invariant — i.e. starting from `dst.a = 1`, after the blend, `dst.a` is still `1`.
+
+   - For `over` compositing with non-premultiplied source, use `glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)`. The alpha part `(ONE, ONE_MINUS_SRC_ALPHA)` makes `dst.a' = src.a + dst.a·(1 − src.a) = 1` when `dst.a = 1`.
+   - **NEVER** use plain `glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)` as a sticky pipeline state — it applies `(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` to the alpha channel too, giving `dst.a' = src.a² + dst.a·(1 − src.a)` which decays below 1 on every AA edge. On screen you get away with it; on a screenshot you get colored fringes / cyan-magenta crud around every antialiased object.
+   - This is set once in `paint_gl` (`render_passes.py`) and inherited by every subsequent pass that does not explicitly override blending. Do not "simplify" it back to `glBlendFunc`.
+
+2. **CPU overlays uploaded as textures must be premultiplied end-to-end.** `new_overlay_image` returns `Format_RGBA8888_Premultiplied`; `upload_qimage_texture` keeps that format. Passes that draw those textures use `glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)` (premultiplied `over`). Do not introduce a `convertToFormat(Format_RGBA8888)` round-trip — Qt's unpremultiply is per-channel and lossy at low α, which produces independent R/G/B drift at AA edges (the same cyan/magenta fringe symptom).
+
+If you see the symptom and don't remember why this section exists: the fix is `glBlendFuncSeparate` for sticky non-premul blending, premultiplied alpha for QImage → texture overlays. Do not paper over it with `glColorMask` tricks or post-pass alpha resets; fix the blending.
+
+**Known residual cases (not currently exposing the symptom, but worth noting):**
+
+- `texture_parts/base_images.py:upload_image` and `feature_overlay_gpu.py:set_feature_overlay_content` still do `qimage.convertToFormat(Format_RGBA8888)` (non-premul). If the source is a `Format_ARGB32_Premultiplied` `QPixmap` with anti-aliased transparent edges (e.g. a PNG with alpha around glyphs/icons), the per-channel unpremul will drift R/G/B independently in the texture. The alpha fix above keeps the FBO alpha clean, but it won't fix RGB drift baked into the source texture itself. If that symptom appears, switch those uploads to `Format_RGBA8888_Premultiplied` AND update the consuming shader (main canvas + magnifier) to either unpremultiply on sample or move to premultiplied blending for that draw — don't half-migrate.
+
 ## Scene Pipeline
 
 ### Build (`scene/builder.py`)

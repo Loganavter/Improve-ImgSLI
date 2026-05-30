@@ -545,10 +545,21 @@ class MagnifierStoreService:
         model = self.get_active_or_first_magnifier()
         if model is None or not magnifier_enabled(self._view):
             return False
+        interaction = getattr(self.store.viewport, "interaction_state", None)
+        use_visual = (
+            interaction is not None
+            and bool(getattr(interaction, "is_interactive_mode", False))
+            and bool(getattr(self._view, "optimize_interactive_movement", True))
+        )
+        effective_spacing = (
+            float(getattr(interaction, "interactive_spacing_relative_visual", model.spacing_relative))
+            if use_visual
+            else float(model.spacing_relative)
+        )
         return (
             bool(model.visible_left)
             and bool(model.visible_right)
-            and float(model.spacing_relative) <= self.THRESHOLD + 1e-5
+            and effective_spacing <= self.THRESHOLD + 1e-5
         )
 
     def get_active_source_position(self) -> Point:

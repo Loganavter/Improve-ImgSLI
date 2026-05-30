@@ -28,15 +28,15 @@
   <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>     
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_1.jpg</image>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.9.0/Improve_ImgSLI/screenshots/screenshot_1.jpg</image>
       <caption>Magnifier</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_2.jpg</image>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.9.0/Improve_ImgSLI/screenshots/screenshot_2.jpg</image>
       <caption>Difference View</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_3.jpg</image>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/1.9.0/Improve_ImgSLI/screenshots/screenshot_3.jpg</image>
       <caption>Video Editor</caption>
     </screenshot>
   </screenshots>
@@ -47,15 +47,16 @@
   <releases>
     <release version="9.0.0" date="2026-05-09">
       <description>
-        <p>A major release focused on the canvas feature contract, multi-magnifier behavior, and rendering consistency.</p>
+        <p>A major release focused on smoother canvas interaction, sharper rendering, and a richer multi-magnifier workflow.</p>
         <ul>
-          <li>Refactored canvas features toward a self-contained registration contract for scene building, rendering, hit testing, settings, and editor tracks.</li>
-          <li>Improved multi-magnifier lifecycle behavior, including hidden instances, deletion, canvas refreshes, and per-instance colors.</li>
-          <li>Added optional automatic color assignment for new magnifiers and optional intersection highlighting while dragging capture areas.</li>
-          <li>Consolidated canvas rendering around the OpenGL widget path and removed unused fallback backends.</li>
-          <li>Fixed multiple zoom, comparison-mode, guide-line, capture-ring, and export consistency issues.</li>
-          <li>Removed the direct DBus notification path to avoid Flatpak integration problems.</li>
-          <li>Updated in-app help for the expanded magnifier behavior and canvas feature contract.</li>
+          <li>Smoother zoom and panning in the main comparison canvas, with more responsive feedback during interactive movement.</li>
+          <li>Cleaner image rendering with corrected alpha handling, so anti-aliased edges, magnifier circles, and overlays look crisp both on screen and in screenshots.</li>
+          <li>Reworked multi-magnifier workflow: easier to add, hide, delete, and manage multiple magnifiers, each with its own color and settings.</li>
+          <li>Optional automatic color assignment for new magnifiers and optional intersection highlighting while dragging capture areas.</li>
+          <li>More consistent behavior across comparison modes, guide lines, capture rings, filename overlays, and exported images.</li>
+          <li>Smoother live interactions: separators, splits, and magnifier dividers move without lag and stay in sync with the cursor.</li>
+          <li>Better compatibility with Flatpak: removed the direct DBus notification path that caused integration issues.</li>
+          <li>Updated in-app help to cover the expanded magnifier behavior and new canvas controls.</li>
         </ul>
       </description>
     </release>

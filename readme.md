@@ -31,7 +31,7 @@
 ## 📸 Preview
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.8.0/Improve_ImgSLI/screenshots/screenshot_1.jpg" width="75%">
+   <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.9.0/Improve_ImgSLI/screenshots/screenshot_1.jpg" width="75%">
 </div>
 
 <details>
@@ -57,7 +57,8 @@
 - 📤 WYSIWYG export built for real comparisons: save the exact composed view with splitters, magnifier, overlays, and styled file names, with support for PNG, JPEG, WEBP, BMP, TIFF, and JXL.
 - 🎬 Session recording, timeline editing, and video export: capture comparison sessions, trim or delete timeline ranges, keyframe comparison states, and export to MP4, WebM, AVI, GIF, ProRes, AV1, and more.
 - 🔍 High-precision magnifier: dual or combined circle, internal split control, subpixel-stable rendering, EWA Lanczos support, freeze mode, guide "lasers", and precise WASD/QE navigation.
-- 🖼️ Fast interactive comparison: vertical/horizontal split, synced pan and zoom, channel view modes, and instant single-image preview with Space + mouse buttons.
+- 🔭 Multi-magnifier workspace: place as many magnifiers as you need on the same comparison, each with its own capture area, position, size, colors, and freeze state — hide, restore, or delete them individually, with optional auto-color assignment for new instances and live intersection highlighting while dragging.
+- 🖼️ Fast interactive canvas: vertical/horizontal split, smooth GPU-accelerated zoom and panning, synced pan/zoom across both sides, channel view modes, anti-aliased dividers and overlays, and instant single-image preview with Space + mouse buttons.
 - 🗂️ File workflow tuned for large batches: drag and drop, reorder across left/right lists, clipboard paste, ratings, filename editing, and quick side switching with the mouse wheel.
 - 🎨 Deep UI customization: adjustable divider visibility/color/thickness, magnifier styling, text overlay styling, custom icon-based controls, light/dark themes, and custom UI fonts.
 - ⚙️ Polished desktop UX: persistent layout and settings, multilingual UI (EN/RU/zh/pt_BR), tray integration, save notifications, auto-cropping options, and a robust launcher for source-based runs.

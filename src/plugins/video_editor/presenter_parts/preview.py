@@ -485,7 +485,6 @@ class PreviewCoordinator:
             g_base_h = int(bounds.base_height)
             canvas_w = g_base_w + g_pad_left + g_pad_right
             canvas_h = g_base_h + g_pad_top + g_pad_bottom
-            logger.info(f"Global bounds calculated: canvas {canvas_w}x{canvas_h}")
 
             self.view.blockSignals(True)
             was_locked = self.model.aspect_ratio_locked
