@@ -34,7 +34,7 @@ class TestSharedEventLayerIsolation:
         path = os.path.join(SRC, rel_path)
         if not os.path.isfile(path):
             pytest.skip(f"{rel_path} not found")
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
         matches = _FEATURE_IMPORT_PATTERN.findall(content)
         assert not matches, (
@@ -47,7 +47,7 @@ class TestSharedEventLayerIsolation:
         path = os.path.join(SRC, rel_path)
         if not os.path.isfile(path):
             pytest.skip(f"{rel_path} not found")
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         feature_name_pattern = re.compile(

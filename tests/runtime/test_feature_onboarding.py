@@ -70,7 +70,7 @@ class TestAutoDiscovery:
         violations = []
         for rel_path in registry_files:
             path = os.path.join(SRC, rel_path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 for lineno, line in enumerate(f, 1):
                     if feature_list_pattern.search(line):
                         violations.append(f"{rel_path}:{lineno}: {line.strip()}")
