@@ -47,7 +47,7 @@ def should_render_blank_white(scene_frame) -> bool:
     return bool(getattr(scene_frame, "blank_white", False))
 
 def new_overlay_image(width: int, height: int) -> QImage:
-    image = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+    image = QImage(width, height, QImage.Format.Format_RGBA8888_Premultiplied)
     image.fill(Qt.GlobalColor.transparent)
     return image
 
@@ -55,7 +55,7 @@ def upload_qimage_texture(texture_id: int, overlay: QImage) -> bool:
     if overlay.isNull() or not texture_id:
         return False
 
-    qimg = overlay.convertToFormat(QImage.Format.Format_RGBA8888)
+    qimg = overlay.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
     ptr = qimg.constBits()
     ptr.setsize(qimg.sizeInBytes())
 
