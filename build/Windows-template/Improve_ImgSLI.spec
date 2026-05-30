@@ -42,6 +42,31 @@ def collect_tree(source_dir, dest_dir, *, include_suffixes=None):
     return collected
 
 
+def collect_resource_dirs(root_dir, dest_prefix):
+    root_path = Path(root_dir)
+    if not root_path.exists():
+        return []
+
+    collected = []
+    for resource_dir in sorted(root_path.rglob("resources")):
+        if not resource_dir.is_dir():
+            continue
+        relative_dir = resource_dir.relative_to(root_path)
+        target_dir = str(Path(dest_prefix) / relative_dir).replace("\\", "/")
+        collected.append((str(resource_dir), target_dir))
+    return collected
+
+
+def collect_project_submodules(package_names):
+    collected = []
+    for package_name in package_names:
+        package_spec = importlib.util.find_spec(package_name)
+        if package_spec is None or package_spec.submodule_search_locations is None:
+            continue
+        collected.extend(collect_submodules(package_name))
+    return collected
+
+
 def find_pyqt6_root():
     try:
         pyqt6 = importlib.import_module("PyQt6")
@@ -65,12 +90,11 @@ APP_DATAS = [
     (str(REPO_ROOT / "src" / "resources"), "resources"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "resources"), "shared_toolkit/resources"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "ui" / "resources"), "shared_toolkit/ui/resources"),
-    (str(REPO_ROOT / "src" / "plugins" / "export" / "resources"), "plugins/export/resources"),
-    (str(REPO_ROOT / "src" / "plugins" / "settings" / "resources"), "plugins/settings/resources"),
-    (str(REPO_ROOT / "src" / "plugins" / "video_editor" / "resources"), "plugins/video_editor/resources"),
-    (str(REPO_ROOT / "src" / "plugins" / "help" / "resources"), "plugins/help/resources"),
     (str(QT_CONF_PATH), "."),
 ]
+APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "plugins", "plugins"))
+APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "tabs", "tabs"))
+APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "ui" / "canvas_features", "ui/canvas_features"))
 
 PYQT6_DATAS = []
 PYQT6_DATAS.extend(collect_tree(QT6_ROOT / "plugins", "PyQt6/Qt6/plugins"))
@@ -292,11 +316,23 @@ APP_HIDDENIMPORTS = [
     "resources.translations",
 ]
 
-APP_HIDDENIMPORTS.extend(collect_submodules("plugins"))
-APP_HIDDENIMPORTS.extend(collect_submodules("sli_ui_toolkit"))
-APP_HIDDENIMPORTS.extend(collect_submodules("ui.canvas_features"))
-APP_HIDDENIMPORTS.extend(collect_submodules("ui.canvas_infra.scene"))
-APP_HIDDENIMPORTS.extend(collect_submodules("ui.widgets.gl_canvas"))
+APP_HIDDENIMPORTS.extend(
+    collect_project_submodules(
+        (
+            "core",
+            "domain",
+            "events",
+            "plugins",
+            "resources",
+            "services",
+            "shared",
+            "tabs",
+            "ui",
+            "utils",
+            "sli_ui_toolkit",
+        )
+    )
+)
 
 a = Analysis(
     [str(REPO_ROOT / "src" / "__main__.py")],
