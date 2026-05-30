@@ -6,6 +6,8 @@ from ui.canvas_infra.viewport.geometry import QuickContentRect
 from ui.canvas_infra.viewport.pipeline import compute_display_split_position
 from ui.canvas_infra.viewport.state import set_display_split_position
 
+from .render_common import widget_px_to_screen_px
+
 def update_display_split_position(
     widget,
     *,

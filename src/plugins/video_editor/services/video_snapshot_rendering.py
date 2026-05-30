@@ -149,7 +149,6 @@ class SnapshotFrameRenderer:
         cw, ch = content_size
         sw, sh = source.width, source.height
         if (sw, sh) == (cw, ch):
-            _vrlog.info("FIT_SOURCE exact=%sx%s", sw, sh)
             return source
         did_resize = False
         if sw > cw or sh > ch:
@@ -166,10 +165,6 @@ class SnapshotFrameRenderer:
         canvas = Image.new("RGBA", (cw, ch), fill_rgba or (0, 0, 0, 255))
         ox = (cw - sw) // 2
         oy = (ch - sh) // 2
-        _vrlog.info(
-            "FIT_SOURCE source=%sx%s content=%sx%s offset=(%s,%s) resized=%s",
-            sw, sh, cw, ch, ox, oy, did_resize,
-        )
         canvas.alpha_composite(source.convert("RGBA"), (ox, oy))
         return canvas
 
@@ -408,18 +403,6 @@ class SnapshotFrameRenderer:
                 "scaled_global_bounds": repr(scaled_global_bounds),
                 "resize_method": resize_method,
             },
-        )
-        _vrlog.info(
-            "FRAME_LAYOUT source1=%s source2=%s display1=%s "
-            "target_size=%s content_size=%s pad_lt=(%s,%s) "
-            "fit_content=%s global_bounds=%s scaled_bounds=%s "
-            "virtual_layout=%s",
-            _src1_sz, _src2_sz, _disp1_sz,
-            target_size, content_size, pad_left, pad_top,
-            request.fit_content,
-            request.global_bounds,
-            scaled_global_bounds,
-            frame.virtual_layout,
         )
         canvas_geometry = CanvasGeometry(
             image_width=max(1, int(content_size[0])),
