@@ -193,7 +193,14 @@ class SnapshotFrameRenderer:
         )
 
     @staticmethod
-    def _image_prep_cache_key(img1, img2, request, scaled_global_bounds, resize_method):
+    def _image_prep_cache_key(
+        img1,
+        img2,
+        request,
+        scaled_global_bounds,
+        resize_method,
+        normalize_snapshot,
+    ):
         bounds_key = None
         if scaled_global_bounds is not None:
             bounds_key = (
@@ -214,10 +221,17 @@ class SnapshotFrameRenderer:
             resize_method,
             request.target_surface.width,
             request.target_surface.height,
+            bool(normalize_snapshot),
         )
 
     @staticmethod
-    def _rebuild_snapshot_store(snap, c, fit_content, scaled_global_bounds):
+    def _rebuild_snapshot_store(
+        snap,
+        c,
+        fit_content,
+        scaled_global_bounds,
+        normalize_snapshot_store_enabled,
+    ):
         from core.store import ImageItem, Store
         from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
@@ -227,7 +241,11 @@ class SnapshotFrameRenderer:
         store.runtime_cache.overlay_clip_rect = None
 
         normalize_snapshot = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
-        if normalize_snapshot is not None and not (fit_content and scaled_global_bounds is not None):
+        if (
+            normalize_snapshot_store_enabled
+            and normalize_snapshot is not None
+            and not (fit_content and scaled_global_bounds is not None)
+        ):
             normalize_snapshot(store)
 
         store.viewport.session_data.image_state.image1 = c["display_img1"]
@@ -282,12 +300,18 @@ class SnapshotFrameRenderer:
         scaled_global_bounds=None,
         debug: dict | None = None,
         allow_feature_layout_fallback: bool = False,
+        normalize_snapshot: bool = True,
     ) -> PreparedCanvasFrame:
         debug = {} if debug is None else debug
         resize_method = get_effective_export_interpolation_method(snap.viewport_state)
 
         image_prep_key = self._image_prep_cache_key(
-            img1, img2, request, scaled_global_bounds, resize_method,
+            img1,
+            img2,
+            request,
+            scaled_global_bounds,
+            resize_method,
+            normalize_snapshot,
         )
         cached = self._image_prep_cache
         if cached is not None and cached[0] == image_prep_key:
@@ -297,7 +321,11 @@ class SnapshotFrameRenderer:
             debug["image_prep_cache"] = "hit"
 
             store = self._rebuild_snapshot_store(
-                snap, c, request.fit_content, scaled_global_bounds,
+                snap,
+                c,
+                request.fit_content,
+                scaled_global_bounds,
+                normalize_snapshot,
             )
 
             layout_started = time.perf_counter()
@@ -355,6 +383,7 @@ class SnapshotFrameRenderer:
             global_bounds=scaled_global_bounds,
             fill_color=request.target_surface.fill_rgba,
             resize_method=resize_method,
+            normalize_snapshot=normalize_snapshot,
         )
         debug["build_store_ms"] = (time.perf_counter() - build_store_started) * 1000.0
         debug["pair_resize_method"] = resize_method
@@ -625,6 +654,7 @@ class SnapshotFrameRenderer:
         image2: Image.Image,
         *,
         allow_feature_layout_fallback: bool = False,
+        normalize_snapshot: bool = True,
     ) -> PreparedCanvasFrame:
         debug = {
             "load_ms": 0.0,
@@ -640,6 +670,7 @@ class SnapshotFrameRenderer:
             scaled_global_bounds=request.global_bounds,
             debug=debug,
             allow_feature_layout_fallback=allow_feature_layout_fallback,
+            normalize_snapshot=normalize_snapshot,
         )
 
     def _render_prepared(self, prepared: PreparedCanvasFrame, request: VideoRenderRequest) -> RenderedFrame:
@@ -710,6 +741,7 @@ class SnapshotFrameRenderer:
         image2: Image.Image,
         *,
         allow_feature_layout_fallback: bool = False,
+        normalize_snapshot: bool = True,
     ) -> RenderedFrame:
         prepared = self.prepare_canvas_frame_from_images(
             snap,
@@ -717,6 +749,7 @@ class SnapshotFrameRenderer:
             image1,
             image2,
             allow_feature_layout_fallback=allow_feature_layout_fallback,
+            normalize_snapshot=normalize_snapshot,
         )
         result = self._render_prepared(prepared, request)
         self._last_backend = result.backend

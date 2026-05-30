@@ -5,6 +5,7 @@ import logging
 import PIL.Image
 
 from plugins.export.models import ExportSaveContext
+from plugins.export.services.still_snapshot_bounds import calculate_still_snapshot_bounds
 from plugins.video_editor.services.video_export_models import VideoRenderRequest
 from plugins.video_editor.services.video_snapshot_rendering import SnapshotFrameRenderer
 from shared.image_processing.resize import resize_images_processor
@@ -64,22 +65,38 @@ class ExportContextBuilder:
         )
         if not image1_for_save or not image2_for_save:
             raise ValueError("Failed to unify images for export.")
+        global_bounds = calculate_still_snapshot_bounds(
+            live_snapshot,
+            image1_for_save,
+            image2_for_save,
+        )
+        canvas_w = (
+            int(global_bounds.base_width)
+            + int(global_bounds.pad_left)
+            + int(global_bounds.pad_right)
+        )
+        canvas_h = (
+            int(global_bounds.base_height)
+            + int(global_bounds.pad_top)
+            + int(global_bounds.pad_bottom)
+        )
         prepared_frame = self.renderer.prepare_canvas_frame_from_images(
             live_snapshot,
             VideoRenderRequest(
                 target_surface=TargetSurfaceSpec(
-                    width=image1_for_save.width,
-                    height=image1_for_save.height,
+                    width=canvas_w,
+                    height=canvas_h,
                     fill_rgba=self._current_canvas_fill_rgba(),
                 ),
                 font_path=None,
                 auto_crop=False,
-                fit_content=False,
-                global_bounds=None,
+                fit_content=True,
+                global_bounds=global_bounds,
             ),
             image1_for_save,
             image2_for_save,
             allow_feature_layout_fallback=True,
+            normalize_snapshot=False,
         )
 
         plan = prepared_frame.plan
@@ -123,21 +140,37 @@ class ExportContextBuilder:
         )
         if not image1_preview or not image2_preview:
             raise ValueError("Failed to build preview export pair.")
+        global_bounds = calculate_still_snapshot_bounds(
+            live_snapshot,
+            image1_preview,
+            image2_preview,
+        )
+        canvas_w = (
+            int(global_bounds.base_width)
+            + int(global_bounds.pad_left)
+            + int(global_bounds.pad_right)
+        )
+        canvas_h = (
+            int(global_bounds.base_height)
+            + int(global_bounds.pad_top)
+            + int(global_bounds.pad_bottom)
+        )
         result = self.renderer.render_from_images(
             live_snapshot,
             VideoRenderRequest(
                 target_surface=TargetSurfaceSpec(
-                    width=image1_preview.width,
-                    height=image1_preview.height,
+                    width=canvas_w,
+                    height=canvas_h,
                     fill_rgba=self._current_canvas_fill_rgba(),
                 ),
                 font_path=None,
                 auto_crop=False,
-                fit_content=False,
-                global_bounds=None,
+                fit_content=True,
+                global_bounds=global_bounds,
             ),
             image1_preview,
             image2_preview,
             allow_feature_layout_fallback=True,
+            normalize_snapshot=False,
         )
         return result.image

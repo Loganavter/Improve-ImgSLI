@@ -123,15 +123,18 @@ def _build_snapshot_store(
     global_bounds=None,
     fill_color=None,
     resize_method: str = "LANCZOS",
+    normalize_snapshot: bool = True,
 ):
     store = Store()
     store.viewport = snap.viewport_state.clone()
     store.settings = snap.settings_state.freeze_for_export()
     store.runtime_cache.overlay_clip_rect = None
-    normalize_snapshot = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
-    should_normalize_snapshot = not (fit_content and global_bounds is not None)
-    if normalize_snapshot is not None and should_normalize_snapshot:
-        normalize_snapshot(store)
+    normalize_snapshot_command = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
+    should_normalize_snapshot = normalize_snapshot and not (
+        fit_content and global_bounds is not None
+    )
+    if normalize_snapshot_command is not None and should_normalize_snapshot:
+        normalize_snapshot_command(store)
 
     source_img1, source_img2 = _get_unified_images(
         image1,
@@ -256,6 +259,7 @@ def build_snapshot_store_presentation(
     global_bounds=None,
     fill_color=None,
     resize_method: str = "LANCZOS",
+    normalize_snapshot: bool = True,
 ) -> SnapshotStorePresentation:
     (
         store,
@@ -273,6 +277,7 @@ def build_snapshot_store_presentation(
         global_bounds=global_bounds,
         fill_color=fill_color,
         resize_method=resize_method,
+        normalize_snapshot=normalize_snapshot,
     )
     return SnapshotStorePresentation(
         store=store,

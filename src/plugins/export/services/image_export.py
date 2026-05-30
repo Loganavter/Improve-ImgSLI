@@ -9,6 +9,7 @@ from core.store import Store
 from domain.types import Color
 from plugins.video_editor.services.video_export_models import VideoRenderRequest
 from plugins.video_editor.services.video_snapshot_rendering import SnapshotFrameRenderer
+from plugins.export.services.still_snapshot_bounds import calculate_still_snapshot_bounds
 from shared.image_processing.resize import resize_images_processor
 from shared.rendering import TargetSurfaceSpec
 from shared.rendering.live_snapshot import build_live_frame_snapshot
@@ -106,15 +107,28 @@ class ExportService:
             )
             if not image1_for_save or not image2_for_save:
                 raise ValueError("Failed to unify images for export.")
-            if override_w > 0 and override_h > 0 and plan_size is not None:
-                native_canvas_w, native_canvas_h = plan_size
-                scale_w = override_w / float(native_canvas_w)
-                scale_h = override_h / float(native_canvas_h)
-                target_w = max(1, int(round(image1_for_save.width * scale_w)))
-                target_h = max(1, int(round(image1_for_save.height * scale_h)))
+            if override_w > 0 and override_h > 0:
+                target_w = override_w
+                target_h = override_h
             else:
                 target_w = override_w if override_w > 0 else image1_for_save.width
                 target_h = override_h if override_h > 0 else image1_for_save.height
+            global_bounds = calculate_still_snapshot_bounds(
+                live_snapshot,
+                image1_for_save,
+                image2_for_save,
+            )
+            if override_w <= 0 or override_h <= 0:
+                target_w = (
+                    int(global_bounds.base_width)
+                    + int(global_bounds.pad_left)
+                    + int(global_bounds.pad_right)
+                )
+                target_h = (
+                    int(global_bounds.base_height)
+                    + int(global_bounds.pad_top)
+                    + int(global_bounds.pad_bottom)
+                )
             prepared_frame = renderer.prepare_canvas_frame_from_images(
                 live_snapshot,
                 VideoRenderRequest(
@@ -125,12 +139,13 @@ class ExportService:
                     ),
                     font_path=None,
                     auto_crop=False,
-                    fit_content=False,
-                    global_bounds=None,
+                    fit_content=True,
+                    global_bounds=global_bounds,
                 ),
                 image1_for_save,
                 image2_for_save,
                 allow_feature_layout_fallback=True,
+                normalize_snapshot=False,
             )
             current_render_plan = prepared_frame.plan
             current_render_store = prepared_frame.store
