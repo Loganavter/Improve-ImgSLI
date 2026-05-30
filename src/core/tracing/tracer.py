@@ -22,7 +22,6 @@ _SKIP_MODULE_PREFIXES = (
     "threading",
 )
 
-
 class Tracer:
     _instance: "Tracer | None" = None
 
@@ -52,8 +51,7 @@ class Tracer:
         if skip:
             self._skip_kinds = tuple(p.strip() for p in skip.split(",") if p.strip())
         else:
-            # Default: drop hover mouse moves — they spam without information.
-            # Users can override with IMGSLI_TRACE_SKIP="" to record everything.
+
             self._skip_kinds = ("input.mmove",)
 
     def _kind_passes_filter(self, kind: str) -> bool:
@@ -158,7 +156,6 @@ class Tracer:
                 logger.warning("tracer dump failed: %s", exc)
         return text
 
-
 def _match_kind(kind: str, pattern: str) -> bool:
     if pattern == kind:
         return True
@@ -167,7 +164,6 @@ def _match_kind(kind: str, pattern: str) -> bool:
     if pattern.endswith("*") and kind.startswith(pattern[:-1]):
         return True
     return False
-
 
 def _format_caller(skip: int) -> str:
     frame = sys._getframe(0)
@@ -185,13 +181,11 @@ def _format_caller(skip: int) -> str:
         del frame
     return "<unknown>"
 
-
 def _json_default(value: Any) -> Any:
     try:
         return repr(value)
     except Exception:
         return "<unrepr>"
-
 
 def diff_dataclass(old: Any, new: Any, max_fields: int = 16) -> dict[str, Any]:
     if old is None or new is None or old is new:
@@ -239,7 +233,6 @@ def diff_dataclass(old: Any, new: Any, max_fields: int = 16) -> dict[str, Any]:
             break
     return changes
 
-
 def _short_repr(value: Any, limit: int = 120) -> str:
     try:
         text = repr(value)
@@ -248,7 +241,6 @@ def _short_repr(value: Any, limit: int = 120) -> str:
     if len(text) > limit:
         text = text[:limit] + "…"
     return text
-
 
 def is_trace_env_enabled() -> bool:
     return os.environ.get("IMGSLI_TRACE", "0") not in ("0", "", "false", "False")

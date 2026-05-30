@@ -111,10 +111,7 @@ def build_magnifier_layout(
         or abs(float(content_offset_x)) > 1e-6
         or abs(float(content_offset_y)) > 1e-6
     )
-    # Stroke thickness is referenced to the image-content short edge, not the
-    # full virtual-canvas short edge. Otherwise uncrop padding grows the
-    # canvas → makes the same model.border_thickness/divider_thickness draw
-    # visually thicker than in the interactive view.
+
     canvas_short_edge = float(max(1, min(int(width), int(height))))
     local_scale = max(1e-6, float(render_scale or 1.0))
     divider_thickness_canvas_px = (
@@ -146,10 +143,7 @@ def build_magnifier_layout(
         radius = (model.capture_size_relative * capture_ref) / 2.0
         center_x = float(content_offset_x) + (cap_x * width)
         center_y = float(content_offset_y) + (cap_y * height)
-        # Always clamp to the image-content rect, not the full virtual canvas.
-        # Clamping to the canvas (including padding) lets the capture rect
-        # extend into the padded area outside the image pair — the user-
-        # visible "capture goes outside the images" bug in uncrop mode.
+
         center_x, center_y, radius = clamp_capture_overlay_geometry(
             left=float(content_offset_x),
             top=float(content_offset_y),

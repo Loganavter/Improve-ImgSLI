@@ -179,13 +179,7 @@ class DynamicMagnifierAdapter:
         from domain.types import Color, Point
 
         proxy = _store_proxy(snapshot.viewport_state)
-        # The per-instance "active_*" commands below operate on whatever magnifier
-        # is currently active, so we temporarily switch the active instance to
-        # mag_id. The active id also drives magnifier z-order (the active one
-        # renders on top — see build_magnifier_layout), and apply_tool_values runs
-        # once per magnifier; without restoring, the last-applied instance would
-        # win and the export would layer magnifiers differently than the
-        # interactive scene the user authored.
+
         _active_state = _query_magnifier(proxy, "overlay.active_state", None)
         saved_active_id = (
             _active_state.get("id") if isinstance(_active_state, dict) else None

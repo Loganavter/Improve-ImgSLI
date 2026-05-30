@@ -139,10 +139,6 @@ def compute_zoom_wheel_transform(request: WheelZoomRequest) -> tuple[float, floa
     if abs(new_zoom - float(request.current_zoom)) <= 1e-6:
         return None
 
-    # At zoom <= 1 the image fits the widget — "zoom around cursor" is meaningless
-    # and pan must stay zero. Otherwise shader applies a nonzero pan to the image
-    # (it always uses raw offset) while overlay formulas zero pan, which produces
-    # visible drift between image and overlays (split line, magnifier, etc.).
     if new_zoom <= 1.0:
         return new_zoom, 0.0, 0.0
 
@@ -163,7 +159,7 @@ def compute_zoom_wheel_transform(request: WheelZoomRequest) -> tuple[float, floa
 def compute_zoom_pan_drag_transform(request: PanDragRequest) -> tuple[float, float] | None:
     if request.widget_width <= 0 or request.widget_height <= 0:
         return None
-    # Pan dragging is a no-op when the image fully fits the widget.
+
     if float(request.current_zoom) <= 1.0:
         return 0.0, 0.0
     dx = (float(request.mouse_x) - float(request.last_mouse_x)) / (

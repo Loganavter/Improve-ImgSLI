@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 def letterbox_params(host) -> tuple[float, float, float, float] | None:
     state = getattr(host, "runtime_state", None)
     params = getattr(state, "_letterbox_params", None) if state is not None else None
@@ -17,7 +16,6 @@ def letterbox_params(host) -> tuple[float, float, float, float] | None:
         return None
     return ox, oy, sx, sy
 
-
 def capture_letterbox_focus(host) -> tuple[float, float] | None:
     """Return the image sample coordinate under the viewport center."""
     lb = letterbox_params(host)
@@ -30,7 +28,6 @@ def capture_letterbox_focus(host) -> tuple[float, float] | None:
     raw_x = 0.5 - float(get_pan_offset_x(host) or 0.0)
     raw_y = 0.5 - float(get_pan_offset_y(host) or 0.0)
     return ((raw_x - ox) / sx, (raw_y - oy) / sy)
-
 
 def restore_letterbox_focus(host, focus: tuple[float, float] | None) -> bool:
     if focus is None:

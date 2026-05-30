@@ -23,14 +23,12 @@ from ui.widgets.gl_canvas.interaction import (
 from ui.widgets.gl_canvas.render_config import update_display_split_position
 from ui.widgets.gl_canvas.state import GLCanvasRuntimeState
 
-
 class _AcceptedEvent:
     def __init__(self):
         self.accepted = False
 
     def accept(self):
         self.accepted = True
-
 
 class _WheelEvent(_AcceptedEvent):
     def modifiers(self):
@@ -42,14 +40,12 @@ class _WheelEvent(_AcceptedEvent):
     def angleDelta(self):
         return SimpleNamespace(y=lambda: 120)
 
-
 class _MouseEvent(_AcceptedEvent):
     def button(self):
         return Qt.MouseButton.MiddleButton
 
     def position(self):
         return SimpleNamespace(x=lambda: 20.0, y=lambda: 10.0)
-
 
 def _canvas():
     return SimpleNamespace(
@@ -62,7 +58,6 @@ def _canvas():
         _pan_last_pos=SimpleNamespace(x=lambda: 0.0, y=lambda: 0.0),
     )
 
-
 def test_read_only_canvas_rejects_programmatic_zoom_and_pan():
     canvas = _canvas()
     set_zoom_level(canvas, 3.0)
@@ -74,7 +69,6 @@ def test_read_only_canvas_rejects_programmatic_zoom_and_pan():
     assert get_zoom_level(canvas) == 3.0
     assert get_pan_offset_x(canvas) == 0.2
     assert get_pan_offset_y(canvas) == -0.1
-
 
 def test_read_only_canvas_accepts_and_ignores_viewport_input():
     canvas = _canvas()
@@ -95,7 +89,6 @@ def test_read_only_canvas_accepts_and_ignores_viewport_input():
     assert get_pan_offset_x(canvas) == 0.2
     assert get_pan_offset_y(canvas) == -0.1
     assert canvas._pan_dragging is False
-
 
 def test_preview_split_display_ignores_viewport_camera():
     canvas = _canvas()

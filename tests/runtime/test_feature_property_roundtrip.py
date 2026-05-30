@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_properties
 
-
 def test_property_setting_serializers_roundtrip_scalar_values():
     """CONTRACTS.md: CanvasFeatureProperty settings serialization must roundtrip."""
     exercised = []
@@ -25,7 +24,6 @@ def test_property_setting_serializers_roundtrip_scalar_values():
         exercised.append(prop.id)
 
     assert exercised
-
 
 def test_property_channel_shapes_match_property_kind():
     """CONTRACTS.md: CanvasFeatureProperty channels describe keyframe track shape."""

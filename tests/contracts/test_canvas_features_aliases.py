@@ -60,8 +60,6 @@ def test_no_hardcoded_feature_name_in_get_canvas_feature_command():
                 )
     assert not leaks, "\n  - " + "\n  - ".join(leaks)
 
-# --- reverse direction: declared aliases must actually resolve --------------
-
 _ALIASES = sorted(get_canvas_feature_command_aliases().items())
 _ALIAS_IDS = [cap for cap, _ in _ALIASES]
 

@@ -4,7 +4,6 @@ from PyQt6.QtCore import QPointF
 
 from domain.types import Point, Rect
 
-
 class ImageLabelGeometry:
     """Neutral coordinate-conversion helper for the image-label widget.
 

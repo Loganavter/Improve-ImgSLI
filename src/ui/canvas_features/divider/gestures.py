@@ -14,7 +14,6 @@ from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_
 
 from .interaction import apply_split_drag
 
-
 def _matches_split_drag(ctx) -> bool:
     try:
         if ctx.store.viewport.interaction_state.space_bar_pressed:
@@ -23,10 +22,8 @@ def _matches_split_drag(ctx) -> bool:
         pass
     return True
 
-
 def _is_split_dragging(store) -> bool:
     return bool(store.viewport.interaction_state.is_dragging_split_line)
-
 
 def _begin_split_drag(handler, local_pos) -> None:
     cmd = get_canvas_feature_command_by_alias("splitter.begin_drag")
@@ -34,16 +31,13 @@ def _begin_split_drag(handler, local_pos) -> None:
         cmd(handler)
     apply_split_drag(handler, local_pos)
 
-
 def _update_split_drag(handler, local_pos) -> None:
     apply_split_drag(handler, local_pos)
-
 
 def _end_split_drag(handler) -> None:
     cmd = get_canvas_feature_command_by_alias("splitter.end_drag")
     if cmd is not None:
         cmd(handler)
-
 
 def build_divider_gesture_bindings() -> tuple[CanvasFeatureGestureBinding, ...]:
     return (

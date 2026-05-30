@@ -19,7 +19,6 @@ from ui.canvas_features.magnifier.actions import (
     ToggleMagnifierAction,
 )
 
-
 def _snapshot(value):
     if is_dataclass(value):
         return asdict(value)
@@ -36,7 +35,6 @@ def _snapshot(value):
     if isinstance(value, set):
         return set(value)
     return deepcopy(value)
-
 
 def test_root_reducer_does_not_mutate_previous_store_for_representative_actions():
     """ARCHITECTURE.md: reducers return new state and leave previous state untouched."""
@@ -73,7 +71,6 @@ def test_root_reducer_does_not_mutate_previous_store_for_representative_actions(
         assert _snapshot(old_store.viewport) == before["viewport"]
         assert _snapshot(old_store.document) == before["document"]
         assert _snapshot(old_store.settings) == before["settings"]
-
 
 def test_reducers_do_not_access_io(monkeypatch):
     """ARCHITECTURE.md: reducers are pure state transforms without I/O side effects."""

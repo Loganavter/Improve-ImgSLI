@@ -82,7 +82,6 @@ def _build_keyboard_movement_controller(store, *, presenter_provider, parent=Non
     from ..keyboard_movement import build_controller
     return build_controller(store, presenter_provider=presenter_provider, parent=parent)
 
-
 def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
     from ..bounds import (
         compute_magnifier_layout_requirement,

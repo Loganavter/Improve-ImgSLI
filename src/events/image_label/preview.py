@@ -6,9 +6,6 @@ from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_
 
 logger = logging.getLogger("ImproveImgSLI")
 
-# Aliases in the ``preview.*`` namespace are feature-neutral: any feature
-# can implement them. The magnifier owns the only implementation today.
-
 class OverlayPreviewController:
     """Orchestrates the shift-hold preview lifecycle.
 

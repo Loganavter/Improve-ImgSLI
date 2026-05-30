@@ -99,7 +99,6 @@ class TestFeatureStateAPIErrorHandling:
 
         execute_feature_command(None, "magnifier", "toggle_enabled")
 
-
 def test_multi_instance_feature_command_writes_canvas_widget_state():
     """CANVAS_FEATURES.md: multi-instance feature state lives under canvas_widget_state."""
     store = Store()
@@ -111,7 +110,6 @@ def test_multi_instance_feature_command_writes_canvas_widget_state():
     active = state.models[state.active_id]
     assert active.visible_left is False
     assert not hasattr(store.viewport.view_state, "visible_left")
-
 
 def test_missing_feature_command_is_explicit_none_and_does_not_mutate(caplog):
     """CANVAS_FEATURES.md: missing feature commands must not silently write fallback state."""
