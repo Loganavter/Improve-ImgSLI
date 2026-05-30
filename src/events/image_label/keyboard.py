@@ -68,7 +68,7 @@ class ImageLabelKeyboardHandler:
             event.accept()
             return
 
-        if key in self.OVERLAY_MOVEMENT_KEYS and self.handler.store.viewport.view_state.overlay_enabled:
+        if key in self.OVERLAY_MOVEMENT_KEYS:
             self.handler.input_session.activate(KEYBOARD_MOVE_OWNER)
 
         self.handler.store.emit_viewport_change("interaction")
@@ -114,8 +114,5 @@ class ImageLabelKeyboardHandler:
             return
 
         self.handler.store.emit_viewport_change("interaction")
-        if (
-            self.handler.store.viewport.view_state.overlay_enabled
-            and not keyboard_state.has_active_overlay_keys()
-        ):
+        if key in self.OVERLAY_MOVEMENT_KEYS and not keyboard_state.has_active_overlay_keys():
             self.handler.input_session.deactivate(KEYBOARD_MOVE_OWNER)
