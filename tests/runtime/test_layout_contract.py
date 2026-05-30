@@ -16,7 +16,6 @@ from shared.rendering.layout_contract import (
 )
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_commands_by_id
 
-
 def test_normalized_bounds_union_expands_outside_unit_box():
     """CANVAS_FEATURES.md: VirtualCanvasLayout uses normalized bounds union."""
     bounds = NormalizedBounds.unit().union(
@@ -24,7 +23,6 @@ def test_normalized_bounds_union_expands_outside_unit_box():
     )
 
     assert bounds == NormalizedBounds(x_min=-0.25, x_max=1.5, y_min=0.0, y_max=1.2)
-
 
 def test_layout_requirement_commands_return_valid_bounds_or_none():
     """CANVAS_FEATURES.md: render.layout_requirement returns FeatureLayoutRequirement."""
@@ -40,7 +38,6 @@ def test_layout_requirement_commands_return_valid_bounds_or_none():
         assert requirement.feature_id
         assert requirement.bounds.x_min <= requirement.bounds.x_max
         assert requirement.bounds.y_min <= requirement.bounds.y_max
-
 
 def test_virtual_canvas_layout_defaults_to_unit_when_no_requirements():
     """CANVAS_FEATURES.md: no feature requirements means base 0..1 canvas."""

@@ -13,7 +13,6 @@ from plugins.video_editor.services.keyframing.adapters.magnifier import (
 from plugins.video_editor.services.keyframing.types import FrameSnapshot
 from ui.canvas_infra.scene.feature_state_api import execute_feature_command
 
-
 def _snapshot(store: Store) -> FrameSnapshot:
     return FrameSnapshot(
         timestamp=0.0,
@@ -24,7 +23,6 @@ def _snapshot(store: Store) -> FrameSnapshot:
         name1=None,
         name2=None,
     )
-
 
 def test_magnifier_per_instance_keyframes_do_not_resurrect_disabled_feature():
     """CANVAS_FEATURES.md: enabled=false gates per-instance keyframe tracks."""
@@ -44,7 +42,6 @@ def test_magnifier_per_instance_keyframes_do_not_resurrect_disabled_feature():
     model = store.viewport.view_state.canvas_widget_state["magnifier"].models["default"]
     assert model.size_relative != 0.8
     assert store.viewport.view_state.canvas_widget_state["magnifier"].enabled is False
-
 
 def test_magnifier_per_instance_keyframes_apply_when_globally_enabled():
     """CANVAS_FEATURES.md: global enabled track controls per-instance track application."""

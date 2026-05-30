@@ -8,7 +8,6 @@ unconditionally.
 
 from __future__ import annotations
 
-
 class NullKeyboardMovementController:
     """Drop-in stub matching the controller protocol: only ``start``/``stop``."""
 

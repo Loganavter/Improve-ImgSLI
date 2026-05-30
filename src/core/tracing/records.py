@@ -4,7 +4,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-
 @dataclass
 class TraceRecord:
     seq: int
@@ -27,7 +26,6 @@ class TraceRecord:
             "caller": self.caller,
             "payload": self.payload,
         }
-
 
 def now() -> float:
     return time.monotonic()

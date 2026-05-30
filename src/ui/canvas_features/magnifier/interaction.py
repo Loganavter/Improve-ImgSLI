@@ -13,16 +13,13 @@ from PyQt6.QtCore import QPointF
 from domain.types import Point
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
-
 def _scene_compare_pos(handler, pos: QPointF, use_internal_coords: bool = True) -> Point:
     return handler.geometry.get_scene_compare_pos(pos, use_internal_coords=use_internal_coords)
-
 
 def _get_canvas_scene(handler):
     label = handler.geometry._get_image_label()
     state = getattr(label, "runtime_state", None) if label is not None else None
     return getattr(state, "_canvas_scene_graph", None) if state is not None else None
-
 
 def overlay_geometry_at(
     handler, pos: QPointF, use_internal_coords: bool = True
@@ -40,10 +37,8 @@ def overlay_geometry_at(
         return None
     return circle.center, circle.radius
 
-
 def is_point_in_overlay(handler, pos: QPointF, use_internal_coords: bool = True) -> bool:
     return overlay_geometry_at(handler, pos, use_internal_coords=use_internal_coords) is not None
-
 
 def pick_overlay_at(
     handler, position: QPointF, use_internal_coords: bool = True
@@ -60,7 +55,6 @@ def pick_overlay_at(
             set_active(handler.store, match.id)
     return match.id if match is not None else None
 
-
 def apply_capture_drag(handler, cursor_pos: QPointF) -> None:
     """Update overlay position from a cursor drag (overlay-mode branch)."""
     raw_rel_x, raw_rel_y = handler.geometry.screen_to_image_rel(
@@ -72,7 +66,6 @@ def apply_capture_drag(handler, cursor_pos: QPointF) -> None:
     command = get_canvas_feature_command_by_alias("overlay.update_capture_drag")
     if command is not None:
         command(handler, position)
-
 
 def update_internal_split(handler, position: QPointF) -> None:
     """Update the internal split of the active overlay from cursor position."""

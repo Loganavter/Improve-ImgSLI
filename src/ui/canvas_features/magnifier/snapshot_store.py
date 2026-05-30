@@ -30,7 +30,6 @@ from .state import get_magnifier_widget_state
 
 _mlog = logging.getLogger("ImproveImgSLI.video_magnifier_layout")
 
-
 def _normalize_capture_position(point, capture_size_relative: float) -> Point | None:
     """Clamp the capture-rect center so the rect stays inside [0..1]."""
     if point is None:
@@ -43,12 +42,10 @@ def _normalize_capture_position(point, capture_size_relative: float) -> Point | 
         max(min_pos, min(max_pos, float(point.y))),
     )
 
-
 def _iter_mutable_magnifier_models(store: Store):
     view = store.viewport.view_state
     state = get_magnifier_widget_state(view)
     return [model for model in state.models.values() if model is not None]
-
 
 def normalize_snapshot_store(store: Store) -> None:
     """Clamp magnifier capture positions so the capture rect stays inside image bounds.
@@ -61,7 +58,6 @@ def normalize_snapshot_store(store: Store) -> None:
         capture_size = float(getattr(model, "capture_size_relative", 0.0) or 0.0)
         model.position = _normalize_capture_position(model.position, capture_size) or model.position
         model.frozen_position = _normalize_capture_position(model.frozen_position, capture_size)
-
 
 def apply_virtual_canvas_layout_to_snapshot_store(
     store: Store,

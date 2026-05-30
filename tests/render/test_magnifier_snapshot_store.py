@@ -24,7 +24,6 @@ from ui.canvas_features.magnifier.snapshot_store import (
 )
 from ui.canvas_features.magnifier.state import get_magnifier_widget_state
 
-
 def _make_store_with_model(**model_kwargs) -> tuple[Store, MagnifierModel]:
     store = Store()
     state = get_magnifier_widget_state(store.viewport.view_state)
@@ -32,7 +31,6 @@ def _make_store_with_model(**model_kwargs) -> tuple[Store, MagnifierModel]:
     state.models[model.id] = model
     state.active_id = model.id
     return store, model
-
 
 def test_normalize_clamps_capture_rect_inside_image_bounds():
     """Crop mode: a capture rect that extends past the edge gets pulled in."""
@@ -42,7 +40,6 @@ def test_normalize_clamps_capture_rect_inside_image_bounds():
     normalize_snapshot_store(store)
     assert 0.1 - 1e-6 <= model.position.x <= 0.9 + 1e-6
     assert abs(model.position.x - 0.9) < 1e-6
-
 
 def test_normalize_clamps_frozen_position_too():
     store, model = _make_store_with_model(
@@ -54,7 +51,6 @@ def test_normalize_clamps_frozen_position_too():
     assert model.frozen_position is not None
     assert abs(model.frozen_position.x - 0.15) < 1e-6
 
-
 def test_normalize_leaves_already_valid_position_alone():
     store, model = _make_store_with_model(
         position=Point(0.5, 0.5), capture_size_relative=0.1,
@@ -63,14 +59,12 @@ def test_normalize_leaves_already_valid_position_alone():
     assert abs(model.position.x - 0.5) < 1e-6
     assert abs(model.position.y - 0.5) < 1e-6
 
-
 def _make_layout(x_min=0.0, x_max=1.25, y_min=0.0, y_max=1.0):
     from shared.rendering.layout_contract import NormalizedBounds, VirtualCanvasLayout
     return VirtualCanvasLayout(
         canvas_bounds=NormalizedBounds(x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max),
         content_bounds=NormalizedBounds(x_min=0.0, x_max=1.0, y_min=0.0, y_max=1.0),
     )
-
 
 def test_virtual_layout_does_not_mutate_position():
     """Uncrop: model.position must NOT shift (renderer handles padding)."""
@@ -80,7 +74,6 @@ def test_virtual_layout_does_not_mutate_position():
         store, base_w=800, base_h=600, virtual_layout=_make_layout(),
     )
     assert (model.position.x, model.position.y) == original
-
 
 def test_virtual_layout_does_not_mutate_sizes():
     """Uncrop: relative size fields must NOT scale (renderer handles padding)."""
@@ -96,7 +89,6 @@ def test_virtual_layout_does_not_mutate_sizes():
     assert model.spacing_relative == 0.05
     assert model.offset_relative.x == 0.1 and model.offset_relative.y == 0.2
 
-
 def test_virtual_layout_does_not_mutate_thickness():
     """Uncrop: thickness must NOT scale — renderer uses content short edge."""
     store, model = _make_store_with_model(border_thickness=4, divider_thickness=6)
@@ -105,7 +97,6 @@ def test_virtual_layout_does_not_mutate_thickness():
     )
     assert model.border_thickness == 4
     assert model.divider_thickness == 6
-
 
 def test_virtual_layout_does_not_mutate_split_position():
     """Uncrop: scene-level mutation in gpu_export_scene handles split shift."""
@@ -117,7 +108,6 @@ def test_virtual_layout_does_not_mutate_split_position():
     )
     assert store.viewport.view_state.split_position_visual == 0.5
 
-
 def test_virtual_layout_does_not_publish_clip_rect_on_runtime_cache():
     """Uncrop: scene-level mutation sets scene.overlay_clip_rect; cache stays untouched."""
     store, _ = _make_store_with_model()
@@ -126,7 +116,6 @@ def test_virtual_layout_does_not_publish_clip_rect_on_runtime_cache():
         store, base_w=800, base_h=600, virtual_layout=_make_layout(),
     )
     assert store.runtime_cache.overlay_clip_rect is None
-
 
 def test_interpolate_viewport_state_does_not_touch_overlay_clip_rect():
     """ViewportState is slotted; setting .overlay_clip_rect on it raises.

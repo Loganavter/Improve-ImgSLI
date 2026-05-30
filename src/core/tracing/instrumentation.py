@@ -12,7 +12,6 @@ logger = logging.getLogger("ImproveImgSLI")
 
 _PATCHED = False
 
-
 def install_instrumentation() -> None:
     global _PATCHED
     if _PATCHED:
@@ -28,7 +27,6 @@ def install_instrumentation() -> None:
     _patch_gl_canvas_input()
 
     logger.info("ImgSLI tracer instrumentation installed")
-
 
 def _patch_dispatcher() -> None:
     from core.state_management import dispatcher as dispatcher_mod
@@ -97,7 +95,6 @@ def _patch_dispatcher() -> None:
 
     dispatcher_mod.Dispatcher.dispatch = traced_dispatch
 
-
 def _action_payload(action) -> dict[str, Any]:
     if hasattr(action, "get_payload"):
         try:
@@ -108,10 +105,8 @@ def _action_payload(action) -> dict[str, Any]:
         return {f.name: _short(getattr(action, f.name, None)) for f in fields(action)}
     return {"repr": _short(action)}
 
-
 def _shallow(d: dict[str, Any]) -> dict[str, Any]:
     return {k: _short(v) for k, v in d.items()}
-
 
 def _short(value, limit: int = 160) -> str:
     try:
@@ -121,7 +116,6 @@ def _short(value, limit: int = 160) -> str:
     if len(text) > limit:
         text = text[:limit] + "…"
     return text
-
 
 def _patch_store() -> None:
     from core import store as store_mod
@@ -163,7 +157,6 @@ def _patch_store() -> None:
 
     store_mod.Store.emit_state_change = traced_emit_state
     store_mod.Store.emit_viewport_change = traced_emit_viewport
-
 
 def _patch_event_bus() -> None:
     from core.plugin_system import event_bus as bus_mod
@@ -208,7 +201,6 @@ def _patch_event_bus() -> None:
 
     bus_mod.EventBus.emit = traced_emit
 
-
 def _patch_widget_registry() -> None:
     try:
         from ui.canvas_infra.scene import widget_registry as reg_mod
@@ -234,9 +226,7 @@ def _patch_widget_registry() -> None:
 
     reg_mod.get_canvas_feature_command_by_alias = traced_cmd_alias
 
-
 _LAST_PLAN_BY_CANVAS: "dict[int, dict]" = {}
-
 
 def _patch_render_plan() -> None:
     try:
@@ -284,7 +274,6 @@ def _patch_render_plan() -> None:
 
     pa_mod.apply_canvas_render_plan = traced_apply
 
-
 def _plan_snapshot(plan) -> dict:
     snap: dict = {}
     for name in (
@@ -303,14 +292,12 @@ def _plan_snapshot(plan) -> dict:
         snap["overlay_layout"] = "<err>"
     return snap
 
-
 def _snapshot_diff(old: dict, new: dict) -> dict:
     diff: dict = {}
     for k in new.keys() | old.keys():
         if old.get(k) != new.get(k):
             diff[k] = {"old": old.get(k), "new": new.get(k)}
     return diff
-
 
 def _patch_hit_test() -> None:
     try:
@@ -336,19 +323,18 @@ def _patch_hit_test() -> None:
         return result
 
     ht_mod.find_scene_object_at_position = traced_find
-    # Re-export in package for callers that imported the name
+
     try:
         from ui.canvas_infra import scene as scene_pkg
         scene_pkg.find_scene_object_at_position = traced_find
     except Exception:
         pass
-    # Patch already-imported references in known callers
+
     try:
         from events.image_label import geometry as geom_mod
         geom_mod.find_scene_object_at_position = traced_find
     except Exception:
         pass
-
 
 def _patch_gl_canvas_input() -> None:
     try:
@@ -403,7 +389,6 @@ def _patch_gl_canvas_input() -> None:
         ("keyReleaseEvent", "krel"),
     ]:
         wrap(method, label)
-
 
 def _event_summary(event) -> str:
     parts = []

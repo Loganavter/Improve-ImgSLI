@@ -35,7 +35,7 @@ def test_discovery_swallows_missing_package(monkeypatch):
     monkeypatch.setattr(registry_mod.importlib, "import_module", _raise_import)
 
     registry = PluginRegistry(app_context=object())
-    # Missing 'plugins'/'tabs' packages must not propagate.
+
     assert list(registry.discover_plugins()) == []
 
 def test_unknown_alias_resolves_to_none():

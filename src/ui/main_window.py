@@ -55,7 +55,6 @@ class MainWindow(QWidget):
         self.app_context = ApplicationContext(debug_mode)
         self.app_context.initialize()
 
-
         self.store = self.app_context.store
         self.settings_manager = self.app_context.settings_manager
         self.theme_manager = self.app_context.theme_manager

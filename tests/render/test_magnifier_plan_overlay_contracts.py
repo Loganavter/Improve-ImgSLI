@@ -13,7 +13,6 @@ from PyQt6.QtGui import QColor
 from ui.canvas_features.magnifier.plan_overlay import apply_magnifier_plan_overlay
 from ui.canvas_presentation.plan import CanvasRenderPlan, OverlayLayout, OverlaySlot
 
-
 class _Canvas:
     def __init__(self):
         self.runtime_state = SimpleNamespace(
@@ -40,7 +39,6 @@ class _Canvas:
     def set_feature_overlay_gpu_params(self, *args):
         self.gpu_params = args
 
-
 def _plan(layout):
     return CanvasRenderPlan(
         image1=object(),
@@ -58,7 +56,6 @@ def _plan(layout):
         guides_color=QColor(255, 255, 255),
         guides_thickness=1,
     )
-
 
 def test_plan_overlay_uses_inner_content_rect_for_converted_geometry():
     """Plan overlay geometry must match scene-builder image-content bounds."""

@@ -20,7 +20,6 @@ from typing import Any
 from .widget_contract import CanvasFeatureGestureBinding
 from .widget_registry import get_canvas_feature_gesture_bindings
 
-
 @dataclass(frozen=True, slots=True)
 class GesturePressContext:
     store: Any
@@ -28,7 +27,6 @@ class GesturePressContext:
     local_pos: Any
     button: int
     modifiers: int
-
 
 def resolve_press(ctx: GesturePressContext) -> CanvasFeatureGestureBinding | None:
     for binding in get_canvas_feature_gesture_bindings():
@@ -40,7 +38,6 @@ def resolve_press(ctx: GesturePressContext) -> CanvasFeatureGestureBinding | Non
         except Exception:
             continue
     return None
-
 
 def resolve_active(
     store: Any, button: int | None = None
@@ -54,7 +51,6 @@ def resolve_active(
         except Exception:
             continue
     return None
-
 
 def iter_active(store: Any) -> tuple[CanvasFeatureGestureBinding, ...]:
     out: list[CanvasFeatureGestureBinding] = []

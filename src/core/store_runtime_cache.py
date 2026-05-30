@@ -15,7 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 @dataclass
 class ViewportRuntimeCache:
     last_source1_id: int = 0

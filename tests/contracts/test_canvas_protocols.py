@@ -32,7 +32,6 @@ def _protocol_methods(proto) -> dict[str, inspect.Signature]:
                 methods[name] = inspect.signature(member)
     return methods
 
-# GLCanvas is the single concrete canvas; it plays the GL-like *and* export role.
 IMPLEMENTATIONS = {
     ("GLCanvas", GlLikeCanvasProtocol): GLCanvas,
     ("GLCanvas", ExportCanvasProtocol): GLCanvas,

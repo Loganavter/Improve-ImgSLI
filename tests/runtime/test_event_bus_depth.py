@@ -35,8 +35,6 @@ def test_circular_chain_stops_at_max_depth():
     with pytest.raises(EventBusDepthExceeded):
         bus.emit(_PingEvent())
 
-    # The guard fires at depth == MAX_EMIT_DEPTH, so the handler runs exactly
-    # MAX_EMIT_DEPTH times before the deepest re-emit is rejected.
     assert len(emits) == MAX_EMIT_DEPTH
 
 def test_depth_counter_resets_between_top_level_emits():

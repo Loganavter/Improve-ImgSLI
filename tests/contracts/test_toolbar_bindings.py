@@ -13,7 +13,6 @@ from types import SimpleNamespace
 from core.store import Store
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_bindings
 
-
 def test_toolbar_bindings_have_unique_control_ids():
     """CONTRACTS.md: CanvasFeatureToolbarBinding control ids are stable and unique."""
     bindings = get_canvas_feature_toolbar_bindings()
@@ -21,7 +20,6 @@ def test_toolbar_bindings_have_unique_control_ids():
 
     assert control_ids
     assert len(control_ids) == len(set(control_ids))
-
 
 def test_toolbar_bindings_reference_callable_handlers():
     """CONTRACTS.md: toolbar bindings expose callable handlers for wired controls."""
@@ -44,7 +42,6 @@ def test_toolbar_bindings_reference_callable_handlers():
             handler = getattr(binding, field)
             if handler is not None:
                 assert callable(handler), f"{binding.control_id}.{field} is not callable"
-
 
 def test_divider_width_toolbar_binding_executes_feature_commands(monkeypatch):
     """CONTRACTS.md: toolbar value handlers forward the value to feature commands."""

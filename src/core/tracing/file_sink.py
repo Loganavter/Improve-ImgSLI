@@ -18,7 +18,6 @@ _FILE_LOCK = threading.Lock()
 _FILE_HANDLE: Optional["object"] = None
 _FILE_PATH: Optional[str] = None
 
-
 def install_file_sink(app_name: str = "ImproveImgSLI", filename: str = "trace.jsonl") -> Optional[str]:
     """
     Subscribe to the Tracer and append every record as a JSON line to
@@ -45,7 +44,6 @@ def install_file_sink(app_name: str = "ImproveImgSLI", filename: str = "trace.js
     _INSTALLED = True
     logger.info("trace file sink active: %s", path)
     return path
-
 
 def _on_record(rec: TraceRecord) -> None:
     handle = _FILE_HANDLE

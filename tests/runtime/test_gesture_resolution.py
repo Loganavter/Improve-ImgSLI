@@ -34,10 +34,6 @@ from ui.canvas_infra.scene.widget_registry import get_canvas_feature_gesture_bin
 LEFT = 1
 RIGHT = 2
 
-# ---------------------------------------------------------------------------
-# Fakes
-# ---------------------------------------------------------------------------
-
 class _FakeInputSession:
     def __init__(self, owners=()):
         self._owners = set(owners)
@@ -83,16 +79,12 @@ def fake_bindings(monkeypatch):
 
     return _install
 
-# ---------------------------------------------------------------------------
-# resolve_press semantics
-# ---------------------------------------------------------------------------
-
 def test_resolve_press_lowest_priority_wins(fake_bindings):
     fake_bindings([
         _binding("low_wins", priority=10),
         _binding("loses", priority=999),
     ])
-    # Registry returns them sorted by priority already; resolver returns first match.
+
     winner = resolve_press(_ctx(button=LEFT))
     assert winner is not None and winner.gesture_id == "low_wins"
 
@@ -119,16 +111,12 @@ def test_resolve_press_swallows_raising_matches(fake_bindings):
         _binding("raiser", matches=_boom),
         _binding("survivor", matches=lambda ctx: True),
     ])
-    # The raising predicate must be skipped, not crash the resolver.
+
     assert resolve_press(_ctx()).gesture_id == "survivor"
 
 def test_resolve_press_returns_none_when_no_match(fake_bindings):
     fake_bindings([_binding("nope", matches=lambda ctx: False)])
     assert resolve_press(_ctx()) is None
-
-# ---------------------------------------------------------------------------
-# resolve_active / iter_active semantics
-# ---------------------------------------------------------------------------
 
 def test_resolve_active_picks_active_binding(fake_bindings):
     fake_bindings([
@@ -163,10 +151,6 @@ def test_iter_active_swallows_raising_is_active(fake_bindings):
     ])
     ids = {b.gesture_id for b in iter_active(_FakeStore())}
     assert ids == {"ok"}
-
-# ---------------------------------------------------------------------------
-# Real feature bindings must not silently die
-# ---------------------------------------------------------------------------
 
 REAL_BINDINGS = list(get_canvas_feature_gesture_bindings())
 REAL_IDS = [b.gesture_id for b in REAL_BINDINGS]

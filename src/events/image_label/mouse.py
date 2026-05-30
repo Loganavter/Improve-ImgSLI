@@ -8,7 +8,6 @@ from ui.canvas_infra.scene.gesture_resolver import (
     resolve_press,
 )
 
-
 class ImageLabelMouseHandler:
     """Mouse routing for the image-label widget.
 

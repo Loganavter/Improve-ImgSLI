@@ -11,7 +11,6 @@ from PyQt6.QtCore import QPointF
 
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
-
 def apply_split_drag(handler, cursor_pos: QPointF) -> None:
     """Update split position from a cursor drag (split-mode branch)."""
     viewport = handler.store.viewport

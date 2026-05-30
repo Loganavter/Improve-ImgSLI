@@ -92,10 +92,7 @@ def apply_plan_runtime_overlays(canvas, plan: CanvasRenderPlan) -> None:
     state._inner_content_rect_px = inner_rect
     state._inner_split_position = inner_split
     state._content_sr = _compute_sr(canvas, plan)
-    # Re-apply the clip policy after letterbox geometry: update_letterbox_geometry
-    # unconditionally resets state._clip_overlays_to_content_rect, so the flag set
-    # in _setup_store_bindings (kept on the canvas for scene rebuilds) must be
-    # mirrored back onto the runtime state that the GL passes actually read.
+
     state._clip_overlays_to_content_rect = bool(
         getattr(canvas, "_clip_overlays_to_content_rect", False)
     )
@@ -166,10 +163,6 @@ def _apply_overlays(canvas, plan, *, store) -> None:
         canvas.set_guides_params(plan.guides_enabled, plan.guides_color, plan.guides_thickness)
         canvas.set_capture_color(plan.capture_color)
 
-    # Compute ``_inner_content_rect_px`` BEFORE syncing geometry — the sync
-    # prefers the inner rect when present so feature scene-graph builders
-    # (which read ``geometry_state.pixmap_width/height``) operate in
-    # image-content coordinates instead of full virtual-canvas coordinates.
     apply_plan_runtime_overlays(canvas, plan)
 
     if store is not None:
