@@ -111,7 +111,6 @@ APP_HIDDENIMPORTS = [
     "PyQt6.QtOpenGL",
     "PyQt6.QtOpenGLWidgets",
     "PyQt6.QtWidgets",
-    "desktop_notifier",
     "numpy",
     "markdown",
     "PIL",
