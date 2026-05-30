@@ -54,7 +54,7 @@ class TestNoDirectFeatureLookups:
         for rel_path, abs_path in _collect_python_files(rel_dir):
             if os.path.normpath(rel_path) in _ALLOWLIST:
                 continue
-            with open(abs_path) as f:
+            with open(abs_path, encoding="utf-8") as f:
                 for lineno, line in enumerate(f, 1):
                     if _DIRECT_CALL_PATTERN.search(line):
                         violations.append(f"{rel_path}:{lineno}: {line.strip()}")
@@ -80,7 +80,7 @@ class TestPluginsUseAliasesForFeatureCommands:
                 rel_path = os.path.relpath(abs_path, SRC)
                 if os.path.normpath(rel_path) in _ALLOWLIST:
                     continue
-                with open(abs_path) as f:
+                with open(abs_path, encoding="utf-8") as f:
                     for lineno, line in enumerate(f, 1):
                         if _DIRECT_CALL_PATTERN.search(line):
                             violations.append(f"{rel_path}:{lineno}: {line.strip()}")
