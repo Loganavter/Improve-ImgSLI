@@ -55,27 +55,6 @@ class BootstrapContentStep(WindowStartupStep):
     def run(self, window) -> None:
         window.startup_runtime.bootstrap_content()
 
-class RefreshWindowUiStep(WindowStartupStep):
-    name = "refresh_ui"
-
-    def run(self, window) -> None:
-        if window.ui is None:
-            return
-        window.appearance.update_image_label_background()
-
-        if window.main_controller and window.main_controller.sessions:
-            window.main_controller.sessions.initialize_app_display()
-
-        window.ui.reapply_button_styles()
-
-        for attr_name in (
-            "btn_magnifier_color_settings",
-            "btn_magnifier_color_settings_beginner",
-        ):
-            button = getattr(window.ui, attr_name, None)
-            if button is not None and hasattr(button, "refresh_visual_state"):
-                button.refresh_visual_state()
-
 class MarkShuttingDownStep(WindowShutdownStep):
     name = "mark_shutting_down"
 
@@ -175,7 +154,6 @@ class MainWindowStartupPipeline:
         ApplyThemeStep(),
         ApplyFontSettingsStep(),
         BootstrapContentStep(),
-        RefreshWindowUiStep(),
     )
 
     def run(self, window) -> None:

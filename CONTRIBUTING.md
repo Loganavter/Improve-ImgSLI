@@ -25,47 +25,64 @@ chmod +x launcher.sh
 
 The launcher script manages a virtual environment, installs dependencies, and runs the app. Explore additional commands:
 ```bash
-./launcher.sh --help
+./launcher.sh help
 ```
 Common actions:
+- Install/refresh dependencies: `./launcher.sh install`
 - Recreate venv from scratch: `./launcher.sh recreate`
-- Delete venv: `./launcher.sh delete`
-- Enable extended logging: `./launcher.sh enable-logging`
+- Delete venv and Python caches: `./launcher.sh delete`
+- Clear Python caches only: `./launcher.sh rm-cache`
+- Run the test suite: `./launcher.sh test`
+- Install/uninstall desktop entry: `./launcher.sh install-desktop` / `uninstall-desktop`
+- Enable/disable persistent debug logging: `./launcher.sh --enable-logging` / `--disable-logging`
+- Debug logging for one session: `./launcher.sh run --debug`
+- Force a theme: `./launcher.sh run --theme dark`
 
 Tip: Prefer updating the in-app Help when you add features; the README links to those docs.
 
 ## Repository structure (high level)
 
-- src/core: core application logic (state, settings, logging, geometry, theme)
-- src/ui: Qt UI, dialogs, presenters (MVP), widgets, managers
-- src/image_processing: IO, resize/composition, analysis (metrics, edges, diff), drawing
-- src/resources: application assets (icons, fonts, styles) and user Help in multiple languages
-- src/shared_toolkit: shared library reused across projects (widgets, managers, utils, fonts)
-- build: packaging templates (Windows/Flatpak/AUR), icons, desktop files, specs
-- scripts: utility scripts (e.g., help content checks)
-- launcher.sh: CLI helper to manage venv and run tasks
+- src/core: app bootstrap, store (state), settings, theme, plugin coordination, tracing
+- src/domain: domain types and workspace model, Qt adapters
+- src/events: in-process event bus
+- src/services: IO, system, and workflow services
+- src/tabs: workspace tab system (contract, registry, built-in tabs)
+- src/plugins: feature plugins (analysis, comparison, export, help, layout, settings, video_editor)
+- src/ui: Qt UI — main window, canvas (infra/features/presentation), presenters (MVP), widgets, managers, onboarding
+- src/shared_toolkit: shared utilities reused by the app and launcher scripts
+- src/resources: application assets (icons, fonts, styles, themes) and user Help in multiple languages
+- packages/sli-ui-toolkit: standalone UI toolkit consumed by the app (widgets, managers, services)
+- build: packaging templates (Windows / Flatpak / AUR) and CI helpers
+- tests: pytest suite (contracts, plugins, render, runtime, toolkit, video)
+- launcher.sh: CLI helper to manage venv and run common tasks
 
 Useful entry points:
 - App main: src/__main__.py
-- UI main window: src/ui/main_window.py
-- Presenter: src/ui/presenters/main_window_presenter.py
-- Settings: src/core/settings.py
-- Image composing: src/image_processing/composer.py
+- UI main window: src/ui/main_window/window.py (composed from sibling modules: actions.py, appearance.py, composer.py, layouts.py, lifecycle.py, runtime.py, startup.py, ui.py)
+- Main presenter: src/ui/presenters/main_window/presenter.py
+- Store (state): src/core/store.py and src/core/store_*.py modules
+- Theme: src/core/theme.py
+- Bootstrap: src/core/bootstrap.py
 - Help Index (EN): src/resources/help/en/introduction.md
-- Canvas feature architecture: docs/CANVAS_FEATURES.md
+- Canvas feature architecture: docs/dev/CANVAS_FEATURES.md
+- Developer docs index: docs/dev/README.md
 
 ## Architectural notes
 
 - Pattern: MVP (Model-View-Presenter). Keep UI (Qt widgets), presenter logic, and core state/services decoupled.
-- Image pipeline: dynamic canvas rendering, magnifier draws beyond image bounds, caching for smooth UX with large images.
-- Logging: use the standard logging system (src/core/logging.py). Avoid print statements.
-- State: persist window geometry and selected options across sessions (src/core/app_state.py, src/core/settings.py).
-- Shared components: consider using/adding to src/shared_toolkit for reusable UI or utilities across projects.
+- State: Redux-style store (`src/core/store.py` + `store_*` modules). Actions → reducers → notify subscribers. Never mutate state in reducers — use `dataclasses.replace`.
+- Events: `src/events/` event bus for async, decoupled notifications. Watch for circular event chains (max depth 10).
+- Canvas features: zero direct imports of features in shared code. Communication goes through capability aliases, `CanvasWidgetFeature` contracts, and auto-discovery in `src/ui/canvas_infra/scene/widget_registry.py`. All visual attributes are in canvas-px. See docs/dev/CANVAS_FEATURES.md and the `_template/` feature for a starting point.
+- Plugins / tabs: features and workspace tabs are pluggable; degrade gracefully when an optional plugin is missing.
+- Logging: use the standard `logging` module via the project's logger. Avoid `print` statements.
+- Shared components: consider using or extending `packages/sli-ui-toolkit` and `src/shared_toolkit` for reusable UI and utilities.
+
+More background: see `docs/dev/ARCHITECTURE.md`, `docs/dev/CONTRACTS.md`, `docs/dev/TAB_CONTRACT.md`, `docs/dev/UI_TOOLKIT_LIBRARY.md`, `docs/dev/TESTING.md`, `docs/dev/TRACING.md`, and the top-level `AGENTS.md` / `VISION.md`.
 
 ## Coding guidelines
 
 - Python 3.10+ syntax; prefer type hints where practical.
-- Keep modules focused; avoid creating new “god” modules.
+- Keep modules focused; avoid creating new "god" modules.
 - UI strings should support translations when visible to users.
 - Follow existing naming and folder conventions.
 - Keep public APIs of presenters/services minimal and explicit.
@@ -107,10 +124,22 @@ If you prefer manual venv management:
 ```bash
 python -m venv venv
 source venv/bin/activate        # Linux/macOS
-# .\venv\Scripts\activate      # Windows PowerShell
-pip install -r requirements.txt
+# .\venv\Scripts\activate       # Windows PowerShell
+pip install -r requirements-gui.txt
+pip install -r requirements-dev.txt   # optional: tests
 python -m src
 ```
+
+Runtime deps live in `requirements-gui.txt` (PyQt6, Pillow, numpy, scikit-image, imagecodecs, PyOpenGL, Markdown). Dev/test deps live in `requirements-dev.txt` (pytest, pytest-sugar).
+
+## Running tests
+
+```bash
+./launcher.sh test                          # full suite
+./launcher.sh test tests/runtime -k gesture # forward extra args to pytest
+```
+
+See `docs/dev/TESTING.md` for conventions and layout of the `tests/` tree.
 
 ## Building packages
 
@@ -118,10 +147,11 @@ python -m src
 
 1) Create binaries with PyInstaller using the provided spec:
 ```bash
-python -m pip install -r requirements.txt pyinstaller
-python -m pyinstaller build/Windows-template/Improve_ImgSLI.spec
+python -m pip install -r requirements-gui.txt pyinstaller
+python -m PyInstaller build/Windows-template/Improve_ImgSLI.spec
 ```
 - Spec file: build/Windows-template/Improve_ImgSLI.spec
+- Helper script: build/Windows-template/build_windows.py (and build.bat)
 
 2) Build installer with Inno Setup:
 - Open build/Windows-template/inno_setup_6.iss in Inno Setup Compiler
@@ -131,7 +161,8 @@ python -m pyinstaller build/Windows-template/Improve_ImgSLI.spec
 
 - Flatpak manifest: build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.yaml
 - Metadata: build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.metainfo.xml
-- Modules: build/Flatpak-template/python3-modules.json
+- Python modules: build/Flatpak-template/python3-modules.json
+- Pinned requirements: build/Flatpak-template/requirements.txt
 
 Install/run (user side):
 ```bash
@@ -142,7 +173,7 @@ flatpak run io.github.Loganavter.Improve-ImgSLI
 ### Arch Linux (AUR)
 
 - PKGBUILD: build/AUR-template/PKGBUILD
-- Desktop file and launcher scripts in build/AUR-template/
+- Desktop file and launcher script in build/AUR-template/
 
 Users can install via helpers:
 ```bash
@@ -151,15 +182,37 @@ yay -S improve-imgsli
 
 ## Documentation and translations
 
-- In-app Help (EN): src/resources/help/en/
-- In-app Help (RU): src/resources/help/ru/
-- Other languages (e.g., zh, pt_BR) live under src/resources/help/
+Developer documentation lives in `docs/dev/` (see `docs/dev/README.md` for the index). User-facing Help and UI strings are split across several locations:
+
+- In-app Help (Markdown topics, one folder per language):
+  - `src/resources/help/en/` (reference)
+  - `src/resources/help/ru/`, `src/resources/help/pt_BR/`, `src/resources/help/zh/`
+- Shared UI translations (JSON, merged recursively at runtime; dotted keys via `tr("...")`):
+  - `src/resources/i18n/{en,ru,pt_BR,zh}/` — see `src/resources/i18n/README.md` for conventions
+  - Loader: `src/resources/translations.py`
+- Per-area / per-plugin / per-feature translations, co-located with the code they belong to:
+  - `src/ui/main_window/translations.py`
+  - `src/tabs/multi_compare/resources/i18n/`
+  - `src/plugins/help/resources/i18n/`
+  - `src/plugins/export/resources/i18n/`
+  - `src/plugins/settings/resources/i18n/` (+ `src/plugins/settings/translations.py`)
+  - `src/plugins/video_editor/resources/i18n/` (+ `src/plugins/video_editor/translations.py`)
+  - `src/ui/canvas_features/<feature>/resources/i18n/` (e.g. `magnifier/`)
 
 When you add or modify features:
 - Update or add the corresponding topic in Help (e.g., magnifier, settings, export).
+- Add new UI strings to the matching `i18n/` folder (shared vs. feature/plugin-local) and reuse existing dotted keys where possible.
+- Keep all language packs in sync — keys should exist in every language directory.
 - Keep README minimal; link to Help for details.
+
+## Acknowledgements
+
+Thanks to everyone who has helped shape Improve-ImgSLI over the years. A few specific shout-outs:
+
+- [@johnpetersa19](https://github.com/johnpetersa19) — for cleaning up the README Markdown in [PR #18](https://github.com/Loganavter/Improve-ImgSLI/pull/18).
+- [@Anduin9527](https://github.com/Anduin9527/Improve-ImgSLI) — the GUI-refresh idea introduced around v3–v4 was borrowed from their fork.
 
 ## License
 
 This project is licensed under the MIT License. See:
-- LICENSE.txt
+- LICENSE

@@ -14,14 +14,14 @@ from PyQt6.QtWidgets import QApplication, QWidget
 
 from core.bootstrap import ApplicationContext
 from shared_toolkit.ui.overlay_layer import OverlayLayer
-from ui.main_window_actions import MainWindowActions
-from ui.main_window_appearance import MainWindowAppearance
-from ui.main_window_lifecycle import (
+from ui.main_window.actions import MainWindowActions
+from ui.main_window.appearance import MainWindowAppearance
+from ui.main_window.lifecycle import (
     MainWindowShutdownPipeline,
     MainWindowStartupController,
 )
-from ui.main_window_runtime import MainWindowRuntime
-from ui.main_window_startup import MainWindowStartupRuntime
+from ui.main_window.runtime import MainWindowRuntime
+from ui.main_window.startup import MainWindowStartupRuntime
 from utils.geometry import GeometryManager
 from utils.resource_loader import resource_path
 

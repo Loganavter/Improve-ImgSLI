@@ -5,7 +5,7 @@ import logging
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 
-from ui.main_window_ui import Ui_ImageComparisonApp
+from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.onboarding import OnboardingOverlay
 from ui.widgets.gl_canvas.contracts import BaseCanvasProtocol
 from ui.widgets.gl_canvas.helpers import get_canvas
@@ -112,12 +112,12 @@ class MainWindowStartupRuntime:
         window.ui.install_rating_wheel_handlers()
 
         components = window.app_context.create_window_dependent_components(window)
-        window.geometry_manager = components["geometry_manager"]
-        window.tray_manager = components["tray_manager"]
-        window.main_controller = components["main_controller"]
-        window.event_handler = components["event_handler"]
-        window.presenter = components["presenter"]
-        window.ui_resource_manager = components["ui_resource_manager"]
+        window.geometry_manager = components.geometry_manager
+        window.tray_manager = components.tray_manager
+        window.main_controller = components.main_controller
+        window.event_handler = components.event_handler
+        window.presenter = components.presenter
+        window.ui_resource_manager = components.ui_resource_manager
 
         window.installEventFilter(window.event_handler)
         window.ui.image_label.installEventFilter(window.event_handler)
@@ -233,8 +233,7 @@ class MainWindowStartupRuntime:
         if not window._main_app_revealed:
             window._startup_stack.setCurrentWidget(window._app_host)
             window._main_app_revealed = True
-        if hasattr(window.ui, "hide_image_startup_placeholder"):
-            window.ui.hide_image_startup_placeholder()
+        window.ui.image_startup_placeholder.hide()
         self.hide_cover()
         self.emit_visual_ready()
 

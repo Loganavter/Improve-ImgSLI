@@ -4,7 +4,6 @@ from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QDialog
 
-from core.constants import AppConstants
 from plugins.settings.dialog_context import SettingsDialogContext
 from plugins.settings.dialog_pages import (
     init_analysis_page,
@@ -221,170 +220,11 @@ class SettingsDialog(QDialog):
     def update_language(self, lang_code: str):
         self.current_language = lang_code
         self.context.current_language = lang_code
-        self.setWindowTitle(self.tr("misc.settings", self.current_language))
+        if not hasattr(self, "_translations_binder"):
+            from plugins.settings.translations import build_translations_binder
+            self._translations_binder = build_translations_binder(self)
+        self._translations_binder.apply(lang_code)
         self._setup_sidebar_items()
-
-        self.ok_button.setText(self.tr("common.ok", lang_code))
-        self.cancel_button.setText(self.tr("common.cancel", lang_code))
-
-        if hasattr(self, "lang_group"):
-            self.lang_group.set_title(self.tr("label.language", lang_code))
-        if hasattr(self, "sys_group"):
-            self.sys_group.set_title(self.tr("settings.appearance", lang_code))
-        if hasattr(self, "theme_label"):
-            self.theme_label.setText(self.tr("label.theme", lang_code) + ":")
-        if hasattr(self, "combo_theme"):
-            current_theme = self.combo_theme.currentData()
-            self.combo_theme.clear()
-            for key in ("auto", "light", "dark"):
-                self.combo_theme.addItem(self.tr(f"settings.{key}", lang_code), key)
-            idx = self.combo_theme.findData(current_theme)
-            if idx != -1:
-                self.combo_theme.setCurrentIndex(idx)
-        if hasattr(self, "system_notifications_checkbox"):
-            self.system_notifications_checkbox.setText(
-                self.tr("settings.system_notifications", lang_code)
-            )
-        if hasattr(self, "debug_checkbox"):
-            self.debug_checkbox.setText(
-                self.tr("settings.enable_debug_logging", lang_code)
-            )
-        if hasattr(self, "show_workspace_tabs_checkbox"):
-            self.show_workspace_tabs_checkbox.setText(
-                self.tr("settings.show_workspace_tabs", lang_code)
-            )
-        if hasattr(self, "ui_mode_group"):
-            self.ui_mode_group.set_title(self.tr("settings.ui_mode", lang_code))
-        if hasattr(self, "radio_ui_mode_beginner"):
-            self.radio_ui_mode_beginner.setText(
-                self.tr("settings.ui_mode_beginner", lang_code)
-            )
-        if hasattr(self, "radio_ui_mode_advanced"):
-            self.radio_ui_mode_advanced.setText(
-                self.tr("settings.ui_mode_advanced", lang_code)
-            )
-        if hasattr(self, "radio_ui_mode_expert"):
-            self.radio_ui_mode_expert.setText(
-                self.tr("settings.ui_mode_expert", lang_code)
-            )
-        if hasattr(self, "font_group"):
-            self.font_group.set_title(self.tr("settings.ui_font", lang_code))
-        if hasattr(self, "radio_font_builtin"):
-            self.radio_font_builtin.setText(self.tr("settings.builtin_font", lang_code))
-        if hasattr(self, "radio_font_system_default"):
-            self.radio_font_system_default.setText(
-                self.tr("settings.system_default", lang_code)
-            )
-        if hasattr(self, "radio_font_system_custom"):
-            self.radio_font_system_custom.setText(self.tr("settings.custom", lang_code))
-        if hasattr(self, "combo_font_family"):
-            current_font = self.combo_font_family.currentData()
-            from PyQt6.QtGui import QFontDatabase
-
-            self.combo_font_family.clear()
-            for fam in QFontDatabase.families():
-                self.combo_font_family.addItem(fam, fam)
-            idx_fam = self.combo_font_family.findData(current_font or "")
-            if idx_fam != -1:
-                self.combo_font_family.setCurrentIndex(idx_fam)
-        if hasattr(self, "other_ui_group"):
-            self.other_ui_group.set_title(
-                self.tr("settings.maximum_name_length_ui", lang_code)
-            )
-        if hasattr(self, "res_group"):
-            self.res_group.set_title(
-                self.tr("settings.display_cache_resolution", lang_code)
-            )
-        if hasattr(self, "combo_resolution"):
-            current_res = self.combo_resolution.currentData()
-            mapping = {
-                "Original": "settings.original",
-                "8K (4320p)": "settings.resolution_8k",
-                "4K (2160p)": "settings.resolution_4k",
-                "2K (1440p)": "settings.resolution_2k",
-                "Full HD (1080p)": "settings.resolution_full_hd",
-            }
-            self.combo_resolution.clear()
-            for name_key, limit in AppConstants.DISPLAY_RESOLUTION_OPTIONS.items():
-                self.combo_resolution.addItem(
-                    self.tr(mapping.get(name_key, name_key), lang_code),
-                    userData=limit,
-                )
-            idx_res = self.combo_resolution.findData(current_res)
-            if idx_res != -1:
-                self.combo_resolution.setCurrentIndex(idx_res)
-        if hasattr(self, "interactive_opt_group"):
-            self.interactive_opt_group.set_title(
-                self.tr("settings.interactive_optimization", lang_code)
-            )
-        if hasattr(self, "lbl_zoom_interp"):
-            self.lbl_zoom_interp.setText(
-                self.tr("settings.zoom_interpolation", lang_code)
-            )
-        if hasattr(self, "optimize_movement_checkbox"):
-            self.optimize_movement_checkbox.setText(
-                self.tr("settings.optimize_magnifier_movement", lang_code)
-            )
-        if hasattr(self, "laser_smoothing_checkbox"):
-            self.laser_smoothing_checkbox.setText(
-                self.tr("settings.optimize_laser_smoothing", lang_code)
-            )
-        if hasattr(self, "magnifier_intersection_highlight_checkbox"):
-            self.magnifier_intersection_highlight_checkbox.setText(
-                self.tr("settings.magnifier_intersection_highlight", lang_code)
-            )
-        if hasattr(self, "magnifier_auto_color_checkbox"):
-            self.magnifier_auto_color_checkbox.setText(
-                self.tr("settings.magnifier_auto_color_new_instances", lang_code)
-            )
-        if hasattr(self, "combo_mag_interp"):
-            current_mag_interp = self.combo_mag_interp.currentData()
-            current_laser_interp = self.combo_laser_interp.currentData()
-            current_zoom_interp = self.combo_zoom_interp.currentData()
-            interp_map = {
-                "NEAREST": "magnifier.nearest_neighbor",
-                "BILINEAR": "magnifier.bilinear",
-                "BICUBIC": "magnifier.bicubic",
-                "LANCZOS": "magnifier.lanczos",
-                "EWA_LANCZOS": "magnifier.ewa_lanczos",
-            }
-            self.combo_mag_interp.clear()
-            self.combo_laser_interp.clear()
-            for key in AppConstants.INTERPOLATION_METHODS_MAP.keys():
-                text = self.tr(interp_map.get(key, key), lang_code)
-                self.combo_mag_interp.addItem(text, key)
-                self.combo_laser_interp.addItem(text, key)
-            self.combo_zoom_interp.clear()
-            self.combo_zoom_interp.addItem(
-                self.tr(interp_map["NEAREST"], lang_code), "NEAREST"
-            )
-            self.combo_zoom_interp.addItem(
-                self.tr(interp_map["BILINEAR"], lang_code), "BILINEAR"
-            )
-            for combo, value in (
-                (self.combo_mag_interp, current_mag_interp),
-                (self.combo_laser_interp, current_laser_interp),
-                (self.combo_zoom_interp, current_zoom_interp),
-            ):
-                idx = combo.findData(value)
-                if idx != -1:
-                    combo.setCurrentIndex(idx)
-        if hasattr(self, "auto_group"):
-            self.auto_group.set_title(self.tr("settings.auto", lang_code))
-        if hasattr(self, "crop_checkbox"):
-            self.crop_checkbox.setText(
-                self.tr("settings.autocrop_black_borders_on_load", lang_code)
-            )
-        if hasattr(self, "metrics_group"):
-            self.metrics_group.set_title(self.tr("label.details", lang_code))
-        if hasattr(self, "auto_psnr_checkbox"):
-            self.auto_psnr_checkbox.setText(
-                self.tr("settings.autocalculate_psnr", lang_code)
-            )
-        if hasattr(self, "auto_ssim_checkbox"):
-            self.auto_ssim_checkbox.setText(
-                self.tr("settings.autocalculate_ssim", lang_code)
-            )
         curr = self.sidebar.currentRow()
         self.sidebar.setCurrentRow(-1)
         self.sidebar.setCurrentRow(curr)

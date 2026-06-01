@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QWidget
 from core.main_controller import MainController
 from core.plugin_system.ui_integration import PluginUIRegistry
 from core.store import Store
-from ui.main_window_ui import Ui_ImageComparisonApp
+from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.presenters.main_window.connections import (
     connect_event_handler_signals as connect_event_handler_signals_impl,
     connect_signals as connect_signals_impl,

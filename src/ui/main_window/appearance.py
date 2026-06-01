@@ -30,8 +30,7 @@ class MainWindowAppearance:
         pal.setColor(QPalette.ColorRole.Base, bg)
         image_label.setPalette(pal)
         image_label.setStyleSheet(f"background-color: {bg_hex};")
-        if hasattr(window.ui, "set_image_startup_placeholder_color"):
-            window.ui.set_image_startup_placeholder_color(bg)
+        window.ui.image_startup_placeholder.set_background_color(bg)
 
     def on_theme_changed(self) -> None:
         window = self.window

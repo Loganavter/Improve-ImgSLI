@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import time
 from dataclasses import dataclass
 
@@ -10,7 +9,6 @@ from core.tracing import Tracer
 from shared.image_processing.prescale import prescale_pair
 from shared.image_processing.resize import resample_image
 
-_vrlog = logging.getLogger("ImproveImgSLI.video_render")
 from plugins.export.services.snapshot_render_plan_builder import SnapshotRenderPlanBuilder
 from ui.canvas_presentation.models import CanvasTarget
 from ui.canvas_presentation.layout import compute_content_layout
@@ -60,20 +58,6 @@ class SnapshotFrameRenderer:
     def _trace(kind: str, summary: str, payload: dict) -> None:
         if Tracer.enabled():
             Tracer.instance().record(kind, summary, payload)
-
-    @staticmethod
-    def _normalized_prescale_target(width: int, height: int) -> tuple[int, int]:
-        max_dim = max(int(width), int(height))
-        if max_dim <= 640:
-            step = 64
-        elif max_dim <= 1600:
-            step = 128
-        else:
-            step = 256
-
-        normalized_width = max(step, ((max(1, int(width)) + step - 1) // step) * step)
-        normalized_height = max(step, ((max(1, int(height)) + step - 1) // step) * step)
-        return normalized_width, normalized_height
 
     @staticmethod
     def _resolve_prescale_target(
@@ -136,10 +120,6 @@ class SnapshotFrameRenderer:
         return img1, img2
 
     @staticmethod
-    def _bounds_tuple(request: VideoRenderRequest):
-        return request.global_bounds
-
-    @staticmethod
     def _fit_source_to_content(
         source: Image.Image,
         content_size: tuple[int, int],
@@ -150,7 +130,6 @@ class SnapshotFrameRenderer:
         sw, sh = source.width, source.height
         if (sw, sh) == (cw, ch):
             return source
-        did_resize = False
         if sw > cw or sh > ch:
             fit_r = min(cw / max(1, sw), ch / max(1, sh))
             sw = max(1, int(sw * fit_r))
@@ -161,7 +140,6 @@ class SnapshotFrameRenderer:
                 resize_method,
                 is_interactive_render=False,
             )
-            did_resize = True
         canvas = Image.new("RGBA", (cw, ch), fill_rgba or (0, 0, 0, 255))
         ox = (cw - sw) // 2
         oy = (ch - sh) // 2
@@ -797,13 +775,3 @@ class SnapshotFrameRenderer:
     def _render_gpu(self, snap, request: VideoRenderRequest) -> RenderedFrame:
         prepared = self.prepare_canvas_frame(snap, request)
         return self._render_prepared(prepared, request)
-
-    @staticmethod
-    def _get_gpu_tiling_config(width: int, height: int) -> tuple[bool, int]:
-        pixel_count = max(1, int(width)) * max(1, int(height))
-        max_dim = max(int(width), int(height))
-        if pixel_count >= 24_000_000 or max_dim >= 5500:
-            return True, 3
-        if pixel_count >= 14_000_000 or max_dim >= 4096:
-            return True, 2
-        return False, 1
