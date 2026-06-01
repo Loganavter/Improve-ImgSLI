@@ -17,7 +17,7 @@ from sli_ui_toolkit.core import setup_logging
 from sli_ui_toolkit.widgets import install_application_tooltips
 from shared_toolkit.ui.managers.ui_resource_manager import UIResourceManager
 from sli_ui_toolkit.theme import ThemeManager
-from ui.main_window_composer import MainWindowComposer
+from ui.main_window.composer import MainWindowComposer
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -145,17 +145,9 @@ class ApplicationContext:
     def create_window_dependent_components(self, window):
         if not self._initialized:
             raise RuntimeError("ApplicationContext not initialized")
-        composer = MainWindowComposer(self)
-        components = composer.compose(window)
+        components = MainWindowComposer(self).compose(window)
         self.ui_resource_manager = components.ui_resource_manager
-        return {
-            "geometry_manager": components.geometry_manager,
-            "tray_manager": components.tray_manager,
-            "main_controller": components.main_controller,
-            "event_handler": components.event_handler,
-            "presenter": components.presenter,
-            "ui_resource_manager": components.ui_resource_manager,
-        }
+        return components
 
     def apply_theme_to_app(self, app: QApplication):
         install_application_tooltips(app)

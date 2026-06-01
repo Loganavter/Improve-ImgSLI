@@ -203,3 +203,55 @@ def tr(key: str, language: str | None = None, default: str | None = None, *args:
     if result == key and default is not None:
         return default
     return result
+
+
+class TranslationsBinder:
+    """Re-applies translated strings to widgets on language change.
+
+    The engine is widget-agnostic: it stores callbacks parameterized by
+    `lang_code` and invokes them on `apply(lang_code)`. Apps register
+    bindings declaratively via `bind_text/bind_tooltip/bind_placeholder/
+    bind_setter` or escape to `bind_callback` for composite or conditional
+    updates.
+
+    `tr_func` defaults to the toolkit's `tr`; pass a custom translator
+    to bind against a different translation namespace.
+    """
+
+    def __init__(self, tr_func: Callable[..., str] | None = None):
+        self._tr = tr_func or tr
+        self._bindings: list[Callable[[str], None]] = []
+
+    def bind_text(self, widget, key: str, *, suffix: str = "") -> "TranslationsBinder":
+        self._bindings.append(
+            lambda lang: widget.setText(self._tr(key, lang) + suffix)
+        )
+        return self
+
+    def bind_tooltip(self, widget, key: str) -> "TranslationsBinder":
+        self._bindings.append(
+            lambda lang: widget.setToolTip(self._tr(key, lang))
+        )
+        return self
+
+    def bind_placeholder(self, widget, key: str) -> "TranslationsBinder":
+        self._bindings.append(
+            lambda lang: widget.setPlaceholderText(self._tr(key, lang))
+        )
+        return self
+
+    def bind_setter(self, widget, setter: str, key: str, *, suffix: str = "") -> "TranslationsBinder":
+        self._bindings.append(
+            lambda lang: getattr(widget, setter)(self._tr(key, lang) + suffix)
+        )
+        return self
+
+    def bind_callback(self, fn: Callable[[str], None]) -> "TranslationsBinder":
+        """Register an arbitrary callback ``fn(lang_code)`` for composite or
+        conditional updates that don't fit the simple setter pattern."""
+        self._bindings.append(fn)
+        return self
+
+    def apply(self, lang_code: str) -> None:
+        for binding in self._bindings:
+            binding(lang_code)

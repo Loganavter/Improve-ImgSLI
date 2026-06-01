@@ -54,7 +54,46 @@ Renderer backend, not a feature home. Owns GL context setup, VAO/VBO, texture up
 Shader ownership:
 - `shader_sources/base.py` — main canvas background, split/channel/diff modes
 - `shader_sources/common.py` — shared shader prolog helpers only
-- Feature shaders live in `canvas_features/<name>/gl_passes.py`, not here
+- Feature shaders live inside `canvas_features/<name>/` (`gl_passes.py`,
+  `shaders.py`, or `shaders/`), not in the generic GL canvas renderer.
+
+## Rendering Model
+
+The canvas uses one GL renderer backend, but it has two state-preparation
+paths.
+
+### Live authoring path
+
+The interactive canvas is the authoring surface. User input, toolbar commands,
+and reducers mutate the live `Store` / `ViewState` / feature state. Scene
+features then expose the current state as scene objects, runtime overlays, and
+GL feature payloads. The `GLCanvas` reads that live state and renders it.
+
+Use this path for behavior that the user edits directly: dragging splitters,
+moving magnifiers, changing guides, changing label settings, and other
+interactive canvas state.
+
+### Snapshot replay path
+
+Preview, image export, video preview, thumbnails, and video export do not own
+live UI state. They start from a frozen `FrameSnapshot` or live-store snapshot,
+rebuild a temporary render store/presentation, build a `CanvasRenderPlan`, and
+feed that plan into the same GL renderer backend.
+
+This path may write temporary frame state while preparing the render: display
+images, virtual layout, normalized feature state, cached diff images, and
+render-plan payloads. That state is frame-local. It must not become a second
+source of truth for feature behavior.
+
+### Rule
+
+Visual behavior must be expressible through feature state, scene payloads, or
+the render plan. Avoid fixes that exist only in export/preview/video code and
+have no live-canvas counterpart. Such fixes make the snapshot replay path drift
+from the live authoring path.
+
+In short: live canvas writes the authoritative state; snapshot renderers replay
+that state into deterministic frames using the shared GL backend.
 
 ## Package Structure
 

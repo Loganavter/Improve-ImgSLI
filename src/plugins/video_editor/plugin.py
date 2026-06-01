@@ -13,6 +13,7 @@ from core.session_blueprints import (
     SessionResourceBlueprint,
     SessionSlotBlueprint,
 )
+from plugins.settings.events import SettingsChangeLanguageEvent
 from plugins.video_editor.dialog import VideoEditorDialog
 from plugins.video_editor.model import VideoSelectionState, VideoTimelineState
 
@@ -29,6 +30,10 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
         self.event_bus = getattr(context, "event_bus", None)
         self.thread_pool = getattr(context, "thread_pool", None)
         self.store = getattr(context, "store", None)
+        if self.event_bus is not None:
+            self.event_bus.subscribe(
+                SettingsChangeLanguageEvent, self._on_language_changed
+            )
 
     def get_qss_paths(self) -> tuple[str, ...]:
         return (self.plugin_resource_path("resources", "editor.qss"),)
@@ -96,6 +101,10 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
 
     def _forget_editor(self, *_args) -> None:
         self._editor_dialog = None
+
+    def _on_language_changed(self, event: SettingsChangeLanguageEvent) -> None:
+        if self._editor_dialog is not None:
+            self._editor_dialog.update_language(event.lang_code)
 
     def get_ui_components(self) -> dict[str, Any]:
         return {}
