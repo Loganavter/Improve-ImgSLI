@@ -84,6 +84,8 @@ class VideoEditorDialog(QDialog):
         self.export_ui = VideoEditorDialogExport(self)
 
         self._init_ui()
+        self._translations_binder = None
+        self.update_language(self.current_language)
         self._apply_style()
 
         main_controller = (
@@ -426,6 +428,13 @@ class VideoEditorDialog(QDialog):
 
     def _tr(self, text):
         return tr(text, self.current_language)
+
+    def update_language(self, lang_code: str):
+        if self._translations_binder is None:
+            from plugins.video_editor.translations import build_translations_binder
+
+            self._translations_binder = build_translations_binder(self)
+        self._translations_binder.apply(lang_code or "en")
 
     def _tr_preset(self, preset):
         from plugins.video_editor.services.export_config import ExportConfigBuilder

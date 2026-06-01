@@ -14,10 +14,26 @@ from PyQt6.QtWidgets import (
 )
 
 from sli_ui_toolkit.i18n import tr
+from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.widgets.composite.calendar_widget.day_button import CalendarDayButton
 from sli_ui_toolkit.ui.widgets.composite.calendar_widget.models import (
     CalendarViewModel,
 )
+
+
+_THEME_KEYS = {
+    "accent": "accent",
+    "hover": "dialog.button.hover",
+    "text": "dialog.text",
+    "bg": "dialog.background",
+}
+
+
+def _theme_color(theme_manager: ThemeManager, key: str, fallback: str) -> str:
+    try:
+        return theme_manager.get_color(key).name()
+    except Exception:
+        return fallback
 
 class CalendarWidget(QWidget):
     """Generic three-level calendar (days / months / years).
@@ -42,22 +58,31 @@ class CalendarWidget(QWidget):
         parent: QWidget | None = None,
         *,
         weekday_labels: list[str] | None = None,
-        accent_color: str = "#3A7AFE",
-        hover_color: str = "#3A3A3A",
-        text_color: str = "#F2F2F2",
-        bg_color: str = "#191919",
-        weekend_bg: str = "#1E1E1E",
-        disabled_bg: str = "#2A1A1A",
+        accent_color: str | None = None,
+        hover_color: str | None = None,
+        text_color: str | None = None,
+        bg_color: str | None = None,
+        weekend_bg: str | None = None,
+        disabled_bg: str | None = None,
     ):
         super().__init__(parent)
         self._current_year = QDate.currentDate().year()
 
-        self._accent = accent_color
-        self._hover = hover_color
-        self._text = text_color
-        self._bg = bg_color
-        self._weekend_bg = weekend_bg
-        self._disabled_bg = disabled_bg
+        self._theme_manager = ThemeManager.get_instance()
+
+        self._color_overrides: dict[str, str] = {}
+        for name, value in (
+            ("accent", accent_color),
+            ("hover", hover_color),
+            ("text", text_color),
+            ("bg", bg_color),
+            ("weekend_bg", weekend_bg),
+            ("disabled_bg", disabled_bg),
+        ):
+            if value is not None:
+                self._color_overrides[name] = value
+
+        self._resolve_palette()
 
         self._day_buttons: list[CalendarDayButton] = []
         self._day_labels: list[QLabel] = []
@@ -77,7 +102,59 @@ class CalendarWidget(QWidget):
             tr("weekday_sun", default="Sun"),
         ]
 
+        self._last_vm: CalendarViewModel | None = None
         self._setup_ui()
+        self._theme_manager.theme_changed.connect(self._on_theme_changed)
+
+    def _resolve_palette(self) -> None:
+        """Pull theme defaults; user overrides win."""
+        tm = self._theme_manager
+        defaults = {
+            "accent": _theme_color(tm, _THEME_KEYS["accent"], "#3A7AFE"),
+            "hover": _theme_color(tm, _THEME_KEYS["hover"], "#3A3A3A"),
+            "text": _theme_color(tm, _THEME_KEYS["text"], "#F2F2F2"),
+            "bg": _theme_color(tm, _THEME_KEYS["bg"], "#191919"),
+        }
+        defaults["weekend_bg"] = defaults["bg"]
+        defaults["disabled_bg"] = QColor(defaults["bg"]).darker(115).name()
+
+        palette = {**defaults, **self._color_overrides}
+        self._accent = palette["accent"]
+        self._hover = palette["hover"]
+        self._text = palette["text"]
+        self._bg = palette["bg"]
+        self._weekend_bg = palette["weekend_bg"]
+        self._disabled_bg = palette["disabled_bg"]
+
+    def set_colors(
+        self,
+        *,
+        accent_color: str | None = None,
+        hover_color: str | None = None,
+        text_color: str | None = None,
+        bg_color: str | None = None,
+        weekend_bg: str | None = None,
+        disabled_bg: str | None = None,
+    ) -> None:
+        """Override one or more colors; passing None clears the override."""
+        for name, value in (
+            ("accent", accent_color),
+            ("hover", hover_color),
+            ("text", text_color),
+            ("bg", bg_color),
+            ("weekend_bg", weekend_bg),
+            ("disabled_bg", disabled_bg),
+        ):
+            if value is None:
+                self._color_overrides.pop(name, None)
+            else:
+                self._color_overrides[name] = value
+        self._resolve_palette()
+        self._apply_styles()
+
+    def _on_theme_changed(self, *args, **kwargs) -> None:
+        self._resolve_palette()
+        self._apply_styles()
 
     def _faded_color(self, factor: float = 0.6) -> str:
         bg = QColor(self._bg)
@@ -97,12 +174,6 @@ class CalendarWidget(QWidget):
         self.title_button = QPushButton()
         self.next_button = QPushButton(">")
 
-        faded = self._faded_color(0.8)
-        self.title_button.setStyleSheet(
-            f"QPushButton {{ border: none; background: transparent; "
-            f"color: {faded}; font-weight: bold; font-size: 11pt; }}"
-            f"QPushButton:hover {{ background: {self._hover}; }}"
-        )
         for btn in (self.prev_button, self.next_button):
             btn.setFixedSize(28, 28)
 
@@ -124,13 +195,19 @@ class CalendarWidget(QWidget):
         self._view_stack.addWidget(self._year_view)
         root.addWidget(self._view_stack, 1)
 
-    def _create_day_view(self) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(5)
+        self._apply_styles()
 
+    def _title_stylesheet(self) -> str:
+        faded = self._faded_color(0.8)
+        return (
+            f"QPushButton {{ border: none; background: transparent; "
+            f"color: {faded}; font-weight: bold; font-size: 11pt; }}"
+            f"QPushButton:hover {{ background: {self._hover}; }}"
+        )
+
+    def _day_view_stylesheet(self) -> str:
         faded = self._faded_color(0.6)
-        widget.setStyleSheet(
+        return (
             f'QPushButton[day-button="true"] {{'
             f"  border: 1px solid transparent; border-radius: 4px;"
             f"  padding: 5px; background: transparent;"
@@ -160,6 +237,19 @@ class CalendarWidget(QWidget):
             f"  font-weight: bold; color: {self._text};"
             f"}}"
         )
+
+    def _apply_styles(self) -> None:
+        if hasattr(self, "title_button"):
+            self.title_button.setStyleSheet(self._title_stylesheet())
+        if hasattr(self, "_day_view"):
+            self._day_view.setStyleSheet(self._day_view_stylesheet())
+        if self._last_vm is not None:
+            self.update_view(self._last_vm)
+
+    def _create_day_view(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(5)
 
         weekday_grid = QGridLayout()
         for i, name in enumerate(self._weekday_names):
@@ -225,6 +315,7 @@ class CalendarWidget(QWidget):
         return widget
 
     def update_view(self, vm: CalendarViewModel) -> None:
+        self._last_vm = vm
         self.title_button.setText(vm.navigation_title)
         self.prev_button.setEnabled(vm.can_go_previous)
         self.next_button.setEnabled(vm.can_go_next)
