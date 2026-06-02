@@ -11,7 +11,7 @@ The help widget is a markdown-driven documentation dialog used by the `help` plu
 - per-page table of contents;
 - in-page and cross-page anchor navigation.
 
-The generic implementation now lives in [packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/markdown_help_dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/markdown_help_dialog.py). The app keeps a thin adapter in [src/plugins/help/dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/dialog.py), and the dialog is instantiated by [src/plugins/help/plugin.py](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/plugin.py).
+The generic implementation lives in the external `sli-ui-toolkit` package as `sli_ui_toolkit.ui.widgets.composite.markdown_help_dialog`. The app keeps a thin adapter in [src/plugins/help/dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/dialog.py), and the dialog is instantiated by [src/plugins/help/plugin.py](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/plugin.py).
 
 ## Structure
 
@@ -191,5 +191,5 @@ The app integration layer is now intentionally small:
 - [src/plugins/help/plugin.py](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/plugin.py)
 - [src/plugins/help/resources/help.qss](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/resources/help.qss)
 - [src/resources/help/en](/home/jorj/Загрузки/Improve-ImgSLI/src/resources/help/en)
-- [packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/markdown_help_dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/markdown_help_dialog.py)
-- [packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/dialog_shell.py](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/dialog_shell.py)
+- `sli_ui_toolkit.ui.widgets.composite.markdown_help_dialog`
+- `sli_ui_toolkit.ui.widgets.composite.dialog_shell`

@@ -13,7 +13,7 @@ pytest -k divider              # все тесты со словом divider
 pytest tests/runtime/test_feature_state_api.py::TestFeatureStateRegistry
 ```
 
-`sys.path` (включая `src/` и `packages/sli-ui-toolkit/src/`) добавляется автоматически из `tests/conftest.py`. Отдельной установки пакета не требуется — нужен только `pytest` и зависимости из `requirements-gui.txt`.
+`sys.path` для `src/` добавляется автоматически из `tests/conftest.py`. `sli-ui-toolkit` устанавливается как внешняя зависимость из `requirements-gui.txt`; локального fallback-пути к vendored toolkit нет.
 
 Конфиг pytest в репозитории не используется (`pytest.ini` / `pyproject.toml` отсутствуют) — discovery идёт по стандартным правилам.
 

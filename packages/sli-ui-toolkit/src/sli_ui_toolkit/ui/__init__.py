@@ -1,2 +1,0 @@
-"""Reusable PyQt UI primitives."""
-

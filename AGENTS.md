@@ -38,7 +38,7 @@ Read:
 
 1. [docs/dev/HELP_WIDGET.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/HELP_WIDGET.md)
 2. [src/plugins/help/dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/dialog.py)
-3. [packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/markdown_help_dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/src/sli_ui_toolkit/ui/widgets/composite/markdown_help_dialog.py)
+3. `sli_ui_toolkit.ui.widgets.composite.markdown_help_dialog` in the external `Loganavter/sli-ui-toolkit` repository
 
 Important:
 
@@ -50,11 +50,12 @@ Important:
 
 Read:
 
-1. [packages/sli-ui-toolkit/README.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/README.md)
-2. [packages/sli-ui-toolkit/docs/README.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/README.md)
-3. [packages/sli-ui-toolkit/docs/ARCHITECTURE.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/ARCHITECTURE.md)
-4. [packages/sli-ui-toolkit/docs/API_CATALOG.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/API_CATALOG.md)
-5. [packages/sli-ui-toolkit/docs/DESIGN_LANGUAGE.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/DESIGN_LANGUAGE.md)
+1. External toolkit repository: `https://github.com/Loganavter/sli-ui-toolkit`
+2. Toolkit `README.md`
+3. Toolkit `docs/README.md`
+4. Toolkit `docs/ARCHITECTURE.md`
+5. Toolkit `docs/API_CATALOG.md`
+6. Toolkit `docs/DESIGN_LANGUAGE.md`
 
 Important:
 
@@ -84,7 +85,7 @@ Use this mental model:
 - `src/ui/`: presenters, canvas integration, Qt widgets, main window
 - `src/shared/`: shared processing and rendering helpers
 - `src/shared_toolkit/`: app-side QSS/resources and older shared UI integration points
-- `packages/sli-ui-toolkit/`: reusable PyQt toolkit extracted from the app
+- `sli-ui-toolkit`: external reusable PyQt toolkit installed from `requirements-gui.txt`
 - `src/resources/help/`: localized in-app help content
 
 ## Project Rules
@@ -157,8 +158,8 @@ Update documentation in the same task if you change:
 Usually this means touching one of:
 
 - [src/resources/help/en](/home/jorj/Загрузки/Improve-ImgSLI/src/resources/help/en)
-- [packages/sli-ui-toolkit/docs/API_CATALOG.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/API_CATALOG.md)
-- [packages/sli-ui-toolkit/docs/ARCHITECTURE.md](/home/jorj/Загрузки/Improve-ImgSLI/packages/sli-ui-toolkit/docs/ARCHITECTURE.md)
+- external `sli-ui-toolkit` docs/API_CATALOG.md
+- external `sli-ui-toolkit` docs/ARCHITECTURE.md
 - [docs/dev/HELP_WIDGET.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/HELP_WIDGET.md)
 - [docs/dev/CANVAS_FEATURES.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/CANVAS_FEATURES.md)
 

@@ -51,7 +51,7 @@ Tip: Prefer updating the in-app Help when you add features; the README links to 
 - src/ui: Qt UI — main window, canvas (infra/features/presentation), presenters (MVP), widgets, managers, onboarding
 - src/shared_toolkit: shared utilities reused by the app and launcher scripts
 - src/resources: application assets (icons, fonts, styles, themes) and user Help in multiple languages
-- packages/sli-ui-toolkit: standalone UI toolkit consumed by the app (widgets, managers, services)
+- sli-ui-toolkit: external versioned UI toolkit consumed by the app (widgets, managers, services)
 - build: packaging templates (Windows / Flatpak / AUR) and CI helpers
 - tests: pytest suite (contracts, plugins, render, runtime, toolkit, video)
 - launcher.sh: CLI helper to manage venv and run common tasks
@@ -75,7 +75,7 @@ Useful entry points:
 - Canvas features: zero direct imports of features in shared code. Communication goes through capability aliases, `CanvasWidgetFeature` contracts, and auto-discovery in `src/ui/canvas_infra/scene/widget_registry.py`. All visual attributes are in canvas-px. See docs/dev/CANVAS_FEATURES.md and the `_template/` feature for a starting point.
 - Plugins / tabs: features and workspace tabs are pluggable; degrade gracefully when an optional plugin is missing.
 - Logging: use the standard `logging` module via the project's logger. Avoid `print` statements.
-- Shared components: consider using or extending `packages/sli-ui-toolkit` and `src/shared_toolkit` for reusable UI and utilities.
+- Shared components: consider using the external `sli-ui-toolkit` package and `src/shared_toolkit` for reusable UI and utilities. Toolkit changes belong in the `Loganavter/sli-ui-toolkit` repository, not in this app tree.
 
 More background: see `docs/dev/ARCHITECTURE.md`, `docs/dev/CONTRACTS.md`, `docs/dev/TAB_CONTRACT.md`, `docs/dev/UI_TOOLKIT_LIBRARY.md`, `docs/dev/TESTING.md`, `docs/dev/TRACING.md`, and the top-level `AGENTS.md` / `VISION.md`.
 
