@@ -1,2 +1,0 @@
-"""Widget primitives and helpers."""
-
