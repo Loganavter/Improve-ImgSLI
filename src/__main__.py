@@ -10,14 +10,11 @@ try:
 
     project_dir = current_dir.parent
     bundled_src_dir = current_dir / "src"
-    toolkit_src_dir = project_dir / "packages" / "sli-ui-toolkit" / "src"
 
     if str(project_dir) not in sys.path:
         sys.path.insert(0, str(project_dir))
     if bundled_src_dir.is_dir() and str(bundled_src_dir) not in sys.path:
         sys.path.insert(0, str(bundled_src_dir))
-    if toolkit_src_dir.is_dir() and str(toolkit_src_dir) not in sys.path:
-        sys.path.insert(0, str(toolkit_src_dir))
 except Exception:
 
     pass

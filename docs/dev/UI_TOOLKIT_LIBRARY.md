@@ -1,6 +1,6 @@
 # UI Toolkit Library
 
-`packages/sli-ui-toolkit` is a reusable PyQt6 UI library.
+`sli-ui-toolkit` is a reusable, versioned PyQt6 UI library used by Improve-ImgSLI and Tkonverter.
 
 It contains widgets, an i18n system, styling tools, themes, icons, workers, and utilities. Application-specific behavior (such as icons, translation roots, overlay layers, and drag-and-drop logic) is injected via configuration hooks at startup. Application state, canvas logic, feature services, and plugins remain within the main application.
 
@@ -46,7 +46,7 @@ from sli_ui_toolkit import (
 
 Additional public modules are available through their package paths, including `sli_ui_toolkit.i18n`, `sli_ui_toolkit.icons`, `sli_ui_toolkit.widgets`, and others.
 
-> **Note:** For a comprehensive reference of all available classes, methods, and low-level modules, please refer to the **`packages/sli-ui-toolkit/README.md`** and the technical documentation located in **`packages/sli-ui-toolkit/docs`**.
+> **Note:** For a comprehensive reference of all available classes, methods, and low-level modules, refer to the external **`Loganavter/sli-ui-toolkit`** repository and its `docs/` directory.
 
 ## Styling Contract
 
@@ -62,11 +62,11 @@ Supported style properties are intentionally generic: `variant`, `tone`, `densit
 
 For custom-painted widgets, `read_widget_style()` is the bridge between Qt properties and painter state.
 
-> **Note:** Detailed specifications for each property and a list of supported values for specific widgets can be found in the **`packages/sli-ui-toolkit/docs/styling.md`** (or relevant doc files).
+> **Note:** Detailed specifications for each property and a list of supported values for specific widgets live in the external `sli-ui-toolkit` documentation.
 
 ## Boundary Rules
 
-Code inside `packages/sli-ui-toolkit/src/sli_ui_toolkit` must not import application packages such as `core`, `domain`, `features`, `ui`, or `services`. It also must not directly depend on application concepts such as store objects, viewport state, or document state.
+Code inside the `sli_ui_toolkit` package must not import application packages such as `core`, `domain`, `features`, `ui`, or `services`. It also must not directly depend on application concepts such as store objects, viewport state, or document state.
 
 ## Allowed Inputs
 
@@ -121,4 +121,4 @@ Before adding a module to the toolkit, verify that it:
 2. Does not reference application-specific state or features.
 3. Accepts app-specific behavior through parameters, callbacks, or data objects.
 
-For more implementation details, check the internal documentation in **`packages/sli-ui-toolkit/docs`**.
+For more implementation details, check the external toolkit documentation in **`Loganavter/sli-ui-toolkit`**.
