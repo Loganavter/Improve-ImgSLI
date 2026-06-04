@@ -4,11 +4,11 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QScrollArea, QSizePolicy
 
 from sli_ui_toolkit.widgets import (
-    DialogActionBar,
     ScrollableDialogPage,
     SidebarDialogShell,
 )
 from ui.icon_manager import AppIcon
+from ui.widgets.form_controls import DialogActionBar
 
 def setup_dialog_shell(dialog):
     dialog.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -46,7 +46,7 @@ def setup_sidebar_items(dialog):
             AppIcon.HIGHLIGHT_DIFFERENCES,
         ),
     ]
-    dialog.sidebar.set_nav_items(dialog._sidebar_items_data)
+    dialog.sidebar.set_items(dialog._sidebar_items_data)
 
 def create_scrollable_page():
     page = ScrollableDialogPage()

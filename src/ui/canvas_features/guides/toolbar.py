@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from domain.qt_adapters import color_to_qcolor
 
 from .commands import command_set_guides_thickness, command_toggle_guides
 from .state import get_guides_widget_state
@@ -66,6 +67,13 @@ def sync_guides_toolbar_state(presenter) -> None:
             set_checked_quietly(btn_guides, True)
     set_checked_quietly(getattr(ui, "btn_magnifier_guides_simple", None), bool(active_laser))
     set_slider_value_quietly(getattr(ui, "btn_magnifier_guides_width", None), int(state.thickness))
+
+    guides_color = color_to_qcolor(state.color)
+    if btn_guides is not None:
+        btn_guides.setUnderlineColor(guides_color if state.thickness > 0 else None)
+    btn_guides_width = getattr(ui, "btn_magnifier_guides_width", None)
+    if btn_guides_width is not None:
+        btn_guides_width.setUnderlineColor(guides_color)
 
 def build_guides_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:
     return (

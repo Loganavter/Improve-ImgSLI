@@ -3,32 +3,20 @@ from __future__ import annotations
 from importlib import import_module
 
 __all__ = [
-    "BodyLabel",
-    "CaptionLabel",
+    "Label",
     "CheckBox",
     "RadioButton",
     "Slider",
     "Switch",
     "VideoSessionWidget",
-
-    "FluentCheckBox",
-    "FluentRadioButton",
-    "FluentSlider",
-    "FluentSwitch",
 ]
 
 _SIMPLE_EXPORTS = {
-    "BodyLabel": ("sli_ui_toolkit.widgets", "BodyLabel"),
-    "CaptionLabel": ("sli_ui_toolkit.widgets", "CaptionLabel"),
+    "Label": ("sli_ui_toolkit.widgets", "Label"),
     "CheckBox": ("sli_ui_toolkit.widgets", "CheckBox"),
     "RadioButton": ("sli_ui_toolkit.widgets", "RadioButton"),
     "Slider": ("sli_ui_toolkit.widgets", "Slider"),
     "Switch": ("sli_ui_toolkit.widgets", "Switch"),
-
-    "FluentCheckBox": ("sli_ui_toolkit.widgets", "CheckBox"),
-    "FluentRadioButton": ("sli_ui_toolkit.widgets", "RadioButton"),
-    "FluentSlider": ("sli_ui_toolkit.widgets", "Slider"),
-    "FluentSwitch": ("sli_ui_toolkit.widgets", "Switch"),
     "VideoSessionWidget": ("ui.widgets.video_session_widget", "VideoSessionWidget"),
 }
 

@@ -57,7 +57,7 @@ class VideoEditorDialogExport:
         if not color.isValid():
             color = QColor(0, 0, 0, 255)
         if hasattr(d.btn_fit_fill_color, "set_color"):
-            d.btn_fit_fill_color.set_color(color)
+            d.btn_fit_fill_color.setUnderlineColor(color)
 
     def on_codec_changed(self, codec_text: str):
         d = self.dialog

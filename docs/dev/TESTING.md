@@ -13,7 +13,7 @@ pytest -k divider              # все тесты со словом divider
 pytest tests/runtime/test_feature_state_api.py::TestFeatureStateRegistry
 ```
 
-`sys.path` для `src/` добавляется автоматически из `tests/conftest.py`. `sli-ui-toolkit` устанавливается как внешняя зависимость из `requirements-gui.txt`; локального fallback-пути к vendored toolkit нет.
+`sys.path` для `src/` добавляется автоматически из `tests/conftest.py`. `sli-ui-toolkit` устанавливается как внешняя зависимость из `requirements-gui.txt`; локального fallback-пути к vendored toolkit нет. Тесты приложения проверяют только app-интеграцию с toolkit, а не публичный API самой внешней библиотеки.
 
 Конфиг pytest в репозитории не используется (`pytest.ini` / `pyproject.toml` отсутствуют) — discovery идёт по стандартным правилам.
 
@@ -27,7 +27,6 @@ pytest tests/runtime/test_feature_state_api.py::TestFeatureStateRegistry
 | `runtime/` | Контракты, которые проявляются только при импорте/исполнении: registry, Feature State API, stacking policy, изоляция презентации. | Импорт + assertions |
 | `render/` | Поведение GL-passes и сцены: что и в каком порядке рисуется, что не рисуется при пустом состоянии. | Fake-context |
 | `plugins/` | Поведение плагинов (`src/plugins/*`): settings, export, toast, help, clipboard. | Юнит/интеграционные |
-| `toolkit/` | Публичный API `sli-ui-toolkit`: экспорты, i18n, виджеты. | Юнит |
 | `video/` | Контракты видео-редактора (preview, timeline, keyframes, кэш). | Юнит |
 
 Общий хелпер для contract-тестов — `tests/contracts/_framework.py`: пути (`SRC`, `CANVAS_FEATURES`, `PLUGINS`), `iter_py`, `read`, `module_imports`, `list_canvas_features`, `list_plugins`, `feature_name`. Используй его вместо ручного `Path(__file__).parent…`.
@@ -98,15 +97,6 @@ pytest tests/runtime/test_feature_state_api.py::TestFeatureStateRegistry
 | `test_clipboard_paste_shortcut.py` | Ctrl+V на canvas эмитит paste-event. |
 | `test_help_dialog_anchors.py` | Help: strip anchor-суффикса, генерация heading-id, TOC из h3-секций. |
 
-### `toolkit/` — публичный API `sli-ui-toolkit`
-
-| Файл | Что защищает |
-|---|---|
-| `test_toolkit_widget_exports.py` | Публичные экспорты toolkit, `ColorOptionsFlyout`, обратная совместимость `InstancesCounter`. |
-| `test_toolkit_i18n.py` | `TranslationManager`: deep-merge, dotted-key resolve, fallback, format-args, кэш. |
-| `test_fluent_combobox_api.py` | `FluentComboBox`: item-API, поиск по набору, клавиатурная навигация по фильтру. |
-| `test_sidebar_nav_list_icons.py` | Sidebar nav-list строит selected-вариант иконки. |
-
 ### `video/` — контракты видео-редактора
 
 | Файл | Что защищает |
@@ -158,7 +148,7 @@ def _build_ctx(*, show_divider, thickness, images_uploaded, content_rect):
 
 1. **Тест на каждый контракт, а не на каждую фичу.** Если правило применимо ко всем фичам — пиши параметризованный тест в `tests/contracts/`, который автоматически покроет будущие фичи.
 2. **Один файл — одна тема.** Имя в стиле `test_<thing>_contracts.py` для контрактных, `test_<feature>.py` для поведенческих.
-3. **Никакого Qt/GL в юнитах.** Если тесту нужен `QApplication` — это уже интеграция; вынеси в `plugins/` или `toolkit/` и явно создавай `QApplication.instance() or QApplication([])` в фикстуре.
+3. **Никакого Qt/GL в юнитах.** Если тесту нужен `QApplication` — это уже интеграция; вынеси в app-level тест рядом с проверяемой подсистемой и явно создавай `QApplication.instance() or QApplication([])` в фикстуре.
 4. **`SimpleNamespace` вместо `MagicMock`.** Mock ловит ошибки только когда падает, namespace — на этапе AttributeError. Тесты должны падать на отсутствующих полях контракта, а не молча проходить.
 5. **Документируй догму в docstring.** Первой строкой — ссылка на раздел в `docs/dev/`, чтобы при изменении правила было понятно, какой документ обновить вместе с тестом.
 6. **Не мокай Store.** Если нужно проверить редьюсер — диспатчь реальный action в реальный store; если pass — собирай `scene_frame` вручную.

@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from plugins.video_editor.model import VideoSessionSnapshot
-from sli_ui_toolkit.widgets import Button, BodyLabel, CaptionLabel
+from sli_ui_toolkit.widgets import Button, Label
 from ui.icon_manager import AppIcon
 
 class VideoSessionWidget(QWidget):
@@ -21,21 +21,23 @@ class VideoSessionWidget(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        self.title_label = BodyLabel(self, "Video Workspace")
-        self.subtitle_label = CaptionLabel(
-            "Dedicated video session state is active for this tab.", self
+        self.title_label = Label("Video Workspace", self)
+        self.subtitle_label = Label(
+            "Dedicated video session state is active for this tab.",
+            self,
+            variant="group-title",
         )
         self.subtitle_label.setWordWrap(True)
 
-        self.session_info_label = CaptionLabel("", self)
+        self.session_info_label = Label("", self, variant="group-title")
         self.session_info_label.setWordWrap(True)
-        self.timeline_label = CaptionLabel("", self)
+        self.timeline_label = Label("", self, variant="group-title")
         self.timeline_label.setWordWrap(True)
-        self.selection_label = CaptionLabel("", self)
+        self.selection_label = Label("", self, variant="group-title")
         self.selection_label.setWordWrap(True)
-        self.resources_label = CaptionLabel("", self)
+        self.resources_label = Label("", self, variant="group-title")
         self.resources_label.setWordWrap(True)
-        self.metadata_label = CaptionLabel("", self)
+        self.metadata_label = Label("", self, variant="group-title")
         self.metadata_label.setWordWrap(True)
 
         actions_layout = QHBoxLayout()
