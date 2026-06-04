@@ -9,6 +9,17 @@ from shared_toolkit.ui.gesture_resolver import RatingGestureTransaction
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
 from sli_ui_toolkit.config import FlyoutTimingConfig, configure_toolkit
 from sli_ui_toolkit.icons import configure_icon_resolver, get_icon_service
+from sli_ui_toolkit.ui.widgets.atomic.text_labels import (
+    LabelVariantSpec,
+    register_label_variant,
+)
+from sli_ui_toolkit.ui.widgets.buttons._dropdown_menu import DropdownMenu
+
+DropdownMenu.APPEAR_EXTRA_Y = 12
+
+register_label_variant(
+    LabelVariantSpec("group-title", pixel_size=14, bold=False, color_token="dialog.text", elide=True)
+)
 
 class AppIcon(Enum):
     SETTINGS = "settings.svg"
@@ -79,8 +90,8 @@ configure_icon_resolver(
 configure_toolkit(
     timings=FlyoutTimingConfig(
         transient_auto_hide_delay_ms=300,
-        flyout_animation_duration_ms=150,
-        text_settings_flyout_animation_duration_ms=150,
+        flyout_animation_duration_ms=80,
+        text_settings_flyout_animation_duration_ms=80,
     ),
     overlay_resolver=get_overlay_layer,
     rating_gesture_factory=lambda **kwargs: RatingGestureTransaction(**kwargs),

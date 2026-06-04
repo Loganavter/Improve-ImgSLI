@@ -3,7 +3,7 @@ pillow==12.1.1
 numpy>=1.24,<2.4
 PyQt6==6.11.0
 PyQt6_sip==13.11.1
-sli-ui-toolkit @ git+https://github.com/Loganavter/sli-ui-toolkit.git@v0.2.0
+sli-ui-toolkit @ git+https://github.com/Loganavter/sli-ui-toolkit.git@v0.2.6
 scikit-image==0.26.0
 imagecodecs>=2024.1.1
 PyOpenGL>=3.1.0

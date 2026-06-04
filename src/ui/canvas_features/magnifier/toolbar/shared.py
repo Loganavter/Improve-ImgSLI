@@ -71,8 +71,8 @@ def show_magnifier_divider_color_picker(presenter) -> None:
         button = getattr(
             getattr(presenter, "ui", None), "btn_magnifier_orientation", None
         )
-        if button is not None and hasattr(button, "set_color"):
-            button.set_color(color)
+        if button is not None:
+            button.setUnderlineColor(color)
 
     show_canvas_feature_color_picker(
         presenter,

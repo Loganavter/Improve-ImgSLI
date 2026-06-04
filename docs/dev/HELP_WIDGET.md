@@ -29,7 +29,7 @@ The generic implementation lives in the external `sli-ui-toolkit` package as `sl
 | Widget | Source | Purpose |
 |---|---|---|
 | `SidebarDialogShell` | `sli_ui_toolkit` | two-column dialog shell |
-| `SidebarNavList` | `sli_ui_toolkit` | page navigation sidebar |
+| `IconListWidget` | `sli_ui_toolkit` | page navigation sidebar |
 | `MinimalistScrollBar` | `sli_ui_toolkit` | custom scrollbars |
 
 ## Data Source
@@ -104,7 +104,7 @@ The dialog uses this composition:
 
 ```text
 SidebarDialogShell
-├── sidebar: SidebarNavList
+├── sidebar: IconListWidget
 └── content_area
     └── QScrollArea
         └── MarkdownHelpPageBrowser

@@ -25,6 +25,7 @@ class InterpolationFlyoutController:
         host = self.manager.host
         if host._interp_flyout is None:
             host._interp_flyout = SimpleOptionsFlyout(host.parent_widget)
+            host._interp_flyout._drop_offset_px = 24
             host._interp_flyout.closed.connect(self.on_closed)
 
         lang = host.store.settings.current_language

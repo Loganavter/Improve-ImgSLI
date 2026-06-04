@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from sli_ui_toolkit.widgets import Button
@@ -33,7 +34,7 @@ class MultiCompareToolbar(QWidget):
         self.btn_grid_mode.setToolTip("Grid / Focus")
         self.btn_grid_mode.toggled.connect(lambda _: self.toggle_grid_clicked.emit())
 
-        self.btn_clear = Button(AppIcon.DELETE, variant="delete", parent=self)
+        self.btn_clear = Button(AppIcon.DELETE, background_color=QColor("#D93025"), parent=self)
         self.btn_clear.setToolTip("Clear all")
         self.btn_clear.clicked.connect(self.clear_clicked)
 

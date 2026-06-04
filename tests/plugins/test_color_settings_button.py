@@ -14,7 +14,7 @@ class _ButtonProbe:
     def __init__(self):
         self.value = None
 
-    def set_color(self, value):
+    def setUnderlineColor(self, value):
         self.value = value
 
 def test_color_button_keeps_laser_segment_when_guides_hidden(monkeypatch):
@@ -59,10 +59,11 @@ def test_color_button_keeps_laser_segment_when_guides_hidden(monkeypatch):
     button.store = SimpleNamespace(
         viewport=SimpleNamespace(view_state=object()),
     )
-    button.button = _ButtonProbe()
+    probe = _ButtonProbe()
+    button.setUnderlineColor = probe.setUnderlineColor
 
     color_settings_button_module.ColorSettingsButton._update_underline_colors(button)
 
-    assert isinstance(button.button.value, list)
-    assert len(button.button.value) == 4
-    assert button.button.value[1] == QColor(40, 50, 60, 230)
+    assert isinstance(probe.value, list)
+    assert len(probe.value) == 4
+    assert probe.value[1] == QColor(40, 50, 60, 230)

@@ -20,6 +20,7 @@ from sli_ui_toolkit.i18n import (
 _manager = TranslationManager()
 
 configure_i18n(i18n_root=Path(resource_path("resources/i18n")))
+_manager._current_lang = ""
 
 def add_i18n_root(path: str | Path) -> None:
     _manager.add_i18n_root(path)

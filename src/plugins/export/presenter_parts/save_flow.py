@@ -182,8 +182,7 @@ class ExportSaveFlowCoordinator:
             toast_id = toast_manager.show_toast(
                 toast_message,
                 duration=0,
-                action_text=self.tr("common.cancel"),
-                on_action=on_cancel,
+                actions=[(self.tr("common.cancel"), on_cancel)],
                 progress=0,
             )
         cancel_ctx["id"] = toast_id

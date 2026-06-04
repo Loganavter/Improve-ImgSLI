@@ -147,9 +147,7 @@ class VideoEditorDialogRuntime:
         d = self.dialog
         if not d.export_progress.isVisible():
             d.export_progress.setVisible(True)
-            d.btn_export.set_override_bg_color(
-                QColor(d.theme_manager.get_color("button.primary.background"))
-            )
+            d.btn_export.set_override_bg_color(None)
             d.btn_export.setCursor(Qt.CursorShape.ArrowCursor)
             d.btn_export.setText(d._tr("video.rendering"))
             d.btn_stop_export.show()

@@ -26,11 +26,10 @@ from sli_ui_toolkit.widgets import (
     Button,
     CheckBox,
     ComboBox,
-    DialogActionBar,
-    OutputPathSection,
     Slider,
 )
 from ui.icon_manager import AppIcon
+from ui.widgets.form_controls import DialogActionBar, OutputPathSection
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -105,6 +104,11 @@ class ExportDialog(QDialog):
         self._populate_from_state()
         self._suggest_default_filename()
         self._update_controls_visity_by_format()
+
+        for line_edit in (self.edit_dir, self.edit_name, self.edit_comment):
+            line_edit.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+            line_edit.returnPressed.connect(line_edit.clearFocus)
+        self.setFocus()
 
         QTimer.singleShot(0, self._finalize_layout_and_size)
 

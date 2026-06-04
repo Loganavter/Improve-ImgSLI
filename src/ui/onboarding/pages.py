@@ -81,7 +81,7 @@ def _add_beginner_demo(overlay, demo_container, demo_layout, current_lang: str) 
     b3 = Button(AppIcon.DIVIDER_COLOR, show_underline=True, parent=demo_container)
     _style_demo_btn(b3)
     accent_color = overlay.theme_manager.get_color("accent")
-    b3.set_color(accent_color)
+    b3.setUnderlineColor(accent_color)
 
     def _on_beginner_color_clicked():
         _show_color_dialog(overlay, b3, b3._custom_color or accent_color, current_lang)
@@ -95,7 +95,7 @@ def _add_beginner_demo(overlay, demo_container, demo_layout, current_lang: str) 
         parent=demo_container,
     )
     _style_demo_btn(b4)
-    b4.set_color(accent_color)
+    b4.setUnderlineColor(accent_color)
     labels = [
         tr("onboarding.beginner.button.rotate", current_lang),
         tr("onboarding.beginner.button.view", current_lang),
@@ -119,12 +119,12 @@ def _add_advanced_demo(overlay, demo_container, demo_layout, current_lang: str) 
     )
     _style_demo_btn(b_smart, checked=True)
     b_smart.set_value(3)
-    b_smart.set_color(overlay.theme_manager.get_color("accent"))
+    b_smart.setUnderlineColor(overlay.theme_manager.get_color("accent"))
 
     b_color = Button(AppIcon.DIVIDER_COLOR, show_underline=True, parent=demo_container)
     _style_demo_btn(b_color)
     accent_color = overlay.theme_manager.get_color("accent")
-    b_color.set_color(accent_color)
+    b_color.setUnderlineColor(accent_color)
 
     def _on_advanced_color_clicked():
         _show_color_dialog(
@@ -156,7 +156,7 @@ def _add_expert_demo(overlay, demo_container, demo_layout, current_lang: str) ->
     b_expert.set_value(3)
 
     accent_color = overlay.theme_manager.get_color("accent")
-    b_expert.set_color(accent_color)
+    b_expert.setUnderlineColor(accent_color)
 
     def _on_expert_right():
         _show_color_dialog(
@@ -197,7 +197,7 @@ def _show_color_dialog(overlay, button, current_color, current_lang: str) -> Non
 
     def on_color_selected(color):
         if color.isValid():
-            button.set_color(color)
+            button.setUnderlineColor(color)
 
     color_dialog.colorSelected.connect(on_color_selected)
     color_dialog.show()
