@@ -33,11 +33,8 @@ def sync_magnifier_toolbar_state(presenter) -> None:
         getattr(ui, "btn_magnifier_divider_width", None),
         divider_thickness,
     )
-    if (
-        hasattr(ui, "btn_magnifier_orientation")
-        and hasattr(ui.btn_magnifier_orientation, "set_color")
-    ):
-        ui.btn_magnifier_orientation.set_color(color_to_qcolor(divider_color))
+    if hasattr(ui, "btn_magnifier_orientation"):
+        ui.btn_magnifier_orientation.setUnderlineColor(color_to_qcolor(divider_color))
 
 def sync_magnifier_enabled_state(presenter) -> None:
     from ..mode import MagnifierModeService
@@ -64,12 +61,9 @@ def sync_magnifier_enabled_state(presenter) -> None:
     if hasattr(ui, "toggle_magnifier_panel_visibility"):
         ui.toggle_magnifier_panel_visibility(panel_visible)
 
-    if (
-        hasattr(ui, "btn_magnifier_orientation")
-        and hasattr(ui.btn_magnifier_orientation, "set_color")
-    ):
+    if hasattr(ui, "btn_magnifier_orientation"):
         viewport = presenter.store.viewport
-        ui.btn_magnifier_orientation.set_color(
+        ui.btn_magnifier_orientation.setUnderlineColor(
             color_to_qcolor(
                 active_magnifier.divider_color
                 if active_magnifier is not None
@@ -126,12 +120,11 @@ def sync_magnifier_orientation_state(presenter) -> None:
             if hasattr(btn_orientation, "set_value"):
                 if btn_orientation.get_value() != magnifier_thickness:
                     btn_orientation.set_value(magnifier_thickness)
-        if hasattr(btn_orientation, "set_color"):
-            btn_orientation.set_color(
-                color_to_qcolor(active_or_default_divider_color(view_state))
-                if not divider_hidden
-                else None
-            )
+        btn_orientation.setUnderlineColor(
+            color_to_qcolor(active_or_default_divider_color(view_state))
+            if not divider_hidden
+            else None
+        )
     set_checked_quietly(
         getattr(ui, "btn_magnifier_orientation_simple", None),
         magnifier_is_horizontal,

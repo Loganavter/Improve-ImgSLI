@@ -10,12 +10,12 @@ from ui.icon_manager import AppIcon
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 from sli_ui_toolkit.widgets import (
-    FlyoutIconButton,
+    Button,
     IconAction,
     IconActionFlyout,
 )
 
-class ColorOptionsFlyout(IconActionFlyout):
+class MagnifierColorOptionsFlyout(IconActionFlyout):
     def __init__(self, parent=None, current_language: str = "en", store=None):
         self.current_language = current_language
         self.store = store
@@ -97,24 +97,24 @@ class ColorOptionsFlyout(IconActionFlyout):
         self.set_action_state("divider", visible=self._is_divider_active())
         super().update_state()
 
-class ColorSettingsButton(FlyoutIconButton):
+class ColorSettingsButton(Button):
     smartColorSetRequested = pyqtSignal()
     colorOptionClicked = pyqtSignal(str)
+    elementHovered = pyqtSignal(str)
+    elementHoverEnded = pyqtSignal()
 
     def __init__(self, parent=None, current_language: str = "en", store=None):
+        super().__init__(AppIcon.DIVIDER_COLOR, show_underline=True, parent=parent)
         self.current_language = current_language
         self.store = store
-        flyout = ColorOptionsFlyout(parent, current_language=current_language, store=store)
-        super().__init__(
-            AppIcon.DIVIDER_COLOR,
-            flyout=flyout,
-            parent=parent,
-            flyout_show_delay_ms=AppConstants.TRANSIENT_FLYOUT_SHOW_DELAY_MS,
-            flyout_hide_check_delay_ms=AppConstants.TRANSIENT_FLYOUT_HIDE_CHECK_DELAY_MS,
-            flyout_auto_hide_delay_ms=AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS,
+        self.flyout = MagnifierColorOptionsFlyout(
+            parent,
+            current_language=current_language,
+            store=store,
         )
-        self.primaryTriggered.connect(self.smartColorSetRequested.emit)
-        self.actionTriggered.connect(self.colorOptionClicked.emit)
+        self._hide_timer = None
+        self.clicked.connect(self.smartColorSetRequested.emit)
+        self.flyout.actionTriggered.connect(self.colorOptionClicked.emit)
         if self.store:
             self.store.state_changed.connect(self._on_store_state_changed)
             self._update_underline_colors()
@@ -146,7 +146,7 @@ class ColorSettingsButton(FlyoutIconButton):
         enabled_cmd = get_canvas_feature_command_by_alias("overlay.enabled")
         use_mag = bool(enabled_cmd(self.store)) if enabled_cmd is not None else False
         if not use_mag:
-            self.button.set_color(QColor(255, 255, 255, 100))
+            self.setUnderlineColor(QColor(255, 255, 255, 100))
             return
 
         state_cmd = get_canvas_feature_command_by_alias("overlay.active_state")
@@ -205,10 +205,22 @@ class ColorSettingsButton(FlyoutIconButton):
             (True, col_border),
             (show_divider, col_divider),
         ]
-        self.button.set_color([color for condition, color in zones if condition])
+        self.setUnderlineColor([color for condition, color in zones if condition])
 
     def _on_store_state_changed(self, domain: str):
         if domain == "settings" or domain == "viewport" or domain.startswith("viewport."):
             self.refresh_visual_state()
             if self.flyout.isVisible():
-                self.flyout.show_aligned(self, "top")
+                self.flyout.show_aligned(self, "top-center", "bottom-center")
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.elementHovered.emit("magnifier")
+        self.flyout.update_state()
+        self.flyout.show_aligned(self, "top-center", "bottom-center")
+        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
+
+    def leaveEvent(self, event):
+        self.elementHoverEnded.emit()
+        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
+        super().leaveEvent(event)

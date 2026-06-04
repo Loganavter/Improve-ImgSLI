@@ -25,13 +25,11 @@ The package exposes the common entry points below at the top level:
 
 ```python
 from sli_ui_toolkit import (
-    AdaptiveLabel,
-    BodyLabel,
-    CaptionLabel,
     ClickableLabel,
-    CompactLabel,
     GenericWorker,
-    GroupTitleLabel,
+    Label,
+    LabelConfig,
+    LabelVariantSpec,
     ThemeManager,
     WidgetStyleTokens,
     get_log_directory,
@@ -96,11 +94,12 @@ The current package is organized around these reusable areas:
 
 ```python
 from PyQt6.QtGui import QColor
-from sli_ui_toolkit.widgets import UnifiedIconButton, ButtonMode
+from sli_ui_toolkit.widgets import Button
 
-button = UnifiedIconButton("magnifier", mode=ButtonMode.TOGGLE)
+button = Button("magnifier", toggle=True)
 button.setProperty("variant", "primary")
 button.setProperty("accentColor", QColor("#00BEEF"))
+button.setUnderlineColor(QColor("#00BEEF"))
 ```
 
 ## Data Visualization Widgets

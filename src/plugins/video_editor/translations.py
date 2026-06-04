@@ -85,7 +85,7 @@ def _bind_tabs(binder: TranslationsBinder, dialog) -> None:
 
 def _bind_output_section(binder: TranslationsBinder, dialog) -> None:
     binder.bind_text(
-        dialog.output_section.directory_label,
+        dialog.output_section.dir_label,
         "export.select_output_directory",
         suffix=":",
     )

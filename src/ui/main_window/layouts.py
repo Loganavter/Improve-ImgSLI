@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 )
 
 from resources.translations import tr
-from sli_ui_toolkit.widgets import BodyLabel, ButtonGroup, CaptionLabel, Slider
+from sli_ui_toolkit.widgets import ButtonGroup, Label, Slider
 from sli_ui_toolkit.ui.widgets.overlays.drag_drop_overlay import DragDropOverlay
 from ui.widgets.startup_placeholder import StartupPlaceholder
 from ui.widgets.zoom_indicator import ZoomIndicator
@@ -197,8 +197,8 @@ class LayoutComposer:
 
     def _footer_info_widget(self, parent: QWidget) -> QWidget:
         ui = self.ui
-        ui.psnr_label = CaptionLabel("PSNR: --")
-        ui.ssim_label = CaptionLabel("SSIM: --")
+        ui.psnr_label = Label("PSNR: --", variant="group-title")
+        ui.ssim_label = Label("SSIM: --", variant="group-title")
         widget = QWidget(parent)
         layout = QVBoxLayout(widget)
         layout.setSpacing(0)
@@ -371,7 +371,7 @@ class LayoutComposer:
         *,
         minimum: int,
         maximum: int,
-        label: BodyLabel,
+        label: Label,
         layout: QHBoxLayout,
         trailing_spacing: int = 0,
     ) -> None:

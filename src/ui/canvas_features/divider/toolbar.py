@@ -113,10 +113,9 @@ def sync_toolbar_state(presenter) -> None:
     )
     if ui.btn_orientation.get_value() != divider_thickness:
         ui.btn_orientation.set_value(divider_thickness)
-    if hasattr(ui.btn_orientation, "set_color"):
-        ui.btn_orientation.set_color(
-            color_to_qcolor(divider_state.color) if divider_thickness > 0 else None
-        )
+    ui.btn_orientation.setUnderlineColor(
+        color_to_qcolor(divider_state.color) if divider_thickness > 0 else None
+    )
     if hasattr(ui, "btn_orientation_simple"):
         ui.btn_orientation_simple.setChecked(
             viewport.view_state.is_horizontal,
@@ -124,10 +123,14 @@ def sync_toolbar_state(presenter) -> None:
         )
     if hasattr(ui, "btn_divider_visible"):
         ui.btn_divider_visible.setChecked(not divider_state.visible, emit_signal=False)
-    if hasattr(ui, "btn_divider_width") and ui.btn_divider_width.get_value() != divider_thickness:
-        ui.btn_divider_width.set_value(divider_thickness)
-    if hasattr(ui, "btn_divider_color") and hasattr(ui.btn_divider_color, "set_color"):
-        ui.btn_divider_color.set_color(color_to_qcolor(divider_state.color))
+    if hasattr(ui, "btn_divider_width"):
+        if ui.btn_divider_width.get_value() != divider_thickness:
+            ui.btn_divider_width.set_value(divider_thickness)
+        ui.btn_divider_width.setUnderlineColor(color_to_qcolor(divider_state.color))
+    if hasattr(ui, "btn_divider_color"):
+        ui.btn_divider_color.setUnderlineColor(color_to_qcolor(divider_state.color))
+    if hasattr(ui, "btn_magnifier_divider_width"):
+        ui.btn_magnifier_divider_width.setUnderlineColor(color_to_qcolor(divider_state.color))
 
 class ToolbarViewportAdapter:
     def __init__(self, presenter):

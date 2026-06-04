@@ -2,7 +2,7 @@ import logging
 from typing import Tuple
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFontMetrics
+from PyQt6.QtGui import QColor, QFontMetrics
 from PyQt6.QtWidgets import (
     QSizePolicy,
     QStackedWidget,
@@ -11,12 +11,12 @@ from PyQt6.QtWidgets import (
 )
 
 from resources.translations import tr
+from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
-    BodyLabel,
     Button,
-    CaptionLabel,
     CustomLineEdit,
     InstancesCounterButton,
+    Label,
     ScrollableComboBox,
     Slider,
 )
@@ -52,11 +52,11 @@ class Ui_ImageComparisonApp:
     # --- widget construction -------------------------------------------------
 
     def _create_static_widgets(self, main_window: QWidget):
-        self.resolution_label1 = CaptionLabel("--x--")
-        self.resolution_label2 = CaptionLabel("--x--")
+        self.resolution_label1 = Label("--x--", variant="group-title")
+        self.resolution_label2 = Label("--x--", variant="group-title")
         self.magnifier_settings_panel = QWidget(main_window)
         self.image_label = GLCanvas(main_window)
-        self.length_warning_label = BodyLabel(main_window)
+        self.length_warning_label = Label(parent=main_window)
         self.workspace_tabs = QTabBar(main_window)
         self.btn_new_session = Button(AppIcon.ADD, menu=[], parent=main_window)
         self.workspace_stack = QStackedWidget(main_window)
@@ -68,21 +68,49 @@ class Ui_ImageComparisonApp:
     def _create_selection_controls(self, parent: QWidget):
         self.btn_image1 = Button(AppIcon.PHOTO, text="", variant="primary", parent=parent)
         self.btn_image2 = Button(AppIcon.PHOTO, text="", variant="primary", parent=parent)
-        self.btn_swap = Button(AppIcon.SYNC, long_press=True, variant="accent", parent=parent)
-        self.btn_clear_list1 = Button(AppIcon.DELETE, long_press=True, variant="delete", parent=parent)
-        self.btn_clear_list2 = Button(AppIcon.DELETE, long_press=True, variant="delete", parent=parent)
-        self.help_button = Button(AppIcon.HELP, variant="accent", parent=parent)
-        self.btn_settings = Button(AppIcon.SETTINGS, variant="accent", parent=parent)
-        self.btn_text_settings = Button(AppIcon.TEXT_MANIPULATOR, variant="accent", parent=parent)
-        self.btn_quick_save = Button(AppIcon.QUICK_SAVE, variant="accent", parent=parent)
+        self.btn_swap = Button(
+            AppIcon.SYNC,
+            long_press=True,
+            variant="primary",
+            background_color=QColor(ThemeManager.get_instance().get_color("accent")),
+            parent=parent,
+        )
+        self.btn_clear_list1 = Button(
+            AppIcon.DELETE,
+            long_press=True,
+            background_color=QColor("#D93025"),
+            parent=parent,
+        )
+        self.btn_clear_list2 = Button(
+            AppIcon.DELETE,
+            long_press=True,
+            background_color=QColor("#D93025"),
+            parent=parent,
+        )
+        accent_color = QColor(ThemeManager.get_instance().get_color("accent"))
+        self.help_button = Button(
+            AppIcon.HELP, variant="primary", background_color=accent_color, parent=parent
+        )
+        self.btn_settings = Button(
+            AppIcon.SETTINGS, variant="primary", background_color=accent_color, parent=parent
+        )
+        self.btn_text_settings = Button(
+            AppIcon.TEXT_MANIPULATOR,
+            variant="primary",
+            background_color=accent_color,
+            parent=parent,
+        )
+        self.btn_quick_save = Button(
+            AppIcon.QUICK_SAVE, variant="primary", background_color=accent_color, parent=parent
+        )
         self.btn_magnifier_orientation = Button(
             icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
             toggle=True, scrollable=(0, 10), show_underline=True, parent=parent,
         )
         self.btn_save = Button(AppIcon.SAVE, text="", variant="primary", parent=parent)
 
-        self.label_rating1 = CaptionLabel("–", parent)
-        self.label_rating2 = CaptionLabel("–", parent)
+        self.label_rating1 = Label("–", parent, variant="group-title", elide=False)
+        self.label_rating2 = Label("–", parent, variant="group-title", elide=False)
         self.combo_image1 = ScrollableComboBox(parent)
         self.combo_image2 = ScrollableComboBox(parent)
         self.combo_interpolation = ScrollableComboBox(parent)
@@ -139,7 +167,7 @@ class Ui_ImageComparisonApp:
         self.btn_record = Button(icon=(AppIcon.RECORD, AppIcon.STOP), toggle=True, parent=parent)
         self.btn_pause = Button(icon=(AppIcon.PAUSE, AppIcon.PLAY), toggle=True, parent=parent)
         self.btn_pause.setEnabled(False)
-        self.btn_video_editor = Button(AppIcon.EXPORT_VIDEO, show_underline=True, parent=parent)
+        self.btn_video_editor = Button(AppIcon.EXPORT_VIDEO, parent=parent)
 
     def _create_slider_controls(self, parent: QWidget):
         self.slider_size = Slider(Qt.Orientation.Horizontal, parent)
@@ -149,15 +177,15 @@ class Ui_ImageComparisonApp:
     def _create_text_and_status_widgets(self, parent: QWidget):
         self.edit_name1 = CustomLineEdit(parent)
         self.edit_name2 = CustomLineEdit(parent)
-        self.label_magnifier_size = BodyLabel(parent)
-        self.label_capture_size = BodyLabel(parent)
-        self.label_movement_speed = BodyLabel(parent)
-        self.label_interpolation = BodyLabel(parent)
+        self.label_magnifier_size = Label(parent=parent, variant="group-title")
+        self.label_capture_size = Label(parent=parent, variant="group-title")
+        self.label_movement_speed = Label(parent=parent, variant="group-title")
+        self.label_interpolation = Label(parent=parent, variant="group-title")
 
-        self.file_name_label1 = CaptionLabel("--", parent)
-        self.file_name_label2 = CaptionLabel("--", parent)
-        self.label_edit_name1 = BodyLabel(parent)
-        self.label_edit_name2 = BodyLabel(parent)
+        self.file_name_label1 = Label("--", parent, variant="group-title")
+        self.file_name_label2 = Label("--", parent, variant="group-title")
+        self.label_edit_name1 = Label(parent=parent, variant="group-title")
+        self.label_edit_name2 = Label(parent=parent, variant="group-title")
 
     def _configure_image_label(self):
         self.image_label.setMinimumSize(200, 150)

@@ -109,3 +109,11 @@ The zoom system was reworked into a full implementation. Where the canvas previo
 A very large number of bugs were fixed in this period, including several rendering and drawing issues. Substantial work also went into the keyframe-read side of the render pipeline; it is functional, but I'm still not satisfied with its overall pattern, so it will likely be revisited. The keyframe-write pipeline and the interactive scene, by contrast, received many concrete bug fixes and are in much better shape.
 
 At this point the application is fully stable and ready to ship as version 9.
+
+## Early June 2026 — UI toolkit finally lives on its own
+
+In early June the shared UI toolkit was at last fully extracted from both Improve-ImgSLI and tkonverter into a standalone repository. It is not on PyPI yet, but both applications now consume it as an external package rather than reaching into an internal folder — which on its own already feels like a much healthier setup than what came before.
+
+Once the library was out on its own, it went through an extremely, extremely, extremely, extremely, extremely... large refactoring pass. The result is a toolkit that has dramatically fewer bugs and rendering glitches, is noticeably simpler to configure, and at the same time exposes much more customization than the embedded version ever did. Variants, themes, flyout timings, label specs, and the widget contract are all reachable from the outside now, without forcing consumers to monkey-patch internals.
+
+For the immediate future the plan is to keep pushing on the library itself — more polish, more API smoothing, and probably preparing it for a real PyPI release — before turning attention back to Improve-ImgSLI proper. The application is stable enough at version 9 that it can wait while the foundation underneath it gets the attention it deserves.

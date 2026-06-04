@@ -184,7 +184,7 @@ class MainWindow(QWidget):
 
     def set_divider_button_color(self, color: QColor):
         if self.ui is not None and hasattr(self.ui, "btn_orientation"):
-            self.ui.btn_orientation.set_color(color)
+            self.ui.btn_orientation.setUnderlineColor(color)
 
     def update_interpolation_combo_state(
         self, count: int, current_index: int, text: str, items: list[str]

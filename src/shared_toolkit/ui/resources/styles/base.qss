@@ -297,7 +297,7 @@ QWidget#menuContainer {
 
 /* Общие стили для всех панелей-облачков */
 #MagnifierVisibilityFlyoutPanel,
-#ColorOptionsFlyoutPanel {
+#MagnifierColorOptionsFlyoutPanel {
     background-color: @flyout.background;
     border: 1px solid @flyout.border;
     border-radius: 8px;
