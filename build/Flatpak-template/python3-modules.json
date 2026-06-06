@@ -103,6 +103,20 @@
             ]
         },
         {
+            "name": "python3-sli-ui-toolkit",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==0.2.8\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/e4/5c/2d6381c82b0efcb062339290fb897056e952788b129bcec0cc6fe84d0d66/sli_ui_toolkit-0.2.8-py3-none-any.whl",
+                    "sha256": "68e360e879999e5c40cba6b0d9063403e44b7487d13c77331e1d2e1acb9386dc"
+                }
+            ]
+        },
+        {
             "name": "python3-poetry-core",
             "buildsystem": "simple",
             "build-commands": [
