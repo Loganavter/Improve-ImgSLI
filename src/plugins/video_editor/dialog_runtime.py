@@ -5,6 +5,7 @@ from PyQt6.QtGui import QColor, QKeySequence, QPixmap, QPalette
 from PyQt6.QtWidgets import QLineEdit
 
 from sli_ui_toolkit.widgets import CustomLineEdit
+from ui.theming import polish_themed_dialog
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -134,7 +135,7 @@ class VideoEditorDialogRuntime:
         self.dialog.preview_label.update()
 
     def apply_style(self):
-        self.dialog.theme_manager.apply_theme_to_dialog(self.dialog)
+        polish_themed_dialog(self.dialog.theme_manager, self.dialog)
 
     def emit_ready_to_show(self):
         d = self.dialog

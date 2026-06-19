@@ -8,6 +8,7 @@ from sli_ui_toolkit.widgets import (
     SidebarDialogShell,
 )
 from ui.icon_manager import AppIcon
+from ui.theming import polish_themed_dialog
 from ui.widgets.form_controls import DialogActionBar
 
 def setup_dialog_shell(dialog):
@@ -61,7 +62,7 @@ def page_scroll_area(page):
     return page.findChild(QScrollArea)
 
 def apply_styles(dialog):
-    dialog.theme_manager.apply_theme_to_dialog(dialog)
+    polish_themed_dialog(dialog.theme_manager, dialog)
     dialog._update_sidebar_icons()
 
 def defer_geometry(dialog):

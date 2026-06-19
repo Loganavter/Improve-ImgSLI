@@ -18,6 +18,7 @@ depends=(
   'python-opengl'
   'python-pyqt6'
   'python-scikit-image'
+  'python-sli-ui-toolkit'
 )
 optdepends=(
   'python-imagecodecs: JXL image format support'

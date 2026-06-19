@@ -8,6 +8,7 @@ In-depth guides about architecture, contracts, and component design for contribu
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — Overall architectural design and patterns
 - **[CANVAS_FEATURES.md](CANVAS_FEATURES.md)** — Canvas feature system, how to add new features, and zoom/pan invariants
 - **[TRACING.md](TRACING.md)** — Runtime tracer for debugging Redux/EventBus/render causal chains
+- **[UI_INSPECTOR.md](UI_INSPECTOR.md)** — Developer UI inspector for widget colors, QSS candidates, and theme tokens
 - **[TESTING.md](TESTING.md)** — Test suite layout (`/tests`), per-file catalog, how to run, and conventions for new tests
 - **[TAB_CONTRACT.md](TAB_CONTRACT.md)** — Workspace tab interface and tab system design
 - **[UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)** — Custom UI toolkit (sli-ui-toolkit) API and components

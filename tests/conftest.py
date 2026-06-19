@@ -1,8 +1,8 @@
 """Shared pytest configuration for the test suite.
 
-Adds ``src/`` and the bundled ``sli-ui-toolkit`` package to ``sys.path`` so
-tests can ``from ui.… import …`` and ``from sli_ui_toolkit.… import …``
-without per-file boilerplate.
+Adds ``src/`` to ``sys.path`` so tests can import application modules without
+per-file boilerplate. External packages, including ``sli-ui-toolkit``, must be
+installed through the requirements files.
 """
 
 from __future__ import annotations
@@ -12,9 +12,6 @@ import sys
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
-for _entry in (
-    os.path.join(_REPO, "src"),
-    os.path.join(_REPO, "packages", "sli-ui-toolkit", "src"),
-):
+for _entry in (os.path.join(_REPO, "src"),):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)

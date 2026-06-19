@@ -30,3 +30,8 @@ class WorkspaceSessionActions:
         if not self.controller.session_manager:
             return False
         return self.controller.session_manager.switch_to_session(session_id)
+
+    def close_workspace_session(self, session_id: str) -> bool:
+        if not self.controller.session_manager:
+            return False
+        return self.controller.session_manager.close_session(session_id)

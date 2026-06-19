@@ -38,6 +38,22 @@ RatingListItem > AutoRepeatButton#minusButton {
 }
 
 /* --- Main window UI --- */
+QWidget#StartupPlaceholder,
+QWidget#StartupCover,
+QWidget#ImageStartupPlaceholder {
+    background-color: @label.image.background;
+}
+
+QWidget#ImageStartupPlaceholder QLabel {
+    background: transparent;
+}
+
+QWidget#ZoomIndicator QLabel {
+    color: white;
+    padding: 0px 6px;
+    background: transparent;
+}
+
 QLabel[class="drag-overlay"] {
     background-color: rgba(0, 100, 200, 0.6);
     color: white;
@@ -74,4 +90,14 @@ QWidget[opacity="0.4"] {
 
 QWidget[opacity="1.0"] {
     opacity: 1.0;
+}
+
+/* --- Workspace tabs bar (top of main window) --- */
+QWidget#WorkspaceTabsBar {
+    background: @button.toggle.background.normal;
+}
+
+QTabBar#WorkspaceTabs {
+    background: transparent;
+    qproperty-drawBase: 0;
 }

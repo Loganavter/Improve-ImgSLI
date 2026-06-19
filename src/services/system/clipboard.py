@@ -157,7 +157,7 @@ class ClipboardService:
                         )
                         self.main_controller.thread_pool.start(worker)
 
-            from sli_ui_toolkit.ui.widgets.overlays.paste_direction_overlay import (
+            from services.system.paste_direction_overlay import (
                 PasteDirectionOverlay,
             )
 
@@ -171,7 +171,7 @@ class ClipboardService:
             self._paste_dialog = overlay
             overlay.direction_selected.connect(on_direction_selected)
             overlay.cancelled.connect(lambda: setattr(self, "_paste_dialog", None))
-            overlay.show()
+            overlay.show_overlay()
             return True
         except Exception as e:
             logger.error(f"Overlay error: {e}")

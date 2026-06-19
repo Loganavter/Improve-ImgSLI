@@ -13,6 +13,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from core.bootstrap import ApplicationContext
+from core.runtime_flags import RuntimeFlags
 from shared_toolkit.ui.overlay_layer import OverlayLayer
 from ui.main_window.actions import MainWindowActions
 from ui.main_window.appearance import MainWindowAppearance
@@ -22,6 +23,7 @@ from ui.main_window.lifecycle import (
 )
 from ui.main_window.runtime import MainWindowRuntime
 from ui.main_window.startup import MainWindowStartupRuntime
+from ui.theming import install_application_theme
 from utils.geometry import GeometryManager
 from utils.resource_loader import resource_path
 
@@ -31,9 +33,15 @@ logger = logging.getLogger("ImproveImgSLI")
 class MainWindow(QWidget):
     startupVisualReady = pyqtSignal()
 
-    def __init__(self, parent=None, debug_mode: bool = False):
+    def __init__(
+        self,
+        parent=None,
+        debug_mode: bool = False,
+        runtime_flags: RuntimeFlags | None = None,
+    ):
         super().__init__(parent)
         self.setObjectName("ImageComparisonApp")
+        self.runtime_flags = runtime_flags or RuntimeFlags(debug=debug_mode)
 
         self._is_ui_stable = False
         self._application_initialized = False
@@ -52,7 +60,7 @@ class MainWindow(QWidget):
         self.actions = MainWindowActions(self)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
 
-        self.app_context = ApplicationContext(debug_mode)
+        self.app_context = ApplicationContext(runtime_flags=self.runtime_flags)
         self.app_context.initialize()
 
         self.store = self.app_context.store
@@ -63,7 +71,7 @@ class MainWindow(QWidget):
 
         app = QApplication.instance()
         if app:
-            self.app_context.apply_theme_to_app(app)
+            install_application_theme(self.app_context, app)
             self.theme_manager.theme_changed.connect(self.appearance.on_theme_changed)
 
         self.ui = None

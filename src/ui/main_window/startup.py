@@ -24,11 +24,21 @@ class MainWindowStartupRuntime:
         window._startup_stack = QStackedWidget(window)
         window._root_layout.addWidget(window._startup_stack)
         window._startup_placeholder = QWidget(window)
+        window._startup_placeholder.setObjectName("StartupPlaceholder")
+        window._startup_placeholder.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
         window._startup_stack.addWidget(window._startup_placeholder)
         window._app_host = QWidget(window)
         window._startup_stack.addWidget(window._app_host)
         window._startup_stack.setCurrentWidget(window._startup_placeholder)
         window._startup_cover = QWidget(window)
+        window._startup_cover.setObjectName("StartupCover")
+        window._startup_cover.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
         window._startup_cover.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
@@ -89,8 +99,11 @@ class MainWindowStartupRuntime:
             return
 
         window.ui = Ui_ImageComparisonApp()
+        window._app_host.store = window.store
         window.ui.setupUi(window._app_host)
         window.ui.main_window = window
+        from ui.main_window.layouts import apply_workspace_tabs_visibility
+        apply_workspace_tabs_visibility(window.ui)
         image_label: BaseCanvasProtocol = window.ui.image_label
         logger.debug("Main window UI bootstrapped")
         window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
@@ -139,6 +152,12 @@ class MainWindowStartupRuntime:
 
         window._startup_stack.setCurrentWidget(window._app_host)
         window._main_app_bootstrapped = True
+        if getattr(window.runtime_flags, "ui_inspector", False):
+            app = QApplication.instance()
+            if app is not None:
+                from devtools.ui_inspector.installer import install_ui_inspector
+
+                install_ui_inspector(app, window, window.theme_manager)
         self.reveal_if_ready()
 
     def has_initial_canvas_content(self) -> bool:

@@ -31,9 +31,6 @@ class ZoomIndicator(RoundedOverlayWidget):
         self._target_widget = target_widget
 
         self.setObjectName("ZoomIndicator")
-        self.setStyleSheet(
-            "#ZoomIndicator QLabel { color: white; padding: 0 6px; background: transparent; }"
-        )
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 2, 4, 2)
         layout.setSpacing(4)

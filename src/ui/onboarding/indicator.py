@@ -5,6 +5,7 @@ from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 from sli_ui_toolkit.theme import ThemeManager
+from ui.theming import resolve_theme_color
 
 
 class DotIndicator(QWidget):
@@ -57,8 +58,8 @@ class DotIndicator(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        accent = self.theme_manager.get_color("accent")
-        inactive = self.theme_manager.get_color("dialog.text")
+        accent = resolve_theme_color(self.theme_manager, "accent")
+        inactive = resolve_theme_color(self.theme_manager, "dialog.text")
         inactive.setAlpha(60)
 
         dot_size = max(6, min(10, self.width() // 15))

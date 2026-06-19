@@ -25,22 +25,23 @@ in vec2 TexCoord;
 out vec4 FragColor;
 
 uniform sampler2D image;
-uniform vec2 panOffset;   // normalized pan in image-space
+uniform vec2 panOffset;   // normalized pan in image-uv
 uniform float zoom;       // >=1 means zoom in
+uniform vec2 fitScale;    // per-axis scale (<=1) to preserve aspect inside cell
 
 void main() {
-    vec2 uv = TexCoord;
+    // 1) Aspect-preserve fit: shrink along the limiting axis so the image
+    //    keeps its aspect ratio inside the cell. The unused region becomes
+    //    out-of-bounds → letterboxed black.
+    vec2 uv = (TexCoord - vec2(0.5)) / fitScale + vec2(0.5);
 
-    // Apply zoom + pan: center-based
-    vec2 center = vec2(0.5);
-    uv = (uv - center) / zoom + center - panOffset;
+    // 2) Zoom + pan in image-uv units.
+    uv = (uv - vec2(0.5)) / zoom + vec2(0.5) - panOffset;
 
-    // Out-of-bounds → black
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         FragColor = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }
-
     FragColor = texture(image, uv);
 }
 """
