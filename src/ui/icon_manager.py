@@ -43,6 +43,7 @@ class AppIcon(Enum):
     ADD = "add.svg"
     ADD_CIRCLE = "add_circle.svg"
     REMOVE = "remove.svg"
+    CLOSE = "close.svg"
     CHECK = "check.svg"
 
     RECORD = "record.svg"
@@ -97,4 +98,3 @@ configure_toolkit(
     rating_gesture_factory=lambda **kwargs: RatingGestureTransaction(**kwargs),
     dragdrop_service_getter=DragAndDropService.get_instance,
 )
-

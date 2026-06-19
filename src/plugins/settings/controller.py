@@ -57,6 +57,10 @@ class SettingsController(QObject):
         if not changed:
             return
 
+        from resources.translations import emit_language_changed
+
+        emit_language_changed(lang_code)
+
         main_controller = getattr(self.presenter, "main_controller", None)
         window_shell = getattr(main_controller, "window_shell", None)
         if window_shell is not None and hasattr(window_shell, "on_language_changed"):

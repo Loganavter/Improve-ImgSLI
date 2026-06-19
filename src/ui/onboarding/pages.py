@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QColorDialog, QLabel, QHBoxLayout, QVBoxLayout, QWid
 from resources.translations import tr
 from sli_ui_toolkit.widgets import Button
 from ui.icon_manager import AppIcon
+from ui.theming import polish_themed_dialog, resolve_theme_color
 
 
 def build_modes(store) -> list[dict[str, str]]:
@@ -80,7 +81,7 @@ def _add_beginner_demo(overlay, demo_container, demo_layout, current_lang: str) 
     _style_demo_btn(b2, checked=True)
     b3 = Button(AppIcon.DIVIDER_COLOR, show_underline=True, parent=demo_container)
     _style_demo_btn(b3)
-    accent_color = overlay.theme_manager.get_color("accent")
+    accent_color = resolve_theme_color(overlay.theme_manager, "accent")
     b3.setUnderlineColor(accent_color)
 
     def _on_beginner_color_clicked():
@@ -119,11 +120,11 @@ def _add_advanced_demo(overlay, demo_container, demo_layout, current_lang: str) 
     )
     _style_demo_btn(b_smart, checked=True)
     b_smart.set_value(3)
-    b_smart.setUnderlineColor(overlay.theme_manager.get_color("accent"))
+    b_smart.setUnderlineColor(resolve_theme_color(overlay.theme_manager, "accent"))
 
     b_color = Button(AppIcon.DIVIDER_COLOR, show_underline=True, parent=demo_container)
     _style_demo_btn(b_color)
-    accent_color = overlay.theme_manager.get_color("accent")
+    accent_color = resolve_theme_color(overlay.theme_manager, "accent")
     b_color.setUnderlineColor(accent_color)
 
     def _on_advanced_color_clicked():
@@ -155,7 +156,7 @@ def _add_expert_demo(overlay, demo_container, demo_layout, current_lang: str) ->
     _style_demo_btn(b_expert, checked=True)
     b_expert.set_value(3)
 
-    accent_color = overlay.theme_manager.get_color("accent")
+    accent_color = resolve_theme_color(overlay.theme_manager, "accent")
     b_expert.setUnderlineColor(accent_color)
 
     def _on_expert_right():
@@ -191,22 +192,30 @@ def _add_expert_demo(overlay, demo_container, demo_layout, current_lang: str) ->
 
 
 def _show_color_dialog(overlay, button, current_color, current_lang: str) -> None:
+    existing = getattr(button, "_color_dialog", None)
+    if existing is not None and existing.isVisible():
+        existing.raise_()
+        existing.activateWindow()
+        return
+
     color_dialog = QColorDialog(current_color, overlay)
     color_dialog.setWindowTitle(tr("ui.select_color", current_lang))
-    overlay.theme_manager.apply_theme_to_dialog(color_dialog)
+    polish_themed_dialog(overlay.theme_manager, color_dialog)
 
     def on_color_selected(color):
         if color.isValid():
             button.setUnderlineColor(color)
 
     color_dialog.colorSelected.connect(on_color_selected)
+    color_dialog.finished.connect(lambda _r, b=button: setattr(b, "_color_dialog", None))
     color_dialog.show()
+    button._color_dialog = color_dialog
 
 
 def _create_description_label(overlay, text: str) -> QLabel:
     lbl_desc_main = QLabel(text)
     lbl_desc_main.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    text_col = overlay.theme_manager.get_color("dialog.text").name()
+    text_col = resolve_theme_color(overlay.theme_manager, "dialog.text").name()
     desc_font = lbl_desc_main.font()
     desc_font.setPixelSize(16)
     lbl_desc_main.setFont(desc_font)
@@ -253,7 +262,7 @@ def _wrap_btn(overlay, btn, text):
     if text:
         lbl = QLabel(text)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        text_col = overlay.theme_manager.get_color("list_item.text.rating").name()
+        text_col = resolve_theme_color(overlay.theme_manager, "list_item.text.rating").name()
         label_font = lbl.font()
         label_font.setPixelSize(13)
         label_font.setWeight(500)

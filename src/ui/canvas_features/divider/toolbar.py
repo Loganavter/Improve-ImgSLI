@@ -11,7 +11,7 @@ from .events import (
     SettingsSetDividerThicknessEvent,
     SettingsToggleDividerVisibilityEvent,
 )
-from .state import get_divider_widget_state
+from .state import DividerWidgetState, get_divider_widget_state
 
 def get_settings_presenter_from_window(presenter):
     window_presenter = getattr(presenter.main_window_app, "presenter", None)
@@ -102,10 +102,26 @@ def on_toolbar_middle_clicked(presenter) -> None:
     button.blockSignals(False)
     set_toolbar_thickness(presenter, 0)
 
+def _has_loaded_images(store) -> bool:
+    document = getattr(store, "document", None)
+    if document is None:
+        return False
+    return (
+        getattr(document, "image1_path", None) is not None
+        or getattr(document, "image2_path", None) is not None
+    )
+
 def sync_toolbar_state(presenter) -> None:
     ui = presenter.ui
     viewport = presenter.store.viewport
     divider_state = get_divider_widget_state(viewport.view_state)
+    if not _has_loaded_images(presenter.store):
+        defaults = DividerWidgetState()
+        divider_state = DividerWidgetState(
+            visible=defaults.visible,
+            color=divider_state.color,
+            thickness=divider_state.thickness if divider_state.thickness > 0 else defaults.thickness,
+        )
     divider_thickness = 0 if not divider_state.visible else divider_state.thickness
     ui.btn_orientation.setChecked(
         viewport.view_state.is_horizontal,

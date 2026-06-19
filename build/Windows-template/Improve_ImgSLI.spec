@@ -13,11 +13,8 @@ block_cipher = None
 SPEC_DIR = Path(SPEC).resolve().parent
 REPO_ROOT = SPEC_DIR.parents[1]
 SRC_ROOT = REPO_ROOT / "src"
-TOOLKIT_ROOT = REPO_ROOT / "packages" / "sli-ui-toolkit" / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
-if TOOLKIT_ROOT.is_dir() and str(TOOLKIT_ROOT) not in sys.path:
-    sys.path.insert(0, str(TOOLKIT_ROOT))
 ICON_PATH = SPEC_DIR / "icons" / "icon.ico"
 QT_RUNTIME_HOOK = SPEC_DIR / "pyi_rth_pyqt6_windows.py"
 QT_CONF_PATH = SPEC_DIR / "qt.conf"
@@ -333,7 +330,7 @@ APP_HIDDENIMPORTS.extend(
 
 a = Analysis(
     [str(REPO_ROOT / "src" / "__main__.py")],
-    pathex=[str(REPO_ROOT), str(REPO_ROOT / "src"), str(TOOLKIT_ROOT)],
+    pathex=[str(REPO_ROOT), str(REPO_ROOT / "src")],
     binaries=PYQT6_BINARIES,
     datas=APP_DATAS + PYQT6_DATAS,
     hiddenimports=sorted(set(APP_HIDDENIMPORTS)),

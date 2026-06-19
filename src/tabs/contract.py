@@ -96,12 +96,14 @@ class TabContext:
         thread_pool: Any = None,
         main_window: Any = None,
         settings: Any = None,
+        services: dict[str, Any] | None = None,
     ):
         self.store = store
         self.event_bus = event_bus
         self.thread_pool = thread_pool
         self.main_window = main_window
         self.settings = settings
+        self.services = dict(services or {})
 
     def get_active_session(self) -> Any:
         if self.store:
@@ -111,8 +113,18 @@ class TabContext:
     def tr(self, key: str, default: str | None = None) -> str:
         """Translate a key using the app's i18n system."""
         try:
-            from resources.translations import tr, get_current_language
-            result = tr(key, get_current_language())
+            from resources.translations import tr
+
+            settings = self.settings or getattr(self.store, "settings", None)
+            language = getattr(settings, "current_language", "en")
+            result = tr(key, language)
             return result if result != key else (default or key)
         except Exception:
             return default or key
+
+    def call_service(self, service_id: str, *args, **kwargs) -> Any:
+        """Call a host capability without importing host implementation details."""
+        service = self.services.get(service_id)
+        if not callable(service):
+            raise RuntimeError(f"Tab host service is unavailable: {service_id}")
+        return service(*args, **kwargs)

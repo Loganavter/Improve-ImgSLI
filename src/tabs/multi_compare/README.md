@@ -18,12 +18,13 @@ A dedicated workspace for comparing 3–12 images side-by-side in a synchronized
 - Keyboard: 1–9 to focus slots, 0 to reset zoom, Escape to exit focus
 - GPU rendering via OpenGL/GLES shaders
 - Theme-aware background (follows app light/dark theme)
+- Export dialog with preview, output directory/favorites, filename, format,
+  resolution, aspect-ratio lock, quality, and background settings
 
 ## What doesn't work yet
 
 - No filename labels on cells (planned as GL overlay)
 - No per-cell zoom indicator
-- No export (button is a placeholder)
 - No diff/analysis overlays
 - No drag reordering of slots
 - No slot removal UI (only full clear)

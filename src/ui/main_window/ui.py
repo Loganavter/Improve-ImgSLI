@@ -6,13 +6,13 @@ from PyQt6.QtGui import QColor, QFontMetrics
 from PyQt6.QtWidgets import (
     QSizePolicy,
     QStackedWidget,
-    QTabBar,
     QWidget,
 )
 
 from resources.translations import tr
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
+    AdaptiveTabStrip,
     Button,
     CustomLineEdit,
     InstancesCounterButton,
@@ -22,6 +22,7 @@ from sli_ui_toolkit.widgets import (
 )
 from ui.icon_manager import AppIcon
 from ui.main_window.layouts import LayoutComposer
+from ui.theming import resolve_theme_color
 from ui.widgets import VideoSessionWidget
 from ui.widgets.gl_canvas import GLCanvas
 from ui.widgets.magnifier_color_controls import ColorSettingsButton
@@ -57,8 +58,13 @@ class Ui_ImageComparisonApp:
         self.magnifier_settings_panel = QWidget(main_window)
         self.image_label = GLCanvas(main_window)
         self.length_warning_label = Label(parent=main_window)
-        self.workspace_tabs = QTabBar(main_window)
-        self.btn_new_session = Button(AppIcon.ADD, menu=[], parent=main_window)
+        self.workspace_tabs = AdaptiveTabStrip(
+            add_icon=AppIcon.ADD,
+            close_icon=AppIcon.CLOSE,
+            add_button_menu=[],
+            parent=main_window,
+        )
+        self.btn_new_session = self.workspace_tabs.add_button
         self.workspace_stack = QStackedWidget(main_window)
         self.image_session_page = QWidget(main_window)
         self.video_session_page = QWidget(main_window)
@@ -66,48 +72,65 @@ class Ui_ImageComparisonApp:
         self._tab_registry = None
 
     def _create_selection_controls(self, parent: QWidget):
-        self.btn_image1 = Button(AppIcon.PHOTO, text="", variant="primary", parent=parent)
-        self.btn_image2 = Button(AppIcon.PHOTO, text="", variant="primary", parent=parent)
+        self.btn_image1 = Button(
+            AppIcon.PHOTO,
+            text=tr("button.add_images_1", self._current_language()),
+            variant="surface",
+            parent=parent,
+        )
+        self.btn_image2 = Button(
+            AppIcon.PHOTO,
+            text=tr("button.add_images_2", self._current_language()),
+            variant="surface",
+            parent=parent,
+        )
         self.btn_swap = Button(
             AppIcon.SYNC,
             long_press=True,
-            variant="primary",
-            background_color=QColor(ThemeManager.get_instance().get_color("accent")),
+            variant="surface",
+            background_color=QColor(resolve_theme_color(ThemeManager.get_instance(), "accent")),
             parent=parent,
         )
         self.btn_clear_list1 = Button(
             AppIcon.DELETE,
             long_press=True,
+            variant="surface",
             background_color=QColor("#D93025"),
             parent=parent,
         )
         self.btn_clear_list2 = Button(
             AppIcon.DELETE,
             long_press=True,
+            variant="surface",
             background_color=QColor("#D93025"),
             parent=parent,
         )
-        accent_color = QColor(ThemeManager.get_instance().get_color("accent"))
+        accent_color = QColor(resolve_theme_color(ThemeManager.get_instance(), "accent"))
         self.help_button = Button(
-            AppIcon.HELP, variant="primary", background_color=accent_color, parent=parent
+            AppIcon.HELP, variant="surface", background_color=accent_color, parent=parent
         )
         self.btn_settings = Button(
-            AppIcon.SETTINGS, variant="primary", background_color=accent_color, parent=parent
+            AppIcon.SETTINGS, variant="surface", background_color=accent_color, parent=parent
         )
         self.btn_text_settings = Button(
             AppIcon.TEXT_MANIPULATOR,
-            variant="primary",
+            variant="surface",
             background_color=accent_color,
             parent=parent,
         )
         self.btn_quick_save = Button(
-            AppIcon.QUICK_SAVE, variant="primary", background_color=accent_color, parent=parent
+            AppIcon.QUICK_SAVE, variant="surface", background_color=accent_color, parent=parent
         )
         self.btn_magnifier_orientation = Button(
             icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
             toggle=True, scrollable=(0, 10), show_underline=True, parent=parent,
         )
-        self.btn_save = Button(AppIcon.SAVE, text="", variant="primary", parent=parent)
+        self.btn_save = Button(
+            AppIcon.SAVE,
+            text=tr("button.save_result", self._current_language()),
+            variant="surface",
+            parent=parent,
+        )
 
         self.label_rating1 = Label("–", parent, variant="group-title", elide=False)
         self.label_rating2 = Label("–", parent, variant="group-title", elide=False)
@@ -230,6 +253,7 @@ class Ui_ImageComparisonApp:
                 active_index = index
         if active_index >= 0:
             self.workspace_tabs.setCurrentIndex(active_index)
+        self.workspace_tabs.refresh_close_buttons()
         self.workspace_tabs.blockSignals(False)
 
     def sync_session_mode(self, session_type: str, session_title: str | None = None):

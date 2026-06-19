@@ -25,7 +25,7 @@ class DialogActionBar(QWidget):
 
         self.secondary_button = Button(text=secondary_text, variant="surface", parent=self)
         self.secondary_button.setMinimumSize(*secondary_min_size)
-        self.primary_button = Button(text=primary_text, variant="primary", parent=self)
+        self.primary_button = Button(text=primary_text, variant="surface", parent=self)
         self.primary_button.setMinimumSize(*primary_min_size)
 
         layout.addWidget(self.secondary_button)

@@ -39,13 +39,14 @@ disable_logging_action() {
 show_help() {
     echo "Improve ImgSLI"
     echo "Usage: $0 <command> [options]"
-    echo "       $0 [--debug|-d] [--theme <dark|light>]"
+    echo "       $0 [--debug|-d] [--theme <dark|light>] [--ui-inspector]"
     echo ""
     echo "Commands:"
     echo "  run [args...]      Run the application with optional GUI arguments."
     echo "                     Additional flags for 'run' (also valid at top-level):"
     echo "                       --theme <dark|light>  Force a specific theme."
     echo "                       --debug, -d          Enable debug logging for this session only."
+    echo "                       --ui-inspector       Enable the developer UI inspector."
     echo "  test [args...]     Run the test suite (pytest). Extra args pass through,"
     echo "                     e.g. '$0 test tests/runtime -k gesture'."
     echo "  install            Create the virtual environment and/or install dependencies."
@@ -165,6 +166,7 @@ run_action() {
     local gui_args=()
     local theme_to_set=""
     local debug_mode="false"
+    local ui_inspector="false"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -178,6 +180,11 @@ run_action() {
             fi
             ;;
         --debug | -d)
+            debug_mode="true"
+            shift
+            ;;
+        --ui-inspector)
+            ui_inspector="true"
             debug_mode="true"
             shift
             ;;
@@ -199,6 +206,9 @@ run_action() {
         if [[ "$debug_mode" == "true" ]]; then
             gui_args=("--debug" "${gui_args[@]}")
         fi
+        if [[ "$ui_inspector" == "true" ]]; then
+            gui_args=("--ui-inspector" "${gui_args[@]}")
+        fi
 
         python "$APP_MAIN" "${gui_args[@]}"
         local app_exit_code=$?
@@ -214,7 +224,7 @@ run_action() {
     exit 1
 }
 
-if [[ "${1:-}" == "--debug" || "${1:-}" == "-d" || "${1:-}" == "--theme" ]]; then
+if [[ "${1:-}" == "--debug" || "${1:-}" == "-d" || "${1:-}" == "--theme" || "${1:-}" == "--ui-inspector" ]]; then
     set -- run "$@"
 fi
 

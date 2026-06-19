@@ -27,6 +27,9 @@ class SessionManager:
     def rename_session(self, session_id: str, title: str) -> bool:
         return self.store.rename_workspace_session(session_id, title)
 
+    def close_session(self, session_id: str) -> bool:
+        return self.store.close_workspace_session(session_id)
+
     def list_session_types(self) -> tuple[str, ...]:
         return tuple(
             blueprint.session_type

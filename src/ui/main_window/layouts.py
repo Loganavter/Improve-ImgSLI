@@ -17,6 +17,30 @@ from ui.widgets.zoom_indicator import ZoomIndicator
 SHOW_WORKSPACE_TABS = False
 
 
+def apply_workspace_tabs_visibility(ui) -> None:
+    """Sync workspace-tabs row visibility with current store.settings.
+
+    Safe to call before or after the store is attached: falls back to
+    SHOW_WORKSPACE_TABS when no settings are available yet.
+    """
+    main_window = getattr(ui, "main_window", None)
+    settings = getattr(getattr(main_window, "store", None), "settings", None)
+    show = (
+        getattr(settings, "show_workspace_tabs", SHOW_WORKSPACE_TABS)
+        if settings is not None
+        else SHOW_WORKSPACE_TABS
+    )
+    tabs = getattr(ui, "workspace_tabs", None)
+    if tabs is not None:
+        tabs.setVisible(show)
+    btn = getattr(ui, "btn_new_session", None)
+    if btn is not None:
+        btn.setVisible(show)
+    container = getattr(ui, "workspace_tabs_bar", None)
+    if container is not None:
+        container.setVisible(show)
+
+
 class LayoutComposer:
     """Builds the main window layout tree from widgets already constructed on `ui`.
 
@@ -32,9 +56,9 @@ class LayoutComposer:
 
     def build(self, main_window: QWidget) -> None:
         main_layout = QVBoxLayout(main_window)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(6)
-        main_layout.addLayout(self._workspace_layout())
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(self._workspace_bar_widget(main_window))
         self._configure_session_pages()
 
         ui = self.ui
@@ -55,7 +79,7 @@ class LayoutComposer:
         ui.save_buttons_widget = self._save_buttons_widget()
         self._assemble_image_session_page()
         self._assemble_video_session_page()
-        main_layout.addWidget(ui.workspace_stack, 1)
+        main_layout.addWidget(self._workspace_content_widget(main_window), 1)
 
         self._finalize()
 
@@ -83,34 +107,28 @@ class LayoutComposer:
     def _configure_workspace_tabs(self) -> None:
         ui = self.ui
         tabs = ui.workspace_tabs
-        tabs.setObjectName("WorkspaceTabs")
-        tabs.setDocumentMode(True)
-        tabs.setDrawBase(False)
-        tabs.setMovable(False)
-        tabs.setExpanding(False)
-        tabs.setUsesScrollButtons(True)
-        tabs.setElideMode(Qt.TextElideMode.ElideRight)
-        tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        tabs.setMinimumHeight(36)
-        settings = getattr(getattr(ui.main_window, "store", None), "settings", None)
-        show = (
-            getattr(settings, "show_workspace_tabs", SHOW_WORKSPACE_TABS)
-            if settings
-            else SHOW_WORKSPACE_TABS
-        )
-        tabs.setVisible(show)
-        ui.btn_new_session.setVisible(show)
+        tabs.setObjectName("WorkspaceTabsBar")
+        tabs.tab_bar.setObjectName("WorkspaceTabs")
+        apply_workspace_tabs_visibility(ui)
 
     # --- workspace / session pages ------------------------------------------
 
-    def _workspace_layout(self) -> QHBoxLayout:
+    def _workspace_bar_widget(self, main_window: QWidget) -> QWidget:
         ui = self.ui
-        layout = QHBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 2)
-        layout.setSpacing(6)
-        layout.addWidget(ui.workspace_tabs, 1)
-        layout.addWidget(ui.btn_new_session, 0, Qt.AlignmentFlag.AlignTop)
-        return layout
+        ui.workspace_tabs.setParent(main_window)
+        ui.workspace_tabs.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        ui.workspace_tabs_bar = ui.workspace_tabs
+        return ui.workspace_tabs
+
+    def _workspace_content_widget(self, main_window: QWidget) -> QWidget:
+        ui = self.ui
+        container = QWidget(main_window)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(ui.workspace_stack)
+        ui.workspace_content_widget = container
+        return container
 
     def _configure_session_pages(self) -> None:
         ui = self.ui
@@ -123,11 +141,20 @@ class LayoutComposer:
         from tabs.registry import TabRegistry
 
         ui = self.ui
+
+        def open_image_export_dialog(**kwargs):
+            presenter = getattr(ui.main_window, "presenter", None)
+            if presenter is None:
+                raise RuntimeError("Main-window presenter is not initialized")
+            export_presenter = presenter.get_feature("export")
+            return export_presenter.open_snapshot_export_dialog(**kwargs)
+
         ui._tab_registry = TabRegistry()
         ui._tab_registry.discover()
         context = TabContext(
             store=getattr(ui.main_window, "store", None),
             main_window=ui.main_window,
+            services={"open_image_export_dialog": open_image_export_dialog},
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
 
@@ -238,10 +265,12 @@ class LayoutComposer:
         ui = self.ui
         layout = QHBoxLayout()
         layout.setSpacing(8)
-        layout.addWidget(ui.btn_image1)
+        ui.btn_image1.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        ui.btn_image2.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addWidget(ui.btn_image1, 1)
         layout.addWidget(ui.btn_clear_list1)
         layout.addWidget(ui.btn_swap)
-        layout.addWidget(ui.btn_image2)
+        layout.addWidget(ui.btn_image2, 1)
         layout.addWidget(ui.btn_clear_list2)
         return layout
 
@@ -405,9 +434,10 @@ class LayoutComposer:
         ui = self.ui
         layout = QHBoxLayout()
         layout.setSpacing(0)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(5, 2, 5, 2)
         ui.btn_save.setMinimumHeight(32)
-        layout.addWidget(ui.btn_save)
+        ui.btn_save.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addWidget(ui.btn_save, 1)
         widget = QWidget()
         widget.setLayout(layout)
         return widget

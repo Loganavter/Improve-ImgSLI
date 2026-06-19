@@ -219,6 +219,9 @@ def do_update_rating_displays(presenter):
 def on_language_changed(presenter):
     lang_code = presenter.store.settings.current_language
     presenter.ui.update_translations(lang_code)
+    from ui.presenters.main_window.workspace import configure_workspace_actions
+
+    configure_workspace_actions(presenter)
     presenter.get_feature("settings").on_language_changed()
     if (
         hasattr(presenter.main_window_app, "tray_manager")

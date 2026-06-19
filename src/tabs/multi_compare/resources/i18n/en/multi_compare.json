@@ -4,5 +4,10 @@
   "slot_limit_reached": "Maximum number of images reached",
   "reset_zoom": "Reset zoom",
   "focus_mode": "Focus mode",
-  "grid_mode": "Grid mode"
+  "grid_mode": "Grid mode",
+  "add_images": "Add images",
+  "save_result": "Save result",
+  "drop_image_here": "Drop image here",
+  "drop_move_here": "Move here",
+  "drop_swap": "Swap"
 }

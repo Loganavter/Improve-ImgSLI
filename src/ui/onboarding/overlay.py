@@ -16,6 +16,7 @@ from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Button
 from ui.onboarding.indicator import DotIndicator
 from ui.onboarding.pages import build_modes, create_slide_for_mode
+from ui.theming import resolve_theme_color
 
 
 class OnboardingOverlay(QWidget):
@@ -146,7 +147,7 @@ class OnboardingOverlay(QWidget):
         self.bottom_layout.addWidget(self.welcome_lbl)
 
         start_text = tr("onboarding.start_button", current_lang)
-        self.btn_start = Button(text=start_text, variant="primary")
+        self.btn_start = Button(text=start_text, variant="surface")
         self.btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_start.clicked.connect(self._finish)
 
@@ -174,9 +175,9 @@ class OnboardingOverlay(QWidget):
         self.stack.setCurrentIndex(index)
         self.dots.set_current(index)
 
-        accent_color = self.theme_manager.get_color("accent")
-        text_color = self.theme_manager.get_color("dialog.text")
-        highlighted_text = self.theme_manager.get_color("HighlightedText")
+        accent_color = resolve_theme_color(self.theme_manager, "accent")
+        text_color = resolve_theme_color(self.theme_manager, "dialog.text")
+        highlighted_text = resolve_theme_color(self.theme_manager, "HighlightedText")
 
         for i, btn in enumerate(self.mode_buttons):
             if i == index:
@@ -231,7 +232,7 @@ class OnboardingOverlay(QWidget):
                 ):
                     layout.removeItem(item)
 
-        text_col = self.theme_manager.get_color("WindowText").name()
+        text_col = resolve_theme_color(self.theme_manager, "WindowText").name()
 
         hint_font_size = max(12, int(15 * scale))
 
@@ -297,8 +298,8 @@ class OnboardingOverlay(QWidget):
             self.bottom_layout.insertSpacing(welcome_index + 1, max(2, s))
 
     def _apply_theme(self):
-        bg_window = self.theme_manager.get_color("Window").name()
-        text_col = self.theme_manager.get_color("WindowText").name()
+        bg_window = resolve_theme_color(self.theme_manager, "Window").name()
+        text_col = resolve_theme_color(self.theme_manager, "WindowText").name()
         self.setAutoFillBackground(True)
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.Window, QColor(bg_window))

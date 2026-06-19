@@ -150,6 +150,20 @@ class ExportPresenter(QObject):
             native_size=native_size,
         )
 
+    def open_snapshot_export_dialog(
+        self,
+        *,
+        preview_image,
+        suggested_filename: str,
+        native_size: tuple[int, int],
+    ):
+        """Open the standard image-export dialog for a host-provided snapshot."""
+        return self._open_export_dialog(
+            preview_image,
+            suggested_filename,
+            native_size=native_size,
+        )
+
     def quick_save(self):
         if not self.context_builder.has_images():
             self.save_flow.show_missing_images_warning()

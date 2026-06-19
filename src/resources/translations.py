@@ -11,7 +11,7 @@ from sli_ui_toolkit.i18n import (
     TranslationManager,
     ToolkitTranslationEvents,
     configure_i18n,
-    emit_language_changed,
+    emit_language_changed as _emit_language_changed,
     get_current_language,
     tr,
     translation_events,
@@ -24,6 +24,13 @@ _manager._current_lang = ""
 
 def add_i18n_root(path: str | Path) -> None:
     _manager.add_i18n_root(path)
+
+
+def emit_language_changed(lang_code: str) -> None:
+    language = str(lang_code or "en")
+    _manager._current_lang = language
+    _emit_language_changed(language)
+
 
 __all__ = [
     "TranslationManager",

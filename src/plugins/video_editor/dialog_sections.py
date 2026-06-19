@@ -5,7 +5,6 @@ from PyQt6.QtGui import QFont, QIntValidator
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QProgressBar,
-    QPushButton,
     QFrame,
     QScrollArea,
     QSizePolicy,
@@ -103,20 +102,22 @@ def build_settings_panel(dialog):
 
     dialog.btn_export = Button(
         get_app_icon(AppIcon.EXPORT_VIDEO), text=dialog._tr("action.export_video"),
-        variant="primary", size=(0, 48), corner_radius=8,
+        variant="surface", size=(0, 48), corner_radius=8,
     )
     dialog.btn_export.set_footer_mode(True)
     dialog.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
     dialog.btn_export.clicked.connect(dialog._on_export_clicked)
 
-    dialog.btn_stop_export = QPushButton(dialog.btn_export)
+    dialog.btn_stop_export = Button(
+        get_app_icon(AppIcon.STOP),
+        variant="ghost",
+        size=(24, 24),
+        icon_size=12,
+        parent=dialog.btn_export,
+    )
     dialog.btn_stop_export.setObjectName("btnStopVideoExport")
-    dialog.btn_stop_export.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     dialog.btn_stop_export.setToolTip(dialog._tr("button.stop"))
     dialog.btn_stop_export.setCursor(Qt.CursorShape.PointingHandCursor)
-    dialog.btn_stop_export.setIcon(get_app_icon(AppIcon.STOP))
-    dialog.btn_stop_export.setIconSize(QSize(12, 12))
-    dialog.btn_stop_export.setFixedSize(24, 24)
     dialog.btn_stop_export.clicked.connect(dialog._on_stop_export_clicked)
     dialog.btn_stop_export.hide()
     sp_layout.addWidget(dialog.btn_export)

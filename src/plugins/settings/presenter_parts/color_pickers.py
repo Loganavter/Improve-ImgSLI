@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QColorDialog
 
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
 from ui.canvas_infra.scene.property_access import read_canvas_feature_color_by_setting_key
+from ui.theming import polish_themed_dialog
 
 class SettingsColorPickerCoordinator:
     def __init__(self, store, main_controller, main_window_app, tr_func):
@@ -69,12 +70,20 @@ class SettingsColorPickerCoordinator:
         )
 
     def apply_smart_magnifier_colors(self):
+        key = "smart_magnifier"
+        existing = self._dialogs.get(key)
+        if existing and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+
         dialog = QColorDialog(
             color_to_qcolor(read_canvas_feature_color_by_setting_key(self.store.viewport, "magnifier.divider.color")),
             self.main_window_app,
         )
+        dialog.setModal(False)
         dialog.setWindowTitle(self.tr("ui.choose_magnifier_base_color"))
-        self.main_window_app.theme_manager.apply_theme_to_dialog(dialog)
+        polish_themed_dialog(self.main_window_app.theme_manager, dialog)
 
         def on_color_selected(color):
             if not color.isValid():
@@ -95,7 +104,9 @@ class SettingsColorPickerCoordinator:
             settings_controller.set_capture_color(qcolor_to_color(capture_ring_color))
 
         dialog.colorSelected.connect(on_color_selected)
+        dialog.finished.connect(lambda _result, k=key: self._dialogs.pop(k, None))
         dialog.show()
+        self._dialogs[key] = dialog
 
     def _show_dialog(
         self,
@@ -116,7 +127,7 @@ class SettingsColorPickerCoordinator:
         dialog.setWindowFlags(dialog.windowFlags() | 0x00000000)
         dialog.setModal(False)
         dialog.setWindowTitle(self.tr(title_key))
-        self.main_window_app.theme_manager.apply_theme_to_dialog(dialog)
+        polish_themed_dialog(self.main_window_app.theme_manager, dialog)
 
         def handle_selected(color):
             if not color.isValid():
@@ -126,6 +137,7 @@ class SettingsColorPickerCoordinator:
                 post_apply(color)
 
         dialog.colorSelected.connect(handle_selected)
+        dialog.finished.connect(lambda _result, k=key: self._dialogs.pop(k, None))
         dialog.show()
         self._dialogs[key] = dialog
 

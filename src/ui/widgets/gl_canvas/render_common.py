@@ -30,12 +30,14 @@ def clear_with_widget_background(widget):
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
         return
 
-    palette = widget.palette()
-    bg = palette.color(QPalette.ColorRole.Window)
-    if not bg.isValid():
-        bg = palette.color(QPalette.ColorRole.Base)
-    if not bg.isValid():
-        bg = QColor(245, 245, 245)
+    bg = getattr(widget, "_theme_background_color", None)
+    if not isinstance(bg, QColor) or not bg.isValid():
+        palette = widget.palette()
+        bg = palette.color(QPalette.ColorRole.Window)
+        if not bg.isValid():
+            bg = palette.color(QPalette.ColorRole.Base)
+        if not bg.isValid():
+            bg = QColor(245, 245, 245)
     gl.glClearColor(bg.redF(), bg.greenF(), bg.blueF(), 1.0)
     gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 

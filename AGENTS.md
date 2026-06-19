@@ -51,11 +51,13 @@ Important:
 Read:
 
 1. External toolkit repository: `https://github.com/Loganavter/sli-ui-toolkit`
-2. Toolkit `README.md`
-3. Toolkit `docs/README.md`
-4. Toolkit `docs/ARCHITECTURE.md`
-5. Toolkit `docs/API_CATALOG.md`
-6. Toolkit `docs/DESIGN_LANGUAGE.md`
+2. Local toolkit checkout: [/home/jorj/Загрузки/sli-ui-toolkit](/home/jorj/Загрузки/sli-ui-toolkit)
+3. Toolkit [README.md](/home/jorj/Загрузки/sli-ui-toolkit/README.md)
+4. Toolkit [docs/README.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/README.md)
+5. Toolkit [docs/ARCHITECTURE.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/ARCHITECTURE.md)
+6. Toolkit [docs/API_CATALOG.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/API_CATALOG.md)
+7. Toolkit [docs/DESIGN_LANGUAGE.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/DESIGN_LANGUAGE.md)
+8. For button/control work, also read [docs/BUTTON_API.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/BUTTON_API.md), [docs/FLYOUT_SYSTEM.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/FLYOUT_SYSTEM.md), and [docs/KEYBOARD.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/KEYBOARD.md) when relevant.
 
 Important:
 
