@@ -26,6 +26,7 @@ else:
 sys.path.insert(0, application_path)
 
 from PySide6.QtCore import QLoggingCategory, QThreadPool, Qt
+from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
@@ -47,6 +48,19 @@ def _configure_qt_logging() -> None:
             QLoggingCategory.setFilterRules(merged_rules)
         except Exception:
             pass
+
+def _configure_default_surface_format() -> None:
+    # PySide6's QOpenGLWidget defaults to an OpenGL ES profile on NVIDIA/EGL,
+    # which makes PyOpenGL's glActiveTexture lookup fail at paintGL with
+    # GLError 1282. Forcing an explicit desktop OpenGL 3.3 compatibility
+    # profile restores PyQt6-era behavior. Deleted when the QRhi widget swap
+    # lands and PyOpenGL is removed.
+    fmt = QSurfaceFormat()
+    fmt.setVersion(3, 3)
+    fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CompatibilityProfile)
+    fmt.setRenderableType(QSurfaceFormat.RenderableType.OpenGL)
+    QSurfaceFormat.setDefaultFormat(fmt)
+
 
 def _configure_linux_desktop_integrations() -> None:
     if os.name != "posix":
@@ -88,6 +102,7 @@ def main():
 
     args = parser.parse_args()
     _configure_qt_logging()
+    _configure_default_surface_format()
     _configure_linux_desktop_integrations()
 
     if args.enable_logging or args.disable_logging:
