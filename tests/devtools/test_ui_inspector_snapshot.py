@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QApplication, QLabel
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QApplication, QLabel
 from sli_ui_toolkit.widgets import Button
 
 from devtools.ui_inspector.widget_snapshot import inspect_widget

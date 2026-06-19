@@ -7,7 +7,7 @@ in ``events/image_label/geometry.py``.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 

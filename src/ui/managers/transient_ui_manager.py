@@ -1,6 +1,6 @@
 import logging
 
-from PyQt6.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from ui.managers.transient_ui_parts import (
     FlyoutController,

@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Dict
 
-from PyQt6.QtGui import QColor
+from PySide6.QtGui import QColor
 
 from utils.resource_loader import resource_path
 

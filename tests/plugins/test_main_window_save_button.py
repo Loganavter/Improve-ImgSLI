@@ -6,7 +6,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QSizePolicy, QWidget
+from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget
 
 from ui.main_window.ui import Ui_ImageComparisonApp
 

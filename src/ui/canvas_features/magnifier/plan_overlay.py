@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from ui.canvas_presentation.plan import resolve_plan_logical_image_rect
 

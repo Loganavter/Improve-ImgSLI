@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import time
 
-from PyQt6.QtCore import QPoint, QTimer
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QSizePolicy
+from PySide6.QtCore import QPoint, QTimer
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QSizePolicy
 
 from events.image_label_event_handler import ImageLabelEventHandler
 from events.window_event_handler import WindowEventHandler

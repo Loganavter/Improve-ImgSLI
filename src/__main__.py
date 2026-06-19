@@ -25,8 +25,8 @@ else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, application_path)
 
-from PyQt6.QtCore import QLoggingCategory, QThreadPool, Qt
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QLoggingCategory, QThreadPool, Qt
+from PySide6.QtWidgets import QApplication
 from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
 from sli_ui_toolkit.widgets import install_application_tooltips
@@ -115,7 +115,7 @@ def main():
     app.setOrganizationDomain("improve-imgsli.local")
     app.setDesktopFileName("improve-imgsli")
 
-    from PyQt6.QtGui import QIcon
+    from PySide6.QtGui import QIcon
     from utils.resource_loader import resource_path
     app.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
 

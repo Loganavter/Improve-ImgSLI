@@ -36,6 +36,6 @@ The application uses:
 - **Contract-based architecture** with 24+ defined interfaces (no direct feature imports in shared code)
 - **Feature auto-discovery** via registry pattern (add a feature by copying a template; no central registration needed)
 - **Canvas feature system** for visual editor tools (magnifier, divider, guides, etc.)
-- **Custom PyQt6/OpenGL rendering pipeline**
+- **Custom PySide6/OpenGL rendering pipeline**
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) and [Feature Isolation Model](./CONTRACTS.md#feature-isolation-model-the-abstraction) for complete details.

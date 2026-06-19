@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from core.constants import AppConstants
 from sli_ui_toolkit.widgets import (
@@ -95,7 +95,7 @@ def init_interface_page(dialog, p):
     dialog.combo_font_family = ComboBox()
     dialog.combo_font_family.setFixedWidth(320)
     dialog.combo_font_family.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    from PyQt6.QtGui import QFontDatabase
+    from PySide6.QtGui import QFontDatabase
 
     for fam in QFontDatabase.families():
         dialog.combo_font_family.addItem(fam, fam)

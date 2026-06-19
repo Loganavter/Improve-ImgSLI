@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QEvent, QSize
+from PySide6.QtCore import QEvent, QSize
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer

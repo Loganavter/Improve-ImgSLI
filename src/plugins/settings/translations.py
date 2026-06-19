@@ -121,7 +121,7 @@ def _rebuild_theme_combo(dialog, lang: str) -> None:
 
 
 def _rebuild_font_family_combo(dialog, lang: str) -> None:
-    from PyQt6.QtGui import QFontDatabase
+    from PySide6.QtGui import QFontDatabase
 
     current = dialog.combo_font_family.currentData()
     dialog.combo_font_family.clear()

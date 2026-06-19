@@ -1,10 +1,10 @@
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from core.store import Store
 
 class QtStoreBridge(QObject):
 
-    state_changed = pyqtSignal(str)
+    state_changed = Signal(str)
 
     def __init__(self, store: Store, parent=None):
         super().__init__(parent)

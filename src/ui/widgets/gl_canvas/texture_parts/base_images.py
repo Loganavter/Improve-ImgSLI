@@ -1,6 +1,6 @@
 from OpenGL import GL as gl
 from PIL import Image as PilImage
-from PyQt6.QtGui import QImage
+from PySide6.QtGui import QImage
 
 from .common import upload_pil_to_texture_id
 
@@ -13,7 +13,6 @@ def upload_image(widget, qimage: QImage, slot_index: int):
 
     converted_img = qimage.convertToFormat(QImage.Format.Format_RGBA8888)
     ptr = converted_img.constBits()
-    ptr.setsize(converted_img.sizeInBytes())
     raw = bytes(ptr)
 
     state._pending_texture_uploads.append(

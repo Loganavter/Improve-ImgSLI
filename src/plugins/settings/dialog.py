@@ -1,8 +1,8 @@
 import logging
 
-from PyQt6.QtCore import QEvent, Qt
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QDialog
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QDialog
 
 from plugins.settings.dialog_context import SettingsDialogContext
 from plugins.settings.dialog_pages import (
@@ -100,7 +100,7 @@ class SettingsDialog(QDialog):
         )
         self.setSizeGripEnabled(True)
 
-        from PyQt6.QtWidgets import QHBoxLayout
+        from PySide6.QtWidgets import QHBoxLayout
 
         self.main_layout = QHBoxLayout(self)
         setup_dialog_shell(self)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from events.canvas_input.owner_ids import KEYBOARD_MOVE_OWNER
 from plugins.export.events import ExportPasteImageFromClipboardEvent

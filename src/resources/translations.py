@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import QObject
+from PySide6.QtCore import QObject
 
 from utils.resource_loader import resource_path
 

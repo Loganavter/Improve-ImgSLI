@@ -1,8 +1,8 @@
 Markdown==3.8
 pillow==12.1.1
 numpy>=1.24,<2.4
-PyQt6==6.11.0
-PyQt6_sip==13.11.1
+PySide6==6.11.1
+shiboken6==6.11.1
 sli-ui-toolkit==0.2.15
 scikit-image==0.26.0
 imagecodecs>=2024.1.1

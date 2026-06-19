@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QWidget
 
 
 def polish_themed_dialog(theme_manager, dialog: QWidget) -> None:

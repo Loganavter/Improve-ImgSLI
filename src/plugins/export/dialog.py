@@ -2,10 +2,10 @@ import io
 import logging
 
 import PIL.Image
-from PyQt6 import sip
-from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QIcon, QImage, QIntValidator, QMouseEvent, QPainter, QPixmap
-from PyQt6.QtWidgets import (
+import shiboken6 as sip
+from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QImage, QIntValidator, QMouseEvent, QPainter, QPixmap
+from PySide6.QtWidgets import (
     QColorDialog,
     QDialog,
     QFileDialog,
@@ -505,9 +505,9 @@ class ExportDialog(QDialog):
             return QPixmap()
 
     def get_export_options(self) -> dict:
-        if sip.isdeleted(self):
+        if not sip.isValid(self):
             return dict(self._export_options_cache or {})
-        if hasattr(self, "edit_dir") and sip.isdeleted(self.edit_dir):
+        if hasattr(self, "edit_dir") and not sip.isValid(self.edit_dir):
             return dict(self._export_options_cache or {})
         return self._snapshot_export_options()
 

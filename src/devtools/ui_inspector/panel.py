@@ -3,9 +3,9 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QGuiApplication, QTextOption
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QGuiApplication, QTextOption
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QFrame,
     QTextEdit,

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtOpenGLWidgets import QOpenGLWidget
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from shared_toolkit.ui.managers.font_manager import FontManager
 from ui.theming import resolve_theme_color

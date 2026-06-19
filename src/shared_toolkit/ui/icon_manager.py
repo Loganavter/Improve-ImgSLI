@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from PyQt6.QtGui import QIcon
+from PySide6.QtGui import QIcon
 
 if TYPE_CHECKING:
     pass

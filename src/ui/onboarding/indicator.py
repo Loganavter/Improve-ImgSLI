@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, pyqtProperty
-from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import QSizePolicy, QWidget
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, Property
+from PySide6.QtGui import QColor, QPainter
+from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from sli_ui_toolkit.theme import ThemeManager
 from ui.theming import resolve_theme_color
@@ -31,7 +31,7 @@ class DotIndicator(QWidget):
         self._animated_position = value
         self.update()
 
-    animatedPosition = pyqtProperty(float, get_animated_position, set_animated_position)
+    animatedPosition = Property(float, get_animated_position, set_animated_position)
 
     def set_current(self, index):
         old_pos = self._current

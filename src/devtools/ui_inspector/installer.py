@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from devtools.ui_inspector.controller import UiInspectorController
 

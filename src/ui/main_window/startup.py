@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.onboarding import OnboardingOverlay

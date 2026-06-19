@@ -4,7 +4,7 @@ import time
 from collections.abc import Sequence
 
 from PIL import Image
-from PyQt6.QtGui import QColor
+from PySide6.QtGui import QColor
 
 from plugins.export.services.gpu_export import GpuExportService
 from plugins.video_editor.services.keyframing import KeyframedRecording

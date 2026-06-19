@@ -1,5 +1,5 @@
 import logging
-from PyQt6.QtCore import QSignalBlocker
+from PySide6.QtCore import QSignalBlocker
 from resources.translations import tr
 from shared_toolkit.ui.icon_manager import AppIcon
 from ui.canvas_infra.scene.widget_registry import (

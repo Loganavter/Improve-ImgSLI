@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QByteArray, QSettings, Qt
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import QByteArray, QSettings, Qt
+from PySide6.QtWidgets import QWidget
 
 class GeometryManager:
     def __init__(self, window: QWidget, settings: QSettings, store=None):

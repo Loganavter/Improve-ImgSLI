@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QColorDialog
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QColorDialog
 
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
 from ui.canvas_infra.scene.property_access import read_canvas_feature_color_by_setting_key

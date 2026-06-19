@@ -1,5 +1,5 @@
 from OpenGL import GL as gl
-from PyQt6.QtCore import QRect
+from PySide6.QtCore import QRect
 
 from ui.canvas_infra.viewport.contract import DisplaySplitPositionRequest
 from ui.canvas_infra.viewport.geometry import QuickContentRect

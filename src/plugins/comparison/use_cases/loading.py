@@ -1,7 +1,7 @@
 import os
 
 from PIL import Image
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
 from core.store import ImageItem

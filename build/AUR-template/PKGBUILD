@@ -16,7 +16,7 @@ depends=(
   'python-numpy'
   'python-pillow'
   'python-opengl'
-  'python-pyqt6'
+  'pyside6'
   'python-scikit-image'
   'python-sli-ui-toolkit'
 )

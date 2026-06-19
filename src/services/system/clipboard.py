@@ -4,7 +4,7 @@ import tempfile
 import time
 import urllib.request
 
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 from resources.translations import tr
 from sli_ui_toolkit.workers import GenericWorker

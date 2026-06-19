@@ -1,14 +1,14 @@
 import os
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtGui import QFont, QFontDatabase
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtWidgets import QApplication
 
 class FontManager(QObject):
 
     _instance = None
-    font_changed = pyqtSignal()
+    font_changed = Signal()
 
     @classmethod
     def get_instance(cls):

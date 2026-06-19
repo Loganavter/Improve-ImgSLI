@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 
 from OpenGL import GL as gl
-from PyQt6.QtCore import QPoint, QPointF
-from PyQt6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtCore import QPoint, QPointF
+from PySide6.QtGui import QColor, QImage, QPixmap
 
 from ui.widgets.gl_canvas.texture_parts.common import ensure_feature_overlay_slot_capacity
 
@@ -67,7 +67,6 @@ def set_feature_overlay_content(widget, pixmap: QPixmap | None, top_left: QPoint
     widget.makeCurrent()
     qimg = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
     ptr = qimg.constBits()
-    ptr.setsize(qimg.sizeInBytes())
 
     gl.glBindTexture(gl.GL_TEXTURE_2D, widget._feature_overlay_tex_ids[0])
     gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)

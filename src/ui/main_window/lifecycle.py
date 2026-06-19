@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass, field
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 from shared_toolkit.ui.managers.font_manager import FontManager
 

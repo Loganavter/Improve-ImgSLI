@@ -1,7 +1,7 @@
 import logging
 from typing import Callable, Dict, List
 
-from PyQt6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap
 
 from .common import VIDEO_EDITOR_AUTO_CROP
 

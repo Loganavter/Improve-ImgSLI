@@ -1,8 +1,8 @@
 import logging
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor, QKeySequence, QPixmap, QPalette
-from PyQt6.QtWidgets import QLineEdit
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor, QKeySequence, QPixmap, QPalette
+from PySide6.QtWidgets import QLineEdit
 
 from sli_ui_toolkit.widgets import CustomLineEdit
 from ui.theming import polish_themed_dialog
@@ -82,7 +82,7 @@ class VideoEditorDialogRuntime:
             if not isinstance(focused, (QLineEdit, CustomLineEdit)):
                 d._on_play_toggled(not d.btn_play.isChecked())
 
-        from PyQt6.QtGui import QShortcut
+        from PySide6.QtGui import QShortcut
 
         d.shortcut_space = QShortcut(QKeySequence(Qt.Key.Key_Space), d)
         d.shortcut_space.activated.connect(handle_space)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from PyQt6.QtCore import QPoint, QPointF, QRect
+from PySide6.QtCore import QPoint, QPointF, QRect
 
 class PopupClosingController:
     def __init__(self, manager):

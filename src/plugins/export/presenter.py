@@ -1,7 +1,7 @@
 import logging
 
-from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import QDialog, QMessageBox
+from PySide6.QtCore import QObject
+from PySide6.QtWidgets import QDialog, QMessageBox
 
 from core.store import Store
 from plugins.export.presenter_parts import (

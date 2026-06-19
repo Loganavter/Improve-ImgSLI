@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 from events.app_event import GlobalKeyboardHandler
 from events.app_event.null_movement import NullKeyboardMovementController

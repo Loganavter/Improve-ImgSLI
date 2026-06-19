@@ -5,8 +5,8 @@ Dogma source: docs/dev/UI_INSPECTOR.md.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QPointF, QRect, Qt
-from PyQt6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtCore import QPoint, QPointF, QRect, Qt
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from devtools.ui_inspector import controller as controller_module
 from devtools.ui_inspector.controller import UiInspectorController

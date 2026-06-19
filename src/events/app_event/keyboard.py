@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QObject, Qt
-from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import QApplication, QLineEdit, QPlainTextEdit, QTextEdit
+from PySide6.QtCore import QObject, Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QApplication, QLineEdit, QPlainTextEdit, QTextEdit
 
 from plugins.export.events import ExportPasteImageFromClipboardEvent
 from events.app_event.common import get_event_bus, get_main_controller

@@ -81,7 +81,7 @@ def test_gpu_export_normalizes_high_dpi_grab_to_plan_size(monkeypatch):
     proxy = GpuExportProxy.__new__(GpuExportProxy)
     proxy._last_widget_size = None
 
-    monkeypatch.setattr(proxy_module.QApplication, "processEvents", lambda: None)
+    monkeypatch.setattr(proxy_module.QApplication, "processEvents", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         proxy,
         "_render_widget_frame",

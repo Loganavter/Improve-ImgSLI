@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QSignalBlocker, QTimer
+from PySide6.QtCore import QSignalBlocker, QTimer
 
 from resources.translations import tr
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_bindings

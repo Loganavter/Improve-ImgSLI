@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from OpenGL import GL as gl
-from PyQt6.QtGui import QColor
-from PyQt6.QtOpenGL import QOpenGLShaderProgram
+from PySide6.QtGui import QColor
+from PySide6.QtOpenGL import QOpenGLShaderProgram
 
 from ui.canvas_infra.scene.gl_pass_contract import (
     CanvasGLRenderPass,

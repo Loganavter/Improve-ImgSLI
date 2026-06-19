@@ -1,6 +1,6 @@
 import logging
 
-from PyQt6.QtCore import QObject
+from PySide6.QtCore import QObject
 from core.store import Store
 from plugins.settings.presenter_parts import (
     SettingsColorPickerCoordinator,

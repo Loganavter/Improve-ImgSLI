@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
 
 from sli_ui_toolkit.managers import DelayedActionTimer
 from shared_toolkit.ui.managers.font_manager import FontManager

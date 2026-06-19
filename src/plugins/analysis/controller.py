@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from plugins.analysis.events import (
     AnalysisSetChannelViewModeEvent,
@@ -16,7 +16,7 @@ from plugins.analysis.services.cached_diff import CachedDiffService
 from plugins.analysis.services.runtime import AnalysisRuntime
 
 class AnalysisController(QObject):
-    update_requested = pyqtSignal()
+    update_requested = Signal()
 
     def __init__(
         self,

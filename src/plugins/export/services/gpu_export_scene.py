@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from PIL import Image
-from PyQt6.QtGui import QColor, QImage
+from PySide6.QtGui import QColor, QImage
 
 from shared.rendering import get_effective_export_interpolation_method
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
@@ -128,5 +128,4 @@ def query_active_magnifier_divider_thickness(store) -> int:
 def qimage_to_pil(image: QImage) -> Image.Image:
     qimg = image.convertToFormat(QImage.Format.Format_RGBA8888)
     ptr = qimg.bits()
-    ptr.setsize(qimg.sizeInBytes())
     return Image.frombytes("RGBA", (qimg.width(), qimg.height()), bytes(ptr))

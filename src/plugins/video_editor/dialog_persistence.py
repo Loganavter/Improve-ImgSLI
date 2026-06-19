@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QFileDialog
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QFileDialog
 
 from domain.qt_adapters import color_to_hex, hex_to_color, qcolor_to_color
 

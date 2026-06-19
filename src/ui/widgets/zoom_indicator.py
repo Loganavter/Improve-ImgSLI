@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from resources.translations import tr
 from sli_ui_toolkit.widgets import Button
