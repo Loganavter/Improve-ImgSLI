@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QEvent, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter, QPalette
-from PyQt6.QtGui import QResizeEvent, QWheelEvent
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QEvent, QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter, QPalette
+from PySide6.QtGui import QResizeEvent, QWheelEvent
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QStackedWidget,
@@ -20,7 +20,7 @@ from ui.theming import resolve_theme_color
 
 
 class OnboardingOverlay(QWidget):
-    completed = pyqtSignal(str)
+    completed = Signal(str)
 
     def __init__(self, settings_manager, store, parent=None):
         super().__init__(parent)

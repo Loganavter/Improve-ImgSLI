@@ -1,6 +1,6 @@
 import logging
 
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from plugins.analysis.events import (
     AnalysisSetChannelViewModeEvent,

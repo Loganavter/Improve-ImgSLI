@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from PyQt6 import sip
-from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer
-from PyQt6.QtGui import QPainter, QPixmap
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+import shiboken6 as sip
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer
+from PySide6.QtGui import QPainter, QPixmap
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from shared_toolkit.ui.in_window_surface import (
     create_shadow_surface,
@@ -94,7 +94,7 @@ class OverlayLayer(QObject):
 
     @staticmethod
     def _is_deleted(obj) -> bool:
-        return obj is None or sip.isdeleted(obj)
+        return obj is None or not sip.isValid(obj)
 
     @property
     def host(self) -> QWidget:

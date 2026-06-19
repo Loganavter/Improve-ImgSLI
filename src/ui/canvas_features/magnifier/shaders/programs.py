@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram
+from PySide6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram
 
 _log = logging.getLogger("ImproveImgSLI")
 

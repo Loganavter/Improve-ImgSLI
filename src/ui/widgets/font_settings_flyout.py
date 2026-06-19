@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QSignalBlocker, Qt, pyqtSignal
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QWidget
 
 from resources.translations import tr
 from sli_ui_toolkit.widgets import BaseFlyout, ColorSwatch, Slider, Switch
 
 
 class FontSettingsFlyout(BaseFlyout):
-    settings_changed = pyqtSignal(int, int, QColor, QColor, bool, str, int)
-    closed = pyqtSignal()
-    interaction_started = pyqtSignal(str)
-    interaction_finished = pyqtSignal(str)
+    settings_changed = Signal(int, int, QColor, QColor, bool, str, int)
+    closed = Signal()
+    interaction_started = Signal(str)
+    interaction_finished = Signal(str)
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)

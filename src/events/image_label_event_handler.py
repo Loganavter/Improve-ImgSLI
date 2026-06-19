@@ -1,7 +1,7 @@
 import logging
 
-from PyQt6.QtCore import QElapsedTimer, QObject, QPointF, Qt
-from PyQt6.QtGui import QKeyEvent, QMouseEvent, QWheelEvent
+from PySide6.QtCore import QElapsedTimer, QObject, QPointF, Qt
+from PySide6.QtGui import QKeyEvent, QMouseEvent, QWheelEvent
 
 from events.canvas_input import CanvasInputSessionService
 from events.image_label import (

@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 
 import numpy as np
-from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QPixmap
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPixmap
 
 from ui.canvas_infra.viewport.state import ensure_zoom_viewport_state
 from .runtime import build_canvas_surface_format

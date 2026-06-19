@@ -1,6 +1,6 @@
 from OpenGL import GL as gl
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QImage, QPalette
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QImage, QPalette
 
 from ui.canvas_infra.viewport.state import get_pan_offset_x, get_pan_offset_y, get_zoom_level
 
@@ -59,7 +59,6 @@ def upload_qimage_texture(texture_id: int, overlay: QImage) -> bool:
 
     qimg = overlay.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
     ptr = qimg.constBits()
-    ptr.setsize(qimg.sizeInBytes())
 
     gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
     gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)

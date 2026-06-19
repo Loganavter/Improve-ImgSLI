@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
-from PyQt6.QtGui import QImage
+from PySide6.QtGui import QImage
 
 
 def qimage_to_pil(image: QImage) -> Image.Image:
@@ -13,7 +13,6 @@ def qimage_to_pil(image: QImage) -> Image.Image:
     width = converted.width()
     height = converted.height()
     ptr = converted.bits()
-    ptr.setsize(converted.sizeInBytes())
     return Image.frombytes("RGBA", (width, height), bytes(ptr))
 
 

@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 from ui.presenters.main_window.actions import (
     on_color_option_clicked,

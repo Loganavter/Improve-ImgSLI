@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QApplication, QWidget
 
 from ui.main_window.appearance import MainWindowAppearance
 from ui.widgets.startup_placeholder import StartupPlaceholder

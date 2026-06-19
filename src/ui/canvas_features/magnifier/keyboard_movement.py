@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6 import sip
-from PyQt6.QtCore import QElapsedTimer, QTimer, Qt
+import shiboken6 as sip
+from PySide6.QtCore import QElapsedTimer, QTimer, Qt
 
 from core.state_management.actions import (
     SetInteractiveInternalSplitVisualAction,
@@ -391,7 +391,7 @@ class InteractiveMovementController:
         if image_canvas_presenter is None:
             return
         image_label = getattr(getattr(image_canvas_presenter, "ui", None), "image_label", None)
-        if image_label is None or sip.isdeleted(image_label):
+        if image_label is None or not sip.isValid(image_label):
             return
         if hasattr(image_canvas_presenter, "view") and image_canvas_presenter.view.is_gl_canvas():
             image_canvas_presenter.overlay.rebuild_overlay()

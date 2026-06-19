@@ -6,7 +6,7 @@ Dogma source: docs/dev/CANVAS_FEATURES.md (guides/laser color state).
 
 from types import SimpleNamespace
 
-from PyQt6.QtGui import QColor
+from PySide6.QtGui import QColor
 
 from ui.widgets import magnifier_color_controls as color_settings_button_module
 

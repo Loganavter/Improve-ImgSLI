@@ -1,6 +1,6 @@
 # ImgSLI Architecture
 
-Improve ImgSLI is a PyQt6 desktop application for image comparison and video export. The codebase is split into a small number of stable layers so UI interaction, state updates, plugins, and rendering stay loosely coupled.
+Improve ImgSLI is a PySide6 desktop application for image comparison and video export. The codebase is split into a small number of stable layers so UI interaction, state updates, plugins, and rendering stay loosely coupled.
 
 ## System View
 

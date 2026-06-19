@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from domain.types import Color
 from ui.canvas_infra.scene.widget_registry import (
@@ -23,7 +23,7 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class SettingsController(QObject):
 
-    update_requested = pyqtSignal()
+    update_requested = Signal()
 
     def __init__(self, store, settings_manager, presenter=None, event_bus=None):
         super().__init__()

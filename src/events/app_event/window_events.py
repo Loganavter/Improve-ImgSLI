@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QEvent
+from PySide6.QtCore import QEvent
 
 def _safe_getattr(obj, name: str, default=None):
     try:

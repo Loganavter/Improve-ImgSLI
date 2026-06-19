@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from plugins.video_editor.model import VideoSessionSnapshot
 from sli_ui_toolkit.widgets import Button, Label
 from ui.icon_manager import AppIcon
 
 class VideoSessionWidget(QWidget):
-    create_image_compare_requested = pyqtSignal()
-    advance_timeline_requested = pyqtSignal()
-    attach_resource_requested = pyqtSignal()
+    create_image_compare_requested = Signal()
+    advance_timeline_requested = Signal()
+    attach_resource_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

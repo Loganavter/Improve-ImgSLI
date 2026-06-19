@@ -1,7 +1,7 @@
 from PIL import Image as PilImage
-from PyQt6.QtCore import QPoint, QPointF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QImage, QPixmap
-from PyQt6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtCore import QPoint, QPointF, Qt, Signal
+from PySide6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from .interaction import (
     handle_key_press_event,
@@ -65,17 +65,17 @@ from .feature_overlay_gpu import (
 )
 
 class GLCanvas(QOpenGLWidget):
-    mousePressed = pyqtSignal(object)
-    mouseMoved = pyqtSignal(object)
-    mouseReleased = pyqtSignal(object)
-    wheelScrolled = pyqtSignal(object)
-    zoomChanged = pyqtSignal(float)
-    keyPressed = pyqtSignal(object)
-    keyReleased = pyqtSignal(object)
-    pasteOverlayDirectionSelected = pyqtSignal(str)
-    pasteOverlayCancelled = pyqtSignal()
-    firstFrameRendered = pyqtSignal()
-    firstVisualFrameReady = pyqtSignal()
+    mousePressed = Signal(object)
+    mouseMoved = Signal(object)
+    mouseReleased = Signal(object)
+    wheelScrolled = Signal(object)
+    zoomChanged = Signal(float)
+    keyPressed = Signal(object)
+    keyReleased = Signal(object)
+    pasteOverlayDirectionSelected = Signal(str)
+    pasteOverlayCancelled = Signal()
+    firstFrameRendered = Signal()
+    firstVisualFrameReady = Signal()
 
     _alignment = Qt.AlignmentFlag.AlignCenter
 

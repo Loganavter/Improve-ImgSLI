@@ -5,7 +5,7 @@ Dogma source: docs/dev/UI_INSPECTOR.md.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QRect
+from PySide6.QtCore import QRect
 
 from devtools.ui_inspector.panel import (
     _format_compact_snapshot,

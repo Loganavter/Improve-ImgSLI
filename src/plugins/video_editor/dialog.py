@@ -1,8 +1,8 @@
 import logging
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QPixmap, QResizeEvent
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPixmap, QResizeEvent
+from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLineEdit,
@@ -29,27 +29,27 @@ from ui.widgets.gl_canvas import GLCanvas
 logger = logging.getLogger("ImproveImgSLI")
 
 class VideoEditorDialog(QDialog):
-    readyToShow = pyqtSignal()
+    readyToShow = Signal()
 
-    playClicked = pyqtSignal(bool)
-    timelineScrubbed = pyqtSignal(int)
-    undoClicked = pyqtSignal()
-    redoClicked = pyqtSignal()
-    trimClicked = pyqtSignal()
-    exportClicked = pyqtSignal()
-    stopExportClicked = pyqtSignal()
+    playClicked = Signal(bool)
+    timelineScrubbed = Signal(int)
+    undoClicked = Signal()
+    redoClicked = Signal()
+    trimClicked = Signal()
+    exportClicked = Signal()
+    stopExportClicked = Signal()
 
-    widthChanged = pyqtSignal(int)
-    heightChanged = pyqtSignal(int)
+    widthChanged = Signal(int)
+    heightChanged = Signal(int)
 
-    fpsChanged = pyqtSignal(int)
-    previewScaleChanged = pyqtSignal(float)
-    aspectRatioLockChanged = pyqtSignal(bool)
-    fitContentChanged = pyqtSignal(bool)
-    fitContentFillColorChanged = pyqtSignal(object)
-    containerChanged = pyqtSignal(str)
-    windowResized = pyqtSignal()
-    timelineHeightChanged = pyqtSignal(int)
+    fpsChanged = Signal(int)
+    previewScaleChanged = Signal(float)
+    aspectRatioLockChanged = Signal(bool)
+    fitContentChanged = Signal(bool)
+    fitContentFillColorChanged = Signal(object)
+    containerChanged = Signal(str)
+    windowResized = Signal()
+    timelineHeightChanged = Signal(int)
 
     def __init__(self, snapshots, export_controller, main_window_app, parent=None):
         super().__init__(parent)

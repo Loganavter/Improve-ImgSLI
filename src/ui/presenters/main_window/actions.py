@@ -1,6 +1,6 @@
 import os
 
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from core.events import CoreUpdateRequestedEvent
 from resources.translations import tr
@@ -24,7 +24,7 @@ def open_image_dialog(presenter, image_number: int):
 
     if paths:
         delay = 100 if getattr(presenter, "_first_dialog_load_pending", True) else 0
-        from PyQt6.QtCore import QTimer
+        from PySide6.QtCore import QTimer
 
         QTimer.singleShot(
             delay,

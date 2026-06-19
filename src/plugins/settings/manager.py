@@ -1,7 +1,7 @@
 import logging
 
-from PyQt6.QtCore import QSettings
-from PyQt6.QtGui import QColor
+from PySide6.QtCore import QSettings
+from PySide6.QtGui import QColor
 
 from core.constants import AppConstants
 from core.store import Store

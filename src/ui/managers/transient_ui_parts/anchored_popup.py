@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PyQt6.QtCore import QSize
+from PySide6.QtCore import QSize
 
 from sli_ui_toolkit.managers import DelayedActionTimer
 from shared_toolkit.ui.overlay_layer import get_overlay_layer

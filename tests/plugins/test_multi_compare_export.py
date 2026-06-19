@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
-from PyQt6.QtCore import QRect
-from PyQt6.QtGui import QColor, QImage, QPainter
+from PySide6.QtCore import QRect
+from PySide6.QtGui import QColor, QImage, QPainter
 
 from tabs.multi_compare.controller import MultiCompareController
 from tabs.multi_compare.models import CompareSlot, LeafNode

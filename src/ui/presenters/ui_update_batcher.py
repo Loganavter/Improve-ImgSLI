@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 class UIUpdateBatcher:
 

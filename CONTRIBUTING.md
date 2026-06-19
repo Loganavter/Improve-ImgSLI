@@ -135,7 +135,7 @@ pip install -r requirements-dev.txt   # optional: tests
 python -m src
 ```
 
-Runtime deps live in `requirements-gui.txt` (PyQt6, Pillow, numpy, scikit-image, imagecodecs, PyOpenGL, Markdown). Dev/test deps live in `requirements-dev.txt` (pytest, pytest-sugar).
+Runtime deps live in `requirements-gui.txt` (PySide6, Pillow, numpy, scikit-image, imagecodecs, PyOpenGL, Markdown). Dev/test deps live in `requirements-dev.txt` (pytest, pytest-sugar).
 
 ## Running tests
 

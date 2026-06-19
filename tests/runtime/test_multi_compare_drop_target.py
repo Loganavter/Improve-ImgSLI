@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from PyQt6.QtCore import QPoint, QRect
+from PySide6.QtCore import QPoint, QRect
 
 from tabs.multi_compare.models import LeafNode, MultiCompareState, SplitNode
 from tabs.multi_compare.ui.gl_grid import GLGridWidget

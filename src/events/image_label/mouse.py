@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from ui.canvas_infra.scene.gesture_resolver import (
     GesturePressContext,

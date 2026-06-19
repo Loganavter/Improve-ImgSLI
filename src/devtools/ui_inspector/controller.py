@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
-from PyQt6.QtGui import QCursor
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QApplication, QWidget
 
 from devtools.ui_inspector.overlay import InspectorOverlay
 from devtools.ui_inspector.panel import InspectorPanel

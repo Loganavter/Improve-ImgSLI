@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 _pblog = logging.getLogger("ImproveImgSLI.plan_builder")
-from PyQt6.QtGui import QColor
+from PySide6.QtGui import QColor
 
 from core.store import ImageItem, Store
 from shared.rendering import VirtualCanvasLayout, resolve_virtual_canvas_layout

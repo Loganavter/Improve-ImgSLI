@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from PyQt6.QtGui import QColor
+from PySide6.QtGui import QColor
 
 from plugins.video_editor.dialog_persistence import VideoEditorDialogPersistence
 

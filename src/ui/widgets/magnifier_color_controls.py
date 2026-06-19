@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QColor
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor
 
 from core.constants import AppConstants
 from domain.qt_adapters import color_to_qcolor
@@ -98,10 +98,10 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
         super().update_state()
 
 class ColorSettingsButton(Button):
-    smartColorSetRequested = pyqtSignal()
-    colorOptionClicked = pyqtSignal(str)
-    elementHovered = pyqtSignal(str)
-    elementHoverEnded = pyqtSignal()
+    smartColorSetRequested = Signal()
+    colorOptionClicked = Signal(str)
+    elementHovered = Signal(str)
+    elementHoverEnded = Signal()
 
     def __init__(self, parent=None, current_language: str = "en", store=None):
         super().__init__(AppIcon.DIVIDER_COLOR, show_underline=True, parent=parent)

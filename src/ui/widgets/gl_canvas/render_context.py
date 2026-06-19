@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from OpenGL import GL as gl
 
 logger = logging.getLogger("ImproveImgSLI")
-from PyQt6.QtCore import QTimer
-from PyQt6.QtOpenGL import (
+from PySide6.QtCore import QTimer
+from PySide6.QtOpenGL import (
     QOpenGLBuffer,
     QOpenGLShader,
     QOpenGLShaderProgram,

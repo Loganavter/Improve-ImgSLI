@@ -3,7 +3,7 @@ from collections import OrderedDict
 from typing import Optional
 
 from PIL import Image
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 from resources.translations import tr
 from shared.image_processing.progressive_loader import (

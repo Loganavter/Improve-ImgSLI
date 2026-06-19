@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from plugins.export.events import (
     ExportExportRecordedVideoEvent,
@@ -20,7 +20,7 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class ExportController(QObject):
 
-    error_occurred = pyqtSignal(str)
+    error_occurred = Signal(str)
 
     def __init__(
         self,

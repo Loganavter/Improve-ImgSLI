@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication, QScrollArea, QSizePolicy
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QScrollArea, QSizePolicy
 
 from sli_ui_toolkit.widgets import (
     ScrollableDialogPage,

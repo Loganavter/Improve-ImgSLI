@@ -2,9 +2,9 @@ import logging
 
 from core.tracing import Tracer
 from PIL import Image
-from PyQt6 import sip
-from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QImage, QPixmap
+import shiboken6 as sip
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QImage, QPixmap
 from plugins.video_editor.services.keyframing.engine.values import (
     frozen_value,
     viewport_fingerprint,
@@ -60,7 +60,7 @@ class PreviewCoordinator:
         self.view = None
 
     def has_live_view(self) -> bool:
-        return self.view is not None and not sip.isdeleted(self.view)
+        return self.view is not None and sip.isValid(self.view)
 
     def get_preview_size_safe(self) -> tuple[int, int]:
         if not self.has_live_view():

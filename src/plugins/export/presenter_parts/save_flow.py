@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMessageBox
 from sli_ui_toolkit.workers import GenericWorker
 
 logger = logging.getLogger("ImproveImgSLI")

@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtWidgets import QSystemTrayIcon
+from PySide6.QtWidgets import QSystemTrayIcon
 
 from utils.resource_loader import resource_path
 

@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtGui import QPixmap
 
 from plugins.video_editor.model import VideoProjectModel
 from plugins.video_editor.presenter_parts import (
@@ -16,16 +16,16 @@ from plugins.video_editor.services.playback import PlaybackEngine
 from plugins.video_editor.services.thumbnails import ThumbnailService
 
 class VideoEditorPresenter(QObject):
-    previewUpdated = pyqtSignal(QPixmap)
-    previewReady = pyqtSignal()
-    timelinePositionChanged = pyqtSignal(int)
-    playbackStateChanged = pyqtSignal(bool)
-    buttonsStateChanged = pyqtSignal(bool, bool)
-    thumbnailsUpdated = pyqtSignal(dict)
-    thumbnailReady = pyqtSignal(int, QPixmap)
-    exportStarted = pyqtSignal()
-    exportLog = pyqtSignal(str)
-    errorOccurred = pyqtSignal(str)
+    previewUpdated = Signal(QPixmap)
+    previewReady = Signal()
+    timelinePositionChanged = Signal(int)
+    playbackStateChanged = Signal(bool)
+    buttonsStateChanged = Signal(bool, bool)
+    thumbnailsUpdated = Signal(dict)
+    thumbnailReady = Signal(int, QPixmap)
+    exportStarted = Signal()
+    exportLog = Signal(str)
+    errorOccurred = Signal(str)
 
     def __init__(self, view, snapshots, export_controller, main_controller):
         super().__init__()

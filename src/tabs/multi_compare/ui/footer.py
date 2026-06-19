@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
 from sli_ui_toolkit.widgets import Button
 from ui.icon_manager import AppIcon
@@ -12,7 +12,7 @@ from ui.icon_manager import AppIcon
 class MultiCompareFooter(QWidget):
     """Bottom bar: save composed grid (mirrors main workspace btn_save)."""
 
-    save_clicked = pyqtSignal()
+    save_clicked = Signal()
 
     def __init__(
         self,

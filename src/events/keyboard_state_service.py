@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 logger = logging.getLogger("ImproveImgSLI")
 

@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject
+from PySide6.QtCore import QObject
 
 from core.store import Store
 from ui.presenters.toolbar.connections import connect_signals as connect_signals_impl

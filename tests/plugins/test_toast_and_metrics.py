@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from plugins.analysis.services.metrics import MetricsService
 from plugins.analysis.services.runtime import (

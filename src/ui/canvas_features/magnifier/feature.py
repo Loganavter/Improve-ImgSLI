@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from PyQt6.QtCore import QPointF
+from PySide6.QtCore import QPointF
 
 from domain.qt_adapters import color_to_qcolor
 from domain.types import Color, Point, Rect

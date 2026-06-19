@@ -1,6 +1,6 @@
 import logging
 
-from PyQt6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap
 
 from domain.types import Rect
 from ui.canvas_infra.scene.widget_registry import (

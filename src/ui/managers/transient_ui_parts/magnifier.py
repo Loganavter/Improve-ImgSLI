@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from PyQt6.QtCore import QEvent, QTimer
+from PySide6.QtCore import QEvent, QTimer
 
 from core.constants import AppConstants
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias

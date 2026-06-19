@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QEvent, QObject, QSize, Qt
-from PyQt6.QtGui import QFont, QIntValidator
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QEvent, QObject, QSize, Qt
+from PySide6.QtGui import QFont, QIntValidator
+from PySide6.QtWidgets import (
     QHBoxLayout,
     QProgressBar,
     QFrame,

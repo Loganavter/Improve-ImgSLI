@@ -1,7 +1,7 @@
 import logging
 
 from PIL import Image
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 from .gpu_export_proxy import GpuExportProxy
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import QObject, QTimer
+from PySide6.QtCore import QObject, QTimer
 
 from plugins.video_editor.services.keyframing import (
     FrameSnapshot,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 from services.workflow.playlist_components.common import (
     emit_ui_update,

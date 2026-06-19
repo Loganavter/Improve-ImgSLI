@@ -3,7 +3,7 @@ from typing import Optional
 
 import numpy as np
 from PIL import Image
-from PyQt6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPixmap
 
 logger = logging.getLogger("ImproveImgSLI")
 
