@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtWidgets import QColorDialog, QLabel, QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont
+from PySide6.QtWidgets import QColorDialog, QLabel, QHBoxLayout, QVBoxLayout, QWidget
 
 from resources.translations import tr
 from sli_ui_toolkit.widgets import Button

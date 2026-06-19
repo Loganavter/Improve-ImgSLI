@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-from PyQt6.QtCore import QRect
-from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import QRect
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QWidget
 
 
 @dataclass(frozen=True)
@@ -126,7 +126,10 @@ def _dynamic_properties(widget: QWidget) -> dict[str, str]:
     props: dict[str, str] = {}
     for raw_name in widget.dynamicPropertyNames():
         name = bytes(raw_name).decode("utf-8", errors="replace")
-        value = widget.property(name)
+        try:
+            value = widget.property(name)
+        except (RuntimeError, TypeError):
+            continue
         props[name] = str(value)
     return props
 
@@ -155,7 +158,9 @@ def _is_binary_or_thirdparty(path: str) -> bool:
     norm = path.replace("\\", "/").lower()
     if norm.endswith((".so", ".pyd", ".dll")):
         return True
-    if "/site-packages/pyqt6" in norm or "/pyqt6/" in norm:
+    if "/site-packages/pyside6" in norm or "/pyside6/" in norm:
+        return True
+    if "/site-packages/shiboken6" in norm or "/shiboken6/" in norm:
         return True
     return False
 

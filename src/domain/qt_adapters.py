@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QPoint, QPointF, QRect
-from PyQt6.QtGui import QColor
+from PySide6.QtCore import QPoint, QPointF, QRect
+from PySide6.QtGui import QColor
 
 from domain.types import Color, Point, Rect
 

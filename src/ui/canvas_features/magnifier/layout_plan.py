@@ -3,8 +3,8 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 
-from PyQt6.QtCore import QPointF
-from PyQt6.QtGui import QColor
+from PySide6.QtCore import QPointF
+from PySide6.QtGui import QColor
 
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.canvas_features.magnifier.constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE as _COMBINE_THRESHOLD

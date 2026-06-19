@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import math
 
-from PyQt6.QtCore import QPoint, QPointF, QRect
+from PySide6.QtCore import QPoint, QPointF, QRect
 
 from core.store import Store
 

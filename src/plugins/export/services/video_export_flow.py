@@ -31,7 +31,7 @@ def build_video_notification_preview(
         fill_rgba = (0, 0, 0, 0)
         fill_color = export_options.get("fit_content_fill_color")
         if isinstance(fill_color, str) and fill_color:
-            from PyQt6.QtGui import QColor
+            from PySide6.QtGui import QColor
 
             qcolor = QColor(fill_color)
             fill_rgba = (

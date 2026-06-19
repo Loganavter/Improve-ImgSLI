@@ -16,7 +16,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 ICON_PATH = SPEC_DIR / "icons" / "icon.ico"
-QT_RUNTIME_HOOK = SPEC_DIR / "pyi_rth_pyqt6_windows.py"
+QT_RUNTIME_HOOK = SPEC_DIR / "pyi_rth_pyside6_windows.py"
 QT_CONF_PATH = SPEC_DIR / "qt.conf"
 APP_NAME = "Improve_ImgSLI"
 
@@ -64,24 +64,24 @@ def collect_project_submodules(package_names):
     return collected
 
 
-def find_pyqt6_root():
+def find_pyside6_root():
     try:
-        pyqt6 = importlib.import_module("PyQt6")
-        module_file = getattr(pyqt6, "__file__", None)
+        pyside6 = importlib.import_module("PySide6")
+        module_file = getattr(pyside6, "__file__", None)
         if module_file:
             return Path(module_file).resolve().parent
     except Exception:
         pass
 
-    spec = importlib.util.find_spec("PyQt6.QtCore")
+    spec = importlib.util.find_spec("PySide6.QtCore")
     if spec and spec.origin:
         return Path(spec.origin).resolve().parent
 
-    raise RuntimeError("Unable to locate installed PyQt6 files for Windows packaging.")
+    raise RuntimeError("Unable to locate installed PySide6 files for Windows packaging.")
 
 
-PYQT6_ROOT = find_pyqt6_root()
-QT6_ROOT = PYQT6_ROOT / "Qt6"
+PYSIDE6_ROOT = find_pyside6_root()
+QT6_ROOT = PYSIDE6_ROOT / "Qt6" if (PYSIDE6_ROOT / "Qt6").exists() else PYSIDE6_ROOT
 
 APP_DATAS = [
     (str(REPO_ROOT / "src" / "resources"), "resources"),
@@ -93,21 +93,22 @@ APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "plugins", "plugins")
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "tabs", "tabs"))
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "ui" / "canvas_features", "ui/canvas_features"))
 
-PYQT6_DATAS = []
-PYQT6_DATAS.extend(collect_tree(QT6_ROOT / "plugins", "PyQt6/Qt6/plugins"))
-PYQT6_DATAS.extend(collect_tree(QT6_ROOT / "translations", "PyQt6/Qt6/translations"))
+PYSIDE6_DATAS = []
+PYSIDE6_DATAS.extend(collect_tree(QT6_ROOT / "plugins", "PySide6/plugins"))
+PYSIDE6_DATAS.extend(collect_tree(QT6_ROOT / "translations", "PySide6/translations"))
 
-PYQT6_BINARIES = []
-PYQT6_BINARIES.extend(collect_tree(PYQT6_ROOT, "PyQt6", include_suffixes={".dll", ".pyd"}))
-PYQT6_BINARIES.extend(collect_tree(QT6_ROOT / "bin", "PyQt6/Qt6/bin", include_suffixes={".dll"}))
+PYSIDE6_BINARIES = []
+PYSIDE6_BINARIES.extend(collect_tree(PYSIDE6_ROOT, "PySide6", include_suffixes={".dll", ".pyd"}))
+PYSIDE6_BINARIES.extend(collect_tree(QT6_ROOT / "bin", "PySide6", include_suffixes={".dll"}))
 
 APP_HIDDENIMPORTS = [
-    "PyQt6",
-    "PyQt6.QtCore",
-    "PyQt6.QtGui",
-    "PyQt6.QtOpenGL",
-    "PyQt6.QtOpenGLWidgets",
-    "PyQt6.QtWidgets",
+    "PySide6",
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtOpenGL",
+    "PySide6.QtOpenGLWidgets",
+    "PySide6.QtWidgets",
+    "shiboken6",
     "numpy",
     "markdown",
     "PIL",
@@ -331,8 +332,8 @@ APP_HIDDENIMPORTS.extend(
 a = Analysis(
     [str(REPO_ROOT / "src" / "__main__.py")],
     pathex=[str(REPO_ROOT), str(REPO_ROOT / "src")],
-    binaries=PYQT6_BINARIES,
-    datas=APP_DATAS + PYQT6_DATAS,
+    binaries=PYSIDE6_BINARIES,
+    datas=APP_DATAS + PYSIDE6_DATAS,
     hiddenimports=sorted(set(APP_HIDDENIMPORTS)),
     hookspath=[],
     hooksconfig={},

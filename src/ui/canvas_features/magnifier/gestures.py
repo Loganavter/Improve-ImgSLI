@@ -7,7 +7,7 @@ resolver — no feature-specific branching lives in shared code.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from events.canvas_input.owner_ids import (
     CAPTURE_DRAG_OWNER,

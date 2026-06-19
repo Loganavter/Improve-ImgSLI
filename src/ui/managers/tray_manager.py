@@ -1,9 +1,9 @@
 import logging
 import os
 
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QAction, QIcon
+from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from resources.translations import tr
 from utils.resource_loader import resource_path
@@ -12,10 +12,10 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class TrayManager(QObject):
 
-    toggle_visibility_requested = pyqtSignal()
-    open_last_file_requested = pyqtSignal()
-    open_last_folder_requested = pyqtSignal()
-    quit_requested = pyqtSignal()
+    toggle_visibility_requested = Signal()
+    open_last_file_requested = Signal()
+    open_last_folder_requested = Signal()
+    quit_requested = Signal()
 
     def __init__(
         self,

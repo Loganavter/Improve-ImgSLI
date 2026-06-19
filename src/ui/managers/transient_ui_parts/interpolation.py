@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import time
 
-from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
 
 from core.constants import AppConstants
 from resources.translations import tr

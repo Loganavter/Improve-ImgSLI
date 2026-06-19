@@ -1,10 +1,10 @@
-from PyQt6 import sip
+import shiboken6 as sip
 
 from ui.canvas_features.magnifier.store import MagnifierStoreService
 
 def get_live_image_label(presenter):
     image_label = getattr(getattr(presenter, "ui", None), "image_label", None)
-    if image_label is None or sip.isdeleted(image_label):
+    if image_label is None or not sip.isValid(image_label):
         return None
     return image_label
 

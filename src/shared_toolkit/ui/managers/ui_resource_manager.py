@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 import weakref
 
-from PyQt6.QtCore import QCoreApplication, QEvent, QObject, QTimer
-from PyQt6.QtWidgets import QApplication, QMenu, QWidget
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QTimer
+from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 logger = logging.getLogger("ImproveImgSLI")
 

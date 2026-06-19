@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.widgets import IndexedToggleFlyout
 from ui.icon_manager import AppIcon

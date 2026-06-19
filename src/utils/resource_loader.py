@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Callable, Tuple, Union
 
 from PIL import Image, ImageFont
-from PyQt6.QtCore import QPoint, QRect
+from PySide6.QtCore import QPoint, QRect
 
 def safe_rect(x, y, w, h) -> QRect:
     return QRect(int(round(x)), int(round(y)), int(round(w)), int(round(h)))

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from events.app_event.keyboard import GlobalKeyboardHandler
 from events.canvas_input.owner_ids import KEYBOARD_MOVE_OWNER

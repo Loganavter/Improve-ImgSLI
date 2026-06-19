@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 class FlyoutController:
     def __init__(self, manager):

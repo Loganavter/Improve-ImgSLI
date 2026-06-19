@@ -9,7 +9,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from PIL import Image
-from PyQt6.QtCore import QObject
+from PySide6.QtCore import QObject
 
 def _build_preview_coordinator(*, device_pixel_ratio: float = 1.0):
     from plugins.video_editor.presenter_parts.preview import PreviewCoordinator
@@ -126,7 +126,7 @@ def test_preview_scene_forces_canvas_read_only(monkeypatch):
     assert read_only_calls == [True]
 
 def test_video_editor_ready_does_not_activate_from_background(monkeypatch):
-    from PyQt6.QtCore import Qt
+    from PySide6.QtCore import Qt
     from plugins.video_editor import plugin as plugin_module
     from plugins.video_editor.plugin import VideoEditorPlugin
 
@@ -140,8 +140,9 @@ def test_video_editor_ready_does_not_activate_from_background(monkeypatch):
     app = SimpleNamespace(
         applicationState=lambda: Qt.ApplicationState.ApplicationInactive,
         activeWindow=lambda: None,
+        processEvents=lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(plugin_module.QApplication, "instance", lambda: app)
+    monkeypatch.setattr(plugin_module.QApplication, "instance", lambda *_args, **_kwargs: app)
 
     editor_plugin = VideoEditorPlugin()
     editor_plugin._editor_dialog = dialog

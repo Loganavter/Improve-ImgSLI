@@ -37,7 +37,7 @@ def on_orientation_right_clicked(presenter):
         binding.on_right_clicked(presenter)
 
 def _show_orientation_popup(presenter):
-    from PyQt6.QtCore import QSize
+    from PySide6.QtCore import QSize
     from ui.icon_manager import AppIcon, get_app_icon
 
     current_orientation = _query_overlay_orientation(presenter.store)

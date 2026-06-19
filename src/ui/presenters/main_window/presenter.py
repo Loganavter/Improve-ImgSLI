@@ -1,7 +1,7 @@
 import logging
 
-from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import QObject, QTimer
+from PySide6.QtWidgets import QWidget
 
 from core.main_controller import MainController
 from core.plugin_system.ui_integration import PluginUIRegistry

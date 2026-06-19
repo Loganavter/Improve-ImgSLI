@@ -1,16 +1,16 @@
 import logging
 import PIL.Image
-from PyQt6.QtCore import (
+from PySide6.QtCore import (
     QEvent,
     QTimer,
-    pyqtSignal,
+    Signal,
 )
-from PyQt6.QtGui import (
+from PySide6.QtGui import (
     QColor,
     QIcon,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from core.bootstrap import ApplicationContext
 from core.runtime_flags import RuntimeFlags
@@ -31,7 +31,7 @@ PIL.Image.MAX_IMAGE_PIXELS = None
 logger = logging.getLogger("ImproveImgSLI")
 
 class MainWindow(QWidget):
-    startupVisualReady = pyqtSignal()
+    startupVisualReady = Signal()
 
     def __init__(
         self,

@@ -1,6 +1,6 @@
 from OpenGL import GL as gl
-from PyQt6.QtCore import QPoint
-from PyQt6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QPoint
+from PySide6.QtGui import QImage, QPixmap
 
 from .base_images import (
     clear_diff_texture,

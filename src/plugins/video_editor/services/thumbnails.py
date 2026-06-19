@@ -3,8 +3,8 @@ import math
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image
-from PyQt6.QtCore import QObject, QThreadPool, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QObject, QThreadPool, Signal
+from PySide6.QtGui import QImage, QPixmap
 
 from plugins.video_editor.services.keyframing import KeyframedRecording
 from sli_ui_toolkit.workers import GenericWorker
@@ -47,9 +47,9 @@ def _render_thumbnail_using_renderer(
         return None
 
 class ThumbnailService(QObject):
-    thumbnailsGenerated = pyqtSignal(dict)
-    thumbnailReady = pyqtSignal(int, QPixmap)
-    generationFinished = pyqtSignal()
+    thumbnailsGenerated = Signal(dict)
+    thumbnailReady = Signal(int, QPixmap)
+    generationFinished = Signal()
 
     def __init__(self):
         super().__init__()

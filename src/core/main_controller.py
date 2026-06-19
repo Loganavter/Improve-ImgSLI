@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from core.events import (
     CoreErrorOccurredEvent,
@@ -17,15 +17,15 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class MainController(QObject):
 
-    error_occurred = pyqtSignal(str)
-    update_requested = pyqtSignal()
-    ui_update_requested = pyqtSignal(list)
-    start_interactive_movement = pyqtSignal()
-    stop_interactive_movement = pyqtSignal()
+    error_occurred = Signal(str)
+    update_requested = Signal()
+    ui_update_requested = Signal(list)
+    start_interactive_movement = Signal()
+    stop_interactive_movement = Signal()
 
-    video_export_progress = pyqtSignal(int)
-    video_export_finished = pyqtSignal(bool)
-    video_export_log = pyqtSignal(str)
+    video_export_progress = Signal(int)
+    video_export_finished = Signal(bool)
+    video_export_log = Signal(str)
 
     def __init__(self, context: "ApplicationContext"):
         super().__init__()

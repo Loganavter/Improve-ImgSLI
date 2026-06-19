@@ -1,6 +1,6 @@
 # UI Toolkit Library
 
-`sli-ui-toolkit` is a reusable, versioned PyQt6 UI library used by Improve-ImgSLI and Tkonverter.
+`sli-ui-toolkit` is a reusable, versioned PySide6 UI library used by Improve-ImgSLI and Tkonverter.
 
 It contains widgets, an i18n system, styling tools, themes, icons, workers, and utilities. Application-specific behavior (such as icons, translation roots, overlay layers, and drag-and-drop logic) is injected via configuration hooks at startup. Application state, canvas logic, feature services, and plugins remain within the main application.
 
@@ -98,7 +98,7 @@ The current package is organized around these reusable areas:
 ## Example
 
 ```python
-from PyQt6.QtGui import QColor
+from PySide6.QtGui import QColor
 from sli_ui_toolkit.widgets import Button
 
 button = Button("magnifier", toggle=True)

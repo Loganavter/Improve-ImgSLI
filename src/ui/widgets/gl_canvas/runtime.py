@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 
-from PyQt6.QtGui import QSurfaceFormat
+from PySide6.QtGui import QSurfaceFormat
 
 logger = logging.getLogger("ImproveImgSLI")
 

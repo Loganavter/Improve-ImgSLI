@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PyQt6.QtCore import QRect, Qt
-from PyQt6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap
-from PyQt6.QtWidgets import QDialog, QFileDialog
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PySide6.QtWidgets import QDialog, QFileDialog
 
 from tabs.multi_compare.models import (
     LeafNode,

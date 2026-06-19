@@ -6,7 +6,7 @@ Dogma source: docs/dev/UI_INSPECTOR.md.
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from devtools.ui_inspector.qss_index import QssIndex
 

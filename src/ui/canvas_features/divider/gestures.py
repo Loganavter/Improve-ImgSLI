@@ -6,7 +6,7 @@ whenever no overlay-style feature claims the click first.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from events.canvas_input.owner_ids import SPLIT_DRAG_OWNER
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureGestureBinding

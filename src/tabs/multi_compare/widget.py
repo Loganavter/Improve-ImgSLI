@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
-from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from tabs.multi_compare.models import (
     CompareSlot,
@@ -32,9 +32,9 @@ _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 class MultiCompareWidget(QWidget):
     """Composite widget: toolbar + GL grid + footer + smart DnD."""
 
-    images_dropped = pyqtSignal(list, object, object)  # paths, (target_path, target_root), side
-    add_requested = pyqtSignal()
-    save_requested = pyqtSignal()
+    images_dropped = Signal(list, object, object)  # paths, (target_path, target_root), side
+    add_requested = Signal()
+    save_requested = Signal()
 
     def __init__(
         self,

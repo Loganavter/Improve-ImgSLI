@@ -2,8 +2,8 @@ import logging
 import os
 from typing import Optional
 
-from PyQt6.QtCore import QThreadPool
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QThreadPool
+from PySide6.QtWidgets import QApplication
 
 from core.plugin_coordinator import PluginCoordinator
 from core.runtime_flags import RuntimeFlags

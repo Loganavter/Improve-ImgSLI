@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from PyQt6.QtWidgets import QApplication, QTabBar, QWidget
+from PySide6.QtWidgets import QApplication, QTabBar, QWidget
 
 from sli_ui_toolkit.widgets import AdaptiveTabStrip
 from ui.icon_manager import AppIcon

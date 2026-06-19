@@ -1,7 +1,7 @@
 import logging
 
 from PIL import Image
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from core.events import CoreErrorOccurredEvent
 from core.state_management.actions import (
@@ -25,9 +25,9 @@ def _format_worker_error(err) -> str:
 
 class SessionController(QObject):
 
-    error_occurred = pyqtSignal(str)
-    image_loaded = pyqtSignal()
-    update_requested = pyqtSignal()
+    error_occurred = Signal(str)
+    image_loaded = Signal()
+    update_requested = Signal()
 
     def __init__(
         self,

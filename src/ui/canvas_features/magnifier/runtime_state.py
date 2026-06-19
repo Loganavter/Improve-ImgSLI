@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from PyQt6.QtCore import QPoint, QPointF
-from PyQt6.QtGui import QColor, QPixmap
+from PySide6.QtCore import QPoint, QPointF
+from PySide6.QtGui import QColor, QPixmap
 
 @dataclass(slots=True)
 class MagnifierRuntimeState:

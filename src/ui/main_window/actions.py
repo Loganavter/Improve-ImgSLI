@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 
-from PyQt6.QtCore import QUrl, Qt
-from PyQt6.QtGui import QDesktopServices
+from PySide6.QtCore import QUrl, Qt
+from PySide6.QtGui import QDesktopServices
 
 class MainWindowActions:
     def __init__(self, window):

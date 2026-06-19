@@ -8,7 +8,7 @@ import pkgutil
 from types import SimpleNamespace
 
 import pytest
-from PyQt6.QtGui import QColor
+from PySide6.QtGui import QColor
 
 from ui.canvas_infra.scene.stacking_policy import (
     CanvasStackHint,

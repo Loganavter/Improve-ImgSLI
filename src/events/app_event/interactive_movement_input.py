@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from core.constants import AppConstants
 from domain.types import Point

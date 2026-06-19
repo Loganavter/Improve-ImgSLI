@@ -1,8 +1,8 @@
 import logging
 from typing import Any, Callable
 
-from PyQt6.QtCore import QEvent, QObject, QPointF
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QEvent, QObject, QPointF
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from core.plugin_system.ui_integration import PluginUIRegistry
 from ui.managers.dialog_manager import DialogManager

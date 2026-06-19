@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from OpenGL import GL as gl
-from PyQt6.QtCore import QMimeData, QPoint, QPointF, QRect, Qt
-from PyQt6.QtGui import (
+from PySide6.QtCore import QMimeData, QPoint, QPointF, QRect, Qt
+from PySide6.QtGui import (
     QBrush,
     QColor,
     QDrag,
@@ -20,8 +20,8 @@ from PyQt6.QtGui import (
     QPen,
     QWheelEvent,
 )
-from PyQt6.QtOpenGLWidgets import QOpenGLWidget
-from PyQt6.QtWidgets import QApplication, QWidget
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 INTERNAL_SLOT_MIME = "application/x-imgsli-multi-slot"
 
@@ -985,7 +985,7 @@ class GLGridWidget(QOpenGLWidget):
         rects = self._leaf_rects()
         rect = next((r for l, r in rects if l.slot_id == slot_id), None)
         if rect is not None and slot is not None and slot.image is not None:
-            from PyQt6.QtGui import QImage, QPixmap
+            from PySide6.QtGui import QImage, QPixmap
             h, w = slot.image.shape[:2]
             channels = slot.image.shape[2] if slot.image.ndim == 3 else 1
             fmt = QImage.Format.Format_RGB888 if channels == 3 else QImage.Format.Format_RGBA8888

@@ -52,9 +52,9 @@ def ensure_python_dependencies() -> int:
         print("Failed to install or update PyInstaller.")
         return 1
 
-    if run_command([sys.executable, "-c", "import PyQt6, PyQt6.QtCore"]) != 0:
-        print("PyQt6 is not importable in the selected Python environment.")
-        print("Use a Python version with available PyQt6 wheels or install PyQt6 manually before building.")
+    if run_command([sys.executable, "-c", "import PySide6, PySide6.QtCore"]) != 0:
+        print("PySide6 is not importable in the selected Python environment.")
+        print("Use a Python version with available PySide6 wheels or install PySide6 manually before building.")
         return 1
 
     return 0

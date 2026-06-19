@@ -1,14 +1,14 @@
 import logging
 import time
 
-from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 
 logger = logging.getLogger("ImproveImgSLI")
 
 class PlaybackEngine(QObject):
 
-    frameChanged = pyqtSignal(int)
-    playbackStateChanged = pyqtSignal(bool)
+    frameChanged = Signal(int)
+    playbackStateChanged = Signal(bool)
 
     def __init__(self, fps=60):
         super().__init__()

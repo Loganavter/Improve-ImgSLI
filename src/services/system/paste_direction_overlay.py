@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QRect, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPen
+from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
 
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.theme import ThemeManager
@@ -9,8 +9,8 @@ from sli_ui_toolkit.ui.widgets.overlays.in_window_overlay import (
 
 
 class PasteDirectionOverlay(TopLevelInWindowOverlay):
-    direction_selected = pyqtSignal(str)
-    cancelled = pyqtSignal()
+    direction_selected = Signal(str)
+    cancelled = Signal()
 
     def __init__(self, parent, image_label_widget, is_horizontal=False):
         super().__init__(

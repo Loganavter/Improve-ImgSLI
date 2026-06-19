@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,

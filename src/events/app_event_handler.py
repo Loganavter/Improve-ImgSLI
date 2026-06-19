@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QEvent, QObject, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import (
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtGui import (
     QDragEnterEvent,
     QDragMoveEvent,
     QDropEvent,
@@ -7,7 +7,7 @@ from PyQt6.QtGui import (
     QMouseEvent,
     QWheelEvent,
 )
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 from events.app_event import (
     route_main_window_event,
 )
@@ -20,21 +20,21 @@ import logging
 logger = logging.getLogger("ImproveImgSLI")
 
 class EventHandler(QObject):
-    drag_enter_event_signal = pyqtSignal(QDragEnterEvent)
-    drag_move_event_signal = pyqtSignal(QDragMoveEvent)
-    drag_leave_event_signal = pyqtSignal(QEvent)
-    drop_event_signal = pyqtSignal(QDropEvent)
-    resize_event_signal = pyqtSignal(QEvent)
-    close_event_signal = pyqtSignal(QEvent)
-    mouse_press_event_signal = pyqtSignal(QMouseEvent)
-    global_keyboard_press_event_signal = pyqtSignal(QKeyEvent)
-    global_keyboard_release_event_signal = pyqtSignal(QKeyEvent)
-    canvas_keyboard_press_event_signal = pyqtSignal(QKeyEvent)
-    canvas_keyboard_release_event_signal = pyqtSignal(QKeyEvent)
-    mouse_press_event_on_image_label_signal = pyqtSignal(QMouseEvent)
-    mouse_move_event_on_image_label_signal = pyqtSignal(QMouseEvent)
-    mouse_release_event_on_image_label_signal = pyqtSignal(QMouseEvent)
-    mouse_wheel_event_on_image_label_signal = pyqtSignal(QWheelEvent)
+    drag_enter_event_signal = Signal(QDragEnterEvent)
+    drag_move_event_signal = Signal(QDragMoveEvent)
+    drag_leave_event_signal = Signal(QEvent)
+    drop_event_signal = Signal(QDropEvent)
+    resize_event_signal = Signal(QEvent)
+    close_event_signal = Signal(QEvent)
+    mouse_press_event_signal = Signal(QMouseEvent)
+    global_keyboard_press_event_signal = Signal(QKeyEvent)
+    global_keyboard_release_event_signal = Signal(QKeyEvent)
+    canvas_keyboard_press_event_signal = Signal(QKeyEvent)
+    canvas_keyboard_release_event_signal = Signal(QKeyEvent)
+    mouse_press_event_on_image_label_signal = Signal(QMouseEvent)
+    mouse_move_event_on_image_label_signal = Signal(QMouseEvent)
+    mouse_release_event_on_image_label_signal = Signal(QMouseEvent)
+    mouse_wheel_event_on_image_label_signal = Signal(QWheelEvent)
 
     def __init__(self, store, presenter_ref):
         super().__init__()

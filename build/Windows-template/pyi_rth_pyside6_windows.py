@@ -19,9 +19,9 @@ def _register_windows_dll_dirs():
         roots.append(Path(sys.executable).resolve().parent)
     else:
         try:
-            import PyQt6  # pylint: disable=import-outside-toplevel
+            import PySide6  # pylint: disable=import-outside-toplevel
 
-            roots.append(Path(PyQt6.__file__).resolve().parent)
+            roots.append(Path(PySide6.__file__).resolve().parent)
         except Exception:
             pass
 
@@ -30,8 +30,8 @@ def _register_windows_dll_dirs():
         candidates.extend(
             [
                 root,
-                root / "PyQt6",
-                root / "PyQt6" / "Qt6" / "bin",
+                root / "PySide6",
+                root / "PySide6" / "Qt6" / "bin",
                 root / "Qt6" / "bin",
                 root / "plugins",
                 root / "platforms",
@@ -53,11 +53,11 @@ def _register_windows_dll_dirs():
     os.environ["PATH"] = os.pathsep.join(path_entries)
 
     if roots:
-        primary = next(_existing_dirs([roots[0] / "PyQt6" / "Qt6" / "plugins", roots[0] / "Qt6" / "plugins", roots[0] / "plugins"]), None)
+        primary = next(_existing_dirs([roots[0] / "PySide6" / "Qt6" / "plugins", roots[0] / "Qt6" / "plugins", roots[0] / "plugins"]), None)
         platforms = next(
             _existing_dirs(
                 [
-                    roots[0] / "PyQt6" / "Qt6" / "plugins" / "platforms",
+                    roots[0] / "PySide6" / "Qt6" / "plugins" / "platforms",
                     roots[0] / "Qt6" / "plugins" / "platforms",
                     roots[0] / "platforms",
                 ]

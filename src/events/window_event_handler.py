@@ -1,7 +1,7 @@
 import logging
 
-from PyQt6.QtCore import QObject, QPoint, Qt, QTimer
-from PyQt6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
+from PySide6.QtCore import QObject, QPoint, Qt, QTimer
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 
 logger = logging.getLogger("ImproveImgSLI")
 

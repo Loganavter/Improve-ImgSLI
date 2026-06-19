@@ -1,7 +1,7 @@
 import logging
 
-from PyQt6 import sip
-from PyQt6.QtCore import QObject, QPointF, QTimer
+import shiboken6 as sip
+from PySide6.QtCore import QObject, QPointF, QTimer
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
 
 DragGhostWidget = None
@@ -136,7 +136,7 @@ class DragAndDropService(QObject):
 
         current_pos_global = event.globalPosition()
 
-        if self._ghost_widget and not sip.isdeleted(self._ghost_widget):
+        if self._ghost_widget and sip.isValid(self._ghost_widget):
             desired_top_left_global = (
                 current_pos_global.toPoint() - self._hotspot.toPoint()
             )
@@ -222,14 +222,14 @@ class DragAndDropService(QObject):
             self._ghost_widget.deleteLater()
             self._ghost_widget = None
 
-        if self._source_widget and not sip.isdeleted(self._source_widget):
+        if self._source_widget and sip.isValid(self._source_widget):
             try:
                 if hasattr(self._source_widget, "set_dragging_state"):
                     self._source_widget.set_dragging_state(False)
             except RuntimeError:
                 pass
 
-        if self._current_target and not sip.isdeleted(self._current_target):
+        if self._current_target and sip.isValid(self._current_target):
             try:
                 if hasattr(self._current_target, "clear_drop_indicator"):
                     self._current_target.clear_drop_indicator()

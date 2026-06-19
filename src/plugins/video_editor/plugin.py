@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
 
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import ISessionPlugin

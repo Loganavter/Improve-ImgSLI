@@ -1,7 +1,7 @@
 from enum import Enum
 from pathlib import Path
 
-from PyQt6.QtGui import QIcon
+from PySide6.QtGui import QIcon
 
 from events.drag_drop_handler import DragAndDropService
 import resources.translations  # noqa: F401  — triggers i18n_root configuration

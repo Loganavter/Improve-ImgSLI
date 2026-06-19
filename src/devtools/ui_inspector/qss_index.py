@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget
 
 
 _QSS_BLOCK_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}", re.S)
@@ -41,12 +41,13 @@ class QssIndex:
         parent_names = _parent_class_names(widget)
         class_name = type(widget).__name__
         object_name = widget.objectName()
-        properties = {
-            bytes(name).decode("utf-8", errors="replace"): str(
-                widget.property(bytes(name).decode("utf-8", errors="replace"))
-            )
-            for name in widget.dynamicPropertyNames()
-        }
+        properties: dict[str, str] = {}
+        for name in widget.dynamicPropertyNames():
+            key = bytes(name).decode("utf-8", errors="replace")
+            try:
+                properties[key] = str(widget.property(key))
+            except (RuntimeError, TypeError):
+                continue
         result = []
         for rule in self._rules:
             if _selector_may_match(

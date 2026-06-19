@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 
 from OpenGL import GL as gl
-from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen
-from PyQt6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
+from PySide6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram
 
 from ui.canvas_infra.scene.gl_pass_contract import CanvasGLRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole

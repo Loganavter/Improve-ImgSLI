@@ -7,8 +7,8 @@ Dogma source: docs/dev/ARCHITECTURE.md §Events System (decoupled publish).
 from __future__ import annotations
 from types import SimpleNamespace
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QKeyEvent
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeyEvent
 
 from events.image_label.keyboard import ImageLabelKeyboardHandler
 from plugins.export.events import ExportPasteImageFromClipboardEvent

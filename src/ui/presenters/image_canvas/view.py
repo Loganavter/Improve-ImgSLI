@@ -1,8 +1,8 @@
 import logging
 
 import PIL.Image
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QImage, QPixmap
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage, QPixmap
 
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,

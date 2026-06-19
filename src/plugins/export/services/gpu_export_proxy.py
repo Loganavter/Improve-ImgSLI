@@ -1,7 +1,7 @@
 import logging
 import time
-from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtWidgets import QApplication
 from PIL import Image
 
 from ui.widgets.gl_canvas import GLCanvas
@@ -12,7 +12,7 @@ from .gpu_export_scene import qimage_to_pil
 logger = logging.getLogger("ImproveImgSLI")
 
 class GpuExportProxy(QObject):
-    render_requested = pyqtSignal(object)
+    render_requested = Signal(object)
 
     def __init__(self, parent=None, resource_manager=None):
         super().__init__(parent)
@@ -38,7 +38,7 @@ class GpuExportProxy(QObject):
         self._widget = widget
         return widget
 
-    @pyqtSlot()
+    @Slot()
     def shutdown(self):
         widget = self._widget
         self._widget = None
@@ -112,7 +112,7 @@ class GpuExportProxy(QObject):
         debug_timings["readback_height"] = float(image.height)
         return image
 
-    @pyqtSlot(object)
+    @Slot(object)
     def _render_on_main_thread(self, payload):
         event = payload["event"]
         result_box = payload["result_box"]
