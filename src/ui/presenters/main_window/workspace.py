@@ -1,6 +1,18 @@
 from __future__ import annotations
 
+import logging
+
 from plugins.video_editor.model import VideoSessionModel
+from resources.translations import tr
+
+logger = logging.getLogger("ImproveImgSLI")
+
+_SESSION_TITLE_KEYS = {
+    "image_compare": "workspace.session_types.image_compare",
+    "video_compare": "workspace.session_types.video_compare",
+    "multi_compare": "workspace.session_types.multi_compare",
+}
+
 
 def initialize_workspace_state(presenter) -> None:
     presenter._file_dialog = None
@@ -9,11 +21,47 @@ def initialize_workspace_state(presenter) -> None:
 
 def configure_workspace_actions(presenter):
     actions = []
+    logger.debug(
+        "configure_workspace_actions: main_controller=%s session_manager=%s",
+        presenter.main_controller,
+        getattr(presenter.main_controller, "session_manager", None) if presenter.main_controller else None,
+    )
     if presenter.main_controller:
-        for blueprint in presenter.main_controller.workspace.list_session_blueprints():
-            label = blueprint.resolved_title() or blueprint.session_type
+        try:
+            blueprints = list(presenter.main_controller.workspace.list_session_blueprints())
+        except Exception:
+            logger.exception("configure_workspace_actions: list_session_blueprints failed")
+            blueprints = []
+        logger.debug("configure_workspace_actions: blueprints raw=%s", blueprints)
+        language = presenter.store.settings.current_language
+        for blueprint in blueprints:
+            fallback = blueprint.resolved_title() or blueprint.session_type
+            key = _SESSION_TITLE_KEYS.get(blueprint.session_type)
+            label = tr(key, language) if key is not None else fallback
+            if label == key:
+                label = fallback
             actions.append((label, blueprint.session_type))
-    presenter.ui.btn_new_session.set_actions(actions)
+    btn = presenter.ui.btn_new_session
+    logger.debug(
+        "configure_workspace_actions: actions=%s btn=%s visible=%s enabled=%s",
+        actions, btn, btn.isVisible(), btn.isEnabled(),
+    )
+    btn.set_actions(actions)
+    logger.debug(
+        "configure_workspace_actions: after set_actions _has_menu=%s capabilities=%s",
+        getattr(btn, "_has_menu", "<missing>"),
+        [type(c).__name__ for c in getattr(btn, "_capabilities", [])],
+    )
+
+    try:
+        btn.clicked.disconnect(_log_new_session_clicked)
+    except (TypeError, RuntimeError):
+        pass
+    btn.clicked.connect(_log_new_session_clicked)
+
+
+def _log_new_session_clicked():
+    logger.debug("btn_new_session.clicked emitted")
 
 def sync_workspace_tabs(presenter):
     if not presenter.session_manager:
@@ -65,13 +113,37 @@ def on_workspace_tab_changed(presenter, index: int):
     if session_id and presenter.main_controller:
         presenter.main_controller.workspace.switch_workspace_session(session_id)
 
+
+def on_workspace_tab_close_requested(presenter, index: int):
+    if index < 0:
+        return
+    if (
+        presenter.session_manager
+        and len(presenter.session_manager.list_sessions()) == 1
+    ):
+        presenter.main_window_app.close()
+        return
+    session_id = presenter.ui.workspace_tabs.tabData(index)
+    if session_id and presenter.main_controller:
+        presenter.main_controller.workspace.close_workspace_session(session_id)
+
 def on_workspace_session_triggered(presenter, action):
-    session_type = action.data()
+    logger.debug("on_workspace_session_triggered: action=%r type=%s", action, type(action).__name__)
+    session_type = action.data() if hasattr(action, "data") and callable(action.data) else action
+    logger.debug(
+        "on_workspace_session_triggered: session_type=%s main_controller=%s",
+        session_type, presenter.main_controller,
+    )
     if not session_type or not presenter.main_controller:
         return
-    presenter.main_controller.workspace.create_workspace_session(
-        session_type, activate=True
-    )
+    try:
+        session = presenter.main_controller.workspace.create_workspace_session(
+            session_type, activate=True
+        )
+    except Exception:
+        logger.exception("on_workspace_session_triggered: create_workspace_session failed")
+        return
+    logger.debug("on_workspace_session_triggered: created session=%s", session)
 
 def on_video_session_advance_requested(presenter):
     if presenter._video_session_model is None:

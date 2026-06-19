@@ -1,0 +1,22 @@
+QWidget#UiInspectorPanel {
+    background-color: @flyout.background;
+    border: 1px solid @flyout.border;
+    border-radius: 8px;
+}
+
+QFrame#UiInspectorPanelHeader {
+    background-color: transparent;
+    border: none;
+}
+
+QTextEdit#UiInspectorDetails {
+    background-color: @dialog.input.background;
+    color: @dialog.text;
+    border: 1px solid @flyout.border;
+    border-radius: 6px;
+    padding: 6px;
+}
+
+QTextEdit#UiInspectorDetails QAbstractScrollArea::viewport {
+    background-color: @dialog.input.background;
+}

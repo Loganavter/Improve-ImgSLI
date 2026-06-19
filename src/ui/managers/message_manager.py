@@ -1,5 +1,6 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QMessageBox
+from ui.theming import polish_themed_dialog
 
 class MessageManager:
     def __init__(self, host):
@@ -14,7 +15,7 @@ class MessageManager:
         msg_box.setWindowTitle(title)
         msg_box.setText(text)
 
-        self.host.app_ref.theme_manager.apply_theme_to_dialog(msg_box)
+        polish_themed_dialog(self.host.app_ref.theme_manager, msg_box)
 
         self.host._active_message_boxes.append(msg_box)
         msg_box.finished.connect(

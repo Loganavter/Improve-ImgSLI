@@ -26,6 +26,7 @@ from core.state_management.actions import (
 )
 from shared_toolkit.ui.managers.font_manager import FontManager
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from ui.theming import refresh_application_styles
 
 from .models import SettingsDialogData
 
@@ -116,6 +117,9 @@ class SettingsApplicationService(QObject):
             if ui is not None:
                 ui.workspace_tabs.setVisible(data.show_workspace_tabs)
                 ui.btn_new_session.setVisible(data.show_workspace_tabs)
+                container = getattr(ui, "workspace_tabs_bar", None)
+                if container is not None:
+                    container.setVisible(data.show_workspace_tabs)
 
         return render_update_needed
 
@@ -153,7 +157,7 @@ class SettingsApplicationService(QObject):
         font_manager.apply_from_state(self.store)
         app = QApplication.instance()
         if app is not None:
-            app.setStyleSheet(app.styleSheet())
+            refresh_application_styles(app)
 
         self._save_setting("ui_font_mode", font_mode_normalized)
         self._save_setting("ui_font_family", data.ui_font_family or "")

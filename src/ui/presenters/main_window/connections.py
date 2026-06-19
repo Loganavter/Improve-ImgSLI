@@ -18,6 +18,7 @@ from ui.presenters.main_window.workspace import (
     on_video_session_create_image_compare_requested,
     on_workspace_session_triggered,
     on_workspace_tab_changed,
+    on_workspace_tab_close_requested,
 )
 from ui.widgets.gl_canvas.contracts import BaseCanvasProtocol
 from ui.widgets.gl_canvas.helpers import get_canvas
@@ -96,8 +97,20 @@ def connect_signals(presenter):
     presenter.ui.workspace_tabs.currentChanged.connect(
         lambda index: on_workspace_tab_changed(presenter, index)
     )
-    presenter.ui.btn_new_session.triggered.connect(
+    presenter.ui.workspace_tabs.tabCloseRequested.connect(
+        lambda index: on_workspace_tab_close_requested(presenter, index)
+    )
+    import logging as _logging
+    _ws_logger = _logging.getLogger("ImproveImgSLI")
+    _ws_logger.debug(
+        "connect_signals: wiring btn_new_session.menuTriggered btn=%s",
+        presenter.ui.btn_new_session,
+    )
+    presenter.ui.btn_new_session.menuTriggered.connect(
         lambda action: on_workspace_session_triggered(presenter, action)
+    )
+    presenter.ui.btn_new_session.pressed.connect(
+        lambda: _ws_logger.debug("btn_new_session.pressed emitted")
     )
     presenter.ui.video_session_widget.advance_timeline_requested.connect(
         lambda: on_video_session_advance_requested(presenter)

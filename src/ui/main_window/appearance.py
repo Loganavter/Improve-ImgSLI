@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 
 from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtOpenGLWidgets import QOpenGLWidget
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from shared_toolkit.ui.managers.font_manager import FontManager
+from ui.theming import resolve_theme_color
 from ui.widgets.gl_canvas.helpers import get_canvas
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -14,23 +16,39 @@ class MainWindowAppearance:
     def __init__(self, window):
         self.window = window
 
+    @staticmethod
+    def _apply_widget_background(widget: QWidget | None, bg) -> None:
+        if widget is None:
+            return
+        pal = widget.palette()
+        pal.setColor(widget.backgroundRole(), bg)
+        pal.setColor(widget.foregroundRole(), bg)
+        pal.setColor(QPalette.ColorRole.Window, bg)
+        pal.setColor(QPalette.ColorRole.Base, bg)
+        widget.setPalette(pal)
+        widget.setAutoFillBackground(True)
+        if isinstance(widget, QOpenGLWidget):
+            widget._theme_background_color = QColor(bg)
+        widget.update()
+
     def update_image_label_background(self) -> None:
         window = self.window
-        bg = window.theme_manager.get_color("label.image.background")
-        bg_hex = bg.name(QColor.NameFormat.HexArgb)
-        window._startup_placeholder.setStyleSheet(f"background-color: {bg_hex};")
-        window._startup_cover.setStyleSheet(f"background-color: {bg_hex};")
+        bg = resolve_theme_color(window.theme_manager, "label.image.background")
+        self._apply_widget_background(getattr(window, "_startup_placeholder", None), bg)
+        self._apply_widget_background(getattr(window, "_startup_cover", None), bg)
         image_label = get_canvas(window.ui) if window.ui is not None else None
         if image_label is None:
             return
-        pal = image_label.palette()
-        pal.setColor(image_label.backgroundRole(), bg)
-        pal.setColor(image_label.foregroundRole(), bg)
-        pal.setColor(QPalette.ColorRole.Window, bg)
-        pal.setColor(QPalette.ColorRole.Base, bg)
-        image_label.setPalette(pal)
-        image_label.setStyleSheet(f"background-color: {bg_hex};")
-        window.ui.image_startup_placeholder.set_background_color(bg)
+        self._apply_widget_background(getattr(window.ui, "image_container_widget", None), bg)
+        self._apply_widget_background(image_label, bg)
+        placeholder = getattr(window.ui, "image_startup_placeholder", None)
+        if placeholder is not None:
+            placeholder.set_background_color(bg)
+        for gl_widget in window.findChildren(QOpenGLWidget):
+            if gl_widget is image_label:
+                continue
+            gl_widget._theme_background_color = QColor(bg)
+            gl_widget.update()
 
     def on_theme_changed(self) -> None:
         window = self.window

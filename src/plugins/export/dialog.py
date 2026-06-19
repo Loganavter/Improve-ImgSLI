@@ -29,6 +29,7 @@ from sli_ui_toolkit.widgets import (
     Slider,
 )
 from ui.icon_manager import AppIcon
+from ui.theming import polish_themed_dialog
 from ui.widgets.form_controls import DialogActionBar, OutputPathSection
 from utils.resource_loader import resource_path
 
@@ -334,7 +335,7 @@ class ExportDialog(QDialog):
 
     def _apply_styles(self):
 
-        self.theme_manager.apply_theme_to_dialog(self)
+        polish_themed_dialog(self.theme_manager, self)
 
     def _populate_from_state(self):
         self.edit_dir.setText(self.dialog_state.output_dir)
@@ -377,7 +378,7 @@ class ExportDialog(QDialog):
         )
         file_dialog.setDirectory(start_dir)
 
-        self.theme_manager.apply_theme_to_dialog(file_dialog)
+        polish_themed_dialog(self.theme_manager, file_dialog)
 
         if file_dialog.exec():
             chosen = (

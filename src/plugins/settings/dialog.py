@@ -112,7 +112,7 @@ class SettingsDialog(QDialog):
         self._apply_styles()
         self.theme_manager.theme_changed.connect(self._apply_styles)
         self.sidebar.setCurrentRow(0)
-        defer_geometry(self)
+        calculate_and_apply_geometry(self)
 
     def changeEvent(self, event: QEvent):
         if event.type() == QEvent.Type.ApplicationFontChange:

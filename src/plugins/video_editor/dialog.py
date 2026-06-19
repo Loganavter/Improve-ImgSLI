@@ -60,7 +60,7 @@ class VideoEditorDialog(QDialog):
 
         self.setWindowTitle(tr("video.video_editor_exporter", self.current_language))
         self.resize(1200, 850)
-        self.setMinimumSize(1100, 820)
+        self.setMinimumSize(820, 600)
 
         self.setWindowFlags(
             Qt.WindowType.Window
@@ -128,8 +128,8 @@ class VideoEditorDialog(QDialog):
         self.persistence.load_export_settings()
         self.persistence.connect_export_settings_persistence()
 
+        self._update_settings_panel_width()
         QTimer.singleShot(0, self.presenter._initialize_output_fields)
-        QTimer.singleShot(10, self._update_settings_panel_width)
         QTimer.singleShot(1200, self._emit_ready_to_show)
 
     def _get_first_snapshot(self):

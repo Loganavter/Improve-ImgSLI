@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 
@@ -17,6 +17,7 @@ class StartupPlaceholder(QWidget):
         self._target_widget = target_widget
 
         self.setObjectName("ImageStartupPlaceholder")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         layout = QVBoxLayout(self)
@@ -43,7 +44,11 @@ class StartupPlaceholder(QWidget):
         self.setGeometry(self._target_widget.geometry())
         self.raise_()
 
-    def set_background_color(self, color: QColor):
-        self.setStyleSheet(
-            f"background-color: {color.name(color.NameFormat.HexArgb)};"
-        )
+    def set_background_color(self, color):
+        bg = QColor(color)
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window, bg)
+        pal.setColor(QPalette.ColorRole.Base, bg)
+        self.setPalette(pal)
+        self.setAutoFillBackground(True)
+        self.update()

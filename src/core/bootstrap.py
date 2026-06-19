@@ -6,6 +6,7 @@ from PyQt6.QtCore import QThreadPool
 from PyQt6.QtWidgets import QApplication
 
 from core.plugin_coordinator import PluginCoordinator
+from core.runtime_flags import RuntimeFlags
 from core.session_manager import SessionManager
 from core.plugin_system import EventBus, PluginDefinitionRegistry, PluginRegistry
 from core.plugin_system.ui_integration import PluginUIRegistry
@@ -22,8 +23,13 @@ from ui.main_window.composer import MainWindowComposer
 logger = logging.getLogger("ImproveImgSLI")
 
 class ApplicationContext:
-    def __init__(self, debug_mode: bool = False):
-        self.debug_mode = debug_mode
+    def __init__(
+        self,
+        debug_mode: bool = False,
+        runtime_flags: RuntimeFlags | None = None,
+    ):
+        self.runtime_flags = runtime_flags or RuntimeFlags(debug=debug_mode)
+        self.debug_mode = self.runtime_flags.debug
         self.store: Optional[Store] = None
         self.bridge = None
         self.settings_manager: Optional[SettingsManager] = None

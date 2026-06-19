@@ -361,17 +361,3 @@ QListView[fluent-combobox-popup-view="true"]::item:hover {
     background-color: @list_item.background.hover;
 }
 
-#btnStopVideoExport {
-    border: 1px solid @dialog.border;
-    border-radius: 8px;
-    background-color: transparent;
-    padding: 0px;
-}
-
-#btnStopVideoExport:hover {
-    background-color: rgba(0, 120, 212, 0.16);
-}
-
-#btnStopVideoExport:pressed {
-    background-color: rgba(0, 120, 212, 0.22);
-}

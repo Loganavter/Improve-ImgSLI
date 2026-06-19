@@ -27,6 +27,7 @@ sys.path.insert(0, application_path)
 
 from PyQt6.QtCore import QLoggingCategory, QThreadPool, Qt
 from PyQt6.QtWidgets import QApplication
+from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
 from sli_ui_toolkit.widgets import install_application_tooltips
 from ui.main_window import MainWindow
@@ -79,6 +80,11 @@ def main():
         action="store_true",
         help="Temporarily enable debug logging for this session.",
     )
+    parser.add_argument(
+        "--ui-inspector",
+        action="store_true",
+        help="Enable the developer UI inspector for this session.",
+    )
 
     args = parser.parse_args()
     _configure_qt_logging()
@@ -113,7 +119,11 @@ def main():
     from utils.resource_loader import resource_path
     app.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
 
-    window = MainWindow(debug_mode=args.debug)
+    runtime_flags = RuntimeFlags(
+        debug=bool(args.debug or args.ui_inspector),
+        ui_inspector=bool(args.ui_inspector),
+    )
+    window = MainWindow(runtime_flags=runtime_flags)
     window.start()
 
     def on_quit():

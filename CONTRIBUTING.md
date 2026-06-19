@@ -37,6 +37,7 @@ Common actions:
 - Enable/disable persistent debug logging: `./launcher.sh --enable-logging` / `--disable-logging`
 - Debug logging for one session: `./launcher.sh run --debug`
 - Force a theme: `./launcher.sh run --theme dark`
+- Inspect UI colors and QSS candidates: `./launcher.sh run --ui-inspector`
 
 Tip: Prefer updating the in-app Help when you add features; the README links to those docs.
 
@@ -78,6 +79,10 @@ Useful entry points:
 - Shared components: consider using the external `sli-ui-toolkit` package and `src/shared_toolkit` for reusable UI and utilities. Toolkit changes belong in the `Loganavter/sli-ui-toolkit` repository, not in this app tree.
 
 More background: see `docs/dev/ARCHITECTURE.md`, `docs/dev/CONTRACTS.md`, `docs/dev/TAB_CONTRACT.md`, `docs/dev/UI_TOOLKIT_LIBRARY.md`, `docs/dev/TESTING.md`, `docs/dev/TRACING.md`, and the top-level `AGENTS.md` / `VISION.md`.
+
+Developer UI inspection: `docs/dev/UI_INSPECTOR.md` describes the
+`--ui-inspector` launcher flag and the Wayland-safe in-app overlay used for
+widget color, palette, theme-token, and QSS candidate diagnostics.
 
 ## Coding guidelines
 

@@ -77,6 +77,23 @@ class WorkspaceStoreMixin:
                 return True
         return False
 
+    def close_workspace_session(self, session_id: str) -> bool:
+        sessions = self.workspace.sessions
+        idx = next((i for i, s in enumerate(sessions) if s.id == session_id), None)
+        if idx is None or len(sessions) <= 1:
+            return False
+        was_active = self.workspace.active_session_id == session_id
+        sessions.pop(idx)
+        if was_active:
+            new_idx = min(idx, len(sessions) - 1)
+            self._activate_workspace_session(sessions[new_idx])
+            self.emit_state_change("workspace")
+            self.emit_state_change("document")
+            self.emit_state_change("viewport")
+        else:
+            self.emit_state_change("workspace")
+        return True
+
     def rename_workspace_session(self, session_id: str, title: str) -> bool:
         normalized = title.strip()
         if not normalized:

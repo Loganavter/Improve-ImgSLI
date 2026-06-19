@@ -52,7 +52,7 @@ Toolkit widgets should use standard Qt geometry APIs and Qt dynamic properties f
 
 ```python
 button.setFixedSize(44, 44)
-button.setProperty("variant", "primary")
+button.setProperty("variant", "surface")
 button.setProperty("accentColor", QColor("#00BEEF"))
 ```
 
@@ -61,6 +61,11 @@ Supported style properties are intentionally generic: `variant`, `tone`, `densit
 For custom-painted widgets, `read_widget_style()` is the bridge between Qt properties and painter state.
 
 > **Note:** Detailed specifications for each property and a list of supported values for specific widgets live in the external `sli-ui-toolkit` documentation.
+
+Workspace-style tab rows use the toolkit's public `AdaptiveTabStrip`.
+Improve-ImgSLI supplies icons and session lifecycle callbacks; tab painting,
+adaptive close-button visibility, stable tab sizing, and add-button placement
+remain toolkit-owned.
 
 ## Boundary Rules
 
@@ -97,7 +102,7 @@ from PyQt6.QtGui import QColor
 from sli_ui_toolkit.widgets import Button
 
 button = Button("magnifier", toggle=True)
-button.setProperty("variant", "primary")
+button.setProperty("variant", "surface")
 button.setProperty("accentColor", QColor("#00BEEF"))
 button.setUnderlineColor(QColor("#00BEEF"))
 ```

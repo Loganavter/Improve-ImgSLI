@@ -42,8 +42,21 @@ class MultiCompareTab(TabContract):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._widget = MultiCompareWidget(page)
-        self._controller = MultiCompareController(self._widget, store=context.store)
+        self._widget = MultiCompareWidget(
+            page,
+            add_images_text=context.tr("add_images", "Add images"),
+            save_result_text=context.tr("save_result", "Save result"),
+            translate=context.tr,
+        )
+        self._controller = MultiCompareController(
+            self._widget,
+            store=context.store,
+            translate=context.tr,
+            dialog_parent=context.main_window or page,
+            open_export_dialog=lambda **kwargs: context.call_service(
+                "open_image_export_dialog", **kwargs
+            ),
+        )
         layout.addWidget(self._widget)
 
         return page
