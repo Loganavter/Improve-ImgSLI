@@ -21,6 +21,7 @@ pub mod action;
 pub mod bridge;
 pub mod domain;
 pub mod hit_test;
+pub mod i18n;
 pub mod image_cache;
 pub mod plan;
 pub mod plan_keys;

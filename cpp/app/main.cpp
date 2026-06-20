@@ -28,6 +28,7 @@
 
 #include "canvas_widget.h"
 #include "feature_registry.h"
+#include "i18n_helper.h"
 #include "imgsli_core_bridge/bridge.h"
 #include "settings_application_service.h"
 #include "settings_dialog.h"
@@ -103,6 +104,12 @@ struct ComparisonInput {
 int main(int argc, char **argv) {
   QApplication app(argc, argv);
   sli::toolkit::Theme::apply(app, sli::toolkit::Theme::Mode::Dark);
+
+  // Wire the Rust-backed translation store to the Python project's existing
+  // JSON dictionaries. C++ widgets call imgsli::app::tr("…").
+  imgsli::app::initI18n(
+      QStringLiteral(IMGSLI_I18N_ROOT));
+  imgsli::app::setLanguage(QStringLiteral("en"));
 
   QMainWindow window;
   window.setWindowTitle(QStringLiteral("ImgSLI — C++/Rust Phase 3"));

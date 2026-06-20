@@ -108,6 +108,10 @@ mod ffi {
         fn settings_dialog_normalize_json(input: &str) -> Result<String>;
         fn settings_dialog_diff_json(prev: &str, next: &str) -> Result<String>;
 
+        fn i18n_init(root: &str);
+        fn i18n_set_language(lang: &str);
+        fn i18n_translate(key: &str) -> String;
+
         fn state_default_json() -> String;
         fn state_dispatch_action(
             state_json: &CxxString,
@@ -174,6 +178,18 @@ fn settings_dialog_normalize_json(input: &str) -> Result<String, serde_json::Err
 
 fn settings_dialog_diff_json(prev: &str, next: &str) -> Result<String, serde_json::Error> {
     crate::settings_dialog::diff_json(prev, next)
+}
+
+fn i18n_init(root: &str) {
+    crate::i18n::init(root);
+}
+
+fn i18n_set_language(lang: &str) {
+    crate::i18n::set_language(lang);
+}
+
+fn i18n_translate(key: &str) -> String {
+    crate::i18n::translate(key)
 }
 
 fn state_default_json() -> String {

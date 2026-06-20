@@ -6,6 +6,7 @@ add_executable(imgsli_app
     feature_passes.h
     feature_registry.cpp
     feature_registry.h
+    i18n_helper.h
     main.cpp
     render_pass.h
     render_pass_registry.cpp
@@ -16,6 +17,10 @@ add_executable(imgsli_app
     settings_dialog.h
     store.cpp
     store.h
+)
+
+target_compile_definitions(imgsli_app PRIVATE
+    IMGSLI_I18N_ROOT="${CMAKE_SOURCE_DIR}/../src/resources/i18n"
 )
 
 qt_add_shaders(imgsli_app imgsli_canvas_shaders
