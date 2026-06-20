@@ -15,6 +15,7 @@
 #include <exception>
 #include <string>
 
+#include "i18n_helper.h"
 #include "imgsli_core_bridge/bridge.h"
 #include "sli/toolkit/button.h"
 #include "sli/toolkit/check_box.h"
@@ -34,7 +35,8 @@ QString rs_to_q(const rust::String& s) {
 }  // namespace
 
 SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
-  setWindowTitle(tr("Settings"));
+  using imgsli::app::tr;
+  setWindowTitle(tr(QStringLiteral("settings.title")));
   setMinimumSize(640, 480);
 
   auto* root = new QVBoxLayout(this);
@@ -58,11 +60,12 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
 
   auto* footer = new QHBoxLayout();
   footer->addStretch(1);
-  cancel_ = new sli::toolkit::Button(tr("Cancel"),
-                                     sli::toolkit::Button::Variant::Surface,
-                                     this);
-  ok_ = new sli::toolkit::Button(tr("OK"),
-                                 sli::toolkit::Button::Variant::Default, this);
+  cancel_ = new sli::toolkit::Button(
+      imgsli::app::tr(QStringLiteral("shared.cancel")),
+      sli::toolkit::Button::Variant::Surface, this);
+  ok_ = new sli::toolkit::Button(
+      imgsli::app::tr(QStringLiteral("shared.ok")),
+      sli::toolkit::Button::Variant::Default, this);
   footer->addWidget(cancel_);
   footer->addWidget(ok_);
   root->addLayout(footer);
@@ -74,17 +77,20 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
 }
 
 void SettingsDialog::buildSidebar() {
-  sidebar_->addItem(tr("General"));
-  sidebar_->addItem(tr("Interface"));
-  sidebar_->addItem(tr("Performance"));
-  sidebar_->addItem(tr("Analysis"));
+  using imgsli::app::tr;
+  sidebar_->addItem(tr(QStringLiteral("settings.page_general")));
+  sidebar_->addItem(tr(QStringLiteral("settings.page_interface")));
+  sidebar_->addItem(tr(QStringLiteral("settings.page_performance")));
+  sidebar_->addItem(tr(QStringLiteral("settings.page_analysis")));
 }
 
 void SettingsDialog::buildGeneralPage() {
   auto* page = new QWidget(pages_);
   auto* layout = new QVBoxLayout(page);
 
-  auto* lang_group = new sli::toolkit::GroupBox(tr("Language"), page);
+  using imgsli::app::tr;
+  auto* lang_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("label.language")), page);
   auto* lang_row = new QHBoxLayout();
   lang_row->setContentsMargins(5, 5, 5, 5);
   lang_en_ = new sli::toolkit::RadioButton(QStringLiteral("English"));
@@ -100,26 +106,32 @@ void SettingsDialog::buildGeneralPage() {
   lang_group->addLayout(lang_row);
   layout->addWidget(lang_group);
 
-  auto* sys_group = new sli::toolkit::GroupBox(tr("Appearance"), page);
+  auto* sys_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.appearance")), page);
   auto* theme_row = new QHBoxLayout();
   theme_row->setContentsMargins(5, 5, 5, 5);
-  theme_row->addWidget(new QLabel(tr("Theme:")));
+  theme_row->addWidget(
+      new QLabel(tr(QStringLiteral("label.theme")) + QStringLiteral(":")));
   theme_ = new sli::toolkit::ComboBox();
   theme_->setFixedWidth(140);
-  theme_->addItem(tr("Auto"), QStringLiteral("auto"));
-  theme_->addItem(tr("Light"), QStringLiteral("light"));
-  theme_->addItem(tr("Dark"), QStringLiteral("dark"));
+  theme_->addItem(tr(QStringLiteral("settings.auto")),
+                  QStringLiteral("auto"));
+  theme_->addItem(tr(QStringLiteral("settings.light")),
+                  QStringLiteral("light"));
+  theme_->addItem(tr(QStringLiteral("settings.dark")),
+                  QStringLiteral("dark"));
   theme_row->addWidget(theme_);
   theme_row->addStretch();
   sys_group->addLayout(theme_row);
 
-  system_notifications_ =
-      new sli::toolkit::CheckBox(tr("Enable system notifications"));
+  system_notifications_ = new sli::toolkit::CheckBox(
+      tr(QStringLiteral("settings.system_notifications")));
   sys_group->addWidget(system_notifications_);
-  debug_logging_ = new sli::toolkit::CheckBox(tr("Enable debug logging"));
+  debug_logging_ = new sli::toolkit::CheckBox(
+      tr(QStringLiteral("settings.enable_debug_logging")));
   sys_group->addWidget(debug_logging_);
-  show_workspace_tabs_ =
-      new sli::toolkit::CheckBox(tr("Show workspace tabs"));
+  show_workspace_tabs_ = new sli::toolkit::CheckBox(
+      tr(QStringLiteral("settings.show_workspace_tabs")));
   sys_group->addWidget(show_workspace_tabs_);
   layout->addWidget(sys_group);
 
@@ -131,12 +143,17 @@ void SettingsDialog::buildInterfacePage() {
   auto* page = new QWidget(pages_);
   auto* layout = new QVBoxLayout(page);
 
-  auto* mode_group = new sli::toolkit::GroupBox(tr("UI mode"), page);
+  using imgsli::app::tr;
+  auto* mode_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.ui_mode")), page);
   auto* mode_row = new QHBoxLayout();
   mode_row->setContentsMargins(5, 5, 5, 5);
-  ui_beginner_ = new sli::toolkit::RadioButton(tr("Beginner"));
-  ui_advanced_ = new sli::toolkit::RadioButton(tr("Advanced"));
-  ui_expert_ = new sli::toolkit::RadioButton(tr("Expert"));
+  ui_beginner_ = new sli::toolkit::RadioButton(
+      tr(QStringLiteral("settings.ui_mode_beginner")));
+  ui_advanced_ = new sli::toolkit::RadioButton(
+      tr(QStringLiteral("settings.ui_mode_advanced")));
+  ui_expert_ = new sli::toolkit::RadioButton(
+      tr(QStringLiteral("settings.ui_mode_expert")));
   ui_mode_group_ = new QButtonGroup(this);
   for (auto* rb : {ui_beginner_, ui_advanced_, ui_expert_}) {
     ui_mode_group_->addButton(rb);
@@ -146,12 +163,16 @@ void SettingsDialog::buildInterfacePage() {
   mode_group->addLayout(mode_row);
   layout->addWidget(mode_group);
 
-  auto* font_group = new sli::toolkit::GroupBox(tr("UI font"), page);
+  auto* font_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.ui_font")), page);
   auto* font_radio_col = new QVBoxLayout();
   font_radio_col->setContentsMargins(5, 5, 5, 5);
-  font_builtin_ = new sli::toolkit::RadioButton(tr("Built-in"));
-  font_system_default_ = new sli::toolkit::RadioButton(tr("System default"));
-  font_system_custom_ = new sli::toolkit::RadioButton(tr("Custom"));
+  font_builtin_ = new sli::toolkit::RadioButton(
+      tr(QStringLiteral("settings.builtin_font")));
+  font_system_default_ = new sli::toolkit::RadioButton(
+      tr(QStringLiteral("settings.system_default")));
+  font_system_custom_ = new sli::toolkit::RadioButton(
+      tr(QStringLiteral("settings.custom")));
   font_mode_group_ = new QButtonGroup(this);
   for (auto* rb : {font_builtin_, font_system_default_, font_system_custom_}) {
     font_mode_group_->addButton(rb);
@@ -177,8 +198,8 @@ void SettingsDialog::buildInterfacePage() {
             &SettingsDialog::syncFontCustomVisibility);
   }
 
-  auto* len_group =
-      new sli::toolkit::GroupBox(tr("Maximum filename length"), page);
+  auto* len_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.maximum_name_length_ui")), page);
   auto* len_row = new QHBoxLayout();
   len_row->setContentsMargins(12, 5, 12, 5);
   // Range mirrors AppConstants.MIN_NAME_LENGTH_LIMIT / MAX_NAME_LENGTH_LIMIT
@@ -200,24 +221,26 @@ void SettingsDialog::buildPerformancePage() {
   auto* page = new QWidget(pages_);
   auto* layout = new QVBoxLayout(page);
 
-  auto* res_group =
-      new sli::toolkit::GroupBox(tr("Display cache resolution"), page);
+  using imgsli::app::tr;
+  auto* res_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.display_cache_resolution")), page);
   auto* res_row = new QHBoxLayout();
   res_row->setContentsMargins(5, 5, 5, 5);
   resolution_ = new sli::toolkit::ComboBox();
   resolution_->setMinimumWidth(180);
   // Mirrors AppConstants.DISPLAY_RESOLUTION_OPTIONS.
-  resolution_->addItem(tr("Original"), 0);
-  resolution_->addItem(tr("8K (4320p)"), 4320);
-  resolution_->addItem(tr("4K (2160p)"), 2160);
-  resolution_->addItem(tr("2K (1440p)"), 1440);
-  resolution_->addItem(tr("Full HD (1080p)"), 1080);
+  resolution_->addItem(tr(QStringLiteral("settings.original")), 0);
+  resolution_->addItem(tr(QStringLiteral("settings.resolution_8k")), 4320);
+  resolution_->addItem(tr(QStringLiteral("settings.resolution_4k")), 2160);
+  resolution_->addItem(tr(QStringLiteral("settings.resolution_2k")), 1440);
+  resolution_->addItem(tr(QStringLiteral("settings.resolution_full_hd")),
+                       1080);
   res_row->addWidget(resolution_, 1);
   res_group->addLayout(res_row);
   layout->addWidget(res_group);
 
-  auto* opt_group =
-      new sli::toolkit::GroupBox(tr("Interactive optimization"), page);
+  auto* opt_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.interactive_optimization")), page);
 
   const auto populate_interp = [](sli::toolkit::ComboBox* combo) {
     combo->addItem(QObject::tr("Nearest neighbor"), QStringLiteral("NEAREST"));
@@ -230,7 +253,9 @@ void SettingsDialog::buildPerformancePage() {
 
   auto* zoom_row = new QHBoxLayout();
   zoom_row->setContentsMargins(0, 5, 0, 5);
-  zoom_row->addWidget(new QLabel(tr("Zoom interpolation:")));
+  zoom_row->addWidget(new QLabel(
+      tr(QStringLiteral("settings.zoom_interpolation")) +
+      QStringLiteral(":")));
   zoom_interp_ = new sli::toolkit::ComboBox();
   zoom_interp_->setMinimumWidth(140);
   // Zoom combo only exposes the two safe methods (matches Python).
@@ -241,8 +266,8 @@ void SettingsDialog::buildPerformancePage() {
 
   auto* mag_row = new QHBoxLayout();
   mag_row->setContentsMargins(0, 5, 0, 5);
-  optimize_movement_ =
-      new sli::toolkit::CheckBox(tr("Optimize magnifier movement"));
+  optimize_movement_ = new sli::toolkit::CheckBox(
+      tr(QStringLiteral("settings.optimize_magnifier_movement")));
   mag_interp_ = new sli::toolkit::ComboBox();
   mag_interp_->setMinimumWidth(140);
   populate_interp(mag_interp_);
@@ -254,8 +279,8 @@ void SettingsDialog::buildPerformancePage() {
 
   auto* laser_row = new QHBoxLayout();
   laser_row->setContentsMargins(0, 5, 0, 5);
-  laser_smoothing_ =
-      new sli::toolkit::CheckBox(tr("Optimize laser smoothing"));
+  laser_smoothing_ = new sli::toolkit::CheckBox(
+      tr(QStringLiteral("settings.optimize_laser_smoothing")));
   laser_interp_ = new sli::toolkit::ComboBox();
   laser_interp_->setMinimumWidth(140);
   populate_interp(laser_interp_);
@@ -266,19 +291,20 @@ void SettingsDialog::buildPerformancePage() {
           &QWidget::setEnabled);
 
   mag_intersection_highlight_ = new sli::toolkit::CheckBox(
-      tr("Highlight magnifier intersections"));
+      tr(QStringLiteral("settings.magnifier_intersection_highlight")));
   opt_group->addWidget(mag_intersection_highlight_);
 
   mag_auto_color_ = new sli::toolkit::CheckBox(
-      tr("Auto-color new magnifier instances"));
+      tr(QStringLiteral("settings.magnifier_auto_color_new_instances")));
   opt_group->addWidget(mag_auto_color_);
   layout->addWidget(opt_group);
 
-  auto* video_group =
-      new sli::toolkit::GroupBox(tr("Video recording"), page);
+  auto* video_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.video_recording")), page);
   auto* video_row = new QHBoxLayout();
   video_row->setContentsMargins(5, 5, 5, 5);
-  video_row->addWidget(new QLabel(tr("Recording FPS:")));
+  video_row->addWidget(new QLabel(
+      tr(QStringLiteral("settings.recording_fps")) + QStringLiteral(":")));
   video_fps_ = new sli::toolkit::SpinBox();
   video_fps_->setRange(10, 144);
   video_fps_->setFixedWidth(100);
@@ -288,14 +314,17 @@ void SettingsDialog::buildPerformancePage() {
   video_group->addLayout(video_row);
   layout->addWidget(video_group);
 
-  auto* backend_group =
-      new sli::toolkit::GroupBox(tr("Render backend"), page);
+  auto* backend_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.render_backend")), page);
   auto* backend_row = new QHBoxLayout();
   backend_row->setContentsMargins(5, 5, 5, 5);
-  backend_row->addWidget(new QLabel(tr("Backend:")));
+  backend_row->addWidget(new QLabel(
+      tr(QStringLiteral("settings.render_backend_label")) +
+      QStringLiteral(":")));
   rhi_backend_ = new sli::toolkit::ComboBox();
   rhi_backend_->setMinimumWidth(180);
-  rhi_backend_->addItem(tr("Default"), QStringLiteral("default"));
+  rhi_backend_->addItem(tr(QStringLiteral("settings.render_backend_default")),
+                        QStringLiteral("default"));
   rhi_backend_->addItem(QStringLiteral("OpenGL"), QStringLiteral("opengl"));
   rhi_backend_->addItem(QStringLiteral("Vulkan"), QStringLiteral("vulkan"));
 #if defined(Q_OS_WIN)
@@ -310,7 +339,8 @@ void SettingsDialog::buildPerformancePage() {
   backend_row->addWidget(rhi_backend_, 1);
   backend_group->addLayout(backend_row);
 
-  auto* hint = new QLabel(tr("Restart required after changing the backend."));
+  auto* hint = new QLabel(
+      tr(QStringLiteral("settings.render_backend_restart_hint")));
   hint->setWordWrap(true);
   backend_group->addWidget(hint);
   layout->addWidget(backend_group);
@@ -323,16 +353,21 @@ void SettingsDialog::buildAnalysisPage() {
   auto* page = new QWidget(pages_);
   auto* layout = new QVBoxLayout(page);
 
-  auto* auto_group = new sli::toolkit::GroupBox(tr("Automatic"), page);
-  auto_crop_ =
-      new sli::toolkit::CheckBox(tr("Auto-crop black borders on load"));
+  using imgsli::app::tr;
+  auto* auto_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("settings.auto")), page);
+  auto_crop_ = new sli::toolkit::CheckBox(
+      tr(QStringLiteral("settings.autocrop_black_borders_on_load")));
   auto_group->addWidget(auto_crop_);
   layout->addWidget(auto_group);
 
-  auto* metrics_group = new sli::toolkit::GroupBox(tr("Metrics"), page);
-  auto_psnr_ = new sli::toolkit::CheckBox(tr("Auto-calculate PSNR"));
+  auto* metrics_group = new sli::toolkit::GroupBox(
+      tr(QStringLiteral("label.details")), page);
+  auto_psnr_ = new sli::toolkit::CheckBox(
+      tr(QStringLiteral("settings.autocalculate_psnr")));
   metrics_group->addWidget(auto_psnr_);
-  auto_ssim_ = new sli::toolkit::CheckBox(tr("Auto-calculate SSIM"));
+  auto_ssim_ = new sli::toolkit::CheckBox(
+      tr(QStringLiteral("settings.autocalculate_ssim")));
   metrics_group->addWidget(auto_ssim_);
   layout->addWidget(metrics_group);
 
