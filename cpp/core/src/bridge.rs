@@ -106,6 +106,7 @@ mod ffi {
 
         fn settings_dialog_default_json() -> String;
         fn settings_dialog_normalize_json(input: &str) -> Result<String>;
+        fn settings_dialog_diff_json(prev: &str, next: &str) -> Result<String>;
 
         fn state_default_json() -> String;
         fn state_dispatch_action(
@@ -169,6 +170,10 @@ fn settings_dialog_normalize_json(input: &str) -> Result<String, serde_json::Err
     let mut d = crate::settings_dialog::SettingsDialogData::from_json(input)?;
     d.normalize();
     Ok(d.to_json_pretty())
+}
+
+fn settings_dialog_diff_json(prev: &str, next: &str) -> Result<String, serde_json::Error> {
+    crate::settings_dialog::diff_json(prev, next)
 }
 
 fn state_default_json() -> String {

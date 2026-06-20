@@ -24,9 +24,12 @@
 #include <memory>
 #include <string>
 
+#include <QSettings>
+
 #include "canvas_widget.h"
 #include "feature_registry.h"
 #include "imgsli_core_bridge/bridge.h"
+#include "settings_application_service.h"
 #include "settings_dialog.h"
 #include "sli/toolkit/button.h"
 #include "sli/toolkit/combo_box.h"
@@ -410,17 +413,27 @@ int main(int argc, char **argv) {
                          QStringLiteral("dispatch failed: %1").arg(message));
                    });
 
+  auto *qsettings = new QSettings(QStringLiteral("ImgSLI"),
+                                  QStringLiteral("ImgSLI"), &window);
+  auto *settingsService = new imgsli::app::SettingsApplicationService(
+      store, qsettings, &window);
   auto *settingsButton =
       new sli::toolkit::Button(QStringLiteral("Settings…"),
                                sli::toolkit::Button::Variant::Surface, central);
   layout->addWidget(settingsButton);
   QObject::connect(settingsButton, &sli::toolkit::Button::clicked, &window,
-                   [&window, state]() {
+                   [&window, state, settingsService]() {
                      imgsli::app::SettingsDialog dialog(&window);
+                     const QString prevJson = dialog.normalizedJson();
                      if (dialog.exec() == QDialog::Accepted) {
+                       const QString nextJson = dialog.normalizedJson();
+                       const int changes =
+                           settingsService->apply(prevJson, nextJson);
                        state->setPlainText(
-                           QStringLiteral("settings dialog accepted\n\n%1")
-                               .arg(dialog.normalizedJson()));
+                           QStringLiteral(
+                               "settings dialog accepted (%1 changes)\n\n%2")
+                               .arg(changes)
+                               .arg(nextJson));
                      }
                    });
 
