@@ -1,0 +1,14 @@
+[package]
+name = "imgsli_core_py"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+name = "imgsli_core_py"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+imgsli_core = { path = "../core" }
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"] }
+serde_json = { workspace = true }
