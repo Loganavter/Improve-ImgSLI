@@ -49,6 +49,8 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
 
   buildGeneralPage();
   buildInterfacePage();
+  buildPerformancePage();
+  buildAnalysisPage();
   buildSidebar();
   connect(sidebar_, &QListWidget::currentRowChanged, pages_,
           &QStackedWidget::setCurrentIndex);
@@ -74,6 +76,8 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
 void SettingsDialog::buildSidebar() {
   sidebar_->addItem(tr("General"));
   sidebar_->addItem(tr("Interface"));
+  sidebar_->addItem(tr("Performance"));
+  sidebar_->addItem(tr("Analysis"));
 }
 
 void SettingsDialog::buildGeneralPage() {
@@ -192,6 +196,150 @@ void SettingsDialog::buildInterfacePage() {
   pages_->addWidget(page);
 }
 
+void SettingsDialog::buildPerformancePage() {
+  auto* page = new QWidget(pages_);
+  auto* layout = new QVBoxLayout(page);
+
+  auto* res_group =
+      new sli::toolkit::GroupBox(tr("Display cache resolution"), page);
+  auto* res_row = new QHBoxLayout();
+  res_row->setContentsMargins(5, 5, 5, 5);
+  resolution_ = new sli::toolkit::ComboBox();
+  resolution_->setMinimumWidth(180);
+  // Mirrors AppConstants.DISPLAY_RESOLUTION_OPTIONS.
+  resolution_->addItem(tr("Original"), 0);
+  resolution_->addItem(tr("8K (4320p)"), 4320);
+  resolution_->addItem(tr("4K (2160p)"), 2160);
+  resolution_->addItem(tr("2K (1440p)"), 1440);
+  resolution_->addItem(tr("Full HD (1080p)"), 1080);
+  res_row->addWidget(resolution_, 1);
+  res_group->addLayout(res_row);
+  layout->addWidget(res_group);
+
+  auto* opt_group =
+      new sli::toolkit::GroupBox(tr("Interactive optimization"), page);
+
+  const auto populate_interp = [](sli::toolkit::ComboBox* combo) {
+    combo->addItem(QObject::tr("Nearest neighbor"), QStringLiteral("NEAREST"));
+    combo->addItem(QObject::tr("Bilinear"), QStringLiteral("BILINEAR"));
+    combo->addItem(QObject::tr("Bicubic"), QStringLiteral("BICUBIC"));
+    combo->addItem(QObject::tr("Lanczos"), QStringLiteral("LANCZOS"));
+    combo->addItem(QObject::tr("EWA Lanczos"),
+                   QStringLiteral("EWA_LANCZOS"));
+  };
+
+  auto* zoom_row = new QHBoxLayout();
+  zoom_row->setContentsMargins(0, 5, 0, 5);
+  zoom_row->addWidget(new QLabel(tr("Zoom interpolation:")));
+  zoom_interp_ = new sli::toolkit::ComboBox();
+  zoom_interp_->setMinimumWidth(140);
+  // Zoom combo only exposes the two safe methods (matches Python).
+  zoom_interp_->addItem(tr("Nearest neighbor"), QStringLiteral("NEAREST"));
+  zoom_interp_->addItem(tr("Bilinear"), QStringLiteral("BILINEAR"));
+  zoom_row->addWidget(zoom_interp_, 1);
+  opt_group->addLayout(zoom_row);
+
+  auto* mag_row = new QHBoxLayout();
+  mag_row->setContentsMargins(0, 5, 0, 5);
+  optimize_movement_ =
+      new sli::toolkit::CheckBox(tr("Optimize magnifier movement"));
+  mag_interp_ = new sli::toolkit::ComboBox();
+  mag_interp_->setMinimumWidth(140);
+  populate_interp(mag_interp_);
+  mag_row->addWidget(optimize_movement_);
+  mag_row->addWidget(mag_interp_, 1);
+  opt_group->addLayout(mag_row);
+  connect(optimize_movement_, &sli::toolkit::CheckBox::toggled, mag_interp_,
+          &QWidget::setEnabled);
+
+  auto* laser_row = new QHBoxLayout();
+  laser_row->setContentsMargins(0, 5, 0, 5);
+  laser_smoothing_ =
+      new sli::toolkit::CheckBox(tr("Optimize laser smoothing"));
+  laser_interp_ = new sli::toolkit::ComboBox();
+  laser_interp_->setMinimumWidth(140);
+  populate_interp(laser_interp_);
+  laser_row->addWidget(laser_smoothing_);
+  laser_row->addWidget(laser_interp_, 1);
+  opt_group->addLayout(laser_row);
+  connect(laser_smoothing_, &sli::toolkit::CheckBox::toggled, laser_interp_,
+          &QWidget::setEnabled);
+
+  mag_intersection_highlight_ = new sli::toolkit::CheckBox(
+      tr("Highlight magnifier intersections"));
+  opt_group->addWidget(mag_intersection_highlight_);
+
+  mag_auto_color_ = new sli::toolkit::CheckBox(
+      tr("Auto-color new magnifier instances"));
+  opt_group->addWidget(mag_auto_color_);
+  layout->addWidget(opt_group);
+
+  auto* video_group =
+      new sli::toolkit::GroupBox(tr("Video recording"), page);
+  auto* video_row = new QHBoxLayout();
+  video_row->setContentsMargins(5, 5, 5, 5);
+  video_row->addWidget(new QLabel(tr("Recording FPS:")));
+  video_fps_ = new sli::toolkit::SpinBox();
+  video_fps_->setRange(10, 144);
+  video_fps_->setFixedWidth(100);
+  video_fps_->setAlignment(Qt::AlignCenter);
+  video_row->addWidget(video_fps_);
+  video_row->addStretch();
+  video_group->addLayout(video_row);
+  layout->addWidget(video_group);
+
+  auto* backend_group =
+      new sli::toolkit::GroupBox(tr("Render backend"), page);
+  auto* backend_row = new QHBoxLayout();
+  backend_row->setContentsMargins(5, 5, 5, 5);
+  backend_row->addWidget(new QLabel(tr("Backend:")));
+  rhi_backend_ = new sli::toolkit::ComboBox();
+  rhi_backend_->setMinimumWidth(180);
+  rhi_backend_->addItem(tr("Default"), QStringLiteral("default"));
+  rhi_backend_->addItem(QStringLiteral("OpenGL"), QStringLiteral("opengl"));
+  rhi_backend_->addItem(QStringLiteral("Vulkan"), QStringLiteral("vulkan"));
+#if defined(Q_OS_WIN)
+  rhi_backend_->addItem(QStringLiteral("Direct3D 11"),
+                        QStringLiteral("d3d11"));
+  rhi_backend_->addItem(QStringLiteral("Direct3D 12"),
+                        QStringLiteral("d3d12"));
+#elif defined(Q_OS_MACOS)
+  rhi_backend_->addItem(QStringLiteral("Metal"), QStringLiteral("metal"));
+#endif
+  rhi_backend_->addItem(QStringLiteral("Null"), QStringLiteral("null"));
+  backend_row->addWidget(rhi_backend_, 1);
+  backend_group->addLayout(backend_row);
+
+  auto* hint = new QLabel(tr("Restart required after changing the backend."));
+  hint->setWordWrap(true);
+  backend_group->addWidget(hint);
+  layout->addWidget(backend_group);
+
+  layout->addStretch();
+  pages_->addWidget(page);
+}
+
+void SettingsDialog::buildAnalysisPage() {
+  auto* page = new QWidget(pages_);
+  auto* layout = new QVBoxLayout(page);
+
+  auto* auto_group = new sli::toolkit::GroupBox(tr("Automatic"), page);
+  auto_crop_ =
+      new sli::toolkit::CheckBox(tr("Auto-crop black borders on load"));
+  auto_group->addWidget(auto_crop_);
+  layout->addWidget(auto_group);
+
+  auto* metrics_group = new sli::toolkit::GroupBox(tr("Metrics"), page);
+  auto_psnr_ = new sli::toolkit::CheckBox(tr("Auto-calculate PSNR"));
+  metrics_group->addWidget(auto_psnr_);
+  auto_ssim_ = new sli::toolkit::CheckBox(tr("Auto-calculate SSIM"));
+  metrics_group->addWidget(auto_ssim_);
+  layout->addWidget(metrics_group);
+
+  layout->addStretch();
+  pages_->addWidget(page);
+}
+
 void SettingsDialog::syncFontCustomVisibility() {
   if (font_family_row_ != nullptr) {
     font_family_row_->setVisible(font_system_custom_->isChecked());
@@ -260,6 +408,61 @@ void SettingsDialog::applyUi(const QJsonObject& obj) {
 
   max_name_length_->setValue(
       obj.value(QStringLiteral("max_name_length")).toInt(50));
+
+  const int resolution =
+      obj.value(QStringLiteral("resolution_limit")).toInt(2160);
+  const int resIdx = resolution_->findData(resolution);
+  resolution_->setCurrentIndex(resIdx >= 0 ? resIdx : 2);  // default: 4K
+
+  const auto setComboData = [](sli::toolkit::ComboBox* combo,
+                               const QString& data, const QString& fallback) {
+    int idx = combo->findData(data);
+    if (idx < 0) {
+      idx = combo->findData(fallback);
+    }
+    if (idx >= 0) {
+      combo->setCurrentIndex(idx);
+    }
+  };
+  setComboData(zoom_interp_,
+               obj.value(QStringLiteral("zoom_interpolation_method"))
+                   .toString("BILINEAR"),
+               QStringLiteral("BILINEAR"));
+  setComboData(mag_interp_,
+               obj.value(QStringLiteral("magnifier_interpolation_method"))
+                   .toString("BILINEAR"),
+               QStringLiteral("BILINEAR"));
+  setComboData(laser_interp_,
+               obj.value(QStringLiteral("laser_interpolation_method"))
+                   .toString("BILINEAR"),
+               QStringLiteral("BILINEAR"));
+
+  optimize_movement_->setChecked(
+      obj.value(QStringLiteral("optimize_magnifier_movement")).toBool(true));
+  mag_interp_->setEnabled(optimize_movement_->isChecked());
+  laser_smoothing_->setChecked(
+      obj.value(QStringLiteral("optimize_laser_smoothing")).toBool(true));
+  laser_interp_->setEnabled(laser_smoothing_->isChecked());
+  mag_intersection_highlight_->setChecked(
+      obj.value(QStringLiteral("magnifier_intersection_highlight_enabled"))
+          .toBool(false));
+  mag_auto_color_->setChecked(
+      obj.value(QStringLiteral("magnifier_auto_color_new_instances"))
+          .toBool(false));
+
+  video_fps_->setValue(
+      obj.value(QStringLiteral("video_recording_fps")).toInt(60));
+
+  setComboData(rhi_backend_,
+               obj.value(QStringLiteral("rhi_backend")).toString("default"),
+               QStringLiteral("default"));
+
+  auto_crop_->setChecked(
+      obj.value(QStringLiteral("auto_crop_black_borders")).toBool(true));
+  auto_psnr_->setChecked(
+      obj.value(QStringLiteral("auto_calculate_psnr")).toBool(false));
+  auto_ssim_->setChecked(
+      obj.value(QStringLiteral("auto_calculate_ssim")).toBool(false));
 }
 
 QJsonObject SettingsDialog::readUi() const {
@@ -306,6 +509,30 @@ QJsonObject SettingsDialog::readUi() const {
       font_family_->currentData().toString();
 
   obj[QStringLiteral("max_name_length")] = max_name_length_->value();
+
+  obj[QStringLiteral("resolution_limit")] =
+      resolution_->currentData().toInt();
+  obj[QStringLiteral("zoom_interpolation_method")] =
+      zoom_interp_->currentData().toString();
+  obj[QStringLiteral("magnifier_interpolation_method")] =
+      mag_interp_->currentData().toString();
+  obj[QStringLiteral("laser_interpolation_method")] =
+      laser_interp_->currentData().toString();
+  obj[QStringLiteral("optimize_magnifier_movement")] =
+      optimize_movement_->isChecked();
+  obj[QStringLiteral("optimize_laser_smoothing")] =
+      laser_smoothing_->isChecked();
+  obj[QStringLiteral("magnifier_intersection_highlight_enabled")] =
+      mag_intersection_highlight_->isChecked();
+  obj[QStringLiteral("magnifier_auto_color_new_instances")] =
+      mag_auto_color_->isChecked();
+  obj[QStringLiteral("video_recording_fps")] = video_fps_->value();
+  obj[QStringLiteral("rhi_backend")] =
+      rhi_backend_->currentData().toString();
+
+  obj[QStringLiteral("auto_crop_black_borders")] = auto_crop_->isChecked();
+  obj[QStringLiteral("auto_calculate_psnr")] = auto_psnr_->isChecked();
+  obj[QStringLiteral("auto_calculate_ssim")] = auto_ssim_->isChecked();
   return obj;
 }
 
