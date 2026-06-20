@@ -14,12 +14,15 @@ class QButtonGroup;
 class QListWidget;
 class QStackedWidget;
 
+class QWidget;
+
 namespace sli::toolkit {
 class Button;
 class CheckBox;
 class ComboBox;
 class GroupBox;
 class RadioButton;
+class SpinBox;
 }  // namespace sli::toolkit
 
 namespace imgsli::app {
@@ -40,8 +43,10 @@ class SettingsDialog final : public QDialog {
  private:
   void buildSidebar();
   void buildGeneralPage();
+  void buildInterfacePage();
   QJsonObject readUi() const;
   void applyUi(const QJsonObject& obj);
+  void syncFontCustomVisibility();
 
   QListWidget* sidebar_;
   QStackedWidget* pages_;
@@ -56,6 +61,19 @@ class SettingsDialog final : public QDialog {
   sli::toolkit::CheckBox* system_notifications_;
   sli::toolkit::CheckBox* debug_logging_;
   sli::toolkit::CheckBox* show_workspace_tabs_;
+
+  // Interface page widgets.
+  sli::toolkit::RadioButton* ui_beginner_;
+  sli::toolkit::RadioButton* ui_advanced_;
+  sli::toolkit::RadioButton* ui_expert_;
+  QButtonGroup* ui_mode_group_;
+  sli::toolkit::RadioButton* font_builtin_;
+  sli::toolkit::RadioButton* font_system_default_;
+  sli::toolkit::RadioButton* font_system_custom_;
+  QButtonGroup* font_mode_group_;
+  sli::toolkit::ComboBox* font_family_;
+  QWidget* font_family_row_;
+  sli::toolkit::SpinBox* max_name_length_;
 
   sli::toolkit::Button* ok_;
   sli::toolkit::Button* cancel_;
