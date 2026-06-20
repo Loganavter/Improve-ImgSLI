@@ -10,6 +10,8 @@ add_executable(imgsli_app
     render_pass.h
     render_pass_registry.cpp
     render_pass_registry.h
+    settings_application_service.cpp
+    settings_application_service.h
     settings_dialog.cpp
     settings_dialog.h
     store.cpp
