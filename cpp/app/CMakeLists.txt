@@ -17,6 +17,11 @@ add_executable(imgsli_app
     settings_dialog.h
     store.cpp
     store.h
+    tab_registry.cpp
+    tab_registry.h
+    tabs_export.cpp
+    tabs_multi_compare.cpp
+    tabs_video_editor.cpp
 )
 
 target_compile_definitions(imgsli_app PRIVATE

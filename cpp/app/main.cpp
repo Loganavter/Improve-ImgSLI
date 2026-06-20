@@ -25,6 +25,7 @@
 #include <string>
 
 #include <QSettings>
+#include <QTabWidget>
 
 #include "canvas_widget.h"
 #include "feature_registry.h"
@@ -32,6 +33,7 @@
 #include "imgsli_core_bridge/bridge.h"
 #include "settings_application_service.h"
 #include "settings_dialog.h"
+#include "tab_registry.h"
 #include "sli/toolkit/button.h"
 #include "sli/toolkit/combo_box.h"
 #include "sli/toolkit/theme.h"
@@ -182,6 +184,16 @@ int main(int argc, char **argv) {
         !hasCommand(QStringLiteral("guides"), QStringLiteral("set_enabled"))) {
       qCritical("Required feature commands are not registered");
       return 4;
+    }
+    // Phase 4 acceptance: workspace tab registry populated.
+    const QStringList requiredTabs{QStringLiteral("multi_compare"),
+                                   QStringLiteral("video_editor"),
+                                   QStringLiteral("export")};
+    for (const QString &sessionType : requiredTabs) {
+      if (imgsli::app::TabRegistry::instance().find(sessionType) == nullptr) {
+        qCritical("Missing tab: %s", qPrintable(sessionType));
+        return 6;
+      }
     }
     canvas->setRenderPlan({
         .texture1Id = 1,
@@ -424,6 +436,18 @@ int main(int argc, char **argv) {
                                   QStringLiteral("ImgSLI"), &window);
   auto *settingsService = new imgsli::app::SettingsApplicationService(
       store, qsettings, &window);
+  // Workspace tab registry — Phase 4. Adds an extra tab strip below the
+  // canvas to verify that registered tabs can actually mount.
+  const auto &registeredTabs = imgsli::app::TabRegistry::instance().tabs();
+  if (!registeredTabs.empty()) {
+    auto *workspaceTabs = new QTabWidget(central);
+    for (auto *tab : registeredTabs) {
+      QWidget *page = tab->createPage(workspaceTabs);
+      workspaceTabs->addTab(page, tab->displayName());
+    }
+    layout->addWidget(workspaceTabs, 1);
+  }
+
   auto *settingsButton =
       new sli::toolkit::Button(QStringLiteral("Settings…"),
                                sli::toolkit::Button::Variant::Surface, central);
