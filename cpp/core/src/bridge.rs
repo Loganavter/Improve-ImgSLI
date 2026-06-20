@@ -112,6 +112,22 @@ mod ffi {
         fn i18n_set_language(lang: &str);
         fn i18n_translate(key: &str) -> String;
 
+        fn playlist_remove_at(len_before: i32, current: i32, removed_at: i32) -> i32;
+        fn playlist_reorder(current: i32, source: i32, dest: i32) -> i32;
+        fn playlist_resolve_cross_move(
+            previous_path_match: i32,
+            target_len_after_move: i32,
+            same_list_and_was_current: bool,
+            source_index: i32,
+        ) -> i32;
+
+        fn video_project_default_json() -> String;
+        fn video_project_ffmpeg_args_json(project_json: &str) -> Result<String>;
+        fn video_project_adjust_height(project_json: &str, width: i32) -> Result<i32>;
+        fn video_project_adjust_width(project_json: &str, height: i32) -> Result<i32>;
+        fn video_selection_set_json(start: i64, has_start: bool, end: i64, has_end: bool) -> String;
+        fn video_timeline_advance(position: i64, step: i64) -> i64;
+
         fn state_default_json() -> String;
         fn state_dispatch_action(
             state_json: &CxxString,
@@ -190,6 +206,59 @@ fn i18n_set_language(lang: &str) {
 
 fn i18n_translate(key: &str) -> String {
     crate::i18n::translate(key)
+}
+
+fn playlist_remove_at(len_before: i32, current: i32, removed_at: i32) -> i32 {
+    crate::playlist::remove_at(len_before, current, removed_at)
+}
+
+fn playlist_reorder(current: i32, source: i32, dest: i32) -> i32 {
+    crate::playlist::reorder(current, source, dest)
+}
+
+fn playlist_resolve_cross_move(
+    previous_path_match: i32,
+    target_len_after_move: i32,
+    same_list_and_was_current: bool,
+    source_index: i32,
+) -> i32 {
+    crate::playlist::resolve_after_cross_move(
+        previous_path_match,
+        target_len_after_move,
+        same_list_and_was_current,
+        source_index,
+    )
+}
+
+fn video_project_default_json() -> String {
+    crate::video_editor::ProjectModel::default().to_json()
+}
+
+fn video_project_ffmpeg_args_json(project_json: &str) -> Result<String, serde_json::Error> {
+    let p = crate::video_editor::ProjectModel::from_json(project_json)?;
+    Ok(serde_json::to_string(&p.ffmpeg_args()).expect("ffmpeg args serialize"))
+}
+
+fn video_project_adjust_height(project_json: &str, width: i32) -> Result<i32, serde_json::Error> {
+    let p = crate::video_editor::ProjectModel::from_json(project_json)?;
+    Ok(p.adjust_height_to_aspect_ratio(width))
+}
+
+fn video_project_adjust_width(project_json: &str, height: i32) -> Result<i32, serde_json::Error> {
+    let p = crate::video_editor::ProjectModel::from_json(project_json)?;
+    Ok(p.adjust_width_to_aspect_ratio(height))
+}
+
+fn video_selection_set_json(start: i64, has_start: bool, end: i64, has_end: bool) -> String {
+    let sel = crate::video_editor::SelectionState::set(
+        if has_start { Some(start) } else { None },
+        if has_end { Some(end) } else { None },
+    );
+    serde_json::to_string(&sel).expect("selection serialize")
+}
+
+fn video_timeline_advance(position: i64, step: i64) -> i64 {
+    crate::video_editor::TimelineState::new(position).advance(step).position
 }
 
 fn state_default_json() -> String {

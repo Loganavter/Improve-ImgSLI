@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <QMetaType>
 #include <QObject>
 #include <QSettings>
 #include <QString>
@@ -46,3 +47,5 @@ class SettingsApplicationService final : public QObject {
 };
 
 }  // namespace imgsli::app
+
+Q_DECLARE_METATYPE(imgsli::app::SettingsApplicationService*)
