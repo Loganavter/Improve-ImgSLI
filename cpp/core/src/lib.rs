@@ -25,12 +25,14 @@ pub mod i18n;
 pub mod image_cache;
 pub mod plan;
 pub mod plan_keys;
+pub mod playlist;
 pub mod reducer;
 pub mod settings;
 pub mod settings_dialog;
 pub mod stacking;
 pub mod state;
 pub mod store;
+pub mod video_editor;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
