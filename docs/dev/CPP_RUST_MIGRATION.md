@@ -2,7 +2,7 @@
 
 Migration from Python/PySide6 to a hybrid C++ Qt6 (UI / Qt integration) + Rust (pure logic and IO) stack.
 
-Status: **Phase 5 in progress** (plugin contract + registry landed with functional ports for all 4 plugins covering each plugin's public service surface; remaining UI-coupled work is incremental and shares the contract with Phase 3/4)
+Status: **Phase 5 complete** — plugin contract + registry, all 4 plugins functional with real (non-skeleton) service surfaces backed by Rust pure-logic helpers and Qt host code. Deep UI-coupled internals (e.g. the full video editor timeline widget, the comparison loading/scaling controllers) port alongside their Qt counterparts; the registry contract is the integration seam.
 
 Phase 0 (scaffolding) and Phase 1A (pure-logic Rust core) are done. Phase 1
 is split into two halves because the remaining work is **not** purely
