@@ -2,7 +2,7 @@
 
 Migration from Python/PySide6 to a hybrid C++ Qt6 (UI / Qt integration) + Rust (pure logic and IO) stack.
 
-Status: **Phase 5 in progress** (plugin contract + registry landed with skeleton ports for all 4 plugins; deep per-plugin logic ports incrementally)
+Status: **Phase 5 in progress** (plugin contract + registry landed with functional ports for all 4 plugins covering each plugin's public service surface; remaining UI-coupled work is incremental and shares the contract with Phase 3/4)
 
 Phase 0 (scaffolding) and Phase 1A (pure-logic Rust core) are done. Phase 1
 is split into two halves because the remaining work is **not** purely
@@ -368,11 +368,20 @@ Plugins port one at a time: `comparison` → `export` → `settings` → `video_
   and ports incrementally; the skeleton keeps the registry contract
   satisfied so downstream consumers can resolve the plugin id today.
 
-`phase3_contracts` ctest was extended again to assert all 4 plugins
-are present in the registry and that `PluginRegistry::callService`
-actually round-trips a comparison-plugin call through the activated
-Store, and a video-editor service stub returns its expected backend
-identifier.
+`phase3_contracts` ctest exercises the Phase 5 acceptance:
+- all four plugins registered;
+- `comparison.set_split` round-trips through an activated Store;
+- `video_editor.backend` returns `"ffmpeg-cli"`;
+- `comparison.playlist_remove_at` returns the expected new index
+  through the Rust pure-math helper;
+- `video_editor.project_default` produces JSON containing the
+  default 60 fps;
+- `video_editor.timeline_advance` clamps and adds correctly.
+
+The ffmpeg launcher itself is not exercised by ctest (would require
+ffmpeg on the test host); it is unit-tested at the Rust level via
+`ProjectModel::ffmpeg_args` and integration-tested by manual smoke
+inside the C++ host.
 
 ### Phase 6 — Packaging and Cutover (2 weeks)
 

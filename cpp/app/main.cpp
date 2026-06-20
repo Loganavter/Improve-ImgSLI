@@ -230,6 +230,39 @@ int main(int argc, char **argv) {
         qCritical("Plugin service routing failed for video_editor.backend");
         return 9;
       }
+      // Playlist index math via comparison plugin.
+      const QVariant newIndex =
+          imgsli::app::PluginRegistry::instance().callService(
+              QStringLiteral("comparison.playlist_remove_at"),
+              {{QStringLiteral("len_before"), 5},
+               {QStringLiteral("current"), 3},
+               {QStringLiteral("removed_at"), 1}});
+      if (newIndex.toInt() != 2) {
+        qCritical(
+            "Plugin service routing failed for comparison.playlist_remove_at "
+            "(got %d, expected 2)",
+            newIndex.toInt());
+        return 10;
+      }
+      // Video editor pure-logic services.
+      const QVariant projectJson =
+          imgsli::app::PluginRegistry::instance().callService(
+              QStringLiteral("video_editor.project_default"), {});
+      if (!projectJson.toString().contains(QStringLiteral("\"fps\":60"))) {
+        qCritical("Plugin service routing failed for "
+                  "video_editor.project_default");
+        return 11;
+      }
+      const QVariant advanced =
+          imgsli::app::PluginRegistry::instance().callService(
+              QStringLiteral("video_editor.timeline_advance"),
+              {{QStringLiteral("position"), 5},
+               {QStringLiteral("step"), 3}});
+      if (advanced.toLongLong() != 8) {
+        qCritical("Plugin service routing failed for "
+                  "video_editor.timeline_advance");
+        return 12;
+      }
     }
     canvas->setRenderPlan({
         .texture1Id = 1,
@@ -484,6 +517,11 @@ int main(int argc, char **argv) {
                                   QStringLiteral("ImgSLI"), &window);
   auto *settingsService = new imgsli::app::SettingsApplicationService(
       store, qsettings, &window);
+  // Bind the live service into the settings plugin so callService can
+  // route apply_dialog_diff through it.
+  imgsli::app::PluginRegistry::instance().callService(
+      QStringLiteral("settings.bind_service"),
+      {{QStringLiteral("service"), QVariant::fromValue(settingsService)}});
   // Workspace tab registry — Phase 4. Adds an extra tab strip below the
   // canvas to verify that registered tabs can actually mount.
   const auto &registeredTabs = imgsli::app::TabRegistry::instance().tabs();
@@ -501,17 +539,22 @@ int main(int argc, char **argv) {
                                sli::toolkit::Button::Variant::Surface, central);
   layout->addWidget(settingsButton);
   QObject::connect(settingsButton, &sli::toolkit::Button::clicked, &window,
-                   [&window, state, settingsService]() {
+                   [&window, state]() {
                      imgsli::app::SettingsDialog dialog(&window);
                      const QString prevJson = dialog.normalizedJson();
                      if (dialog.exec() == QDialog::Accepted) {
                        const QString nextJson = dialog.normalizedJson();
-                       const int changes =
-                           settingsService->apply(prevJson, nextJson);
+                       // Route through the settings plugin's service so the
+                       // plugin layer is the canonical path.
+                       const QVariant result =
+                           imgsli::app::PluginRegistry::instance().callService(
+                               QStringLiteral("settings.apply_dialog_diff"),
+                               {{QStringLiteral("prev"), prevJson},
+                                {QStringLiteral("next"), nextJson}});
                        state->setPlainText(
                            QStringLiteral(
                                "settings dialog accepted (%1 changes)\n\n%2")
-                               .arg(changes)
+                               .arg(result.toInt())
                                .arg(nextJson));
                      }
                    });
