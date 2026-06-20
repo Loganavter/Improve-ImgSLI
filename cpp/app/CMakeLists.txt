@@ -9,6 +9,12 @@ add_executable(imgsli_app
     i18n_helper.h
     main.cpp
     render_pass.h
+    plugin_comparison.cpp
+    plugin_export.cpp
+    plugin_registry.cpp
+    plugin_registry.h
+    plugin_settings.cpp
+    plugin_video_editor.cpp
     render_pass_registry.cpp
     render_pass_registry.h
     settings_application_service.cpp

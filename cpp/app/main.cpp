@@ -31,6 +31,7 @@
 #include "feature_registry.h"
 #include "i18n_helper.h"
 #include "imgsli_core_bridge/bridge.h"
+#include "plugin_registry.h"
 #include "settings_application_service.h"
 #include "settings_dialog.h"
 #include "tab_registry.h"
@@ -195,6 +196,41 @@ int main(int argc, char **argv) {
         return 6;
       }
     }
+    // Phase 5 acceptance: plugin registry populated.
+    const QStringList requiredPlugins{
+        QStringLiteral("comparison"), QStringLiteral("export"),
+        QStringLiteral("settings"), QStringLiteral("video_editor")};
+    for (const QString &pluginId : requiredPlugins) {
+      if (imgsli::app::PluginRegistry::instance().find(pluginId) == nullptr) {
+        qCritical("Missing plugin: %s", qPrintable(pluginId));
+        return 7;
+      }
+    }
+    // Phase 5 acceptance: service routing through PluginRegistry works.
+    // The comparison plugin needs an activated Store to accept services;
+    // we have not constructed the Qt widgets yet, so build a temporary
+    // Store just for this check.
+    {
+      auto *checkStore = new imgsli::app::Store(&app);
+      imgsli::app::PluginRegistry::instance().activateAll(checkStore);
+      const QVariant ok =
+          imgsli::app::PluginRegistry::instance().callService(
+              QStringLiteral("comparison.set_split"),
+              {{QStringLiteral("value"), 0.75F}});
+      imgsli::app::PluginRegistry::instance().deactivateAll();
+      delete checkStore;
+      if (!ok.isValid() || !ok.toBool()) {
+        qCritical("Plugin service routing failed for comparison.set_split");
+        return 8;
+      }
+      const QVariant backend =
+          imgsli::app::PluginRegistry::instance().callService(
+              QStringLiteral("video_editor.backend"), {});
+      if (backend.toString() != QStringLiteral("ffmpeg-cli")) {
+        qCritical("Plugin service routing failed for video_editor.backend");
+        return 9;
+      }
+    }
     canvas->setRenderPlan({
         .texture1Id = 1,
         .texture2Id = 2,
@@ -243,6 +279,10 @@ int main(int argc, char **argv) {
   }
 
   auto *store = new imgsli::app::Store(central);
+  imgsli::app::PluginRegistry::instance().activateAll(store);
+  QObject::connect(&app, &QApplication::aboutToQuit, []() {
+    imgsli::app::PluginRegistry::instance().deactivateAll();
+  });
   auto *openButton =
       new sli::toolkit::Button(QStringLiteral("Open image pair…"),
                                sli::toolkit::Button::Variant::Surface, central);
@@ -390,14 +430,22 @@ int main(int argc, char **argv) {
           openPair(paths[0], paths.size() > 1 ? paths[1] : QString());
         }
       });
+  // Route the split / orientation inputs through the comparison plugin
+  // service surface to keep the registered plugin on the live path.
   QObject::connect(splitSlider, &QSlider::valueChanged, canvas,
                    [comparison, applyComparison](int value) {
                      comparison->split = value / 1000.0F;
+                     imgsli::app::PluginRegistry::instance().callService(
+                         QStringLiteral("comparison.set_split"),
+                         {{QStringLiteral("value"), comparison->split}});
                      applyComparison();
                    });
   QObject::connect(orientationButton, &sli::toolkit::Button::toggled, canvas,
                    [comparison, applyComparison](bool enabled) {
                      comparison->horizontal = enabled;
+                     imgsli::app::PluginRegistry::instance().callService(
+                         QStringLiteral("comparison.set_orientation"),
+                         {{QStringLiteral("horizontal"), enabled}});
                      applyComparison();
                    });
   QObject::connect(magnifierButton, &sli::toolkit::Button::toggled, canvas,
