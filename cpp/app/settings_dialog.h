@@ -44,6 +44,8 @@ class SettingsDialog final : public QDialog {
   void buildSidebar();
   void buildGeneralPage();
   void buildInterfacePage();
+  void buildPerformancePage();
+  void buildAnalysisPage();
   QJsonObject readUi() const;
   void applyUi(const QJsonObject& obj);
   void syncFontCustomVisibility();
@@ -74,6 +76,23 @@ class SettingsDialog final : public QDialog {
   sli::toolkit::ComboBox* font_family_;
   QWidget* font_family_row_;
   sli::toolkit::SpinBox* max_name_length_;
+
+  // Performance page widgets.
+  sli::toolkit::ComboBox* resolution_;
+  sli::toolkit::ComboBox* zoom_interp_;
+  sli::toolkit::CheckBox* optimize_movement_;
+  sli::toolkit::ComboBox* mag_interp_;
+  sli::toolkit::CheckBox* laser_smoothing_;
+  sli::toolkit::ComboBox* laser_interp_;
+  sli::toolkit::CheckBox* mag_intersection_highlight_;
+  sli::toolkit::CheckBox* mag_auto_color_;
+  sli::toolkit::SpinBox* video_fps_;
+  sli::toolkit::ComboBox* rhi_backend_;
+
+  // Analysis page widgets.
+  sli::toolkit::CheckBox* auto_crop_;
+  sli::toolkit::CheckBox* auto_psnr_;
+  sli::toolkit::CheckBox* auto_ssim_;
 
   sli::toolkit::Button* ok_;
   sli::toolkit::Button* cancel_;
