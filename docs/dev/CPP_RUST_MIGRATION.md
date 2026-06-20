@@ -2,7 +2,7 @@
 
 Migration from Python/PySide6 to a hybrid C++ Qt6 (UI / Qt integration) + Rust (pure logic and IO) stack.
 
-Status: **Phase 4 in progress** (Settings dialog, i18n, tab scaffolding done; per-feature plugin ports follow in Phase 5)
+Status: **Phase 5 in progress** (plugin contract + registry landed with skeleton ports for all 4 plugins; deep per-plugin logic ports incrementally)
 
 Phase 0 (scaffolding) and Phase 1A (pure-logic Rust core) are done. Phase 1
 is split into two halves because the remaining work is **not** purely
@@ -338,6 +338,41 @@ Choose one of:
 Recommended: **static registration** for v1, `QPluginLoader` later if hot reload becomes a real need.
 
 Plugins port one at a time: `comparison` → `export` → `settings` → `video_editor`.
+
+#### Phase 5 progress
+
+- [x] `PluginContract` C++ interface (`cpp/include/imgsli/contracts/`)
+  collapses the 5 Python `I*Plugin` markers into a single virtual
+  interface. Exposes `pluginId`, `displayName`, `definition`,
+  `onActivate`/`onDeactivate`, `callService`/`providesService`. The
+  declarative `PluginDefinition` POD mirrors
+  `core.plugin_system.contributions.PluginDefinition`.
+- [x] `PluginRegistry` (static-registration `IMGSLI_REGISTER_PLUGIN` macro)
+  populates a per-binary list, exposes `find` and a single
+  `callService` entry point that routes to the first plugin that
+  advertises the service id.
+- [x] **comparison** plugin port. Owns the split/orientation/path
+  commands; the smoke shell's split slider and orientation toggle now
+  call through `PluginRegistry::callService` instead of dispatching
+  Store actions inline.
+- [x] **export** plugin port. Backs `export.save_image` (Qt
+  `QImageWriter`) and `export.decode_image` (Rust core decoder) services
+  — enough for the still-image side. Video export waits for the video
+  editor port.
+- [x] **settings** plugin port. Registers the dialog/apply commands;
+  the heavy logic landed in Phase 4 (SettingsDialog,
+  SettingsApplicationService, Rust view-model).
+- [x] **video_editor** plugin skeleton. Registers the plugin id and a
+  `video_editor.backend` service stub. The full timeline / keyframing /
+  ffmpeg pipeline is the largest single subsystem in the Python source
+  and ports incrementally; the skeleton keeps the registry contract
+  satisfied so downstream consumers can resolve the plugin id today.
+
+`phase3_contracts` ctest was extended again to assert all 4 plugins
+are present in the registry and that `PluginRegistry::callService`
+actually round-trips a comparison-plugin call through the activated
+Store, and a video-editor service stub returns its expected backend
+identifier.
 
 ### Phase 6 — Packaging and Cutover (2 weeks)
 
