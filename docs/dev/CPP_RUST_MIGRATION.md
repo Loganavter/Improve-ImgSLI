@@ -351,22 +351,34 @@ Plugins port one at a time: `comparison` → `export` → `settings` → `video_
   populates a per-binary list, exposes `find` and a single
   `callService` entry point that routes to the first plugin that
   advertises the service id.
-- [x] **comparison** plugin port. Owns the split/orientation/path
-  commands; the smoke shell's split slider and orientation toggle now
-  call through `PluginRegistry::callService` instead of dispatching
-  Store actions inline.
+- [x] **comparison** plugin port. Smoke shell's split slider and
+  orientation toggle call through `PluginRegistry::callService` instead
+  of dispatching Store actions inline. Service surface covers
+  set_split / set_orientation / open_image_path / show_single_image,
+  plus three pure-math playlist helpers
+  (`playlist_remove_at`, `playlist_reorder`,
+  `playlist_resolve_cross_move`) backed by `imgsli_core::playlist`
+  (12 cargo tests) — these reproduce the index-resolution math from
+  `services/workflow/playlist_components/list_operations.py`.
 - [x] **export** plugin port. Backs `export.save_image` (Qt
-  `QImageWriter`) and `export.decode_image` (Rust core decoder) services
-  — enough for the still-image side. Video export waits for the video
-  editor port.
-- [x] **settings** plugin port. Registers the dialog/apply commands;
-  the heavy logic landed in Phase 4 (SettingsDialog,
-  SettingsApplicationService, Rust view-model).
-- [x] **video_editor** plugin skeleton. Registers the plugin id and a
-  `video_editor.backend` service stub. The full timeline / keyframing /
-  ffmpeg pipeline is the largest single subsystem in the Python source
-  and ports incrementally; the skeleton keeps the registry contract
-  satisfied so downstream consumers can resolve the plugin id today.
+  `QImageWriter`) and `export.decode_image` (Rust core decoder)
+  services — covers the still-image surface. Video export is served
+  by the video_editor plugin below.
+- [x] **settings** plugin port. The Phase 4 dialog/service is the
+  canonical path now — main.cpp's Settings button routes accept
+  through `PluginRegistry::callService("settings.apply_dialog_diff")`,
+  which forwards to a bound `SettingsApplicationService`. The plugin
+  exposes `settings.bind_service` for late binding the QObject* into
+  the registry once QSettings is constructed.
+- [x] **video_editor** plugin port. `imgsli_core::video_editor` ports
+  the Python `model.py` (TimelineState, SelectionState, ProjectModel
+  including aspect-ratio math and ffmpeg-args synthesis) — 13 cargo
+  tests. The plugin exposes 7 services across pure-model queries and
+  a synchronous `video_editor.export_run` that launches ffmpeg via
+  QProcess with arguments produced by the Rust model. The full
+  timeline UI / keyframing engine / dialog is the largest single
+  Python subsystem and ports incrementally; the plugin surface here
+  is the integration seam for those follow-ups.
 
 `phase3_contracts` ctest exercises the Phase 5 acceptance:
 - all four plugins registered;
