@@ -11,6 +11,7 @@
 //! state object — the caller assembles it from the live store.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::settings::SettingsState;
 
@@ -207,6 +208,53 @@ impl SettingsDialogData {
     }
 }
 
+/// One changed field, produced by [`diff`]. `value_json` is the *new*
+/// value for the field, encoded as JSON so the C++ side can pass it to
+/// QSettings (after type-erasing through Qt's QVariant) or to a Store
+/// action without re-marshalling structs across the bridge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FieldChange {
+    pub field: String,
+    pub value_json: String,
+}
+
+/// Compute the field-level diff between two view-models. Both inputs are
+/// normalized first so cosmetic differences (e.g. unknown enum strings)
+/// don't leak through as spurious changes.
+pub fn diff(prev: &SettingsDialogData, next: &SettingsDialogData) -> Vec<FieldChange> {
+    let mut prev_norm = prev.clone();
+    let mut next_norm = next.clone();
+    prev_norm.normalize();
+    next_norm.normalize();
+
+    let prev_v = serde_json::to_value(&prev_norm).expect("dialog data serialize");
+    let next_v = serde_json::to_value(&next_norm).expect("dialog data serialize");
+    let (Value::Object(prev_obj), Value::Object(next_obj)) = (prev_v, next_v) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for (key, next_val) in &next_obj {
+        let prev_val = prev_obj.get(key);
+        if Some(next_val) != prev_val {
+            out.push(FieldChange {
+                field: key.clone(),
+                value_json: next_val.to_string(),
+            });
+        }
+    }
+    out.sort_by(|a, b| a.field.cmp(&b.field));
+    out
+}
+
+/// JSON-encoded `Vec<FieldChange>`, convenient for the cxx surface.
+pub fn diff_json(prev_json: &str, next_json: &str) -> Result<String, serde_json::Error> {
+    let prev = SettingsDialogData::from_json(prev_json)?;
+    let next = SettingsDialogData::from_json(next_json)?;
+    let changes = diff(&prev, &next);
+    Ok(serde_json::to_string(&changes).expect("changes serialize"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,6 +383,63 @@ mod tests {
         assert_eq!(s.video_recording_fps, 30);
         assert!(s.show_workspace_tabs);
         assert_eq!(s.rhi_backend, "vulkan");
+    }
+
+    #[test]
+    fn diff_empty_when_equal() {
+        let d = SettingsDialogData::default();
+        assert!(diff(&d, &d).is_empty());
+    }
+
+    #[test]
+    fn diff_lists_changed_fields_only() {
+        let prev = SettingsDialogData::default();
+        let mut next = prev.clone();
+        next.theme = "dark".into();
+        next.video_recording_fps = 120;
+        next.max_name_length = 99;
+
+        let changes = diff(&prev, &next);
+        let fields: Vec<&str> = changes.iter().map(|c| c.field.as_str()).collect();
+        assert_eq!(
+            fields,
+            vec!["max_name_length", "theme", "video_recording_fps"]
+        );
+        let by_field = |name: &str| {
+            changes
+                .iter()
+                .find(|c| c.field == name)
+                .unwrap()
+                .value_json
+                .clone()
+        };
+        assert_eq!(by_field("theme"), "\"dark\"");
+        assert_eq!(by_field("video_recording_fps"), "120");
+        assert_eq!(by_field("max_name_length"), "99");
+    }
+
+    #[test]
+    fn diff_normalizes_before_comparing() {
+        // garbage enum value in prev should normalize to defaults; if next
+        // already matches the normalized default, no change is reported.
+        let mut prev = SettingsDialogData::default();
+        prev.theme = "neon".into();
+        let next = SettingsDialogData::default();
+        let changes = diff(&prev, &next);
+        // After normalize, prev.theme becomes "auto", same as next.
+        assert!(changes.iter().all(|c| c.field != "theme"));
+    }
+
+    #[test]
+    fn diff_json_roundtrip() {
+        let prev = SettingsDialogData::default();
+        let mut next = prev.clone();
+        next.language = "ru".into();
+        let raw = diff_json(&prev.to_json(), &next.to_json()).unwrap();
+        let parsed: Vec<FieldChange> = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].field, "language");
+        assert_eq!(parsed[0].value_json, "\"ru\"");
     }
 
     #[test]
