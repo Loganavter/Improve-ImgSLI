@@ -22,7 +22,7 @@ SpinBox::SpinBox(QWidget* parent,
       m_wheelRequiresFocus(wheelRequiresFocus) {
     setAlignment(alignment);
     setValidator(new QIntValidator(-999999, 999999, this));
-    setText(QString::number(defaultValue));
+    setText(QString::number(defaultValue) + m_suffix);
     setMinimumWidth(minimumSizeHint().width());
     setFixedHeight(kFixedHeight);
 
@@ -48,8 +48,9 @@ void SpinBox::setValue(int val) {
         emit valueChanged(m_value);
     }
 
-    if (text() != QString::number(clamped)) {
-        setText(QString::number(clamped));
+    const QString newText = QString::number(clamped) + m_suffix;
+    if (text() != newText) {
+        setText(newText);
     }
     updateGeometry();
 }
@@ -71,8 +72,9 @@ int SpinBox::contentWidth() const {
 
     const QFontMetrics fm(fontMetrics());
     const int textWidth = fm.horizontalAdvance(QString("8").repeated(widest));
+    const int suffixWidth = fm.horizontalAdvance(m_suffix);
     const int margins = kHorizontalPadding * 2 + 14;
-    return qMax(kMinimumWidth, textWidth + margins);
+    return qMax(kMinimumWidth, textWidth + suffixWidth + margins);
 }
 
 bool SpinBox::shouldHandleWheelEvent(const QWheelEvent*) const {
@@ -80,7 +82,11 @@ bool SpinBox::shouldHandleWheelEvent(const QWheelEvent*) const {
 }
 
 void SpinBox::onEditingFinished() {
-    const QString text = this->text().trimmed();
+    QString text = this->text().trimmed();
+    // Remove suffix if present
+    if (!m_suffix.isEmpty() && text.endsWith(m_suffix)) {
+        text = text.left(text.length() - m_suffix.length()).trimmed();
+    }
     int val = m_defaultValue;
     if (!text.isEmpty()) {
         bool ok = false;
