@@ -84,6 +84,7 @@ def _bind_group_titles(binder: TranslationsBinder, dialog) -> None:
         ("other_ui_group", "settings.maximum_name_length_ui"),
         ("res_group", "settings.display_cache_resolution"),
         ("interactive_opt_group", "settings.interactive_optimization"),
+        ("render_backend_group", "settings.render_backend"),
         ("auto_group", "settings.auto"),
         ("metrics_group", "label.details"),
     ]
@@ -108,6 +109,40 @@ def _bind_combo_rebuilds(binder: TranslationsBinder, dialog) -> None:
     binder.bind_callback(lambda lang: _rebuild_font_family_combo(dialog, lang))
     binder.bind_callback(lambda lang: _rebuild_resolution_combo(dialog, lang))
     binder.bind_callback(lambda lang: _rebuild_interpolation_combos(dialog, lang))
+    binder.bind_callback(lambda lang: _rebuild_rhi_backend_combo(dialog, lang))
+
+
+_RHI_BACKEND_KEY_MAP = {
+    "default": "settings.render_backend_default",
+    "opengl": "settings.render_backend_opengl",
+    "vulkan": "settings.render_backend_vulkan",
+    "d3d11": "settings.render_backend_d3d11",
+    "d3d12": "settings.render_backend_d3d12",
+    "metal": "settings.render_backend_metal",
+    "null": "settings.render_backend_null",
+}
+
+
+def _rebuild_rhi_backend_combo(dialog, lang: str) -> None:
+    combo = getattr(dialog, "combo_rhi_backend", None)
+    if combo is None:
+        return
+    current = combo.currentData()
+    items = [(combo.itemData(i), _RHI_BACKEND_KEY_MAP.get(combo.itemData(i), "")) for i in range(combo.count())]
+    combo.clear()
+    for value, key in items:
+        text = dialog.tr(key, lang) if key else str(value)
+        combo.addItem(text, userData=value)
+    idx = combo.findData(current)
+    if idx != -1:
+        combo.setCurrentIndex(idx)
+
+    label = getattr(dialog, "lbl_rhi_backend", None)
+    if label is not None:
+        label.setText(dialog.tr("settings.render_backend_label", lang) + ":")
+    hint = getattr(dialog, "lbl_rhi_backend_hint", None)
+    if hint is not None:
+        hint.setText(dialog.tr("settings.render_backend_restart_hint", lang))
 
 
 def _rebuild_theme_combo(dialog, lang: str) -> None:

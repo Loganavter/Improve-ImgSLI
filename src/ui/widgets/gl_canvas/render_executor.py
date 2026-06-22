@@ -39,9 +39,16 @@ def _resolve_scene_visibility(ctx) -> SceneVisibility:
     return SceneVisibility.PREVIEW
 
 def execute_render_passes(widget, ctx, passes) -> None:
+    for pass_ in iter_active_render_passes(ctx, passes):
+        pass_.paint(widget, ctx)
+
+
+def iter_active_render_passes(ctx, passes) -> tuple:
     current_visibility = _resolve_scene_visibility(ctx)
+    active = []
     for pass_ in iter_ordered_render_passes(passes):
         if not (getattr(pass_, "visibility", SceneVisibility.ALL) & current_visibility):
             continue
         if pass_.should_paint(ctx):
-            pass_.paint(widget, ctx)
+            active.append(pass_)
+    return tuple(active)

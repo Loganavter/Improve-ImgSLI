@@ -12,6 +12,7 @@
 #include <QIcon>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 #include <QWidget>
 
 namespace imgsli::contracts {
@@ -35,6 +36,13 @@ class TabContract {
 
   /// Build the root widget for this tab. Called once during startup.
   virtual QWidget* createPage(QWidget* parent) = 0;
+
+  /// Bind host-owned services before createPage(). QObject pointers are
+  /// carried as QVariant values so the reusable contract does not depend on
+  /// concrete application widget types.
+  virtual void bindServices(const QVariantMap& services) {
+    (void)services;
+  }
 
   /// Lifecycle hooks.
   virtual void onActivated() {}

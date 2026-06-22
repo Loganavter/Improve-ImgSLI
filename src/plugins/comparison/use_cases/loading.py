@@ -375,11 +375,13 @@ def on_unified_images_ready(controller, result):
         current_paths_now = (controller.store.document.image1_path, controller.store.document.image2_path)
         if (path1 != current_paths_now[0]) or (path2 != current_paths_now[1]):
             controller.store.viewport.session_data.render_cache.unification_in_progress = False
+            controller.store.viewport.session_data.render_cache.pending_unification_paths = None
             controller.store.invalidate_geometry_cache()
             controller.store.emit_state_change("viewport")
             return
         if not (u1 and u2):
             controller.store.viewport.session_data.render_cache.unification_in_progress = False
+            controller.store.viewport.session_data.render_cache.pending_unification_paths = None
             controller.metrics_service.on_metrics_calculated(None)
             return
 
@@ -410,6 +412,7 @@ def on_unified_images_ready(controller, result):
             pass
 
         controller.store.viewport.session_data.render_cache.unification_in_progress = False
+        controller.store.viewport.session_data.render_cache.pending_unification_paths = None
         controller._trigger_metrics_calculation_if_needed()
         try:
             if controller.event_bus:
@@ -422,4 +425,5 @@ def on_unified_images_ready(controller, result):
             pass
     except Exception:
         controller.store.viewport.session_data.render_cache.unification_in_progress = False
+        controller.store.viewport.session_data.render_cache.pending_unification_paths = None
         controller.metrics_service.on_metrics_calculated(None)

@@ -56,6 +56,7 @@ class SettingsDialog(QDialog):
         auto_calculate_ssim: bool = False,
         auto_crop_black_borders: bool = True,
         current_video_fps: int = 60,
+        rhi_backend: str = "default",
         store=None,
     ):
         super().__init__(parent)
@@ -88,6 +89,7 @@ class SettingsDialog(QDialog):
             auto_calculate_ssim=auto_calculate_ssim,
             auto_crop_black_borders=auto_crop_black_borders,
             current_video_fps=current_video_fps,
+            rhi_backend=rhi_backend,
             store=store,
         )
         self._custom_group_widget_cls = CustomGroupWidget
@@ -215,6 +217,7 @@ class SettingsDialog(QDialog):
             ui_mode=ui_mode,
             video_recording_fps=self.spin_fps.value(),
             show_workspace_tabs=self.show_workspace_tabs_checkbox.isChecked(),
+            rhi_backend=(self.combo_rhi_backend.currentData() or "default"),
         )
 
     def update_language(self, lang_code: str):

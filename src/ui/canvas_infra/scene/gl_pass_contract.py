@@ -63,5 +63,22 @@ class CanvasGLRenderPass:
     def cleanup(self, widget) -> None:
         """Called on GL context destruction.  Release shader programs and textures."""
 
+
+class CanvasRenderPass(CanvasGLRenderPass):
+    """Feature-owned QRhi pass recorded into the canvas command buffer."""
+
+    def initialize(self, rhi, target) -> None:
+        """Create persistent QRhi resources for this render target."""
+
+    def prepare(self, widget, ctx, resource_updates) -> None:
+        """Queue per-frame buffer/texture updates before ``beginPass``."""
+
+    def record(self, command_buffer, widget, ctx) -> None:
+        """Record draw commands inside the active QRhi render pass."""
+        raise NotImplementedError(f"{type(self).__name__}.record() is not implemented")
+
+    def release(self) -> None:
+        """Destroy persistent QRhi resources."""
+
 def is_single_image_preview_scene(ctx) -> bool:
     return bool(int(getattr(getattr(ctx, "scene_frame", None), "single_image_preview", 0) or 0))

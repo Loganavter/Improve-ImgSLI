@@ -92,9 +92,7 @@ fn walk_json(dir: &Path, sink: &mut impl FnMut(Value)) {
     let Ok(read) = fs::read_dir(dir) else {
         return;
     };
-    let mut paths: Vec<PathBuf> = read
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .collect();
+    let mut paths: Vec<PathBuf> = read.filter_map(|e| e.ok().map(|e| e.path())).collect();
     paths.sort();
     for path in paths {
         if path.is_dir() {
@@ -201,12 +199,18 @@ mod tests {
             std::process::id(),
             line!()
         ));
-        write(&dir.join("en/settings/general.json"),
-              r#"{"settings":{"theme":"Theme"}}"#);
-        write(&dir.join("ru/settings/general.json"),
-              r#"{"settings":{"theme":"Тема"}}"#);
-        write(&dir.join("ru/extras/help.json"),
-              r#"{"help":{"title":"Помощь"}}"#);
+        write(
+            &dir.join("en/settings/general.json"),
+            r#"{"settings":{"theme":"Theme"}}"#,
+        );
+        write(
+            &dir.join("ru/settings/general.json"),
+            r#"{"settings":{"theme":"Тема"}}"#,
+        );
+        write(
+            &dir.join("ru/extras/help.json"),
+            r#"{"help":{"title":"Помощь"}}"#,
+        );
 
         let mut s = TranslationStore::new();
         s.set_root(&dir);

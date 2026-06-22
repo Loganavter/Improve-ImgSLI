@@ -2,37 +2,29 @@
 //!
 //! Pure-logic core for the ImgSLI C++/Rust port.
 //!
-//! Modules:
-//! - [`domain`]       — value primitives (Point, Color, Rect).
-//! - [`settings`]     — `SettingsState` mirroring `core/store_settings.py`.
-//! - [`state`]        — viewport / document / workspace state shape.
-//! - [`action`]       — discrete state-mutating intents.
-//! - [`reducer`]      — pure `(state, action) -> state` + scope.
-//! - [`store`]        — store + subscriber notification.
-//! - [`plan`]         — canvas render plan POD types.
-//! - [`plan_keys`]    — cache discriminators and letterbox math.
-//! - [`hit_test`]     — pure geometry helpers backing the scene hit-test pipeline.
-//! - [`image_cache`]  — LRU image-pair cache.
+//! Layout mirrors the Python tree under `src/`:
+//!
+//! - [`core`]       — state, store, reducer, actions (mirrors `src/core/`).
+//! - [`plugins`]    — plugin-owned models (settings, analysis, video editor).
+//! - [`ui`]         — canvas plan/layout/hit-test/image cache.
+//! - [`tabs`]       — tab-specific logic (multi-compare playlist).
+//! - [`shared`]     — cross-cutting helpers (canvas plan builder).
+//! - [`workspace`]  — session blueprint hydration.
+//! - [`domain`]     — value primitives (Point, Color, Rect).
+//! - [`i18n`]       — translation catalog (cross-cutting).
 //!
 //! The FFI surface exposed to C++ lives in [`bridge`] — keep that file
 //! narrow and never let Qt or QRHI types cross.
 
-pub mod action;
 pub mod bridge;
+pub mod core;
 pub mod domain;
-pub mod hit_test;
 pub mod i18n;
-pub mod image_cache;
-pub mod plan;
-pub mod plan_keys;
-pub mod playlist;
-pub mod reducer;
-pub mod settings;
-pub mod settings_dialog;
-pub mod stacking;
-pub mod state;
-pub mod store;
-pub mod video_editor;
+pub mod plugins;
+pub mod shared;
+pub mod tabs;
+pub mod ui;
+pub mod workspace;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

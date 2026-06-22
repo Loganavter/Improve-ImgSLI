@@ -1,0 +1,19 @@
+{
+  "export": {
+    "all_files": "Все файлы",
+    "browse": "Обзор…",
+    "canvas_unavailable": "Холст сравнения недоступен.",
+    "failed_status": "Ошибка экспорта: %1",
+    "format": "Формат",
+    "height": "Высота",
+    "output_file": "Выходной файл",
+    "quality": "Качество",
+    "save_current_view": "Сохранить текущее сравнение",
+    "saved_status": "Изображение %1 × %2 сохранено в %3",
+    "select_output_file": "Выберите выходной файл",
+    "still_image": "Экспорт изображения",
+    "title": "Экспорт",
+    "use_plan_resolution": "Разрешение сравнения",
+    "width": "Ширина"
+  }
+}

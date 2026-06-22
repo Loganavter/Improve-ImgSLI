@@ -3,8 +3,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QRhiWidget, QWidget
 
 from shared_toolkit.ui.managers.font_manager import FontManager
 from ui.theming import resolve_theme_color
@@ -27,7 +26,7 @@ class MainWindowAppearance:
         pal.setColor(QPalette.ColorRole.Base, bg)
         widget.setPalette(pal)
         widget.setAutoFillBackground(True)
-        if isinstance(widget, QOpenGLWidget):
+        if isinstance(widget, QRhiWidget):
             widget._theme_background_color = QColor(bg)
         widget.update()
 
@@ -44,11 +43,11 @@ class MainWindowAppearance:
         placeholder = getattr(window.ui, "image_startup_placeholder", None)
         if placeholder is not None:
             placeholder.set_background_color(bg)
-        for gl_widget in window.findChildren(QOpenGLWidget):
-            if gl_widget is image_label:
+        for rhi_widget in window.findChildren(QRhiWidget):
+            if rhi_widget is image_label:
                 continue
-            gl_widget._theme_background_color = QColor(bg)
-            gl_widget.update()
+            rhi_widget._theme_background_color = QColor(bg)
+            rhi_widget.update()
 
     def on_theme_changed(self) -> None:
         window = self.window

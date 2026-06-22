@@ -156,6 +156,7 @@ def init_performance_page(dialog, p):
     _build_resolution_group(dialog, layout, p)
     _build_interactive_optimization_group(dialog, layout, p)
     _build_video_group(dialog, layout, p)
+    _build_render_backend_group(dialog, layout, p)
     dialog.pages_stack.addWidget(dialog.page_perf)
 
 def init_analysis_page(dialog, p):
@@ -297,6 +298,60 @@ def _populate_interpolation_combos(dialog, p):
         idx = combo.findData(value)
         if idx != -1:
             combo.setCurrentIndex(idx)
+
+def _build_render_backend_group(dialog, layout, p):
+    import sys
+    dialog.render_backend_group = CustomGroupWidget(
+        dialog.tr("settings.render_backend", dialog.current_language)
+    )
+    row = QHBoxLayout()
+    row.setContentsMargins(5, 5, 5, 5)
+    dialog.lbl_rhi_backend = QLabel(
+        dialog.tr("settings.render_backend_label", dialog.current_language) + ":"
+    )
+    dialog.combo_rhi_backend = ComboBox()
+    dialog.combo_rhi_backend.setMinimumWidth(180)
+    dialog.combo_rhi_backend.setSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+    )
+
+    all_options = [
+        ("default", "settings.render_backend_default"),
+        ("opengl", "settings.render_backend_opengl"),
+        ("vulkan", "settings.render_backend_vulkan"),
+        ("d3d11", "settings.render_backend_d3d11"),
+        ("d3d12", "settings.render_backend_d3d12"),
+        ("metal", "settings.render_backend_metal"),
+        ("null", "settings.render_backend_null"),
+    ]
+    if sys.platform == "darwin":
+        keep = {"default", "opengl", "metal", "vulkan", "null"}
+    elif sys.platform.startswith("win"):
+        keep = {"default", "opengl", "d3d11", "d3d12", "vulkan", "null"}
+    else:
+        keep = {"default", "opengl", "vulkan", "null"}
+
+    for value, key in all_options:
+        if value not in keep:
+            continue
+        dialog.combo_rhi_backend.addItem(
+            dialog.tr(key, dialog.current_language), userData=value,
+        )
+    idx = dialog.combo_rhi_backend.findData(p.rhi_backend or "default")
+    if idx != -1:
+        dialog.combo_rhi_backend.setCurrentIndex(idx)
+    row.addWidget(dialog.lbl_rhi_backend)
+    row.addWidget(dialog.combo_rhi_backend, 1)
+    dialog.render_backend_group.add_layout(row)
+
+    dialog.lbl_rhi_backend_hint = QLabel(
+        dialog.tr("settings.render_backend_restart_hint", dialog.current_language)
+    )
+    dialog.lbl_rhi_backend_hint.setWordWrap(True)
+    dialog.lbl_rhi_backend_hint.setStyleSheet("color: palette(mid);")
+    dialog.render_backend_group.add_widget(dialog.lbl_rhi_backend_hint)
+
+    layout.addWidget(dialog.render_backend_group)
 
 def _build_video_group(dialog, layout, p):
     dialog.video_group = CustomGroupWidget(dialog.tr("settings.video_recording", dialog.current_language))

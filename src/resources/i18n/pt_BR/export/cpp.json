@@ -1,0 +1,16 @@
+{
+  "export": {
+    "all_files": "Todos os arquivos",
+    "browse": "Procurar…",
+    "canvas_unavailable": "A tela de comparação não está disponível.",
+    "failed_status": "Falha na exportação: %1",
+    "format": "Formato",
+    "output_file": "Arquivo de saída",
+    "quality": "Qualidade",
+    "save_current_view": "Salvar comparação atual",
+    "saved_status": "Imagem %1 × %2 salva em %3",
+    "select_output_file": "Selecionar arquivo de saída",
+    "still_image": "Exportação de imagem",
+    "title": "Exportar"
+  }
+}

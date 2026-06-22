@@ -18,13 +18,15 @@ use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 
 use imgsli_core::{
-    action::Action,
-    image_cache::{CachedPair, ImagePairCache, PairKey},
-    plan_keys::letterbox_rect as rust_letterbox_rect,
-    reducer::{apply, Scope},
-    settings::SettingsState,
-    settings_dialog::{is_interpolation_conflict as rust_interp_conflict, SettingsDialogData},
-    state::AppState,
+    core::action::Action,
+    core::reducer::{apply, Scope},
+    core::state::AppState,
+    plugins::settings::dialog::{
+        is_interpolation_conflict as rust_interp_conflict, SettingsDialogData,
+    },
+    plugins::settings::model::SettingsState,
+    ui::canvas::image_cache::{CachedPair, ImagePairCache, PairKey},
+    ui::canvas::plan_keys::letterbox_rect as rust_letterbox_rect,
     version as core_version,
 };
 

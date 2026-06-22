@@ -13,6 +13,7 @@ In-depth guides about architecture, contracts, and component design for contribu
 - **[TAB_CONTRACT.md](TAB_CONTRACT.md)** — Workspace tab interface and tab system design
 - **[UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)** — Custom UI toolkit (sli-ui-toolkit) API and components
 - **[HELP_WIDGET.md](HELP_WIDGET.md)** — Help system widget implementation
+- **[CPP_PORT_HARDENING.md](CPP_PORT_HARDENING.md)** — Plan for bringing the C++/Rust port up to product parity with the Python build (visual design, structural cleanup, remaining feature pipelines)
 
 ## For Users
 

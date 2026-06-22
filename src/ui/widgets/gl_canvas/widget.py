@@ -1,7 +1,7 @@
 from PIL import Image as PilImage
-from PySide6.QtCore import QPoint, QPointF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QPixmap
-from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtWidgets import QRhiWidget
 
 from .interaction import (
     handle_key_press_event,
@@ -25,12 +25,13 @@ from .interaction import (
     update_paste_overlay_rects,
     update_split_for_zoom,
 )
-from .render import paint_gl
+from .rhi_render import render_clear_frame
+from .rhi_renderer import RhiCanvasRenderer
+from .rhi_backend import configure_rhi_widget, log_initialized_rhi_widget
 from .render_context import (
     begin_update_batch,
     emit_viewport_state_change,
     end_update_batch,
-    initialize_gl_resources,
     preload_source_textures,
     request_update,
     resize_gl,
@@ -64,7 +65,7 @@ from .feature_overlay_gpu import (
     upload_feature_overlay_pair,
 )
 
-class GLCanvas(QOpenGLWidget):
+class GLCanvas(QRhiWidget):
     mousePressed = Signal(object)
     mouseMoved = Signal(object)
     mouseReleased = Signal(object)
@@ -81,7 +82,9 @@ class GLCanvas(QOpenGLWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        configure_rhi_widget(self)
         self._first_frame_rendered_emitted = False
+        self._rhi_renderer = RhiCanvasRenderer()
         init_widget_state(self)
 
     def set_store(self, store):
@@ -95,11 +98,23 @@ class GLCanvas(QOpenGLWidget):
 
     def _refresh_render_scene(self):
         state = self.runtime_state
+        if not getattr(state, "_render_scene_dirty", False):
+            state._render_scene_dirty = True
+            QTimer.singleShot(0, self._flush_render_scene)
+        self.update()
+
+    def _flush_render_scene(self):
+        state = self.runtime_state
+        if not getattr(state, "_render_scene_dirty", False):
+            return
+        state._render_scene_dirty = False
+        if state._store is None:
+            return
         state._render_scene = build_gl_render_scene(
             state._store, apply_channel_mode_in_shader=state._apply_channel_mode_in_shader
         )
         plan = getattr(self, "_active_render_plan", None)
-        if plan is not None and state._store is not None:
+        if plan is not None:
             from ui.canvas_infra.scene.widget_registry import (
                 apply_canvas_feature_live_runtime_overlays,
             )
@@ -139,6 +154,8 @@ class GLCanvas(QOpenGLWidget):
         state._drag_overlay_cache_key = None
         state._drag_overlay_cached_image = None
         super().resizeEvent(event)
+        size = event.size()
+        resize_gl(self, size.width(), size.height())
 
     def _update_paste_overlay_rects(self):
         update_paste_overlay_rects(self)
@@ -160,8 +177,12 @@ class GLCanvas(QOpenGLWidget):
     def _set_paste_overlay_hover(self, hovered: str | None):
         set_paste_overlay_hover(self, hovered)
 
-    def initializeGL(self):
-        initialize_gl_resources(self)
+    def initialize(self, command_buffer):
+        log_initialized_rhi_widget(self)
+        self._rhi_renderer.initialize(self, command_buffer)
+
+    def releaseResources(self):
+        self._rhi_renderer.release()
 
     def upload_image(self, qimage: QImage, slot_index: int):
         return upload_image(self, qimage, slot_index)
@@ -193,16 +214,12 @@ class GLCanvas(QOpenGLWidget):
             shader_letterbox,
         )
 
-    def paintGL(self):
-        result = paint_gl(self)
+    def render(self, command_buffer):
+        render_clear_frame(self, command_buffer)
         if not self._first_frame_rendered_emitted:
             self._first_frame_rendered_emitted = True
             self.firstFrameRendered.emit()
             self.firstVisualFrameReady.emit()
-        return result
-
-    def resizeGL(self, w, h):
-        resize_gl(self, w, h)
 
     def _request_update(self):
         request_update(self)

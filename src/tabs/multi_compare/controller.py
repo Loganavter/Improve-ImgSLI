@@ -7,18 +7,19 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QDialog, QFileDialog
 
 from tabs.multi_compare.models import (
-    LeafNode,
     MultiCompareState,
-    SplitNode,
     slot_ids_in_tree,
 )
+from tabs.multi_compare.services.composition_builder import build_composition_plan
+from tabs.multi_compare.services.gpu_export import MultiCompareGpuExporter
 from tabs.multi_compare.services.image_export import save_composite
 from tabs.multi_compare.widget import MultiCompareWidget
+from ui.canvas_presentation.composition import compute_native_canvas_size
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -30,8 +31,7 @@ class MultiCompareController:
 
     SAVE_OUTPUT_W = 1920
     SAVE_OUTPUT_H = 1080
-    SAVE_CELL_GAP = 4
-    SAVE_LABEL_FONT_PT = 14
+    NATIVE_CANVAS_MAX_EDGE = 16384
 
     def __init__(
         self,
@@ -48,11 +48,17 @@ class MultiCompareController:
         self.dialog_parent = dialog_parent or widget
         self.open_export_dialog = open_export_dialog
         self.state = MultiCompareState()
+        self._gpu_exporter: MultiCompareGpuExporter | None = None
 
         self.widget.images_dropped.connect(self._on_images_dropped)
         self.widget.add_requested.connect(self._on_add_requested)
         self.widget.save_requested.connect(self._on_save_requested)
         self.widget.set_state(self.state)
+
+    def shutdown(self) -> None:
+        if self._gpu_exporter is not None:
+            self._gpu_exporter.shutdown()
+            self._gpu_exporter = None
 
     # ---- public ----
 
@@ -110,7 +116,7 @@ class MultiCompareController:
     def _on_save_requested(self) -> None:
         if not slot_ids_in_tree(self.widget.state.root):
             return
-        native_size = self._live_view_size()
+        native_size = self._native_canvas_size() or self._live_view_size()
         if not callable(self.open_export_dialog):
             logger.error("Multi Compare export dialog service is unavailable")
             return
@@ -153,6 +159,17 @@ class MultiCompareController:
         width = max(1, int(self.widget.gl_grid.width()))
         height = max(1, int(self.widget.gl_grid.height()))
         return width, height
+
+    def _native_canvas_size(self) -> tuple[int, int] | None:
+        """Smallest canvas where every loaded slot renders at native resolution.
+
+        Delegates to the composition module so live render, export, and the
+        export dialog's suggested resolution all share one source of truth.
+        """
+        plan = build_composition_plan(self.widget.state, include_labels=False)
+        if plan is None:
+            return None
+        return compute_native_canvas_size(plan.root, max_edge=self.NATIVE_CANVAS_MAX_EDGE)
 
     def _render_export_preview(
         self,
@@ -236,201 +253,25 @@ class MultiCompareController:
         background_color: QColor | None = None,
         fill_background: bool = True,
     ) -> QImage:
-        w = max(1, int(w or self.SAVE_OUTPUT_W))
-        h = max(1, int(h or self.SAVE_OUTPUT_H))
-        out = QImage(w, h, QImage.Format.Format_RGBA8888)
-        out.fill(
-            background_color
-            if fill_background and background_color is not None
-            else QColor(0, 0, 0, 0)
+        state = self.widget.state
+        composition = build_composition_plan(
+            state,
+            canvas_w=int(w) if w else None,
+            canvas_h=int(h) if h else None,
         )
-
-        slot_by_id = {s.id: s for s in self.widget.state.slots}
-        live_w, live_h = self._live_view_size()
-        scale = min(w / live_w, h / live_h)
-        gap = max(1, int(round(self.widget.gl_grid.CELL_GAP * scale)))
-        focused_id = (
-            self.widget.state.focused_slot_id
-            if self.widget.state.is_focused
-            else None
-        )
-        if focused_id is None:
-            leaves = self._walk_compose(
-                self.widget.state.root,
-                QRect(0, 0, w, h),
-                gap=gap,
-            )
-        else:
-            leaves = [(focused_id, QRect(0, 0, w, h))]
-
-        painter = QPainter(out)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
-
-        font = QFont(painter.font())
-        font.setPointSizeF(max(1.0, self.widget.gl_grid.LABEL_FONT_PT * scale))
-        font.setBold(True)
-        painter.setFont(font)
-        fm = painter.fontMetrics()
-
-        for slot_id, rect in leaves:
-            slot = slot_by_id.get(slot_id)
-            if slot is None:
-                continue
-            if slot.image is not None:
-                self._paint_slot_image(
-                    painter,
-                    rect,
-                    slot.image,
-                    zoom=self.widget.state.zoom,
-                    pan_x=self.widget.state.pan_x,
-                    pan_y=self.widget.state.pan_y,
-                )
-            if slot.label:
-                self._paint_label(
-                    painter,
-                    fm,
-                    rect,
-                    slot.label,
-                    scale=scale,
-                )
-
-        painter.end()
-        return out
-
-    def _walk_compose(
-        self,
-        node,
-        rect: QRect,
-        *,
-        gap: int | None = None,
-    ) -> list[tuple[int, QRect]]:
-        if node is None:
-            return []
-        if isinstance(node, LeafNode):
-            return [(node.slot_id, rect)]
-        assert isinstance(node, SplitNode)
-        gap = max(0, int(self.SAVE_CELL_GAP if gap is None else gap))
-        ws = node.normalized_weights()
-        n = len(node.children)
-        out: list[tuple[int, QRect]] = []
-        if node.direction == "h":
-            total_gap = gap * (n - 1)
-            inner = max(rect.width() - total_gap, 1)
-            sizes = [int(inner * w) for w in ws]
-            sizes[-1] = inner - sum(sizes[:-1])
-            x = rect.x()
-            for child, size in zip(node.children, sizes):
-                child_rect = QRect(x, rect.y(), size, rect.height())
-                out.extend(self._walk_compose(child, child_rect, gap=gap))
-                x += size + gap
-        else:
-            total_gap = gap * (n - 1)
-            inner = max(rect.height() - total_gap, 1)
-            sizes = [int(inner * w) for w in ws]
-            sizes[-1] = inner - sum(sizes[:-1])
-            y = rect.y()
-            for child, size in zip(node.children, sizes):
-                child_rect = QRect(rect.x(), y, rect.width(), size)
-                out.extend(self._walk_compose(child, child_rect, gap=gap))
-                y += size + gap
-        return out
-
-    def _paint_slot_image(
-        self,
-        painter: QPainter,
-        cell_rect: QRect,
-        image: np.ndarray,
-        *,
-        zoom: float,
-        pan_x: float,
-        pan_y: float,
-    ) -> None:
-        image_h, image_w = image.shape[:2]
-        if image.ndim == 3 and image.shape[2] == 3:
-            qimg = QImage(
-                image.tobytes(),
-                image_w,
-                image_h,
-                3 * image_w,
-                QImage.Format.Format_RGB888,
-            )
-        elif image.ndim == 3 and image.shape[2] == 4:
-            qimg = QImage(
-                image.tobytes(),
-                image_w,
-                image_h,
-                4 * image_w,
+        if composition is None:
+            composition = build_composition_plan(state)
+        if composition is None:
+            return QImage(
+                max(1, int(w or self.SAVE_OUTPUT_W)),
+                max(1, int(h or self.SAVE_OUTPUT_H)),
                 QImage.Format.Format_RGBA8888,
             )
-        else:
-            return
-
-        image_ar = image_w / max(image_h, 1)
-        cell_ar = cell_rect.width() / max(cell_rect.height(), 1)
-        if image_ar > cell_ar:
-            fit_x, fit_y = 1.0, cell_ar / image_ar
-        else:
-            fit_x, fit_y = image_ar / cell_ar, 1.0
-
-        # Forward form of the GL shader:
-        # tex = .5 + fit * zoom * (source_uv - .5 + pan).
-        target_x = cell_rect.x() + cell_rect.width() * (
-            0.5 + fit_x * zoom * (-0.5 + pan_x)
-        )
-        target_y = cell_rect.y() + cell_rect.height() * (
-            0.5 + fit_y * zoom * (-0.5 + pan_y)
-        )
-        target_w = cell_rect.width() * fit_x * zoom
-        target_h = cell_rect.height() * fit_y * zoom
-
-        painter.save()
-        painter.setClipRect(cell_rect)
-        painter.fillRect(cell_rect, QColor(0, 0, 0, 255))
-        painter.drawImage(
-            QRect(
-                int(round(target_x)),
-                int(round(target_y)),
-                max(1, int(round(target_w))),
-                max(1, int(round(target_h))),
-            ),
-            qimg,
-        )
-        painter.restore()
-
-    def _paint_label(
-        self,
-        painter: QPainter,
-        fm,
-        cell_rect: QRect,
-        label: str,
-        *,
-        scale: float = 1.0,
-    ) -> None:
-        text_w = fm.horizontalAdvance(label)
-        text_h = fm.height()
-        pad = max(1, int(round(self.widget.gl_grid.LABEL_PADDING * scale)))
-        margin = max(1, int(round(6 * scale)))
-        bottom_margin = max(1, int(round(4 * scale)))
-        bg_w = min(text_w + pad * 2, cell_rect.width() - margin * 2)
-        bg = QRect(
-            cell_rect.x() + margin,
-            cell_rect.bottom() - text_h - pad * 2 - bottom_margin,
-            bg_w,
-            text_h + pad * 2,
-        )
-        if bg.width() <= 0:
-            return
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(
-            QBrush(QColor(0, 0, 0, self.widget.gl_grid.LABEL_BG_ALPHA))
-        )
-        radius = max(1, int(round(4 * scale)))
-        painter.drawRoundedRect(bg, radius, radius)
-        painter.setPen(QPen(QColor(255, 255, 255)))
-        painter.drawText(
-            bg.adjusted(pad, 0, -pad, 0),
-            int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
-            fm.elidedText(label, Qt.TextElideMode.ElideMiddle, bg.width() - pad * 2),
+        if self._gpu_exporter is None:
+            self._gpu_exporter = MultiCompareGpuExporter()
+        return self._gpu_exporter.render_to_qimage(
+            composition,
+            state,
+            background_color=background_color,
+            fill_background=fill_background,
         )

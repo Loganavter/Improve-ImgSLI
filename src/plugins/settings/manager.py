@@ -67,6 +67,7 @@ class SettingsManager:
             "video_editor_preview_render_scale", 1.0, float
         )
         s.show_workspace_tabs = self._get_setting("show_workspace_tabs", False, bool)
+        s.rhi_backend = self._get_setting("rhi_backend", "default", str)
         v.session_data.image_state.auto_calculate_psnr = self._get_setting(
             "auto_calculate_psnr", False, bool
         )
@@ -212,6 +213,7 @@ class SettingsManager:
             s.video_editor_preview_render_scale,
         )
         self._save_setting("show_workspace_tabs", s.show_workspace_tabs)
+        self._save_setting("rhi_backend", s.rhi_backend)
         self._save_setting(
             "auto_calculate_psnr", store.viewport.session_data.image_state.auto_calculate_psnr
         )

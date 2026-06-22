@@ -23,6 +23,7 @@ class SettingsState:
     video_recording_fps: int = 60
     video_editor_preview_render_scale: float = 1.0
     show_workspace_tabs: bool = False
+    rhi_backend: str = "default"
 
     export_use_default_dir: bool = True
     export_default_dir: str | None = None
