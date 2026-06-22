@@ -10,6 +10,7 @@
 
 #include <QDialog>
 #include <QJsonObject>
+#include <QSize>
 
 class QListWidget;
 class QStackedWidget;
@@ -28,19 +29,30 @@ class PerformancePage;
 
 namespace imgsli::app {
 
+class Store;
+
 class SettingsDialog final : public QDialog {
   Q_OBJECT
 
  public:
-  explicit SettingsDialog(QWidget* parent = nullptr);
+  // `store` is optional. When provided it is used to seed the dialog with live
+  // state instead of the Rust-derived defaults (mirrors Python
+  // `SettingsDialog.__init__` receiving `store=store`).
+  explicit SettingsDialog(Store* store = nullptr, QWidget* parent = nullptr);
 
   void loadFromJson(const QString& json);
   QString normalizedJson() const;
 
+ private slots:
+  void updateStyles();
+
  private:
   void buildSidebar();
+  QSize calculateDialogSize() const;
   QJsonObject readUi() const;
   void applyUi(const QJsonObject& obj);
+
+  Store* store_;
 
   QListWidget* sidebar_;
   QStackedWidget* pages_;

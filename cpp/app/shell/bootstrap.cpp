@@ -163,8 +163,8 @@ int buildMainUi(QApplication& app, CustomWindow& window, QWidget* central,
                            QVariant::fromValue<QObject*>(&window)}});
                    });
   QObject::connect(ui.btnSettings, &QAbstractButton::clicked, &window,
-                   [&window]() {
-                     SettingsDialog dialog(&window);
+                   [&window, store]() {
+                     SettingsDialog dialog(store, &window);
                      const QString prevJson = dialog.normalizedJson();
                      if (dialog.exec() == QDialog::Accepted) {
                        const QString nextJson = dialog.normalizedJson();
@@ -231,6 +231,12 @@ int buildMainUi(QApplication& app, CustomWindow& window, QWidget* central,
        {QStringLiteral("mode"), QStringLiteral("beginner")}});
 
   // -------- stage 6: show window + apply CLI options --------------------
+  // Mirror Python `MainWindow.__init__: self.setAcceptDrops(True)`.
+  // DragAndDropService wires the actual drop handling via eventFilter on the
+  // window; setAcceptDrops on the top-level window enables the OS-level
+  // drag-enter notifications so the eventFilter receives them.
+  window.setAcceptDrops(true);
+
   window.setBody(central);
   window.resize(1280, 800);
   window.show();

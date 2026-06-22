@@ -14,8 +14,10 @@
 #include "sli/toolkit/buttons/button.h"
 #include "sli/toolkit/buttons/button_group.h"
 #include "sli/toolkit/comboboxes/scrollable_combo_box.h"
+#include "sli/toolkit/overlays/drag_drop_overlay.h"
 #include "shell/ui.h"
 #include "ui/canvas/canvas_widget.h"
+#include "ui/widgets/zoom_indicator.h"
 
 namespace imgsli::app::shell {
 
@@ -31,7 +33,22 @@ void LayoutComposer::build(QWidget* mainWindow, QVBoxLayout* rootLayout) {
   rootLayout->addWidget(buildComparisonToolbar(mainWindow));
   rootLayout->addWidget(buildSplitRow(mainWindow));
   rootLayout->addWidget(buildMagnifierSettingsPanel(mainWindow));
-  rootLayout->addWidget(canvas_, 1);
+
+  // Wrap the canvas in a container so the ZoomIndicator and DragDropOverlay
+  // can be positioned as overlays over it — matching Python's
+  // `image_container_widget` which holds the canvas + zoom indicator +
+  // drag-drop overlay.
+  auto* canvasContainer = new QWidget(mainWindow);
+  canvasContainer->setObjectName(QStringLiteral("imageContainerWidget"));
+  canvasContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  auto* containerLayout = new QVBoxLayout(canvasContainer);
+  containerLayout->setContentsMargins(0, 0, 0, 0);
+  containerLayout->setSpacing(0);
+  containerLayout->addWidget(canvas_);
+  createZoomIndicator(canvasContainer);
+  createDragOverlay(canvasContainer);
+  rootLayout->addWidget(canvasContainer, 1);
+
   rootLayout->addWidget(buildFooterInfo(mainWindow));
   rootLayout->addWidget(buildFilenameEditPanel(mainWindow));
   rootLayout->addWidget(buildSaveBar(mainWindow));
@@ -40,6 +57,10 @@ void LayoutComposer::build(QWidget* mainWindow, QVBoxLayout* rootLayout) {
   // magnifier panel + filename edit panel hidden until their toggles fire.
   ui_.sliderSplit->parentWidget()->setVisible(false);
   ui_.magnifierSettingsPanel->setVisible(false);
+
+  // Mirror Python LayoutComposer._finalize().
+  applyIconSizes();
+  applyWorkspaceTabsVisibility();
 }
 
 QWidget* LayoutComposer::buildWorkspaceTabsBar(QWidget* /*mainWindow*/) {
@@ -231,6 +252,53 @@ QWidget* LayoutComposer::buildSaveBar(QWidget* parent) {
   ui_.btnSave->setMinimumHeight(36);
   layout->addWidget(ui_.btnSave, 1);
   return widget;
+}
+
+// --- finalization helpers ---------------------------------------------------
+
+void LayoutComposer::createZoomIndicator(QWidget* imageContainer) {
+  // Mirror Python LayoutComposer._create_zoom_indicator().
+  // ZoomIndicator is a floating overlay positioned at the top-right of its
+  // parent. It shows current zoom level and a reset button.
+  auto* indicator = new imgsli::app::ui::widgets::ZoomIndicator(
+      imageContainer,
+      // lang_provider: for the C++ port we emit a static "Zoom" prefix;
+      // a proper i18n hook can be wired later via Bootstrap.
+      []() { return QStringLiteral("Zoom"); },
+      /* target= */ nullptr  // will be wired to canvas widget by Bootstrap
+  );
+  ui_.zoomIndicator = indicator;
+  ui_.btnZoomReset = indicator->resetButton();
+  // Python: zoom_indicator is hidden at startup (only shows when zoom ≠ 1).
+  indicator->hide();
+}
+
+void LayoutComposer::createDragOverlay(QWidget* imageContainer) {
+  // Mirror Python `ui.drag_overlay = DragDropOverlay(ui.image_container_widget)`.
+  auto* overlay = new sli::toolkit::DragDropOverlay(imageContainer);
+  ui_.dragOverlay = overlay;
+  // Python _init_drag_overlays: starts hidden / no active state.
+  overlay->setOverlayState(false, std::nullopt);
+}
+
+void LayoutComposer::applyIconSizes() {
+  // Mirror Python LayoutComposer.apply_icon_sizes(). Only buttons that exist
+  // in the C++ port are listed; Python-only buttons (btn_divider_color etc.)
+  // are omitted until they are ported.
+  ui_.btnQuickSave->setIconSizePx(24);
+  ui_.helpButton->setIconSizePx(24);
+  ui_.btnClearList1->setIconSizePx(22);
+  ui_.btnClearList2->setIconSizePx(22);
+}
+
+void LayoutComposer::applyWorkspaceTabsVisibility() {
+  // Mirror Python `apply_workspace_tabs_visibility(ui)`.
+  // Python constant SHOW_WORKSPACE_TABS = False — the workspace tab bar is
+  // hidden by default; it becomes visible only when the settings flag
+  // `show_workspace_tabs` is True. In C++ we default to hidden here and
+  // Bootstrap can re-show it if the QSettings flag is set.
+  constexpr bool kDefaultShowWorkspaceTabs = false;
+  ui_.workspaceTabsBar->setVisible(kDefaultShowWorkspaceTabs);
 }
 
 }  // namespace imgsli::app::shell
