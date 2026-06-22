@@ -306,8 +306,22 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
         or cache.scaled_image2_for_display
         or store.viewport.session_data.image_state.image2
     )
-    source_image1 = store.document.full_res_image1 or store.document.original_image1
-    source_image2 = store.document.full_res_image2 or store.document.original_image2
+    # The live high-resolution source pair must use the same unified canvas
+    # coordinate system as the display pair. Document full-res images may have
+    # different dimensions; binding them directly makes each side use a
+    # different letterbox transform after zooming.
+    source_image1 = (
+        store.viewport.session_data.image_state.image1
+        or store.document.full_res_image1
+        or store.document.preview_image1
+        or store.document.original_image1
+    )
+    source_image2 = (
+        store.viewport.session_data.image_state.image2
+        or store.document.full_res_image2
+        or store.document.preview_image2
+        or store.document.original_image2
+    )
 
     if display_image1 is None and source_image1 is not None:
         display_image1 = source_image1

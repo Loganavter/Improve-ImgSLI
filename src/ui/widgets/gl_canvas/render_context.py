@@ -3,21 +3,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from OpenGL import GL as gl
-
 logger = logging.getLogger("ImproveImgSLI")
 from PySide6.QtCore import QTimer
-from PySide6.QtOpenGL import (
-    QOpenGLBuffer,
-    QOpenGLShader,
-    QOpenGLShaderProgram,
-    QOpenGLVertexArrayObject,
-)
 
-from .shader_sources.base import (
-    build_base_fragment_shader,
-    build_base_vertex_shader,
-)
 from .render_common import widget_px_to_screen_px
 from .render_config import update_display_split_position
 from ui.canvas_presentation.render_arch import (
@@ -42,6 +30,7 @@ from ui.canvas_infra.viewport.state import (
     get_zoom_level,
 )
 from .texture_parts.base_images import (
+    update_common_letterbox_geometry,
     update_letterbox_geometry,
     upload_pil_images,
     upload_source_pil_image,
@@ -60,11 +49,11 @@ class GLViewportContext:
 @dataclass(slots=True)
 class GLTextureContext:
     stored_pil_images: list
-    source_texture_ids: list[int]
-    texture_ids: list[int]
+    source_texture_ids: list[object]
+    texture_ids: list[object]
     source_images_ready: bool
     diff_source_ready: bool
-    diff_source_texture_id: int
+    diff_source_texture_id: object
     shader_letterbox_mode: bool
     content_rect_px: tuple[int, int, int, int] | None
     clip_overlays_to_content_rect: bool
@@ -240,7 +229,7 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
             texture_ids=list(getattr(widget, "texture_ids", [0, 0])),
             source_images_ready=bool(state._source_images_ready),
             diff_source_ready=bool(state._diff_source_ready),
-            diff_source_texture_id=int(getattr(widget, "_diff_source_texture_id", 0) or 0),
+            diff_source_texture_id=getattr(widget, "_diff_source_texture_id", 0) or 0,
             shader_letterbox_mode=bool(state._shader_letterbox_mode),
             content_rect_px=state._content_rect_px,
             clip_overlays_to_content_rect=bool(state._clip_overlays_to_content_rect),
@@ -279,94 +268,18 @@ def build_render_runtime_context(widget) -> GLRenderRuntimeContext:
         ),
     )
 
-def initialize_gl_resources(widget):
-    state = widget.runtime_state
-
-    ctx = widget.context()
-    if ctx and ctx.isValid():
-        pass
-    else:
-        logger.error(
-            "initializeGL called without a valid context: ctx=%s valid=%s",
-            ctx,
-            ctx.isValid() if ctx is not None else False,
-        )
-        return
-
-    is_gles = bool(ctx.isOpenGLES())
-
-    widget.shader_program = QOpenGLShaderProgram()
-    ok_vert = widget.shader_program.addShaderFromSourceCode(
-        QOpenGLShader.ShaderTypeBit.Vertex, build_base_vertex_shader(is_gles)
-    )
-    ok_frag = widget.shader_program.addShaderFromSourceCode(
-        QOpenGLShader.ShaderTypeBit.Fragment, build_base_fragment_shader(is_gles)
-    )
-    linked = widget.shader_program.link()
-    if not (ok_vert and ok_frag and linked):
-        logger.error("Base shader compile/link failed: %s", widget.shader_program.log())
-
-    widget.vao = QOpenGLVertexArrayObject()
-    widget.vao.create()
-    widget.vao.bind()
-
-    widget.vbo = QOpenGLBuffer()
-    widget.vbo.create()
-    widget.vbo.bind()
-    widget.vbo.allocate(widget._quad_vertices.tobytes(), widget._quad_vertices.nbytes)
-
-    widget.shader_program.enableAttributeArray(0)
-    widget.shader_program.setAttributeBuffer(0, gl.GL_FLOAT, 0, 2, 4 * 4)
-    widget.shader_program.enableAttributeArray(1)
-    widget.shader_program.setAttributeBuffer(1, gl.GL_FLOAT, 2 * 4, 2, 4 * 4)
-
-    widget.vbo.release()
-    widget.vao.release()
-
-    widget.texture_ids = list(gl.glGenTextures(2))
-    widget._source_texture_ids = list(gl.glGenTextures(2))
-    widget._diff_source_texture_id = int(gl.glGenTextures(1))
-    for tex_id in widget.texture_ids + widget._source_texture_ids + [
-        widget._diff_source_texture_id,
-    ]:
-        _configure_texture_parameters(tex_id)
-
-    widget._feature_overlay_tex_ids = [int(t) for t in list(gl.glGenTextures(3))]
-    widget._feature_overlay_aux_tex_ids = [int(t) for t in list(gl.glGenTextures(3))]
-    widget._feature_overlay_tex_id = widget._feature_overlay_tex_ids[0]
-    for texture_id in widget._feature_overlay_tex_ids + widget._feature_overlay_aux_tex_ids:
-        _configure_texture_parameters(texture_id)
-
-    widget._circle_mask_tex_id = int(gl.glGenTextures(1))
-    _configure_texture_parameters(widget._circle_mask_tex_id)
-    _load_circle_mask_assets(widget)
-
-    _initialize_feature_gl_passes(widget)
-
-def _initialize_feature_gl_passes(widget) -> None:
-    """Discover and initialize all canvas feature GL render passes."""
-    from ui.canvas_infra.scene.gl_pass_registry import get_canvas_gl_render_passes
-    passes = [type(p)() for p in get_canvas_gl_render_passes()]
-    widget._feature_gl_passes = passes
-    for pass_ in passes:
-        try:
-            pass_.initialize(widget)
-        except Exception:
-            logger.exception("Failed to initialize GL pass %s", type(pass_).__name__)
-
 def resize_gl(widget, w: int, h: int):
     state = widget.runtime_state
     letterbox_focus = None
     if state._shader_letterbox_mode and state._stored_pil_images[0] is not None:
         from ui.canvas_infra.viewport.focus import capture_letterbox_focus
         letterbox_focus = capture_letterbox_focus(widget)
-    gl.glViewport(0, 0, w, h)
     widget._update_paste_overlay_rects()
     if has_canvas_feature_live_runtime_overlays():
         QTimer.singleShot(0, widget._emit_viewport_state_change)
     img1, img2 = state._stored_pil_images
     if state._shader_letterbox_mode and img1 is not None:
-        update_letterbox_geometry(widget, img1, slot_index=0)
+        update_common_letterbox_geometry(widget, img1, img2)
         from ui.canvas_infra.viewport.focus import restore_letterbox_focus
         restore_letterbox_focus(widget, letterbox_focus)
     elif img1 is not None:
@@ -381,7 +294,7 @@ def resize_gl(widget, w: int, h: int):
         )
         return
     if state._shader_letterbox_mode and img2 is not None:
-        update_letterbox_geometry(widget, img2, slot_index=1)
+        update_common_letterbox_geometry(widget, img1, img2)
     elif img2 is not None:
         state._letterbox_params[1] = (0.0, 0.0, 1.0, 1.0)
     widget.update()
@@ -439,7 +352,6 @@ def preload_source_textures(widget):
         if img2 is not None:
             upload_source_pil_image(widget, img2, 1)
 
-        gl.glFinish()
         state._source_images_ready = True
         if (
             state._store is not None
@@ -463,38 +375,3 @@ def end_update_batch(widget):
     if state._update_batch_depth == 0 and state._update_pending:
         state._update_pending = False
         widget.update()
-
-def _configure_texture_parameters(texture_id: int):
-    gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
-
-def _load_circle_mask_assets(widget):
-    try:
-        from PIL import Image as _PilImage
-        from utils.resource_loader import resource_path
-
-        mask_img_raw = _PilImage.open(resource_path("resources/assets/circle_mask.png"))
-        if "A" in mask_img_raw.getbands():
-            mask_img = mask_img_raw.getchannel("A")
-        else:
-            from PIL import ImageOps as _ImageOps
-
-            mask_img = _ImageOps.invert(mask_img_raw.convert("L"))
-        mask_w, mask_h = mask_img.size
-        mask_raw = mask_img.tobytes("raw", "L")
-        gl.glTexImage2D(
-            gl.GL_TEXTURE_2D,
-            0,
-            gl.GL_R8,
-            mask_w,
-            mask_h,
-            0,
-            gl.GL_RED,
-            gl.GL_UNSIGNED_BYTE,
-            mask_raw,
-        )
-    except Exception:
-        pass

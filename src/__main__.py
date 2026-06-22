@@ -1,8 +1,11 @@
 import argparse
+import faulthandler
 import logging
 import os
 import sys
 from pathlib import Path
+
+faulthandler.enable()
 
 try:
 
@@ -26,12 +29,16 @@ else:
 sys.path.insert(0, application_path)
 
 from PySide6.QtCore import QLoggingCategory, QThreadPool, Qt
-from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
 from sli_ui_toolkit.widgets import install_application_tooltips
 from ui.main_window import MainWindow
+from ui.widgets.gl_canvas.rhi_backend import (
+    configure_rhi_process_environment,
+    requested_rhi_backend_name,
+    supported_rhi_backend_names,
+)
 
 def _configure_qt_logging() -> None:
     current_rules = os.environ.get("QT_LOGGING_RULES", "").strip()
@@ -48,19 +55,6 @@ def _configure_qt_logging() -> None:
             QLoggingCategory.setFilterRules(merged_rules)
         except Exception:
             pass
-
-def _configure_default_surface_format() -> None:
-    # PySide6's QOpenGLWidget defaults to an OpenGL ES profile on NVIDIA/EGL,
-    # which makes PyOpenGL's glActiveTexture lookup fail at paintGL with
-    # GLError 1282. Forcing an explicit desktop OpenGL 3.3 compatibility
-    # profile restores PyQt6-era behavior. Deleted when the QRhi widget swap
-    # lands and PyOpenGL is removed.
-    fmt = QSurfaceFormat()
-    fmt.setVersion(3, 3)
-    fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CompatibilityProfile)
-    fmt.setRenderableType(QSurfaceFormat.RenderableType.OpenGL)
-    QSurfaceFormat.setDefaultFormat(fmt)
-
 
 def _configure_linux_desktop_integrations() -> None:
     if os.name != "posix":
@@ -99,11 +93,44 @@ def main():
         action="store_true",
         help="Enable the developer UI inspector for this session.",
     )
+    parser.add_argument(
+        "--rhi-backend",
+        choices=supported_rhi_backend_names(),
+        default=None,
+        help="Select the QRhi backend for every render widget in the process.",
+    )
 
     args = parser.parse_args()
+
+    # Backend resolution order: CLI flag > QSettings > env var > "default".
+    # QSettings is consulted before QApplication exists; that's safe (QSettings
+    # uses platform-native config, no QApp required).
+    selected_rhi_backend = args.rhi_backend
+    if selected_rhi_backend is None:
+        try:
+            from PySide6.QtCore import QSettings
+            qs = QSettings("improve-imgsli", "improve-imgsli")
+            saved = str(qs.value("rhi_backend", "") or "").strip().lower()
+            if saved and saved in supported_rhi_backend_names():
+                selected_rhi_backend = saved
+        except Exception:
+            pass
+    if not selected_rhi_backend:
+        selected_rhi_backend = requested_rhi_backend_name()
+    if selected_rhi_backend != "default":
+        using_xwayland_for_vulkan = configure_rhi_process_environment(
+            selected_rhi_backend
+        )
+    else:
+        using_xwayland_for_vulkan = False
     _configure_qt_logging()
-    _configure_default_surface_format()
     _configure_linux_desktop_integrations()
+    if using_xwayland_for_vulkan:
+        logging.getLogger("ImproveImgSLI.rhi").warning(
+            "Vulkan QRhiWidget requested in a Wayland session; using the xcb "
+            "QPA plugin because the verified Qt 6.11.1/GNOME/NVIDIA setup "
+            "loses top-level window controls on native Wayland."
+        )
 
     if args.enable_logging or args.disable_logging:
         app_instance = QApplication.instance()

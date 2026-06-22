@@ -10,6 +10,7 @@ from ui.canvas_infra.viewport.focus import (
     restore_letterbox_focus,
 )
 
+from .composition import CompositionPlan, resolve_composition
 from .plan import CanvasRenderPlan
 
 def _compute_sr(canvas, plan) -> float:
@@ -201,7 +202,17 @@ def apply_canvas_render_plan(
     ``store=…``     —  interactive path; live feature overlays drive positions,
                        split sync, and geometry; zoom is preserved when
                        ``plan.preserve_zoom`` is True.
+
+    When ``plan.composition_root`` is set, the frame is described by a
+    composition tree (multi-layer / scene-graph mode). The tree is resolved
+    once and stashed on the canvas as ``canvas._active_composition`` so a
+    composition-aware renderer can consume it. The legacy fields remain
+    populated with a single-image placeholder for safety.
     """
+    if plan.composition_root is not None:
+        _apply_composition_plan(canvas, plan)
+        return
+    canvas._active_composition = None
     if _textures_are_current(canvas, plan):
         _apply_plan_scene_only(
             canvas, plan,
@@ -306,9 +317,14 @@ def _apply_plan_scene_only(
         if img0 is not None and state._shader_letterbox_mode:
             letterbox_focus = capture_letterbox_focus(canvas) if plan.preserve_zoom else None
             from ui.widgets.gl_canvas.texture_parts.base_images import (
-                update_letterbox_geometry,
+                update_common_letterbox_geometry,
             )
-            update_letterbox_geometry(canvas, img0, slot_index=0)
+            img1 = (
+                state._stored_pil_images[1]
+                if len(state._stored_pil_images) > 1
+                else None
+            )
+            update_common_letterbox_geometry(canvas, img0, img1)
             restore_letterbox_focus(canvas, letterbox_focus)
 
         _apply_overlays(canvas, plan, store=store)
@@ -320,3 +336,22 @@ def _apply_plan_scene_only(
 def apply_render_plan_to_canvas(canvas, plan: CanvasRenderPlan) -> None:
     """Snapshot / export / preview path — thin wrapper around apply_canvas_render_plan."""
     apply_canvas_render_plan(canvas, plan)
+
+
+def _apply_composition_plan(canvas, plan: CanvasRenderPlan) -> None:
+    """Resolve the composition tree and stash it on the canvas.
+
+    Composition-aware backends (multi-compare renderer today, generic
+    N-layer GLCanvas mode tomorrow) read ``canvas._active_composition`` and
+    dispatch their own draw calls. We don't touch base_images / split-position
+    / overlay_layout — those belong to the legacy 2-image path.
+    """
+    composition = CompositionPlan(
+        root=plan.composition_root,
+        canvas_w=int(plan.canvas_w),
+        canvas_h=int(plan.canvas_h),
+        fill_rgba=plan.fill_rgba,
+    )
+    resolved = resolve_composition(composition)
+    canvas._active_render_plan = plan
+    canvas._active_composition = resolved

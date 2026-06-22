@@ -1,0 +1,16 @@
+{
+  "export": {
+    "all_files": "所有文件",
+    "browse": "浏览…",
+    "canvas_unavailable": "比较画布不可用。",
+    "failed_status": "导出失败：%1",
+    "format": "格式",
+    "output_file": "输出文件",
+    "quality": "质量",
+    "save_current_view": "保存当前比较",
+    "saved_status": "已将 %1 × %2 图像保存到 %3",
+    "select_output_file": "选择输出文件",
+    "still_image": "静态图像导出",
+    "title": "导出"
+  }
+}

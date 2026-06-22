@@ -74,14 +74,12 @@ def test_gl_canvas_clear_resets_runtime_flags(monkeypatch):
         _paste_overlay_visible=True,
         _paste_overlay_horizontal=True,
         _paste_overlay_hovered_button="left",
+        _pending_texture_uploads=[object()],
     )
     widget = SimpleNamespace(runtime_state=runtime_state, texture_ids=[11, 12], update=lambda: None)
 
     monkeypatch.setattr(layers, "clear_diff_texture", lambda w: setattr(w, "_diff_cleared", True))
     monkeypatch.setattr(layers, "clear_feature_overlay_gpu", lambda w: setattr(w, "_overlay_cleared", True))
-    monkeypatch.setattr(layers.gl, "glBindTexture", lambda *args: None)
-    monkeypatch.setattr(layers.gl, "glTexImage2D", lambda *args: None)
-
     layers.clear(widget)
 
     assert runtime_state._images_uploaded == [False, False]

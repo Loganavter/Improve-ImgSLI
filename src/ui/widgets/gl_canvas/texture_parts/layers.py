@@ -1,4 +1,3 @@
-from OpenGL import GL as gl
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QImage, QPixmap
 
@@ -133,19 +132,7 @@ def clear(widget):
     state._paste_overlay_visible = False
     state._paste_overlay_horizontal = False
     state._paste_overlay_hovered_button = None
-    for i in range(2):
-        gl.glBindTexture(gl.GL_TEXTURE_2D, widget.texture_ids[i])
-        gl.glTexImage2D(
-            gl.GL_TEXTURE_2D,
-            0,
-            gl.GL_RGBA,
-            1,
-            1,
-            0,
-            gl.GL_RGBA,
-            gl.GL_UNSIGNED_BYTE,
-            b"\x00\x00\x00\x00",
-        )
+    state._pending_texture_uploads.clear()
     clear_diff_texture(widget)
     clear_feature_overlay_gpu(widget)
     widget.update()

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from PIL import Image
+
 from ui.canvas_infra.viewport.state import (
     set_pan_offsets,
     set_zoom_level,
@@ -60,12 +62,11 @@ def test_resize_gl_preserves_image_focus_when_letterbox_changes(monkeypatch):
     set_pan_offsets(canvas, 0.12, -0.04)
 
     focus = capture_letterbox_focus(canvas)
-    monkeypatch.setattr(render_context.gl, "glViewport", lambda *args: None)
     monkeypatch.setattr(render_context, "has_canvas_feature_live_runtime_overlays", lambda: False)
     monkeypatch.setattr(
         render_context,
-        "update_letterbox_geometry",
-        lambda widget, img, slot_index=-1: widget.runtime_state._letterbox_params.__setitem__(
+        "update_common_letterbox_geometry",
+        lambda widget, img1, img2: widget.runtime_state._letterbox_params.__setitem__(
             0,
             (0.08, 0.02, 0.84, 0.96),
         ),
@@ -74,3 +75,35 @@ def test_resize_gl_preserves_image_focus_when_letterbox_changes(monkeypatch):
     render_context.resize_gl(canvas, 1200, 900)
 
     assert capture_letterbox_focus(canvas) == focus
+
+def test_resize_gl_recomputes_aspect_ratio_and_shared_interaction_rect(monkeypatch):
+    """Window aspect changes must update both rendering and hit-test geometry."""
+    import ui.widgets.gl_canvas.render_context as render_context
+
+    dimensions = {"width": 500, "height": 1000}
+    image1 = Image.new("RGBA", (1000, 500), "red")
+    image2 = Image.new("RGBA", (1000, 500), "blue")
+    canvas = SimpleNamespace(
+        runtime_state=SimpleNamespace(
+            _shader_letterbox_mode=True,
+            _stored_pil_images=[image1, image2],
+            _letterbox_params=[(0.0, 0.0, 1.0, 1.0), (0.0, 0.0, 1.0, 1.0)],
+            _content_rect_px=(0, 0, 1000, 500),
+            _clip_overlays_to_content_rect=False,
+        ),
+        width=lambda: dimensions["width"],
+        height=lambda: dimensions["height"],
+        _update_paste_overlay_rects=lambda: None,
+        update=lambda: None,
+    )
+    monkeypatch.setattr(
+        render_context,
+        "has_canvas_feature_live_runtime_overlays",
+        lambda: False,
+    )
+
+    render_context.resize_gl(canvas, 500, 1000)
+
+    expected = (0.0, 0.375, 1.0, 0.25)
+    assert canvas.runtime_state._letterbox_params == [expected, expected]
+    assert canvas.runtime_state._content_rect_px == (0, 375, 500, 250)

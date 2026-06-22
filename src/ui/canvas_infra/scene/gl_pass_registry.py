@@ -6,7 +6,7 @@ from functools import lru_cache
 
 import ui.canvas_features as _features_pkg
 
-from .gl_pass_contract import CanvasGLRenderPass
+from .gl_pass_contract import CanvasGLRenderPass, CanvasRenderPass
 
 @lru_cache(maxsize=1)
 def get_canvas_gl_render_passes() -> tuple[CanvasGLRenderPass, ...]:
@@ -29,6 +29,27 @@ def get_canvas_gl_render_passes() -> tuple[CanvasGLRenderPass, ...]:
         except ModuleNotFoundError:
             continue
         feature_passes = getattr(module, "GL_RENDER_PASSES", None)
+        if isinstance(feature_passes, (list, tuple)):
+            passes.extend(feature_passes)
+    return tuple(passes)
+
+
+@lru_cache(maxsize=1)
+def get_canvas_render_passes() -> tuple[CanvasRenderPass, ...]:
+    """Return feature passes that have completed their QRhi port."""
+    passes: list[CanvasRenderPass] = []
+    for module_info in sorted(
+        pkgutil.iter_modules(_features_pkg.__path__), key=lambda m: m.name
+    ):
+        if module_info.name.startswith("_"):
+            continue
+        try:
+            module = importlib.import_module(
+                f"{_features_pkg.__name__}.{module_info.name}.gl_passes"
+            )
+        except ModuleNotFoundError:
+            continue
+        feature_passes = getattr(module, "RENDER_PASSES", None)
         if isinstance(feature_passes, (list, tuple)):
             passes.extend(feature_passes)
     return tuple(passes)

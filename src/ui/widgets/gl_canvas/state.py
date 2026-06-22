@@ -5,7 +5,6 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QPixmap
 
 from ui.canvas_infra.viewport.state import ensure_zoom_viewport_state
-from .runtime import build_canvas_surface_format
 
 @dataclass(slots=True)
 class _FeatureOverlayGpuState:
@@ -52,6 +51,7 @@ class GLCanvasRuntimeState:
     _letterbox_params: list = field(default_factory=lambda: [None, None])
     _store: object | None = None
     _render_scene: object | None = None
+    _render_scene_dirty: bool = False
     _split_position_sync: object | None = None
     _apply_channel_mode_in_shader: bool = True
     _read_only: bool = False
@@ -104,8 +104,6 @@ def init_widget_state(widget):
     widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
     widget.setAutoFillBackground(True)
 
-    widget.setFormat(build_canvas_surface_format())
-
     widget._quad_vertices = np.array(
         [
             -1.0, 1.0, 0.0, 0.0,
@@ -124,9 +122,9 @@ def init_widget_state(widget):
     widget.vbo = None
     widget.textures = [None, None]
 
-    widget.texture_ids = [0, 0]
-    widget._source_texture_ids = [0, 0]
-    widget._diff_source_texture_id = 0
+    widget.texture_ids = ["stored_0", "stored_1"]
+    widget._source_texture_ids = ["source_0", "source_1"]
+    widget._diff_source_texture_id = "diff"
     widget._feature_overlay_tex_ids = []
     widget._feature_overlay_aux_tex_ids = []
     widget._circle_mask_tex_id = 0
