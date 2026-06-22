@@ -62,6 +62,7 @@ add_library(sli_ui_toolkit_cpp STATIC
     include/sli/toolkit/comboboxes/models.h
     include/sli/toolkit/comboboxes/search.h
     include/sli/toolkit/comboboxes/overlay.h
+    include/sli/toolkit/comboboxes/dropdown_overlay.h
     include/sli/toolkit/comboboxes/scrollable_combo_box.h
     include/sli/toolkit/composite/base_flyout.h
     include/sli/toolkit/composite/color_swatch.h
@@ -150,6 +151,7 @@ add_library(sli_ui_toolkit_cpp STATIC
     src/comboboxes/models.cpp
     src/comboboxes/search.cpp
     src/comboboxes/overlay.cpp
+    src/comboboxes/dropdown_overlay.cpp
     src/comboboxes/scrollable_combo_box.cpp
     src/composite/base_flyout.cpp
     src/composite/color_swatch.cpp
