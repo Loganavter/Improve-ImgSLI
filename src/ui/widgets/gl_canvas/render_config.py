@@ -1,4 +1,3 @@
-from OpenGL import GL as gl
 from PySide6.QtCore import QRect
 
 from ui.canvas_infra.viewport.contract import DisplaySplitPositionRequest
@@ -86,50 +85,9 @@ def get_local_visible_image_rect(
     )
 
 def begin_content_scissor(widget, force: bool = False):
-    state = widget.runtime_state
-    if not force and not state._clip_overlays_to_content_rect:
-        return False
-    if state._content_scissor_depth > 0:
-        state._content_scissor_depth += 1
-        return True
-    rect = get_content_rect_screen_px(widget)
-    if not rect:
-        return False
-
-    x, y, w, h = rect
-    if w <= 0 or h <= 0:
-        return False
-
-    visible_left = max(0, x)
-    visible_top = max(0, y)
-    visible_right = min(widget.width(), x + w)
-    visible_bottom = min(widget.height(), y + h)
-    if visible_right <= visible_left or visible_bottom <= visible_top:
-        return False
-
-    x = visible_left
-    y = visible_top
-    w = visible_right - visible_left
-    h = visible_bottom - visible_top
-
-    dpr = widget.devicePixelRatio()
-    physical_h = int(widget.height() * dpr)
-    gl.glEnable(gl.GL_SCISSOR_TEST)
-    gl.glScissor(
-        int(x * dpr),
-        int(max(0, physical_h - int((y + h) * dpr))),
-        int(w * dpr),
-        int(h * dpr),
-    )
-    state._content_scissor_depth = 1
-    return True
+    """No-op in the QRhi pipeline (QRhi passes set scissor per-draw)."""
+    return False
 
 def end_content_scissor(widget, enabled):
-    if not enabled:
-        return
-    state = widget.runtime_state
-    if state._content_scissor_depth <= 0:
-        return
-    state._content_scissor_depth -= 1
-    if state._content_scissor_depth == 0:
-        gl.glDisable(gl.GL_SCISSOR_TEST)
+    """No-op counterpart to ``begin_content_scissor``."""
+    return

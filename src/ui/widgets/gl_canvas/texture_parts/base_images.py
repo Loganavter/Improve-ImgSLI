@@ -1,8 +1,7 @@
-from OpenGL import GL as gl
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
-from .common import upload_pil_to_texture_id
+from .upload_queue import queue_texture_upload
 
 def upload_image(widget, qimage: QImage, slot_index: int):
     state = widget.runtime_state
@@ -12,11 +11,8 @@ def upload_image(widget, qimage: QImage, slot_index: int):
     state._images_uploaded[slot_index] = True
 
     converted_img = qimage.convertToFormat(QImage.Format.Format_RGBA8888)
-    ptr = converted_img.constBits()
-    raw = bytes(ptr)
-
     state._pending_texture_uploads.append(
-        (raw, converted_img.width(), converted_img.height(), widget.texture_ids[slot_index], slot_index)
+        (widget.texture_ids[slot_index], converted_img.copy(), slot_index)
     )
     widget.update()
 
@@ -29,9 +25,7 @@ def upload_source_pil_image(widget, pil_image, slot_index: int):
     if not texture_id:
         return
 
-    img = pil_image.convert("RGBA")
-    raw = img.tobytes("raw", "RGBA")
-    widget.runtime_state._pending_texture_uploads.append((raw, img.width, img.height, texture_id, None))
+    queue_texture_upload(widget, pil_image, texture_id)
 
 def upload_diff_source_pil_image(widget, pil_image):
     state = widget.runtime_state
@@ -45,9 +39,7 @@ def upload_diff_source_pil_image(widget, pil_image):
     if state._diff_source_ready and state._diff_source_image_id == image_id:
         return
 
-    img = pil_image.convert("RGBA")
-    raw = img.tobytes("raw", "RGBA")
-    state._pending_texture_uploads.append((raw, img.width, img.height, widget._diff_source_texture_id, None))
+    queue_texture_upload(widget, pil_image, widget._diff_source_texture_id)
     state._diff_source_pil_image = pil_image
     state._diff_source_image_id = image_id
     state._diff_source_ready = True
@@ -108,6 +100,24 @@ def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: in
             state._content_rect_px = (offset_x, offset_y, nw, nh)
             state._clip_overlays_to_content_rect = False
 
+
+def update_common_letterbox_geometry(
+    widget,
+    image1: PilImage.Image | None,
+    image2: PilImage.Image | None,
+) -> None:
+    """Keep both comparison sides in one canvas coordinate system."""
+    reference = image1 if image1 is not None else image2
+    update_letterbox_geometry(widget, reference, slot_index=0)
+    while len(widget.runtime_state._letterbox_params) < 2:
+        widget.runtime_state._letterbox_params.append(
+            tuple(widget.runtime_state._letterbox_params[0])
+        )
+    widget.runtime_state._letterbox_params[1] = tuple(
+        widget.runtime_state._letterbox_params[0]
+    )
+
+
 def upload_pil_images(
     widget,
     pil_image1,
@@ -159,18 +169,18 @@ def upload_pil_images(
         state._source_images_ready = False
     if pil_image1 and stored_changed:
         if state._shader_letterbox_mode:
-            update_letterbox_geometry(widget, pil_image1, slot_index=0)
-            upload_pil_to_texture_id(widget, pil_image1, widget.texture_ids[0], slot_index=0)
+            update_common_letterbox_geometry(widget, pil_image1, pil_image2)
+            queue_texture_upload(widget, pil_image1, widget.texture_ids[0], slot_index=0)
         else:
             lb1 = letterbox_pil(widget, pil_image1, slot_index=0)
-            upload_pil_to_texture_id(widget, lb1, widget.texture_ids[0], slot_index=0)
+            queue_texture_upload(widget, lb1, widget.texture_ids[0], slot_index=0)
     if pil_image2 and stored_changed:
         if state._shader_letterbox_mode:
-            update_letterbox_geometry(widget, pil_image2, slot_index=1)
-            upload_pil_to_texture_id(widget, pil_image2, widget.texture_ids[1], slot_index=1)
+            update_common_letterbox_geometry(widget, pil_image1, pil_image2)
+            queue_texture_upload(widget, pil_image2, widget.texture_ids[1], slot_index=1)
         else:
             lb2 = letterbox_pil(widget, pil_image2, slot_index=1)
-            upload_pil_to_texture_id(widget, lb2, widget.texture_ids[1], slot_index=1)
+            queue_texture_upload(widget, lb2, widget.texture_ids[1], slot_index=1)
     if has_explicit_source:
         try:
             if source_changed or not state._source_images_ready:
@@ -221,13 +231,13 @@ def configure_offscreen_render(
     ):
         return
 
-    upload_pil_to_texture_id(widget, stored_images[0], widget.texture_ids[0], slot_index=0)
-    upload_pil_to_texture_id(widget, stored_images[1], widget.texture_ids[1], slot_index=1)
+    queue_texture_upload(widget, stored_images[0], widget.texture_ids[0], slot_index=0)
+    queue_texture_upload(widget, stored_images[1], widget.texture_ids[1], slot_index=1)
 
     if source_images[0] is not None:
-        upload_pil_to_texture_id(widget, source_images[0], widget._source_texture_ids[0])
+        queue_texture_upload(widget, source_images[0], widget._source_texture_ids[0])
     if source_images[1] is not None:
-        upload_pil_to_texture_id(widget, source_images[1], widget._source_texture_ids[1])
+        queue_texture_upload(widget, source_images[1], widget._source_texture_ids[1])
 
 def get_letterbox_params(widget, slot: int = 0) -> tuple:
     state = widget.runtime_state
@@ -244,19 +254,6 @@ def get_letterbox_params(widget, slot: int = 0) -> tuple:
 
 def clear_diff_texture(widget):
     state = widget.runtime_state
-    if widget._diff_source_texture_id:
-        gl.glBindTexture(gl.GL_TEXTURE_2D, widget._diff_source_texture_id)
-        gl.glTexImage2D(
-            gl.GL_TEXTURE_2D,
-            0,
-            gl.GL_RGBA,
-            1,
-            1,
-            0,
-            gl.GL_RGBA,
-            gl.GL_UNSIGNED_BYTE,
-            b"\x00\x00\x00\x00",
-        )
     state._diff_source_pil_image = None
     state._diff_source_image_id = 0
     state._diff_source_ready = False

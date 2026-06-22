@@ -25,3 +25,4 @@ class SettingsDialogData:
     ui_mode: str
     video_recording_fps: int
     show_workspace_tabs: bool = False
+    rhi_backend: str = "default"

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from OpenGL import GL as gl
 from PySide6.QtCore import QPoint, QPointF
 from PySide6.QtGui import QColor, QImage, QPixmap
+
+# Legacy GL filter sentinel; the QRhi magnifier pass uses per-sampler
+# filtering instead, so this is only used as a non-None marker.
+_DEFAULT_GL_FILTER = 9729  # GL_LINEAR
 
 from ui.widgets.gl_canvas.texture_parts.common import ensure_feature_overlay_slot_capacity
 
@@ -64,23 +67,10 @@ def set_feature_overlay_content(widget, pixmap: QPixmap | None, top_left: QPoint
         widget._request_update()
         return
 
-    widget.makeCurrent()
     qimg = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
-    ptr = qimg.constBits()
-
-    gl.glBindTexture(gl.GL_TEXTURE_2D, widget._feature_overlay_tex_ids[0])
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-    gl.glTexImage2D(
-        gl.GL_TEXTURE_2D,
-        0,
-        gl.GL_RGBA,
-        qimg.width(),
-        qimg.height(),
-        0,
-        gl.GL_RGBA,
-        gl.GL_UNSIGNED_BYTE,
-        bytes(ptr),
-    )
+    # Legacy compatibility path: geometry is retained, but no active
+    # magnifier runtime consumes this raster overlay.
+    _ = qimg
 
     w, h = widget.width(), widget.height()
     if w > 0 and h > 0:
@@ -222,26 +212,10 @@ def upload_feature_overlay_crop(
         return
 
     if gl_filter is None:
-        gl_filter = gl.GL_LINEAR
+        gl_filter = _DEFAULT_GL_FILTER
 
-    widget.makeCurrent()
-    img = pil_image.convert("RGBA")
-    raw = img.tobytes("raw", "RGBA")
-    gl.glBindTexture(gl.GL_TEXTURE_2D, tid)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl_filter)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl_filter)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-    gl.glTexImage2D(
-        gl.GL_TEXTURE_2D,
-        0,
-        gl.GL_RGBA,
-        img.width,
-        img.height,
-        0,
-        gl.GL_RGBA,
-        gl.GL_UNSIGNED_BYTE,
-        raw,
-    )
+    # Legacy compatibility API; no active runtime caller uploads CPU crops.
+    _ = pil_image.convert("RGBA")
 
     w, h = widget.width(), widget.height()
     if w > 0 and h > 0:
@@ -304,27 +278,11 @@ def upload_feature_overlay_pair(
         return
 
     if gl_filter is None:
-        gl_filter = gl.GL_LINEAR
+        gl_filter = _DEFAULT_GL_FILTER
 
-    widget.makeCurrent()
-    for pil_img, tid in ((pil1, tid1), (pil2, tid2)):
-        img = pil_img.convert("RGBA")
-        raw = img.tobytes("raw", "RGBA")
-        gl.glBindTexture(gl.GL_TEXTURE_2D, tid)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl_filter)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl_filter)
-        gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-        gl.glTexImage2D(
-            gl.GL_TEXTURE_2D,
-            0,
-            gl.GL_RGBA,
-            img.width,
-            img.height,
-            0,
-            gl.GL_RGBA,
-            gl.GL_UNSIGNED_BYTE,
-            raw,
-        )
+    # Legacy compatibility API; no active runtime caller uploads CPU pairs.
+    for pil_img in (pil1, pil2):
+        _ = pil_img.convert("RGBA")
 
     w, h = widget.width(), widget.height()
     if w > 0 and h > 0:

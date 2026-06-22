@@ -108,6 +108,9 @@ class DialogManager:
                 current_video_fps=getattr(
                     self.host.store.settings, "video_recording_fps", 60
                 ),
+                rhi_backend=getattr(
+                    self.host.store.settings, "rhi_backend", "default"
+                ),
                 store=self.host.store,
             )
             self.host._settings_dialog.setAttribute(

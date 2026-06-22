@@ -1,16 +1,23 @@
 """Multi Compare export stays tab-owned and saves the selected output format."""
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
-from PySide6.QtCore import QRect
-from PySide6.QtGui import QColor, QImage, QPainter
+from PySide6.QtGui import QColor, QImage
 
-from tabs.multi_compare.controller import MultiCompareController
-from tabs.multi_compare.models import CompareSlot, LeafNode
+from tabs.multi_compare.models import (
+    CompareSlot,
+    LeafNode,
+    MultiCompareState,
+    SplitNode,
+)
+from tabs.multi_compare.services.composition_builder import build_composition_plan
 from tabs.multi_compare.services.image_export import save_composite
+from ui.canvas_presentation.composition import (
+    LayerNode,
+    resolve_composition,
+)
 
 
 def test_multi_compare_export_saves_png(tmp_path):
@@ -56,90 +63,51 @@ def test_multi_compare_uses_host_export_dialog_service():
     assert '"open_image_export_dialog"' in tab_source
 
 
-def _controller_for_painting():
-    controller = MultiCompareController.__new__(MultiCompareController)
-    controller.widget = SimpleNamespace(
-        gl_grid=SimpleNamespace(
-            LABEL_PADDING=6,
-            LABEL_BG_ALPHA=170,
-            LABEL_FONT_PT=10,
-        )
-    )
-    return controller
+def _slot(slot_id: int, w: int, h: int) -> CompareSlot:
+    return CompareSlot(id=slot_id, image=np.zeros((h, w, 3), dtype=np.uint8))
 
 
-def test_multi_compare_export_matches_live_letterbox_and_zoom_transform():
-    controller = _controller_for_painting()
-    source = np.zeros((20, 40, 3), dtype=np.uint8)
-    source[:, :20] = (255, 0, 0)
-    source[:, 20:] = (0, 0, 255)
-
-    fit_output = QImage(100, 100, QImage.Format.Format_RGBA8888)
-    fit_output.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(fit_output)
-    controller._paint_slot_image(
-        painter,
-        QRect(0, 0, 100, 100),
-        source,
-        zoom=1.0,
-        pan_x=0.0,
-        pan_y=0.0,
-    )
-    painter.end()
-
-    assert fit_output.pixelColor(50, 10) == QColor(0, 0, 0, 255)
-    assert fit_output.pixelColor(20, 50).red() > 200
-    assert fit_output.pixelColor(80, 50).blue() > 200
-
-    zoom_output = QImage(100, 100, QImage.Format.Format_RGBA8888)
-    zoom_output.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(zoom_output)
-    controller._paint_slot_image(
-        painter,
-        QRect(0, 0, 100, 100),
-        source,
+def test_multi_compare_export_composition_carries_live_zoom_and_pan():
+    """The composition plan is the contract between state and renderer:
+    zoom/pan applied in the live widget must arrive on every layer node so
+    any backend (current QRhi widget, future C++ renderer) produces the same
+    transform.
+    """
+    state = MultiCompareState(
+        root=SplitNode(
+            direction="h",
+            children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
+            weights=[1.0, 1.0],
+        ),
+        slots=[_slot(1, 40, 20), _slot(2, 40, 20)],
         zoom=2.0,
         pan_x=0.2,
-        pan_y=0.0,
+        pan_y=-0.05,
     )
-    painter.end()
-
-    assert zoom_output.pixelColor(10, 50).red() > 200
-    assert zoom_output.pixelColor(70, 50).red() > 200
-    assert zoom_output.pixelColor(95, 50).blue() > 200
+    plan = build_composition_plan(state)
+    resolved = resolve_composition(plan)
+    assert len(resolved.layers) == 2
+    for layer in resolved.layers:
+        assert layer.zoom == 2.0
+        assert layer.pan_x == 0.2
+        assert layer.pan_y == -0.05
 
 
 def test_multi_compare_export_uses_focused_slot_as_full_frame():
-    controller = MultiCompareController.__new__(MultiCompareController)
-    focused_image = np.zeros((20, 20, 3), dtype=np.uint8)
-    focused_image[:] = (0, 255, 0)
-    hidden_image = np.zeros((20, 20, 3), dtype=np.uint8)
-    hidden_image[:] = (255, 0, 0)
-    controller.widget = SimpleNamespace(
-        state=SimpleNamespace(
-            slots=[
-                CompareSlot(id=7, image=focused_image),
-                CompareSlot(id=8, image=hidden_image),
-            ],
-            root=LeafNode(8),
-            is_focused=True,
-            focused_slot_id=7,
-            zoom=1.0,
-            pan_x=0.0,
-            pan_y=0.0,
+    """When a slot is focused, the composition collapses to a single layer
+    covering the whole canvas. Other slots disappear from the render plan."""
+    state = MultiCompareState(
+        root=SplitNode(
+            direction="h",
+            children=[LeafNode(slot_id=7), LeafNode(slot_id=8)],
+            weights=[1.0, 1.0],
         ),
-        gl_grid=SimpleNamespace(
-            width=lambda: 640,
-            height=lambda: 360,
-            CELL_GAP=4,
-            LABEL_PADDING=6,
-            LABEL_BG_ALPHA=170,
-            LABEL_FONT_PT=10,
-        ),
+        slots=[_slot(7, 20, 20), _slot(8, 40, 30)],
+        focused_slot_id=7,
     )
-
-    output = controller._compose_image(640, 360)
-
-    center = output.pixelColor(320, 180)
-    assert center.green() > 200
-    assert center.red() < 50
+    plan = build_composition_plan(state)
+    assert isinstance(plan.root, LayerNode)
+    assert plan.root.layer_id == 7
+    resolved = resolve_composition(plan)
+    assert len(resolved.layers) == 1
+    assert resolved.layers[0].rect == (0, 0, plan.canvas_w, plan.canvas_h)

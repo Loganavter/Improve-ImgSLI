@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .composition import CompositionNode
+
 @dataclass(frozen=True)
 class CaptureCircle:
     center: object
@@ -75,6 +77,15 @@ class CanvasRenderPlan:
     display_cache_key: tuple | None = None
     output_scale: float = 1.0
     preserve_zoom: bool = False
+    composition_root: CompositionNode | None = None
+    """
+    Optional composition tree describing N-layer frames (multi-compare grid,
+    future scene-graph workspaces). Legacy 2-image comparison plans leave
+    this ``None`` and the applicator uses the ``image1`` / ``image2`` path
+    unchanged. When set, the applicator routes through composition-aware
+    handlers; the legacy fields hold a single-image placeholder so existing
+    code paths that read them remain safe.
+    """
 
 def resolve_plan_logical_image_rect(
     plan: CanvasRenderPlan,

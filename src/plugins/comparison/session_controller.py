@@ -216,20 +216,37 @@ class SessionController(QObject):
 
         should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
 
-        def load_full_task(path_str, crop_flag):
-            img = load_full_image(path_str, crop_flag)
-            return img
-
-        worker = GenericWorker(load_full_task, path, should_crop)
-        worker.signals.result.connect(
-            lambda full_img: self._on_full_image_loaded(
-                full_img, path, image_number, index_in_list
+        def load_full_task(path_str, crop_flag, slot_number, item_index):
+            return (
+                load_full_image(path_str, crop_flag),
+                path_str,
+                slot_number,
+                item_index,
             )
+
+        worker = GenericWorker(
+            load_full_task,
+            path,
+            should_crop,
+            image_number,
+            index_in_list,
         )
+        worker.signals.result.connect(self._on_full_resolution_loaded_result)
         worker.signals.error.connect(
             lambda err: self._on_full_resolution_error(path, err)
         )
         self.thread_pool.start(worker)
+
+    def _on_full_resolution_loaded_result(self, result) -> None:
+        if not isinstance(result, tuple) or len(result) != 4:
+            return
+        full_img, path, image_number, index_in_list = result
+        self._on_full_image_loaded(
+            full_img,
+            path,
+            int(image_number),
+            int(index_in_list),
+        )
 
     def _on_full_resolution_error(self, path: str, err) -> None:
         logger.error(f"Failed to load full resolution: {err}")

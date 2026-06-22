@@ -1,0 +1,27 @@
+{
+  "multi_compare": {
+    "add_pair": "Add pair",
+    "calculate_metrics": "Calculate PSNR / SSIM",
+    "cell_size": "Cell size",
+    "channel_mode": "Color channel",
+    "choose_composite_output": "Choose composite output",
+    "choose_left": "Choose left image",
+    "choose_right": "Choose right image",
+    "composite_failed": "Composite export failed: %1",
+    "composite_saved": "Saved %1 × %2 composite to %3",
+    "controller_unavailable": "Comparison service is unavailable.",
+    "diff_mode": "Difference mode",
+    "export_composite": "Export composite",
+    "grid_section": "Comparison grid",
+    "guides": "Guides",
+    "horizontal": "Horizontal split",
+    "magnifier": "Magnifier",
+    "move_down": "Move down",
+    "move_up": "Move up",
+    "open_pair": "Open image pair…",
+    "paste_preview": "Paste preview",
+    "remove_pair": "Remove pair",
+    "split_position": "Split position",
+    "title": "Compare"
+  }
+}

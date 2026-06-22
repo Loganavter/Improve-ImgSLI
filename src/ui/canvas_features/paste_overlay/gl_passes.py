@@ -1,39 +1,40 @@
 from __future__ import annotations
 
 import logging
+import struct
+from pathlib import Path
 
-from OpenGL import GL as gl
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
-from PySide6.QtOpenGL import QOpenGLShader, QOpenGLShaderProgram
+from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QImage,
+    QPainter,
+    QPen,
+    QRhiBuffer,
+    QRhiCommandBuffer,
+    QRhiGraphicsPipeline,
+    QRhiSampler,
+    QRhiShaderResourceBinding,
+    QRhiShaderStage,
+    QRhiTexture,
+    QRhiVertexInputAttribute,
+    QRhiVertexInputBinding,
+    QRhiVertexInputLayout,
+    QRhiViewport,
+)
 
-from ui.canvas_infra.scene.gl_pass_contract import CanvasGLRenderPass, SceneVisibility
+from ui.canvas_infra.scene.gl_pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
+from ui.widgets.gl_canvas.render_common import new_overlay_image
 from ui.widgets.gl_canvas.render_metrics import resolve_screen_px
-from ui.widgets.gl_canvas.render_common import new_overlay_image, upload_qimage_texture
-from ui.widgets.gl_canvas.shader_sources.common import shader_prolog
+from ui.widgets.gl_canvas.rhi_feature_common import FULLSCREEN_VERTICES, load_qshader
 from ui.widgets.gl_canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 
 _log = logging.getLogger("ImproveImgSLI.paste_overlay")
 
-_VERT_SRC = """
-layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec2 aUV;
-out vec2 vUV;
-void main() {
-    gl_Position = vec4(aPos, 0.0, 1.0);
-    vUV = aUV;
-}
-"""
-
-_FRAG_SRC = """
-in vec2 vUV;
-out vec4 FragColor;
-uniform sampler2D uTex;
-void main() {
-    FragColor = texture(uTex, vUV);
-}
-"""
+_SHADER_DIR = Path(__file__).resolve().parent / "shaders"
+_UNIFORM_SIZE = 64
 
 def _draw_paste_button(
     painter: QPainter,
@@ -192,98 +193,199 @@ def build_ui_overlay_image(widget, metrics) -> QImage | None:
         painter.end()
     return image
 
-class PasteOverlayPass(CanvasGLRenderPass):
+
+class PasteOverlayPass(CanvasRenderPass):
     stack_role = CanvasStackRole.TRANSIENT_PREVIEW
     visibility = SceneVisibility.INTERACTIVE
-    def __init__(self):
-        self._shader: QOpenGLShaderProgram | None = None
-        self._tex_id: int = 0
 
-    def initialize(self, widget) -> None:
-        is_gles = bool(widget.context().isOpenGLES())
-        self._shader = QOpenGLShaderProgram()
-        self._shader.addShaderFromSourceCode(
-            QOpenGLShader.ShaderTypeBit.Vertex,
-            shader_prolog(is_gles) + "\n" + _VERT_SRC,
+    def __init__(self) -> None:
+        self.rhi = None
+        self.vertex_buffer = None
+        self.uniform_buffer = None
+        self.sampler = None
+        self.texture = None
+        self.srb = None
+        self.pipeline = None
+        self._target = None
+        self._texture_size: QSize | None = None
+        self._pending_image: QImage | None = None
+
+    def initialize(self, rhi, target) -> None:
+        self.release()
+        self.rhi = rhi
+        self._target = target
+
+        self.vertex_buffer = rhi.newBuffer(
+            QRhiBuffer.Type.Dynamic,
+            QRhiBuffer.UsageFlag.VertexBuffer,
+            len(FULLSCREEN_VERTICES),
         )
-        self._shader.addShaderFromSourceCode(
-            QOpenGLShader.ShaderTypeBit.Fragment,
-            shader_prolog(is_gles, fragment=True) + "\n" + _FRAG_SRC,
+        if not self.vertex_buffer.create():
+            raise RuntimeError("Failed to create paste_overlay vertex buffer")
+
+        self.uniform_buffer = rhi.newBuffer(
+            QRhiBuffer.Type.Dynamic,
+            QRhiBuffer.UsageFlag.UniformBuffer,
+            _UNIFORM_SIZE,
         )
-        linked = self._shader.link()
-        if not linked:
-            _log.error("Paste overlay shader link failed: %s", self._shader.log())
-        self._tex_id = int(gl.glGenTextures(1))
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self._tex_id)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+        if not self.uniform_buffer.create():
+            raise RuntimeError("Failed to create paste_overlay uniform buffer")
+
+        self.sampler = rhi.newSampler(
+            QRhiSampler.Filter.Linear,
+            QRhiSampler.Filter.Linear,
+            QRhiSampler.Filter.None_,
+            QRhiSampler.AddressMode.ClampToEdge,
+            QRhiSampler.AddressMode.ClampToEdge,
+        )
+        if not self.sampler.create():
+            raise RuntimeError("Failed to create paste_overlay sampler")
+
+        self.texture = rhi.newTexture(QRhiTexture.Format.RGBA8, QSize(1, 1))
+        if not self.texture.create():
+            raise RuntimeError("Failed to create paste_overlay placeholder texture")
+        self._texture_size = QSize(1, 1)
+
+        self.srb = self._build_srb()
+
+        self.pipeline = rhi.newGraphicsPipeline()
+        self.pipeline.setShaderStages(
+            [
+                QRhiShaderStage(
+                    QRhiShaderStage.Type.Vertex,
+                    load_qshader(_SHADER_DIR / "paste_overlay.vert.qsb"),
+                ),
+                QRhiShaderStage(
+                    QRhiShaderStage.Type.Fragment,
+                    load_qshader(_SHADER_DIR / "paste_overlay.frag.qsb"),
+                ),
+            ]
+        )
+        self.pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
+        self.pipeline.setSampleCount(target.sampleCount())
+        self.pipeline.setShaderResourceBindings(self.srb)
+        self.pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
+
+        blend = QRhiGraphicsPipeline.TargetBlend()
+        blend.enable = True
+        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.One
+        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
+        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        self.pipeline.setTargetBlends([blend])
+
+        layout = QRhiVertexInputLayout()
+        layout.setBindings([QRhiVertexInputBinding(16)])
+        layout.setAttributes(
+            [
+                QRhiVertexInputAttribute(
+                    0, 0, QRhiVertexInputAttribute.Format.Float2, 0
+                ),
+                QRhiVertexInputAttribute(
+                    0, 1, QRhiVertexInputAttribute.Format.Float2, 8
+                ),
+            ]
+        )
+        self.pipeline.setVertexInputLayout(layout)
+        if not self.pipeline.create():
+            raise RuntimeError("Failed to create paste_overlay QRhi pipeline")
+
+    def _build_srb(self):
+        srb = self.rhi.newShaderResourceBindings()
+        stages = (
+            QRhiShaderResourceBinding.StageFlag.VertexStage
+            | QRhiShaderResourceBinding.StageFlag.FragmentStage
+        )
+        fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
+        srb.setBindings(
+            [
+                QRhiShaderResourceBinding.uniformBuffer(0, stages, self.uniform_buffer),
+                QRhiShaderResourceBinding.sampledTexture(
+                    1, fragment, self.texture, self.sampler
+                ),
+            ]
+        )
+        if not srb.create():
+            raise RuntimeError("Failed to create paste_overlay SRB")
+        return srb
 
     def should_paint(self, ctx) -> bool:
-        state = getattr(ctx.widget, "runtime_state", None)
+        widget = getattr(ctx, "widget", None)
+        state = getattr(widget, "runtime_state", None) if widget is not None else None
         if state is None:
             return False
-        drag_visible = bool(getattr(state, "_drag_overlay_visible", False))
-        paste_visible = bool(getattr(state, "_paste_overlay_visible", False))
-        if drag_visible:
-            _log.debug(
-                "paste_overlay: drag overlay state is still active; skipping drag visuals text=%s horizontal=%s",
-                getattr(state, "_drag_overlay_texts", ("", "")),
-                bool(getattr(state, "_drag_overlay_horizontal", False)),
-            )
-        if paste_visible:
-            _log.debug(
-                "paste_overlay: visible hovered=%s texts=%s rects=%s visual_size=(%.1f, %.1f)",
-                getattr(state, "_paste_overlay_hovered_button", None),
-                dict(getattr(state, "_paste_overlay_texts", {})),
-                {
-                    key: (
-                        round(rect.x(), 2),
-                        round(rect.y(), 2),
-                        round(rect.width(), 2),
-                        round(rect.height(), 2),
-                    )
-                    for key, rect in getattr(state, "_paste_overlay_rects", {}).items()
-                },
-                resolve_screen_px(
-                    DEFAULT_CANVAS_STYLE_TOKENS.overlay_button_visual_width_du,
-                    ctx.metrics.render_metrics,
-                ),
-                resolve_screen_px(
-                    DEFAULT_CANVAS_STYLE_TOKENS.overlay_button_visual_height_du,
-                    ctx.metrics.render_metrics,
-                ),
-            )
-        return paste_visible
+        return bool(getattr(state, "_paste_overlay_visible", False))
 
-    def paint(self, widget, ctx) -> None:
-        if self._shader is None or not self._shader.programId() or not self._tex_id:
+    def prepare(self, widget, ctx, resource_updates) -> None:
+        image = build_ui_overlay_image(widget, ctx.metrics.render_metrics)
+        if image is None or image.isNull():
+            self._pending_image = None
             return
-        overlay = build_ui_overlay_image(widget, ctx.metrics.render_metrics)
-        if overlay is None or overlay.isNull():
+        image = image.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
+        self._pending_image = image
+
+        size = image.size()
+        if self._texture_size is None or self._texture_size != size:
+            if self.texture is not None:
+                try:
+                    self.texture.destroy()
+                except RuntimeError:
+                    pass
+            self.texture = self.rhi.newTexture(QRhiTexture.Format.RGBA8, size)
+            if not self.texture.create():
+                raise RuntimeError("Failed to resize paste_overlay texture")
+            self._texture_size = size
+            if self.srb is not None:
+                try:
+                    self.srb.destroy()
+                except RuntimeError:
+                    pass
+            self.srb = self._build_srb()
+
+        resource_updates.updateDynamicBuffer(self.vertex_buffer, 0, FULLSCREEN_VERTICES)
+        matrix = struct.pack(
+            "<16f", *tuple(float(v) for v in self.rhi.clipSpaceCorrMatrix().data())
+        )
+        resource_updates.updateDynamicBuffer(self.uniform_buffer, 0, matrix)
+        resource_updates.uploadTexture(self.texture, image)
+
+    def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
+        if self._pending_image is None or self.texture is None or self.pipeline is None:
             return
-        if not upload_qimage_texture(self._tex_id, overlay):
-            return
+        dpr = max(1.0, float(widget.devicePixelRatioF()))
+        fb_width = float(int(ctx.width) * dpr)
+        fb_height = float(int(ctx.height) * dpr)
+        command_buffer.setGraphicsPipeline(self.pipeline)
+        command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_width, fb_height))
+        command_buffer.setShaderResources(self.srb)
+        command_buffer.setVertexInput(0, [(self.vertex_buffer, 0)])
+        command_buffer.draw(4)
 
-        gl.glDisable(gl.GL_SCISSOR_TEST)
-        gl.glViewport(0, 0, max(1, widget.width()), max(1, widget.height()))
-        gl.glEnable(gl.GL_BLEND)
-        gl.glBlendFunc(gl.GL_ONE, gl.GL_ONE_MINUS_SRC_ALPHA)
+    def release(self) -> None:
+        for resource in (
+            self.pipeline,
+            self.srb,
+            self.texture,
+            self.sampler,
+            self.uniform_buffer,
+            self.vertex_buffer,
+        ):
+            if resource is not None:
+                try:
+                    resource.destroy()
+                except RuntimeError:
+                    pass
+        self.pipeline = None
+        self.srb = None
+        self.texture = None
+        self.sampler = None
+        self.uniform_buffer = None
+        self.vertex_buffer = None
+        self.rhi = None
+        self._target = None
+        self._texture_size = None
+        self._pending_image = None
 
-        self._shader.bind()
-        widget.vao.bind()
-        self._shader.setUniformValue("uTex", 0)
-        gl.glActiveTexture(gl.GL_TEXTURE0)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self._tex_id)
-        gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-        widget.vao.release()
-        self._shader.release()
 
-    def cleanup(self, widget) -> None:
-        if self._tex_id:
-            gl.glDeleteTextures(1, [self._tex_id])
-            self._tex_id = 0
-        self._shader = None
-
-GL_RENDER_PASSES = [PasteOverlayPass()]
+RENDER_PASSES: list[CanvasRenderPass] = [PasteOverlayPass()]
+GL_RENDER_PASSES = RENDER_PASSES

@@ -9,7 +9,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui GuiPrivate Widgets ShaderTools)
+find_package(Qt6 6.7 REQUIRED COMPONENTS Core Concurrent Gui GuiPrivate Widgets ShaderTools Test)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -35,3 +35,7 @@ target_include_directories(imgsli_core_bridge PUBLIC ${CMAKE_SOURCE_DIR}/include
 
 add_subdirectory(toolkit)
 add_subdirectory(app)
+
+if(BUILD_TESTING)
+    add_subdirectory(toolkit/tests)
+endif()

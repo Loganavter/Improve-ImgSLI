@@ -365,6 +365,27 @@ class SettingsApplicationService(QObject):
             dispatcher.dispatch(SetVideoRecordingFpsAction(data.video_recording_fps))
             self._save_setting("video_recording_fps", data.video_recording_fps)
 
+        prev_backend = getattr(self.store.settings, "rhi_backend", "default") or "default"
+        new_backend = (data.rhi_backend or "default").strip().lower()
+        if new_backend != prev_backend:
+            self.store.settings.rhi_backend = new_backend
+            self._save_setting("rhi_backend", new_backend)
+            self._notify_render_backend_restart_required(new_backend)
+
+    def _notify_render_backend_restart_required(self, backend: str) -> None:
+        from PySide6.QtWidgets import QMessageBox
+        window_shell = self.main_controller.window_shell if self.main_controller else None
+        parent = getattr(window_shell, "main_window_app", None) if window_shell else None
+        tr_lang = getattr(self.store.settings, "current_language", "en")
+        try:
+            from resources.translations import tr as app_tr
+            title = app_tr("settings.render_backend_restart_title", tr_lang)
+            text = app_tr("settings.render_backend_restart_message", tr_lang)
+        except Exception:
+            title = "Restart required"
+            text = "The render backend will change after restart."
+        QMessageBox.information(parent, title, text.format(backend=backend))
+
     def _emit_ui_mode_changed(self, ui_mode: str) -> None:
         if self.event_bus is not None:
             self.event_bus.emit(SettingsUIModeChangedEvent(ui_mode))

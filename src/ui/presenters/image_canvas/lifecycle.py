@@ -24,6 +24,7 @@ def initialize_canvas_presenter(presenter) -> None:
     presenter.current_displayed_pixmap: QPixmap | None = None
     presenter.current_rendering_task_id = 0
     presenter.current_scaling_task_id = 0
+    presenter._display_cache_request_key = None
     presenter._last_displayed_task_id = 0
     presenter._cached_base_pixmap: QPixmap | None = None
     presenter._last_bg_signature = None

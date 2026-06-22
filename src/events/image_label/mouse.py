@@ -102,10 +102,6 @@ class ImageLabelMouseHandler:
         if viewport.view_state.showing_single_image_mode != 0 or viewport.interaction_state.resize_in_progress:
             return
 
-        if self.handler._mouse_move_timer.elapsed() < 8:
-            return
-        self.handler._mouse_move_timer.restart()
-
         active = iter_active(self.handler.store)
         if not active:
             return

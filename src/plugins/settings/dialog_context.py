@@ -28,4 +28,5 @@ class SettingsDialogContext:
     auto_calculate_ssim: bool = False
     auto_crop_black_borders: bool = True
     current_video_fps: int = 60
+    rhi_backend: str = "default"
     store: object | None = None

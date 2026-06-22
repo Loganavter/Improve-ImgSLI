@@ -2,26 +2,44 @@
 
 from __future__ import annotations
 
-import ctypes
 import logging
+import struct
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from OpenGL import GL as gl
-from PySide6.QtCore import QMimeData, QPoint, QPointF, QRect, Qt
+from PySide6.QtCore import QMimeData, QPoint, QPointF, QRect, QSize, Qt
 from PySide6.QtGui import (
     QBrush,
     QColor,
     QDrag,
     QFont,
+    QImage,
     QMouseEvent,
     QPainter,
     QPalette,
     QPen,
+    QRhiBuffer,
+    QRhiCommandBuffer,
+    QRhiGraphicsPipeline,
+    QRhiSampler,
+    QRhiScissor,
+    QRhiShaderResourceBinding,
+    QRhiShaderStage,
+    QRhiTexture,
+    QRhiVertexInputAttribute,
+    QRhiVertexInputBinding,
+    QRhiVertexInputLayout,
+    QRhiViewport,
+    QShader,
     QWheelEvent,
 )
-from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QRhiWidget
+from ui.widgets.gl_canvas.rhi_backend import (
+    configure_rhi_widget,
+    log_initialized_rhi_widget,
+)
 
 INTERNAL_SLOT_MIME = "application/x-imgsli-multi-slot"
 
@@ -32,8 +50,33 @@ from tabs.multi_compare.models import (
     SplitNode,
     node_at_path,
 )
-from tabs.multi_compare.shaders import FRAGMENT_SHADER, VERTEX_SHADER
-from ui.widgets.gl_canvas.runtime import build_canvas_surface_format
+
+_SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders" / "qrhi"
+
+
+def _load_shader(name: str) -> QShader:
+    shader = QShader.fromSerialized((_SHADER_DIR / name).read_bytes())
+    if not shader.isValid():
+        raise RuntimeError(f"Invalid multi_compare shader: {name}")
+    return shader
+
+
+_QUAD_VERTICES = struct.pack(
+    "<16f",
+    -1.0, -1.0, 0.0, 1.0,
+    +1.0, -1.0, 1.0, 1.0,
+    -1.0, +1.0, 0.0, 0.0,
+    +1.0, +1.0, 1.0, 0.0,
+)
+_FULLSCREEN_OVERLAY_VERTICES = struct.pack(
+    "<16f",
+    -1.0, 1.0, 0.0, 0.0,
+    -1.0, -1.0, 0.0, 1.0,
+    1.0, 1.0, 1.0, 0.0,
+    1.0, -1.0, 1.0, 1.0,
+)
+_SLOT_UNIFORM_SIZE = 96  # mat4(64) + vec2 pan(8) + vec2 fit(8) + float zoom(4) + 12 pad
+_OVERLAY_UNIFORM_SIZE = 64
 
 if TYPE_CHECKING:
     pass
@@ -41,7 +84,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ImproveImgSLI")
 
 
-class GLGridWidget(QOpenGLWidget):
+class GLGridWidget(QRhiWidget):
     """GPU-accelerated container-tree image grid with resizable dividers."""
 
     CELL_GAP = 4
@@ -60,14 +103,36 @@ class GLGridWidget(QOpenGLWidget):
 
     def __init__(self, parent: QWidget | None = None, *, translate=None):
         super().__init__(parent)
-        self.setFormat(build_canvas_surface_format())
+        configure_rhi_widget(self)
         self._translate = translate or (lambda _key, default=None: default or _key)
 
         self.state = MultiCompareState()
-        self._textures: dict[int, int] = {}
-        self._program = 0
-        self._vao = 0
-        self._vbo = 0
+
+        # QRhi resources
+        self._rhi = None
+        self._render_target = None
+        self._pipeline = None
+        self._overlay_pipeline = None
+        self._vertex_buffer = None
+        self._overlay_vertex_buffer = None
+        self._sampler = None
+        self._placeholder = None
+        # per-slot resources
+        self._slot_textures: dict[int, QRhiTexture] = {}
+        self._slot_texture_sizes: dict[int, tuple[int, int]] = {}
+        self._slot_uniform_buffers: list[object] = []
+        self._slot_srbs: list[object] = []
+        # overlay: QPainter → QImage → QRhiTexture each frame
+        self._overlay_uniform_buffer = None
+        self._overlay_texture = None
+        self._overlay_texture_size: QSize | None = None
+        self._overlay_srb = None
+        # per-frame draw state
+        self._draw_items: list[dict] = []
+        # pending texture uploads to apply in render()
+        self._pending_uploads: list[tuple[int, QImage]] = []
+        self._pending_removes: list[int] = []
+
         self._initialized = False
 
         # pan
@@ -358,92 +423,457 @@ class GLGridWidget(QOpenGLWidget):
     # ---- texture management ----
 
     def upload_image(self, slot: CompareSlot) -> None:
-        if not self._initialized or slot.image is None:
+        if slot.image is None:
             return
-        self.makeCurrent()
-        tex = self._textures.get(slot.id)
-        if tex is None:
-            tex = gl.glGenTextures(1)
-            self._textures[slot.id] = tex
+        image = self._numpy_to_qimage(slot.image)
+        if image is None:
+            return
+        self._pending_uploads.append((slot.id, image))
+        self.update()
 
-        h, w = slot.image.shape[:2]
-        channels = slot.image.shape[2] if slot.image.ndim == 3 else 1
-        if channels == 4:
-            fmt, internal = gl.GL_RGBA, gl.GL_RGBA8
-        elif channels == 3:
-            fmt, internal = gl.GL_RGB, gl.GL_RGB8
+    @staticmethod
+    def _numpy_to_qimage(arr: np.ndarray) -> QImage | None:
+        if arr.ndim == 3:
+            h, w, channels = arr.shape
+        elif arr.ndim == 2:
+            h, w = arr.shape
+            channels = 1
         else:
-            fmt, internal = gl.GL_RED, gl.GL_R8
-
-        gl.glBindTexture(gl.GL_TEXTURE_2D, tex)
-        gl.glTexImage2D(
-            gl.GL_TEXTURE_2D, 0, internal, w, h, 0,
-            fmt, gl.GL_UNSIGNED_BYTE, slot.image.tobytes(),
-        )
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
-        self.doneCurrent()
+            return None
+        if channels == 4:
+            img = QImage(arr.tobytes(), w, h, w * 4, QImage.Format.Format_RGBA8888)
+        elif channels == 3:
+            img = QImage(arr.tobytes(), w, h, w * 3, QImage.Format.Format_RGB888)
+        else:
+            img = QImage(arr.tobytes(), w, h, w, QImage.Format.Format_Grayscale8)
+        return img.convertToFormat(QImage.Format.Format_RGBA8888).copy()
 
     def remove_texture(self, slot_id: int) -> None:
-        tex = self._textures.pop(slot_id, None)
-        if tex is not None and self._initialized:
-            self.makeCurrent()
-            gl.glDeleteTextures(1, [tex])
-            self.doneCurrent()
+        self._pending_removes.append(slot_id)
+        self.update()
 
     def _sync_textures(self) -> None:
-        if not self._initialized:
-            return
         for slot in self.state.slots:
-            if slot.id not in self._textures and slot.image is not None:
+            if slot.id not in self._slot_textures and slot.image is not None:
                 self.upload_image(slot)
-
         active_ids = {s.id for s in self.state.slots}
-        stale = [sid for sid in self._textures if sid not in active_ids]
+        stale = [sid for sid in self._slot_textures if sid not in active_ids]
         for sid in stale:
             self.remove_texture(sid)
 
-    # ---- GL lifecycle ----
+    # ---- QRhi lifecycle ----
 
-    def initializeGL(self) -> None:
-        self._program = self._compile_program()
-        self._vao, self._vbo = self._create_quad()
+    def initialize(self, command_buffer) -> None:
+        log_initialized_rhi_widget(self)
+        rhi = self.rhi()
+        target = self.renderTarget()
+        if rhi is None or target is None:
+            return
+        self._rhi = rhi
+        self._render_target = target
+
+        self._vertex_buffer = rhi.newBuffer(
+            QRhiBuffer.Type.Immutable,
+            QRhiBuffer.UsageFlag.VertexBuffer,
+            len(_QUAD_VERTICES),
+        )
+        self._vertex_buffer.create()
+
+        self._overlay_vertex_buffer = rhi.newBuffer(
+            QRhiBuffer.Type.Immutable,
+            QRhiBuffer.UsageFlag.VertexBuffer,
+            len(_FULLSCREEN_OVERLAY_VERTICES),
+        )
+        self._overlay_vertex_buffer.create()
+
+        self._sampler = rhi.newSampler(
+            QRhiSampler.Filter.Linear, QRhiSampler.Filter.Linear, QRhiSampler.Filter.None_,
+            QRhiSampler.AddressMode.ClampToEdge, QRhiSampler.AddressMode.ClampToEdge,
+        )
+        self._sampler.create()
+
+        self._placeholder = rhi.newTexture(QRhiTexture.Format.RGBA8, QSize(1, 1))
+        self._placeholder.create()
+
+        self._overlay_uniform_buffer = rhi.newBuffer(
+            QRhiBuffer.Type.Dynamic,
+            QRhiBuffer.UsageFlag.UniformBuffer,
+            _OVERLAY_UNIFORM_SIZE,
+        )
+        self._overlay_uniform_buffer.create()
+        self._overlay_texture = rhi.newTexture(QRhiTexture.Format.RGBA8, QSize(1, 1))
+        self._overlay_texture.create()
+        self._overlay_texture_size = QSize(1, 1)
+
+        slot_pipeline = rhi.newGraphicsPipeline()
+        slot_pipeline.setShaderStages([
+            QRhiShaderStage(QRhiShaderStage.Type.Vertex, _load_shader("multi_compare.vert.qsb")),
+            QRhiShaderStage(QRhiShaderStage.Type.Fragment, _load_shader("multi_compare.frag.qsb")),
+        ])
+        slot_pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
+        slot_pipeline.setSampleCount(target.sampleCount())
+        slot_pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
+        slot_pipeline.setFlags(QRhiGraphicsPipeline.Flag.UsesScissor)
+        first_srb = self._build_slot_srb(self._placeholder, None)
+        slot_pipeline.setShaderResourceBindings(first_srb)
+        layout = QRhiVertexInputLayout()
+        layout.setBindings([QRhiVertexInputBinding(16)])
+        layout.setAttributes([
+            QRhiVertexInputAttribute(0, 0, QRhiVertexInputAttribute.Format.Float2, 0),
+            QRhiVertexInputAttribute(0, 1, QRhiVertexInputAttribute.Format.Float2, 8),
+        ])
+        slot_pipeline.setVertexInputLayout(layout)
+        if not slot_pipeline.create():
+            raise RuntimeError("Failed to create multi_compare slot pipeline")
+        self._pipeline = slot_pipeline
+        try:
+            first_srb.destroy()
+        except RuntimeError:
+            pass
+
+        overlay_pipeline = rhi.newGraphicsPipeline()
+        overlay_pipeline.setShaderStages([
+            QRhiShaderStage(QRhiShaderStage.Type.Vertex, _load_shader("overlay.vert.qsb")),
+            QRhiShaderStage(QRhiShaderStage.Type.Fragment, _load_shader("overlay.frag.qsb")),
+        ])
+        overlay_pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
+        overlay_pipeline.setSampleCount(target.sampleCount())
+        overlay_pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
+        blend = QRhiGraphicsPipeline.TargetBlend()
+        blend.enable = True
+        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.One
+        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
+        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        overlay_pipeline.setTargetBlends([blend])
+        self._overlay_srb = self._build_overlay_srb()
+        overlay_pipeline.setShaderResourceBindings(self._overlay_srb)
+        overlay_layout = QRhiVertexInputLayout()
+        overlay_layout.setBindings([QRhiVertexInputBinding(16)])
+        overlay_layout.setAttributes([
+            QRhiVertexInputAttribute(0, 0, QRhiVertexInputAttribute.Format.Float2, 0),
+            QRhiVertexInputAttribute(0, 1, QRhiVertexInputAttribute.Format.Float2, 8),
+        ])
+        overlay_pipeline.setVertexInputLayout(overlay_layout)
+        if not overlay_pipeline.create():
+            raise RuntimeError("Failed to create multi_compare overlay pipeline")
+        self._overlay_pipeline = overlay_pipeline
+
+        upload = rhi.nextResourceUpdateBatch()
+        upload.uploadStaticBuffer(self._vertex_buffer, _QUAD_VERTICES)
+        upload.uploadStaticBuffer(self._overlay_vertex_buffer, _FULLSCREEN_OVERLAY_VERTICES)
+        ph = QImage(1, 1, QImage.Format.Format_RGBA8888)
+        ph.fill(0)
+        upload.uploadTexture(self._placeholder, ph)
+        upload.uploadTexture(self._overlay_texture, ph)
+        command_buffer.resourceUpdate(upload)
+
         self._initialized = True
         self._sync_textures()
 
-    def resizeGL(self, w: int, h: int) -> None:
-        gl.glViewport(0, 0, w, h)
+    def releaseResources(self) -> None:
+        for res in (
+            self._pipeline, self._overlay_pipeline,
+            self._vertex_buffer, self._overlay_vertex_buffer,
+            self._sampler, self._placeholder,
+            self._overlay_uniform_buffer, self._overlay_texture, self._overlay_srb,
+            *self._slot_uniform_buffers, *self._slot_srbs, *self._slot_textures.values(),
+        ):
+            if res is not None:
+                try:
+                    res.destroy()
+                except RuntimeError:
+                    pass
+        self._pipeline = None
+        self._overlay_pipeline = None
+        self._vertex_buffer = None
+        self._overlay_vertex_buffer = None
+        self._sampler = None
+        self._placeholder = None
+        self._overlay_uniform_buffer = None
+        self._overlay_texture = None
+        self._overlay_srb = None
+        self._slot_uniform_buffers = []
+        self._slot_srbs = []
+        self._slot_textures = {}
+        self._slot_texture_sizes = {}
+        self._overlay_texture_size = None
+        self._rhi = None
+        self._render_target = None
+        self._initialized = False
 
-    def paintGL(self) -> None:
-        self._clear_background()
+    def _build_slot_srb(self, texture, uniform):
+        srb = self._rhi.newShaderResourceBindings()
+        stages = (
+            QRhiShaderResourceBinding.StageFlag.VertexStage
+            | QRhiShaderResourceBinding.StageFlag.FragmentStage
+        )
+        fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
+        bindings = []
+        if uniform is not None:
+            bindings.append(QRhiShaderResourceBinding.uniformBuffer(0, stages, uniform))
+        else:
+            # Reuse overlay uniform buffer just so pipeline creation has a binding;
+            # this SRB will not be used at draw time.
+            placeholder_uniform = self._rhi.newBuffer(
+                QRhiBuffer.Type.Dynamic,
+                QRhiBuffer.UsageFlag.UniformBuffer,
+                _SLOT_UNIFORM_SIZE,
+            )
+            placeholder_uniform.create()
+            self._slot_uniform_buffers.append(placeholder_uniform)
+            bindings.append(QRhiShaderResourceBinding.uniformBuffer(0, stages, placeholder_uniform))
+        bindings.append(
+            QRhiShaderResourceBinding.sampledTexture(1, fragment, texture, self._sampler)
+        )
+        srb.setBindings(bindings)
+        if not srb.create():
+            raise RuntimeError("Failed to create multi_compare slot SRB")
+        return srb
+
+    def _build_overlay_srb(self):
+        srb = self._rhi.newShaderResourceBindings()
+        stages = (
+            QRhiShaderResourceBinding.StageFlag.VertexStage
+            | QRhiShaderResourceBinding.StageFlag.FragmentStage
+        )
+        fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
+        srb.setBindings([
+            QRhiShaderResourceBinding.uniformBuffer(0, stages, self._overlay_uniform_buffer),
+            QRhiShaderResourceBinding.sampledTexture(
+                1, fragment, self._overlay_texture or self._placeholder, self._sampler
+            ),
+        ])
+        if not srb.create():
+            raise RuntimeError("Failed to create multi_compare overlay SRB")
+        return srb
+
+    def _ensure_slot_resources(self, count: int) -> None:
+        stages = (
+            QRhiShaderResourceBinding.StageFlag.VertexStage
+            | QRhiShaderResourceBinding.StageFlag.FragmentStage
+        )
+        while len(self._slot_uniform_buffers) < count:
+            buf = self._rhi.newBuffer(
+                QRhiBuffer.Type.Dynamic,
+                QRhiBuffer.UsageFlag.UniformBuffer,
+                _SLOT_UNIFORM_SIZE,
+            )
+            buf.create()
+            self._slot_uniform_buffers.append(buf)
+        while len(self._slot_srbs) < count:
+            srb = self._rhi.newShaderResourceBindings()
+            fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
+            srb.setBindings([
+                QRhiShaderResourceBinding.uniformBuffer(
+                    0, stages, self._slot_uniform_buffers[len(self._slot_srbs)]
+                ),
+                QRhiShaderResourceBinding.sampledTexture(
+                    1, fragment, self._placeholder, self._sampler
+                ),
+            ])
+            srb.create()
+            self._slot_srbs.append(srb)
+
+    def _apply_pending_texture_ops(self, updates) -> None:
+        for sid in self._pending_removes:
+            tex = self._slot_textures.pop(sid, None)
+            if tex is not None:
+                try:
+                    tex.destroy()
+                except RuntimeError:
+                    pass
+            self._slot_texture_sizes.pop(sid, None)
+        self._pending_removes.clear()
+        for sid, image in self._pending_uploads:
+            size = (image.width(), image.height())
+            existing = self._slot_textures.get(sid)
+            if existing is None or self._slot_texture_sizes.get(sid) != size:
+                if existing is not None:
+                    try:
+                        existing.destroy()
+                    except RuntimeError:
+                        pass
+                tex = self._rhi.newTexture(QRhiTexture.Format.RGBA8, QSize(*size))
+                tex.create()
+                self._slot_textures[sid] = tex
+                self._slot_texture_sizes[sid] = size
+            updates.uploadTexture(self._slot_textures[sid], image)
+        self._pending_uploads.clear()
+
+    def _rebuild_slot_srb(self, index: int, texture) -> None:
+        old = self._slot_srbs[index]
+        try:
+            old.destroy()
+        except RuntimeError:
+            pass
+        srb = self._rhi.newShaderResourceBindings()
+        stages = (
+            QRhiShaderResourceBinding.StageFlag.VertexStage
+            | QRhiShaderResourceBinding.StageFlag.FragmentStage
+        )
+        fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
+        srb.setBindings([
+            QRhiShaderResourceBinding.uniformBuffer(0, stages, self._slot_uniform_buffers[index]),
+            QRhiShaderResourceBinding.sampledTexture(1, fragment, texture, self._sampler),
+        ])
+        srb.create()
+        self._slot_srbs[index] = srb
+
+    def render(self, command_buffer) -> None:
+        if not self._initialized or self._rhi is None:
+            return
+        target = self.renderTarget()
+        if target is None:
+            return
+        target_size = target.pixelSize()
+        fb_w = float(target_size.width())
+        fb_h = float(target_size.height())
+        dpr = max(1.0, float(self.devicePixelRatioF()))
+
+        updates = self._rhi.nextResourceUpdateBatch()
+        self._sync_textures()
+        self._apply_pending_texture_ops(updates)
+
+        # Build per-slot draw items
         leaf_rects = self._leaf_rects()
         slot_by_id = {s.id: s for s in self.state.slots}
+        focused_id = self.state.focused_slot_id if self.state.is_focused else None
+        matrix = tuple(float(v) for v in self._rhi.clipSpaceCorrMatrix().data())
 
-        if leaf_rects:
-            gl.glUseProgram(self._program)
-            gl.glBindVertexArray(self._vao)
+        draw_items: list[tuple[int, QRect, float, float]] = []
+        for leaf, rect in leaf_rects:
+            slot = slot_by_id.get(leaf.slot_id)
+            if slot is None:
+                continue
+            if leaf.slot_id not in self._slot_textures:
+                continue
+            if focused_id is not None and leaf.slot_id != focused_id:
+                continue
+            draw_rect = self.rect() if focused_id is not None else rect
+            fit_x, fit_y = self._fit_scale_for(slot, draw_rect)
+            draw_items.append((leaf.slot_id, draw_rect, fit_x, fit_y))
 
-            focused_id = self.state.focused_slot_id if self.state.is_focused else None
+        self._ensure_slot_resources(len(draw_items))
+        for index, (slot_id, _draw_rect, fit_x, fit_y) in enumerate(draw_items):
+            block = struct.pack(
+                "<16f 2f 2f f 3f",
+                *matrix,
+                float(self.state.pan_x), float(self.state.pan_y),
+                max(fit_x, 1e-6), max(fit_y, 1e-6),
+                float(self.state.zoom),
+                0.0, 0.0, 0.0,
+            )
+            updates.updateDynamicBuffer(self._slot_uniform_buffers[index], 0, block)
+            self._rebuild_slot_srb(index, self._slot_textures[slot_id])
+
+        # Build overlay
+        overlay_image = self._build_overlay_image(leaf_rects, slot_by_id)
+        if overlay_image is not None and not overlay_image.isNull():
+            overlay_size = overlay_image.size()
+            if self._overlay_texture_size != overlay_size:
+                try:
+                    self._overlay_texture.destroy()
+                except RuntimeError:
+                    pass
+                self._overlay_texture = self._rhi.newTexture(QRhiTexture.Format.RGBA8, overlay_size)
+                self._overlay_texture.create()
+                self._overlay_texture_size = overlay_size
+                try:
+                    self._overlay_srb.destroy()
+                except RuntimeError:
+                    pass
+                self._overlay_srb = self._build_overlay_srb()
+            updates.uploadTexture(self._overlay_texture, overlay_image)
+            updates.updateDynamicBuffer(
+                self._overlay_uniform_buffer, 0,
+                struct.pack("<16f", *matrix),
+            )
+            has_overlay = True
+        else:
+            has_overlay = False
+
+        # Clear color
+        bg = self._theme_or_palette_bg()
+        from PySide6.QtGui import QColor as _QColor
+        from PySide6.QtGui import QRhiDepthStencilClearValue
+        clear_color = _QColor(bg)
+        command_buffer.beginPass(
+            target,
+            clear_color,
+            QRhiDepthStencilClearValue(1.0, 0),
+            updates,
+        )
+
+        if draw_items:
+            command_buffer.setGraphicsPipeline(self._pipeline)
+            command_buffer.setVertexInput(0, [(self._vertex_buffer, 0)])
+            for index, (_slot_id, draw_rect, _fx, _fy) in enumerate(draw_items):
+                rx = int(round(draw_rect.x() * dpr))
+                ry = int(round(draw_rect.y() * dpr))
+                rw = max(1, int(round(draw_rect.width() * dpr)))
+                rh = max(1, int(round(draw_rect.height() * dpr)))
+                if self._rhi.isYUpInFramebuffer():
+                    ry = max(0, int(fb_h) - (ry + rh))
+                command_buffer.setViewport(QRhiViewport(float(rx), float(ry), float(rw), float(rh)))
+                command_buffer.setScissor(QRhiScissor(rx, ry, rw, rh))
+                command_buffer.setShaderResources(self._slot_srbs[index])
+                command_buffer.draw(4)
+
+        if has_overlay:
+            command_buffer.setGraphicsPipeline(self._overlay_pipeline)
+            command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_w, fb_h))
+            command_buffer.setShaderResources(self._overlay_srb)
+            command_buffer.setVertexInput(0, [(self._overlay_vertex_buffer, 0)])
+            command_buffer.draw(4)
+
+        command_buffer.endPass()
+
+    def _theme_or_palette_bg(self) -> QColor:
+        bg = getattr(self, "_theme_background_color", None)
+        if not isinstance(bg, QColor) or not bg.isValid():
+            bg = self.palette().color(QPalette.ColorRole.Window)
+        if not bg.isValid():
+            bg = QColor(30, 30, 30)
+        return bg
+
+    def _build_overlay_image(self, leaf_rects, slot_by_id) -> QImage | None:
+        w = max(1, self.width())
+        h = max(1, self.height())
+        dpr = max(1.0, float(self.devicePixelRatioF()))
+        phys_w = max(1, int(round(w * dpr)))
+        phys_h = max(1, int(round(h * dpr)))
+        img = QImage(phys_w, phys_h, QImage.Format.Format_RGBA8888_Premultiplied)
+        img.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+        painter.scale(dpr, dpr)
+
+        font = QFont(painter.font())
+        font.setPointSize(self.LABEL_FONT_PT)
+        font.setBold(True)
+        painter.setFont(font)
+        fm = painter.fontMetrics()
+
+        focused_id = self.state.focused_slot_id if self.state.is_focused else None
+        if focused_id is not None:
+            slot = slot_by_id.get(focused_id)
+            if slot is not None and slot.label:
+                self._paint_label(painter, fm, self.rect(), slot.label)
+        else:
             for leaf, rect in leaf_rects:
                 slot = slot_by_id.get(leaf.slot_id)
-                if slot is None:
-                    continue
-                tex = self._textures.get(leaf.slot_id)
-                if tex is None:
-                    continue
-                if focused_id is not None and leaf.slot_id != focused_id:
-                    continue
-                draw_rect = self.rect() if focused_id is not None else rect
-                fit_x, fit_y = self._fit_scale_for(slot, draw_rect)
-                self._draw_slot(draw_rect, tex, fit_x, fit_y)
+                if slot is not None and slot.label:
+                    self._paint_label(painter, fm, rect, slot.label)
 
-            gl.glBindVertexArray(0)
-            gl.glUseProgram(0)
+        if self.state.drag_active:
+            if self.state.drag_internal and self.state.drag_source_slot_id is not None:
+                self._paint_drag_source(painter, leaf_rects)
+            self._paint_drop_preview(painter, leaf_rects)
 
-        self._paint_overlay(leaf_rects, slot_by_id)
+        painter.end()
+        return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
 
     # ---- layout: rect computation ----
 
@@ -542,73 +972,6 @@ class GLGridWidget(QOpenGLWidget):
         return img_ar / cell_ar, 1.0
 
     # ---- rendering primitives ----
-
-    def _clear_background(self) -> None:
-        bg = getattr(self, "_theme_background_color", None)
-        if not isinstance(bg, QColor) or not bg.isValid():
-            bg = self.palette().color(QPalette.ColorRole.Window)
-        if not bg.isValid():
-            bg = QColor(30, 30, 30)
-        gl.glClearColor(bg.redF(), bg.greenF(), bg.blueF(), 1.0)
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-
-    def _draw_slot(self, rect: QRect, tex: int, fit_x: float, fit_y: float) -> None:
-        w, h = self.width(), self.height()
-        if w <= 0 or h <= 0:
-            return
-
-        gl_y = h - rect.y() - rect.height()
-        gl.glEnable(gl.GL_SCISSOR_TEST)
-        gl.glScissor(rect.x(), gl_y, rect.width(), rect.height())
-        gl.glViewport(rect.x(), gl_y, rect.width(), rect.height())
-
-        loc_zoom = gl.glGetUniformLocation(self._program, "zoom")
-        loc_pan = gl.glGetUniformLocation(self._program, "panOffset")
-        loc_img = gl.glGetUniformLocation(self._program, "image")
-        loc_fit = gl.glGetUniformLocation(self._program, "fitScale")
-
-        gl.glUniform1f(loc_zoom, self.state.zoom)
-        gl.glUniform2f(loc_pan, self.state.pan_x, self.state.pan_y)
-        gl.glUniform2f(loc_fit, max(fit_x, 1e-6), max(fit_y, 1e-6))
-        gl.glUniform1i(loc_img, 0)
-
-        gl.glActiveTexture(gl.GL_TEXTURE0)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, tex)
-
-        gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
-
-        gl.glDisable(gl.GL_SCISSOR_TEST)
-        gl.glViewport(0, 0, w, h)
-
-    def _paint_overlay(self, leaf_rects, slot_by_id) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
-
-        font = QFont(painter.font())
-        font.setPointSize(self.LABEL_FONT_PT)
-        font.setBold(True)
-        painter.setFont(font)
-        fm = painter.fontMetrics()
-
-        focused_id = self.state.focused_slot_id if self.state.is_focused else None
-
-        if focused_id is not None:
-            slot = slot_by_id.get(focused_id)
-            if slot is not None and slot.label:
-                self._paint_label(painter, fm, self.rect(), slot.label)
-        else:
-            for leaf, rect in leaf_rects:
-                slot = slot_by_id.get(leaf.slot_id)
-                if slot is not None and slot.label:
-                    self._paint_label(painter, fm, rect, slot.label)
-
-        if self.state.drag_active:
-            if self.state.drag_internal and self.state.drag_source_slot_id is not None:
-                self._paint_drag_source(painter, leaf_rects)
-            self._paint_drop_preview(painter, leaf_rects)
-
-        painter.end()
 
     def _paint_label(self, painter: QPainter, fm, rect: QRect, label: str) -> None:
         text_w = fm.horizontalAdvance(label)
@@ -713,56 +1076,6 @@ class GLGridWidget(QOpenGLWidget):
         if self.state.drag_internal:
             return self._internal_drop_text()
         return self._translate("drop_image_here", "Drop image here")
-
-    # ---- shaders ----
-
-    def _compile_program(self) -> int:
-        vs = gl.glCreateShader(gl.GL_VERTEX_SHADER)
-        gl.glShaderSource(vs, VERTEX_SHADER)
-        gl.glCompileShader(vs)
-        if not gl.glGetShaderiv(vs, gl.GL_COMPILE_STATUS):
-            logger.error(f"Vertex shader error: {gl.glGetShaderInfoLog(vs)}")
-
-        fs = gl.glCreateShader(gl.GL_FRAGMENT_SHADER)
-        gl.glShaderSource(fs, FRAGMENT_SHADER)
-        gl.glCompileShader(fs)
-        if not gl.glGetShaderiv(fs, gl.GL_COMPILE_STATUS):
-            logger.error(f"Fragment shader error: {gl.glGetShaderInfoLog(fs)}")
-
-        prog = gl.glCreateProgram()
-        gl.glAttachShader(prog, vs)
-        gl.glAttachShader(prog, fs)
-        gl.glLinkProgram(prog)
-        if not gl.glGetProgramiv(prog, gl.GL_LINK_STATUS):
-            logger.error(f"Program link error: {gl.glGetProgramInfoLog(prog)}")
-
-        gl.glDeleteShader(vs)
-        gl.glDeleteShader(fs)
-        return prog
-
-    def _create_quad(self) -> tuple[int, int]:
-        vertices = np.array([
-            -1.0, -1.0, 0.0, 1.0,
-            +1.0, -1.0, 1.0, 1.0,
-            -1.0, +1.0, 0.0, 0.0,
-            +1.0, +1.0, 1.0, 0.0,
-        ], dtype=np.float32)
-
-        vao = gl.glGenVertexArrays(1)
-        vbo = gl.glGenBuffers(1)
-
-        gl.glBindVertexArray(vao)
-        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vbo)
-        gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STATIC_DRAW)
-
-        stride = 4 * 4
-        gl.glEnableVertexAttribArray(0)
-        gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, gl.GL_FALSE, stride, ctypes.c_void_p(0))
-        gl.glEnableVertexAttribArray(1)
-        gl.glVertexAttribPointer(1, 2, gl.GL_FLOAT, gl.GL_FALSE, stride, ctypes.c_void_p(8))
-
-        gl.glBindVertexArray(0)
-        return vao, vbo
 
     # ---- input: zoom + pan + divider drag ----
 

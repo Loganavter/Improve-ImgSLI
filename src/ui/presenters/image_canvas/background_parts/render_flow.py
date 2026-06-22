@@ -57,8 +57,16 @@ def update_comparison_if_needed(presenter):
         if presenter.store.viewport.session_data.image_state.image1 is None:
             return False
 
-    source1 = presenter.store.document.full_res_image1 or presenter.store.document.original_image1
-    source2 = presenter.store.document.full_res_image2 or presenter.store.document.original_image2
+    source1 = (
+        presenter.store.document.full_res_image1
+        or presenter.store.document.preview_image1
+        or presenter.store.document.original_image1
+    )
+    source2 = (
+        presenter.store.document.full_res_image2
+        or presenter.store.document.preview_image2
+        or presenter.store.document.original_image2
+    )
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         image_to_show = (
@@ -86,11 +94,10 @@ def update_comparison_if_needed(presenter):
         return False
 
     if presenter.background.ensure_images_unified(source1, source2):
-        if not presenter.store.viewport.session_data.render_cache.display_cache_image1:
-            presenter.background.create_preview_cache_async(
-                presenter.store.viewport.session_data.image_state.image1,
-                presenter.store.viewport.session_data.image_state.image2,
-            )
+        if not presenter.background.create_preview_cache_async(
+            presenter.store.viewport.session_data.image_state.image1,
+            presenter.store.viewport.session_data.image_state.image2,
+        ):
             return False
 
     src_resize1 = presenter.store.viewport.session_data.render_cache.display_cache_image1 or presenter.store.viewport.session_data.image_state.image1
@@ -159,14 +166,11 @@ def update_comparison_if_needed(presenter):
                 or presenter.store.viewport.session_data.image_state.image2
             )
             gl_img1, gl_img2 = img1, img2
-            gui_source1 = (
-                presenter.store.document.full_res_image1
-                or presenter.store.document.original_image1
-            )
-            gui_source2 = (
-                presenter.store.document.full_res_image2
-                or presenter.store.document.original_image2
-            )
+            # High-resolution sampling must use the unified pair. Raw document
+            # sources can have different sizes and therefore different UV
+            # coordinate systems.
+            gui_source1 = presenter.store.viewport.session_data.image_state.image1
+            gui_source2 = presenter.store.viewport.session_data.image_state.image2
             source_key = (
                 presenter.store.document.image1_path,
                 presenter.store.document.image2_path,

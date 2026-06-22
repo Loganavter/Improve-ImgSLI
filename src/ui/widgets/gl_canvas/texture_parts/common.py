@@ -1,21 +1,21 @@
 import logging
-
-from OpenGL import GL as gl
+import itertools
+from .upload_queue import queue_texture_upload
 
 logger = logging.getLogger("ImproveImgSLI")
 
+# Logical texture-id generator. The QRhi base renderer keys textures by
+# arbitrary Python objects, so any unique integer works in place of the
+# legacy GL handles.
+_TEXTURE_ID_SEQ = itertools.count(start=10_000)
+
+
 def gen_texture_ids(count: int) -> list[int]:
-    generated = gl.glGenTextures(count)
-    if count == 1:
-        return [int(generated)]
-    return [int(texture_id) for texture_id in generated]
+    return [next(_TEXTURE_ID_SEQ) for _ in range(count)]
 
 def configure_dynamic_texture(texture_id: int):
-    gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+    """No-op in the QRhi pipeline (samplers/wrap are part of the SRB)."""
+    return
 
 def ensure_feature_overlay_slot_capacity(widget, count: int):
     state = widget.runtime_state
@@ -25,12 +25,9 @@ def ensure_feature_overlay_slot_capacity(widget, count: int):
 
     current = len(widget._feature_overlay_tex_ids)
     if count > current:
-        widget.makeCurrent()
         additional = count - current
         new_tex_ids = gen_texture_ids(additional)
         new_aux_ids = gen_texture_ids(additional)
-        for texture_id in new_tex_ids + new_aux_ids:
-            configure_dynamic_texture(texture_id)
         widget._feature_overlay_tex_ids.extend(new_tex_ids)
         widget._feature_overlay_aux_tex_ids.extend(new_aux_ids)
         if widget._feature_overlay_tex_ids:
@@ -46,19 +43,8 @@ def ensure_feature_overlay_slot_capacity(widget, count: int):
         overlay._gpu_slots.append(None)
 
 def upload_pil_to_texture_id(widget, pil_image, texture_id: int, slot_index: int | None = None):
-    if pil_image is None or not texture_id:
-        return
-
-    img = pil_image.convert("RGBA")
-    raw = img.tobytes("raw", "RGBA")
-    state = widget.runtime_state
-    state._pending_texture_uploads.append((raw, img.width, img.height, texture_id, slot_index))
-    if slot_index is not None and 0 <= slot_index < len(state._images_uploaded):
-        state._images_uploaded[slot_index] = True
+    queue_texture_upload(widget, pil_image, texture_id, slot_index)
 
 def set_texture_filter(widget, texture_id: int, gl_filter: int):
-    if not texture_id:
-        return
-    gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl_filter)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl_filter)
+    """No-op in the QRhi pipeline (filtering is per-sampler in the SRB)."""
+    return
