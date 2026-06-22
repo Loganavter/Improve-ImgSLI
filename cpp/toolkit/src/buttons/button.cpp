@@ -328,6 +328,21 @@ void Button::setChecked(bool checked) {
 
 const buttons::ButtonSpec& Button::spec() const { return controller_->spec(); }
 
+void Button::setIconSizePx(int sizePx) {
+  sizePx = std::max(1, sizePx);
+  // Mutate the _main region's iconSizePx in the live spec and push the
+  // updated spec back so the next paint picks up the new value.
+  buttons::ButtonSpec updated = controller_->spec();
+  for (auto& region : updated.regions) {
+    if (region.id == QStringLiteral("_main")) {
+      region.style.iconSizePx = sizePx;
+    }
+  }
+  controller_->setSpec(std::move(updated));
+  updateGeometry();
+  update();
+}
+
 void Button::setRippleColors(QColor colorFrom, QColor colorTo) {
   rippleColorFrom_ = std::move(colorFrom);
   rippleColorTo_ = std::move(colorTo);

@@ -12,6 +12,7 @@
 #include <QUrl>
 
 #include "shell/i18n_helper.h"
+#include "ui/icon_manager.h"
 
 namespace imgsli::app {
 
@@ -19,6 +20,7 @@ HelpDialog::HelpDialog(const QString& helpRoot, const QString& language,
                        QWidget* parent)
     : QDialog(parent), helpRoot_(helpRoot), language_(language) {
   setObjectName(QStringLiteral("HelpDialog"));
+  setWindowIcon(ui::getAppIcon(ui::AppIcon::Help));
   resize(1000, 720);
 
   auto* layout = new QHBoxLayout(this);
@@ -67,8 +69,16 @@ void HelpDialog::reload() {
 }
 
 QVector<HelpDialog::Section> HelpDialog::loadLanguage(
-    const QString& language) const {
-  QDir dir(QDir(helpRoot_).filePath(normalizedLanguage(language)));
+    const QString& language) {
+  const QString normalized = normalizedLanguage(language);
+
+  // Check cache first
+  auto it = sectionsCache_.find(normalized);
+  if (it != sectionsCache_.end()) {
+    return it.value();
+  }
+
+  QDir dir(QDir(helpRoot_).filePath(normalized));
   const QStringList files =
       dir.entryList({QStringLiteral("*.md")}, QDir::Files, QDir::Name);
   QVector<Section> result;
@@ -79,6 +89,9 @@ QVector<HelpDialog::Section> HelpDialog::loadLanguage(
       result.push_back(std::move(section));
     }
   }
+
+  // Store in cache
+  sectionsCache_[normalized] = result;
   return result;
 }
 

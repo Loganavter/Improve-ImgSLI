@@ -17,6 +17,8 @@
 #include <QWidget>
 #include <QWindow>
 
+#include <QLineEdit>
+
 #include <cmath>
 #include <functional>
 
@@ -316,19 +318,30 @@ bool CustomWindow::event(QEvent *e) {
     }
     case QEvent::MouseButtonPress: {
       auto *me = static_cast<QMouseEvent *>(e);
-      if (me->button() == Qt::LeftButton && !isMaximized()) {
-        const int edges = detectEdges(me->position().toPoint());
-        if (edges != EdgeNone) {
-          Qt::Edges qEdges;
-          if (edges & EdgeLeft) qEdges |= Qt::LeftEdge;
-          if (edges & EdgeRight) qEdges |= Qt::RightEdge;
-          if (edges & EdgeTop) qEdges |= Qt::TopEdge;
-          if (edges & EdgeBottom) qEdges |= Qt::BottomEdge;
-          if (auto *handle = windowHandle()) {
-            handle->startSystemResize(qEdges);
+      if (me->button() == Qt::LeftButton) {
+        // Mirror Python MainWindow.mousePressEvent: clear focus from any
+        // focused QLineEdit (i.e. editName1 / editName2) when the user
+        // clicks anywhere else in the window. This prevents stale cursor-
+        // blinks after finishing a rename edit.
+        if (auto *focused = focusWidget()) {
+          if (qobject_cast<QLineEdit *>(focused) != nullptr) {
+            focused->clearFocus();
           }
-          e->accept();
-          return true;
+        }
+        if (!isMaximized()) {
+          const int edges = detectEdges(me->position().toPoint());
+          if (edges != EdgeNone) {
+            Qt::Edges qEdges;
+            if (edges & EdgeLeft) qEdges |= Qt::LeftEdge;
+            if (edges & EdgeRight) qEdges |= Qt::RightEdge;
+            if (edges & EdgeTop) qEdges |= Qt::TopEdge;
+            if (edges & EdgeBottom) qEdges |= Qt::BottomEdge;
+            if (auto *handle = windowHandle()) {
+              handle->startSystemResize(qEdges);
+            }
+            e->accept();
+            return true;
+          }
         }
       }
       break;
