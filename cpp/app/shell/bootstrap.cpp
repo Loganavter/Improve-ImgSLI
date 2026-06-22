@@ -105,10 +105,8 @@ int buildMainUi(QApplication& app, CustomWindow& window, QWidget* central,
                      comparisonController->openDialog(&window);
                    });
 
-  QObject::connect(ui.sliderSplit, &QAbstractSlider::valueChanged,
-                   canvas, [comparisonController](int value) {
-                     comparisonController->setSplit(value / 1000.0F);
-                   });
+  // Python: slider_split does not exist — split position is driven by
+  // mouse drag on the canvas. No slider connect needed here.
   QObject::connect(ui.btnOrientation, &QAbstractButton::toggled, canvas,
                    [comparisonController](bool enabled) {
                      comparisonController->setHorizontal(enabled);
@@ -212,8 +210,6 @@ int buildMainUi(QApplication& app, CustomWindow& window, QWidget* central,
   }
 
   const QVariantMap layoutControls{
-      {QStringLiteral("split"),
-       QVariant::fromValue<QObject*>(ui.sliderSplit)},
       {QStringLiteral("orientation"),
        QVariant::fromValue<QObject*>(ui.btnOrientation)},
       {QStringLiteral("magnifier"),

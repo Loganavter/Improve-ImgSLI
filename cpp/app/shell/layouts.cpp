@@ -4,16 +4,20 @@
 #include "shell/layouts.h"
 
 #include <QHBoxLayout>
-#include <QTabBar>
+#include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 
+// Include full type definitions BEFORE shell/ui.h so the forward declarations
+// in ui.h are resolved by the time layouts.cpp uses them via pointer dereference.
 #include "sli/toolkit/atomic/custom_line_edit.h"
+#include "sli/toolkit/atomic/instances_counter_button.h"
 #include "sli/toolkit/atomic/slider.h"
 #include "sli/toolkit/atomic/text_labels.h"
 #include "sli/toolkit/buttons/button.h"
 #include "sli/toolkit/buttons/button_group.h"
 #include "sli/toolkit/comboboxes/scrollable_combo_box.h"
+#include "sli/toolkit/composite/adaptive_tab_strip.h"
 #include "sli/toolkit/overlays/drag_drop_overlay.h"
 #include "shell/ui.h"
 #include "ui/canvas/canvas_widget.h"
@@ -31,7 +35,6 @@ void LayoutComposer::build(QWidget* mainWindow, QVBoxLayout* rootLayout) {
   rootLayout->addWidget(buildWorkspaceTabsBar(mainWindow));
   rootLayout->addWidget(buildSelectionWidget(mainWindow));
   rootLayout->addWidget(buildComparisonToolbar(mainWindow));
-  rootLayout->addWidget(buildSplitRow(mainWindow));
   rootLayout->addWidget(buildMagnifierSettingsPanel(mainWindow));
 
   // Wrap the canvas in a container so the ZoomIndicator and DragDropOverlay
@@ -53,9 +56,8 @@ void LayoutComposer::build(QWidget* mainWindow, QVBoxLayout* rootLayout) {
   rootLayout->addWidget(buildFilenameEditPanel(mainWindow));
   rootLayout->addWidget(buildSaveBar(mainWindow));
 
-  // Python defaults: split slider hidden until magnifier-edit mode;
-  // magnifier panel + filename edit panel hidden until their toggles fire.
-  ui_.sliderSplit->parentWidget()->setVisible(false);
+  // Python defaults: magnifier panel + filename edit panel hidden until
+  // their toggles fire.
   ui_.magnifierSettingsPanel->setVisible(false);
 
   // Mirror Python LayoutComposer._finalize().
@@ -63,14 +65,20 @@ void LayoutComposer::build(QWidget* mainWindow, QVBoxLayout* rootLayout) {
   applyWorkspaceTabsVisibility();
 }
 
-QWidget* LayoutComposer::buildWorkspaceTabsBar(QWidget* /*mainWindow*/) {
-  auto* layout = new QHBoxLayout(ui_.workspaceTabsBar);
+QWidget* LayoutComposer::buildWorkspaceTabsBar(QWidget* parent) {
+  // Python: workspace_tabs is an AdaptiveTabStrip that already contains its
+  // own add button internally. We wrap it in a container row for margins.
+  auto* container = new QWidget(parent);
+  container->setObjectName(QStringLiteral("WorkspaceTabsBar"));
+  auto* layout = new QHBoxLayout(container);
   layout->setContentsMargins(8, 4, 8, 0);
   layout->setSpacing(4);
-  layout->addWidget(ui_.workspaceTabs);
-  layout->addWidget(ui_.btnNewSession);
-  layout->addStretch();
-  return ui_.workspaceTabsBar;
+  layout->addWidget(ui_.workspaceTabs, 1);
+  // Wire workspaceStack into the stacked-page area under the tab bar.
+  // addWidget is a layout op so it belongs here in LayoutComposer, not ui.cpp.
+  ui_.workspaceStack->addWidget(ui_.imageSessionPage);
+  ui_.workspaceStack->addWidget(ui_.videoSessionPage);
+  return container;
 }
 
 QWidget* LayoutComposer::buildSelectionWidget(QWidget* parent) {
@@ -142,7 +150,7 @@ QWidget* LayoutComposer::buildComparisonToolbar(QWidget* parent) {
   auto* magnifierGroup = new ButtonGroup(
       std::vector<QWidget*>{ui_.btnMagnifier, ui_.btnMagnifierInstances,
                             ui_.btnFreeze, ui_.btnMagnifierOrientation,
-                            ui_.btnMagnifierColor, ui_.btnMagnifierGuides},
+                            ui_.btnMagnifierColorSettings, ui_.btnMagnifierGuides},
       QStringLiteral("Magnifier"), row);
   auto* recordGroup = new ButtonGroup(
       std::vector<QWidget*>{ui_.btnRecord, ui_.btnPause, ui_.btnVideoEditor},
@@ -162,16 +170,6 @@ QWidget* LayoutComposer::buildComparisonToolbar(QWidget* parent) {
   return row;
 }
 
-QWidget* LayoutComposer::buildSplitRow(QWidget* parent) {
-  auto* row = new QWidget(parent);
-  auto* layout = new QHBoxLayout(row);
-  layout->setContentsMargins(8, 0, 8, 4);
-  layout->setSpacing(8);
-  auto* label = new sli::toolkit::Label(QStringLiteral("Split position"));
-  layout->addWidget(label);
-  layout->addWidget(ui_.sliderSplit, 1);
-  return row;
-}
 
 QWidget* LayoutComposer::buildMagnifierSettingsPanel(QWidget* parent) {
   // Reuse the QWidget MainWindowUi already allocated; just populate the
@@ -188,9 +186,10 @@ QWidget* LayoutComposer::buildMagnifierSettingsPanel(QWidget* parent) {
     h->addWidget(slider, 1);
     layout->addWidget(roww);
   };
-  addRow(QStringLiteral("Magnifier size"), ui_.sliderMagnifierSize);
-  addRow(QStringLiteral("Capture size"), ui_.sliderCaptureSize);
-  addRow(QStringLiteral("Movement speed"), ui_.sliderMovementSpeed);
+  // Python: slider_size, slider_capture, slider_speed
+  addRow(QStringLiteral("Magnifier size"), ui_.sliderSize);
+  addRow(QStringLiteral("Capture size"), ui_.sliderCapture);
+  addRow(QStringLiteral("Movement speed"), ui_.sliderSpeed);
   (void)parent;
   return ui_.magnifierSettingsPanel;
 }
@@ -225,10 +224,6 @@ QWidget* LayoutComposer::buildFooterInfo(QWidget* parent) {
 
   auto* resRow = new QHBoxLayout();
   resRow->addWidget(ui_.resolutionLabel1, 0, Qt::AlignLeft);
-  resRow->addStretch();
-  resRow->addWidget(ui_.psnrLabel);
-  resRow->addSpacing(15);
-  resRow->addWidget(ui_.ssimLabel);
   resRow->addStretch();
   resRow->addWidget(ui_.resolutionLabel2, 0, Qt::AlignRight);
   layout->addLayout(resRow);
@@ -297,8 +292,11 @@ void LayoutComposer::applyWorkspaceTabsVisibility() {
   // hidden by default; it becomes visible only when the settings flag
   // `show_workspace_tabs` is True. In C++ we default to hidden here and
   // Bootstrap can re-show it if the QSettings flag is set.
+  // Python constant SHOW_WORKSPACE_TABS = False — hidden by default.
+  // workspaceTabs is the AdaptiveTabStrip; its parent container is used for
+  // visibility. Bootstrap can re-show it if the QSettings flag is set.
   constexpr bool kDefaultShowWorkspaceTabs = false;
-  ui_.workspaceTabsBar->setVisible(kDefaultShowWorkspaceTabs);
+  ui_.workspaceTabs->setVisible(kDefaultShowWorkspaceTabs);
 }
 
 }  // namespace imgsli::app::shell

@@ -39,6 +39,7 @@ TokenMap buildLightTokens() {
     m.insert(QStringLiteral("dialog.text"), kLight.text);
     m.insert(QStringLiteral("dialog.border"), kLight.border);
     m.insert(QStringLiteral("separator.color"), kLight.border);
+    m.insert(QStringLiteral("dialog.button.hover"), QColor("#d8d8d8"));
     m.insert(QStringLiteral("Window"), kLight.window);
     m.insert(QStringLiteral("WindowText"), kLight.windowText);
 
@@ -105,6 +106,7 @@ TokenMap buildDarkTokens() {
     m.insert(QStringLiteral("dialog.text"), kDark.text);
     m.insert(QStringLiteral("dialog.border"), kDark.border);
     m.insert(QStringLiteral("separator.color"), kDark.border);
+    m.insert(QStringLiteral("dialog.button.hover"), QColor("#4f4f4f"));
     m.insert(QStringLiteral("Window"), kDark.window);
     m.insert(QStringLiteral("WindowText"), kDark.windowText);
 

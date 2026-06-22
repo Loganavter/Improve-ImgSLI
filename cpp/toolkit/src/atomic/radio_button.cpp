@@ -149,8 +149,6 @@ void RadioButton::changeEvent(QEvent* e) {
 }
 
 void RadioButton::paintEvent(QPaintEvent*) {
-    const auto& colors = Theme::palette();
-
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
@@ -159,10 +157,10 @@ void RadioButton::paintEvent(QPaintEvent*) {
     const QRectF indicatorRect = this->indicatorRect(rect);
     const QRectF textRectAvail = textRectAvailable(rect, indicatorRect);
 
-    const QColor accent = colors.accent;
-    const QColor border = colors.border;
-    const QColor textColor = colors.windowText;
-    const QColor neutralHover = colors.hover;
+    const QColor accent = Theme::getColor(QStringLiteral("accent"));
+    const QColor border = Theme::getColor(QStringLiteral("dialog.border"));
+    const QColor textColor = Theme::getColor(QStringLiteral("dialog.text"));
+    const QColor neutralHover = Theme::getColor(QStringLiteral("dialog.button.hover"));
     const int disabledAlpha = kDisabledAlpha;
 
     const bool isDisabled = !isEnabled();

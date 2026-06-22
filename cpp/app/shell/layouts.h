@@ -35,7 +35,6 @@ class LayoutComposer {
   QWidget* buildSelectionRow(QWidget* parent);
   QWidget* buildComboboxRow(QWidget* parent);
   QWidget* buildComparisonToolbar(QWidget* parent);
-  QWidget* buildSplitRow(QWidget* parent);
   QWidget* buildMagnifierSettingsPanel(QWidget* parent);
   QWidget* buildFilenameEditPanel(QWidget* parent);
   QWidget* buildFooterInfo(QWidget* parent);
