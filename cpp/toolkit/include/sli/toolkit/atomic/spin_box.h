@@ -19,8 +19,12 @@ public:
     QSize minimumSizeHint() const override;
 
     void setRange(int minVal, int maxVal);
+    int minimum() const { return m_minimum; }
+    int maximum() const { return m_maximum; }
     int value() const { return m_value; }
     void setValue(int val);
+    void setSuffix(const QString& suffix) { m_suffix = suffix; updateStyle(); }
+    QString suffix() const { return m_suffix; }
 
 signals:
     void valueChanged(int value);
@@ -45,6 +49,7 @@ private:
     int m_maximum = 100;
     int m_value = 0;
     int m_defaultValue = 0;
+    QString m_suffix;
     bool m_wheelRequiresFocus = false;
 };
 

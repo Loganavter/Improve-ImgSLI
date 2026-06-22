@@ -123,9 +123,9 @@ void BaseFlyout::addWidget(QWidget* widget) {
 
 // add_section: Label(text, pixel_size=12, bold=True, color_token="dialog.text")
 Label* BaseFlyout::addSection(const QString& text, int /*pixelSize*/) {
-  // C++ Label uses Variant enum; Heading = bold+larger, closest to
-  // pixel_size=12+bold.  We use Variant::Heading to match bold=True intent.
-  auto* label = new Label(text, Label::Variant::Heading, container_);
+  // Python: pixel_size=12 default, bold=True. C++ Label uses string variant names.
+  // "group-title" = 13px + bold, matches Python intent.
+  auto* label = new Label(text, QStringLiteral("group-title"), container_);
   contentLayout_->addWidget(label);
   return label;
 }
@@ -140,7 +140,7 @@ Label* BaseFlyout::addRow(const QString& labelText, QWidget* widget,
   row->setContentsMargins(0, 0, 0, 0);
   row->setSpacing(8);
 
-  auto* label = new Label(labelText, Label::Variant::Caption, host);
+  auto* label = new Label(labelText, QStringLiteral("caption"), host);
   row->addWidget(label);
   if (stretchBeforeWidget) {
     row->addStretch();
@@ -159,7 +159,7 @@ Label* BaseFlyout::addRadioRow(const QString& labelText,
                                 const QList<QPair<QString, QVariant>>& options,
                                 QButtonGroup* group,
                                 const QVariant& defaultValue) {
-  auto* label = new Label(labelText, Label::Variant::Caption, container_);
+  auto* label = new Label(labelText, QStringLiteral("caption"), container_);
   contentLayout_->addWidget(label);
 
   auto* host = new QWidget(container_);
