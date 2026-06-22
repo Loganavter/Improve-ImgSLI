@@ -11,10 +11,19 @@
 
 #include "sli/toolkit/buttons/button.h"
 
+class QPushButton;
 class QSlider;
 class QTabBar;
 class QLabel;
 class QWidget;
+
+namespace imgsli::app::ui::widgets {
+class ZoomIndicator;
+}
+
+namespace sli::toolkit {
+class DragDropOverlay;
+}
 
 namespace sli::toolkit {
 class CustomLineEdit;
@@ -93,6 +102,17 @@ struct MainWindowUi {
   sli::toolkit::Label* ssimLabel = nullptr;
   sli::toolkit::Label* fileNameLabel1 = nullptr;
   sli::toolkit::Label* fileNameLabel2 = nullptr;
+
+  // --- overlays (created by LayoutComposer) --------------------------------
+  // Mirror of Python ui.zoom_indicator (ZoomIndicator) and ui.drag_overlay
+  // (DragDropOverlay). Both are created by LayoutComposer._create_zoom_indicator
+  // and build() respectively; they are null until LayoutComposer::build runs.
+  imgsli::app::ui::widgets::ZoomIndicator* zoomIndicator = nullptr;
+  sli::toolkit::DragDropOverlay* dragOverlay = nullptr;
+  // Python's ui.btn_zoom_reset is the reset button inside the ZoomIndicator.
+  // Stored separately so bootstrap can wire it without coupling to the
+  // ZoomIndicator subwidget API.
+  QPushButton* btnZoomReset = nullptr;
 
   // --- entry point ---------------------------------------------------------
   // Constructs every widget above (parent = `mainWindow`) without touching

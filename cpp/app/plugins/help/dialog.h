@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QMap>
 #include <QString>
 #include <QVector>
 
@@ -32,7 +33,7 @@ class HelpDialog final : public QDialog {
   };
 
   void reload();
-  QVector<Section> loadLanguage(const QString& language) const;
+  QVector<Section> loadLanguage(const QString& language);
   static QString normalizedLanguage(const QString& language);
   static Section readSection(const QString& path);
   int indexForSlug(const QString& slug) const;
@@ -42,6 +43,7 @@ class HelpDialog final : public QDialog {
   QVector<Section> sections_;
   QListWidget* sidebar_ = nullptr;
   QTextBrowser* browser_ = nullptr;
+  QMap<QString, QVector<Section>> sectionsCache_;
 };
 
 }  // namespace imgsli::app

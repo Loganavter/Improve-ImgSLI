@@ -40,6 +40,12 @@ class LayoutComposer {
   QWidget* buildFilenameEditPanel(QWidget* parent);
   QWidget* buildFooterInfo(QWidget* parent);
   QWidget* buildSaveBar(QWidget* parent);
+
+  // Finalization helpers — mirror Python LayoutComposer._finalize().
+  void createZoomIndicator(QWidget* imageContainer);
+  void createDragOverlay(QWidget* imageContainer);
+  void applyIconSizes();
+  void applyWorkspaceTabsVisibility();
 };
 
 }  // namespace imgsli::app::shell

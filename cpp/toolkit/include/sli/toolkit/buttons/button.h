@@ -108,6 +108,13 @@ class Button : public QAbstractButton {
   int value() const { return scrollValue_; }
   void setRange(int minV, int maxV);
 
+  // Mirrors Python `Button.setIconSizePx(size_px)`. Overrides the icon size
+  // on the `_main` region without changing any other layout property. The
+  // Python side sets the `iconSizePx` dynamic property AND triggers a
+  // geometry update; here we mutate the spec directly which has the same
+  // effect (next paintEvent re-queries the region draw context).
+  void setIconSizePx(int sizePx);
+
  signals:
   void regionClicked(const QString& regionId);
   void regionPressed(const QString& regionId);
