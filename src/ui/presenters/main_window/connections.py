@@ -16,6 +16,7 @@ from ui.presenters.main_window.workspace import (
     on_video_session_advance_requested,
     on_video_session_attach_resource_requested,
     on_video_session_create_image_compare_requested,
+    on_new_workspace_tab_requested,
     on_workspace_session_triggered,
     on_workspace_tab_changed,
     on_workspace_tab_close_requested,
@@ -99,6 +100,9 @@ def connect_signals(presenter):
     )
     presenter.ui.workspace_tabs.tabCloseRequested.connect(
         lambda index: on_workspace_tab_close_requested(presenter, index)
+    )
+    presenter.ui.workspace_tabs.addRequested.connect(
+        lambda: on_new_workspace_tab_requested(presenter)
     )
     import logging as _logging
     _ws_logger = _logging.getLogger("ImproveImgSLI")

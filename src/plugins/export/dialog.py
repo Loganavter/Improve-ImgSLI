@@ -101,6 +101,8 @@ class ExportDialog(QDialog):
         self._init_ui()
         self._apply_styles()
         self.theme_manager.theme_changed.connect(self._apply_styles)
+        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        decorate_dialog(self, title=self.tr("misc.export", self.dialog_state.current_language))
 
         self._populate_from_state()
         self._suggest_default_filename()

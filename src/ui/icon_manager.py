@@ -45,6 +45,10 @@ class AppIcon(Enum):
     REMOVE = "remove.svg"
     CLOSE = "close.svg"
     CHECK = "check.svg"
+    MINIMIZE = "window_minimize.svg"
+    MAXIMIZE = "window_maximize.svg"
+    RESTORE = "window_restore.svg"
+    WINDOW_CLOSE = "window_close.svg"
 
     RECORD = "record.svg"
     STOP = "stop.svg"

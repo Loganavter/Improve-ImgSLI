@@ -1,15 +1,15 @@
-"""Offscreen GPU renderer for the Multi Compare export path.
+"""Offscreen GPU exporter for the Multi Compare view.
 
-Mirrors the live ``GLGridWidget`` pipeline so saved compositions match the
-on-screen render exactly (shader-side resample, overlay text, focus/zoom/pan
-state, fit-aware crop). This replaced the previous CPU ``QPainter.drawImage``
-``_compose_image`` path which approximated the layout but used Qt's bilinear
-``SmoothPixmapTransform`` and produced visibly different output from the live
-view, especially under upscale.
+Mirrors the main-compare path (:class:`GpuExportProxy`): a hidden
+``MultiCompareCanvasWidget`` is resized to the chosen output size, the
+composition tree is applied via ``apply_canvas_render_plan`` (which stashes a
+``ResolvedComposition`` on the widget for ``render()`` to consume), and
+``grabFramebuffer`` performs a synchronous render.
 
-The exporter owns a hidden ``GLGridWidget`` (one per controller); successive
-exports reuse it and its cached slot textures, so only the first call pays the
-RHI-init + texture-upload cost.
+The composition is the **only** input to the renderer — no ``set_state``
+shortcut, no parallel ``MultiCompareState`` mutation path. This is what makes
+live and export look the same: both paths render the same canvas-px scene with
+``sr = min(fb/canvas)`` applied once at draw time.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
-from tabs.multi_compare.ui.gl_grid import GLGridWidget
+from tabs.multi_compare.ui.canvas_widget import MultiCompareCanvasWidget
 from ui.canvas_presentation.composition import CompositionPlan
 from ui.canvas_presentation.plan import CanvasRenderPlan
 from ui.canvas_presentation.plan_applicator import apply_canvas_render_plan
@@ -30,17 +30,18 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class MultiCompareGpuExporter:
     def __init__(self) -> None:
-        self._widget: GLGridWidget | None = None
+        self._widget: MultiCompareCanvasWidget | None = None
         self._last_size: tuple[int, int] | None = None
 
-    def _ensure_widget(self) -> GLGridWidget:
+    def _ensure_widget(self) -> MultiCompareCanvasWidget:
         if self._widget is not None:
             return self._widget
-        widget = GLGridWidget()
+        widget = MultiCompareCanvasWidget()
         widget.setObjectName("multi_compare_export_canvas")
         widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
         widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         widget.setAutoFillBackground(False)
+        widget._allow_transparent_clear = True
         widget.show()
         QApplication.processEvents()
         self._widget = widget
@@ -68,28 +69,24 @@ class MultiCompareGpuExporter:
     def render_to_qimage(
         self,
         composition: CompositionPlan,
-        state,
         *,
+        output_w: int,
+        output_h: int,
         background_color: QColor | None,
         fill_background: bool,
     ) -> QImage:
-        """Render a multi-compare frame from a composition plan.
+        """Render ``composition`` into a QImage of ``output_w`` × ``output_h``.
 
-        The composition plan is the canonical description of the frame —
-        it owns the canvas size and the layer tree. ``state`` is still required
-        because the current renderer (a hidden ``GLGridWidget``) reads slot
-        images and zoom/pan from the state object; this parameter goes away
-        when the renderer becomes composition-native.
+        The composition's own ``canvas_w/canvas_h`` is the canonical scene size.
+        ``output_w/h`` is the framebuffer; ``render()`` letterboxes the scene
+        into it with ``sr = min(output/canvas)``. No second resample.
         """
         widget = self._ensure_widget()
-        target_size = (
-            max(1, int(composition.canvas_w)),
-            max(1, int(composition.canvas_h)),
-        )
+        target_size = (max(1, int(output_w)), max(1, int(output_h)))
 
         # Clear color must be assigned before render() reads it via
-        # _theme_or_palette_bg(). Transparent fill goes through the alpha
-        # channel of the framebuffer (widget has WA_TranslucentBackground).
+        # _theme_or_palette_bg(). Transparent fill uses the framebuffer alpha
+        # channel (widget has WA_TranslucentBackground).
         if fill_background and background_color is not None:
             widget._theme_background_color = QColor(background_color)
         else:
@@ -100,19 +97,14 @@ class MultiCompareGpuExporter:
             QApplication.processEvents()
             self._last_size = target_size
 
-        # Unified entry point: the same applicator main compare uses for its
-        # plan-based path. It resolves the composition tree and stashes it on
-        # the widget as ``_active_composition``, then we drive the legacy
-        # ``set_state`` path so the existing GLGridWidget shaders pick it up.
-        # Once the renderer is composition-native this set_state goes away.
         render_plan = CanvasRenderPlan(
             image1=None,
             image2=None,
             source_image1=None,
             source_image2=None,
             source_key=(),
-            canvas_w=target_size[0],
-            canvas_h=target_size[1],
+            canvas_w=composition.canvas_w,
+            canvas_h=composition.canvas_h,
             gl_scene=None,
             overlay_layout=None,
             capture_visible=False,
@@ -129,20 +121,7 @@ class MultiCompareGpuExporter:
             composition_root=composition.root,
         )
         apply_canvas_render_plan(widget, render_plan)
-        widget.set_state(state)
 
         widget.update()
         QApplication.processEvents()
-
-        result = widget.grabFramebuffer()
-        # DPR on offscreen widgets typically resolves to the primary screen's
-        # ratio, so the framebuffer may come out larger than the logical
-        # widget size. Normalize once if needed.
-        if (result.width(), result.height()) != target_size:
-            result = result.scaled(
-                target_size[0],
-                target_size[1],
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        return result
+        return widget.grabFramebuffer()

@@ -105,7 +105,7 @@ class SettingsApplicationService(QObject):
             self.store.emit_state_change("settings")
 
         if data.show_workspace_tabs != getattr(
-            self.store.settings, "show_workspace_tabs", False
+            self.store.settings, "show_workspace_tabs", True
         ):
             dispatcher.dispatch(SetShowWorkspaceTabsAction(data.show_workspace_tabs))
             self._save_setting("show_workspace_tabs", data.show_workspace_tabs)
@@ -120,6 +120,18 @@ class SettingsApplicationService(QObject):
                 container = getattr(ui, "workspace_tabs_bar", None)
                 if container is not None:
                     container.setVisible(data.show_workspace_tabs)
+
+        if data.use_custom_decorations != getattr(
+            self.store.settings, "use_custom_decorations", True
+        ):
+            self.store.settings.use_custom_decorations = data.use_custom_decorations
+            self._save_setting("use_custom_decorations", data.use_custom_decorations)
+            window_shell = (
+                self.main_controller.window_shell if self.main_controller else None
+            )
+            window = getattr(window_shell, "main_window_app", None)
+            if window is not None and hasattr(window, "apply_decoration_mode"):
+                window.apply_decoration_mode(data.use_custom_decorations)
 
         return render_update_needed
 

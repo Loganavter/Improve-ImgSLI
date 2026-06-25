@@ -28,7 +28,6 @@
     "render_backend_d3d11": "Direct3D 11",
     "render_backend_d3d12": "Direct3D 12",
     "render_backend_metal": "Metal",
-    "render_backend_null": "Null (без рендеринга)",
     "render_backend_restart_hint": "Применится после перезапуска. Не все бэкенды поддерживаются на каждой системе.",
     "render_backend_restart_title": "Требуется перезапуск",
     "render_backend_restart_message": "Бэкенд рендеринга переключится на '{backend}' после следующего запуска.",

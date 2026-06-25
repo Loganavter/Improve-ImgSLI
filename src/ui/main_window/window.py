@@ -2,12 +2,14 @@ import logging
 import PIL.Image
 from PySide6.QtCore import (
     QEvent,
+    Qt,
     QTimer,
     Signal,
 )
 from PySide6.QtGui import (
     QColor,
     QIcon,
+    QPalette,
     QResizeEvent,
 )
 from PySide6.QtWidgets import QApplication, QWidget
@@ -23,12 +25,23 @@ from ui.main_window.lifecycle import (
 )
 from ui.main_window.runtime import MainWindowRuntime
 from ui.main_window.startup import MainWindowStartupRuntime
-from ui.theming import install_application_theme
+from ui.theming import install_application_theme, resolve_theme_color
 from utils.geometry import GeometryManager
 from utils.resource_loader import resource_path
 
 PIL.Image.MAX_IMAGE_PIXELS = None
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _read_use_custom_decorations_setting() -> bool:
+    try:
+        from PySide6.QtCore import QSettings
+        qs = QSettings("improve-imgsli", "improve-imgsli")
+        if not qs.contains("use_custom_decorations"):
+            return True
+        return str(qs.value("use_custom_decorations")).lower() == "true"
+    except Exception:
+        return True
 
 class MainWindow(QWidget):
     startupVisualReady = Signal()
@@ -42,6 +55,15 @@ class MainWindow(QWidget):
         super().__init__(parent)
         self.setObjectName("ImageComparisonApp")
         self.runtime_flags = runtime_flags or RuntimeFlags(debug=debug_mode)
+
+        self._use_custom_decorations = _read_use_custom_decorations_setting()
+        self.CORNER_RADIUS = 10
+        self._window_bg_color = QColor("#1e1e1e")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
+        if self._use_custom_decorations:
+            from sli_ui_toolkit import apply_frameless
+            apply_frameless(self)
 
         self._is_ui_stable = False
         self._application_initialized = False
@@ -92,6 +114,19 @@ class MainWindow(QWidget):
         self.startup_runtime.build_shell()
 
         try:
+            theme_bg = QColor(
+                resolve_theme_color(self.theme_manager, "label.image.background")
+            )
+        except Exception:
+            theme_bg = QColor("#1e1e1e")
+        self._window_bg_color = theme_bg
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window, theme_bg)
+        pal.setColor(QPalette.ColorRole.Base, theme_bg)
+        pal.setColor(self.backgroundRole(), theme_bg)
+        self.setPalette(pal)
+
+        try:
             from shared_toolkit.ui.managers.font_manager import FontManager
 
             self.font_path_absolute = FontManager.get_instance().get_font_path_for_image_text(self.store)
@@ -106,6 +141,41 @@ class MainWindow(QWidget):
         self._debounced_resize_timer.timeout.connect(
             self.runtime.handle_debounced_resize
         )
+
+    def paintEvent(self, event):
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QPainter, QPainterPath
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._window_bg_color)
+        rect = QRectF(self.rect())
+        use_custom = getattr(self, "_use_custom_decorations", False)
+        radius = (
+            float(self.CORNER_RADIUS)
+            if use_custom and not (self.isMaximized() or self.isFullScreen())
+            else 0.0
+        )
+        path = QPainterPath()
+        if radius <= 0.0:
+            path.addRect(rect)
+        else:
+            w, h, r = rect.width(), rect.height(), radius
+            path.moveTo(0.0, h)
+            path.lineTo(0.0, r)
+            path.arcTo(0.0, 0.0, 2 * r, 2 * r, 180.0, -90.0)
+            path.lineTo(w - r, 0.0)
+            path.arcTo(w - 2 * r, 0.0, 2 * r, 2 * r, 90.0, -90.0)
+            path.lineTo(w, h)
+            path.closeSubpath()
+        painter.drawPath(path)
+
+    def _apply_rounded_mask(self) -> None:
+        # QBitmap-based setMask is 1-bit (no AA) and chops the antialiased
+        # rounded paintEvent edges into a staircase — visible as lighter pixels
+        # on dark themes. WA_TranslucentBackground + AA paintEvent already gives
+        # smooth corners on compositing systems, so we just keep the mask off.
+        self.clearMask()
 
     def begin_offscreen_prewarm(self):
         self._offscreen_prewarm_active = True
@@ -137,6 +207,23 @@ class MainWindow(QWidget):
     def start(self):
         self._startup_controller.start(self)
 
+    def apply_decoration_mode(self, enabled: bool) -> None:
+        if enabled == self._use_custom_decorations:
+            return
+
+        from sli_ui_toolkit import set_frameless_runtime
+
+        self._use_custom_decorations = enabled
+        set_frameless_runtime(self, enabled)
+
+        title_bar = getattr(self, "_custom_title_bar", None)
+        if title_bar is not None:
+            title_bar.setVisible(enabled)
+
+        self.startup_runtime.sync_cover_geometry()
+        self._apply_rounded_mask()
+        self.update()
+
     def apply_application_theme(self, theme_name: str):
         app = QApplication.instance()
         self.theme_manager.set_theme(theme_name, app)
@@ -146,11 +233,13 @@ class MainWindow(QWidget):
     def changeEvent(self, event: QEvent):
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange:
-
+            self._apply_rounded_mask()
+            self.update()
             QTimer.singleShot(0, self.schedule_update)
 
     def resizeEvent(self, event: QResizeEvent):
         super().resizeEvent(event)
+        self._apply_rounded_mask()
         self.runtime.handle_resize()
 
     def closeEvent(self, event: QEvent):
@@ -178,6 +267,7 @@ class MainWindow(QWidget):
 
     def showEvent(self, event: QEvent):
         super().showEvent(event)
+        self._apply_rounded_mask()
         self.runtime.handle_show()
 
     def mousePressEvent(self, event):

@@ -18,6 +18,7 @@ def initialize_workspace_state(presenter) -> None:
     presenter._file_dialog = None
     presenter._first_dialog_load_pending = True
     presenter._video_session_model: VideoSessionModel | None = None
+    presenter._last_active_session_id = None
 
 def configure_workspace_actions(presenter):
     actions = []
@@ -46,7 +47,7 @@ def configure_workspace_actions(presenter):
         "configure_workspace_actions: actions=%s btn=%s visible=%s enabled=%s",
         actions, btn, btn.isVisible(), btn.isEnabled(),
     )
-    btn.set_actions(actions)
+    btn.set_actions([])
     logger.debug(
         "configure_workspace_actions: after set_actions _has_menu=%s capabilities=%s",
         getattr(btn, "_has_menu", "<missing>"),
@@ -62,6 +63,17 @@ def configure_workspace_actions(presenter):
 
 def _log_new_session_clicked():
     logger.debug("btn_new_session.clicked emitted")
+
+def on_new_workspace_tab_requested(presenter):
+    if not presenter.main_controller:
+        return
+    try:
+        presenter.main_controller.workspace.create_workspace_session(
+            "session_picker",
+            activate=True,
+        )
+    except Exception:
+        logger.exception("on_new_workspace_tab_requested: create session_picker failed")
 
 def sync_workspace_tabs(presenter):
     if not presenter.session_manager:
@@ -117,15 +129,23 @@ def on_workspace_tab_changed(presenter, index: int):
 def on_workspace_tab_close_requested(presenter, index: int):
     if index < 0:
         return
+    session_id = presenter.ui.workspace_tabs.tabData(index)
+    if not session_id or not presenter.main_controller:
+        return
+    # Closing the last remaining session opens a session-picker session first
+    # so the user can pick a new tab type instead of the app shutting down.
     if (
         presenter.session_manager
         and len(presenter.session_manager.list_sessions()) == 1
     ):
-        presenter.main_window_app.close()
-        return
-    session_id = presenter.ui.workspace_tabs.tabData(index)
-    if session_id and presenter.main_controller:
-        presenter.main_controller.workspace.close_workspace_session(session_id)
+        try:
+            presenter.main_controller.workspace.create_workspace_session(
+                "session_picker", activate=True
+            )
+        except Exception:
+            logger.exception("on_workspace_tab_close_requested: failed to create session_picker")
+            return
+    presenter.main_controller.workspace.close_workspace_session(session_id)
 
 def on_workspace_session_triggered(presenter, action):
     logger.debug("on_workspace_session_triggered: action=%r type=%s", action, type(action).__name__)

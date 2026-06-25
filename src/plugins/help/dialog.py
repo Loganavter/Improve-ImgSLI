@@ -28,6 +28,8 @@ class HelpDialog(MarkdownHelpDialog):
         self.setObjectName("HelpDialog")
         self._apply_styles()
         self._reload_sections()
+        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        decorate_dialog(self, title=tr("help.help", language=current_language))
 
     def _reload_sections(self) -> None:
         sections = self._discover_sections(self.current_language)

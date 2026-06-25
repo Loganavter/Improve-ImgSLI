@@ -46,12 +46,41 @@ class MainWindowAppearance:
         for rhi_widget in window.findChildren(QRhiWidget):
             if rhi_widget is image_label:
                 continue
-            rhi_widget._theme_background_color = QColor(bg)
+            if hasattr(rhi_widget, "apply_theme_background"):
+                rhi_widget.apply_theme_background(QColor(bg))
+            else:
+                rhi_widget._theme_background_color = QColor(bg)
             rhi_widget.update()
+
+    def update_chrome_background(self) -> None:
+        """Paint workspace shell and tab pages with the app Window color.
+
+        QWidget children that don't paint a background (toolbars/footers/
+        selection rows) inherit visually from their themed page parent, so
+        the dark theme reaches every region that isn't the image canvas.
+        """
+        window = self.window
+        if window.ui is None:
+            return
+        bg = QColor(resolve_theme_color(window.theme_manager, "Window"))
+        if not bg.isValid():
+            return
+        targets = [
+            getattr(window.ui, "workspace_stack", None),
+            getattr(window.ui, "image_session_page", None),
+            getattr(window.ui, "video_session_page", None),
+        ]
+        stack = getattr(window.ui, "workspace_stack", None)
+        if stack is not None:
+            for i in range(stack.count()):
+                targets.append(stack.widget(i))
+        for widget in targets:
+            self._apply_widget_background(widget, bg)
 
     def on_theme_changed(self) -> None:
         window = self.window
         self.update_image_label_background()
+        self.update_chrome_background()
         try:
             FontManager.get_instance().apply_from_state(window.store)
             current_font = QApplication.font()

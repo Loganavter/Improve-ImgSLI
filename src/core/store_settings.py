@@ -22,8 +22,9 @@ class SettingsState:
     auto_crop_black_borders: bool = True
     video_recording_fps: int = 60
     video_editor_preview_render_scale: float = 1.0
-    show_workspace_tabs: bool = False
+    show_workspace_tabs: bool = True
     rhi_backend: str = "default"
+    use_custom_decorations: bool = True
 
     export_use_default_dir: bool = True
     export_default_dir: str | None = None

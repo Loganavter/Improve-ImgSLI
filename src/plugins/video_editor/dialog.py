@@ -87,6 +87,8 @@ class VideoEditorDialog(QDialog):
         self._translations_binder = None
         self.update_language(self.current_language)
         self._apply_style()
+        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        decorate_dialog(self, title=tr("video.video_editor_exporter", self.current_language))
 
         main_controller = (
             export_controller.presenter.main_controller

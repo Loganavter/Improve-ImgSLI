@@ -80,6 +80,17 @@ class TabContract(ABC):
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         """Called when a session of this tab's type is closed."""
 
+    def on_quick_save(self, context: TabContext) -> None:
+        """Handle the cross-tab quick-save button when this tab is active."""
+
+    def contribute_settings(self, registry: "SettingsRegistry") -> None:
+        """Register settings sections this tab contributes.
+
+        Called once during app startup. ``registry`` provides ``add(section_id,
+        title, factory, *, tab=None)`` where ``tab`` is the session_type the
+        section belongs to (None = always shown).
+        """
+
     def dispose(self) -> None:
         """Cleanup when the tab is being unloaded."""
 

@@ -24,7 +24,7 @@ class RenderConfig:
     font_weight: int = 0
     text_alpha_percent: int = 100
     file_name_color: Color = field(default_factory=lambda: Color(255, 0, 0, 255))
-    file_name_bg_color: Color = field(default_factory=lambda: Color(0, 0, 0, 80))
+    file_name_bg_color: Color = field(default_factory=lambda: Color(0, 0, 0, 255))
     draw_text_background: bool = True
     text_placement_mode: str = "edges"
     max_name_length: int = 50

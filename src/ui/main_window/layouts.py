@@ -142,19 +142,52 @@ class LayoutComposer:
 
         ui = self.ui
 
-        def open_image_export_dialog(**kwargs):
+        def _presenter():
             presenter = getattr(ui.main_window, "presenter", None)
             if presenter is None:
                 raise RuntimeError("Main-window presenter is not initialized")
-            export_presenter = presenter.get_feature("export")
-            return export_presenter.open_snapshot_export_dialog(**kwargs)
+            return presenter
+
+        def list_session_blueprints():
+            return _presenter().main_controller.workspace.list_session_blueprints()
+
+        def create_workspace_session(session_type: str, activate: bool = True):
+            return _presenter().main_controller.workspace.create_workspace_session(
+                session_type,
+                activate=activate,
+            )
+
+        def close_workspace_session(session_id: str):
+            return _presenter().main_controller.workspace.close_workspace_session(
+                session_id
+            )
+
+        def _ui_manager():
+            presenter = getattr(ui.main_window, "presenter", None)
+            return getattr(presenter, "ui_manager", None) if presenter is not None else None
+
+        def show_help_dialog():
+            mgr = _ui_manager()
+            if mgr is not None:
+                mgr.dialogs.show_help_dialog()
+
+        def show_settings_dialog():
+            mgr = _ui_manager()
+            if mgr is not None:
+                mgr.dialogs.show_settings_dialog()
 
         ui._tab_registry = TabRegistry()
         ui._tab_registry.discover()
         context = TabContext(
             store=getattr(ui.main_window, "store", None),
             main_window=ui.main_window,
-            services={"open_image_export_dialog": open_image_export_dialog},
+            services={
+                "list_session_blueprints": list_session_blueprints,
+                "create_workspace_session": create_workspace_session,
+                "close_workspace_session": close_workspace_session,
+                "show_help_dialog": show_help_dialog,
+                "show_settings_dialog": show_settings_dialog,
+            },
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
 

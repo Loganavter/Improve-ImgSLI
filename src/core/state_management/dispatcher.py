@@ -60,6 +60,22 @@ class Dispatcher:
                     self._store.document = new_store.document
                     self._store.settings = new_store.settings
 
+                    # The active workspace session owns ``document`` and
+                    # ``viewport``. Reducers return fresh instances, so the
+                    # session's references must be re-pointed here — otherwise
+                    # switching back to this session restores the pre-action
+                    # state (lost image lists, lost view state, etc).
+                    active_session = None
+                    get_active = getattr(self._store, "get_active_workspace_session", None)
+                    if callable(get_active):
+                        try:
+                            active_session = get_active()
+                        except Exception:
+                            active_session = None
+                    if active_session is not None:
+                        active_session.document = self._store.document
+                        active_session.viewport = self._store.viewport
+
                     if old_viewport_plugin_state:
                         self._store.viewport._viewport_plugin_state = (
                             old_viewport_plugin_state
