@@ -6,22 +6,29 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
+from PySide6.QtGui import QColor, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
 from tabs.multi_compare.models import (
-    CompareSlot,
-    LeafNode,
+    MultiCompareLabelSettings,
     MultiCompareState,
     find_path,
-    insert_beside_path,
-    remove_leaf,
+    leaves,
+    node_at_path,
     slot_ids_in_tree,
-    swap_slot_ids,
 )
+from tabs.multi_compare.scene import MultiCompareStore, actions
 from tabs.multi_compare.ui.footer import MultiCompareFooter
-from tabs.multi_compare.ui.gl_grid import INTERNAL_SLOT_MIME, GLGridWidget
+from tabs.multi_compare.ui.canvas_widget import (
+    INTERNAL_SLOT_MIME,
+    MultiCompareCanvasWidget,
+)
 from tabs.multi_compare.ui.toolbar import MultiCompareToolbar
+from ui.widgets.font_settings_flyout import FontSettingsFlyout
+from ui.widgets.startup_placeholder import StartupPlaceholder
+from ui.widgets.zoom_indicator import ZoomIndicator
+from ui.context_menu.manager import install_context_menu_provider
 
 if TYPE_CHECKING:
     import numpy as np
@@ -29,12 +36,34 @@ if TYPE_CHECKING:
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 
 
+class MultiCompareFontSettingsFlyout(FontSettingsFlyout):
+    """Multi-compare subset of the shared filename text flyout."""
+
+    def __init__(self, parent: QWidget, *, translate) -> None:
+        self._translate = translate
+        super().__init__(parent)
+        self._placement_label.hide()
+        for radio in self._pos_radios.values():
+            radio.hide()
+
+    def _tr(self, key: str) -> str:
+        return self._translate(key, key.rsplit(".", 1)[-1].replace("_", " ").title())
+
+
 class MultiCompareWidget(QWidget):
-    """Composite widget: toolbar + GL grid + footer + smart DnD."""
+    """Composite widget: toolbar + GL grid + footer + smart DnD.
+
+    State lives in a local Redux-style ``MultiCompareStore``. UI changes go
+    through ``self.store.dispatch(...)``; the widget re-pushes the new state
+    into the canvas via the store subscription.
+    """
 
     images_dropped = Signal(list, object, object)  # paths, (target_path, target_root), side
     add_requested = Signal()
     save_requested = Signal()
+    quick_save_requested = Signal()
+    settings_requested = Signal()
+    help_requested = Signal()
 
     def __init__(
         self,
@@ -43,9 +72,10 @@ class MultiCompareWidget(QWidget):
         add_images_text: str = "Add images",
         save_result_text: str = "Save result",
         translate=None,
+        lang_provider=None,
     ):
         super().__init__(parent)
-        self.state = MultiCompareState()
+        self.store = MultiCompareStore()
 
         self.setAcceptDrops(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -56,49 +86,177 @@ class MultiCompareWidget(QWidget):
         layout.setSpacing(0)
 
         self.toolbar = MultiCompareToolbar(self, text=add_images_text)
-        self.gl_grid = GLGridWidget(self, translate=translate)
+        self.canvas = MultiCompareCanvasWidget(self, translate=translate)
         self.footer = MultiCompareFooter(self, text=save_result_text)
+        self._translate = translate or (lambda _key, default=None: default or _key)
+        self._context_menu_provider = install_context_menu_provider(
+            MultiCompareContextMenuProvider(self)
+        )
+        self.font_settings_flyout = MultiCompareFontSettingsFlyout(
+            self,
+            translate=self._translate,
+        )
+        self.font_settings_flyout.hide()
+        self._font_popup_open = False
 
         layout.addWidget(self.toolbar)
-        layout.addWidget(self.gl_grid, 1)
+        layout.addWidget(self.canvas, 1)
         layout.addWidget(self.footer)
 
+        # Wire canvas to the store: it dispatches actions instead of mutating
+        # state directly, and receives state updates via the subscription.
+        self.canvas.set_dispatch(self.store.dispatch)
+        self.canvas.set_state(self.store.state)
+        self.store.subscribe(self._on_store_change)
+
         self.toolbar.add_clicked.connect(self.add_requested)
+        self.toolbar.text_settings_clicked.connect(self._toggle_font_settings_flyout)
+        self.toolbar.quick_save_clicked.connect(self.quick_save_requested)
+        self.toolbar.settings_clicked.connect(self.settings_requested)
+        self.toolbar.help_clicked.connect(self.help_requested)
         self.footer.save_clicked.connect(self.save_requested)
 
-    def update_language(self, translate) -> None:
-        self.toolbar.update_language(translate)
-        self.footer.update_language(translate)
+        self._startup_placeholder = StartupPlaceholder(self, target_widget=self.canvas)
+        self._startup_placeholder.set_background_color(self.canvas._theme_or_palette_bg())
+        self._startup_placeholder.raise_()
+        self.canvas.firstFrameRendered.connect(self._on_gl_first_frame)
 
-    def set_state(self, state: MultiCompareState) -> None:
-        self.state = state
-        self.gl_grid.set_state(state)
+        self.zoom_indicator = ZoomIndicator(
+            self,
+            lang_provider=lang_provider or (lambda: "en"),
+            target_widget=self.canvas,
+        )
+        self.zoom_indicator.btn_zoom_reset.clicked.connect(
+            lambda: self.store.dispatch(actions.reset_view())
+        )
+        self._sync_zoom_indicator()
+        self.font_settings_flyout.settings_changed.connect(
+            self._on_font_settings_changed
+        )
+        self.font_settings_flyout.closed.connect(self._on_font_settings_closed)
 
-    # ---- tree mutations ----
+    def _sync_zoom_indicator(self) -> None:
+        indicator = getattr(self, "zoom_indicator", None)
+        if indicator is None:
+            return
+        st = self.store.state
+        indicator.update_zoom(
+            float(getattr(st, "zoom", 1.0)),
+            float(getattr(st, "pan_x", 0.0)),
+            float(getattr(st, "pan_y", 0.0)),
+        )
 
-    def _next_slot_id(self) -> int:
-        if not self.state.slots:
-            return 0
-        return max(s.id for s in self.state.slots) + 1
+    def _on_gl_first_frame(self) -> None:
+        if self._startup_placeholder is not None:
+            self._startup_placeholder.hide()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        placeholder = getattr(self, "_startup_placeholder", None)
+        if placeholder is not None and placeholder.isVisible():
+            placeholder.sync_geometry()
+        indicator = getattr(self, "zoom_indicator", None)
+        if indicator is not None and indicator.isVisible():
+            indicator.sync_position()
+
+    @property
+    def state(self) -> MultiCompareState:
+        return self.store.state
+
+    def _on_store_change(self, _action, new_state: MultiCompareState) -> None:
+        self.canvas.set_state(new_state)
+        self._sync_zoom_indicator()
+        if self._font_popup_open:
+            self._sync_font_settings_flyout()
+
+    def _sync_font_settings_flyout(self) -> None:
+        st = self.state.label_settings
+        self.font_settings_flyout.set_values(
+            st.font_size_percent,
+            st.font_weight,
+            QColor(*st.text_rgba),
+            QColor(*st.bg_rgba),
+            st.draw_background,
+            "edges",
+            st.text_alpha_percent,
+        )
+
+    def _toggle_font_settings_flyout(self) -> None:
+        if self._font_popup_open:
+            self.font_settings_flyout.hide()
+            return
+        self._sync_font_settings_flyout()
+        self.font_settings_flyout.show_aligned(
+            self.toolbar.btn_text_settings,
+            anchor_point="bottom-right",
+            flyout_point="top-left",
+            offset=10,
+            animation="slide",
+        )
+        if hasattr(self.toolbar.btn_text_settings, "setFlyoutOpen"):
+            self.toolbar.btn_text_settings.setFlyoutOpen(True)
+        self._font_popup_open = True
+
+    def _on_font_settings_closed(self) -> None:
+        self._font_popup_open = False
+        if hasattr(self.toolbar.btn_text_settings, "setFlyoutOpen"):
+            self.toolbar.btn_text_settings.setFlyoutOpen(False)
+
+    def _on_font_settings_changed(
+        self,
+        size: int,
+        weight: int,
+        color: QColor,
+        bg_color: QColor,
+        draw_bg: bool,
+        _placement: str,
+        opacity: int,
+    ) -> None:
+        settings = MultiCompareLabelSettings(
+            font_size_percent=max(1, int(size)),
+            font_weight=max(0, int(weight)),
+            text_rgba=(
+                color.red(),
+                color.green(),
+                color.blue(),
+                color.alpha(),
+            ),
+            bg_rgba=(
+                bg_color.red(),
+                bg_color.green(),
+                bg_color.blue(),
+                bg_color.alpha(),
+            ),
+            draw_background=bool(draw_bg),
+            text_alpha_percent=max(0, min(100, int(opacity))),
+        )
+        self.store.dispatch(actions.set_label_settings(settings))
+
+    # ---- public API ---------------------------------------------------------
 
     def add_image_auto(
         self, path: Path, image: "np.ndarray", label: str = ""
     ) -> int | None:
-        """Append an image to the tree by splitting the largest leaf along its longer axis."""
+        """Append an image by splitting the largest leaf along its longer axis."""
         if len(self.state.slots) >= self.state.max_slots:
             return None
-        slot_id = self._next_slot_id()
-        slot = CompareSlot(id=slot_id, path=path, label=label or path.stem, image=image)
-        self.state.slots.append(slot)
         if self.state.root is None:
-            self.state.root = LeafNode(slot_id)
+            target_path, side, target_root = None, None, True
         else:
             target_path, side = self._pick_auto_target()
-            self.state.root = insert_beside_path(
-                self.state.root, target_path, side, slot_id
+            target_root = False
+        before = len(self.state.slots)
+        self.store.dispatch(
+            actions.add_slot(
+                path=path,
+                image=image,
+                label=label or path.stem,
+                target_path=target_path,
+                side=side,
+                target_root=target_root,
             )
-        self.gl_grid.set_state(self.state)
-        return slot_id
+        )
+        return self.state.slots[-1].id if len(self.state.slots) > before else None
 
     def add_image_at(
         self,
@@ -111,24 +269,25 @@ class MultiCompareWidget(QWidget):
     ) -> int | None:
         if len(self.state.slots) >= self.state.max_slots:
             return None
-        slot_id = self._next_slot_id()
-        slot = CompareSlot(id=slot_id, path=path, label=label or path.stem, image=image)
-        self.state.slots.append(slot)
-        if target_root or self.state.root is None:
-            self.state.root = LeafNode(slot_id)
-        elif target_path is not None and side is not None:
-            self.state.root = insert_beside_path(
-                self.state.root, target_path, side, slot_id
+        # When target is unset and root is non-empty, fall back to auto.
+        if not target_root and (target_path is None or side is None) and self.state.root is not None:
+            target_path, side = self._pick_auto_target()
+        before = len(self.state.slots)
+        self.store.dispatch(
+            actions.add_slot(
+                path=path,
+                image=image,
+                label=label or path.stem,
+                target_path=target_path,
+                side=side,
+                target_root=target_root or self.state.root is None,
             )
-        else:
-            tp, side2 = self._pick_auto_target()
-            self.state.root = insert_beside_path(self.state.root, tp, side2, slot_id)
-        self.gl_grid.set_state(self.state)
-        return slot_id
+        )
+        return self.state.slots[-1].id if len(self.state.slots) > before else None
 
     def _pick_auto_target(self) -> tuple[tuple[int, ...], str]:
         """Pick the existing leaf with the largest rect; split along its longer axis."""
-        entries = self.gl_grid._leaf_paths_and_rects()
+        entries = self.canvas._leaf_paths_and_rects()
         if not entries:
             return (), "right"
         leaf, rect, path = max(entries, key=lambda e: e[1].width() * e[1].height())
@@ -136,19 +295,12 @@ class MultiCompareWidget(QWidget):
         return path, side
 
     def remove_slot(self, slot_id: int) -> None:
-        self.state.slots = [s for s in self.state.slots if s.id != slot_id]
-        self.state.root = remove_leaf(self.state.root, slot_id)
-        if self.state.focused_slot_id == slot_id:
-            self.state.focused_slot_id = None
-        self.gl_grid.set_state(self.state)
+        self.store.dispatch(actions.remove_slot(slot_id))
 
     def reset_view(self) -> None:
-        self.state.zoom = 1.0
-        self.state.pan_x = 0.0
-        self.state.pan_y = 0.0
-        self.gl_grid.set_state(self.state)
+        self.store.dispatch(actions.reset_view())
 
-    # ---- DnD ----
+    # ---- DnD ----------------------------------------------------------------
 
     def _has_image_urls(self, mime) -> bool:
         if not mime.hasUrls():
@@ -171,24 +323,32 @@ class MultiCompareWidget(QWidget):
             return None
 
     def _grid_local_pos(self, pos):
-        return self.gl_grid.mapFrom(self, pos)
+        return self.canvas.mapFrom(self, pos)
 
     def _resolve_drop_target(self, pos, *, internal: bool):
         local = self._grid_local_pos(pos)
         if internal:
-            return self.gl_grid.compute_drop_target(local, include_center=True)
+            return self.canvas.compute_drop_target(local, include_center=True)
         if len(slot_ids_in_tree(self.state.root)) >= self.state.max_slots:
             return None, None, False, None
-        return self.gl_grid.compute_drop_target(local)
+        return self.canvas.compute_drop_target(local)
 
     def _apply_drag_preview(self, event, internal: bool) -> None:
         tgt_path, side, root_tgt, swap_id = self._resolve_drop_target(
             event.position().toPoint(), internal=internal
         )
         source_id = self._internal_source_slot_id(event.mimeData()) if internal else None
-        self.state.drag_internal = internal
-        self.state.drag_source_slot_id = source_id
-        self.gl_grid.set_drag_state(True, tgt_path, side, root_tgt, swap_id)
+        self.store.dispatch(
+            actions.set_drag_state(
+                active=True,
+                internal=internal,
+                source_slot_id=source_id,
+                target_path=tgt_path,
+                target_side=side,
+                target_root=root_tgt,
+                target_swap_slot_id=swap_id,
+            )
+        )
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if self._has_internal_slot(event.mimeData()):
@@ -213,9 +373,7 @@ class MultiCompareWidget(QWidget):
         event.ignore()
 
     def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
-        self.state.drag_internal = False
-        self.state.drag_source_slot_id = None
-        self.gl_grid.set_drag_state(False, None, None, False, None)
+        self.store.dispatch(actions.set_drag_state(active=False))
         event.accept()
 
     def dropEvent(self, event: QDropEvent) -> None:
@@ -225,9 +383,7 @@ class MultiCompareWidget(QWidget):
             tgt_path, side, _, swap_id = self._resolve_drop_target(
                 event.position().toPoint(), internal=True
             )
-            self.state.drag_internal = False
-            self.state.drag_source_slot_id = None
-            self.gl_grid.set_drag_state(False, None, None, False, None)
+            self.store.dispatch(actions.set_drag_state(active=False))
             if source_id is not None and side is not None:
                 self._apply_internal_drop(source_id, tgt_path, side, swap_id)
             event.acceptProposedAction()
@@ -236,7 +392,7 @@ class MultiCompareWidget(QWidget):
         tgt_path, side, root_tgt, _ = self._resolve_drop_target(
             event.position().toPoint(), internal=False
         )
-        self.gl_grid.set_drag_state(False, None, None, False, None)
+        self.store.dispatch(actions.set_drag_state(active=False))
         paths = []
         for url in mime.urls():
             path = Path(url.toLocalFile())
@@ -254,41 +410,33 @@ class MultiCompareWidget(QWidget):
         swap_slot_id: int | None,
     ) -> None:
         if side == "center" and swap_slot_id is not None and swap_slot_id != source_id:
-            self.state.root = swap_slot_ids(self.state.root, source_id, swap_slot_id)
-        elif target_path is not None:
-            # Move: prune source first, then re-resolve a stable path for the
-            # target by slot_id (paths shift after prune; we anchor on the first
-            # leaf in the original target subtree).
-            anchor_slot = self._anchor_slot_for_path(target_path)
-            if anchor_slot is None or anchor_slot == source_id:
-                return
-            pruned = remove_leaf(self.state.root, source_id)
-            if pruned is None:
-                self.state.root = LeafNode(source_id)
-            else:
-                # Re-find anchor in pruned tree; promote back up if its parent
-                # split matches the original depth (keeps "row-level" intent).
-                new_anchor_path = find_path(pruned, anchor_slot)
-                if new_anchor_path is None:
-                    self.state.root = pruned
-                else:
-                    # Promote to the same depth as the original target (so a
-                    # split-level target stays split-level after prune).
-                    target_depth = len(target_path)
-                    new_path = tuple(new_anchor_path[:target_depth])
-                    self.state.root = insert_beside_path(
-                        pruned, new_path, side, source_id
-                    )
-        self.gl_grid.set_state(self.state)
+            self.store.dispatch(actions.swap_slots(source_id, swap_slot_id))
+            return
+        if target_path is None:
+            return
+        anchor_slot = self._anchor_slot_for_path(target_path)
+        if anchor_slot is None or anchor_slot == source_id:
+            return
+        self.store.dispatch(
+            actions.move_slot(
+                source_slot_id=source_id,
+                target_path=target_path,
+                target_anchor_slot_id=anchor_slot,
+                side=side,
+            )
+        )
 
     def _anchor_slot_for_path(self, path: tuple[int, ...]) -> int | None:
-        """Return slot_id of the first leaf inside the subtree at `path`."""
-        from tabs.multi_compare.models import leaves, node_at_path
+        """Return slot_id of the first leaf inside the subtree at ``path``."""
         node = node_at_path(self.state.root, path)
         if node is None:
             return None
         first = leaves(node)
         return first[0].slot_id if first else None
 
+    def update_language(self, translate) -> None:
+        self.toolbar.update_language(translate)
+        self.footer.update_language(translate)
+
     def keyPressEvent(self, event) -> None:
-        self.gl_grid.keyPressEvent(event)
+        self.canvas.keyPressEvent(event)

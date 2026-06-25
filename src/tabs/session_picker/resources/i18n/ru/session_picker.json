@@ -1,0 +1,10 @@
+{
+  "session_picker": {
+    "title": "Выберите рабочую область",
+    "types": {
+      "image_compare": "Сравнение изображений",
+      "video_compare": "Сравнение видео",
+      "multi_compare": "Мультисравнение"
+    }
+  }
+}

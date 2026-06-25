@@ -38,15 +38,22 @@ def setup_dialog_shell(dialog):
     dialog.content_layout.addWidget(dialog.action_bar)
 
 def setup_sidebar_items(dialog):
-    dialog._sidebar_items_data = [
-        (dialog.tr("settings.appearance", dialog.current_language), AppIcon.SETTINGS),
-        (dialog.tr("label.view", dialog.current_language), AppIcon.TEXT_MANIPULATOR),
-        (dialog.tr("settings.optimization", dialog.current_language), AppIcon.PLAY),
-        (
-            dialog.tr("label.details", dialog.current_language),
-            AppIcon.HIGHLIGHT_DIFFERENCES,
-        ),
-    ]
+    sections = getattr(dialog, "_active_sections", None)
+    if sections:
+        dialog._sidebar_items_data = [
+            (dialog.tr(s.title_key, dialog.current_language), s.icon)
+            for s in sections
+        ]
+    else:
+        dialog._sidebar_items_data = [
+            (dialog.tr("settings.appearance", dialog.current_language), AppIcon.SETTINGS),
+            (dialog.tr("label.view", dialog.current_language), AppIcon.TEXT_MANIPULATOR),
+            (dialog.tr("settings.optimization", dialog.current_language), AppIcon.PLAY),
+            (
+                dialog.tr("label.details", dialog.current_language),
+                AppIcon.HIGHLIGHT_DIFFERENCES,
+            ),
+        ]
     dialog.sidebar.set_items(dialog._sidebar_items_data)
 
 def create_scrollable_page():

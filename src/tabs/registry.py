@@ -68,6 +68,16 @@ class TabRegistry:
     def list_tabs(self) -> list[TabContract]:
         return list(self._tabs.values())
 
+    def contribute_all_settings(self) -> None:
+        """Let each registered tab register its settings sections."""
+        from plugins.settings.registry import get_settings_registry
+        registry = get_settings_registry()
+        for tab in self._tabs.values():
+            try:
+                tab.contribute_settings(registry)
+            except Exception as e:
+                logger.error(f"contribute_settings failed for {tab.session_type}: {e}")
+
     def install_pages(
         self,
         stack: QStackedWidget,
@@ -75,6 +85,7 @@ class TabRegistry:
     ) -> None:
         """Create pages for all discovered tabs and add them to the stack."""
         self._context = context
+        self.contribute_all_settings()
         for session_type, tab in self._tabs.items():
             try:
                 page = tab.create_page(stack, context)

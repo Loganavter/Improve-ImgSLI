@@ -44,6 +44,19 @@ QWidget#ImageStartupPlaceholder {
     background-color: @label.image.background;
 }
 
+/* --- Custom title bar (client-side decorations) --- */
+QWidget#CustomTitleBar {
+    background-color: @Window;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+
+QLabel#CustomTitleBarTitle {
+    color: @WindowText;
+    background: transparent;
+}
+
+
 QWidget#ImageStartupPlaceholder QLabel {
     background: transparent;
 }

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
 from resources.translations import tr
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
-    AdaptiveTabStrip,
     Button,
     CustomLineEdit,
     InstancesCounterButton,
@@ -20,6 +19,7 @@ from sli_ui_toolkit.widgets import (
     ScrollableComboBox,
     Slider,
 )
+from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
 from ui.icon_manager import AppIcon
 from ui.main_window.layouts import LayoutComposer
 from ui.theming import resolve_theme_color
@@ -58,7 +58,7 @@ class Ui_ImageComparisonApp:
         self.magnifier_settings_panel = QWidget(main_window)
         self.image_label = GLCanvas(main_window)
         self.length_warning_label = Label(parent=main_window)
-        self.workspace_tabs = AdaptiveTabStrip(
+        self.workspace_tabs = WorkspaceTabStrip(
             add_icon=AppIcon.ADD,
             close_icon=AppIcon.CLOSE,
             add_button_menu=[],
@@ -239,22 +239,36 @@ class Ui_ImageComparisonApp:
     # --- presenter-facing API: workspace / session --------------------------
 
     def sync_workspace_tabs(self, sessions, active_session_id):
-        self.workspace_tabs.blockSignals(True)
-        while self.workspace_tabs.count() > 0:
-            self.workspace_tabs.removeTab(0)
-        active_index = -1
-        for index, session in enumerate(sessions):
-            self.workspace_tabs.addTab(session.title)
-            self.workspace_tabs.setTabData(index, session.id)
-            self.workspace_tabs.setTabToolTip(
-                index, f"{session.title} [{session.session_type}]"
-            )
-            if session.id == active_session_id:
-                active_index = index
-        if active_index >= 0:
-            self.workspace_tabs.setCurrentIndex(active_index)
-        self.workspace_tabs.refresh_close_buttons()
-        self.workspace_tabs.blockSignals(False)
+        tabs = self.workspace_tabs
+        tabs.blockSignals(True)
+        try:
+            sessions = list(sessions)
+            target_count = len(sessions)
+
+            while tabs.count() > target_count:
+                tabs.removeTab(tabs.count() - 1)
+
+            active_index = -1
+            for index, session in enumerate(sessions):
+                tooltip = f"{session.title} [{session.session_type}]"
+                if index < tabs.count():
+                    if tabs.tabText(index) != session.title:
+                        tabs.setTabText(index, session.title)
+                    if tabs.tabData(index) != session.id:
+                        tabs.setTabData(index, session.id)
+                    tabs.setTabToolTip(index, tooltip)
+                else:
+                    tabs.addTab(session.title)
+                    tabs.setTabData(index, session.id)
+                    tabs.setTabToolTip(index, tooltip)
+                if session.id == active_session_id:
+                    active_index = index
+
+            if active_index >= 0 and tabs.currentIndex() != active_index:
+                tabs.setCurrentIndex(active_index)
+            tabs.refresh_close_buttons()
+        finally:
+            tabs.blockSignals(False)
 
     def sync_session_mode(self, session_type: str, session_title: str | None = None):
         is_image_session = session_type == "image_compare"

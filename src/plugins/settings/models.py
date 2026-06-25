@@ -24,5 +24,6 @@ class SettingsDialogData:
     auto_crop_black_borders: bool
     ui_mode: str
     video_recording_fps: int
-    show_workspace_tabs: bool = False
+    show_workspace_tabs: bool = True
     rhi_backend: str = "default"
+    use_custom_decorations: bool = True

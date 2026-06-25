@@ -78,7 +78,7 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
 
 def log_initialized_rhi_widget(widget: QRhiWidget) -> None:
     rhi = widget.rhi()
-    logger.info(
+    logger.debug(
         "%s initialized requested=%s api=%s rhi=%r target=%r size=%s",
         type(widget).__name__,
         requested_rhi_backend_name(),

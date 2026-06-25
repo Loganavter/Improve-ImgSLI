@@ -17,6 +17,41 @@ def _sync_canvas_feature_bindings(presenter) -> None:
         if binding.sync_state is not None:
             binding.sync_state(presenter)
 
+
+def _refresh_active_session_canvas(presenter) -> None:
+    """Re-upload the active image-compare session's images to the canvas.
+
+    Without this, switching back to a session that already had images loaded
+    leaves the canvas blank — its texture caches are keyed on the previous
+    session's image refs and never re-fetch from the now-active document.
+    """
+    session_manager = getattr(presenter, "session_manager", None)
+    if session_manager is None:
+        return
+    active = session_manager.get_active_session()
+    if active is None or active.session_type != "image_compare":
+        presenter._last_active_session_id = getattr(active, "id", None)
+        return
+    last_id = getattr(presenter, "_last_active_session_id", None)
+    presenter._last_active_session_id = active.id
+    if last_id == active.id:
+        return
+    # Invalidate canvas-side memoization so the upload actually happens.
+    for attr in ("_gl_last_img_sig", "_last_mag_signature", "_last_bg_signature", "_last_label_dims"):
+        if hasattr(presenter, attr):
+            setattr(presenter, attr, None)
+    sessions = getattr(getattr(presenter, "main_controller", None), "sessions", None)
+    if sessions is None:
+        return
+    try:
+        sessions.set_current_image(1, emit_signal=False)
+        sessions.set_current_image(2, emit_signal=False)
+    except Exception:
+        import logging
+        logging.getLogger("ImproveImgSLI").exception(
+            "_refresh_active_session_canvas: set_current_image failed"
+        )
+
 def apply_initial_settings_to_ui(presenter):
     ui = presenter.ui
     viewport = presenter.store.viewport
@@ -61,6 +96,7 @@ def on_store_state_changed(presenter, domain: str):
         sync_workspace_tabs(presenter)
         sync_session_mode(presenter)
         sync_video_session_view(presenter)
+        _refresh_active_session_canvas(presenter)
         presenter.ui_batcher.schedule_batch_update(
             ["file_names", "resolution", "combobox", "slider_tooltips", "ratings", "window_schedule"]
         )

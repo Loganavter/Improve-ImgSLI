@@ -12,11 +12,13 @@ A dedicated workspace for comparing 3–12 images side-by-side in a synchronized
 
 ## What works (barely)
 
-- Drag & drop images into the grid
+- Drag & drop images into the canvas
+- Drag reordering / swapping of slots
+- Manual divider resize with Redux-backed split weights
 - Synchronized zoom (scroll) and pan (middle-click drag)
 - Focus mode: double-click a cell to view it fullscreen, double-click again to return
 - Keyboard: 1–9 to focus slots, 0 to reset zoom, Escape to exit focus
-- GPU rendering via OpenGL/GLES shaders
+- GPU rendering via the QRhi canvas path
 - Theme-aware background (follows app light/dark theme)
 - Export dialog with preview, output directory/favorites, filename, format,
   resolution, aspect-ratio lock, quality, and background settings
@@ -26,9 +28,7 @@ A dedicated workspace for comparing 3–12 images side-by-side in a synchronized
 - No filename labels on cells (planned as GL overlay)
 - No per-cell zoom indicator
 - No diff/analysis overlays
-- No drag reordering of slots
 - No slot removal UI (only full clear)
-- Grid layout is fixed — no manual resize of cells
 - No integration with the main app's magnifier system
 - No playlist/session persistence
 
@@ -42,7 +42,7 @@ multi_compare/
     models.py           — CompareSlot, GridLayout, MultiCompareState
     shaders/            — GLSL vertex/fragment (auto GLES/Desktop)
     ui/
-        gl_grid.py      — QOpenGLWidget grid renderer
+        canvas_widget.py — QRhi canvas host + input adapter
         toolbar.py      — top bar (reset zoom, grid/focus, clear)
         footer.py       — bottom bar (export placeholder)
     services/           — future: export, analysis

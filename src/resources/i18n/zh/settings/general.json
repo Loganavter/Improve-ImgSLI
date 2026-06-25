@@ -28,7 +28,6 @@
     "render_backend_d3d11": "Direct3D 11",
     "render_backend_d3d12": "Direct3D 12",
     "render_backend_metal": "Metal",
-    "render_backend_null": "Null（无渲染）",
     "render_backend_restart_hint": "在下次启动时应用。某些后端可能不支持您的系统。",
     "render_backend_restart_title": "需要重启",
     "render_backend_restart_message": "渲染后端将在下次启动时切换到'{backend}'。",
