@@ -29,6 +29,13 @@ from ui.widgets.magnifier_color_controls import ColorSettingsButton
 
 logger = logging.getLogger("ImproveImgSLI")
 
+_SESSION_TYPE_KEYS = {
+    "image_compare": "workspace.session_types.image_compare",
+    "video_compare": "workspace.session_types.video_compare",
+    "multi_compare": "workspace.session_types.multi_compare",
+    "session_picker": "workspace.session_types.session_picker",
+}
+
 
 class Ui_ImageComparisonApp:
     """Owns widget construction and exposes the update API used by the presenter.
@@ -236,6 +243,12 @@ class Ui_ImageComparisonApp:
         except AttributeError:
             return "en"
 
+    def _get_session_type_label(self, session_type: str, language: str) -> str:
+        key = _SESSION_TYPE_KEYS.get(session_type)
+        if key:
+            return tr(key, language)
+        return session_type
+
     # --- presenter-facing API: workspace / session --------------------------
 
     def sync_workspace_tabs(self, sessions, active_session_id):
@@ -249,8 +262,10 @@ class Ui_ImageComparisonApp:
                 tabs.removeTab(tabs.count() - 1)
 
             active_index = -1
+            current_language = self._current_language()
             for index, session in enumerate(sessions):
-                tooltip = f"{session.title} [{session.session_type}]"
+                session_type_label = self._get_session_type_label(session.session_type, current_language)
+                tooltip = f"{session.title} [{session_type_label}]"
                 if index < tabs.count():
                     if tabs.tabText(index) != session.title:
                         tabs.setTabText(index, session.title)
