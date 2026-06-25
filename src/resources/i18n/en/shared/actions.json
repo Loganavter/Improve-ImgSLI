@@ -1,6 +1,12 @@
 {
   "action": {
     "export_video": "Export Video",
+    "context_copy_path": "Copy path",
+    "context_name": "Name",
+    "context_path": "Path",
+    "context_properties": "Properties",
+    "context_remove": "Remove",
+    "context_size": "Size",
     "open_application_settings": "Open Application Settings",
     "open_last_file": "Open last file",
     "open_save_folder": "Open save folder",
