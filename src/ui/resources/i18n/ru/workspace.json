@@ -1,0 +1,10 @@
+{
+  "workspace": {
+    "session_types": {
+      "image_compare": "Сравнение изображений",
+      "video_compare": "Сравнение видео",
+      "multi_compare": "Множественное сравнение",
+      "session_picker": "Выбор сессии"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "workspace": {
+    "session_types": {
+      "image_compare": "图像比较",
+      "video_compare": "视频比较",
+      "multi_compare": "多重比较",
+      "session_picker": "选择会话"
+    }
+  }
+}
