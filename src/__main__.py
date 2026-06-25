@@ -149,6 +149,8 @@ def main():
         argv[0] = "improve-imgsli"
     app = QApplication(argv)
     install_application_tooltips(app)
+    from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
+    install_application_dialog_decorations(app)
 
     app.setApplicationName("Improve ImgSLI")
     app.setApplicationDisplayName("Improve ImgSLI")

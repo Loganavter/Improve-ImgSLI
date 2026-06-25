@@ -5,12 +5,6 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QDialog
 
 from plugins.settings.dialog_context import SettingsDialogContext
-from plugins.settings.dialog_pages import (
-    init_analysis_page,
-    init_general_page,
-    init_interface_page,
-    init_performance_page,
-)
 from plugins.settings.dialog_shell import (
     apply_styles,
     calculate_and_apply_geometry,
@@ -20,6 +14,7 @@ from plugins.settings.dialog_shell import (
     setup_dialog_shell,
     setup_sidebar_items,
 )
+from plugins.settings.registry import get_settings_registry
 from plugins.settings.models import SettingsDialogData
 from resources.translations import tr as app_tr
 from sli_ui_toolkit.theme import ThemeManager
@@ -58,6 +53,7 @@ class SettingsDialog(QDialog):
         current_video_fps: int = 60,
         rhi_backend: str = "default",
         store=None,
+        active_tab: str | None = None,
     ):
         super().__init__(parent)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
@@ -106,10 +102,12 @@ class SettingsDialog(QDialog):
 
         self.main_layout = QHBoxLayout(self)
         setup_dialog_shell(self)
-        init_general_page(self, self.context)
-        init_interface_page(self, self.context)
-        init_performance_page(self, self.context)
-        init_analysis_page(self, self.context)
+        from shared_toolkit.ui.decorate_dialog import decorate_dialog
+        decorate_dialog(self, title=self.tr("misc.settings", self.current_language))
+        self.active_tab = active_tab
+        self._active_sections = get_settings_registry().sections_for(active_tab)
+        for section in self._active_sections:
+            section.build(self, self.context)
         self._setup_sidebar_items()
         self._apply_styles()
         self.theme_manager.theme_changed.connect(self._apply_styles)
@@ -135,18 +133,6 @@ class SettingsDialog(QDialog):
 
     def _page_scroll_area(self, page):
         return page_scroll_area(page)
-
-    def _init_general_page(self):
-        init_general_page(self, self.context)
-
-    def _init_interface_page(self):
-        init_interface_page(self, self.context)
-
-    def _init_performance_page(self):
-        init_performance_page(self, self.context)
-
-    def _init_analysis_page(self):
-        init_analysis_page(self, self.context)
 
     def _on_category_changed(self, row):
         self.pages_stack.setCurrentIndex(row)
@@ -192,32 +178,76 @@ class SettingsDialog(QDialog):
             "beginner",
         )
 
+        def _val(attr, default):
+            widget = getattr(self, attr, None)
+            if widget is None:
+                return default
+            # Order matters: sli_ui_toolkit ComboBox inherits from a button-like
+            # base and exposes isChecked() (always False) — currentData must win.
+            # Same for SpinBox having a button base under the hood.
+            if hasattr(widget, "currentData"):
+                return widget.currentData()
+            if hasattr(widget, "value") and not hasattr(widget, "isChecked"):
+                return widget.value()
+            if hasattr(widget, "isChecked"):
+                return widget.isChecked()
+            if hasattr(widget, "value"):
+                return widget.value()
+            return default
+
+        ctx = self.context
         return SettingsDialogData(
             language=selected_language,
             theme=self.combo_theme.currentData(),
             max_name_length=self.spin_max_length.value(),
             debug_enabled=self.debug_checkbox.isChecked(),
             system_notifications_enabled=self.system_notifications_checkbox.isChecked(),
-            resolution_limit=self.combo_resolution.currentData(),
+            resolution_limit=_val("combo_resolution", ctx.current_resolution_limit),
             ui_font_mode=ui_font_mode,
             ui_font_family=self.combo_font_family.currentData() or "",
-            optimize_magnifier_movement=self.optimize_movement_checkbox.isChecked(),
-            magnifier_interpolation_method=self.combo_mag_interp.currentData()
-            or "BILINEAR",
-            optimize_laser_smoothing=self.laser_smoothing_checkbox.isChecked(),
-            laser_interpolation_method=self.combo_laser_interp.currentData()
-            or "BILINEAR",
-            zoom_interpolation_method=self.combo_zoom_interp.currentData()
-            or "BILINEAR",
-            magnifier_intersection_highlight_enabled=self.magnifier_intersection_highlight_checkbox.isChecked(),
-            magnifier_auto_color_new_instances=self.magnifier_auto_color_checkbox.isChecked(),
-            auto_calculate_psnr=self.auto_psnr_checkbox.isChecked(),
-            auto_calculate_ssim=self.auto_ssim_checkbox.isChecked(),
-            auto_crop_black_borders=self.crop_checkbox.isChecked(),
+            optimize_magnifier_movement=_val(
+                "optimize_movement_checkbox", ctx.optimize_magnifier_movement
+            ),
+            magnifier_interpolation_method=_val(
+                "combo_mag_interp", ctx.movement_interpolation_method
+            ) or "BILINEAR",
+            optimize_laser_smoothing=_val(
+                "laser_smoothing_checkbox", ctx.optimize_laser_smoothing
+            ),
+            laser_interpolation_method=_val(
+                "combo_laser_interp", "BILINEAR"
+            ) or "BILINEAR",
+            zoom_interpolation_method=_val(
+                "combo_zoom_interp", ctx.zoom_interpolation_method
+            ) or "BILINEAR",
+            magnifier_intersection_highlight_enabled=_val(
+                "magnifier_intersection_highlight_checkbox",
+                ctx.magnifier_intersection_highlight_enabled,
+            ),
+            magnifier_auto_color_new_instances=_val(
+                "magnifier_auto_color_checkbox",
+                ctx.magnifier_auto_color_new_instances,
+            ),
+            auto_calculate_psnr=(
+                self.auto_psnr_checkbox.isChecked()
+                if hasattr(self, "auto_psnr_checkbox")
+                else self.context.auto_calculate_psnr
+            ),
+            auto_calculate_ssim=(
+                self.auto_ssim_checkbox.isChecked()
+                if hasattr(self, "auto_ssim_checkbox")
+                else self.context.auto_calculate_ssim
+            ),
+            auto_crop_black_borders=(
+                self.crop_checkbox.isChecked()
+                if hasattr(self, "crop_checkbox")
+                else self.context.auto_crop_black_borders
+            ),
             ui_mode=ui_mode,
-            video_recording_fps=self.spin_fps.value(),
+            video_recording_fps=_val("spin_fps", ctx.current_video_fps),
             show_workspace_tabs=self.show_workspace_tabs_checkbox.isChecked(),
-            rhi_backend=(self.combo_rhi_backend.currentData() or "default"),
+            rhi_backend=(_val("combo_rhi_backend", ctx.rhi_backend) or "default"),
+            use_custom_decorations=self.use_custom_decorations_checkbox.isChecked(),
         )
 
     def update_language(self, lang_code: str):

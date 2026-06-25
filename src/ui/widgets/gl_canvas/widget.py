@@ -1,6 +1,6 @@
 from PIL import Image as PilImage
 from PySide6.QtCore import QPoint, QPointF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPixmap
 from PySide6.QtWidgets import QRhiWidget
 
 from .interaction import (
@@ -64,6 +64,9 @@ from .feature_overlay_gpu import (
     upload_feature_overlay_crop,
     upload_feature_overlay_pair,
 )
+from ui.context_menu.image_compare import ImageCompareContextMenuProvider
+from ui.context_menu.manager import install_context_menu_provider, open_context_menu
+from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
 
 class GLCanvas(QRhiWidget):
     mousePressed = Signal(object)
@@ -85,11 +88,16 @@ class GLCanvas(QRhiWidget):
         configure_rhi_widget(self)
         self._first_frame_rendered_emitted = False
         self._rhi_renderer = RhiCanvasRenderer()
+        self._context_menu_provider = None
         init_widget_state(self)
 
     def set_store(self, store):
         state = self.runtime_state
         state._store = store
+        if self._context_menu_provider is None:
+            self._context_menu_provider = install_context_menu_provider(
+                ImageCompareContextMenuProvider(self, store)
+            )
         state._render_scene = build_gl_render_scene(
             store, apply_channel_mode_in_shader=state._apply_channel_mode_in_shader
         )
@@ -432,6 +440,42 @@ class GLCanvas(QRhiWidget):
 
     def mousePressEvent(self, event):
         handle_mouse_press_event(self, event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        slot = self._context_menu_slot_at(event.pos())
+        if slot is None:
+            event.ignore()
+            return
+        menu = open_context_menu(
+            ContextMenuRequest(
+                source_widget=self,
+                global_pos=event.globalPos(),
+                local_pos=event.pos(),
+                session_type="image_compare",
+                target=ContextMenuTarget(kind="image_compare_slot", id=slot),
+            )
+        )
+        if menu is None:
+            event.ignore()
+            return
+        event.accept()
+
+    def _context_menu_slot_at(self, pos):
+        store = getattr(self.runtime_state, "_store", None)
+        if store is None:
+            return None
+        view = store.viewport.view_state
+        split = float(
+            getattr(
+                view,
+                "split_position_visual",
+                getattr(self, "split_position", 0.5),
+            )
+        )
+        split = max(0.0, min(1.0, split))
+        if bool(getattr(view, "is_horizontal", getattr(self, "is_horizontal", False))):
+            return 1 if pos.y() <= self.height() * split else 2
+        return 1 if pos.x() <= self.width() * split else 2
 
     def mouseReleaseEvent(self, event):
         handle_mouse_release_event(self, event)

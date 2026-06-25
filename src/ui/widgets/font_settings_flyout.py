@@ -5,7 +5,9 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget
 
 from resources.translations import tr
-from sli_ui_toolkit.widgets import BaseFlyout, ColorSwatch, Slider, Switch
+from sli_ui_toolkit.widgets import BaseFlyout, Slider, Switch
+
+from ui.widgets.color_swatch import ColorSwatch
 
 
 class FontSettingsFlyout(BaseFlyout):
@@ -35,7 +37,7 @@ class FontSettingsFlyout(BaseFlyout):
         self._color_label = self.add_row(self._tr("label.color"), self.color_swatch, label_pixel_size=13)
         self._bg_label = self.add_row(self._tr("label.background"), self.bg_color_swatch, label_pixel_size=13)
         self._draw_bg_label = self.add_row(
-            self._tr("settings.draw_text_background"),
+            self._tr("label.background"),
             self.draw_bg_switch,
             label_pixel_size=13,
         )

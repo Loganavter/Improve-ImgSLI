@@ -28,7 +28,6 @@
     "render_backend_d3d11": "Direct3D 11",
     "render_backend_d3d12": "Direct3D 12",
     "render_backend_metal": "Metal",
-    "render_backend_null": "Nulo (sem renderização)",
     "render_backend_restart_hint": "Aplicado no próximo lançamento. Alguns backends podem não ser suportados em seu sistema.",
     "render_backend_restart_title": "Reinicialização necessária",
     "render_backend_restart_message": "O backend de renderização mudará para '{backend}' no próximo lançamento.",

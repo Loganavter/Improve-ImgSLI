@@ -16,6 +16,16 @@ class DialogManager:
     def settings_dialog(self):
         return self.host._settings_dialog
 
+    def _resolve_active_tab(self) -> str | None:
+        store = getattr(self.host, "store", None)
+        if store is None:
+            return None
+        try:
+            session = store.get_active_workspace_session()
+        except Exception:
+            return None
+        return getattr(session, "session_type", None) if session is not None else None
+
     def _query_overlay(self, capability_id: str, default=None):
         command = get_canvas_feature_command_by_alias(capability_id)
         if command is None:
@@ -112,6 +122,7 @@ class DialogManager:
                     self.host.store.settings, "rhi_backend", "default"
                 ),
                 store=self.host.store,
+                active_tab=self._resolve_active_tab(),
             )
             self.host._settings_dialog.setAttribute(
                 Qt.WidgetAttribute.WA_DeleteOnClose, True

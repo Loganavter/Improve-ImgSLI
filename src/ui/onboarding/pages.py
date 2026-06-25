@@ -265,7 +265,7 @@ def _wrap_btn(overlay, btn, text):
         text_col = resolve_theme_color(overlay.theme_manager, "list_item.text.rating").name()
         label_font = lbl.font()
         label_font.setPixelSize(13)
-        label_font.setWeight(500)
+        label_font.setWeight(QFont.Weight.Medium)
         lbl.setFont(label_font)
         label_palette = lbl.palette()
         label_palette.setColor(lbl.foregroundRole(), QColor(text_col))

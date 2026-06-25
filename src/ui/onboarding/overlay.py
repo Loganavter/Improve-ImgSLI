@@ -238,7 +238,7 @@ class OnboardingOverlay(QWidget):
 
         hint_font = self.hint_label.font()
         hint_font.setPixelSize(hint_font_size)
-        hint_font.setWeight(600)
+        hint_font.setWeight(QFont.Weight.DemiBold)
         self.hint_label.setFont(hint_font)
         hint_palette = self.hint_label.palette()
         hint_palette.setColor(self.hint_label.foregroundRole(), QColor(text_col))

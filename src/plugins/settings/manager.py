@@ -66,8 +66,9 @@ class SettingsManager:
         s.video_editor_preview_render_scale = self._get_setting(
             "video_editor_preview_render_scale", 1.0, float
         )
-        s.show_workspace_tabs = self._get_setting("show_workspace_tabs", False, bool)
+        s.show_workspace_tabs = self._get_setting("show_workspace_tabs", True, bool)
         s.rhi_backend = self._get_setting("rhi_backend", "default", str)
+        s.use_custom_decorations = self._get_setting("use_custom_decorations", True, bool)
         v.session_data.image_state.auto_calculate_psnr = self._get_setting(
             "auto_calculate_psnr", False, bool
         )
@@ -82,7 +83,7 @@ class SettingsManager:
             self._get_setting("filename_color", "#FFFF0000", str)
         )
         render.file_name_bg_color = hex_to_color(
-            self._get_setting("filename_bg_color", "#50000000", str)
+            self._get_setting("filename_bg_color", "#FF000000", str)
         )
         render.draw_text_background = self._get_setting("draw_text_background", True, bool)
         render.text_placement_mode = self._get_setting("text_placement_mode", "edges", str)
@@ -214,6 +215,7 @@ class SettingsManager:
         )
         self._save_setting("show_workspace_tabs", s.show_workspace_tabs)
         self._save_setting("rhi_backend", s.rhi_backend)
+        self._save_setting("use_custom_decorations", s.use_custom_decorations)
         self._save_setting(
             "auto_calculate_psnr", store.viewport.session_data.image_state.auto_calculate_psnr
         )

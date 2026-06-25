@@ -11,10 +11,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QDialog, QFileDialog
 
-from tabs.multi_compare.models import (
-    MultiCompareState,
-    slot_ids_in_tree,
-)
+from tabs.multi_compare.models import slot_ids_in_tree
+from tabs.multi_compare.scene import actions as mc_actions
 from tabs.multi_compare.services.composition_builder import build_composition_plan
 from tabs.multi_compare.services.gpu_export import MultiCompareGpuExporter
 from tabs.multi_compare.services.image_export import save_composite
@@ -41,19 +39,39 @@ class MultiCompareController:
         translate=None,
         dialog_parent=None,
         open_export_dialog=None,
+        context=None,
     ):
         self.widget = widget
-        self.store = store
+        self.store = store  # global Store (settings); separate from widget's MultiCompareStore
         self.translate = translate or (lambda _key, default=None: default or _key)
         self.dialog_parent = dialog_parent or widget
         self.open_export_dialog = open_export_dialog
-        self.state = MultiCompareState()
+        self.context = context
         self._gpu_exporter: MultiCompareGpuExporter | None = None
 
         self.widget.images_dropped.connect(self._on_images_dropped)
         self.widget.add_requested.connect(self._on_add_requested)
         self.widget.save_requested.connect(self._on_save_requested)
-        self.widget.set_state(self.state)
+        self.widget.quick_save_requested.connect(self._on_quick_save_requested)
+        self.widget.settings_requested.connect(self._on_settings_requested)
+        self.widget.help_requested.connect(self._on_help_requested)
+
+    def _call_service(self, name: str) -> None:
+        if self.context is None:
+            return
+        try:
+            self.context.call_service(name)
+        except Exception:
+            logger.exception("Tab service %s failed", name)
+
+    def _on_settings_requested(self) -> None:
+        self._call_service("show_settings_dialog")
+
+    def _on_help_requested(self) -> None:
+        self._call_service("show_help_dialog")
+
+    def _on_quick_save_requested(self) -> None:
+        self._on_save_requested()
 
     def shutdown(self) -> None:
         if self._gpu_exporter is not None:
@@ -65,11 +83,9 @@ class MultiCompareController:
     def load_images(self, paths: list[Path]) -> None:
         for path in paths:
             self._load_single_auto(path)
-        self.widget.set_state(self.widget.state)
 
     def clear(self) -> None:
-        self.state = MultiCompareState()
-        self.widget.set_state(self.state)
+        self.widget.store.dispatch(mc_actions.clear())
 
     # ---- signals ----
 
@@ -118,8 +134,7 @@ class MultiCompareController:
             return
         native_size = self._native_canvas_size() or self._live_view_size()
         if not callable(self.open_export_dialog):
-            logger.error("Multi Compare export dialog service is unavailable")
-            return
+            self.open_export_dialog = self._open_local_export_dialog
         preview = self._render_export_preview(
             *native_size,
             self._background_color_from_settings(
@@ -153,11 +168,50 @@ class MultiCompareController:
         except Exception:
             logger.exception("Composite save failed")
 
+    def _open_local_export_dialog(
+        self,
+        *,
+        preview_image,
+        suggested_filename: str,
+        native_size: tuple[int, int],
+    ):
+        from tabs.multi_compare.plugins.export import (
+            MultiCompareExportDialog,
+            MultiCompareExportDialogState,
+        )
+
+        settings = getattr(self.store, "settings", None)
+        state = MultiCompareExportDialogState(
+            current_language=getattr(settings, "language", "en"),
+            output_dir=self._default_dir(),
+            favorite_dir=getattr(settings, "export_favorite_dir", None),
+            last_format=getattr(settings, "export_last_format", "PNG"),
+            quality=int(getattr(settings, "export_quality", 95) or 95),
+            png_compress_level=int(getattr(settings, "export_png_compress_level", 9) or 9),
+            fill_background=bool(getattr(settings, "export_fill_background", True)),
+            background_color=self._background_color_from_settings(settings),
+            comment_text=getattr(settings, "export_comment_text", "") or "",
+            comment_keep_default=bool(
+                getattr(settings, "export_comment_keep_default", False)
+            ),
+            resolution_scale=float(getattr(settings, "export_resolution_scale", 1.0) or 1.0),
+        )
+        dialog = MultiCompareExportDialog(
+            state,
+            preview_image=preview_image,
+            suggested_filename=suggested_filename,
+            native_size=native_size,
+            translate=self.translate,
+            on_set_favorite_dir=self._set_favorite_dir,
+            parent=self.dialog_parent,
+        )
+        return dialog.exec(), dialog.get_export_options()
+
     # ---- internals ----
 
     def _live_view_size(self) -> tuple[int, int]:
-        width = max(1, int(self.widget.gl_grid.width()))
-        height = max(1, int(self.widget.gl_grid.height()))
+        width = max(1, int(self.widget.canvas.width()))
+        height = max(1, int(self.widget.canvas.height()))
         return width, height
 
     def _native_canvas_size(self) -> tuple[int, int] | None:
@@ -220,13 +274,28 @@ class MultiCompareController:
             settings.export_favorite_dir = options["favorite_dir"]
         settings.export_last_format = options["format"]
         settings.export_quality = int(options["quality"])
+        if "png_compress_level" in options:
+            settings.export_png_compress_level = int(options["png_compress_level"])
+        if "png_optimize" in options:
+            settings.export_png_optimize = bool(options["png_optimize"])
         settings.export_fill_background = bool(options["fill_background"])
+        if "resolution_scale" in options:
+            settings.export_resolution_scale = float(options["resolution_scale"])
+        if "comment_text" in options:
+            settings.export_comment_text = options["comment_text"]
+        if "comment_keep_default" in options:
+            settings.export_comment_keep_default = bool(options["comment_keep_default"])
         try:
             from domain.types import Color
 
             settings.export_background_color = Color(*options["background_color"])
         except Exception:
             pass
+
+    def _set_favorite_dir(self, path: str) -> None:
+        settings = getattr(self.store, "settings", None)
+        if settings is not None:
+            settings.export_favorite_dir = path
 
     def _read_image(self, path: Path):
         try:
@@ -253,25 +322,28 @@ class MultiCompareController:
         background_color: QColor | None = None,
         fill_background: bool = True,
     ) -> QImage:
+        """Render the multi-compare scene at ``w × h``.
+
+        The composition canvas is always the native size (image-extent driven);
+        ``w × h`` is the framebuffer / output. The renderer letterboxes the
+        canvas into it via ``sr = min(w/canvas_w, h/canvas_h)``.
+        """
         state = self.widget.state
-        composition = build_composition_plan(
-            state,
-            canvas_w=int(w) if w else None,
-            canvas_h=int(h) if h else None,
-        )
-        if composition is None:
-            composition = build_composition_plan(state)
+        composition = build_composition_plan(state)
         if composition is None:
             return QImage(
                 max(1, int(w or self.SAVE_OUTPUT_W)),
                 max(1, int(h or self.SAVE_OUTPUT_H)),
                 QImage.Format.Format_RGBA8888,
             )
+        output_w = int(w) if w else composition.canvas_w
+        output_h = int(h) if h else composition.canvas_h
         if self._gpu_exporter is None:
             self._gpu_exporter = MultiCompareGpuExporter()
         return self._gpu_exporter.render_to_qimage(
             composition,
-            state,
+            output_w=output_w,
+            output_h=output_h,
             background_color=background_color,
             fill_background=fill_background,
         )

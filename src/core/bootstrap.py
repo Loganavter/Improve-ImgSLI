@@ -157,6 +157,8 @@ class ApplicationContext:
 
     def apply_theme_to_app(self, app: QApplication):
         install_application_tooltips(app)
+        from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
+        install_application_dialog_decorations(app)
         self.theme_manager.apply_theme_to_app(app)
         self.theme_manager.theme_changed.connect(self._on_theme_changed)
 

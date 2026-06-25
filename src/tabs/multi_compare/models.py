@@ -54,6 +54,18 @@ class SplitNode:
 LayoutNode = Union[LeafNode, SplitNode]
 
 
+@dataclass(frozen=True)
+class MultiCompareLabelSettings:
+    """Camera-fixed filename label styling for multi-compare."""
+
+    font_size_percent: int = 100
+    font_weight: int = 0
+    text_rgba: tuple[int, int, int, int] = (255, 255, 255, 255)
+    bg_rgba: tuple[int, int, int, int] = (0, 0, 0, 255)
+    draw_background: bool = True
+    text_alpha_percent: int = 100
+
+
 # ---- tree operations ----------------------------------------------------------
 
 def leaves(node: LayoutNode | None) -> list[LeafNode]:
@@ -240,9 +252,16 @@ def insert_beside(
 
 # ---- state --------------------------------------------------------------------
 
-@dataclass
+@dataclass(frozen=True)
 class MultiCompareState:
-    """State for the multi-compare view."""
+    """State for the multi-compare view.
+
+    Frozen so consumers cannot mutate fields outside the reducer. Inner
+    containers (``slots`` list, ``SplitNode.children`` / ``weights``) are
+    conventionally treated as immutable too — reducers in
+    :mod:`tabs.multi_compare.scene.store` always build new lists / trees via
+    :mod:`tabs.multi_compare.scene.tree_ops`.
+    """
 
     slots: list[CompareSlot] = field(default_factory=list)
     root: LayoutNode | None = None
@@ -253,12 +272,15 @@ class MultiCompareState:
     max_slots: int = 12
 
     drag_active: bool = False
-    drag_target_path: tuple[int, ...] | None = None  # node path in the tree
-    drag_target_side: str | None = None  # "left"|"right"|"top"|"bottom"|"center"
-    drag_target_root: bool = False  # True when tree is empty: drop creates root leaf
-    drag_target_swap_slot_id: int | None = None  # set when side="center" (internal swap)
-    drag_internal: bool = False  # True for in-app slot drag (swap/move), False for file DnD
-    drag_source_slot_id: int | None = None  # set during internal drag
+    drag_target_path: tuple[int, ...] | None = None
+    drag_target_side: str | None = None
+    drag_target_root: bool = False
+    drag_target_swap_slot_id: int | None = None
+    drag_internal: bool = False
+    drag_source_slot_id: int | None = None
+    label_settings: MultiCompareLabelSettings = field(
+        default_factory=MultiCompareLabelSettings
+    )
 
     @property
     def is_focused(self) -> bool:
