@@ -30,3 +30,27 @@ class ImageCompareWidget(QWidget):
 
         ImageCompareLayoutBuilder(ui).build_into(self)
         self._assembled = True
+        self._wire_transition_mask_release(ui)
+
+    def _wire_transition_mask_release(self, ui) -> None:
+        canvas = getattr(ui, "image_label", None)
+        signal = getattr(canvas, "firstVisualFrameReady", None)
+        if signal is None:
+            return
+        try:
+            signal.connect(self._on_first_visual_frame)
+        except Exception:
+            pass
+
+    def _on_first_visual_frame(self) -> None:
+        context = self._context
+        services = getattr(context, "services", None) if context else None
+        if not services:
+            return
+        mask = services.get("workspace.transition_mask")
+        if mask is None:
+            return
+        try:
+            mask.release()
+        except Exception:
+            pass
