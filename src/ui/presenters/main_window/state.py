@@ -3,6 +3,7 @@ from PySide6.QtCore import QSignalBlocker, QTimer
 from resources.translations import tr
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_bindings
 
+
 def _set_slider_value_quietly(slider, value: int) -> None:
     if slider.value() == value:
         return
@@ -11,6 +12,7 @@ def _set_slider_value_quietly(slider, value: int) -> None:
         slider.setValue(value)
     finally:
         del blocker
+
 
 def _sync_canvas_feature_bindings(presenter) -> None:
     for binding in get_canvas_feature_toolbar_bindings():
@@ -36,8 +38,13 @@ def _refresh_active_session_canvas(presenter) -> None:
     presenter._last_active_session_id = active.id
     if last_id == active.id:
         return
-    # Invalidate canvas-side memoization so the upload actually happens.
-    for attr in ("_gl_last_img_sig", "_last_mag_signature", "_last_bg_signature", "_last_label_dims"):
+
+    for attr in (
+        "_last_img_sig",
+        "_last_mag_signature",
+        "_last_bg_signature",
+        "_last_label_dims",
+    ):
         if hasattr(presenter, attr):
             setattr(presenter, attr, None)
     sessions = getattr(getattr(presenter, "main_controller", None), "sessions", None)
@@ -48,16 +55,22 @@ def _refresh_active_session_canvas(presenter) -> None:
         sessions.set_current_image(2, emit_signal=False)
     except Exception:
         import logging
+
         logging.getLogger("ImproveImgSLI").exception(
             "_refresh_active_session_canvas: set_current_image failed"
         )
+
 
 def apply_initial_settings_to_ui(presenter):
     ui = presenter.ui
     viewport = presenter.store.viewport
 
-    _set_slider_value_quietly(ui.slider_speed, int(viewport.view_state.movement_speed_per_sec * 100))
-    ui.btn_file_names.setChecked(viewport.render_config.include_file_names_in_saved, emit_signal=False)
+    _set_slider_value_quietly(
+        ui.slider_speed, int(viewport.view_state.movement_speed_per_sec * 100)
+    )
+    ui.btn_file_names.setChecked(
+        viewport.render_config.include_file_names_in_saved, emit_signal=False
+    )
 
     _sync_canvas_feature_bindings(presenter)
     _apply_orientation_underline_mode(presenter)
@@ -83,29 +96,37 @@ def apply_initial_settings_to_ui(presenter):
     do_update_file_names_display(presenter)
     on_language_changed(presenter)
 
+
 def on_store_state_changed(presenter, domain: str):
     is_viewport_domain = domain == "viewport" or domain.startswith("viewport.")
 
     if domain == "workspace":
         from ui.presenters.main_window.workspace import (
             sync_session_mode,
-            sync_video_session_view,
             sync_workspace_tabs,
         )
 
         sync_workspace_tabs(presenter)
         sync_session_mode(presenter)
-        sync_video_session_view(presenter)
         _refresh_active_session_canvas(presenter)
         presenter.ui_batcher.schedule_batch_update(
-            ["file_names", "resolution", "combobox", "slider_tooltips", "ratings", "window_schedule"]
+            [
+                "file_names",
+                "resolution",
+                "combobox",
+                "slider_tooltips",
+                "ratings",
+                "window_schedule",
+            ]
         )
         return
 
     if not is_viewport_domain and domain not in ("document", "settings"):
         return
 
-    viewport_subdomain = domain.split(".", 1)[1] if is_viewport_domain and "." in domain else None
+    viewport_subdomain = (
+        domain.split(".", 1)[1] if is_viewport_domain and "." in domain else None
+    )
     if viewport_subdomain in {"interaction", "geometry"}:
         return
 
@@ -120,8 +141,16 @@ def on_store_state_changed(presenter, domain: str):
 
     ui.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
     presenter.ui_batcher.schedule_batch_update(
-        ["file_names", "resolution", "combobox", "slider_tooltips", "ratings", "window_schedule"]
+        [
+            "file_names",
+            "resolution",
+            "combobox",
+            "slider_tooltips",
+            "ratings",
+            "window_schedule",
+        ]
     )
+
 
 def do_update_resolution_labels(presenter):
     has_both_images = bool(
@@ -166,6 +195,7 @@ def do_update_resolution_labels(presenter):
                 f"{tr('ui.ssim', presenter.store.settings.current_language)}: --"
             )
 
+
 def do_update_file_names_display(presenter):
     active_name1 = presenter.store.document.get_active_display_name(1)
     active_name2 = presenter.store.document.get_active_display_name(2)
@@ -196,6 +226,7 @@ def do_update_file_names_display(presenter):
 
     presenter.check_name_lengths()
 
+
 def do_update_combobox_displays(presenter):
     count1 = len(presenter.store.document.image_list1)
     idx1 = presenter.store.document.current_index1
@@ -215,11 +246,17 @@ def do_update_combobox_displays(presenter):
     )
     presenter.ui.update_combobox_display(2, count2, idx2, text2, "")
 
-    if presenter.ui_manager and presenter.ui_manager.transient.unified_flyout.isVisible():
+    if (
+        presenter.ui_manager
+        and presenter.ui_manager.transient.unified_flyout.isVisible()
+    ):
         presenter.ui_manager.transient.unified_flyout.sync_from_store()
 
+
 def do_update_slider_tooltips(presenter):
-    from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+    from ui.canvas_infra.scene.widget_registry import (
+        get_canvas_feature_command_by_alias,
+    )
 
     magnifier_size = 0.2
     capture_size = 0.1
@@ -235,6 +272,7 @@ def do_update_slider_tooltips(presenter):
         presenter.store.settings.current_language,
     )
 
+
 def do_update_rating_displays(presenter):
     presenter.ui.update_rating_display(
         1, get_current_score(presenter, 1), presenter.store.settings.current_language
@@ -243,18 +281,33 @@ def do_update_rating_displays(presenter):
         2, get_current_score(presenter, 2), presenter.store.settings.current_language
     )
 
-    if presenter.ui_manager and presenter.ui_manager.transient.unified_flyout.isVisible():
+    if (
+        presenter.ui_manager
+        and presenter.ui_manager.transient.unified_flyout.isVisible()
+    ):
         current_idx1 = presenter.store.document.current_index1
         current_idx2 = presenter.store.document.current_index2
         if current_idx1 >= 0:
-            presenter.ui_manager.transient.unified_flyout.update_rating_for_item(1, current_idx1)
+            presenter.ui_manager.transient.unified_flyout.update_rating_for_item(
+                1, current_idx1
+            )
         if current_idx2 >= 0:
-            presenter.ui_manager.transient.unified_flyout.update_rating_for_item(2, current_idx2)
-        QTimer.singleShot(0, presenter.ui_manager.transient.unified_flyout.refreshGeometry)
+            presenter.ui_manager.transient.unified_flyout.update_rating_for_item(
+                2, current_idx2
+            )
+        QTimer.singleShot(
+            0, presenter.ui_manager.transient.unified_flyout.refreshGeometry
+        )
+
 
 def on_language_changed(presenter):
+    """Handle non-text consequences of a language switch.
+
+    Static text re-applies itself via the ``language_changed`` signal in
+    ``sli_ui_toolkit.i18n``; this function only triggers dynamic content
+    that doesn't go through ``translatable_*`` bindings.
+    """
     lang_code = presenter.store.settings.current_language
-    presenter.ui.update_translations(lang_code)
     from ui.presenters.main_window.workspace import configure_workspace_actions
 
     configure_workspace_actions(presenter)
@@ -264,10 +317,6 @@ def on_language_changed(presenter):
         and presenter.main_window_app.tray_manager
     ):
         presenter.main_window_app.tray_manager.update_language(lang_code)
-    dialogs = getattr(getattr(presenter, "ui_manager", None), "dialogs", None)
-    settings_dialog = getattr(dialogs, "settings_dialog", None) if dialogs else None
-    if settings_dialog is not None:
-        settings_dialog.update_language(lang_code)
     do_update_combobox_displays(presenter)
     do_update_slider_tooltips(presenter)
     do_update_rating_displays(presenter)
@@ -275,33 +324,46 @@ def on_language_changed(presenter):
     presenter.repopulate_flyouts()
     presenter.ui.reapply_button_styles()
 
+
 def get_current_display_name(presenter, image_number: int) -> str:
     return presenter.store.document.get_current_display_name(image_number)
+
 
 def get_current_score(presenter, image_number: int) -> int | None:
     target_list, index = (
         (presenter.store.document.image_list1, presenter.store.document.current_index1)
         if image_number == 1
-        else (presenter.store.document.image_list2, presenter.store.document.current_index2)
+        else (
+            presenter.store.document.image_list2,
+            presenter.store.document.current_index2,
+        )
     )
     if 0 <= index < len(target_list):
         return target_list[index].rating
     return None
 
+
 def get_image_dimensions(presenter, image_number: int) -> tuple[int, int] | None:
     if image_number == 1:
         if not presenter.store.document.image1_path:
             return None
-        img = presenter.store.document.full_res_image1 or presenter.store.document.preview_image1
+        img = (
+            presenter.store.document.full_res_image1
+            or presenter.store.document.preview_image1
+        )
     else:
         if not presenter.store.document.image2_path:
             return None
-        img = presenter.store.document.full_res_image2 or presenter.store.document.preview_image2
+        img = (
+            presenter.store.document.full_res_image2
+            or presenter.store.document.preview_image2
+        )
     if img and hasattr(img, "size"):
         return img.size
     return None
 
+
 def _apply_orientation_underline_mode(presenter):
     current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
     if hasattr(presenter.ui.btn_orientation, "set_show_underline"):
-        presenter.ui.btn_orientation.set_show_underline(current_mode != "advanced")
+        presenter.ui.btn_orientation.set_show_underline(current_mode == "expert")

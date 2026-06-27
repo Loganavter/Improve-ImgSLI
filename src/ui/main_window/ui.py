@@ -8,8 +8,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QWidget,
 )
-
-from resources.translations import tr
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
     Button,
@@ -19,19 +17,18 @@ from sli_ui_toolkit.widgets import (
     ScrollableComboBox,
     Slider,
 )
-from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
+
+from resources.translations import tr
 from ui.icon_manager import AppIcon
 from ui.main_window.layouts import LayoutComposer
 from ui.theming import resolve_theme_color
-from ui.widgets import VideoSessionWidget
-from ui.widgets.gl_canvas import GLCanvas
+from ui.widgets.canvas import CanvasWidget
 from ui.widgets.magnifier_color_controls import ColorSettingsButton
+from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
 
 logger = logging.getLogger("ImproveImgSLI")
 
 _SESSION_TYPE_KEYS = {
-    "image_compare": "workspace.session_types.image_compare",
-    "video_compare": "workspace.session_types.video_compare",
     "multi_compare": "workspace.session_types.multi_compare",
     "session_picker": "workspace.session_types.session_picker",
 }
@@ -45,6 +42,9 @@ class Ui_ImageComparisonApp:
 
     def setupUi(self, main_window: QWidget):
         self.main_window = main_window
+        from resources.translations import emit_language_changed
+
+        emit_language_changed(self._current_language())
         self._create_static_widgets(main_window)
         self._create_selection_controls(main_window)
         self._create_view_controls(main_window)
@@ -56,14 +56,15 @@ class Ui_ImageComparisonApp:
         self._layout = LayoutComposer(self)
         self._layout.build(main_window)
         self._init_drag_overlays()
+        from ui.main_window.translations import install_translations
 
-    # --- widget construction -------------------------------------------------
+        install_translations(self)
 
     def _create_static_widgets(self, main_window: QWidget):
         self.resolution_label1 = Label("--x--", variant="group-title")
         self.resolution_label2 = Label("--x--", variant="group-title")
         self.magnifier_settings_panel = QWidget(main_window)
-        self.image_label = GLCanvas(main_window)
+        self.image_label = CanvasWidget(main_window)
         self.length_warning_label = Label(parent=main_window)
         self.workspace_tabs = WorkspaceTabStrip(
             add_icon=AppIcon.ADD,
@@ -73,14 +74,8 @@ class Ui_ImageComparisonApp:
         )
         self.btn_new_session = self.workspace_tabs.add_button
         self.workspace_stack = QStackedWidget(main_window)
-        self.video_session_page = QWidget(main_window)
-        self.video_session_widget = VideoSessionWidget(main_window)
         self._tab_registry = None
         self.image_compare_widget = None
-
-    @property
-    def image_session_page(self) -> QWidget:
-        return self.image_compare_widget
 
     def _create_selection_controls(self, parent: QWidget):
         self.btn_image1 = Button(
@@ -99,7 +94,9 @@ class Ui_ImageComparisonApp:
             AppIcon.SYNC,
             long_press=True,
             variant="surface",
-            background_color=QColor(resolve_theme_color(ThemeManager.get_instance(), "accent")),
+            background_color=QColor(
+                resolve_theme_color(ThemeManager.get_instance(), "accent")
+            ),
             parent=parent,
         )
         self.btn_clear_list1 = Button(
@@ -116,12 +113,20 @@ class Ui_ImageComparisonApp:
             background_color=QColor("#D93025"),
             parent=parent,
         )
-        accent_color = QColor(resolve_theme_color(ThemeManager.get_instance(), "accent"))
+        accent_color = QColor(
+            resolve_theme_color(ThemeManager.get_instance(), "accent")
+        )
         self.help_button = Button(
-            AppIcon.HELP, variant="surface", background_color=accent_color, parent=parent
+            AppIcon.HELP,
+            variant="surface",
+            background_color=accent_color,
+            parent=parent,
         )
         self.btn_settings = Button(
-            AppIcon.SETTINGS, variant="surface", background_color=accent_color, parent=parent
+            AppIcon.SETTINGS,
+            variant="surface",
+            background_color=accent_color,
+            parent=parent,
         )
         self.btn_text_settings = Button(
             AppIcon.TEXT_MANIPULATOR,
@@ -130,11 +135,17 @@ class Ui_ImageComparisonApp:
             parent=parent,
         )
         self.btn_quick_save = Button(
-            AppIcon.QUICK_SAVE, variant="surface", background_color=accent_color, parent=parent
+            AppIcon.QUICK_SAVE,
+            variant="surface",
+            background_color=accent_color,
+            parent=parent,
         )
         self.btn_magnifier_orientation = Button(
             icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
-            toggle=True, scrollable=(0, 10), show_underline=True, parent=parent,
+            toggle=True,
+            scrollable=(0, 10),
+            show_underline=True,
+            parent=parent,
         )
         self.btn_save = Button(
             AppIcon.SAVE,
@@ -153,53 +164,86 @@ class Ui_ImageComparisonApp:
     def _create_view_controls(self, parent: QWidget):
         self.btn_orientation = Button(
             icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
-            toggle=True, scrollable=(0, 20), show_underline=True, parent=parent,
+            toggle=True,
+            scrollable=(0, 10),
+            show_underline=True,
+            underline_visible_when=lambda btn: btn.get_value() > 0,
+            parent=parent,
         )
         self.btn_magnifier = Button(AppIcon.MAGNIFIER, toggle=True, parent=parent)
         self.btn_magnifier_instances = InstancesCounterButton(parent=parent)
         self.btn_freeze = Button(AppIcon.FREEZE, toggle=True, parent=parent)
         self.btn_file_names = Button(AppIcon.TEXT_FILENAME, toggle=True, parent=parent)
 
-        self.btn_diff_mode = Button(AppIcon.HIGHLIGHT_DIFFERENCES, menu=[], parent=parent)
+        self.btn_diff_mode = Button(
+            AppIcon.HIGHLIGHT_DIFFERENCES, menu=[], parent=parent
+        )
         self.btn_channel_mode = Button(AppIcon.PHOTO, menu=[], parent=parent)
 
-        self.btn_magnifier_color_settings = ColorSettingsButton(parent=parent, current_language="en")
+        self.btn_magnifier_color_settings = ColorSettingsButton(
+            parent=parent, current_language="en"
+        )
         self.btn_magnifier_guides = Button(
-            AppIcon.MAGNIFIER_GUIDES, toggle=True, scrollable=(0, 10),
-            show_underline=True, parent=parent,
+            AppIcon.MAGNIFIER_GUIDES,
+            toggle=True,
+            scrollable=(0, 10),
+            parent=parent,
         )
 
         self.btn_orientation_simple = Button(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT), toggle=True, parent=parent,
+            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+            toggle=True,
+            parent=parent,
         )
         self.btn_divider_visible = Button(
-            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN), toggle=True, parent=parent,
+            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN),
+            toggle=True,
+            parent=parent,
         )
-        self.btn_divider_color = Button(AppIcon.DIVIDER_COLOR, show_underline=True, parent=parent)
+        self.btn_divider_color = Button(
+            AppIcon.DIVIDER_COLOR, show_underline=True, parent=parent
+        )
         self.btn_divider_width = Button(
-            AppIcon.DIVIDER_WIDTH, scrollable=(1, 20), show_underline=True, parent=parent,
+            AppIcon.DIVIDER_WIDTH,
+            scrollable=(0, 10),
+            parent=parent,
         )
         self.btn_magnifier_orientation_simple = Button(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT), toggle=True, parent=parent,
+            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+            toggle=True,
+            parent=parent,
         )
         self.btn_magnifier_divider_visible = Button(
-            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN), toggle=True, parent=parent,
+            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN),
+            toggle=True,
+            parent=parent,
         )
 
         self.btn_magnifier_color_settings_beginner = ColorSettingsButton(
             parent=parent, current_language="en"
         )
         self.btn_magnifier_divider_width = Button(
-            AppIcon.DIVIDER_WIDTH, scrollable=(1, 10), show_underline=True, parent=parent,
+            AppIcon.DIVIDER_WIDTH,
+            scrollable=(1, 10),
+            show_underline=True,
+            parent=parent,
         )
-        self.btn_magnifier_guides_simple = Button(AppIcon.MAGNIFIER_GUIDES, toggle=True, parent=parent)
+        self.btn_magnifier_guides_simple = Button(
+            AppIcon.MAGNIFIER_GUIDES, toggle=True, parent=parent
+        )
         self.btn_magnifier_guides_width = Button(
-            AppIcon.DIVIDER_WIDTH, scrollable=(1, 10), show_underline=True, parent=parent,
+            AppIcon.DIVIDER_WIDTH,
+            scrollable=(1, 10),
+            parent=parent,
         )
 
     def _create_video_controls(self, parent: QWidget):
-        self.btn_record = Button(icon=(AppIcon.RECORD, AppIcon.STOP), toggle=True, parent=parent)
-        self.btn_pause = Button(icon=(AppIcon.PAUSE, AppIcon.PLAY), toggle=True, parent=parent)
+        self.btn_record = Button(
+            icon=(AppIcon.RECORD, AppIcon.STOP), toggle=True, parent=parent
+        )
+        self.btn_pause = Button(
+            icon=(AppIcon.PAUSE, AppIcon.PLAY), toggle=True, parent=parent
+        )
         self.btn_pause.setEnabled(False)
         self.btn_video_editor = Button(AppIcon.EXPORT_VIDEO, parent=parent)
 
@@ -247,16 +291,9 @@ class Ui_ImageComparisonApp:
         except AttributeError:
             return "en"
 
-    def _get_session_type_label(self, session_type: str, language: str) -> str:
-        key = _SESSION_TYPE_KEYS.get(session_type)
-        if key:
-            return tr(key, language)
-        return session_type
-
-    # --- presenter-facing API: workspace / session --------------------------
-
     def sync_workspace_tabs(self, sessions, active_session_id):
         tabs = self.workspace_tabs
+        language = self._current_language()
         tabs.blockSignals(True)
         try:
             sessions = list(sessions)
@@ -266,18 +303,21 @@ class Ui_ImageComparisonApp:
                 tabs.removeTab(tabs.count() - 1)
 
             active_index = -1
-            current_language = self._current_language()
             for index, session in enumerate(sessions):
-                session_type_label = self._get_session_type_label(session.session_type, current_language)
-                tooltip = f"{session.title} [{session_type_label}]"
+                tab_text = self._localized_session_title(session, language)
+                session_type_label = self._localized_session_type_label(
+                    session.session_type,
+                    language,
+                )
+                tooltip = f"{tab_text} [{session_type_label}]"
                 if index < tabs.count():
-                    if tabs.tabText(index) != session.title:
-                        tabs.setTabText(index, session.title)
+                    if tabs.tabText(index) != tab_text:
+                        tabs.setTabText(index, tab_text)
                     if tabs.tabData(index) != session.id:
                         tabs.setTabData(index, session.id)
                     tabs.setTabToolTip(index, tooltip)
                 else:
-                    tabs.addTab(session.title)
+                    tabs.addTab(tab_text)
                     tabs.setTabData(index, session.id)
                     tabs.setTabToolTip(index, tooltip)
                 if session.id == active_session_id:
@@ -289,6 +329,30 @@ class Ui_ImageComparisonApp:
         finally:
             tabs.blockSignals(False)
 
+    def _localized_session_title(self, session, language: str) -> str:
+        title = getattr(session, "title", "") or ""
+        session_type = getattr(session, "session_type", "")
+        default_prefix = session_type.replace("_", " ").title()
+        if title != default_prefix and not title.startswith(f"{default_prefix} "):
+            return title
+        suffix = title.removeprefix(default_prefix)
+        if suffix and not suffix.strip().isdigit():
+            return title
+        return f"{self._localized_session_type_label(session_type, language)}{suffix}"
+
+    def _localized_session_type_label(self, session_type: str, language: str) -> str:
+        if self._tab_registry is not None:
+            tab = self._tab_registry.get_tab(session_type)
+            if tab is not None:
+                localized = tab.localized_display_name(language)
+                if localized and localized != session_type:
+                    return localized
+        key = _SESSION_TYPE_KEYS.get(session_type)
+        if key is None:
+            return session_type
+        translated = tr(key, language)
+        return session_type if translated == key else translated
+
     def sync_session_mode(self, session_type: str, session_title: str | None = None):
         is_image_session = session_type == "image_compare"
         tab_page = (
@@ -298,17 +362,10 @@ class Ui_ImageComparisonApp:
             self.workspace_stack.setCurrentWidget(tab_page)
             if self._tab_registry:
                 self._tab_registry.activate(session_type)
-        else:
-            self.workspace_stack.setCurrentWidget(self.video_session_page)
 
         self.edit_layout_widget.setVisible(
             is_image_session and self.btn_file_names.isChecked()
         )
-        if session_type == "video":
-            title = session_title or session_type.replace("_", " ").title()
-            self.video_session_widget.title_label.setText(title)
-
-    # --- presenter-facing API: styles / panels ------------------------------
 
     def reapply_button_styles(self):
         self._layout.apply_icon_sizes()
@@ -344,14 +401,6 @@ class Ui_ImageComparisonApp:
             self.image_label.contentsRect().height(),
         )
 
-    # --- presenter-facing API: localized / dynamic updates -------------------
-
-    def update_translations(self, lang_code: str):
-        if not hasattr(self, "_translations_binder"):
-            from ui.main_window.translations import build_translations_binder
-            self._translations_binder = build_translations_binder(self)
-        self._translations_binder.apply(lang_code)
-
     def update_drag_overlays(self, horizontal: bool = False, visible: bool = False):
         if not self.image_label.isVisible():
             if hasattr(self, "drag_overlay"):
@@ -361,7 +410,10 @@ class Ui_ImageComparisonApp:
         text1 = tr("ui.drop_images_1_here", lang)
         text2 = tr("ui.drop_images_2_here", lang)
         self.image_label.set_drag_overlay_state(
-            visible=False, horizontal=horizontal, text1=text1, text2=text2,
+            visible=False,
+            horizontal=horizontal,
+            text1=text1,
+            text2=text2,
         )
         if hasattr(self, "drag_overlay"):
             self.drag_overlay.set_overlay_state(
@@ -411,7 +463,14 @@ class Ui_ImageComparisonApp:
         self.length_warning_label.setVisible(visible)
 
     def update_color_button_tooltip(self, color_name: str, current_language: str):
-        pass
+        tooltip = tr("tooltip.magnifier_colors", current_language)
+        for attr in (
+            "btn_magnifier_color_settings",
+            "btn_magnifier_color_settings_beginner",
+        ):
+            button = getattr(self, attr, None)
+            if button is not None:
+                button.setToolTip(tooltip)
 
     def update_combobox_display(
         self,
@@ -443,14 +502,32 @@ class Ui_ImageComparisonApp:
         capture_size: float,
         current_language: str,
     ):
-        pass
+        self.slider_size.setToolTip(
+            tr(
+                "tooltip.magnifier_size_slider",
+                current_language,
+                value=int(round(float(magnifier_size) * 100)),
+            )
+        )
+        self.slider_capture.setToolTip(
+            tr(
+                "tooltip.capture_size_slider",
+                current_language,
+                value=int(round(float(capture_size) * 100)),
+            )
+        )
+        self.slider_speed.setToolTip(
+            tr(
+                "tooltip.magnifier_speed_slider",
+                current_language,
+                value=int(round(float(speed_value) * 100)),
+            )
+        )
 
     def update_zoom_indicator(self, zoom: float):
         pan_x = float(getattr(self.image_label, "pan_offset_x", 0.0) or 0.0)
         pan_y = float(getattr(self.image_label, "pan_offset_y", 0.0) or 0.0)
         self.zoom_indicator.update_zoom(zoom, pan_x, pan_y)
-
-    # --- ratings ------------------------------------------------------------
 
     def update_rating_display(
         self, image_number: int, score: int | None, current_language: str
@@ -484,6 +561,7 @@ class Ui_ImageComparisonApp:
                 session_ctrl.decrement_rating(image_number, current_idx)
             self._refresh_rating_displays()
             event.accept()
+
         return _wheel
 
     def _get_session_controller(self):
@@ -503,8 +581,6 @@ class Ui_ImageComparisonApp:
     def _refresh_rating_displays(self):
         if hasattr(self.main_window, "presenter"):
             self.main_window.presenter.update_rating_displays()
-
-    # --- file-name helpers --------------------------------------------------
 
     def _hide_file_name_labels(self):
         self.file_name_label1.setVisible(False)
