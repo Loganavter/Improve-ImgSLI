@@ -6,8 +6,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tabs.image_compare.widget import ImageCompareWidget
-
 SHOW_WORKSPACE_TABS = False
 
 
@@ -54,11 +52,9 @@ class LayoutComposer:
         self._configure_session_pages()
 
         ui = self.ui
-        ui.image_compare_widget = ImageCompareWidget(ui.image_session_page, ui=ui)
-        page_layout = QVBoxLayout(ui.image_session_page)
-        page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.setSpacing(0)
-        page_layout.addWidget(ui.image_compare_widget)
+        tab = ui._tab_registry.get_tab("image_compare")
+        ui.image_compare_widget = tab.widget
+        ui.image_compare_widget.assemble(ui)
 
         self._assemble_video_session_page()
         main_layout.addWidget(self._workspace_content_widget(main_window), 1)
@@ -110,7 +106,6 @@ class LayoutComposer:
 
     def _configure_session_pages(self) -> None:
         ui = self.ui
-        ui.workspace_stack.addWidget(ui.image_session_page)
         ui.workspace_stack.addWidget(ui.video_session_page)
         self._install_tab_registry()
 

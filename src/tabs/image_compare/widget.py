@@ -1,10 +1,9 @@
 """Root widget for the image_compare tab.
 
-Stage 2 of the migration: the widget now owns the assembled layout
-tree (selection bar, checkbox bar, image container, footer, edit/save
-rows). Primitive widgets (buttons, sliders, canvas) are still owned by
-``MainWindowUI`` and exposed through the legacy ``ui.*`` attributes —
-Stage 3 will route them via proxy properties.
+The widget is constructed empty by the tab during ``create_page`` (early,
+before the host has built the primitive widgets it owns). The host calls
+``assemble(ui)`` once those primitives exist; the builder then populates
+this widget with the full image-compare layout tree.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from __future__ import annotations
 from PySide6.QtWidgets import QWidget
 
 from tabs.contract import TabContext
-from tabs.image_compare.ui.layout import ImageCompareLayoutBuilder
 
 
 class ImageCompareWidget(QWidget):
@@ -20,10 +18,15 @@ class ImageCompareWidget(QWidget):
         self,
         parent: QWidget | None = None,
         context: TabContext | None = None,
-        ui=None,
     ):
         super().__init__(parent)
         self._context = context
-        self._ui = ui
-        if ui is not None:
-            ImageCompareLayoutBuilder(ui).build_into(self)
+        self._assembled = False
+
+    def assemble(self, ui) -> None:
+        if self._assembled:
+            return
+        from tabs.image_compare.ui.layout import ImageCompareLayoutBuilder
+
+        ImageCompareLayoutBuilder(ui).build_into(self)
+        self._assembled = True
