@@ -73,10 +73,14 @@ class Ui_ImageComparisonApp:
         )
         self.btn_new_session = self.workspace_tabs.add_button
         self.workspace_stack = QStackedWidget(main_window)
-        self.image_session_page = QWidget(main_window)
         self.video_session_page = QWidget(main_window)
         self.video_session_widget = VideoSessionWidget(main_window)
         self._tab_registry = None
+        self.image_compare_widget = None
+
+    @property
+    def image_session_page(self) -> QWidget:
+        return self.image_compare_widget
 
     def _create_selection_controls(self, parent: QWidget):
         self.btn_image1 = Button(
@@ -290,9 +294,7 @@ class Ui_ImageComparisonApp:
         tab_page = (
             self._tab_registry.get_page(session_type) if self._tab_registry else None
         )
-        if is_image_session:
-            self.workspace_stack.setCurrentWidget(self.image_session_page)
-        elif tab_page is not None:
+        if tab_page is not None:
             self.workspace_stack.setCurrentWidget(tab_page)
             if self._tab_registry:
                 self._tab_registry.activate(session_type)
