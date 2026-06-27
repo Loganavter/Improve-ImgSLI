@@ -56,7 +56,6 @@ class LayoutComposer:
         ui.image_compare_widget = tab.widget
         ui.image_compare_widget.assemble(ui)
 
-        self._assemble_video_session_page()
         main_layout.addWidget(self._workspace_content_widget(main_window), 1)
 
         self._finalize()
@@ -105,8 +104,6 @@ class LayoutComposer:
         return container
 
     def _configure_session_pages(self) -> None:
-        ui = self.ui
-        ui.workspace_stack.addWidget(ui.video_session_page)
         self._install_tab_registry()
 
     def _install_tab_registry(self) -> None:
@@ -187,10 +184,3 @@ class LayoutComposer:
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
 
-    def _assemble_video_session_page(self) -> None:
-        ui = self.ui
-        layout = QVBoxLayout(ui.video_session_page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        layout.addWidget(ui.video_session_widget)
-        layout.addStretch(1)

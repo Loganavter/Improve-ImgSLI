@@ -7,17 +7,19 @@ from core.main_controller import MainController
 from core.plugin_system.ui_integration import PluginUIRegistry
 from core.store import Store
 from ui.main_window.ui import Ui_ImageComparisonApp
-from ui.presenters.main_window.connections import (
-    connect_event_handler_signals as connect_event_handler_signals_impl,
-    connect_signals as connect_signals_impl,
-    handle_global_mouse_press,
-    on_font_flyout_closed,
-    on_interpolation_combo_clicked,
-    repopulate_flyouts,
-)
 from ui.presenters.main_window.actions import (
     hide_orientation_popup,
 )
+from ui.presenters.main_window.connections import (
+    connect_event_handler_signals as connect_event_handler_signals_impl,
+)
+from ui.presenters.main_window.connections import (
+    connect_signals as connect_signals_impl,
+)
+from ui.presenters.main_window.connections import (
+    repopulate_flyouts,
+)
+from ui.presenters.main_window.features import MainWindowFeatureSet
 from ui.presenters.main_window.state import (
     apply_initial_settings_to_ui,
     do_update_combobox_displays,
@@ -34,13 +36,12 @@ from ui.presenters.main_window.workspace import (
     configure_workspace_actions,
     initialize_workspace_state,
     sync_session_mode,
-    sync_video_session_view,
     sync_workspace_tabs,
 )
-from ui.presenters.main_window.features import MainWindowFeatureSet
 from ui.presenters.ui_update_batcher import UIUpdateBatcher
 
 logger = logging.getLogger("ImproveImgSLI")
+
 
 class MainWindowPresenter(QObject):
     def __init__(
@@ -79,12 +80,12 @@ class MainWindowPresenter(QObject):
         self._popup_timer.timeout.connect(self._hide_orientation_popup)
 
         initialize_workspace_state(self)
+        self._bind_workspace_tabs_translation()
 
         self._connect_signals()
 
         try:
             self._apply_initial_settings_to_ui()
-            self.ui.update_translations(self.store.settings.current_language)
             self._configure_workspace_actions()
             self.sync_workspace_tabs()
             self.sync_session_mode()
@@ -92,9 +93,7 @@ class MainWindowPresenter(QObject):
             self.ui.reapply_button_styles()
             self.repopulate_flyouts()
 
-            if (
-                self.main_controller is not None
-            ):
+            if self.main_controller is not None:
                 self.main_controller.layout.setup_ui_reference(
                     self.ui, self.main_window_app
                 )
@@ -162,9 +161,6 @@ class MainWindowPresenter(QObject):
     def sync_session_mode(self):
         return sync_session_mode(self)
 
-    def sync_video_session_view(self):
-        return sync_video_session_view(self)
-
     def update_resolution_labels(self):
         self.ui_batcher.schedule_update("resolution")
 
@@ -200,6 +196,14 @@ class MainWindowPresenter(QObject):
 
     def on_language_changed(self):
         return on_language_changed(self)
+
+    def _bind_workspace_tabs_translation(self):
+        from sli_ui_toolkit.i18n import translatable_callback
+
+        translatable_callback(
+            self.ui.workspace_tabs,
+            lambda _lang: self.sync_workspace_tabs(),
+        )
 
     def _hide_orientation_popup(self):
         return hide_orientation_popup(self)

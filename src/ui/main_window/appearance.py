@@ -71,7 +71,6 @@ class MainWindowAppearance:
         targets = [
             getattr(window.ui, "workspace_stack", None),
             getattr(window.ui, "image_compare_widget", None),
-            getattr(window.ui, "video_session_page", None),
         ]
         stack = getattr(window.ui, "workspace_stack", None)
         if stack is not None:

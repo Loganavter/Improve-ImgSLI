@@ -8,7 +8,6 @@ __all__ = [
     "RadioButton",
     "Slider",
     "Switch",
-    "VideoSessionWidget",
 ]
 
 _SIMPLE_EXPORTS = {
@@ -17,8 +16,8 @@ _SIMPLE_EXPORTS = {
     "RadioButton": ("sli_ui_toolkit.widgets", "RadioButton"),
     "Slider": ("sli_ui_toolkit.widgets", "Slider"),
     "Switch": ("sli_ui_toolkit.widgets", "Switch"),
-    "VideoSessionWidget": ("ui.widgets.video_session_widget", "VideoSessionWidget"),
 }
+
 
 def __getattr__(name: str):
     target = _SIMPLE_EXPORTS.get(name)

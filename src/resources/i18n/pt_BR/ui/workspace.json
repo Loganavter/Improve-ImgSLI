@@ -2,8 +2,8 @@
   "workspace": {
     "session_types": {
       "image_compare": "Comparar imagens",
-      "video_compare": "Comparar vídeos",
-      "multi_compare": "Comparação múltipla"
+      "multi_compare": "Comparação múltipla",
+      "session_picker": "Escolher sessão"
     }
   }
 }
