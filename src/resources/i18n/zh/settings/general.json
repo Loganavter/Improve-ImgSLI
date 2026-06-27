@@ -1,6 +1,7 @@
 {
   "settings": {
     "appearance": "外观",
+    "general": "常规",
     "auto": "自动",
     "autocalculate_psnr": "自动计算PSNR",
     "autocalculate_ssim": "自动计算SSIM",

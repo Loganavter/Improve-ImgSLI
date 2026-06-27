@@ -41,7 +41,7 @@ class LayerLabelStyle:
     text_inset_fb: float = 10.0
     text_color: QColor = field(default_factory=lambda: QColor(255, 255, 255, 255))
     bg_color: QColor = field(default_factory=lambda: QColor(0, 0, 0, 170))
-    font_weight: int = 0  # 0 → painter's stroke skipped; >0 → bold-supersampled
+    font_weight: int = 0
 
     def to_filename_overlay_style(self) -> FilenameOverlayStyle:
         return FilenameOverlayStyle(
@@ -61,10 +61,7 @@ def _font(style: LayerLabelStyle) -> QFont:
     font.setPixelSize(int(style.font_pixel_size_fb))
     font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-    # Do NOT setBold(True) when font_weight > 0: the bold path renders text via
-    # PIL with stroke_width on the *regular* glyphs, so Qt's bold advance would
-    # over-estimate label width and leave empty space to the right of the text.
-    # Matches image_compare's font_for_style which also keeps the QFont regular.
+
     return font
 
 
@@ -141,7 +138,11 @@ def paint_layer_label(
             inner_w,
             rect.height(),
         )
-        painter.drawText(text_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), fitted)
+        painter.drawText(
+            text_rect,
+            int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
+            fitted,
+        )
     painter.restore()
 
 

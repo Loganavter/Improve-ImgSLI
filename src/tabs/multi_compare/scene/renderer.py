@@ -19,7 +19,7 @@ from PySide6.QtGui import (
 from tabs.multi_compare.scene.overlay_painter import MultiCompareOverlayPainter
 from tabs.multi_compare.scene.passes import BaseImagesPass, OverlayTexturePass
 from tabs.multi_compare.scene.projection import build_render_context
-from ui.widgets.gl_canvas.rhi_backend import log_initialized_rhi_widget
+from ui.widgets.canvas.rhi_backend import log_initialized_rhi_widget
 
 
 class MultiCompareRhiRenderer:

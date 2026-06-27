@@ -8,19 +8,25 @@
   "add_images": "Add images",
   "save_result": "Save result",
   "text_settings": "Text settings",
-  "label.font_size": "Font size",
-  "label.bold": "Bold",
-  "label.opacity": "Opacity",
-  "label.color": "Text color",
-  "label.background": "Background",
-  "settings.draw_text_background": "Draw background",
-  "context.rename": "Rename",
-  "context.name": "Name",
-  "context.duplicate": "Duplicate",
-  "context.properties": "Properties",
-  "context.remove": "Remove",
-  "context.path": "Path",
-  "context.size": "Size",
+  "label": {
+    "font_size": "Font size",
+    "bold": "Bold",
+    "opacity": "Opacity",
+    "color": "Text color",
+    "background": "Background"
+  },
+  "settings": {
+    "draw_text_background": "Draw background"
+  },
+  "context": {
+    "rename": "Rename",
+    "name": "Name",
+    "duplicate": "Duplicate",
+    "properties": "Properties",
+    "remove": "Remove",
+    "path": "Path",
+    "size": "Size"
+  },
   "drop_image_here": "Drop image here",
   "drop_move_here": "Move here",
   "drop_swap": "Swap"

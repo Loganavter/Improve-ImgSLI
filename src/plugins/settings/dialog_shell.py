@@ -55,6 +55,8 @@ def setup_sidebar_items(dialog):
             ),
         ]
     dialog.sidebar.set_items(dialog._sidebar_items_data)
+    for row in getattr(dialog.sidebar, "_rows", ()):
+        row.button.setToolTip("")
 
 def create_scrollable_page():
     page = ScrollableDialogPage()
@@ -107,9 +109,14 @@ def calculate_and_apply_geometry(dialog):
     screen_h = QApplication.primaryScreen().availableGeometry().height()
     final_height = min(required_height, screen_h - 100) + 5
 
-    dialog.resize(final_width, final_height)
     dialog.setMinimumSize(300, 200)
-    if dialog.parent():
+    if dialog.isVisible():
+        dialog.updateGeometry()
+        return
+
+    dialog.resize(final_width, final_height)
+    parent = dialog.parent() if hasattr(dialog, "parent") else None
+    if parent:
         geo = dialog.geometry()
-        geo.moveCenter(dialog.parent().geometry().center())
+        geo.moveCenter(parent.geometry().center())
         dialog.move(geo.topLeft())

@@ -25,6 +25,7 @@ class TabRegistry:
         self._tabs: dict[str, TabContract] = {}
         self._pages: dict[str, QWidget] = {}
         self._context: TabContext | None = None
+        self._active_session_type: str | None = None
 
     @property
     def registered_types(self) -> list[str]:
@@ -99,10 +100,15 @@ class TabRegistry:
         return self._pages.get(session_type)
 
     def activate(self, session_type: str) -> None:
+        if session_type == self._active_session_type:
+            return
+        if self._active_session_type is not None:
+            self.deactivate(self._active_session_type)
         tab = self._tabs.get(session_type)
         if tab and self._context:
             try:
                 tab.on_activated(self._context)
+                self._active_session_type = session_type
             except Exception as e:
                 logger.error(f"Tab activate error ({session_type}): {e}")
 
@@ -113,8 +119,15 @@ class TabRegistry:
                 tab.on_deactivated(self._context)
             except Exception as e:
                 logger.error(f"Tab deactivate error ({session_type}): {e}")
+        if self._active_session_type == session_type:
+            self._active_session_type = None
 
-    def route_drop(self, session_type: str, paths: list) -> bool:
+    def route_drop(
+        self,
+        session_type: str,
+        paths: list,
+        hint: dict | None = None,
+    ) -> bool:
         """Route a file drop to the active tab. Returns True if handled."""
         tab = self._tabs.get(session_type)
         if tab is None:
@@ -122,9 +135,23 @@ class TabRegistry:
         from pathlib import Path as P
         resolved = [P(p) if not isinstance(p, P) else p for p in paths]
         if tab.accepts_drop(resolved):
-            tab.handle_drop(resolved)
+            tab.handle_drop(resolved, hint=hint)
             return True
         return False
+
+    def apply_appearance(self, host_window) -> None:
+        for tab in self._tabs.values():
+            try:
+                tab.apply_appearance(host_window)
+            except Exception as e:
+                logger.error(f"Tab appearance error ({tab.session_type}): {e}")
+
+    def notify_window_shutdown(self, host_window) -> None:
+        for tab in self._tabs.values():
+            try:
+                tab.on_window_shutdown(host_window)
+            except Exception as e:
+                logger.error(f"Tab shutdown hook error ({tab.session_type}): {e}")
 
     def dispose_all(self) -> None:
         for tab in self._tabs.values():
@@ -134,3 +161,4 @@ class TabRegistry:
                 pass
         self._tabs.clear()
         self._pages.clear()
+        self._active_session_type = None

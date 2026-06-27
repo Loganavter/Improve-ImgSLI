@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from resources.translations import tr
-from sli_ui_toolkit.i18n import TranslationsBinder
-
 from plugins.video_editor.services.export_config import ExportConfigBuilder
-
+from resources.translations import tr
 
 _PREVIEW_SCALE_ITEMS = (
     ("video.preview_quality_full", 1.0),
@@ -14,25 +11,18 @@ _PREVIEW_SCALE_ITEMS = (
 )
 
 
-def build_translations_binder(dialog) -> TranslationsBinder:
-    """Build a TranslationsBinder for VideoEditorDialog."""
-    binder = TranslationsBinder(tr_func=tr)
-
-    binder.bind_callback(lambda lang: setattr(dialog, "current_language", lang or "en"))
-    binder.bind_callback(
-        lambda lang: dialog.setWindowTitle(tr("video.video_editor_exporter", lang))
-    )
-
-    _bind_labels(binder, dialog)
-    _bind_buttons(binder, dialog)
-    _bind_tabs(binder, dialog)
-    _bind_output_section(binder, dialog)
-    _bind_combo_rebuilds(binder, dialog)
-
-    return binder
+def apply_translations(dialog, lang: str) -> None:
+    dialog.current_language = lang or "en"
+    dialog.setWindowTitle(tr("video.video_editor_exporter", lang))
+    _apply_labels(dialog, lang)
+    _apply_buttons(dialog, lang)
+    _apply_tabs(dialog, lang)
+    _apply_output_section(dialog, lang)
+    _rebuild_preview_scale_combo(dialog, lang)
+    _rebuild_export_combos(dialog, lang)
 
 
-def _bind_labels(binder: TranslationsBinder, dialog) -> None:
+def _apply_labels(dialog, lang: str) -> None:
     labels = (
         (dialog.lbl_resolution, "label.resolution"),
         (dialog.lbl_fps, "label.fps"),
@@ -46,27 +36,25 @@ def _bind_labels(binder: TranslationsBinder, dialog) -> None:
         (dialog.lbl_bitrate, "video.bitrate_hint"),
     )
     for widget, key in labels:
-        binder.bind_text(widget, key, suffix=":")
-    binder.bind_text(dialog.lbl_manual_args_hint, "video.ffmpeg_output_args_hint")
+        widget.setText(tr(key, lang) + ":")
+    dialog.lbl_manual_args_hint.setText(tr("video.ffmpeg_output_args_hint", lang))
 
 
-def _bind_buttons(binder: TranslationsBinder, dialog) -> None:
-    binder.bind_text(dialog.btn_export, "action.export_video")
-    binder.bind_tooltip(dialog.btn_stop_export, "button.stop")
-    binder.bind_tooltip(dialog.btn_lock_ratio, "video.lock_aspect_ratio")
-    binder.bind_tooltip(dialog.btn_fit_content, "magnifier.fit_mode_toggle")
-    binder.bind_tooltip(dialog.btn_fit_fill_color, "export.select_background_color")
-    binder.bind_callback(
-        lambda lang: dialog.btn_play.setToolTip(
-            f"{tr('button.play', lang)} / {tr('button.pause', lang)}"
-        )
+def _apply_buttons(dialog, lang: str) -> None:
+    dialog.btn_export.setText(tr("action.export_video", lang))
+    dialog.btn_stop_export.setToolTip(tr("button.stop", lang))
+    dialog.btn_lock_ratio.setToolTip(tr("video.lock_aspect_ratio", lang))
+    dialog.btn_fit_content.setToolTip(tr("magnifier.fit_mode_toggle", lang))
+    dialog.btn_fit_fill_color.setToolTip(tr("export.select_background_color", lang))
+    dialog.btn_play.setToolTip(
+        f"{tr('button.play', lang)} / {tr('button.pause', lang)}"
     )
-    binder.bind_tooltip(dialog.btn_undo, "button.undo_ctrlz")
-    binder.bind_tooltip(dialog.btn_redo, "button.redo")
-    binder.bind_tooltip(dialog.btn_trim, "button.trim_to_selection")
+    dialog.btn_undo.setToolTip(tr("button.undo_ctrlz", lang))
+    dialog.btn_redo.setToolTip(tr("button.redo", lang))
+    dialog.btn_trim.setToolTip(tr("button.trim_to_selection", lang))
 
 
-def _bind_tabs(binder: TranslationsBinder, dialog) -> None:
+def _apply_tabs(dialog, lang: str) -> None:
     tab_specs = (
         (dialog.tab_standard, "video.standard"),
         (dialog.tab_manual, "video.manual_cli"),
@@ -74,30 +62,20 @@ def _bind_tabs(binder: TranslationsBinder, dialog) -> None:
         (dialog.tab_log, "video.export_log"),
     )
 
-    def _apply(lang: str) -> None:
-        for tab, key in tab_specs:
-            index = dialog.tabs.indexOf(tab)
-            if index >= 0:
-                dialog.tabs.setTabText(index, tr(key, lang))
-
-    binder.bind_callback(_apply)
+    for tab, key in tab_specs:
+        index = dialog.tabs.indexOf(tab)
+        if index >= 0:
+            dialog.tabs.setTabText(index, tr(key, lang))
 
 
-def _bind_output_section(binder: TranslationsBinder, dialog) -> None:
-    binder.bind_text(
-        dialog.output_section.dir_label,
-        "export.select_output_directory",
-        suffix=":",
+def _apply_output_section(dialog, lang: str) -> None:
+    dialog.output_section.dir_label.setText(
+        tr("export.select_output_directory", lang) + ":"
     )
-    binder.bind_text(dialog.btn_browse_output, "button.browse")
-    binder.bind_text(dialog.btn_set_favorite, "misc.set_as_favorite")
-    binder.bind_text(dialog.btn_use_favorite, "tooltip.use_favorite")
-    binder.bind_text(dialog.output_section.filename_label, "label.file_name", suffix=":")
-
-
-def _bind_combo_rebuilds(binder: TranslationsBinder, dialog) -> None:
-    binder.bind_callback(lambda lang: _rebuild_preview_scale_combo(dialog, lang))
-    binder.bind_callback(lambda lang: _rebuild_export_combos(dialog, lang))
+    dialog.btn_browse_output.setText(tr("button.browse", lang))
+    dialog.btn_set_favorite.setText(tr("misc.set_as_favorite", lang))
+    dialog.btn_use_favorite.setText(tr("tooltip.use_favorite", lang))
+    dialog.output_section.filename_label.setText(tr("label.file_name", lang) + ":")
 
 
 def _rebuild_preview_scale_combo(dialog, lang: str) -> None:
@@ -124,7 +102,9 @@ def _rebuild_export_combos(dialog, lang: str) -> None:
     dialog.combo_container.blockSignals(False)
 
     codec_list = ExportConfigBuilder.get_codecs_for_container(current_container)
-    default_codec = ExportConfigBuilder.get_default_codec_for_container(current_container)
+    default_codec = ExportConfigBuilder.get_default_codec_for_container(
+        current_container
+    )
     dialog.update_available_codecs(codec_list, default_codec)
     codec_idx = dialog.combo_codec.findData(current_codec)
     if codec_idx >= 0:

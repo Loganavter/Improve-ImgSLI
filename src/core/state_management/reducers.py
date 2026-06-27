@@ -9,8 +9,8 @@ from core.store import (
     RenderConfig,
     SessionData,
     SettingsState,
-    ViewState,
     ViewportState,
+    ViewState,
 )
 from ui.canvas_infra.scene.widget_registry import get_canvas_widget_features
 
@@ -86,6 +86,7 @@ from .actions import (
     ToggleOrientationAction,
 )
 
+
 def _build_viewport_state(
     state: ViewportState,
     *,
@@ -102,6 +103,7 @@ def _build_viewport_state(
         interaction_state=interaction_state or state.interaction_state,
         geometry_state=geometry_state or state.geometry_state,
     )
+
 
 class ViewStateReducer:
     @staticmethod
@@ -124,23 +126,29 @@ class ViewStateReducer:
             return replace(view_state, channel_view_mode=action.mode)
         if isinstance(action, SetShowingSingleImageModeAction):
             return replace(view_state, showing_single_image_mode=action.mode)
-        for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+        for feature in sorted(
+            get_canvas_widget_features(),
+            key=lambda item: (item.reducer_order, item.name),
+        ):
             reduced = feature.reduce_view_state(view_state, action)
             if reduced is not view_state:
                 return reduced
         if isinstance(action, InvalidateRenderCacheAction):
-            return replace(view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0)
+            return replace(
+                view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0
+            )
         if isinstance(action, ClearAllCachesAction):
-            return replace(view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0)
+            return replace(
+                view_state, text_bg_visual_height=0.0, text_bg_visual_width=0.0
+            )
         return view_state
+
 
 class InteractionStateReducer:
     @staticmethod
     def reduce(interaction_state: InteractionState, action: Action) -> InteractionState:
         if isinstance(action, SetIsDraggingSliderAction):
-            return replace(
-                interaction_state, is_dragging_any_slider=action.is_dragging
-            )
+            return replace(interaction_state, is_dragging_any_slider=action.is_dragging)
         if isinstance(action, SetResizeInProgressAction):
             return replace(interaction_state, resize_in_progress=action.enabled)
         if isinstance(action, SetInteractiveModeAction):
@@ -161,13 +169,17 @@ class InteractionStateReducer:
             return replace(interaction_state, last_vertical_movement_key=action.key)
         if isinstance(action, SetLastSpacingMovementKeyAction):
             return replace(interaction_state, last_spacing_movement_key=action.key)
-        for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+        for feature in sorted(
+            get_canvas_widget_features(),
+            key=lambda item: (item.reducer_order, item.name),
+        ):
             if feature.reduce_interaction_state is None:
                 continue
             reduced = feature.reduce_interaction_state(interaction_state, action)
             if reduced is not interaction_state:
                 return reduced
         return interaction_state
+
 
 class GeometryStateReducer:
     @staticmethod
@@ -184,13 +196,17 @@ class GeometryStateReducer:
                 fixed_label_width=action.width,
                 fixed_label_height=action.height,
             )
-        for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+        for feature in sorted(
+            get_canvas_widget_features(),
+            key=lambda item: (item.reducer_order, item.name),
+        ):
             if feature.reduce_geometry_state is None:
                 continue
             reduced = feature.reduce_geometry_state(geometry_state, action)
             if reduced is not geometry_state:
                 return reduced
         return geometry_state
+
 
 class ImageSessionReducer:
     @staticmethod
@@ -211,11 +227,14 @@ class ImageSessionReducer:
             return replace(image_state, **{field_name: None})
         return image_state
 
+
 class RenderCacheReducer:
     @staticmethod
     def reduce(cache_state: RenderCacheState, action: Action) -> RenderCacheState:
         if isinstance(action, SetDisplayCacheImageAction):
-            field_name = "display_cache_image1" if action.slot == 1 else "display_cache_image2"
+            field_name = (
+                "display_cache_image1" if action.slot == 1 else "display_cache_image2"
+            )
             return replace(cache_state, **{field_name: action.image})
         if isinstance(action, SetScaledImageForDisplayAction):
             field_name = (
@@ -241,7 +260,10 @@ class RenderCacheReducer:
                 cached_split_base_image=None,
                 last_split_cached_params=None,
             )
-            for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+            for feature in sorted(
+                get_canvas_widget_features(),
+                key=lambda item: (item.reducer_order, item.name),
+            ):
                 if feature.reduce_cache_state is not None:
                     cache_state = feature.reduce_cache_state(cache_state, action)
             return cache_state
@@ -269,7 +291,10 @@ class RenderCacheReducer:
                 cached_split_base_image=None,
                 last_split_cached_params=None,
             )
-            for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+            for feature in sorted(
+                get_canvas_widget_features(),
+                key=lambda item: (item.reducer_order, item.name),
+            ):
                 if feature.reduce_cache_state is not None:
                     cache_state = feature.reduce_cache_state(cache_state, action)
             return cache_state
@@ -296,6 +321,7 @@ class RenderCacheReducer:
             return replace(cache_state, **kwargs)
         return cache_state
 
+
 class SessionDataReducer:
     def __init__(self):
         self.image_session_reducer = ImageSessionReducer()
@@ -315,10 +341,14 @@ class SessionDataReducer:
             return session_data
         return SessionData(image_state=new_image_state, render_cache=new_render_cache)
 
+
 class RenderConfigReducer:
     @staticmethod
     def reduce(config: RenderConfig, action: Action) -> RenderConfig:
-        for feature in sorted(get_canvas_widget_features(), key=lambda item: (item.reducer_order, item.name)):
+        for feature in sorted(
+            get_canvas_widget_features(),
+            key=lambda item: (item.reducer_order, item.name),
+        ):
             reduced = feature.reduce_render_config(config, action)
             if reduced is not config:
                 return reduced
@@ -349,6 +379,7 @@ class RenderConfigReducer:
         if isinstance(action, SetDisplayResolutionLimitAction):
             return replace(config, display_resolution_limit=action.limit)
         return config
+
 
 class ViewportReducer:
     def __init__(self):
@@ -382,6 +413,7 @@ class ViewportReducer:
             interaction_state=new_interaction_state,
             geometry_state=new_geometry_state,
         )
+
 
 class DocumentReducer:
     @staticmethod
@@ -426,6 +458,7 @@ class DocumentReducer:
             )
         return document
 
+
 class SettingsReducer:
     @staticmethod
     def reduce(settings: SettingsState, action: Action) -> SettingsState:
@@ -462,6 +495,7 @@ class SettingsReducer:
         if isinstance(action, SetExportFavoriteDirAction):
             return replace(settings, export_favorite_dir=action.path)
         return settings
+
 
 class RootReducer:
     def __init__(self):

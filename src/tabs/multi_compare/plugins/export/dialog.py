@@ -4,7 +4,15 @@ import logging
 import PIL.Image
 import shiboken6 as sip
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QImage, QIntValidator, QMouseEvent, QPainter, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QIcon,
+    QImage,
+    QIntValidator,
+    QMouseEvent,
+    QPainter,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QColorDialog,
     QDialog,
@@ -17,12 +25,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from domain.qt_adapters import color_to_qcolor
-from tabs.multi_compare.plugins.export.models import (
-    MultiCompareExportDialogState as ExportDialogState,
-)
-from resources.translations import tr as app_tr
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
     Button,
@@ -30,12 +32,19 @@ from sli_ui_toolkit.widgets import (
     ComboBox,
     Slider,
 )
+
+from domain.qt_adapters import color_to_qcolor
+from sli_ui_toolkit.i18n import tr as app_tr
+from tabs.multi_compare.plugins.export.models import (
+    MultiCompareExportDialogState as ExportDialogState,
+)
 from ui.icon_manager import AppIcon
 from ui.theming import polish_themed_dialog
 from ui.widgets.form_controls import DialogActionBar, OutputPathSection
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
+
 
 class MultiCompareExportDialog(QDialog):
     def __init__(
@@ -60,19 +69,25 @@ class MultiCompareExportDialog(QDialog):
         self.favorite_dir = dialog_state.favorite_dir
         self._export_options_cache: dict | None = None
 
-        nw, nh = native_size if native_size and native_size[0] > 0 and native_size[1] > 0 else (0, 0)
+        nw, nh = (
+            native_size
+            if native_size and native_size[0] > 0 and native_size[1] > 0
+            else (0, 0)
+        )
         self._native_width = int(nw)
         self._native_height = int(nh)
-        self._aspect_ratio = (self._native_width / self._native_height) if self._native_height else 0.0
+        self._aspect_ratio = (
+            (self._native_width / self._native_height) if self._native_height else 0.0
+        )
         self._suppress_ratio_recalc = False
         try:
-            self._initial_scale = max(0.05, float(getattr(dialog_state, "resolution_scale", 1.0) or 1.0))
+            self._initial_scale = max(
+                0.05, float(getattr(dialog_state, "resolution_scale", 1.0) or 1.0)
+            )
         except (TypeError, ValueError):
             self._initial_scale = 1.0
 
-        self.setWindowTitle(
-            self.tr("misc.export", self.dialog_state.current_language)
-        )
+        self.setWindowTitle(self.tr("misc.export", self.dialog_state.current_language))
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.WindowTitleHint
@@ -104,8 +119,11 @@ class MultiCompareExportDialog(QDialog):
         self._init_ui()
         self._apply_styles()
         self.theme_manager.theme_changed.connect(self._apply_styles)
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
-        decorate_dialog(self, title=self.tr("misc.export", self.dialog_state.current_language))
+        from tabs.host_helpers import decorate_dialog
+
+        decorate_dialog(
+            self, title=self.tr("misc.export", self.dialog_state.current_language)
+        )
 
         self._populate_from_state()
         self._suggest_default_filename()
@@ -199,9 +217,11 @@ class MultiCompareExportDialog(QDialog):
         res_layout = QHBoxLayout(self.resolution_row)
         res_layout.setContentsMargins(0, 0, 0, 0)
         res_layout.setSpacing(8)
-        res_layout.addWidget(QLabel(
-            self.tr("label.resolution", self.dialog_state.current_language) + ":"
-        ))
+        res_layout.addWidget(
+            QLabel(
+                self.tr("label.resolution", self.dialog_state.current_language) + ":"
+            )
+        )
         self.edit_width = QLineEdit()
         self.edit_width.setValidator(QIntValidator(1, 32768))
         self.edit_width.setFixedWidth(72)
@@ -231,7 +251,9 @@ class MultiCompareExportDialog(QDialog):
         self.edit_height.setText(str(initial_h))
         self.edit_width.editingFinished.connect(self._on_width_edited)
         self.edit_height.editingFinished.connect(self._on_height_edited)
-        self.resolution_row.setVisible(self._native_width > 0 and self._native_height > 0)
+        self.resolution_row.setVisible(
+            self._native_width > 0 and self._native_height > 0
+        )
 
         self.quality_row = QWidget()
         quality_layout = QHBoxLayout(self.quality_row)
@@ -256,9 +278,7 @@ class MultiCompareExportDialog(QDialog):
         png_layout.setContentsMargins(0, 0, 0, 0)
         png_layout.setSpacing(8)
         self.label_png_compress = QLabel(
-            self.tr(
-                "export.png_compression_level", self.dialog_state.current_language
-            )
+            self.tr("export.png_compression_level", self.dialog_state.current_language)
             + ":"
         )
         self.slider_png_compress = Slider(Qt.Orientation.Horizontal)
@@ -366,7 +386,9 @@ class MultiCompareExportDialog(QDialog):
         self.checkbox_include_metadata.setChecked(True)
 
         self.edit_comment.setText(self.dialog_state.comment_text or "")
-        self.checkbox_comment_default.setChecked(bool(self.dialog_state.comment_keep_default))
+        self.checkbox_comment_default.setChecked(
+            bool(self.dialog_state.comment_keep_default)
+        )
 
     def _suggest_default_filename(self):
         self.edit_name.setText(self.suggested_filename or "comparison")

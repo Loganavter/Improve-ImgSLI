@@ -36,6 +36,10 @@ class MultiCompareGpuExporter:
     def _ensure_widget(self) -> MultiCompareCanvasWidget:
         if self._widget is not None:
             return self._widget
+        import time
+
+        t0 = time.perf_counter()
+        logger.info("[mc-gpu] creating offscreen MultiCompareCanvasWidget")
         widget = MultiCompareCanvasWidget()
         widget.setObjectName("multi_compare_export_canvas")
         widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
@@ -44,6 +48,10 @@ class MultiCompareGpuExporter:
         widget._allow_transparent_clear = True
         widget.show()
         QApplication.processEvents()
+        logger.info(
+            "[mc-gpu] widget ensure done in %.1f ms",
+            (time.perf_counter() - t0) * 1000.0,
+        )
         self._widget = widget
         return widget
 
@@ -81,20 +89,31 @@ class MultiCompareGpuExporter:
         ``output_w/h`` is the framebuffer; ``render()`` letterboxes the scene
         into it with ``sr = min(output/canvas)``. No second resample.
         """
+        import time
+
+        t_total = time.perf_counter()
         widget = self._ensure_widget()
         target_size = (max(1, int(output_w)), max(1, int(output_h)))
+        logger.info(
+            "[mc-gpu] target_size=%s composition canvas=%dx%d layers~?",
+            target_size,
+            composition.canvas_w,
+            composition.canvas_h,
+        )
 
-        # Clear color must be assigned before render() reads it via
-        # _theme_or_palette_bg(). Transparent fill uses the framebuffer alpha
-        # channel (widget has WA_TranslucentBackground).
         if fill_background and background_color is not None:
             widget._theme_background_color = QColor(background_color)
         else:
             widget._theme_background_color = QColor(0, 0, 0, 0)
 
         if self._last_size != target_size:
+            t0 = time.perf_counter()
             widget.resize(*target_size)
             QApplication.processEvents()
+            logger.info(
+                "[mc-gpu] widget.resize+processEvents %.1f ms",
+                (time.perf_counter() - t0) * 1000.0,
+            )
             self._last_size = target_size
 
         render_plan = CanvasRenderPlan(
@@ -105,7 +124,7 @@ class MultiCompareGpuExporter:
             source_key=(),
             canvas_w=composition.canvas_w,
             canvas_h=composition.canvas_h,
-            gl_scene=None,
+            scene=None,
             overlay_layout=None,
             capture_visible=False,
             capture_color=QColor(0, 0, 0, 0),
@@ -113,15 +132,39 @@ class MultiCompareGpuExporter:
             guides_color=QColor(0, 0, 0, 0),
             guides_thickness=0,
             fill_rgba=(
-                (background_color.red(), background_color.green(),
-                 background_color.blue(), background_color.alpha())
+                (
+                    background_color.red(),
+                    background_color.green(),
+                    background_color.blue(),
+                    background_color.alpha(),
+                )
                 if fill_background and background_color is not None
                 else None
             ),
             composition_root=composition.root,
         )
+        t0 = time.perf_counter()
         apply_canvas_render_plan(widget, render_plan)
+        logger.info(
+            "[mc-gpu] apply_canvas_render_plan %.1f ms",
+            (time.perf_counter() - t0) * 1000.0,
+        )
 
+        t0 = time.perf_counter()
         widget.update()
         QApplication.processEvents()
-        return widget.grabFramebuffer()
+        logger.info(
+            "[mc-gpu] widget.update+processEvents %.1f ms",
+            (time.perf_counter() - t0) * 1000.0,
+        )
+
+        t0 = time.perf_counter()
+        image = widget.grabFramebuffer()
+        logger.info(
+            "[mc-gpu] grabFramebuffer %.1f ms -> %dx%d (total render_to_qimage %.1f ms)",
+            (time.perf_counter() - t0) * 1000.0,
+            image.width(),
+            image.height(),
+            (time.perf_counter() - t_total) * 1000.0,
+        )
+        return image

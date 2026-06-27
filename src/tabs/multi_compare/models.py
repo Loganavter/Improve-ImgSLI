@@ -9,8 +9,6 @@ from typing import Union
 import numpy as np
 
 
-# ---- slots --------------------------------------------------------------------
-
 @dataclass
 class CompareSlot:
     """One image slot referenced by a Leaf in the layout tree."""
@@ -25,11 +23,10 @@ class CompareSlot:
         return self.image is not None
 
 
-# ---- layout tree --------------------------------------------------------------
-
 @dataclass
 class LeafNode:
     """Holds a single image slot reference."""
+
     slot_id: int
 
 
@@ -42,8 +39,9 @@ class SplitNode:
         "v" — children laid out top-to-bottom (horizontal dividers).
     weights: positive floats; effective share = w_i / sum(weights).
     """
+
     direction: str
-    children: list  # list[LayoutNode]
+    children: list
     weights: list[float]
 
     def normalized_weights(self) -> list[float]:
@@ -66,7 +64,14 @@ class MultiCompareLabelSettings:
     text_alpha_percent: int = 100
 
 
-# ---- tree operations ----------------------------------------------------------
+@dataclass(frozen=True)
+class MultiCompareDividerSettings:
+    """User-controllable divider line styling for multi-compare splits."""
+
+    visible: bool = True
+    thickness: int = 4
+    color_rgba: tuple[int, int, int, int] = (180, 180, 180, 230)
+
 
 def leaves(node: LayoutNode | None) -> list[LeafNode]:
     if node is None:
@@ -178,10 +183,9 @@ def insert_beside_path(
     if root is None:
         return LeafNode(new_slot_id)
     if not path:
-        # Target is the root node; wrap it in a new orthogonal split.
+
         return _wrap_node(root, side, new_slot_id)
 
-    # Walk to the parent of the target.
     parent = root
     for i in path[:-1]:
         assert isinstance(parent, SplitNode)
@@ -226,16 +230,14 @@ def insert_beside(
         children = [new_leaf, node] if side in ("left", "top") else [node, new_leaf]
         return SplitNode(direction=direction, children=children, weights=[1.0, 1.0])
 
-    # Split: walk into the child that contains target.
     for i, child in enumerate(node.children):
         if find_path(child, target_slot_id) is None:
             continue
-        # If we're at the immediate parent of the leaf and the parent's direction
-        # matches the side → flatten by adding as sibling rather than nesting.
+
         if isinstance(child, LeafNode) and child.slot_id == target_slot_id:
             wanted_dir = "h" if side in ("left", "right") else "v"
             if wanted_dir == node.direction:
-                # Insert sibling in this split.
+
                 avg_w = sum(node.weights) / len(node.weights)
                 if side in ("left", "top"):
                     node.children.insert(i, LeafNode(new_slot_id))
@@ -244,13 +246,11 @@ def insert_beside(
                     node.children.insert(i + 1, LeafNode(new_slot_id))
                     node.weights.insert(i + 1, avg_w)
                 return node
-        # Otherwise recurse.
+
         node.children[i] = insert_beside(child, target_slot_id, side, new_slot_id)
         return node
     return node
 
-
-# ---- state --------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class MultiCompareState:
@@ -280,6 +280,9 @@ class MultiCompareState:
     drag_source_slot_id: int | None = None
     label_settings: MultiCompareLabelSettings = field(
         default_factory=MultiCompareLabelSettings
+    )
+    divider_settings: MultiCompareDividerSettings = field(
+        default_factory=MultiCompareDividerSettings
     )
 
     @property

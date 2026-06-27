@@ -16,6 +16,8 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from sli_ui_toolkit import CustomTitleBar, decorate_dialog as _toolkit_decorate_dialog
 
+CUSTOM_DECORATION_RESIZE_MARGIN = 8
+
 
 _MSGBOX_TITLE_BY_ICON = {
     QMessageBox.Icon.Critical: "Error",
@@ -69,6 +71,13 @@ def decorate_dialog(
         show_maximize=show_maximize,
         show_close=show_close,
     )
+
+
+def configure_custom_decoration_resize_margin() -> None:
+    """Widen toolkit frameless resize hit target for custom-decorated dialogs."""
+    from sli_ui_toolkit.ui.windows import frameless
+
+    frameless.RESIZE_MARGIN = CUSTOM_DECORATION_RESIZE_MARGIN
 
 
 class _DialogDecorationInterceptor(QObject):

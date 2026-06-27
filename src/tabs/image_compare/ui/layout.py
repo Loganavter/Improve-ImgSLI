@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 from sli_ui_toolkit.widgets import ButtonGroup, Label, Slider
 
-from resources.translations import tr
+from sli_ui_toolkit.i18n import tr
 from ui.widgets.startup_placeholder import StartupPlaceholder
 from ui.widgets.zoom_indicator import ZoomIndicator
 

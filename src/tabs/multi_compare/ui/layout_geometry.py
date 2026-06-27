@@ -72,9 +72,7 @@ def _walk_paths(
     y = rect.y()
     for index, (child, size) in enumerate(zip(node.children, sizes)):
         child_rect = QRect(rect.x(), y, rect.width(), size)
-        if only_path is None or (
-            depth < len(only_path) and only_path[depth] == index
-        ):
+        if only_path is None or (depth < len(only_path) and only_path[depth] == index):
             _walk_paths(
                 child,
                 child_rect,
@@ -87,7 +85,9 @@ def _walk_paths(
         y += size + gap
 
 
-def drop_gaps(node, rect: QRect, *, gap: int = 4) -> list[tuple[SplitNode, tuple[int, ...], int, QRect]]:
+def drop_gaps(
+    node, rect: QRect, *, gap: int = 4
+) -> list[tuple[SplitNode, tuple[int, ...], int, QRect]]:
     gaps: list[tuple[SplitNode, tuple[int, ...], int, QRect]] = []
     _walk_drop_gaps(node, rect, (), gaps, gap)
     return gaps
@@ -114,7 +114,9 @@ def _walk_drop_gaps(
             child_rect = QRect(x, rect.y(), size, rect.height())
             _walk_drop_gaps(child, child_rect, path + (index,), gaps, gap)
             if index < child_count - 1:
-                gaps.append((node, path, index, QRect(x + size, rect.y(), gap, rect.height())))
+                gaps.append(
+                    (node, path, index, QRect(x + size, rect.y(), gap, rect.height()))
+                )
             x += size + (gap if index < child_count - 1 else 0)
         return
 
@@ -125,7 +127,9 @@ def _walk_drop_gaps(
         child_rect = QRect(rect.x(), y, rect.width(), size)
         _walk_drop_gaps(child, child_rect, path + (index,), gaps, gap)
         if index < child_count - 1:
-            gaps.append((node, path, index, QRect(rect.x(), y + size, rect.width(), gap)))
+            gaps.append(
+                (node, path, index, QRect(rect.x(), y + size, rect.width(), gap))
+            )
         y += size + (gap if index < child_count - 1 else 0)
 
 

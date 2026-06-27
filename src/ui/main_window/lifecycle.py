@@ -63,6 +63,17 @@ class MarkShuttingDownStep(WindowShutdownStep):
         if getattr(window, "app_context", None) is not None:
             window.app_context._is_shutting_down = True
 
+class ShutdownTabsStep(WindowShutdownStep):
+    name = "shutdown_tabs"
+
+    def run(self, window) -> None:
+        ui = getattr(window, "ui", None)
+        registry = getattr(ui, "_tab_registry", None)
+        if registry is None:
+            return
+        registry.notify_window_shutdown(window)
+        registry.dispose_all()
+
 class ShutdownPresenterStep(WindowShutdownStep):
     name = "shutdown_presenter"
 
@@ -200,6 +211,7 @@ class MainWindowStartupController:
 class MainWindowShutdownPipeline:
     steps: tuple[WindowShutdownStep, ...] = (
         MarkShuttingDownStep(),
+        ShutdownTabsStep(),
         ShutdownPresenterStep(),
         StopWindowTimersStep(),
         CloseDerivedWindowsStep(),

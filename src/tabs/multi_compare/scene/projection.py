@@ -25,10 +25,22 @@ def build_screen_quad_vertices(rect: QRectF, fb_w: float, fb_h: float) -> bytes:
     y1 = 1.0 - rect.bottom() / fb_h * 2.0
     return struct.pack(
         "<16f",
-        x0, y0, 0.0, 0.0,
-        x0, y1, 0.0, 1.0,
-        x1, y0, 1.0, 0.0,
-        x1, y1, 1.0, 1.0,
+        x0,
+        y0,
+        0.0,
+        0.0,
+        x0,
+        y1,
+        0.0,
+        1.0,
+        x1,
+        y0,
+        1.0,
+        0.0,
+        x1,
+        y1,
+        1.0,
+        1.0,
     )
 
 

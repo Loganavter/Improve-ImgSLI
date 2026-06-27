@@ -1,137 +1,147 @@
-# image_compare → TabContract: текущее состояние
+# image_compare → TabContract: фактический статус
 
-Документ заменяет прежний поэтапный план. Миграция завершена тремя
-коммитами на ветке `migrate/qrhi`:
-
-- `96429e6 refactor(image_compare): TabContract skeleton + extract page builder`
-- `4e5a2af refactor(image_compare): drop image_session_page wrapper, wire tab lifecycle`
-- `23d6ab3 feat(image_compare): finish TabContract migration — slot state, i18n, settings`
+Документ фиксирует состояние после аудита working tree. Старый текст
+утверждал, что миграция полностью завершена серией коммитов; это уже
+недостоверно для текущего дерева. Сейчас tab-side часть в основном жива, но
+host-side зачистка осталась частичной и отслеживается тестом
+`tests/contracts/test_platform_isolation.py`.
 
 ## 1. Что сейчас лежит в `tabs/image_compare/`
 
 ```
 src/tabs/image_compare/
     __init__.py
-    tab.py                # ImageCompareTab(TabContract)
-    widget.py             # ImageCompareWidget, assemble(ui), firstVisualFrameReady→mask.release
-    models.py             # ImageCompareState dataclass
-    plugin.py             # ComparisonPlugin + SessionSlotBlueprint('image_compare.state')
-    events.py
-    session_controller.py
-    use_cases/
+    tab.py                      # ImageCompareTab(TabContract)
+    widget.py                   # ImageCompareWidget, assemble(ui)
+    models.py                   # ImageCompareState dataclass
+    plugin.py                   # ComparisonPlugin + image_compare.state slot
+    _session_controller.py      # tab-owned session controller
+    canvas/
+    events/
+    presenters/image_canvas/
+    services/playlist*
+    state/
     ui/
-        __init__.py
-        layout.py         # ImageCompareLayoutBuilder
+        appearance.py
+        context_menu.py
+        layout.py
+        primitives.py
+        settings_performance.py
+    use_cases/
     resources/i18n/{en,ru,pt_BR,zh}/image_compare.json
-    docs/MIGRATION_PLAN.md
 ```
 
-## 2. Покрытие TabContract
+## 2. TabContract coverage
 
 | Метод | Состояние |
 |---|---|
-| `session_type`, `display_name`, `resources_dir`, `i18n_namespace` | Полноценно |
-| `localized_display_name(language)` | Резолвится через `workspace.session_types.image_compare` |
+| `session_type`, `display_name`, `resources_dir`, `i18n_namespace` | Готово |
+| `localized_display_name(language)` | Через `sli_ui_toolkit.i18n`, key `image_compare.session_type` |
 | `create_page` | Возвращает `ImageCompareWidget` |
 | `transition_hint` | `TabTransitionHint(cover_on_enter=True, min=50, max=400)` |
-| `on_activated` | snapshot/restore state slot + `setFocus` |
-| `on_deactivated` | snapshot state slot |
-| `on_session_created` | no-op (слот создаётся blueprint'ом) |
-| `on_session_closed` | сбрасывает `_active_session_id` |
-| `accepts_drop` / `handle_drop` | По расширениям; роутит в `main_controller.sessions.load_images_from_paths` |
-| `contribute_settings` | Регистрирует `image_compare.analysis` (бывшая `builtin.analysis`) |
+| `on_activated` | snapshot/restore `image_compare.state` + focus |
+| `on_deactivated` | snapshot state slot; теперь вызывается registry при смене tab |
+| `accepts_drop` / `handle_drop(paths, hint)` | По расширениям; `hint["slot"]` / `hint["is_left_area"]` выбирает slot 1/2 |
+| `contribute_settings` | Регистрирует `image_compare.analysis` и extras для `builtin.performance` |
+| `apply_appearance` | Tab-side canvas appearance hook подключён через registry |
+| `on_window_shutdown` | Registry wrapper подключён; tab пока no-op |
 | `dispose` | Зануляет widget |
 
-## 3. Архитектурные перемены в хосте
+## 3. Что исправлено после аудита
 
-- `ui.image_session_page` больше нет — `workspace_stack` напрямую содержит
-  `ImageCompareWidget`. `sync_session_mode` единым путём идёт через
-  `_tab_registry.get_page`.
-- `LayoutComposer` отдал всю image_compare сборку в
-  `tabs/image_compare/ui/layout.py::ImageCompareLayoutBuilder`.
-- `plugins/settings/pages/analysis.py` — только `build()`; регистрация
-  секции уехала в `ImageCompareTab.contribute_settings`.
-- `appearance._apply_widget_background` теперь работает с
-  `image_compare_widget`, не с пропавшим `image_session_page`.
-- `CanvasWidget.firstVisualFrameReady` подписан в `ImageCompareWidget` —
-  маска transition'а снимается по факту первого валидного кадра.
+- `TabRegistry.activate()` теперь деактивирует предыдущий tab перед активацией
+  нового. Это нужно для сохранения per-session UI-only state при уходе с
+  image_compare.
+- `TabRegistry.route_drop()` принимает `hint` и передаёт его в
+  `TabContract.handle_drop()`.
+- `WindowEventHandler` больше не роутит image drop в tab до вычисления slot:
+  он передаёт generic `{"slot": 1|2, "is_left_area": bool}`.
+- `ImageCompareTab.handle_drop()` использует slot из hint вместо всегда slot 1.
+- `SettingsRegistry` получил `add_section_extra()` / `extras_for()`.
+  `plugins/settings/pages/performance.py` больше не проверяет
+  `active_tab == "image_compare"`; image_compare сам добавляет свои
+  performance-группы.
+- `SettingsDialog` лениво загружает tab settings contributions, чтобы
+  standalone создание диалога с `active_tab="image_compare"` тоже видело
+  `image_compare.analysis`.
+- Settings shell снова не resize-ит уже видимый диалог и очищает duplicate
+  sidebar tooltips.
+- `MainWindowAppearance` вызывает `TabRegistry.apply_appearance()` и больше не
+  держит прямой `image_compare_widget` target в chrome background list.
+- Shutdown pipeline вызывает `TabRegistry.notify_window_shutdown()` и
+  `dispose_all()`.
 
-## 4. Per-session state
+## 4. Оставшийся host-side structural debt
 
-`SessionSlotBlueprint("image_compare.state", factory=ImageCompareState)`
-зарегистрирован в `ComparisonPlugin.get_session_blueprints()`. Tab при
-переключении сессий вызывает `store.set_session_state_slot` /
-`ensure_session_state_slot`.
+Эти пункты намеренно остаются в allowlist `test_platform_isolation.py` до
+отдельного refactor-а:
 
-`ImageCompareState` сейчас покрывает только UI-only поля, которые не
-живут в `viewport`:
+- `src/ui/main_window/layouts.py` всё ещё явно достаёт
+  `get_tab("image_compare")`, вызывает `tab.widget.assemble(ui)` и стартует
+  через `sync_session_mode("image_compare")`. Причина: primitive widgets
+  (`btn_*`, sliders, `image_label`) ещё создаются host UI.
+- `src/ui/main_window/ui.py` всё ещё хранит `image_compare_widget` и
+  `sync_session_mode()` проверяет `session_type == "image_compare"` для
+  `edit_layout_widget`.
+- `src/ui/presenters/main_window/state.py` всё ещё special-case-ит active
+  `image_compare` при reupload canvas state.
+- `src/ui/presenters/main_window/workspace.py` и
+  `src/core/store_workspace.py` всё ещё используют fallback default
+  `"image_compare"` при отсутствии active session.
+- `src/plugins/video_editor/model.py::open_image_compare()` остаётся
+  cross-tab launch helper.
+- Legacy parallel paths ещё существуют:
+  `src/plugins/comparison/`, `src/ui/context_menu/image_compare.py`,
+  `src/ui/widgets/gl_canvas/widget.py`.
+- `src/core/state_management/reducers.py::ImageSessionReducer` остаётся
+  в core. Deep step 9 (`viewport.session_data` / `render_config` named slots)
+  не закрыт.
 
-- `show_file_names`
-- `edit_name_1`
-- `edit_name_2`
+## 5. Текущий тестовый статус
 
-Всё остальное (paths, divider position, magnifier params, метрики)
-уже было per-session через `workspace_session.viewport`/`.document` —
-это инфраструктура хоста, не требующая дублирования.
+Проверки, которые прошли:
 
-## 5. Что НЕ закоммичено и осталось в working tree
+```bash
+python -m compileall -q src/tabs src/events src/plugins/settings src/ui/main_window \
+  tests/runtime/test_tabs_lifecycle.py tests/plugins/test_settings_dialog_geometry.py
+env QT_QPA_PLATFORM=offscreen pytest -q \
+  tests/plugins/test_settings_dialog_geometry.py \
+  tests/runtime/test_tabs_lifecycle.py \
+  tests/runtime/test_context_menu_integration.py
+env QT_QPA_PLATFORM=offscreen pytest -q tests/contracts/test_platform_isolation.py
+```
 
-Изменения в `src/ui/main_window/ui.py`, сделанные в этой сессии, в
-коммит не попали — файл слишком плотно перепачкан pre-existing
-рефакторингом, который смешать с миграцией нельзя без потери авторства.
-В working tree уже лежит:
+Результаты:
 
-- Удаление `"image_compare"` ключа из `_SESSION_TYPE_KEYS`.
-- Удаление `@property image_session_page` (proxy).
-- `_localized_session_type_label` сначала спрашивает
-  `_tab_registry.get_tab(session_type).localized_display_name(lang)`.
+- focused runtime/settings/context-menu: `12 passed`
+- full runtime: `191 passed`
+- platform isolation: `410 passed / 9 skipped`
+- full contracts: `607 passed / 9 skipped / 2 failed`
 
-Тесты проходят с этим working tree. Эти строчки должны попасть в
-следующий же коммит по `ui.py` (вместе с pre-existing dirty work, у
-которого свой автор).
+Оставшиеся full-contract failures считаются pre-existing для этой миграции:
 
-## 6. Регрессии и smoke-чек
+- `tests/contracts/test_canvas_features_imports.py`:
+  `src/tabs/multi_compare/ui/layer_labels.py` импортирует
+  `filename_overlay`.
+- `tests/contracts/test_no_manual_theming.py`: 11 manual theming offenders.
 
-Все проверки выполняются под `QT_QPA_PLATFORM=offscreen` и проходят:
+Runtime collection blockers, найденные во время аудита, закрыты:
 
-- `Ui_ImageComparisonApp().setupUi(mw)` собирается.
-- `workspace_stack.count() == 4` (image_compare + multi_compare +
-  session_picker + video_session_page).
-- `sync_session_mode("image_compare")` показывает `ImageCompareWidget`.
-- `_localized_session_type_label("image_compare", "ru")` → «Сравнение
-  изображений».
-- `get_settings_registry()` содержит `image_compare.analysis` и НЕ
-  содержит `builtin.analysis`.
-- `ImageCompareTab.accepts_drop([Path("x.png")]) is True`,
-  `accepts_drop([Path("x.txt")]) is False`.
-- `transition_hint().max_duration_ms == 400`.
-- `SessionBlueprint.state_slots` содержит `image_compare.state`.
-- `image_label.firstVisualFrameReady` существует и подключён в виджете.
+- `shared_toolkit.ui.decorate_dialog` снова экспортирует
+  `CUSTOM_DECORATION_RESIZE_MARGIN` и
+  `configure_custom_decoration_resize_margin()`.
+- `tabs.multi_compare.ui.gl_grid.GLGridWidget` добавлен как compat alias на
+  текущий `MultiCompareCanvasWidget`.
 
-Runtime-проверки, которые надо прогнать вручную перед мержем:
+## 6. Manual smoke перед merge
 
-- Открыть две image_compare сессии, переключаться между ними —
-  убедиться, что `btn_file_names`/`edit_name1`/`edit_name2`
-  восстанавливаются per-session.
-- Drag-and-drop изображения на окно при активной image_compare сессии.
-- Открыть диалог настроек, проверить, что страница «Detail» появляется
-  только в image_compare.
-- Переход image_compare → multi_compare → image_compare: маска
-  transition'а должна сниматься по первому кадру, без чёрной паузы.
-- `video_editor` всё ещё трогает `main_window.ui.image_label` напрямую —
-  убедиться, что этот путь не сломался от смены родителей.
-
-## 7. Известные хрупкости
-
-- `image_label` (`CanvasWidget`) остаётся атрибутом `MainWindowUI`, не
-  свойством `ImageCompareWidget`. Это сознательно: его читает
-  `plugins/video_editor/presenter_parts/preview.py`. Переезд канваса
-  внутрь image_compare потребует отдельного канала для video_editor.
-- `SessionController` и связанные сервисы (`MetricsService`,
-  `PlaylistManager`, `CachedDiffService`) живут глобально на плагине,
-  а не per-session. Состояние, которое они держат, для image_compare
-  редко между-сессионное — но если такие баги вылезут, фикс там же
-  через `image_compare.state` слот.
-- Имя плагина в metadata осталось `"comparison"` —
-  `main_controller._get_plugin("comparison")` ожидает именно это.
-  Переименование плагина — отдельная мелкая зачистка.
+- Создать две image_compare сессии, переключаться между ними и проверить, что
+  `btn_file_names`, `edit_name1`, `edit_name2` восстанавливаются per-session.
+- Drag-and-drop изображений на левую и правую половину active image_compare:
+  slot должен соответствовать половине.
+- Открыть Settings из image_compare: `Details` виден, image-specific
+  performance groups видны.
+- Открыть Settings из другого tab: `Details` скрыт, image-specific performance
+  groups скрыты, render backend остаётся видимым.
+- Переход image_compare → multi_compare → image_compare: transition mask
+  снимается по первому canvas frame.

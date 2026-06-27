@@ -8,19 +8,25 @@
   "add_images": "Добавить изображения",
   "save_result": "Сохранить результат",
   "text_settings": "Настройки текста",
-  "label.font_size": "Размер шрифта",
-  "label.bold": "Жирность",
-  "label.opacity": "Непрозрачность",
-  "label.color": "Цвет текста",
-  "label.background": "Фон",
-  "settings.draw_text_background": "Рисовать фон",
-  "context.rename": "Переименовать",
-  "context.name": "Имя",
-  "context.duplicate": "Дублировать",
-  "context.properties": "Свойства",
-  "context.remove": "Удалить",
-  "context.path": "Путь",
-  "context.size": "Размер",
+  "label": {
+    "font_size": "Размер шрифта",
+    "bold": "Жирность",
+    "opacity": "Непрозрачность",
+    "color": "Цвет текста",
+    "background": "Фон"
+  },
+  "settings": {
+    "draw_text_background": "Рисовать фон"
+  },
+  "context": {
+    "rename": "Переименовать",
+    "name": "Имя",
+    "duplicate": "Дублировать",
+    "properties": "Свойства",
+    "remove": "Удалить",
+    "path": "Путь",
+    "size": "Размер"
+  },
   "drop_image_here": "Перетащите изображение сюда",
   "drop_move_here": "Переместить сюда",
   "drop_swap": "Поменять местами"

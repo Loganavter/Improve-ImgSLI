@@ -81,7 +81,7 @@ def build(dialog, p):
 
 SECTION = SettingsSection(
     section_id="builtin.general",
-    title_key="settings.appearance",
+    title_key="settings.general",
     icon=AppIcon.SETTINGS,
     build=build,
     owner_tab=None,

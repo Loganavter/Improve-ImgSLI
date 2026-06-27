@@ -33,7 +33,9 @@ class DragDropOverlaySource:
             node_rect = host._node_rect_at_path(path)
             if node_rect is None:
                 return
-            target_rect = layout_geometry.side_subrect(node_rect, state.drag_target_side)
+            target_rect = layout_geometry.side_subrect(
+                node_rect, state.drag_target_side
+            )
             if target_rect is None:
                 return
 
@@ -50,7 +52,9 @@ class DragDropOverlaySource:
         text_font.setBold(True)
         painter.setFont(text_font)
         painter.setPen(QPen(QColor(255, 255, 255)))
-        painter.drawText(target_rect, int(Qt.AlignmentFlag.AlignCenter), self._drop_hint_text(host))
+        painter.drawText(
+            target_rect, int(Qt.AlignmentFlag.AlignCenter), self._drop_hint_text(host)
+        )
         painter.restore()
 
     def _paint_drag_source(self, painter: QPainter, host, leaf_rects) -> None:

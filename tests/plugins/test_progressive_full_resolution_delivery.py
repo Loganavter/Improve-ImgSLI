@@ -2,8 +2,8 @@
 
 from types import SimpleNamespace
 
-from plugins.comparison.session_controller import SessionController
-from plugins.comparison.use_cases.loading import on_unified_images_ready
+from tabs.image_compare._session_controller import SessionController
+from tabs.image_compare.use_cases.loading import on_unified_images_ready
 
 
 def test_full_resolution_result_adapter_forwards_worker_payload():
