@@ -35,6 +35,14 @@ class TabContract(ABC):
     def display_name(self) -> str:
         """Human-readable tab name for menus and tooltips."""
 
+    def localized_display_name(self, language: str) -> str:
+        """Localized tab name. Default falls back to ``display_name``.
+
+        Override to look up a translation key — tabs that own their i18n
+        should not require host-side hardcoded mappings.
+        """
+        return self.display_name
+
     @property
     def icon(self) -> QIcon | None:
         """Optional icon for the new-session menu."""
