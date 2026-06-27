@@ -8,24 +8,22 @@ renderer can draw it for live preview and export.
 
 from __future__ import annotations
 
+from tabs.multi_compare.models import LeafNode as _MCLeaf
 from tabs.multi_compare.models import (
-    LeafNode as _MCLeaf,
     MultiCompareState,
-    SplitNode as _MCSplit,
+)
+from tabs.multi_compare.models import SplitNode as _MCSplit
+from tabs.multi_compare.models import (
     slot_ids_in_tree,
 )
 from ui.canvas_presentation.composition import (
     CompositionPlan,
-    GroupNode,
     LayerLabel,
     LayerNode,
     SplitNode,
     compute_native_canvas_size,
 )
 
-
-# Canvas-px defaults — values are interpreted in canvas-px and scaled by
-# ``sr = min(fb_w/canvas_w, fb_h/canvas_h)`` at render time, same as main compare.
 DEFAULT_SPLIT_GAP_PX = 4
 DEFAULT_LABEL_FONT_PX = 10
 
@@ -94,9 +92,7 @@ def _convert_node(
         slot = slots_by_id.get(node.slot_id)
         if slot is None or slot.image is None:
             return None
-        # Pass numpy through unchanged — ``CompositionNode.image`` accepts both
-        # PIL and numpy; downstream we only need shape info + the slot_id for
-        # texture lookup. PIL conversion was a no-op tax for the renderer.
+
         label = (
             LayerLabel(text=slot.label, font_pt=label_font_pt)
             if include_labels and slot.label

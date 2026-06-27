@@ -1,6 +1,7 @@
 """GLSL shaders for multi-compare grid rendering."""
 
-from ui.widgets.gl_canvas.runtime import should_prefer_gles
+from ui.widgets.canvas.runtime import should_prefer_gles
+
 
 def _prolog(*, fragment: bool = False) -> str:
     if not should_prefer_gles():
@@ -9,6 +10,7 @@ def _prolog(*, fragment: bool = False) -> str:
     if fragment:
         lines.append("precision mediump sampler2D;")
     return "\n".join(lines) + "\n"
+
 
 VERTEX_SHADER = _prolog() + """
 layout (location = 0) in vec2 aPos;

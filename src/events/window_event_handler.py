@@ -88,16 +88,19 @@ class WindowEventHandler(QObject):
                 event.ignore()
                 return
 
-            if self._try_tab_registry_drop(image_paths):
-                event.acceptProposedAction()
-                return
-
             pos = (
                 event.position().toPoint()
                 if hasattr(event, "position")
                 else event.pos()
             )
             slot = 1 if self._is_in_left_area(pos) else 2
+
+            if self._try_tab_registry_drop(
+                image_paths,
+                hint={"is_left_area": slot == 1, "slot": slot},
+            ):
+                event.acceptProposedAction()
+                return
 
             event.acceptProposedAction()
 
@@ -114,7 +117,11 @@ class WindowEventHandler(QObject):
         else:
             event.ignore()
 
-    def _try_tab_registry_drop(self, image_paths: list[str]) -> bool:
+    def _try_tab_registry_drop(
+        self,
+        image_paths: list[str],
+        hint: dict | None = None,
+    ) -> bool:
         try:
             session = self.store.get_active_workspace_session()
             if session is None:
@@ -124,7 +131,7 @@ class WindowEventHandler(QObject):
                 return False
             from pathlib import Path
             paths = [Path(p) for p in image_paths]
-            return registry.route_drop(session.session_type, paths)
+            return registry.route_drop(session.session_type, paths, hint=hint)
         except Exception:
             return False
 

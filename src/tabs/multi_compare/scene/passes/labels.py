@@ -11,9 +11,7 @@ class LabelsOverlaySource:
     """Paints per-layer filename labels into the shared overlay image."""
 
     LABEL_FONT_PX = 32
-    # Padding/inset constants match ui/canvas_features/filename_overlay
-    # (FilenameOverlayStyle defaults) so a multi-compare cell label has the
-    # same horizontal breathing room as image-compare's name labels.
+
     LABEL_PADDING_X_PX = 10.0
     LABEL_PADDING_Y_PX = 6.0
     LABEL_CORNER_RADIUS_PX = 6.0
@@ -23,7 +21,10 @@ class LabelsOverlaySource:
     def should_paint(self, composition, _state) -> bool:
         return bool(
             composition is not None
-            and any(layer.label is not None and layer.label.text for layer in composition.layers)
+            and any(
+                layer.label is not None and layer.label.text
+                for layer in composition.layers
+            )
         )
 
     def paint(
@@ -70,7 +71,9 @@ class LabelsOverlaySource:
         else:
             bg_color = QColor(0, 0, 0, 0)
         return LayerLabelStyle(
-            font_pixel_size_fb=max(1, int(round(self.LABEL_FONT_PX * size_percent / 100.0))),
+            font_pixel_size_fb=max(
+                1, int(round(self.LABEL_FONT_PX * size_percent / 100.0))
+            ),
             padding_x_fb=self.LABEL_PADDING_X_PX,
             padding_y_fb=self.LABEL_PADDING_Y_PX,
             corner_radius_fb=self.LABEL_CORNER_RADIUS_PX,

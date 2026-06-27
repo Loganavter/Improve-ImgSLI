@@ -2,37 +2,45 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDragMoveEvent,
+    QDropEvent,
+)
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
 from tabs.multi_compare.models import (
+    MultiCompareDividerSettings,
     MultiCompareLabelSettings,
     MultiCompareState,
-    find_path,
     leaves,
     node_at_path,
     slot_ids_in_tree,
 )
 from tabs.multi_compare.scene import MultiCompareStore, actions
-from tabs.multi_compare.ui.footer import MultiCompareFooter
 from tabs.multi_compare.ui.canvas_widget import (
     INTERNAL_SLOT_MIME,
     MultiCompareCanvasWidget,
 )
+from tabs.multi_compare.ui.footer import MultiCompareFooter
 from tabs.multi_compare.ui.toolbar import MultiCompareToolbar
+from ui.context_menu.manager import install_context_menu_provider
 from ui.widgets.font_settings_flyout import FontSettingsFlyout
 from ui.widgets.startup_placeholder import StartupPlaceholder
 from ui.widgets.zoom_indicator import ZoomIndicator
-from ui.context_menu.manager import install_context_menu_provider
 
 if TYPE_CHECKING:
     import numpy as np
 
+logger = logging.getLogger("ImproveImgSLI")
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 
 
@@ -58,19 +66,18 @@ class MultiCompareWidget(QWidget):
     into the canvas via the store subscription.
     """
 
-    images_dropped = Signal(list, object, object)  # paths, (target_path, target_root), side
+    images_dropped = Signal(list, object, object)
     add_requested = Signal()
     save_requested = Signal()
     quick_save_requested = Signal()
     settings_requested = Signal()
     help_requested = Signal()
+    divider_color_picker_requested = Signal()
 
     def __init__(
         self,
         parent=None,
         *,
-        add_images_text: str = "Add images",
-        save_result_text: str = "Save result",
         translate=None,
         lang_provider=None,
     ):
@@ -85,10 +92,12 @@ class MultiCompareWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.toolbar = MultiCompareToolbar(self, text=add_images_text)
+        self.toolbar = MultiCompareToolbar(self)
         self.canvas = MultiCompareCanvasWidget(self, translate=translate)
-        self.footer = MultiCompareFooter(self, text=save_result_text)
+        self.footer = MultiCompareFooter(self)
         self._translate = translate or (lambda _key, default=None: default or _key)
+        self._pending_duplicate_source: int | None = None
+        self._divider_toolbar_sync_pending = False
         self._context_menu_provider = install_context_menu_provider(
             MultiCompareContextMenuProvider(self)
         )
@@ -103,8 +112,6 @@ class MultiCompareWidget(QWidget):
         layout.addWidget(self.canvas, 1)
         layout.addWidget(self.footer)
 
-        # Wire canvas to the store: it dispatches actions instead of mutating
-        # state directly, and receives state updates via the subscription.
         self.canvas.set_dispatch(self.store.dispatch)
         self.canvas.set_state(self.store.state)
         self.store.subscribe(self._on_store_change)
@@ -114,12 +121,18 @@ class MultiCompareWidget(QWidget):
         self.toolbar.quick_save_clicked.connect(self.quick_save_requested)
         self.toolbar.settings_clicked.connect(self.settings_requested)
         self.toolbar.help_clicked.connect(self.help_requested)
+        self.toolbar.divider_visible_toggled.connect(self._on_divider_visible_toggled)
+        self.toolbar.divider_width_changed.connect(self._on_divider_width_changed)
+        self.toolbar.divider_color_clicked.connect(self.divider_color_picker_requested)
         self.footer.save_clicked.connect(self.save_requested)
+        self._sync_divider_toolbar()
 
         self._startup_placeholder = StartupPlaceholder(self, target_widget=self.canvas)
-        self._startup_placeholder.set_background_color(self.canvas._theme_or_palette_bg())
+        self._startup_placeholder.set_background_color(
+            self.canvas._theme_or_palette_bg()
+        )
         self._startup_placeholder.raise_()
-        self.canvas.firstFrameRendered.connect(self._on_gl_first_frame)
+        self.canvas.firstFrameRendered.connect(self._on_first_frame)
 
         self.zoom_indicator = ZoomIndicator(
             self,
@@ -146,7 +159,7 @@ class MultiCompareWidget(QWidget):
             float(getattr(st, "pan_y", 0.0)),
         )
 
-    def _on_gl_first_frame(self) -> None:
+    def _on_first_frame(self) -> None:
         if self._startup_placeholder is not None:
             self._startup_placeholder.hide()
 
@@ -166,8 +179,79 @@ class MultiCompareWidget(QWidget):
     def _on_store_change(self, _action, new_state: MultiCompareState) -> None:
         self.canvas.set_state(new_state)
         self._sync_zoom_indicator()
+        self.sync_divider_toolbar()
         if self._font_popup_open:
             self._sync_font_settings_flyout()
+
+    def sync_divider_toolbar(self) -> None:
+        self._sync_divider_toolbar()
+        self._queue_divider_toolbar_resync()
+
+    def _queue_divider_toolbar_resync(self) -> None:
+        if self._divider_toolbar_sync_pending:
+            return
+        self._divider_toolbar_sync_pending = True
+        QTimer.singleShot(0, self._run_queued_divider_toolbar_sync)
+
+    def _run_queued_divider_toolbar_sync(self) -> None:
+        self._divider_toolbar_sync_pending = False
+        self._sync_divider_toolbar()
+
+    def _sync_divider_toolbar(self) -> None:
+        ds = self.store.state.divider_settings
+        btn = self.toolbar.btn_divider_visible
+        btn.blockSignals(True)
+        btn.setChecked(not ds.visible)
+        btn.blockSignals(False)
+        width_btn = self.toolbar.btn_divider_width
+        if hasattr(width_btn, "get_value") and hasattr(width_btn, "set_value"):
+            effective_thickness = ds.thickness if ds.visible else 0
+            ui_value = (effective_thickness + 1) // 2 if effective_thickness > 0 else 0
+            if width_btn.get_value() != ui_value:
+                width_btn.blockSignals(True)
+                width_btn.set_value(ui_value)
+                width_btn.blockSignals(False)
+        color = QColor(*ds.color_rgba)
+        if hasattr(self.toolbar.btn_divider_color, "setUnderlineColor"):
+            self.toolbar.btn_divider_color.setUnderlineColor(color)
+        if hasattr(width_btn, "setUnderlineColor"):
+            is_expert = getattr(self.toolbar, "_ui_mode", "beginner") == "expert"
+            if is_expert:
+                width_btn.setUnderlineColor(color)
+            else:
+                width_btn.setUnderlineColor(QColor(0, 0, 0, 0))
+
+    def _on_divider_visible_toggled(self, visible: bool) -> None:
+        ds = self.store.state.divider_settings
+        new_ds = MultiCompareDividerSettings(
+            visible=bool(visible),
+            thickness=ds.thickness,
+            color_rgba=ds.color_rgba,
+        )
+        self.store.dispatch(actions.set_divider_settings(new_ds))
+
+    def _on_divider_width_changed(self, width: int) -> None:
+        ds = self.store.state.divider_settings
+        thickness = max(0, int(width)) * 2
+        new_ds = MultiCompareDividerSettings(
+            visible=thickness > 0,
+            thickness=thickness if thickness > 0 else ds.thickness,
+            color_rgba=ds.color_rgba,
+        )
+        if new_ds == ds:
+            return
+        self.store.dispatch(actions.set_divider_settings(new_ds))
+
+    def apply_divider_color(self, color: QColor) -> None:
+        if color is None or not color.isValid():
+            return
+        ds = self.store.state.divider_settings
+        new_ds = MultiCompareDividerSettings(
+            visible=ds.visible,
+            thickness=ds.thickness,
+            color_rgba=(color.red(), color.green(), color.blue(), color.alpha()),
+        )
+        self.store.dispatch(actions.set_divider_settings(new_ds))
 
     def _sync_font_settings_flyout(self) -> None:
         st = self.state.label_settings
@@ -232,8 +316,6 @@ class MultiCompareWidget(QWidget):
         )
         self.store.dispatch(actions.set_label_settings(settings))
 
-    # ---- public API ---------------------------------------------------------
-
     def add_image_auto(
         self, path: Path, image: "np.ndarray", label: str = ""
     ) -> int | None:
@@ -269,8 +351,12 @@ class MultiCompareWidget(QWidget):
     ) -> int | None:
         if len(self.state.slots) >= self.state.max_slots:
             return None
-        # When target is unset and root is non-empty, fall back to auto.
-        if not target_root and (target_path is None or side is None) and self.state.root is not None:
+
+        if (
+            not target_root
+            and (target_path is None or side is None)
+            and self.state.root is not None
+        ):
             target_path, side = self._pick_auto_target()
         before = len(self.state.slots)
         self.store.dispatch(
@@ -299,8 +385,6 @@ class MultiCompareWidget(QWidget):
 
     def reset_view(self) -> None:
         self.store.dispatch(actions.reset_view())
-
-    # ---- DnD ----------------------------------------------------------------
 
     def _has_image_urls(self, mime) -> bool:
         if not mime.hasUrls():
@@ -337,7 +421,9 @@ class MultiCompareWidget(QWidget):
         tgt_path, side, root_tgt, swap_id = self._resolve_drop_target(
             event.position().toPoint(), internal=internal
         )
-        source_id = self._internal_source_slot_id(event.mimeData()) if internal else None
+        source_id = (
+            self._internal_source_slot_id(event.mimeData()) if internal else None
+        )
         self.store.dispatch(
             actions.set_drag_state(
                 active=True,
@@ -434,9 +520,115 @@ class MultiCompareWidget(QWidget):
         first = leaves(node)
         return first[0].slot_id if first else None
 
-    def update_language(self, translate) -> None:
-        self.toolbar.update_language(translate)
-        self.footer.update_language(translate)
-
     def keyPressEvent(self, event) -> None:
+        if (
+            self._pending_duplicate_source is not None
+            and event.key() == Qt.Key.Key_Escape
+        ):
+            self._end_pending_duplicate()
+            event.accept()
+            return
         self.canvas.keyPressEvent(event)
+
+    def begin_pending_duplicate(self, source_slot_id: int) -> None:
+        if self._pending_duplicate_source is not None:
+            self._end_pending_duplicate()
+        source = next((s for s in self.state.slots if s.id == source_slot_id), None)
+        if source is None or source.image is None:
+            return
+        if len(self.state.slots) >= self.state.max_slots:
+            return
+        self._pending_duplicate_source = source_slot_id
+        self.canvas.setCursor(Qt.CursorShape.DragCopyCursor)
+        self.canvas.installEventFilter(self)
+        self.store.dispatch(
+            actions.set_drag_state(
+                active=True,
+                internal=True,
+                source_slot_id=source_slot_id,
+            )
+        )
+
+    def _end_pending_duplicate(self) -> None:
+        if self._pending_duplicate_source is None:
+            return
+        self._pending_duplicate_source = None
+        try:
+            self.canvas.removeEventFilter(self)
+        except Exception:
+            pass
+        self.canvas.unsetCursor()
+        self.store.dispatch(actions.set_drag_state(active=False))
+
+    def eventFilter(self, watched, event) -> bool:
+        if self._pending_duplicate_source is None or watched is not self.canvas:
+            return False
+        et = event.type()
+        if et == QEvent.Type.MouseMove:
+            pos = (
+                event.position().toPoint()
+                if hasattr(event, "position")
+                else event.pos()
+            )
+            tgt_path, side, root_tgt, swap_id = self.canvas.compute_drop_target(
+                pos, include_center=False
+            )
+            self.store.dispatch(
+                actions.set_drag_state(
+                    active=True,
+                    internal=True,
+                    source_slot_id=self._pending_duplicate_source,
+                    target_path=tgt_path,
+                    target_side=side,
+                    target_root=root_tgt,
+                    target_swap_slot_id=swap_id,
+                )
+            )
+            return True
+        if et == QEvent.Type.MouseButtonPress:
+            button = event.button()
+            if button == Qt.MouseButton.LeftButton:
+                pos = (
+                    event.position().toPoint()
+                    if hasattr(event, "position")
+                    else event.pos()
+                )
+                tgt_path, side, root_tgt, _ = self.canvas.compute_drop_target(
+                    pos, include_center=False
+                )
+                self._finalize_pending_duplicate(tgt_path, side, root_tgt)
+                self._end_pending_duplicate()
+                return True
+            if button == Qt.MouseButton.RightButton:
+                self._end_pending_duplicate()
+                return True
+        if et == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            self._end_pending_duplicate()
+            return True
+        return False
+
+    def _finalize_pending_duplicate(
+        self,
+        target_path: tuple[int, ...] | None,
+        side: str | None,
+        target_root: bool,
+    ) -> None:
+        source_id = self._pending_duplicate_source
+        if source_id is None or side is None:
+            return
+        source = next((s for s in self.state.slots if s.id == source_id), None)
+        if source is None or source.image is None:
+            return
+        if len(self.state.slots) >= self.state.max_slots:
+            return
+        image = source.image.copy() if hasattr(source.image, "copy") else source.image
+        self.store.dispatch(
+            actions.add_slot(
+                path=source.path or Path(),
+                image=image,
+                label=source.label,
+                target_path=tuple(target_path or ()),
+                side=side,
+                target_root=target_root,
+            )
+        )

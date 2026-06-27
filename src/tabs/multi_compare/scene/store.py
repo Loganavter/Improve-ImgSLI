@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import numpy as np
 
@@ -27,6 +27,7 @@ from tabs.multi_compare.models import (
     CompareSlot,
     LayoutNode,
     LeafNode,
+    MultiCompareDividerSettings,
     MultiCompareLabelSettings,
     MultiCompareState,
     slot_ids_in_tree,
@@ -34,9 +35,6 @@ from tabs.multi_compare.models import (
 from tabs.multi_compare.scene import layout_constraints, tree_ops
 
 logger = logging.getLogger("ImproveImgSLI")
-
-
-# ---- actions ------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -55,8 +53,8 @@ class AddSlot(MultiCompareAction):
     path: Path
     image: np.ndarray
     label: str
-    target_path: tuple[int, ...] | None  # None → wrap-root / first
-    side: str | None  # "left"|"right"|"top"|"bottom" or None for auto
+    target_path: tuple[int, ...] | None
+    side: str | None
     target_root: bool
 
 
@@ -87,7 +85,7 @@ class MoveSlot(MultiCompareAction):
 
 @dataclass(frozen=True)
 class SetFocus(MultiCompareAction):
-    slot_id: int | None  # None → clear focus
+    slot_id: int | None
 
 
 @dataclass(frozen=True)
@@ -128,6 +126,11 @@ class SetSplitWeights(MultiCompareAction):
 @dataclass(frozen=True)
 class SetLabelSettings(MultiCompareAction):
     settings: MultiCompareLabelSettings
+
+
+@dataclass(frozen=True)
+class SetDividerSettings(MultiCompareAction):
+    settings: MultiCompareDividerSettings
 
 
 @dataclass(frozen=True)
@@ -260,15 +263,21 @@ class actions:
         )
 
     @staticmethod
+    def set_divider_settings(
+        settings: MultiCompareDividerSettings,
+    ) -> SetDividerSettings:
+        return SetDividerSettings(
+            type="multi_compare/set_divider_settings",
+            settings=settings,
+        )
+
+    @staticmethod
     def apply_layout_tree(root: LayoutNode | None) -> ApplyLayoutTree:
         return ApplyLayoutTree(type="multi_compare/apply_layout_tree", root=root)
 
     @staticmethod
     def clear() -> Clear:
         return Clear(type="multi_compare/clear")
-
-
-# ---- reducer ------------------------------------------------------------------
 
 
 def _next_slot_id(state: MultiCompareState) -> int:
@@ -304,9 +313,7 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
                 state.root, action.target_path, action.side, slot_id
             )
         else:
-            # caller did not pick a target — keep current root; widget layer
-            # picks a target via its layout cache (auto-target needs widget
-            # rects, which the reducer cannot see)
+
             new_root = state.root
         return _replace(state, slots=new_slots, root=new_root)
 
@@ -314,17 +321,17 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         new_slots = [s for s in state.slots if s.id != action.slot_id]
         new_root = tree_ops.remove_leaf(state.root, action.slot_id)
         focused = (
-            None
-            if state.focused_slot_id == action.slot_id
-            else state.focused_slot_id
+            None if state.focused_slot_id == action.slot_id else state.focused_slot_id
         )
         return _replace(state, slots=new_slots, root=new_root, focused_slot_id=focused)
 
     if isinstance(action, RenameSlot):
         new_slots = [
-            dataclasses.replace(slot, label=action.label)
-            if slot.id == action.slot_id
-            else slot
+            (
+                dataclasses.replace(slot, label=action.label)
+                if slot.id == action.slot_id
+                else slot
+            )
             for slot in state.slots
         ]
         if new_slots == state.slots:
@@ -341,7 +348,7 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         pruned = tree_ops.remove_leaf(state.root, action.source_slot_id)
         if pruned is None:
             return _replace(state, root=LeafNode(action.source_slot_id))
-        # Anchor by slot id so the path stays meaningful after prune.
+
         from tabs.multi_compare.models import find_path
 
         new_anchor_path = find_path(pruned, action.target_anchor_slot_id)
@@ -403,9 +410,7 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
             state.slots,
             zoom=state.zoom,
         )
-        new_root = tree_ops.set_split_weights(
-            state.root, action.path, weights
-        )
+        new_root = tree_ops.set_split_weights(state.root, action.path, weights)
         if new_root is state.root:
             return state
         return _replace(state, root=new_root)
@@ -415,12 +420,15 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
             return state
         return _replace(state, label_settings=action.settings)
 
+    if isinstance(action, SetDividerSettings):
+        if state.divider_settings == action.settings:
+            return state
+        return _replace(state, divider_settings=action.settings)
+
     if isinstance(action, ApplyLayoutTree):
         if state.root is action.root:
             return state
-        valid_ids = (
-            slot_ids_in_tree(action.root) if action.root is not None else set()
-        )
+        valid_ids = slot_ids_in_tree(action.root) if action.root is not None else set()
         focused = state.focused_slot_id if state.focused_slot_id in valid_ids else None
         return _replace(state, root=action.root, focused_slot_id=focused)
 
@@ -429,9 +437,6 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
 
     logger.warning("multi_compare reducer: unhandled action %s", type(action).__name__)
     return state
-
-
-# ---- store --------------------------------------------------------------------
 
 
 class MultiCompareStore:
@@ -444,7 +449,9 @@ class MultiCompareStore:
 
     def __init__(self, initial: MultiCompareState | None = None):
         self._state: MultiCompareState = initial or MultiCompareState()
-        self._subscribers: list[Callable[[MultiCompareAction, MultiCompareState], None]] = []
+        self._subscribers: list[
+            Callable[[MultiCompareAction, MultiCompareState], None]
+        ] = []
 
     @property
     def state(self) -> MultiCompareState:

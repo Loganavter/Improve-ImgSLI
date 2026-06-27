@@ -21,9 +21,9 @@ from tabs.image_compare.events import (
     ComparisonErrorEvent,
     ComparisonUpdateRequestedEvent,
 )
-from tabs.image_compare.session_controller import SessionController
+from tabs.image_compare._session_controller import SessionController
+from tabs.image_compare.services.playlist import PlaylistManager
 from services.io.image_loader import ImageLoaderService
-from services.workflow.playlist import PlaylistManager
 
 
 class _ComparisonControllerProxy:

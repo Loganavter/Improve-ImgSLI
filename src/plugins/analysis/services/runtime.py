@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from core.events import CoreUpdateRequestedEvent
-from plugins.comparison.events import ComparisonUIUpdateEvent
+from core.events import CoreUIComponentsUpdateEvent, CoreUpdateRequestedEvent
 
 class UIUpdateDispatcher:
     def __init__(self, event_bus: Any | None = None, signal: Any | None = None):
@@ -14,7 +13,7 @@ class UIUpdateDispatcher:
     def emit(self, components: tuple[str, ...] | list[str] | None = None) -> None:
         payload = tuple(components or ())
         if self._event_bus:
-            self._event_bus.emit(ComparisonUIUpdateEvent(components=payload))
+            self._event_bus.emit(CoreUIComponentsUpdateEvent(components=payload))
         elif self._signal is not None:
             self._signal.emit(list(payload))
 

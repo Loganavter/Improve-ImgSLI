@@ -1,6 +1,7 @@
 {
   "settings": {
     "appearance": "Appearance",
+    "general": "General",
     "auto": "Auto",
     "autocalculate_psnr": "Auto-calculate PSNR",
     "autocalculate_ssim": "Auto-calculate SSIM",

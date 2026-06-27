@@ -21,7 +21,9 @@ def save_composite(image: QImage, options: dict) -> str:
     output_dir.mkdir(parents=True, exist_ok=True)
     image_format = str(options.get("format", "PNG")).upper()
     extension = ".jpg" if image_format == "JPEG" else f".{image_format.lower()}"
-    output_path = _next_available_path(output_dir / f"{options['file_name']}{extension}")
+    output_path = _next_available_path(
+        output_dir / f"{options['file_name']}{extension}"
+    )
 
     pil_image = qimage_to_pil(image)
     save_kwargs: dict = {}

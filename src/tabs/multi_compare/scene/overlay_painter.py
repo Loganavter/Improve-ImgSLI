@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPainter
 
+from tabs.multi_compare.scene.passes.dividers import DividersOverlaySource
 from tabs.multi_compare.scene.passes.drag_overlay import DragDropOverlaySource
 from tabs.multi_compare.scene.passes.labels import LabelsOverlaySource
 
@@ -14,6 +15,7 @@ class MultiCompareOverlayPainter:
 
     def __init__(self, host) -> None:
         self.host = host
+        self.dividers = DividersOverlaySource()
         self.labels = LabelsOverlaySource()
         self.drag_drop = DragDropOverlaySource()
 
@@ -31,7 +33,7 @@ class MultiCompareOverlayPainter:
         state = self.host.state
         if not any(
             source.should_paint(composition, state)
-            for source in (self.labels, self.drag_drop)
+            for source in (self.dividers, self.labels, self.drag_drop)
         ):
             return None
         phys_w = max(1, int(fb_w))
@@ -41,6 +43,16 @@ class MultiCompareOverlayPainter:
         painter = QPainter(img)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+
+        if self.dividers.should_paint(composition, state):
+            self.dividers.paint(
+                painter,
+                host=self.host,
+                composition=composition,
+                state=state,
+                scale=sr,
+                offset=(ox, oy),
+            )
 
         if self.labels.should_paint(composition, state):
             self.labels.paint(

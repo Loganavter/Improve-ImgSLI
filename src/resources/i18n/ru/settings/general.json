@@ -1,6 +1,7 @@
 {
   "settings": {
     "appearance": "Внешний вид",
+    "general": "Общие",
     "auto": "Авто",
     "autocalculate_psnr": "Авто-расчет PSNR",
     "autocalculate_ssim": "Авто-расчет SSIM",

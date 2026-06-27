@@ -117,7 +117,7 @@ def build(dialog, p):
 
 SECTION = SettingsSection(
     section_id="builtin.interface",
-    title_key="label.view",
+    title_key="settings.appearance",
     icon=AppIcon.TEXT_MANIPULATOR,
     build=build,
     owner_tab=None,

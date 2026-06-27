@@ -6,7 +6,12 @@ from shared_toolkit.ui.overlay_layer import get_overlay_layer
 
 def _query_overlay_orientation(store) -> bool:
     query = get_canvas_feature_command_by_alias("overlay.is_horizontal")
-    return bool(query(store)) if query is not None else False
+    if query is None:
+        return False
+    try:
+        return bool(query(store))
+    except AttributeError:
+        return False
 
 def update_magnifier_orientation_button_state(presenter):
     binding = get_canvas_feature_toolbar_binding("magnifier.orientation")
@@ -27,10 +32,8 @@ def on_orientation_right_clicked(presenter):
     current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
     if current_mode == "advanced":
         _show_orientation_popup(presenter)
-        binding = get_canvas_feature_toolbar_binding("magnifier.orientation")
-        if binding is not None and binding.on_toggled is not None:
-            current_orientation = _query_overlay_orientation(presenter.store)
-            binding.on_toggled(presenter, not current_orientation)
+        return
+    if current_mode != "expert":
         return
     binding = get_canvas_feature_toolbar_binding("divider.orientation")
     if binding is not None and binding.on_right_clicked is not None:
@@ -46,13 +49,17 @@ def _show_orientation_popup(presenter):
         if not current_orientation
         else AppIcon.VERTICAL_SPLIT
     )
-    overlay_layer = get_overlay_layer(presenter.ui.btn_orientation)
+    ui = getattr(presenter, "ui", None)
+    button = getattr(ui, "btn_orientation", None)
+    if button is None:
+        return
+    overlay_layer = get_overlay_layer(button)
     if overlay_layer is None:
         return
 
     overlay_layer.show_popup(
         "orientation_popup",
-        presenter.ui.btn_orientation,
+        button,
         pixmap=get_app_icon(icon_enum).pixmap(18, 18),
         size=QSize(32, 28),
         position="top",

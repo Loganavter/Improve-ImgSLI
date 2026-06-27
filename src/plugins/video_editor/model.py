@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from core.session_manager import SessionManager
     from core.store import Store
 
+
 @dataclass(frozen=True)
 class VideoTimelineState:
     position: int = 0
@@ -22,6 +23,7 @@ class VideoTimelineState:
 
     def to_dict(self) -> dict[str, Any]:
         return {"position": self.position}
+
 
 @dataclass(frozen=True)
 class VideoSelectionState:
@@ -49,6 +51,7 @@ class VideoSelectionState:
             payload["end"] = self.end
         return payload
 
+
 @dataclass(frozen=True)
 class VideoDecoderState:
     status: str = "attached"
@@ -68,6 +71,7 @@ class VideoDecoderState:
             "status": self.status,
             "timeline_position": self.timeline_position,
         }
+
 
 @dataclass(frozen=True)
 class VideoSourceState:
@@ -95,6 +99,7 @@ class VideoSourceState:
             "metadata": dict(self.metadata or {}),
         }
 
+
 @dataclass(frozen=True)
 class VideoSessionSnapshot:
     title: str
@@ -105,6 +110,7 @@ class VideoSessionSnapshot:
     decoder: VideoDecoderState | None
     resource_namespaces: tuple[str, ...]
     metadata: dict[str, Any]
+
 
 class VideoSessionModel:
     TIMELINE_SLOT = "video.timeline"
@@ -301,6 +307,7 @@ class VideoSessionModel:
         if session is None or session.session_type != "video_compare":
             raise ValueError("Video session is not available")
         return session
+
 
 @dataclass
 class VideoProjectModel:
