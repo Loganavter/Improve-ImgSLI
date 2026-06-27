@@ -19,6 +19,7 @@ from plugins.video_editor.model import VideoSelectionState, VideoTimelineState
 
 logger = logging.getLogger("ImproveImgSLI")
 
+
 @plugin(name="video_editor", version="1.0")
 class VideoEditorPlugin(Plugin, ISessionPlugin):
     def __init__(self):
@@ -110,23 +111,4 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
         return {}
 
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
-        return (
-            SessionBlueprint(
-                session_type="video_compare",
-                plugin_name="video_editor",
-                title="Video Compare",
-                state_slots=(
-                    SessionSlotBlueprint(
-                        "video.timeline", default=VideoTimelineState().to_dict()
-                    ),
-                    SessionSlotBlueprint(
-                        "video.selection", default=VideoSelectionState().to_dict()
-                    ),
-                ),
-                resource_namespaces=(
-                    SessionResourceBlueprint("video"),
-                    SessionResourceBlueprint("thumbnails"),
-                ),
-                metadata_defaults={"plugin": "video_editor"},
-            ),
-        )
+        return ()
