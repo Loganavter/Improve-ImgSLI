@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
-from domain.qt_adapters import color_to_qcolor
 
-from .commands import command_set_guides_thickness, command_toggle_guides
+from .commands import command_set_guides_thickness
 from .state import get_guides_widget_state
+
 
 def set_slider_value_quietly(control, value: int) -> None:
     if control is None or control.get_value() == value:
@@ -16,10 +16,12 @@ def set_slider_value_quietly(control, value: int) -> None:
     finally:
         control.blockSignals(False)
 
+
 def set_checked_quietly(control, value: bool) -> None:
     if control is None or control.isChecked() == value:
         return
     control.setChecked(value, emit_signal=False)
+
 
 def show_guides_color_picker(presenter) -> None:
     window_presenter = getattr(presenter.main_window_app, "presenter", None)
@@ -29,12 +31,14 @@ def show_guides_color_picker(presenter) -> None:
     if settings_presenter is not None:
         settings_presenter.show_laser_color_picker()
 
+
 def _query_active_show_laser(store) -> bool:
     query = get_canvas_feature_command_by_alias("overlay.active_state")
     if query is None or store is None:
         return False
     active = query(store) or {}
     return bool(active.get("show_laser", False))
+
 
 def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
     store = getattr(presenter, "store", None)
@@ -49,6 +53,7 @@ def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
             toggle_cmd = get_canvas_feature_command_by_alias("viewport.toggle_enabled")
         if toggle_cmd is not None:
             toggle_cmd(store, True)
+
 
 def sync_guides_toolbar_state(presenter) -> None:
     state = get_guides_widget_state(presenter.store.viewport.view_state)
@@ -65,15 +70,13 @@ def sync_guides_toolbar_state(presenter) -> None:
                 btn_guides.set_saved_value(btn_guides.get_value())
             set_slider_value_quietly(btn_guides, 0)
             set_checked_quietly(btn_guides, True)
-    set_checked_quietly(getattr(ui, "btn_magnifier_guides_simple", None), bool(active_laser))
-    set_slider_value_quietly(getattr(ui, "btn_magnifier_guides_width", None), int(state.thickness))
+    set_checked_quietly(
+        getattr(ui, "btn_magnifier_guides_simple", None), bool(active_laser)
+    )
+    set_slider_value_quietly(
+        getattr(ui, "btn_magnifier_guides_width", None), int(state.thickness)
+    )
 
-    guides_color = color_to_qcolor(state.color)
-    if btn_guides is not None:
-        btn_guides.setUnderlineColor(guides_color if state.thickness > 0 else None)
-    btn_guides_width = getattr(ui, "btn_magnifier_guides_width", None)
-    if btn_guides_width is not None:
-        btn_guides_width.setUnderlineColor(guides_color)
 
 def build_guides_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:
     return (
@@ -95,4 +98,3 @@ def build_guides_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:
             sync_state=sync_guides_toolbar_state,
         ),
     )
-

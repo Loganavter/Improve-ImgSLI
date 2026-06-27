@@ -70,7 +70,6 @@ class MainWindowAppearance:
             return
         targets = [
             getattr(window.ui, "workspace_stack", None),
-            getattr(window.ui, "image_compare_widget", None),
         ]
         stack = getattr(window.ui, "workspace_stack", None)
         if stack is not None:
@@ -83,6 +82,9 @@ class MainWindowAppearance:
         window = self.window
         self.update_image_label_background()
         self.update_chrome_background()
+        registry = getattr(getattr(window, "ui", None), "_tab_registry", None)
+        if registry is not None:
+            registry.apply_appearance(window)
         try:
             FontManager.get_instance().apply_from_state(window.store)
             current_font = QApplication.font()

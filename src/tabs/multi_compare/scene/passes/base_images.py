@@ -34,6 +34,7 @@ class BaseImagesPass:
         self.slot_vertex_buffers: list[object] = []
         self.slot_uniform_buffers: list[object] = []
         self.slot_srbs: list[object] = []
+        self.slot_srb_texture_ids: list[int | None] = []
         self.pending_uploads: list[tuple[int, QImage]] = []
         self.pending_removes: list[int] = []
 
@@ -51,10 +52,16 @@ class BaseImagesPass:
 
     def initialize(self, renderer, target) -> None:
         self.pipeline = renderer.rhi.newGraphicsPipeline()
-        self.pipeline.setShaderStages([
-            QRhiShaderStage(QRhiShaderStage.Type.Vertex, load_shader("multi_compare.vert.qsb")),
-            QRhiShaderStage(QRhiShaderStage.Type.Fragment, load_shader("multi_compare.frag.qsb")),
-        ])
+        self.pipeline.setShaderStages(
+            [
+                QRhiShaderStage(
+                    QRhiShaderStage.Type.Vertex, load_shader("multi_compare.vert.qsb")
+                ),
+                QRhiShaderStage(
+                    QRhiShaderStage.Type.Fragment, load_shader("multi_compare.frag.qsb")
+                ),
+            ]
+        )
         self.pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
         self.pipeline.setSampleCount(target.sampleCount())
         self.pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
@@ -92,6 +99,7 @@ class BaseImagesPass:
                 except RuntimeError:
                     pass
             self.slot_texture_sizes.pop(sid, None)
+            self._invalidate_slot_srbs_for_texture(sid)
         self.pending_removes.clear()
         for sid, image in self.pending_uploads:
             size = (image.width(), image.height())
@@ -102,6 +110,7 @@ class BaseImagesPass:
                         existing.destroy()
                     except RuntimeError:
                         pass
+                self._invalidate_slot_srbs_for_texture(sid)
                 tex = renderer.rhi.newTexture(QRhiTexture.Format.RGBA8, QSize(*size))
                 tex.create()
                 self.slot_textures[sid] = tex
@@ -132,7 +141,7 @@ class BaseImagesPass:
                 0,
                 build_screen_quad_vertices(QRectF(vx, vy, vw, vh), fb_w, fb_h),
             )
-            self._rebuild_slot_srb(renderer, index, self.slot_textures[layer.slot_id])
+            self._ensure_slot_srb(renderer, index, int(layer.slot_id))
 
     def record(self, _renderer, ctx, command_buffer) -> None:
         if not ctx.projected_layers:
@@ -163,8 +172,14 @@ class BaseImagesPass:
             )
             placeholder_uniform.create()
             self.slot_uniform_buffers.append(placeholder_uniform)
-            bindings.append(QRhiShaderResourceBinding.uniformBuffer(0, stages, placeholder_uniform))
-        bindings.append(QRhiShaderResourceBinding.sampledTexture(1, fragment, texture, renderer.sampler))
+            bindings.append(
+                QRhiShaderResourceBinding.uniformBuffer(0, stages, placeholder_uniform)
+            )
+        bindings.append(
+            QRhiShaderResourceBinding.sampledTexture(
+                1, fragment, texture, renderer.sampler
+            )
+        )
         srb.setBindings(bindings)
         if not srb.create():
             raise RuntimeError("Failed to create multi_compare slot SRB")
@@ -192,18 +207,27 @@ class BaseImagesPass:
             buf.create()
             self.slot_uniform_buffers.append(buf)
         while len(self.slot_srbs) < count:
+            index = len(self.slot_srbs)
             srb = renderer.rhi.newShaderResourceBindings()
             fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
-            srb.setBindings([
-                QRhiShaderResourceBinding.uniformBuffer(
-                    0, stages, self.slot_uniform_buffers[len(self.slot_srbs)]
-                ),
-                QRhiShaderResourceBinding.sampledTexture(1, fragment, renderer.placeholder, renderer.sampler),
-            ])
+            srb.setBindings(
+                [
+                    QRhiShaderResourceBinding.uniformBuffer(
+                        0, stages, self.slot_uniform_buffers[index]
+                    ),
+                    QRhiShaderResourceBinding.sampledTexture(
+                        1, fragment, renderer.placeholder, renderer.sampler
+                    ),
+                ]
+            )
             srb.create()
             self.slot_srbs.append(srb)
+            self.slot_srb_texture_ids.append(None)
 
-    def _rebuild_slot_srb(self, renderer, index: int, texture) -> None:
+    def _ensure_slot_srb(self, renderer, index: int, slot_id: int) -> None:
+        if self.slot_srb_texture_ids[index] == slot_id:
+            return
+        texture = self.slot_textures[slot_id]
         old = self.slot_srbs[index]
         try:
             old.destroy()
@@ -215,9 +239,21 @@ class BaseImagesPass:
             | QRhiShaderResourceBinding.StageFlag.FragmentStage
         )
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
-        srb.setBindings([
-            QRhiShaderResourceBinding.uniformBuffer(0, stages, self.slot_uniform_buffers[index]),
-            QRhiShaderResourceBinding.sampledTexture(1, fragment, texture, renderer.sampler),
-        ])
+        srb.setBindings(
+            [
+                QRhiShaderResourceBinding.uniformBuffer(
+                    0, stages, self.slot_uniform_buffers[index]
+                ),
+                QRhiShaderResourceBinding.sampledTexture(
+                    1, fragment, texture, renderer.sampler
+                ),
+            ]
+        )
         srb.create()
         self.slot_srbs[index] = srb
+        self.slot_srb_texture_ids[index] = slot_id
+
+    def _invalidate_slot_srbs_for_texture(self, slot_id: int) -> None:
+        for index, bound_slot_id in enumerate(self.slot_srb_texture_ids):
+            if bound_slot_id == slot_id:
+                self.slot_srb_texture_ids[index] = None

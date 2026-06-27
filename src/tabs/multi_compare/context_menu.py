@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
+from PySide6.QtWidgets import QInputDialog, QLineEdit
+from sli_ui_toolkit.widgets import (
+    ContextMenuAction,
+    ContextMenuEntry,
+    ContextMenuSeparator,
+)
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QInputDialog, QMessageBox
-
-from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuEntry, ContextMenuSeparator
-
-from tabs.multi_compare.models import CompareSlot, find_path
+from plugins.image_properties.plugin import open_image_properties_dialog
+from sli_ui_toolkit.i18n import get_current_language
+from sli_ui_toolkit.i18n import tr as app_tr
+from tabs.multi_compare.models import CompareSlot, leaves
 from tabs.multi_compare.scene import actions
 from ui.context_menu.models import ContextMenuRequest
 from ui.icon_manager import AppIcon
@@ -58,7 +61,9 @@ class MultiCompareContextMenuProvider:
             ),
         )
 
-    def execute(self, action_id: str, request: ContextMenuRequest, data: object) -> bool:
+    def execute(
+        self, action_id: str, request: ContextMenuRequest, data: object
+    ) -> bool:
         if not action_id.startswith("multi_compare."):
             return False
         slot = self._slot(request, slot_id=data)
@@ -78,7 +83,9 @@ class MultiCompareContextMenuProvider:
             return True
         return False
 
-    def _slot(self, request: ContextMenuRequest, slot_id: object = None) -> CompareSlot | None:
+    def _slot(
+        self, request: ContextMenuRequest, slot_id: object = None
+    ) -> CompareSlot | None:
         sid = slot_id if slot_id is not None else request.target.id
         try:
             sid = int(sid)
@@ -91,7 +98,7 @@ class MultiCompareContextMenuProvider:
             self.widget,
             self._tr("context.rename", "Rename"),
             self._tr("context.name", "Name"),
-            Qt.TextInputMode.Normal,
+            QLineEdit.EchoMode.Normal,
             slot.label,
         )
         if ok:
@@ -100,34 +107,23 @@ class MultiCompareContextMenuProvider:
     def _duplicate_slot(self, slot: CompareSlot) -> None:
         if slot.image is None or self.widget.state.root is None:
             return
-        path = find_path(self.widget.state.root, slot.id)
-        image = slot.image.copy() if hasattr(slot.image, "copy") else slot.image
-        self.widget.store.dispatch(
-            actions.add_slot(
-                path=slot.path or Path(),
-                image=image,
-                label=slot.label,
-                target_path=tuple(path or ()),
-                side="right",
-                target_root=False,
-            )
-        )
+        self.widget.begin_pending_duplicate(slot.id)
 
     def _show_properties(self, slot: CompareSlot) -> None:
-        parts = [
-            f"{self._tr('context.name', 'Name')}: {slot.label or '-'}",
-            f"{self._tr('context.path', 'Path')}: {slot.path or '-'}",
-        ]
-        if slot.image is not None:
-            height, width = slot.image.shape[:2]
-            channels = slot.image.shape[2] if slot.image.ndim == 3 else 1
-            parts.append(
-                f"{self._tr('context.size', 'Size')}: {width} x {height}, {channels} ch"
-            )
-        QMessageBox.information(
-            self.widget,
-            self._tr("context.properties", "Properties"),
-            "\n".join(parts),
+        ordered = [leaf.slot_id for leaf in leaves(self.widget.state.root)]
+        total = len(ordered)
+        try:
+            position = ordered.index(slot.id) + 1
+            position_text = f"{position} / {total}"
+        except ValueError:
+            position_text = str(slot.id)
+        open_image_properties_dialog(
+            path=slot.path,
+            display_name=slot.label,
+            image=slot.image,
+            app_rows=(("image_properties.position", "Position", position_text),),
+            language=get_current_language() or "en",
+            tr_func=app_tr,
         )
 
     def _tr(self, key: str, default: str) -> str:

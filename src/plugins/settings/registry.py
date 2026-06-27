@@ -32,6 +32,9 @@ class SettingsSection:
 class SettingsRegistry:
     def __init__(self) -> None:
         self._sections: list[SettingsSection] = []
+        self._section_extras: dict[
+            str, list[tuple[Callable[[object, object], None], str | None, int]]
+        ] = {}
 
     def add(self, section: SettingsSection) -> None:
         if any(s.section_id == section.section_id for s in self._sections):
@@ -40,6 +43,32 @@ class SettingsRegistry:
 
     def remove(self, section_id: str) -> None:
         self._sections = [s for s in self._sections if s.section_id != section_id]
+
+    def add_section_extra(
+        self,
+        section_id: str,
+        build: Callable[[object, object], None],
+        *,
+        owner_tab: str | None = None,
+        order: int = 100,
+    ) -> None:
+        extras = self._section_extras.setdefault(section_id, [])
+        if any(existing is build for existing, _owner, _order in extras):
+            return
+        extras.append((build, owner_tab, order))
+
+    def extras_for(
+        self,
+        section_id: str,
+        active_tab: str | None,
+    ) -> list[Callable[[object, object], None]]:
+        extras = self._section_extras.get(section_id, ())
+        visible = [
+            (build, order)
+            for build, owner_tab, order in extras
+            if owner_tab is None or owner_tab == active_tab
+        ]
+        return [build for build, _order in sorted(visible, key=lambda item: item[1])]
 
     def sections_for(self, active_tab: str | None) -> list[SettingsSection]:
         visible = [s for s in self._sections if s.owner_tab is None or s.owner_tab == active_tab]
@@ -50,6 +79,7 @@ class SettingsRegistry:
 
 
 _REGISTRY: SettingsRegistry | None = None
+_TAB_CONTRIBUTIONS_LOADED = False
 
 
 def get_settings_registry() -> SettingsRegistry:
@@ -58,6 +88,27 @@ def get_settings_registry() -> SettingsRegistry:
         _REGISTRY = SettingsRegistry()
         _register_builtin_sections(_REGISTRY)
     return _REGISTRY
+
+
+def ensure_tab_settings_contributions() -> None:
+    global _TAB_CONTRIBUTIONS_LOADED
+    if _TAB_CONTRIBUTIONS_LOADED:
+        return
+    _TAB_CONTRIBUTIONS_LOADED = True
+    registry = get_settings_registry()
+    try:
+        from tabs.registry import TabRegistry
+
+        tabs = TabRegistry()
+        tabs.discover()
+        for tab in tabs.list_tabs():
+            tab.contribute_settings(registry)
+    except Exception:
+        import logging
+
+        logging.getLogger("ImproveImgSLI").exception(
+            "Failed to load tab settings contributions"
+        )
 
 
 def _register_builtin_sections(registry: SettingsRegistry) -> None:

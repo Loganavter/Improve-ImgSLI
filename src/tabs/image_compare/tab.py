@@ -43,9 +43,9 @@ class ImageCompareTab(TabContract):
         return "image_compare"
 
     def localized_display_name(self, language: str) -> str:
-        from resources.translations import tr
+        from sli_ui_toolkit.i18n import tr
 
-        key = "workspace.session_types.image_compare"
+        key = "image_compare.session_type"
         translated = tr(key, language)
         return translated if translated != key else self.display_name
 
@@ -154,12 +154,7 @@ class ImageCompareTab(TabContract):
     def accepts_drop(self, paths: list[Path]) -> bool:
         return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
 
-    def handle_drop(self, paths: list[Path]) -> None:
-        # The WindowEventHandler currently keeps the slot-aware drop fallback
-        # for image_compare, so returning False from accepts_drop is also valid.
-        # We accept the drop here so that the contract advertises the capability;
-        # the actual slot routing is still done by the host until Stage 5 lands
-        # full per-session state ownership in this tab.
+    def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
         from PySide6.QtCore import QTimer
 
         widget = self._widget
@@ -175,13 +170,20 @@ class ImageCompareTab(TabContract):
         image_paths = [str(p) for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
         if not image_paths:
             return
+        slot = 1
+        if hint is not None:
+            if "slot" in hint:
+                slot = 1 if int(hint.get("slot") or 1) == 1 else 2
+            elif "is_left_area" in hint:
+                slot = 1 if bool(hint.get("is_left_area")) else 2
         QTimer.singleShot(
-            0, lambda: sessions.load_images_from_paths(image_paths, 1)
+            0, lambda: sessions.load_images_from_paths(image_paths, slot)
         )
 
     def contribute_settings(self, registry) -> None:
         from plugins.settings.pages.analysis import build as build_analysis
         from plugins.settings.registry import SettingsSection
+        from tabs.image_compare.ui.settings_performance import build_image_perf_extras
         from ui.icon_manager import AppIcon
 
         registry.add(
@@ -194,6 +196,17 @@ class ImageCompareTab(TabContract):
                 order=40,
             )
         )
+        registry.add_section_extra(
+            "builtin.performance",
+            build_image_perf_extras,
+            owner_tab=self.session_type,
+            order=10,
+        )
+
+    def apply_appearance(self, host_window) -> None:
+        from tabs.image_compare.ui.appearance import apply_image_canvas_appearance
+
+        apply_image_canvas_appearance(host_window)
 
     def dispose(self) -> None:
         self._widget = None

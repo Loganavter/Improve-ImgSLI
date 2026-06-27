@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from core.constants import AppConstants
-from sli_ui_toolkit.i18n import TranslationsBinder
-
 
 _INTERPOLATION_KEY_MAP = {
     "NEAREST": "magnifier.nearest_neighbor",
@@ -23,33 +21,25 @@ _RESOLUTION_KEY_MAP = {
 }
 
 
-def build_translations_binder(dialog) -> TranslationsBinder:
-    """Build a TranslationsBinder for SettingsDialog.
-
-    Takes a fully initialized dialog and registers all string updates.
-    Combo boxes whose items need re-translation are rebuilt via callbacks.
-    """
-    binder = TranslationsBinder(tr_func=dialog.tr)
-
-    binder.bind_callback(
-        lambda lang: dialog.setWindowTitle(dialog.tr("misc.settings", lang))
-    )
-
-    _bind_buttons(binder, dialog)
-    _bind_simple_texts(binder, dialog)
-    _bind_group_titles(binder, dialog)
-    _bind_label_with_colon(binder, dialog)
-    _bind_combo_rebuilds(binder, dialog)
-
-    return binder
+def apply_translations(dialog, lang: str) -> None:
+    dialog.setWindowTitle(dialog.tr("misc.settings", lang))
+    _apply_buttons(dialog, lang)
+    _apply_simple_texts(dialog, lang)
+    _apply_group_titles(dialog, lang)
+    _apply_label_with_colon(dialog, lang)
+    _rebuild_theme_combo(dialog, lang)
+    _rebuild_font_family_combo(dialog, lang)
+    _rebuild_resolution_combo(dialog, lang)
+    _rebuild_interpolation_combos(dialog, lang)
+    _rebuild_rhi_backend_combo(dialog, lang)
 
 
-def _bind_buttons(binder: TranslationsBinder, dialog) -> None:
-    binder.bind_text(dialog.ok_button, "common.ok")
-    binder.bind_text(dialog.cancel_button, "common.cancel")
+def _apply_buttons(dialog, lang: str) -> None:
+    dialog.ok_button.setText(dialog.tr("common.ok", lang))
+    dialog.cancel_button.setText(dialog.tr("common.cancel", lang))
 
 
-def _bind_simple_texts(binder: TranslationsBinder, dialog) -> None:
+def _apply_simple_texts(dialog, lang: str) -> None:
     candidates = [
         ("system_notifications_checkbox", "settings.system_notifications"),
         ("debug_checkbox", "settings.enable_debug_logging"),
@@ -63,25 +53,31 @@ def _bind_simple_texts(binder: TranslationsBinder, dialog) -> None:
         ("radio_font_system_custom", "settings.custom"),
         ("optimize_movement_checkbox", "settings.optimize_magnifier_movement"),
         ("laser_smoothing_checkbox", "settings.optimize_laser_smoothing"),
-        ("magnifier_intersection_highlight_checkbox",
-         "settings.magnifier_intersection_highlight"),
-        ("magnifier_auto_color_checkbox",
-         "settings.magnifier_auto_color_new_instances"),
+        (
+            "magnifier_intersection_highlight_checkbox",
+            "settings.magnifier_intersection_highlight",
+        ),
+        (
+            "magnifier_auto_color_checkbox",
+            "settings.magnifier_auto_color_new_instances",
+        ),
         ("crop_checkbox", "settings.autocrop_black_borders_on_load"),
         ("auto_psnr_checkbox", "settings.autocalculate_psnr"),
         ("auto_ssim_checkbox", "settings.autocalculate_ssim"),
         ("lbl_zoom_interp", "settings.zoom_interpolation"),
+        ("lbl_rhi_backend_hint", "settings.render_backend_restart_hint"),
     ]
     for attr, key in candidates:
         widget = getattr(dialog, attr, None)
         if widget is not None:
-            binder.bind_text(widget, key)
+            widget.setText(dialog.tr(key, lang))
 
 
-def _bind_group_titles(binder: TranslationsBinder, dialog) -> None:
+def _apply_group_titles(dialog, lang: str) -> None:
     groups = [
         ("lang_group", "label.language"),
-        ("sys_group", "settings.appearance"),
+        ("general_group", "settings.general"),
+        ("appearance_group", "settings.appearance"),
         ("ui_mode_group", "settings.ui_mode"),
         ("font_group", "settings.ui_font"),
         ("other_ui_group", "settings.maximum_name_length_ui"),
@@ -92,29 +88,19 @@ def _bind_group_titles(binder: TranslationsBinder, dialog) -> None:
         ("metrics_group", "label.details"),
     ]
 
-    def _make(attr_name: str, key: str):
-        def _apply(lang: str) -> None:
-            group = getattr(dialog, attr_name, None)
-            if group is not None:
-                group.set_title(dialog.tr(key, lang))
-        return _apply
-
     for attr_name, key in groups:
-        binder.bind_callback(_make(attr_name, key))
+        group = getattr(dialog, attr_name, None)
+        if group is not None:
+            group.set_title(dialog.tr(key, lang))
 
 
-def _bind_label_with_colon(binder: TranslationsBinder, dialog) -> None:
+def _apply_label_with_colon(dialog, lang: str) -> None:
     theme_label = getattr(dialog, "theme_label", None)
     if theme_label is not None:
-        binder.bind_text(theme_label, "label.theme", suffix=":")
-
-
-def _bind_combo_rebuilds(binder: TranslationsBinder, dialog) -> None:
-    binder.bind_callback(lambda lang: _rebuild_theme_combo(dialog, lang))
-    binder.bind_callback(lambda lang: _rebuild_font_family_combo(dialog, lang))
-    binder.bind_callback(lambda lang: _rebuild_resolution_combo(dialog, lang))
-    binder.bind_callback(lambda lang: _rebuild_interpolation_combos(dialog, lang))
-    binder.bind_callback(lambda lang: _rebuild_rhi_backend_combo(dialog, lang))
+        theme_label.setText(dialog.tr("label.theme", lang) + ":")
+    rhi_label = getattr(dialog, "lbl_rhi_backend", None)
+    if rhi_label is not None:
+        rhi_label.setText(dialog.tr("settings.render_backend_label", lang) + ":")
 
 
 _RHI_BACKEND_KEY_MAP = {
@@ -132,7 +118,10 @@ def _rebuild_rhi_backend_combo(dialog, lang: str) -> None:
     if combo is None:
         return
     current = combo.currentData()
-    items = [(combo.itemData(i), _RHI_BACKEND_KEY_MAP.get(combo.itemData(i), "")) for i in range(combo.count())]
+    items = [
+        (combo.itemData(i), _RHI_BACKEND_KEY_MAP.get(combo.itemData(i), ""))
+        for i in range(combo.count())
+    ]
     combo.clear()
     for value, key in items:
         text = dialog.tr(key, lang) if key else str(value)
@@ -140,13 +129,6 @@ def _rebuild_rhi_backend_combo(dialog, lang: str) -> None:
     idx = combo.findData(current)
     if idx != -1:
         combo.setCurrentIndex(idx)
-
-    label = getattr(dialog, "lbl_rhi_backend", None)
-    if label is not None:
-        label.setText(dialog.tr("settings.render_backend_label", lang) + ":")
-    hint = getattr(dialog, "lbl_rhi_backend_hint", None)
-    if hint is not None:
-        hint.setText(dialog.tr("settings.render_backend_restart_hint", lang))
 
 
 def _rebuild_theme_combo(dialog, lang: str) -> None:

@@ -14,7 +14,10 @@ from plugins.settings.dialog_shell import (
     setup_dialog_shell,
     setup_sidebar_items,
 )
-from plugins.settings.registry import get_settings_registry
+from plugins.settings.registry import (
+    ensure_tab_settings_contributions,
+    get_settings_registry,
+)
 from plugins.settings.models import SettingsDialogData
 from resources.translations import tr as app_tr
 from sli_ui_toolkit.theme import ThemeManager
@@ -105,6 +108,7 @@ class SettingsDialog(QDialog):
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
         decorate_dialog(self, title=self.tr("misc.settings", self.current_language))
         self.active_tab = active_tab
+        ensure_tab_settings_contributions()
         self._active_sections = get_settings_registry().sections_for(active_tab)
         for section in self._active_sections:
             section.build(self, self.context)
@@ -253,10 +257,9 @@ class SettingsDialog(QDialog):
     def update_language(self, lang_code: str):
         self.current_language = lang_code
         self.context.current_language = lang_code
-        if not hasattr(self, "_translations_binder"):
-            from plugins.settings.translations import build_translations_binder
-            self._translations_binder = build_translations_binder(self)
-        self._translations_binder.apply(lang_code)
+        from plugins.settings.translations import apply_translations
+
+        apply_translations(self, lang_code)
         self._setup_sidebar_items()
         curr = self.sidebar.currentRow()
         self.sidebar.setCurrentRow(-1)

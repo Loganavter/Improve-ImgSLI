@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 from core.store_viewport import RenderConfig
-from ui.canvas_features.magnifier.models import MagnifierModel
+from domain.types import Color, Point
 from ui.canvas_features.magnifier.constants import (
     DEFAULT_MAGNIFIER_SPACING_RELATIVE,
     MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE,
 )
-from domain.types import Color, Point
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from ui.canvas_features.magnifier.models import MagnifierModel
 from ui.canvas_features.magnifier.state import (
     MagnifierWidgetState,
-    clone_magnifier_widget_state,
     get_magnifier_widget_state,
 )
+from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 DEFAULT_MAGNIFIER_ID = "default"
 
@@ -55,18 +54,27 @@ _AUTO_COLOR_PALETTE: tuple[dict[str, tuple[int, int, int, int]], ...] = (
     },
 )
 
+
 def _color_from_rgba(rgba: tuple[int, int, int, int]) -> Color:
     return Color(int(rgba[0]), int(rgba[1]), int(rgba[2]), int(rgba[3]))
 
-def _copy_model(model: MagnifierModel, *, magnifier_id: str | None = None) -> MagnifierModel:
+
+def _copy_model(
+    model: MagnifierModel, *, magnifier_id: str | None = None
+) -> MagnifierModel:
     cloned = model.clone()
     cloned.id = magnifier_id or model.id
     return cloned
 
-def _build_default_magnifier_model(view_state, render_config, magnifier_id: str | None = None) -> MagnifierModel:
+
+def _build_default_magnifier_model(
+    view_state, render_config, magnifier_id: str | None = None
+) -> MagnifierModel:
     state = get_magnifier_widget_state(view_state)
     _get_capture_state = get_canvas_feature_command_by_alias("capture.widget_state")
-    capture_state = _get_capture_state(view_state) if _get_capture_state is not None else None
+    capture_state = (
+        _get_capture_state(view_state) if _get_capture_state is not None else None
+    )
     return MagnifierModel(
         id=magnifier_id or state.active_id or DEFAULT_MAGNIFIER_ID,
         visible=bool(state.enabled),
@@ -91,7 +99,10 @@ def _build_default_magnifier_model(view_state, render_config, magnifier_id: str 
         interpolation_method=render_config.interpolation_method,
     )
 
-def _apply_auto_instance_color(state: MagnifierWidgetState, model: MagnifierModel) -> None:
+
+def _apply_auto_instance_color(
+    state: MagnifierWidgetState, model: MagnifierModel
+) -> None:
     if not state.auto_color_new_instances or model.id == DEFAULT_MAGNIFIER_ID:
         return
     existing_custom_count = sum(
@@ -107,30 +118,39 @@ def _apply_auto_instance_color(state: MagnifierWidgetState, model: MagnifierMode
     model.capture_color = _color_from_rgba(palette["capture"])
     model.guides_color = _color_from_rgba(palette["guides"])
 
+
 def _state(view_state) -> MagnifierWidgetState:
     return get_magnifier_widget_state(view_state)
 
+
 def magnifier_enabled(view_state) -> bool:
     return bool(_state(view_state).enabled)
+
 
 def set_magnifier_enabled_flag(view_state, enabled: bool) -> None:
     _state(view_state).enabled = bool(enabled)
     view_state.overlay_enabled = bool(enabled)
 
+
 def active_magnifier_id(view_state) -> str | None:
     return _state(view_state).active_id
+
 
 def set_active_magnifier_id(view_state, magnifier_id: str | None) -> None:
     _state(view_state).active_id = magnifier_id
 
+
 def default_magnifier_size(view_state) -> float:
     return float(_state(view_state).default_size_relative)
+
 
 def set_default_magnifier_size(view_state, value: float) -> None:
     _state(view_state).default_size_relative = float(value)
 
+
 def default_capture_size(view_state) -> float:
     return float(_state(view_state).default_capture_size_relative)
+
 
 def active_or_default_divider_visible(view_state) -> bool:
     state = _state(view_state)
@@ -139,6 +159,7 @@ def active_or_default_divider_visible(view_state) -> bool:
         return bool(active.divider_visible)
     return bool(state.default_divider_visible)
 
+
 def active_or_default_divider_thickness(view_state) -> int:
     state = _state(view_state)
     active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
@@ -146,21 +167,26 @@ def active_or_default_divider_thickness(view_state) -> int:
         return int(active.divider_thickness)
     return int(state.default_divider_thickness)
 
+
 def active_or_default_divider_color(view_state):
     state = _state(view_state)
     active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
     return active.divider_color if active is not None else state.default_divider_color
+
 
 def active_or_default_border_color(view_state):
     state = _state(view_state)
     active = state.models.get(state.active_id or DEFAULT_MAGNIFIER_ID)
     return active.border_color if active is not None else state.default_border_color
 
+
 def set_default_capture_size(view_state, value: float) -> None:
     _state(view_state).default_capture_size_relative = float(value)
 
+
 def _ensure_collection(view_state):
     return _state(view_state).models
+
 
 def iter_magnifier_models(view_state, render_config) -> list[MagnifierModel]:
     raw_models = _state(view_state).models
@@ -175,7 +201,10 @@ def iter_magnifier_models(view_state, render_config) -> list[MagnifierModel]:
     models.sort(key=lambda model: (model.id != active_id, model.id))
     return models
 
-def add_magnifier_model(view_state, render_config, magnifier_id: str | None = None, position=None) -> MagnifierModel:
+
+def add_magnifier_model(
+    view_state, render_config, magnifier_id: str | None = None, position=None
+) -> MagnifierModel:
     models = _ensure_collection(view_state)
     state = _state(view_state)
     target_id = magnifier_id or DEFAULT_MAGNIFIER_ID
@@ -188,7 +217,10 @@ def add_magnifier_model(view_state, render_config, magnifier_id: str | None = No
     set_active_magnifier_id(view_state, target_id)
     return model
 
-def update_magnifier_model(view_state, render_config, magnifier_id: str, **updates) -> MagnifierModel | None:
+
+def update_magnifier_model(
+    view_state, render_config, magnifier_id: str, **updates
+) -> MagnifierModel | None:
     models = _ensure_collection(view_state)
     if magnifier_id not in models:
         if magnifier_id != DEFAULT_MAGNIFIER_ID:
@@ -204,7 +236,10 @@ def update_magnifier_model(view_state, render_config, magnifier_id: str, **updat
     models[magnifier_id] = model
     return model
 
-def set_magnifier_model_visibility(view_state, render_config, magnifier_id: str | None, visible: bool) -> MagnifierModel | None:
+
+def set_magnifier_model_visibility(
+    view_state, render_config, magnifier_id: str | None, visible: bool
+) -> MagnifierModel | None:
     target_id = magnifier_id or active_magnifier_id(view_state) or DEFAULT_MAGNIFIER_ID
     model = update_magnifier_model(
         view_state,
@@ -217,6 +252,7 @@ def set_magnifier_model_visibility(view_state, render_config, magnifier_id: str 
         set_magnifier_enabled_flag(view_state, visible)
     return model
 
+
 def remove_magnifier_model(view_state, render_config, magnifier_id: str) -> None:
     models = _ensure_collection(view_state)
     models.pop(magnifier_id, None)
@@ -224,6 +260,7 @@ def remove_magnifier_model(view_state, render_config, magnifier_id: str) -> None
         set_active_magnifier_id(view_state, next(iter(models.keys()), None))
         if active_magnifier_id(view_state) is None:
             set_magnifier_enabled_flag(view_state, False)
+
 
 class MagnifierStoreService:
     THRESHOLD = MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
@@ -238,7 +275,9 @@ class MagnifierStoreService:
     @property
     def _render(self):
         viewport = getattr(self.store, "viewport", None)
-        render = getattr(viewport, "render_config", None) if viewport is not None else None
+        render = (
+            getattr(viewport, "render_config", None) if viewport is not None else None
+        )
         return render if render is not None else RenderConfig()
 
     def _next_magnifier_id(self) -> str:
@@ -250,7 +289,9 @@ class MagnifierStoreService:
             index += 1
         return f"magnifier-{index}"
 
-    def add_magnifier(self, magnifier_id: str | None = None, position: Point | None = None):
+    def add_magnifier(
+        self, magnifier_id: str | None = None, position: Point | None = None
+    ):
         return add_magnifier_model(
             self._view,
             self._render,
@@ -299,7 +340,9 @@ class MagnifierStoreService:
         )
 
     def are_all_magnifiers_frozen(self) -> bool:
-        models = [model for model in _state(self._view).models.values() if model is not None]
+        models = [
+            model for model in _state(self._view).models.values() if model is not None
+        ]
         return bool(models) and all(bool(model.freeze) for model in models)
 
     def get_next_magnifier_id(
@@ -348,7 +391,9 @@ class MagnifierStoreService:
         set_active_magnifier_id(self._view, object_id)
 
     def set_object_visibility(self, object_id: str | None, visible: bool):
-        return set_magnifier_model_visibility(self._view, self._render, object_id, visible)
+        return set_magnifier_model_visibility(
+            self._view, self._render, object_id, visible
+        )
 
     def reveal_object(self, object_id: str | None):
         model = self.set_object_visibility(object_id, True)
@@ -493,9 +538,7 @@ class MagnifierStoreService:
             updates = {
                 "freeze": bool(freeze),
                 "frozen_position": (
-                    (frozen_positions or {}).get(model.id)
-                    if freeze
-                    else None
+                    (frozen_positions or {}).get(model.id) if freeze else None
                 ),
             }
             if new_offsets is not None and model.id in new_offsets:
@@ -552,7 +595,13 @@ class MagnifierStoreService:
             and bool(getattr(self._view, "optimize_interactive_movement", True))
         )
         effective_spacing = (
-            float(getattr(interaction, "interactive_spacing_relative_visual", model.spacing_relative))
+            float(
+                getattr(
+                    interaction,
+                    "interactive_spacing_relative_visual",
+                    model.spacing_relative,
+                )
+            )
             if use_visual
             else float(model.spacing_relative)
         )

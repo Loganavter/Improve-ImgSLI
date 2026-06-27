@@ -1,0 +1,18 @@
+{
+  "title": "创建工作区",
+  "subtitle": "选择会话类型开始",
+  "types": {
+    "image_compare": "图像比较",
+    "multi_compare": "多重比较"
+  },
+  "descriptions": {
+    "image_compare": "使用分隔线、放大镜和分析工具进行并排图像比较。",
+    "multi_compare": "用于同时比较多个来源的网格布局。"
+  },
+  "drop_zone": "将图像文件拖到此处以开始比较",
+  "recent": {
+    "title": "继续",
+    "badge": "开发中",
+    "placeholder": "此功能完成后，最近的工作区会显示在这里。"
+  }
+}

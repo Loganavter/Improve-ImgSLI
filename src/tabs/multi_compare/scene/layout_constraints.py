@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from tabs.multi_compare.models import CompareSlot, LayoutNode, LeafNode, SplitNode, node_at_path
+from tabs.multi_compare.models import (
+    CompareSlot,
+    LayoutNode,
+    LeafNode,
+    SplitNode,
+    node_at_path,
+)
 
 MIN_SPLIT_WEIGHT_FRACTION = 0.15
 
@@ -72,7 +78,9 @@ def natural_pair_weight_ratio(
         return None
     slots_by_id = {slot.id: slot for slot in slots}
     first_aspect = natural_aspect_for_node(split.children[divider_idx], slots_by_id)
-    second_aspect = natural_aspect_for_node(split.children[divider_idx + 1], slots_by_id)
+    second_aspect = natural_aspect_for_node(
+        split.children[divider_idx + 1], slots_by_id
+    )
     if first_aspect is None or second_aspect is None:
         return None
     if direction == "h":
@@ -129,8 +137,7 @@ def _symmetry_signature(
     if not isinstance(node, SplitNode) or not node.children:
         return None
     child_signatures = [
-        _symmetry_signature(child, slots_by_id)
-        for child in node.children
+        _symmetry_signature(child, slots_by_id) for child in node.children
     ]
     if any(signature is None for signature in child_signatures):
         return None
@@ -147,7 +154,9 @@ def _sanitize_weights(
 ) -> list[float]:
     weights = [float(weight) for weight in proposed_weights[:child_count]]
     if len(weights) < child_count:
-        weights.extend(float(weight) for weight in fallback_weights[len(weights):child_count])
+        weights.extend(
+            float(weight) for weight in fallback_weights[len(weights) : child_count]
+        )
     if len(weights) != child_count or any(weight <= 0 for weight in weights):
         return [1.0] * child_count
     return weights
@@ -166,7 +175,4 @@ def _apply_min_share(weights: list[float]) -> list[float]:
     reducible = sum(max(0.0, weight - floor) for weight in clamped)
     if reducible <= 0:
         return [total / len(weights)] * len(weights)
-    return [
-        weight - extra * max(0.0, weight - floor) / reducible
-        for weight in clamped
-    ]
+    return [weight - extra * max(0.0, weight - floor) / reducible for weight in clamped]

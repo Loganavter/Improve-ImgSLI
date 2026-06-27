@@ -15,9 +15,9 @@ from PySide6.QtGui import (
     QPalette,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QApplication, QWidget
-from PySide6.QtWidgets import QRhiWidget
-from ui.widgets.gl_canvas.rhi_backend import configure_rhi_widget
+from PySide6.QtWidgets import QApplication, QRhiWidget, QWidget
+
+from ui.widgets.canvas.rhi_backend import configure_rhi_widget
 
 INTERNAL_SLOT_MIME = "application/x-imgsli-multi-slot"
 
@@ -39,10 +39,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _layout_is_symmetric(node) -> bool:
+    if node is None or isinstance(node, LeafNode):
+        return True
+    if not isinstance(node, SplitNode):
+        return True
+    ws = node.normalized_weights()
+    if ws:
+        target = 1.0 / len(ws)
+        if any(abs(w - target) > 1e-4 for w in ws):
+            return False
+    return all(_layout_is_symmetric(c) for c in node.children)
+
+
+def _dividers_locked(state) -> bool:
+    if getattr(state, "zoom", 1.0) <= 1.0:
+        return True
+    return _layout_is_symmetric(state.root)
+
+
 class MultiCompareCanvasWidget(QRhiWidget):
     """QRhi canvas host for multi-compare rendering and input dispatch."""
 
-    CELL_GAP = 4
     DIVIDER_GRAB_PX = 8
 
     ZOOM_MIN = 1.0
@@ -51,8 +69,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
     firstFrameRendered = Signal()
 
-    # exposed for widget DnD
-    dropTargetChanged = None  # set up by widget if needed
+    dropTargetChanged = None
 
     def __init__(self, parent: QWidget | None = None, *, translate=None):
         super().__init__(parent)
@@ -65,39 +82,28 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self._translate = translate or (lambda _key, default=None: default or _key)
 
         self.state = MultiCompareState()
-        # Set by the parent widget to redux-dispatch interaction-driven state
-        # changes (zoom/pan/focus/divider drag). When unset (standalone tests),
-        # state mutations are silently dropped.
+
         self._dispatch: callable | None = None
-        # ResolvedComposition driving the render. Populated by
-        # ``_rebuild_composition`` (live) or by ``apply_canvas_render_plan``
-        # (export) — both ultimately set this attribute and ``render()`` walks
-        # it. ``None`` means "nothing to draw".
+
         self._active_composition = None
 
         self._renderer = MultiCompareRhiRenderer(self)
         self._first_frame_emitted = False
 
-        # pan
         self._panning = False
         self._pan_start_pos = QPointF()
         self._pan_start_state = (0.0, 0.0)
         self._pan_ref_rect = QRect()
         self._pan_ref_fit = (1.0, 1.0)
 
-        # divider drag (path-keyed so it survives store-driven tree rebuilds)
-        # tuple: (split_path, divider_idx, direction, start_weights)
         self._divider_drag: tuple[tuple[int, ...], int, str, list[float]] | None = None
         self._divider_start_cursor = QPointF()
 
-        # internal slot-drag (swap / move)
         self._lmb_press_pos: QPointF | None = None
         self._lmb_press_slot_id: int | None = None
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    # ---- public state ----
 
     def set_state(self, state: MultiCompareState) -> None:
         self.state = state
@@ -158,7 +164,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         if gap_target is not None:
             return gap_target
 
-        # Pick the leaf the cursor is in, or snap to the nearest one across gaps.
         target_leaf = None
         target_rect = None
         target_path: tuple[int, ...] = ()
@@ -172,7 +177,9 @@ class MultiCompareCanvasWidget(QRhiWidget):
             best_d2 = None
             for leaf, rect, path in leaf_entries:
                 dx = max(rect.x() - pos.x(), 0, pos.x() - (rect.x() + rect.width() - 1))
-                dy = max(rect.y() - pos.y(), 0, pos.y() - (rect.y() + rect.height() - 1))
+                dy = max(
+                    rect.y() - pos.y(), 0, pos.y() - (rect.y() + rect.height() - 1)
+                )
                 d2 = dx * dx + dy * dy
                 if best_d2 is None or d2 < best_d2:
                     best_d2 = d2
@@ -187,9 +194,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         if include_center and 0.25 <= u <= 0.75 and 0.25 <= v <= 0.75:
             return target_path, "center", False, target_leaf.slot_id
 
-        # Insertion/move targets follow the nearest edge of this image cell.
-        # This keeps a divider-local drop local even when the leaf belongs to a
-        # split whose container spans most of the application window.
         distances = {"left": u, "right": 1 - u, "top": v, "bottom": 1 - v}
         side = min(distances, key=lambda k: distances[k])
         return target_path, side, False, None
@@ -210,18 +214,14 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
             adjacent_path = split_path + (divider_index + 1,)
             if split.direction == "h":
-                fraction = (pos.y() - divider_rect.y()) / max(
-                    divider_rect.height(), 1
-                )
+                fraction = (pos.y() - divider_rect.y()) / max(divider_rect.height(), 1)
                 if fraction < 0.25:
                     return split_path, "top", False, None
                 if fraction >= 0.75:
                     return split_path, "bottom", False, None
                 return adjacent_path, "left", False, None
 
-            fraction = (pos.x() - divider_rect.x()) / max(
-                divider_rect.width(), 1
-            )
+            fraction = (pos.x() - divider_rect.x()) / max(divider_rect.width(), 1)
             if fraction < 0.25:
                 return split_path, "left", False, None
             if fraction >= 0.75:
@@ -229,63 +229,139 @@ class MultiCompareCanvasWidget(QRhiWidget):
             return adjacent_path, "top", False, None
         return None
 
+    def _canvas_layout(self) -> tuple[int, int, float, float, float] | None:
+        """Return ``(canvas_w, canvas_h, sr, ox, oy)`` for projecting composition
+        canvas-px to widget-px using the same letterbox formula as ``render()``.
+
+        ``sr = min(fb_w/canvas_w, fb_h/canvas_h)``; ``ox/oy`` are letterbox
+        offsets. Mirrors :func:`tabs.multi_compare.scene.projection.build_render_context`
+        so hit-testing and rendering are guaranteed to agree.
+        """
+        if self.state.root is None or self.width() <= 0 or self.height() <= 0:
+            return None
+        comp = self._active_composition
+        if comp is not None and comp.canvas_w > 0 and comp.canvas_h > 0:
+            canvas_w = int(comp.canvas_w)
+            canvas_h = int(comp.canvas_h)
+        else:
+            from tabs.multi_compare.services.composition_builder import (
+                build_composition_plan,
+            )
+
+            plan = build_composition_plan(self.state, include_labels=False)
+            if plan is None:
+                return None
+            canvas_w = int(plan.canvas_w)
+            canvas_h = int(plan.canvas_h)
+        if canvas_w <= 0 or canvas_h <= 0:
+            return None
+        fb_w = float(self.width())
+        fb_h = float(self.height())
+        sr = min(fb_w / canvas_w, fb_h / canvas_h)
+        ox = (fb_w - canvas_w * sr) * 0.5
+        oy = (fb_h - canvas_h * sr) * 0.5
+        return canvas_w, canvas_h, sr, ox, oy
+
+    def _project_canvas_rect(
+        self, rect_canvas: QRect, sr: float, ox: float, oy: float
+    ) -> QRect:
+        x = int(round(ox + rect_canvas.x() * sr))
+        y = int(round(oy + rect_canvas.y() * sr))
+        w = max(1, int(round(rect_canvas.width() * sr)))
+        h = max(1, int(round(rect_canvas.height() * sr)))
+        return QRect(x, y, w, h)
+
+    @staticmethod
+    def _composition_gap_canvas_px() -> int:
+        from tabs.multi_compare.services.composition_builder import (
+            DEFAULT_SPLIT_GAP_PX,
+        )
+
+        return int(DEFAULT_SPLIT_GAP_PX)
+
     def _drop_gaps(
         self,
     ) -> list[tuple[SplitNode, tuple[int, ...], int, QRect]]:
-        """Return split gaps with their tree paths for drop-zone hit-testing."""
-        if self.state.root is None:
+        """Return split gaps with their tree paths for drop-zone hit-testing.
+
+        Walks the layout in canvas-px (same gap as ``composition_builder``) and
+        projects rects through the composition letterbox transform so divider
+        hit-zones line up with what the renderer draws.
+        """
+        layout = self._canvas_layout()
+        if layout is None:
             return []
-        return layout_geometry.drop_gaps(
+        canvas_w, canvas_h, sr, ox, oy = layout
+        canvas_rect = QRect(0, 0, canvas_w, canvas_h)
+        gaps_canvas = layout_geometry.drop_gaps(
             self.state.root,
-            self.rect(),
-            gap=self.CELL_GAP,
+            canvas_rect,
+            gap=self._composition_gap_canvas_px(),
         )
+        return [
+            (split, path, idx, self._project_canvas_rect(rect, sr, ox, oy))
+            for (split, path, idx, rect) in gaps_canvas
+        ]
 
     def _leaf_paths_and_rects(self) -> list[tuple[LeafNode, QRect, tuple[int, ...]]]:
-        if self.state.root is None or self.width() <= 0 or self.height() <= 0:
+        layout = self._canvas_layout()
+        if layout is None:
             return []
+        canvas_w, canvas_h, sr, ox, oy = layout
+        canvas_rect = QRect(0, 0, canvas_w, canvas_h)
         leaves, _splits = layout_geometry.walk_paths(
             self.state.root,
-            self.rect(),
-            gap=self.CELL_GAP,
+            canvas_rect,
+            gap=self._composition_gap_canvas_px(),
         )
-        return leaves
+        return [
+            (leaf, self._project_canvas_rect(rect, sr, ox, oy), path)
+            for (leaf, rect, path) in leaves
+        ]
 
     def _ancestor_splits_with_rects(
         self, leaf_path: tuple[int, ...]
     ) -> list[tuple[SplitNode, QRect, tuple[int, ...]]]:
         """Splits enclosing the leaf, ordered outermost → innermost."""
-        if self.state.root is None:
+        layout = self._canvas_layout()
+        if layout is None:
             return []
+        canvas_w, canvas_h, sr, ox, oy = layout
+        canvas_rect = QRect(0, 0, canvas_w, canvas_h)
         _leaves, splits = layout_geometry.walk_paths(
             self.state.root,
-            self.rect(),
+            canvas_rect,
             only_path=leaf_path,
-            gap=self.CELL_GAP,
+            gap=self._composition_gap_canvas_px(),
         )
-        return splits
+        return [
+            (split, self._project_canvas_rect(rect, sr, ox, oy), path)
+            for (split, rect, path) in splits
+        ]
 
     def _node_rect_at_path(self, path: tuple[int, ...]) -> QRect | None:
         if self.state.root is None:
             return None
         if not path:
             return self.rect()
-        # Reuse _walk_paths with only_path; capture both leaf and splits.
+        layout = self._canvas_layout()
+        if layout is None:
+            return None
+        canvas_w, canvas_h, sr, ox, oy = layout
+        canvas_rect = QRect(0, 0, canvas_w, canvas_h)
         leaves, splits = layout_geometry.walk_paths(
             self.state.root,
-            self.rect(),
+            canvas_rect,
             only_path=path,
-            gap=self.CELL_GAP,
+            gap=self._composition_gap_canvas_px(),
         )
         for _, rect, p in splits:
             if p == path:
-                return rect
+                return self._project_canvas_rect(rect, sr, ox, oy)
         for _, rect, p in leaves:
             if p == path:
-                return rect
+                return self._project_canvas_rect(rect, sr, ox, oy)
         return None
-
-    # ---- texture management ----
 
     def upload_image(self, slot: CompareSlot) -> None:
         if slot.image is None:
@@ -344,8 +420,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         for sid in stale:
             self.remove_texture(sid)
 
-    # ---- QRhi lifecycle ----
-
     def initialize(self, command_buffer) -> None:
         self._renderer.initialize(command_buffer)
 
@@ -387,68 +461,14 @@ class MultiCompareCanvasWidget(QRhiWidget):
             bg.setAlpha(255)
         return bg
 
-    # ---- layout: rect computation ----
-
     def _leaf_rects(self) -> list[tuple[LeafNode, QRect]]:
-        if self.state.root is None or self.width() <= 0 or self.height() <= 0:
-            return []
-        out: list[tuple[LeafNode, QRect]] = []
-        self._walk(self.state.root, self.rect(), out, dividers=None)
-        return out
-
-    def _walk(
-        self,
-        node,
-        rect: QRect,
-        out_leaves: list[tuple[LeafNode, QRect]] | None,
-        dividers: list[tuple[SplitNode, int, QRect]] | None,
-    ) -> None:
-        if isinstance(node, LeafNode):
-            if out_leaves is not None:
-                out_leaves.append((node, rect))
-            return
-        assert isinstance(node, SplitNode)
-        gap = self.CELL_GAP
-        ws = node.normalized_weights()
-        n = len(node.children)
-        if node.direction == "h":
-            total_gap = gap * (n - 1)
-            inner = max(rect.width() - total_gap, 1)
-            sizes = [int(inner * w) for w in ws]
-            # Correct rounding so sum matches inner.
-            sizes[-1] = inner - sum(sizes[:-1])
-            x = rect.x()
-            for i, (child, size) in enumerate(zip(node.children, sizes)):
-                child_rect = QRect(x, rect.y(), size, rect.height())
-                self._walk(child, child_rect, out_leaves, dividers)
-                if i < n - 1:
-                    if dividers is not None:
-                        dividers.append(
-                            (node, i, QRect(x + size, rect.y(), gap, rect.height()))
-                        )
-                    x += size + gap
-                else:
-                    x += size
-        else:  # "v"
-            total_gap = gap * (n - 1)
-            inner = max(rect.height() - total_gap, 1)
-            sizes = [int(inner * w) for w in ws]
-            sizes[-1] = inner - sum(sizes[:-1])
-            y = rect.y()
-            for i, (child, size) in enumerate(zip(node.children, sizes)):
-                child_rect = QRect(rect.x(), y, rect.width(), size)
-                self._walk(child, child_rect, out_leaves, dividers)
-                if i < n - 1:
-                    if dividers is not None:
-                        dividers.append(
-                            (node, i, QRect(rect.x(), y + size, rect.width(), gap))
-                        )
-                    y += size + gap
-                else:
-                    y += size
+        """Leaf rects in widget-px, projected from the composition layout."""
+        return [(leaf, rect) for (leaf, rect, _path) in self._leaf_paths_and_rects()]
 
     @staticmethod
-    def _clamp_pan_values(pan_x: float, pan_y: float, zoom: float) -> tuple[float, float]:
+    def _clamp_pan_values(
+        pan_x: float, pan_y: float, zoom: float
+    ) -> tuple[float, float]:
         """Clamp pan so the image edges never reveal background.
 
         Derivation: img_uv = (cell_uv − 0.5)/(fit·zoom) + 0.5 − pan. The visible
@@ -459,8 +479,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         z = max(zoom, 1.0)
         limit = (z - 1.0) / (2.0 * z)
         return max(-limit, min(limit, pan_x)), max(-limit, min(limit, pan_y))
-
-    # ---- aspect-fit helper ----
 
     @staticmethod
     def _fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
@@ -474,8 +492,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         if img_ar > cell_ar:
             return 1.0, cell_ar / img_ar
         return img_ar / cell_ar, 1.0
-
-    # ---- input: zoom + pan + divider drag ----
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         leaf_rects = self._leaf_rects()
@@ -509,8 +525,12 @@ class MultiCompareCanvasWidget(QRhiWidget):
             event.accept()
             return
 
-        new_pan_x = self.state.pan_x + (cell_u - 0.5) / max(fit_x, 1e-6) * (1.0 / z2 - 1.0 / z1)
-        new_pan_y = self.state.pan_y + (cell_v - 0.5) / max(fit_y, 1e-6) * (1.0 / z2 - 1.0 / z1)
+        new_pan_x = self.state.pan_x + (cell_u - 0.5) / max(fit_x, 1e-6) * (
+            1.0 / z2 - 1.0 / z1
+        )
+        new_pan_y = self.state.pan_y + (cell_v - 0.5) / max(fit_y, 1e-6) * (
+            1.0 / z2 - 1.0 / z1
+        )
         new_pan_x, new_pan_y = self._clamp_pan_values(new_pan_x, new_pan_y, z2)
         self._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
         event.accept()
@@ -546,17 +566,18 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
         if event.button() == Qt.MouseButton.LeftButton:
             div = self._divider_at(event.position())
-            if div is not None:
+            if div is not None and not _dividers_locked(self.state):
                 split_path, idx, _drect, direction, weights = div
                 self._divider_drag = (split_path, idx, direction, weights)
                 self._divider_start_cursor = event.position()
                 self.setCursor(
-                    Qt.CursorShape.SplitHCursor if direction == "h"
+                    Qt.CursorShape.SplitHCursor
+                    if direction == "h"
                     else Qt.CursorShape.SplitVCursor
                 )
                 event.accept()
                 return
-            # Press on leaf body → arm internal drag.
+
             picked = self._leaf_at(pos, self._leaf_rects())
             if picked is not None:
                 leaf, _ = picked
@@ -575,7 +596,9 @@ class MultiCompareCanvasWidget(QRhiWidget):
                 leaf, rect = picked
                 slot = next((s for s in self.state.slots if s.id == leaf.slot_id), None)
                 self._pan_ref_rect = rect
-                self._pan_ref_fit = self._fit_scale_for(slot, rect) if slot is not None else (1.0, 1.0)
+                self._pan_ref_fit = (
+                    self._fit_scale_for(slot, rect) if slot is not None else (1.0, 1.0)
+                )
             else:
                 self._pan_ref_rect = self.rect()
                 self._pan_ref_fit = (1.0, 1.0)
@@ -584,14 +607,16 @@ class MultiCompareCanvasWidget(QRhiWidget):
             return
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        # Internal-drag arm: start QDrag if movement exceeds threshold.
+
         if (
             self._lmb_press_pos is not None
             and self._lmb_press_slot_id is not None
             and event.buttons() & Qt.MouseButton.LeftButton
         ):
             delta = event.position() - self._lmb_press_pos
-            if (delta.x() ** 2 + delta.y() ** 2) >= (QApplication.startDragDistance() ** 2):
+            if (delta.x() ** 2 + delta.y() ** 2) >= (
+                QApplication.startDragDistance() ** 2
+            ):
                 self._start_internal_drag(self._lmb_press_slot_id)
                 self._lmb_press_pos = None
                 self._lmb_press_slot_id = None
@@ -617,10 +642,10 @@ class MultiCompareCanvasWidget(QRhiWidget):
             min_w = self._min_pane_weight(
                 split_path, direction, container_size_px, total_weights
             )
-            # Clamp guarantees each side >= min_w as long as 2*min_w <= total_pair.
+
             max_w = total_pair - min_w
             if max_w < min_w:
-                # Pair is too small for the floor — split evenly instead of fighting.
+
                 new_left = new_right = total_pair / 2.0
             else:
                 new_left = max(min_w, min(max_w, new_left))
@@ -638,19 +663,25 @@ class MultiCompareCanvasWidget(QRhiWidget):
             fit_x, fit_y = self._pan_ref_fit
             z = max(self.state.zoom, 1e-6)
             delta = event.position() - self._pan_start_pos
-            new_pan_x = self._pan_start_state[0] + (delta.x() / ref.width()) / (max(fit_x, 1e-6) * z)
-            new_pan_y = self._pan_start_state[1] + (delta.y() / ref.height()) / (max(fit_y, 1e-6) * z)
-            new_pan_x, new_pan_y = self._clamp_pan_values(new_pan_x, new_pan_y, self.state.zoom)
+            new_pan_x = self._pan_start_state[0] + (delta.x() / ref.width()) / (
+                max(fit_x, 1e-6) * z
+            )
+            new_pan_y = self._pan_start_state[1] + (delta.y() / ref.height()) / (
+                max(fit_y, 1e-6) * z
+            )
+            new_pan_x, new_pan_y = self._clamp_pan_values(
+                new_pan_x, new_pan_y, self.state.zoom
+            )
             self._do_dispatch(actions.set_pan(new_pan_x, new_pan_y))
             event.accept()
             return
 
-        # Hover: update cursor over dividers.
         div = self._divider_at(event.position())
-        if div is not None:
+        if div is not None and not _dividers_locked(self.state):
             _path, _idx, _rect, direction, _ws = div
             self.setCursor(
-                Qt.CursorShape.SplitHCursor if direction == "h"
+                Qt.CursorShape.SplitHCursor
+                if direction == "h"
                 else Qt.CursorShape.SplitVCursor
             )
         else:
@@ -660,7 +691,10 @@ class MultiCompareCanvasWidget(QRhiWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             self._lmb_press_pos = None
             self._lmb_press_slot_id = None
-        if self._divider_drag is not None and event.button() == Qt.MouseButton.LeftButton:
+        if (
+            self._divider_drag is not None
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
             self._divider_drag = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
             event.accept()
@@ -678,9 +712,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
                 split_path, _idx, _drect, _direction, weights = div
                 n = len(weights)
                 if n > 0:
-                    self._do_dispatch(
-                        actions.set_split_weights(split_path, [1.0] * n)
-                    )
+                    self._do_dispatch(actions.set_split_weights(split_path, [1.0] * n))
                 event.accept()
                 return
             leaf_rects = self._leaf_rects()
@@ -708,14 +740,19 @@ class MultiCompareCanvasWidget(QRhiWidget):
         mime.setData(INTERNAL_SLOT_MIME, str(slot_id).encode("utf-8"))
         drag = QDrag(self)
         drag.setMimeData(mime)
-        # Build a small preview pixmap from the slot's image (if available).
+
         rects = self._leaf_rects()
         rect = next((r for l, r in rects if l.slot_id == slot_id), None)
         if rect is not None and slot is not None and slot.image is not None:
             from PySide6.QtGui import QImage, QPixmap
+
             h, w = slot.image.shape[:2]
             channels = slot.image.shape[2] if slot.image.ndim == 3 else 1
-            fmt = QImage.Format.Format_RGB888 if channels == 3 else QImage.Format.Format_RGBA8888
+            fmt = (
+                QImage.Format.Format_RGB888
+                if channels == 3
+                else QImage.Format.Format_RGBA8888
+            )
             qimg = QImage(slot.image.tobytes(), w, h, w * channels, fmt)
             preview = QPixmap.fromImage(qimg).scaledToWidth(
                 160, Qt.TransformationMode.SmoothTransformation
@@ -723,8 +760,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
             drag.setPixmap(preview)
             drag.setHotSpot(QPoint(preview.width() // 2, preview.height() // 2))
         drag.exec(Qt.DropAction.MoveAction)
-
-    # ---- hit-tests ----
 
     def _leaf_at(self, pos: QPoint, leaf_rects) -> tuple[LeafNode, QRect] | None:
         for leaf, rect in leaf_rects:
@@ -749,19 +784,15 @@ class MultiCompareCanvasWidget(QRhiWidget):
                 return split_path, idx, drect, split.direction, list(split.weights)
         return None
 
-    def _split_container_size_at(self, split_path: tuple[int, ...], direction: str) -> int:
+    def _split_container_size_at(
+        self, split_path: tuple[int, ...], direction: str
+    ) -> int:
         """Width / height of the SplitNode container at ``split_path``."""
         rect = self._node_rect_at_path(split_path)
         if rect is None:
             return 0
         return rect.width() if direction == "h" else rect.height()
 
-    # Divider-drag floor knobs. ``MIN_PANE_FRACTION`` keeps each pane at least
-    # that share of the container regardless of size. ``MIN_PANE_PIXELS`` is an
-    # absolute readability floor so panes can't shrink below a usable size on
-    # large screens. ``MAX_CELL_ASPECT`` caps the cell's aspect ratio so a wide
-    # image in a tall sliver (or vice-versa) doesn't turn into a thin band with
-    # huge letterbox bars.
     MIN_PANE_FRACTION = 0.15
     MIN_PANE_PIXELS = 100
     MAX_CELL_ASPECT = 5.0

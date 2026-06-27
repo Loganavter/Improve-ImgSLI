@@ -2,13 +2,76 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from pathlib import Path
 
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from tabs.contract import TabContext, TabContract
 
+logger = logging.getLogger(__name__)
+
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
+_STATE_SLOT = "multi_compare.state"
+_QS_ORG = "improve-imgsli"
+_QS_APP = "improve-imgsli"
+_QS_KEY = "multi_compare/last_session_settings"
+
+_last_session_settings: "tuple | None" = None  # (divider_settings, label_settings)
+
+
+def _save_last_settings(divider, label) -> None:
+    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareLabelSettings
+    try:
+        data = {
+            "divider": {
+                "visible": divider.visible,
+                "thickness": divider.thickness,
+                "color_rgba": list(divider.color_rgba),
+            },
+            "label": {
+                "font_size_percent": label.font_size_percent,
+                "font_weight": label.font_weight,
+                "text_rgba": list(label.text_rgba),
+                "bg_rgba": list(label.bg_rgba),
+                "draw_background": label.draw_background,
+                "text_alpha_percent": label.text_alpha_percent,
+            },
+        }
+        QSettings(_QS_ORG, _QS_APP).setValue(_QS_KEY, json.dumps(data))
+    except Exception:
+        logger.exception("mc: failed to save last session settings")
+
+
+def _load_last_settings():
+    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareLabelSettings
+    try:
+        raw = QSettings(_QS_ORG, _QS_APP).value(_QS_KEY)
+        if not raw:
+            return None
+        data = json.loads(raw)
+        d = data.get("divider", {})
+        l = data.get("label", {})
+        divider = MultiCompareDividerSettings(
+            visible=d.get("visible", True),
+            thickness=d.get("thickness", 4),
+            color_rgba=tuple(d.get("color_rgba", [180, 180, 180, 230])),
+        )
+        label = MultiCompareLabelSettings(
+            font_size_percent=l.get("font_size_percent", 100),
+            font_weight=l.get("font_weight", 0),
+            text_rgba=tuple(l.get("text_rgba", [255, 255, 255, 255])),
+            bg_rgba=tuple(l.get("bg_rgba", [0, 0, 0, 255])),
+            draw_background=l.get("draw_background", True),
+            text_alpha_percent=l.get("text_alpha_percent", 100),
+        )
+        return (divider, label)
+    except Exception:
+        logger.exception("mc: failed to load last session settings")
+        return None
+
 
 class MultiCompareTab(TabContract):
     """Self-contained multi-image comparison tab."""
@@ -18,6 +81,7 @@ class MultiCompareTab(TabContract):
         self._widget = None
         self._session_states: dict[str, object] = {}
         self._active_session_id: str | None = None
+        self._store_context = None
 
     @property
     def session_type(self) -> str:
@@ -52,8 +116,6 @@ class MultiCompareTab(TabContract):
 
         self._widget = MultiCompareWidget(
             page,
-            add_images_text=context.tr("add_images", "Add images"),
-            save_result_text=context.tr("save_result", "Save result"),
             translate=context.tr,
             lang_provider=_lang,
         )
@@ -64,6 +126,8 @@ class MultiCompareTab(TabContract):
             dialog_parent=context.main_window or page,
             context=context,
         )
+        self._store_context = context.store
+        self._widget.store.subscribe(self._on_widget_state_changed)
         layout.addWidget(self._widget)
 
         return page
@@ -85,25 +149,69 @@ class MultiCompareTab(TabContract):
     def _snapshot_into(self, session_id: str | None) -> None:
         if session_id is None or self._widget is None:
             return
-        self._session_states[session_id] = self._widget.store.state
+        state = self._widget.store.state
+        self._session_states[session_id] = state
+        store = self._store_context
+        if store is not None and hasattr(store, "set_session_state_slot"):
+            store.set_session_state_slot(
+                _STATE_SLOT,
+                state,
+                session_id=session_id,
+                emit_scope=None,
+            )
 
     def _restore_from(self, session_id: str | None) -> None:
         if self._widget is None:
             return
         from tabs.multi_compare.models import MultiCompareState
-        state = self._session_states.get(session_id) if session_id is not None else None
+
+        def _factory():
+            return MultiCompareState()
+
+        state = None
+        store = self._store_context
+        if (
+            session_id is not None
+            and store is not None
+            and hasattr(store, "ensure_session_state_slot")
+        ):
+            state = store.ensure_session_state_slot(
+                _STATE_SLOT,
+                session_id=session_id,
+                factory=_factory,
+            )
+        if state is None and session_id is not None:
+            state = self._session_states.get(session_id)
         if state is None:
             state = MultiCompareState()
             if session_id is not None:
                 self._session_states[session_id] = state
         self._widget.store.replace_state(state)
 
+    def _on_widget_state_changed(self, _action, state) -> None:
+        global _last_session_settings
+        _last_session_settings = (state.divider_settings, state.label_settings)
+        _save_last_settings(state.divider_settings, state.label_settings)
+        session_id = self._active_session_id
+        if session_id is None:
+            return
+        self._session_states[session_id] = state
+        store = self._store_context
+        if store is None or not hasattr(store, "set_session_state_slot"):
+            return
+        store.set_session_state_slot(
+            _STATE_SLOT,
+            state,
+            session_id=session_id,
+            emit_scope=None,
+        )
+
     def on_activated(self, context: TabContext) -> None:
         new_id = self._resolve_active_session_id(context)
         if new_id != self._active_session_id:
             self._snapshot_into(self._active_session_id)
-            self._restore_from(new_id)
             self._active_session_id = new_id
+            self._restore_from(new_id)
         if self._widget:
             self._widget.setFocus()
 
@@ -112,7 +220,24 @@ class MultiCompareTab(TabContract):
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         from tabs.multi_compare.models import MultiCompareState
-        self._session_states[session_id] = MultiCompareState()
+
+        global _last_session_settings
+        if _last_session_settings is None:
+            _last_session_settings = _load_last_settings()
+        if _last_session_settings is not None:
+            divider, label = _last_session_settings
+            state = MultiCompareState(divider_settings=divider, label_settings=label)
+        else:
+            state = MultiCompareState()
+        self._session_states[session_id] = state
+        store = getattr(context, "store", None)
+        if store is not None and hasattr(store, "set_session_state_slot"):
+            store.set_session_state_slot(
+                _STATE_SLOT,
+                state,
+                session_id=session_id,
+                emit_scope=None,
+            )
 
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         self._session_states.pop(session_id, None)
@@ -120,15 +245,13 @@ class MultiCompareTab(TabContract):
             self._active_session_id = None
 
     def contribute_settings(self, registry) -> None:
-        # Multi-compare currently shares the global appearance/interface/
-        # performance sections via the built-in registrations. Tab-specific
-        # sections (e.g. grid layout defaults) would be registered here.
+
         return
 
     def accepts_drop(self, paths: list[Path]) -> bool:
         return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
 
-    def handle_drop(self, paths: list[Path]) -> None:
+    def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
         if self._controller:
             image_paths = [p for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
             self._controller.load_images(image_paths)

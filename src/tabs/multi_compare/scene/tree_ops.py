@@ -47,9 +47,7 @@ def remove_leaf(node: LayoutNode | None, slot_id: int) -> LayoutNode | None:
     return _clone_split(node, children=new_children, weights=new_weights)
 
 
-def swap_slot_ids(
-    node: LayoutNode | None, sid_a: int, sid_b: int
-) -> LayoutNode | None:
+def swap_slot_ids(node: LayoutNode | None, sid_a: int, sid_b: int) -> LayoutNode | None:
     if node is None or sid_a == sid_b:
         return node
     if isinstance(node, LeafNode):

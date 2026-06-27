@@ -59,10 +59,16 @@ class OverlayTexturePass:
 
         self.srb = self._build_srb(renderer)
         self.pipeline = renderer.rhi.newGraphicsPipeline()
-        self.pipeline.setShaderStages([
-            QRhiShaderStage(QRhiShaderStage.Type.Vertex, load_shader("overlay.vert.qsb")),
-            QRhiShaderStage(QRhiShaderStage.Type.Fragment, load_shader("overlay.frag.qsb")),
-        ])
+        self.pipeline.setShaderStages(
+            [
+                QRhiShaderStage(
+                    QRhiShaderStage.Type.Vertex, load_shader("overlay.vert.qsb")
+                ),
+                QRhiShaderStage(
+                    QRhiShaderStage.Type.Fragment, load_shader("overlay.frag.qsb")
+                ),
+            ]
+        )
         self.pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
         self.pipeline.setSampleCount(target.sampleCount())
         self.pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
@@ -118,7 +124,9 @@ class OverlayTexturePass:
                 self.texture.destroy()
             except RuntimeError:
                 pass
-            self.texture = renderer.rhi.newTexture(QRhiTexture.Format.RGBA8, overlay_size)
+            self.texture = renderer.rhi.newTexture(
+                QRhiTexture.Format.RGBA8, overlay_size
+            )
             self.texture.create()
             self.texture_size = overlay_size
         try:
@@ -146,15 +154,17 @@ class OverlayTexturePass:
             | QRhiShaderResourceBinding.StageFlag.FragmentStage
         )
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
-        srb.setBindings([
-            QRhiShaderResourceBinding.uniformBuffer(0, stages, self.uniform_buffer),
-            QRhiShaderResourceBinding.sampledTexture(
-                1,
-                fragment,
-                self.texture or renderer.placeholder,
-                renderer.sampler,
-            ),
-        ])
+        srb.setBindings(
+            [
+                QRhiShaderResourceBinding.uniformBuffer(0, stages, self.uniform_buffer),
+                QRhiShaderResourceBinding.sampledTexture(
+                    1,
+                    fragment,
+                    self.texture or renderer.placeholder,
+                    renderer.sampler,
+                ),
+            ]
+        )
         if not srb.create():
             raise RuntimeError("Failed to create multi_compare overlay SRB")
         return srb

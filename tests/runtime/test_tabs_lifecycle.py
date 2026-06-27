@@ -17,6 +17,8 @@ class _RecordingTab(TabContract):
     def __init__(self, accept: bool):
         self._accept = accept
         self.handled: list[list[Path]] = []
+        self.hints: list[dict | None] = []
+        self.lifecycle_calls: list[str] = []
         self.dispose_calls = 0
 
     @property
@@ -33,8 +35,15 @@ class _RecordingTab(TabContract):
     def accepts_drop(self, paths: list[Path]) -> bool:
         return self._accept
 
-    def handle_drop(self, paths: list[Path]) -> None:
+    def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
         self.handled.append(paths)
+        self.hints.append(hint)
+
+    def on_activated(self, context: TabContext) -> None:
+        self.lifecycle_calls.append("activated")
+
+    def on_deactivated(self, context: TabContext) -> None:
+        self.lifecycle_calls.append("deactivated")
 
     def dispose(self) -> None:
         self.dispose_calls += 1
@@ -42,14 +51,16 @@ class _RecordingTab(TabContract):
 def _registry_with(tab: TabContract) -> TabRegistry:
     registry = TabRegistry()
     registry._tabs[tab.session_type] = tab
+    registry._context = TabContext()
     return registry
 
 def test_drop_routed_when_accepted():
     tab = _RecordingTab(accept=True)
     registry = _registry_with(tab)
-    handled = registry.route_drop("recording", ["/tmp/a.png"])
+    handled = registry.route_drop("recording", ["/tmp/a.png"], hint={"slot": 2})
     assert handled is True
     assert tab.handled == [[Path("/tmp/a.png")]]
+    assert tab.hints == [{"slot": 2}]
 
 def test_drop_not_routed_when_rejected():
     tab = _RecordingTab(accept=False)
@@ -57,6 +68,7 @@ def test_drop_not_routed_when_rejected():
     handled = registry.route_drop("recording", ["/tmp/a.png"])
     assert handled is False
     assert tab.handled == []
+    assert tab.hints == []
 
 def test_drop_to_unknown_session_is_noop():
     tab = _RecordingTab(accept=True)
@@ -76,3 +88,38 @@ def test_registry_dispose_all_is_idempotent():
     registry.dispose_all()
     registry.dispose_all()
     assert registry.list_tabs() == []
+
+def test_registry_deactivates_previous_tab_before_activating_next():
+    first = _RecordingTab(accept=True)
+
+    class _SecondTab(_RecordingTab):
+        @property
+        def session_type(self) -> str:
+            return "second"
+
+    second = _SecondTab(accept=True)
+    registry = _registry_with(first)
+    registry._tabs[second.session_type] = second
+
+    registry.activate("recording")
+    registry.activate("second")
+
+    assert first.lifecycle_calls == ["activated", "deactivated"]
+    assert second.lifecycle_calls == ["activated"]
+
+def test_registry_forwards_appearance_and_shutdown_hooks():
+    tab = _RecordingTab(accept=True)
+    registry = _registry_with(tab)
+    host = object()
+
+    tab.apply_appearance = lambda window: tab.lifecycle_calls.append(
+        "appearance" if window is host else "wrong"
+    )
+    tab.on_window_shutdown = lambda window: tab.lifecycle_calls.append(
+        "shutdown" if window is host else "wrong"
+    )
+
+    registry.apply_appearance(host)
+    registry.notify_window_shutdown(host)
+
+    assert tab.lifecycle_calls == ["appearance", "shutdown"]

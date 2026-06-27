@@ -1,0 +1,18 @@
+{
+  "title": "Criar área de trabalho",
+  "subtitle": "Escolha um tipo de sessão para começar",
+  "types": {
+    "image_compare": "Comparação de Imagem",
+    "multi_compare": "Comparação Múltipla"
+  },
+  "descriptions": {
+    "image_compare": "Comparação lado a lado de imagens com divisor, lupa e ferramentas de análise.",
+    "multi_compare": "Layout em grade para comparar várias fontes ao mesmo tempo."
+  },
+  "drop_zone": "Solte arquivos de imagem aqui para iniciar uma comparação",
+  "recent": {
+    "title": "Continuar",
+    "badge": "Em desenvolvimento",
+    "placeholder": "As áreas de trabalho recentes aparecerão aqui quando este recurso estiver pronto."
+  }
+}

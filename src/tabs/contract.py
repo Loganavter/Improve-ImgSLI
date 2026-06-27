@@ -3,11 +3,33 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
+
+
+@dataclass(frozen=True)
+class TabTransitionHint:
+    """How the workspace shell should mask intermediate paint glitches when
+    activating this tab.
+
+    The shell guarantees the mask stays visible for at least ``min_duration_ms``
+    after the swap starts, and is hidden no later than ``max_duration_ms`` even
+    if the tab never reports readiness. Tabs that want to drop the mask earlier
+    can call the ``workspace.transition_mask`` service's ``release()`` once
+    their first valid frame is painted.
+    """
+
+    cover_on_enter: bool = True
+    min_duration_ms: int = 50
+    max_duration_ms: int = 300
+
+
+_DEFAULT_TRANSITION_HINT = TabTransitionHint()
+
 
 class TabContract(ABC):
     """
@@ -69,6 +91,15 @@ class TabContract(ABC):
         Called once during app startup. The returned widget is added to workspace_stack.
         """
 
+    def transition_hint(self) -> TabTransitionHint:
+        """How the shell should cover paint glitches when entering this tab.
+
+        Override in tabs with complex first-paint layouts to extend the mask
+        window (or disable it). The default keeps a ~50 ms mask, capped at
+        300 ms in case the tab never signals readiness.
+        """
+        return _DEFAULT_TRANSITION_HINT
+
     def on_activated(self, context: TabContext) -> None:
         """Called when this tab's session becomes the active workspace session."""
 
@@ -79,8 +110,21 @@ class TabContract(ABC):
         """Return True if this tab can handle the given file drop."""
         return False
 
-    def handle_drop(self, paths: list[Path]) -> None:
-        """Process dropped files. Only called if accepts_drop returned True."""
+    def handle_drop(
+        self, paths: list[Path], hint: dict | None = None
+    ) -> None:
+        """Process dropped files. Only called if accepts_drop returned True.
+
+        ``hint`` carries host-side context (e.g. ``{"is_left_area": bool}``
+        from mouse position) so the tab can route the drop without the host
+        embedding tab-specific concepts.
+        """
+
+    def apply_appearance(self, host_window) -> None:
+        """Repaint tab-owned widgets when the theme changes."""
+
+    def on_window_shutdown(self, host_window) -> None:
+        """Tear down tab-owned timers / threads when the host window closes."""
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         """Called when a new session of this tab's type is created."""
@@ -101,6 +145,7 @@ class TabContract(ABC):
 
     def dispose(self) -> None:
         """Cleanup when the tab is being unloaded."""
+
 
 class TabContext:
     """

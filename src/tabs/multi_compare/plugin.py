@@ -6,7 +6,9 @@ from typing import Any
 
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import ISessionPlugin
-from core.session_blueprints import SessionBlueprint
+from core.session_blueprints import SessionBlueprint, SessionSlotBlueprint
+from tabs.multi_compare.models import MultiCompareState
+
 
 @plugin(name="multi_compare", version="0.1")
 class MultiComparePlugin(Plugin, ISessionPlugin):
@@ -26,6 +28,12 @@ class MultiComparePlugin(Plugin, ISessionPlugin):
                 session_type="multi_compare",
                 plugin_name="multi_compare",
                 title="Multi Compare",
+                state_slots=(
+                    SessionSlotBlueprint(
+                        name="multi_compare.state",
+                        factory=MultiCompareState,
+                    ),
+                ),
             ),
         )
 
