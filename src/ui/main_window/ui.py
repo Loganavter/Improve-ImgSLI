@@ -290,12 +290,12 @@ class Ui_ImageComparisonApp:
         tab_page = (
             self._tab_registry.get_page(session_type) if self._tab_registry else None
         )
-        if tab_page is not None:
+        if is_image_session:
+            self.workspace_stack.setCurrentWidget(self.image_session_page)
+        elif tab_page is not None:
             self.workspace_stack.setCurrentWidget(tab_page)
             if self._tab_registry:
                 self._tab_registry.activate(session_type)
-        elif is_image_session:
-            self.workspace_stack.setCurrentWidget(self.image_session_page)
         else:
             self.workspace_stack.setCurrentWidget(self.video_session_page)
 
