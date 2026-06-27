@@ -7,9 +7,10 @@ from PySide6.QtWidgets import QApplication, QRhiWidget, QWidget
 
 from shared_toolkit.ui.managers.font_manager import FontManager
 from ui.theming import resolve_theme_color
-from ui.widgets.gl_canvas.helpers import get_canvas
+from ui.widgets.canvas.helpers import get_canvas
 
 logger = logging.getLogger("ImproveImgSLI")
+
 
 class MainWindowAppearance:
     def __init__(self, window):
@@ -38,7 +39,9 @@ class MainWindowAppearance:
         image_label = get_canvas(window.ui) if window.ui is not None else None
         if image_label is None:
             return
-        self._apply_widget_background(getattr(window.ui, "image_container_widget", None), bg)
+        self._apply_widget_background(
+            getattr(window.ui, "image_container_widget", None), bg
+        )
         self._apply_widget_background(image_label, bg)
         placeholder = getattr(window.ui, "image_startup_placeholder", None)
         if placeholder is not None:
@@ -67,7 +70,7 @@ class MainWindowAppearance:
             return
         targets = [
             getattr(window.ui, "workspace_stack", None),
-            getattr(window.ui, "image_session_page", None),
+            getattr(window.ui, "image_compare_widget", None),
             getattr(window.ui, "video_session_page", None),
         ]
         stack = getattr(window.ui, "workspace_stack", None)

@@ -18,11 +18,13 @@ from PySide6.QtWidgets import QWidget
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".jxl"}
+_STATE_SLOT = "image_compare.state"
 
 
 class ImageCompareTab(TabContract):
     def __init__(self):
         self._widget: "ImageCompareWidget | None" = None
+        self._active_session_id: str | None = None
 
     @property
     def session_type(self) -> str:
@@ -39,6 +41,13 @@ class ImageCompareTab(TabContract):
     @property
     def i18n_namespace(self) -> str | None:
         return "image_compare"
+
+    def localized_display_name(self, language: str) -> str:
+        from resources.translations import tr
+
+        key = "workspace.session_types.image_compare"
+        translated = tr(key, language)
+        return translated if translated != key else self.display_name
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         from tabs.image_compare.widget import ImageCompareWidget
@@ -57,16 +66,90 @@ class ImageCompareTab(TabContract):
         )
 
     def on_activated(self, context: TabContext) -> None:
+        new_id = self._resolve_active_session_id(context)
+        if new_id != self._active_session_id:
+            self._snapshot_into(context, self._active_session_id)
+            self._active_session_id = new_id
+            self._restore_from(context, new_id)
         if self._widget is not None:
             self._widget.setFocus()
-        # Release the transition mask once we are shown — the canvas does not
-        # yet expose firstVisualFrameReady, so this is a best-effort signal.
-        mask = (context.services or {}).get("workspace.transition_mask")
-        if mask is not None:
-            try:
-                mask.release()
-            except Exception:
-                pass
+        # The transition mask is released by ImageCompareWidget when the
+        # canvas emits ``firstVisualFrameReady`` — no host-side release here.
+
+    def on_deactivated(self, context: TabContext) -> None:
+        self._snapshot_into(context, self._active_session_id)
+
+    def on_session_created(self, session_id: str, context: TabContext) -> None:
+        # Slot is auto-allocated by SessionBlueprint.state_slots; nothing to do.
+        return
+
+    def on_session_closed(self, session_id: str, context: TabContext) -> None:
+        if self._active_session_id == session_id:
+            self._active_session_id = None
+
+    def _resolve_active_session_id(self, context: TabContext) -> str | None:
+        store = getattr(context, "store", None)
+        if store is None:
+            return None
+        try:
+            session = store.get_active_workspace_session()
+        except Exception:
+            return None
+        if session is None or getattr(session, "session_type", None) != self.session_type:
+            return None
+        return getattr(session, "id", None)
+
+    def _snapshot_into(self, context: TabContext, session_id: str | None) -> None:
+        if session_id is None or self._widget is None:
+            return
+        store = getattr(context, "store", None)
+        if store is None or not hasattr(store, "set_session_state_slot"):
+            return
+        ui = getattr(self._widget._context, "main_window", None) if self._widget._context else None
+        ui = getattr(ui, "ui", None) if ui is not None else None
+        if ui is None:
+            return
+        from tabs.image_compare.models import ImageCompareState
+
+        state = ImageCompareState(
+            show_file_names=bool(getattr(getattr(ui, "btn_file_names", None), "isChecked", lambda: False)()),
+            edit_name_1=getattr(getattr(ui, "edit_name1", None), "text", lambda: "")(),
+            edit_name_2=getattr(getattr(ui, "edit_name2", None), "text", lambda: "")(),
+        )
+        try:
+            store.set_session_state_slot(
+                _STATE_SLOT, state, session_id=session_id, emit_scope=None,
+            )
+        except Exception:
+            pass
+
+    def _restore_from(self, context: TabContext, session_id: str | None) -> None:
+        if session_id is None or self._widget is None:
+            return
+        store = getattr(context, "store", None)
+        if store is None or not hasattr(store, "ensure_session_state_slot"):
+            return
+        from tabs.image_compare.models import ImageCompareState
+
+        try:
+            state = store.ensure_session_state_slot(
+                _STATE_SLOT, session_id=session_id, factory=ImageCompareState,
+            )
+        except Exception:
+            return
+        if state is None:
+            return
+        ui = getattr(self._widget._context, "main_window", None) if self._widget._context else None
+        ui = getattr(ui, "ui", None) if ui is not None else None
+        if ui is None:
+            return
+        btn = getattr(ui, "btn_file_names", None)
+        if btn is not None and hasattr(btn, "setChecked"):
+            btn.setChecked(bool(state.show_file_names))
+        for attr, value in (("edit_name1", state.edit_name_1), ("edit_name2", state.edit_name_2)):
+            edit = getattr(ui, attr, None)
+            if edit is not None and hasattr(edit, "setText"):
+                edit.setText(value or "")
 
     def accepts_drop(self, paths: list[Path]) -> bool:
         return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
@@ -97,11 +180,20 @@ class ImageCompareTab(TabContract):
         )
 
     def contribute_settings(self, registry) -> None:
-        # Stage 9 (full move of owner_tab='image_compare' sections into this
-        # tab) is deferred — the existing plugins.settings discovery already
-        # honors owner_tab='image_compare'. No-op here keeps the contract
-        # surface complete without duplicating registration.
-        return
+        from plugins.settings.pages.analysis import build as build_analysis
+        from plugins.settings.registry import SettingsSection
+        from ui.icon_manager import AppIcon
+
+        registry.add(
+            SettingsSection(
+                section_id="image_compare.analysis",
+                title_key="label.details",
+                icon=AppIcon.HIGHLIGHT_DIFFERENCES,
+                build=build_analysis,
+                owner_tab=self.session_type,
+                order=40,
+            )
+        )
 
     def dispose(self) -> None:
         self._widget = None
