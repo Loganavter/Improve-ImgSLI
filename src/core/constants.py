@@ -63,10 +63,8 @@ class Events(StrEnum):
 
     EXPORT_TOGGLE_RECORDING = "export.toggle_recording"
     EXPORT_TOGGLE_PAUSE_RECORDING = "export.toggle_pause_recording"
-    EXPORT_EXPORT_RECORDED_VIDEO = "export.export_recorded_video"
     EXPORT_OPEN_VIDEO_EDITOR = "export.open_video_editor"
     EXPORT_PASTE_IMAGE_FROM_CLIPBOARD = "export.paste_image_from_clipboard"
-    EXPORT_QUICK_SAVE_COMPARISON = "export.quick_save_comparison"
 
     ANALYSIS_SET_CHANNEL_VIEW_MODE = "analysis.set_channel_view_mode"
     ANALYSIS_TOGGLE_DIFF_MODE = "analysis.toggle_diff_mode"

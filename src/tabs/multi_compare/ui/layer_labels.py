@@ -1,9 +1,8 @@
 """Per-cell filename labels for the multi-compare overlay.
 
-Reuses the high-quality label rasterization primitives from
-:mod:`ui.canvas_features.filename_overlay.labels` so labels look identical to
-the ones in main compare: pixel-snapped rounded background, supersampled bold
-text, ellipsis on overflow.
+Reuses the shared filename label rasterization primitives so labels look
+identical to the ones in main compare: pixel-snapped rounded background,
+supersampled bold text, ellipsis on overflow.
 
 The label is positioned at the bottom-left of its layer in framebuffer pixels, so
 its visual size is stable regardless of composition canvas scale.
@@ -16,13 +15,13 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter
 
-from ui.canvas_features.filename_overlay.labels import (
+from ui.canvas_presentation.filename_labels import (
     draw_round_rect,
     draw_text_bold_supersampled,
     fit_text,
     snap_rect_to_pixels,
 )
-from ui.canvas_presentation.render_arch import FilenameOverlayStyle
+from ui.canvas_presentation.label_style import FilenameOverlayStyle
 
 
 @dataclass(frozen=True)

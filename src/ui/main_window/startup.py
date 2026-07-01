@@ -9,8 +9,6 @@ from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.onboarding import OnboardingOverlay
 from ui.theming import resolve_theme_color
-from ui.widgets.gl_canvas.contracts import BaseCanvasProtocol
-from ui.widgets.gl_canvas.helpers import get_canvas
 
 
 def _paint_opaque_theme_background(widget: QWidget, color: QColor) -> None:
@@ -148,7 +146,7 @@ class MainWindowStartupRuntime:
         window.ui.main_window = window
         from ui.main_window.layouts import apply_workspace_tabs_visibility
         apply_workspace_tabs_visibility(window.ui)
-        image_label: BaseCanvasProtocol = window.ui.image_label
+        image_label = window.ui.image_label
         logger.debug("Main window UI bootstrapped")
         window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
         window._startup_canvas_first_frame_rendered = False
@@ -188,13 +186,11 @@ class MainWindowStartupRuntime:
         if window.main_controller and window.main_controller.sessions:
             window.main_controller.sessions.initialize_app_display()
         window.ui.reapply_button_styles()
-        for attr_name in (
-            "btn_magnifier_color_settings",
-            "btn_magnifier_color_settings_beginner",
-        ):
-            button = getattr(window.ui, attr_name, None)
-            if button is not None and hasattr(button, "refresh_visual_state"):
-                button.refresh_visual_state()
+        from tabs.registry import TabRegistry
+
+        _tab_registry = TabRegistry()
+        _tab_registry.discover()
+        _tab_registry.create_service("refresh_startup_button_visuals", window.ui)
 
         window._startup_stack.setCurrentWidget(window._app_host)
         self.sync_cover_geometry()
@@ -208,32 +204,14 @@ class MainWindowStartupRuntime:
         self.reveal_if_ready()
 
     def has_initial_canvas_content(self) -> bool:
-        window = self.window
-        document = getattr(window.store, "document", None)
-        viewport = getattr(window.store, "viewport", None)
-        if document is None:
-            return False
-        if getattr(document, "image1_path", None) and getattr(document, "image2_path", None):
-            return True
-        single_mode = int(
-            getattr(
-                getattr(viewport, "view_state", None),
-                "showing_single_image_mode",
-                0,
-            )
-            or 0
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        result = registry.create_service(
+            "has_initial_canvas_content", self.window.store
         )
-        if single_mode == 1:
-            return bool(
-                getattr(document, "image1_path", None)
-                or getattr(document, "original_image1", None)
-            )
-        if single_mode == 2:
-            return bool(
-                getattr(document, "image2_path", None)
-                or getattr(document, "original_image2", None)
-            )
-        return False
+        return bool(result)
 
     def on_image_label_first_frame_rendered(self) -> None:
         self.window._startup_canvas_first_frame_rendered = True
@@ -261,7 +239,7 @@ class MainWindowStartupRuntime:
         window = self.window
         if window.ui is None:
             return False
-        image_label = get_canvas(window.ui)
+        image_label = getattr(window.ui, "image_label", None)
         if image_label is None:
             return False
 

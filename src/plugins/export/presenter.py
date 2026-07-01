@@ -4,13 +4,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QDialog, QMessageBox
 
 from core.store import Store
-from plugins.export.presenter_parts import (
-    ExportContextBuilder,
-    ExportSaveFlowCoordinator,
-    ExportStateCoordinator,
-)
 from plugins.export.services.gpu_export import GpuExportService
-from plugins.export.services.image_export import ExportService
 from resources.translations import tr
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -38,25 +32,83 @@ class ExportPresenter(QObject):
             parent=main_window_app,
             resource_manager=resource_manager,
         )
-        self.export_service = ExportService(
-            font_path_absolute, gpu_export_service=self.gpu_export_service
+        self.export_service = self._create_image_export_service(
+            font_path_absolute=font_path_absolute,
+            gpu_export_service=self.gpu_export_service,
         )
-        self.state = ExportStateCoordinator(store, main_controller, main_window_app)
-        self.context_builder = ExportContextBuilder(
+        self.state = self._create_export_state_coordinator(
+            store=store,
+            main_controller=main_controller,
+            main_window_app=main_window_app,
+        )
+        self.context_builder = self._create_export_context_builder(
             store=store,
             gpu_export_service=self.gpu_export_service,
             state_coordinator=self.state,
         )
-        self.save_flow = ExportSaveFlowCoordinator(
+        self.save_flow = self._create_export_save_flow(
             store=store,
             main_window_app=main_window_app,
             ui_manager=ui_manager,
             tr_func=self._tr,
             state_coordinator=self.state,
+            export_service=self.export_service,
         )
 
     def _tr(self, text):
         return tr(text, self.store.settings.current_language)
+
+    def _create_export_context_builder(self, **kwargs):
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        builder = registry.create_service("export_save_context_builder", **kwargs)
+        if builder is None:
+            raise RuntimeError(
+                "No tab provides export_save_context_builder; still-image export "
+                "must be supplied by the active tab owner."
+            )
+        return builder
+
+    def _create_export_state_coordinator(self, **kwargs):
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        state = registry.create_service("export_state_coordinator", **kwargs)
+        if state is None:
+            raise RuntimeError(
+                "No tab provides export_state_coordinator; still-image export "
+                "state must be supplied by the active tab owner."
+            )
+        return state
+
+    def _create_export_save_flow(self, **kwargs):
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        flow = registry.create_service("export_save_flow", **kwargs)
+        if flow is None:
+            raise RuntimeError(
+                "No tab provides export_save_flow; still-image export save flow "
+                "must be supplied by the active tab owner."
+            )
+        return flow
+
+    def _create_image_export_service(self, **kwargs):
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        service = registry.create_service("image_export_service", **kwargs)
+        if service is None:
+            raise RuntimeError(
+                "No tab provides image_export_service; still-image export "
+                "must be supplied by the active tab owner."
+            )
+        return service
 
     def shutdown(self) -> None:
         try:
@@ -129,7 +181,6 @@ class ExportPresenter(QObject):
             self.save_flow.start_save_worker(
                 save_ctx=save_ctx,
                 export_opts=export_opts,
-                export_runner=self._export_worker_task,
             )
             self.state.persist_export_settings(export_opts)
 
@@ -174,7 +225,6 @@ class ExportPresenter(QObject):
             self.save_flow.start_save_worker(
                 save_ctx=save_ctx,
                 export_opts=self.state.build_quick_export_options(),
-                export_runner=self._export_worker_task,
             )
 
         except Exception as e:
@@ -184,41 +234,6 @@ class ExportPresenter(QObject):
                 title=self._tr("common.error"),
                 text=f"{self._tr('msg.failed_to_quick_save_image')}: {str(e)}",
             )
-
-    def _export_worker_task(self, **kwargs):
-        progress_callback = kwargs.get("progress_callback")
-        cancel_event = kwargs.get("cancel_event")
-        store_copy = kwargs["store_copy"]
-        original1_full = kwargs["original1_full"]
-        original2_full = kwargs["original2_full"]
-        export_options = kwargs["export_options"]
-        render_plan = kwargs.get("render_plan")
-        render_store = kwargs.get("render_store")
-
-        def emit_progress(val):
-            if progress_callback:
-                progress_callback.emit(val)
-
-        try:
-
-            result = self.export_service.export_image(
-                store=store_copy,
-                original_image1=original1_full,
-                original_image2=original2_full,
-                export_options=export_options,
-                render_plan=render_plan,
-                render_store=render_store,
-                cancel_event=cancel_event,
-                progress_callback=lambda v: emit_progress(v),
-            )
-            return result
-        except RuntimeError as e:
-            if str(e) == "Export canceled by user":
-                return None
-            raise
-        except Exception as e:
-            logger.error(f"Export worker task failed: {e}", exc_info=True)
-            raise e
 
     def cancel_all_exports(self):
         self.save_flow.cancel_all_exports()

@@ -37,8 +37,8 @@ class LayoutComposer:
     """Builds the main window layout tree.
 
     The host owns the workspace bar, the QStackedWidget and the video page.
-    The image_compare page is delegated to ``tabs.image_compare.widget``,
-    which owns the construction of every container inside the page.
+    Tab pages are delegated to registered tab contracts. Some legacy tabs still
+    assemble host-created primitive widgets through transitional hooks.
     """
 
     def __init__(self, ui):
@@ -52,9 +52,7 @@ class LayoutComposer:
         self._configure_session_pages()
 
         ui = self.ui
-        tab = ui._tab_registry.get_tab("image_compare")
-        ui.image_compare_widget = tab.widget
-        ui.image_compare_widget.assemble(ui)
+        ui._tab_registry.assemble_host_pages(ui)
 
         main_layout.addWidget(self._workspace_content_widget(main_window), 1)
 
@@ -64,7 +62,9 @@ class LayoutComposer:
         ui = self.ui
         ui.toggle_edit_layout_visibility(False)
         ui.magnifier_settings_panel.setVisible(False)
-        ui.sync_session_mode("image_compare")
+        active = getattr(getattr(ui.main_window, "store", None), "get_active_workspace_session", lambda: None)()
+        if active is not None:
+            ui.sync_session_mode(active.session_type)
         self.apply_icon_sizes()
         self._configure_workspace_tabs()
 
@@ -183,4 +183,3 @@ class LayoutComposer:
             },
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
-

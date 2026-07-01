@@ -6,15 +6,24 @@ from sli_ui_toolkit.workers import GenericWorker
 
 from core.events import CoreErrorOccurredEvent
 from core.state_management.actions import (
+    SetChannelViewModeAction,
+    SetDiffModeAction,
     SetFullResImageAction,
     SetImagePathAction,
+    SetInteractiveModeAction,
     SetPreviewImageAction,
+)
+from tabs.image_compare.events import (
+    AnalysisRequestMetricsEvent,
+    AnalysisSetChannelViewModeEvent,
+    AnalysisSetDiffModeEvent,
+    AnalysisToggleDiffModeEvent,
 )
 from tabs.image_compare.state.actions import (
     SetPendingUnificationPathsAction,
     SetUnificationInProgressAction,
 )
-from plugins.analysis.services.cached_diff import CachedDiffService
+from tabs.image_compare.services.analysis.cached_diff import CachedDiffService
 from tabs.image_compare.use_cases import list_ops, loading, navigation
 from sli_ui_toolkit.i18n import tr
 
@@ -37,7 +46,6 @@ class SessionController(QObject):
         self,
         store,
         thread_pool,
-        image_loader,
         playlist_manager,
         metrics_service=None,
         diff_service: CachedDiffService | None = None,
@@ -47,7 +55,6 @@ class SessionController(QObject):
         super().__init__()
         self.store = store
         self.thread_pool = thread_pool
-        self.image_loader = image_loader
         self.playlist_manager = playlist_manager
         self.metrics_service = metrics_service
         self.diff_service = diff_service
@@ -337,6 +344,60 @@ class SessionController(QObject):
     def _trigger_full_diff_generation(self):
         if self.diff_service is not None:
             self.diff_service.request_generation(optimize_ssim=False)
+
+    def toggle_diff_mode(self, checked: bool):
+        dispatcher = self.store.get_dispatcher()
+        dispatcher.dispatch(SetInteractiveModeAction(checked), scope="viewport")
+        self.store.emit_state_change("viewport")
+
+    def set_diff_mode(self, mode: str):
+        if self.store.viewport.view_state.diff_mode == mode:
+            return
+
+        dispatcher = self.store.get_dispatcher()
+        dispatcher.dispatch(SetDiffModeAction(mode), scope="viewport")
+        if self.diff_service is not None:
+            self.diff_service.invalidate()
+
+        if mode == "off" and self.event_bus:
+            self.event_bus.emit(CoreUpdateRequestedEvent())
+
+        self._trigger_metrics_calculation_if_needed()
+        self.store.invalidate_render_cache()
+        self.store.emit_state_change("viewport")
+
+    def set_channel_view_mode(self, mode: str):
+        if self.store.viewport.view_state.channel_view_mode == mode:
+            return
+
+        dispatcher = self.store.get_dispatcher()
+        dispatcher.dispatch(SetChannelViewModeAction(mode), scope="viewport")
+        if (
+            self.store.viewport.view_state.diff_mode != "off"
+            and self.diff_service is not None
+        ):
+            self.diff_service.invalidate()
+
+        self.store.invalidate_render_cache()
+        self.store.emit_state_change("viewport")
+        if self.event_bus:
+            self.event_bus.emit(CoreUpdateRequestedEvent())
+
+    def on_set_channel_view_mode(self, event: AnalysisSetChannelViewModeEvent):
+        self.set_channel_view_mode(event.mode)
+
+    def on_toggle_diff_mode(self, event: AnalysisToggleDiffModeEvent):
+        self.toggle_diff_mode(True)
+
+    def on_set_diff_mode(self, event: AnalysisSetDiffModeEvent):
+        self.set_diff_mode(event.mode)
+
+    def on_metrics_requested_event(self, event: AnalysisRequestMetricsEvent) -> None:
+        payload = event.payload or {}
+        calc_psnr = payload.get("psnr", True)
+        calc_ssim = payload.get("ssim", True)
+        if self.metrics_service is not None:
+            self.metrics_service.calculate_metrics_async(calc_psnr, calc_ssim)
 
     def swap_current_images(self):
         list_ops.swap_current_images(self)

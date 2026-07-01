@@ -34,7 +34,7 @@ def _build_snapshot():
     )
 
 def test_snapshot_presentation_display_cache_key_is_stable_for_same_inputs():
-    from ui.canvas_presentation.plan_builder import build_snapshot_store_presentation
+    from tabs.image_compare.canvas.presentation.plan_builder import build_snapshot_store_presentation
 
     snap = _build_snapshot()
     img1 = Image.new("RGBA", (640, 360), (255, 0, 0, 255))

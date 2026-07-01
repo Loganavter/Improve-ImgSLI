@@ -11,7 +11,7 @@ from PySide6.QtGui import (
     QPen,
 )
 
-from ui.canvas_presentation.render_arch import FilenameOverlayStyle
+from ui.canvas_presentation.label_style import FilenameOverlayStyle
 from ui.widgets.canvas.render_common import new_overlay_image
 
 

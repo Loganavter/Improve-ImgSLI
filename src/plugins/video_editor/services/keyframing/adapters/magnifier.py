@@ -7,24 +7,19 @@ from plugins.video_editor.services.keyframing.adapters.base import (
     ToolDescriptor,
     TrackDescriptor,
 )
+from plugins.video_editor.services.canvas_feature_gateway import (
+    execute_canvas_feature_alias,
+)
 from plugins.video_editor.services.keyframing.types import FrameSnapshot
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 
 def _store_proxy(viewport):
     return type("StoreProxy", (), {"viewport": viewport})()
 
 def _execute_magnifier_command(store, command_id: str, *args, **kwargs):
-    command = get_canvas_feature_command_by_alias(command_id)
-    if command is None:
-        return None
-    return command(store, *args, **kwargs)
+    return execute_canvas_feature_alias(command_id, store, *args, **kwargs)
 
 def _query_magnifier(store, query_id: str, default=None, *args, **kwargs):
-    command = get_canvas_feature_command_by_alias(query_id)
-    if command is None:
-        return default
-    result = command(store, *args, **kwargs)
-    return default if result is None else result
+    return execute_canvas_feature_alias(query_id, store, *args, default=default, **kwargs)
 
 def _iter_models(snapshot: FrameSnapshot) -> tuple[dict[str, Any], ...]:
     return tuple(
@@ -39,10 +34,13 @@ def _get_model(snapshot: FrameSnapshot, mag_id: str):
 
 def _magnifier_globally_enabled(snapshot: FrameSnapshot) -> bool:
     try:
-        command = get_canvas_feature_command_by_alias("overlay.enabled")
-        if command is None:
-            return True
-        return bool(command(_store_proxy(snapshot.viewport_state)))
+        return bool(
+            execute_canvas_feature_alias(
+                "overlay.enabled",
+                _store_proxy(snapshot.viewport_state),
+                default=True,
+            )
+        )
     except Exception:
         return True
 

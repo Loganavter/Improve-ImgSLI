@@ -108,11 +108,16 @@ def _install_menu_tracker(
     button.show_menu = wrapped_show_menu
 
 def _init_magnifier_flyout(manager) -> None:
-    from ui.widgets.magnifier_visibility_flyout import MagnifierVisibilityFlyout
+    from tabs.registry import TabRegistry
 
-    manager.magnifier_visibility_flyout = MagnifierVisibilityFlyout(
-        manager.parent_widget
+    registry = TabRegistry()
+    registry.discover()
+    manager.magnifier_visibility_flyout = registry.create_service(
+        "magnifier_visibility_flyout",
+        manager.parent_widget,
     )
+    if manager.magnifier_visibility_flyout is None:
+        return
     manager._magn_hover_timer = DelayedActionTimer(
         lambda: manager._show_magnifier_visibility_flyout(reason="hover"),
         parent=manager,

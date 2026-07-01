@@ -26,7 +26,7 @@ from ._framework import (
 )
 
 FEATURES_WITH_GL = [
-    f for f in list_canvas_features() if (f / "gl_passes.py").exists()
+    f for f in list_canvas_features() if (f / "passes.py").exists()
 ]
 GL_IDS = [f.name for f in FEATURES_WITH_GL]
 
@@ -34,15 +34,16 @@ _HARDCODED_LAYER_RE = re.compile(r"^\s*(layer|priority)\s*=\s*\d+", re.MULTILINE
 
 @pytest.mark.parametrize("feature", FEATURES_WITH_GL, ids=GL_IDS)
 def test_gl_passes_declare_stack_role(feature):
-    src = read(feature / "gl_passes.py")
+    path = feature / "passes.py"
+    src = read(path)
     assert re.search(r"\bstack_role\s*=", src), (
-        f"'{feature.name}/gl_passes.py' must declare stack_role (do not "
+        f"'{feature.name}/{path.name}' must declare stack_role (do not "
         f"hardcode layer/priority)"
     )
 
 @pytest.mark.parametrize("feature", FEATURES_WITH_GL, ids=GL_IDS)
 def test_gl_passes_no_hardcoded_layer_or_priority(feature):
-    path = feature / "gl_passes.py"
+    path = feature / "passes.py"
     src = read(path)
     hits = []
     for m in _HARDCODED_LAYER_RE.finditer(src):

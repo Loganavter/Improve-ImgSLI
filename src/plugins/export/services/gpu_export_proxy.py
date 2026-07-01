@@ -4,9 +4,7 @@ from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication
 from PIL import Image
 
-from ui.widgets.gl_canvas import GLCanvas
-
-from .gpu_export_scene import qimage_to_pil
+from shared.rendering.tab_canvas_services import create_canvas_widget
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -24,7 +22,7 @@ class GpuExportProxy(QObject):
         if self._widget is not None:
             return self._widget
 
-        widget = GLCanvas()
+        widget = create_canvas_widget()
         widget.setObjectName("gpu_export_canvas")
         widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
         widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)

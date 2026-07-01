@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 
 def test_guides_require_runtime_geometry():
-    from ui.canvas_features.guides.gl_passes import GuidesPass
+    from tabs.image_compare.canvas.features.guides.gl_passes import GuidesPass
 
     empty = SimpleNamespace(
         widget=SimpleNamespace(runtime_state=SimpleNamespace(_guide_sets=[])),
@@ -24,8 +24,8 @@ def test_guides_require_runtime_geometry():
 
 
 def test_guides_and_capture_are_discovered_as_qrhi_passes():
-    from ui.canvas_features.capture.gl_passes import CaptureRingPass
-    from ui.canvas_features.guides.gl_passes import GuidesPass
+    from tabs.image_compare.canvas.features.capture.gl_passes import CaptureRingPass
+    from tabs.image_compare.canvas.features.guides.gl_passes import GuidesPass
     from ui.canvas_infra.scene.gl_pass_registry import get_canvas_render_passes
 
     passes = get_canvas_render_passes()

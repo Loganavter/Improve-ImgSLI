@@ -18,8 +18,6 @@ from ui.presenters.main_window.workspace import (
     on_workspace_tab_changed,
     on_workspace_tab_close_requested,
 )
-from ui.widgets.canvas.contracts import BaseCanvasProtocol
-from ui.widgets.canvas.helpers import get_canvas
 
 
 def connect_signals(presenter):
@@ -125,7 +123,7 @@ def connect_event_handler_signals(presenter, event_handler):
     toolbar_presenter = presenter.get_feature("toolbar")
     image_canvas.connect_event_handler_signals(event_handler)
 
-    image_label: BaseCanvasProtocol | None = get_canvas(presenter.ui)
+    image_label = getattr(presenter.ui, "image_label", None)
     if image_label is not None:
         image_label.set_store(presenter.store)
         if hasattr(image_label, "set_session_controller"):

@@ -1,5 +1,5 @@
 from tabs.image_compare.canvas.features.magnifier.store import iter_magnifier_models
-from ui.widgets.canvas.helpers import reset_canvas_overlays
+from tabs.image_compare.canvas.helpers import reset_canvas_overlays
 
 from .common import get_live_image_label
 

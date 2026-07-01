@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 
 def test_feature_overlay_context_exposes_capture_circles():
-    from ui.widgets.gl_canvas.render_context import GLFeatureOverlayContext
+    from tabs.image_compare.canvas.render_context import GLFeatureOverlayContext
 
     assert "capture_circles" in {
         field.name for field in fields(GLFeatureOverlayContext)
@@ -18,7 +18,7 @@ def test_feature_overlay_context_exposes_capture_circles():
 
 
 def test_capture_ring_prefers_runtime_overlay_snapshot_over_scene_payload():
-    from ui.canvas_features.capture.gl_passes import CaptureRingPass
+    from tabs.image_compare.canvas.features.capture.gl_passes import CaptureRingPass
 
     ctx = SimpleNamespace(
         feature_overlay=SimpleNamespace(capture_circles=("runtime-capture",)),
@@ -34,7 +34,7 @@ def test_capture_ring_prefers_runtime_overlay_snapshot_over_scene_payload():
 
 
 def test_magnifier_annotation_passes_prefer_runtime_overlay_snapshot():
-    from ui.canvas_features.magnifier.gl_passes import (
+    from tabs.image_compare.canvas.features.magnifier.gl_passes import (
         HiddenSelectionPass,
         OccludedArcPass,
     )

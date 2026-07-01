@@ -28,10 +28,12 @@ class WorkspaceStoreMixin:
     def create_workspace_session(
         self,
         title: str | None = None,
-        session_type: str = "image_compare",
+        session_type: str | None = None,
         activate: bool = True,
         blueprint: SessionBlueprint | None = None,
     ) -> WorkspaceSession:
+        if not session_type:
+            raise ValueError("session_type is required")
         new_viewport = ViewportState()
 
         current_view = getattr(getattr(self, "viewport", None), "view_state", None)
@@ -54,9 +56,9 @@ class WorkspaceStoreMixin:
             id=self.workspace.new_session_id(),
             title=title or self.workspace.next_default_title(session_type),
             session_type=session_type,
-            document=DocumentModel(),
-            viewport=new_viewport,
         )
+        session.viewport = new_viewport
+        session.document = DocumentModel()
         if blueprint is not None:
             self._apply_session_blueprint(session, blueprint)
         self.workspace.sessions.append(session)

@@ -6,10 +6,10 @@ from resources.translations import tr
 
 logger = logging.getLogger("ImproveImgSLI")
 
-_SESSION_TITLE_KEYS = {
-    "image_compare": "workspace.session_types.image_compare",
-    "multi_compare": "workspace.session_types.multi_compare",
-}
+_SESSION_TITLE_KEY_TEMPLATES = (
+    "workspace.session_types.{session_type}",
+    "session_picker.types.{session_type}",
+)
 
 
 def initialize_workspace_state(presenter) -> None:
@@ -43,10 +43,7 @@ def configure_workspace_actions(presenter):
         language = presenter.store.settings.current_language
         for blueprint in blueprints:
             fallback = blueprint.resolved_title() or blueprint.session_type
-            key = _SESSION_TITLE_KEYS.get(blueprint.session_type)
-            label = tr(key, language) if key is not None else fallback
-            if label == key:
-                label = fallback
+            label = _localized_session_title(blueprint.session_type, fallback, language)
             actions.append((label, blueprint.session_type))
     btn = presenter.ui.btn_new_session
     logger.debug(
@@ -56,7 +53,7 @@ def configure_workspace_actions(presenter):
         btn.isVisible(),
         btn.isEnabled(),
     )
-    btn.set_actions([])
+    btn.set_actions(actions)
     logger.debug(
         "configure_workspace_actions: after set_actions _has_menu=%s capabilities=%s",
         getattr(btn, "_has_menu", "<missing>"),
@@ -72,6 +69,15 @@ def configure_workspace_actions(presenter):
 
 def _log_new_session_clicked():
     logger.debug("btn_new_session.clicked emitted")
+
+
+def _localized_session_title(session_type: str, fallback: str, language: str) -> str:
+    for template in _SESSION_TITLE_KEY_TEMPLATES:
+        key = template.format(session_type=session_type)
+        label = tr(key, language)
+        if label != key:
+            return label
+    return fallback
 
 
 def on_new_workspace_tab_requested(presenter):
@@ -101,7 +107,7 @@ def sync_session_mode(presenter):
     if not presenter.session_manager:
         return
     active = presenter.session_manager.get_active_session()
-    session_type = active.session_type if active else "image_compare"
+    session_type = active.session_type if active else "session_picker"
     session_title = active.title if active else None
     presenter.ui.sync_session_mode(session_type, session_title)
 
@@ -211,5 +217,3 @@ def on_workspace_session_triggered(presenter, action):
         )
         return
     logger.debug("on_workspace_session_triggered: created session=%s", session)
-
-

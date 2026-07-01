@@ -1,6 +1,6 @@
 """All QRhi widgets use the same process-level backend selection."""
 
-from ui.widgets.gl_canvas.rhi_backend import (
+from ui.widgets.canvas.rhi_backend import (
     RHI_BACKEND_ENV,
     configure_rhi_process_environment,
     configure_rhi_widget,

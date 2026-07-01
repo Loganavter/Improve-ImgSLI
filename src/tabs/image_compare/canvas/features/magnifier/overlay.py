@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from ui.widgets.canvas.helpers import reset_canvas_overlays
+from tabs.image_compare.canvas.helpers import reset_canvas_overlays
 
 from .mode import MagnifierModeService
 from .store import iter_magnifier_models

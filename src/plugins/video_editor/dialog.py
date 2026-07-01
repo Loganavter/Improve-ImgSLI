@@ -22,9 +22,9 @@ from plugins.video_editor.dialog_persistence import VideoEditorDialogPersistence
 from plugins.video_editor.dialog_runtime import VideoEditorDialogRuntime
 from plugins.video_editor.presenter import VideoEditorPresenter
 from resources.translations import tr
+from shared.rendering.tab_canvas_services import create_canvas_widget
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomLineEdit
-from ui.widgets.gl_canvas import GLCanvas
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -165,7 +165,7 @@ class VideoEditorDialog(QDialog):
         top_layout.setContentsMargins(10, 10, 10, 10)
         top_layout.setSpacing(10)
 
-        self.preview_label = GLCanvas()
+        self.preview_label = create_canvas_widget()
         self.preview_label.setObjectName("VideoEditorPreviewLabel")
         self.preview_label.set_read_only(True)
         self.preview_label.setSizePolicy(

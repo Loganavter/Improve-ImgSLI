@@ -75,11 +75,10 @@ def show_divider_color_picker(presenter) -> None:
                 )
 
         def post_apply(color):
-            main_window = getattr(presenter, "main_window_app", None)
-            if main_window is not None and hasattr(
-                main_window, "set_divider_button_color"
-            ):
-                main_window.set_divider_button_color(color)
+            ui = getattr(presenter, "ui", None)
+            btn = getattr(ui, "btn_orientation", None) if ui is not None else None
+            if btn is not None and hasattr(btn, "setUnderlineColor"):
+                btn.setUnderlineColor(color)
 
         settings_presenter.show_canvas_feature_color_picker(
             key="divider",

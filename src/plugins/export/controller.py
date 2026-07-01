@@ -5,15 +5,13 @@ import logging
 from PySide6.QtCore import QObject, Signal
 
 from plugins.export.events import (
-    ExportExportRecordedVideoEvent,
     ExportOpenVideoEditorEvent,
     ExportPasteImageFromClipboardEvent,
-    ExportQuickSaveComparisonEvent,
     ExportTogglePauseRecordingEvent,
     ExportToggleRecordingEvent,
 )
-from plugins.export.services.recording_flow import RecordingFlow
-from plugins.export.services.video_export_flow import VideoExportFlow
+from plugins.video_editor.services.export_flow import VideoExportFlow
+from plugins.video_editor.services.recording_flow import RecordingFlow
 from resources.translations import tr
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -59,9 +57,6 @@ class ExportController(QObject):
     def toggle_pause_recording(self, checked: bool = None):
         self.recording_flow.toggle_pause_recording(checked)
 
-    def export_recorded_video(self, resolution=(1920, 1080), fps=60):
-        self.video_export_flow.export_recorded_video(resolution, fps)
-
     def open_video_editor(self, checked: bool = False):
         self.recording_flow.open_video_editor(checked)
 
@@ -75,40 +70,14 @@ class ExportController(QObject):
     def paste_image_from_clipboard(self):
         return self.clipboard_service.paste_image_from_clipboard()
 
-    def quick_save_comparison(self, checked: bool = False):
-        logger.info("quick_save_comparison called in controller")
-        try:
-            presenter = getattr(self, "presenter", None)
-            if not presenter:
-                logger.error("quick_save_comparison: presenter is None")
-                return False
-            if not hasattr(presenter, "quick_save"):
-                logger.error(
-                    "quick_save_comparison: presenter has no quick_save method"
-                )
-                return False
-            logger.info("quick_save_comparison: calling presenter.quick_save()")
-
-            presenter.quick_save()
-            return True
-        except Exception as e:
-            logger.error(f"Error during quick save delegation: {e}", exc_info=True)
-            return False
-
     def on_toggle_recording(self, event: ExportToggleRecordingEvent):
         self.toggle_recording()
 
     def on_toggle_pause_recording(self, event: ExportTogglePauseRecordingEvent):
         self.toggle_pause_recording()
 
-    def on_export_recorded_video(self, event: ExportExportRecordedVideoEvent):
-        self.export_recorded_video()
-
     def on_open_video_editor(self, event: ExportOpenVideoEditorEvent):
         self.open_video_editor()
 
     def on_paste_image_from_clipboard(self, event: ExportPasteImageFromClipboardEvent):
         self.paste_image_from_clipboard()
-
-    def on_quick_save_comparison(self, event: ExportQuickSaveComparisonEvent):
-        self.quick_save_comparison()

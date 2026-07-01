@@ -8,9 +8,9 @@ from ui.canvas_infra.scene.widget_registry import (
 )
 
 _mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
-from ui.canvas_presentation import apply_store_to_canvas
-from ui.widgets.canvas.helpers import get_canvas_widget, reset_canvas_overlays
-from ui.widgets.canvas.scene import build_render_scene
+from tabs.image_compare.canvas.presentation.surface import apply_store_to_canvas
+from tabs.image_compare.canvas.helpers import get_canvas_widget, reset_canvas_overlays
+from tabs.image_compare.canvas.scene import build_render_scene
 
 from .diff import sync_diff_texture
 

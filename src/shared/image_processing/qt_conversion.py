@@ -7,6 +7,13 @@ from PySide6.QtGui import QImage, QPixmap
 
 logger = logging.getLogger("ImproveImgSLI")
 
+
+def qimage_to_pil(image: QImage) -> Image.Image:
+    qimg = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    ptr = qimg.bits()
+    return Image.frombytes("RGBA", (qimg.width(), qimg.height()), bytes(ptr))
+
+
 def pil_to_qimage_zero_copy(pil_image: Image.Image) -> Optional[QImage]:
     if pil_image is None:
         return None

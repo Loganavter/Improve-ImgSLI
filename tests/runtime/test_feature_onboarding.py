@@ -115,11 +115,11 @@ class TestTemplateIsValid:
     def test_template_manifest_importable(self):
         import importlib
 
-        mod = importlib.import_module("ui.canvas_features._template.manifest")
+        mod = importlib.import_module("tabs.image_compare.canvas.features._template.manifest")
         assert hasattr(mod, "WIDGET_FEATURE")
 
     def test_template_widget_feature_valid(self):
-        from ui.canvas_features._template.manifest import WIDGET_FEATURE
+        from tabs.image_compare.canvas.features._template.manifest import WIDGET_FEATURE
         from ui.canvas_infra.scene.widget_contract import CanvasWidgetFeature
 
         assert isinstance(WIDGET_FEATURE, CanvasWidgetFeature)
@@ -130,7 +130,7 @@ class TestTemplateIsValid:
     def test_template_gl_passes_importable(self):
         import importlib
 
-        mod = importlib.import_module("ui.canvas_features._template.gl_passes")
+        mod = importlib.import_module("tabs.image_compare.canvas.features._template.gl_passes")
         passes = getattr(mod, "GL_RENDER_PASSES", None)
         assert isinstance(passes, list)
 

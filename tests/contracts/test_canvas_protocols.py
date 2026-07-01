@@ -1,7 +1,7 @@
 """Canvas widget protocol conformance.
 
 The render pipeline talks to canvases through the duck-typed protocols in
-``ui/widgets/gl_canvas/contracts.py``. Each concrete canvas must expose every
+``ui/widgets/canvas/contracts.py``. Each concrete canvas must expose every
 protocol method with a compatible signature, otherwise an export/preview path
 breaks only at runtime with an ``AttributeError`` or ``TypeError``.
 
@@ -14,12 +14,12 @@ import inspect
 
 import pytest
 
-from ui.widgets.gl_canvas.contracts import (
+from tabs.image_compare.canvas.contracts import (
     BaseCanvasProtocol,
     ExportCanvasProtocol,
     GlLikeCanvasProtocol,
 )
-from ui.widgets.gl_canvas.widget import GLCanvas
+from tabs.image_compare.canvas.widget import GLCanvas
 
 def _protocol_methods(proto) -> dict[str, inspect.Signature]:
     """Method-name -> signature for every callable a protocol declares (incl. bases)."""

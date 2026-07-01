@@ -11,13 +11,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QWidget
 
-from plugins.analysis.services.metrics import MetricsService
-from plugins.analysis.services.runtime import (
+from tabs.image_compare.services.analysis.metrics import MetricsService
+from tabs.image_compare.services.analysis.runtime import (
     AnalysisRuntime,
     CoreUpdateDispatcher,
     UIUpdateDispatcher,
 )
-from plugins.export.presenter_parts.save_flow import ExportSaveFlowCoordinator
+from tabs.image_compare.services.export_save_flow import ExportSaveFlowCoordinator
 from sli_ui_toolkit.ui.widgets.composite.toast import ToastNotification
 
 APP = QApplication.instance() or QApplication([])
@@ -102,6 +102,7 @@ def test_export_save_flow_updates_toast_progress():
             "msg.saving": "Saving",
         }.get(key, key),
         state_coordinator=None,
+        export_service=SimpleNamespace(export_image=lambda **_kwargs: None),
     )
     coordinator._save_cancellation[5] = object()
 

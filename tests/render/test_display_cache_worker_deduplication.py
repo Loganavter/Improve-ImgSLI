@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from ui.presenters.image_canvas.background_parts.image_cache import (
+from tabs.image_compare.presenters.image_canvas.background_parts.image_cache import (
     create_preview_cache_async,
     on_preview_cache_ready,
 )

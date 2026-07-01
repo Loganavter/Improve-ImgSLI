@@ -79,7 +79,7 @@ def apply_virtual_canvas_layout_to_snapshot_store(
     The renderer takes ``content_offset_x/y`` and ``content_w/h`` and produces
     correct overlay positions on a padded virtual canvas without any
     per-model adjustment. Likewise ``apply_virtual_canvas_layout_to_scene``
-    in ``plugins/export/services/gpu_export_scene.py`` shifts
+    in ``tabs/image_compare/services/gpu_export_scene.py`` shifts
     ``split_position_visual`` and sets ``overlay_clip_rect`` at the scene
     level. Mutating the store here on top of that would double-compensate.
     """

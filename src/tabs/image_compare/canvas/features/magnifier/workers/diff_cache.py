@@ -11,7 +11,7 @@ def build_cached_diff_image_task(
     diff_mode,
     progress_callback=None,
 ):
-    from plugins.analysis.processing import build_cached_diff_image
+    from shared.analysis import build_cached_diff_image
 
     return build_cached_diff_image(
         source1,

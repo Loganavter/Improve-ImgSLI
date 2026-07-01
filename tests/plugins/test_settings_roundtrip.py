@@ -23,7 +23,13 @@ from ui.canvas_infra.scene.property_access import (
     serialize_canvas_feature_setting,
     write_canvas_feature_property,
 )
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_properties
+from ui.canvas_infra.scene.widget_registry import (
+    get_canvas_feature_properties,
+    register_canvas_widget_feature_package,
+)
+import tabs.image_compare.canvas.features as image_compare_features
+
+register_canvas_widget_feature_package(image_compare_features)
 
 PERSISTED = [p for p in get_canvas_feature_properties() if p.setting_key]
 PERSISTED_IDS = [p.id for p in PERSISTED]

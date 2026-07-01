@@ -6,12 +6,22 @@ Dogma source: docs/dev/CANVAS_FEATURES.md §Keyframing Rules.
 
 from __future__ import annotations
 
+import pytest
+
 from core.store import Store
 from plugins.video_editor.services.keyframing.adapters.magnifier import (
     DynamicMagnifierAdapter,
 )
 from plugins.video_editor.services.keyframing.types import FrameSnapshot
 from ui.canvas_infra.scene.feature_state_api import execute_feature_command
+
+
+@pytest.fixture(autouse=True)
+def _register_image_compare_canvas_features():
+    from tabs.image_compare.tab import ImageCompareTab
+
+    ImageCompareTab().register_canvas_features()
+
 
 def _snapshot(store: Store) -> FrameSnapshot:
     return FrameSnapshot(

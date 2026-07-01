@@ -116,6 +116,7 @@ class VideoSessionModel:
     TIMELINE_SLOT = "video.timeline"
     SELECTION_SLOT = "video.selection"
     RESOURCE_NAMESPACE = "video"
+    COMPARISON_RESOURCE_NAMESPACE = "comparison"
     SOURCE_RESOURCE_KEY = "source"
     DECODER_RESOURCE_KEY = "decoder"
 
@@ -251,14 +252,27 @@ class VideoSessionModel:
             raise RuntimeError("MainController is required to open image compare")
         session = self._require_session()
         timeline = self._read_timeline_state(session.id)
+        comparison_session_type = self._resolve_session_type_for_resource_namespace(
+            self.COMPARISON_RESOURCE_NAMESPACE
+        )
         return self.main_controller.workspace.create_workspace_session(
-            "image_compare",
+            comparison_session_type,
             activate=True,
             metadata={
                 "source_video_session_id": session.id,
                 "source_timeline_position": timeline.position,
             },
         )
+
+    def _resolve_session_type_for_resource_namespace(self, namespace: str) -> str:
+        workspace = getattr(self.main_controller, "workspace", None)
+        if workspace is None:
+            raise RuntimeError("Workspace controller is required")
+        for blueprint in workspace.list_session_blueprints():
+            for resource in getattr(blueprint, "resource_namespaces", ()):
+                if getattr(resource, "namespace", None) == namespace:
+                    return blueprint.session_type
+        raise RuntimeError(f"No workspace session provides resource namespace {namespace!r}")
 
     def _read_timeline_state(self, session_id: str) -> VideoTimelineState:
         return VideoTimelineState.from_mapping(

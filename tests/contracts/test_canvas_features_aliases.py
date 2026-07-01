@@ -17,7 +17,9 @@ import pytest
 from ui.canvas_infra.scene.widget_registry import (
     get_canvas_feature_command_aliases,
     get_canvas_feature_command_by_alias,
+    register_canvas_widget_feature_package,
 )
+import tabs.image_compare.canvas.features as image_compare_features
 
 from ._framework import (
     CANVAS_FEATURES,
@@ -27,6 +29,8 @@ from ._framework import (
     read,
     rel,
 )
+
+register_canvas_widget_feature_package(image_compare_features)
 
 def test_no_hardcoded_feature_name_in_get_canvas_feature_command():
     leaks: list[str] = []

@@ -27,7 +27,7 @@ def _make_canvas(store):
 
 def _make_scene():
     from domain.types import Point
-    from ui.canvas_features.magnifier.scene_objects import (
+    from tabs.image_compare.canvas.features.magnifier.scene_objects import (
         MagnifierCircle,
         MagnifierSceneObject,
     )
@@ -58,7 +58,7 @@ def _make_scene():
     )
 
 def test_apply_magnifier_objects_omits_interactive_payloads_in_export(monkeypatch):
-    from ui.canvas_features.magnifier.feature import apply_magnifier_objects
+    from tabs.image_compare.canvas.features.magnifier.feature import apply_magnifier_objects
     from ui.canvas_infra.scene.context import CanvasSceneApplyContext
     from ui.canvas_infra.scene.gl_pass_contract import SceneVisibility
 
@@ -67,11 +67,11 @@ def test_apply_magnifier_objects_omits_interactive_payloads_in_export(monkeypatc
     scene = _make_scene()
 
     monkeypatch.setattr(
-        "ui.canvas_features.magnifier.feature.get_magnifier_widget_state",
+        "tabs.image_compare.canvas.features.magnifier.feature.get_magnifier_widget_state",
         lambda view_state: SimpleNamespace(intersection_highlight_enabled=True),
     )
     monkeypatch.setattr(
-        "ui.canvas_features.magnifier.feature.get_canvas_feature_command_by_alias",
+        "tabs.image_compare.canvas.features.magnifier.feature.get_canvas_feature_command_by_alias",
         lambda alias: (lambda view_state: SimpleNamespace(color=SimpleNamespace(r=255, g=255, b=255, a=255)))
         if alias == "capture.widget_state"
         else None,
@@ -94,7 +94,7 @@ def test_apply_magnifier_objects_omits_interactive_payloads_in_export(monkeypatc
     assert overrides["occluded_capture_arcs"] == []
 
 def test_apply_magnifier_objects_keeps_interactive_payloads_in_interactive(monkeypatch):
-    from ui.canvas_features.magnifier.feature import apply_magnifier_objects
+    from tabs.image_compare.canvas.features.magnifier.feature import apply_magnifier_objects
     from ui.canvas_infra.scene.context import CanvasSceneApplyContext
     from ui.canvas_infra.scene.gl_pass_contract import SceneVisibility
 
@@ -103,17 +103,17 @@ def test_apply_magnifier_objects_keeps_interactive_payloads_in_interactive(monke
     scene = _make_scene()
 
     monkeypatch.setattr(
-        "ui.canvas_features.magnifier.feature.get_magnifier_widget_state",
+        "tabs.image_compare.canvas.features.magnifier.feature.get_magnifier_widget_state",
         lambda view_state: SimpleNamespace(intersection_highlight_enabled=True),
     )
     monkeypatch.setattr(
-        "ui.canvas_features.magnifier.feature.get_canvas_feature_command_by_alias",
+        "tabs.image_compare.canvas.features.magnifier.feature.get_canvas_feature_command_by_alias",
         lambda alias: (lambda view_state: SimpleNamespace(color=SimpleNamespace(r=255, g=255, b=255, a=255)))
         if alias == "capture.widget_state"
         else None,
     )
     monkeypatch.setattr(
-        "ui.canvas_features.magnifier.feature._compute_occluded_capture_arcs",
+        "tabs.image_compare.canvas.features.magnifier.feature._compute_occluded_capture_arcs",
         lambda all_magnifiers, visible_magnifiers, active_object_id: [("arc", 1)],
     )
 
@@ -133,6 +133,6 @@ def test_apply_magnifier_objects_keeps_interactive_payloads_in_interactive(monke
     assert overrides["occluded_capture_arcs"] == [("arc", 1)]
 
 def test_magnifier_mode_service_no_longer_exposes_hidden_selection_gate():
-    from ui.canvas_features.magnifier.mode import MagnifierModeService
+    from tabs.image_compare.canvas.features.magnifier.mode import MagnifierModeService
 
     assert not hasattr(MagnifierModeService, "should_show_hidden_selection")

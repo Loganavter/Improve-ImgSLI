@@ -9,9 +9,7 @@ class ImageLabelGeometry:
 
     This class contains only coordinate math (screen-to-image,
     widget-local-px, content-rect resolution). Feature-specific interaction
-    logic lives in each feature's ``interaction.py`` module — see
-    ``ui/canvas_features/magnifier/interaction.py`` and
-    ``ui/canvas_features/divider/interaction.py``.
+    logic lives in each tab feature's ``interaction.py`` module.
     """
 
     def __init__(self, handler):
