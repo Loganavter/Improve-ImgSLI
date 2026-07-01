@@ -683,9 +683,12 @@ Problems:
 - `plugins.settings.manager` still owns a generic canvas-feature property sweep
   (`get_canvas_feature_properties()` serialization), which is registry-based but
   still physically lives in the root settings plugin.
-- root `SettingsDialogData` / dialog context still include image_compare
-  performance fields until the tab-owned settings section owns its own model
-  contribution.
+- root `SettingsDialogData` / dialog context still expose flat image_compare
+  performance fields; the section-payload mechanism is now available (see
+  `SettingsRegistry.register_payload_reader/seeder` and
+  `SettingsDialogData.tab_extras`) but the concrete image_compare fields are
+  still populated flat for backward compatibility until each field migrates
+  through the tab's payload reader.
 
 Completed:
 
@@ -732,6 +735,12 @@ Completed:
 - contracts now fail if root `plugins.settings.manager` reintroduces concrete
   image_compare feature aliases/keys such as `overlay.settings*`,
   `guides.set_smoothing*`, or `optimize_magnifier_movement`.
+- `SettingsDialogData` / `SettingsDialogContext` now expose a
+  `tab_extras: dict[str, dict[str, Any]]` section-payload dict, plus
+  `SettingsRegistry.register_payload_reader/seeder` hooks. `SettingsDialog`
+  seeds `context.tab_extras` on construction and reads
+  `data.tab_extras` on submit — tabs can register their own field readers
+  without extending the root dataclass.
 
 Action:
 
@@ -741,8 +750,16 @@ Action:
 - generic settings plugin must not mention feature IDs owned by a tab.
 - decide whether the remaining generic canvas-feature property sweep belongs in
   a host extension point or in tab-owned settings contributions.
-- split image_compare performance fields out of root `SettingsDialogData` /
-  dialog context once the settings dialog model supports section-owned payloads.
+- migrate concrete image_compare performance fields
+  (`optimize_magnifier_movement`, `magnifier_interpolation_method`,
+  `optimize_laser_smoothing`, `laser_interpolation_method`,
+  `zoom_interpolation_method`, `magnifier_intersection_highlight_enabled`,
+  `magnifier_auto_color_new_instances`, `auto_calculate_psnr`,
+  `auto_calculate_ssim`, `auto_crop_black_borders`) from flat
+  `SettingsDialogData` fields into `tab_extras["image_compare_performance"]`
+  through a payload reader in `tabs.image_compare.ui.settings_application`;
+  similarly move `video_recording_fps` under
+  `tab_extras["video_editor_recording"]`.
 
 ### `plugins.image_properties`, `plugins.help`, `plugins.layout`
 

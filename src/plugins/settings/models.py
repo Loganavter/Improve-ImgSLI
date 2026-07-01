@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
+
 
 @dataclass(slots=True)
 class SettingsDialogData:
@@ -27,3 +29,10 @@ class SettingsDialogData:
     show_workspace_tabs: bool = True
     rhi_backend: str = "default"
     use_custom_decorations: bool = True
+    tab_extras: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def get_section(self, section_id: str) -> dict[str, Any]:
+        return self.tab_extras.get(section_id, {})
+
+    def set_section(self, section_id: str, values: dict[str, Any]) -> None:
+        self.tab_extras[section_id] = dict(values)

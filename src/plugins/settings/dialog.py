@@ -90,6 +90,7 @@ class SettingsDialog(QDialog):
             current_video_fps=current_video_fps,
             rhi_backend=rhi_backend,
             store=store,
+            tab_extras=get_settings_registry().seed_payloads(store),
         )
         self._custom_group_widget_cls = CustomGroupWidget
 
@@ -252,6 +253,7 @@ class SettingsDialog(QDialog):
             show_workspace_tabs=self.show_workspace_tabs_checkbox.isChecked(),
             rhi_backend=(_val("combo_rhi_backend", ctx.rhi_backend) or "default"),
             use_custom_decorations=self.use_custom_decorations_checkbox.isChecked(),
+            tab_extras=get_settings_registry().read_payloads(self),
         )
 
     def update_language(self, lang_code: str):
