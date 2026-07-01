@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from plugins.export.presenter import ExportPresenter
 from plugins.settings.presenter import SettingsPresenter
 from ui.managers.ui_manager import UIManager
-from ui.presenters.image_canvas.presenter import ImageCanvasPresenter
-from ui.presenters.toolbar_presenter import ToolbarPresenter
 
 @dataclass(slots=True)
 class MainWindowFeatureSet:
     ui_manager: UIManager
-    image_canvas: ImageCanvasPresenter
-    toolbar: ToolbarPresenter
+    image_canvas: Any
+    toolbar: Any
     export: ExportPresenter
     settings: SettingsPresenter
 
@@ -22,6 +21,7 @@ def build_main_window_features(
     main_controller,
     ui,
     main_window_app,
+    image_canvas,
     plugin_ui_registry=None,
 ) -> MainWindowFeatureSet:
     ui_manager = UIManager(
@@ -31,14 +31,20 @@ def build_main_window_features(
         main_window_app,
         plugin_ui_registry=plugin_ui_registry,
     )
-    image_canvas = ImageCanvasPresenter(store, main_controller, ui, main_window_app)
-    toolbar = ToolbarPresenter(
+    from tabs.registry import TabRegistry
+
+    registry = TabRegistry()
+    registry.discover()
+    toolbar = registry.create_service(
+        "toolbar_presenter",
         store,
         main_controller,
         ui,
         main_window_app,
-        ui_manager=ui_manager,
+        ui_manager,
     )
+    if toolbar is None:
+        raise RuntimeError("Tab toolbar presenter service is unavailable")
     export = ExportPresenter(
         store,
         main_controller,

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtWidgets import QApplication
+
 from tabs.contract import TabContext, TabContract
 from tabs.registry import TabRegistry
 
@@ -123,3 +125,26 @@ def test_registry_forwards_appearance_and_shutdown_hooks():
     registry.notify_window_shutdown(host)
 
     assert tab.lifecycle_calls == ["appearance", "shutdown"]
+
+def test_image_compare_drop_uses_presenter_main_controller_when_window_has_no_direct_controller():
+    from types import SimpleNamespace
+
+    from tabs.image_compare.tab import ImageCompareTab
+
+    QApplication.instance() or QApplication([])
+    calls = []
+    sessions = SimpleNamespace(
+        load_images_from_paths=lambda paths, slot: calls.append((paths, slot))
+    )
+    main_window = SimpleNamespace(
+        main_controller=None,
+        presenter=SimpleNamespace(main_controller=SimpleNamespace(sessions=sessions)),
+    )
+    tab = ImageCompareTab()
+    tab._widget = SimpleNamespace(_context=SimpleNamespace(main_window=main_window))
+
+    handled = tab.handle_drop([Path("/tmp/right.png")], hint={"slot": 2})
+    QApplication.processEvents()
+
+    assert handled is True
+    assert calls == [(["/tmp/right.png"], 2)]

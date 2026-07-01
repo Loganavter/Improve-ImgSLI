@@ -28,8 +28,8 @@ from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibilit
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.widgets.canvas.render_common import new_overlay_image
 from ui.widgets.canvas.render_metrics import resolve_screen_px
-from ui.widgets.canvas.rhi_feature_common import FULLSCREEN_VERTICES, load_qshader
-from ui.widgets.canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
+from tabs.image_compare.canvas.rhi_feature_common import FULLSCREEN_VERTICES, load_qshader
+from tabs.image_compare.canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 
 _log = logging.getLogger("ImproveImgSLI.paste_overlay")
 

@@ -31,7 +31,11 @@ def _refresh_active_session_canvas(presenter) -> None:
     if session_manager is None:
         return
     active = session_manager.get_active_session()
-    if active is None or active.session_type != "image_compare":
+    if active is None or not _session_provides_resource_namespace(
+        session_manager,
+        active,
+        "comparison",
+    ):
         presenter._last_active_session_id = getattr(active, "id", None)
         return
     last_id = getattr(presenter, "_last_active_session_id", None)
@@ -59,6 +63,23 @@ def _refresh_active_session_canvas(presenter) -> None:
         logging.getLogger("ImproveImgSLI").exception(
             "_refresh_active_session_canvas: set_current_image failed"
         )
+
+
+def _session_provides_resource_namespace(
+    session_manager,
+    session,
+    namespace: str,
+) -> bool:
+    try:
+        blueprint = session_manager.get_session_blueprint(session.session_type)
+    except Exception:
+        blueprint = None
+    if blueprint is None:
+        return False
+    for resource in getattr(blueprint, "resource_namespaces", ()):
+        if getattr(resource, "namespace", None) == namespace:
+            return True
+    return False
 
 
 def apply_initial_settings_to_ui(presenter):

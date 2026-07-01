@@ -10,7 +10,7 @@ from ui.canvas_infra.scene.apply import apply_scene_to_canvas
 from ui.canvas_infra.scene.builder import build_canvas_scene
 from ui.canvas_infra.scene.pass_contract import SceneVisibility
 from ui.canvas_presentation.plan import resolve_plan_logical_image_rect
-from ui.widgets.canvas.helpers import reset_canvas_overlays
+from tabs.image_compare.canvas.helpers import reset_canvas_overlays
 
 from .common import (
     get_effective_main_interpolation_method,

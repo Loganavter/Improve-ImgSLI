@@ -8,21 +8,31 @@ Dogma source: docs/dev/CANVAS_FEATURES.md §Render/export parity.
 import os
 from types import SimpleNamespace
 
+import pytest
 from PIL import Image
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from plugins.export.services.image_export import ExportService
-from plugins.export.services.gpu_export_scene import build_export_gl_scene
-from plugins.export.services.snapshot_render_plan_builder import SnapshotRenderPlanBuilder
-from ui.canvas_presentation.plan_builder import CanvasGeometry
-from ui.widgets.gl_canvas.scene import GLRenderScene
+from tabs.image_compare.services.image_export import ExportService
+from tabs.image_compare.services.gpu_export_scene import build_export_gl_scene
+from tabs.image_compare.services.snapshot_render_plan_builder import (
+    SnapshotRenderPlanBuilder,
+)
+from tabs.image_compare.canvas.presentation.plan_builder import CanvasGeometry
+from tabs.image_compare.canvas.scene import GLRenderScene
 from plugins.video_editor.services.video_export_models import VideoRenderRequest
 from plugins.video_editor.services.video_snapshot_rendering import (
     PreparedCanvasFrame,
     SnapshotFrameRenderer,
 )
 from shared.rendering import TargetSurfaceSpec
+
+
+@pytest.fixture(autouse=True)
+def _register_image_compare_canvas_features():
+    from tabs.image_compare.tab import ImageCompareTab
+
+    ImageCompareTab().register_canvas_features()
 
 class _FakeGpuExportService:
     def __init__(self):
@@ -105,7 +115,7 @@ def test_snapshot_frame_renderer_passes_cached_diff_image_to_gpu_preview():
     assert gpu.calls[0]["diff_image"] is diff_image
 
 def test_snapshot_builder_uses_precomputed_diff_as_export_base(monkeypatch):
-    import plugins.export.services.snapshot_render_plan_builder as builder_module
+    import tabs.image_compare.services.snapshot_render_plan_builder as builder_module
 
     diff_image = Image.new("RGBA", (2, 2), (255, 0, 0, 255))
     captured = {}
@@ -201,7 +211,7 @@ def test_snapshot_builder_uses_precomputed_diff_as_export_base(monkeypatch):
     assert store.viewport.session_data.render_cache.cached_diff_image is diff_image
 
 def test_snapshot_builder_reuses_cached_diff_scene_images(monkeypatch):
-    import plugins.export.services.snapshot_render_plan_builder as builder_module
+    import tabs.image_compare.services.snapshot_render_plan_builder as builder_module
 
     diff_image = Image.new("RGBA", (2, 2), (255, 0, 0, 255))
     build_calls = []
@@ -294,7 +304,7 @@ def test_snapshot_builder_reuses_cached_diff_scene_images(monkeypatch):
     assert store.viewport.session_data.render_cache.cached_diff_image is diff_image
 
 def test_export_gl_scene_uses_main_interpolation_for_base_filter(monkeypatch):
-    import plugins.export.services.gpu_export_scene as scene_module
+    import tabs.image_compare.services.gpu_export_scene as scene_module
 
     monkeypatch.setattr(
         scene_module,
@@ -316,7 +326,7 @@ def test_export_gl_scene_uses_main_interpolation_for_base_filter(monkeypatch):
     assert scene.zoom_interpolation_method == "LANCZOS"
 
 def test_export_gl_scene_coerces_nearest_for_base_filter(monkeypatch):
-    import plugins.export.services.gpu_export_scene as scene_module
+    import tabs.image_compare.services.gpu_export_scene as scene_module
 
     monkeypatch.setattr(
         scene_module,
@@ -341,8 +351,8 @@ def test_image_export_frame_preserves_edge_magnifier_position_and_expands_canvas
     from core.store import Store
     from domain.types import Point
     from shared.rendering.live_snapshot import build_live_frame_snapshot
-    from ui.canvas_features.magnifier.models import MagnifierModel
-    from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+    from tabs.image_compare.canvas.features.magnifier.models import MagnifierModel
+    from tabs.image_compare.canvas.features.magnifier.state import get_magnifier_widget_state
 
     store = Store()
     state = get_magnifier_widget_state(store.viewport.view_state)
@@ -388,8 +398,8 @@ def test_crop_snapshot_frame_keeps_default_magnifier_normalization():
     from core.store import Store
     from domain.types import Point
     from shared.rendering.live_snapshot import build_live_frame_snapshot
-    from ui.canvas_features.magnifier.models import MagnifierModel
-    from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+    from tabs.image_compare.canvas.features.magnifier.models import MagnifierModel
+    from tabs.image_compare.canvas.features.magnifier.state import get_magnifier_widget_state
 
     store = Store()
     state = get_magnifier_widget_state(store.viewport.view_state)
@@ -430,9 +440,9 @@ def test_crop_snapshot_frame_keeps_default_magnifier_normalization():
 def test_image_export_save_context_uses_video_style_fit_content_bounds():
     from core.store import Store
     from domain.types import Point
-    from plugins.export.presenter_parts.context_builder import ExportContextBuilder
-    from ui.canvas_features.magnifier.models import MagnifierModel
-    from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+    from tabs.image_compare.canvas.features.magnifier.models import MagnifierModel
+    from tabs.image_compare.canvas.features.magnifier.state import get_magnifier_widget_state
+    from tabs.image_compare.services.export_context_builder import ExportContextBuilder
 
     store = Store()
     img1 = Image.new("RGBA", (100, 100), (0, 0, 0, 255))

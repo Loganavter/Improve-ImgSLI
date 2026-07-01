@@ -8,8 +8,8 @@ from tabs.image_compare.presenters.actions import (
     on_magnifier_guides_toggled,
     open_image_dialog,
 )
-from ui.widgets.canvas.contracts import BaseCanvasProtocol
-from ui.widgets.canvas.helpers import get_canvas
+from tabs.image_compare.canvas.contracts import BaseCanvasProtocol
+from tabs.image_compare.canvas.helpers import get_canvas
 
 
 def connect_signals(presenter):

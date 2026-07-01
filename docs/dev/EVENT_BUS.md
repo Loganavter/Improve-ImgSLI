@@ -91,9 +91,9 @@ Rule of thumb: if the receiver only needs to do something *once* per occurrence,
 ## Built-in events (selected)
 
 - `core/events.py:PluginEvent(plugin_name, stage)` — emitted by `PluginLifecycleManager` on initialize/activate/deactivate/shutdown/error.
-- `plugins/comparison/events.py:ComparisonUpdateRequestedEvent` — comparison plugin asks for a recomputation.
-- `plugins/comparison/events.py:ComparisonErrorEvent` — comparison failure.
-- `plugins/analysis/events.py:*` — analysis / metrics signals.
+- `tabs/image_compare/events.py:ComparisonUpdateRequestedEvent` — comparison tab asks for a recomputation.
+- `tabs/image_compare/events.py:ComparisonErrorEvent` — comparison failure.
+- `tabs/image_compare/events.py:Analysis*` — analysis / metrics signals.
 
 See `src/plugins/*/events.py` for the full set.
 

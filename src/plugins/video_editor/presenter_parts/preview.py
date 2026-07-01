@@ -199,7 +199,9 @@ class PreviewCoordinator:
             return
 
         if hasattr(canvas, "set_pil_layers"):
-            from ui.widgets.gl_canvas.helpers import reset_canvas_overlays
+            from shared.rendering.tab_canvas_services import (
+                reset_canvas_overlays,
+            )
             canvas._preview_source_key = request_key
             reset_canvas_overlays(canvas)
             state = getattr(canvas, "runtime_state", None)

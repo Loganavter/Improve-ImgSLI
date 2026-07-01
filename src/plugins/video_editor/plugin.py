@@ -16,6 +16,8 @@ from core.session_blueprints import (
 from plugins.settings.events import SettingsChangeLanguageEvent
 from plugins.video_editor.dialog import VideoEditorDialog
 from plugins.video_editor.model import VideoSelectionState, VideoTimelineState
+from plugins.video_editor.services.export import VideoExporterService
+from plugins.video_editor.services.recorder import Recorder
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -75,6 +77,23 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
                 f"VideoEditorPlugin.open_editor: Error creating/showing dialog: {e}"
             )
             raise
+
+    def create_recording_services(
+        self,
+        *,
+        store: Any,
+        main_controller: Any | None,
+        gpu_export_service: Any | None = None,
+        extra_adapters: tuple[Any, ...] = (),
+    ) -> tuple[Recorder, VideoExporterService]:
+        recorder = Recorder(store, extra_adapters=extra_adapters)
+        video_exporter = VideoExporterService(
+            recorder,
+            store,
+            main_controller,
+            gpu_export_service=gpu_export_service,
+        )
+        return recorder, video_exporter
 
     def _show_editor_dialog(self) -> None:
         dialog = self._editor_dialog

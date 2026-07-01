@@ -9,11 +9,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from domain.types import Point, Rect
-from ui.canvas_features.magnifier.constants import (
+from tabs.image_compare.canvas.features.magnifier.constants import (
     MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE,
 )
-from ui.canvas_features.magnifier.feature import build_magnifier_object
-from ui.canvas_features.magnifier.models import MagnifierModel
+from tabs.image_compare.canvas.features.magnifier.feature import build_magnifier_object
+from tabs.image_compare.canvas.features.magnifier.models import MagnifierModel
 from ui.canvas_infra.scene.context import CanvasSceneBuildContext
 
 def _object_for_spacing(spacing: float):

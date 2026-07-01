@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
@@ -18,11 +19,10 @@ from sli_ui_toolkit.widgets import (
 )
 
 from sli_ui_toolkit.i18n import tr
-from tabs.contract import WorkspaceHostServices
+from tabs.image_compare.canvas.widget import CanvasWidget
+from tabs.image_compare.ui.magnifier_color_controls import ColorSettingsButton
 from ui.icon_manager import AppIcon
 from ui.theming import resolve_theme_color
-from ui.widgets.canvas import CanvasWidget
-from ui.widgets.magnifier_color_controls import ColorSettingsButton
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -30,14 +30,13 @@ logger = logging.getLogger("ImproveImgSLI")
 class ImageComparePrimitivesFactory:
     """Creates image_compare's primitive widgets and attaches them to host UI."""
 
-    def __init__(self, host: WorkspaceHostServices) -> None:
-        self.host = host
-        self.ui = host.host_ui
+    def __init__(self, ui: Any) -> None:
+        self.ui = ui
 
     def build(self, parent: QWidget) -> object:
         ui = self.ui
         if ui is None:
-            raise RuntimeError("ImageComparePrimitivesFactory requires host_ui")
+            raise RuntimeError("ImageComparePrimitivesFactory requires ui")
         if getattr(ui, "_image_compare_primitives_built", False):
             return ui
 

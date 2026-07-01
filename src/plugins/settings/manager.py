@@ -13,7 +13,6 @@ from ui.canvas_infra.scene.property_access import (
     serialize_canvas_feature_setting,
 )
 from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_command_by_alias,
     get_canvas_feature_properties,
 )
 
@@ -91,10 +90,6 @@ class SettingsManager:
             "include_file_names_in_saved", False, bool
         )
 
-        view.optimize_interactive_movement = self._get_setting(
-            "optimize_magnifier_movement", True, bool
-        )
-
         main_interp = self._get_setting("interpolation_method", "BILINEAR", str)
         render.interpolation_method = main_interp
         render.zoom_interpolation_method = self._get_setting(
@@ -106,34 +101,8 @@ class SettingsManager:
             render.zoom_interpolation_method,
         )
 
-        magnifier_movement_interp = self._get_setting(
-            "magnifier_movement_interpolation_method", None, str
-        )
-        laser_smoothing_interp = None
-
-        if magnifier_movement_interp is None:
-            movement_interp = self._get_setting(
-                "movement_interpolation_method", "BILINEAR", str
-            )
-            magnifier_movement_interp = movement_interp
-            laser_smoothing_interp = movement_interp
-
-        render.interactive_movement_interpolation_method = (
-            magnifier_movement_interp
-        )
-        _set_smoothing_interp = get_canvas_feature_command_by_alias(
-            "guides.set_smoothing_interpolation_method"
-        )
-        if _set_smoothing_interp is not None:
-            _set_smoothing_interp(store, laser_smoothing_interp or "BILINEAR")
-
-        render.movement_interpolation_method = magnifier_movement_interp
-
         self._load_canvas_feature_settings(v)
-
-        init_cmd = get_canvas_feature_command_by_alias("overlay.settings_initialize")
-        if init_cmd is not None:
-            init_cmd(store, self._get_setting)
+        self._load_tab_canvas_feature_settings(store)
 
         s.window_width = self._get_setting("window_width", 1024, int)
         s.window_height = self._get_setting("window_height", 768, int)
@@ -195,9 +164,7 @@ class SettingsManager:
         self._save_setting("max_name_length", render.max_name_length)
         self._save_setting("display_resolution_limit", render.display_resolution_limit)
 
-        persist_cmd = get_canvas_feature_command_by_alias("overlay.settings.persist")
-        if persist_cmd is not None:
-            persist_cmd(store, self._save_setting)
+        self._save_tab_canvas_feature_settings(store)
 
         self._save_setting("movement_speed_per_sec", view.movement_speed_per_sec)
 
@@ -232,18 +199,9 @@ class SettingsManager:
         self._save_setting("text_placement_mode", render.text_placement_mode)
         self._save_setting("include_file_names_in_saved", render.include_file_names_in_saved)
 
-        self._save_setting("optimize_magnifier_movement", view.optimize_interactive_movement)
         self._save_setting("interpolation_method", render.interpolation_method)
         self._save_setting(
             "zoom_interpolation_method", render.zoom_interpolation_method
-        )
-
-        self._save_setting(
-            "magnifier_movement_interpolation_method",
-            render.interactive_movement_interpolation_method,
-        )
-        self._save_setting(
-            "movement_interpolation_method", render.movement_interpolation_method
         )
 
         self._save_canvas_feature_settings(v)
@@ -295,6 +253,28 @@ class SettingsManager:
             channels = read_canvas_feature_property(viewport_state, prop)
             raw_value = serialize_canvas_feature_setting(prop, channels)
             self._save_setting(prop.setting_key, raw_value)
+
+    def _load_tab_canvas_feature_settings(self, store: Store) -> None:
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        registry.create_service(
+            "settings_canvas_feature_load",
+            store,
+            self._get_setting,
+        )
+
+    def _save_tab_canvas_feature_settings(self, store: Store) -> None:
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        registry.create_service(
+            "settings_canvas_feature_save",
+            store,
+            self._save_setting,
+        )
 
     def _save_setting(self, key, value):
         if value is None:

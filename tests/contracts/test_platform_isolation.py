@@ -2,9 +2,9 @@
 
 The platform (``src/core/``, ``src/ui/`` except ``src/ui/widgets/canvas``
 which is the shared QRhi backend, ``src/services/``, ``src/plugins/``,
-``src/events/``) MUST NOT mention specific tab names like ``image_compare``
-or ``image_session``. Tabs live under ``src/tabs/`` and the host platform
-discovers them via :class:`tabs.registry.TabRegistry`.
+``src/shared/``, ``src/events/``) MUST NOT mention specific tab names like
+``image_compare`` or ``image_session``. Tabs live under ``src/tabs/`` and the
+host platform discovers them via :class:`tabs.registry.TabRegistry`.
 
 Allowlist: a small set of compat-bridge files registered here may still
 contain the literal until the corresponding migration steps land. New
@@ -17,6 +17,8 @@ import re
 from pathlib import Path
 
 import pytest
+
+from ._framework import module_imports
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -31,6 +33,7 @@ PLATFORM_ROOTS = (
     SRC / "ui" / "widgets" / "canvas",
     SRC / "ui" / "context_menu",
     SRC / "services",
+    SRC / "shared",
     SRC / "plugins",
     SRC / "events",
 )
@@ -39,43 +42,21 @@ FORBIDDEN_PATTERNS = (
     re.compile(r"\bimage_compare\b"),
     re.compile(r"\bimage_session\b"),
 )
+FORBIDDEN_TAB_IMPORT_RE = re.compile(
+    r"^(?:src\.)?tabs\.(?!(?:contract|registry)\b)[^.]+\b"
+)
 
 # Compat-bridge files explicitly tracked in MIGRATION_PLAN.md. Each entry is a
 # repo-relative path.
 #
-# These three modules are the legacy pre-tab paths that still register a
-# parallel ``comparison`` plugin / context-menu / GL canvas widget. The host
-# also wires the modern ``tabs.image_compare.*`` paths next to them; the
-# legacy paths persist until the ``ui/widgets/gl_canvas`` → ``ui/widgets/canvas``
-# migration finishes, at which point all three drop out.
 ALLOWLIST: frozenset[str] = frozenset(
     {
-        # Legacy parallel ``comparison`` plugin / host-side context-menu / GL
-        # canvas widget. Drop out once ``ui/widgets/gl_canvas`` →
-        # ``ui/widgets/canvas`` migration finishes.
-        "src/plugins/comparison/plugin.py",
-        "src/ui/context_menu/image_compare.py",
-        "src/ui/widgets/gl_canvas/widget.py",
-        # ``LayoutComposer`` still calls ``tab.widget.assemble(ui)`` because
-        # image_compare primitive widgets (buttons/sliders) are built by the
-        # host's ``Ui_ImageComparisonApp._create_*`` methods and bound into
-        # the tab's layout tree. Moving primitive ownership into the tab is
-        # tracked as a remaining migration step (see MIGRATION_PLAN.md).
-        "src/ui/main_window/layouts.py",
-        "src/ui/main_window/ui.py",
-        # Host-side fallbacks that still default to ``image_compare`` when
-        # there is no active workspace session, or special-case image_compare
-        # cache invalidation. Will go away with full step 9/24 closure.
-        "src/core/store_workspace.py",
-        "src/ui/presenters/main_window/state.py",
-        "src/ui/presenters/main_window/workspace.py",
-        # Settings page that still gates resolution/interactive-optimization/
-        # video-recording groups by ``active_tab == "image_compare"``. Tab
-        # contribute hook is in place; group relocation is structural debt.
-        "src/plugins/settings/pages/performance.py",
-        # ``video_editor.open_image_compare()`` survives as a cross-tab launch
-        # helper. Replacing it with an EventBus message is tracked separately.
-        "src/plugins/video_editor/model.py",
+        # Step 8 of docs/dev/TAB_OWNERSHIP_AUDIT.md: DocumentModel/ImageItem
+        # now live in tabs/image_compare/state/document.py. This module is a
+        # thin re-export shim kept for the remaining ~188 platform accesses
+        # to store.document.*; it disappears once those callers reach the
+        # tab-owned slot directly.
+        "src/core/store_document.py",
     }
 )
 
@@ -92,6 +73,54 @@ def _iter_py_files() -> list[Path]:
     return sorted(files)
 
 
+@pytest.mark.parametrize(
+    "legacy_path",
+    (
+        SRC / "plugins" / "analysis",
+        SRC / "plugins" / "analysis" / "controller.py",
+        SRC / "plugins" / "analysis" / "events.py",
+        SRC / "plugins" / "analysis" / "plugin.py",
+        SRC / "plugins" / "analysis" / "processing",
+        SRC / "plugins" / "analysis" / "services",
+        SRC / "plugins" / "analysis" / "settings.py",
+        SRC / "plugins" / "analysis" / "state.py",
+        SRC / "plugins" / "analysis" / "ui",
+        SRC / "plugins" / "comparison",
+        SRC / "plugins" / "export" / "presenter_parts" / "context_builder.py",
+        SRC / "plugins" / "export" / "presenter_parts" / "save_flow.py",
+        SRC / "plugins" / "export" / "presenter_parts" / "state.py",
+        SRC / "plugins" / "export" / "services" / "image_export.py",
+        SRC / "plugins" / "export" / "services" / "gpu_export_scene.py",
+        SRC / "plugins" / "export" / "services" / "recording_flow.py",
+        SRC / "plugins" / "export" / "services" / "snapshot_render_plan_builder.py",
+        SRC / "plugins" / "export" / "services" / "still_snapshot_bounds.py",
+        SRC / "plugins" / "export" / "services" / "video_export_flow.py",
+        SRC / "plugins" / "export" / "settings.py",
+        SRC / "plugins" / "export" / "state.py",
+        SRC / "plugins" / "layout" / "definitions.py",
+        SRC / "plugins" / "layout" / "manager.py",
+        SRC / "plugins" / "settings" / "color_actions.py",
+        SRC / "plugins" / "settings" / "presenter_parts" / "color_pickers.py",
+        SRC / "services" / "system" / "clipboard.py",
+        SRC / "services" / "io" / "image_loader.py",
+        SRC / "services" / "workflow",
+        SRC / "shared" / "rendering" / "canvas_widget_factory.py",
+        SRC / "ui" / "canvas_features",
+        SRC / "ui" / "canvas_presentation" / "plan_builder.py",
+        SRC / "ui" / "context_menu" / "image_compare.py",
+        SRC / "ui" / "presenters" / "image_canvas",
+        SRC / "ui" / "widgets" / "gl_canvas",
+        SRC / "ui" / "widgets" / "gl_canvas" / "widget.py",
+    ),
+    ids=lambda p: str(p.relative_to(ROOT)),
+)
+def test_legacy_image_compare_platform_paths_are_removed(legacy_path: Path):
+    assert not legacy_path.exists(), (
+        f"{legacy_path.relative_to(ROOT)} is image_compare-owned legacy code; "
+        "use tabs.image_compare instead"
+    )
+
+
 @pytest.mark.parametrize("py_file", _iter_py_files(), ids=lambda p: str(p.relative_to(ROOT)))
 def test_platform_file_does_not_mention_image_compare(py_file: Path):
     rel = str(py_file.relative_to(ROOT))
@@ -106,4 +135,32 @@ def test_platform_file_does_not_mention_image_compare(py_file: Path):
     assert not hits, (
         f"{rel} mentions tab-specific names — platform code must stay tab-agnostic:\n"
         + "\n".join(f"  line {ln}: pattern {pat!r} matched {tok!r}" for ln, pat, tok in hits)
+    )
+
+
+@pytest.mark.parametrize("py_file", _iter_py_files(), ids=lambda p: str(p.relative_to(ROOT)))
+def test_platform_file_does_not_import_tab_package_directly(py_file: Path):
+    rel = str(py_file.relative_to(ROOT))
+    if rel in ALLOWLIST:
+        pytest.skip(f"allowlisted compat bridge: {rel}")
+    hits = [
+        (lineno, module)
+        for module, lineno in module_imports(py_file)
+        if FORBIDDEN_TAB_IMPORT_RE.match(module)
+    ]
+    assert not hits, (
+        f"{rel} imports tab packages directly — platform code must use "
+        "TabRegistry/TabContract discovery:\n"
+        + "\n".join(f"  line {lineno}: imports {module!r}" for lineno, module in hits)
+    )
+
+
+def test_shared_live_snapshot_is_tab_agnostic():
+    path = SRC / "shared" / "rendering" / "live_snapshot.py"
+    text = path.read_text(encoding="utf-8")
+    forbidden = ("image1", "image2", "image_list", "current_index", "FrameSnapshot")
+    hits = [token for token in forbidden if token in text]
+    assert not hits, (
+        "shared live_snapshot.py must delegate to tab services, not build "
+        f"image-pair snapshots directly: {hits}"
     )

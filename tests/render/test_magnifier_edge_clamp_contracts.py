@@ -8,8 +8,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from domain.types import Point, Rect
-from ui.canvas_features.magnifier.feature import build_magnifier_object
-from ui.canvas_features.magnifier.models import MagnifierModel
+from tabs.image_compare.canvas.features.magnifier.feature import build_magnifier_object
+from tabs.image_compare.canvas.features.magnifier.models import MagnifierModel
 from ui.canvas_infra.scene.context import CanvasSceneBuildContext
 
 def _edge_object():
@@ -51,7 +51,7 @@ def _edge_object():
 
 def test_capture_edge_clamp_does_not_depend_on_zoom(monkeypatch):
     """Zooming must not nudge a capture area that is clamped to an image edge."""
-    import ui.canvas_features.magnifier.feature as feature
+    import tabs.image_compare.canvas.features.magnifier.feature as feature
 
     monkeypatch.setattr(feature, "get_zoom_level", lambda _widget: 1.0, raising=False)
     zoom_1 = _edge_object()

@@ -10,7 +10,7 @@ from core.session_blueprints import (
     SessionSlotBlueprint,
 )
 from tabs.image_compare.models import ImageCompareState
-from plugins.analysis.services import (
+from tabs.image_compare.services.analysis import (
     AnalysisRuntime,
     CachedDiffService,
     CoreUpdateDispatcher,
@@ -18,12 +18,16 @@ from plugins.analysis.services import (
     UIUpdateDispatcher,
 )
 from tabs.image_compare.events import (
+    AnalysisRequestMetricsEvent,
+    AnalysisSetChannelViewModeEvent,
+    AnalysisSetDiffModeEvent,
+    AnalysisToggleDiffModeEvent,
     ComparisonErrorEvent,
     ComparisonUpdateRequestedEvent,
 )
+from plugins.settings.events import SettingsAnalysisMetricsRequestedEvent
 from tabs.image_compare._session_controller import SessionController
 from tabs.image_compare.services.playlist import PlaylistManager
-from services.io.image_loader import ImageLoaderService
 
 
 class _ComparisonControllerProxy:
@@ -56,7 +60,6 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
         self.event_bus: Any | None = None
         self.thread_pool: Any | None = None
         self.store: Any | None = None
-        self.image_loader: ImageLoaderService | None = None
         self.metrics_service: MetricsService | None = None
         self.main_controller_proxy: _ComparisonControllerProxy | None = None
         self.playlist_manager: PlaylistManager | None = None
@@ -69,7 +72,6 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
         self.thread_pool = getattr(context, "thread_pool", None)
         self.event_bus = getattr(context, "event_bus", None)
         self.main_controller_proxy = _ComparisonControllerProxy(self)
-        self.image_loader = ImageLoaderService(self.store, None)
 
         runtime = AnalysisRuntime(
             thread_pool=self.thread_pool,
@@ -82,13 +84,32 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
         self.session_ctrl = SessionController(
             self.store,
             self.thread_pool,
-            self.image_loader,
             self.playlist_manager,
             self.metrics_service,
             diff_service=diff_service,
             event_bus=self.event_bus,
         )
-        self.image_loader.main_controller = self.session_ctrl
+        if self.event_bus and self.session_ctrl:
+            self.event_bus.subscribe(
+                AnalysisRequestMetricsEvent,
+                self.session_ctrl.on_metrics_requested_event,
+            )
+            self.event_bus.subscribe(
+                SettingsAnalysisMetricsRequestedEvent,
+                self.session_ctrl.on_metrics_requested_event,
+            )
+            self.event_bus.subscribe(
+                AnalysisSetChannelViewModeEvent,
+                self.session_ctrl.on_set_channel_view_mode,
+            )
+            self.event_bus.subscribe(
+                AnalysisToggleDiffModeEvent,
+                self.session_ctrl.on_toggle_diff_mode,
+            )
+            self.event_bus.subscribe(
+                AnalysisSetDiffModeEvent,
+                self.session_ctrl.on_set_diff_mode,
+            )
 
     def _emit_error(self, message: str) -> None:
         if self.event_bus:

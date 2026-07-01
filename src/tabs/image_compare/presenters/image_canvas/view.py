@@ -12,16 +12,16 @@ from ui.canvas_infra.viewport.state import (
     set_pan_offsets,
     set_zoom_level,
 )
-from ui.canvas_presentation import (
-    apply_store_to_canvas,
+from tabs.image_compare.canvas.presentation.plan_builder import (
     build_live_store_presentation,
 )
-from ui.widgets.canvas.helpers import (
+from tabs.image_compare.canvas.presentation.surface import apply_store_to_canvas
+from tabs.image_compare.canvas.helpers import (
     get_canvas,
     get_canvas_widget,
     reset_canvas_overlays,
 )
-from ui.widgets.canvas.scene import build_render_scene
+from tabs.image_compare.canvas.scene import build_render_scene
 
 logger = logging.getLogger("ImproveImgSLI")
 

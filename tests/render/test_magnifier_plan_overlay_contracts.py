@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor
 
-from ui.canvas_features.magnifier.plan_overlay import apply_magnifier_plan_overlay
+from tabs.image_compare.canvas.features.magnifier.plan_overlay import apply_magnifier_plan_overlay
 from ui.canvas_presentation.plan import CanvasRenderPlan, OverlayLayout, OverlaySlot
 
 class _Canvas:

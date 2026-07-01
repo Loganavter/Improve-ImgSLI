@@ -36,9 +36,9 @@ from ui.canvas_presentation.filename_labels import (
 )
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.canvas_presentation.render_arch import FilenameOverlayStyle
+from ui.canvas_presentation.label_style import FilenameOverlayStyle
 from ui.widgets.canvas.render_common import new_overlay_image
-from ui.widgets.canvas.rhi_feature_common import load_qshader
+from tabs.image_compare.canvas.rhi_feature_common import load_qshader
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 _UNIFORM_SIZE = 64

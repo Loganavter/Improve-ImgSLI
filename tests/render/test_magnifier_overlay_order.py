@@ -7,11 +7,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from domain.types import Color, Point
-from ui.canvas_features.magnifier.layout_plan import build_magnifier_layout
-from ui.canvas_features.magnifier.models import MagnifierModel
+from tabs.image_compare.canvas.features.magnifier.layout_plan import build_magnifier_layout
+from tabs.image_compare.canvas.features.magnifier.models import MagnifierModel
 
 def test_active_magnifier_slots_render_last(monkeypatch):
-    import ui.canvas_features.magnifier.layout_plan as layout_plan
+    import tabs.image_compare.canvas.features.magnifier.layout_plan as layout_plan
 
     active = MagnifierModel(
         id="active",

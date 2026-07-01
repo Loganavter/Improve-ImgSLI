@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from ui.canvas_features.guides import toolbar as guides_toolbar
-from ui.presenters.toolbar import orientation
+from tabs.image_compare.canvas.features.guides import toolbar as guides_toolbar
+from tabs.image_compare.presenters.toolbar import orientation
 
 
 class _Binding:

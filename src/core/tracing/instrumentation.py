@@ -338,7 +338,7 @@ def _patch_hit_test() -> None:
 
 def _patch_gl_canvas_input() -> None:
     try:
-        from ui.widgets.gl_canvas import widget as gl_mod
+        from ui.widgets.canvas import widget as gl_mod
     except Exception:
         logger.debug("gl_canvas patch skipped", exc_info=True)
         return

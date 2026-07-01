@@ -3,8 +3,8 @@ from __future__ import annotations
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QApplication
 
-from plugins.analysis.events import AnalysisRequestMetricsEvent
 from plugins.settings.events import (
+    SettingsAnalysisMetricsRequestedEvent,
     SettingsChangeLanguageEvent,
     SettingsUIModeChangedEvent,
 )
@@ -25,7 +25,6 @@ from core.state_management.actions import (
     SetZoomInterpolationMethodAction,
 )
 from shared_toolkit.ui.managers.font_manager import FontManager
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
 from ui.theming import refresh_application_styles
 
 from .models import SettingsDialogData
@@ -188,117 +187,32 @@ class SettingsApplicationService(QObject):
     def _apply_viewport_interactive_settings(
         self, data: SettingsDialogData, render_update_needed: bool
     ) -> bool:
-        vp = self.store.viewport
-        view = vp.view_state
-
-        if data.optimize_magnifier_movement != view.optimize_interactive_movement:
-            cmd = get_canvas_feature_command_by_alias(
-                "overlay.settings.set_optimize_movement"
-            )
-            if cmd is not None and cmd(self.store, data.optimize_magnifier_movement):
-                render_update_needed = True
-                self._save_setting(
-                    "optimize_magnifier_movement",
-                    data.optimize_magnifier_movement,
-                )
-
-        render_update_needed = self._apply_magnifier_interpolation(
-            data, render_update_needed
-        )
-        render_update_needed = self._apply_laser_interpolation(
+        render_update_needed = self._apply_tab_viewport_settings(
             data, render_update_needed
         )
         render_update_needed = self._apply_zoom_interpolation(
             data, render_update_needed
         )
-        render_update_needed = self._apply_magnifier_behavior_settings(
-            data, render_update_needed
-        )
         return render_update_needed
 
-    def _apply_magnifier_behavior_settings(
+    def _apply_tab_viewport_settings(
         self, data: SettingsDialogData, render_update_needed: bool
     ) -> bool:
-        apply_cmd = get_canvas_feature_command_by_alias(
-            "overlay.settings.apply_behavior"
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        result = registry.create_service(
+            "settings_viewport_application",
+            self.store,
+            data,
+            render_update_needed,
+            self._save_setting,
+            self._emit_update_requested,
         )
-        if apply_cmd is None:
+        if result is None:
             return render_update_needed
-        changes = apply_cmd(self.store, {
-            "intersection_highlight_enabled": data.magnifier_intersection_highlight_enabled,
-            "auto_color_new_instances": data.magnifier_auto_color_new_instances,
-        })
-        if not changes:
-            return render_update_needed
-        if "intersection_highlight_enabled" in changes:
-            self._save_setting(
-                "magnifier.intersection_highlight.enabled",
-                changes["intersection_highlight_enabled"],
-            )
-        if "auto_color_new_instances" in changes:
-            self._save_setting(
-                "magnifier.auto_color_new_instances.enabled",
-                changes["auto_color_new_instances"],
-            )
-        self.store.emit_state_change("viewport")
-        self._emit_update_requested()
-        return True
-
-    def _apply_magnifier_interpolation(
-        self, data: SettingsDialogData, render_update_needed: bool
-    ) -> bool:
-        cmd = get_canvas_feature_command_by_alias(
-            "overlay.settings.set_movement_interpolation"
-        )
-        if cmd is None or not cmd(self.store, data.magnifier_interpolation_method):
-            return render_update_needed
-
-        self.store.emit_state_change()
-        self._save_setting(
-            "magnifier_movement_interpolation_method",
-            data.magnifier_interpolation_method,
-        )
-        self._emit_update_requested()
-        return True
-
-    def _apply_laser_interpolation(
-        self, data: SettingsDialogData, render_update_needed: bool
-    ) -> bool:
-        vp = self.store.viewport
-        render = vp.render_config
-        _get_guides_state = get_canvas_feature_command_by_alias("guides.widget_state")
-        guides_state = _get_guides_state(vp.view_state) if _get_guides_state is not None else type("_F", (), {"smoothing_enabled": False, "smoothing_interpolation_method": "BILINEAR"})()
-
-        if data.optimize_laser_smoothing != guides_state.smoothing_enabled:
-            set_smoothing_cmd = get_canvas_feature_command_by_alias(
-                "guides.set_smoothing_enabled"
-            )
-            if set_smoothing_cmd is not None:
-                set_smoothing_cmd(self.store, data.optimize_laser_smoothing)
-            render_update_needed = True
-            self._save_setting(
-                "guides.smoothing.enabled",
-                data.optimize_laser_smoothing,
-            )
-
-        if (
-            data.laser_interpolation_method
-            == guides_state.smoothing_interpolation_method
-        ):
-            return render_update_needed
-
-        set_interp_cmd = get_canvas_feature_command_by_alias(
-            "guides.set_smoothing_interpolation_method"
-        )
-        if set_interp_cmd is not None:
-            set_interp_cmd(self.store, data.laser_interpolation_method)
-        self.store.emit_state_change()
-        self._save_setting(
-            "guides.smoothing.interpolation_method",
-            data.laser_interpolation_method,
-        )
-        self._emit_update_requested()
-        return True
+        return bool(result)
 
     def _apply_zoom_interpolation(
         self, data: SettingsDialogData, render_update_needed: bool
@@ -346,7 +260,7 @@ class SettingsApplicationService(QObject):
             self.store.emit_state_change("viewport")
             if self.event_bus is not None:
                 self.event_bus.emit(
-                    AnalysisRequestMetricsEvent(
+                    SettingsAnalysisMetricsRequestedEvent(
                         payload={
                             "psnr": self.store.viewport.session_data.image_state.auto_calculate_psnr,
                             "ssim": self.store.viewport.session_data.image_state.auto_calculate_ssim,

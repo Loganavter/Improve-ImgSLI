@@ -27,7 +27,7 @@ class CanvasRenderPassBase:
     """
     A feature-owned GL render pass.
 
-    Features declare their passes in ``canvas_features/<name>/passes.py``
+    Features declare their passes in ``tabs/<tab>/canvas/features/<name>/passes.py``
     and export them as ``RENDER_PASSES``.  The registry discovers them
     automatically; ``render_passes.py`` calls them in layer/priority order.
 

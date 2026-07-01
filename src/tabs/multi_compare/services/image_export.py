@@ -7,13 +7,7 @@ from pathlib import Path
 from PIL import Image
 from PySide6.QtGui import QImage
 
-
-def qimage_to_pil(image: QImage) -> Image.Image:
-    converted = image.convertToFormat(QImage.Format.Format_RGBA8888)
-    width = converted.width()
-    height = converted.height()
-    ptr = converted.bits()
-    return Image.frombytes("RGBA", (width, height), bytes(ptr))
+from shared.image_processing.qt_conversion import qimage_to_pil
 
 
 def save_composite(image: QImage, options: dict) -> str:

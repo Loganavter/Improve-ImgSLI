@@ -7,7 +7,6 @@ from PySide6.QtWidgets import QApplication, QRhiWidget, QWidget
 
 from shared_toolkit.ui.managers.font_manager import FontManager
 from ui.theming import resolve_theme_color
-from ui.widgets.canvas.helpers import get_canvas
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -36,24 +35,11 @@ class MainWindowAppearance:
         bg = resolve_theme_color(window.theme_manager, "label.image.background")
         self._apply_widget_background(getattr(window, "_startup_placeholder", None), bg)
         self._apply_widget_background(getattr(window, "_startup_cover", None), bg)
-        image_label = get_canvas(window.ui) if window.ui is not None else None
-        if image_label is None:
+        if window.ui is None:
             return
-        self._apply_widget_background(
-            getattr(window.ui, "image_container_widget", None), bg
-        )
-        self._apply_widget_background(image_label, bg)
-        placeholder = getattr(window.ui, "image_startup_placeholder", None)
-        if placeholder is not None:
-            placeholder.set_background_color(bg)
-        for rhi_widget in window.findChildren(QRhiWidget):
-            if rhi_widget is image_label:
-                continue
-            if hasattr(rhi_widget, "apply_theme_background"):
-                rhi_widget.apply_theme_background(QColor(bg))
-            else:
-                rhi_widget._theme_background_color = QColor(bg)
-            rhi_widget.update()
+        registry = getattr(window.ui, "_tab_registry", None)
+        if registry is not None:
+            registry.apply_appearance(window)
 
     def update_chrome_background(self) -> None:
         """Paint workspace shell and tab pages with the app Window color.
@@ -82,9 +68,6 @@ class MainWindowAppearance:
         window = self.window
         self.update_image_label_background()
         self.update_chrome_background()
-        registry = getattr(getattr(window, "ui", None), "_tab_registry", None)
-        if registry is not None:
-            registry.apply_appearance(window)
         try:
             FontManager.get_instance().apply_from_state(window.store)
             current_font = QApplication.font()

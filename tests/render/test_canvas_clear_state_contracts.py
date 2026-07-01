@@ -8,7 +8,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 def test_document_active_display_name_does_not_stick_after_slot_clear():
-    from core.store_document import DocumentModel, ImageItem
+    from tabs.image_compare.state.document import DocumentModel, ImageItem
 
     document = DocumentModel(
         image_list1=[ImageItem(display_name="Left.png")],
@@ -25,7 +25,7 @@ def test_document_active_display_name_does_not_stick_after_slot_clear():
     assert document.get_active_display_name(1) == ""
 
 def test_gl_canvas_clear_resets_runtime_flags(monkeypatch):
-    from ui.widgets.gl_canvas.texture_parts import layers
+    from tabs.image_compare.canvas.texture_parts import layers
 
     runtime_state = SimpleNamespace(
         _background_pixmap=object(),

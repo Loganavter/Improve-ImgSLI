@@ -1,18 +1,13 @@
 from __future__ import annotations
 
 import logging
-from threading import Event
-from typing import Any, Callable
-
-from sli_ui_toolkit.workers import GenericWorker
+from typing import Any
 
 logger = logging.getLogger("ImproveImgSLI")
 
 from plugins.export.events import (
-    ExportExportRecordedVideoEvent,
     ExportOpenVideoEditorEvent,
     ExportPasteImageFromClipboardEvent,
-    ExportQuickSaveComparisonEvent,
     ExportTogglePauseRecordingEvent,
     ExportToggleRecordingEvent,
 )
@@ -23,11 +18,6 @@ from core.plugin_system.interfaces import (
     IVideoTrackProvider,
 )
 from plugins.export.controller import ExportController
-from plugins.export.services.image_export import ExportService
-from plugins.video_editor.services.export import VideoExporterService
-from plugins.video_editor.services.recorder import Recorder
-from services.io.image_loader import ImageLoaderService
-from services.system.clipboard import ClipboardService
 
 @plugin(name="export", version="1.0")
 class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
@@ -36,12 +26,10 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     def __init__(self):
         super().__init__()
         self.controller: ExportController | None = None
-        self.recorder: Recorder | None = None
-        self.video_exporter: VideoExporterService | None = None
-        self.clipboard_service: ClipboardService | None = None
-        self.image_loader: ImageLoaderService | None = None
+        self.recorder: Any | None = None
+        self.video_exporter: Any | None = None
+        self.clipboard_service: Any | None = None
         self.video_editor_plugin: Any | None = None
-        self.export_service: ExportService | None = None
         self.thread_pool: Any | None = None
         self.event_bus: Any | None = None
         self.store: Any | None = None
@@ -53,8 +41,6 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         self.thread_pool = getattr(context, "thread_pool", None)
         self.event_bus = getattr(context, "event_bus", None)
         self.plugin_coordinator = getattr(context, "plugin_coordinator", None)
-        font_path = getattr(context, "font_path_absolute", None)
-        self.export_service = ExportService(font_path)
         self.video_editor_plugin = (
             self.plugin_coordinator.get_plugin("video_editor")
             if self.plugin_coordinator
@@ -72,17 +58,12 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         if self.controller:
             return
         extra_adapters = self._collect_video_keyframe_adapters()
-        self.recorder = Recorder(self.store, extra_adapters=extra_adapters)
-        self.video_exporter = VideoExporterService(
-            self.recorder,
-            self.store,
-            main_controller,
-            gpu_export_service=getattr(presenter, "gpu_export_service", None),
+        self.recorder, self.video_exporter = self._create_recording_services(
+            main_controller=main_controller,
+            presenter=presenter,
+            extra_adapters=extra_adapters,
         )
-        self.image_loader = ImageLoaderService(self.store, main_controller)
-        self.clipboard_service = ClipboardService(
-            self.store, main_controller, self.image_loader
-        )
+        self.clipboard_service = self._create_clipboard_service(main_controller)
         self.controller = ExportController(
             store=self.store,
             thread_pool=self.thread_pool,
@@ -107,89 +88,24 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
                 self.controller.on_toggle_pause_recording,
             )
             self.event_bus.subscribe(
-                ExportExportRecordedVideoEvent, self.controller.on_export_recorded_video
-            )
-            self.event_bus.subscribe(
                 ExportOpenVideoEditorEvent, self.controller.on_open_video_editor
             )
             self.event_bus.subscribe(
                 ExportPasteImageFromClipboardEvent,
                 self.controller.on_paste_image_from_clipboard,
             )
-            self.event_bus.subscribe(
-                ExportQuickSaveComparisonEvent, self.controller.on_quick_save_comparison
-            )
-
-    def quick_save_comparison(self, checked: bool = False) -> bool:
-        logger.info("quick_save_comparison called in plugin")
-        if self.controller:
-            result = self.controller.quick_save_comparison()
-            logger.info(f"quick_save_comparison result: {result}")
-            return result
-        logger.warning("quick_save_comparison: controller is None")
-        return False
-
-    def export_image(
-        self, export_options: dict[str, Any], cancel_event: Event | None = None
-    ) -> None:
-        if not self.export_service or not self.store:
-            return
-
-        worker = GenericWorker(
-            self._export_task, export_options, cancel_event, self._progress_callback
-        )
-        worker.signals.result.connect(self._on_export_finished)
-        worker.signals.error.connect(self._on_export_error)
-
-        if self.thread_pool:
-            self.thread_pool.start(worker)
-        else:
-            worker.run()
-
-    def _export_task(
-        self,
-        export_options: dict[str, Any],
-        cancel_event: Event | None,
-        progress_callback: Callable[[int], None],
-    ) -> str:
-        if not self.store or not self.export_service:
-            raise RuntimeError("Missing store or export service.")
-
-        progress_callback(0)
-        result = self.export_service.export_image(
-            store=self.store,
-            original_image1=self.store.document.original_image1,
-            original_image2=self.store.document.original_image2,
-            export_options=export_options,
-            cancel_event=cancel_event,
-            progress_callback=progress_callback,
-        )
-        return result
-
-    def _progress_callback(self, percent: int) -> None:
-        self._emit("export.progress", percent)
-
-    def _on_export_finished(self, output_path: Any) -> None:
-        self._emit("export.finished", output_path)
-
-    def _on_export_error(self, error_info: Any) -> None:
-        self._emit("export.error", error_info)
 
     def _emit(self, event: str, payload: Any) -> None:
         if self.event_bus:
             self.event_bus.emit(event, payload)
 
     def get_ui_components(self) -> dict[str, Any]:
-        return {
-            "export_image": self.export_image,
-        }
+        return {}
 
     def get_controller(self) -> ExportController | None:
         return self.controller
 
     def handle_command(self, command: str, *args: Any, **kwargs: Any) -> Any:
-        if command == "export_image":
-            return self.export_image(*args, **kwargs)
         if self.controller and hasattr(self.controller, command):
             return getattr(self.controller, command)(*args, **kwargs)
         raise AttributeError(f"Export plugin has no command '{command}'")
@@ -215,6 +131,42 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
             if isinstance(plugin, IVideoTrackProvider):
                 adapters.extend(plugin.get_video_keyframe_adapters())
         return tuple(adapters)
+
+    def _create_recording_services(
+        self,
+        *,
+        main_controller: Any | None,
+        presenter: Any | None,
+        extra_adapters: tuple[Any, ...],
+    ) -> tuple[Any, Any]:
+        plugin = self.video_editor_plugin
+        if plugin is None or not hasattr(plugin, "create_recording_services"):
+            raise RuntimeError(
+                "video_editor plugin must provide recording services for export controls"
+            )
+        return plugin.create_recording_services(
+            store=self.store,
+            main_controller=main_controller,
+            gpu_export_service=getattr(presenter, "gpu_export_service", None),
+            extra_adapters=extra_adapters,
+        )
+
+    def _create_clipboard_service(self, main_controller: Any | None) -> Any:
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        service = registry.create_service(
+            "clipboard_paste_service",
+            self.store,
+            main_controller,
+        )
+        if service is None:
+            raise RuntimeError(
+                "No tab provides clipboard_paste_service; clipboard paste "
+                "must be supplied by the active tab owner."
+            )
+        return service
 
     def provides_capability(self, capability: str) -> bool:
         return capability in self.capabilities
