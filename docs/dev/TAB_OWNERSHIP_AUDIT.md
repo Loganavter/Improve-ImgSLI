@@ -663,7 +663,30 @@ Completed:
 
 Action:
 
-- define a render-source contract for video editor;
+- define a render-source contract for video editor. Concretely:
+  - replace `FrameSnapshot.image1_path` / `image2_path` fields
+    (`plugins.video_editor.services.keyframing.types`) with a generic
+    `sources: dict[str, str]` mapping or an ordered `sources: list[str]` list,
+    so non-image_compare tabs can define their own source count/naming;
+  - rewrite `plugins.video_editor.services.video_snapshot_rendering.SnapshotFrameRenderer`
+    from an abstract pair-image pipeline into a generic `_resolve_sources(snap)`
+    → list-of-images pipeline; the pair-specific subclass lives in
+    `tabs.image_compare.services.video_snapshot_rendering`;
+  - drop the pair-specific featureless fallback from
+    `plugins.video_editor.services.video_export_bounds._calculate_featureless_bounds`
+    in favour of iterating `snap.sources`;
+  - retire hardcoded `CORE_IMAGE1_TRACK_ID` / `CORE_IMAGE2_TRACK_ID` in
+    `plugins.video_editor.services.keyframing.recording` and the
+    `__snapshot.image1_path` / `image2_path` StaticTrackBindings in
+    `plugins.video_editor.services.keyframing.adapters.core_snapshot`; each
+    source contributes one track per source-id declared by the active tab;
+  - update `recorder.py`, `presenter_parts/preview.py`, and
+    `presenter_parts/bootstrap.py` to read `snap.sources` instead of the pair
+    fields;
+  - rewrite `tests/plugins/test_export_diff_support.py` and
+    `tests/video/test_video_editor_preview_contracts.py` (both subclass the
+    root renderer and depend on the pair pipeline) against the new
+    source-list contract.
 - continue moving image_compare-specific recorder/keyframing semantics to
   tab-owned packages;
 - keep timeline/export encoding/playback generic.
