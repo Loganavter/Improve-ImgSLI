@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
 
 @dataclass(slots=True)
 class SettingsDialogContext:
@@ -30,3 +31,7 @@ class SettingsDialogContext:
     current_video_fps: int = 60
     rhi_backend: str = "default"
     store: object | None = None
+    tab_extras: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def get_section(self, section_id: str) -> dict[str, Any]:
+        return self.tab_extras.get(section_id, {})
