@@ -14,9 +14,13 @@ to ``dialog.pages_stack`` (mirroring the existing ``init_*_page`` signatures).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from ui.icon_manager import AppIcon
+
+
+SectionReader = Callable[[object], dict[str, Any]]
+SectionSeeder = Callable[[object], dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,44 @@ class SettingsRegistry:
         self._section_extras: dict[
             str, list[tuple[Callable[[object, object], None], str | None, int]]
         ] = {}
+        self._payload_readers: dict[str, SectionReader] = {}
+        self._payload_seeders: dict[str, SectionSeeder] = {}
+
+    def register_payload_reader(self, section_id: str, reader: SectionReader) -> None:
+        self._payload_readers[section_id] = reader
+
+    def register_payload_seeder(self, section_id: str, seeder: SectionSeeder) -> None:
+        self._payload_seeders[section_id] = seeder
+
+    def read_payloads(self, dialog: object) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for section_id, reader in self._payload_readers.items():
+            try:
+                values = reader(dialog)
+            except Exception:
+                import logging
+                logging.getLogger("ImproveImgSLI").exception(
+                    "Settings payload reader failed for section %s", section_id
+                )
+                continue
+            if values:
+                out[section_id] = dict(values)
+        return out
+
+    def seed_payloads(self, source: object) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for section_id, seeder in self._payload_seeders.items():
+            try:
+                values = seeder(source)
+            except Exception:
+                import logging
+                logging.getLogger("ImproveImgSLI").exception(
+                    "Settings payload seeder failed for section %s", section_id
+                )
+                continue
+            if values:
+                out[section_id] = dict(values)
+        return out
 
     def add(self, section: SettingsSection) -> None:
         if any(s.section_id == section.section_id for s in self._sections):
