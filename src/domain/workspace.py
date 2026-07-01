@@ -8,16 +8,35 @@ if TYPE_CHECKING:
     from core.store_document import DocumentModel
     from core.store_viewport import ViewportState
 
+_DOCUMENT_SLOT = "document"
+_VIEWPORT_SLOT = "viewport"
+
+
 @dataclass
 class WorkspaceSession:
     id: str
     title: str
     session_type: str
-    document: "DocumentModel"
-    viewport: "ViewportState"
     state_slots: dict[str, Any] = field(default_factory=dict)
     resources: dict[str, dict[str, Any]] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def document(self) -> "DocumentModel":
+        return self.state_slots.get(_DOCUMENT_SLOT)
+
+    @document.setter
+    def document(self, value: "DocumentModel") -> None:
+        self.state_slots[_DOCUMENT_SLOT] = value
+
+    @property
+    def viewport(self) -> "ViewportState":
+        return self.state_slots.get(_VIEWPORT_SLOT)
+
+    @viewport.setter
+    def viewport(self, value: "ViewportState") -> None:
+        self.state_slots[_VIEWPORT_SLOT] = value
+
 
 @dataclass
 class WorkspaceState:

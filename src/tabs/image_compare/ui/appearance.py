@@ -14,7 +14,7 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from ui.theming import resolve_theme_color
-from ui.widgets.canvas.helpers import get_canvas
+from tabs.image_compare.canvas.helpers import get_canvas
 
 logger = logging.getLogger("ImproveImgSLI")
 

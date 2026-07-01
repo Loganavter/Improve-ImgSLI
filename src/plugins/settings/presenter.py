@@ -2,10 +2,7 @@ import logging
 
 from PySide6.QtCore import QObject
 from core.store import Store
-from plugins.settings.presenter_parts import (
-    SettingsColorPickerCoordinator,
-    SettingsViewStateCoordinator,
-)
+from plugins.settings.presenter_parts import SettingsViewStateCoordinator
 from resources.translations import tr
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -20,7 +17,7 @@ class SettingsPresenter(QObject):
         self.main_controller = main_controller
         self.ui_manager = ui_manager
         self.main_window_app = main_window_app
-        self.color_pickers = SettingsColorPickerCoordinator(
+        self.color_pickers = self._create_color_picker_coordinator(
             store=store,
             main_controller=main_controller,
             main_window_app=main_window_app,
@@ -72,6 +69,22 @@ class SettingsPresenter(QObject):
 
     def _tr(self, text):
         return tr(text, self.store.settings.current_language)
+
+    def _create_color_picker_coordinator(self, **kwargs):
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        coordinator = registry.create_service(
+            "settings_color_picker_coordinator",
+            **kwargs,
+        )
+        if coordinator is None:
+            raise RuntimeError(
+                "No tab provides settings_color_picker_coordinator; "
+                "canvas feature color pickers must be supplied by the tab owner."
+            )
+        return coordinator
 
     def on_language_changed(self):
         self.update_interpolation_combo_box_ui()

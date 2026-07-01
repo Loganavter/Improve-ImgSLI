@@ -94,14 +94,26 @@ class WindowEventHandler(QObject):
                 else event.pos()
             )
             slot = 1 if self._is_in_left_area(pos) else 2
+            logger.debug(
+                "WindowEventHandler.handle_drop: paths=%s slot=%s pos=%s",
+                image_paths,
+                slot,
+                pos,
+            )
 
             if self._try_tab_registry_drop(
                 image_paths,
                 hint={"is_left_area": slot == 1, "slot": slot},
             ):
+                logger.debug(
+                    "WindowEventHandler.handle_drop: routed to active tab registry"
+                )
                 event.acceptProposedAction()
                 return
 
+            logger.debug(
+                "WindowEventHandler.handle_drop: falling back to session controller"
+            )
             event.acceptProposedAction()
 
             QTimer.singleShot(
@@ -131,8 +143,16 @@ class WindowEventHandler(QObject):
                 return False
             from pathlib import Path
             paths = [Path(p) for p in image_paths]
-            return registry.route_drop(session.session_type, paths, hint=hint)
+            handled = registry.route_drop(session.session_type, paths, hint=hint)
+            logger.debug(
+                "WindowEventHandler._try_tab_registry_drop: session_type=%s handled=%s hint=%s",
+                session.session_type,
+                handled,
+                hint,
+            )
+            return handled
         except Exception:
+            logger.exception("WindowEventHandler._try_tab_registry_drop failed")
             return False
 
     def handle_resize(self, event):

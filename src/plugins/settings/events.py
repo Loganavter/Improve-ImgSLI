@@ -25,3 +25,8 @@ class SettingsToggleAutoCropBlackBordersEvent:
 @dataclass(frozen=True)
 class SettingsUIModeChangedEvent:
     ui_mode: str
+
+
+@dataclass(frozen=True)
+class SettingsAnalysisMetricsRequestedEvent:
+    payload: dict | None = None

@@ -34,7 +34,7 @@ from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
 from sli_ui_toolkit.widgets import install_application_tooltips
 from ui.main_window import MainWindow
-from ui.widgets.gl_canvas.rhi_backend import (
+from ui.widgets.canvas.rhi_backend import (
     configure_rhi_process_environment,
     requested_rhi_backend_name,
     supported_rhi_backend_names,

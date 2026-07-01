@@ -11,11 +11,13 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from plugins.export.services.snapshot_render_plan_builder import SnapshotRenderPlanBuilder
+from tabs.image_compare.services.snapshot_render_plan_builder import (
+    SnapshotRenderPlanBuilder,
+)
 from shared.image_processing.prescale import prescale_pair
 from shared.rendering import get_effective_export_interpolation_method
-from ui.canvas_presentation.plan_builder import CanvasGeometry
-from ui.widgets.gl_canvas.scene import GLRenderScene
+from tabs.image_compare.canvas.presentation.plan_builder import CanvasGeometry
+from tabs.image_compare.canvas.scene import GLRenderScene
 
 def _store(*, diff_mode: str, interpolation: str):
     return SimpleNamespace(
@@ -50,7 +52,7 @@ def test_snapshot_render_plan_export_preview_parity_matrix(
     interpolation,
 ):
     """CANVAS_FEATURES.md: export/video paths must share render-plan parity."""
-    import plugins.export.services.snapshot_render_plan_builder as builder_module
+    import tabs.image_compare.services.snapshot_render_plan_builder as builder_module
 
     fill_rgba = (9, 8, 7, 255)
     diff_image = Image.new("RGBA", (4, 3), (240, 10, 20, 255))

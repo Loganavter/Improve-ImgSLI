@@ -51,7 +51,7 @@ def test_preserve_zoom_clamps_pan_to_zero_when_zoom_fits():
 
 def test_resize_gl_preserves_image_focus_when_letterbox_changes(monkeypatch):
     """Canvas resize must not preserve raw pan across letterbox changes."""
-    import ui.widgets.gl_canvas.render_context as render_context
+    import tabs.image_compare.canvas.render_context as render_context
 
     canvas = _canvas((0.10, 0.00, 0.80, 1.00))
     canvas.runtime_state._shader_letterbox_mode = True
@@ -78,7 +78,7 @@ def test_resize_gl_preserves_image_focus_when_letterbox_changes(monkeypatch):
 
 def test_resize_gl_recomputes_aspect_ratio_and_shared_interaction_rect(monkeypatch):
     """Window aspect changes must update both rendering and hit-test geometry."""
-    import ui.widgets.gl_canvas.render_context as render_context
+    import tabs.image_compare.canvas.render_context as render_context
 
     dimensions = {"width": 500, "height": 1000}
     image1 = Image.new("RGBA", (1000, 500), "red")

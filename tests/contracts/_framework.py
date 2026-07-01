@@ -13,10 +13,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SRC = ROOT / "src"
-CANVAS_FEATURES = SRC / "ui" / "canvas_features"
+CANVAS_FEATURES = SRC / "tabs" / "image_compare" / "canvas" / "features"
 CANVAS_INFRA = SRC / "ui" / "canvas_infra"
 CANVAS_PRESENTATION = SRC / "ui" / "canvas_presentation"
-SHADER_SOURCES = SRC / "ui" / "widgets" / "gl_canvas" / "shader_sources"
+SHADER_SOURCES = SRC / "ui" / "widgets" / "canvas" / "shader_sources"
 PLUGINS = SRC / "plugins"
 
 def iter_py(root: Path) -> list[Path]:

@@ -58,6 +58,14 @@ class TabRegistry:
                         and obj is not TabContract
                     ):
                         instance = obj()
+                        try:
+                            instance.register_canvas_features()
+                        except Exception as e:
+                            logger.error(
+                                "Canvas feature registration failed for tab %s: %s",
+                                instance.session_type,
+                                e,
+                            )
                         self._tabs[instance.session_type] = instance
                         logger.debug(f"Tab discovered: {instance.session_type}")
             except (ImportError, AttributeError) as e:
@@ -78,6 +86,62 @@ class TabRegistry:
                 tab.contribute_settings(registry)
             except Exception as e:
                 logger.error(f"contribute_settings failed for {tab.session_type}: {e}")
+
+    def create_main_window_feature(self, feature_id: str, **kwargs: Any) -> Any:
+        """Create a legacy main-window feature provided by a registered tab."""
+        for tab in self._tabs.values():
+            try:
+                feature = tab.create_main_window_feature(feature_id, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Tab main-window feature hook failed for %s on %s",
+                    feature_id,
+                    tab.session_type,
+                )
+                raise
+            if feature is not None:
+                return feature
+        return None
+
+    def create_service(self, service_id: str, *args: Any, **kwargs: Any) -> Any:
+        """Create a service provided by a registered tab."""
+        for tab in self._tabs.values():
+            try:
+                service = tab.create_service(service_id, *args, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Tab service hook failed for %s on %s",
+                    service_id,
+                    tab.session_type,
+                )
+                raise
+            if service is not None:
+                return service
+        return None
+
+    def assemble_host_pages(self, ui: Any) -> None:
+        """Let registered tabs assemble any legacy host-owned page pieces."""
+        for tab in self._tabs.values():
+            try:
+                tab.assemble_host_page(ui)
+            except Exception:
+                logger.exception("Tab host-page assembly failed for %s", tab.session_type)
+                raise
+
+    def apply_host_session_mode(
+        self,
+        session_type: str,
+        ui: Any,
+        session_title: str | None = None,
+    ) -> bool:
+        tab = self._tabs.get(session_type)
+        if tab is None:
+            return False
+        try:
+            return bool(tab.apply_host_session_mode(ui, session_title=session_title))
+        except Exception:
+            logger.exception("Tab host session-mode hook failed for %s", session_type)
+            raise
 
     def install_pages(
         self,
@@ -131,12 +195,21 @@ class TabRegistry:
         """Route a file drop to the active tab. Returns True if handled."""
         tab = self._tabs.get(session_type)
         if tab is None:
+            logger.debug("TabRegistry.route_drop: no tab for %s", session_type)
             return False
         from pathlib import Path as P
         resolved = [P(p) if not isinstance(p, P) else p for p in paths]
-        if tab.accepts_drop(resolved):
-            tab.handle_drop(resolved, hint=hint)
-            return True
+        accepts = tab.accepts_drop(resolved)
+        logger.debug(
+            "TabRegistry.route_drop: session_type=%s accepts=%s paths=%s hint=%s",
+            session_type,
+            accepts,
+            resolved,
+            hint,
+        )
+        if accepts:
+            handled = tab.handle_drop(resolved, hint=hint)
+            return bool(True if handled is None else handled)
         return False
 
     def apply_appearance(self, host_window) -> None:

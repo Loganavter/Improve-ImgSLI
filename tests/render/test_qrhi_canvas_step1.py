@@ -6,10 +6,10 @@ import struct
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QRhiWidget
 
-from ui.widgets.gl_canvas.rhi_render import render_clear_frame, resolve_clear_color
-from ui.widgets.gl_canvas.rhi_renderer import pack_base_uniforms
-from ui.widgets.gl_canvas.texture_parts.upload_queue import queue_texture_upload
-from ui.widgets.gl_canvas.widget import GLCanvas
+from ui.widgets.canvas.rhi_render import render_clear_frame, resolve_clear_color
+from tabs.image_compare.canvas.rhi_renderer import pack_base_uniforms
+from tabs.image_compare.canvas.texture_parts.upload_queue import queue_texture_upload
+from tabs.image_compare.canvas.widget import GLCanvas
 
 
 class _Palette:

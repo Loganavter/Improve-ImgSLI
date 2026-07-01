@@ -17,12 +17,12 @@ import pytest
 
 from core.store import Store
 from domain.types import Point
-from ui.canvas_features.magnifier.models import MagnifierModel
-from ui.canvas_features.magnifier.snapshot_store import (
+from tabs.image_compare.canvas.features.magnifier.models import MagnifierModel
+from tabs.image_compare.canvas.features.magnifier.snapshot_store import (
     apply_virtual_canvas_layout_to_snapshot_store,
     normalize_snapshot_store,
 )
-from ui.canvas_features.magnifier.state import get_magnifier_widget_state
+from tabs.image_compare.canvas.features.magnifier.state import get_magnifier_widget_state
 
 def _make_store_with_model(**model_kwargs) -> tuple[Store, MagnifierModel]:
     store = Store()

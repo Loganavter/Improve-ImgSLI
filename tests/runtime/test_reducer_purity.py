@@ -12,12 +12,22 @@ from core.state_management.reducers import RootReducer
 from core.state_management.viewport_actions import SetDiffModeAction, SetSplitPositionAction
 from core.store import Store
 from domain.types import Point
-from ui.canvas_features.divider.actions import SetDividerThicknessAction
-from ui.canvas_features.guides.actions import SetGuidesThicknessAction
-from ui.canvas_features.magnifier.actions import (
+from tabs.image_compare.canvas.features.divider.actions import SetDividerThicknessAction
+from tabs.image_compare.canvas.features.guides.actions import SetGuidesThicknessAction
+from tabs.image_compare.canvas.features.magnifier.actions import (
     SetMagnifierPositionAction,
     ToggleMagnifierAction,
 )
+
+
+def _image_compare_store() -> Store:
+    from tabs.image_compare.tab import ImageCompareTab
+
+    ImageCompareTab().register_canvas_features()
+    store = Store()
+    store.create_workspace_session(session_type="image_compare", activate=True)
+    return store
+
 
 def _snapshot(value):
     if is_dataclass(value):
@@ -56,7 +66,7 @@ def test_root_reducer_does_not_mutate_previous_store_for_representative_actions(
 
     for action, prepare in cases:
         reducer = RootReducer()
-        old_store = Store()
+        old_store = _image_compare_store()
         if prepare is not None:
             prepare(old_store)
         before = {
@@ -80,7 +90,7 @@ def test_reducers_do_not_access_io(monkeypatch):
     monkeypatch.setattr("builtins.open", _blocked_open)
 
     reducer = RootReducer()
-    old_store = Store()
+    old_store = _image_compare_store()
     new_store = reducer.reduce(old_store, SetDiffModeAction("ssim"))
 
     assert new_store.viewport.view_state.diff_mode == "ssim"

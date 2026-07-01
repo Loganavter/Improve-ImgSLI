@@ -4,7 +4,6 @@ Verifies that shared ui/ and plugin presentation code does not use
 direct feature-name lookups via get_canvas_feature_command("feature", ...).
 The only acceptable callers are:
   - widget_registry.py (definition and alias resolver)
-  - settings/controller.py (generic dispatcher receiving feature_name as param)
   - feature-owned code inside canvas_features/
 """
 
@@ -26,7 +25,6 @@ _SHARED_DIRS = [
 
 _ALLOWLIST = {
     os.path.normpath("ui/canvas_infra/scene/widget_registry.py"),
-    os.path.normpath("plugins/settings/controller.py"),
 }
 
 _DIRECT_CALL_PATTERN = re.compile(

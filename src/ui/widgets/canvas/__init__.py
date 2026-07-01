@@ -1,13 +1,7 @@
-from .runtime import log_canvas_backend_choice
+"""Generic canvas infrastructure.
 
-__all__ = ["CanvasWidget"]
+Tab-specific canvas widgets live with their owning tabs. This package keeps
+only shared QRhi/runtime/render utility modules.
+"""
 
-
-def __getattr__(name):
-    if name != "CanvasWidget":
-        raise AttributeError(name)
-    from .widget import CanvasWidget
-
-    log_canvas_backend_choice("qrhi-widget")
-    globals()["CanvasWidget"] = CanvasWidget
-    return CanvasWidget
+__all__: list[str] = []

@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QSizePolicy
 
 from events.image_label_event_handler import ImageLabelEventHandler
 from events.window_event_handler import WindowEventHandler
-from ui.widgets.canvas.helpers import clear_canvas_diff_source, get_canvas
+from tabs.image_compare.canvas.helpers import clear_canvas_diff_source, get_canvas
 
 _last_debug_log_time = 0
 _debug_log_interval = 1.0

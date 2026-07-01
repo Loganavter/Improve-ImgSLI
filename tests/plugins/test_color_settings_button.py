@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from PySide6.QtGui import QColor
 
-from ui.widgets import magnifier_color_controls as color_settings_button_module
+from tabs.image_compare.ui import magnifier_color_controls as color_settings_button_module
 
 class _ButtonProbe:
     def __init__(self):

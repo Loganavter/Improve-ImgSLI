@@ -4,6 +4,7 @@ import importlib
 import pkgutil
 from functools import lru_cache
 from pathlib import Path
+from types import ModuleType
 
 from .widget_contract import (
     CanvasFeatureCommandAlias,
@@ -15,43 +16,68 @@ from .widget_contract import (
     CanvasFeatureToolbarBinding,
     CanvasWidgetFeature,
 )
-import ui.canvas_features as features_pkg
 from resources.translations import add_i18n_root
+
+_FEATURE_PACKAGES: list[ModuleType] = []
+
+
+def register_canvas_widget_feature_package(package: ModuleType) -> None:
+    if package not in _FEATURE_PACKAGES:
+        _FEATURE_PACKAGES.append(package)
+        _clear_feature_caches()
+
+
+def _clear_feature_caches() -> None:
+    get_canvas_widget_features.cache_clear()
+    get_canvas_feature_properties.cache_clear()
+    get_canvas_feature_commands.cache_clear()
+    get_canvas_feature_command_aliases.cache_clear()
+    get_canvas_feature_settings_event_bindings.cache_clear()
+    get_canvas_feature_toolbar_bindings.cache_clear()
+    get_canvas_feature_gesture_bindings.cache_clear()
+    get_canvas_feature_toolbar_binding.cache_clear()
+    get_canvas_feature_command.cache_clear()
+    get_canvas_feature_command_by_alias.cache_clear()
+    get_canvas_feature_commands_by_id.cache_clear()
+    get_canvas_feature_state_queries.cache_clear()
+    get_canvas_feature_state_commands.cache_clear()
+    get_canvas_feature_i18n_namespaces.cache_clear()
+
 
 @lru_cache(maxsize=1)
 def get_canvas_widget_features() -> tuple[CanvasWidgetFeature, ...]:
     features: list[CanvasWidgetFeature] = []
-    features_path = Path(features_pkg.__path__[0])
+    for features_pkg in _FEATURE_PACKAGES:
+        features_path = Path(features_pkg.__path__[0])
+        for module_info in sorted(pkgutil.iter_modules(features_pkg.__path__), key=lambda item: item.name):
+            if module_info.name.startswith("_"):
+                continue
 
-    for module_info in sorted(pkgutil.iter_modules(features_pkg.__path__), key=lambda item: item.name):
-        if module_info.name.startswith("_"):
-            continue
-
-        module = None
-        try:
-            module = importlib.import_module(
-                f"{features_pkg.__name__}.{module_info.name}.manifest"
-            )
-        except ModuleNotFoundError as exc:
-            if exc.name != f"{features_pkg.__name__}.{module_info.name}.manifest":
-                raise
-        if module is None:
+            module = None
             try:
                 module = importlib.import_module(
-                    f"{features_pkg.__name__}.{module_info.name}.widget"
+                    f"{features_pkg.__name__}.{module_info.name}.manifest"
                 )
             except ModuleNotFoundError as exc:
-                if exc.name == f"{features_pkg.__name__}.{module_info.name}.widget":
-                    continue
-                raise
+                if exc.name != f"{features_pkg.__name__}.{module_info.name}.manifest":
+                    raise
+            if module is None:
+                try:
+                    module = importlib.import_module(
+                        f"{features_pkg.__name__}.{module_info.name}.widget"
+                    )
+                except ModuleNotFoundError as exc:
+                    if exc.name == f"{features_pkg.__name__}.{module_info.name}.widget":
+                        continue
+                    raise
 
-        feature = getattr(module, "WIDGET_FEATURE", None)
-        if isinstance(feature, CanvasWidgetFeature):
-            features.append(feature)
+            feature = getattr(module, "WIDGET_FEATURE", None)
+            if isinstance(feature, CanvasWidgetFeature):
+                features.append(feature)
 
-            feature_i18n = features_path / module_info.name / "resources" / "i18n"
-            if feature_i18n.is_dir():
-                add_i18n_root(feature_i18n)
+                feature_i18n = features_path / module_info.name / "resources" / "i18n"
+                if feature_i18n.is_dir():
+                    add_i18n_root(feature_i18n)
 
     return tuple(features)
 

@@ -64,10 +64,11 @@ class SettingsViewStateCoordinator:
             (self.tr("video.edge_comparison"), "edges"),
             (self.tr("video.ssim_map"), "ssim"),
         ]
-        if hasattr(self.main_window_app, "configure_diff_mode_actions"):
-            self.main_window_app.configure_diff_mode_actions(
-                diff_actions, self.store.viewport.view_state.diff_mode
-            )
+        ui = getattr(self.main_window_app, "ui", None)
+        btn_diff = getattr(ui, "btn_diff_mode", None) if ui is not None else None
+        if btn_diff is not None:
+            btn_diff.set_actions(diff_actions)
+            btn_diff.set_current_by_data(self.store.viewport.view_state.diff_mode)
 
         channel_actions = [
             (self.tr("video.rgb"), "RGB"),
@@ -76,7 +77,9 @@ class SettingsViewStateCoordinator:
             (self.tr("video.blue"), "B"),
             (self.tr("video.luminance"), "L"),
         ]
-        if hasattr(self.main_window_app, "configure_channel_mode_actions"):
-            self.main_window_app.configure_channel_mode_actions(
-                channel_actions, self.store.viewport.view_state.channel_view_mode
+        btn_channel = getattr(ui, "btn_channel_mode", None) if ui is not None else None
+        if btn_channel is not None:
+            btn_channel.set_actions(channel_actions)
+            btn_channel.set_current_by_data(
+                self.store.viewport.view_state.channel_view_mode
             )

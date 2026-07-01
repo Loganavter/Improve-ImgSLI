@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ui.widgets.canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
+from tabs.image_compare.canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 
 
 @dataclass(frozen=True)

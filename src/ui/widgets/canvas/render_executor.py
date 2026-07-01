@@ -53,8 +53,24 @@ def iter_active_render_passes(ctx, passes) -> tuple:
     current_visibility = _resolve_scene_visibility(ctx)
     active = []
     for pass_ in iter_ordered_render_passes(passes):
-        if not (getattr(pass_, "visibility", SceneVisibility.ALL) & current_visibility):
+        if not _visibility_matches(
+            getattr(pass_, "visibility", SceneVisibility.ALL),
+            current_visibility,
+        ):
             continue
         if pass_.should_paint(ctx):
             active.append(pass_)
     return tuple(active)
+
+
+def _visibility_matches(pass_visibility, current_visibility: SceneVisibility) -> bool:
+    try:
+        return bool(pass_visibility & current_visibility)
+    except TypeError:
+        pass
+    pass_names = {member.name for member in getattr(pass_visibility, "__iter__", lambda: ())()}
+    if not pass_names:
+        pass_names = {getattr(pass_visibility, "name", "")}
+    if "ALL" in pass_names:
+        return True
+    return current_visibility.name in pass_names

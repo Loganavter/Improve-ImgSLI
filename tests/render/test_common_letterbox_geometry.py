@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from ui.widgets.gl_canvas.texture_parts.base_images import (
+from tabs.image_compare.canvas.texture_parts.base_images import (
     update_common_letterbox_geometry,
 )
 

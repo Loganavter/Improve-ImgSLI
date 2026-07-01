@@ -143,6 +143,40 @@ class TabContract(ABC):
         section belongs to (None = always shown).
         """
 
+    def create_main_window_feature(self, feature_id: str, **kwargs: Any) -> Any:
+        """Create a tab-owned feature still hosted by the legacy main presenter.
+
+        This is a transition hook for code that has not yet moved fully into
+        the tab page. The host may request a named feature through the tab
+        registry, but must not import tab internals directly.
+        """
+        return None
+
+    def create_service(self, service_id: str, *args: Any, **kwargs: Any) -> Any:
+        """Create a tab-owned service requested through the tab registry."""
+        return None
+
+    def assemble_host_page(self, ui: Any) -> bool:
+        """Assemble legacy host-owned primitives into this tab's page.
+
+        Transitional hook: tabs that still receive primitive widgets from the
+        host can finish page assembly without the host importing or naming the
+        tab directly.
+        """
+        return False
+
+    def apply_host_session_mode(self, ui: Any, session_title: str | None = None) -> bool:
+        """Apply host chrome state for this tab when it becomes active."""
+        return False
+
+    def register_canvas_features(self) -> None:
+        """Register tab-owned canvas feature packages with the host canvas shell.
+
+        The host owns generic canvas contracts and registries, but must not
+        import tab internals. Tabs that provide canvas features register their
+        package here during tab discovery.
+        """
+
     def dispose(self) -> None:
         """Cleanup when the tab is being unloaded."""
 

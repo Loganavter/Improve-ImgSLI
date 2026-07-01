@@ -280,10 +280,6 @@ class MainWindow(QWidget):
         if self.presenter is not None:
             self.presenter.schedule_canvas_update()
 
-    def set_divider_button_color(self, color: QColor):
-        if self.ui is not None and hasattr(self.ui, "btn_orientation"):
-            self.ui.btn_orientation.setUnderlineColor(color)
-
     def update_interpolation_combo_state(
         self, count: int, current_index: int, text: str, items: list[str]
     ):
@@ -295,12 +291,3 @@ class MainWindow(QWidget):
                 items=items,
             )
 
-    def configure_diff_mode_actions(self, actions, current_value):
-        if self.ui is not None and hasattr(self.ui, "btn_diff_mode"):
-            self.ui.btn_diff_mode.set_actions(actions)
-            self.ui.btn_diff_mode.set_current_by_data(current_value)
-
-    def configure_channel_mode_actions(self, actions, current_value):
-        if self.ui is not None and hasattr(self.ui, "btn_channel_mode"):
-            self.ui.btn_channel_mode.set_actions(actions)
-            self.ui.btn_channel_mode.set_current_by_data(current_value)

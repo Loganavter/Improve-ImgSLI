@@ -4,7 +4,7 @@ from PySide6.QtCore import QTimer
 from sli_ui_toolkit.workers import GenericWorker
 
 from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
-from core.store import ImageItem
+from tabs.image_compare.state.document import ImageItem
 from sli_ui_toolkit.i18n import tr
 
 

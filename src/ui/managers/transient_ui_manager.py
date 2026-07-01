@@ -3,11 +3,8 @@ import logging
 from PySide6.QtCore import QPointF
 
 from ui.managers.transient_ui_parts import (
-    FlyoutController,
     FontSettingsController,
     InterpolationFlyoutController,
-    MagnifierInstancesPopupController,
-    MagnifierVisibilityController,
     PopupClosingController,
 )
 logger = logging.getLogger("ImproveImgSLI")
@@ -15,11 +12,13 @@ logger = logging.getLogger("ImproveImgSLI")
 class TransientUIManager:
     def __init__(self, host):
         self.host = host
-        self.flyouts = FlyoutController(self)
+        self.flyouts = self._create_tab_service("unified_flyout_controller")
         self.interpolation = InterpolationFlyoutController(self)
         self.font_settings = FontSettingsController(self)
-        self.magnifier = MagnifierVisibilityController(self)
-        self.magnifier_instances = MagnifierInstancesPopupController(self)
+        self.magnifier = self._create_tab_service("magnifier_visibility_controller")
+        self.magnifier_instances = self._create_tab_service(
+            "magnifier_instances_popup_controller"
+        )
         self.closing = PopupClosingController(self)
 
     @property
@@ -36,6 +35,16 @@ class TransientUIManager:
 
     def mark_font_popup_closed(self):
         self.host._font_popup_open = False
+
+    def _create_tab_service(self, service_id: str):
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        service = registry.create_service(service_id, self)
+        if service is None:
+            raise RuntimeError(f"Tab transient UI service is unavailable: {service_id}")
+        return service
 
     def show_flyout(self, image_number: int):
         self.flyouts.show_flyout(image_number)
@@ -78,27 +87,6 @@ class TransientUIManager:
 
     def on_unified_flyout_closed(self):
         self.flyouts.on_unified_flyout_closed()
-
-    def update_magnifier_flyout_states(self):
-        self.magnifier.update_states()
-
-    def on_magnifier_toggle_with_hover(self, checked: bool):
-        self.magnifier.on_toggle_with_hover(checked)
-
-    def show_magnifier_visibility_flyout(self, reason: str = "hover"):
-        self.magnifier.show(reason)
-
-    def hide_magnifier_visibility_flyout(self, reason: str = "explicit"):
-        self.magnifier.hide(reason)
-
-    def show_magnifier_instances_popup(self):
-        self.magnifier_instances.show()
-
-    def hide_magnifier_instances_popup(self):
-        self.magnifier_instances.hide()
-
-    def on_magnifier_instances_count_changed(self):
-        self.magnifier_instances.on_count_changed()
 
     def event_filter(self, watched, event):
         if self.magnifier.event_filter(watched, event):

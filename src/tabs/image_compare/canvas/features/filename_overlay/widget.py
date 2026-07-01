@@ -26,7 +26,7 @@ from ui.canvas_infra.scene.widget_contract import (
     CanvasWidgetFeature,
 )
 from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
-from ui.widgets.canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
+from tabs.image_compare.canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 
 from .config import FilenameOverlayConfig
 

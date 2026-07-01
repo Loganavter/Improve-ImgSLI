@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 from domain.workspace import WorkspaceState
 from core.store_document import DocumentModel, ImageItem
@@ -19,6 +19,7 @@ from core.store_viewport import (
 from core.store_workspace import WorkspaceStoreMixin
 
 logger = logging.getLogger("ImproveImgSLI")
+INITIAL_WORKSPACE_SESSION_TYPE = "session_picker"
 
 __all__ = [
     "DocumentModel",
@@ -41,13 +42,46 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         self._change_callbacks: List[Callable[[str], None]] = []
         self.state_changed = None
         self.workspace = WorkspaceState()
-        self.document = DocumentModel()
-        self.viewport = ViewportState()
+        self._pre_session_document: Optional[DocumentModel] = DocumentModel()
+        self._pre_session_viewport: Optional[ViewportState] = ViewportState()
         self.settings = SettingsState()
         self.runtime_cache = ViewportRuntimeCache()
         self.recorder = None
         self._dispatcher = None
-        self.create_workspace_session(activate=True)
+        self.create_workspace_session(
+            session_type=INITIAL_WORKSPACE_SESSION_TYPE,
+            activate=True,
+        )
+
+    @property
+    def document(self) -> DocumentModel:
+        session = self.get_active_workspace_session()
+        if session is None:
+            return self._pre_session_document
+        return session.document
+
+    @document.setter
+    def document(self, value: DocumentModel) -> None:
+        session = self.get_active_workspace_session()
+        if session is None:
+            self._pre_session_document = value
+        else:
+            session.document = value
+
+    @property
+    def viewport(self) -> ViewportState:
+        session = self.get_active_workspace_session()
+        if session is None:
+            return self._pre_session_viewport
+        return session.viewport
+
+    @viewport.setter
+    def viewport(self, value: ViewportState) -> None:
+        session = self.get_active_workspace_session()
+        if session is None:
+            self._pre_session_viewport = value
+        else:
+            session.viewport = value
 
     def on_change(self, callback: Callable[[str], None]) -> None:
         self._change_callbacks.append(callback)

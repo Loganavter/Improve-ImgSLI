@@ -13,15 +13,15 @@ from ui.canvas_infra.viewport.state import (
     set_pan_offsets,
     set_zoom_level,
 )
-from ui.widgets.gl_canvas.interaction import (
+from tabs.image_compare.canvas.interaction import (
     handle_mouse_move_event,
     handle_mouse_press_event,
     handle_wheel_event,
     set_pan,
     set_zoom,
 )
-from ui.widgets.gl_canvas.render_config import update_display_split_position
-from ui.widgets.gl_canvas.state import GLCanvasRuntimeState
+from tabs.image_compare.canvas.render_config import update_display_split_position
+from tabs.image_compare.canvas.state import GLCanvasRuntimeState
 
 class _AcceptedEvent:
     def __init__(self):
@@ -110,7 +110,7 @@ def test_preview_split_display_ignores_viewport_camera():
 
 def test_live_canvas_with_store_keeps_interactive_render_mode_without_plan():
     """Live canvas focus changes must not downgrade render passes to preview mode."""
-    from ui.widgets.gl_canvas.render_context import build_render_runtime_context
+    from tabs.image_compare.canvas.render_context import build_render_runtime_context
 
     store = SimpleNamespace(
         viewport=SimpleNamespace(

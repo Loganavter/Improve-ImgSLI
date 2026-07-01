@@ -3,8 +3,6 @@ from typing import Any
 from plugins.settings.events import SettingsUIModeChangedEvent
 from core.plugin_system import Plugin, plugin
 
-from .manager import LayoutManager
-
 @plugin(name="layout", version="1.0")
 class LayoutPlugin(Plugin):
     def __init__(self):
@@ -27,7 +25,13 @@ class LayoutPlugin(Plugin):
         self.on_ui_mode_changed(event.ui_mode)
 
     def setup_ui_reference(self, ui, parent_window=None):
-        self.manager = LayoutManager(ui, parent_window)
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        self.manager = registry.create_service("layout_manager", ui, parent_window)
+        if self.manager is None:
+            return
 
         if self.store:
             current_mode = getattr(self.store.settings, "ui_mode", "beginner")

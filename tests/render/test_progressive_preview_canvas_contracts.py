@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from ui.canvas_presentation.plan_builder import build_live_store_presentation
+from tabs.image_compare.canvas.presentation.plan_builder import build_live_store_presentation
 
 
 def test_live_presentation_uses_progressive_previews_as_sources():
