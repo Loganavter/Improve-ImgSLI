@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+@dataclass(frozen=True)
+class ChannelKeyframe:
+    timestamp: float
+    value: Any
+    interpolation: str = "linear"
+
+@dataclass
+class TimelineChannel:
+    id: str
+    label: str
+    kind: str = "scalar"
+    interpolate_values: bool = True
+    source_track_id: str | None = None
+    accent_color: str | None = None
+    prefer_continuous_curve: bool = False
+    keyframes: list[ChannelKeyframe] = field(default_factory=list)
+    hold_compact_pending: bool = False
+
+    def clear(self) -> None:
+        self.keyframes.clear()
+        self.hold_compact_pending = False
+
+    def add_keyframe(
+        self,
+        timestamp: float,
+        value: Any,
+        *,
+        interpolation: str = "linear",
+        equals: Callable[[Any, Any], bool],
+        clone: Callable[[Any], Any],
+    ) -> bool:
+        if self.keyframes and equals(self.keyframes[-1].value, value):
+            return False
+        self.keyframes.append(
+            ChannelKeyframe(
+                timestamp=float(timestamp),
+                value=clone(value),
+                interpolation=interpolation,
+            )
+        )
+        return True
+
+@dataclass
+class TimelineTrack:
+    id: str
+    label: str
+    kind: str = "scalar"
+    enabled: bool = True
+    accent_color: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    channels: dict[str, TimelineChannel] = field(default_factory=dict)
+
+    def clear(self) -> None:
+        for channel in self.channels.values():
+            channel.clear()
+
+    def ensure_channel(
+        self,
+        channel_id: str,
+        *,
+        label: str | None = None,
+        kind: str = "scalar",
+        interpolate_values: bool = True,
+        source_track_id: str | None = None,
+        accent_color: str | None = None,
+        prefer_continuous_curve: bool = False,
+    ) -> TimelineChannel:
+        channel = self.channels.get(channel_id)
+        if channel is None:
+            channel = TimelineChannel(
+                id=channel_id,
+                label=label or channel_id,
+                kind=kind,
+                interpolate_values=interpolate_values,
+                source_track_id=source_track_id or self.id,
+                accent_color=accent_color,
+                prefer_continuous_curve=prefer_continuous_curve,
+            )
+            self.channels[channel_id] = channel
+        elif source_track_id and channel.source_track_id != source_track_id:
+            channel.source_track_id = source_track_id
+        if prefer_continuous_curve:
+            channel.prefer_continuous_curve = True
+        return channel
+
+@dataclass
+class TimelineGroup:
+    id: str
+    label: str
+    kind: str = "group"
+    accent_color: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    tracks: dict[str, TimelineTrack] = field(default_factory=dict)
+
+    def clear(self) -> None:
+        for track in self.tracks.values():
+            track.clear()
+
+    def ensure_track(
+        self,
+        track_id: str,
+        *,
+        label: str | None = None,
+        kind: str = "scalar",
+        accent_color: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> TimelineTrack:
+        track = self.tracks.get(track_id)
+        if track is None:
+            track = TimelineTrack(
+                id=track_id,
+                label=label or track_id,
+                kind=kind,
+                accent_color=accent_color,
+                metadata=dict(metadata or {}),
+            )
+            self.tracks[track_id] = track
+        else:
+            if accent_color is not None:
+                track.accent_color = accent_color
+            if metadata:
+                track.metadata.update(metadata)
+        return track
+
+class TimelineModel:
+    def __init__(self):
+        self.sample_timestamps: list[float] = []
+        self.groups: dict[str, TimelineGroup] = {}
+
+    def clear(self) -> None:
+        self.sample_timestamps.clear()
+        for group in self.groups.values():
+            group.clear()
+
+    def ensure_group(
+        self,
+        group_id: str,
+        *,
+        label: str | None = None,
+        kind: str = "group",
+        accent_color: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> TimelineGroup:
+        group = self.groups.get(group_id)
+        if group is None:
+            group = TimelineGroup(
+                id=group_id,
+                label=label or group_id,
+                kind=kind,
+                accent_color=accent_color,
+                metadata=dict(metadata or {}),
+            )
+            self.groups[group_id] = group
+        else:
+            if accent_color is not None:
+                group.accent_color = accent_color
+            if metadata:
+                group.metadata.update(metadata)
+        return group
+
+    def ensure_track(
+        self,
+        group_id: str,
+        track_id: str,
+        *,
+        group_label: str | None = None,
+        track_label: str | None = None,
+        track_kind: str = "scalar",
+        group_accent_color: str | None = None,
+        track_accent_color: str | None = None,
+        group_metadata: dict[str, Any] | None = None,
+        track_metadata: dict[str, Any] | None = None,
+    ) -> TimelineTrack:
+        group = self.ensure_group(
+            group_id,
+            label=group_label,
+            accent_color=group_accent_color,
+            metadata=group_metadata,
+        )
+        return group.ensure_track(
+            track_id,
+            label=track_label,
+            kind=track_kind,
+            accent_color=track_accent_color,
+            metadata=track_metadata,
+        )
+
+    def iter_tracks(self) -> list[TimelineTrack]:
+        tracks: list[TimelineTrack] = []
+        for group in self.groups.values():
+            tracks.extend(group.tracks.values())
+        return tracks
+
+    def get_duration(self) -> float:
+        if not self.sample_timestamps:
+            return 0.0
+        return float(self.sample_timestamps[-1])
+
+    def __bool__(self) -> bool:
+        return bool(self.sample_timestamps)

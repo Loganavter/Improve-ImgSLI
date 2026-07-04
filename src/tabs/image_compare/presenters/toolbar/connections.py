@@ -134,15 +134,7 @@ def _connect_viewport_controls(presenter):
                 checked,
             )
         )
-        ui.btn_orientation.valueChanged.connect(
-            lambda thickness: _invoke_toolbar_binding_if_scrolling(
-                ui.btn_orientation,
-                "divider.orientation",
-                "on_value_changed",
-                presenter,
-                thickness,
-            )
-        )
+        # TODO: btn_orientation.valueChanged removed with Button 0.2.16 scroll feature
         ui.btn_magnifier_orientation.toggled.connect(
             lambda checked: _invoke_toolbar_binding(
                 "magnifier.orientation",
@@ -151,15 +143,7 @@ def _connect_viewport_controls(presenter):
                 checked,
             )
         )
-        ui.btn_magnifier_orientation.valueChanged.connect(
-            lambda thickness: _invoke_toolbar_binding_if_scrolling(
-                ui.btn_magnifier_orientation,
-                "magnifier.divider.thickness",
-                "on_value_changed",
-                presenter,
-                thickness,
-            )
-        )
+        # TODO: btn_magnifier_orientation.valueChanged removed with Button 0.2.16 scroll feature
         ui.btn_magnifier.toggled.connect(
             lambda checked: _invoke_toolbar_binding(
                 "magnifier.enabled",
@@ -336,14 +320,8 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_divider_width"):
-        ui.btn_divider_width.valueChanged.connect(
-            lambda thickness: _invoke_toolbar_binding(
-                "divider.width",
-                "on_value_changed",
-                presenter,
-                thickness,
-            )
-        )
+        # TODO: btn_divider_width.valueChanged removed with Button 0.2.16 scroll feature
+        pass
     if hasattr(ui, "btn_magnifier_orientation_simple"):
         ui.btn_magnifier_orientation_simple.toggled.connect(
             lambda checked: _invoke_toolbar_binding(
@@ -363,14 +341,8 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_magnifier_divider_width"):
-        ui.btn_magnifier_divider_width.valueChanged.connect(
-            lambda thickness: _invoke_toolbar_binding(
-                "magnifier.divider.thickness",
-                "on_value_changed",
-                presenter,
-                thickness,
-            )
-        )
+        # TODO: btn_magnifier_divider_width.valueChanged removed with Button 0.2.16 scroll feature
+        pass
     if hasattr(ui, "btn_magnifier_guides_simple"):
         ui.btn_magnifier_guides_simple.toggled.connect(
             lambda checked: _invoke_toolbar_binding(
@@ -381,14 +353,9 @@ def _connect_mode_specific_controls(presenter):
             )
         )
     if hasattr(ui, "btn_magnifier_guides_width"):
-        ui.btn_magnifier_guides_width.valueChanged.connect(
-            lambda thickness: _invoke_toolbar_binding(
-                "guides.thickness",
-                "on_value_changed",
-                presenter,
-                thickness,
-            )
-        )
+        # TODO: btn_magnifier_guides_width.valueChanged removed with Button 0.2.16 scroll feature
+        pass
+
 
 def _connect_ui_manager_controls(presenter):
     ui = presenter.ui

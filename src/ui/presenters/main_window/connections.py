@@ -225,20 +225,14 @@ def _connect_magnifier_color_controls(presenter):
     presenter.ui.btn_magnifier_guides.toggled.connect(
         lambda checked: on_magnifier_guides_toggled(presenter, not checked)
     )
-    presenter.ui.btn_magnifier_guides.valueChanged.connect(
-        lambda thickness: on_magnifier_guides_thickness_changed(presenter, thickness)
-    )
+    # TODO: btn_magnifier_guides.valueChanged removed with Button 0.2.16 scroll feature
+    # Re-implement via WheelCounterCapability + custom UI layer if needed
 
     if hasattr(presenter.ui, "btn_magnifier_guides_simple"):
         presenter.ui.btn_magnifier_guides_simple.toggled.connect(
             lambda checked: on_magnifier_guides_toggled(presenter, checked)
         )
-    if hasattr(presenter.ui, "btn_magnifier_guides_width"):
-        presenter.ui.btn_magnifier_guides_width.valueChanged.connect(
-            lambda thickness: on_magnifier_guides_thickness_changed(
-                presenter, thickness
-            )
-        )
+    # TODO: btn_magnifier_guides_width.valueChanged removed with Button 0.2.16 scroll feature
 
 
 def _on_font_flyout_interaction_started(presenter, slider_name: str) -> None:
