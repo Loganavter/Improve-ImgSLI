@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Button
+from ui.widgets.scrollable_compat_button import ScrollableCompatButton
 
 from sli_ui_toolkit.i18n import tr
 from tabs.multi_compare.ui.layout_manager import MultiCompareLayoutManager
@@ -82,12 +83,12 @@ class MultiCompareToolbar(QWidget):
         )
         self.btn_divider_color.clicked.connect(self.divider_color_clicked)
 
-        self.btn_divider_width = Button(
+        self.btn_divider_width = ScrollableCompatButton(
             icon=(AppIcon.VERTICAL_SPLIT, AppIcon.VERTICAL_SPLIT),
             toggle=True,
-            scrollable=(0, 10),
             show_underline=False,
-            underline_visible_when=lambda btn: btn.get_value() > 0,
+            min_value=0,
+            max_value=10,
             parent=self,
         )
         self.btn_divider_width.setObjectName("mc_btn_divider_width")
