@@ -128,6 +128,10 @@ class MultiCompareController:
             self.translate("ui.choose_divider_line_color", "Choose divider color"),
             QColorDialog.ColorDialogOption.ShowAlphaChannel,
         )
+        logger.warning(
+            "[divider-color-debug] picker closed: current=%s chosen=%s valid=%s",
+            current.getRgb(), chosen.getRgb(), chosen.isValid(),
+        )
         if chosen.isValid():
             self.widget.apply_divider_color(chosen)
 
@@ -293,6 +297,8 @@ class MultiCompareController:
         suggested_filename: str,
         native_size: tuple[int, int],
     ):
+        from resources.translations import tr
+
         from tabs.multi_compare.plugins.export import (
             MultiCompareExportDialog,
             MultiCompareExportDialogState,
@@ -300,7 +306,7 @@ class MultiCompareController:
 
         settings = getattr(self.store, "settings", None)
         state = MultiCompareExportDialogState(
-            current_language=getattr(settings, "language", "en"),
+            current_language=getattr(settings, "current_language", "en"),
             output_dir=self._default_dir(),
             favorite_dir=getattr(settings, "export_favorite_dir", None),
             last_format=getattr(settings, "export_last_format", "PNG"),
@@ -323,9 +329,9 @@ class MultiCompareController:
             preview_image=preview_image,
             suggested_filename=suggested_filename,
             native_size=native_size,
-            translate=self.translate,
+            tr_func=tr,
             on_set_favorite_dir=self._set_favorite_dir,
-            parent=self.dialog_parent,
+            parent=None,
         )
         return dialog.exec(), dialog.get_export_options()
 

@@ -43,7 +43,20 @@ class VideoEditorDialogRuntime:
             d.btn_export.adjustSize()
             btn_width = d.btn_export.sizeHint().width()
             optimal_width = max(350, max_tab_content_width + 44, tab_bar_width + 44, btn_width + 24)
-            d.settings_panel.setFixedWidth(int(min(optimal_width, 650)))
+            final_width = int(min(optimal_width, 650))
+            d.settings_panel.setFixedWidth(final_width)
+            logger.warning(
+                "DBG-BUG1 update_settings_panel_width dialog_width=%s "
+                "max_tab_content_width=%s tab_bar_width=%s btn_width=%s "
+                "optimal_width=%s final_width=%s preview_min=%s",
+                d.width(),
+                max_tab_content_width,
+                tab_bar_width,
+                btn_width,
+                optimal_width,
+                final_width,
+                d.preview_label.minimumSize(),
+            )
         except Exception as exc:
             logger.warning(f"Error calculating panel width: {exc}")
             d.settings_panel.setFixedWidth(380)

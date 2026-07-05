@@ -52,7 +52,6 @@ class MultiCompareExportDialog(QDialog):
         dialog_state: ExportDialogState,
         parent=None,
         tr_func=None,
-        translate=None,
         preview_image: QPixmap | PIL.Image.Image | None = None,
         suggested_filename: str = "",
         on_set_favorite_dir=None,

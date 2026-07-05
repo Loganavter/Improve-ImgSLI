@@ -1,4 +1,7 @@
 {
+  "session_picker": {
+    "tab_name": "新标签页"
+  },
   "title": "创建工作区",
   "subtitle": "选择会话类型开始",
   "types": {

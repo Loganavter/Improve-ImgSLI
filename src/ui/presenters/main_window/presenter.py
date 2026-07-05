@@ -85,6 +85,11 @@ class MainWindowPresenter(QObject):
         self._connect_signals()
 
         try:
+            if self.main_controller is not None:
+                self.main_controller.layout.setup_ui_reference(
+                    self.ui, self.main_window_app
+                )
+
             self._apply_initial_settings_to_ui()
             self._configure_workspace_actions()
             self.sync_workspace_tabs()
@@ -92,11 +97,6 @@ class MainWindowPresenter(QObject):
             self.update_slider_tooltips()
             self.ui.reapply_button_styles()
             self.repopulate_flyouts()
-
-            if self.main_controller is not None:
-                self.main_controller.layout.setup_ui_reference(
-                    self.ui, self.main_window_app
-                )
         except Exception:
             logger.exception(
                 "MainWindowPresenter.__init__: error during initialization"

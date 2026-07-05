@@ -48,23 +48,9 @@ def test_unknown_backend_falls_back_to_platform_default(monkeypatch):
     assert widget.selected is None
 
 
-def test_vulkan_uses_xcb_in_wayland_session(monkeypatch):
-    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
-    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
-    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+def test_configure_rhi_process_environment_sets_backend_env(monkeypatch):
+    monkeypatch.delenv(RHI_BACKEND_ENV, raising=False)
 
-    changed = configure_rhi_process_environment("vulkan")
+    configure_rhi_process_environment("vulkan")
 
-    assert changed is True
     assert requested_rhi_backend_name() == "vulkan"
-    assert __import__("os").environ["QT_QPA_PLATFORM"] == "xcb"
-
-
-def test_explicit_qpa_platform_is_not_overridden(monkeypatch):
-    monkeypatch.setenv("QT_QPA_PLATFORM", "wayland")
-    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
-
-    changed = configure_rhi_process_environment("vulkan")
-
-    assert changed is False
-    assert __import__("os").environ["QT_QPA_PLATFORM"] == "wayland"

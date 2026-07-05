@@ -1,10 +1,21 @@
 {
   "session_picker": {
-    "title": "Choose a workspace",
-    "types": {
-      "image_compare": "Image Compare",
-      "video_compare": "Video Compare",
-      "multi_compare": "Multi Compare"
-    }
+    "tab_name": "New Tab"
+  },
+  "title": "Create a workspace",
+  "subtitle": "Pick a session type to begin",
+  "types": {
+    "image_compare": "Image Compare",
+    "multi_compare": "Multi Compare"
+  },
+  "descriptions": {
+    "image_compare": "Side-by-side image comparison with a divider, magnifier, and analysis tools.",
+    "multi_compare": "Grid layout for comparing several sources at once."
+  },
+  "drop_zone": "Drop image files here to start a comparison",
+  "recent": {
+    "title": "Continue",
+    "badge": "In development",
+    "placeholder": "Recent workspaces will appear here once this feature lands."
   }
 }

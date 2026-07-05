@@ -48,28 +48,9 @@ def configure_vulkan_layer_environment(backend_name: str) -> bool:
     return False
 
 
-def configure_rhi_process_environment(backend_name: str) -> bool:
-    """Apply process-wide platform requirements before QApplication exists.
-
-    On the verified Qt 6.11.1 + GNOME Wayland + NVIDIA environment,
-    QRhiWidget with the Vulkan API gets zero frame margins. The same minimal
-    widget works correctly through XWayland, so explicit Vulkan requests use
-    the xcb QPA plugin on Linux Wayland unless the caller already selected a
-    platform.
-    """
+def configure_rhi_process_environment(backend_name: str) -> None:
+    """Apply the process-wide backend selection before QApplication exists."""
     os.environ[RHI_BACKEND_ENV] = backend_name
-    if (
-        backend_name == "vulkan"
-        and sys.platform.startswith("linux")
-        and (
-            os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
-            or bool(os.environ.get("WAYLAND_DISPLAY"))
-        )
-        and not os.environ.get("QT_QPA_PLATFORM")
-    ):
-        os.environ["QT_QPA_PLATFORM"] = "xcb"
-        return True
-    return False
 
 
 def configure_rhi_widget(widget: QRhiWidget) -> None:

@@ -101,11 +101,10 @@ class OutputPathCoordinator:
         self.view.edit_filename.blockSignals(False)
 
     def generate_suggested_name(self) -> str:
-        snaps = self.editor_service.get_current_snapshots()
-        if not snaps:
+        snap = self.editor_service.get_snapshot_at_time(0.0)
+        if snap is None:
             return "video_export"
 
-        snap = snaps[0]
         name1 = snap.name1 if snap.name1 else "img1"
         name2 = snap.name2 if snap.name2 else "img2"
         return f"{self._sanitize(name1)}_{self._sanitize(name2)}"

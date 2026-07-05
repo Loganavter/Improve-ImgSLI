@@ -19,6 +19,13 @@ class SessionPickerTab(TabContract):
     def display_name(self) -> str:
         return "New Tab"
 
+    def localized_display_name(self, language: str) -> str:
+        from sli_ui_toolkit.i18n import tr
+
+        key = "session_picker.tab_name"
+        translated = tr(key, language)
+        return translated if translated != key else self.display_name
+
     @property
     def resources_dir(self) -> Path | None:
         return Path(__file__).parent / "resources"

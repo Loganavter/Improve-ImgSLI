@@ -239,7 +239,6 @@ def create_preview_quality_settings(dialog):
     ):
         dialog.combo_preview_scale.addItem(dialog._tr(key), value)
     dialog.combo_preview_scale.setCurrentIndex(0)
-    dialog.combo_preview_scale.setFixedWidth(170)
     dialog.combo_preview_scale.installEventFilter(dialog._settings_no_wheel_filter)
     dialog.combo_preview_scale.currentIndexChanged.connect(
         lambda _index: dialog._on_preview_scale_changed()

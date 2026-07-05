@@ -17,7 +17,7 @@ from sli_ui_toolkit.widgets import (
     ScrollableComboBox,
     Slider,
 )
-from ui.widgets.scrollable_compat_button import ScrollableCompatButton
+from ui.widgets.scroll_value_button import ScrollValueButton
 
 from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.canvas.widget import CanvasWidget
@@ -125,12 +125,13 @@ class ImageComparePrimitivesFactory:
             background_color=accent_color,
             parent=parent,
         )
-        ui.btn_magnifier_orientation = ScrollableCompatButton(
+        ui.btn_magnifier_orientation = ScrollValueButton(
             icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
             toggle=True,
             show_underline=True,
             min_value=0,
             max_value=10,
+            zero_icon=AppIcon.DIVIDER_HIDDEN,
             parent=parent,
         )
         ui.btn_save = Button(
@@ -149,12 +150,13 @@ class ImageComparePrimitivesFactory:
 
     def _create_view_controls(self, parent: QWidget) -> None:
         ui = self.ui
-        ui.btn_orientation = ScrollableCompatButton(
+        ui.btn_orientation = ScrollValueButton(
             icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
             toggle=True,
             show_underline=True,
             min_value=0,
             max_value=10,
+            zero_icon=AppIcon.DIVIDER_HIDDEN,
             parent=parent,
         )
         ui.btn_magnifier = Button(AppIcon.MAGNIFIER, toggle=True, parent=parent)
@@ -170,11 +172,13 @@ class ImageComparePrimitivesFactory:
         ui.btn_magnifier_color_settings = ColorSettingsButton(
             parent=parent, current_language="en"
         )
-        ui.btn_magnifier_guides = ScrollableCompatButton(
-            AppIcon.MAGNIFIER_GUIDES,
+        ui.btn_magnifier_guides = ScrollValueButton(
+            icon=AppIcon.MAGNIFIER_GUIDES,
             toggle=True,
+            show_underline=True,
             min_value=0,
             max_value=10,
+            zero_icon=AppIcon.DIVIDER_HIDDEN,
             parent=parent,
         )
 
@@ -191,10 +195,11 @@ class ImageComparePrimitivesFactory:
         ui.btn_divider_color = Button(
             AppIcon.DIVIDER_COLOR, show_underline=True, parent=parent
         )
-        ui.btn_divider_width = ScrollableCompatButton(
-            AppIcon.DIVIDER_WIDTH,
+        ui.btn_divider_width = ScrollValueButton(
+            icon=AppIcon.DIVIDER_WIDTH,
             min_value=0,
             max_value=10,
+            zero_icon=AppIcon.DIVIDER_HIDDEN,
             parent=parent,
         )
         ui.btn_magnifier_orientation_simple = Button(
@@ -211,8 +216,8 @@ class ImageComparePrimitivesFactory:
         ui.btn_magnifier_color_settings_beginner = ColorSettingsButton(
             parent=parent, current_language="en"
         )
-        ui.btn_magnifier_divider_width = ScrollableCompatButton(
-            AppIcon.DIVIDER_WIDTH,
+        ui.btn_magnifier_divider_width = ScrollValueButton(
+            icon=AppIcon.DIVIDER_WIDTH,
             show_underline=True,
             min_value=1,
             max_value=10,
@@ -221,8 +226,9 @@ class ImageComparePrimitivesFactory:
         ui.btn_magnifier_guides_simple = Button(
             AppIcon.MAGNIFIER_GUIDES, toggle=True, parent=parent
         )
-        ui.btn_magnifier_guides_width = ScrollableCompatButton(
-            AppIcon.DIVIDER_WIDTH,
+        ui.btn_magnifier_guides_width = ScrollValueButton(
+            icon=AppIcon.DIVIDER_WIDTH,
+            show_underline=True,
             min_value=1,
             max_value=10,
             parent=parent,

@@ -3,7 +3,7 @@
     "session_types": {
       "image_compare": "Comparar imagens",
       "multi_compare": "Comparação múltipla",
-      "session_picker": "Escolher sessão"
+      "session_picker": "Nova Aba"
     }
   }
 }
