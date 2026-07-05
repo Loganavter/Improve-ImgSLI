@@ -41,6 +41,10 @@ def _save_last_settings(divider, label) -> None:
             },
         }
         QSettings(_QS_ORG, _QS_APP).setValue(_QS_KEY, json.dumps(data))
+        logger.warning(
+            "[divider-color-debug] _save_last_settings: color_rgba=%s",
+            data["divider"]["color_rgba"],
+        )
     except Exception:
         logger.exception("mc: failed to save last session settings")
 
@@ -67,10 +71,31 @@ def _load_last_settings():
             draw_background=l.get("draw_background", True),
             text_alpha_percent=l.get("text_alpha_percent", 100),
         )
+        logger.warning(
+            "[divider-color-debug] _load_last_settings: color_rgba=%s",
+            divider.color_rgba,
+        )
         return (divider, label)
     except Exception:
         logger.exception("mc: failed to load last session settings")
         return None
+
+
+def _default_state():
+    from tabs.multi_compare.models import MultiCompareState
+
+    global _last_session_settings
+    if _last_session_settings is None:
+        _last_session_settings = _load_last_settings()
+    if _last_session_settings is not None:
+        divider, label = _last_session_settings
+        logger.warning(
+            "[divider-color-debug] _default_state: using cached/loaded color_rgba=%s",
+            divider.color_rgba,
+        )
+        return MultiCompareState(divider_settings=divider, label_settings=label)
+    logger.warning("[divider-color-debug] _default_state: falling back to built-in default")
+    return MultiCompareState()
 
 
 class MultiCompareTab(TabContract):
@@ -98,6 +123,13 @@ class MultiCompareTab(TabContract):
     @property
     def i18n_namespace(self) -> str | None:
         return "multi_compare"
+
+    def localized_display_name(self, language: str) -> str:
+        from sli_ui_toolkit.i18n import tr
+
+        key = "tab_name"
+        translated = tr(key, language)
+        return translated if translated != key else self.display_name
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         from tabs.multi_compare.controller import MultiCompareController
@@ -163,10 +195,6 @@ class MultiCompareTab(TabContract):
     def _restore_from(self, session_id: str | None) -> None:
         if self._widget is None:
             return
-        from tabs.multi_compare.models import MultiCompareState
-
-        def _factory():
-            return MultiCompareState()
 
         state = None
         store = self._store_context
@@ -178,14 +206,18 @@ class MultiCompareTab(TabContract):
             state = store.ensure_session_state_slot(
                 _STATE_SLOT,
                 session_id=session_id,
-                factory=_factory,
+                factory=_default_state,
             )
         if state is None and session_id is not None:
             state = self._session_states.get(session_id)
         if state is None:
-            state = MultiCompareState()
+            state = _default_state()
             if session_id is not None:
                 self._session_states[session_id] = state
+        logger.warning(
+            "[divider-color-debug] _restore_from session_id=%s color_rgba=%s",
+            session_id, state.divider_settings.color_rgba,
+        )
         self._widget.store.replace_state(state)
 
     def _on_widget_state_changed(self, _action, state) -> None:
@@ -193,6 +225,10 @@ class MultiCompareTab(TabContract):
         _last_session_settings = (state.divider_settings, state.label_settings)
         _save_last_settings(state.divider_settings, state.label_settings)
         session_id = self._active_session_id
+        logger.warning(
+            "[divider-color-debug] _on_widget_state_changed: action=%s session_id=%s color_rgba=%s",
+            getattr(_action, "type", _action), session_id, state.divider_settings.color_rgba,
+        )
         if session_id is None:
             return
         self._session_states[session_id] = state
@@ -219,16 +255,7 @@ class MultiCompareTab(TabContract):
         self._snapshot_into(self._active_session_id)
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
-        from tabs.multi_compare.models import MultiCompareState
-
-        global _last_session_settings
-        if _last_session_settings is None:
-            _last_session_settings = _load_last_settings()
-        if _last_session_settings is not None:
-            divider, label = _last_session_settings
-            state = MultiCompareState(divider_settings=divider, label_settings=label)
-        else:
-            state = MultiCompareState()
+        state = _default_state()
         self._session_states[session_id] = state
         store = getattr(context, "store", None)
         if store is not None and hasattr(store, "set_session_state_slot"):

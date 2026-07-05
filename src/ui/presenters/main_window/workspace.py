@@ -2,14 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from resources.translations import tr
-
 logger = logging.getLogger("ImproveImgSLI")
-
-_SESSION_TITLE_KEY_TEMPLATES = (
-    "workspace.session_types.{session_type}",
-    "session_picker.types.{session_type}",
-)
 
 
 def initialize_workspace_state(presenter) -> None:
@@ -19,65 +12,11 @@ def initialize_workspace_state(presenter) -> None:
 
 
 def configure_workspace_actions(presenter):
-    actions = []
-    logger.debug(
-        "configure_workspace_actions: main_controller=%s session_manager=%s",
-        presenter.main_controller,
-        (
-            getattr(presenter.main_controller, "session_manager", None)
-            if presenter.main_controller
-            else None
-        ),
-    )
-    if presenter.main_controller:
-        try:
-            blueprints = list(
-                presenter.main_controller.workspace.list_session_blueprints()
-            )
-        except Exception:
-            logger.exception(
-                "configure_workspace_actions: list_session_blueprints failed"
-            )
-            blueprints = []
-        logger.debug("configure_workspace_actions: blueprints raw=%s", blueprints)
-        language = presenter.store.settings.current_language
-        for blueprint in blueprints:
-            fallback = blueprint.resolved_title() or blueprint.session_type
-            label = _localized_session_title(blueprint.session_type, fallback, language)
-            actions.append((label, blueprint.session_type))
+    # The add-tab button always opens the session picker directly (see
+    # on_new_workspace_tab_requested) instead of popping up a session-type
+    # menu, so no menu actions are attached here.
     btn = presenter.ui.btn_new_session
-    logger.debug(
-        "configure_workspace_actions: actions=%s btn=%s visible=%s enabled=%s",
-        actions,
-        btn,
-        btn.isVisible(),
-        btn.isEnabled(),
-    )
-    btn.set_actions(actions)
-    logger.debug(
-        "configure_workspace_actions: after set_actions _has_menu=%s capabilities=%s",
-        getattr(btn, "_has_menu", "<missing>"),
-        [type(c).__name__ for c in getattr(btn, "_capabilities", [])],
-    )
-
-    try:
-        btn.clicked.disconnect(_log_new_session_clicked)
-    except (TypeError, RuntimeError):
-        pass
-    btn.clicked.connect(_log_new_session_clicked)
-
-
-def _log_new_session_clicked():
-    logger.debug("btn_new_session.clicked emitted")
-
-
-def _localized_session_title(session_type: str, fallback: str, language: str) -> str:
-    for template in _SESSION_TITLE_KEY_TEMPLATES:
-        key = template.format(session_type=session_type)
-        label = tr(key, language)
-        if label != key:
-            return label
-    return fallback
+    btn.set_actions([])
 
 
 def on_new_workspace_tab_requested(presenter):
@@ -189,31 +128,3 @@ def on_workspace_tab_close_requested(presenter, index: int):
             )
             return
     presenter.main_controller.workspace.close_workspace_session(session_id)
-
-
-def on_workspace_session_triggered(presenter, action):
-    logger.debug(
-        "on_workspace_session_triggered: action=%r type=%s",
-        action,
-        type(action).__name__,
-    )
-    session_type = (
-        action.data() if hasattr(action, "data") and callable(action.data) else action
-    )
-    logger.debug(
-        "on_workspace_session_triggered: session_type=%s main_controller=%s",
-        session_type,
-        presenter.main_controller,
-    )
-    if not session_type or not presenter.main_controller:
-        return
-    try:
-        session = presenter.main_controller.workspace.create_workspace_session(
-            session_type, activate=True
-        )
-    except Exception:
-        logger.exception(
-            "on_workspace_session_triggered: create_workspace_session failed"
-        )
-        return
-    logger.debug("on_workspace_session_triggered: created session=%s", session)

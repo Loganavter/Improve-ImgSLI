@@ -7,6 +7,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from resources.translations import tr
+from sli_ui_toolkit.i18n import translatable_tooltip
 from sli_ui_toolkit.widgets import Button
 from ui.icon_manager import AppIcon
 from ui.widgets.rounded_overlay import RoundedOverlayWidget
@@ -40,7 +41,7 @@ class ZoomIndicator(RoundedOverlayWidget):
 
         self.btn_zoom_reset = Button(AppIcon.SYNC, parent=self)
         self.btn_zoom_reset.setFixedSize(QSize(22, 22))
-        self.btn_zoom_reset.setToolTip("Reset zoom")
+        translatable_tooltip(self.btn_zoom_reset, "tooltip.reset_zoom")
         layout.addWidget(self.btn_zoom_reset)
 
         self.adjustSize()

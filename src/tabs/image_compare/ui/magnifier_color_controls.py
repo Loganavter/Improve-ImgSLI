@@ -29,13 +29,6 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
     def _build_actions(self):
         return [
             IconAction(
-                "disabled",
-                AppIcon.DIVIDER_HIDDEN,
-                tr("magnifier.change_magnifier_colors", self.current_language),
-                enabled=False,
-                visible=not self._is_magnifier_active(),
-            ),
-            IconAction(
                 "capture",
                 AppIcon.CAPTURE_AREA_COLOR,
                 tr("magnifier.capture_ring", self.current_language),
@@ -85,13 +78,15 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
         cmd = get_canvas_feature_command_by_alias("overlay.active_combined")
         return bool(cmd(self.store)) if cmd is not None else False
 
+    def has_visible_actions(self) -> bool:
+        return self._is_magnifier_active()
+
     def update_language(self, lang_code: str):
         self.current_language = lang_code
         self.set_actions(self._build_actions())
 
     def update_state(self):
         is_active = self._is_magnifier_active()
-        self.set_action_state("disabled", visible=not is_active)
         self.set_action_state("capture", visible=self._is_capture_active())
         self.set_action_state("laser", visible=self._is_laser_active())
         self.set_action_state("border", visible=is_active)
@@ -106,7 +101,11 @@ class ColorSettingsButton(Button):
     elementHoverEnded = Signal()
 
     def __init__(self, parent=None, current_language: str = "en", store=None):
-        super().__init__(AppIcon.DIVIDER_COLOR, show_underline=True, parent=parent)
+        super().__init__(
+            AppIcon.DIVIDER_COLOR,
+            show_underline=True,
+            parent=parent,
+        )
         self.current_language = current_language
         self.store = store
         self.flyout = MagnifierColorOptionsFlyout(
@@ -213,14 +212,18 @@ class ColorSettingsButton(Button):
         if domain == "settings" or domain == "viewport" or domain.startswith("viewport."):
             self.refresh_visual_state()
             if self.flyout.isVisible():
-                self.flyout.show_aligned(self, "top-center", "bottom-center")
+                if self.flyout.has_visible_actions():
+                    self.flyout.show_aligned(self, "top-center", "bottom-center")
+                else:
+                    self.flyout.hide()
 
     def enterEvent(self, event):
         super().enterEvent(event)
         self.elementHovered.emit("magnifier")
         self.flyout.update_state()
-        self.flyout.show_aligned(self, "top-center", "bottom-center")
-        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
+        if self.flyout.has_visible_actions():
+            self.flyout.show_aligned(self, "top-center", "bottom-center")
+            self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def leaveEvent(self, event):
         self.elementHoverEnded.emit()

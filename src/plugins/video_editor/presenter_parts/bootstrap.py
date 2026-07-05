@@ -21,26 +21,19 @@ def initialize_editor_from_snapshots(view, editor_service, playback_engine, mode
     playback_engine.set_range(0, total_frames - 1)
 
     try:
+        # Only probe the first frame here: scanning every materialized
+        # snapshot in the recording to find the true max resolution blocks
+        # the GUI thread until the whole recording is evaluated, delaying
+        # the first paint of the dialog. The first frame is a good enough
+        # initial guess; the user can still edit width/height afterwards.
         max_w, max_h = 0, 0
-        seen_paths: set[str] = set()
-        snapshots = editor_service.get_current_snapshots()
-        for snap in snapshots:
-            for path in (snap.image1_path, snap.image2_path):
-                if not path or path in seen_paths:
-                    continue
-                seen_paths.add(path)
+        first_snap = editor_service.get_snapshot_at_time(0.0)
+        if first_snap is not None:
+            for path in (first_snap.image1_path, first_snap.image2_path):
                 size = get_image_dimensions(path)
                 if size:
                     max_w = max(max_w, size[0])
                     max_h = max(max_h, size[1])
-        if not snapshots:
-            first_snap = editor_service.get_snapshot_at_time(0.0)
-            if first_snap is not None:
-                for path in (first_snap.image1_path, first_snap.image2_path):
-                    size = get_image_dimensions(path)
-                    if size:
-                        max_w = max(max_w, size[0])
-                        max_h = max(max_h, size[1])
         if max_w > 0 and max_h > 0:
             model.set_resolution(max_w, max_h)
             view.set_resolution(max_w, max_h)

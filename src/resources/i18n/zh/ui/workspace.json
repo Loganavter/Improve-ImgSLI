@@ -3,7 +3,7 @@
     "session_types": {
       "image_compare": "图像比较",
       "multi_compare": "多图比较",
-      "session_picker": "选择会话"
+      "session_picker": "新标签页"
     }
   }
 }

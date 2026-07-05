@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from PySide6.QtGui import QColor
-
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 
@@ -133,13 +131,8 @@ def sync_toolbar_state(presenter) -> None:
         emit_signal=False,
     )
     if ui.btn_orientation.get_value() != divider_thickness:
-        ui.btn_orientation.set_value(divider_thickness)
-    current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
-    ui.btn_orientation.setUnderlineColor(
-        color_to_qcolor(divider_state.color)
-        if current_mode == "expert"
-        else QColor(0, 0, 0, 0)
-    )
+        ui.btn_orientation.set_value(divider_thickness, emit=False)
+    ui.btn_orientation.setUnderlineColor(color_to_qcolor(divider_state.color))
     if hasattr(ui, "btn_orientation_simple"):
         ui.btn_orientation_simple.setChecked(
             viewport.view_state.is_horizontal,
@@ -149,7 +142,7 @@ def sync_toolbar_state(presenter) -> None:
         ui.btn_divider_visible.setChecked(not divider_state.visible, emit_signal=False)
     if hasattr(ui, "btn_divider_width"):
         if ui.btn_divider_width.get_value() != divider_thickness:
-            ui.btn_divider_width.set_value(divider_thickness)
+            ui.btn_divider_width.set_value(divider_thickness, emit=False)
     if hasattr(ui, "btn_divider_color"):
         ui.btn_divider_color.setUnderlineColor(color_to_qcolor(divider_state.color))
     if hasattr(ui, "btn_magnifier_divider_width"):

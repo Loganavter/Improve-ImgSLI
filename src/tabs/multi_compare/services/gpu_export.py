@@ -124,7 +124,7 @@ class MultiCompareGpuExporter:
             source_key=(),
             canvas_w=composition.canvas_w,
             canvas_h=composition.canvas_h,
-            scene=None,
+            gl_scene=None,
             overlay_layout=None,
             capture_visible=False,
             capture_color=QColor(0, 0, 0, 0),

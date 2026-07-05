@@ -113,21 +113,13 @@ def sync_magnifier_orientation_state(presenter) -> None:
     btn_orientation = getattr(ui, "btn_magnifier_orientation", None)
     if btn_orientation is not None:
         if divider_hidden:
-
-            btn_orientation.blockSignals(True)
-            btn_orientation._checked = True
-            btn_orientation._scroll_value = 0
-            btn_orientation.update()
-            btn_orientation.blockSignals(False)
+            set_checked_quietly(btn_orientation, True)
+            set_slider_value_quietly(btn_orientation, 0)
         else:
             set_checked_quietly(btn_orientation, magnifier_is_horizontal)
-            if hasattr(btn_orientation, "set_value"):
-                if btn_orientation.get_value() != magnifier_thickness:
-                    btn_orientation.set_value(magnifier_thickness)
+            set_slider_value_quietly(btn_orientation, magnifier_thickness)
         btn_orientation.setUnderlineColor(
             color_to_qcolor(active_or_default_divider_color(view_state))
-            if not divider_hidden
-            else None
         )
     set_checked_quietly(
         getattr(ui, "btn_magnifier_orientation_simple", None),

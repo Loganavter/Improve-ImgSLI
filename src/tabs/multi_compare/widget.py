@@ -199,14 +199,19 @@ class MultiCompareWidget(QWidget):
 
     def _sync_divider_toolbar(self) -> None:
         ds = self.store.state.divider_settings
+        logger.warning(
+            "[divider-color-debug] _sync_divider_toolbar: color_rgba=%s has_setUnderlineColor=%s ui_mode=%s",
+            ds.color_rgba,
+            hasattr(self.toolbar.btn_divider_color, "setUnderlineColor"),
+            getattr(self.toolbar, "_ui_mode", "<unset>"),
+        )
         btn = self.toolbar.btn_divider_visible
         btn.blockSignals(True)
         btn.setChecked(not ds.visible)
         btn.blockSignals(False)
         width_btn = self.toolbar.btn_divider_width
         if hasattr(width_btn, "get_value") and hasattr(width_btn, "set_value"):
-            effective_thickness = ds.thickness if ds.visible else 0
-            ui_value = (effective_thickness + 1) // 2 if effective_thickness > 0 else 0
+            ui_value = ds.thickness if ds.visible else 0
             if width_btn.get_value() != ui_value:
                 width_btn.blockSignals(True)
                 width_btn.set_value(ui_value)
@@ -214,12 +219,15 @@ class MultiCompareWidget(QWidget):
         color = QColor(*ds.color_rgba)
         if hasattr(self.toolbar.btn_divider_color, "setUnderlineColor"):
             self.toolbar.btn_divider_color.setUnderlineColor(color)
+            logger.warning(
+                "[divider-color-debug] btn_divider_color after setUnderlineColor: "
+                "_underline_color=%s visible=%s size=%s",
+                getattr(self.toolbar.btn_divider_color, "_underline_color", "<no-attr>"),
+                self.toolbar.btn_divider_color.isVisible(),
+                self.toolbar.btn_divider_color.size(),
+            )
         if hasattr(width_btn, "setUnderlineColor"):
-            is_expert = getattr(self.toolbar, "_ui_mode", "beginner") == "expert"
-            if is_expert:
-                width_btn.setUnderlineColor(color)
-            else:
-                width_btn.setUnderlineColor(QColor(0, 0, 0, 0))
+            width_btn.setUnderlineColor(color)
 
     def _on_divider_visible_toggled(self, visible: bool) -> None:
         ds = self.store.state.divider_settings
@@ -232,7 +240,7 @@ class MultiCompareWidget(QWidget):
 
     def _on_divider_width_changed(self, width: int) -> None:
         ds = self.store.state.divider_settings
-        thickness = max(0, int(width)) * 2
+        thickness = max(0, int(width))
         new_ds = MultiCompareDividerSettings(
             visible=thickness > 0,
             thickness=thickness if thickness > 0 else ds.thickness,
@@ -251,7 +259,15 @@ class MultiCompareWidget(QWidget):
             thickness=ds.thickness,
             color_rgba=(color.red(), color.green(), color.blue(), color.alpha()),
         )
+        logger.warning(
+            "[divider-color-debug] apply_divider_color: old=%s new=%s",
+            ds.color_rgba, new_ds.color_rgba,
+        )
         self.store.dispatch(actions.set_divider_settings(new_ds))
+        logger.warning(
+            "[divider-color-debug] apply_divider_color: state after dispatch=%s",
+            self.store.state.divider_settings.color_rgba,
+        )
 
     def _sync_font_settings_flyout(self) -> None:
         st = self.state.label_settings
