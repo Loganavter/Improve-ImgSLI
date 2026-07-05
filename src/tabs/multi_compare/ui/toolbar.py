@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Button
-from ui.widgets.scrollable_compat_button import ScrollableCompatButton
+from ui.widgets.scroll_value_button import ScrollValueButton
 
 from sli_ui_toolkit.i18n import tr
 from tabs.multi_compare.ui.layout_manager import MultiCompareLayoutManager
@@ -83,12 +83,11 @@ class MultiCompareToolbar(QWidget):
         )
         self.btn_divider_color.clicked.connect(self.divider_color_clicked)
 
-        self.btn_divider_width = ScrollableCompatButton(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.VERTICAL_SPLIT),
-            toggle=True,
-            show_underline=False,
+        self.btn_divider_width = ScrollValueButton(
+            icon=AppIcon.VERTICAL_SPLIT,
             min_value=0,
             max_value=10,
+            zero_icon=AppIcon.DIVIDER_HIDDEN,
             parent=self,
         )
         self.btn_divider_width.setObjectName("mc_btn_divider_width")
@@ -127,7 +126,6 @@ class MultiCompareToolbar(QWidget):
         self.btn_text_settings = Button(
             AppIcon.TEXT_FILENAME,
             variant="surface",
-            background_color=accent,
             parent=self,
         )
         translatable_tooltip(
@@ -207,15 +205,8 @@ class MultiCompareToolbar(QWidget):
         self._ui_mode = (
             mode if mode in {"beginner", "advanced", "expert"} else "beginner"
         )
-        self._apply_expert_divider_width_affordance()
+        self.btn_divider_width.setShowUnderline(True)
         self.layout_manager.apply_mode(mode)
-
-    def _apply_expert_divider_width_affordance(self) -> None:
-        show = self._ui_mode == "expert"
-        if hasattr(self.btn_divider_width, "set_show_underline"):
-            self.btn_divider_width.set_show_underline(show)
-        elif hasattr(self.btn_divider_width, "setShowUnderline"):
-            self.btn_divider_width.setShowUnderline(show)
 
     def _on_divider_width_right_clicked(self) -> None:
         if self._ui_mode == "expert":

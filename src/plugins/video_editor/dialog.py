@@ -1,4 +1,5 @@
 import logging
+import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPixmap, QResizeEvent
@@ -52,6 +53,7 @@ class VideoEditorDialog(QDialog):
     timelineHeightChanged = Signal(int)
 
     def __init__(self, snapshots, export_controller, main_window_app, parent=None):
+        _dbg_t0 = time.perf_counter()
         super().__init__(parent)
 
         self.current_language = "en"
@@ -84,7 +86,6 @@ class VideoEditorDialog(QDialog):
         self.export_ui = VideoEditorDialogExport(self)
 
         self._init_ui()
-        self._translations_binder = None
         self.update_language(self.current_language)
         self._apply_style()
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
@@ -133,6 +134,11 @@ class VideoEditorDialog(QDialog):
         self._update_settings_panel_width()
         QTimer.singleShot(0, self.presenter._initialize_output_fields)
         QTimer.singleShot(1200, self._emit_ready_to_show)
+
+        logger.warning(
+            "DBG-BUG4 VideoEditorDialog.__init__ took %.1f ms (constructor done, about to return/show)",
+            (time.perf_counter() - _dbg_t0) * 1000,
+        )
 
     def _get_first_snapshot(self):
         snapshots = getattr(self, "snapshots", None)
@@ -432,11 +438,9 @@ class VideoEditorDialog(QDialog):
         return tr(text, self.current_language)
 
     def update_language(self, lang_code: str):
-        if self._translations_binder is None:
-            from plugins.video_editor.translations import build_translations_binder
+        from plugins.video_editor.translations import apply_translations
 
-            self._translations_binder = build_translations_binder(self)
-        self._translations_binder.apply(lang_code or "en")
+        apply_translations(self, lang_code or "en")
 
     def _tr_preset(self, preset):
         from plugins.video_editor.services.export_config import ExportConfigBuilder
@@ -490,6 +494,15 @@ class VideoEditorDialog(QDialog):
         if hasattr(self, "timeline"):
             self.timeline.update_layout_width()
         self._position_stop_export_button()
+
+        logger.warning(
+            "DBG-BUG1 dialog=%s preview_label=%s settings_panel=%s tabs=%s top_container=%s",
+            self.geometry(),
+            self.preview_label.geometry(),
+            self.settings_panel.geometry(),
+            self.tabs.geometry() if hasattr(self, "tabs") else None,
+            self.top_container.geometry(),
+        )
 
     def showEvent(self, event):
         super().showEvent(event)

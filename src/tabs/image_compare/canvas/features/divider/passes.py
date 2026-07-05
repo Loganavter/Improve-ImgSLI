@@ -112,11 +112,20 @@ class DividerPass(CanvasRenderPass):
         color = QColor(payloads.get("divider_color", QColor(255, 255, 255, 255)))
         is_horizontal = bool(getattr(ctx.scene_frame, "is_horizontal", False))
         display_split = float(get_display_split_position(widget) or 0.5)
-        position_px = (
-            float(widget.height()) * display_split
-            if is_horizontal
-            else float(widget.width()) * display_split
-        )
+        content_rect = widget.runtime_state._content_rect_px
+        if is_horizontal:
+            origin, extent = (
+                (content_rect[1], content_rect[3])
+                if content_rect
+                else (0.0, float(widget.height()))
+            )
+        else:
+            origin, extent = (
+                (content_rect[0], content_rect[2])
+                if content_rect
+                else (0.0, float(widget.width()))
+            )
+        position_px = float(origin) + float(extent) * display_split
         return show_divider, position_px, thickness_px, is_horizontal, color
 
     def initialize(self, rhi, target) -> None:

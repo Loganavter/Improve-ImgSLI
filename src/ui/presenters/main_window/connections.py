@@ -14,7 +14,6 @@ from ui.presenters.main_window.actions import (
 from ui.presenters.main_window.state import on_store_state_changed
 from ui.presenters.main_window.workspace import (
     on_new_workspace_tab_requested,
-    on_workspace_session_triggered,
     on_workspace_tab_changed,
     on_workspace_tab_close_requested,
 )
@@ -99,19 +98,6 @@ def connect_signals(presenter):
     )
     presenter.ui.workspace_tabs.addRequested.connect(
         lambda: on_new_workspace_tab_requested(presenter)
-    )
-    import logging as _logging
-
-    _ws_logger = _logging.getLogger("ImproveImgSLI")
-    _ws_logger.debug(
-        "connect_signals: wiring btn_new_session.menuTriggered btn=%s",
-        presenter.ui.btn_new_session,
-    )
-    presenter.ui.btn_new_session.menuTriggered.connect(
-        lambda action: on_workspace_session_triggered(presenter, action)
-    )
-    presenter.ui.btn_new_session.pressed.connect(
-        lambda: _ws_logger.debug("btn_new_session.pressed emitted")
     )
 
     _connect_magnifier_color_controls(presenter)
@@ -225,14 +211,17 @@ def _connect_magnifier_color_controls(presenter):
     presenter.ui.btn_magnifier_guides.toggled.connect(
         lambda checked: on_magnifier_guides_toggled(presenter, not checked)
     )
-    # TODO: btn_magnifier_guides.valueChanged removed with Button 0.2.16 scroll feature
-    # Re-implement via WheelCounterCapability + custom UI layer if needed
+    presenter.ui.btn_magnifier_guides.valueChanged.connect(
+        lambda value: on_magnifier_guides_thickness_changed(presenter, value)
+    )
 
     if hasattr(presenter.ui, "btn_magnifier_guides_simple"):
         presenter.ui.btn_magnifier_guides_simple.toggled.connect(
             lambda checked: on_magnifier_guides_toggled(presenter, checked)
         )
-    # TODO: btn_magnifier_guides_width.valueChanged removed with Button 0.2.16 scroll feature
+    # btn_magnifier_guides_width.valueChanged is wired by toolbar_presenter's
+    # own connect_signals() (tabs/image_compare/presenters/toolbar/connections.py,
+    # control_id "guides.thickness") — not here, to avoid a double connection.
 
 
 def _on_font_flyout_interaction_started(presenter, slider_name: str) -> None:

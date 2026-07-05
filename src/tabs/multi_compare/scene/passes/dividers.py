@@ -12,7 +12,7 @@ from tabs.multi_compare.ui import layout_geometry
 class DividersOverlaySource:
     """Paints every split gap as an explicit framebuffer overlay."""
 
-    MIN_THICKNESS_FB = 2.0
+    MIN_THICKNESS_FB = 1.0
 
     def should_paint(self, composition, state) -> bool:
         if composition is None or getattr(state, "root", None) is None:
@@ -96,12 +96,12 @@ class DividersOverlaySource:
         if direction == "h":
             thickness = max(self.MIN_THICKNESS_FB, w)
             if thickness_canvas is not None:
-                thickness = max(self.MIN_THICKNESS_FB, thickness_canvas * scale)
+                thickness = max(self.MIN_THICKNESS_FB, thickness_canvas)
             center = x + w * 0.5
             return QRectF(center - thickness * 0.5, y, thickness, max(1.0, h))
         thickness = max(self.MIN_THICKNESS_FB, h)
         if thickness_canvas is not None:
-            thickness = max(self.MIN_THICKNESS_FB, thickness_canvas * scale)
+            thickness = max(self.MIN_THICKNESS_FB, thickness_canvas)
         center = y + h * 0.5
         return QRectF(x, center - thickness * 0.5, max(1.0, w), thickness)
 

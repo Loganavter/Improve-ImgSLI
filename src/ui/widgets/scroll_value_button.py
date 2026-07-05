@@ -1,305 +1,307 @@
-"""ScrollValueButton — app-level recreation of the built-in scroll/value
-counter that sli-ui-toolkit 0.2.16 removed from ``Button``.
+"""Generic scroll-driven numeric control button.
 
-The toolkit no longer knows about ``scrollable=``/``valueChanged``/``get_value``/
-``set_value`` at all: it only exposes generic extension points
-(``ButtonCapability.handle_wheel_event`` and custom ``Layer``s via
-``Button(layers=...)``). This module composes those primitives back into the
-old surface so the rest of the app (which still calls ``get_value()``,
-``set_value()``, ``valueChanged``, ``get_saved_value()``/``set_saved_value()``,
-``restore_saved_value()``, ``underline_visible_when=``,
-``checked_background_visible_when=``) keeps working unchanged.
+A single icon region when idle, an icon+numeric-value split while hovered,
+a transient flyout mirroring the value during scroll, and an always-visible
+bottom underline (via the toolkit's built-in ``show_underline``/
+``setUnderlineColor`` API) showing an associated color (e.g. divider/guide
+color).
+
+Used for divider width, magnifier-divider width, and magnifier-guides width
+controls across multi_compare and image_compare toolbars.
 """
 
 from __future__ import annotations
 
-import logging
-from dataclasses import replace
-from typing import Any, Callable
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtWidgets import QLabel, QWidget
+from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import (
+    BaseFlyout,
+    Button,
+    ButtonRegion,
+    ButtonRow,
+    VerticalSplit,
+)
 
-from PySide6.QtCore import QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QPixmap, QWheelEvent
-from sli_ui_toolkit.ui.widgets.buttons.capabilities import ButtonCapability
-from sli_ui_toolkit.ui.widgets.buttons.layers._base import Layer
-from sli_ui_toolkit.ui.widgets.buttons.layers.background import BackgroundLayer
-from sli_ui_toolkit.ui.widgets.buttons.layers.content import ContentLayer
-from sli_ui_toolkit.ui.widgets.buttons.painter import default_layers
-from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState
-from sli_ui_toolkit.ui.widgets.style_bridge import read_widget_style
-from sli_ui_toolkit.widgets import Button
+from ui.icon_manager import get_app_icon
+from ui.theming import resolve_theme_color
 
-from shared_toolkit.ui.overlay_layer import get_overlay_layer
-
-logger = logging.getLogger("ImproveImgSLI")
-
-_SCROLLING_DEBOUNCE_MS = 400
-_VALUE_LABEL_HEIGHT = 11
-# Reserved strip at the very bottom, below the value label, left clear for
-# UnderlineLayer's line so it never overlaps the label text.
-_UNDERLINE_CLEARANCE_PX = 3
-# Visual gap between the shrunk icon and the value label below it, so they
-# don't visually touch even though their regions are adjacent.
-_ICON_LABEL_GAP_PX = 4
+_FLYOUT_HIDE_MS = 700
+_WIDTH = 36
+_HEIGHT = 36
+_RADIUS = 6
 
 
-class _ScrollValueCapability(ButtonCapability):
-    def __init__(self, owner: "ScrollValueButton") -> None:
-        super().__init__()
-        self._owner = owner
-        self._end_timer: QTimer | None = None
+class _ScrollValueFlyout(BaseFlyout):
+    """Transient popup mirroring the current value above the button."""
 
-    def attach(self, button, region_id: str | None = None) -> None:
-        super().attach(button, region_id=region_id)
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._label = QLabel(self)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setFixedSize(22, 20)
+        self.add_widget(self._label)
 
-    def detach(self, button) -> None:
-        if self._end_timer is not None:
-            self._end_timer.stop()
-            self._end_timer.deleteLater()
-            self._end_timer = None
-
-    def _on_scroll_end(self) -> None:
-        owner = self._owner
-        owner._is_scrolling = False
-        owner._hide_value_popup()
-        owner.update()
-
-    def handle_wheel_event(self, event: QWheelEvent) -> bool:
-        delta = event.angleDelta().y()
-        logger.debug(
-            "[scroll-debug] handle_wheel_event owner=%s delta=%s value=%s",
-            self._owner.objectName() or type(self._owner).__name__,
-            delta,
-            self._owner._scroll_value,
-        )
-        if delta == 0:
-            return False
-        owner = self._owner
-        step = 1 if delta > 0 else -1
-        new_value = max(owner._scroll_min, min(owner._scroll_max, owner._scroll_value + step))
-        owner._is_scrolling = True
-        if self._end_timer is None:
-            self._end_timer = QTimer(owner)
-            self._end_timer.setSingleShot(True)
-            self._end_timer.timeout.connect(self._on_scroll_end)
-        self._end_timer.start(_SCROLLING_DEBOUNCE_MS)
-        if new_value != owner._scroll_value:
-            owner._scroll_value = new_value
-            owner.valueChanged.emit(new_value)
-        owner.update()
-        owner._show_value_popup()
-        event.accept()
-        return True
-
-
-class _ConditionalCheckedBackgroundLayer(Layer):
-    """Paints BackgroundLayer as if CHECKED were unset when the predicate says so.
-
-    Some buttons pass ``toggle=True`` purely as bookkeeping for the
-    scroll-boundary "0 = off" behavior and must never show the checked-state
-    background capsule for it.
-    """
-
-    def __init__(self, owner: "ScrollValueButton", predicate: Callable[["ScrollValueButton"], bool]) -> None:
-        self._owner = owner
-        self._predicate = predicate
-        self._inner = BackgroundLayer()
-
-    def draw(self, ctx, tm) -> None:
-        if not self._predicate(self._owner):
-            if ctx.region_states is not None:
-                ctx = replace(ctx, region_states=ctx.region_states - {ButtonState.CHECKED})
-            else:
-                ctx = replace(ctx, states=ctx.states - {ButtonState.CHECKED})
-        self._inner.draw(ctx, tm)
-
-
-class _ShrunkContentLayer(Layer):
-    """Wraps ``ContentLayer``. While hovered, the icon renders in a shrunk
-    top region so the scroll-value label has its own space below instead of
-    overlapping it. With no hover, the reserved region is dropped and the
-    icon draws over the full button rect as usual.
-    """
-
-    def __init__(self, owner: "ScrollValueButton") -> None:
-        self._owner = owner
-        self._inner = ContentLayer()
-
-    def applies(self, ctx) -> bool:
-        return self._inner.applies(ctx)
-
-    def draw(self, ctx, tm) -> None:
-        if not (self._owner._is_scrolling or ButtonState.HOVERED in ctx.states):
-            self._inner.draw(ctx, tm)
-            return
-        rect = ctx.effective_rect
-        shrunk_height = max(0.0, rect.height() - _VALUE_LABEL_HEIGHT - _UNDERLINE_CLEARANCE_PX)
-        shrunk = QRectF(rect.x(), rect.y(), rect.width(), shrunk_height)
-        # The icon is drawn at a fixed pixel size, not scaled to its region, so
-        # a shrunk region exactly as tall as the icon leaves zero breathing
-        # room between icon and value label below it. Shrink the icon itself
-        # a bit so it visibly floats inside the region instead of touching it.
-        icon_size = min(ctx.effective_icon_size_px, max(0, int(shrunk_height) - _ICON_LABEL_GAP_PX))
-        self._inner.draw(
-            replace(ctx, region_rect=shrunk, region_icon_size_px=icon_size), tm
-        )
-
-
-class _ValueLabelLayer(Layer):
-    """Draws the current value at the bottom of the button while hovered.
-
-    Suppressed during an active scroll: the scroll popup (above the button)
-    takes over as the value indicator in that case instead.
-    """
-
-    scope = "widget"
-
-    def __init__(self, owner: "ScrollValueButton") -> None:
-        self._owner = owner
-
-    def applies(self, ctx) -> bool:
-        return self._owner._is_scrolling or ButtonState.HOVERED in ctx.states
-
-    def draw(self, ctx, tm) -> None:
-        widget = ctx.widget
-        p = ctx.painter
-        owner = self._owner
-        label_rect = QRect(
-            0,
-            widget.height() - _VALUE_LABEL_HEIGHT - _UNDERLINE_CLEARANCE_PX,
-            widget.width(),
-            _VALUE_LABEL_HEIGHT,
-        )
-        if owner._scroll_value == 0:
-            pixmap = owner._zero_icon_pixmap(_VALUE_LABEL_HEIGHT)
-            if pixmap is not None:
-                x = label_rect.center().x() - pixmap.width() // 2
-                p.drawPixmap(x, label_rect.top(), pixmap)
-                return
-        style = read_widget_style(widget)
-        text_color = QColor(style.foreground_color or tm.get_color("dialog.text"))
-        font = QFont()
-        font.setBold(True)
-        font.setPixelSize(9)
-        p.setFont(font)
-        p.setPen(text_color)
-        p.drawText(
-            label_rect,
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
-            str(owner._scroll_value),
-        )
+    def show_value(self, text: str, icon=None, anchor: QWidget | None = None) -> None:
+        if icon is not None:
+            self._label.setPixmap(icon.pixmap(16, 16))
+            self._label.setText("")
+        else:
+            self._label.clear()
+            self._label.setText(text)
+        if anchor is not None:
+            self.show_aligned(
+                anchor,
+                anchor_point="top-center",
+                flyout_point="bottom-center",
+                offset=6,
+            )
+        else:
+            self.show()
 
 
 class ScrollValueButton(Button):
-    """Button with a wheel-driven clamped int value (old ``scrollable=`` recipe)."""
+    """Scroll-driven numeric control (min_value-max_value) with hover split & flyout.
+
+    Optionally treats ``min_value`` as a "hidden" state, shown with
+    ``zero_icon`` instead of the digit "0" (e.g. divider width 0 == divider
+    hidden). Pass ``zero_icon=None`` (the default) to just display "0".
+    """
 
     valueChanged = Signal(int)
 
+    _GROUP = "scroll_value"
+
     def __init__(
         self,
-        icon: Any = None,
+        parent: QWidget | None = None,
         *,
-        scrollable: tuple[int, int],
+        icon=None,
+        toggle: bool = False,
+        min_value: int = 0,
+        max_value: int = 10,
         start: int = 0,
-        underline_visible_when: Callable[["ScrollValueButton"], bool] | None = None,
-        checked_background_visible_when: Callable[["ScrollValueButton"], bool] | None = None,
-        zero_icon: Any = None,
-        layers: list[Layer] | None = None,
-        **kwargs: Any,
+        zero_icon=None,
+        **kwargs,
     ) -> None:
-        self._scroll_min, self._scroll_max = scrollable
-        self._scroll_value = max(self._scroll_min, min(self._scroll_max, start))
-        self._saved_value: int | None = None
-        self._underline_visible_when = underline_visible_when
+        self._min_value = int(min_value)
+        self._max_value = int(max_value)
+        self._value = max(self._min_value, min(self._max_value, int(start)))
+        if isinstance(icon, (tuple, list)):
+            self._icon_normal = icon[0]
+            self._icon_checked = icon[1] if len(icon) >= 2 else icon[0]
+        else:
+            self._icon_normal = icon
+            self._icon_checked = icon
+        self._toggle_enabled = bool(toggle)
         self._zero_icon = zero_icon
-        self._is_scrolling = False
-        self._value_popup_key = f"scroll_value:{id(self)}"
+        self._saved_value: int | None = None
+        self._hovered_split = False
+        self._underline_visible = False
+        self._underline_qcolor = None
+        self._flyout: _ScrollValueFlyout | None = None
+        self._flyout_hide_timer = QTimer()
+        self._flyout_hide_timer.setSingleShot(True)
+        self._flyout_hide_timer.timeout.connect(self._hide_flyout)
 
-        if layers is None:
-            layers = default_layers()
-        if checked_background_visible_when is not None:
-            layers = [
-                _ConditionalCheckedBackgroundLayer(self, checked_background_visible_when)
-                if isinstance(layer, BackgroundLayer)
-                else layer
-                for layer in layers
-            ]
-        layers = [
-            _ShrunkContentLayer(self) if isinstance(layer, ContentLayer) else layer
-            for layer in layers
-        ]
-        layers = [*layers, _ValueLabelLayer(self)]
-
-        super().__init__(icon, layers=layers, **kwargs)
-        self.attach_capability(_ScrollValueCapability(self))
-        self.valueChanged.connect(self._sync_underline_visibility)
-        self._sync_underline_visibility()
-
-    def _sync_underline_visibility(self, *_args: Any) -> None:
-        if self._underline_visible_when is not None:
-            self.setShowUnderline(bool(self._underline_visible_when(self)))
-
-    def setUnderlineColor(self, *args: Any, **kwargs: Any) -> None:
-        # set_value() only emits valueChanged (and thus re-runs
-        # _sync_underline_visibility) when the value actually changes. When a
-        # toolbar sync sets the color while the value already matches the
-        # target, that signal never fires again, leaving show_underline
-        # stuck at whatever it was resolved to at construction time (value
-        # was still 0 then, so underline_visible_when was False). Re-check
-        # visibility on every color update so it can't get stuck.
-        super().setUnderlineColor(*args, **kwargs)
-        self._sync_underline_visibility()
-
-    def _zero_icon_pixmap(self, size: int) -> QPixmap | None:
-        if self._zero_icon is None:
-            return None
-        from ui.icon_manager import get_app_icon
-
-        return get_app_icon(self._zero_icon).pixmap(size, size)
-
-    def _show_value_popup(self, timeout_ms: int = 0) -> None:
-        overlay_layer = get_overlay_layer(self)
-        if overlay_layer is None:
-            return
-        pixmap = self._zero_icon_pixmap(16) if self._scroll_value == 0 else None
-        overlay_layer.show_popup(
-            self._value_popup_key,
-            self,
-            text="" if pixmap is not None else str(self._scroll_value),
-            pixmap=pixmap,
-            position="top",
-            offset=6,
-            timeout_ms=timeout_ms,
+        regions, split = self._build_regions()
+        super().__init__(
+            regions=regions,
+            split=split,
+            toggle=self._toggle_enabled,
+            size=(_WIDTH, _HEIGHT),
+            corner_radius=_RADIUS,
+            content_padding=(0.0, 2.0, 0.0, 2.0),
+            variant="default",
+            parent=parent,
+            **kwargs,
         )
+        # Button.__init__ sets self._show_underline directly (bypassing our
+        # setShowUnderline override), so a show_underline=True kwarg would
+        # otherwise be silently lost the first time _sync_regions() reasserts
+        # our (still-False) shadow copy on the first hover/scroll.
+        self._underline_visible = bool(getattr(self, "_show_underline", False))
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # RowsContent (used for the "value" region's digit) defaults to
+        # splitting the region rect by row.ratio and top-aligning each row;
+        # with a single row that leaves it stuck in the top half of the
+        # region. compact=True instead centers the single row vertically
+        # across the whole region rect, like plain text= used to.
+        self._rows_compact = True
 
-    def _hide_value_popup(self) -> None:
-        overlay_layer = get_overlay_layer(self)
-        if overlay_layer is None:
-            return
-        overlay_layer.hide_popup(self._value_popup_key)
+    # ---------- underline (re-applied after every region rebuild, see _sync_regions) ----------
+
+    def setShowUnderline(self, value: bool) -> None:
+        self._underline_visible = bool(value)
+        super().setShowUnderline(value)
+
+    def setUnderlineColor(self, color) -> None:
+        self._underline_qcolor = color
+        super().setUnderlineColor(color)
+
+    # ---------- backward-compat value API ----------
 
     def get_value(self) -> int:
-        return self._scroll_value
+        return self._value
 
     def set_value(self, value: int, emit: bool = True) -> None:
-        clamped = max(self._scroll_min, min(self._scroll_max, int(value)))
-        if clamped == self._scroll_value:
+        clamped = max(self._min_value, min(self._max_value, int(value)))
+        if clamped == self._value:
             return
-        self._scroll_value = clamped
+        self._value = clamped
+        self._sync_regions()
         if emit:
             self.valueChanged.emit(clamped)
-        self.update()
 
-    def setRange(self, min_value: int, max_value: int) -> None:
-        self._scroll_min, self._scroll_max = min_value, max_value
-        self.set_value(self._scroll_value, emit=False)
+    # ---------- saved-value memory (restore previous width after hide/show) ----------
 
     def get_saved_value(self) -> int | None:
         return self._saved_value
 
     def set_saved_value(self, value: int | None) -> None:
-        self._saved_value = value
+        self._saved_value = None if value is None else int(value)
 
     def restore_saved_value(self) -> int | None:
         value = self._saved_value
         self._saved_value = None
         return value
+
+    # ---------- hover: single region idle, icon+value split on hover ----------
+
+    def enterEvent(self, event) -> None:
+        super().enterEvent(event)
+        self._set_hover_split(True)
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+        self._set_hover_split(False)
+        self._hide_flyout()
+
+    def _set_hover_split(self, active: bool) -> None:
+        if active == self._hovered_split:
+            return
+        self._hovered_split = active
+        self._sync_regions()
+
+    # ---------- wheel-driven value stepping ----------
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        delta = event.angleDelta().y()
+        if not delta:
+            super().wheelEvent(event)
+            return
+        event.accept()
+        step = 1 if delta > 0 else -1
+        new_value = max(self._min_value, min(self._max_value, self._value + step))
+        self.set_value(new_value)
+        self._show_flyout()
+
+    # ---------- regions ----------
+
+    def _sync_regions(self) -> None:
+        regions, split = self._build_regions()
+        self.set_regions(regions, split=split)
+        # set_regions() rebuilds the button's internal region/paint state from
+        # scratch, which drops any previously applied underline visibility/color.
+        # Re-assert our last known desired state so hover/scroll/value changes
+        # can't silently erase the divider-color indicator.
+        super().setShowUnderline(self._underline_visible)
+        if self._underline_qcolor is not None:
+            super().setUnderlineColor(self._underline_qcolor)
+
+    def _is_at_zero(self) -> bool:
+        return self._zero_icon is not None and self._value <= self._min_value
+
+    def _toggle_bg_kwargs(self) -> dict:
+        theme_manager = ThemeManager.get_instance()
+        return {
+            "override_bg_color": resolve_theme_color(
+                theme_manager, "button.toggle.background.normal"
+            ),
+        }
+
+    def _icon_region_id(self) -> str:
+        # A toggle=True region must be named "_main" — the toolkit's click
+        # handler (events.py) only updates isChecked()/emits toggled() and
+        # the base Button._checked state for the region literally named
+        # "_main", regardless of which region the split layout renders it in.
+        return "_main" if self._toggle_enabled else "icon"
+
+    def _icon_region_icon(self):
+        return (
+            (self._icon_normal, self._icon_checked)
+            if self._toggle_enabled
+            else self._icon_normal
+        )
+
+    def _build_regions(self) -> tuple[list[ButtonRegion], VerticalSplit]:
+        toggle_kwargs = self._toggle_bg_kwargs()
+        icon_region_id = self._icon_region_id()
+        if not self._hovered_split:
+            regions = [
+                ButtonRegion(
+                    id=icon_region_id,
+                    icon=self._icon_region_icon(),
+                    icon_size_px=20,
+                    variant="default",
+                    group=self._GROUP,
+                    toggle=self._toggle_enabled,
+                    **toggle_kwargs,
+                ),
+            ]
+            return regions, VerticalSplit()
+
+        # Per-region corner_radii is intentionally omitted: the button-level
+        # corner_radius=_RADIUS (see __init__) already produces a seamless
+        # capsule automatically (rounded outer ends, square inner seam) via
+        # the toolkit's outer-clip contract, and stays in sync with the
+        # underline arc radius, which reads the same button-level radius.
+        icon_region = ButtonRegion(
+            id=icon_region_id,
+            icon=self._icon_region_icon(),
+            icon_size_px=20,
+            weight=1.1,
+            variant="default",
+            group=self._GROUP,
+            toggle=self._toggle_enabled,
+            **toggle_kwargs,
+        )
+        if self._is_at_zero():
+            value_region = ButtonRegion(
+                id="value",
+                icon=self._zero_icon,
+                icon_size_px=13,
+                weight=0.9,
+                variant="default",
+                group=self._GROUP,
+                **toggle_kwargs,
+            )
+        else:
+            value_region = ButtonRegion(
+                id="value",
+                rows=[ButtonRow(text=str(self._value), size=12)],
+                weight=0.9,
+                variant="default",
+                group=self._GROUP,
+                **toggle_kwargs,
+            )
+        # Bottom breathing room from the underline is reserved via the
+        # button-level bottom-only content_padding (see __init__) rather
+        # than a spacer region.
+        return [icon_region, value_region], VerticalSplit()
+
+    # ---------- flyout ----------
+
+    def _show_flyout(self) -> None:
+        if self._flyout is None:
+            self._flyout = _ScrollValueFlyout(self.window())
+        if self._is_at_zero():
+            self._flyout.show_value("", icon=get_app_icon(self._zero_icon), anchor=self)
+        else:
+            self._flyout.show_value(str(self._value), anchor=self)
+        self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
+
+    def _hide_flyout(self) -> None:
+        self._flyout_hide_timer.stop()
+        if self._flyout is not None:
+            self._flyout.hide()

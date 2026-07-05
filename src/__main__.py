@@ -118,19 +118,9 @@ def main():
     if not selected_rhi_backend:
         selected_rhi_backend = requested_rhi_backend_name()
     if selected_rhi_backend != "default":
-        using_xwayland_for_vulkan = configure_rhi_process_environment(
-            selected_rhi_backend
-        )
-    else:
-        using_xwayland_for_vulkan = False
+        configure_rhi_process_environment(selected_rhi_backend)
     _configure_qt_logging()
     _configure_linux_desktop_integrations()
-    if using_xwayland_for_vulkan:
-        logging.getLogger("ImproveImgSLI.rhi").warning(
-            "Vulkan QRhiWidget requested in a Wayland session; using the xcb "
-            "QPA plugin because the verified Qt 6.11.1/GNOME/NVIDIA setup "
-            "loses top-level window controls on native Wayland."
-        )
 
     if args.enable_logging or args.disable_logging:
         app_instance = QApplication.instance()

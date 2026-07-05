@@ -1,4 +1,7 @@
 {
+  "session_picker": {
+    "tab_name": "Nova Aba"
+  },
   "title": "Criar área de trabalho",
   "subtitle": "Escolha um tipo de sessão para começar",
   "types": {

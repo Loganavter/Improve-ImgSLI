@@ -121,17 +121,13 @@ def magnifier_orientation_middle_click_handler(presenter) -> None:
         )
         button.set_saved_value(None)
         button.blockSignals(True)
-        button._scroll_value = target_value
-        button._checked = False
-        button.update()
+        button.set_value(target_value)
         button.blockSignals(False)
         set_magnifier_divider_thickness(presenter, target_value)
     else:
         button.set_saved_value(current_value)
         button.blockSignals(True)
-        button._scroll_value = 0
-        button._checked = True
-        button.update()
+        button.set_value(0)
         button.blockSignals(False)
         set_magnifier_divider_thickness(presenter, 0)
 

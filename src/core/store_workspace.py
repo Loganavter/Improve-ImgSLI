@@ -136,6 +136,20 @@ class WorkspaceStoreMixin:
         if slot_name in session.state_slots:
             return session.state_slots[slot_name]
 
+        registry = self._slot_factory_registry()
+        registered = registry.get(slot_name)
+        if factory is not None and registered is not None and factory is not registered:
+            raise RuntimeError(
+                f"State slot '{slot_name}' has two different factories: "
+                f"its SessionBlueprint registered {registered!r}, but this call "
+                f"passed {factory!r}. A state slot must have exactly one factory "
+                "for its whole lifetime (declared once in the SessionBlueprint); "
+                "reuse that same function at every ensure_session_state_slot call "
+                "site instead of defining a second, independent default."
+            )
+        if factory is not None:
+            registry.setdefault(slot_name, factory)
+
         value = factory() if factory is not None else default
         session.state_slots[slot_name] = value
         if emit_change:
@@ -344,13 +358,33 @@ class WorkspaceStoreMixin:
         self.document = session.document
         self.viewport = session.viewport
 
+    def _slot_factory_registry(self) -> dict[str, Callable]:
+        """Per-slot-name factory registered by session blueprints.
+
+        Backs the single-factory guard in ``ensure_session_state_slot``: a
+        slot's initial value must always come from the same callable,
+        whether it's produced eagerly (blueprint, at session creation) or
+        lazily (a tab's own fallback factory). Two different factories for
+        the same slot silently diverging is exactly the bug class that let
+        multi-compare's divider color reset on every new session — see
+        docs/dev history for that incident.
+        """
+        registry = getattr(self, "_session_slot_factories", None)
+        if registry is None:
+            registry = {}
+            self._session_slot_factories = registry
+        return registry
+
     def _apply_session_blueprint(
         self, session: WorkspaceSession, blueprint: SessionBlueprint
     ) -> None:
+        registry = self._slot_factory_registry()
         for slot in blueprint.state_slots:
             session.state_slots[slot.name] = (
                 slot.factory() if slot.factory is not None else slot.default
             )
+            if slot.factory is not None:
+                registry.setdefault(slot.name, slot.factory)
 
         for resource in blueprint.resource_namespaces:
             session.resources[resource.namespace] = dict(resource.entries)

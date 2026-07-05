@@ -44,7 +44,6 @@ class Ui_ImageComparisonApp:
         self.workspace_tabs = WorkspaceTabStrip(
             add_icon=AppIcon.ADD,
             close_icon=AppIcon.CLOSE,
-            add_button_menu=[],
             parent=main_window,
         )
         self.btn_new_session = self.workspace_tabs.add_button

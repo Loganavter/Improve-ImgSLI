@@ -172,7 +172,8 @@ def _connect_magnifier_color_controls(presenter):
         presenter.ui.btn_magnifier_guides_simple.toggled.connect(
             lambda checked: on_magnifier_guides_toggled(presenter, checked)
         )
-    # TODO: btn_magnifier_guides_width.valueChanged removed with Button 0.2.16 scroll feature
+    # btn_magnifier_guides_width.valueChanged is wired in
+    # presenters/toolbar/connections.py (control_id "guides.thickness").
 
 
 def _on_font_flyout_interaction_started(presenter, slider_name: str) -> None:
