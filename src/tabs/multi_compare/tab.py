@@ -81,7 +81,6 @@ def _default_state():
         _last_session_settings = _load_last_settings()
     if _last_session_settings is not None:
         divider, label = _last_session_settings
-        logger.warning(
         return MultiCompareState(divider_settings=divider, label_settings=label)
     return MultiCompareState()
 
