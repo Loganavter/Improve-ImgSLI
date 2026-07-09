@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from ui.canvas_infra.viewport.contract import (
     CanvasViewportFeature,
     DisplaySplitPositionRequest,
@@ -7,7 +9,9 @@ from ui.canvas_infra.viewport.contract import (
     SplitPositionForViewTransformRequest,
     WheelZoomRequest,
 )
-from ui.canvas_infra.viewport.geometry import QuickContentRect, build_content_rect
+from ui.canvas_infra.viewport.geometry import QuickContentRect, resolve_axis_position
+
+_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 def _resolve_content_rect(
     *,
@@ -17,13 +21,26 @@ def _resolve_content_rect(
     image_width: int,
     image_height: int,
 ) -> QuickContentRect | None:
+    """Every real call site now resolves and passes an explicit
+    ``content_rect`` (sourced from ``_inner_content_rect_px``/
+    ``_content_rect_px``, already feature-padding-aware — see
+    docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md). This is only a defensive
+    fallback for a caller that hasn't resolved one yet; it deliberately does
+    *not* know about virtual-canvas padding — a caller needing padding-aware
+    geometry must call ``resolve_canvas_content_geometry`` itself and pass
+    the result in, not rely on this bare letterbox fit."""
     if request_content_rect is not None:
         return request_content_rect
-    return build_content_rect(
-        widget_width=widget_width,
-        widget_height=widget_height,
-        image_width=image_width,
-        image_height=image_height,
+    if widget_width <= 0 or widget_height <= 0 or image_width <= 0 or image_height <= 0:
+        return None
+    ratio = min(widget_width / image_width, widget_height / image_height)
+    content_width = max(1.0, image_width * ratio)
+    content_height = max(1.0, image_height * ratio)
+    return QuickContentRect(
+        x=(widget_width - content_width) / 2.0,
+        y=(widget_height - content_height) / 2.0,
+        width=content_width,
+        height=content_height,
     )
 
 def compute_zoom_display_split_position(request: DisplaySplitPositionRequest) -> float | None:
@@ -38,23 +55,24 @@ def compute_zoom_display_split_position(request: DisplaySplitPositionRequest) ->
         return max(0.0, min(1.0, float(request.split_visual)))
 
     if request.is_horizontal:
-        base = (
-            content_rect.y + (content_rect.height * float(request.split_visual))
+        base = resolve_axis_position(
+            content_rect.y, content_rect.height, request.split_visual
         ) / max(1.0, float(request.widget_height))
         pan = float(request.pan_offset_y)
     else:
-        base = (
-            content_rect.x + (content_rect.width * float(request.split_visual))
+        base = resolve_axis_position(
+            content_rect.x, content_rect.width, request.split_visual
         ) / max(1.0, float(request.widget_width))
         pan = float(request.pan_offset_x)
 
     if float(request.zoom_level) <= 1.0:
         pan = 0.0
 
-    return max(
+    result = max(
         0.0,
         min(1.0, (base - 0.5 + pan) * float(request.zoom_level) + 0.5),
     )
+    return result
 
 def compute_zoom_split_position_for_view_transform(
     request: SplitPositionForViewTransformRequest,
@@ -78,13 +96,13 @@ def compute_zoom_split_position_for_view_transform(
         return None
 
     if request.is_horizontal:
-        base = (
-            content_rect.y + content_rect.height * float(request.split_position_visual)
+        base = resolve_axis_position(
+            content_rect.y, content_rect.height, request.split_position_visual
         ) / max(1.0, float(request.widget_height))
         old_pan = float(request.current_pan_y)
     else:
-        base = (
-            content_rect.x + content_rect.width * float(request.split_position_visual)
+        base = resolve_axis_position(
+            content_rect.x, content_rect.width, request.split_position_visual
         ) / max(1.0, float(request.widget_width))
         old_pan = float(request.current_pan_x)
 

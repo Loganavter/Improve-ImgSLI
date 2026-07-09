@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-from .gl_pass_contract import RenderPhase
+from .pass_contract import RenderPhase
 
 class CanvasStackLayer(IntEnum):
     ALWAYS_BOTTOM = 0

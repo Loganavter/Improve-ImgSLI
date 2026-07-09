@@ -17,8 +17,8 @@ from ui.canvas_infra.scene.stacking_policy import (
     resolve_gl_pass_order,
     resolve_scene_object_order,
 )
-from ui.canvas_infra.scene.gl_pass_contract import (
-    CanvasGLRenderPass,
+from ui.canvas_infra.scene.pass_contract import (
+    CanvasRenderPassBase,
     RenderPhase,
     SceneVisibility,
 )
@@ -190,10 +190,10 @@ class TestMagnifierInterpMode:
         assert hint.active_bias is True
         assert hint.selectable_when_hidden is True
 
-class TestCanvasGLRenderPass:
+class TestCanvasRenderPassBase:
 
     def test_stack_role_resolution(self):
-        p = CanvasGLRenderPass()
+        p = CanvasRenderPassBase()
         p.stack_role = CanvasStackRole.HUD_LABEL
         phase, pri = p.resolved_layer_and_priority()
         expected_phase, expected_pri = resolve_gl_pass_order(CanvasStackRole.HUD_LABEL)
@@ -201,12 +201,12 @@ class TestCanvasGLRenderPass:
         assert pri == expected_pri
 
     def test_stack_role_is_required(self):
-        p = CanvasGLRenderPass()
+        p = CanvasRenderPassBase()
         with pytest.raises(ValueError, match="must declare stack_role"):
             p.resolved_layer_and_priority()
 
     def test_visibility_defaults_to_all(self):
-        p = CanvasGLRenderPass()
+        p = CanvasRenderPassBase()
         assert p.visibility == SceneVisibility.ALL
 
 class TestRenderExecutorOrdering:
@@ -226,7 +226,7 @@ class TestRenderExecutorOrdering:
         ]
         passes = []
         for role in reversed(roles_in_expected_order):
-            p = CanvasGLRenderPass()
+            p = CanvasRenderPassBase()
             p.stack_role = role
             passes.append(p)
 
@@ -239,7 +239,7 @@ class TestRenderExecutorOrdering:
 
         painted: list[str] = []
 
-        class _Pass(CanvasGLRenderPass):
+        class _Pass(CanvasRenderPassBase):
             def __init__(self, name: str, visibility: SceneVisibility):
                 self.name = name
                 self.visibility = visibility
@@ -287,15 +287,15 @@ class TestFeatureGLPassesUseStackRole:
 
     def test_all_discovered_passes_have_stack_role(self):
         import tabs.image_compare.canvas.features as features_pkg
-        from ui.canvas_infra.scene.gl_pass_registry import get_canvas_gl_render_passes
-        from ui.canvas_infra.scene.gl_pass_registry import (
-            register_canvas_gl_pass_feature_package,
+        from ui.canvas_infra.scene.pass_registry import get_canvas_render_passes
+        from ui.canvas_infra.scene.pass_registry import (
+            register_canvas_render_pass_feature_package,
         )
 
-        register_canvas_gl_pass_feature_package(features_pkg)
-        get_canvas_gl_render_passes.cache_clear()
-        passes = get_canvas_gl_render_passes()
-        assert len(passes) >= 5, f"Expected at least 5 GL passes, got {len(passes)}"
+        register_canvas_render_pass_feature_package(features_pkg)
+        get_canvas_render_passes.cache_clear()
+        passes = get_canvas_render_passes()
+        assert len(passes) >= 5, f"Expected at least 5 render passes, got {len(passes)}"
 
         for p in passes:
             assert p.stack_role is not None, (
@@ -316,8 +316,8 @@ class TestFeatureGLPassesUseStackRole:
                 f"expected SceneVisibility-compatible flag"
             )
 
-    def test_no_hardcoded_layer_priority_in_feature_gl_passes(self):
-        """Ensure no feature gl_passes.py contains raw layer= or priority= on pass classes."""
+    def test_no_hardcoded_layer_priority_in_feature_passes(self):
+        """Ensure no feature passes.py contains raw layer= or priority= on pass classes."""
         import re
 
         features_root = os.path.join(
@@ -336,17 +336,17 @@ class TestFeatureGLPassesUseStackRole:
         for entry in os.scandir(features_root):
             if not entry.is_dir():
                 continue
-            gl_passes_path = os.path.join(entry.path, "gl_passes.py")
-            if not os.path.isfile(gl_passes_path):
+            passes_path = os.path.join(entry.path, "passes.py")
+            if not os.path.isfile(passes_path):
                 continue
-            with open(gl_passes_path, encoding="utf-8") as f:
+            with open(passes_path, encoding="utf-8") as f:
                 content = f.read()
             matches = pattern.findall(content)
             if matches:
-                violations.append(f"{entry.name}/gl_passes.py: {matches}")
+                violations.append(f"{entry.name}/passes.py: {matches}")
 
         assert not violations, (
-            "Feature gl_passes.py files still contain hardcoded layer/priority:\n"
+            "Feature passes.py files still contain hardcoded layer/priority:\n"
             + "\n".join(violations)
         )
 

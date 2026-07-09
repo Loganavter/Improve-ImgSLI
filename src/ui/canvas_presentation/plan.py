@@ -77,6 +77,16 @@ class CanvasRenderPlan:
     display_cache_key: tuple | None = None
     output_scale: float = 1.0
     preserve_zoom: bool = False
+    image_is_padded_composite: bool = False
+    """
+    Set by the plan builder (never inferred downstream). ``True`` means
+    ``image1``/``image2`` already have virtual-canvas padding baked into
+    their pixels (dimensions == ``canvas_w x canvas_h``, real content offset
+    inside via ``gl_scene.overlay_clip_rect``) — the export/video-snapshot
+    shape. ``False`` (default) means they are the raw, unpadded source pair —
+    the live/interactive shape, where ``canvas_w/h`` may still exceed the
+    image for overlay-positioning (magnifier) purposes only.
+    """
     composition_root: CompositionNode | None = None
     """
     Optional composition tree describing N-layer frames (multi-compare grid,

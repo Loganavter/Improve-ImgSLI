@@ -46,7 +46,7 @@ def test_paste_overlay_pass_has_compiled_shaders():
 
 def test_paste_overlay_pass_registered_for_qrhi():
     from tabs.image_compare.tab import ImageCompareTab
-    from ui.canvas_infra.scene.gl_pass_registry import get_canvas_render_passes
+    from ui.canvas_infra.scene.pass_registry import get_canvas_render_passes
 
     ImageCompareTab().register_canvas_features()
     names = {type(p).__name__ for p in get_canvas_render_passes()}

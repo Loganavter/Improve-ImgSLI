@@ -60,7 +60,7 @@ def _make_scene():
 def test_apply_magnifier_objects_omits_interactive_payloads_in_export(monkeypatch):
     from tabs.image_compare.canvas.features.magnifier.feature import apply_magnifier_objects
     from ui.canvas_infra.scene.context import CanvasSceneApplyContext
-    from ui.canvas_infra.scene.gl_pass_contract import SceneVisibility
+    from ui.canvas_infra.scene.pass_contract import SceneVisibility
 
     store = _make_store()
     canvas = _make_canvas(store)
@@ -96,7 +96,7 @@ def test_apply_magnifier_objects_omits_interactive_payloads_in_export(monkeypatc
 def test_apply_magnifier_objects_keeps_interactive_payloads_in_interactive(monkeypatch):
     from tabs.image_compare.canvas.features.magnifier.feature import apply_magnifier_objects
     from ui.canvas_infra.scene.context import CanvasSceneApplyContext
-    from ui.canvas_infra.scene.gl_pass_contract import SceneVisibility
+    from ui.canvas_infra.scene.pass_contract import SceneVisibility
 
     store = _make_store()
     canvas = _make_canvas(store)

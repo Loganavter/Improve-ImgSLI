@@ -31,11 +31,11 @@ class TestAutoDiscovery:
         names = [f.name for f in get_canvas_scene_features()]
         assert "_template" not in names
 
-    def test_template_excluded_from_gl_passes(self):
-        from ui.canvas_infra.scene.gl_pass_registry import get_canvas_gl_render_passes
+    def test_template_excluded_from_render_passes(self):
+        from ui.canvas_infra.scene.pass_registry import get_canvas_render_passes
 
-        get_canvas_gl_render_passes.cache_clear()
-        passes = get_canvas_gl_render_passes()
+        get_canvas_render_passes.cache_clear()
+        passes = get_canvas_render_passes()
 
         for p in passes:
             assert "_template" not in type(p).__module__
@@ -62,7 +62,7 @@ class TestAutoDiscovery:
         registry_files = [
             "ui/canvas_infra/scene/widget_registry.py",
             "ui/canvas_infra/scene/feature_registry.py",
-            "ui/canvas_infra/scene/gl_pass_registry.py",
+            "ui/canvas_infra/scene/pass_registry.py",
         ]
         feature_list_pattern = re.compile(
             r"""["'](capture|divider|guides|magnifier|filename_overlay)["']"""
@@ -97,12 +97,12 @@ class TestFeatureContracts:
             assert callable(f.reduce_view_state), f"{f.name}: missing reduce_view_state"
             assert callable(f.reduce_render_config), f"{f.name}: missing reduce_render_config"
 
-    def test_all_gl_passes_have_stack_role(self):
-        from ui.canvas_infra.scene.gl_pass_registry import get_canvas_gl_render_passes
+    def test_all_render_passes_have_stack_role(self):
+        from ui.canvas_infra.scene.pass_registry import get_canvas_render_passes
         from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
-        get_canvas_gl_render_passes.cache_clear()
-        for p in get_canvas_gl_render_passes():
+        get_canvas_render_passes.cache_clear()
+        for p in get_canvas_render_passes():
             assert p.stack_role is not None, (
                 f"{type(p).__name__} missing stack_role"
             )
@@ -127,11 +127,11 @@ class TestTemplateIsValid:
         assert callable(WIDGET_FEATURE.reduce_view_state)
         assert callable(WIDGET_FEATURE.reduce_render_config)
 
-    def test_template_gl_passes_importable(self):
+    def test_template_passes_importable(self):
         import importlib
 
-        mod = importlib.import_module("tabs.image_compare.canvas.features._template.gl_passes")
-        passes = getattr(mod, "GL_RENDER_PASSES", None)
+        mod = importlib.import_module("tabs.image_compare.canvas.features._template.passes")
+        passes = getattr(mod, "RENDER_PASSES", None)
         assert isinstance(passes, list)
 
 class TestFeaturePackageCompleteness:

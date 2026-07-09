@@ -22,7 +22,7 @@ def _build_ctx(*, show_divider: bool, thickness: int, images_uploaded, content_r
     )
 
 def test_divider_does_not_paint_without_uploaded_images():
-    from tabs.image_compare.canvas.features.divider.gl_passes import DividerPass
+    from tabs.image_compare.canvas.features.divider.passes import DividerPass
 
     ctx = _build_ctx(
         show_divider=True,
@@ -34,7 +34,7 @@ def test_divider_does_not_paint_without_uploaded_images():
     assert DividerPass().should_paint(ctx) is False
 
 def test_divider_does_not_paint_without_valid_content_rect():
-    from tabs.image_compare.canvas.features.divider.gl_passes import DividerPass
+    from tabs.image_compare.canvas.features.divider.passes import DividerPass
 
     ctx = _build_ctx(
         show_divider=True,
@@ -46,7 +46,7 @@ def test_divider_does_not_paint_without_valid_content_rect():
     assert DividerPass().should_paint(ctx) is False
 
 def test_divider_paints_only_with_two_images_and_content_rect():
-    from tabs.image_compare.canvas.features.divider.gl_passes import DividerPass
+    from tabs.image_compare.canvas.features.divider.passes import DividerPass
 
     ctx = _build_ctx(
         show_divider=True,
@@ -72,16 +72,16 @@ def test_divider_scene_apply_does_not_write_canvas_runtime_split_line():
 def test_divider_shader_uses_solid_edge_not_alpha_feather():
     """Divider line must not introduce translucent antialias fringes."""
     from pathlib import Path
-    from tabs.image_compare.canvas.features.divider import gl_passes
+    from tabs.image_compare.canvas.features.divider import passes
 
-    source = (Path(gl_passes.__file__).parent / "shaders" / "divider.frag").read_text()
+    source = (Path(passes.__file__).parent / "shaders" / "divider.frag").read_text()
     assert "smoothstep" not in source
     assert "color.a *" not in source
     assert "fragColor = color;" in source
 
 
 def test_divider_is_discovered_as_qrhi_render_pass():
-    from tabs.image_compare.canvas.features.divider.gl_passes import DividerPass
-    from ui.canvas_infra.scene.gl_pass_registry import get_canvas_render_passes
+    from tabs.image_compare.canvas.features.divider.passes import DividerPass
+    from ui.canvas_infra.scene.pass_registry import get_canvas_render_passes
 
     assert any(isinstance(render_pass, DividerPass) for render_pass in get_canvas_render_passes())

@@ -478,9 +478,6 @@ class ImageCompareTab(TabContract):
         from ui.canvas_infra.scene.feature_registry import (
             register_canvas_scene_feature_package,
         )
-        from ui.canvas_infra.scene.gl_pass_registry import (
-            register_canvas_gl_pass_feature_package,
-        )
         from ui.canvas_infra.scene.pass_registry import (
             register_canvas_render_pass_feature_package,
         )
@@ -490,7 +487,6 @@ class ImageCompareTab(TabContract):
 
         register_canvas_scene_feature_package(features_pkg)
         register_canvas_widget_feature_package(features_pkg)
-        register_canvas_gl_pass_feature_package(features_pkg)
         register_canvas_render_pass_feature_package(features_pkg)
 
     def apply_appearance(self, host_window) -> None:

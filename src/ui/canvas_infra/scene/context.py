@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from domain.types import Rect
-from .gl_pass_contract import SceneVisibility
+from .pass_contract import SceneVisibility
 
 @dataclass(frozen=True)
 class CanvasSceneBuildContext:

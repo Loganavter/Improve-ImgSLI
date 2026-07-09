@@ -445,7 +445,8 @@ If you see the symptom and don't remember why this section exists: the fix is `g
 
 **Known residual cases (not currently exposing the symptom, but worth noting):**
 
-- `texture_parts/base_images.py:upload_image` and `feature_overlay_gpu.py:set_feature_overlay_content` still do `qimage.convertToFormat(Format_RGBA8888)` (non-premul). If the source is a `Format_ARGB32_Premultiplied` `QPixmap` with anti-aliased transparent edges (e.g. a PNG with alpha around glyphs/icons), the per-channel unpremul will drift R/G/B independently in the texture. The alpha fix above keeps the FBO alpha clean, but it won't fix RGB drift baked into the source texture itself. If that symptom appears, switch those uploads to `Format_RGBA8888_Premultiplied` AND update the consuming shader (main canvas + magnifier) to either unpremultiply on sample or move to premultiplied blending for that draw — don't half-migrate.
+- `texture_parts/upload_queue.py:queue_prepared_texture_upload` (feeding all base-image texture uploads via `texture_parts/base_images.py`) still does `qimage.convertToFormat(Format_RGBA8888)` (non-premul). If the source is a `Format_ARGB32_Premultiplied` `QPixmap` with anti-aliased transparent edges (e.g. a PNG with alpha around glyphs/icons), the per-channel unpremul will drift R/G/B independently in the texture. The alpha fix above keeps the FBO alpha clean, but it won't fix RGB drift baked into the source texture itself. If that symptom appears, switch those uploads to `Format_RGBA8888_Premultiplied` AND update the consuming shader (main canvas + magnifier) to either unpremultiply on sample or move to premultiplied blending for that draw — don't half-migrate.
+  (`feature_overlay_gpu.py:set_feature_overlay_content` used to do the same conversion but only ever read `.width()/.height()` from the result — no pixel data from it reached a texture. That dead conversion was removed; it was not a live instance of this bug.)
 
 ## Scene Pipeline
 
