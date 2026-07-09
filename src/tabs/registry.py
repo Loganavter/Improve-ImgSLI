@@ -155,7 +155,6 @@ class TabRegistry:
                 page = tab.create_page(stack, context)
                 stack.addWidget(page)
                 self._pages[session_type] = page
-                logger.debug(f"Tab page installed: {session_type}")
             except Exception as e:
                 logger.error(f"Failed to create page for tab '{session_type}': {e}")
 
@@ -199,13 +198,6 @@ class TabRegistry:
         from pathlib import Path as P
         resolved = [P(p) if not isinstance(p, P) else p for p in paths]
         accepts = tab.accepts_drop(resolved)
-        logger.debug(
-            "TabRegistry.route_drop: session_type=%s accepts=%s paths=%s hint=%s",
-            session_type,
-            accepts,
-            resolved,
-            hint,
-        )
         if accepts:
             handled = tab.handle_drop(resolved, hint=hint)
             return bool(True if handled is None else handled)

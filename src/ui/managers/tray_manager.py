@@ -62,7 +62,6 @@ class TrayManager(QObject):
 
             if not self.tray_icon.icon().isNull():
                 self.tray_icon.show()
-                logger.debug("Иконка трея создана и отображена.")
         except Exception as e:
             logger.error(f"Ошибка при создании иконки трея: {e}")
             self.tray_icon = None

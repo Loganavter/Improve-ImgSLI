@@ -128,10 +128,6 @@ class MultiCompareController:
             self.translate("ui.choose_divider_line_color", "Choose divider color"),
             QColorDialog.ColorDialogOption.ShowAlphaChannel,
         )
-        logger.warning(
-            "[divider-color-debug] picker closed: current=%s chosen=%s valid=%s",
-            current.getRgb(), chosen.getRgb(), chosen.isValid(),
-        )
         if chosen.isValid():
             self.widget.apply_divider_color(chosen)
 

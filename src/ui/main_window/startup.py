@@ -147,7 +147,6 @@ class MainWindowStartupRuntime:
         from ui.main_window.layouts import apply_workspace_tabs_visibility
         apply_workspace_tabs_visibility(window.ui)
         image_label = window.ui.image_label
-        logger.debug("Main window UI bootstrapped")
         window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
         window._startup_canvas_first_frame_rendered = False
         window._startup_canvas_first_visual_ready = False
@@ -155,12 +154,6 @@ class MainWindowStartupRuntime:
         window.appearance.update_chrome_background()
         self.show_cover()
         image_label.firstFrameRendered.connect(self.on_image_label_first_frame_rendered)
-        image_label.firstFrameRendered.connect(
-            lambda: logger.debug("Main window received image_label.firstFrameRendered")
-        )
-        image_label.firstVisualFrameReady.connect(
-            lambda: logger.debug("Main window received image_label.firstVisualFrameReady")
-        )
         image_label.firstVisualFrameReady.connect(
             self.on_image_label_first_visual_frame_ready
         )
@@ -304,7 +297,6 @@ class MainWindowStartupRuntime:
         if window._startup_visual_ready_emitted:
             return
         window._startup_visual_ready_emitted = True
-        logger.debug("Main window startupVisualReady emitted")
         window.startupVisualReady.emit()
 
     def on_onboarding_completed(self, mode_key: str) -> None:
