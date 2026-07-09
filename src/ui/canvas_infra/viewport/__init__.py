@@ -5,7 +5,7 @@ from .contract import (
     SplitPositionForViewTransformRequest,
     WheelZoomRequest,
 )
-from .geometry import QuickContentRect, build_content_rect
+from .geometry import QuickContentRect, resolve_axis_position
 from .focus import (
     capture_letterbox_focus,
     letterbox_params,
@@ -37,7 +37,6 @@ __all__ = [
     "QuickContentRect",
     "SplitPositionForViewTransformRequest",
     "WheelZoomRequest",
-    "build_content_rect",
     "capture_letterbox_focus",
     "ZoomViewportState",
     "compute_display_split_position",
@@ -51,6 +50,7 @@ __all__ = [
     "get_pan_offset_x",
     "get_pan_offset_y",
     "get_zoom_level",
+    "resolve_axis_position",
     "set_display_split_position",
     "set_pan_offsets",
     "set_zoom_level",

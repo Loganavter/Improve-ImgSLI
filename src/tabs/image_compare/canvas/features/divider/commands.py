@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 from core.state_management.actions import (
     InvalidateRenderCacheAction,
@@ -13,6 +16,7 @@ from core.state_management.viewport_actions import (
 from domain.qt_adapters import color_to_qcolor
 from domain.types import Color
 from shared.rendering import FeatureLayoutRequirement, NormalizedBounds
+from ui.canvas_infra.viewport.geometry import resolve_axis_position
 
 from .actions import SetDividerThicknessAction, SetDividerVisibleAction
 from .events import (
@@ -91,12 +95,21 @@ def command_build_export_overlay(
     thickness = int(divider_state.thickness)
     split_pos = int(
         round(
-            (content_offset_y + (content_height * float(view.split_position_visual)))
+            resolve_axis_position(
+                content_offset_y, content_height, view.split_position_visual
+            )
             if is_horizontal
-            else (
-                content_offset_x + (content_width * float(view.split_position_visual))
+            else resolve_axis_position(
+                content_offset_x, content_width, view.split_position_visual
             )
         )
+    )
+    _dlog.debug(
+        "command_build_export_overlay is_horizontal=%s split_position_visual=%s "
+        "content_offset=(%s,%s) content_size=%sx%s -> split_pos=%s",
+        is_horizontal, view.split_position_visual,
+        content_offset_x, content_offset_y, content_width, content_height,
+        split_pos,
     )
     return {
         "visible": bool(

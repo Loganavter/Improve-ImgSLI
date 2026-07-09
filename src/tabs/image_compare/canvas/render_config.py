@@ -1,3 +1,5 @@
+import logging
+
 from PySide6.QtCore import QRect
 
 from ui.canvas_infra.viewport.contract import DisplaySplitPositionRequest
@@ -6,6 +8,8 @@ from ui.canvas_infra.viewport.pipeline import compute_display_split_position
 from ui.canvas_infra.viewport.state import set_display_split_position
 
 from ui.widgets.canvas.render_common import widget_px_to_screen_px
+
+_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 
 def update_display_split_position(
@@ -26,33 +30,37 @@ def update_display_split_position(
     img1 = widget.runtime_state._stored_pil_images[0]
     if img1 and w > 0 and h > 0:
         content_rect = None
-        content_rect_px = widget.runtime_state._content_rect_px
+        content_rect_px = (
+            getattr(widget.runtime_state, "_inner_content_rect_px", None)
+            or widget.runtime_state._content_rect_px
+        )
         if content_rect_px:
             cx, cy, cw, ch = content_rect_px
             if cw > 0 and ch > 0:
                 content_rect = QuickContentRect(x=cx, y=cy, width=cw, height=ch)
-        return set_display_split_position(
-            widget,
-            compute_display_split_position(
-                DisplaySplitPositionRequest(
-                    widget_width=w,
-                    widget_height=h,
-                    image_width=img1.width,
-                    image_height=img1.height,
-                    split_visual=scene.split_position_visual,
-                    is_horizontal=scene.is_horizontal,
-                    zoom_level=zoom_level if anchor_to_viewport else 1.0,
-                    pan_offset_x=pan_offset_x if anchor_to_viewport else 0.0,
-                    pan_offset_y=pan_offset_y if anchor_to_viewport else 0.0,
-                    content_rect=content_rect,
-                )
-            ),
+        result = compute_display_split_position(
+            DisplaySplitPositionRequest(
+                widget_width=w,
+                widget_height=h,
+                image_width=img1.width,
+                image_height=img1.height,
+                split_visual=scene.split_position_visual,
+                is_horizontal=scene.is_horizontal,
+                zoom_level=zoom_level if anchor_to_viewport else 1.0,
+                pan_offset_x=pan_offset_x if anchor_to_viewport else 0.0,
+                pan_offset_y=pan_offset_y if anchor_to_viewport else 0.0,
+                content_rect=content_rect,
+            )
         )
+        return set_display_split_position(widget, result)
     return set_display_split_position(widget, scene.split_position_visual)
 
 
 def get_content_rect_screen_px(widget) -> tuple[int, int, int, int] | None:
-    content_rect = widget.runtime_state._content_rect_px
+    content_rect = (
+        getattr(widget.runtime_state, "_inner_content_rect_px", None)
+        or widget.runtime_state._content_rect_px
+    )
     if not content_rect:
         return None
 

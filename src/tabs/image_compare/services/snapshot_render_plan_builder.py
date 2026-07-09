@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 
 from PIL import Image
 from PySide6.QtGui import QColor
+
+_pblog = logging.getLogger("ImproveImgSLI.plan_builder")
 
 from core.store import Store
 from shared.analysis import build_cached_diff_image
@@ -15,12 +18,12 @@ from plugins.video_editor.services.video_export_models import GlobalCanvasBounds
 from shared.rendering import (
     NormalizedBounds,
     TargetSurfaceSpec,
-    resolve_virtual_canvas_layout,
 )
 from tabs.image_compare.canvas.presentation.plan_builder import (
     build_canvas_plan,
     compute_canvas_plan,
 )
+from ui.canvas_infra.scene.layout_requirements import resolve_feature_virtual_layout
 from ui.canvas_infra.scene.widget_registry import (
     get_canvas_feature_command_by_alias,
     get_canvas_feature_commands_by_id,
@@ -46,7 +49,7 @@ def build_divider_export_overlay(
             "color": QColor(),
             "thickness": 0,
         }
-    return command(
+    result = command(
         store,
         scale_x=scale_x,
         scale_y=scale_y,
@@ -55,6 +58,7 @@ def build_divider_export_overlay(
         content_width=content_width,
         content_height=content_height,
     )
+    return result
 
 
 def query_guides_state(view):
@@ -99,20 +103,10 @@ def calculate_still_snapshot_bounds(snap, image1, image2) -> GlobalCanvasBounds:
     temp_store.viewport.geometry_state.pixmap_width = base_w
     temp_store.viewport.geometry_state.pixmap_height = base_h
 
-    requirements = []
-    for build_requirement in get_canvas_feature_commands_by_id(
-        "render.layout_requirement"
-    ):
-        requirement = build_requirement(
-            temp_store,
-            drawing_width=base_w,
-            drawing_height=base_h,
-        )
-        if requirement is not None:
-            requirements.append(requirement)
-
-    if requirements:
-        layout = resolve_virtual_canvas_layout(requirements)
+    layout = resolve_feature_virtual_layout(
+        temp_store, drawing_width=base_w, drawing_height=base_h
+    )
+    if layout is not None:
         pad_left, pad_right, pad_top, pad_bottom = layout.resolve_padding_pixels(
             base_width=base_w,
             base_height=base_h,
@@ -197,17 +191,10 @@ def calculate_global_canvas_bounds(
         temp_store.viewport.geometry_state.pixmap_width = base_w
         temp_store.viewport.geometry_state.pixmap_height = base_h
 
-        requirements = []
-        for build_requirement in build_requirements:
-            requirement = build_requirement(
-                temp_store,
-                drawing_width=base_w,
-                drawing_height=base_h,
-            )
-            if requirement is not None:
-                requirements.append(requirement)
-        if requirements:
-            layout = resolve_virtual_canvas_layout(requirements)
+        layout = resolve_feature_virtual_layout(
+            temp_store, drawing_width=base_w, drawing_height=base_h
+        )
+        if layout is not None and layout.canvas_bounds != layout.content_bounds:
             pad_left, pad_right, pad_top, pad_bottom = layout.resolve_padding_pixels(
                 base_width=base_w,
                 base_height=base_h,
@@ -439,6 +426,7 @@ class SnapshotRenderPlanBuilder:
                 if target_surface is not None
                 else False
             ),
+            image_is_padded_composite=True,
         )
         return plan
 

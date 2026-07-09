@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .context import CanvasSceneApplyContext
-from .gl_pass_contract import SceneVisibility
+from .pass_contract import SceneVisibility
 from .pipeline import SCENE_APPLIERS
 
 def apply_scene_to_canvas(

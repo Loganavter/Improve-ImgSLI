@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QPoint, QPointF
-from PySide6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtGui import QColor, QPixmap
 
 _DEFAULT_FILTER = 9729
 
@@ -69,13 +69,9 @@ def set_feature_overlay_content(
         widget._request_update()
         return
 
-    qimg = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
-
-    _ = qimg
-
     w, h = widget.width(), widget.height()
     if w > 0 and h > 0:
-        pw, ph = qimg.width(), qimg.height()
+        pw, ph = pixmap.width(), pixmap.height()
         x0 = (top_left.x() / w) * 2.0 - 1.0
         x1 = ((top_left.x() + pw) / w) * 2.0 - 1.0
         y1 = 1.0 - (top_left.y() / h) * 2.0

@@ -5,13 +5,21 @@ There are two entry points, exposed as capability aliases:
 - ``overlay.snapshot_normalize`` — called in CROP mode to clamp magnifier
   capture positions so the capture rect stays inside the image bounds.
 - ``overlay.snapshot_apply_virtual_layout`` — called in UNCROP / fit-content
-  mode. Historically this mutated model coordinates to "pre-bake" the
-  virtual-canvas transform into the store; that was wrong because the
-  renderer already handles virtual padding via ``content_offset_x/y``,
-  ``content_w/h``, and ``canvas_w/h`` (see ``layout_plan.py``), and applying
-  the transform a second time at store level produced double shifts. The
-  function now only logs the layout for debugging; coordinate adjustment is
-  the renderer's job.
+  mode. Historically this mutated *magnifier model* coordinates to "pre-bake"
+  the virtual-canvas transform into the store; that was wrong because the
+  magnifier already handles virtual padding via ``content_offset_x/y``,
+  ``content_w/h``, and ``canvas_w/h`` passed straight into ``layout_plan.py``,
+  so mutating model coordinates here produced double shifts for it.
+
+  It also used to hand-roll a re-expression of
+  ``store.viewport.view_state.split_position_visual`` against the padded
+  canvas. That duplicated the one thing
+  ``docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md`` says must never be
+  recombined by hand outside ``ui/canvas_infra/viewport/zoom.py`` — dropped.
+  This function only sets ``store.runtime_cache.overlay_clip_rect`` (via the
+  shared ``resolve_canvas_clip_rect_px`` helper, the single owner of that
+  computation), which is a throwaway snapshot ``Store`` field with no live
+  per-frame pass to populate it otherwise.
 
 The interactive scene and the export scene must produce identical visuals
 given identical inputs (the only intentional asymmetry is that the video
@@ -25,6 +33,7 @@ import logging
 
 from core.store import Store
 from domain.types import Point
+from ui.canvas_infra.scene.frame_geometry import resolve_canvas_clip_rect_px
 
 from .state import get_magnifier_widget_state
 
@@ -73,23 +82,42 @@ def apply_virtual_canvas_layout_to_snapshot_store(
     base_w: int,
     base_h: int,
     virtual_layout,
+    content_offset_x: int = 0,
+    content_offset_y: int = 0,
+    content_w: int | None = None,
+    content_h: int | None = None,
 ) -> None:
-    """No-op debug hook for the uncrop / fit-content path.
+    """Wire the resolved virtual-canvas layout into store/scene-level fields.
 
-    The renderer takes ``content_offset_x/y`` and ``content_w/h`` and produces
-    correct overlay positions on a padded virtual canvas without any
-    per-model adjustment. Likewise ``apply_virtual_canvas_layout_to_scene``
-    in ``tabs/image_compare/services/gpu_export_scene.py`` shifts
-    ``split_position_visual`` and sets ``overlay_clip_rect`` at the scene
-    level. Mutating the store here on top of that would double-compensate.
+    ``base_w``/``base_h`` is the un-padded content box the real image was
+    fitted into; ``content_offset_x/y`` + ``content_w/h`` additionally account
+    for centering when the source had to be scaled down to fit that box (0 /
+    ``None`` when no such extra fit-down happened, i.e. the common case).
+    ``virtual_layout.canvas_bounds`` gives the feature-driven padding around
+    that box, in the same normalized base-image units used everywhere else in
+    the layout contract (see ``shared/rendering/layout_contract.py``).
+
+    Sets:
+    - ``store.runtime_cache.overlay_clip_rect`` — where the real image sits
+      inside the padded canvas, in canvas pixel units. Consumed by
+      ``build_render_scene`` -> ``RenderScene.overlay_clip_rect`` ->
+      ``_inner_content_rect_px`` (divider clip/position, split-position
+      screen mapping, capture-area clamping).
     """
-    canvas_bounds = virtual_layout.canvas_bounds
+    store.runtime_cache.overlay_clip_rect = resolve_canvas_clip_rect_px(
+        virtual_layout,
+        base_width=base_w,
+        base_height=base_h,
+        content_offset_px=(content_offset_x, content_offset_y),
+        content_size_px=(
+            (content_w, content_h) if content_w is not None and content_h is not None else None
+        ),
+    )
+
     _mlog.debug(
-        "snapshot_virtual_layout(noop) base=%sx%s canvas_bounds=(%.4f,%.4f,%.4f,%.4f)",
+        "snapshot_virtual_layout base=%sx%s canvas_bounds=%s clip_rect=%s",
         base_w,
         base_h,
-        float(canvas_bounds.x_min),
-        float(canvas_bounds.y_min),
-        float(canvas_bounds.x_max),
-        float(canvas_bounds.y_max),
+        getattr(virtual_layout, "canvas_bounds", None),
+        store.runtime_cache.overlay_clip_rect,
     )
