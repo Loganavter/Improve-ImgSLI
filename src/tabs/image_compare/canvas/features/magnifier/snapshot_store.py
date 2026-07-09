@@ -113,11 +113,3 @@ def apply_virtual_canvas_layout_to_snapshot_store(
             (content_w, content_h) if content_w is not None and content_h is not None else None
         ),
     )
-
-    _mlog.debug(
-        "snapshot_virtual_layout base=%sx%s canvas_bounds=%s clip_rect=%s",
-        base_w,
-        base_h,
-        getattr(virtual_layout, "canvas_bounds", None),
-        store.runtime_cache.overlay_clip_rect,
-    )

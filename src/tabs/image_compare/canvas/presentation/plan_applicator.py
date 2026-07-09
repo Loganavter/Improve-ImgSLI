@@ -134,12 +134,6 @@ def _compute_inner_content_rect(state, plan):
     # divider whenever padding was active.
     raw_split = float(getattr(plan.gl_scene, "split_position_visual", 0.5))
     inner_split = max(0.0, min(1.0, raw_split))
-
-    _dlog.debug(
-        "_compute_inner_content_rect content_rect=%s clip_rect=%s canvas=%sx%s "
-        "-> inner=%s inner_split=%s",
-        content_rect, clip_rect, plan.canvas_w, plan.canvas_h, inner, inner_split,
-    )
     return inner, inner_split
 
 
