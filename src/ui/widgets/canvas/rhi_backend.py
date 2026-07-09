@@ -67,26 +67,7 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
             getattr(widget.api(), "name", "platform-default"),
         )
     )
-    logger.debug(
-        "%s configured requested=%s api=%s",
-        type(widget).__name__,
-        name,
-        actual_name,
-    )
 
 
 def log_initialized_rhi_widget(widget: QRhiWidget) -> None:
-    rhi = widget.rhi()
-    logger.debug(
-        "%s initialized requested=%s api=%s rhi=%r target=%r size=%s",
-        type(widget).__name__,
-        requested_rhi_backend_name(),
-        widget.api().name,
-        rhi,
-        widget.renderTarget(),
-        (
-            widget.renderTarget().pixelSize()
-            if widget.renderTarget() is not None
-            else None
-        ),
-    )
+    pass

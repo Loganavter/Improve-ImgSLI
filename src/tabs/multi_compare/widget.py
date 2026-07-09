@@ -199,12 +199,6 @@ class MultiCompareWidget(QWidget):
 
     def _sync_divider_toolbar(self) -> None:
         ds = self.store.state.divider_settings
-        logger.warning(
-            "[divider-color-debug] _sync_divider_toolbar: color_rgba=%s has_setUnderlineColor=%s ui_mode=%s",
-            ds.color_rgba,
-            hasattr(self.toolbar.btn_divider_color, "setUnderlineColor"),
-            getattr(self.toolbar, "_ui_mode", "<unset>"),
-        )
         btn = self.toolbar.btn_divider_visible
         btn.blockSignals(True)
         btn.setChecked(not ds.visible)
@@ -219,13 +213,6 @@ class MultiCompareWidget(QWidget):
         color = QColor(*ds.color_rgba)
         if hasattr(self.toolbar.btn_divider_color, "setUnderlineColor"):
             self.toolbar.btn_divider_color.setUnderlineColor(color)
-            logger.warning(
-                "[divider-color-debug] btn_divider_color after setUnderlineColor: "
-                "_underline_color=%s visible=%s size=%s",
-                getattr(self.toolbar.btn_divider_color, "_underline_color", "<no-attr>"),
-                self.toolbar.btn_divider_color.isVisible(),
-                self.toolbar.btn_divider_color.size(),
-            )
         if hasattr(width_btn, "setUnderlineColor"):
             width_btn.setUnderlineColor(color)
 
@@ -259,15 +246,7 @@ class MultiCompareWidget(QWidget):
             thickness=ds.thickness,
             color_rgba=(color.red(), color.green(), color.blue(), color.alpha()),
         )
-        logger.warning(
-            "[divider-color-debug] apply_divider_color: old=%s new=%s",
-            ds.color_rgba, new_ds.color_rgba,
-        )
         self.store.dispatch(actions.set_divider_settings(new_ds))
-        logger.warning(
-            "[divider-color-debug] apply_divider_color: state after dispatch=%s",
-            self.store.state.divider_settings.color_rgba,
-        )
 
     def _sync_font_settings_flyout(self) -> None:
         st = self.state.label_settings

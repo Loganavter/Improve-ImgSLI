@@ -353,10 +353,6 @@ class MainWindowRuntime:
 
     def handle_show(self) -> None:
         window = self.window
-        if window._offscreen_prewarm_active:
-            logger.debug("Main window showEvent (offscreen prewarm)")
-        else:
-            logger.debug("Main window showEvent")
         window.startup_runtime.sync_cover_geometry()
         if window.ui is not None:
             window.ui.image_startup_placeholder.sync_geometry()
