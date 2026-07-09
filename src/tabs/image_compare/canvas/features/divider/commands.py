@@ -104,13 +104,6 @@ def command_build_export_overlay(
             )
         )
     )
-    _dlog.debug(
-        "command_build_export_overlay is_horizontal=%s split_position_visual=%s "
-        "content_offset=(%s,%s) content_size=%sx%s -> split_pos=%s",
-        is_horizontal, view.split_position_visual,
-        content_offset_x, content_offset_y, content_width, content_height,
-        split_pos,
-    )
     return {
         "visible": bool(
             divider_state.visible and str(view.diff_mode or "off") == "off"
