@@ -1,7 +1,13 @@
+import logging
+
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
+from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
+
 from .upload_queue import queue_prepared_texture_upload, queue_texture_upload
+
+_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 
 def upload_image(widget, qimage: QImage, slot_index: int):
@@ -59,10 +65,15 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
         return img.convert("RGBA")
 
     img = img.convert("RGBA")
-    ratio = min(cw / img.width, ch / img.height)
-    nw, nh = max(1, int(img.width * ratio)), max(1, int(img.height * ratio))
-    offset_x = (cw - nw) // 2
-    offset_y = (ch - nh) // 2
+    geometry = resolve_canvas_content_geometry(
+        widget_width=cw,
+        widget_height=ch,
+        image_width=img.width,
+        image_height=img.height,
+        virtual_layout=None,
+    )
+    inner = geometry.inner_rect_px or (0, 0, cw, ch)
+    offset_x, offset_y, nw, nh = inner
     if slot_index >= 0:
 
         state._letterbox_params[slot_index] = (
@@ -72,7 +83,8 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
             nh / float(ch),
         )
         if slot_index == 0:
-            state._content_rect_px = (offset_x, offset_y, nw, nh)
+            state._content_rect_px = geometry.outer_rect_px or (0, 0, cw, ch)
+            state._inner_content_rect_px = inner
             state._clip_overlays_to_content_rect = False
     scaled = img.resize((nw, nh), PilImage.Resampling.BILINEAR)
     result = PilImage.new("RGBA", (cw, ch), (0, 0, 0, 0))
@@ -88,13 +100,22 @@ def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: in
             state._letterbox_params[slot_index] = (0.0, 0.0, 1.0, 1.0)
             if slot_index == 0:
                 state._content_rect_px = (0, 0, max(1, cw), max(1, ch))
+                state._inner_content_rect_px = state._content_rect_px
                 state._clip_overlays_to_content_rect = False
         return
 
-    ratio = min(cw / img.width, ch / img.height)
-    nw, nh = max(1, int(img.width * ratio)), max(1, int(img.height * ratio))
-    offset_x = (cw - nw) // 2
-    offset_y = (ch - nh) // 2
+    geometry = resolve_canvas_content_geometry(
+        widget_width=cw,
+        widget_height=ch,
+        image_width=img.width,
+        image_height=img.height,
+        virtual_layout=None,
+    )
+    inner = geometry.inner_rect_px
+    outer = geometry.outer_rect_px
+    if inner is None or outer is None:
+        return
+    offset_x, offset_y, nw, nh = inner
     if slot_index >= 0:
 
         state._letterbox_params[slot_index] = (
@@ -104,7 +125,8 @@ def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: in
             nh / float(ch),
         )
         if slot_index == 0:
-            state._content_rect_px = (offset_x, offset_y, nw, nh)
+            state._content_rect_px = outer
+            state._inner_content_rect_px = inner
             state._clip_overlays_to_content_rect = False
 
 
@@ -235,6 +257,7 @@ def configure_offscreen_render(
     state._letterbox_params[0] = (0.0, 0.0, 1.0, 1.0)
     state._letterbox_params[1] = (0.0, 0.0, 1.0, 1.0)
     state._content_rect_px = content_rect
+    state._inner_content_rect_px = None
     state._clip_overlays_to_content_rect = False
     state._stored_pil_images = [stored_images[0], stored_images[1]]
     state._source_pil_images = [source_images[0], source_images[1]]

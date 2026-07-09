@@ -8,7 +8,6 @@ from PySide6.QtGui import (
     QRhiBuffer,
     QRhiCommandBuffer,
     QRhiGraphicsPipeline,
-    QRhiScissor,
     QRhiShaderResourceBinding,
     QRhiShaderStage,
     QRhiVertexInputAttribute,
@@ -25,7 +24,7 @@ from ui.canvas_infra.scene.pass_contract import (
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.canvas_infra.viewport.state import get_display_split_position
-from ui.widgets.canvas.render_common import widget_px_to_screen_px
+from tabs.image_compare.canvas.rhi_feature_common import resolve_rhi_scissor
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 _VERTICES = struct.pack(
@@ -57,38 +56,6 @@ def _load_shader(name: str) -> QShader:
     return shader
 
 
-def _divider_clip_rect_px(widget) -> tuple[int, int, int, int] | None:
-    state = widget.runtime_state
-    content_rect = state._content_rect_px
-    if not content_rect:
-        return None
-
-    x, y, width, height = content_rect
-    scene = state._render_scene
-    clip_rect = getattr(scene, "overlay_clip_rect", None)
-    image = state._stored_pil_images[0] if state._stored_pil_images else None
-    if (
-        clip_rect
-        and image is not None
-        and getattr(image, "width", 0) > 0
-        and getattr(image, "height", 0) > 0
-    ):
-        clip_x, clip_y, clip_width, clip_height = clip_rect
-        x += int(round((clip_x / float(image.width)) * width))
-        y += int(round((clip_y / float(image.height)) * height))
-        width = int(round((clip_width / float(image.width)) * width))
-        height = int(round((clip_height / float(image.height)) * height))
-
-    x0, y0 = widget_px_to_screen_px(widget, x, y)
-    x1, y1 = widget_px_to_screen_px(widget, x + width, y + height)
-    return (
-        int(round(min(x0, x1))),
-        int(round(min(y0, y1))),
-        max(0, int(round(abs(x1 - x0)))),
-        max(0, int(round(abs(y1 - y0)))),
-    )
-
-
 class DividerPass(CanvasRenderPass):
     stack_role = CanvasStackRole.UNDERLAY_SPLIT
     visibility = SceneVisibility.ALL
@@ -112,20 +79,17 @@ class DividerPass(CanvasRenderPass):
         color = QColor(payloads.get("divider_color", QColor(255, 255, 255, 255)))
         is_horizontal = bool(getattr(ctx.scene_frame, "is_horizontal", False))
         display_split = float(get_display_split_position(widget) or 0.5)
-        content_rect = widget.runtime_state._content_rect_px
-        if is_horizontal:
-            origin, extent = (
-                (content_rect[1], content_rect[3])
-                if content_rect
-                else (0.0, float(widget.height()))
-            )
-        else:
-            origin, extent = (
-                (content_rect[0], content_rect[2])
-                if content_rect
-                else (0.0, float(widget.width()))
-            )
-        position_px = float(origin) + float(extent) * display_split
+        # display_split (ui.canvas_infra.viewport.state.get_display_split_position)
+        # is already a fully-resolved full-widget fraction: it's written by
+        # update_display_split_position -> compute_zoom_display_split_position,
+        # which itself bakes content_rect/zoom/pan in at the point it's
+        # computed. Per the base-image-anchored-geometry contract (see
+        # QRHI_CANVAS_FEATURES.md "Coordinate Systems"), that output must be
+        # treated as final and multiplied straight against the widget
+        # dimension — recombining it with content_rect_px here a second time
+        # double-applies the letterbox transform.
+        extent = float(widget.height()) if is_horizontal else float(widget.width())
+        position_px = extent * display_split
         return show_divider, position_px, thickness_px, is_horizontal, color
 
     def initialize(self, rhi, target) -> None:
@@ -230,19 +194,16 @@ class DividerPass(CanvasRenderPass):
         resource_updates.updateDynamicBuffer(self.uniform_buffer, 0, block)
 
     def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
-        clip = _divider_clip_rect_px(widget)
-        if clip is None:
-            return
-        x, y, width, height = clip
-        if width <= 0 or height <= 0:
-            return
-        if self.rhi.isYUpInFramebuffer():
-            y = max(0, int(ctx.height) - (y + height))
+        target_size = widget.renderTarget().pixelSize()
         command_buffer.setGraphicsPipeline(self.pipeline)
         command_buffer.setViewport(
-            QRhiViewport(0.0, 0.0, float(ctx.width), float(ctx.height))
+            QRhiViewport(
+                0.0, 0.0, float(target_size.width()), float(target_size.height())
+            )
         )
-        command_buffer.setScissor(QRhiScissor(x, y, width, height))
+        command_buffer.setScissor(
+            resolve_rhi_scissor(widget, self.rhi, ctx, clip_to_content=True)
+        )
         command_buffer.setShaderResources(self.srb)
         command_buffer.setVertexInput(0, [(self.vertex_buffer, 0)])
         command_buffer.draw(4)

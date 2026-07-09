@@ -10,14 +10,15 @@ from PySide6.QtGui import QColor
 
 from core.store import Store
 from tabs.image_compare.state.document import ImageItem
-from shared.rendering import VirtualCanvasLayout, resolve_virtual_canvas_layout
+from shared.rendering import VirtualCanvasLayout
+from ui.canvas_infra.scene.frame_geometry import resolve_canvas_clip_rect_px
+from ui.canvas_infra.scene.layout_requirements import resolve_feature_virtual_layout
 from ui.canvas_infra.scene.property_access import (
     read_canvas_feature_color_by_setting_key,
     read_canvas_feature_setting_by_key,
 )
 from ui.canvas_infra.scene.widget_registry import (
     get_canvas_feature_command_by_alias,
-    get_canvas_feature_commands_by_id,
 )
 from tabs.image_compare.canvas.scene import build_gl_render_scene
 
@@ -55,18 +56,11 @@ def _resolve_overlay_virtual_layout(
     drawing_width: int,
     drawing_height: int,
 ) -> VirtualCanvasLayout | None:
-    requirements = []
-    for build_requirement in get_canvas_feature_commands_by_id(
-        "render.layout_requirement"
-    ):
-        requirement = build_requirement(
-            store,
-            drawing_width=drawing_width,
-            drawing_height=drawing_height,
-        )
-        if requirement is not None:
-            requirements.append(requirement)
-    return resolve_virtual_canvas_layout(requirements)
+    return resolve_feature_virtual_layout(
+        store,
+        drawing_width=drawing_width,
+        drawing_height=drawing_height,
+    )
 
 def _resolve_overlay_padding(
     store,
@@ -156,6 +150,8 @@ def _build_snapshot_store(
         base_h = int(global_bounds.base_height)
         virtual_w = base_w + pad_left + pad_right
         virtual_h = base_h + pad_top + pad_bottom
+        content_offset_x, content_offset_y = 0, 0
+        content_w, content_h = base_w, base_h
         if virtual_w > 0 and virtual_h > 0 and base_w > 0 and base_h > 0:
             fill = fill_color or (0, 0, 0, 0)
             fitted1, fitted2 = source_img1, source_img2
@@ -180,6 +176,8 @@ def _build_snapshot_store(
             display_img2 = _pad_image(
                 fitted2, virtual_w, virtual_h, pad_left + img_offset_x, pad_top + img_offset_y, fill
             )
+            content_offset_x, content_offset_y = img_offset_x, img_offset_y
+            content_w, content_h = img_w, img_h
         apply_virtual_layout = get_canvas_feature_command_by_alias(
             "overlay.snapshot_apply_virtual_layout"
         )
@@ -189,6 +187,10 @@ def _build_snapshot_store(
                 base_w=base_w,
                 base_h=base_h,
                 virtual_layout=global_bounds.to_virtual_layout(),
+                content_offset_x=content_offset_x,
+                content_offset_y=content_offset_y,
+                content_w=content_w,
+                content_h=content_h,
             )
     store.viewport.session_data.image_state.image1 = display_img1
     store.viewport.session_data.image_state.image2 = display_img2
@@ -448,6 +450,7 @@ def build_canvas_plan(
     gl_scene=None,
     divider_thickness_px: int | None = None,
     guides_thickness: int | None = None,
+    image_is_padded_composite: bool = False,
 ) -> CanvasRenderPlan:
     if hasattr(viewport_source, "viewport"):
         store = viewport_source
@@ -467,6 +470,43 @@ def build_canvas_plan(
             fill_color=fill_color,
         )
         vp = store.viewport
+        # ``_build_snapshot_store`` bakes padding into the composited pixels
+        # itself (see ``_pad_image``) exactly when both conditions hold — it
+        # is the ground truth for whether ``display_image1`` is padded here.
+        image_is_padded_composite = image_is_padded_composite or bool(
+            fit_content and global_bounds is not None
+        )
+
+    is_live_default_plan = (
+        hasattr(viewport_source, "viewport")
+        and target_size is None
+        and gl_scene is None
+    )
+    if is_live_default_plan and display_image1 is not None:
+        live_virtual_layout = resolve_feature_virtual_layout(
+            store,
+            drawing_width=display_image1.width,
+            drawing_height=display_image1.height,
+        )
+        live_pad_left, live_pad_right, live_pad_top, live_pad_bottom = (
+            live_virtual_layout.resolve_padding_pixels(
+                base_width=display_image1.width,
+                base_height=display_image1.height,
+            )
+            if live_virtual_layout is not None
+            else (0, 0, 0, 0)
+        )
+        pad_left = live_pad_left
+        pad_top = live_pad_top
+        target_size = (
+            display_image1.width + live_pad_left + live_pad_right,
+            display_image1.height + live_pad_top + live_pad_bottom,
+        )
+        store.runtime_cache.overlay_clip_rect = resolve_canvas_clip_rect_px(
+            live_virtual_layout,
+            base_width=display_image1.width,
+            base_height=display_image1.height,
+        )
 
     canvas_w = target_size[0] if target_size is not None else (display_image1.width if display_image1 is not None else 1)
     canvas_h = target_size[1] if target_size is not None else (display_image1.height if display_image1 is not None else 1)
@@ -547,4 +587,5 @@ def build_canvas_plan(
         fill_rgba=fill_color or None,
         output_scale=float(output_scale or 1.0),
         preserve_zoom=preserve_zoom,
+        image_is_padded_composite=bool(image_is_padded_composite),
     )

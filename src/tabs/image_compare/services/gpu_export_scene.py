@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from shared.rendering import get_effective_export_interpolation_method
 from shared.rendering.tab_canvas_services import build_gl_render_scene
+from ui.canvas_infra.scene.frame_geometry import resolve_canvas_clip_rect_px
 
 
 def build_export_gl_scene(
@@ -58,37 +59,9 @@ def apply_virtual_canvas_layout_to_scene(
     image_w: int,
     image_h: int,
 ):
-    canvas_bounds = virtual_layout.canvas_bounds
-    content_bounds = virtual_layout.content_bounds
-    canvas_width_units = max(float(canvas_bounds.width), 1e-6)
-    canvas_height_units = max(float(canvas_bounds.height), 1e-6)
-
-    if scene.is_horizontal:
-        adjusted_split = (
-            float(scene.split_position_visual) - float(canvas_bounds.y_min)
-        ) / canvas_height_units
-    else:
-        adjusted_split = (
-            float(scene.split_position_visual) - float(canvas_bounds.x_min)
-        ) / canvas_width_units
-
-    clip_x = int(
-        round(
-            (float(content_bounds.x_min) - float(canvas_bounds.x_min))
-            * float(image_w)
-        )
+    clip_rect = resolve_canvas_clip_rect_px(
+        virtual_layout,
+        base_width=image_w,
+        base_height=image_h,
     )
-    clip_y = int(
-        round(
-            (float(content_bounds.y_min) - float(canvas_bounds.y_min))
-            * float(image_h)
-        )
-    )
-    clip_w = max(1, int(round(float(content_bounds.width) * float(image_w))))
-    clip_h = max(1, int(round(float(content_bounds.height) * float(image_h))))
-
-    return replace(
-        scene,
-        split_position_visual=max(0.0, min(1.0, float(adjusted_split))),
-        overlay_clip_rect=(clip_x, clip_y, clip_w, clip_h),
-    )
+    return replace(scene, overlay_clip_rect=clip_rect)

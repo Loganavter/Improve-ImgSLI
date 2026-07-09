@@ -399,22 +399,7 @@ class VideoExporterService:
         )
 
     def _render_snapshot_with_renderer(self, renderer, snap, request: VideoRenderRequest):
-        _vrlog.debug(
-            "render_begin renderer=%s out=%sx%s fit_content=%s ts=%s",
-            "thumbnail" if renderer is self._thumbnail_frame_renderer else "main",
-            request.target_surface.width,
-            request.target_surface.height,
-            request.fit_content,
-            getattr(snap, "timestamp", None),
-        )
         result = renderer.render(snap, request)
-        _vrlog.debug(
-            "render_done renderer=%s out=%sx%s backend=%s",
-            "thumbnail" if renderer is self._thumbnail_frame_renderer else "main",
-            request.target_surface.width,
-            request.target_surface.height,
-            result.backend,
-        )
         self._last_render_backend = result.backend
         return result.image
 

@@ -85,6 +85,7 @@ def compute_split_position_for_view_transform(
     new_zoom: float,
     new_pan_x: float,
     new_pan_y: float,
+    content_rect=None,
 ) -> float | None:
     return compute_split_position_for_view_transform_via_feature(
         SplitPositionForViewTransformRequest(
@@ -100,6 +101,7 @@ def compute_split_position_for_view_transform(
             new_zoom=new_zoom,
             new_pan_x=new_pan_x,
             new_pan_y=new_pan_y,
+            content_rect=content_rect,
         )
     )
 
@@ -266,6 +268,17 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
     )
     split_visual = view_split_visual
 
+    content_rect = None
+    content_rect_px = (
+        getattr(state, "_inner_content_rect_px", None) or state._content_rect_px
+    )
+    if content_rect_px:
+        cx, cy, cw, ch = content_rect_px
+        if cw > 0 and ch > 0:
+            from ui.canvas_infra.viewport.geometry import QuickContentRect
+
+            content_rect = QuickContentRect(x=cx, y=cy, width=cw, height=ch)
+
     new_split = compute_split_position_for_view_transform(
         widget_width=w,
         widget_height=h,
@@ -279,6 +292,7 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
         new_zoom=float(new_zoom),
         new_pan_x=float(new_pan_x),
         new_pan_y=float(new_pan_y),
+        content_rect=content_rect,
     )
     if new_split is not None:
         synced = False
@@ -320,7 +334,7 @@ def set_capture_area(widget, center: QPoint | None, size: int, color=None):
     if center:
         capture_center = QPointF(center)
         capture_radius = size / 2.0
-        content_rect = state._content_rect_px
+        content_rect = getattr(state, "_inner_content_rect_px", None) or state._content_rect_px
 
         if content_rect is not None:
             rect_x, rect_y, rect_w, rect_h = content_rect

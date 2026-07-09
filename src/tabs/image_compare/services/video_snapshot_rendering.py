@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 
 from PIL import Image
 
 from core.tracing import Tracer
+
+_pblog = logging.getLogger("ImproveImgSLI.plan_builder")
 from shared.image_processing.prescale import prescale_pair
 from shared.image_processing.resize import resample_image
 

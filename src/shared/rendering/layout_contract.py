@@ -83,3 +83,4 @@ def resolve_virtual_canvas_layout(
         canvas_bounds=canvas_bounds,
         content_bounds=base_bounds,
     )
+

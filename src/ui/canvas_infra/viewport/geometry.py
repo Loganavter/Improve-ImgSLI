@@ -17,22 +17,10 @@ class QuickContentRect:
     def bottom(self) -> float:
         return self.y + self.height
 
-def build_content_rect(
-    *,
-    widget_width: int,
-    widget_height: int,
-    image_width: int,
-    image_height: int,
-) -> QuickContentRect | None:
-    if widget_width <= 0 or widget_height <= 0 or image_width <= 0 or image_height <= 0:
-        return None
 
-    ratio = min(widget_width / image_width, widget_height / image_height)
-    content_width = max(1.0, image_width * ratio)
-    content_height = max(1.0, image_height * ratio)
-    return QuickContentRect(
-        x=(widget_width - content_width) / 2.0,
-        y=(widget_height - content_height) / 2.0,
-        width=content_width,
-        height=content_height,
-    )
+def resolve_axis_position(offset: float, size: float, fraction: float) -> float:
+    """Where a normalized ``fraction`` along one axis of a rect sits in
+    absolute units. The one primitive every split-position/divider screen
+    mapping is built from — see
+    docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md."""
+    return float(offset) + float(size) * float(fraction)

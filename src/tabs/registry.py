@@ -67,9 +67,8 @@ class TabRegistry:
                                 e,
                             )
                         self._tabs[instance.session_type] = instance
-                        logger.debug(f"Tab discovered: {instance.session_type}")
-            except (ImportError, AttributeError) as e:
-                logger.debug(f"Tab module tabs.{module_name}.tab not loadable: {e}")
+            except (ImportError, AttributeError):
+                pass
 
     def get_tab(self, session_type: str) -> TabContract | None:
         return self._tabs.get(session_type)

@@ -4,11 +4,17 @@ In CROP mode the video pipeline calls ``normalize_snapshot_store`` and expects
 the capture rect to be clamped inside [0..1].
 
 In UNCROP / fit-content mode ``apply_virtual_canvas_layout_to_snapshot_store``
-is INTENTIONALLY a no-op: the renderer takes ``content_offset_x/y`` +
-``content_w/h`` and handles padding natively. Mutating the model on top of
-that produced double-compensation bugs (capture rect drifted, magnifier
-positions/sizes wrong, border thickness off). See the file's docstring for
-the full reasoning.
+must NOT mutate *magnifier-model* coordinates: the renderer takes
+``content_offset_x/y`` + ``content_w/h`` and handles padding natively, and
+mutating the model on top of that produced double-compensation bugs (capture
+rect drifted, magnifier positions/sizes wrong, border thickness off).
+
+It DOES need to mutate the store/scene-level ``overlay_clip_rect`` and
+``split_position_visual`` fields, mirroring what
+``gpu_export_scene.py::apply_virtual_canvas_layout_to_scene`` does for the
+GPU-proxy export path — nothing else populates those fields for the
+snapshot-store path, so leaving them unset desyncs the divider from the
+padded canvas. See the file's docstring for the full reasoning.
 """
 
 from __future__ import annotations
@@ -98,24 +104,27 @@ def test_virtual_layout_does_not_mutate_thickness():
     assert model.border_thickness == 4
     assert model.divider_thickness == 6
 
-def test_virtual_layout_does_not_mutate_split_position():
-    """Uncrop: scene-level mutation in gpu_export_scene handles split shift."""
+def test_virtual_layout_adjusts_split_position_to_padded_canvas():
+    """Uncrop: split_position_visual is re-expressed as a fraction of the
+    full padded canvas, matching gpu_export_scene's formula, since nothing
+    else applies this shift for the snapshot-store path."""
     store, _ = _make_store_with_model()
     store.viewport.view_state.split_position_visual = 0.5
     apply_virtual_canvas_layout_to_snapshot_store(
         store, base_w=800, base_h=600,
         virtual_layout=_make_layout(x_min=-0.25, x_max=1.0),
     )
-    assert store.viewport.view_state.split_position_visual == 0.5
+    assert store.viewport.view_state.split_position_visual == pytest.approx(0.6)
 
-def test_virtual_layout_does_not_publish_clip_rect_on_runtime_cache():
-    """Uncrop: scene-level mutation sets scene.overlay_clip_rect; cache stays untouched."""
+def test_virtual_layout_publishes_clip_rect_on_runtime_cache():
+    """Uncrop: overlay_clip_rect is set so _inner_content_rect_px (divider
+    clip/position, capture-area clamping) can be derived downstream."""
     store, _ = _make_store_with_model()
     store.runtime_cache.overlay_clip_rect = None
     apply_virtual_canvas_layout_to_snapshot_store(
         store, base_w=800, base_h=600, virtual_layout=_make_layout(),
     )
-    assert store.runtime_cache.overlay_clip_rect is None
+    assert store.runtime_cache.overlay_clip_rect == (0, 0, 800, 600)
 
 def test_interpolate_viewport_state_does_not_touch_overlay_clip_rect():
     """ViewportState is slotted; setting .overlay_clip_rect on it raises.

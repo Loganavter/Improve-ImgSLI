@@ -1,15 +1,15 @@
-"""GL pass dogma.
+"""QRhi render pass dogma.
 
-  * each ``gl_passes.py`` must declare ``stack_role``
+  * each ``passes.py`` must declare ``stack_role``
   * no hardcoded ``layer=<int>`` / ``priority=<int>`` (use stack_role via
     ``CanvasStackRole``)
   * no feature-named files under ``shader_sources/`` (feature shaders live in
-    the feature's own ``gl_passes.py``)
+    the feature's own ``passes.py``)
 
-Dogma source: docs/dev/CANVAS_FEATURES.md (GL pass section + anti-patterns).
+Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (render pass section + anti-patterns).
 
-NB: tests/test_stacking_policy.py already covers the *runtime* side of this
-(``TestFeatureGLPassesUseStackRole``); these tests are the *static* check.
+NB: tests/runtime/test_stacking_policy.py already covers the *runtime* side of
+this (``TestFeatureGLPassesUseStackRole``); these tests are the *static* check.
 """
 
 from __future__ import annotations
@@ -64,5 +64,5 @@ def test_shader_sources_does_not_contain_feature_shaders():
     ]
     assert not unexpected, (
         f"unexpected file(s) under shader_sources/ — feature shaders belong "
-        f"in <feature>/gl_passes.py: {unexpected}"
+        f"in <feature>/passes.py: {unexpected}"
     )

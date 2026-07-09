@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QRhiBuffer,
     QRhiGraphicsPipeline,
@@ -62,7 +63,15 @@ def resolve_rhi_scissor(widget, rhi, ctx, *, clip_to_content: bool) -> QRhiSciss
     px_y = int(round(y * dpr))
     px_width = int(round(width * dpr))
     px_height = int(round(height * dpr))
-    if rhi.isYUpInFramebuffer():
+    y_up = rhi.isYUpInFramebuffer()
+    # QRhiWidget always renders into an offscreen texture; for widgets that are
+    # actually shown, Qt's QPainter compositing step (backing store blit) silently
+    # absorbs a Y convention mismatch, so isYUpInFramebuffer() alone is correct.
+    # Widgets that are never shown (WA_DontShowOnScreen, used for grabFramebuffer()-only
+    # rendering such as the GPU export/preview canvas) skip that compositing step, so the
+    # raw scissor Y must be flipped regardless of what isYUpInFramebuffer() reports.
+    never_shown = widget.testAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
+    if y_up or never_shown:
         framebuffer_height = int(round(float(ctx.height) * dpr))
         px_y = max(0, framebuffer_height - (px_y + px_height))
     return QRhiScissor(px_x, px_y, px_width, px_height)
