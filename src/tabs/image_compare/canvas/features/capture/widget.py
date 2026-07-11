@@ -18,13 +18,13 @@ from ui.canvas_infra.scene.widget_contract import (
     CanvasWidgetFeature,
 )
 
-from .actions import (
+from tabs.image_compare.canvas.features.capture.input.actions import (
     SetCaptureColorAction,
     SetCaptureSizeRelativeAction,
     SetCaptureVisibleAction,
 )
-from .events import SettingsSetCaptureColorEvent, SettingsToggleCaptureVisibilityEvent
-from .state import (
+from tabs.image_compare.canvas.features.capture.input.events import SettingsSetCaptureColorEvent, SettingsToggleCaptureVisibilityEvent
+from tabs.image_compare.canvas.features.capture.state.feature_state import (
     CaptureWidgetState,
     get_capture_widget_state,
     replace_capture_widget_state,
