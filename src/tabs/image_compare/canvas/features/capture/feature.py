@@ -13,8 +13,8 @@ from ui.canvas_infra.scene.feature_contract import (
 from ui.canvas_infra.scene.models import CanvasSceneGraph, CanvasSceneObject
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
-from .scene_objects import CaptureSceneObject
-from .state import get_capture_widget_state
+from tabs.image_compare.canvas.features.capture.scene.objects import CaptureSceneObject
+from tabs.image_compare.canvas.features.capture.state.feature_state import get_capture_widget_state
 
 CAPTURE_Z_ORDER = CanvasFeatureZOrder(
     stack_role=CanvasStackRole.ANNOTATION_RING,
