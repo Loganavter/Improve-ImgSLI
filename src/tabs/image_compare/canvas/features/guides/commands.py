@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.state_management.actions import InvalidateRenderCacheAction
+from tabs.image_compare.canvas.registry import registry
 
 from .actions import (
     SetGuidesEnabledAction,
@@ -11,6 +12,18 @@ from .actions import (
     SetGuidesThicknessAction,
 )
 from .state import get_guides_widget_state
+
+
+def _sync_active_laser_enabled(store, enabled: bool) -> None:
+    # Scrolling the thickness slider to 0 must also clear the active
+    # magnifier's show_laser flag, mirroring what clicking the toggle does —
+    # otherwise sync_guides_toolbar_state() sees show_laser still True and
+    # forces the slider back to a minimum of 1, so it can never reach 0.
+    if store is None:
+        return
+    cmd = registry().get_feature_command_by_alias("overlay.set_active_laser_enabled")
+    if cmd is not None:
+        cmd(store, bool(enabled))
 
 
 def command_build_render_canvas_payload(store) -> dict[str, Any]:
@@ -62,6 +75,8 @@ def command_toggle_guides(actions, enabled: bool) -> None:
 
 def command_set_guides_thickness(actions, thickness: int) -> None:
     thickness = max(0, int(thickness))
+    store = getattr(actions, "store", None)
+    _sync_active_laser_enabled(store, thickness != 0)
     settings = getattr(actions, "settings", None)
     if settings is not None and hasattr(settings, "execute_canvas_feature_command"):
         settings.execute_canvas_feature_command(
@@ -70,7 +85,6 @@ def command_set_guides_thickness(actions, thickness: int) -> None:
             thickness,
         )
         return
-    store = getattr(actions, "store", None)
     dispatcher = getattr(store, "_dispatcher", None) if store is not None else None
     if dispatcher is not None:
         dispatcher.dispatch(SetGuidesThicknessAction(thickness), scope="viewport")
@@ -128,6 +142,7 @@ def command_viewport_set_smoothing_interpolation_method(store, method: str) -> N
 
 def command_viewport_set_guides_thickness(store, thickness: int) -> None:
     thickness = max(0, int(thickness))
+    _sync_active_laser_enabled(store, thickness != 0)
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
         dispatcher.dispatch(SetGuidesThicknessAction(thickness), scope="viewport")

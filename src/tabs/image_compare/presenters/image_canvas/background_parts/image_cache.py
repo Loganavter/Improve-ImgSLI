@@ -35,9 +35,10 @@ def ensure_images_unified(presenter, source1, source2):
         or id(source1) != last_s1
         or id(source2) != last_s2
     ):
+        document = presenter.store.get_session_state_slot("document")
         cache_key = (
-            presenter.store.document.image1_path,
-            presenter.store.document.image2_path,
+            document.image1_path,
+            document.image2_path,
         )
         cache = presenter.store.viewport.session_data.render_cache.unified_image_cache
         if cache_key in cache:

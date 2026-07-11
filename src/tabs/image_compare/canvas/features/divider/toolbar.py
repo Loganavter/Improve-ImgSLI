@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 
@@ -11,6 +13,8 @@ from .events import (
     SettingsToggleDividerVisibilityEvent,
 )
 from .state import DividerWidgetState, get_divider_widget_state
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def get_settings_presenter_from_window(presenter):

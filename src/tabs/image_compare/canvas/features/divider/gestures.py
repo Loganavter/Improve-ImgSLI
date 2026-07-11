@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt
 
 from events.canvas_input.owner_ids import SPLIT_DRAG_OWNER
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureGestureBinding
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 
 from .interaction import apply_split_drag
 
@@ -29,7 +29,7 @@ def _is_split_dragging(store) -> bool:
 
 
 def _begin_split_drag(handler, local_pos) -> None:
-    cmd = get_canvas_feature_command_by_alias("splitter.begin_drag")
+    cmd = registry().get_feature_command_by_alias("splitter.begin_drag")
     if cmd is not None:
         cmd(handler)
     apply_split_drag(handler, local_pos)
@@ -40,7 +40,7 @@ def _update_split_drag(handler, local_pos) -> None:
 
 
 def _end_split_drag(handler) -> None:
-    cmd = get_canvas_feature_command_by_alias("splitter.end_drag")
+    cmd = registry().get_feature_command_by_alias("splitter.end_drag")
     if cmd is not None:
         cmd(handler)
 

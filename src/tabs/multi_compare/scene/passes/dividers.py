@@ -2,22 +2,28 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QRectF
+from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QPainter, QPalette
 
-from tabs.multi_compare.services.composition_builder import DEFAULT_SPLIT_GAP_PX
-from tabs.multi_compare.ui import layout_geometry
+from ui.widgets.canvas.render_metrics import resolve_relative_px
 
 
 class DividersOverlaySource:
-    """Paints every split gap as an explicit framebuffer overlay."""
+    """Paints every split gap as an explicit framebuffer overlay.
+
+    Reads gap geometry and styling entirely from the resolved
+    ``ResolvedComposition`` (``composition.gaps`` / ``composition.divider_settings``)
+    baked in by ``build_composition_plan`` — the same immutable snapshot the
+    live canvas and the offscreen exporter both build from source state, so
+    neither path needs a populated ``widget.state`` to draw dividers correctly.
+    """
 
     MIN_THICKNESS_FB = 1.0
 
-    def should_paint(self, composition, state) -> bool:
-        if composition is None or getattr(state, "root", None) is None:
+    def should_paint(self, composition) -> bool:
+        if composition is None or not composition.gaps:
             return False
-        settings = getattr(state, "divider_settings", None)
+        settings = getattr(composition, "divider_settings", None)
         if settings is not None and not settings.visible:
             return False
         return True
@@ -28,19 +34,19 @@ class DividersOverlaySource:
         *,
         host,
         composition,
-        state,
         scale: float,
         offset: tuple[float, float],
+        framebuffer_size: tuple[float, float],
     ) -> None:
         rects = self.projected_divider_rects(
             composition=composition,
-            state=state,
             scale=scale,
             offset=offset,
+            framebuffer_size=framebuffer_size,
         )
         if not rects:
             return
-        color = self._divider_color(host, state)
+        color = self._divider_color(host, composition)
         ox, oy = offset
         canvas_clip = QRectF(
             ox, oy, composition.canvas_w * scale, composition.canvas_h * scale
@@ -56,58 +62,66 @@ class DividersOverlaySource:
         self,
         *,
         composition,
-        state,
         scale: float,
         offset: tuple[float, float],
+        framebuffer_size: tuple[float, float],
     ) -> tuple[QRectF, ...]:
-        if composition is None or getattr(state, "root", None) is None:
+        if composition is None or not composition.gaps:
             return ()
-        if getattr(state, "is_focused", False):
-            return ()
-
-        canvas_rect = QRect(0, 0, int(composition.canvas_w), int(composition.canvas_h))
-        gaps = layout_geometry.drop_gaps(
-            state.root,
-            canvas_rect,
-            gap=int(DEFAULT_SPLIT_GAP_PX),
-        )
-        settings = getattr(state, "divider_settings", None)
+        settings = getattr(composition, "divider_settings", None)
         thickness_override = float(settings.thickness) if settings is not None else None
+        fb_w, fb_h = framebuffer_size
+        short_edge_fb = min(max(0.0, float(fb_w)), max(0.0, float(fb_h)))
         return tuple(
             self._project_gap(
-                split.direction, gap_rect, scale, offset, thickness_override
+                gap.direction, gap.rect, scale, offset, thickness_override, short_edge_fb
             )
-            for split, _path, _index, gap_rect in gaps
+            for gap in composition.gaps
         )
 
     def _project_gap(
         self,
         direction: str,
-        rect: QRect,
+        rect: tuple[int, int, int, int],
         scale: float,
         offset: tuple[float, float],
-        thickness_canvas: float | None = None,
+        thickness_du: float | None = None,
+        short_edge_fb: float = 1000.0,
     ) -> QRectF:
         ox, oy = offset
-        x = ox + rect.x() * scale
-        y = oy + rect.y() * scale
-        w = rect.width() * scale
-        h = rect.height() * scale
+        rx, ry, rw, rh = rect
+        x = ox + rx * scale
+        y = oy + ry * scale
+        w = rw * scale
+        h = rh * scale
+        # thickness_du is a "du" value (design units against a 1000px
+        # reference short edge, same convention as image_compare's
+        # guides_stroke_du) — it scales with the current render target
+        # (framebuffer_size), not with the composition's fixed native canvas
+        # size, so preview and export stay visually WYSIWYG.
         if direction == "h":
             thickness = max(self.MIN_THICKNESS_FB, w)
-            if thickness_canvas is not None:
-                thickness = max(self.MIN_THICKNESS_FB, thickness_canvas)
+            if thickness_du is not None:
+                thickness = max(
+                    self.MIN_THICKNESS_FB,
+                    resolve_relative_px(thickness_du, short_edge_px=short_edge_fb),
+                )
             center = x + w * 0.5
             return QRectF(center - thickness * 0.5, y, thickness, max(1.0, h))
         thickness = max(self.MIN_THICKNESS_FB, h)
-        if thickness_canvas is not None:
-            thickness = max(self.MIN_THICKNESS_FB, thickness_canvas)
+        if thickness_du is not None:
+            thickness = max(
+                self.MIN_THICKNESS_FB,
+                resolve_relative_px(thickness_du, short_edge_px=short_edge_fb),
+            )
         center = y + h * 0.5
         return QRectF(x, center - thickness * 0.5, max(1.0, w), thickness)
 
-    def _divider_color(self, host, state=None) -> QColor:
+    def _divider_color(self, host, composition=None) -> QColor:
         settings = (
-            getattr(state, "divider_settings", None) if state is not None else None
+            getattr(composition, "divider_settings", None)
+            if composition is not None
+            else None
         )
         if settings is not None:
             r, g, b, a = settings.color_rgba

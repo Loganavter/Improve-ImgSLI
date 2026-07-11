@@ -1,6 +1,3 @@
-from shared.analysis.background_layers import (
-    build_cached_diff_image,
-)
 from shared.analysis.channel_analyzer import extract_channel
 from shared.analysis.differ import (
     create_grayscale_diff,
@@ -23,5 +20,4 @@ __all__ = [
     "create_ssim_map",
     "create_edge_map",
     "extract_channel",
-    "build_cached_diff_image",
 ]

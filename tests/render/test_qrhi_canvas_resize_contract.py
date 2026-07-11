@@ -7,9 +7,9 @@ from pathlib import Path
 WIDGET = (
     Path(__file__).resolve().parents[2]
     / "src"
-    / "ui"
-    / "widgets"
-    / "gl_canvas"
+    / "tabs"
+    / "image_compare"
+    / "canvas"
     / "widget.py"
 )
 
@@ -27,7 +27,7 @@ def test_gl_canvas_resize_event_delegates_to_resize_geometry_pipeline():
         for node in ast.walk(resize_method)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "resize_gl"
+        and node.func.id == "resize_canvas"
     ]
 
     assert len(calls) == 1

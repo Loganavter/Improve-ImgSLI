@@ -1,17 +1,14 @@
 import logging
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 from domain.workspace import WorkspaceState
-from core.store_document import DocumentModel, ImageItem
 from core.store_settings import SettingsState, WorkerStoreSnapshot
 from core.store_operations import StoreOperationsMixin
 from core.store_runtime_cache import ViewportRuntimeCache
 from core.store_viewport import (
     GeometryState,
-    ImageSessionState,
     InteractionState,
     RenderConfig,
-    RenderCacheState,
     SessionData,
     ViewState,
     ViewportState,
@@ -22,13 +19,9 @@ logger = logging.getLogger("ImproveImgSLI")
 INITIAL_WORKSPACE_SESSION_TYPE = "session_picker"
 
 __all__ = [
-    "DocumentModel",
     "GeometryState",
-    "ImageItem",
-    "ImageSessionState",
     "InteractionState",
     "RenderConfig",
-    "RenderCacheState",
     "SessionData",
     "SettingsState",
     "Store",
@@ -42,7 +35,7 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         self._change_callbacks: List[Callable[[str], None]] = []
         self.state_changed = None
         self.workspace = WorkspaceState()
-        self._pre_session_document: Optional[DocumentModel] = DocumentModel()
+        self._pre_session_document: Optional[Any] = None
         self._pre_session_viewport: Optional[ViewportState] = ViewportState()
         self.settings = SettingsState()
         self.runtime_cache = ViewportRuntimeCache()
@@ -54,14 +47,14 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         )
 
     @property
-    def document(self) -> DocumentModel:
+    def document(self) -> Any:
         session = self.get_active_workspace_session()
         if session is None:
             return self._pre_session_document
         return session.document
 
     @document.setter
-    def document(self, value: DocumentModel) -> None:
+    def document(self, value: Any) -> None:
         session = self.get_active_workspace_session()
         if session is None:
             self._pre_session_document = value
@@ -105,7 +98,7 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
             scope = f"viewport.{subdomain}"
         self.emit_state_change(scope)
 
-    def _build_worker_snapshot(self, viewport: ViewportState, document: DocumentModel):
+    def build_worker_snapshot(self, viewport: ViewportState, document: Any):
         return WorkerStoreSnapshot(
             viewport, self.settings.freeze_for_export(), document
         )

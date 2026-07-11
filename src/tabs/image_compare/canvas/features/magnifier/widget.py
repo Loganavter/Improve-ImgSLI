@@ -7,25 +7,25 @@ from ui.canvas_infra.scene.widget_contract import (
     CanvasWidgetFeature,
 )
 
-from .commands import build_magnifier_commands as assemble_magnifier_commands
-from .gestures import build_magnifier_gesture_bindings
-from .overlay import apply_magnifier_overlay
-from .plan_overlay import apply_magnifier_plan_overlay
-from .properties import build_magnifier_properties
-from .reducers import (
+from tabs.image_compare.canvas.features.magnifier.commands import build_magnifier_commands as assemble_magnifier_commands
+from tabs.image_compare.canvas.features.magnifier.input.gestures import build_magnifier_gesture_bindings
+from tabs.image_compare.canvas.features.magnifier.render.overlay import apply_magnifier_overlay
+from tabs.image_compare.canvas.features.magnifier.render.plan_overlay import apply_magnifier_plan_overlay
+from tabs.image_compare.canvas.features.magnifier.properties import build_magnifier_properties
+from tabs.image_compare.canvas.features.magnifier.reducers import (
     reduce_magnifier_cache_state,
     reduce_magnifier_geometry_state,
     reduce_magnifier_interaction_state,
     reduce_magnifier_render_config,
     reduce_magnifier_view_state,
 )
-from .runtime_hooks import (
+from tabs.image_compare.canvas.features.magnifier.runtime_hooks import (
     build_magnifier_render_scene_overrides,
     command_build_render_canvas_payload,
     prepare_magnifier_worker_viewport,
 )
-from .settings_bindings import build_magnifier_settings_event_bindings
-from .toolbar.bindings import build_magnifier_toolbar_bindings
+from tabs.image_compare.canvas.features.magnifier.settings_bindings import build_magnifier_settings_event_bindings
+from tabs.image_compare.canvas.features.magnifier.toolbar.bindings import build_magnifier_toolbar_bindings
 
 
 def build_magnifier_commands():
@@ -34,7 +34,7 @@ def build_magnifier_commands():
 
 def build_magnifier_state_queries():
     """Build state queries for direct feature state access."""
-    from .commands.queries import (
+    from tabs.image_compare.canvas.features.magnifier.commands.queries import (
         query_active_border_color,
         query_active_capture_size,
         query_active_combined,
@@ -91,7 +91,7 @@ def build_magnifier_state_queries():
 
 def build_magnifier_state_commands():
     """Build state commands for direct feature state modification."""
-    from .commands.interaction import (
+    from tabs.image_compare.canvas.features.magnifier.commands.interaction import (
         begin_capture_drag,
         begin_internal_split_drag,
         end_capture_drag,
@@ -99,12 +99,12 @@ def build_magnifier_state_commands():
         update_capture_drag,
         update_internal_split_drag,
     )
-    from .commands.preview import (
+    from tabs.image_compare.canvas.features.magnifier.commands.preview import (
         preview_begin,
         preview_restore,
         preview_set_side,
     )
-    from .commands.viewport import (
+    from tabs.image_compare.canvas.features.magnifier.commands.viewport import (
         viewport_add_instance,
         viewport_move_active_position,
         viewport_remove_active_instance,

@@ -24,7 +24,7 @@ def _resolve_content_rect(
     """Every real call site now resolves and passes an explicit
     ``content_rect`` (sourced from ``_inner_content_rect_px``/
     ``_content_rect_px``, already feature-padding-aware — see
-    docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md). This is only a defensive
+    docs/dev/QRHI_CANVAS_FEATURES.md). This is only a defensive
     fallback for a caller that hasn't resolved one yet; it deliberately does
     *not* know about virtual-canvas padding — a caller needing padding-aware
     geometry must call ``resolve_canvas_content_geometry`` itself and pass

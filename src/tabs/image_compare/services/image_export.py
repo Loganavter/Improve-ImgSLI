@@ -7,7 +7,7 @@ from PIL import Image
 
 from core.store import Store
 from domain.types import Color
-from plugins.video_editor.services.video_export_models import VideoRenderRequest
+from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
 from shared.image_processing.resize import resize_images_processor
 from shared.rendering import TargetSurfaceSpec, get_effective_export_interpolation_method
 from tabs.image_compare.services.live_snapshot import build_live_frame_snapshot
@@ -440,10 +440,11 @@ class ExportService:
         return f"{sanitize(name1)}_{sanitize(name2)}"
 
     def _get_current_display_name(self, store: Store, image_number: int) -> str:
+        document = store.get_session_state_slot("document")
         target_list, index = (
-            (store.document.image_list1, store.document.current_index1)
+            (document.image_list1, document.current_index1)
             if image_number == 1
-            else (store.document.image_list2, store.document.current_index2)
+            else (document.image_list2, document.current_index2)
         )
         if 0 <= index < len(target_list):
             return target_list[index].display_name

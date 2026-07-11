@@ -1,33 +1,11 @@
 from __future__ import annotations
 
 import struct
-from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSize, Qt
-from PySide6.QtGui import (
-    QColor,
-    QFont,
-    QFontMetrics,
-    QImage,
-    QPainter,
-    QPen,
-    QRhiBuffer,
-    QRhiCommandBuffer,
-    QRhiGraphicsPipeline,
-    QRhiSampler,
-    QRhiShaderResourceBinding,
-    QRhiShaderStage,
-    QRhiTexture,
-    QRhiVertexInputAttribute,
-    QRhiVertexInputBinding,
-    QRhiVertexInputLayout,
-    QRhiViewport,
-)
+from PySide6.QtCore import QRectF
+from PySide6.QtGui import QColor, QFontMetrics, QRhiCommandBuffer, QRhiViewport
 
 from ui.canvas_presentation.filename_labels import (
-    draw_round_rect,
-    draw_text_bold_supersampled,
-    fit_text,
     font_for_style,
     label_rects,
     limit_name,
@@ -36,48 +14,13 @@ from ui.canvas_presentation.filename_labels import (
 )
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.canvas_presentation.label_style import FilenameOverlayStyle
-from ui.widgets.canvas.render_common import new_overlay_image
-from tabs.image_compare.canvas.rhi_feature_common import load_qshader
-
-_SHADER_DIR = Path(__file__).resolve().parent / "shaders"
-_UNIFORM_SIZE = 64
-_VERTEX_STRIDE = 16
-_VERTEX_BUFFER_SIZE = _VERTEX_STRIDE * 4
-
-
-class _LabelSlot:
-    def __init__(self) -> None:
-        self.vertex_buffer = None
-        self.texture = None
-        self.texture_size: QSize | None = None
-        self.srb_nearest = None
-        self.srb_linear = None
-        self.content_key: object = None
-        self.active: bool = False
-        self.smooth: bool = False
-        self.vertices: bytes | None = None
-
-    def release(self) -> None:
-        for res in (
-            self.srb_nearest,
-            self.srb_linear,
-            self.texture,
-            self.vertex_buffer,
-        ):
-            if res is not None:
-                try:
-                    res.destroy()
-                except RuntimeError:
-                    pass
-        self.vertex_buffer = None
-        self.texture = None
-        self.texture_size = None
-        self.srb_nearest = None
-        self.srb_linear = None
-        self.content_key = None
-        self.active = False
-        self.vertices = None
+from tabs.image_compare.canvas.features.filename_overlay.gpu_resources import (
+    FilenameOverlayGpuResources,
+)
+from tabs.image_compare.canvas.features.filename_overlay.label_raster import (
+    build_quad_vertices,
+    rasterize_label,
+)
 
 
 class FilenameOverlayPass(CanvasRenderPass):
@@ -87,144 +30,10 @@ class FilenameOverlayPass(CanvasRenderPass):
     visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
-        self.rhi = None
-        self.uniform_buffer = None
-        self.sampler_nearest = None
-        self.sampler_linear = None
-        self.pipeline = None
-        self._slots: list[_LabelSlot] = [_LabelSlot(), _LabelSlot()]
+        self._gpu = FilenameOverlayGpuResources()
 
     def initialize(self, rhi, target) -> None:
-        self.release()
-        self.rhi = rhi
-
-        self.uniform_buffer = rhi.newBuffer(
-            QRhiBuffer.Type.Dynamic,
-            QRhiBuffer.UsageFlag.UniformBuffer,
-            _UNIFORM_SIZE,
-        )
-        if not self.uniform_buffer.create():
-            raise RuntimeError("Failed to create filename_overlay uniform buffer")
-
-        self.sampler_nearest = rhi.newSampler(
-            QRhiSampler.Filter.Nearest,
-            QRhiSampler.Filter.Nearest,
-            QRhiSampler.Filter.None_,
-            QRhiSampler.AddressMode.ClampToEdge,
-            QRhiSampler.AddressMode.ClampToEdge,
-        )
-        if not self.sampler_nearest.create():
-            raise RuntimeError("Failed to create filename_overlay nearest sampler")
-
-        self.sampler_linear = rhi.newSampler(
-            QRhiSampler.Filter.Linear,
-            QRhiSampler.Filter.Linear,
-            QRhiSampler.Filter.None_,
-            QRhiSampler.AddressMode.ClampToEdge,
-            QRhiSampler.AddressMode.ClampToEdge,
-        )
-        if not self.sampler_linear.create():
-            raise RuntimeError("Failed to create filename_overlay linear sampler")
-
-        for slot in self._slots:
-            slot.vertex_buffer = rhi.newBuffer(
-                QRhiBuffer.Type.Dynamic,
-                QRhiBuffer.UsageFlag.VertexBuffer,
-                _VERTEX_BUFFER_SIZE,
-            )
-            if not slot.vertex_buffer.create():
-                raise RuntimeError("Failed to create filename_overlay vertex buffer")
-            slot.texture = rhi.newTexture(QRhiTexture.Format.RGBA8, QSize(1, 1))
-            if not slot.texture.create():
-                raise RuntimeError(
-                    "Failed to create filename_overlay placeholder texture"
-                )
-            slot.texture_size = QSize(1, 1)
-            slot.srb_nearest = self._build_srb(slot.texture, self.sampler_nearest)
-            slot.srb_linear = self._build_srb(slot.texture, self.sampler_linear)
-
-        self.pipeline = rhi.newGraphicsPipeline()
-        self.pipeline.setShaderStages(
-            [
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Vertex,
-                    load_qshader(_SHADER_DIR / "filename_overlay.vert.qsb"),
-                ),
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Fragment,
-                    load_qshader(_SHADER_DIR / "filename_overlay.frag.qsb"),
-                ),
-            ]
-        )
-        self.pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
-        self.pipeline.setSampleCount(target.sampleCount())
-        self.pipeline.setShaderResourceBindings(self._slots[0].srb_linear)
-        self.pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
-
-        blend = QRhiGraphicsPipeline.TargetBlend()
-        blend.enable = True
-        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        self.pipeline.setTargetBlends([blend])
-
-        layout = QRhiVertexInputLayout()
-        layout.setBindings([QRhiVertexInputBinding(_VERTEX_STRIDE)])
-        layout.setAttributes(
-            [
-                QRhiVertexInputAttribute(
-                    0, 0, QRhiVertexInputAttribute.Format.Float2, 0
-                ),
-                QRhiVertexInputAttribute(
-                    0, 1, QRhiVertexInputAttribute.Format.Float2, 8
-                ),
-            ]
-        )
-        self.pipeline.setVertexInputLayout(layout)
-        if not self.pipeline.create():
-            raise RuntimeError("Failed to create filename_overlay QRhi pipeline")
-
-    def _build_srb(self, texture, sampler):
-        srb = self.rhi.newShaderResourceBindings()
-        stages = (
-            QRhiShaderResourceBinding.StageFlag.VertexStage
-            | QRhiShaderResourceBinding.StageFlag.FragmentStage
-        )
-        fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
-        srb.setBindings(
-            [
-                QRhiShaderResourceBinding.uniformBuffer(0, stages, self.uniform_buffer),
-                QRhiShaderResourceBinding.sampledTexture(1, fragment, texture, sampler),
-            ]
-        )
-        if not srb.create():
-            raise RuntimeError("Failed to create filename_overlay SRB")
-        return srb
-
-    def _ensure_slot_texture(self, slot: _LabelSlot, size: QSize) -> None:
-        if slot.texture_size == size:
-            return
-        if slot.texture is not None:
-            try:
-                slot.texture.destroy()
-            except RuntimeError:
-                pass
-        slot.texture = self.rhi.newTexture(QRhiTexture.Format.RGBA8, size)
-        if not slot.texture.create():
-            raise RuntimeError("Failed to resize filename_overlay texture")
-        slot.texture_size = size
-        for srb_attr, sampler in (
-            ("srb_nearest", self.sampler_nearest),
-            ("srb_linear", self.sampler_linear),
-        ):
-            srb = getattr(slot, srb_attr)
-            if srb is not None:
-                try:
-                    srb.destroy()
-                except RuntimeError:
-                    pass
-            setattr(slot, srb_attr, self._build_srb(slot.texture, sampler))
+        self._gpu.initialize(rhi, target)
 
     def should_paint(self, ctx) -> bool:
         cfg = (
@@ -291,14 +100,23 @@ class FilenameOverlayPass(CanvasRenderPass):
         apply_transform = image_anchored and (
             abs(zoom - 1.0) > 1e-6 or abs(pan_x) > 1e-9 or abs(pan_y) > 1e-9
         )
-        wcx = ctx.width / 2.0
-        wcy = ctx.height / 2.0
+        # Pivot/pan scale off the logical canvas center (== widget center
+        # outside tiled export), then shift into this render target's
+        # tile-local pixel space via canvas_offset_x/y so _build_quad_vertices
+        # (which uses the actual ctx.width/height for NDC) gets tile-local
+        # coordinates.
+        canvas_w = float(ctx.canvas_width)
+        canvas_h = float(ctx.canvas_height)
+        wcx = canvas_w / 2.0
+        wcy = canvas_h / 2.0
 
         def _to_screen_rect(r: QRectF) -> QRectF:
             if not apply_transform:
-                return r
-            left = wcx + (r.left() - wcx) * zoom + pan_x * float(ctx.width)
-            top = wcy + (r.top() - wcy) * zoom + pan_y * float(ctx.height)
+                left = r.left() - ctx.canvas_offset_x
+                top = r.top() - ctx.canvas_offset_y
+                return QRectF(left, top, r.width(), r.height())
+            left = wcx + (r.left() - wcx) * zoom + pan_x * canvas_w - ctx.canvas_offset_x
+            top = wcy + (r.top() - wcy) * zoom + pan_y * canvas_h - ctx.canvas_offset_y
             return QRectF(left, top, r.width() * zoom, r.height() * zoom)
 
         name1 = str(getattr(cfg, "name1", "") or "")
@@ -360,12 +178,12 @@ class FilenameOverlayPass(CanvasRenderPass):
         )
 
         matrix = struct.pack(
-            "<16f", *tuple(float(v) for v in self.rhi.clipSpaceCorrMatrix().data())
+            "<16f", *tuple(float(v) for v in self._gpu.rhi.clipSpaceCorrMatrix().data())
         )
-        resource_updates.updateDynamicBuffer(self.uniform_buffer, 0, matrix)
+        resource_updates.updateDynamicBuffer(self._gpu.uniform_buffer, 0, matrix)
 
         for i, (name, rect) in enumerate([(name1, rect1), (name2, rect2)]):
-            slot = self._slots[i]
+            slot = self._gpu.slots[i]
             if not name or rect is None:
                 slot.content_key = None
                 continue
@@ -375,7 +193,7 @@ class FilenameOverlayPass(CanvasRenderPass):
             cache_key = (name, rw, rh, font_key, round(dpr, 3))
 
             if slot.content_key != cache_key:
-                image = self._rasterize_label(
+                image = rasterize_label(
                     name,
                     rw,
                     rh,
@@ -389,26 +207,26 @@ class FilenameOverlayPass(CanvasRenderPass):
                     dpr,
                 )
                 phys_size = image.size()
-                self._ensure_slot_texture(slot, phys_size)
+                self._gpu.ensure_slot_texture(slot, phys_size)
                 resource_updates.uploadTexture(slot.texture, image)
                 slot.content_key = cache_key
 
             screen_rect = _to_screen_rect(rect)
-            vertices = self._build_quad_vertices(ctx, screen_rect)
+            vertices = build_quad_vertices(ctx, screen_rect)
             resource_updates.updateDynamicBuffer(slot.vertex_buffer, 0, vertices)
             slot.vertices = vertices
             slot.smooth = bool(apply_transform)
             slot.active = True
 
     def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
-        if self.pipeline is None:
+        if self._gpu.pipeline is None:
             return
         dpr = max(1.0, float(widget.devicePixelRatioF()))
         fb_width = float(int(ctx.width) * dpr)
         fb_height = float(int(ctx.height) * dpr)
-        command_buffer.setGraphicsPipeline(self.pipeline)
+        command_buffer.setGraphicsPipeline(self._gpu.pipeline)
         command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_width, fb_height))
-        for slot in self._slots:
+        for slot in self._gpu.slots:
             if not slot.active:
                 continue
             srb = slot.srb_linear if slot.smooth else slot.srb_nearest
@@ -417,109 +235,7 @@ class FilenameOverlayPass(CanvasRenderPass):
             command_buffer.draw(4)
 
     def release(self) -> None:
-        for slot in self._slots:
-            slot.release()
-        for res in (
-            self.pipeline,
-            self.sampler_linear,
-            self.sampler_nearest,
-            self.uniform_buffer,
-        ):
-            if res is not None:
-                try:
-                    res.destroy()
-                except RuntimeError:
-                    pass
-        self.pipeline = None
-        self.sampler_linear = None
-        self.sampler_nearest = None
-        self.uniform_buffer = None
-        self.rhi = None
-
-    @staticmethod
-    def _build_quad_vertices(ctx, rect: QRectF) -> bytes:
-        w = float(ctx.width)
-        h = float(ctx.height)
-        x0 = rect.left() / w * 2.0 - 1.0
-        x1 = rect.right() / w * 2.0 - 1.0
-        y0 = 1.0 - rect.top() / h * 2.0
-        y1 = 1.0 - rect.bottom() / h * 2.0
-        return struct.pack(
-            "<16f",
-            x0,
-            y0,
-            0.0,
-            0.0,
-            x0,
-            y1,
-            0.0,
-            1.0,
-            x1,
-            y0,
-            1.0,
-            0.0,
-            x1,
-            y1,
-            1.0,
-            1.0,
-        )
-
-    @staticmethod
-    def _rasterize_label(
-        name: str,
-        rw: int,
-        rh: int,
-        font: QFont,
-        metrics: QFontMetrics,
-        text_color: QColor,
-        bg_color: QColor,
-        draw_bg: bool,
-        style: FilenameOverlayStyle,
-        font_weight: int,
-        dpr: float,
-    ) -> QImage:
-        dpr = max(1.0, float(dpr))
-        phys_w = max(1, int(round(rw * dpr)))
-        phys_h = max(1, int(round(rh * dpr)))
-        img = new_overlay_image(phys_w, phys_h)
-        painter = QPainter(img)
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-            painter.scale(dpr, dpr)
-            painter.setFont(font)
-            label_rect = QRectF(0.0, 0.0, float(rw), float(rh))
-            if draw_bg:
-                draw_round_rect(
-                    painter,
-                    label_rect.adjusted(0.5, 0.5, -0.5, -0.5),
-                    bg_color,
-                    style,
-                )
-            text_inset = float(style.text_inset_px)
-            text_str = fit_text(name, metrics, float(rw) - (text_inset * 2.0))
-            if font_weight > 0:
-                draw_text_bold_supersampled(
-                    painter,
-                    text_str,
-                    font,
-                    text_color,
-                    font_weight,
-                    rw,
-                    rh,
-                    text_inset,
-                )
-            else:
-                painter.setPen(QPen(text_color))
-                painter.drawText(
-                    label_rect.adjusted(text_inset, 0.0, -text_inset, 0.0),
-                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                    text_str,
-                )
-        finally:
-            painter.end()
-        return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
-
+        self._gpu.release()
 
 RENDER_PASSES: list[CanvasRenderPass] = [FilenameOverlayPass()]
 RENDER_PASSES = RENDER_PASSES

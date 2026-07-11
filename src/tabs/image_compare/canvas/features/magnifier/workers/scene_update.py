@@ -3,21 +3,21 @@ from dataclasses import replace as _dc_replace
 
 _log = logging.getLogger("ImproveImgSLI.magnifier.scene_update")
 
-from tabs.image_compare.canvas.features.magnifier.layout_plan import build_magnifier_layout
-from tabs.image_compare.canvas.features.magnifier.plan_overlay import apply_magnifier_plan_overlay
-from tabs.image_compare.canvas.features.magnifier.store import active_or_default_divider_thickness
+from tabs.image_compare.canvas.features.magnifier.geometry.layout_plan import build_magnifier_layout
+from tabs.image_compare.canvas.features.magnifier.render.plan_overlay import apply_magnifier_plan_overlay
+from tabs.image_compare.canvas.features.magnifier.state.store import active_or_default_divider_thickness
 from ui.canvas_infra.scene.apply import apply_scene_to_canvas
 from ui.canvas_infra.scene.builder import build_canvas_scene
 from ui.canvas_infra.scene.pass_contract import SceneVisibility
 from ui.canvas_presentation.plan import resolve_plan_logical_image_rect
 from tabs.image_compare.canvas.helpers import reset_canvas_overlays
 
-from .common import (
+from tabs.image_compare.canvas.features.magnifier.workers.common import (
     get_effective_main_interpolation_method,
     get_live_image_label,
     is_effective_magnifier_interactive,
 )
-from .diff_cache import ensure_cached_diff_image
+from tabs.image_compare.canvas.features.magnifier.workers.diff_cache import ensure_cached_diff_image
 
 
 def _build_and_apply_scene_snapshot(presenter, image_label, geometry):
@@ -35,6 +35,7 @@ def _build_and_apply_scene_snapshot(presenter, image_label, geometry):
         scene,
         image_label,
         geometry,
+        session_type="image_compare",
         use_quick_overlay=False,
         scene_visibility=SceneVisibility.INTERACTIVE,
     )
@@ -76,16 +77,9 @@ def rebuild_magnifier_overlay(presenter):
         source_pil_images = getattr(image_label, "_source_pil_images", ())
         tex_img1 = source_pil_images[0] if len(source_pil_images) >= 1 else None
         tex_img2 = source_pil_images[1] if len(source_pil_images) >= 2 else None
-        tex_img1 = (
-            tex_img1
-            or presenter.store.document.full_res_image1
-            or presenter.store.document.original_image1
-        )
-        tex_img2 = (
-            tex_img2
-            or presenter.store.document.full_res_image2
-            or presenter.store.document.original_image2
-        )
+        document = presenter.store.get_session_state_slot("document")
+        tex_img1 = tex_img1 or document.full_res_image1 or document.original_image1
+        tex_img2 = tex_img2 or document.full_res_image2 or document.original_image2
         if not tex_img1 or not tex_img2:
             reset_canvas_overlays(image_label)
             return

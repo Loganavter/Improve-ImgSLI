@@ -44,7 +44,7 @@ def test_pair_canvas_modules_live_under_image_compare_tab():
         path = shared_canvas / relative
         if relative == "__init__.py":
             text = read(path)
-            if "CanvasWidget" in text or "GLCanvas" in text:
+            if "CanvasWidget" in text:
                 offenders.append(f"{rel(path)} exports pair canvas widget aliases")
             continue
         if path.exists():
@@ -67,7 +67,7 @@ def test_no_public_pair_canvas_imports_from_shared_facade():
             if node.module != "ui.widgets.canvas":
                 continue
             names = {alias.name for alias in node.names}
-            leaked = names & {"CanvasWidget", "GLCanvas"}
+            leaked = names & {"CanvasWidget"}
             if leaked:
                 offenders.append(f"{rel(path)}:{node.lineno} imports {sorted(leaked)}")
     assert not offenders, "\n  - " + "\n  - ".join(offenders)

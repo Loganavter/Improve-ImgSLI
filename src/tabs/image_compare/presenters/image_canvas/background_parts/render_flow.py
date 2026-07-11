@@ -3,9 +3,7 @@ import logging
 from PySide6.QtGui import QPixmap
 
 from domain.types import Rect
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_command_by_alias,
-)
+from tabs.image_compare.canvas.registry import registry
 
 _mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
 from tabs.image_compare.canvas.presentation.surface import apply_store_to_canvas
@@ -16,7 +14,7 @@ from .diff import sync_diff_texture
 
 
 def _query_overlay(store, capability_id: str, default=None):
-    command = get_canvas_feature_command_by_alias(capability_id)
+    command = registry().get_feature_command_by_alias(capability_id)
     if command is None:
         return default
     result = command(store)
@@ -70,15 +68,18 @@ def update_comparison_if_needed(presenter):
         if presenter.store.viewport.session_data.image_state.image1 is None:
             return False
 
+    _document = presenter.store.get_session_state_slot("document")
+    if _document is None:
+        return False
     source1 = (
-        presenter.store.document.full_res_image1
-        or presenter.store.document.preview_image1
-        or presenter.store.document.original_image1
+        _document.full_res_image1
+        or _document.preview_image1
+        or _document.original_image1
     )
     source2 = (
-        presenter.store.document.full_res_image2
-        or presenter.store.document.preview_image2
-        or presenter.store.document.original_image2
+        _document.full_res_image2
+        or _document.preview_image2
+        or _document.original_image2
     )
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
@@ -171,7 +172,7 @@ def update_comparison_if_needed(presenter):
         )
         is None
     ):
-        request_cached_diff = get_canvas_feature_command_by_alias(
+        request_cached_diff = registry().get_feature_command_by_alias(
             "overlay.request_cached_diff",
         )
         if request_cached_diff is not None:
@@ -198,21 +199,22 @@ def update_comparison_if_needed(presenter):
                 or presenter.store.viewport.session_data.render_cache.scaled_image2_for_display
                 or presenter.store.viewport.session_data.image_state.image2
             )
-            gl_img1, gl_img2 = img1, img2
+            render_img1, render_img2 = img1, img2
 
             gui_source1 = presenter.store.viewport.session_data.image_state.image1
             gui_source2 = presenter.store.viewport.session_data.image_state.image2
+            document = presenter.store.get_session_state_slot("document")
             source_key = (
-                presenter.store.document.image1_path,
-                presenter.store.document.image2_path,
+                document.image1_path,
+                document.image2_path,
                 id(gui_source1) if gui_source1 is not None else 0,
                 id(gui_source2) if gui_source2 is not None else 0,
                 gui_source1.size if gui_source1 is not None else None,
                 gui_source2.size if gui_source2 is not None else None,
             )
             img_sig = (
-                id(gl_img1),
-                id(gl_img2),
+                id(render_img1),
+                id(render_img2),
                 current_label_dims,
                 presenter.store.viewport.view_state.diff_mode,
                 presenter.store.viewport.view_state.channel_view_mode,
@@ -220,12 +222,12 @@ def update_comparison_if_needed(presenter):
             )
             if img_sig != getattr(presenter, "_last_img_sig", None):
                 presenter._last_img_sig = img_sig
-                if gl_img1 and gl_img2:
+                if render_img1 and render_img2:
                     apply_store_to_canvas(
                         image_label,
                         presenter.store,
-                        gl_img1,
-                        gl_img2,
+                        render_img1,
+                        render_img2,
                         fit_content=False,
                         source_image1=gui_source1,
                         source_image2=gui_source2,

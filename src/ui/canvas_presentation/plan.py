@@ -66,7 +66,7 @@ class CanvasRenderPlan:
     source_key: tuple
     canvas_w: int
     canvas_h: int
-    gl_scene: object
+    render_scene: object
     overlay_layout: OverlayLayout | None
     capture_visible: bool
     capture_color: object
@@ -82,7 +82,7 @@ class CanvasRenderPlan:
     Set by the plan builder (never inferred downstream). ``True`` means
     ``image1``/``image2`` already have virtual-canvas padding baked into
     their pixels (dimensions == ``canvas_w x canvas_h``, real content offset
-    inside via ``gl_scene.overlay_clip_rect``) — the export/video-snapshot
+    inside via ``render_scene.overlay_clip_rect``) — the export/video-snapshot
     shape. ``False`` (default) means they are the raw, unpadded source pair —
     the live/interactive shape, where ``canvas_w/h`` may still exceed the
     image for overlay-positioning (magnifier) purposes only.
@@ -96,11 +96,24 @@ class CanvasRenderPlan:
     handlers; the legacy fields hold a single-image placeholder so existing
     code paths that read them remain safe.
     """
+    composition_plan: object | None = None
+    """
+    Optional source ``CompositionPlan`` (see composition.py), carried through
+    verbatim. When set, the applicator uses it as-is instead of rebuilding a
+    ``CompositionPlan`` from ``composition_root``/``canvas_w``/``canvas_h``/
+    ``fill_rgba`` alone — that piecemeal rebuild silently drops any field the
+    original plan had beyond those four (e.g. multi-compare's
+    ``divider_settings``/``label_settings``), which is exactly what starved
+    the offscreen exporter of divider/label styling despite the live widget
+    (which builds and keeps its own ``CompositionPlan`` directly) rendering
+    correctly. Untyped as ``object`` to avoid a hard dependency here; callers
+    that set it must pass a real ``CompositionPlan``.
+    """
 
 def resolve_plan_logical_image_rect(
     plan: CanvasRenderPlan,
 ) -> tuple[int, int, int, int]:
-    clip_rect = getattr(plan.gl_scene, "overlay_clip_rect", None)
+    clip_rect = getattr(plan.render_scene, "overlay_clip_rect", None)
     if clip_rect is not None:
         clip_x, clip_y, clip_w, clip_h = clip_rect
         return (

@@ -1,6 +1,6 @@
 """Guard against assigning attributes that don't exist on ViewportState.
 
-Regression: src/plugins/video_editor/services/video_snapshot_rendering.py used
+Regression: src/tabs/image_compare/plugins/video_editor/services/video_snapshot_rendering.py used
 to do ``store.viewport.overlay_clip_rect = None``, but ``overlay_clip_rect``
 lives on ``store.runtime_cache`` (ViewportRuntimeCache), not on ViewportState.
 ViewportState uses ``__slots__``, so the typo blew up at runtime with

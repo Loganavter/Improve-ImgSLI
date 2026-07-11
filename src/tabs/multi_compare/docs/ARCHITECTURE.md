@@ -11,10 +11,11 @@ The tab owns a local Redux-style store:
 - Semantic divider constraints live in
   `tabs.multi_compare.scene.layout_constraints`.
 
-The tab instance currently snapshots state per workspace session in
-`MultiCompareTab._session_states`. This is intentionally documented as
-transitional: the desired owner is workspace `state_slots`, tracked in
-[TODO.md](TODO.md).
+The tab instance snapshots state per workspace session onto the active
+session's `state_slots["multi_compare.state"]` (`store.set_session_state_slot`
+/ `store.ensure_session_state_slot`, see `MultiCompareTab._snapshot_into`/
+`_restore_from` in `tab.py`). This is visible to other systems and is dropped
+automatically when the owning session is closed.
 
 ## Layout Model
 
@@ -53,8 +54,11 @@ Frame flow:
 
 Current overlay sources:
 
-- `DividersOverlaySource` paints split gaps from the Redux layout tree.
-- `LabelsOverlaySource` paints camera-fixed filename labels.
+- `DividersOverlaySource` paints split gaps from `ResolvedComposition.gaps` /
+  `.divider_settings` (baked into the plan by `build_composition_plan`, not
+  read from widget state — live and offscreen export share the same data).
+- `LabelsOverlaySource` paints camera-fixed filename labels, styled from
+  `ResolvedComposition.label_settings`.
 - `DragDropOverlaySource` paints live drag/drop affordances.
 
 Divider and label geometry is overlay data. It must not mutate composition

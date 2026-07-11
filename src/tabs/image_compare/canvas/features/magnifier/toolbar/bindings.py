@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 
-from .handlers import (
+from tabs.image_compare.canvas.features.magnifier.toolbar.handlers import (
     magnifier_freeze_handler,
     magnifier_instances_add_handler,
     magnifier_instances_remove_handler,
@@ -19,7 +19,7 @@ from .handlers import (
     show_magnifier_divider_color_picker,
     toggle_magnifier_divider_visibility,
 )
-from .sync import (
+from tabs.image_compare.canvas.features.magnifier.toolbar.sync import (
     sync_magnifier_enabled_state,
     sync_magnifier_freeze_state,
     sync_magnifier_orientation_state,

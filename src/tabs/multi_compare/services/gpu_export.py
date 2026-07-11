@@ -14,6 +14,7 @@ live and export look the same: both paths render the same canvas-px scene with
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 from PySide6.QtCore import Qt
@@ -39,19 +40,16 @@ class MultiCompareGpuExporter:
         import time
 
         t0 = time.perf_counter()
-        logger.info("[mc-gpu] creating offscreen MultiCompareCanvasWidget")
         widget = MultiCompareCanvasWidget()
         widget.setObjectName("multi_compare_export_canvas")
         widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
         widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         widget.setAutoFillBackground(False)
         widget._allow_transparent_clear = True
+        t_show = time.perf_counter()
         widget.show()
+        t_pe = time.perf_counter()
         QApplication.processEvents()
-        logger.info(
-            "[mc-gpu] widget ensure done in %.1f ms",
-            (time.perf_counter() - t0) * 1000.0,
-        )
         self._widget = widget
         return widget
 
@@ -94,27 +92,33 @@ class MultiCompareGpuExporter:
         t_total = time.perf_counter()
         widget = self._ensure_widget()
         target_size = (max(1, int(output_w)), max(1, int(output_h)))
-        logger.info(
-            "[mc-gpu] target_size=%s composition canvas=%dx%d layers~?",
-            target_size,
-            composition.canvas_w,
-            composition.canvas_h,
-        )
 
         if fill_background and background_color is not None:
             widget._theme_background_color = QColor(background_color)
         else:
             widget._theme_background_color = QColor(0, 0, 0, 0)
 
-        if self._last_size != target_size:
+        size_changed = self._last_size != target_size
+        if size_changed:
             t0 = time.perf_counter()
             widget.resize(*target_size)
+            t_pe = time.perf_counter()
             QApplication.processEvents()
-            logger.info(
-                "[mc-gpu] widget.resize+processEvents %.1f ms",
-                (time.perf_counter() - t0) * 1000.0,
-            )
             self._last_size = target_size
+
+        export_fill_rgba = (
+            (
+                background_color.red(),
+                background_color.green(),
+                background_color.blue(),
+                background_color.alpha(),
+            )
+            if fill_background and background_color is not None
+            else None
+        )
+        composition_for_export = dataclasses.replace(
+            composition, fill_rgba=export_fill_rgba
+        )
 
         render_plan = CanvasRenderPlan(
             image1=None,
@@ -124,47 +128,42 @@ class MultiCompareGpuExporter:
             source_key=(),
             canvas_w=composition.canvas_w,
             canvas_h=composition.canvas_h,
-            gl_scene=None,
+            render_scene=None,
             overlay_layout=None,
             capture_visible=False,
             capture_color=QColor(0, 0, 0, 0),
             guides_enabled=False,
             guides_color=QColor(0, 0, 0, 0),
             guides_thickness=0,
-            fill_rgba=(
-                (
-                    background_color.red(),
-                    background_color.green(),
-                    background_color.blue(),
-                    background_color.alpha(),
-                )
-                if fill_background and background_color is not None
-                else None
-            ),
-            composition_root=composition.root,
+            fill_rgba=export_fill_rgba,
+            composition_root=composition_for_export.root,
+            composition_plan=composition_for_export,
         )
         t0 = time.perf_counter()
         apply_canvas_render_plan(widget, render_plan)
-        logger.info(
-            "[mc-gpu] apply_canvas_render_plan %.1f ms",
-            (time.perf_counter() - t0) * 1000.0,
-        )
 
+        if size_changed:
+            # QRhiWidget swapchain rebuilds asynchronously after resize(); the
+            # first frame painted at a new size can still target the stale
+            # framebuffer. A throwaway warm-up frame here forces the resize to
+            # settle before the frame we actually grab.
+            widget.update()
+            QApplication.processEvents()
+
+        widget._mc_overlay_debug = True
         t0 = time.perf_counter()
         widget.update()
+        t_pe = time.perf_counter()
         QApplication.processEvents()
-        logger.info(
-            "[mc-gpu] widget.update+processEvents %.1f ms",
-            (time.perf_counter() - t0) * 1000.0,
-        )
+        widget._mc_overlay_debug = False
 
         t0 = time.perf_counter()
         image = widget.grabFramebuffer()
-        logger.info(
-            "[mc-gpu] grabFramebuffer %.1f ms -> %dx%d (total render_to_qimage %.1f ms)",
-            (time.perf_counter() - t0) * 1000.0,
-            image.width(),
-            image.height(),
-            (time.perf_counter() - t_total) * 1000.0,
-        )
+        if (image.width(), image.height()) != target_size:
+            image = image.scaled(
+                target_size[0],
+                target_size[1],
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
         return image

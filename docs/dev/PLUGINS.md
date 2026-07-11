@@ -1,8 +1,10 @@
 # Plugin lifecycle
 
-Each top-level feature (comparison, export, settings, analysis, video_editor, image_properties, help, layout) is a **plugin**: a self-contained module under `src/plugins/<name>/` that registers itself, declares what it contributes, and is initialized through a uniform lifecycle.
+Each top-level feature (comparison, export, settings, analysis, image_properties, help, layout) is a **plugin**: a self-contained module under `src/plugins/<name>/` that registers itself, declares what it contributes, and is initialized through a uniform lifecycle. `video_editor` also registers as a plugin this way, but its code lives under `src/tabs/image_compare/plugins/video_editor/` (see [ARCHITECTURE.md](ARCHITECTURE.md)) since it has no consumer outside that tab — `tabs/image_compare/plugin.py` imports it explicitly for the registration side effect.
 
-This document covers wiring. For canvas-tool plugins (sliders, magnifier, overlays) see [CANVAS_FEATURES.md](CANVAS_FEATURES.md) — a parallel system layered on top.
+**Tab-owned sub-plugins convention:** a plugin with no consumer outside a single tab lives under `src/tabs/<tab_name>/plugins/<plugin_name>/`, mirroring `src/plugins/<name>/` at the tab's own scope, instead of sitting as a bare sibling of the tab's other subpackages (`canvas/`, `ui/`, `services/`, ...). Every `src/tabs/<tab_name>/` gets a `plugins/` package once it has at least one such plugin — do not leave an empty placeholder `plugins/` package for a tab that has none.
+
+This document covers wiring. For canvas-tool plugins (sliders, magnifier, overlays) see [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — a parallel system layered on top.
 
 ## Files
 
@@ -73,18 +75,23 @@ class Plugin(ABC):
 
 ## Reference plugin: `comparison`
 
-Use this as the template for new plugins.
+Use this as the template for new plugins. Note: `comparison` is also the
+`image_compare` tab (see [TAB_CONTRACT.md](TAB_CONTRACT.md)), so its plugin
+lives under `src/tabs/image_compare/` instead of `src/plugins/`. Discovery
+scans both `src/plugins/*` and `src/tabs/*`, so this is still a normal plugin
+as far as the plugin system is concerned.
 
 ```
-src/plugins/comparison/
+src/tabs/image_compare/
 ├── __init__.py
 ├── plugin.py              # @plugin("comparison") class ComparisonPlugin
-├── events.py              # ComparisonUpdateRequestedEvent, ComparisonErrorEvent
-├── session_controller.py  # SessionController — orchestrates loading/navigation
+├── tab.py                 # TabContract implementation
+├── events/                # ComparisonUpdateRequestedEvent, ComparisonErrorEvent
+├── _session_controller.py # SessionController — orchestrates loading/navigation
 └── use_cases/             # loading.py, navigation.py — pure logic
 ```
 
-`plugin.py` (`src/plugins/comparison/plugin.py:45`):
+`plugin.py` (`src/tabs/image_compare/plugin.py:72`):
 
 ```python
 @plugin(name="comparison", version="1.0")
@@ -156,5 +163,5 @@ Patterns:
 
 - [STORE.md](STORE.md) — how plugins read/write app state
 - [EVENT_BUS.md](EVENT_BUS.md) — cross-plugin async comms
-- [CANVAS_FEATURES.md](CANVAS_FEATURES.md) — the orthogonal plugin system for canvas-tools
+- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — the orthogonal plugin system for canvas-tools
 - [TAB_CONTRACT.md](TAB_CONTRACT.md) — workspace tab/session interface

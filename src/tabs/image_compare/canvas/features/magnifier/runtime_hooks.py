@@ -7,13 +7,13 @@ from core.constants import AppConstants
 from domain.qt_adapters import color_to_qcolor
 from domain.types import Point
 
-from .state import get_magnifier_widget_state
+from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
 
 _log = logging.getLogger("ImproveImgSLI.magnifier")
 
 
 def command_build_render_canvas_payload(store) -> dict[str, Any]:
-    from .store import (
+    from tabs.image_compare.canvas.features.magnifier.state.store import (
         MagnifierStoreService,
         default_capture_size,
         default_magnifier_size,
@@ -122,7 +122,7 @@ def command_build_render_canvas_payload(store) -> dict[str, Any]:
 
 
 def prepare_magnifier_worker_viewport(source_store, worker_viewport) -> None:
-    from .store import MagnifierStoreService, update_magnifier_model
+    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService, update_magnifier_model
 
     source_scene_state = MagnifierStoreService(source_store)
     active_magnifier = source_scene_state.get_active_or_first_magnifier()
@@ -144,8 +144,8 @@ def prepare_magnifier_worker_viewport(source_store, worker_viewport) -> None:
 
 
 def build_magnifier_render_scene_overrides(store) -> dict[str, Any]:
-    from .mode import MagnifierModeService
-    from .store import active_or_default_border_color
+    from tabs.image_compare.canvas.features.magnifier.state.mode import MagnifierModeService
+    from tabs.image_compare.canvas.features.magnifier.state.store import active_or_default_border_color
 
     viewport = getattr(store, "viewport", None)
     if viewport is None:

@@ -1,7 +1,7 @@
 """
 Render passes for this feature.
 
-Each pass is auto-discovered by ``pass_registry.py``.
+Each pass is auto-discovered by ``registry.py``.
 Export a ``RENDER_PASSES`` list of ``CanvasRenderPassBase`` instances.
 
 Set ``stack_role`` to a ``CanvasStackRole`` — the central stacking policy

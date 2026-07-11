@@ -5,8 +5,8 @@ This module is the SINGLE source of truth for all stacking order decisions.
 Features declare a semantic ``CanvasStackRole`` instead of hardcoding numeric
 layer/priority pairs.  The policy resolves roles to concrete ordering for:
 
-- GL render passes  (role -> RenderPhase, priority)
-- Scene objects     (role -> CanvasStackLayer, priority)
+- QRhi render passes (role -> RenderPhase, priority)
+- Scene objects      (role -> CanvasStackLayer, priority)
 
 To change the draw order of any element, edit the tables in this module.
 Feature code should never contain raw stacking numbers.
@@ -34,7 +34,7 @@ class CanvasStackRole(IntEnum):
     """
     Semantic roles for canvas elements.
 
-    Every GL render pass and scene object should declare one of these roles
+    Every QRhi render pass and scene object should declare one of these roles
     instead of a raw ``(layer, priority)`` pair.  The central policy tables
     below map roles to concrete ordering.
     """
@@ -47,10 +47,11 @@ class CanvasStackRole(IntEnum):
     ANNOTATION_GUIDE = 40
     HUD_LABEL = 50
     TRANSIENT_PREVIEW = 55
+    HUD_INTERACTION_OVERLAY = 57
     INTERACTION_HANDLE = 60
     DEBUG_VIS = 70
 
-_GL_PASS_ORDER: dict[CanvasStackRole, tuple[RenderPhase, int]] = {
+_RENDER_PASS_ORDER: dict[CanvasStackRole, tuple[RenderPhase, int]] = {
     CanvasStackRole.UNDERLAY_SPLIT:        (RenderPhase.IMAGE_DECORATION, 10),
     CanvasStackRole.ANNOTATION_GUIDE:      (RenderPhase.IMAGE_ANNOTATION, 60),
     CanvasStackRole.ANNOTATION_RING:       (RenderPhase.IMAGE_ANNOTATION, 70),
@@ -59,15 +60,16 @@ _GL_PASS_ORDER: dict[CanvasStackRole, tuple[RenderPhase, int]] = {
     CanvasStackRole.ANNOTATION_BORDER:     (RenderPhase.VIEW_ANNOTATION, 15),
     CanvasStackRole.HUD_LABEL:             (RenderPhase.HUD, 100),
     CanvasStackRole.TRANSIENT_PREVIEW:     (RenderPhase.HUD, 50),
+    CanvasStackRole.HUD_INTERACTION_OVERLAY: (RenderPhase.HUD, 150),
     CanvasStackRole.INTERACTION_HANDLE:    (RenderPhase.VIEW_ANNOTATION, 50),
     CanvasStackRole.DEBUG_VIS:             (RenderPhase.DEBUG, 10),
 }
 
-_GL_PASS_DEFAULT: tuple[RenderPhase, int] = (RenderPhase.VIEW_ANNOTATION, 100)
+_RENDER_PASS_DEFAULT: tuple[RenderPhase, int] = (RenderPhase.VIEW_ANNOTATION, 100)
 
-def resolve_gl_pass_order(role: CanvasStackRole) -> tuple[RenderPhase, int]:
+def resolve_render_pass_order(role: CanvasStackRole) -> tuple[RenderPhase, int]:
     """Resolve a semantic role to concrete ``(RenderPhase, priority)``."""
-    return _GL_PASS_ORDER.get(role, _GL_PASS_DEFAULT)
+    return _RENDER_PASS_ORDER.get(role, _RENDER_PASS_DEFAULT)
 
 _SCENE_OBJECT_ORDER: dict[CanvasStackRole, tuple[CanvasStackLayer, int]] = {
     CanvasStackRole.UNDERLAY_SPLIT:        (CanvasStackLayer.UNDERLAY, 0),

@@ -1,12 +1,9 @@
 import logging
 from PySide6.QtCore import QSignalBlocker
-from resources.translations import tr
-from shared_toolkit.ui.icon_manager import AppIcon
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_toolbar_binding,
-    get_canvas_feature_toolbar_bindings,
-)
+from sli_ui_toolkit.i18n import tr
+from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.state import get_zoom_level
+from ui.icon_manager import AppIcon
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -64,7 +61,7 @@ def _update_canvas_feature_control_availability(presenter) -> None:
         if widget is None or not hasattr(widget, "setEnabled"):
             continue
         widget.setEnabled(
-            any(get_canvas_feature_toolbar_binding(control_id) is not None for control_id in control_ids)
+            any(registry().get_feature_toolbar_binding(control_id) is not None for control_id in control_ids)
         )
 
 def update_toolbar_states(presenter):
@@ -91,7 +88,7 @@ def update_toolbar_states(presenter):
         presenter.ui.slider_speed,
         int(presenter.store.viewport.view_state.movement_speed_per_sec * 100),
     )
-    for binding in get_canvas_feature_toolbar_bindings():
+    for binding in registry().get_feature_toolbar_bindings():
         if binding.sync_state is not None:
             binding.sync_state(presenter)
 

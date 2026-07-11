@@ -4,8 +4,7 @@ import copy
 from typing import Any, Callable
 
 from core.session_blueprints import SessionBlueprint
-from core.store_document import DocumentModel
-from core.store_viewport import ViewportState
+from core.store_viewport import ViewportState, create_session_data
 from domain.workspace import WorkspaceSession
 
 
@@ -34,7 +33,7 @@ class WorkspaceStoreMixin:
     ) -> WorkspaceSession:
         if not session_type:
             raise ValueError("session_type is required")
-        new_viewport = ViewportState()
+        new_viewport = ViewportState(session_data=create_session_data(session_type))
 
         current_view = getattr(getattr(self, "viewport", None), "view_state", None)
         if current_view is not None and getattr(
@@ -58,7 +57,6 @@ class WorkspaceStoreMixin:
             session_type=session_type,
         )
         session.viewport = new_viewport
-        session.document = DocumentModel()
         if blueprint is not None:
             self._apply_session_blueprint(session, blueprint)
         self.workspace.sessions.append(session)

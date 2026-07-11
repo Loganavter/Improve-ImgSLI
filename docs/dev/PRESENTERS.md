@@ -2,31 +2,40 @@
 
 Presenters sit between the Store (state) and the View (Qt widgets). They translate state changes into UI updates, route UI signals into actions or service calls, and own no business logic of their own.
 
-This document covers `src/ui/presenters/`. For the canvas-tool subsystem layered on top, see [CANVAS_FEATURES.md](CANVAS_FEATURES.md).
+Presenters are now split across two locations:
+
+- `src/ui/presenters/` — the window-shell presenter (`main_window/`), which is tab-agnostic, plus the shared `UIUpdateBatcher`.
+- `src/tabs/image_compare/presenters/` — presenters owned by the `image_compare` tab (canvas, toolbar, export). These are built as tab-owned services (via `TabRegistry`) and plugged into the shell through `MainWindowFeatureSet`.
+
+For the canvas-feature subsystem layered on top of the canvas presenter, see [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md).
 
 ## Files
 
 ```
 src/ui/presenters/
 ├── __init__.py
-├── main_window/                # The "shell" presenter — owns toolbar, dialogs, transient UI
+├── main_window/                # The "shell" presenter — owns dialogs, transient UI, workspace/tab glue
 │   ├── presenter.py            # MainWindowPresenter — thin facade
 │   ├── connections.py          # signal wiring (Qt signals ↔ presenter methods)
 │   ├── actions.py              # user-action handlers (button clicks, hover)
 │   ├── state.py                # store→UI sync (the `on_store_state_changed` reducer)
 │   ├── workspace.py            # tab/session glue
-│   └── features.py             # MainWindowFeatureSet — bag of feature presenters
-├── image_canvas/               # The canvas presenter
-│   ├── presenter.py            # ImageCanvasPresenter — facade
-│   ├── runtime.py              # build_image_canvas_components + connect_image_canvas_runtime
-│   ├── lifecycle.py            # init/resize/teardown
-│   ├── view.py                 # actual setPixmap/setGeometry calls into Qt widgets
-│   ├── background.py / overlay # rendering side
-│   ├── coordinators.py / signatures.py
-│   └── background_parts/
-├── toolbar_presenter.py        # ToolbarPresenter — top toolbar logic
-├── toolbar/                    # connections.py, state.py, orientation.py (helpers)
+│   └── features.py             # MainWindowFeatureSet — bag of feature presenters (built via TabRegistry)
 └── ui_update_batcher.py        # UIUpdateBatcher — coalesce multiple UI refresh requests
+
+src/tabs/image_compare/presenters/
+├── image_canvas/                # The canvas presenter (tab-owned)
+│   ├── presenter.py             # ImageCanvasPresenter — facade
+│   ├── runtime.py                # build_image_canvas_components + connect_image_canvas_runtime
+│   ├── coordinators.py           # CanvasLifecycleCoordinator / ViewCoordinator / BackgroundCoordinator / OverlayCoordinator
+│   ├── lifecycle.py              # init/resize/teardown logic used by the lifecycle coordinator
+│   ├── view.py                   # actual setPixmap/setGeometry calls into Qt widgets
+│   ├── signatures.py             # frame/state signature diffing (skip redundant redraws)
+│   └── background_parts/         # diff.py, diff_toasts.py, image_cache.py, render_flow.py
+├── toolbar_presenter.py          # ToolbarPresenter — top toolbar logic
+├── toolbar/                      # connections.py, state.py, orientation.py (helpers)
+├── export_presenter.py           # ExportPresenter glue for this tab
+├── actions.py / connections.py / state.py   # tab-level presenter wiring (parallel to main_window's)
 ```
 
 ## The shape: facade + free functions
@@ -110,22 +119,24 @@ batcher.schedule_batch_update(["a", "b", "c"])   # add many
 
 Use it instead of calling `do_update_X(presenter)` directly when several state changes might fire in one tick (typical during a dispatch burst). Otherwise widgets re-render N times in a row.
 
-## ImageCanvasPresenter (`src/ui/presenters/image_canvas/presenter.py:13`)
+## ImageCanvasPresenter (`src/tabs/image_compare/presenters/image_canvas/presenter.py:14`)
 
-Owns the canvas (CanvasWidget / QRhi widget) and the magnifier/overlay state. Decomposed:
+Owns the canvas (`CanvasWidget`, the tab's QRhi widget) and the magnifier/overlay state. It is a **tab-owned service**, instantiated by `MainWindowComposer._create_tab_owned_feature(window, "image_canvas", ...)` via `TabRegistry` — not constructed directly by the shell. Decomposed into four coordinators (`coordinators.py`):
 
 ```python
-presenter.lifecycle    # init/resize/movement state
-presenter.view         # Qt-facing: setPixmap, setGeometry on the canvas widget
-presenter.background   # frame computation / scheduling
-presenter.overlay      # overlay state (capture, magnifier)
+presenter.lifecycle    # CanvasLifecycleCoordinator — init/resize/movement state
+presenter.view         # CanvasViewCoordinator — setPixmap, setGeometry on the canvas widget
+presenter.background   # CanvasBackgroundCoordinator — frame computation / scheduling (logic in background_parts/)
+presenter.overlay      # CanvasOverlayCoordinator — overlay state (capture, magnifier)
 ```
 
 Built by `runtime.py:build_image_canvas_components(presenter)` which returns the four-piece bundle.
 
 `view.py` is the only place that should be calling Qt widget mutators (`setPixmap`, etc.) on the canvas — keep it that way.
 
-## ToolbarPresenter (`src/ui/presenters/toolbar_presenter.py`)
+## ToolbarPresenter (`src/tabs/image_compare/presenters/toolbar_presenter.py`)
+
+Also tab-owned: created via `TabRegistry.create_service("toolbar_presenter", ...)` and plugged into `MainWindowFeatureSet.toolbar`.
 
 Smaller, same shape: `connections.py` wires button signals, `state.py:update_toolbar_states(presenter)` reflects store state into toolbar widget states (checked/enabled/visible), `orientation.py` handles the orientation toggle specifically.
 
@@ -185,5 +196,5 @@ You want: "when `viewport.session_data` changes, update some new label."
 
 - [STORE.md](STORE.md) — what `state_changed` scopes mean and how to dispatch
 - [CONTRACTS.md](CONTRACTS.md) — broader architectural rules
-- [CANVAS_FEATURES.md](CANVAS_FEATURES.md) — the canvas-tool subsystem (parallel to but separate from these presenters)
+- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — the canvas-feature subsystem (parallel to but separate from these presenters)
 - [TAB_CONTRACT.md](TAB_CONTRACT.md) — workspace-tab interface used by `workspace.py`

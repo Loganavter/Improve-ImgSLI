@@ -30,9 +30,9 @@ def call_canvas_service(service_id: str, *args, **kwargs):
     return result
 
 
-def build_gl_render_scene(*args, **kwargs):
+def build_render_scene(*args, **kwargs):
     return call_canvas_service(
-        "canvas_gl_render_scene",
+        "canvas_render_scene",
         *args,
         **kwargs,
     )

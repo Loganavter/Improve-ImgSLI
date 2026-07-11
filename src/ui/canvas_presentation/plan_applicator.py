@@ -59,12 +59,14 @@ def _apply_composition_plan(canvas, plan: CanvasRenderPlan) -> None:
     Composition-aware backends read ``canvas._active_composition`` and dispatch
     their own draw calls.
     """
-    composition = CompositionPlan(
-        root=plan.composition_root,
-        canvas_w=int(plan.canvas_w),
-        canvas_h=int(plan.canvas_h),
-        fill_rgba=plan.fill_rgba,
-    )
+    composition = plan.composition_plan
+    if composition is None:
+        composition = CompositionPlan(
+            root=plan.composition_root,
+            canvas_w=int(plan.canvas_w),
+            canvas_h=int(plan.canvas_h),
+            fill_rgba=plan.fill_rgba,
+        )
     resolved = resolve_composition(composition)
     canvas._active_render_plan = plan
     canvas._active_composition = resolved

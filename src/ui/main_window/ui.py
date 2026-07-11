@@ -260,6 +260,7 @@ class Ui_ImageComparisonApp:
         full_path: str,
     ):
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
+        document = self.main_window.store.get_session_state_slot("document")
         combobox.updateState(
             count,
             current_index,
@@ -267,9 +268,9 @@ class Ui_ImageComparisonApp:
             items=[
                 item.display_name
                 for item in (
-                    self.main_window.store.document.image_list1
+                    document.image_list1
                     if image_number == 1
-                    else self.main_window.store.document.image_list2
+                    else document.image_list2
                 )
             ],
         )

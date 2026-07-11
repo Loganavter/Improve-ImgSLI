@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .interaction import (
+from tabs.image_compare.canvas.features.magnifier.commands.interaction import (
     begin_capture_drag,
     begin_internal_split_drag,
     end_capture_drag,
@@ -10,8 +10,8 @@ from .interaction import (
     update_capture_drag,
     update_internal_split_drag,
 )
-from .preview import preview_begin, preview_restore, preview_set_side
-from .queries import (
+from tabs.image_compare.canvas.features.magnifier.commands.preview import preview_begin, preview_restore, preview_set_side
+from tabs.image_compare.canvas.features.magnifier.commands.queries import (
     emit_overlay_changed,
     get_movement_handler,
     query_active_border_color,
@@ -28,14 +28,14 @@ from .queries import (
     query_spacing_limits,
     query_total_count,
 )
-from .settings import (
+from tabs.image_compare.canvas.features.magnifier.commands.settings import (
     settings_apply_behavior,
     settings_initialize,
     settings_persist,
     settings_set_movement_interpolation,
     settings_set_optimize_movement,
 )
-from .viewport import (
+from tabs.image_compare.canvas.features.magnifier.commands.viewport import (
     viewport_add_instance,
     viewport_ensure_active,
     viewport_move_active_position,
@@ -82,30 +82,30 @@ def _settings_set_divider_color(settings, color) -> bool:
 
 
 def _build_keyboard_movement_controller(store, *, presenter_provider, parent=None):
-    from ..keyboard_movement import build_controller
+    from tabs.image_compare.canvas.features.magnifier.input.keyboard_movement import build_controller
 
     return build_controller(store, presenter_provider=presenter_provider, parent=parent)
 
 
 def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
-    from ..bounds import (
+    from tabs.image_compare.canvas.features.magnifier.geometry.bounds import (
         compute_magnifier_layout_requirement,
     )
-    from ..overlay import apply_magnifier_overlay, build_magnifier_drawing_coords
-    from ..layout_plan import build_magnifier_layout, shift_layout_to_tile
-    from ..plan_overlay import apply_magnifier_plan_overlay
-    from ..snapshot_store import (
+    from tabs.image_compare.canvas.features.magnifier.render.overlay import apply_magnifier_overlay, build_magnifier_drawing_coords
+    from tabs.image_compare.canvas.features.magnifier.geometry.layout_plan import build_magnifier_layout, shift_layout_to_tile
+    from tabs.image_compare.canvas.features.magnifier.render.plan_overlay import apply_magnifier_plan_overlay
+    from tabs.image_compare.canvas.features.magnifier.state.snapshot_store import (
         apply_virtual_canvas_layout_to_snapshot_store,
         normalize_snapshot_store,
     )
-    from ..store import active_or_default_divider_thickness, magnifier_enabled
-    from ..workers.diff_cache import request_cached_diff_image_async
-    from ..workers.result_handlers import (
+    from tabs.image_compare.canvas.features.magnifier.state.store import active_or_default_divider_thickness, magnifier_enabled
+    from tabs.image_compare.canvas.features.magnifier.workers.diff_cache import request_cached_diff_image_async
+    from tabs.image_compare.canvas.features.magnifier.workers.result_handlers import (
         stop_interactive_movement,
         update_capture_area_display,
     )
-    from ..workers.scene_update import rebuild_magnifier_overlay
-    from ..workers.worker_flow import render_magnifier_layer
+    from tabs.image_compare.canvas.features.magnifier.workers.scene_update import rebuild_magnifier_overlay
+    from tabs.image_compare.canvas.features.magnifier.workers.worker_flow import render_magnifier_layer
 
     return {
         "interaction.begin_capture_drag": begin_capture_drag,

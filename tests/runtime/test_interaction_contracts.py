@@ -61,9 +61,9 @@ class TestSharedEventLayerIsolation:
 class TestInteractionCommandAliases:
 
     def test_overlay_interaction_aliases_registered(self):
-        from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_aliases
+        from ui.canvas_infra.scene.registry import get_canvas_registry
 
-        aliases = get_canvas_feature_command_aliases()
+        aliases = get_canvas_registry("image_compare").get_feature_command_aliases()
         expected = [
             "overlay.begin_capture_drag",
             "overlay.update_capture_drag",
@@ -73,9 +73,9 @@ class TestInteractionCommandAliases:
             assert alias in aliases, f"Missing interaction alias: {alias}"
 
     def test_splitter_interaction_aliases_registered(self):
-        from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_aliases
+        from ui.canvas_infra.scene.registry import get_canvas_registry
 
-        aliases = get_canvas_feature_command_aliases()
+        aliases = get_canvas_registry("image_compare").get_feature_command_aliases()
         expected = [
             "splitter.begin_drag",
             "splitter.update_drag",
@@ -85,9 +85,11 @@ class TestInteractionCommandAliases:
             assert alias in aliases, f"Missing interaction alias: {alias}"
 
     def test_all_interaction_aliases_resolve_to_callable(self):
-        from ui.canvas_infra.scene.widget_registry import (
-            get_canvas_feature_command_by_alias,
-        )
+        from ui.canvas_infra.scene.registry import get_canvas_registry
+
+        get_canvas_feature_command_by_alias = get_canvas_registry(
+            "image_compare"
+        ).get_feature_command_by_alias
 
         interaction_aliases = [
             "overlay.begin_capture_drag",
@@ -105,12 +107,12 @@ class TestInteractionCommandAliases:
 class TestHitTestPipeline:
 
     def test_hit_test_pipeline_has_entries(self):
-        from ui.canvas_infra.scene.pipeline import SCENE_HIT_TESTERS
+        from ui.canvas_infra.scene.pipeline import get_scene_hit_testers
 
-        assert len(SCENE_HIT_TESTERS) >= 1, "No hit testers registered"
+        assert len(get_scene_hit_testers("image_compare")) >= 1, "No hit testers registered"
 
     def test_hit_testers_are_callable(self):
-        from ui.canvas_infra.scene.pipeline import SCENE_HIT_TESTERS
+        from ui.canvas_infra.scene.pipeline import get_scene_hit_testers
 
-        for tester in SCENE_HIT_TESTERS:
+        for tester in get_scene_hit_testers("image_compare"):
             assert callable(tester), f"Hit tester {tester} is not callable"

@@ -17,7 +17,6 @@ class _FeatureOverlayGpuState:
     _border_width: float = 2.0
     _quads: list = field(default_factory=list)
     _use_circle_mask: list[bool] = field(default_factory=list)
-    _combined_params: list = field(default_factory=list)
     _gpu_active: bool = False
     _gpu_slots: list = field(default_factory=list)
     _gpu_channel_mode: int = 0
@@ -100,9 +99,6 @@ class CanvasRuntimeState:
     _laser_color: object = field(default_factory=QColor)
     _guides_thickness: int = 0
     _capture_color: object = field(default_factory=QColor)
-
-
-GLCanvasRuntimeState = CanvasRuntimeState
 
 
 def init_widget_state(widget):

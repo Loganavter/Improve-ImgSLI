@@ -3,7 +3,7 @@
   * feature-specific helpers must NOT live under ``canvas_presentation/``
   * the legacy ``RenderingPipeline`` must not be reintroduced inside features
 
-Dogma source: docs/dev/CANVAS_FEATURES.md (anti-patterns +
+Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (anti-patterns +
 "Feature geometry belongs to the feature").
 """
 

@@ -7,6 +7,8 @@ import threading
 from PySide6.QtWidgets import QMessageBox
 from sli_ui_toolkit.workers import GenericWorker
 
+from tabs.image_compare.services import document_store_ops
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -90,7 +92,7 @@ class ExportSaveFlowCoordinator:
 
         worker = GenericWorker(
             self._export_worker_task,
-            store_copy=self.store.copy_for_worker(),
+            store_copy=document_store_ops.copy_for_worker(self.store),
             image1_for_save=save_ctx.image1_for_save,
             image2_for_save=save_ctx.image2_for_save,
             original1_full=save_ctx.original1_full,

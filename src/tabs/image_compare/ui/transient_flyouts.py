@@ -37,7 +37,8 @@ class FlyoutController:
                 host.unified_flyout.start_closing_animation()
                 return
 
-        target_list = host.store.document.image_list1 if image_number == 1 else host.store.document.image_list2
+        document = host.store.get_session_state_slot("document")
+        target_list = document.image_list1 if image_number == 1 else document.image_list2
         if len(target_list) == 0:
             return
 
@@ -64,8 +65,9 @@ class FlyoutController:
 
         host = self.manager.host
         if host.unified_flyout and host.unified_flyout.isVisible():
-            host.unified_flyout.populate(1, host.store.document.image_list1)
-            host.unified_flyout.populate(2, host.store.document.image_list2)
+            document = host.store.get_session_state_slot("document")
+            host.unified_flyout.populate(1, document.image_list1)
+            host.unified_flyout.populate(2, document.image_list2)
             if host.unified_flyout.mode == FlyoutMode.DOUBLE:
                 QTimer.singleShot(
                     0, lambda: host.unified_flyout.refreshGeometry(immediate=False)

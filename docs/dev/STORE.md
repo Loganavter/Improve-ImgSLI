@@ -86,6 +86,20 @@ Image-compare reducers live in `src/tabs/image_compare/state/reducers.py` and
 are registered by `ImageCompareTab.contribute_reducers(...)`; core reducers do
 not import that module directly.
 
+**Current state (2026-07-09):** only `DocumentReducer` follows this shape —
+moved to `tabs/image_compare/state/reducer.py`, registered against
+`core/state_management/slot_reducers.py` (`register_state_slot_reducer`)
+from `tabs/image_compare/plugin.py` at plugin-discovery time; `RootReducer`
+runs it generically via `iter_state_slot_reducers()` without importing it.
+`ViewStateReducer`/`InteractionStateReducer`/`GeometryStateReducer`/
+`ImageSessionReducer`/`RenderCacheReducer`/`SessionDataReducer`/
+`RenderConfigReducer`/`ViewportReducer` are still core-defined and
+core-owned — extracting them is tracked as "Step 9" in
+`src/tabs/image_compare/docs/MIGRATION_PLAN.md` (~340 call sites on
+`viewport.session_data.*`/`viewport.render_config.*`, including
+platform code in `ui/canvas_infra` that is legitimately typed against
+`RenderConfig`/`SessionData` today). Not started.
+
 ## Scopes (the `emit_state_change` argument)
 
 Subscribers filter on the `scope` string. Conventions:

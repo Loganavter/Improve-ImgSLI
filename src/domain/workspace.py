@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.store_document import DocumentModel
     from core.store_viewport import ViewportState
 
 _DOCUMENT_SLOT = "document"
@@ -22,11 +21,11 @@ class WorkspaceSession:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
-    def document(self) -> "DocumentModel":
+    def document(self) -> Any:
         return self.state_slots.get(_DOCUMENT_SLOT)
 
     @document.setter
-    def document(self, value: "DocumentModel") -> None:
+    def document(self, value: Any) -> None:
         self.state_slots[_DOCUMENT_SLOT] = value
 
     @property

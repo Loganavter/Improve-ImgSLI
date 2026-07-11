@@ -9,7 +9,7 @@ from core.state_management.actions import (
     SetInteractiveSpacingVisualAction,
 )
 
-from ..actions import (
+from tabs.image_compare.canvas.features.magnifier.input.actions import (
     SetDraggingCapturePointAction,
     SetDraggingSplitInMagnifierAction,
 )

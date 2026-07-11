@@ -1,6 +1,6 @@
 import PIL.Image
 
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 from tabs.image_compare.presenters.image_canvas.background_parts.image_cache import (
     create_preview_cache_async,
     ensure_images_scaled,
@@ -43,7 +43,7 @@ from tabs.image_compare.presenters.image_canvas.view import (
 
 
 def _get_overlay_runtime_command(capability_id: str):
-    return get_canvas_feature_command_by_alias(capability_id)
+    return registry().get_feature_command_by_alias(capability_id)
 
 
 class CanvasLifecycleCoordinator:

@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from core.state_management.action_base import Action
 
-from ..actions import SetMagnifierMovementInterpolationMethodAction
+from tabs.image_compare.canvas.features.magnifier.input.actions import SetMagnifierMovementInterpolationMethodAction
 
 
 def reduce_magnifier_render_config(config, action: Action):

@@ -18,7 +18,7 @@
   </a>
 </p>
 
-<p align="center"><strong>An intuitive, open-source tool for advanced image comparison and interaction.</strong></p>
+<p align="center"><strong>An open-source workspace platform for advanced image and media comparison.</strong></p>
 
 <p align="center">
   Read this in other languages:
@@ -53,14 +53,16 @@
 
 ## 🚀 Key Features
 
+- 🗂️ Tabbed workspace platform: the app opens on a session picker where you spin up independent workspace tabs — a two-image **Image Compare** tab and a synchronized N-image **Multi Compare** tab so far, switched through a Firefox-style tab bar, each with its own state, canvas, and export pipeline, more workspaces planned.
 - 🔬 Analysis beyond a simple slider: live diff modes for Highlight, Grayscale, Edge Comparison, and SSIM Map, plus optional PSNR/SSIM metrics for objective image checks.
 - 📤 WYSIWYG export built for real comparisons: save the exact composed view with splitters, magnifier, overlays, and styled file names, with support for PNG, JPEG, WEBP, BMP, TIFF, and JXL.
 - 🎬 Session recording, timeline editing, and video export: capture comparison sessions, trim or delete timeline ranges, keyframe comparison states, and export to MP4, WebM, AVI, GIF, ProRes, AV1, and more.
 - 🔍 High-precision magnifier: dual or combined circle, internal split control, subpixel-stable rendering, EWA Lanczos support, freeze mode, guide "lasers", and precise WASD/QE navigation.
 - 🔭 Multi-magnifier workspace: place as many magnifiers as you need on the same comparison, each with its own capture area, position, size, colors, and freeze state — hide, restore, or delete them individually, with optional auto-color assignment for new instances and live intersection highlighting while dragging.
 - 🖼️ Fast interactive canvas: vertical/horizontal split, smooth GPU-accelerated zoom and panning, synced pan/zoom across both sides, channel view modes, anti-aliased dividers and overlays, and instant single-image preview with Space + mouse buttons.
+- 🔀 Multi Compare tab: lay out and synchronize any number of images in one scene, drag slots to rearrange the layout, resize dividers freely, and jump into a fullscreen focus mode for any cell.
 - 🗂️ File workflow tuned for large batches: drag and drop, reorder across left/right lists, clipboard paste, ratings, filename editing, and quick side switching with the mouse wheel.
-- 🎨 Deep UI customization: adjustable divider visibility/color/thickness, magnifier styling, text overlay styling, custom icon-based controls, light/dark themes, and custom UI fonts.
+- 🎨 Deep UI customization: adjustable divider visibility/color/thickness, magnifier styling, text overlay styling, custom icon-based controls, light/dark themes, and custom UI fonts, all built on the project's own custom-drawn UI toolkit.
 - ⚙️ Polished desktop UX: persistent layout and settings, multilingual UI (EN/RU/zh/pt_BR), tray integration, save notifications, auto-cropping options, and a robust launcher for source-based runs.
 
 ---
@@ -88,12 +90,13 @@ Current limitation:
 
 ## 🧪 Basic Usage
 
-1. Start Improve-ImgSLI.
-2. Load images via “Add Img(s)” or drag-and-drop. Use `Space + Left/Right Mouse Button` for quick single-image preview.
+1. Start Improve-ImgSLI — it opens on the session picker; choose **Image Compare** for a classic two-image comparison, or **Multi Compare** to line up several images at once. Each choice opens as its own tab.
+2. In Image Compare, load images via “Add Img(s)” or drag-and-drop. Use `Space + Left/Right Mouse Button` for quick single-image preview.
 3. Move the split line with the mouse; toggle Horizontal Split if needed.
 4. Enable the magnifier, pick interpolation, and adjust zoom/position via sliders or keys.
 5. Use `Space + Shift + Left/Right Mouse Button` to force a side in combined magnifier preview when needed.
 6. Customize dividers and text, then export the composite image.
+7. In Multi Compare, drop or add images into the scene, drag slots to rearrange the layout, resize dividers, and double-click a cell for a fullscreen focus view.
 
 For detailed guides, hotkeys, and settings, use the in-app Help (question mark icon) or open:
 - EN: <a href="src/resources/help/en/001_introduction.md">Start Here</a> • <a href="src/resources/help/en/">All topics</a>
@@ -132,7 +135,7 @@ This project is supported and improved by the efforts of dedicated maintainers. 
 
 ## 📄 License
 
-MIT License. See <a href="LICENSE">LICENSE</a> for details.
+GPL-3.0 License. See <a href="LICENSE">LICENSE</a> for details.
 
 ---
 

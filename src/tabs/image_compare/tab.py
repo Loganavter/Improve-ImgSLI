@@ -32,6 +32,12 @@ class ImageCompareTab(TabContract):
     def session_type(self) -> str:
         return "image_compare"
 
+    def create_default_session_data(self):
+        from core.store_viewport import SessionData
+        from tabs.image_compare.state.models import ImageSessionState, RenderCacheState
+
+        return SessionData(image_state=ImageSessionState(), render_cache=RenderCacheState())
+
     @property
     def display_name(self) -> str:
         return "Image Compare"
@@ -43,6 +49,9 @@ class ImageCompareTab(TabContract):
     @property
     def i18n_namespace(self) -> str | None:
         return "image_compare"
+
+    def extra_i18n_roots(self) -> list[Path]:
+        return [Path(__file__).parent / "plugins" / "video_editor" / "resources" / "i18n"]
 
     def localized_display_name(self, language: str) -> str:
         from sli_ui_toolkit.i18n import tr
@@ -175,6 +184,78 @@ class ImageCompareTab(TabContract):
             edit = getattr(ui, attr, None)
             if edit is not None and hasattr(edit, "setText"):
                 edit.setText(value or "")
+
+    def serialize_session(self, session_id: str, context: TabContext) -> dict | None:
+        store = getattr(context, "store", None)
+        if store is None:
+            return None
+        session = store.get_workspace_session(session_id)
+        if session is None or session.session_type != self.session_type:
+            return None
+        doc = session.document
+        ui_state = session.state_slots.get(_STATE_SLOT)
+
+        def _items(items):
+            return [
+                {"path": it.path, "display_name": it.display_name, "rating": it.rating}
+                for it in items
+            ]
+
+        return {
+            "version": 1,
+            "image_list1": _items(doc.image_list1) if doc else [],
+            "image_list2": _items(doc.image_list2) if doc else [],
+            "current_index1": doc.current_index1 if doc else -1,
+            "current_index2": doc.current_index2 if doc else -1,
+            "image1_path": doc.image1_path if doc else None,
+            "image2_path": doc.image2_path if doc else None,
+            "show_file_names": bool(ui_state.show_file_names) if ui_state else False,
+            "edit_name_1": ui_state.edit_name_1 if ui_state else "",
+            "edit_name_2": ui_state.edit_name_2 if ui_state else "",
+        }
+
+    def deserialize_session(self, session_id: str, data: dict, context: TabContext) -> None:
+        store = getattr(context, "store", None)
+        if store is None or not data:
+            return
+        session = store.get_workspace_session(session_id)
+        if session is None:
+            return
+        from tabs.image_compare.state.document import DocumentModel, ImageItem
+        from tabs.image_compare.models import ImageCompareState
+
+        def _items(entries):
+            # `image=None` — pixel data is not persisted, only the source
+            # path; the existing load pipeline decodes it from disk lazily,
+            # the same way `ImageSessionState.loaded_image*_paths` already
+            # tracks history without holding pixels.
+            return [
+                ImageItem(
+                    path=e.get("path", ""),
+                    display_name=e.get("display_name", ""),
+                    rating=e.get("rating", 0),
+                )
+                for e in entries or []
+            ]
+
+        session.document = DocumentModel(
+            image_list1=_items(data.get("image_list1")),
+            image_list2=_items(data.get("image_list2")),
+            current_index1=data.get("current_index1", -1),
+            current_index2=data.get("current_index2", -1),
+            image1_path=data.get("image1_path"),
+            image2_path=data.get("image2_path"),
+        )
+        store.set_session_state_slot(
+            _STATE_SLOT,
+            ImageCompareState(
+                show_file_names=bool(data.get("show_file_names", False)),
+                edit_name_1=data.get("edit_name_1", ""),
+                edit_name_2=data.get("edit_name_2", ""),
+            ),
+            session_id=session_id,
+            emit_scope=None,
+        )
 
     def accepts_drop(self, paths: list[Path]) -> bool:
         return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
@@ -329,6 +410,16 @@ class ImageCompareTab(TabContract):
             )
 
             return ImageCompareSettingsApplication(*args, **kwargs).apply()
+        if service_id == "settings_metrics_query":
+            from tabs.image_compare.ui.settings_persistence import (
+                query_image_compare_metrics_settings,
+            )
+
+            return query_image_compare_metrics_settings(*args, **kwargs)
+        if service_id == "session_has_content":
+            store = args[0] if args else kwargs.get("store")
+            image_state = store.viewport.session_data.image_state
+            return image_state is not None and bool(image_state.image1)
         if service_id == "settings_canvas_feature_load":
             from tabs.image_compare.ui.settings_persistence import (
                 load_image_compare_feature_settings,
@@ -378,10 +469,10 @@ class ImageCompareTab(TabContract):
             from tabs.image_compare.canvas.widget import get_canvas_widget_class
 
             return get_canvas_widget_class()
-        if service_id == "canvas_gl_render_scene":
-            from tabs.image_compare.canvas.scene import build_gl_render_scene
+        if service_id == "canvas_render_scene":
+            from tabs.image_compare.canvas.scene import build_render_scene
 
-            return build_gl_render_scene(*args, **kwargs)
+            return build_render_scene(*args, **kwargs)
         if service_id == "canvas_reset_overlays":
             from tabs.image_compare.canvas.helpers import reset_canvas_overlays
 
@@ -389,39 +480,33 @@ class ImageCompareTab(TabContract):
             reset_canvas_overlays(canvas)
             return True
         if service_id == "canvas_feature_command":
-            from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command
+            from tabs.image_compare.canvas.registry import registry
 
             feature_name, command_id, *command_args = args
-            command = get_canvas_feature_command(feature_name, command_id)
+            command = registry().get_feature_command(feature_name, command_id)
             if command is None:
                 return None
             return command(*command_args, **kwargs)
         if service_id == "canvas_feature_command_alias":
-            from ui.canvas_infra.scene.widget_registry import (
-                get_canvas_feature_command_by_alias,
-            )
+            from tabs.image_compare.canvas.registry import registry
 
             alias, *command_args = args
-            command = get_canvas_feature_command_by_alias(alias)
+            command = registry().get_feature_command_by_alias(alias)
             if command is None:
                 return None
             return command(*command_args, **kwargs)
         if service_id == "canvas_plan_split_sync":
-            from ui.canvas_infra.scene.widget_registry import (
-                get_canvas_feature_command_by_alias,
-            )
+            from tabs.image_compare.canvas.registry import registry
 
-            command = get_canvas_feature_command_by_alias("splitter.sync_split_position")
+            command = registry().get_feature_command_by_alias("splitter.sync_split_position")
             if command is None:
                 return None
             return command(*args, **kwargs)
         if service_id == "canvas_live_runtime_overlays":
-            from ui.canvas_infra.scene.widget_registry import (
-                apply_canvas_feature_live_runtime_overlays,
-            )
+            from tabs.image_compare.canvas.registry import registry
 
             store, canvas = args
-            return apply_canvas_feature_live_runtime_overlays(store, canvas)
+            return registry().apply_feature_live_runtime_overlays(store, canvas)
         if service_id == "canvas_snapshot_overlay_params":
             canvas, plan = args
             canvas.set_guides_params(
@@ -464,6 +549,8 @@ class ImageCompareTab(TabContract):
             )
 
             return has_initial_canvas_content(*args, **kwargs)
+        if service_id == "requires_first_frame_startup_gate":
+            return True
         if service_id == "refresh_startup_button_visuals":
             from tabs.image_compare.ui.startup_readiness import (
                 refresh_startup_button_visuals,
@@ -475,19 +562,9 @@ class ImageCompareTab(TabContract):
 
     def register_canvas_features(self) -> None:
         import tabs.image_compare.canvas.features as features_pkg
-        from ui.canvas_infra.scene.feature_registry import (
-            register_canvas_scene_feature_package,
-        )
-        from ui.canvas_infra.scene.pass_registry import (
-            register_canvas_render_pass_feature_package,
-        )
-        from ui.canvas_infra.scene.widget_registry import (
-            register_canvas_widget_feature_package,
-        )
+        from ui.canvas_infra.scene.registry import register_canvas_feature_package
 
-        register_canvas_scene_feature_package(features_pkg)
-        register_canvas_widget_feature_package(features_pkg)
-        register_canvas_render_pass_feature_package(features_pkg)
+        register_canvas_feature_package("image_compare", features_pkg)
 
     def apply_appearance(self, host_window) -> None:
         from tabs.image_compare.ui.appearance import apply_image_canvas_appearance

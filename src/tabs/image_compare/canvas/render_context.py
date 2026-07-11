@@ -6,10 +6,7 @@ from dataclasses import dataclass
 logger = logging.getLogger("ImproveImgSLI")
 from PySide6.QtCore import QTimer
 
-from ui.canvas_infra.scene.widget_registry import (
-    apply_canvas_feature_live_runtime_overlays,
-    has_canvas_feature_live_runtime_overlays,
-)
+from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
     get_pan_offset_y,
@@ -46,6 +43,17 @@ class ViewportContext:
     pan_offset_y: float
     is_horizontal: bool
     split_position: float
+    # Logical canvas size/offset overlay passes should position against,
+    # distinct from width/height (the actual render target). Equal to
+    # width/height/0/0 outside tiled export; during tiled export the render
+    # target is one tile's worth of pixels but overlays (divider, guides,
+    # capture-circle, filename) must still compute their position as if
+    # drawing onto the full canvas, then get shifted into tile-local space
+    # by canvas_offset_x/y. See widget.runtime_state._export_canvas_viewport.
+    canvas_width: int
+    canvas_height: int
+    canvas_offset_x: float
+    canvas_offset_y: float
 
 
 @dataclass(slots=True)
@@ -76,7 +84,6 @@ class FeatureOverlayContext:
     gpu_diff_mode: int
     gpu_diff_threshold: float
     gpu_interp_mode: int
-    combined_params: tuple[object, ...]
     capture_circles: tuple[object, ...]
     occluded_capture_arcs: tuple[object, ...]
     hidden_capture_circles: tuple[object, ...]
@@ -162,6 +169,15 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
         preserve_zoom=bool(getattr(plan, "preserve_zoom", False)),
     )
 
+    export_canvas_viewport = getattr(state, "_export_canvas_viewport", None)
+    if export_canvas_viewport is not None:
+        canvas_width, canvas_height, canvas_offset_x, canvas_offset_y = (
+            export_canvas_viewport
+        )
+    else:
+        canvas_width, canvas_height = widget.width(), widget.height()
+        canvas_offset_x, canvas_offset_y = 0.0, 0.0
+
     render_scene = state._render_scene or {}
     static_fo = dict(getattr(render_scene, "feature_overrides", {}) or {})
     dynamic_fo = dict(getattr(state, "_dynamic_feature_overrides", {}) or {})
@@ -240,6 +256,10 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
                 )
                 or 0.5
             ),
+            canvas_width=int(canvas_width),
+            canvas_height=int(canvas_height),
+            canvas_offset_x=float(canvas_offset_x),
+            canvas_offset_y=float(canvas_offset_y),
         ),
         textures=TextureContext(
             stored_pil_images=list(state._stored_pil_images),
@@ -274,7 +294,6 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
                 if getattr(overlay_state, "_gpu_interp_mode", None) is not None
                 else 1
             ),
-            combined_params=tuple(getattr(overlay_state, "_combined_params", ()) or ()),
             capture_circles=tuple(getattr(state, "_capture_circles", ()) or ()),
             occluded_capture_arcs=tuple(
                 getattr(state, "_occluded_capture_arcs", ()) or ()
@@ -350,7 +369,7 @@ def sync_runtime_overlays_after_resize(widget) -> None:
             _sync_geometry_state(widget, store)
             _live_plan = getattr(widget, "_active_render_plan", None)
             if _live_plan is None or _live_plan.overlay_layout is None:
-                apply_canvas_feature_live_runtime_overlays(store, widget)
+                registry().apply_feature_live_runtime_overlays(store, widget)
     finally:
         state._resize_overlay_sync_active = False
 
@@ -412,7 +431,7 @@ def emit_viewport_state_change(widget):
         _sync_geometry_state(widget, store)
         _live_plan = getattr(widget, "_active_render_plan", None)
         if _live_plan is None or _live_plan.overlay_layout is None:
-            apply_canvas_feature_live_runtime_overlays(store, widget)
+            registry().apply_feature_live_runtime_overlays(store, widget)
 
 
 def schedule_source_preload(widget):
@@ -441,7 +460,7 @@ def preload_source_textures(widget):
         if (
             state._store is not None
             and hasattr(state._store, "emit_state_change")
-            and has_canvas_feature_live_runtime_overlays()
+            and registry().has_feature_live_runtime_overlays()
         ):
             state._store.emit_viewport_change("geometry")
     except Exception:

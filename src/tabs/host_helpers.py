@@ -14,6 +14,7 @@ tab must live inside that tab's own package.
 from __future__ import annotations
 
 from shared_toolkit.ui.decorate_dialog import decorate_dialog
+from shared_toolkit.ui.overlay_layer import get_overlay_layer
 
 
-__all__ = ["decorate_dialog"]
+__all__ = ["decorate_dialog", "get_overlay_layer"]

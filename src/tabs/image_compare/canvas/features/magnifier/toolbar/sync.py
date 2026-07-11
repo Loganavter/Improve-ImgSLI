@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from domain.qt_adapters import color_to_qcolor
 
-from .shared import set_checked_quietly, set_slider_value_quietly
+from tabs.image_compare.canvas.features.magnifier.toolbar.shared import set_checked_quietly, set_slider_value_quietly
 
 
 def sync_magnifier_toolbar_state(presenter) -> None:
-    from ..state import get_magnifier_widget_state
-    from ..store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
+    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
 
     ui = getattr(presenter, "ui", None)
     viewport = presenter.store.viewport
@@ -39,8 +39,8 @@ def sync_magnifier_toolbar_state(presenter) -> None:
 
 
 def sync_magnifier_enabled_state(presenter) -> None:
-    from ..mode import MagnifierModeService
-    from ..store import MagnifierStoreService, active_or_default_divider_color
+    from tabs.image_compare.canvas.features.magnifier.state.mode import MagnifierModeService
+    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService, active_or_default_divider_color
 
     ui = getattr(presenter, "ui", None)
     scene_state = MagnifierStoreService(presenter.store)
@@ -83,7 +83,7 @@ def sync_magnifier_enabled_state(presenter) -> None:
 
 
 def sync_magnifier_freeze_state(presenter) -> None:
-    from ..store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
 
     ui = getattr(presenter, "ui", None)
     scene_state = MagnifierStoreService(presenter.store)
@@ -95,7 +95,7 @@ def sync_magnifier_freeze_state(presenter) -> None:
 
 
 def sync_magnifier_orientation_state(presenter) -> None:
-    from ..store import (
+    from tabs.image_compare.canvas.features.magnifier.state.store import (
         MagnifierStoreService,
         active_or_default_divider_color,
         active_or_default_divider_thickness,
@@ -128,7 +128,7 @@ def sync_magnifier_orientation_state(presenter) -> None:
 
 
 def sync_magnifier_size_state(presenter) -> None:
-    from ..store import MagnifierStoreService, default_magnifier_size
+    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService, default_magnifier_size
 
     ui = getattr(presenter, "ui", None)
     scene_state = MagnifierStoreService(presenter.store)

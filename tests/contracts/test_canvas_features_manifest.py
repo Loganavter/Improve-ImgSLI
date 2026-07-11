@@ -1,6 +1,6 @@
 """Each canvas feature must declare a discoverable WIDGET_FEATURE with a name.
 
-Dogma source: docs/dev/CANVAS_FEATURES.md (Quick Start, Checklist).
+Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (Quick Start, Checklist).
 """
 
 from __future__ import annotations

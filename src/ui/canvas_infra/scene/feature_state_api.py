@@ -10,6 +10,10 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("ImproveImgSLI.canvas.feature_state")
 
+def _session_type(store: Any) -> str | None:
+    session = store.get_active_workspace_session()
+    return session.session_type if session is not None else None
+
 def query_feature_state(
     store: Any,
     feature_name: str,
@@ -31,9 +35,9 @@ def query_feature_state(
     Example:
         state = query_feature_state(store, "magnifier", "active_state")
     """
-    from .widget_registry import get_canvas_feature_state_queries
+    from .registry import get_canvas_registry
 
-    queries = get_canvas_feature_state_queries()
+    queries = get_canvas_registry(_session_type(store)).get_feature_state_queries()
     feature_queries = queries.get(feature_name)
     if feature_queries is None:
         _log.warning(
@@ -86,9 +90,9 @@ def execute_feature_command(
     Example:
         execute_feature_command(store, "magnifier", "set_internal_split", 0.5)
     """
-    from .widget_registry import get_canvas_feature_state_commands
+    from .registry import get_canvas_registry
 
-    commands = get_canvas_feature_state_commands()
+    commands = get_canvas_registry(_session_type(store)).get_feature_state_commands()
     feature_commands = commands.get(feature_name)
     if feature_commands is None:
         _log.warning(
@@ -121,13 +125,14 @@ def execute_feature_command(
     )
 
 def has_feature_command(
+    session_type: str | None,
     feature_name: str,
     command_id: str,
 ) -> bool:
     """Check if feature has a specific command."""
-    from .widget_registry import get_canvas_feature_state_commands
+    from .registry import get_canvas_registry
 
-    commands = get_canvas_feature_state_commands()
+    commands = get_canvas_registry(session_type).get_feature_state_commands()
     feature_commands = commands.get(feature_name)
     if feature_commands is None:
         return False
@@ -135,13 +140,14 @@ def has_feature_command(
     return any(c.command_id == command_id for c in feature_commands)
 
 def has_feature_query(
+    session_type: str | None,
     feature_name: str,
     query_id: str,
 ) -> bool:
     """Check if feature has a specific query."""
-    from .widget_registry import get_canvas_feature_state_queries
+    from .registry import get_canvas_registry
 
-    queries = get_canvas_feature_state_queries()
+    queries = get_canvas_registry(session_type).get_feature_state_queries()
     feature_queries = queries.get(feature_name)
     if feature_queries is None:
         return False

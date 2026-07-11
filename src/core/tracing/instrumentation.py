@@ -24,7 +24,7 @@ def install_instrumentation() -> None:
     _patch_widget_registry()
     _patch_render_plan()
     _patch_hit_test()
-    _patch_gl_canvas_input()
+    _patch_canvas_input()
 
     logger.info("ImgSLI tracer instrumentation installed")
 
@@ -202,29 +202,43 @@ def _patch_event_bus() -> None:
     bus_mod.EventBus.emit = traced_emit
 
 def _patch_widget_registry() -> None:
+    """Trace alias->command resolution on every per-tab canvas registry.
+
+    Patches each ``CanvasFeatureRegistry`` instance's bound method directly,
+    because this runs once at bootstrap before any tab session exists (no
+    ``session_type`` to resolve against) — see
+    docs/dev/CANVAS_FEATURE_REGISTRY_PER_TAB.md Group D.
+    """
     try:
-        from ui.canvas_infra.scene import widget_registry as reg_mod
+        from tabs.registry import TabRegistry
+        from ui.canvas_infra.scene.registry import get_canvas_registry
     except Exception:
-        logger.debug("widget_registry patch skipped", exc_info=True)
+        logger.debug("canvas registry patch skipped", exc_info=True)
         return
 
     tracer = Tracer.instance()
 
-    orig_cmd_alias = reg_mod.get_canvas_feature_command_by_alias
+    tab_registry = TabRegistry()
+    tab_registry.discover()
 
-    def traced_cmd_alias(capability_id: str):
-        result = orig_cmd_alias(capability_id)
-        if Tracer.enabled():
-            target = reg_mod.get_canvas_feature_command_aliases().get(capability_id)
-            tracer.record(
-                "alias.command",
-                f"alias {capability_id} -> {target}",
-                {"capability_id": capability_id, "target": target, "resolved": bool(result)},
-                caller_skip=1,
-            )
-        return result
+    for tab_type in tab_registry.registered_types:
+        registry = get_canvas_registry(tab_type)
+        orig_cmd_alias = registry.get_feature_command_by_alias
 
-    reg_mod.get_canvas_feature_command_by_alias = traced_cmd_alias
+        def traced_cmd_alias(capability_id: str, _orig=orig_cmd_alias, _registry=registry):
+            result = _orig(capability_id)
+            if Tracer.enabled():
+                target = _registry.get_feature_command_aliases().get(capability_id)
+                tracer.record(
+                    "alias.command",
+                    f"alias {capability_id} -> {target}",
+                    {"capability_id": capability_id, "target": target, "resolved": bool(result)},
+                    caller_skip=1,
+                )
+            return result
+
+        traced_cmd_alias.cache_clear = orig_cmd_alias.cache_clear
+        registry.get_feature_command_by_alias = traced_cmd_alias
 
 _LAST_PLAN_BY_CANVAS: "dict[int, dict]" = {}
 
@@ -309,8 +323,8 @@ def _patch_hit_test() -> None:
     orig = ht_mod.find_scene_object_at_position
     tracer = Tracer.instance()
 
-    def traced_find(scene, point):
-        result = orig(scene, point)
+    def traced_find(scene, point, *, session_type):
+        result = orig(scene, point, session_type=session_type)
         if Tracer.enabled():
             kind = type(result).__name__ if result is not None else "None"
             ident = getattr(result, "object_id", None) or getattr(result, "id", None)
@@ -336,17 +350,41 @@ def _patch_hit_test() -> None:
     except Exception:
         pass
 
-def _patch_gl_canvas_input() -> None:
+def _iter_tab_canvas_widget_classes():
+    """Discover each tab's ``canvas.widget.CanvasWidget`` class, if any.
+
+    Mirrors ``tabs.registry.TabRegistry.discover``'s pkgutil-based scan so
+    this stays tab-agnostic instead of hardcoding a specific tab package.
+    """
+    import importlib
+    import pkgutil
+
     try:
-        from ui.widgets.canvas import widget as gl_mod
-    except Exception:
-        logger.debug("gl_canvas patch skipped", exc_info=True)
+        import tabs as tabs_pkg
+    except ImportError:
+        return
+
+    for _finder, module_name, _is_pkg in pkgutil.iter_modules(tabs_pkg.__path__):
+        if module_name.startswith("_") or module_name in ("contract", "registry"):
+            continue
+        try:
+            canvas_mod = importlib.import_module(f"tabs.{module_name}.canvas.widget")
+        except Exception:
+            continue
+        widget_cls = getattr(canvas_mod, "CanvasWidget", None)
+        if widget_cls is not None:
+            yield widget_cls
+
+def _patch_canvas_input() -> None:
+    widget_classes = list(_iter_tab_canvas_widget_classes())
+    if not widget_classes:
+        logger.debug("canvas input patch skipped", exc_info=True)
         return
 
     tracer = Tracer.instance()
 
-    def wrap(method_name: str, label: str):
-        orig = getattr(gl_mod.GLCanvas, method_name, None)
+    def wrap(widget_cls, method_name: str, label: str):
+        orig = getattr(widget_cls, method_name, None)
         if orig is None:
             return
         def traced(self, event, _orig=orig, _label=label):
@@ -378,17 +416,18 @@ def _patch_gl_canvas_input() -> None:
                     caller_skip=1,
                 )
                 tracer.end_trace()
-        setattr(gl_mod.GLCanvas, method_name, traced)
+        setattr(widget_cls, method_name, traced)
 
-    for method, label in [
-        ("mousePressEvent", "mpress"),
-        ("mouseReleaseEvent", "mrel"),
-        ("mouseMoveEvent", "mmove"),
-        ("wheelEvent", "wheel"),
-        ("keyPressEvent", "kpress"),
-        ("keyReleaseEvent", "krel"),
-    ]:
-        wrap(method, label)
+    for widget_cls in widget_classes:
+        for method, label in [
+            ("mousePressEvent", "mpress"),
+            ("mouseReleaseEvent", "mrel"),
+            ("mouseMoveEvent", "mmove"),
+            ("wheelEvent", "wheel"),
+            ("keyPressEvent", "kpress"),
+            ("keyReleaseEvent", "krel"),
+        ]:
+            wrap(widget_cls, method, label)
 
 def _event_summary(event) -> str:
     parts = []

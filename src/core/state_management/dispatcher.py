@@ -1,30 +1,11 @@
 import logging
 import threading
-from dataclasses import fields, is_dataclass
 from typing import Callable, List
 
 from .actions import Action
 from .reducers import RootReducer
 
 logger = logging.getLogger("ImproveImgSLI")
-
-def _sync_dataclass_fields(source, target) -> None:
-    if source is None or target is None or not is_dataclass(target):
-        return
-    for field_info in fields(target):
-        name = field_info.name
-        if hasattr(source, name):
-            setattr(target, name, getattr(source, name))
-
-def _sync_plugin_states(viewport) -> None:
-    viewport_plugin_state = getattr(viewport, "_viewport_plugin_state", None)
-    analysis_plugin_state = getattr(viewport, "_analysis_plugin_state", None)
-
-    if viewport_plugin_state is not None:
-        _sync_dataclass_fields(viewport, viewport_plugin_state)
-
-    if analysis_plugin_state is not None:
-        _sync_dataclass_fields(viewport.view_state, analysis_plugin_state)
 
 class Dispatcher:
 
@@ -48,16 +29,12 @@ class Dispatcher:
 
                 if new_store is not self._store:
 
-                    old_viewport_plugin_state = getattr(
-                        self._store.viewport, "_viewport_plugin_state", None
-                    )
-                    old_analysis_plugin_state = getattr(
-                        self._store.viewport, "_analysis_plugin_state", None
-                    )
-
-                    old_viewport = self._store.viewport
                     self._store.viewport = new_store.viewport
-                    self._store.document = new_store.document
+                    self._store.set_session_state_slot(
+                        "document",
+                        new_store.get_session_state_slot("document"),
+                        emit_scope="",
+                    )
                     self._store.settings = new_store.settings
 
                     # The active workspace session owns ``document`` and
@@ -73,20 +50,10 @@ class Dispatcher:
                         except Exception:
                             active_session = None
                     if active_session is not None:
-                        active_session.document = self._store.document
+                        active_session.state_slots["document"] = (
+                            self._store.get_session_state_slot("document")
+                        )
                         active_session.viewport = self._store.viewport
-
-                    if old_viewport_plugin_state:
-                        self._store.viewport._viewport_plugin_state = (
-                            old_viewport_plugin_state
-                        )
-
-                    if old_analysis_plugin_state:
-                        self._store.viewport._analysis_plugin_state = (
-                            old_analysis_plugin_state
-                        )
-
-                    _sync_plugin_states(self._store.viewport)
 
                     self._action_history.append(action)
                     if len(self._action_history) > self._max_history_size:

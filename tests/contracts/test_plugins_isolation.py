@@ -5,7 +5,7 @@
     (controller / presenter / state / dialog) — cross-plugin communication
     goes via events / services / plugin_coordinator
 
-Dogma source: docs/dev/CANVAS_FEATURES.md (no feature imports in plugins/)
+Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md (no feature imports in plugins/)
 and docs/dev/ARCHITECTURE.md (plugin decoupling).
 """
 
@@ -185,8 +185,8 @@ def test_export_plugin_does_not_construct_video_editor_services_directly():
     leaks: list[str] = []
     for module, lineno in module_imports(path):
         if module in {
-            "plugins.video_editor.services.recorder",
-            "plugins.video_editor.services.export",
+            "tabs.image_compare.plugins.video_editor.services.recorder",
+            "tabs.image_compare.plugins.video_editor.services.export",
         }:
             leaks.append(
                 f"{rel(path)}:{lineno} imports {module!r} "

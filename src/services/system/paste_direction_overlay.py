@@ -7,6 +7,8 @@ from sli_ui_toolkit.ui.widgets.overlays.in_window_overlay import (
     TopLevelInWindowOverlay,
 )
 
+from ui.theming import resolve_theme_color
+
 
 class PasteDirectionOverlay(TopLevelInWindowOverlay):
     direction_selected = Signal(str)
@@ -136,11 +138,11 @@ class PasteDirectionOverlay(TopLevelInWindowOverlay):
             )
 
         tm = ThemeManager.get_instance()
-        surface = QColor(tm.get_color("flyout.background"))
-        text_normal = QColor(tm.get_color("WindowText"))
-        border_idle = QColor(tm.get_color("flyout.border"))
-        accent = QColor(tm.get_color("accent"))
-        separator = QColor(tm.get_color("separator.color"))
+        surface = QColor(resolve_theme_color(tm, "flyout.background"))
+        text_normal = QColor(resolve_theme_color(tm, "WindowText"))
+        border_idle = QColor(resolve_theme_color(tm, "flyout.border"))
+        accent = QColor(resolve_theme_color(tm, "accent"))
+        separator = QColor(resolve_theme_color(tm, "separator.color"))
 
         for rect, direction, text in buttons:
             is_hovered = self.hovered_button == direction

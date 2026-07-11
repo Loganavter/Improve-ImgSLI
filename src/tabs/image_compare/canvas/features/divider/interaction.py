@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPointF
 
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 
 
 def apply_split_drag(handler, cursor_pos: QPointF) -> None:
@@ -28,6 +28,6 @@ def apply_split_drag(handler, cursor_pos: QPointF) -> None:
 
     rel_pos = raw_rel_x if not viewport.view_state.is_horizontal else raw_rel_y
     new_split_pos = max(0.0, min(1.0, rel_pos))
-    command = get_canvas_feature_command_by_alias("splitter.update_drag")
+    command = registry().get_feature_command_by_alias("splitter.update_drag")
     if command is not None:
         command(handler, new_split_pos)

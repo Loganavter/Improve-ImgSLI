@@ -1,6 +1,6 @@
 """Shared event code must not branch on feature-specific state.
 
-Dogma source: docs/dev/CANVAS_FEATURES.md Anti-patterns
+Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md Anti-patterns
 ("Adding new central ``if feature == ...`` logic",
  "Duplicating state in both feature-owned storage and flat ``ViewState``").
 
@@ -46,6 +46,63 @@ ALIAS_LEAK_ALLOWLIST: set[str] = set()
 
 def _events_files() -> list:
     return iter_py(EVENTS_ROOT)
+
+# multi_compare has no shared `src/events/` mouse module of its own — its
+# canvas widget (`src/tabs/multi_compare/ui/canvas_widget.py`) both routes
+# gestures *and* legitimately owns widget-level chrome (RMB context menu,
+# middle-button pan, wheel-zoom, both double-click behaviors — see the D1
+# gesture-mapping note in docs/dev/MULTI_COMPARE_QRHI_REFACTOR.md for why
+# those stay inline). So the tests above, which are scoped to
+# `EVENTS_ROOT`/`MOUSE_FILE`, do not and should not cover it wholesale — a
+# blanket "no branching" rule would contradict D1's own scope decision. This
+# narrower check only guards the two gestures that *were* extracted
+# (divider-drag, slot-drag): their transient state (`_divider_drag`,
+# `_lmb_press_pos`, `_lmb_press_slot_id`) must only be touched through
+# `resolve_press`/`iter_active` inside the mouse event methods, not read
+# directly for routing, mirroring `test_mouse_does_not_branch_on_feature_interaction_flags`.
+MULTI_COMPARE_CANVAS_WIDGET = (
+    SRC / "tabs" / "multi_compare" / "ui" / "canvas_widget.py"
+)
+MULTI_COMPARE_GESTURE_STATE_FIELDS = (
+    "_divider_drag",
+    "_lmb_press_pos",
+    "_lmb_press_slot_id",
+)
+MULTI_COMPARE_ROUTING_METHODS = (
+    "mousePressEvent",
+    "mouseMoveEvent",
+    "mouseReleaseEvent",
+)
+
+def _method_source(tree: ast.AST, src_lines: list[str], class_name: str, method_name: str) -> str:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name == method_name:
+                    return "\n".join(src_lines[item.lineno - 1 : item.end_lineno])
+    return ""
+
+def test_multi_compare_canvas_widget_does_not_branch_on_gesture_state_directly():
+    src = read(MULTI_COMPARE_CANVAS_WIDGET)
+    tree = ast.parse(src)
+    src_lines = src.splitlines()
+    leaks: list[str] = []
+    for method_name in MULTI_COMPARE_ROUTING_METHODS:
+        method_src = _method_source(
+            tree, src_lines, "MultiCompareCanvasWidget", method_name
+        )
+        for field in MULTI_COMPARE_GESTURE_STATE_FIELDS:
+            if re.search(rf"self\.{field}\b", method_src):
+                leaks.append(f"{method_name} reads self.{field}")
+    assert not leaks, (
+        "multi_compare's canvas_widget.py mouse-routing methods must resolve "
+        "the divider-drag / slot-drag gestures via "
+        "`tabs.multi_compare.canvas.gesture_resolver` "
+        "(`resolve_press`/`iter_active`), not by reading their transient "
+        "state fields directly — that state must only be touched inside "
+        "each feature's own `interaction.py`/`gestures.py`:\n  "
+        + "\n  ".join(leaks)
+    )
 
 def test_mouse_does_not_read_flat_viewstate_feature_flags():
     src = read(MOUSE_FILE)

@@ -88,8 +88,15 @@ class DividerPass(CanvasRenderPass):
         # treated as final and multiplied straight against the widget
         # dimension — recombining it with content_rect_px here a second time
         # double-applies the letterbox transform.
-        extent = float(widget.height()) if is_horizontal else float(widget.width())
-        position_px = extent * display_split
+        # Position is computed against the logical canvas (ctx.canvas_width/
+        # height), then shifted into this render target's tile-local pixel
+        # space via canvas_offset_x/y — identical to canvas_width/height/
+        # offset_x/y == widget.width()/height()/0/0 outside tiled export.
+        extent = (
+            float(ctx.canvas_height) if is_horizontal else float(ctx.canvas_width)
+        )
+        offset = ctx.canvas_offset_y if is_horizontal else ctx.canvas_offset_x
+        position_px = extent * display_split - offset
         return show_divider, position_px, thickness_px, is_horizontal, color
 
     def initialize(self, rhi, target) -> None:

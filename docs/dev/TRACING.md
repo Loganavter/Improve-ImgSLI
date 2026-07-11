@@ -36,7 +36,7 @@ Also enabled automatically when `--debug` mode is on.
 | `alias.command` | Each capability-alias resolve via `widget_registry.get_canvas_feature_command_by_alias`. | no |
 | `render.apply_plan` / `render.apply_end` | Each `apply_canvas_render_plan` call with a snapshot diff of changed `CanvasRenderPlan` fields vs the previous frame on the same canvas. | yes |
 | `video.preview.*` | Video editor preview request/apply sizes, selected render target, fit-content state, and prepared-frame debug payload. | no |
-| `video.render.*` | Snapshot renderer prescale/layout/plan sizes, interpolation method, GL scene filter, diff mode, and canvas/content geometry. | no |
+| `video.render.*` | Snapshot renderer prescale/layout/plan sizes, interpolation method, render scene filter, diff mode, and canvas/content geometry. | no |
 | `hit_test` | Each `find_scene_object_at_position` result (kind + id). | no |
 
 Each record carries:
@@ -210,7 +210,7 @@ Files in `src/core/tracing/`:
   `Store.emit_state_change`, `Store.emit_viewport_change`, `EventBus.emit`,
   `widget_registry.get_canvas_feature_command_by_alias`,
   `apply_canvas_render_plan`, `find_scene_object_at_position`, and all
-  `GLCanvas` mouse/wheel/key handlers.
+  `CanvasWidget` mouse/wheel/key handlers (`src/tabs/image_compare/canvas/widget.py`).
 - `file_sink.py` — subscribes to Tracer and appends JSON lines to the log
   directory file.
 - `print_tree.py` — CLI for reading the file and rendering trees.

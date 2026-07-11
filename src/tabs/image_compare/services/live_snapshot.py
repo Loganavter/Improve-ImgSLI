@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from plugins.video_editor.services.keyframing.types import FrameSnapshot
+from tabs.image_compare.plugins.video_editor.services.keyframing.types import FrameSnapshot
 
 
 def _get_path_at_index(items, index):
@@ -17,7 +17,7 @@ def _get_path_at_index(items, index):
 
 
 def build_live_frame_snapshot(store) -> FrameSnapshot:
-    document = store.document
+    document = store.get_session_state_slot("document")
     image1_path = getattr(document, "image1_path", None) or _get_path_at_index(
         getattr(document, "image_list1", ()),
         int(getattr(document, "current_index1", 0) or 0),

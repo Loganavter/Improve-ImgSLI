@@ -7,7 +7,7 @@ layout(std140, binding = 0) uniform UBuf
 {
     mat4 mvp;
     vec2 offset;
-    float zoom;
+    vec2 zoom;
     float splitPosition;
     vec4 letterbox1;
     vec4 letterbox2;
@@ -16,6 +16,8 @@ layout(std140, binding = 0) uniform UBuf
     int diffMode;
     int diffSourceReady;
     float diffThreshold;
+    vec4 tileRect1;
+    vec4 tileRect2;
 };
 
 layout(location = 0) out vec2 vTexCoord;

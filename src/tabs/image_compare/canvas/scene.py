@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ui.canvas_infra.scene.widget_registry import (
-    build_canvas_feature_render_scene_overrides,
-)
+from tabs.image_compare.canvas.registry import registry
 
 
 @dataclass(frozen=True)
@@ -51,7 +49,7 @@ def build_render_scene(
         )
         or "BILINEAR"
     )
-    feature_overrides = build_canvas_feature_render_scene_overrides(store)
+    feature_overrides = registry().build_feature_render_scene_overrides(store)
 
     diff_mode_int = {
         "off": 0,
@@ -93,7 +91,3 @@ def build_render_scene(
         zoom_interpolation_method=zoom_method,
         feature_overrides=feature_overrides,
     )
-
-
-GLRenderScene = RenderScene
-build_gl_render_scene = build_render_scene

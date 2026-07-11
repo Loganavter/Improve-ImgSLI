@@ -5,9 +5,10 @@ Owns the image-pair document model (``image_list1/2``, ``current_index1/2``,
 ``image1_path/image2_path`` and load-state flags).
 
 This module is the authoritative location for ``DocumentModel`` and
-``ImageItem``. ``core.store_document`` re-exports these types as a thin
-backward-compatibility shim while remaining callers migrate to the
-tab-owned path (see step 8 of ``docs/dev/TAB_OWNERSHIP_AUDIT.md``).
+``ImageItem`` (see step 8 of ``docs/dev/TAB_OWNERSHIP_AUDIT.md``). The
+"document" session state slot is registered by this tab's
+``SessionBlueprint`` (``tabs/image_compare/plugin.py``); platform code
+reaches it via ``store.get_session_state_slot("document")``.
 """
 
 from __future__ import annotations

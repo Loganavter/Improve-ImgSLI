@@ -34,9 +34,7 @@ def seed_from_store(store: object) -> dict[str, Any]:
     if store is None:
         return dict(_DEFAULTS)
 
-    from ui.canvas_infra.scene.widget_registry import (
-        get_canvas_feature_command_by_alias,
-    )
+    from tabs.image_compare.canvas.registry import registry
 
     viewport = getattr(store, "viewport", None)
     settings = getattr(store, "settings", None)
@@ -51,14 +49,14 @@ def seed_from_store(store: object) -> dict[str, Any]:
         getattr(session_data, "image_state", None) if session_data is not None else None
     )
 
-    guides_query = get_canvas_feature_command_by_alias("guides.widget_state")
+    guides_query = registry().get_feature_command_by_alias("guides.widget_state")
     guides_state = (
         guides_query(view_state)
         if guides_query is not None and view_state is not None
         else None
     )
 
-    overlay_query = get_canvas_feature_command_by_alias("overlay.behavior_settings")
+    overlay_query = registry().get_feature_command_by_alias("overlay.behavior_settings")
     magnifier_behavior = (
         overlay_query(store, {}) if overlay_query is not None else {}
     ) or {}

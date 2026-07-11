@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from shared.rendering import VirtualCanvasLayout, resolve_virtual_canvas_layout
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_commands_by_id
+from ui.canvas_infra.scene.registry import get_canvas_registry
 
 _dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
@@ -20,8 +20,10 @@ def resolve_feature_virtual_layout(
     everywhere without touching either caller."""
     if store is None or drawing_width <= 0 or drawing_height <= 0:
         return None
+    session = store.get_active_workspace_session()
+    session_type = session.session_type if session is not None else None
     requirements = []
-    for build_requirement in get_canvas_feature_commands_by_id(
+    for build_requirement in get_canvas_registry(session_type).get_feature_commands_by_id(
         "render.layout_requirement"
     ):
         requirement = build_requirement(

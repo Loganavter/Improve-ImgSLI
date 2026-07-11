@@ -14,7 +14,7 @@ from tabs.multi_compare.models import slot_ids_in_tree
 from tabs.multi_compare.scene import actions as mc_actions
 from tabs.multi_compare.services.composition_builder import build_composition_plan
 from tabs.multi_compare.services.gpu_export import MultiCompareGpuExporter
-from tabs.multi_compare.services.image_export import save_composite
+from tabs.multi_compare.services.save_flow import MultiCompareSaveFlowCoordinator
 from tabs.multi_compare.widget import MultiCompareWidget
 from ui.canvas_presentation.composition import compute_native_canvas_size
 
@@ -48,6 +48,7 @@ class MultiCompareController:
         self.open_export_dialog = open_export_dialog
         self.context = context
         self._gpu_exporter: MultiCompareGpuExporter | None = None
+        self._save_flow: MultiCompareSaveFlowCoordinator | None = None
         self._last_applied_ui_mode: str | None = None
 
         self.widget.images_dropped.connect(self._on_images_dropped)
@@ -137,7 +138,20 @@ class MultiCompareController:
     def _on_quick_save_requested(self) -> None:
         self._on_save_requested()
 
+    def _get_save_flow(self) -> MultiCompareSaveFlowCoordinator:
+        if self._save_flow is None:
+            main_window = getattr(self.context, "main_window", None)
+            thread_pool = getattr(self.context, "thread_pool", None)
+            self._save_flow = MultiCompareSaveFlowCoordinator(
+                main_window_app=main_window,
+                tr_func=self.translate,
+                thread_pool=thread_pool,
+            )
+        return self._save_flow
+
     def shutdown(self) -> None:
+        if self._save_flow is not None:
+            self._save_flow.cancel_all_exports()
         if self._gpu_exporter is not None:
             self._gpu_exporter.shutdown()
             self._gpu_exporter = None
@@ -195,21 +209,15 @@ class MultiCompareController:
         import time
 
         t_start = time.perf_counter()
-        logger.info("[mc-export] save requested")
         if not slot_ids_in_tree(self.widget.state.root):
-            logger.info("[mc-export] no slots in tree, abort")
             return
 
         t0 = time.perf_counter()
         native_size = self._native_canvas_size() or self._live_view_size()
-        logger.info(
-            "[mc-export] native_size=%s computed in %.1f ms",
-            native_size,
-            (time.perf_counter() - t0) * 1000.0,
-        )
 
         if not callable(self.open_export_dialog):
-            self.open_export_dialog = self._open_local_export_dialog
+            logger.error("MultiCompareController: no export dialog service wired")
+            return
 
         t0 = time.perf_counter()
         preview = self._render_export_preview(
@@ -223,85 +231,49 @@ class MultiCompareController:
                 )
             ),
         )
-        logger.info(
-            "[mc-export] preview rendered in %.1f ms (size=%dx%d)",
-            (time.perf_counter() - t0) * 1000.0,
-            preview.width() if preview is not None else -1,
-            preview.height() if preview is not None else -1,
-        )
 
         t0 = time.perf_counter()
-        logger.info("[mc-export] opening export dialog...")
         result_code, options = self.open_export_dialog(
+            dialog_state=self._export_dialog_state_kwargs(),
             preview_image=preview,
             suggested_filename="multi_compare",
             native_size=native_size,
-        )
-        logger.info(
-            "[mc-export] dialog closed in %.1f ms (result=%s)",
-            (time.perf_counter() - t0) * 1000.0,
-            result_code,
+            on_set_favorite_dir=self._set_favorite_dir,
         )
 
         if int(result_code) != int(QDialog.DialogCode.Accepted):
-            logger.info(
-                "[mc-export] dialog cancelled, total=%.1f ms",
-                (time.perf_counter() - t_start) * 1000.0,
-            )
             return
         try:
             t0 = time.perf_counter()
-            logger.info(
-                "[mc-export] composing final image %dx%d",
-                int(options["width"]),
-                int(options["height"]),
-            )
             image = self._compose_image(
                 int(options["width"]),
                 int(options["height"]),
                 background_color=QColor(*options["background_color"]),
                 fill_background=bool(options["fill_background"]),
             )
-            logger.info(
-                "[mc-export] composed in %.1f ms (qimage=%dx%d)",
-                (time.perf_counter() - t0) * 1000.0,
-                image.width(),
-                image.height(),
-            )
 
             t0 = time.perf_counter()
-            saved_path = save_composite(image, options)
-            logger.info(
-                "[mc-export] save_composite in %.1f ms -> %s",
-                (time.perf_counter() - t0) * 1000.0,
-                saved_path,
-            )
+            from shared.image_processing.qt_conversion import qimage_to_pil
+
+            pil_image = qimage_to_pil(image)
 
             self._persist_export_preferences(options)
-            logger.info(
-                "Multi Compare composite saved to %s (total=%.1f ms)",
-                saved_path,
-                (time.perf_counter() - t_start) * 1000.0,
-            )
+            self._get_save_flow().start_save_worker(pil_image, options)
         except Exception:
             logger.exception("Composite save failed")
 
-    def _open_local_export_dialog(
-        self,
-        *,
-        preview_image,
-        suggested_filename: str,
-        native_size: tuple[int, int],
-    ):
-        from resources.translations import tr
+    def _export_dialog_state_kwargs(self) -> dict:
+        """Raw field values for the host's export dialog state.
 
-        from tabs.multi_compare.plugins.export import (
-            MultiCompareExportDialog,
-            MultiCompareExportDialogState,
-        )
+        Kept as a plain dict (not a dataclass import) so this module never
+        imports the host's export-dialog package — the
+        "open_image_export_dialog" host service (see ui/main_window/layouts.py)
+        owns building the actual dialog-state object.
+        """
+        from domain.qt_adapters import qcolor_to_color
 
         settings = getattr(self.store, "settings", None)
-        state = MultiCompareExportDialogState(
+        return dict(
             current_language=getattr(settings, "current_language", "en"),
             output_dir=self._default_dir(),
             favorite_dir=getattr(settings, "export_favorite_dir", None),
@@ -311,7 +283,9 @@ class MultiCompareController:
                 getattr(settings, "export_png_compress_level", 9) or 9
             ),
             fill_background=bool(getattr(settings, "export_fill_background", True)),
-            background_color=self._background_color_from_settings(settings),
+            background_color=qcolor_to_color(
+                self._background_color_from_settings(settings)
+            ),
             comment_text=getattr(settings, "export_comment_text", "") or "",
             comment_keep_default=bool(
                 getattr(settings, "export_comment_keep_default", False)
@@ -320,16 +294,6 @@ class MultiCompareController:
                 getattr(settings, "export_resolution_scale", 1.0) or 1.0
             ),
         )
-        dialog = MultiCompareExportDialog(
-            state,
-            preview_image=preview_image,
-            suggested_filename=suggested_filename,
-            native_size=native_size,
-            tr_func=tr,
-            on_set_favorite_dir=self._set_favorite_dir,
-            parent=None,
-        )
-        return dialog.exec(), dialog.get_export_options()
 
     def _live_view_size(self) -> tuple[int, int]:
         width = max(1, int(self.widget.canvas.width()))
@@ -462,11 +426,6 @@ class MultiCompareController:
         t0 = time.perf_counter()
         state = self.widget.state
         composition = build_composition_plan(state)
-        logger.info(
-            "[mc-export] build_composition_plan in %.1f ms (canvas=%s)",
-            (time.perf_counter() - t0) * 1000.0,
-            (composition.canvas_w, composition.canvas_h) if composition else None,
-        )
         if composition is None:
             return QImage(
                 max(1, int(w or self.SAVE_OUTPUT_W)),
@@ -476,15 +435,7 @@ class MultiCompareController:
         output_w = int(w) if w else composition.canvas_w
         output_h = int(h) if h else composition.canvas_h
         if self._gpu_exporter is None:
-            logger.info("[mc-export] creating MultiCompareGpuExporter")
             self._gpu_exporter = MultiCompareGpuExporter()
-        logger.info(
-            "[mc-export] gpu.render_to_qimage start fb=%dx%d (canvas=%dx%d)",
-            output_w,
-            output_h,
-            composition.canvas_w,
-            composition.canvas_h,
-        )
         t0 = time.perf_counter()
         image = self._gpu_exporter.render_to_qimage(
             composition,
@@ -492,9 +443,5 @@ class MultiCompareController:
             output_h=output_h,
             background_color=background_color,
             fill_background=fill_background,
-        )
-        logger.info(
-            "[mc-export] gpu.render_to_qimage done in %.1f ms",
-            (time.perf_counter() - t0) * 1000.0,
         )
         return image
