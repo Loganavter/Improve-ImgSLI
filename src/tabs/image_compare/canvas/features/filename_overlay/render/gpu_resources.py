@@ -17,7 +17,7 @@ from PySide6.QtGui import (
 
 from tabs.image_compare.canvas.rhi_feature_common import load_qshader
 
-_SHADER_DIR = Path(__file__).resolve().parent / "shaders"
+_SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders"
 _UNIFORM_SIZE = 64
 _VERTEX_STRIDE = 16
 _VERTEX_BUFFER_SIZE = _VERTEX_STRIDE * 4

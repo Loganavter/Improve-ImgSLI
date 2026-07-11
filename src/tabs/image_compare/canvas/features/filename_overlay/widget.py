@@ -13,7 +13,7 @@ from core.state_management.appearance_actions import (
     SetTextPlacementModeAction,
 )
 from core.store_viewport import RenderConfig
-from tabs.image_compare.canvas.features.filename_overlay.events import (
+from tabs.image_compare.canvas.features.filename_overlay.input.events import (
     SettingsToggleIncludeFilenamesInSavedEvent,
 )
 from ui.canvas_infra.scene.widget_contract import (
@@ -25,8 +25,8 @@ from ui.canvas_infra.scene.widget_contract import (
 from tabs.image_compare.canvas.registry import registry
 from tabs.image_compare.canvas.style_tokens import DEFAULT_CANVAS_STYLE_TOKENS
 
-from .config import FilenameOverlayConfig
-from .properties import build_filename_overlay_properties
+from tabs.image_compare.canvas.features.filename_overlay.state.config import FilenameOverlayConfig
+from tabs.image_compare.canvas.features.filename_overlay.properties import build_filename_overlay_properties
 
 
 def reduce_filename_overlay_render_config(

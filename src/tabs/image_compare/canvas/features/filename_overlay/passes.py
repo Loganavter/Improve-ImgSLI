@@ -14,10 +14,10 @@ from ui.canvas_presentation.filename_labels import (
 )
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from tabs.image_compare.canvas.features.filename_overlay.gpu_resources import (
+from tabs.image_compare.canvas.features.filename_overlay.render.gpu_resources import (
     FilenameOverlayGpuResources,
 )
-from tabs.image_compare.canvas.features.filename_overlay.label_raster import (
+from tabs.image_compare.canvas.features.filename_overlay.render.label_raster import (
     build_quad_vertices,
     rasterize_label,
 )
