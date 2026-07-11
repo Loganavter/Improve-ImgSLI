@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from core.state_management.action_base import Action
 
-from ..actions import (
+from tabs.image_compare.canvas.features.magnifier.input.actions import (
     SetMagnifierScreenCenterAction,
     SetMagnifierScreenSizeAction,
 )

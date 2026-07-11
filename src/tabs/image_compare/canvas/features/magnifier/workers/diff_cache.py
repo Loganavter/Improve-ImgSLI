@@ -11,7 +11,9 @@ def build_cached_diff_image_task(
     diff_mode,
     progress_callback=None,
 ):
-    from shared.analysis import build_cached_diff_image
+    from tabs.image_compare.services.analysis.background_layers import (
+        build_cached_diff_image,
+    )
 
     return build_cached_diff_image(
         source1,

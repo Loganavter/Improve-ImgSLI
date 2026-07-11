@@ -5,9 +5,8 @@ import time
 import urllib.request
 
 from PySide6.QtWidgets import QApplication
+from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.workers import GenericWorker
-
-from resources.translations import tr
 
 logger = logging.getLogger("ImproveImgSLI")
 

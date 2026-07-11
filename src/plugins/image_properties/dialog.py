@@ -160,16 +160,10 @@ class ImagePropertiesDialog(QDialog):
         )
 
     def _apply_styles(self) -> None:
+        # QFrame#ImagePropertiesSection styling lives in resources/styles/app.qss
+        # (registered globally with ThemeManager) so it cascades here without an
+        # ad-hoc per-dialog setStyleSheet call.
         polish_themed_dialog(self.theme_manager, self)
-        background = self.theme_manager.get_color("dialog.input.background").name()
-        border = self.theme_manager.get_color("dialog.border").name()
-        self.setStyleSheet(f"""
-            QFrame#ImagePropertiesSection {{
-                background: {background};
-                border: 1px solid {border};
-                border-radius: 6px;
-            }}
-            """)
 
     def _row_value(self, row: ImagePropertyRow) -> str:
         if row.value_key:

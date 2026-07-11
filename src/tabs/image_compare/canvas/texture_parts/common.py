@@ -37,8 +37,6 @@ def ensure_feature_overlay_slot_capacity(widget, count: int):
         overlay._quads.append(None)
     while len(overlay._use_circle_mask) < count:
         overlay._use_circle_mask.append(False)
-    while len(overlay._combined_params) < count:
-        overlay._combined_params.append(None)
     while len(overlay._gpu_slots) < count:
         overlay._gpu_slots.append(None)
 

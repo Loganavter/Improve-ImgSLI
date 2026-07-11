@@ -27,15 +27,15 @@ __all__ = sorted(_BOUNDS_EXPORTS | _MODE_EXPORTS | _STORE_EXPORTS)
 
 def __getattr__(name: str):
     if name in _BOUNDS_EXPORTS:
-        from . import bounds
+        from tabs.image_compare.canvas.features.magnifier.geometry import bounds
 
         return getattr(bounds, name)
     if name in _MODE_EXPORTS:
-        from . import mode
+        from tabs.image_compare.canvas.features.magnifier.state import mode
 
         return getattr(mode, name)
     if name in _STORE_EXPORTS:
-        from . import store
+        from tabs.image_compare.canvas.features.magnifier.state import store
 
         return getattr(store, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

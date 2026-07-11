@@ -4,6 +4,7 @@ from PySide6.QtCore import QTimer
 from sli_ui_toolkit.workers import GenericWorker
 
 from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
+from tabs.image_compare.services import document_store_ops
 from tabs.image_compare.state.document import ImageItem
 from sli_ui_toolkit.i18n import tr
 
@@ -16,6 +17,8 @@ def _invalidate_diff_cache(controller) -> None:
 
 
 def initialize_app_display(controller):
+    if controller.store.get_session_state_slot("document") is None:
+        return
     if controller.store.viewport.session_data.image_state.loaded_image1_paths:
         controller.load_images_from_paths(
             controller.store.viewport.session_data.image_state.loaded_image1_paths, 1
@@ -25,29 +28,30 @@ def initialize_app_display(controller):
             controller.store.viewport.session_data.image_state.loaded_image2_paths, 2
         )
 
+    document = controller.store.get_session_state_slot("document")
     if (
         controller.store.viewport.session_data.image_state.loaded_current_index1 != -1
         and 0
         <= controller.store.viewport.session_data.image_state.loaded_current_index1
-        < len(controller.store.document.image_list1)
+        < len(document.image_list1)
     ):
-        controller.store.document.current_index1 = (
+        document.current_index1 = (
             controller.store.viewport.session_data.image_state.loaded_current_index1
         )
-    elif controller.store.document.image_list1:
-        controller.store.document.current_index1 = 0
+    elif document.image_list1:
+        document.current_index1 = 0
 
     if (
         controller.store.viewport.session_data.image_state.loaded_current_index2 != -1
         and 0
         <= controller.store.viewport.session_data.image_state.loaded_current_index2
-        < len(controller.store.document.image_list2)
+        < len(document.image_list2)
     ):
-        controller.store.document.current_index2 = (
+        document.current_index2 = (
             controller.store.viewport.session_data.image_state.loaded_current_index2
         )
-    elif controller.store.document.image_list2:
-        controller.store.document.current_index2 = 0
+    elif document.image_list2:
+        document.current_index2 = 0
 
     controller.set_current_image(1, emit_signal=False)
     controller.set_current_image(2, emit_signal=False)
@@ -67,33 +71,25 @@ def trigger_preview_unification(controller, image_number: int):
             ["file_names", "resolution"]
         )
 
-    source1 = (
-        controller.store.document.full_res_image1
-        or controller.store.document.preview_image1
-    )
-    source2 = (
-        controller.store.document.full_res_image2
-        or controller.store.document.preview_image2
-    )
+    document = controller.store.get_session_state_slot("document")
+    source1 = document.full_res_image1 or document.preview_image1
+    source2 = document.full_res_image2 or document.preview_image2
 
     if source1 and source2:
         try:
             controller._cancel_pending_unification(
-                controller.store.document.image1_path,
-                controller.store.document.image2_path,
+                document.image1_path,
+                document.image2_path,
             )
-            if (
-                not controller.store.document.image1_path
-                or not controller.store.document.image2_path
-            ):
+            if not document.image1_path or not document.image2_path:
                 return
 
             controller.store.viewport.session_data.render_cache.unification_in_progress = (
                 True
             )
             controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-                controller.store.document.image1_path,
-                controller.store.document.image2_path,
+                document.image1_path,
+                document.image2_path,
             )
 
             controller._unification_task_id += 1
@@ -102,8 +98,8 @@ def trigger_preview_unification(controller, image_number: int):
                 controller._unify_images_worker_task,
                 source1.copy(),
                 source2.copy(),
-                controller.store.document.image1_path,
-                controller.store.document.image2_path,
+                document.image1_path,
+                document.image2_path,
                 controller.store.viewport.render_config.display_resolution_limit,
                 current_task_id,
             )
@@ -125,11 +121,8 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     if not full_img:
         return
 
-    target_list = (
-        controller.store.document.image_list1
-        if image_number == 1
-        else controller.store.document.image_list2
-    )
+    document = controller.store.get_session_state_slot("document")
+    target_list = document.image_list1 if image_number == 1 else document.image_list2
     if (
         not (0 <= index_in_list < len(target_list))
         or target_list[index_in_list].path != path
@@ -144,29 +137,21 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     _invalidate_diff_cache(controller)
 
     current_app_index = (
-        controller.store.document.current_index1
-        if image_number == 1
-        else controller.store.document.current_index2
+        document.current_index1 if image_number == 1 else document.current_index2
     )
     if index_in_list != current_app_index:
         return
 
     def trigger_unification():
-        source1 = (
-            controller.store.document.full_res_image1
-            or controller.store.document.preview_image1
-        )
-        source2 = (
-            controller.store.document.full_res_image2
-            or controller.store.document.preview_image2
-        )
+        source1 = document.full_res_image1 or document.preview_image1
+        source2 = document.full_res_image2 or document.preview_image2
         if source1 and source2:
             controller.store.viewport.session_data.render_cache.unification_in_progress = (
                 True
             )
             controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-                controller.store.document.image1_path,
-                controller.store.document.image2_path,
+                document.image1_path,
+                document.image2_path,
             )
             controller._unification_task_id += 1
             current_task_id = controller._unification_task_id
@@ -174,8 +159,8 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
                 controller._unify_images_worker_task,
                 source1.copy(),
                 source2.copy(),
-                controller.store.document.image1_path,
-                controller.store.document.image2_path,
+                document.image1_path,
+                document.image2_path,
                 controller.store.viewport.render_config.display_resolution_limit,
                 current_task_id,
             )
@@ -188,18 +173,15 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
 
 
 def load_images_from_paths(controller, file_paths: list[str], image_number: int):
+    document = controller.store.get_session_state_slot("document")
     target_list_ref = (
-        controller.store.document.image_list1
-        if image_number == 1
-        else controller.store.document.image_list2
+        document.image_list1 if image_number == 1 else document.image_list2
     )
     is_new_comparison = len(target_list_ref) == 0
     if is_new_comparison:
         other_image_number = 2 if image_number == 1 else 1
         other_list = (
-            controller.store.document.image_list1
-            if other_image_number == 1
-            else controller.store.document.image_list2
+            document.image_list1 if other_image_number == 1 else document.image_list2
         )
         controller.store.viewport.session_data.render_cache.unification_in_progress = (
             False
@@ -208,8 +190,8 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             None
         )
         if len(other_list) == 0:
-            controller.store.clear_image_slot_data(1)
-            controller.store.clear_image_slot_data(2)
+            document_store_ops.clear_image_slot_data(controller.store, 1)
+            document_store_ops.clear_image_slot_data(controller.store, 2)
             controller.store.viewport.session_data.image_state.image1 = None
             controller.store.viewport.session_data.image_state.image2 = None
             controller.store.viewport.session_data.render_cache.display_cache_image1 = (
@@ -225,7 +207,7 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
                     None
                 )
         else:
-            controller.store.clear_image_slot_data(image_number)
+            document_store_ops.clear_image_slot_data(controller.store, image_number)
 
     load_errors, newly_added_indices = [], []
     current_paths_in_list = {entry.path for entry in target_list_ref if entry.path}
@@ -279,7 +261,7 @@ def _reload_existing_path(
         )
         item = target_list_ref[index]
         item.image = None
-        doc = controller.store.document
+        doc = controller.store.get_session_state_slot("document")
         other_path = doc.image2_path if image_number == 1 else doc.image1_path
         cache_key = (
             (normalized_path, other_path)
@@ -291,9 +273,9 @@ def _reload_existing_path(
             cache.pop(cache_key)
 
         if image_number == 1:
-            controller.store.document.current_index1 = index
+            doc.current_index1 = index
         else:
-            controller.store.document.current_index2 = index
+            doc.current_index2 = index
 
         QTimer.singleShot(
             50, lambda num=image_number: controller.set_current_image(num)
@@ -312,10 +294,11 @@ def _finalize_loaded_paths(
 ):
     if newly_added_indices:
         new_index = newly_added_indices[-1]
+        document = controller.store.get_session_state_slot("document")
         if image_number == 1:
-            controller.store.document.current_index1 = new_index
+            document.current_index1 = new_index
         else:
-            controller.store.document.current_index2 = new_index
+            document.current_index2 = new_index
 
         if controller.presenter:
             controller.presenter.ui_batcher.schedule_update("combobox")
@@ -354,19 +337,14 @@ def _finalize_loaded_paths(
 def set_current_image(
     controller, image_number: int, force_refresh: bool = False, emit_signal: bool = True
 ):
-    target_list = (
-        controller.store.document.image_list1
-        if image_number == 1
-        else controller.store.document.image_list2
-    )
+    document = controller.store.get_session_state_slot("document")
+    target_list = document.image_list1 if image_number == 1 else document.image_list2
     current_index = (
-        controller.store.document.current_index1
-        if image_number == 1
-        else controller.store.document.current_index2
+        document.current_index1 if image_number == 1 else document.current_index2
     )
 
     if not (0 <= current_index < len(target_list)):
-        controller.store.clear_image_slot_data(image_number)
+        document_store_ops.clear_image_slot_data(controller.store, image_number)
         _invalidate_diff_cache(controller)
         controller.store.invalidate_geometry_cache()
         controller._invalidate_image_canvas_render_state(clear_magnifier=True)
@@ -381,9 +359,9 @@ def set_current_image(
             )
             if pending:
                 current_path = (
-                    controller.store.document.image1_path
+                    document.image1_path
                     if image_number == 1
-                    else controller.store.document.image2_path
+                    else document.image2_path
                 )
                 if current_path and current_path not in pending:
                     controller.store.viewport.session_data.render_cache.unification_in_progress = (
@@ -411,8 +389,8 @@ def set_current_image(
     controller._invalidate_image_canvas_render_state(clear_magnifier=False)
     controller._schedule_image_canvas_update()
 
-    path1 = controller.store.document.image1_path
-    path2 = controller.store.document.image2_path
+    path1 = document.image1_path
+    path2 = document.image2_path
     if path1 and path2:
         cache_key = (path1, path2)
         cache = controller.store.viewport.session_data.render_cache.unified_image_cache
@@ -476,10 +454,8 @@ def on_unified_images_ready(controller, result):
 
         if task_id != controller._unification_task_id:
             return
-        current_paths_now = (
-            controller.store.document.image1_path,
-            controller.store.document.image2_path,
-        )
+        document = controller.store.get_session_state_slot("document")
+        current_paths_now = (document.image1_path, document.image2_path)
         if (path1 != current_paths_now[0]) or (path2 != current_paths_now[1]):
             controller.store.viewport.session_data.render_cache.unification_in_progress = (
                 False

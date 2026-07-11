@@ -9,7 +9,30 @@ from core.session_blueprints import (
     SessionResourceBlueprint,
     SessionSlotBlueprint,
 )
+from core.state_management.extension_reducers import (
+    register_render_config_reducer,
+    register_session_data_reducer,
+)
+from core.state_management.slot_reducers import register_state_slot_reducer
 from tabs.image_compare.models import ImageCompareState
+
+# `tabs.image_compare.plugins.video_editor` is a nested subpackage, so
+# PluginRegistry._scan_package("tabs") (one level deep) never imports its
+# plugin.py on its own — import it here for the @plugin decorator's
+# registration side effect. Its i18n root is registered by
+# `ImageCompareTab.extra_i18n_roots` (see tab.py), not here, since this
+# module must not import the host's translation infrastructure directly.
+from tabs.image_compare.plugins.video_editor.plugin import VideoEditorPlugin  # noqa: F401
+from tabs.image_compare.state.document import DocumentModel
+from tabs.image_compare.state.reducer import DocumentReducer
+from tabs.image_compare.state.reducers import (
+    ImageRenderConfigReducer,
+    SessionDataReducer,
+)
+
+register_state_slot_reducer("document", DocumentReducer.reduce)
+register_session_data_reducer(SessionDataReducer().reduce)
+register_render_config_reducer(ImageRenderConfigReducer.reduce)
 from tabs.image_compare.services.analysis import (
     AnalysisRuntime,
     CachedDiffService,
@@ -143,6 +166,10 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
                     SessionSlotBlueprint(
                         name="image_compare.state",
                         factory=ImageCompareState,
+                    ),
+                    SessionSlotBlueprint(
+                        name="document",
+                        factory=DocumentModel,
                     ),
                 ),
                 resource_namespaces=(

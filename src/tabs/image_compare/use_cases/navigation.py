@@ -2,7 +2,7 @@ from core.events import CoreUpdateRequestedEvent
 
 
 def activate_single_image_mode(controller, image_number: int):
-    doc = controller.store.document
+    doc = controller.store.get_session_state_slot("document")
     img = (
         (doc.full_res_image1 or doc.preview_image1 or doc.original_image1)
         if image_number == 1
@@ -34,7 +34,7 @@ def deactivate_single_image_mode(controller):
 def on_combobox_changed(
     controller, image_number: int, index: int, scroll_delta: int = 0
 ):
-    doc = controller.store.document
+    doc = controller.store.get_session_state_slot("document")
     target_list = doc.image_list1 if image_number == 1 else doc.image_list2
     if not target_list:
         return
@@ -48,9 +48,9 @@ def on_combobox_changed(
 
     if 0 <= new_index < len(target_list):
         if image_number == 1:
-            controller.store.document.current_index1 = new_index
+            doc.current_index1 = new_index
         else:
-            controller.store.document.current_index2 = new_index
+            doc.current_index2 = new_index
         controller.set_current_image(image_number)
         if controller.event_bus:
             controller.event_bus.emit(CoreUpdateRequestedEvent())

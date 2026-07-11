@@ -22,6 +22,14 @@ class ImageLabelMouseHandler:
     def __init__(self, handler):
         self.handler = handler
 
+    def _session_has_content(self) -> bool:
+        from tabs.registry import get_shared_tab_registry
+
+        result = get_shared_tab_registry().create_service(
+            "session_has_content", self.handler.store
+        )
+        return bool(result)
+
     def handle_mouse_press(self, event) -> None:
         viewport = self.handler.store.viewport
         local_pos = self.handler.geometry.event_position_in_label(event, clamp=True)
@@ -64,7 +72,7 @@ class ImageLabelMouseHandler:
 
         if (
             viewport.view_state.showing_single_image_mode != 0
-            or not viewport.session_data.image_state.image1
+            or not self._session_has_content()
             or viewport.interaction_state.resize_in_progress
         ):
             return

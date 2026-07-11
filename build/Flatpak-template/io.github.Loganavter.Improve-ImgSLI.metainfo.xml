@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.Loganavter.Improve-ImgSLI</id>
   <metadata_license>MIT</metadata_license>
-  <project_license>MIT</project_license>
+  <project_license>GPL-3.0-or-later</project_license>
   <name>Improve ImgSLI</name>
   <summary>Image comparison with advanced magnifiers</summary>
   <description>
@@ -21,7 +21,7 @@
       <li>Use persistent settings, multilingual interface support, and structured diagnostics for advanced troubleshooting.</li>
     </ul>
     <p>
-      The application is distributed under the MIT License.
+      The application is distributed under the GPL-3.0 License.
     </p>
   </description>
   <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>

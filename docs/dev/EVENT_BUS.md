@@ -9,8 +9,10 @@ Decoupled, type-safe pub/sub for cross-component async notifications. Use it whe
 | Path | Role |
 |---|---|
 | `src/core/plugin_system/event_bus.py` | `EventBus` class, `MAX_EMIT_DEPTH`, `EventBusDepthExceeded` |
-| `src/core/events.py` | Cross-cutting domain events (frozen dataclasses) |
-| `src/plugins/<x>/events.py` | Plugin-local events (e.g. `ComparisonUpdateRequestedEvent`) |
+| `src/core/events.py` | Cross-cutting domain events (frozen dataclasses): `CoreUpdateRequestedEvent`, `CoreErrorOccurredEvent`, `CoreUIComponentsUpdateEvent`, `PluginEvent` |
+| `src/plugins/<x>/events.py` | Plugin-local events (e.g. `src/plugins/export/events.py`, `src/plugins/settings/events.py`) |
+| `src/tabs/image_compare/events/__init__.py` | Tab-local events (e.g. `ComparisonUpdateRequestedEvent`, `AnalysisRequestMetricsEvent`) |
+| `src/tabs/image_compare/canvas/features/<name>/events.py` | Canvas-feature-local events (e.g. `divider/events.py`, `magnifier/events.py`) |
 
 Single instance is held by `ApplicationContext.event_bus` (`src/core/bootstrap.py`) and passed into plugins via `Plugin.initialize(context)`.
 
@@ -45,6 +47,8 @@ class ExportFinishedEvent:
 Place it where it makes sense to import:
 - Cross-plugin / cross-layer: `src/core/events.py`
 - Plugin-local (only this plugin emits and consumes): `src/plugins/<x>/events.py`
+- Tab-local (only this tab's presenters/services emit and consume): `src/tabs/<tab>/events/__init__.py`
+- Canvas-feature-local (only this feature emits and consumes): `src/tabs/<tab>/canvas/features/<name>/events.py`
 
 ## Depth limit (re-entrancy guard)
 
@@ -91,11 +95,11 @@ Rule of thumb: if the receiver only needs to do something *once* per occurrence,
 ## Built-in events (selected)
 
 - `core/events.py:PluginEvent(plugin_name, stage)` — emitted by `PluginLifecycleManager` on initialize/activate/deactivate/shutdown/error.
-- `tabs/image_compare/events.py:ComparisonUpdateRequestedEvent` — comparison tab asks for a recomputation.
-- `tabs/image_compare/events.py:ComparisonErrorEvent` — comparison failure.
-- `tabs/image_compare/events.py:Analysis*` — analysis / metrics signals.
+- `tabs/image_compare/events/__init__.py:ComparisonUpdateRequestedEvent` — comparison tab asks for a recomputation.
+- `tabs/image_compare/events/__init__.py:ComparisonErrorEvent` — comparison failure.
+- `tabs/image_compare/events/__init__.py:Analysis*` — analysis / metrics signals (`AnalysisSetChannelViewModeEvent`, `AnalysisToggleDiffModeEvent`, `AnalysisSetDiffModeEvent`, `AnalysisRequestMetricsEvent`).
 
-See `src/plugins/*/events.py` for the full set.
+See `src/plugins/*/events.py` and `src/tabs/image_compare/canvas/features/*/events.py` for the full set.
 
 ## See also
 

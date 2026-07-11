@@ -49,12 +49,12 @@ class CanvasRenderPassBase:
         """
         if self.stack_role is None:
             raise ValueError(f"{type(self).__name__} must declare stack_role")
-        from .stacking_policy import resolve_gl_pass_order
+        from .stacking_policy import resolve_render_pass_order
 
-        return resolve_gl_pass_order(self.stack_role)
+        return resolve_render_pass_order(self.stack_role)
 
     def initialize(self, widget) -> None:
-        """Called once after the GL context is ready."""
+        """Called once after the render context is ready."""
 
     def should_paint(self, ctx) -> bool:
         """Return ``True`` if this pass has anything to draw this frame."""

@@ -219,9 +219,9 @@ def _connect_magnifier_color_controls(presenter):
         presenter.ui.btn_magnifier_guides_simple.toggled.connect(
             lambda checked: on_magnifier_guides_toggled(presenter, checked)
         )
-    # btn_magnifier_guides_width.valueChanged is wired by toolbar_presenter's
-    # own connect_signals() (tabs/image_compare/presenters/toolbar/connections.py,
-    # control_id "guides.thickness") — not here, to avoid a double connection.
+    # btn_magnifier_guides_width.valueChanged is wired by the owning tab's
+    # own toolbar_presenter connect_signals() (control_id "guides.thickness")
+    # — not here, to avoid a double connection.
 
 
 def _on_font_flyout_interaction_started(presenter, slider_name: str) -> None:

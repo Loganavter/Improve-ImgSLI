@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 
 
 class ImageCompareSettingsApplication:
@@ -13,22 +13,69 @@ class ImageCompareSettingsApplication:
         render_update_needed: bool,
         save_setting: Callable,
         emit_update_requested: Callable,
+        event_bus=None,
     ):
         self.store = store
         self.data = data
         self.render_update_needed = bool(render_update_needed)
         self._save_setting = save_setting
         self._emit_update_requested = emit_update_requested
+        self.event_bus = event_bus
 
     def apply(self) -> bool:
         self._apply_magnifier_movement_optimization()
         self._apply_magnifier_interpolation()
         self._apply_laser_interpolation()
         self._apply_magnifier_behavior_settings()
+        self._apply_metrics_settings()
         return self.render_update_needed
 
+    def _apply_metrics_settings(self) -> bool:
+        image_state = self.store.viewport.session_data.image_state
+        if image_state is None:
+            return False
+
+        from core.state_management.actions import (
+            SetAutoCalculatePsnrAction,
+            SetAutoCalculateSsimAction,
+        )
+        from plugins.settings.events import SettingsAnalysisMetricsRequestedEvent
+
+        dispatcher = self.store.get_dispatcher()
+        metrics_changed = False
+
+        if self.data.auto_calculate_psnr != image_state.auto_calculate_psnr:
+            dispatcher.dispatch(
+                SetAutoCalculatePsnrAction(self.data.auto_calculate_psnr),
+                scope="viewport",
+            )
+            self._save_setting("auto_calculate_psnr", self.data.auto_calculate_psnr)
+            metrics_changed = True
+
+        if self.data.auto_calculate_ssim != image_state.auto_calculate_ssim:
+            dispatcher.dispatch(
+                SetAutoCalculateSsimAction(self.data.auto_calculate_ssim),
+                scope="viewport",
+            )
+            self._save_setting("auto_calculate_ssim", self.data.auto_calculate_ssim)
+            metrics_changed = True
+
+        if metrics_changed:
+            self.store.emit_state_change("viewport")
+            if self.event_bus is not None:
+                updated_state = self.store.viewport.session_data.image_state
+                self.event_bus.emit(
+                    SettingsAnalysisMetricsRequestedEvent(
+                        payload={
+                            "psnr": updated_state.auto_calculate_psnr,
+                            "ssim": updated_state.auto_calculate_ssim,
+                        }
+                    )
+                )
+        return metrics_changed
+
     def _execute_alias(self, alias: str, *args):
-        command = get_canvas_feature_command_by_alias(alias)
+        command = registry().get_feature_command_by_alias(alias)
         if command is None:
             return None
         return command(*args)

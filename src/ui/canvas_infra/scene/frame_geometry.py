@@ -18,7 +18,7 @@ class ContentGeometry:
     computation: live rendering, still-image export, and video export must
     all call ``resolve_canvas_content_geometry`` (or its store-driven
     wrapper) instead of recomputing letterbox/padding math locally — see
-    docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md."""
+    docs/dev/QRHI_CANVAS_FEATURES.md."""
 
     canvas_width: int
     canvas_height: int
@@ -122,6 +122,41 @@ def resolve_canvas_content_geometry_for_store(
     )
 
 
+def resolve_image_space_visible_rect(
+    geometry: ContentGeometry,
+    *,
+    widget_rect_px: tuple[float, float, float, float],
+    image_width: int,
+    image_height: int,
+) -> tuple[float, float, float, float] | None:
+    """Invert a widget-space rect (e.g. the visible viewport, or the
+    magnifier capture rect) back to source-image pixel space, the coordinate
+    system ``TileGrid``/``TileTextureService.visible_tiles`` operate in
+    (docs/dev/TILED_RENDERING_DESIGN.md, "Coordinate mapping"). This is the
+    one place that walks the widget->canvas->image chain backward; it stays
+    next to ``resolve_canvas_content_geometry`` (the forward direction) so
+    geometry math has a single owner in both directions. Not yet called from
+    the live render loop — Phase 0's base quad draw always requests every
+    tile in the grid; viewport-driven ``visible_tiles`` calls land in Phase 2.
+    """
+    inner = geometry.inner_rect
+    if inner is None or inner.width <= 0 or inner.height <= 0:
+        return None
+    scale_x = image_width / inner.width
+    scale_y = image_height / inner.height
+    left, top, right, bottom = widget_rect_px
+    image_left = (left - inner.x) * scale_x
+    image_top = (top - inner.y) * scale_y
+    image_right = (right - inner.x) * scale_x
+    image_bottom = (bottom - inner.y) * scale_y
+    return (
+        max(0.0, min(image_left, float(image_width))),
+        max(0.0, min(image_top, float(image_height))),
+        max(0.0, min(image_right, float(image_width))),
+        max(0.0, min(image_bottom, float(image_height))),
+    )
+
+
 def resolve_canvas_clip_rect_px(
     virtual_layout: VirtualCanvasLayout | None,
     *,
@@ -142,7 +177,7 @@ def resolve_canvas_clip_rect_px(
     Feature-agnostic: this function knows nothing about split positions,
     overlays, or any specific feature — it only maps a ``VirtualCanvasLayout``
     to a pixel rect. Single owner of this computation across live/export/
-    video paths — see docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md."""
+    video paths — see docs/dev/QRHI_CANVAS_FEATURES.md."""
     if virtual_layout is not None:
         pad_left_px, _, pad_top_px, _ = virtual_layout.resolve_padding_pixels(
             base_width=base_width, base_height=base_height

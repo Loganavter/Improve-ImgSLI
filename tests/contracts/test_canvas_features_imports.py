@@ -3,7 +3,7 @@
 Allowed importers: other canvas features (peer-to-peer is OK) and
 ``canvas_infra`` (the auto-discovery framework itself).
 
-Dogma source: docs/dev/CANVAS_FEATURES.md ("No imports of this feature in
+Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md ("No imports of this feature in
 shared ui/, events/, or plugins/ code"); CONTRACTS.md ("No direct imports
 of features in shared code").
 """

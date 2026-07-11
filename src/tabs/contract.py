@@ -177,6 +177,52 @@ class TabContract(ABC):
         package here during tab discovery.
         """
 
+    def extra_i18n_roots(self) -> list[Path]:
+        """Directories with translation JSON beyond `resources_dir`'s i18n.
+
+        `TabRegistry.discover` auto-registers `<tab>/resources/i18n`, but a
+        tab with nested subpackages (each owning their own i18n folder) can't
+        reach the host's i18n registration itself without importing
+        `resources.translations` — forbidden by the tab isolation contract.
+        Override to list those extra directories; the registry registers
+        each one that exists.
+        """
+        return []
+
+    def create_default_session_data(self) -> Any:
+        """Return a fresh `core.store_viewport.SessionData` for a new session
+        of this tab's type, or `None` to use the generic default.
+
+        Called once per `create_workspace_session()` via a factory registered
+        during tab discovery (see `TabRegistry.discover`). Override when a tab
+        needs its own session-scoped state shape instead of the comparison-tab
+        default (`ImageSessionState`/`RenderCacheState`) that `core` falls
+        back to.
+        """
+        return None
+
+    def serialize_session(self, session_id: str, context: TabContext) -> dict[str, Any] | None:
+        """Return a JSON-serializable snapshot of this session for project
+        save, or `None` if this tab does not support project persistence.
+
+        Include only state that is cheap/safe to persist — source paths,
+        layout, per-session settings. Do NOT include runtime-only state
+        (decoded pixel buffers, GPU handles, thread pools, derived caches);
+        those must be regenerated from the persisted paths/settings on load.
+        """
+        return None
+
+    def deserialize_session(
+        self, session_id: str, data: dict[str, Any], context: TabContext
+    ) -> None:
+        """Restore session-scoped state from a snapshot produced by
+        `serialize_session`, into the session identified by `session_id`.
+
+        Called after the session has been created (so its `state_slots`
+        already hold blueprint defaults) — implementations should overwrite
+        those defaults with `data`, not assume slots are empty.
+        """
+
     def dispose(self) -> None:
         """Cleanup when the tab is being unloaded."""
 

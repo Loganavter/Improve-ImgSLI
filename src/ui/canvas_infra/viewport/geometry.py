@@ -22,5 +22,5 @@ def resolve_axis_position(offset: float, size: float, fraction: float) -> float:
     """Where a normalized ``fraction`` along one axis of a rect sits in
     absolute units. The one primitive every split-position/divider screen
     mapping is built from — see
-    docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md."""
+    docs/dev/QRHI_CANVAS_FEATURES.md."""
     return float(offset) + float(size) * float(fraction)

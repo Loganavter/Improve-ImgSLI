@@ -11,9 +11,7 @@ from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IServicePlugin, IUIPlugin
 from plugins.settings.controller import SettingsController
 from plugins.settings.manager import SettingsManager
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_settings_event_bindings,
-)
+from ui.canvas_infra.scene.registry import get_canvas_registry
 
 @plugin(name="settings", version="1.0")
 class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
@@ -53,16 +51,24 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
                 SettingsToggleAutoCropBlackBordersEvent,
                 self.controller.on_toggle_auto_crop_black_borders,
             )
-            for feature_name, bindings in get_canvas_feature_settings_event_bindings().items():
-                for binding in bindings:
-                    self.event_bus.subscribe(
-                        binding.event_type,
-                        lambda event, feature_name=feature_name, binding=binding: _run_canvas_feature_command(
-                            feature_name,
-                            binding.command_id,
-                            *binding.extract_args(event),
-                        ),
-                    )
+            from tabs.registry import TabRegistry
+
+            tab_registry = TabRegistry()
+            tab_registry.discover()
+            for tab_type in tab_registry.registered_types:
+                bindings_by_feature = get_canvas_registry(
+                    tab_type
+                ).get_feature_settings_event_bindings()
+                for feature_name, bindings in bindings_by_feature.items():
+                    for binding in bindings:
+                        self.event_bus.subscribe(
+                            binding.event_type,
+                            lambda event, feature_name=feature_name, binding=binding: _run_canvas_feature_command(
+                                feature_name,
+                                binding.command_id,
+                                *binding.extract_args(event),
+                            ),
+                        )
 
     def get_qss_paths(self) -> tuple[str, ...]:
         return (self.plugin_resource_path("resources", "settings.qss"),)

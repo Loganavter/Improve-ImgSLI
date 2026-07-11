@@ -205,7 +205,7 @@ class MultiCompareToolbar(QWidget):
         self._ui_mode = (
             mode if mode in {"beginner", "advanced", "expert"} else "beginner"
         )
-        self.btn_divider_width.setShowUnderline(True)
+        self.btn_divider_width.setShowUnderline(self._ui_mode == "expert")
         self.layout_manager.apply_mode(mode)
 
     def _on_divider_width_right_clicked(self) -> None:

@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 
 from core.constants import AppConstants
 from resources.translations import tr
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from ui.canvas_infra.scene.registry import get_canvas_registry
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -26,8 +26,22 @@ class DialogManager:
             return None
         return getattr(session, "session_type", None) if session is not None else None
 
+    def _query_metrics_settings(self) -> tuple[bool, bool]:
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        result = registry.create_service(
+            "settings_metrics_query", self.host.store
+        )
+        if result is None:
+            return False, False
+        return result
+
     def _query_overlay(self, capability_id: str, default=None):
-        command = get_canvas_feature_command_by_alias(capability_id)
+        command = get_canvas_registry(self._resolve_active_tab()).get_feature_command_by_alias(
+            capability_id
+        )
         if command is None:
             return default
         result = command(self.host.store)
@@ -52,7 +66,9 @@ class DialogManager:
         from plugins.settings.application_service import SettingsApplicationService
         from plugins.settings.dialog import SettingsDialog
 
-        _get_guides_state = get_canvas_feature_command_by_alias("guides.widget_state")
+        _get_guides_state = get_canvas_registry(self._resolve_active_tab()).get_feature_command_by_alias(
+            "guides.widget_state"
+        )
         guides_state = _get_guides_state(self.host.store.viewport.view_state) if _get_guides_state is not None else type("_Fallback", (), {"smoothing_enabled": False})()
         magnifier_settings = self._query_overlay("overlay.behavior_settings", {}) or {}
 
@@ -68,6 +84,8 @@ class DialogManager:
             getattr(self.host.store.viewport.view_state, "optimize_interactive_movement", None),
             guides_state.smoothing_enabled,
         )
+
+        auto_calculate_psnr, auto_calculate_ssim = self._query_metrics_settings()
 
         if self.host._settings_dialog is None:
             if self.host._settings_application_service is None:
@@ -110,8 +128,8 @@ class DialogManager:
                 magnifier_auto_color_new_instances=bool(
                     magnifier_settings.get("auto_color_new_instances", False)
                 ),
-                auto_calculate_psnr=self.host.store.viewport.session_data.image_state.auto_calculate_psnr,
-                auto_calculate_ssim=self.host.store.viewport.session_data.image_state.auto_calculate_ssim,
+                auto_calculate_psnr=auto_calculate_psnr,
+                auto_calculate_ssim=auto_calculate_ssim,
                 auto_crop_black_borders=getattr(
                     self.host.store.settings, "auto_crop_black_borders", True
                 ),

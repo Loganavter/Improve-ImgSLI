@@ -6,7 +6,7 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
 
 _log = logging.getLogger("ImproveImgSLI.feature_overlay.interaction")
 
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.contract import (
     PanDragRequest,
     SplitPositionForViewTransformRequest,
@@ -65,7 +65,7 @@ def _sync_split_to_store(widget, split_position: float) -> bool:
     old_split_visual = _float_attr(view_state, "split_position_visual", 0.5)
     if abs(old_split - split) <= 1e-6 and abs(old_split_visual - split) <= 1e-6:
         return True
-    command = get_canvas_feature_command_by_alias("splitter.sync_split_position")
+    command = registry().get_feature_command_by_alias("splitter.sync_split_position")
     if command is not None:
         command(type("WidgetActions", (), {"store": store})(), split)
     return True
@@ -410,8 +410,6 @@ def set_overlay_coords(
         state._occluded_capture_arcs = []
         for i in range(len(overlay._quads)):
             overlay._quads[i] = None
-        for i in range(len(overlay._combined_params)):
-            overlay._combined_params[i] = None
         state._feature_overlay_quad_ndc = None
     widget._request_update()
 

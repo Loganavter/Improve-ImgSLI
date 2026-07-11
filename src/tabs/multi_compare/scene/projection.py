@@ -68,6 +68,7 @@ def build_render_context(
     framebuffer_size: tuple[float, float],
     clip_matrix: tuple[float, ...],
     available_slot_ids: set[int] | frozenset[int],
+    widget: object | None = None,
 ) -> MultiCompareRenderContext:
     """Project a resolved composition into a render context for one frame."""
 
@@ -114,4 +115,5 @@ def build_render_context(
         offset=(ox, oy),
         clip_matrix=clip_matrix,
         projected_layers=tuple(projected),
+        widget=widget,
     )

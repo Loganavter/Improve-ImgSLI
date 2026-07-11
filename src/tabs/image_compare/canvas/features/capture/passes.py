@@ -64,7 +64,15 @@ class CaptureRingPass(CanvasRenderPass):
         for center, radius, color in self._resolve_capture_circles(widget, ctx):
             if center is None or float(radius or 0.0) <= 0.0:
                 continue
-            center_x, center_y = widget_px_to_screen_px(widget, center.x(), center.y())
+            center_x, center_y = widget_px_to_screen_px(
+                widget,
+                center.x(),
+                center.y(),
+                canvas_width=ctx.canvas_width,
+                canvas_height=ctx.canvas_height,
+                canvas_offset_x=ctx.canvas_offset_x,
+                canvas_offset_y=ctx.canvas_offset_y,
+            )
             draw_color = QColor(color)
             draw_color.setAlpha(255)
             self._items.append(

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from domain.types import Color
-from plugins.video_editor.services.keyframing.adapters.base import (
+from shared.keyframing.adapters_base import (
     ChannelDescriptor,
     TrackDescriptor,
 )
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureProperty
 
-from .state import get_magnifier_widget_state
+from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
 
 
 def _track_descriptor(

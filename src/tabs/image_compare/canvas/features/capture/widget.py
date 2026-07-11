@@ -7,7 +7,7 @@ from core.state_management.action_base import Action
 from core.store_viewport import RenderConfig, ViewState
 from domain.qt_adapters import color_to_qcolor
 from domain.types import Color
-from plugins.video_editor.services.keyframing.adapters.base import ChannelDescriptor
+from shared.keyframing.adapters_base import ChannelDescriptor
 from ui.canvas_infra.scene.widget_contract import (
     CanvasFeatureCommandAlias,
     CanvasFeatureProperty,
@@ -48,11 +48,9 @@ def _make_capture_view_state_proxy(view_state: ViewState):
 
 
 def _query_capture_size(store) -> float:
-    from ui.canvas_infra.scene.widget_registry import (
-        get_canvas_feature_command_by_alias,
-    )
+    from tabs.image_compare.canvas.registry import registry
 
-    query = get_canvas_feature_command_by_alias("overlay.active_capture_size")
+    query = registry().get_feature_command_by_alias("overlay.active_capture_size")
     if query is None:
         return 0.1
     return float(query(store))
@@ -70,11 +68,9 @@ def _set_capture_size_on_view_state(view_state: ViewState, size: float) -> ViewS
 
 
 def _set_capture_size(store, size: float) -> None:
-    from ui.canvas_infra.scene.widget_registry import (
-        get_canvas_feature_command_by_alias,
-    )
+    from tabs.image_compare.canvas.registry import registry
 
-    command = get_canvas_feature_command_by_alias("overlay.set_active_capture_size")
+    command = registry().get_feature_command_by_alias("overlay.set_active_capture_size")
     if command is None:
         return
     command(store, max(0.001, min(1.0, float(size))))

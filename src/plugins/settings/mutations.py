@@ -124,7 +124,9 @@ class SettingsMutationService:
         emit_scope: str | None = None,
         request_core_update: bool = False,
     ) -> bool:
-        prop = get_canvas_feature_property_by_setting_key(setting_key)
+        session = self.store.get_active_workspace_session()
+        session_type = session.session_type if session is not None else None
+        prop = get_canvas_feature_property_by_setting_key(session_type, setting_key)
         if prop is None:
             raise KeyError(f"Unknown canvas feature setting key: {setting_key}")
 

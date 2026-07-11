@@ -9,7 +9,7 @@ _pblog = logging.getLogger("ImproveImgSLI.plan_builder")
 from PySide6.QtGui import QColor
 
 from core.store import Store
-from tabs.image_compare.state.document import ImageItem
+from tabs.image_compare.state.document import DocumentModel, ImageItem
 from shared.rendering import VirtualCanvasLayout
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_clip_rect_px
 from ui.canvas_infra.scene.layout_requirements import resolve_feature_virtual_layout
@@ -17,10 +17,8 @@ from ui.canvas_infra.scene.property_access import (
     read_canvas_feature_color_by_setting_key,
     read_canvas_feature_setting_by_key,
 )
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_command_by_alias,
-)
-from tabs.image_compare.canvas.scene import build_gl_render_scene
+from tabs.image_compare.canvas.registry import registry
+from tabs.image_compare.canvas.scene import build_render_scene
 
 from ui.canvas_presentation.layout import compute_content_layout
 from ui.canvas_presentation.models import (
@@ -121,10 +119,18 @@ def _build_snapshot_store(
     normalize_snapshot: bool = True,
 ):
     store = Store()
+    # `resolve_feature_virtual_layout` (called further below via
+    # `build_render_frame_presentation`) looks up the canvas feature registry
+    # keyed by the active session's `session_type`; the default session
+    # `Store()` creates is "session_picker", which has no registered
+    # features, so it must be switched to an "image_compare" session before
+    # any layout-dependent feature (e.g. magnifier) can be resolved.
+    store.create_workspace_session(session_type="image_compare", activate=True)
+    store.set_session_state_slot("document", DocumentModel())
     store.viewport = snap.viewport_state.clone()
     store.settings = snap.settings_state.freeze_for_export()
     store.runtime_cache.overlay_clip_rect = None
-    normalize_snapshot_command = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
+    normalize_snapshot_command = registry().get_feature_command_by_alias("overlay.snapshot_normalize")
     should_normalize_snapshot = normalize_snapshot and not (
         fit_content and global_bounds is not None
     )
@@ -178,7 +184,7 @@ def _build_snapshot_store(
             )
             content_offset_x, content_offset_y = img_offset_x, img_offset_y
             content_w, content_h = img_w, img_h
-        apply_virtual_layout = get_canvas_feature_command_by_alias(
+        apply_virtual_layout = registry().get_feature_command_by_alias(
             "overlay.snapshot_apply_virtual_layout"
         )
         if apply_virtual_layout is not None:
@@ -194,28 +200,29 @@ def _build_snapshot_store(
             )
     store.viewport.session_data.image_state.image1 = display_img1
     store.viewport.session_data.image_state.image2 = display_img2
-    store.document.image1_path = getattr(snap, "image1_path", None)
-    store.document.image2_path = getattr(snap, "image2_path", None)
-    store.document.image_list1 = [
+    document = store.get_session_state_slot("document")
+    document.image1_path = getattr(snap, "image1_path", None)
+    document.image2_path = getattr(snap, "image2_path", None)
+    document.image_list1 = [
         ImageItem(
             image=source_img1,
             path=getattr(snap, "image1_path", None) or "",
             display_name=getattr(snap, "name1", None) or "",
         )
     ]
-    store.document.image_list2 = [
+    document.image_list2 = [
         ImageItem(
             image=source_img2,
             path=getattr(snap, "image2_path", None) or "",
             display_name=getattr(snap, "name2", None) or "",
         )
     ]
-    store.document.current_index1 = 0 if store.document.image_list1 else -1
-    store.document.current_index2 = 0 if store.document.image_list2 else -1
-    store.document.original_image1 = source_img1
-    store.document.original_image2 = source_img2
-    store.document.full_res_image1 = source_img1
-    store.document.full_res_image2 = source_img2
+    document.current_index1 = 0 if document.image_list1 else -1
+    document.current_index2 = 0 if document.image_list2 else -1
+    document.original_image1 = source_img1
+    document.original_image2 = source_img2
+    document.full_res_image1 = source_img1
+    document.full_res_image2 = source_img2
     store.viewport.interaction_state.is_interactive_mode = False
 
     source_key = (
@@ -313,17 +320,18 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
     # coordinate system as the display pair. Document full-res images may have
     # different dimensions; binding them directly makes each side use a
     # different letterbox transform after zooming.
+    document = store.get_session_state_slot("document")
     source_image1 = (
         store.viewport.session_data.image_state.image1
-        or store.document.full_res_image1
-        or store.document.preview_image1
-        or store.document.original_image1
+        or document.full_res_image1
+        or document.preview_image1
+        or document.original_image1
     )
     source_image2 = (
         store.viewport.session_data.image_state.image2
-        or store.document.full_res_image2
-        or store.document.preview_image2
-        or store.document.original_image2
+        or document.full_res_image2
+        or document.preview_image2
+        or document.original_image2
     )
 
     if display_image1 is None and source_image1 is not None:
@@ -332,8 +340,8 @@ def build_live_store_presentation(store) -> SnapshotStorePresentation:
         display_image2 = source_image2
 
     source_key = (
-        store.document.image1_path,
-        store.document.image2_path,
+        document.image1_path,
+        document.image2_path,
         id(source_image1) if source_image1 is not None else 0,
         id(source_image2) if source_image2 is not None else 0,
         source_image1.size if source_image1 is not None else None,
@@ -447,7 +455,7 @@ def build_canvas_plan(
     fill_color=None,
     pad_left: int = 0,
     pad_top: int = 0,
-    gl_scene=None,
+    render_scene=None,
     divider_thickness_px: int | None = None,
     guides_thickness: int | None = None,
     image_is_padded_composite: bool = False,
@@ -480,7 +488,7 @@ def build_canvas_plan(
     is_live_default_plan = (
         hasattr(viewport_source, "viewport")
         and target_size is None
-        and gl_scene is None
+        and render_scene is None
     )
     if is_live_default_plan and display_image1 is not None:
         live_virtual_layout = resolve_feature_virtual_layout(
@@ -513,9 +521,9 @@ def build_canvas_plan(
     content_w = content_size[0] if content_size is not None else (display_image1.width if display_image1 is not None else canvas_w)
     content_h = content_size[1] if content_size is not None else (display_image1.height if display_image1 is not None else canvas_h)
     view = vp.view_state
-    capture_visible = bool(read_canvas_feature_setting_by_key(vp, "capture.visible"))
-    capture_color = read_canvas_feature_color_by_setting_key(vp, "capture.color")
-    _get_guides_state = get_canvas_feature_command_by_alias("guides.widget_state")
+    capture_visible = bool(read_canvas_feature_setting_by_key("image_compare", vp, "capture.visible"))
+    capture_color = read_canvas_feature_color_by_setting_key("image_compare", vp, "capture.color")
+    _get_guides_state = registry().get_feature_command_by_alias("guides.widget_state")
     guides_state = _get_guides_state(view) if _get_guides_state is not None else _FallbackGuidesState()
 
     divider_px = (
@@ -523,23 +531,23 @@ def build_canvas_plan(
         if divider_thickness_px is not None
         else int(
             (
-                get_canvas_feature_command_by_alias("overlay.active_divider_thickness")
+                registry().get_feature_command_by_alias("overlay.active_divider_thickness")
                 or (lambda _store: 0)
             )(store)
         )
     )
     guides_px = int(guides_thickness) if guides_thickness is not None else int(guides_state.thickness)
 
-    if gl_scene is None:
-        gl_scene = build_gl_render_scene(
+    if render_scene is None:
+        render_scene = build_render_scene(
             store,
             apply_channel_mode_in_shader=True,
             clip_overlays_to_image_bounds=False,
         )
 
     overlay_layout = None
-    overlay_enabled_query = get_canvas_feature_command_by_alias("overlay.enabled")
-    build_overlay_layout = get_canvas_feature_command_by_alias(
+    overlay_enabled_query = registry().get_feature_command_by_alias("overlay.enabled")
+    build_overlay_layout = registry().get_feature_command_by_alias(
         "overlay.render_build_layout"
     )
     if (
@@ -567,7 +575,7 @@ def build_canvas_plan(
         display_cache_key=display_cache_key,
         canvas_w=canvas_w,
         canvas_h=canvas_h,
-        gl_scene=gl_scene,
+        render_scene=render_scene,
         overlay_layout=overlay_layout,
         capture_visible=capture_visible,
         capture_color=QColor(

@@ -4,13 +4,10 @@ from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QApplication
 
 from plugins.settings.events import (
-    SettingsAnalysisMetricsRequestedEvent,
     SettingsChangeLanguageEvent,
     SettingsUIModeChangedEvent,
 )
 from core.state_management.actions import (
-    SetAutoCalculatePsnrAction,
-    SetAutoCalculateSsimAction,
     SetAutoCropBlackBordersAction,
     SetDebugModeEnabledAction,
     SetDisplayResolutionLimitAction,
@@ -43,7 +40,6 @@ class SettingsApplicationService(QObject):
         render_update_needed = self._apply_viewport_interactive_settings(
             data, render_update_needed
         )
-        self._apply_metrics_settings(data)
         self._apply_misc_settings(data)
 
         if render_update_needed:
@@ -209,6 +205,7 @@ class SettingsApplicationService(QObject):
             render_update_needed,
             self._save_setting,
             self._emit_update_requested,
+            self.event_bus,
         )
         if result is None:
             return render_update_needed
@@ -236,38 +233,6 @@ class SettingsApplicationService(QObject):
         )
         self._emit_update_requested()
         return True
-
-    def _apply_metrics_settings(self, data: SettingsDialogData) -> bool:
-        dispatcher = self.store.get_dispatcher()
-        metrics_changed = False
-        if data.auto_calculate_psnr != self.store.viewport.session_data.image_state.auto_calculate_psnr:
-            dispatcher.dispatch(
-                SetAutoCalculatePsnrAction(data.auto_calculate_psnr),
-                scope="viewport",
-            )
-            self._save_setting("auto_calculate_psnr", data.auto_calculate_psnr)
-            metrics_changed = True
-
-        if data.auto_calculate_ssim != self.store.viewport.session_data.image_state.auto_calculate_ssim:
-            dispatcher.dispatch(
-                SetAutoCalculateSsimAction(data.auto_calculate_ssim),
-                scope="viewport",
-            )
-            self._save_setting("auto_calculate_ssim", data.auto_calculate_ssim)
-            metrics_changed = True
-
-        if metrics_changed:
-            self.store.emit_state_change("viewport")
-            if self.event_bus is not None:
-                self.event_bus.emit(
-                    SettingsAnalysisMetricsRequestedEvent(
-                        payload={
-                            "psnr": self.store.viewport.session_data.image_state.auto_calculate_psnr,
-                            "ssim": self.store.viewport.session_data.image_state.auto_calculate_ssim,
-                        }
-                    )
-                )
-        return metrics_changed
 
     def _apply_misc_settings(self, data: SettingsDialogData) -> None:
         dispatcher = self.store.get_dispatcher()

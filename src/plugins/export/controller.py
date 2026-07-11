@@ -10,8 +10,6 @@ from plugins.export.events import (
     ExportTogglePauseRecordingEvent,
     ExportToggleRecordingEvent,
 )
-from plugins.video_editor.services.export_flow import VideoExportFlow
-from plugins.video_editor.services.recording_flow import RecordingFlow
 from resources.translations import tr
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -45,8 +43,9 @@ class ExportController(QObject):
         self.video_editor_plugin = video_editor_plugin
         self.main_controller = main_controller
         self.event_bus = event_bus
-        self.recording_flow = RecordingFlow(self)
-        self.video_export_flow = VideoExportFlow(self)
+        self.recording_flow, self.video_export_flow = (
+            video_editor_plugin.create_control_flows(self)
+        )
 
     def _tr(self, key: str) -> str:
         return tr(key, self.store.settings.current_language)

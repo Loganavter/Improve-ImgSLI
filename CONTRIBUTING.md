@@ -48,7 +48,7 @@ Tip: Prefer updating the in-app Help when you add features; the README links to 
 - src/events: in-process event bus
 - src/services: IO, system, and workflow services
 - src/tabs: workspace tab system (contract, registry, built-in tabs)
-- src/plugins: feature plugins (analysis, comparison, export, help, layout, settings, video_editor)
+- src/plugins: feature plugins (analysis, comparison, export, help, layout, settings)
 - src/ui: Qt UI — main window, canvas (infra/features/presentation), presenters (MVP), widgets, managers, onboarding
 - src/shared_toolkit: shared utilities reused by the app and launcher scripts
 - src/resources: application assets (icons, fonts, styles, themes) and user Help in multiple languages
@@ -65,7 +65,7 @@ Useful entry points:
 - Theme: src/core/theme.py
 - Bootstrap: src/core/bootstrap.py
 - Help Index (EN): src/resources/help/en/introduction.md
-- Canvas feature architecture: docs/dev/CANVAS_FEATURES.md
+- Canvas feature architecture: docs/dev/QRHI_CANVAS_FEATURES.md
 - Developer docs index: docs/dev/README.md
 
 ## Architectural notes
@@ -73,7 +73,7 @@ Useful entry points:
 - Pattern: MVP (Model-View-Presenter). Keep UI (Qt widgets), presenter logic, and core state/services decoupled.
 - State: Redux-style store (`src/core/store.py` + `store_*` modules). Actions → reducers → notify subscribers. Never mutate state in reducers — use `dataclasses.replace`.
 - Events: `src/events/` event bus for async, decoupled notifications. Watch for circular event chains (max depth 10).
-- Canvas features: zero direct imports of features in shared code. Communication goes through capability aliases, `CanvasWidgetFeature` contracts, and auto-discovery in `src/ui/canvas_infra/scene/widget_registry.py`. All visual attributes are in canvas-px. See docs/dev/CANVAS_FEATURES.md and the `_template/` feature for a starting point.
+- Canvas features: zero direct imports of features in shared code. Communication goes through capability aliases, `CanvasWidgetFeature` contracts, and auto-discovery in `src/ui/canvas_infra/scene/widget_registry.py`. All visual attributes are in canvas-px. See docs/dev/QRHI_CANVAS_FEATURES.md and the `_template/` feature for a starting point.
 - Plugins / tabs: features and workspace tabs are pluggable; degrade gracefully when an optional plugin is missing.
 - Logging: use the standard `logging` module via the project's logger. Avoid `print` statements.
 - Shared components: consider using the external `sli-ui-toolkit` package and `src/shared_toolkit` for reusable UI and utilities. Toolkit changes belong in the `Loganavter/sli-ui-toolkit` repository, not in this app tree.
@@ -201,7 +201,7 @@ Developer documentation lives in `docs/dev/` (see `docs/dev/README.md` for the i
   - `src/plugins/help/resources/i18n/`
   - `src/plugins/export/resources/i18n/`
   - `src/plugins/settings/resources/i18n/` (+ `src/plugins/settings/translations.py`)
-  - `src/plugins/video_editor/resources/i18n/` (+ `src/plugins/video_editor/translations.py`)
+  - `src/tabs/image_compare/plugins/video_editor/resources/i18n/` (+ `src/tabs/image_compare/plugins/video_editor/translations.py`)
   - `src/ui/canvas_features/<feature>/resources/i18n/` (e.g. `magnifier/`)
 
 When you add or modify features:

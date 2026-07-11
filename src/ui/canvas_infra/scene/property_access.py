@@ -1,43 +1,34 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from core.store_viewport import ViewportState
 from domain.qt_adapters import color_to_hex, hex_to_color
 
-from .widget_contract import CanvasFeatureProperty
-from .widget_registry import get_canvas_feature_properties
-
-if TYPE_CHECKING:
-    from plugins.video_editor.services.keyframing.types import FrameSnapshot
+from .registry import get_canvas_registry
+from .widget_contract import CanvasFeatureProperty, PropertySnapshot
 
 _log = logging.getLogger("ImproveImgSLI.canvas.properties")
 
-def get_canvas_feature_property_by_id(property_id: str) -> CanvasFeatureProperty | None:
-    for item in get_canvas_feature_properties():
+def get_canvas_feature_property_by_id(
+    session_type: str | None, property_id: str
+) -> CanvasFeatureProperty | None:
+    for item in get_canvas_registry(session_type).get_feature_properties():
         if item.id == property_id:
             return item
     return None
 
-def get_canvas_feature_property_by_setting_key(setting_key: str) -> CanvasFeatureProperty | None:
-    for item in get_canvas_feature_properties():
+def get_canvas_feature_property_by_setting_key(
+    session_type: str | None, setting_key: str
+) -> CanvasFeatureProperty | None:
+    for item in get_canvas_registry(session_type).get_feature_properties():
         if item.setting_key == setting_key:
             return item
     return None
 
-def _snapshot(viewport_state: ViewportState) -> FrameSnapshot:
-    from plugins.video_editor.services.keyframing.types import FrameSnapshot
-
-    return FrameSnapshot(
-        timestamp=0.0,
-        viewport_state=viewport_state,
-        settings_state=None,
-        image1_path=None,
-        image2_path=None,
-        name1=None,
-        name2=None,
-    )
+def _snapshot(viewport_state: ViewportState) -> PropertySnapshot:
+    return PropertySnapshot(viewport_state=viewport_state)
 
 def read_canvas_feature_property(
     viewport_state: ViewportState,
@@ -117,14 +108,15 @@ def channels_to_color(channels: dict[str, Any]):
     )
 
 def read_canvas_feature_color_by_setting_key(
+    session_type: str | None,
     viewport_state: ViewportState,
     setting_key: str,
 ):
-    prop = get_canvas_feature_property_by_setting_key(setting_key)
+    prop = get_canvas_feature_property_by_setting_key(session_type, setting_key)
     if prop is None:
         available_keys = tuple(
             item.setting_key
-            for item in get_canvas_feature_properties()
+            for item in get_canvas_registry(session_type).get_feature_properties()
             if item.setting_key is not None
         )
         _log.error(
@@ -136,14 +128,15 @@ def read_canvas_feature_color_by_setting_key(
     return channels_to_color(read_canvas_feature_property(viewport_state, prop))
 
 def read_canvas_feature_setting_by_key(
+    session_type: str | None,
     viewport_state: ViewportState,
     setting_key: str,
 ):
-    prop = get_canvas_feature_property_by_setting_key(setting_key)
+    prop = get_canvas_feature_property_by_setting_key(session_type, setting_key)
     if prop is None:
         available_keys = tuple(
             item.setting_key
-            for item in get_canvas_feature_properties()
+            for item in get_canvas_registry(session_type).get_feature_properties()
             if item.setting_key is not None
         )
         _log.error(

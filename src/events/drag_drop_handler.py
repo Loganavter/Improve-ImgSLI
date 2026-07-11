@@ -88,10 +88,9 @@ class DragAndDropService(QObject):
 
         self._is_dragging = True
 
+        document = self.store.get_session_state_slot("document")
         target_list = (
-            self.store.document.image_list1
-            if list_num == 1
-            else self.store.document.image_list2
+            document.image_list1 if list_num == 1 else document.image_list2
         )
         current_rating = 0
         if 0 <= index < len(target_list):

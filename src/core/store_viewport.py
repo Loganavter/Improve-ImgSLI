@@ -4,7 +4,7 @@ import copy
 import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Optional, Set
+from typing import Any, Callable, Optional, Set
 
 from domain.types import Color, Point, Rect
 
@@ -61,69 +61,29 @@ class RenderConfig:
             "max_name_length": self.max_name_length,
         }
 
-@dataclass
-class ImageSessionState:
-    image1: Optional[Any] = None
-    image2: Optional[Any] = None
-
-    loaded_image1_paths: list[str] = field(default_factory=list)
-    loaded_image2_paths: list[str] = field(default_factory=list)
-    loaded_current_index1: int = -1
-    loaded_current_index2: int = -1
-
-    auto_calculate_psnr: bool = False
-    auto_calculate_ssim: bool = False
-    psnr_value: Optional[float] = None
-    ssim_value: Optional[float] = None
-
-    def clone(self):
-        new_obj = copy.copy(self)
-        new_obj.loaded_image1_paths = list(self.loaded_image1_paths)
-        new_obj.loaded_image2_paths = list(self.loaded_image2_paths)
-        return new_obj
-
-@dataclass
-class RenderCacheState:
-
-    display_cache_image1: Optional[Any] = None
-    display_cache_image2: Optional[Any] = None
-    scaled_image1_for_display: Optional[Any] = None
-    scaled_image2_for_display: Optional[Any] = None
-    cached_scaled_image_dims: Optional[tuple[int, int]] = None
-    last_display_cache_params: Optional[tuple] = None
-
-    unified_image_cache: OrderedDict = field(default_factory=OrderedDict)
-    unification_in_progress: bool = False
-    pending_unification_paths: Optional[tuple[str, str]] = None
-
-    caches: dict = field(default_factory=dict)
-    feature_caches: dict = field(default_factory=dict)
-    cached_split_base_image: Optional[Any] = None
-    last_split_cached_params: Optional[tuple] = None
-    cached_diff_image: Optional[Any] = None
-
-    def clone(self):
-        new_obj = copy.copy(self)
-        new_obj.unified_image_cache = self.unified_image_cache.__class__(
-            self.unified_image_cache
-        )
-        new_obj.caches = dict(self.caches)
-        new_obj.feature_caches = dict(self.feature_caches)
-        return new_obj
-
 class SessionData:
+    """Generic container for a tab's per-session, non-``state_slots`` data.
+
+    ``image_state``/``render_cache`` are opaque to ``core`` — the concrete
+    shapes are owned by whichever tab supplies them, via
+    ``create_session_data(tab_name)`` (see below), never imported here.
+    The bare-construction default is ``None`` for both; any cross-session
+    code that reads these fields must tolerate ``None`` for session types
+    that don't opt in (see ``register_session_data_factory``).
+    """
+
     __slots__ = ("_image_state", "_render_cache")
 
     def __init__(
         self,
-        image_state: Optional[ImageSessionState] = None,
-        render_cache: Optional[RenderCacheState] = None,
+        image_state: Optional[Any] = None,
+        render_cache: Optional[Any] = None,
     ):
-        self._image_state = image_state or ImageSessionState()
-        self._render_cache = render_cache or RenderCacheState()
+        self._image_state = image_state
+        self._render_cache = render_cache
 
     @property
-    def image_state(self) -> ImageSessionState:
+    def image_state(self) -> Optional[Any]:
         return self._image_state
 
     @image_state.setter
@@ -131,7 +91,7 @@ class SessionData:
         self._image_state = val
 
     @property
-    def render_cache(self) -> RenderCacheState:
+    def render_cache(self) -> Optional[Any]:
         return self._render_cache
 
     @render_cache.setter
@@ -140,9 +100,32 @@ class SessionData:
 
     def clone(self):
         return SessionData(
-            image_state=self._image_state.clone(),
-            render_cache=self._render_cache.clone(),
+            image_state=self._image_state.clone() if self._image_state is not None else None,
+            render_cache=self._render_cache.clone() if self._render_cache is not None else None,
         )
+
+_session_data_factories: dict[str, Callable[[], Optional["SessionData"]]] = {}
+
+def register_session_data_factory(
+    session_type: str, factory: Callable[[], Optional["SessionData"]]
+) -> None:
+    """Let a tab supply its own default `SessionData` for its session type.
+
+    `ImageSessionState`/`RenderCacheState` are comparison-tab-specific
+    (image1/image2, PSNR/SSIM, diff caches); `core` should not hardcode them
+    as the default for every session type. Tabs register a zero-arg factory
+    (typically a bound method) during `TabRegistry.discover()`; a factory
+    that returns `None` falls back to the generic default below.
+    """
+    _session_data_factories[session_type] = factory
+
+def create_session_data(session_type: Optional[str]) -> "SessionData":
+    factory = _session_data_factories.get(session_type) if session_type else None
+    if factory is not None:
+        result = factory()
+        if result is not None:
+            return result
+    return SessionData()
 
 @dataclass
 class GeometryState:
@@ -222,8 +205,6 @@ class ViewportState:
         "_view_state",
         "_interaction_state",
         "_geometry_state",
-        "_viewport_plugin_state",
-        "_analysis_plugin_state",
     )
 
     def __init__(
@@ -239,8 +220,6 @@ class ViewportState:
         self._view_state = view_state or ViewState()
         self._interaction_state = interaction_state or InteractionState()
         self._geometry_state = geometry_state or GeometryState()
-        self._viewport_plugin_state = None
-        self._analysis_plugin_state = None
 
     @property
     def render_config(self) -> RenderConfig:
@@ -282,31 +261,14 @@ class ViewportState:
     def geometry_state(self, val):
         self._geometry_state = val
 
-    def set_viewport_plugin_state(self, state: Any):
-        self._viewport_plugin_state = state
-        if state is not None:
-            for field_name in getattr(state, "__dataclass_fields__", {}):
-                if hasattr(self, field_name):
-                    setattr(state, field_name, getattr(self, field_name))
-
-    def set_analysis_plugin_state(self, state: Any):
-        self._analysis_plugin_state = state
-        if state is not None:
-            for field_name in getattr(state, "__dataclass_fields__", {}):
-                if hasattr(self.view_state, field_name):
-                    setattr(state, field_name, getattr(self.view_state, field_name))
-
     def clone(self):
-        new_obj = ViewportState(
+        return ViewportState(
             render_config=self._render_config.clone(),
             session_data=self._session_data.clone(),
             view_state=self._view_state.clone(),
             interaction_state=self._interaction_state.clone(),
             geometry_state=self._geometry_state.clone(),
         )
-        new_obj._viewport_plugin_state = self._viewport_plugin_state
-        new_obj._analysis_plugin_state = self._analysis_plugin_state
-        return new_obj
 
     def clone_visual_state(self):
         return self.clone()

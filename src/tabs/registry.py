@@ -15,6 +15,23 @@ from resources.translations import add_i18n_root
 
 logger = logging.getLogger("ImproveImgSLI")
 
+_shared_registry: "TabRegistry | None" = None
+
+def get_shared_tab_registry() -> "TabRegistry":
+    """Process-wide, lazily-discovered `TabRegistry` for hot-path lookups.
+
+    Tab discovery instantiates every registered tab class, so hot paths
+    (per-frame/per-mouse-move code) must not call `TabRegistry().discover()`
+    fresh each time. Use this instead of constructing a new registry when
+    the call site only needs `create_service`/`get_tab` and doesn't own the
+    app-lifetime registry itself (e.g. `ui._tab_registry`).
+    """
+    global _shared_registry
+    if _shared_registry is None:
+        _shared_registry = TabRegistry()
+        _shared_registry.discover()
+    return _shared_registry
+
 class TabRegistry:
     """
     Discovers tab implementations from the `tabs/` package and manages
@@ -63,6 +80,28 @@ class TabRegistry:
                         except Exception as e:
                             logger.error(
                                 "Canvas feature registration failed for tab %s: %s",
+                                instance.session_type,
+                                e,
+                            )
+                        try:
+                            for extra_root in instance.extra_i18n_roots():
+                                if extra_root.is_dir():
+                                    add_i18n_root(extra_root)
+                        except Exception as e:
+                            logger.error(
+                                "Extra i18n root registration failed for tab %s: %s",
+                                instance.session_type,
+                                e,
+                            )
+                        try:
+                            from core.store_viewport import register_session_data_factory
+
+                            register_session_data_factory(
+                                instance.session_type, instance.create_default_session_data
+                            )
+                        except Exception as e:
+                            logger.error(
+                                "Session-data factory registration failed for tab %s: %s",
                                 instance.session_type,
                                 e,
                             )
@@ -183,6 +222,49 @@ class TabRegistry:
                 logger.error(f"Tab deactivate error ({session_type}): {e}")
         if self._active_session_type == session_type:
             self._active_session_type = None
+
+    def notify_session_created(self, session_type: str, session_id: str) -> None:
+        tab = self._tabs.get(session_type)
+        if tab and self._context:
+            try:
+                tab.on_session_created(session_id, self._context)
+            except Exception as e:
+                logger.error(f"Tab on_session_created error ({session_type}): {e}")
+
+    def serialize_session(self, session_type: str, session_id: str) -> dict[str, Any] | None:
+        """Ask the owning tab for a project-save snapshot of this session.
+
+        Returns None if the tab isn't registered or doesn't support project
+        persistence (default `TabContract.serialize_session` returns None).
+        """
+        tab = self._tabs.get(session_type)
+        if tab is None or self._context is None:
+            return None
+        try:
+            return tab.serialize_session(session_id, self._context)
+        except Exception:
+            logger.exception("Tab serialize_session failed for %s", session_type)
+            return None
+
+    def deserialize_session(
+        self, session_type: str, session_id: str, data: dict[str, Any]
+    ) -> None:
+        """Ask the owning tab to restore a session from a project-save snapshot."""
+        tab = self._tabs.get(session_type)
+        if tab is None or self._context is None:
+            return
+        try:
+            tab.deserialize_session(session_id, data, self._context)
+        except Exception:
+            logger.exception("Tab deserialize_session failed for %s", session_type)
+
+    def notify_session_closed(self, session_type: str, session_id: str) -> None:
+        tab = self._tabs.get(session_type)
+        if tab and self._context:
+            try:
+                tab.on_session_closed(session_id, self._context)
+            except Exception as e:
+                logger.error(f"Tab on_session_closed error ({session_type}): {e}")
 
     def route_drop(
         self,

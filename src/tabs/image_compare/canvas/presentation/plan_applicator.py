@@ -6,11 +6,7 @@ from domain.types import Rect
 
 _dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
-from ui.canvas_infra.scene.widget_registry import (
-    apply_canvas_feature_live_runtime_overlays,
-    apply_canvas_feature_plan_runtime_overlays,
-    get_canvas_feature_command_by_alias,
-)
+from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.focus import (
     capture_letterbox_focus,
     restore_letterbox_focus,
@@ -24,7 +20,7 @@ def _refresh_live_content_rect(canvas, state, plan) -> None:
     leaves it stale after a resize until the next image upload. Re-derive it
     every call for the live, store-backed canvas. The base image pair is
     never padding-aware (features like the magnifier must not shrink or
-    reposition it — see docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md), so
+    reposition it — see docs/dev/QRHI_CANVAS_FEATURES.md), so
     this fits the raw (unpadded) image dimensions — unless
     ``plan.image_is_padded_composite`` (set authoritatively by the plan
     builder, never inferred here), in which case the full ``plan.canvas_w/h``
@@ -85,7 +81,7 @@ def _compute_inner_content_rect(state, plan):
     authoritatively by the plan builder — true for the store-less
     export/offscreen path *and* for store-backed preview rendering of an
     export/video-snapshot plan, e.g. the video editor's preview) do we honor
-    ``plan.gl_scene.overlay_clip_rect`` to narrow back down to the real image
+    ``plan.render_scene.overlay_clip_rect`` to narrow back down to the real image
     region. This is keyed off the plan's own declared shape, not ``store is
     None`` and not a local dimension-comparison heuristic — the plan is the
     single source of truth for whether padding is baked in.
@@ -109,7 +105,7 @@ def _compute_inner_content_rect(state, plan):
     sx = dw / plan.canvas_w
     sy = dh / plan.canvas_h
 
-    clip_rect = getattr(plan.gl_scene, "overlay_clip_rect", None)
+    clip_rect = getattr(plan.render_scene, "overlay_clip_rect", None)
     if clip_rect is None:
         # overlay_clip_rect isn't always populated for a padded-composite plan
         # (e.g. the video snapshot pipeline only sets it on the fit_content
@@ -132,7 +128,7 @@ def _compute_inner_content_rect(state, plan):
     # NOT a fraction of the padded canvas, so no clip_rect rescale is needed
     # here. Treating it as canvas-relative (as this used to) shifted the
     # divider whenever padding was active.
-    raw_split = float(getattr(plan.gl_scene, "split_position_visual", 0.5))
+    raw_split = float(getattr(plan.render_scene, "split_position_visual", 0.5))
     inner_split = max(0.0, min(1.0, raw_split))
     return inner, inner_split
 
@@ -154,7 +150,7 @@ def apply_plan_runtime_overlays(canvas, plan: CanvasRenderPlan) -> None:
         getattr(canvas, "_clip_overlays_to_content_rect", False)
     )
 
-    apply_canvas_feature_plan_runtime_overlays(canvas, plan)
+    registry().apply_feature_plan_runtime_overlays(canvas, plan)
 
 
 def sync_geometry_state(canvas, store) -> None:
@@ -172,13 +168,13 @@ def sync_geometry_state(canvas, store) -> None:
 
 
 def _sync_split_position(store, canvas, split_position: float) -> None:
-    from tabs.image_compare.canvas.scene import build_gl_render_scene
+    from tabs.image_compare.canvas.scene import build_render_scene
 
-    command = get_canvas_feature_command_by_alias("splitter.sync_split_position")
+    command = registry().get_feature_command_by_alias("splitter.sync_split_position")
     if command is not None:
         command(type("CanvasActions", (), {"store": store})(), split_position)
     canvas.set_render_scene(
-        build_gl_render_scene(
+        build_render_scene(
             store,
             apply_channel_mode_in_shader=getattr(canvas, "_apply_channel_mode_in_shader", True),
             clip_overlays_to_image_bounds=getattr(canvas, "_clip_overlays_to_content_rect", False),
@@ -202,7 +198,7 @@ def _setup_store_bindings(canvas, plan, *, store, clip_flag: bool) -> None:
 
     canvas._active_render_plan = plan
     canvas._clip_overlays_to_content_rect = clip_flag
-    canvas.set_render_scene(plan.gl_scene)
+    canvas.set_render_scene(plan.render_scene)
 
     if store is not None:
         canvas.set_split_position_sync(
@@ -226,7 +222,7 @@ def _apply_overlays(canvas, plan, *, store) -> None:
 
     if store is not None:
         sync_geometry_state(canvas, store)
-        apply_canvas_feature_live_runtime_overlays(store, canvas)
+        registry().apply_feature_live_runtime_overlays(store, canvas)
 
 
 def _textures_are_current(canvas, plan: CanvasRenderPlan) -> bool:

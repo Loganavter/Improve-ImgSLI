@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from domain.types import Point
 
-from ..actions import (
+from tabs.image_compare.canvas.features.magnifier.input.actions import (
     SetDraggingCapturePointAction,
     SetDraggingSplitInMagnifierAction,
     SetMagnifierInternalSplitAction,
     SetMagnifierPositionAction,
 )
-from .common import dispatch_viewport_action, emit_interaction_update
+from tabs.image_compare.canvas.features.magnifier.commands.common import dispatch_viewport_action, emit_interaction_update
 
 
 def begin_capture_drag(actions) -> None:
@@ -45,7 +45,7 @@ def update_capture_drag(actions, position: Point) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
-    from ..store import active_magnifier_id, update_magnifier_model
+    from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id, update_magnifier_model
 
     update_magnifier_model(
         viewport.view_state,
@@ -87,7 +87,7 @@ def update_internal_split_drag(actions, split: float) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
-    from ..store import active_magnifier_id, update_magnifier_model
+    from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id, update_magnifier_model
 
     update_magnifier_model(
         viewport.view_state,

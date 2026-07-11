@@ -24,8 +24,9 @@ class CachedDiffService:
         if not self.runtime.thread_pool:
             return
 
-        image1 = self.store.document.full_res_image1 or self.store.document.original_image1
-        image2 = self.store.document.full_res_image2 or self.store.document.original_image2
+        document = self.store.get_session_state_slot("document")
+        image1 = document.full_res_image1 or document.original_image1
+        image2 = document.full_res_image2 or document.original_image2
         diff_mode = self.store.viewport.view_state.diff_mode
         channel_mode = getattr(self.store.viewport.view_state, "channel_view_mode", "RGB")
 
@@ -65,7 +66,9 @@ class CachedDiffService:
     def _generate_diff_map_task(img1, img2, mode, channel_mode, optimize_ssim):
         started_at = time.perf_counter()
         try:
-            from shared.analysis import build_cached_diff_image
+            from tabs.image_compare.services.analysis.background_layers import (
+                build_cached_diff_image,
+            )
 
             result = build_cached_diff_image(
                 img1,

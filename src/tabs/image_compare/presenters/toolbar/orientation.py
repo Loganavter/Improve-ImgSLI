@@ -1,11 +1,8 @@
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_command_by_alias,
-    get_canvas_feature_toolbar_binding,
-)
-from shared_toolkit.ui.overlay_layer import get_overlay_layer
+from tabs.host_helpers import get_overlay_layer
+from tabs.image_compare.canvas.registry import registry
 
 def _query_overlay_orientation(store) -> bool:
-    query = get_canvas_feature_command_by_alias("overlay.is_horizontal")
+    query = registry().get_feature_command_by_alias("overlay.is_horizontal")
     if query is None:
         return False
     try:
@@ -14,13 +11,13 @@ def _query_overlay_orientation(store) -> bool:
         return False
 
 def update_magnifier_orientation_button_state(presenter):
-    binding = get_canvas_feature_toolbar_binding("magnifier.orientation")
+    binding = registry().get_feature_toolbar_binding("magnifier.orientation")
     if binding is not None and binding.sync_state is not None:
         binding.sync_state(presenter)
-    divider_visibility = get_canvas_feature_toolbar_binding("magnifier.divider.visibility")
+    divider_visibility = registry().get_feature_toolbar_binding("magnifier.divider.visibility")
     if divider_visibility is not None and divider_visibility.sync_state is not None:
         divider_visibility.sync_state(presenter)
-    divider_thickness = get_canvas_feature_toolbar_binding("magnifier.divider.thickness")
+    divider_thickness = registry().get_feature_toolbar_binding("magnifier.divider.thickness")
     if divider_thickness is not None and divider_thickness.sync_state is not None:
         divider_thickness.sync_state(presenter)
 
@@ -35,7 +32,7 @@ def on_orientation_right_clicked(presenter):
         return
     if current_mode != "expert":
         return
-    binding = get_canvas_feature_toolbar_binding("divider.orientation")
+    binding = registry().get_feature_toolbar_binding("divider.orientation")
     if binding is not None and binding.on_right_clicked is not None:
         binding.on_right_clicked(presenter)
 

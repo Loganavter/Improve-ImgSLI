@@ -4,7 +4,7 @@ layout(std140, binding = 0) uniform UBuf
 {
     mat4 mvp;
     vec2 offset;
-    float zoom;
+    vec2 zoom;
     float splitPosition;
     vec4 letterbox1;
     vec4 letterbox2;
@@ -13,6 +13,8 @@ layout(std140, binding = 0) uniform UBuf
     int diffMode;
     int diffSourceReady;
     float diffThreshold;
+    vec4 tileRect1;
+    vec4 tileRect2;
 };
 
 layout(binding = 1) uniform sampler2D image1;
@@ -64,6 +66,10 @@ vec4 computeEdge(sampler2D tex, vec2 uv)
 void main()
 {
     vec2 center = vec2(0.5);
+    // zoom is per-axis (docs/dev/TILED_RENDERING_DESIGN.md Phase 3): live
+    // interactive/preserve-zoom rendering always sets zoom.x == zoom.y
+    // (isotropic), but tiled export needs an anisotropic crop window when a
+    // tile's aspect ratio differs from the canvas's.
     vec2 uv = (vTexCoord - center) / zoom + center - offset;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         fragColor = vec4(0.0);
@@ -78,8 +84,29 @@ void main()
         return;
     }
 
-    vec4 color1 = sampleImage(image1, sampleUV);
-    vec4 color2 = sampleImage(image2, sampleUV);
+    // Phase 1 tiling (docs/dev/TILED_RENDERING_DESIGN.md): image1/image2
+    // sample from whichever GPU tile the current draw call bound, not
+    // necessarily the whole image. tileRect1/2 is that tile's rect in
+    // per-side normalized-image space; a fragment only lights up on the
+    // one draw call (of the N1*N2 issued this frame) whose tile actually
+    // covers it — out-of-tile fragments contribute nothing under the
+    // existing SrcAlpha/OneMinusSrcAlpha blend, same pattern as the uv/
+    // sampleUV bounds checks above. N=1 (tileRect == (0,0,1,1)) makes
+    // tileUV == sampleUV, unchanged from pre-tiling behavior. imageDiff
+    // (diffMode == 4) is not tiled yet — Phase 4 scope.
+    vec2 tileUV1 = (sampleUV - tileRect1.xy) / tileRect1.zw;
+    vec2 tileUV2 = (sampleUV - tileRect2.xy) / tileRect2.zw;
+    if (diffMode != 4) {
+        bool inTile1 = tileUV1.x >= 0.0 && tileUV1.x <= 1.0 && tileUV1.y >= 0.0 && tileUV1.y <= 1.0;
+        bool inTile2 = tileUV2.x >= 0.0 && tileUV2.x <= 1.0 && tileUV2.y >= 0.0 && tileUV2.y <= 1.0;
+        if (!inTile1 || !inTile2) {
+            fragColor = vec4(0.0);
+            return;
+        }
+    }
+
+    vec4 color1 = sampleImage(image1, tileUV1);
+    vec4 color2 = sampleImage(image2, tileUV2);
 
     if (diffMode == 1) {
         vec3 diff = abs(color1.rgb - color2.rgb);
@@ -90,7 +117,7 @@ void main()
         float gray = clamp(luminance(diff) * 4.0, 0.0, 1.0);
         fragColor = vec4(gray, gray, gray, 1.0);
     } else if (diffMode == 3) {
-        fragColor = useFirst ? computeEdge(image1, sampleUV) : computeEdge(image2, sampleUV);
+        fragColor = useFirst ? computeEdge(image1, tileUV1) : computeEdge(image2, tileUV2);
     } else if (diffMode == 4 && diffSourceReady != 0) {
         fragColor = applyChannel(texture(imageDiff, sampleUV), channelMode);
     } else {

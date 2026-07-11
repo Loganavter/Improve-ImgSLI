@@ -11,7 +11,7 @@ from plugins.export.events import (
     ExportTogglePauseRecordingEvent,
     ExportToggleRecordingEvent,
 )
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_binding
+from tabs.image_compare.canvas.registry import registry
 from tabs.image_compare.presenters.toolbar.orientation import (
     on_interpolation_combo_clicked,
     on_orientation_right_clicked,
@@ -36,7 +36,7 @@ def _show_unavailable_toolbar_capability(presenter, control_id: str) -> None:
     )
 
 def _invoke_toolbar_binding(control_id: str, hook_name: str, presenter, *args):
-    binding = get_canvas_feature_toolbar_binding(control_id)
+    binding = registry().get_feature_toolbar_binding(control_id)
     if binding is None:
         _show_unavailable_toolbar_capability(presenter, control_id)
         return

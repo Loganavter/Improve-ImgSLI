@@ -24,11 +24,11 @@ class ImageSizeLimitError(ValueError):
     pass
 
 def _ensure_supported_dimensions(width: int, height: int, image_path: str) -> None:
-    max_dim = int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 16384))
+    max_dim = int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 32768))
     if max(int(width), int(height)) > max_dim:
         raise ImageSizeLimitError(
             f"Image exceeds the current software limit of {max_dim}px on either side: "
-            f"{width}x{height}. Support for 16K+ images is not available yet."
+            f"{width}x{height}."
         )
 
 def should_use_progressive_load(

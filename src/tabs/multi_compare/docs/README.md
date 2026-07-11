@@ -31,8 +31,6 @@ Known gaps:
 - No diff/analysis overlays yet.
 - No integration with the main app magnifier system yet.
 - No playlist/project persistence yet.
-- Per-session state is still kept in `MultiCompareTab._session_states`; it
-  should move to workspace `state_slots`.
 - Export above QRhi/GPU texture limits is not tiled yet.
 
 ## Module layout

@@ -15,12 +15,17 @@ from PySide6.QtGui import (
     QPalette,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QApplication, QRhiWidget, QWidget
+from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from ui.widgets.canvas.rhi_backend import configure_rhi_widget
 
 INTERNAL_SLOT_MIME = "application/x-imgsli-multi-slot"
 
+from tabs.multi_compare.canvas.gesture_resolver import (
+    GesturePressContext,
+    iter_active,
+    resolve_press,
+)
 from tabs.multi_compare.models import (
     CompareSlot,
     LeafNode,
@@ -565,24 +570,16 @@ class MultiCompareCanvasWidget(QRhiWidget):
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
-            div = self._divider_at(event.position())
-            if div is not None and not _dividers_locked(self.state):
-                split_path, idx, _drect, direction, weights = div
-                self._divider_drag = (split_path, idx, direction, weights)
-                self._divider_start_cursor = event.position()
-                self.setCursor(
-                    Qt.CursorShape.SplitHCursor
-                    if direction == "h"
-                    else Qt.CursorShape.SplitVCursor
-                )
-                event.accept()
-                return
-
-            picked = self._leaf_at(pos, self._leaf_rects())
-            if picked is not None:
-                leaf, _ = picked
-                self._lmb_press_pos = event.position()
-                self._lmb_press_slot_id = leaf.slot_id
+            ctx = GesturePressContext(
+                handler=self,
+                local_pos=event.position(),
+                button=event.button().value,
+                modifiers=int(event.modifiers().value),
+            )
+            binding = resolve_press(ctx)
+            if binding is not None:
+                if binding.begin is not None:
+                    binding.begin(self, event.position())
                 event.accept()
                 return
 
@@ -607,54 +604,19 @@ class MultiCompareCanvasWidget(QRhiWidget):
             return
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-
-        if (
-            self._lmb_press_pos is not None
-            and self._lmb_press_slot_id is not None
-            and event.buttons() & Qt.MouseButton.LeftButton
-        ):
-            delta = event.position() - self._lmb_press_pos
-            if (delta.x() ** 2 + delta.y() ** 2) >= (
-                QApplication.startDragDistance() ** 2
-            ):
-                self._start_internal_drag(self._lmb_press_slot_id)
-                self._lmb_press_pos = None
-                self._lmb_press_slot_id = None
+        active = iter_active(self)
+        if active:
+            buttons = event.buttons()
+            consumed = False
+            for binding in active:
+                if not (buttons & Qt.MouseButton(binding.button)):
+                    continue
+                if binding.update is not None:
+                    binding.update(self, event.position())
+                    consumed = True
+            if consumed:
                 event.accept()
                 return
-
-        if self._divider_drag is not None:
-            split_path, idx, direction, start_weights = self._divider_drag
-            ws = list(start_weights)
-            delta_px = (
-                event.position().x() - self._divider_start_cursor.x()
-                if direction == "h"
-                else event.position().y() - self._divider_start_cursor.y()
-            )
-            container_size_px = self._split_container_size_at(split_path, direction)
-            if container_size_px <= 0:
-                return
-            total_pair = ws[idx] + ws[idx + 1]
-            total_weights = sum(ws) or 1.0
-            weight_delta = delta_px / container_size_px * total_weights
-            new_left = ws[idx] + weight_delta
-            new_right = ws[idx + 1] - weight_delta
-            min_w = self._min_pane_weight(
-                split_path, direction, container_size_px, total_weights
-            )
-
-            max_w = total_pair - min_w
-            if max_w < min_w:
-
-                new_left = new_right = total_pair / 2.0
-            else:
-                new_left = max(min_w, min(max_w, new_left))
-                new_right = total_pair - new_left
-            ws[idx] = new_left
-            ws[idx + 1] = new_right
-            self._do_dispatch(actions.set_split_weights(split_path, ws))
-            event.accept()
-            return
 
         if self._panning:
             ref = self._pan_ref_rect
@@ -688,15 +650,15 @@ class MultiCompareCanvasWidget(QRhiWidget):
             self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._lmb_press_pos = None
-            self._lmb_press_slot_id = None
-        if (
-            self._divider_drag is not None
-            and event.button() == Qt.MouseButton.LeftButton
-        ):
-            self._divider_drag = None
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+        released_button = event.button().value
+        ended_any = False
+        for binding in iter_active(self):
+            if binding.button != released_button:
+                continue
+            if binding.end is not None:
+                binding.end(self)
+            ended_any = True
+        if ended_any:
             event.accept()
             return
         if event.button() == Qt.MouseButton.MiddleButton and self._panning:

@@ -12,8 +12,7 @@ if TYPE_CHECKING:
         RenderConfig,
         ViewState,
     )
-    from plugins.video_editor.services.keyframing.adapters.base import ChannelDescriptor
-    from plugins.video_editor.services.keyframing.types import FrameSnapshot
+    from shared.keyframing.adapters_base import ChannelDescriptor
 else:
     Action = Any
     RenderConfig = Any
@@ -22,15 +21,26 @@ else:
     GeometryState = Any
     RenderCacheState = Any
     ChannelDescriptor = Any
-    FrameSnapshot = Any
+
+@dataclass(frozen=True)
+class PropertySnapshot:
+    """Generic vessel canvas-feature properties read/write against.
+
+    Deliberately holds only `viewport_state` — no registered canvas feature
+    property reads anything else. Richer, tab-owned recording/playback
+    snapshot types are a separate concern that never crosses into this
+    generic contract.
+    """
+    viewport_state: Any
+    settings_state: Any = None
 
 ReduceViewStateFn = Callable[[ViewState, Action], ViewState]
 ReduceRenderConfigFn = Callable[[RenderConfig, Action], RenderConfig]
 ReduceInteractionStateFn = Callable[[InteractionState, Action], InteractionState]
 ReduceGeometryStateFn = Callable[[GeometryState, Action], GeometryState]
 ReduceCacheStateFn = Callable[[RenderCacheState, Action], RenderCacheState]
-PropertySnapshotReader = Callable[[FrameSnapshot], dict[str, Any]]
-PropertySnapshotWriter = Callable[[FrameSnapshot, dict[str, Any]], None]
+PropertySnapshotReader = Callable[[PropertySnapshot], dict[str, Any]]
+PropertySnapshotWriter = Callable[[PropertySnapshot, dict[str, Any]], None]
 PropertySettingSerializer = Callable[[dict[str, Any]], Any]
 PropertySettingDeserializer = Callable[[Any], dict[str, Any]]
 ToolbarToggleHandler = Callable[[Any, bool], None]

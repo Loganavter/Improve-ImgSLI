@@ -8,6 +8,8 @@ canvas widget and feature passes.
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QSize
 from PySide6.QtGui import (
     QImage,
@@ -16,14 +18,25 @@ from PySide6.QtGui import (
     QRhiTexture,
 )
 
-from tabs.multi_compare.scene.overlay_painter import MultiCompareOverlayPainter
-from tabs.multi_compare.scene.passes import BaseImagesPass, OverlayTexturePass
+from tabs.multi_compare.canvas.registry import registry
+from tabs.multi_compare.scene.passes import BaseImagesPass
 from tabs.multi_compare.scene.projection import build_render_context
+from ui.widgets.canvas.render_executor import iter_active_render_passes
 from ui.widgets.canvas.rhi_backend import log_initialized_rhi_widget
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 class MultiCompareRhiRenderer:
-    """Persistent QRhi renderer for ``MultiCompareCanvasWidget``."""
+    """Persistent QRhi renderer for ``MultiCompareCanvasWidget``.
+
+    ``image_pass`` (base image tiles) is core-owned and always wired
+    directly, first — mirrors how image_compare's own base-image draw is
+    hardcoded ahead of its feature passes (see
+    MULTI_COMPARE_QRHI_REFACTOR.md A6). ``feature_passes`` are discovered
+    through the shared canvas feature registry, same as image_compare
+    (``rhi_renderer/__init__.py``'s ``initialize()``).
+    """
 
     def __init__(self, host) -> None:
         self.host = host
@@ -31,10 +44,8 @@ class MultiCompareRhiRenderer:
         self.target = None
         self.sampler = None
         self.placeholder = None
-        self.overlay_painter = MultiCompareOverlayPainter(host)
         self.image_pass = BaseImagesPass()
-        self.overlay_pass = OverlayTexturePass()
-        self.passes = (self.image_pass, self.overlay_pass)
+        self.feature_passes: list = []
         self.initialized = False
 
     def has_slot_texture(self, slot_id: int) -> bool:
@@ -54,6 +65,10 @@ class MultiCompareRhiRenderer:
         rhi = self.host.rhi()
         target = self.host.renderTarget()
         if rhi is None or target is None:
+            logger.warning(
+                "[mc-renderer] initialize() aborted: rhi or renderTarget is None "
+                "(widget not properly realized yet)"
+            )
             return
         self.rhi = rhi
         self.target = target
@@ -75,14 +90,20 @@ class MultiCompareRhiRenderer:
         ph.fill(0)
         upload.uploadTexture(self.placeholder, ph)
         self.image_pass.initialize(self, target)
-        self.overlay_pass.initialize(self, target, upload)
         command_buffer.resourceUpdate(upload)
+
+        self.feature_passes = [
+            type(render_pass)() for render_pass in registry().get_render_passes()
+        ]
+        for render_pass in self.feature_passes:
+            render_pass.initialize(self.rhi, target)
 
         self.initialized = True
         self.host._sync_textures()
 
     def release(self) -> None:
-        for render_pass in self.passes:
+        self.image_pass.release()
+        for render_pass in self.feature_passes:
             render_pass.release()
         for res in (
             self.sampler,
@@ -98,9 +119,20 @@ class MultiCompareRhiRenderer:
 
     def render(self, command_buffer) -> bool:
         if not self.initialized or self.rhi is None:
+            if not getattr(self, "_logged_not_initialized", False):
+                self._logged_not_initialized = True
+                logger.warning(
+                    "[mc-renderer] render() called before initialize() completed "
+                    "(initialized=%s rhi=%s)",
+                    self.initialized,
+                    self.rhi is not None,
+                )
             return False
         target = self.host.renderTarget()
         if target is None:
+            if not getattr(self, "_logged_no_target", False):
+                self._logged_no_target = True
+                logger.warning("[mc-renderer] render() aborted: renderTarget() is None")
             return False
         target_size = target.pixelSize()
         fb_w = float(target_size.width())
@@ -111,14 +143,19 @@ class MultiCompareRhiRenderer:
         self.image_pass.apply_pending_texture_ops(self, updates)
 
         composition = self.host._active_composition
+        clear_color = self.host._theme_or_palette_bg()
         ctx = build_render_context(
             composition=composition,
             framebuffer_size=(fb_w, fb_h),
             clip_matrix=tuple(float(v) for v in self.rhi.clipSpaceCorrMatrix().data()),
             available_slot_ids=set(self.image_pass.slot_texture_ids()),
+            widget=self.host,
         )
-        for render_pass in self.passes:
-            render_pass.prepare(self, ctx, updates)
+        self.image_pass.prepare(self, ctx, updates)
+
+        active_feature_passes = iter_active_render_passes(ctx, self.feature_passes)
+        for render_pass in active_feature_passes:
+            render_pass.prepare(self.host, ctx, updates)
 
         command_buffer.beginPass(
             target,
@@ -126,7 +163,8 @@ class MultiCompareRhiRenderer:
             QRhiDepthStencilClearValue(1.0, 0),
             updates,
         )
-        for render_pass in self.passes:
-            render_pass.record(self, ctx, command_buffer)
+        self.image_pass.record(self, ctx, command_buffer)
+        for render_pass in active_feature_passes:
+            render_pass.record(command_buffer, self.host, ctx)
         command_buffer.endPass()
         return True

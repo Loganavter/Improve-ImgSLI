@@ -5,10 +5,10 @@ from PySide6.QtGui import QColor
 
 from core.constants import AppConstants
 from domain.qt_adapters import color_to_qcolor
-from resources.translations import tr
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 from ui.icon_manager import AppIcon
 
+from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.widgets import (
     Button,
     IconAction,
@@ -57,7 +57,7 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
     def _is_magnifier_active(self):
         if not self.store:
             return False
-        cmd = get_canvas_feature_command_by_alias("overlay.enabled")
+        cmd = registry().get_feature_command_by_alias("overlay.enabled")
         return bool(cmd(self.store)) if cmd is not None else False
 
     def _is_capture_active(self):
@@ -75,7 +75,7 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
     def _is_divider_active(self):
         if not self._is_magnifier_active():
             return False
-        cmd = get_canvas_feature_command_by_alias("overlay.active_combined")
+        cmd = registry().get_feature_command_by_alias("overlay.active_combined")
         return bool(cmd(self.store)) if cmd is not None else False
 
     def has_visible_actions(self) -> bool:
@@ -144,20 +144,20 @@ class ColorSettingsButton(Button):
         if not self.store:
             return
 
-        enabled_cmd = get_canvas_feature_command_by_alias("overlay.enabled")
+        enabled_cmd = registry().get_feature_command_by_alias("overlay.enabled")
         use_mag = bool(enabled_cmd(self.store)) if enabled_cmd is not None else False
         if not use_mag:
             self.setUnderlineColor(QColor(255, 255, 255, 100))
             return
 
-        state_cmd = get_canvas_feature_command_by_alias("overlay.active_state")
+        state_cmd = registry().get_feature_command_by_alias("overlay.active_state")
         active_state = state_cmd(self.store) if state_cmd is not None else None
 
-        capture_cmd = get_canvas_feature_command_by_alias("capture.widget_state")
+        capture_cmd = registry().get_feature_command_by_alias("capture.widget_state")
         vp = self.store.viewport
         capture_state = capture_cmd(vp.view_state) if capture_cmd is not None else None
 
-        guides_cmd = get_canvas_feature_command_by_alias("guides.widget_state")
+        guides_cmd = registry().get_feature_command_by_alias("guides.widget_state")
         guides_state = guides_cmd(vp.view_state) if guides_cmd is not None else None
 
         def _dict_col(key, fallback: QColor, default_alpha=255):
@@ -189,7 +189,7 @@ class ColorSettingsButton(Button):
         col_border = _dict_col("border_color", QColor(255, 255, 255), 230)
         col_divider = _dict_col("divider_color", QColor(255, 255, 255), 230)
 
-        combined_cmd = get_canvas_feature_command_by_alias("overlay.active_combined")
+        combined_cmd = registry().get_feature_command_by_alias("overlay.active_combined")
         is_combined = bool(combined_cmd(self.store)) if combined_cmd is not None else False
 
         show_lasers = active_state is not None

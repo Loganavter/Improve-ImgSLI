@@ -1,3 +1,15 @@
+"""Reducers for the ``session_data`` / ``render_config`` fields of
+``ViewportState``.
+
+These are not ``state_slots`` (unlike ``document``) — they are named fields
+on ``core.store_viewport.ViewportState``, which stays platform-owned because
+the shared QRhi canvas widget is typed against it (see step 9 in
+``docs/MIGRATION_PLAN.md``). Only the reduce *logic* is tab-owned; it is
+registered against core's generic extension-reducer registry
+(``core.state_management.extension_reducers``) by ``ComparisonPlugin``, so
+``RootReducer`` can run it without importing this module.
+"""
+
 from dataclasses import replace
 
 from core.state_management.actions import (
@@ -6,18 +18,31 @@ from core.state_management.actions import (
     ClearImageSlotDataAction,
     InvalidateGeometryCacheAction,
     InvalidateRenderCacheAction,
+    SetAutoCalculatePsnrAction,
+    SetAutoCalculateSsimAction,
     SetCachedDiffImageAction,
+    SetCachedScaledImageDimsAction,
+    SetDisplayCacheImageAction,
+    SetDisplayResolutionLimitAction,
     SetDrawTextBackgroundAction,
     SetFileNameBgColorAction,
     SetFileNameColorAction,
     SetFontSizePercentAction,
     SetFontWeightAction,
+    SetImageSessionImageAction,
     SetIncludeFileNamesInSavedAction,
     SetInterpolationMethodAction,
+    SetLastDisplayCacheParamsAction,
     SetMaxNameLengthAction,
     SetMovementInterpolationMethodAction,
+    SetPendingUnificationPathsAction,
+    SetPsnrValueAction,
+    SetScaledImageForDisplayAction,
+    SetSsimValueAction,
     SetTextAlphaPercentAction,
     SetTextPlacementModeAction,
+    SetUnificationInProgressAction,
+    SetZoomInterpolationMethodAction,
 )
 from tabs.image_compare.state.models import (
     ImageSessionState,
@@ -25,22 +50,7 @@ from tabs.image_compare.state.models import (
     RenderConfig,
     SessionData,
 )
-from tabs.image_compare.state.actions import (
-    SetAutoCalculatePsnrAction,
-    SetAutoCalculateSsimAction,
-    SetCachedScaledImageDimsAction,
-    SetDisplayCacheImageAction,
-    SetDisplayResolutionLimitAction,
-    SetImageSessionImageAction,
-    SetLastDisplayCacheParamsAction,
-    SetPendingUnificationPathsAction,
-    SetPsnrValueAction,
-    SetScaledImageForDisplayAction,
-    SetSsimValueAction,
-    SetUnificationInProgressAction,
-    SetZoomInterpolationMethodAction,
-)
-from ui.canvas_infra.scene.widget_registry import get_canvas_widget_features
+from tabs.image_compare.canvas.registry import registry
 
 
 class ImageSessionReducer:
@@ -96,7 +106,7 @@ class RenderCacheReducer:
                 last_split_cached_params=None,
             )
             for feature in sorted(
-                get_canvas_widget_features(),
+                registry().get_widget_features(),
                 key=lambda item: (item.reducer_order, item.name),
             ):
                 if feature.reduce_cache_state is not None:
@@ -127,7 +137,7 @@ class RenderCacheReducer:
                 last_split_cached_params=None,
             )
             for feature in sorted(
-                get_canvas_widget_features(),
+                registry().get_widget_features(),
                 key=lambda item: (item.reducer_order, item.name),
             ):
                 if feature.reduce_cache_state is not None:
@@ -180,6 +190,13 @@ class SessionDataReducer:
 class ImageRenderConfigReducer:
     @staticmethod
     def reduce(config: RenderConfig, action: Action) -> RenderConfig:
+        for feature in sorted(
+            registry().get_widget_features(),
+            key=lambda item: (item.reducer_order, item.name),
+        ):
+            reduced = feature.reduce_render_config(config, action)
+            if reduced is not config:
+                return reduced
         if isinstance(action, SetInterpolationMethodAction):
             return replace(config, interpolation_method=action.method)
         if isinstance(action, SetMovementInterpolationMethodAction):

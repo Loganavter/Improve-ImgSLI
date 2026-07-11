@@ -4,8 +4,8 @@ import logging
 import os
 
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QPalette, QPixmap
-from PySide6.QtWidgets import QLabel, QRhiWidget
+from PySide6.QtGui import QColor, QPalette, QPixmap
+from PySide6.QtWidgets import QFrame, QLabel, QRhiWidget
 
 from core.state_management.interaction_actions import SetResizeInProgressAction
 
@@ -188,10 +188,18 @@ def _ensure_rhi_resize_shields(window) -> None:
                     shield.setAlignment(
                         Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
                     )
-                    shield.setStyleSheet(
-                        "QLabel { border: 3px solid #ff1744; color: #ff1744; "
-                        "background: rgba(255, 23, 68, 35); font-weight: 700; }"
+                    debug_font = shield.font()
+                    debug_font.setBold(True)
+                    shield.setFont(debug_font)
+                    debug_color = QColor(0xFF, 0x17, 0x44)
+                    palette = shield.palette()
+                    palette.setColor(QPalette.ColorRole.WindowText, debug_color)
+                    palette.setColor(
+                        QPalette.ColorRole.Window, QColor(0xFF, 0x17, 0x44, 35)
                     )
+                    shield.setPalette(palette)
+                    shield.setFrameShape(QFrame.Shape.Box)
+                    shield.setLineWidth(3)
                 else:
                     shield.setPixmap(_build_rhi_resize_shield_pixmap(rhi))
                 setattr(rhi, _RESIZE_SHIELD_ATTR, shield)

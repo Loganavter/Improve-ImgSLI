@@ -8,8 +8,25 @@ from ui.canvas_infra.viewport.state import (
 )
 
 
-def widget_px_to_screen_px(widget, px_x, px_y):
-    w, h = widget.width(), widget.height()
+def widget_px_to_screen_px(
+    widget,
+    px_x,
+    px_y,
+    canvas_width=None,
+    canvas_height=None,
+    canvas_offset_x=0.0,
+    canvas_offset_y=0.0,
+):
+    """Map a point in logical-canvas pixel space to render-target pixel space.
+
+    ``canvas_width``/``canvas_height`` default to the actual widget size (the
+    live/interactive case, where canvas == render target). Tiled export
+    passes the full logical canvas size here plus the current tile's
+    top-left as ``canvas_offset_x/y``, so the same pan/zoom formula holds
+    while the render target is only a tile's worth of pixels.
+    """
+    w = canvas_width if canvas_width is not None else widget.width()
+    h = canvas_height if canvas_height is not None else widget.height()
     if w <= 0 or h <= 0:
         return px_x, px_y
     zoom = get_zoom_level(widget)
@@ -18,7 +35,7 @@ def widget_px_to_screen_px(widget, px_x, px_y):
 
     sx = ((px_x / w) - 0.5 + pan_x) * zoom + 0.5
     sy = ((px_y / h) - 0.5 + pan_y) * zoom + 0.5
-    return sx * w, sy * h
+    return sx * w - canvas_offset_x, sy * h - canvas_offset_y
 
 
 def resolve_widget_background(widget) -> QColor:

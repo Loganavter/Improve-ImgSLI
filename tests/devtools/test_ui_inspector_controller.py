@@ -5,7 +5,7 @@ Dogma source: docs/dev/UI_INSPECTOR.md.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QPointF, QRect, Qt
+from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from devtools.ui_inspector import controller as controller_module
@@ -51,22 +51,14 @@ def test_controller_requires_shift_left_click(monkeypatch):
 
     inspector = UiInspectorController(app, main, _ThemeManagerProbe())
     try:
-        called = False
-
-        def _widget_at(_pos: QPoint):
-            nonlocal called
-            called = True
-            return target
-
         monkeypatch.setattr(
             controller_module.QApplication,
             "widgetAt",
-            staticmethod(_widget_at),
+            staticmethod(lambda _pos: target),
         )
 
         assert inspector._handle_mouse_press(_MousePress()) is False
-        assert called is False
-        assert inspector._current_widget is None
+        assert inspector._committed_widget is None
     finally:
         inspector.shutdown()
 
@@ -90,7 +82,7 @@ def test_controller_can_inspect_plugin_top_level_window(monkeypatch):
         event = _MousePress(Qt.KeyboardModifier.ShiftModifier)
 
         assert inspector._handle_mouse_press(event) is True
-        assert inspector._current_widget is target
+        assert inspector._committed_widget is target
         assert plugin_window in inspector._overlays
         assert main not in inspector._overlays
     finally:

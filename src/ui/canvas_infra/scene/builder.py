@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from domain.types import Rect
 from .context import CanvasSceneBuildContext
-from .feature_registry import get_canvas_scene_features
 from .models import (
     CanvasSceneGraph,
 )
-from .pipeline import SCENE_OVERLAY_BUILDERS, SCENE_PRIMARY_BUILDERS
+from .pipeline import get_scene_overlay_builders, get_scene_primary_builders
+from .registry import get_canvas_registry
 
-def _resolve_active_object_id(view) -> str | None:
-    for feature in get_canvas_scene_features():
+def _session_type(store) -> str | None:
+    session = store.get_active_workspace_session()
+    return session.session_type if session is not None else None
+
+def _resolve_active_object_id(view, session_type: str | None) -> str | None:
+    for feature in get_canvas_registry(session_type).get_scene_features():
         resolver = getattr(feature, "resolve_active_object_id", None)
         if resolver is None:
             continue
@@ -18,8 +22,10 @@ def _resolve_active_object_id(view) -> str | None:
             return object_id
     return None
 
-def _sync_scene_geometry(scene: CanvasSceneGraph, geometry_state) -> None:
-    for feature in get_canvas_scene_features():
+def _sync_scene_geometry(
+    scene: CanvasSceneGraph, geometry_state, session_type: str | None
+) -> None:
+    for feature in get_canvas_registry(session_type).get_scene_features():
         sync_geometry = getattr(feature, "sync_geometry", None)
         if sync_geometry is None:
             continue
@@ -54,15 +60,21 @@ def _resolve_bounds(store, image_label, label_width: int, label_height: int) -> 
         )
     return Rect()
 
+def _session_has_content(store) -> bool:
+    from tabs.registry import get_shared_tab_registry
+
+    result = get_shared_tab_registry().create_service("session_has_content", store)
+    return bool(result)
+
 def build_canvas_scene(store, image_label=None, label_width: int | None = None, label_height: int | None = None) -> CanvasSceneGraph:
     viewport = store.viewport
     view = viewport.view_state
-    image_state = viewport.session_data.image_state
+    session_type = _session_type(store)
 
     pix_w = int(getattr(viewport.geometry_state, "pixmap_width", 0) or 0)
     pix_h = int(getattr(viewport.geometry_state, "pixmap_height", 0) or 0)
-    active_object_id = _resolve_active_object_id(view)
-    if pix_w <= 0 or pix_h <= 0 or not image_state.image1:
+    active_object_id = _resolve_active_object_id(view, session_type)
+    if pix_w <= 0 or pix_h <= 0 or not _session_has_content(store):
         return CanvasSceneGraph(bounds=Rect(), objects=(), active_object_id=active_object_id)
 
     if label_width is None:
@@ -85,14 +97,14 @@ def build_canvas_scene(store, image_label=None, label_width: int | None = None, 
         bounds=bounds,
         objects=tuple(
             obj
-            for builder in SCENE_PRIMARY_BUILDERS
+            for builder in get_scene_primary_builders(session_type)
             for obj in builder(context)
         ),
         active_object_id=active_object_id,
     )
     overlay_objects = tuple(
         obj
-        for builder in SCENE_OVERLAY_BUILDERS
+        for builder in get_scene_overlay_builders(session_type)
         for obj in builder(scene, context)
     )
     if overlay_objects:
@@ -102,5 +114,5 @@ def build_canvas_scene(store, image_label=None, label_width: int | None = None, 
             active_object_id=scene.active_object_id,
         )
 
-    _sync_scene_geometry(scene, viewport.geometry_state)
+    _sync_scene_geometry(scene, viewport.geometry_state, session_type)
     return scene

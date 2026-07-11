@@ -1,7 +1,7 @@
-from tabs.image_compare.canvas.features.magnifier.store import iter_magnifier_models
+from tabs.image_compare.canvas.features.magnifier.state.store import iter_magnifier_models
 from tabs.image_compare.canvas.helpers import reset_canvas_overlays
 
-from .common import get_live_image_label
+from tabs.image_compare.canvas.features.magnifier.workers.common import get_live_image_label
 
 
 def _has_visible_magnifiers(presenter) -> bool:

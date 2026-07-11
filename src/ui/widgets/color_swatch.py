@@ -13,6 +13,8 @@ from PySide6.QtWidgets import QColorDialog, QWidget
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Button
 
+from ui.theming import polish_themed_dialog, resolve_theme_color
+
 
 class ColorSwatch(Button):
     colorChanged = Signal(QColor)
@@ -48,7 +50,7 @@ class ColorSwatch(Button):
         # dialog.border, leaving the border invisible.
         tm = ThemeManager.get_instance()
         try:
-            border = QColor(tm.get_color("list_item.text.normal"))
+            border = QColor(resolve_theme_color(tm, "list_item.text.normal"))
         except Exception:
             border = QColor("#888888")
         self.setBorderColor(border)
@@ -74,7 +76,7 @@ class ColorSwatch(Button):
         if self._alpha:
             dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
         dialog.setModal(False)
-        ThemeManager.get_instance().apply_theme_to_dialog(dialog)
+        polish_themed_dialog(ThemeManager.get_instance(), dialog)
 
         def on_selected(c: QColor) -> None:
             if c.isValid():

@@ -8,6 +8,8 @@ renderer can draw it for live preview and export.
 
 from __future__ import annotations
 
+import logging
+
 from tabs.multi_compare.models import LeafNode as _MCLeaf
 from tabs.multi_compare.models import (
     MultiCompareState,
@@ -26,6 +28,17 @@ from ui.canvas_presentation.composition import (
 
 DEFAULT_SPLIT_GAP_PX = 4
 DEFAULT_LABEL_FONT_PX = 10
+
+logger = logging.getLogger("ImproveImgSLI")
+
+
+def _describe_node(node) -> str:
+    if isinstance(node, LayerNode):
+        return f"Layer(id={node.layer_id})"
+    if isinstance(node, SplitNode):
+        kids = ", ".join(_describe_node(c) for c in node.children)
+        return f"Split(dir={node.direction}, gap_px={node.gap_px}, weights={node.weights}, children=[{kids}])"
+    return f"Group(children=[{', '.join(_describe_node(c) for c in getattr(node, 'children', ()))}])"
 
 
 def build_composition_plan(
@@ -71,6 +84,8 @@ def build_composition_plan(
         canvas_w=max(1, int(canvas_w)),
         canvas_h=max(1, int(canvas_h)),
         fill_rgba=fill_rgba,
+        divider_settings=state.divider_settings,
+        label_settings=state.label_settings,
     )
 
 
