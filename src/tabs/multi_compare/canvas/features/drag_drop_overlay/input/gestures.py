@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt
 
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureGestureBinding
 
-from .interaction import begin_slot_press, end_slot_press, maybe_start_slot_drag
+from tabs.multi_compare.canvas.features.drag_drop_overlay.input.interaction import begin_slot_press, end_slot_press, maybe_start_slot_drag
 
 SLOT_DRAG_OWNER = "multi_compare.slot_drag"
 
