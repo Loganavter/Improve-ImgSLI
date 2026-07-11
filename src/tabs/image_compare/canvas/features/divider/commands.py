@@ -18,12 +18,12 @@ from domain.types import Color
 from shared.rendering import FeatureLayoutRequirement, NormalizedBounds
 from ui.canvas_infra.viewport.geometry import resolve_axis_position
 
-from .actions import SetDividerThicknessAction, SetDividerVisibleAction
-from .events import (
+from tabs.image_compare.canvas.features.divider.actions import SetDividerThicknessAction, SetDividerVisibleAction
+from tabs.image_compare.canvas.features.divider.events import (
     SettingsSetDividerThicknessEvent,
     SettingsToggleDividerVisibilityEvent,
 )
-from .state import get_divider_widget_state
+from tabs.image_compare.canvas.features.divider.state import get_divider_widget_state
 
 
 def dispatch_viewport_action(actions, action) -> bool:

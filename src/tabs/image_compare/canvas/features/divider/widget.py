@@ -14,18 +14,18 @@ from ui.canvas_infra.scene.widget_contract import (
     CanvasWidgetFeature,
 )
 
-from .actions import (
+from tabs.image_compare.canvas.features.divider.actions import (
     SetDividerColorAction,
     SetDividerThicknessAction,
     SetDividerVisibleAction,
 )
-from .commands import build_divider_commands
-from .gestures import build_divider_gesture_bindings
-from .properties import build_divider_properties
-from .runtime_hooks import build_divider_render_scene_overrides
-from .settings_bindings import build_divider_settings_event_bindings
-from .state import DividerWidgetState, replace_divider_widget_state
-from .toolbar import build_divider_toolbar_bindings
+from tabs.image_compare.canvas.features.divider.commands import build_divider_commands
+from tabs.image_compare.canvas.features.divider.gestures import build_divider_gesture_bindings
+from tabs.image_compare.canvas.features.divider.properties import build_divider_properties
+from tabs.image_compare.canvas.features.divider.runtime_hooks import build_divider_render_scene_overrides
+from tabs.image_compare.canvas.features.divider.settings_bindings import build_divider_settings_event_bindings
+from tabs.image_compare.canvas.features.divider.state import DividerWidgetState, replace_divider_widget_state
+from tabs.image_compare.canvas.features.divider.toolbar import build_divider_toolbar_bindings
 
 
 def _clone_divider_widget_state(view_state: ViewState) -> DividerWidgetState:
@@ -68,7 +68,7 @@ def reduce_divider_render_config(config: RenderConfig, action: Action) -> Render
 
 def build_divider_state_queries():
     """Build state queries for direct feature state access."""
-    from .commands import query_divider_widget_state
+    from tabs.image_compare.canvas.features.divider.commands import query_divider_widget_state
 
     return (
         CanvasFeatureStateQuery(
@@ -79,7 +79,7 @@ def build_divider_state_queries():
 
 def build_divider_state_commands():
     """Build state commands for direct feature state modification."""
-    from .commands import (
+    from tabs.image_compare.canvas.features.divider.commands import (
         command_begin_split_drag,
         command_end_split_drag,
         command_sync_split_position,
