@@ -14,7 +14,7 @@ from PySide6.QtCore import Qt
 
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureGestureBinding
 
-from .interaction import begin_divider_drag, end_divider_drag, update_divider_drag
+from tabs.multi_compare.canvas.features.grid_dividers.input.interaction import begin_divider_drag, end_divider_drag, update_divider_drag
 
 DIVIDER_DRAG_OWNER = "multi_compare.divider_drag"
 
