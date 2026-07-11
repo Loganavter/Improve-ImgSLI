@@ -80,11 +80,11 @@ once the file's depth in the tree changes, with no import error to catch it.
 | `image_compare` | `divider` | `manifest.py` | `manifest.py` | decomposed |
 | `image_compare` | `guides` | `manifest.py` | `manifest.py` | decomposed |
 | `image_compare` | `capture` | `manifest.py` | `manifest.py` | decomposed |
-| `image_compare` | `filename_overlay` | none | `manifest.py` | render pass + widget feature |
-| `image_compare` | `paste_overlay` | none | `manifest.py` | transitional widget-owned overlay |
-| `multi_compare` | `grid_dividers` | none | `manifest.py` | render pass + widget feature + gesture bindings |
-| `multi_compare` | `layer_labels` | none | `manifest.py` | render pass + widget feature |
-| `multi_compare` | `drag_drop_overlay` | none | `manifest.py` | render pass + widget feature + gesture bindings |
+| `image_compare` | `filename_overlay` | none | `manifest.py` | decomposed; render pass + widget feature |
+| `image_compare` | `paste_overlay` | none | `manifest.py` | decomposed; transitional widget-owned overlay |
+| `multi_compare` | `grid_dividers` | none | `manifest.py` | decomposed; render pass + widget feature + gesture bindings |
+| `multi_compare` | `layer_labels` | none | `manifest.py` | root-contract-only, nothing to decompose; render pass + widget feature |
+| `multi_compare` | `drag_drop_overlay` | none | `manifest.py` | decomposed; render pass + widget feature + gesture bindings |
 
 `multi_compare` participates in the same `register_canvas_widget_feature_package`
 / `register_canvas_scene_feature_package` / `register_canvas_render_pass_feature_package`

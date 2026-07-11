@@ -178,13 +178,26 @@ shallow is easy to miss until the feature renders wrong at runtime.
 
 ## Current candidates (flat file count at feature root, `*.py` only)
 
+All `image_compare` and `multi_compare` canvas feature packages have been
+swept — every feature that had any non-contract module has been split into
+subpackages. `image_compare/layer_labels`-style features that only contain
+the root contract files (`manifest.py`, `widget.py`, `feature.py`,
+`passes.py`, `__init__.py`, ...) have nothing to decompose and are left
+flat.
+
 | Feature | Files | Notes |
 |---|---|---|
-| `image_compare/filename_overlay` | 11 | next candidate, borderline |
-| `image_compare/capture` | 9 | borderline |
 | `image_compare/magnifier` | done | reference case, see [package-structure.md](package-structure.md) |
 | `image_compare/divider` | done | see [package-structure.md](package-structure.md) |
 | `image_compare/guides` | done | see [package-structure.md](package-structure.md) |
+| `image_compare/capture` | done | see [package-structure.md](package-structure.md) |
+| `image_compare/filename_overlay` | done | see [package-structure.md](package-structure.md) |
+| `image_compare/paste_overlay` | done | single module moved to `render/` |
+| `multi_compare/drag_drop_overlay` | done | `gestures.py`/`interaction.py` moved to `input/` |
+| `multi_compare/grid_dividers` | done | `gestures.py`/`interaction.py` moved to `input/` |
+| `multi_compare/layer_labels` | n/a | root-contract-only, nothing to move |
 
 Re-count with `find <feature_dir> -maxdepth 1 -name "*.py" | wc -l` before
-picking the next target — these numbers drift as features grow.
+treating a feature as needing this pass again — these numbers drift as
+features grow. New/renamed feature packages that later grow non-contract
+modules should be swept the same way.
