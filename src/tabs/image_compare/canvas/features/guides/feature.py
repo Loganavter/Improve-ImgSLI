@@ -13,8 +13,8 @@ from ui.canvas_infra.scene.feature_contract import (
 from ui.canvas_infra.scene.models import CanvasSceneGraph, CanvasSceneObject
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
-from .scene_objects import GuidesSceneObject
-from .state import get_guides_widget_state
+from tabs.image_compare.canvas.features.guides.scene_objects import GuidesSceneObject
+from tabs.image_compare.canvas.features.guides.state import get_guides_widget_state
 
 GUIDES_Z_ORDER = CanvasFeatureZOrder(
     stack_role=CanvasStackRole.ANNOTATION_GUIDE,

@@ -4,8 +4,8 @@ from domain.qt_adapters import color_to_qcolor
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 from tabs.image_compare.canvas.registry import registry
 
-from .commands import command_set_guides_thickness
-from .state import get_guides_widget_state
+from tabs.image_compare.canvas.features.guides.commands import command_set_guides_thickness
+from tabs.image_compare.canvas.features.guides.state import get_guides_widget_state
 
 
 def set_slider_value_quietly(control, value: int) -> None:
