@@ -3,7 +3,6 @@
 Verifies that shared ui/ and plugin presentation code does not use
 direct feature-name lookups via get_canvas_feature_command("feature", ...).
 The only acceptable callers are:
-  - widget_registry.py (definition and alias resolver)
   - feature-owned code inside canvas_features/
 """
 
@@ -23,9 +22,7 @@ _SHARED_DIRS = [
     "events",
 ]
 
-_ALLOWLIST = {
-    os.path.normpath("ui/canvas_infra/scene/widget_registry.py"),
-}
+_ALLOWLIST: set[str] = set()
 
 _DIRECT_CALL_PATTERN = re.compile(
     r'get_canvas_feature_command\(\s*["\']'
@@ -99,10 +96,8 @@ class TestNewAliasesExist:
         ],
     )
     def test_phase5_aliases_resolve(self, alias: str):
-        from ui.canvas_infra.scene.widget_registry import (
-            get_canvas_feature_command_by_alias,
-        )
+        from ui.canvas_infra.scene.registry import get_canvas_registry
 
-        cmd = get_canvas_feature_command_by_alias(alias)
+        cmd = get_canvas_registry("image_compare").get_feature_command_by_alias(alias)
         assert cmd is not None, f"Alias {alias} did not resolve"
         assert callable(cmd), f"Alias {alias} resolved to non-callable"

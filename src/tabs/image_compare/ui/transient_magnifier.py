@@ -5,11 +5,11 @@ import time
 from PySide6.QtCore import QEvent, QTimer
 
 from core.constants import AppConstants
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 
 
 def _query_overlay(store, capability_id: str, default=None):
-    command = get_canvas_feature_command_by_alias(capability_id)
+    command = registry().get_feature_command_by_alias(capability_id)
     if command is None:
         return default
     result = command(store)

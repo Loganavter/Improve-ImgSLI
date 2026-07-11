@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from domain.qt_adapters import qcolor_to_color
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_binding
+from tabs.image_compare.canvas.registry import registry
 
 
 def set_checked_quietly(control, value: bool) -> None:
@@ -102,7 +102,7 @@ def get_viewport_ctrl(presenter):
 
 
 def trigger_toolbar_binding(control_id: str, presenter, action: str, *args) -> None:
-    binding = get_canvas_feature_toolbar_binding(control_id)
+    binding = registry().get_feature_toolbar_binding(control_id)
     callback = getattr(binding, action, None) if binding is not None else None
     if callback is not None:
         callback(presenter, *args)

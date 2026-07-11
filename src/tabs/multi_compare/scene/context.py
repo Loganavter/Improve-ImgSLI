@@ -29,3 +29,4 @@ class MultiCompareRenderContext:
     offset: tuple[float, float]
     clip_matrix: tuple[float, ...]
     projected_layers: tuple[ProjectedLayer, ...]
+    widget: object | None = None

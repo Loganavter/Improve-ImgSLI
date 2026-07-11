@@ -150,6 +150,18 @@ class LayoutComposer:
             if mgr is not None:
                 mgr.dialogs.show_settings_dialog()
 
+        def open_image_export_dialog(*, dialog_state, **kwargs):
+            from PySide6.QtWidgets import QDialog
+
+            from plugins.export.models import ExportDialogState
+
+            mgr = _ui_manager()
+            if mgr is None:
+                return QDialog.DialogCode.Rejected, {}
+            return mgr.dialogs.show_export_dialog(
+                ExportDialogState(**dialog_state), **kwargs
+            )
+
         from ui.main_window.workspace_transition_mask import (
             WorkspaceTransitionMask,
         )
@@ -158,9 +170,16 @@ class LayoutComposer:
         ui._tab_registry.discover()
         transition_mask = WorkspaceTransitionMask(ui.main_window)
         ui.main_window._workspace_transition_mask = transition_mask
+        # `ui.main_window` is set inside `Ui_ImageComparisonApp.setupUi()` to the
+        # widget passed in (`window._app_host`, a plain QWidget), *before* the
+        # caller overwrites it with the real MainWindow instance. So at this point
+        # in startup, `ui.main_window` is still the app_host stand-in and lacks
+        # `main_controller`/`app_context`/`thread_pool`. Walk up to the real
+        # top-level window instead of trusting `ui.main_window` here.
+        real_window = ui.main_window.window()
         store = getattr(ui.main_window, "store", None)
-        main_controller = getattr(ui.main_window, "main_controller", None)
-        app_context = getattr(ui.main_window, "app_context", None)
+        main_controller = getattr(real_window, "main_controller", None)
+        app_context = getattr(real_window, "app_context", None)
         event_bus = getattr(main_controller, "event_bus", None) or getattr(
             app_context, "event_bus", None
         )
@@ -171,7 +190,7 @@ class LayoutComposer:
             store=store,
             event_bus=event_bus,
             thread_pool=thread_pool,
-            main_window=ui.main_window,
+            main_window=real_window,
             settings=getattr(store, "settings", None),
             services={
                 "list_session_blueprints": list_session_blueprints,
@@ -179,7 +198,27 @@ class LayoutComposer:
                 "close_workspace_session": close_workspace_session,
                 "show_help_dialog": show_help_dialog,
                 "show_settings_dialog": show_settings_dialog,
+                "open_image_export_dialog": open_image_export_dialog,
                 "workspace.transition_mask": transition_mask,
             },
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
+
+        if event_bus is not None:
+            from core.events import (
+                WorkspaceSessionClosedEvent,
+                WorkspaceSessionCreatedEvent,
+            )
+
+            event_bus.subscribe(
+                WorkspaceSessionCreatedEvent,
+                lambda e: ui._tab_registry.notify_session_created(
+                    e.session_type, e.session_id
+                ),
+            )
+            event_bus.subscribe(
+                WorkspaceSessionClosedEvent,
+                lambda e: ui._tab_registry.notify_session_closed(
+                    e.session_type, e.session_id
+                ),
+            )

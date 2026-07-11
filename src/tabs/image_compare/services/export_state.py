@@ -193,10 +193,11 @@ class ExportStateCoordinator:
         }
 
     def get_current_display_name(self, image_number: int) -> str:
+        document = self.store.get_session_state_slot("document")
         target_list, index = (
-            (self.store.document.image_list1, self.store.document.current_index1)
+            (document.image_list1, document.current_index1)
             if image_number == 1
-            else (self.store.document.image_list2, self.store.document.current_index2)
+            else (document.image_list2, document.current_index2)
         )
         if 0 <= index < len(target_list):
             return target_list[index].display_name

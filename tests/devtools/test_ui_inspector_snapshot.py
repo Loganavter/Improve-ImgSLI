@@ -9,8 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QLabel
-from sli_ui_toolkit.widgets import Button
+from PySide6.QtWidgets import QApplication
+from sli_ui_toolkit.widgets import Button, Label
 
 from devtools.ui_inspector.widget_snapshot import inspect_widget
 
@@ -52,8 +52,12 @@ def _app():
 
 
 def test_widget_snapshot_collects_identity_properties_and_theme_matches():
+    """Uses the toolkit's own Label(QLabel) — see API_CATALOG.md's "Label"
+    entry — rather than a raw QLabel: a raw QLabel is a native Qt class with
+    no discoverable Python source file, so source_file would always be
+    empty for it (see widget_snapshot.py's _is_binary_or_thirdparty)."""
     _app()
-    widget = QLabel("Rating")
+    widget = Label("Rating")
     widget.setObjectName("ratingLabel")
     widget.setProperty("class", "rating-label")
     widget.setStyleSheet("font-weight: bold;")
@@ -64,12 +68,12 @@ def test_widget_snapshot_collects_identity_properties_and_theme_matches():
 
     snapshot = inspect_widget(widget, _ThemeManagerProbe())
 
-    assert snapshot.class_name == "QLabel"
+    assert snapshot.class_name == "Label"
     assert snapshot.object_name == "ratingLabel"
-    assert snapshot.selector == "QLabel#ratingLabel"
+    assert snapshot.selector == "Label#ratingLabel"
     assert snapshot.dynamic_properties["class"] == "rating-label"
     assert snapshot.inline_stylesheet == "font-weight: bold;"
-    assert snapshot.path[-1] == "QLabel#ratingLabel"
+    assert snapshot.path[-1] == "Label#ratingLabel"
     assert snapshot.source_file
 
     window_text = next(color for color in snapshot.palette if color.name == "WindowText")

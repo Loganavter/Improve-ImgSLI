@@ -19,8 +19,8 @@ from ui.canvas_presentation.models import CanvasTarget
 from ui.canvas_presentation.layout import compute_content_layout
 from tabs.image_compare.canvas.presentation.plan_builder import CanvasGeometry
 from shared.rendering import get_effective_export_interpolation_method
-from plugins.video_editor.services.video_export_models import RenderedFrame, VideoRenderRequest
-from plugins.video_editor.services.video_export_models import GlobalCanvasBounds
+from tabs.image_compare.plugins.video_editor.services.video_export_models import RenderedFrame, VideoRenderRequest
+from tabs.image_compare.plugins.video_editor.services.video_export_models import GlobalCanvasBounds
 from tabs.image_compare.canvas.presentation.plan_builder import (
     build_render_frame_presentation,
     build_snapshot_store_presentation,
@@ -219,15 +219,23 @@ class SnapshotFrameRenderer:
         normalize_snapshot_store_enabled,
     ):
         from core.store import Store
-        from tabs.image_compare.state.document import ImageItem
-        from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+        from tabs.image_compare.state.document import DocumentModel, ImageItem
+        from tabs.image_compare.canvas.registry import registry
 
         store = Store()
+        # `resolve_feature_virtual_layout` (invoked via SnapshotRenderPlanBuilder
+        # below) looks up the canvas feature registry keyed by the active
+        # session's `session_type`; the default session `Store()` creates is
+        # "session_picker", which has no registered features, so it must be
+        # switched to an "image_compare" session before any layout-dependent
+        # feature (e.g. magnifier) can be resolved.
+        store.create_workspace_session(session_type="image_compare", activate=True)
+        store.set_session_state_slot("document", DocumentModel())
         store.viewport = snap.viewport_state.clone()
         store.settings = snap.settings_state.freeze_for_export()
         store.runtime_cache.overlay_clip_rect = None
 
-        normalize_snapshot = get_canvas_feature_command_by_alias("overlay.snapshot_normalize")
+        normalize_snapshot = registry().get_feature_command_by_alias("overlay.snapshot_normalize")
         if (
             normalize_snapshot_store_enabled
             and normalize_snapshot is not None
@@ -237,34 +245,35 @@ class SnapshotFrameRenderer:
 
         store.viewport.session_data.image_state.image1 = c["display_img1"]
         store.viewport.session_data.image_state.image2 = c["display_img2"]
-        store.document.image1_path = getattr(snap, "image1_path", None)
-        store.document.image2_path = getattr(snap, "image2_path", None)
-        store.document.image_list1 = [
+        document = store.get_session_state_slot("document")
+        document.image1_path = getattr(snap, "image1_path", None)
+        document.image2_path = getattr(snap, "image2_path", None)
+        document.image_list1 = [
             ImageItem(
                 image=c["source_img1"],
                 path=getattr(snap, "image1_path", None) or "",
                 display_name=getattr(snap, "name1", None) or "",
             )
         ]
-        store.document.image_list2 = [
+        document.image_list2 = [
             ImageItem(
                 image=c["source_img2"],
                 path=getattr(snap, "image2_path", None) or "",
                 display_name=getattr(snap, "name2", None) or "",
             )
         ]
-        store.document.current_index1 = 0 if store.document.image_list1 else -1
-        store.document.current_index2 = 0 if store.document.image_list2 else -1
-        store.document.original_image1 = c["source_img1"]
-        store.document.original_image2 = c["source_img2"]
-        store.document.full_res_image1 = c["source_img1"]
-        store.document.full_res_image2 = c["source_img2"]
+        document.current_index1 = 0 if document.image_list1 else -1
+        document.current_index2 = 0 if document.image_list2 else -1
+        document.original_image1 = c["source_img1"]
+        document.original_image2 = c["source_img2"]
+        document.full_res_image1 = c["source_img1"]
+        document.full_res_image2 = c["source_img2"]
         store.viewport.interaction_state.is_interactive_mode = False
         store.viewport.geometry_state.pixmap_width = c["render_w"]
         store.viewport.geometry_state.pixmap_height = c["render_h"]
 
         if fit_content and scaled_global_bounds is not None:
-            apply_virtual_layout = get_canvas_feature_command_by_alias(
+            apply_virtual_layout = registry().get_feature_command_by_alias(
                 "overlay.snapshot_apply_virtual_layout"
             )
             if apply_virtual_layout is not None:
@@ -497,13 +506,13 @@ class SnapshotFrameRenderer:
                 "plan_image2_size": getattr(getattr(plan, "image2", None), "size", None),
                 "display_cache_key": repr(getattr(plan, "display_cache_key", None)),
                 "gl_zoom_interpolation": getattr(
-                    getattr(plan, "gl_scene", None),
+                    getattr(plan, "render_scene", None),
                     "zoom_interpolation_method",
                     None,
                 ),
-                "gl_diff_mode": getattr(getattr(plan, "gl_scene", None), "diff_mode_int", None),
+                "gl_diff_mode": getattr(getattr(plan, "render_scene", None), "diff_mode_int", None),
                 "overlay_clip_rect": getattr(
-                    getattr(plan, "gl_scene", None),
+                    getattr(plan, "render_scene", None),
                     "overlay_clip_rect",
                     None,
                 ),

@@ -1,9 +1,8 @@
 """Shared helpers for saving PIL images to disk.
 
-Common ground between ``tabs/image_compare/services/image_export.py`` and
-``tabs/multi_compare/services/image_export.py`` — filename sanitization,
-collision-free path generation, background flattening for non-alpha formats,
-comment metadata, and a cancelable write.
+Common ground between each tab's ``services/image_export.py`` — filename
+sanitization, collision-free path generation, background flattening for
+non-alpha formats, comment metadata, and a cancelable write.
 """
 
 from __future__ import annotations

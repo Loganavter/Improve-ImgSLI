@@ -1,6 +1,6 @@
 import shiboken6 as sip
 
-from tabs.image_compare.canvas.features.magnifier.store import MagnifierStoreService
+from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
 
 
 def get_live_image_label(presenter):
@@ -30,7 +30,7 @@ def start_pending_magnifier_layer(presenter) -> bool:
     presenter._pending_magnifier_requested_at = 0.0
     presenter._last_mag_signature = None
 
-    from .worker_flow import render_magnifier_layer
+    from tabs.image_compare.canvas.features.magnifier.workers.worker_flow import render_magnifier_layer
 
     return render_magnifier_layer(presenter, pending_sig)
 

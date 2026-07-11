@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QFileDialog
 
 from core.events import CoreUpdateRequestedEvent
 from sli_ui_toolkit.i18n import tr
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_binding
+from tabs.image_compare.canvas.registry import registry
 
 
 def open_image_dialog(presenter, image_number: int):
@@ -54,13 +54,13 @@ def update_image_name(presenter, image_number: int, name: str):
 
 
 def on_magnifier_guides_toggled(presenter, checked: bool):
-    binding = get_canvas_feature_toolbar_binding("guides.enabled")
+    binding = registry().get_feature_toolbar_binding("guides.enabled")
     if binding is not None and binding.on_toggled is not None:
         binding.on_toggled(presenter, checked)
 
 
 def on_magnifier_guides_thickness_changed(presenter, thickness: int):
-    binding = get_canvas_feature_toolbar_binding("guides.enabled")
+    binding = registry().get_feature_toolbar_binding("guides.enabled")
     if binding is not None and binding.on_value_changed is not None:
         binding.on_value_changed(presenter, thickness)
 

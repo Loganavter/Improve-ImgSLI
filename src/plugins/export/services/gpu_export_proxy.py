@@ -4,9 +4,39 @@ from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication
 from PIL import Image
 
+from shared.image_processing.regions import build_uniform_tile_grid
 from shared.rendering.tab_canvas_services import create_canvas_widget
 
 logger = logging.getLogger("ImproveImgSLI")
+
+# Fixed tile extent for tiled export, capped further by the backend's actual
+# max texture size at render time. A fixed constant keeps tile counts
+# deterministic across machines/backends for testing; see
+# docs/dev/TILED_RENDERING_DESIGN.md "Open questions".
+_EXPORT_TILE_MAX_EXTENT = 4096
+
+
+def _iter_export_tile_rects(canvas_width: int, canvas_height: int, max_extent: int):
+    """Yield (left, top, width, height) tile rects covering the export canvas.
+
+    Unlike UniformTileGrid.iter_regions (which clamps to the padded grid
+    size), this clamps to the true canvas size so the last row/column never
+    reads past the actual export dimensions.
+    """
+    grid = build_uniform_tile_grid(
+        canvas_width, canvas_height, max_tile_width=max_extent
+    )
+    for row in range(grid.rows):
+        top = row * grid.tile_height
+        if top >= canvas_height:
+            continue
+        height = min(grid.tile_height, canvas_height - top)
+        for col in range(grid.columns):
+            left = col * grid.tile_width
+            if left >= canvas_width:
+                continue
+            width = min(grid.tile_width, canvas_width - left)
+            yield left, top, width, height
 
 class GpuExportProxy(QObject):
     render_requested = Signal(object)
@@ -63,6 +93,78 @@ class GpuExportProxy(QObject):
         QApplication.processEvents()
 
     def _render_plan_frame(self, widget, plan, diff_image, debug_timings, store=None):
+        from ui.widgets.canvas.rhi_backend import query_max_texture_size
+
+        canvas_w, canvas_h = int(plan.canvas_w), int(plan.canvas_h)
+        tile_extent = min(
+            _EXPORT_TILE_MAX_EXTENT, query_max_texture_size(widget.rhi())
+        )
+        if canvas_w <= tile_extent and canvas_h <= tile_extent:
+            widget.runtime_state._export_canvas_viewport = None
+            return self._render_plan_frame_single(
+                widget, plan, diff_image, debug_timings, store=store
+            )
+        return self._render_plan_frame_tiled(
+            widget, plan, diff_image, debug_timings, tile_extent, store=store
+        )
+
+    def _render_plan_frame_tiled(
+        self, widget, plan, diff_image, debug_timings, tile_extent, store=None
+    ):
+        from ui.canvas_presentation.plan_applicator import apply_render_plan_to_canvas
+        from PySide6.QtGui import QImage as _QImage
+
+        canvas_w, canvas_h = int(plan.canvas_w), int(plan.canvas_h)
+        tile_started = time.perf_counter()
+        tile_rects = list(
+            _iter_export_tile_rects(canvas_w, canvas_h, tile_extent)
+        )
+        debug_timings["export_tile_count"] = float(len(tile_rects))
+
+        final_image = Image.new("RGBA", (canvas_w, canvas_h))
+        for tile_left, tile_top, tile_w, tile_h in tile_rects:
+            target_widget_size = (tile_w, tile_h)
+            if self._last_widget_size != target_widget_size:
+                widget.resize(*target_widget_size)
+                widget.show()
+                QApplication.processEvents()
+                self._last_widget_size = target_widget_size
+
+            widget.runtime_state._export_canvas_viewport = (
+                canvas_w,
+                canvas_h,
+                tile_left,
+                tile_top,
+            )
+            apply_render_plan_to_canvas(widget, plan)
+            widget.upload_diff_source_pil_image(diff_image)
+
+            self._render_widget_frame(widget)
+            self._render_widget_frame(widget)
+
+            qimg = widget.grabFramebuffer()
+            qimg_rgba = qimg.convertToFormat(_QImage.Format.Format_RGBA8888)
+            raw_bytes = bytes(qimg_rgba.constBits())
+            tile_image = Image.frombytes(
+                "RGBA", (qimg_rgba.width(), qimg_rgba.height()), raw_bytes
+            )
+            if tile_image.size != target_widget_size:
+                tile_image = tile_image.resize(
+                    target_widget_size, Image.Resampling.BILINEAR
+                )
+            final_image.paste(tile_image, (tile_left, tile_top))
+
+        widget.runtime_state._export_canvas_viewport = None
+        debug_timings["export_tiled_total_ms"] = (
+            time.perf_counter() - tile_started
+        ) * 1000.0
+        debug_timings["readback_width"] = float(canvas_w)
+        debug_timings["readback_height"] = float(canvas_h)
+        return final_image
+
+    def _render_plan_frame_single(
+        self, widget, plan, diff_image, debug_timings, store=None
+    ):
         from ui.canvas_presentation.plan_applicator import apply_render_plan_to_canvas
 
         resize_show_started = time.perf_counter()

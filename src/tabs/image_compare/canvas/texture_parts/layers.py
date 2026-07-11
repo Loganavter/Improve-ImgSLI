@@ -107,7 +107,6 @@ def clear(widget):
     overlay._radius = 0.0
     overlay._quads = []
     overlay._use_circle_mask = []
-    overlay._combined_params = []
     overlay._gpu_active = False
     overlay._gpu_slots = []
     overlay._gpu_widget_geometry_sig = None

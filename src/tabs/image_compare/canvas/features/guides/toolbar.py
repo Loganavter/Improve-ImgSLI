@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from domain.qt_adapters import color_to_qcolor
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 
 from .commands import command_set_guides_thickness
 from .state import get_guides_widget_state
@@ -33,37 +33,34 @@ def show_guides_color_picker(presenter) -> None:
         settings_presenter.show_laser_color_picker()
 
 
-def _query_active_show_laser(store) -> bool:
-    query = get_canvas_feature_command_by_alias("overlay.active_state")
-    if query is None or store is None:
-        return False
-    active = query(store) or {}
-    return bool(active.get("show_laser", False))
-
-
 def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
     store = getattr(presenter, "store", None)
     if store is None:
         return
-    cmd = get_canvas_feature_command_by_alias("overlay.set_active_laser_enabled")
+    enabled = bool(enabled)
+    cmd = registry().get_feature_command_by_alias("overlay.set_active_laser_enabled")
     if cmd is not None:
-        cmd(store, bool(enabled))
-    if enabled and not get_guides_widget_state(store.viewport.view_state).enabled:
-        toggle_cmd = get_canvas_feature_command_by_alias("guides.toggle_enabled")
+        cmd(store, enabled)
+    # The canvas only draws guide lines when the *global* guides.enabled flag
+    # is set (see build_magnifier_layout's guide_sets gating) — show_laser is
+    # purely per-magnifier UI state and isn't consulted by the renderer. So
+    # this toggle must keep the global flag in sync on both edges, not just
+    # when turning it on, or turning it off here leaves the laser drawn.
+    if enabled != get_guides_widget_state(store.viewport.view_state).enabled:
+        toggle_cmd = registry().get_feature_command_by_alias("guides.toggle_enabled")
         if toggle_cmd is None:
-            toggle_cmd = get_canvas_feature_command_by_alias("viewport.toggle_enabled")
+            toggle_cmd = registry().get_feature_command_by_alias("viewport.toggle_enabled")
         if toggle_cmd is not None:
-            toggle_cmd(store, True)
+            toggle_cmd(store, enabled)
 
 
 def sync_guides_toolbar_state(presenter) -> None:
     state = get_guides_widget_state(presenter.store.viewport.view_state)
     ui = getattr(presenter, "ui", None)
-    active_laser = _query_active_show_laser(presenter.store)
 
     btn_guides = getattr(ui, "btn_magnifier_guides", None)
     if btn_guides is not None:
-        if active_laser:
+        if state.enabled:
             set_checked_quietly(btn_guides, False)
             set_slider_value_quietly(btn_guides, max(1, int(state.thickness)))
         else:
@@ -73,7 +70,7 @@ def sync_guides_toolbar_state(presenter) -> None:
             set_checked_quietly(btn_guides, True)
         btn_guides.setUnderlineColor(color_to_qcolor(state.color))
     set_checked_quietly(
-        getattr(ui, "btn_magnifier_guides_simple", None), bool(active_laser)
+        getattr(ui, "btn_magnifier_guides_simple", None), bool(state.enabled)
     )
     btn_guides_width = getattr(ui, "btn_magnifier_guides_width", None)
     if btn_guides_width is not None:

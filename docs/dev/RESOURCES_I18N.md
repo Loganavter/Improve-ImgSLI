@@ -20,13 +20,14 @@ src/resources/
 └── help/                       # help pages (markdown per language)
 ```
 
-Plus per-plugin and per-feature i18n roots:
+Plus per-plugin, per-tab, and per-canvas-feature i18n roots:
 ```
 src/plugins/<name>/resources/i18n/{en,ru,...}/<plugin>.json
+src/tabs/<tab>/resources/i18n/{en,ru,...}/*.json
 src/tabs/image_compare/canvas/features/<name>/resources/i18n/{en,ru,...}/*.json
 ```
 
-These are auto-discovered and registered as additional i18n roots — see "Plugin & feature i18n" below.
+These are auto-discovered and registered as additional i18n roots — see "Bootstrap" below. Note that `plugins/` and `tabs/` are scanned the same way: several top-level app features (e.g. `image_compare`, `multi_compare`, `session_picker`) live under `src/tabs/` rather than `src/plugins/`, but both packages are plugins from the discovery system's point of view (see [PLUGINS.md](PLUGINS.md)).
 
 ## Translation pipeline
 
@@ -36,8 +37,8 @@ The translation system lives in the external toolkit (`sli_ui_toolkit.i18n`); Im
 |---|---|
 | `sli_ui_toolkit/i18n.py` | `TranslationManager` singleton, `tr()`, `translatable_text()`, `translation_events` |
 | `src/resources/translations.py` | Facade: configures root, exposes `tr`, `add_i18n_root`, `emit_language_changed` |
-| `src/core/plugin_system/registry.py:46` | Auto-registers each plugin's `resources/i18n/` as an i18n root during discovery |
-| `src/ui/canvas_infra/scene/widget_registry.py:52` | Same for canvas features |
+| `src/core/plugin_system/registry.py:48` | Auto-registers each `plugins/<name>/` and `tabs/<name>/` package's `resources/i18n/` as an i18n root during discovery |
+| `src/ui/canvas_infra/scene/widget_registry.py:80` | Same for canvas features (`get_canvas_widget_features`) |
 
 ## Bootstrap
 
@@ -46,9 +47,9 @@ The translation system lives in the external toolkit (`sli_ui_toolkit.i18n`); Im
 configure_i18n(i18n_root=Path(resource_path("resources/i18n")))
 ```
 
-Then per-plugin / per-feature directories are merged in via `add_i18n_root(path)` during the discovery walk:
+Then per-plugin / per-tab / per-feature directories are merged in via `add_i18n_root(path)` during the discovery walk:
 
-- plugins: `PluginRegistry._scan_package` → `add_i18n_root(<plugin>/resources/i18n)`
+- plugins and tabs: `PluginRegistry._scan_package("plugins")` / `_scan_package("tabs")` → `add_i18n_root(<plugins|tabs>/<name>/resources/i18n)`
 - canvas features: `widget_registry.get_canvas_widget_features` → `add_i18n_root(<feature>/resources/i18n)`
 
 ## JSON format & key resolution
@@ -125,15 +126,16 @@ translatable_callback(widget, lambda lang: refresh_my_panel(widget, lang))
 | Key reference | File |
 |---|---|
 | Used only by one plugin | `src/plugins/<name>/resources/i18n/<lang>/<plugin>.json` |
+| Used only by one tab | `src/tabs/<tab>/resources/i18n/<lang>/*.json` |
 | Used only by one canvas feature | `src/tabs/image_compare/canvas/features/<name>/resources/i18n/<lang>/*.json` |
 | Cross-cutting (errors, common buttons) | `src/resources/i18n/<lang>/core/*.json` |
 
-Don't add app-wide keys to a plugin's i18n root — they won't be found if the plugin is disabled.
+Don't add app-wide keys to a plugin's or tab's i18n root — they won't be found if the plugin/tab is disabled.
 
 ## Adding a new language
 
 1. Create `src/resources/i18n/<lang>/` (mirroring `en/`'s file structure).
-2. For each plugin and feature you want translated, add `<lang>/` next to the existing `en/` directory.
+2. For each plugin, tab, and canvas feature you want translated, add `<lang>/` next to the existing `en/` directory.
 3. Missing keys fall back to `en` silently.
 4. Register the language in the settings UI's language list (`src/plugins/settings/...`).
 

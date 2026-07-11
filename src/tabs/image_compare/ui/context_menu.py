@@ -11,6 +11,7 @@ from sli_ui_toolkit.widgets import (
 
 from plugins.image_properties.plugin import open_image_properties_dialog
 from sli_ui_toolkit.i18n import get_current_language, tr
+from tabs.image_compare.services import document_store_ops
 from ui.context_menu.models import ContextMenuRequest
 from ui.icon_manager import AppIcon
 
@@ -90,7 +91,7 @@ class ImageCompareContextMenuProvider:
         if ctrl is not None and hasattr(ctrl, "remove_current_image_from_list"):
             ctrl.remove_current_image_from_list(slot)
             return
-        self.store.clear_image_slot_data(slot)
+        document_store_ops.clear_image_slot_data(self.store, slot)
         self.store.emit_state_change("document")
         self.canvas.update()
 
@@ -105,11 +106,11 @@ class ImageCompareContextMenuProvider:
         return slot if slot in (1, 2) else None
 
     def _path_for(self, slot: int) -> str:
-        document = self.store.document
+        document = self.store.get_session_state_slot("document")
         return getattr(document, f"image{slot}_path", None) or ""
 
     def _display_name_for(self, slot: int) -> str:
-        document = self.store.document
+        document = self.store.get_session_state_slot("document")
         try:
             return document.get_current_display_name(slot)
         except Exception:
@@ -119,7 +120,7 @@ class ImageCompareContextMenuProvider:
     def _show_properties(self, slot: int) -> None:
         path = self._path_for(slot)
         name = self._display_name_for(slot)
-        image = getattr(self.store.document, f"original_image{slot}", None)
+        image = getattr(self.store.get_session_state_slot("document"), f"original_image{slot}", None)
         rating = self._rating_for(slot)
         lang = get_current_language() or "en"
         side_key = (
@@ -142,7 +143,7 @@ class ImageCompareContextMenuProvider:
         )
 
     def _begin_duplicate(self, source_slot: int) -> None:
-        document = self.store.document
+        document = self.store.get_session_state_slot("document")
         image = getattr(document, f"original_image{source_slot}", None)
         path = self._path_for(source_slot)
         name = self._display_name_for(source_slot)
@@ -174,7 +175,7 @@ class ImageCompareContextMenuProvider:
             if ctrl is not None and path and hasattr(ctrl, "load_images_from_paths"):
                 ctrl.load_images_from_paths([path], target)
                 return
-            self.store.set_current_image_data(target, image, path, name)
+            document_store_ops.set_current_image_data(self.store, target, image, path, name)
             try:
                 self.store.emit_state_change("document")
             except Exception:
@@ -196,7 +197,7 @@ class ImageCompareContextMenuProvider:
         canvas.set_paste_overlay_state(True, is_horizontal=is_horizontal, texts=texts)
 
     def _rating_for(self, slot: int) -> int | None:
-        document = self.store.document
+        document = self.store.get_session_state_slot("document")
         index = document.current_index1 if slot == 1 else document.current_index2
         items = document.image_list1 if slot == 1 else document.image_list2
         if 0 <= index < len(items):

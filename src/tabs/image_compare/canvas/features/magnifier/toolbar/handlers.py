@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from ..state import get_magnifier_widget_state
-from .shared import (
+from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
+from tabs.image_compare.canvas.features.magnifier.toolbar.shared import (
     show_magnifier_border_color_picker,
     show_magnifier_divider_color_picker,
     trigger_toolbar_binding,
@@ -22,7 +22,7 @@ def toggle_magnifier_divider_visibility(actions, visible: bool) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
-    from ..store import active_magnifier_id, update_magnifier_model
+    from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id, update_magnifier_model
 
     state = get_magnifier_widget_state(viewport.view_state)
     state.default_divider_visible = visible
@@ -50,7 +50,7 @@ def set_magnifier_divider_thickness(actions, thickness: int) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
-    from ..store import active_magnifier_id, update_magnifier_model
+    from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id, update_magnifier_model
 
     state = get_magnifier_widget_state(viewport.view_state)
     state.default_divider_thickness = thickness
@@ -75,7 +75,7 @@ def magnifier_toggle_handler(presenter, checked: bool) -> None:
 
 
 def magnifier_toggle_right_click_handler(presenter) -> None:
-    from ..store import active_or_default_divider_visible
+    from tabs.image_compare.canvas.features.magnifier.state.store import active_or_default_divider_visible
 
     visible = not active_or_default_divider_visible(presenter.store.viewport.view_state)
     trigger_toolbar_binding(
@@ -177,7 +177,7 @@ def magnifier_instances_remove_handler(presenter) -> None:
 def do_toggle_magnifier_orientation(presenter) -> None:
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command
 
-    from ..store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
 
     model = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
     current_orientation = bool(model.is_horizontal) if model is not None else False

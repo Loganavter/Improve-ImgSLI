@@ -63,8 +63,6 @@ def set_feature_overlay_content(
     ):
         for i in range(len(overlay._quads)):
             overlay._quads[i] = None
-        for i in range(len(overlay._combined_params)):
-            overlay._combined_params[i] = None
         state._feature_overlay_quad_ndc = None
         widget._request_update()
         return
@@ -88,8 +86,6 @@ def set_feature_overlay_content(
 
     for i in range(1, len(overlay._quads)):
         overlay._quads[i] = None
-    for i in range(len(overlay._combined_params)):
-        overlay._combined_params[i] = None
     widget._request_update()
 
 
@@ -144,9 +140,6 @@ def set_feature_overlay_gpu_params(
     w, h = widget.width(), widget.height()
     for i in range(len(overlay._gpu_slots)):
         slot = slots[i] if i < len(slots) else None
-        old_slot = overlay._gpu_slots[i]
-        if _slot_signature(old_slot) != _slot_signature(slot):
-            overlay._combined_params[i] = None
         overlay._gpu_slots[i] = slot
         if slot and w > 0 and h > 0:
             cx, cy = slot["center"].x(), slot["center"].y()
@@ -158,7 +151,6 @@ def set_feature_overlay_gpu_params(
             overlay._quads[i] = (x0, y0, x1, y1, cx, cy, r)
         else:
             overlay._quads[i] = None
-            overlay._combined_params[i] = None
             overlay._use_circle_mask[i] = False
 
     overlay._radius = slots[0]["radius"] if slots and slots[0] else 0
@@ -175,7 +167,6 @@ def clear_feature_overlay_gpu(widget):
     for i in range(len(overlay._gpu_slots)):
         overlay._gpu_slots[i] = None
         overlay._quads[i] = None
-        overlay._combined_params[i] = None
         overlay._use_circle_mask[i] = False
     state._feature_overlay_quad_ndc = None
     overlay._pixmap = None
@@ -239,83 +230,6 @@ def upload_feature_overlay_crop(
         if index == 0:
             state._feature_overlay_quad_ndc = None
 
-    overlay._use_circle_mask[index] = True
-    overlay._combined_params[index] = None
-    overlay._radius = radius
-    if border_color is not None:
-        overlay._border_color = border_color
-    overlay._border_width = border_width
-    widget.update()
-
-
-def upload_feature_overlay_pair(
-    widget,
-    pil1,
-    pil2,
-    center: QPointF,
-    radius: float,
-    split: float = 0.5,
-    horizontal: bool = False,
-    divider_visible: bool = True,
-    divider_color: tuple | None = None,
-    divider_thickness: int = 2,
-    border_color: QColor | None = None,
-    border_width: float = 2.0,
-    index: int = 0,
-    canvas_filter: int = None,
-):
-    state = widget.runtime_state
-    overlay = state._feature_overlay_gpu
-    if index < 0:
-        return
-    ensure_feature_overlay_slot_capacity(widget, index + 1)
-    tid1 = (
-        widget._feature_overlay_tex_ids[index]
-        if index < len(widget._feature_overlay_tex_ids)
-        else 0
-    )
-    tid2 = (
-        widget._feature_overlay_aux_tex_ids[index]
-        if index < len(widget._feature_overlay_aux_tex_ids)
-        else 0
-    )
-    if pil1 is None or pil2 is None or not tid1 or not tid2:
-        overlay._quads[index] = None
-        overlay._combined_params[index] = None
-        widget.update()
-        return
-
-    if canvas_filter is None:
-        canvas_filter = _DEFAULT_FILTER
-
-    for pil_img in (pil1, pil2):
-        _ = pil_img.convert("RGBA")
-
-    w, h = widget.width(), widget.height()
-    if w > 0 and h > 0:
-        cx, cy = center.x(), center.y()
-        x0 = ((cx - radius) / w) * 2.0 - 1.0
-        x1 = ((cx + radius) / w) * 2.0 - 1.0
-        y1_ndc = 1.0 - ((cy - radius) / h) * 2.0
-        y0_ndc = 1.0 - ((cy + radius) / h) * 2.0
-        overlay._quads[index] = (x0, y0_ndc, x1, y1_ndc, cx, cy, radius)
-    else:
-        overlay._quads[index] = None
-
-    overlay_px = int(radius * 2)
-    div_thickness_uv = (
-        (divider_thickness / overlay_px) * 0.5 if overlay_px > 0 else 0.005
-    )
-    if divider_color is None:
-        divider_color = (1.0, 1.0, 1.0, 0.9)
-    overlay._combined_params[index] = {
-        "split": split,
-        "horizontal": horizontal,
-        "divider_visible": divider_visible,
-        "divider_color": divider_color,
-        "divider_thickness_px": divider_thickness,
-        "divider_thickness_uv": div_thickness_uv,
-    }
     overlay._use_circle_mask[index] = True
     overlay._radius = radius
     if border_color is not None:

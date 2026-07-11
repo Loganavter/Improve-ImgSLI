@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import PIL.Image
 
-from plugins.video_editor.services.video_export_models import VideoRenderRequest
+from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
 from shared.image_processing.resize import resize_images_processor
 from shared.rendering import TargetSurfaceSpec, get_effective_export_interpolation_method
 from tabs.image_compare.services.export_models import ExportSaveContext
@@ -31,23 +31,16 @@ class ExportContextBuilder:
         return (bg.r, bg.g, bg.b, bg.a)
 
     def has_images(self) -> bool:
-        doc = self.store.document
+        doc = self.store.get_session_state_slot("document")
         return bool(
             (doc.full_res_image1 or doc.original_image1 or doc.preview_image1)
             and (doc.full_res_image2 or doc.original_image2 or doc.preview_image2)
         )
 
     def build_save_context(self, include_preview: bool = True) -> ExportSaveContext:
-        original1_full = (
-            self.store.document.full_res_image1
-            or self.store.document.original_image1
-            or self.store.document.preview_image1
-        )
-        original2_full = (
-            self.store.document.full_res_image2
-            or self.store.document.original_image2
-            or self.store.document.preview_image2
-        )
+        doc = self.store.get_session_state_slot("document")
+        original1_full = doc.full_res_image1 or doc.original_image1 or doc.preview_image1
+        original2_full = doc.full_res_image2 or doc.original_image2 or doc.preview_image2
         if not original1_full or not original2_full:
             raise ValueError("Full resolution images are not available for saving.")
 

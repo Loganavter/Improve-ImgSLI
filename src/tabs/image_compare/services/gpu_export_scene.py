@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import replace
 
 from shared.rendering import get_effective_export_interpolation_method
-from shared.rendering.tab_canvas_services import build_gl_render_scene
+from shared.rendering.tab_canvas_services import build_render_scene
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_clip_rect_px
 
 
-def build_export_gl_scene(
+def build_export_render_scene(
     store,
     divider_thickness_export: int,
     *,
@@ -15,7 +15,7 @@ def build_export_gl_scene(
     image_w: int | None = None,
     image_h: int | None = None,
 ):
-    scene = build_gl_render_scene(
+    scene = build_render_scene(
         store,
         apply_channel_mode_in_shader=True,
         clip_overlays_to_image_bounds=False,

@@ -4,7 +4,7 @@ import PIL.Image
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_command_by_alias
+from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
     get_pan_offset_y,
@@ -69,7 +69,7 @@ def _sync_split_position(presenter, split_position: float):
         <= 1e-6
     ):
         return
-    command = get_canvas_feature_command_by_alias("splitter.sync_split_position")
+    command = registry().get_feature_command_by_alias("splitter.sync_split_position")
     if command is not None:
         command(presenter, split_position)
     image_label = get_canvas_widget(presenter.ui)
@@ -133,11 +133,12 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
             pan_x = get_pan_offset_x(image_label)
             pan_y = get_pan_offset_y(image_label)
             reset_canvas_overlays(image_label)
+            document = presenter.store.get_session_state_slot("document")
             single_key = (
                 "single_image_mode",
                 presenter.store.viewport.view_state.showing_single_image_mode,
-                presenter.store.document.image1_path,
-                presenter.store.document.image2_path,
+                document.image1_path,
+                document.image2_path,
                 id(pil_image),
                 pil_image.size,
             )

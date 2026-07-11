@@ -30,6 +30,7 @@ class SettingsColorPickerCoordinator:
         self._show_dialog(
             key=key,
             current_color=read_canvas_feature_color_by_setting_key(
+                "image_compare",
                 self.store.viewport,
                 setting_key,
             ),
@@ -42,6 +43,7 @@ class SettingsColorPickerCoordinator:
         self._show_dialog(
             key="magnifier_divider",
             current_color=read_canvas_feature_color_by_setting_key(
+                "image_compare",
                 self.store.viewport,
                 "magnifier.divider.color",
             ),
@@ -53,6 +55,7 @@ class SettingsColorPickerCoordinator:
         self._show_dialog(
             key="magnifier_border",
             current_color=read_canvas_feature_color_by_setting_key(
+                "image_compare",
                 self.store.viewport,
                 "magnifier.border.color",
             ),
@@ -64,6 +67,7 @@ class SettingsColorPickerCoordinator:
         self._show_dialog(
             key="laser",
             current_color=read_canvas_feature_color_by_setting_key(
+                "image_compare",
                 self.store.viewport,
                 "guides.color",
             ),
@@ -75,6 +79,7 @@ class SettingsColorPickerCoordinator:
         self._show_dialog(
             key="capture_ring",
             current_color=read_canvas_feature_color_by_setting_key(
+                "image_compare",
                 self.store.viewport,
                 "capture.color",
             ),
@@ -93,6 +98,7 @@ class SettingsColorPickerCoordinator:
         dialog = QColorDialog(
             color_to_qcolor(
                 read_canvas_feature_color_by_setting_key(
+                    "image_compare",
                     self.store.viewport,
                     "magnifier.divider.color",
                 )

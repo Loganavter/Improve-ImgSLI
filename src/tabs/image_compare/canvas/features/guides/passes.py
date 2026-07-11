@@ -60,7 +60,13 @@ class GuidesPass(CanvasRenderPass):
             if capture_center is None:
                 continue
             end_x, end_y = widget_px_to_screen_px(
-                widget, capture_center.x(), capture_center.y()
+                widget,
+                capture_center.x(),
+                capture_center.y(),
+                canvas_width=ctx.canvas_width,
+                canvas_height=ctx.canvas_height,
+                canvas_offset_x=ctx.canvas_offset_x,
+                canvas_offset_y=ctx.canvas_offset_y,
             )
             end_radius = max(0.0, float(capture_radius or 0.0) * float(ctx.zoom_level))
             draw_color = QColor(color)
@@ -75,7 +81,13 @@ class GuidesPass(CanvasRenderPass):
                     else (radii[-1] if radii else 0.0)
                 )
                 start_x, start_y = widget_px_to_screen_px(
-                    widget, target_center.x(), target_center.y()
+                    widget,
+                    target_center.x(),
+                    target_center.y(),
+                    canvas_width=ctx.canvas_width,
+                    canvas_height=ctx.canvas_height,
+                    canvas_offset_x=ctx.canvas_offset_x,
+                    canvas_offset_y=ctx.canvas_offset_y,
                 )
                 self._items.append(
                     struct.pack(

@@ -54,7 +54,13 @@ class AppConstants:
 
     PROGRESSIVE_LOAD_THRESHOLD_BYTES = 2 * 1024 * 1024
     PROGRESSIVE_LOAD_THRESHOLD_PIXELS = 1920 * 1080
-    MAX_SUPPORTED_IMAGE_DIMENSION = 16384
+    # docs/dev/TILED_RENDERING_DESIGN.md Phase 1: the live canvas now tiles
+    # images bigger than one GPU texture (TileTextureService), so this is no
+    # longer a "single texture" ceiling — it is a sanity bound against
+    # pathological/corrupt files, decoded fully into memory once (RGBA8:
+    # ~2.7GB at this ceiling). Raise further only alongside a real streaming
+    # decode path (design doc "Provider callback cost" open question).
+    MAX_SUPPORTED_IMAGE_DIMENSION = 32768
 
 class Events(StrEnum):
 

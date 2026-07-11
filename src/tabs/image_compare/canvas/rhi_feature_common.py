@@ -46,19 +46,30 @@ def load_qshader(path: Path) -> QShader:
     return shader
 
 
-def resolve_rhi_scissor(widget, rhi, ctx, *, clip_to_content: bool) -> QRhiScissor:
-    dpr = max(1.0, float(widget.devicePixelRatioF()))
+def content_clip_rect_widget_px(
+    widget, ctx, *, clip_to_content: bool
+) -> tuple[int, int, int, int]:
+    """The content-clip rect (widget-px, pre-DPR/pre-Y-flip) that
+    ``resolve_rhi_scissor`` used to compute inline. Split out so per-tile
+    scissors (magnifier multi-tile capture, docs/dev/
+    TILED_RENDERING_DESIGN.md Phase 4) can intersect a tile's own
+    widget-px rect against this same content clip before converting to a
+    device scissor via ``scissor_from_widget_rect``."""
     rect = get_content_rect_screen_px(widget) if clip_to_content else None
     if rect is None:
-        x, y, width, height = 0, 0, int(ctx.width), int(ctx.height)
-    else:
-        x, y, width, height = rect
-        left = max(0, x)
-        top = max(0, y)
-        right = min(int(ctx.width), x + width)
-        bottom = min(int(ctx.height), y + height)
-        x, y = left, top
-        width, height = max(0, right - left), max(0, bottom - top)
+        return 0, 0, int(ctx.width), int(ctx.height)
+    x, y, width, height = rect
+    left = max(0, x)
+    top = max(0, y)
+    right = min(int(ctx.width), x + width)
+    bottom = min(int(ctx.height), y + height)
+    return left, top, max(0, right - left), max(0, bottom - top)
+
+
+def scissor_from_widget_rect(
+    widget, rhi, ctx, x: float, y: float, width: float, height: float
+) -> QRhiScissor:
+    dpr = max(1.0, float(widget.devicePixelRatioF()))
     px_x = int(round(x * dpr))
     px_y = int(round(y * dpr))
     px_width = int(round(width * dpr))
@@ -75,6 +86,63 @@ def resolve_rhi_scissor(widget, rhi, ctx, *, clip_to_content: bool) -> QRhiSciss
         framebuffer_height = int(round(float(ctx.height) * dpr))
         px_y = max(0, framebuffer_height - (px_y + px_height))
     return QRhiScissor(px_x, px_y, px_width, px_height)
+
+
+def resolve_rhi_scissor(widget, rhi, ctx, *, clip_to_content: bool) -> QRhiScissor:
+    x, y, width, height = content_clip_rect_widget_px(
+        widget, ctx, clip_to_content=clip_to_content
+    )
+    return scissor_from_widget_rect(widget, rhi, ctx, x, y, width, height)
+
+
+def build_fullscreen_quad_pipeline(
+    rhi, target, shader_dir: Path, shader_stem: str
+) -> QRhiGraphicsPipeline:
+    """Graphics pipeline for a fullscreen-quad pass: standard 2xFloat2 vertex
+    layout (matches ``FULLSCREEN_VERTICES``) and the alpha-preserving blend
+    every blending pass must use (see docs/dev/QRHI_CANVAS_FEATURES.md,
+    "Alpha / Blending Contract"). Shared by ``FullscreenUniformPassResources``
+    and any pass that draws a fullscreen quad but needs a different shader
+    resource layout (e.g. texture-sampling passes, which still fill their own
+    SRBs after this call) — don't hand-roll this setup a second time."""
+    pipeline = rhi.newGraphicsPipeline()
+    pipeline.setShaderStages(
+        [
+            QRhiShaderStage(
+                QRhiShaderStage.Type.Vertex,
+                load_qshader(shader_dir / f"{shader_stem}.vert.qsb"),
+            ),
+            QRhiShaderStage(
+                QRhiShaderStage.Type.Fragment,
+                load_qshader(shader_dir / f"{shader_stem}.frag.qsb"),
+            ),
+        ]
+    )
+    pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
+    pipeline.setSampleCount(target.sampleCount())
+    pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
+    pipeline.setFlags(QRhiGraphicsPipeline.Flag.UsesScissor)
+    blend = QRhiGraphicsPipeline.TargetBlend()
+    blend.enable = True
+    blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha
+    blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+    blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
+    blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+    pipeline.setTargetBlends([blend])
+    layout = QRhiVertexInputLayout()
+    layout.setBindings([QRhiVertexInputBinding(16)])
+    layout.setAttributes(
+        [
+            QRhiVertexInputAttribute(
+                0, 0, QRhiVertexInputAttribute.Format.Float2, 0
+            ),
+            QRhiVertexInputAttribute(
+                0, 1, QRhiVertexInputAttribute.Format.Float2, 8
+            ),
+        ]
+    )
+    pipeline.setVertexInputLayout(layout)
+    return pipeline
 
 
 class FullscreenUniformPassResources:
@@ -98,43 +166,9 @@ class FullscreenUniformPassResources:
         if not self.vertex_buffer.create():
             raise RuntimeError(f"Failed to create {shader_stem} vertex buffer")
 
-        self.pipeline = rhi.newGraphicsPipeline()
-        self.pipeline.setShaderStages(
-            [
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Vertex,
-                    load_qshader(shader_dir / f"{shader_stem}.vert.qsb"),
-                ),
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Fragment,
-                    load_qshader(shader_dir / f"{shader_stem}.frag.qsb"),
-                ),
-            ]
+        self.pipeline = build_fullscreen_quad_pipeline(
+            rhi, target, shader_dir, shader_stem
         )
-        self.pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
-        self.pipeline.setSampleCount(target.sampleCount())
-        self.pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
-        self.pipeline.setFlags(QRhiGraphicsPipeline.Flag.UsesScissor)
-        blend = QRhiGraphicsPipeline.TargetBlend()
-        blend.enable = True
-        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha
-        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        self.pipeline.setTargetBlends([blend])
-        layout = QRhiVertexInputLayout()
-        layout.setBindings([QRhiVertexInputBinding(16)])
-        layout.setAttributes(
-            [
-                QRhiVertexInputAttribute(
-                    0, 0, QRhiVertexInputAttribute.Format.Float2, 0
-                ),
-                QRhiVertexInputAttribute(
-                    0, 1, QRhiVertexInputAttribute.Format.Float2, 8
-                ),
-            ]
-        )
-        self.pipeline.setVertexInputLayout(layout)
 
     def ensure_items(self, count: int) -> None:
         stage = (

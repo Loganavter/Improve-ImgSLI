@@ -5,7 +5,12 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 from core.events import CoreUpdateRequestedEvent
 from resources.translations import tr
 from shared_toolkit.ui.overlay_layer import get_overlay_layer
-from ui.canvas_infra.scene.widget_registry import get_canvas_feature_toolbar_binding
+from ui.canvas_infra.scene.registry import get_canvas_registry
+
+
+def _session_type(store) -> str | None:
+    session = store.get_active_workspace_session()
+    return session.session_type if session is not None else None
 
 def open_image_dialog(presenter, image_number: int):
     start_dir = presenter.store.settings.export_default_dir or os.path.expanduser("~")
@@ -82,12 +87,14 @@ def stop_interactive_movement(presenter):
         image_canvas.stop_interactive_movement()
 
 def on_magnifier_guides_toggled(presenter, checked: bool):
-    binding = get_canvas_feature_toolbar_binding("guides.enabled")
+    session_type = _session_type(presenter.store)
+    binding = get_canvas_registry(session_type).get_feature_toolbar_binding("guides.enabled")
     if binding is not None and binding.on_toggled is not None:
         binding.on_toggled(presenter, checked)
 
 def on_magnifier_guides_thickness_changed(presenter, thickness: int):
-    binding = get_canvas_feature_toolbar_binding("guides.enabled")
+    session_type = _session_type(presenter.store)
+    binding = get_canvas_registry(session_type).get_feature_toolbar_binding("guides.enabled")
     if binding is not None and binding.on_value_changed is not None:
         binding.on_value_changed(presenter, thickness)
 

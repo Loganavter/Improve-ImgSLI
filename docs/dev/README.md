@@ -6,7 +6,9 @@ In-depth guides about architecture, contracts, and component design for contribu
 
 - **[CONTRACTS.md](CONTRACTS.md)** — Complete reference of all 24+ contracts and protocols used in the application
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — Overall architectural design and patterns
-- **[CANVAS_FEATURES.md](CANVAS_FEATURES.md)** — Canvas feature system, how to add new features, and zoom/pan invariants
+- **[QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md)** — Canvas feature system, how to add new features, and zoom/pan invariants
+- **[RHI_RENDERER_REFACTOR.md](RHI_RENDERER_REFACTOR.md)** — plan: split `rhi_renderer.py`'s six mixed concerns into owned modules (residency, geometry, uniforms, GPU resource lifecycle, draw orchestration)
+- **[CANVAS_FEATURE_REGISTRY_PER_TAB.md](CANVAS_FEATURE_REGISTRY_PER_TAB.md)** — plan: split the shared canvas feature registry into per-tab instances
 - **[TRACING.md](TRACING.md)** — Runtime tracer for debugging Redux/EventBus/render causal chains
 - **[UI_INSPECTOR.md](UI_INSPECTOR.md)** — Developer UI inspector for widget colors, QSS candidates, and theme tokens
 - **[TESTING.md](TESTING.md)** — Test suite layout (`/tests`), per-file catalog, how to run, and conventions for new tests
@@ -23,7 +25,7 @@ See **[INSTALL.md](../INSTALL.md)** in the parent directory for installation ins
 
 Start with [ARCHITECTURE.md](ARCHITECTURE.md) for an overview of design patterns and layers. Then:
 
-1. To add a new canvas feature → read [CANVAS_FEATURES.md](CANVAS_FEATURES.md)
+1. To add a new canvas feature → read [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md)
 2. To understand component protocols → see [CONTRACTS.md](CONTRACTS.md)
 3. To add a new workspace tab → read [TAB_CONTRACT.md](TAB_CONTRACT.md)
 4. To create custom UI widgets → check [UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)

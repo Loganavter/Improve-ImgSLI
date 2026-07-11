@@ -36,9 +36,9 @@ The split lets a feature reorganize internal commands without changing public ID
 
 ## Discovery
 
-`get_canvas_widget_features()` (`widget_registry.py:22`) walks `src/ui/canvas_features/*` with `pkgutil`, imports `manifest.py` or `widget.py`, and picks up the module-level `WIDGET_FEATURE`. The result is `lru_cache`d.
+`get_canvas_widget_features()` (`widget_registry.py:48`) walks the feature packages registered via `register_canvas_widget_feature_package()` with `pkgutil`, imports `manifest.py` or `widget.py`, and picks up the module-level `WIDGET_FEATURE`. The result is `lru_cache`d.
 
-No central registration: drop a folder with a `WIDGET_FEATURE` constant, it's live.
+Currently `src/tabs/image_compare/canvas/features/` is registered as a feature package (`tabs/image_compare/tab.py`). Within a registered package, no per-feature registration is needed: drop a folder with a `WIDGET_FEATURE` constant, it's live.
 
 ## Lookup API (`widget_registry.py`)
 
@@ -134,6 +134,6 @@ Aliases are for **shared (non-feature) code** to call **into a feature**. Inside
 
 ## See also
 
-- [CANVAS_FEATURES.md](CANVAS_FEATURES.md) — the broader canvas-feature system; aliases are one of several contribution surfaces
+- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — the broader canvas-feature system; aliases are one of several contribution surfaces
 - [CONTRACTS.md](CONTRACTS.md) — why "zero direct feature imports in shared code" exists
 - `src/tabs/image_compare/canvas/features/_template/` — copyable starter feature

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from domain.types import Color
-from plugins.video_editor.services.keyframing.adapters.base import (
+from shared.keyframing.adapters_base import (
     ChannelDescriptor,
     TrackDescriptor,
 )

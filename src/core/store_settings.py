@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from domain.types import Color
 
 if TYPE_CHECKING:
-    from core.store_document import DocumentModel
     from core.store_viewport import ViewportState
 
 @dataclass
@@ -64,7 +63,7 @@ class WorkerStoreSnapshot:
         self,
         viewport: "ViewportState",
         settings: SettingsState,
-        document: "DocumentModel",
+        document: Any,
     ):
         self.viewport = viewport
         self.settings = settings

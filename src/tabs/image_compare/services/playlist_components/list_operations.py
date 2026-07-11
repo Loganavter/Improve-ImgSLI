@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from tabs.image_compare.services import document_store_ops
 from tabs.image_compare.services.playlist_components.common import (
     emit_ui_update,
     find_index_by_path,
@@ -27,30 +28,31 @@ class PlaylistListOperations:
         self._trigger_metrics = trigger_metrics_callback
 
     def swap_current_images(self) -> None:
-        idx1 = self.store.document.current_index1
-        idx2 = self.store.document.current_index2
-        list1 = self.store.document.image_list1
-        list2 = self.store.document.image_list2
+        document = self.store.get_session_state_slot("document")
+        idx1 = document.current_index1
+        idx2 = document.current_index2
+        list1 = document.image_list1
+        list2 = document.image_list2
         if not (0 <= idx1 < len(list1) and 0 <= idx2 < len(list2)):
             return
 
         list1[idx1], list2[idx2] = list2[idx2], list1[idx1]
 
-        self.store.document.preview_image1, self.store.document.preview_image2 = (
-            self.store.document.preview_image2,
-            self.store.document.preview_image1,
+        document.preview_image1, document.preview_image2 = (
+            document.preview_image2,
+            document.preview_image1,
         )
-        self.store.document.original_image1, self.store.document.original_image2 = (
-            self.store.document.original_image2,
-            self.store.document.original_image1,
+        document.original_image1, document.original_image2 = (
+            document.original_image2,
+            document.original_image1,
         )
-        self.store.document.full_res_image1, self.store.document.full_res_image2 = (
-            self.store.document.full_res_image2,
-            self.store.document.full_res_image1,
+        document.full_res_image1, document.full_res_image2 = (
+            document.full_res_image2,
+            document.full_res_image1,
         )
-        self.store.document.image1_path, self.store.document.image2_path = (
-            self.store.document.image2_path,
-            self.store.document.image1_path,
+        document.image1_path, document.image2_path = (
+            document.image2_path,
+            document.image1_path,
         )
         self.store.viewport.session_data.render_cache.display_cache_image1, self.store.viewport.session_data.render_cache.display_cache_image2 = (
             self.store.viewport.session_data.render_cache.display_cache_image2,
@@ -74,7 +76,7 @@ class PlaylistListOperations:
         self.store.state_changed.emit("document")
 
     def swap_entire_lists(self) -> None:
-        self.store.swap_all_image_data()
+        document_store_ops.swap_all_image_data(self.store)
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
 
     def remove_current_image_from_list(self, image_number: int) -> None:
@@ -124,7 +126,7 @@ class PlaylistListOperations:
         target_list = get_target_list(self.store, image_number)
         target_list.clear()
         set_current_index(self.store, image_number, -1)
-        self.store.clear_image_slot_data(image_number)
+        document_store_ops.clear_image_slot_data(self.store, image_number)
 
         emit_ui_update(self.main_controller, ["combobox", "file_names", "resolution"])
         self.store.state_changed.emit("document")
@@ -217,8 +219,9 @@ class PlaylistListOperations:
         return 0
 
     def _evict_unified_cache_entry(self) -> None:
-        path1_before = self.store.document.image1_path
-        path2_before = self.store.document.image2_path
+        document = self.store.get_session_state_slot("document")
+        path1_before = document.image1_path
+        path2_before = document.image2_path
         if path1_before and path2_before:
             cache_key = (path1_before, path2_before)
             self.store.viewport.session_data.render_cache.unified_image_cache.pop(cache_key, None)

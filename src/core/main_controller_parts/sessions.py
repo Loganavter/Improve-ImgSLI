@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from core.events import WorkspaceSessionClosedEvent, WorkspaceSessionCreatedEvent
+
 class WorkspaceSessionActions:
     def __init__(self, controller):
         self.controller = controller
@@ -19,12 +21,18 @@ class WorkspaceSessionActions:
     ):
         if not self.controller.session_manager:
             raise RuntimeError("SessionManager is not available")
-        return self.controller.session_manager.create_session(
+        session = self.controller.session_manager.create_session(
             session_type,
             activate=activate,
             title=title,
             metadata=metadata,
         )
+        self._emit(
+            WorkspaceSessionCreatedEvent(
+                session_id=session.id, session_type=session.session_type
+            )
+        )
+        return session
 
     def switch_workspace_session(self, session_id: str) -> bool:
         if not self.controller.session_manager:
@@ -34,4 +42,18 @@ class WorkspaceSessionActions:
     def close_workspace_session(self, session_id: str) -> bool:
         if not self.controller.session_manager:
             return False
-        return self.controller.session_manager.close_session(session_id)
+        session = self.controller.session_manager.get_session(session_id)
+        session_type = session.session_type if session is not None else None
+        closed = self.controller.session_manager.close_session(session_id)
+        if closed and session_type is not None:
+            self._emit(
+                WorkspaceSessionClosedEvent(
+                    session_id=session_id, session_type=session_type
+                )
+            )
+        return closed
+
+    def _emit(self, event) -> None:
+        event_bus = getattr(self.controller, "event_bus", None)
+        if event_bus is not None:
+            event_bus.emit(event)

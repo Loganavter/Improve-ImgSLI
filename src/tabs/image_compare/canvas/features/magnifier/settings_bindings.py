@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureSettingsEventBinding
 
-from .events import (
+from tabs.image_compare.canvas.features.magnifier.input.events import (
     SettingsSetMagnifierBorderColorEvent,
     SettingsSetMagnifierDividerColorEvent,
     SettingsSetMagnifierDividerThicknessEvent,

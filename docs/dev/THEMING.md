@@ -11,7 +11,7 @@ Centralised palette + QSS pipeline. Lives in the external `sli-ui-toolkit` packa
 | `src/resources/themes.json` | The actual color tokens (light + dark) |
 | `src/resources/styles/app.qss` | App-wide QSS template (with `{token}` placeholders) |
 | `src/ui/theming.py` | Thin facade: `install_application_theme`, `polish_themed_dialog`, `resolve_theme_color` |
-| `src/core/bootstrap.py:_setup_theme` | Wires palettes + QSS paths into the singleton at startup |
+| `src/core/bootstrap.py:_configure_theme_manager` | Wires palettes + QSS paths into the singleton at startup |
 
 ## Architecture
 
@@ -75,7 +75,7 @@ Loaded once at module import by `core/theme.py:load_themes()` and exposed as `LI
 
 QSS files are concatenated in registration order with a separator (`/* --- NEW FILE --- */`) into `_qss_template`. On `apply_theme_to_app`, the template is rendered against the current palette: tokens like `palette(button.background)` (or whatever placeholder convention the toolkit uses — check `theme_manager._render_template`) are substituted.
 
-Registered at bootstrap in `src/core/bootstrap.py:_setup_theme`:
+Registered at bootstrap in `src/core/bootstrap.py:_configure_theme_manager`:
 - `shared_toolkit/ui/resources/styles/base.qss`
 - `shared_toolkit/ui/resources/styles/widgets.qss`
 - `resources/styles/app.qss`
@@ -123,7 +123,7 @@ def get_qss_paths(self) -> tuple[str, ...]:
 ```
 The discovery loop in `bootstrap._initialize_plugins` registers them automatically.
 
-For shared/app QSS: add `theme_manager.register_qss_path(...)` in `bootstrap._setup_theme` — keep that file as the single registration point.
+For shared/app QSS: add `theme_manager.register_qss_path(...)` in `bootstrap._configure_theme_manager` — keep that file as the single registration point.
 
 ## Common gotchas
 

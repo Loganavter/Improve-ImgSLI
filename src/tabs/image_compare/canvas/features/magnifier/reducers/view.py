@@ -5,7 +5,7 @@ from dataclasses import replace
 from core.state_management.action_base import Action
 from core.store_viewport import ViewState
 
-from ..actions import (
+from tabs.image_compare.canvas.features.magnifier.input.actions import (
     SetActiveMagnifierIdAction,
     SetCaptureSizeRelativeAction,
     SetHighlightedMagnifierElementAction,
@@ -24,8 +24,8 @@ from ..actions import (
     ToggleMagnifierOrientationAction,
     UpdateMagnifierCombinedStateAction,
 )
-from ..models import MagnifierModel
-from ..state import MagnifierWidgetState
+from tabs.image_compare.canvas.features.magnifier.state.models import MagnifierModel
+from tabs.image_compare.canvas.features.magnifier.state.feature_state import MagnifierWidgetState
 
 
 def _read_magnifier_widget_state(view_state: ViewState) -> MagnifierWidgetState:

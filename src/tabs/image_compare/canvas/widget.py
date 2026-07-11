@@ -11,7 +11,6 @@ from .feature_overlay_gpu import (
     set_feature_overlay_content,
     set_feature_overlay_gpu_params,
     upload_feature_overlay_crop,
-    upload_feature_overlay_pair,
 )
 from .interaction import (
     handle_key_press_event,
@@ -130,11 +129,9 @@ class CanvasWidget(QRhiWidget):
         )
         plan = getattr(self, "_active_render_plan", None)
         if plan is not None:
-            from ui.canvas_infra.scene.widget_registry import (
-                apply_canvas_feature_live_runtime_overlays,
-            )
+            from tabs.image_compare.canvas.registry import registry
 
-            apply_canvas_feature_live_runtime_overlays(state._store, self)
+            registry().apply_feature_live_runtime_overlays(state._store, self)
         self.update()
 
     def set_apply_channel_mode_in_shader(self, enabled: bool):
@@ -324,39 +321,6 @@ class CanvasWidget(QRhiWidget):
             pil_image,
             center,
             radius,
-            border_color,
-            border_width,
-            index,
-            canvas_filter,
-        )
-
-    def upload_feature_overlay_pair(
-        self,
-        pil1,
-        pil2,
-        center: QPointF,
-        radius: float,
-        split: float = 0.5,
-        horizontal: bool = False,
-        divider_visible: bool = True,
-        divider_color: tuple = (1.0, 1.0, 1.0, 0.9),
-        divider_thickness: int = 2,
-        border_color: QColor | None = None,
-        border_width: float = 2.0,
-        index: int = 0,
-        canvas_filter: int = None,
-    ):
-        return upload_feature_overlay_pair(
-            self,
-            pil1,
-            pil2,
-            center,
-            radius,
-            split,
-            horizontal,
-            divider_visible,
-            divider_color,
-            divider_thickness,
             border_color,
             border_width,
             index,
@@ -559,9 +523,6 @@ class CanvasWidget(QRhiWidget):
 
     def leaveEvent(self, event):
         handle_leave_event(self, event)
-
-
-GLCanvas = CanvasWidget
 
 
 def get_canvas_widget_class():

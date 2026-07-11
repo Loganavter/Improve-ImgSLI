@@ -85,12 +85,22 @@ class CompositionPlan:
     ``canvas_w`` / ``canvas_h`` are the target framebuffer size in pixels. The
     root rect ``(0, 0, canvas_w, canvas_h)`` is divided down by the tree.
     ``fill_rgba`` is the clear color; ``None`` means transparent.
+
+    ``divider_settings`` / ``label_settings`` are opaque, feature-owned style
+    objects (e.g. multi_compare's ``MultiCompareDividerSettings`` /
+    ``LabelSettings``) baked in at plan-build time so overlay render passes
+    read styling from this immutable plan instead of a mutable widget/state
+    object — the live canvas and the offscreen exporter build their own
+    ``CompositionPlan`` from the same source state, so both see identical
+    styling without the exporter needing to replicate ``set_state``.
     """
 
     root: CompositionNode
     canvas_w: int
     canvas_h: int
     fill_rgba: tuple[int, int, int, int] | None = None
+    divider_settings: object | None = None
+    label_settings: object | None = None
 
 
 @dataclass(frozen=True)
@@ -110,17 +120,36 @@ class ResolvedLayer:
 
 
 @dataclass(frozen=True)
+class ResolvedGap:
+    """A split-gap band resolved to an integer pixel rect.
+
+    ``direction`` is the owning ``SplitNode.direction`` — ``"h"`` gaps are
+    thin vertical strips between side-by-side children, ``"v"`` gaps are thin
+    horizontal strips between stacked children.
+    """
+
+    direction: Literal["h", "v"]
+    rect: tuple[int, int, int, int]  # x, y, w, h in canvas-px
+
+
+@dataclass(frozen=True)
 class ResolvedComposition:
     """Composition plan flattened to a sequence of pixel-rect layers.
 
     GL passes consume this directly: one ``ResolvedLayer`` per textured quad to
     draw. Layer order follows tree traversal (front-to-back = top-to-bottom).
+    ``gaps`` carries every ``SplitNode`` divider band so overlay passes (grid
+    dividers) can draw from this immutable snapshot instead of re-deriving
+    geometry from a separately-tracked, possibly-unset widget state.
     """
 
     canvas_w: int
     canvas_h: int
     fill_rgba: tuple[int, int, int, int] | None
     layers: tuple[ResolvedLayer, ...] = field(default_factory=tuple)
+    gaps: tuple[ResolvedGap, ...] = field(default_factory=tuple)
+    divider_settings: object | None = None
+    label_settings: object | None = None
 
 
 def resolve_composition(plan: CompositionPlan) -> ResolvedComposition:
@@ -128,15 +157,19 @@ def resolve_composition(plan: CompositionPlan) -> ResolvedComposition:
 
     Rect rounding uses ``int()`` truncation with the last child absorbing the
     rounding error so the children always cover the parent rect exactly — same
-    behavior as ``GLGridWidget._walk_paths`` to keep visual parity.
+    behavior as ``MultiCompareCanvasWidget._walk_paths`` to keep visual parity.
     """
     layers: list[ResolvedLayer] = []
-    _walk(plan.root, (0, 0, plan.canvas_w, plan.canvas_h), layers)
+    gaps: list[ResolvedGap] = []
+    _walk(plan.root, (0, 0, plan.canvas_w, plan.canvas_h), layers, gaps)
     return ResolvedComposition(
         canvas_w=plan.canvas_w,
         canvas_h=plan.canvas_h,
         fill_rgba=plan.fill_rgba,
         layers=tuple(layers),
+        gaps=tuple(gaps),
+        divider_settings=plan.divider_settings,
+        label_settings=plan.label_settings,
     )
 
 
@@ -144,6 +177,7 @@ def _walk(
     node: CompositionNode,
     rect: tuple[int, int, int, int],
     out: list[ResolvedLayer],
+    out_gaps: list[ResolvedGap],
 ) -> None:
     if isinstance(node, LayerNode):
         out.append(
@@ -163,7 +197,7 @@ def _walk(
         return
     if isinstance(node, GroupNode):
         for child in node.children:
-            _walk(child, rect, out)
+            _walk(child, rect, out, out_gaps)
         return
     if isinstance(node, SplitNode):
         x, y, w, h = rect
@@ -178,18 +212,26 @@ def _walk(
             sizes = [int(inner * wt) for wt in weights]
             sizes[-1] = inner - sum(sizes[:-1])
             cursor = x
-            for child, size in zip(node.children, sizes):
-                _walk(child, (cursor, y, size, h), out)
-                cursor += size + gap
+            for index, (child, size) in enumerate(zip(node.children, sizes)):
+                _walk(child, (cursor, y, size, h), out, out_gaps)
+                cursor += size
+                if gap > 0 and index < n - 1:
+                    out_gaps.append(
+                        ResolvedGap(direction="h", rect=(cursor, y, gap, h))
+                    )
+                cursor += gap
             return
         total_gap = gap * (n - 1)
         inner = max(h - total_gap, 1)
         sizes = [int(inner * wt) for wt in weights]
         sizes[-1] = inner - sum(sizes[:-1])
         cursor = y
-        for child, size in zip(node.children, sizes):
-            _walk(child, (x, cursor, w, size), out)
-            cursor += size + gap
+        for index, (child, size) in enumerate(zip(node.children, sizes)):
+            _walk(child, (x, cursor, w, size), out, out_gaps)
+            cursor += size
+            if gap > 0 and index < n - 1:
+                out_gaps.append(ResolvedGap(direction="v", rect=(x, cursor, w, gap)))
+            cursor += gap
         return
     raise TypeError(f"Unknown composition node: {type(node).__name__}")
 

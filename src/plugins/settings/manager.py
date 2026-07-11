@@ -12,9 +12,7 @@ from ui.canvas_infra.scene.property_access import (
     write_canvas_feature_property,
     serialize_canvas_feature_setting,
 )
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_properties,
-)
+from ui.canvas_infra.scene.registry import get_canvas_registry
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -68,12 +66,6 @@ class SettingsManager:
         s.show_workspace_tabs = self._get_setting("show_workspace_tabs", True, bool)
         s.rhi_backend = self._get_setting("rhi_backend", "default", str)
         s.use_custom_decorations = self._get_setting("use_custom_decorations", True, bool)
-        v.session_data.image_state.auto_calculate_psnr = self._get_setting(
-            "auto_calculate_psnr", False, bool
-        )
-        v.session_data.image_state.auto_calculate_ssim = self._get_setting(
-            "auto_calculate_ssim", False, bool
-        )
 
         render.font_size_percent = self._get_setting("font_size_percent", 120, int)
         render.font_weight = self._get_setting("font_weight", 0, int)
@@ -183,12 +175,6 @@ class SettingsManager:
         self._save_setting("show_workspace_tabs", s.show_workspace_tabs)
         self._save_setting("rhi_backend", s.rhi_backend)
         self._save_setting("use_custom_decorations", s.use_custom_decorations)
-        self._save_setting(
-            "auto_calculate_psnr", store.viewport.session_data.image_state.auto_calculate_psnr
-        )
-        self._save_setting(
-            "auto_calculate_ssim", store.viewport.session_data.image_state.auto_calculate_ssim
-        )
 
         self._save_setting("font_size_percent", render.font_size_percent)
         self._save_setting("font_weight", render.font_weight)
@@ -238,18 +224,29 @@ class SettingsManager:
 
         self.settings.sync()
 
+    def _iter_all_canvas_feature_properties(self):
+        from tabs.registry import TabRegistry
+
+        tab_registry = TabRegistry()
+        tab_registry.discover()
+        seen_keys: set[str] = set()
+        for tab_type in tab_registry.registered_types:
+            for prop in get_canvas_registry(tab_type).get_feature_properties():
+                if not prop.setting_key or prop.setting_key in seen_keys:
+                    continue
+                seen_keys.add(prop.setting_key)
+                yield prop
+
     def _load_canvas_feature_settings(self, viewport_state) -> None:
-        for prop in get_canvas_feature_properties():
-            if not prop.setting_key or not self.settings.contains(prop.setting_key):
+        for prop in self._iter_all_canvas_feature_properties():
+            if not self.settings.contains(prop.setting_key):
                 continue
             raw_value = self.settings.value(prop.setting_key)
             channels = deserialize_canvas_feature_setting(prop, raw_value)
             write_canvas_feature_property(viewport_state, prop, channels)
 
     def _save_canvas_feature_settings(self, viewport_state) -> None:
-        for prop in get_canvas_feature_properties():
-            if not prop.setting_key:
-                continue
+        for prop in self._iter_all_canvas_feature_properties():
             channels = read_canvas_feature_property(viewport_state, prop)
             raw_value = serialize_canvas_feature_setting(prop, channels)
             self._save_setting(prop.setting_key, raw_value)

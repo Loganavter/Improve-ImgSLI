@@ -11,17 +11,15 @@ from core.state_management.actions import (
     SetFullResImageAction,
     SetImagePathAction,
     SetInteractiveModeAction,
+    SetPendingUnificationPathsAction,
     SetPreviewImageAction,
+    SetUnificationInProgressAction,
 )
 from tabs.image_compare.events import (
     AnalysisRequestMetricsEvent,
     AnalysisSetChannelViewModeEvent,
     AnalysisSetDiffModeEvent,
     AnalysisToggleDiffModeEvent,
-)
-from tabs.image_compare.state.actions import (
-    SetPendingUnificationPathsAction,
-    SetUnificationInProgressAction,
 )
 from tabs.image_compare.services.analysis.cached_diff import CachedDiffService
 from tabs.image_compare.use_cases import list_ops, loading, navigation
@@ -152,10 +150,9 @@ class SessionController(QObject):
         else:
             pil_img, path, image_number, index_in_list = result
             is_preview = False
+        document = self.store.get_session_state_slot("document")
         target_list = (
-            self.store.document.image_list1
-            if image_number == 1
-            else self.store.document.image_list2
+            document.image_list1 if image_number == 1 else document.image_list2
         )
 
         if not pil_img:
@@ -165,9 +162,9 @@ class SessionController(QObject):
             ):
                 target_list.pop(index_in_list)
                 current_app_index = (
-                    self.store.document.current_index1
+                    document.current_index1
                     if image_number == 1
-                    else self.store.document.current_index2
+                    else document.current_index2
                 )
                 if index_in_list == current_app_index:
                     self.set_current_image(image_number)
@@ -200,9 +197,9 @@ class SessionController(QObject):
             item.image = pil_img
 
             current_app_index = (
-                self.store.document.current_index1
+                document.current_index1
                 if image_number == 1
-                else self.store.document.current_index2
+                else document.current_index2
             )
             if index_in_list == current_app_index:
                 if not is_preview:

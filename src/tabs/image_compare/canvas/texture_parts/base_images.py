@@ -10,6 +10,23 @@ from .upload_queue import queue_prepared_texture_upload, queue_texture_upload
 _dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 
+def _canvas_dims(widget) -> tuple[int, int]:
+    """Logical canvas size for letterbox/aspect-fit math.
+
+    During tiled export the real widget is resized to a tile's pixel
+    footprint, but aspect-fit geometry must still be computed against the
+    full export canvas so every tile shares one coordinate system. See
+    ``render_context.build_render_runtime_context`` for the counterpart.
+    """
+    export_canvas_viewport = getattr(
+        widget.runtime_state, "_export_canvas_viewport", None
+    )
+    if export_canvas_viewport is not None:
+        canvas_width, canvas_height, _offset_x, _offset_y = export_canvas_viewport
+        return int(canvas_width), int(canvas_height)
+    return widget.width(), widget.height()
+
+
 def upload_image(widget, qimage: QImage, slot_index: int):
     state = widget.runtime_state
     if slot_index not in (0, 1) or qimage.isNull():
@@ -58,7 +75,7 @@ def upload_diff_source_pil_image(widget, pil_image):
 
 def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage.Image:
     state = widget.runtime_state
-    cw, ch = widget.width(), widget.height()
+    cw, ch = _canvas_dims(widget)
     if cw <= 0 or ch <= 0:
         if slot_index >= 0:
             state._letterbox_params[slot_index] = (0.0, 0.0, 1.0, 1.0)
@@ -94,7 +111,7 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
 
 def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: int = -1):
     state = widget.runtime_state
-    cw, ch = widget.width(), widget.height()
+    cw, ch = _canvas_dims(widget)
     if img is None or cw <= 0 or ch <= 0 or img.width <= 0 or img.height <= 0:
         if slot_index >= 0:
             state._letterbox_params[slot_index] = (0.0, 0.0, 1.0, 1.0)
@@ -288,7 +305,7 @@ def get_letterbox_params(widget, slot: int = 0) -> tuple:
     img = (
         state._stored_pil_images[slot] if slot < len(state._stored_pil_images) else None
     )
-    w, h = widget.width(), widget.height()
+    w, h = _canvas_dims(widget)
     if img and w > 0 and h > 0:
         ratio = min(w / img.width, h / img.height)
         nw = max(1, int(img.width * ratio))

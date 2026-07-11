@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from ..actions import (
+from tabs.image_compare.canvas.features.magnifier.input.actions import (
     SetMagnifierMovementInterpolationMethodAction,
     SetOptimizeMagnifierMovementAction,
 )
-from ..state import get_magnifier_widget_state
+from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
 
 
 def settings_set_optimize_movement(store, enabled: bool) -> bool:
@@ -59,12 +59,12 @@ def settings_apply_behavior(store, behavior: dict) -> dict:
 
 
 def settings_initialize(store, get_setting) -> None:
-    from ..constants import (
+    from tabs.image_compare.canvas.features.magnifier.constants import (
         DEFAULT_CAPTURE_POS_RELATIVE,
         DEFAULT_MAGNIFIER_OFFSET_RELATIVE,
         DEFAULT_MAGNIFIER_SPACING_RELATIVE,
     )
-    from ..store import (
+    from tabs.image_compare.canvas.features.magnifier.state.store import (
         MagnifierStoreService,
         default_capture_size,
         default_magnifier_size,
@@ -92,8 +92,8 @@ def settings_initialize(store, get_setting) -> None:
 
 
 def settings_persist(store, save_setting) -> None:
-    from ..constants import DEFAULT_MAGNIFIER_SPACING_RELATIVE
-    from ..store import (
+    from tabs.image_compare.canvas.features.magnifier.constants import DEFAULT_MAGNIFIER_SPACING_RELATIVE
+    from tabs.image_compare.canvas.features.magnifier.state.store import (
         MagnifierStoreService,
         default_capture_size,
         default_magnifier_size,

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from sli_ui_toolkit.i18n import (
+    tr,
     translatable_callback,
     translatable_placeholder,
     translatable_text,
     translatable_tooltip,
 )
-
-from resources.translations import tr
 
 
 def install_image_compare_translations(ui) -> None:

@@ -13,6 +13,8 @@ from sli_ui_toolkit.ui.widgets.buttons.capabilities import ButtonCapability
 from sli_ui_toolkit.ui.widgets.buttons.layers._base import Layer
 from sli_ui_toolkit.ui.widgets.style_bridge import read_widget_style
 
+from ui.theming import resolve_theme_color
+
 
 class WheelCounterCapability(ButtonCapability):
     """Scroll-wheel value counter: increment/decrement value on wheel events."""
@@ -61,7 +63,7 @@ class ValueBelowIconLayer(Layer):
         font.setPixelSize(9)
         font.setBold(True)
         ctx.painter.setFont(font)
-        ctx.painter.setPen(style.foreground_color or QColor(tm.get_color("dialog.text")))
+        ctx.painter.setPen(style.foreground_color or QColor(resolve_theme_color(tm, "dialog.text")))
         value_h = 12
         value_y = rect.y() + rect.height() - value_h - 1
         ctx.painter.drawText(

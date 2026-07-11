@@ -9,12 +9,15 @@ from PySide6.QtGui import QColor
 _pblog = logging.getLogger("ImproveImgSLI.plan_builder")
 
 from core.store import Store
-from shared.analysis import build_cached_diff_image
+from tabs.image_compare.services.analysis.background_layers import (
+    build_cached_diff_image,
+)
+from tabs.image_compare.state.document import DocumentModel
 from plugins.export.services.gpu_export_layout import compute_export_stroke_scales
 from tabs.image_compare.services.gpu_export_scene import (
-    build_export_gl_scene,
+    build_export_render_scene,
 )
-from plugins.video_editor.services.video_export_models import GlobalCanvasBounds
+from tabs.image_compare.plugins.video_editor.services.video_export_models import GlobalCanvasBounds
 from shared.rendering import (
     NormalizedBounds,
     TargetSurfaceSpec,
@@ -24,10 +27,7 @@ from tabs.image_compare.canvas.presentation.plan_builder import (
     compute_canvas_plan,
 )
 from ui.canvas_infra.scene.layout_requirements import resolve_feature_virtual_layout
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_command_by_alias,
-    get_canvas_feature_commands_by_id,
-)
+from tabs.image_compare.canvas.registry import registry
 
 
 def build_divider_export_overlay(
@@ -40,7 +40,7 @@ def build_divider_export_overlay(
     content_width: float,
     content_height: float,
 ) -> dict:
-    command = get_canvas_feature_command_by_alias("splitter.export_overlay")
+    command = registry().get_feature_command_by_alias("splitter.export_overlay")
     if command is None:
         return {
             "visible": False,
@@ -62,7 +62,7 @@ def build_divider_export_overlay(
 
 
 def query_guides_state(view):
-    command = get_canvas_feature_command_by_alias("guides.widget_state")
+    command = registry().get_feature_command_by_alias("guides.widget_state")
     if command is not None:
         return command(view)
     return type(
@@ -77,7 +77,7 @@ def query_guides_state(view):
 
 
 def query_active_magnifier_divider_thickness(store) -> int:
-    command = get_canvas_feature_command_by_alias("overlay.active_divider_thickness")
+    command = registry().get_feature_command_by_alias("overlay.active_divider_thickness")
     return int(command(store) if command is not None else 0)
 
 
@@ -94,12 +94,18 @@ def calculate_still_snapshot_bounds(snap, image1, image2) -> GlobalCanvasBounds:
     )
 
     temp_store = Store()
+    # See the matching comment in video_snapshot_rendering.py's
+    # `_rebuild_snapshot_store`: `resolve_feature_virtual_layout` below needs
+    # an "image_compare" session active, not the default "session_picker".
+    temp_store.create_workspace_session(session_type="image_compare", activate=True)
+    temp_store.set_session_state_slot("document", DocumentModel())
     temp_store.viewport = snap.viewport_state.clone()
     temp_store.settings = snap.settings_state.freeze_for_export()
     temp_store.viewport.session_data.image_state.image1 = image1
     temp_store.viewport.session_data.image_state.image2 = image2
-    temp_store.document.full_res_image1 = image1
-    temp_store.document.full_res_image2 = image2
+    temp_document = temp_store.get_session_state_slot("document")
+    temp_document.full_res_image1 = image1
+    temp_document.full_res_image2 = image2
     temp_store.viewport.geometry_state.pixmap_width = base_w
     temp_store.viewport.geometry_state.pixmap_height = base_h
 
@@ -162,7 +168,7 @@ def calculate_global_canvas_bounds(
     if base_w == 0 or base_h == 0:
         return None
 
-    build_requirements = get_canvas_feature_commands_by_id(
+    build_requirements = registry().get_feature_commands_by_id(
         "render.layout_requirement"
     )
     if not build_requirements:
@@ -182,12 +188,16 @@ def calculate_global_canvas_bounds(
             continue
 
         temp_store = Store()
+        # See the matching comment in calculate_still_snapshot_bounds above.
+        temp_store.create_workspace_session(session_type="image_compare", activate=True)
+        temp_store.set_session_state_slot("document", DocumentModel())
         temp_store.viewport = snap.viewport_state.clone()
         temp_store.settings = snap.settings_state.freeze_for_export()
         temp_store.viewport.session_data.image_state.image1 = img1
         temp_store.viewport.session_data.image_state.image2 = img2
-        temp_store.document.full_res_image1 = img1
-        temp_store.document.full_res_image2 = img2
+        temp_document = temp_store.get_session_state_slot("document")
+        temp_document.full_res_image1 = img1
+        temp_document.full_res_image2 = img2
         temp_store.viewport.geometry_state.pixmap_width = base_w
         temp_store.viewport.geometry_state.pixmap_height = base_h
 
@@ -374,7 +384,7 @@ class SnapshotRenderPlanBuilder:
         magnifier_divider_thickness_export = query_active_magnifier_divider_thickness(
             self.store
         )
-        gl_scene = build_export_gl_scene(
+        render_scene = build_export_render_scene(
             self.store,
             divider_thickness_export,
             virtual_layout=canvas_plan.virtual_layout,
@@ -393,8 +403,8 @@ class SnapshotRenderPlanBuilder:
                 channel_mode,
                 scene_cache_key,
             )
-            gl_scene = replace(
-                gl_scene,
+            render_scene = replace(
+                render_scene,
                 diff_mode_active=False,
                 diff_mode_int=0,
                 channel_mode_int=0,
@@ -412,7 +422,7 @@ class SnapshotRenderPlanBuilder:
             content_size=(canvas_plan.image_width, canvas_plan.image_height),
             pad_left=canvas_plan.padding_left,
             pad_top=canvas_plan.padding_top,
-            gl_scene=gl_scene,
+            render_scene=render_scene,
             divider_thickness_px=magnifier_divider_thickness_export,
             guides_thickness=guides_thickness_export,
             output_scale=(

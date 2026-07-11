@@ -12,9 +12,10 @@ controls across multi_compare and image_compare toolbars.
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QLabel, QWidget
-from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
     BaseFlyout,
     Button,
@@ -24,7 +25,8 @@ from sli_ui_toolkit.widgets import (
 )
 
 from ui.icon_manager import get_app_icon
-from ui.theming import resolve_theme_color
+
+logger = logging.getLogger("ImproveImgSLI")
 
 _FLYOUT_HIDE_MS = 700
 _WIDTH = 36
@@ -88,12 +90,17 @@ class ScrollValueButton(Button):
         self._max_value = int(max_value)
         self._value = max(self._min_value, min(self._max_value, int(start)))
         if isinstance(icon, (tuple, list)):
-            self._icon_normal = icon[0]
-            self._icon_checked = icon[1] if len(icon) >= 2 else icon[0]
+            self._svb_icon_normal = icon[0]
+            self._svb_icon_checked = icon[1] if len(icon) >= 2 else icon[0]
         else:
-            self._icon_normal = icon
-            self._icon_checked = icon
+            self._svb_icon_normal = icon
+            self._svb_icon_checked = icon
         self._toggle_enabled = bool(toggle)
+        # Mirrors isChecked(), tracked by hand: _build_regions() (and thus
+        # _icon_region_icon()) runs once before super().__init__() below,
+        # when Button's own internal state (isChecked() reads
+        # self._region_states, set up by Button.__init__) doesn't exist yet.
+        self._is_checked = False
         self._zero_icon = zero_icon
         self._saved_value: int | None = None
         self._hovered_split = False
@@ -122,6 +129,14 @@ class ScrollValueButton(Button):
         # our (still-False) shadow copy on the first hover/scroll.
         self._underline_visible = bool(getattr(self, "_show_underline", False))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        if self._toggle_enabled:
+            self.regionClicked.connect(self._on_region_clicked)
+            # A click landing directly on the icon region ("_main") is
+            # handled entirely inside the toolkit's own click path — it flips
+            # "_main"'s checked state and emits toggled() without ever going
+            # through our setChecked() override below, so the "value" region
+            # would be left out of sync in that one case. Catch it here too.
+            self.toggled.connect(self._on_native_toggled)
         # RowsContent (used for the "value" region's digit) defaults to
         # splitting the region rect by row.ratio and top-aligning each row;
         # with a single row that leaves it stuck in the top half of the
@@ -138,6 +153,43 @@ class ScrollValueButton(Button):
     def setUnderlineColor(self, color) -> None:
         self._underline_qcolor = color
         super().setUnderlineColor(color)
+
+    # ---------- checked state (kept in sync with both regions, even when the
+    # caller suppresses the toggled signal) ----------
+
+    def setChecked(self, checked: bool, emit_signal: bool = True) -> None:
+        # External state sync (e.g. divider/toolbar.py's sync_toolbar_state,
+        # presenter.py's viewport-change handler) always calls this with
+        # emit_signal=False to avoid a feedback loop, which means the
+        # `toggled` signal never fires for that path — so the rebuild below
+        # is done unconditionally here rather than from a toggled.connect.
+        # A full _sync_regions() (not just setRegionChecked) is required:
+        # the icon region's static icon= field itself needs to switch to
+        # _icon_checked/_icon_normal (see _icon_region_icon), and only
+        # _sync_regions() -> _build_regions() recomputes that.
+        self._is_checked = bool(checked)
+        super().setChecked(checked, emit_signal=emit_signal)
+        self._sync_regions()
+
+    def _on_native_toggled(self, checked: bool) -> None:
+        # A click landing directly on the icon region ("_main") is handled
+        # entirely inside the toolkit's own click path (see the comment at
+        # the toggled.connect above) — it never goes through our
+        # setChecked() override, so _is_checked needs updating here too.
+        self._is_checked = bool(checked)
+        self._sync_regions()
+
+    def _sync_region_checked_state(self, checked: bool) -> None:
+        if not self._toggle_enabled:
+            return
+        # `group=` (see _build_regions) only mirrors hover/press across
+        # regions, not the toggle/CHECKED state, so both the icon region
+        # (whose icon= tuple depends on it) and the split "value" region
+        # (whose darkened background depends on it) are asserted explicitly
+        # rather than trusting that they already picked it up.
+        self.setRegionChecked(self._icon_region_id(), checked)
+        if self._hovered_split:
+            self.setRegionChecked("value", checked)
 
     # ---------- backward-compat value API ----------
 
@@ -165,6 +217,17 @@ class ScrollValueButton(Button):
         value = self._saved_value
         self._saved_value = None
         return value
+
+    # ---------- click: value region (hover split) also toggles orientation ----------
+
+    def _on_region_clicked(self, region_id: str) -> None:
+        # When hovered, the button splits into an "icon" region (toggle=True,
+        # named "_main") and a non-toggle "value" region showing the digit.
+        # A left click landing on the value region would otherwise do
+        # nothing, unlike the plain single-region toggle button used in
+        # beginner mode. Mirror that behavior here.
+        if region_id == "value":
+            self.setChecked(not self.isChecked())
 
     # ---------- hover: single region idle, icon+value split on hover ----------
 
@@ -208,17 +271,15 @@ class ScrollValueButton(Button):
         super().setShowUnderline(self._underline_visible)
         if self._underline_qcolor is not None:
             super().setUnderlineColor(self._underline_qcolor)
+        # set_regions() rebuilds region runtime state from scratch too (new
+        # ButtonRegion objects), so re-assert checked here as well — this is
+        # what makes the "value" region already show as checked/darkened the
+        # moment it first appears on hover, instead of only from the next
+        # setChecked() call.
+        self._sync_region_checked_state(self.isChecked())
 
     def _is_at_zero(self) -> bool:
         return self._zero_icon is not None and self._value <= self._min_value
-
-    def _toggle_bg_kwargs(self) -> dict:
-        theme_manager = ThemeManager.get_instance()
-        return {
-            "override_bg_color": resolve_theme_color(
-                theme_manager, "button.toggle.background.normal"
-            ),
-        }
 
     def _icon_region_id(self) -> str:
         # A toggle=True region must be named "_main" — the toolkit's click
@@ -228,14 +289,30 @@ class ScrollValueButton(Button):
         return "_main" if self._toggle_enabled else "icon"
 
     def _icon_region_icon(self):
-        return (
-            (self._icon_normal, self._icon_checked)
-            if self._toggle_enabled
-            else self._icon_normal
-        )
+        # The (unchecked, checked) icon-tuple convenience documented for
+        # Button's own icon= constructor kwarg is Button-level sugar around
+        # its single implicit "_main" region — it is not implemented for
+        # ButtonRegion.icon when regions= is passed directly (as we always
+        # do here), so a tuple placed there is never unpacked/switched by
+        # the toolkit itself. Do the checked -> icon selection by hand,
+        # baked into whichever single icon we hand to the region.
+        #
+        # These are stored as self._svb_icon_normal/_svb_icon_checked (not
+        # self._icon_normal/_icon_checked) because Button.__init__ parses
+        # its own icon= kwarg into attributes of that exact name for its
+        # built-in tuple convenience; since we never forward icon= to
+        # super().__init__() (we consume it ourselves), Button.__init__
+        # still runs with icon=None and was clobbering ours right after
+        # __init__ set them, making every rebuild after construction use a
+        # None checked-icon.
+        if not self._toggle_enabled:
+            return self._svb_icon_normal
+        # isChecked() itself isn't used here: it reads Button's internal
+        # _region_states, which doesn't exist yet the first time this runs
+        # (from _build_regions() in __init__, before super().__init__()).
+        return self._svb_icon_checked if self._is_checked else self._svb_icon_normal
 
     def _build_regions(self) -> tuple[list[ButtonRegion], VerticalSplit]:
-        toggle_kwargs = self._toggle_bg_kwargs()
         icon_region_id = self._icon_region_id()
         if not self._hovered_split:
             regions = [
@@ -246,7 +323,6 @@ class ScrollValueButton(Button):
                     variant="default",
                     group=self._GROUP,
                     toggle=self._toggle_enabled,
-                    **toggle_kwargs,
                 ),
             ]
             return regions, VerticalSplit()
@@ -264,7 +340,6 @@ class ScrollValueButton(Button):
             variant="default",
             group=self._GROUP,
             toggle=self._toggle_enabled,
-            **toggle_kwargs,
         )
         if self._is_at_zero():
             value_region = ButtonRegion(
@@ -274,7 +349,6 @@ class ScrollValueButton(Button):
                 weight=0.9,
                 variant="default",
                 group=self._GROUP,
-                **toggle_kwargs,
             )
         else:
             value_region = ButtonRegion(
@@ -283,7 +357,6 @@ class ScrollValueButton(Button):
                 weight=0.9,
                 variant="default",
                 group=self._GROUP,
-                **toggle_kwargs,
             )
         # Bottom breathing room from the underline is reserved via the
         # button-level bottom-only content_padding (see __init__) rather

@@ -49,16 +49,7 @@ FORBIDDEN_TAB_IMPORT_RE = re.compile(
 # Compat-bridge files explicitly tracked in MIGRATION_PLAN.md. Each entry is a
 # repo-relative path.
 #
-ALLOWLIST: frozenset[str] = frozenset(
-    {
-        # Step 8 of docs/dev/TAB_OWNERSHIP_AUDIT.md: DocumentModel/ImageItem
-        # now live in tabs/image_compare/state/document.py. This module is a
-        # thin re-export shim kept for the remaining ~188 platform accesses
-        # to store.document.*; it disappears once those callers reach the
-        # tab-owned slot directly.
-        "src/core/store_document.py",
-    }
-)
+ALLOWLIST: frozenset[str] = frozenset()
 
 
 def _iter_py_files() -> list[Path]:
@@ -163,4 +154,55 @@ def test_shared_live_snapshot_is_tab_agnostic():
     assert not hits, (
         "shared live_snapshot.py must delegate to tab services, not build "
         f"image-pair snapshots directly: {hits}"
+    )
+
+
+# The "document" session state slot (image-pair DocumentModel) is owned by
+# the image_compare tab (docs/dev/DOCUMENT_ACCESS_FANOUT.md). Everywhere
+# else must reach it through store.get_session_state_slot("document"), not
+# the store.document / self.document mirror attribute — even inside core,
+# where the mirror is implemented (store.py, store_workspace.py,
+# domain/workspace.py) and inside tracing instrumentation, which patches
+# Store generically and predates the fanout.
+_DOCUMENT_MIRROR_RE = re.compile(r"\bstore\.document\b|\bself\.document\b")
+_DOCUMENT_MIRROR_IMPL_FILES = frozenset(
+    {
+        "src/core/store.py",
+        "src/core/store_workspace.py",
+        "src/domain/workspace.py",
+        "src/core/tracing/instrumentation.py",
+        # WorkerStoreSnapshot.document is its own DTO attribute (the frozen
+        # export snapshot), not the Store.document mirror — same name,
+        # unrelated concept.
+        "src/core/store_settings.py",
+    }
+)
+
+
+def _iter_all_src_py_files() -> list[Path]:
+    return sorted(
+        p
+        for p in SRC.rglob("*.py")
+        if "__pycache__" not in p.parts
+    )
+
+
+@pytest.mark.parametrize(
+    "py_file", _iter_all_src_py_files(), ids=lambda p: str(p.relative_to(ROOT))
+)
+def test_document_mirror_attribute_not_used_outside_owner(py_file: Path):
+    rel = str(py_file.relative_to(ROOT))
+    if rel in _DOCUMENT_MIRROR_IMPL_FILES:
+        pytest.skip("implements the store.document mirror attribute itself")
+    if rel.startswith("src/tabs/image_compare/"):
+        pytest.skip("image_compare owns the document slot")
+    text = py_file.read_text(encoding="utf-8")
+    hits = []
+    for match in _DOCUMENT_MIRROR_RE.finditer(text):
+        line_no = text[: match.start()].count("\n") + 1
+        hits.append((line_no, match.group(0)))
+    assert not hits, (
+        f"{rel} uses the store.document mirror attribute — use "
+        'store.get_session_state_slot("document") instead:\n'
+        + "\n".join(f"  line {ln}: {tok!r}" for ln, tok in hits)
     )

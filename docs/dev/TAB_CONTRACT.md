@@ -16,6 +16,14 @@ src/tabs/<tab_name>/
             en/<namespace>.json
             ru/<namespace>.json
         icons/          # (optional)
+    tests/
+        __init__.py
+        contracts/      # Structural dogmas (AST-based)
+        render/         # Rendering pass contracts
+        runtime/        # Lifecycle and state contracts
+        plugins/        # Plugin-specific contracts
+        video/          # Video editor contracts (image_compare only)
+        conftest.py     # Shared fixtures for this tab's tests (optional)
 ```
 
 ## TabContract (ABC)
@@ -123,6 +131,43 @@ registry.dispose_all()                        # Cleanup
 
 Each tab stores its own translations in `resources/i18n/<lang>/<namespace>.json`. Keys are accessible via `context.tr("key")` or directly through the application's translation system after the namespace is registered.
 
+## Tests
+
+A tab owns its own tests, just like it owns its own resources. Any test that
+imports `tabs.<tab_name>.*` — directly or via a lazy import inside a test
+function — belongs under `src/tabs/<tab_name>/tests/`, not under the
+top-level `tests/` tree.
+
+```
+src/tabs/<tab_name>/tests/
+    __init__.py
+    contracts/     # AST-scan dogmas specific to this tab's canvas features/passes
+    render/        # Fake-context tests for this tab's render passes and scene
+    runtime/       # Lifecycle/state contracts specific to this tab
+    plugins/       # Tests for this tab's plugin-facing behavior (export, settings, ...)
+    video/         # image_compare only — video editor contracts
+```
+
+Rules:
+
+- Mirror the type-based subfolders (`contracts/`, `render/`, `runtime/`,
+  `plugins/`, ...) used by the top-level `tests/` tree — see
+  [TESTING.md](TESTING.md) for what each subfolder is for. This keeps the
+  "one file — one topic" discipline even though tests are now split by tab.
+- `sys.path` resolution for `src/` still comes from pytest's own rootdir
+  package-insertion (every directory down to `tests/` has an `__init__.py`),
+  not from `tests/conftest.py` — that conftest only applies to the top-level
+  `tests/` tree. If a moved test used a `Path(__file__).parents[N]` trick to
+  find the repo root, recompute `N` for the new depth
+  (`src/tabs/<tab>/tests/<kind>/test_x.py` is 5 levels below repo root).
+- Tests that exercise the tab **mechanism** itself — the registry, the
+  `TabContract` ABC, generic drop-routing/dispose lifecycle — stay in
+  `tests/contracts/` and `tests/runtime/` even if they instantiate one
+  concrete tab as an example. Only tests whose assertions are actually about
+  that tab's behavior move into its `tests/` folder.
+- Run a single tab's suite the same way as any other pytest path:
+  `pytest src/tabs/image_compare/tests/`.
+
 ## Isolation Rule: Do Not Borrow App-Level Keys or Theme Tokens
 
 A tab is a self-contained module. Treat the host application's resource
@@ -158,6 +203,9 @@ under `src/tabs/<your_tab>/resources/`.
 This isolation is part of the tab contract and is enforced by
 `tests/contracts/test_tabs.py`, `tests/contracts/test_tabs_isolation.py` and
 `tests/runtime/test_tabs_lifecycle.py` (see [TESTING.md](TESTING.md) §Каталог).
+These three stay in the top-level `tests/` tree because they check the
+registry/contract mechanism itself, not a specific tab's behavior — see
+§Tests above.
 
 ## How to Add a New Tab
 
@@ -165,6 +213,7 @@ This isolation is part of the tab contract and is enforced by
 2. Implement the `TabContract` in `tab.py`.
 3. Create the widget and controller.
 4. Add translation files to `resources/i18n/`.
-5. Done — the registry will pick it up automatically.
+5. Add tests under `tests/` in the new tab's own `src/tabs/<name>/tests/` (see §Tests).
+6. Done — the registry will pick it up automatically.
 
 No changes are required in `main_window_ui.py`, `window_event_handler.py`, or other core files.

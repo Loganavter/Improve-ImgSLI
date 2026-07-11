@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import core.plugin_system.registry as registry_mod
 from core.plugin_system.registry import PluginRegistry
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_command_by_alias,
-)
+from ui.canvas_infra.scene.registry import get_canvas_registry
 
 def test_discovery_with_no_plugins_returns_empty(monkeypatch):
     monkeypatch.setattr(registry_mod, "get_registered_plugins", lambda: [])
@@ -39,7 +37,8 @@ def test_discovery_swallows_missing_package(monkeypatch):
     assert list(registry.discover_plugins()) == []
 
 def test_unknown_alias_resolves_to_none():
-    assert get_canvas_feature_command_by_alias("does.not.exist.alias") is None
+    registry = get_canvas_registry("image_compare")
+    assert registry.get_feature_command_by_alias("does.not.exist.alias") is None
 
 def test_get_plugin_missing_returns_none():
     registry = PluginRegistry(app_context=object())

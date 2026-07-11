@@ -4,9 +4,12 @@ import logging
 import os
 import sys
 
+from PySide6.QtGui import QRhi
 from PySide6.QtWidgets import QRhiWidget
 
 logger = logging.getLogger("ImproveImgSLI.rhi")
+
+FALLBACK_MAX_TEXTURE_SIZE = 4096
 
 RHI_BACKEND_ENV = "IMPROVE_IMGSLI_RHI_BACKEND"
 ALLOW_LSFGVK_ENV = "IMPROVE_IMGSLI_ALLOW_LSFGVK"
@@ -71,3 +74,17 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
 
 def log_initialized_rhi_widget(widget: QRhiWidget) -> None:
     pass
+
+
+def query_max_texture_size(rhi: QRhi | None) -> int:
+    """Backend-reported max 2D texture dimension, source of truth for
+    tile-size-vs-limit decisions (docs/dev/TILED_RENDERING_DESIGN.md Phase 0).
+    Falls back to a conservative constant if ``rhi`` is unavailable or the
+    backend reports something unusable."""
+    if rhi is None:
+        return FALLBACK_MAX_TEXTURE_SIZE
+    try:
+        limit = int(rhi.resourceLimit(QRhi.ResourceLimit.TextureSizeMax))
+    except (RuntimeError, ValueError, TypeError):
+        return FALLBACK_MAX_TEXTURE_SIZE
+    return limit if limit > 0 else FALLBACK_MAX_TEXTURE_SIZE

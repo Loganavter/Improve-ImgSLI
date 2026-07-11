@@ -3,6 +3,10 @@ from PySide6.QtCore import QTimer
 from sli_ui_toolkit.i18n import tr
 
 
+def _document(presenter):
+    return presenter.store.get_session_state_slot("document")
+
+
 def apply_initial_settings_to_ui(presenter):
     ui = presenter.ui
     viewport = presenter.store.viewport
@@ -50,9 +54,8 @@ def on_store_state_changed(presenter, domain: str):
 
 
 def do_update_resolution_labels(presenter):
-    has_both_images = bool(
-        presenter.store.document.image1_path and presenter.store.document.image2_path
-    )
+    document = _document(presenter)
+    has_both_images = bool(document.image1_path and document.image2_path)
 
     res1_text = ""
     res2_text = ""
@@ -94,8 +97,9 @@ def do_update_resolution_labels(presenter):
 
 
 def do_update_file_names_display(presenter):
-    active_name1 = presenter.store.document.get_active_display_name(1)
-    active_name2 = presenter.store.document.get_active_display_name(2)
+    document = _document(presenter)
+    active_name1 = document.get_active_display_name(1)
+    active_name2 = document.get_active_display_name(2)
     name1 = active_name1 or "-----"
     name2 = active_name2 or "-----"
     lang = presenter.store.settings.current_language
@@ -125,8 +129,9 @@ def do_update_file_names_display(presenter):
 
 
 def do_update_combobox_displays(presenter):
-    count1 = len(presenter.store.document.image_list1)
-    idx1 = presenter.store.document.current_index1
+    document = _document(presenter)
+    count1 = len(document.image_list1)
+    idx1 = document.current_index1
     text1 = (
         get_current_display_name(presenter, 1)
         if 0 <= idx1 < count1
@@ -134,8 +139,8 @@ def do_update_combobox_displays(presenter):
     )
     presenter.ui.update_combobox_display(1, count1, idx1, text1, "")
 
-    count2 = len(presenter.store.document.image_list2)
-    idx2 = presenter.store.document.current_index2
+    count2 = len(document.image_list2)
+    idx2 = document.current_index2
     text2 = (
         get_current_display_name(presenter, 2)
         if 0 <= idx2 < count2
@@ -151,13 +156,11 @@ def do_update_combobox_displays(presenter):
 
 
 def do_update_slider_tooltips(presenter):
-    from ui.canvas_infra.scene.widget_registry import (
-        get_canvas_feature_command_by_alias,
-    )
+    from tabs.image_compare.canvas.registry import registry
 
     magnifier_size = 0.2
     capture_size = 0.1
-    build_payload = get_canvas_feature_command_by_alias("overlay.canvas_payload")
+    build_payload = registry().get_feature_command_by_alias("overlay.canvas_payload")
     if build_payload is not None:
         payload = build_payload(presenter.store)
         magnifier_size = float(payload.get("size", 0.2))
@@ -182,8 +185,9 @@ def do_update_rating_displays(presenter):
         presenter.ui_manager
         and presenter.ui_manager.transient.unified_flyout.isVisible()
     ):
-        current_idx1 = presenter.store.document.current_index1
-        current_idx2 = presenter.store.document.current_index2
+        document = _document(presenter)
+        current_idx1 = document.current_index1
+        current_idx2 = document.current_index2
         if current_idx1 >= 0:
             presenter.ui_manager.transient.unified_flyout.update_rating_for_item(
                 1, current_idx1
@@ -205,17 +209,15 @@ def on_language_changed(presenter):
 
 
 def get_current_display_name(presenter, image_number: int) -> str:
-    return presenter.store.document.get_current_display_name(image_number)
+    return _document(presenter).get_current_display_name(image_number)
 
 
 def get_current_score(presenter, image_number: int) -> int | None:
+    document = _document(presenter)
     target_list, index = (
-        (presenter.store.document.image_list1, presenter.store.document.current_index1)
+        (document.image_list1, document.current_index1)
         if image_number == 1
-        else (
-            presenter.store.document.image_list2,
-            presenter.store.document.current_index2,
-        )
+        else (document.image_list2, document.current_index2)
     )
     if 0 <= index < len(target_list):
         return target_list[index].rating
@@ -223,20 +225,15 @@ def get_current_score(presenter, image_number: int) -> int | None:
 
 
 def get_image_dimensions(presenter, image_number: int) -> tuple[int, int] | None:
+    document = _document(presenter)
     if image_number == 1:
-        if not presenter.store.document.image1_path:
+        if not document.image1_path:
             return None
-        img = (
-            presenter.store.document.full_res_image1
-            or presenter.store.document.preview_image1
-        )
+        img = document.full_res_image1 or document.preview_image1
     else:
-        if not presenter.store.document.image2_path:
+        if not document.image2_path:
             return None
-        img = (
-            presenter.store.document.full_res_image2
-            or presenter.store.document.preview_image2
-        )
+        img = document.full_res_image2 or document.preview_image2
     if img and hasattr(img, "size"):
         return img.size
     return None

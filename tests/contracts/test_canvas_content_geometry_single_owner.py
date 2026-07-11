@@ -1,6 +1,6 @@
 """Guard against reintroducing hand-rolled canvas-bounds/split-position math.
 
-Dogma source: docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md, "Mechanical
+Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md, "Mechanical
 duplication guard". Three independent call sites (``gpu_export_scene.py``,
 ``magnifier/snapshot_store.py``, ``divider/commands.py``) each hand-rolled a
 copy of "recombine split-position with padded-canvas geometry" before that
@@ -38,7 +38,7 @@ import ast
 
 from ._framework import SRC, iter_py, read, rel
 
-_DOC = "docs/dev/CANVAS_CONTENT_GEOMETRY_REFACTOR.md"
+_DOC = "docs/dev/QRHI_CANVAS_FEATURES.md"
 
 _BOUNDS_ALLOWLIST = {
     # Producer side: the single owner of canvas-bounds -> widget-px / clip-rect

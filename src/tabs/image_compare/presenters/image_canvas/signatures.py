@@ -2,10 +2,7 @@ from ui.canvas_infra.scene.property_access import (
     read_canvas_feature_color_by_setting_key,
     read_canvas_feature_property,
 )
-from ui.canvas_infra.scene.widget_registry import (
-    get_canvas_feature_command_by_alias,
-    get_canvas_feature_properties,
-)
+from tabs.image_compare.canvas.registry import registry
 
 
 class _FallbackGuidesState:
@@ -17,7 +14,7 @@ class _FallbackGuidesState:
 
 
 def _get_guides_state(view_state):
-    query = get_canvas_feature_command_by_alias("guides.widget_state")
+    query = registry().get_feature_command_by_alias("guides.widget_state")
     if query is not None:
         return query(view_state)
     return _FallbackGuidesState()
@@ -46,7 +43,7 @@ def _get_effective_magnifier_interpolation_method(vp, *, is_interactive: bool):
 
 
 def _query_overlay(store, capability_id: str, default=None):
-    command = get_canvas_feature_command_by_alias(capability_id)
+    command = registry().get_feature_command_by_alias(capability_id)
     if command is None:
         return default
     result = command(store)
@@ -85,7 +82,7 @@ def _magnifier_models_signature(magnifier_models):
 
 def _canvas_feature_properties_signature(viewport):
     signature = []
-    for prop in get_canvas_feature_properties():
+    for prop in registry().get_feature_properties():
         channels = read_canvas_feature_property(viewport, prop)
         signature.append((prop.id, tuple(sorted(channels.items()))))
     return tuple(signature)
@@ -95,8 +92,8 @@ def get_render_params_signature(presenter, s1, s2):
     vp = presenter.store.viewport
     view = vp.view_state
     render = vp.render_config
-    doc = presenter.store.document
-    capture_color = read_canvas_feature_color_by_setting_key(vp, "capture.color")
+    doc = presenter.store.get_session_state_slot("document")
+    capture_color = read_canvas_feature_color_by_setting_key("image_compare", vp, "capture.color")
     guides_state = _get_guides_state(view)
     magnifier = _query_overlay(presenter.store, "overlay.active_state")
     magnifier_models = tuple(
@@ -215,7 +212,7 @@ def get_background_signature(presenter, s1, s2):
     view = vp.view_state
     render = vp.render_config
     geometry = vp.geometry_state
-    doc = presenter.store.document
+    doc = presenter.store.get_session_state_slot("document")
     feature_props_sig = _canvas_feature_properties_signature(vp)
     return (
         id(s1),
@@ -245,7 +242,7 @@ def get_magnifier_signature(presenter):
     vp = presenter.store.viewport
     view = vp.view_state
     render = vp.render_config
-    capture_color = read_canvas_feature_color_by_setting_key(vp, "capture.color")
+    capture_color = read_canvas_feature_color_by_setting_key("image_compare", vp, "capture.color")
     guides_state = _get_guides_state(view)
     magnifier = _query_overlay(presenter.store, "overlay.active_state")
     magnifier_models_sig = _magnifier_models_signature(

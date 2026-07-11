@@ -22,10 +22,17 @@ from tabs.multi_compare.scene.resources import (
     load_shader,
     vertex_input_layout,
 )
+from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
 
 
-class BaseImagesPass:
-    """Owns image textures, tile pipeline, uniforms, and draw recording."""
+class BaseImagesPass(CanvasRenderPass):
+    """Owns image textures, tile pipeline, uniforms, and draw recording.
+
+    Core-owned, not a discoverable feature (see MULTI_COMPARE_QRHI_REFACTOR.md
+    A6): wired directly by ``MultiCompareRhiRenderer``, never through
+    ``get_canvas_render_passes()``, so it declares no ``stack_role`` — nothing
+    ever resolves this pass's stacking order against the shared registry.
+    """
 
     def __init__(self) -> None:
         self.pipeline = None

@@ -8,20 +8,19 @@ def get_presenter(main_controller):
     return None
 
 def get_target_list(store, image_number: int):
-    return store.document.image_list1 if image_number == 1 else store.document.image_list2
+    document = store.get_session_state_slot("document")
+    return document.image_list1 if image_number == 1 else document.image_list2
 
 def get_current_index(store, image_number: int) -> int:
-    return (
-        store.document.current_index1
-        if image_number == 1
-        else store.document.current_index2
-    )
+    document = store.get_session_state_slot("document")
+    return document.current_index1 if image_number == 1 else document.current_index2
 
 def set_current_index(store, image_number: int, index: int) -> None:
+    document = store.get_session_state_slot("document")
     if image_number == 1:
-        store.document.current_index1 = index
+        document.current_index1 = index
     else:
-        store.document.current_index2 = index
+        document.current_index2 = index
 
 def get_current_item_path(store, image_number: int):
     target_list = get_target_list(store, image_number)

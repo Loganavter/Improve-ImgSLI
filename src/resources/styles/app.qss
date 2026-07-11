@@ -114,3 +114,10 @@ QTabBar#WorkspaceTabs {
     background: transparent;
     qproperty-drawBase: 0;
 }
+
+/* --- Image properties dialog --- */
+QFrame#ImagePropertiesSection {
+    background: @dialog.input.background;
+    border: 1px solid @dialog.border;
+    border-radius: 6px;
+}

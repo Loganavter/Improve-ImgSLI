@@ -17,8 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .registry import get_canvas_registry
 from .widget_contract import CanvasFeatureGestureBinding
-from .widget_registry import get_canvas_feature_gesture_bindings
 
 @dataclass(frozen=True, slots=True)
 class GesturePressContext:
@@ -28,8 +28,12 @@ class GesturePressContext:
     button: int
     modifiers: int
 
+def _session_type(store: Any) -> str | None:
+    session = store.get_active_workspace_session()
+    return session.session_type if session is not None else None
+
 def resolve_press(ctx: GesturePressContext) -> CanvasFeatureGestureBinding | None:
-    for binding in get_canvas_feature_gesture_bindings():
+    for binding in get_canvas_registry(_session_type(ctx.store)).get_feature_gesture_bindings():
         if binding.button != ctx.button:
             continue
         try:
@@ -42,7 +46,7 @@ def resolve_press(ctx: GesturePressContext) -> CanvasFeatureGestureBinding | Non
 def resolve_active(
     store: Any, button: int | None = None
 ) -> CanvasFeatureGestureBinding | None:
-    for binding in get_canvas_feature_gesture_bindings():
+    for binding in get_canvas_registry(_session_type(store)).get_feature_gesture_bindings():
         if button is not None and binding.button != button:
             continue
         try:
@@ -54,7 +58,7 @@ def resolve_active(
 
 def iter_active(store: Any) -> tuple[CanvasFeatureGestureBinding, ...]:
     out: list[CanvasFeatureGestureBinding] = []
-    for binding in get_canvas_feature_gesture_bindings():
+    for binding in get_canvas_registry(_session_type(store)).get_feature_gesture_bindings():
         try:
             if binding.is_active(store):
                 out.append(binding)

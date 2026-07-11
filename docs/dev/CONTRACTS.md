@@ -142,19 +142,19 @@ Specifies z-ordering via `stack_role` instead of hardcoded `layer` and `priority
 
 **Why**: Different features need different ordering rules (magnifier over divider, guides under magnifier). The stacking policy centralizes these rules instead of scattering magic numbers.
 
-## GL Rendering (The Performance Problem)
+## QRhi Rendering (The Performance Problem)
 
-Canvas features draw to GL, not CPU. This raises questions about visibility and performance.
+Canvas features render via QRhi, not CPU. This raises questions about visibility and performance.
 
-### CanvasGLRenderPass
+### CanvasRenderPass
 
-Declares: *"I have a GL pass that draws on the canvas. Here's how to initialize it, detect if I have anything to draw, and clean up."*
+Declares: *"I have a render pass that draws on the canvas. Here's how to initialize it, detect if I have anything to draw, and clean up."*
 
 Specifies:
 - `stack_role`: Where in the render order (using central stacking policy)
 - `visibility`: When to run (interactive only? export? preview?)
 
-**Why**: Each feature can have multiple GL passes (magnifier has content, border, laser). Without a contract, the renderer would need hardcoded knowledge of each pass.
+**Why**: Each feature can have multiple render passes (magnifier has content, border, laser). Without a contract, the renderer would need hardcoded knowledge of each pass.
 
 ### SceneVisibility & RenderPhase
 
@@ -242,6 +242,6 @@ Base protocol for all events. Lets code emit/listen to events without knowing co
 
 ## Related Documentation
 
-- [CANVAS_FEATURES.md](CANVAS_FEATURES.md) — Detailed guide to adding new canvas features
+- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — Detailed guide to adding new canvas features
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Overall app architecture
 - [TAB_CONTRACT.md](TAB_CONTRACT.md) — Tab system details
