@@ -14,7 +14,7 @@ from ui.canvas_infra.scene.feature_contract import (
 from ui.canvas_infra.scene.models import CanvasSceneObject
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 
-from .state import get_divider_widget_state
+from tabs.image_compare.canvas.features.divider.state import get_divider_widget_state
 
 DIVIDER_Z_ORDER = CanvasFeatureZOrder(
     stack_role=CanvasStackRole.UNDERLAY_SPLIT,

@@ -5,14 +5,14 @@ import logging
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 
-from .commands import (
+from tabs.image_compare.canvas.features.divider.commands import (
     command_toggle_divider_visibility,
 )
-from .events import (
+from tabs.image_compare.canvas.features.divider.events import (
     SettingsSetDividerThicknessEvent,
     SettingsToggleDividerVisibilityEvent,
 )
-from .state import DividerWidgetState, get_divider_widget_state
+from tabs.image_compare.canvas.features.divider.state import DividerWidgetState, get_divider_widget_state
 
 logger = logging.getLogger("ImproveImgSLI")
 
