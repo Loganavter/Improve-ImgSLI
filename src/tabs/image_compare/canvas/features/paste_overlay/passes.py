@@ -23,7 +23,7 @@ from PySide6.QtGui import (
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass, SceneVisibility
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from tabs.image_compare.canvas.rhi_feature_common import FULLSCREEN_VERTICES, load_qshader
-from tabs.image_compare.canvas.features.paste_overlay.paint import build_ui_overlay_image
+from tabs.image_compare.canvas.features.paste_overlay.render.paint import build_ui_overlay_image
 
 _log = logging.getLogger("ImproveImgSLI.paste_overlay")
 
