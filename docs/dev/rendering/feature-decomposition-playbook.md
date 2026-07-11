@@ -180,11 +180,11 @@ shallow is easy to miss until the feature renders wrong at runtime.
 
 | Feature | Files | Notes |
 |---|---|---|
-| `image_compare/divider` | 15 | next candidate |
 | `image_compare/guides` | 14 | next candidate |
 | `image_compare/filename_overlay` | 11 | borderline |
 | `image_compare/capture` | 9 | borderline |
 | `image_compare/magnifier` | done | reference case, see [package-structure.md](package-structure.md) |
+| `image_compare/divider` | done | see [package-structure.md](package-structure.md) |
 
 Re-count with `find <feature_dir> -maxdepth 1 -name "*.py" | wc -l` before
 picking the next target — these numbers drift as features grow.

@@ -4,7 +4,7 @@ from typing import Any
 
 from domain.qt_adapters import color_to_qcolor
 
-from tabs.image_compare.canvas.features.divider.state import get_divider_widget_state
+from tabs.image_compare.canvas.features.divider.state.feature_state import get_divider_widget_state
 
 
 def build_divider_render_scene_overrides(store) -> dict[str, Any]:
