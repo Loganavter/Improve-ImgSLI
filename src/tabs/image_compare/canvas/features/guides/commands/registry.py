@@ -5,13 +5,13 @@ from typing import Any
 from core.state_management.actions import InvalidateRenderCacheAction
 from tabs.image_compare.canvas.registry import registry
 
-from tabs.image_compare.canvas.features.guides.actions import (
+from tabs.image_compare.canvas.features.guides.input.actions import (
     SetGuidesEnabledAction,
     SetGuidesSmoothingEnabledAction,
     SetGuidesSmoothingInterpolationMethodAction,
     SetGuidesThicknessAction,
 )
-from tabs.image_compare.canvas.features.guides.state import get_guides_widget_state
+from tabs.image_compare.canvas.features.guides.state.feature_state import get_guides_widget_state
 
 
 def _sync_active_laser_enabled(store, enabled: bool) -> None:

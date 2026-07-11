@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from domain.types import Color
-from tabs.image_compare.canvas.features.guides import toolbar as guides_toolbar
+from tabs.image_compare.canvas.features.guides.toolbar import bindings as guides_toolbar
 from tabs.image_compare.presenters.toolbar import orientation
 
 

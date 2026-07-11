@@ -4,7 +4,7 @@ from typing import Any
 
 from domain.qt_adapters import color_to_qcolor
 
-from tabs.image_compare.canvas.features.guides.state import get_guides_widget_state
+from tabs.image_compare.canvas.features.guides.state.feature_state import get_guides_widget_state
 
 
 def build_guides_render_scene_overrides(store) -> dict[str, Any]:
