@@ -9,7 +9,7 @@ from shared.keyframing.adapters_base import (
 )
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureProperty
 
-from .state import GuidesWidgetState, get_guides_widget_state
+from tabs.image_compare.canvas.features.guides.state import GuidesWidgetState, get_guides_widget_state
 
 
 def set_snapshot_guides_state(snap, state: GuidesWidgetState) -> None:
