@@ -13,7 +13,7 @@ from core.state_management.viewport_actions import SetDiffModeAction, SetSplitPo
 from core.store import Store
 from domain.types import Point
 from tabs.image_compare.canvas.features.divider.input.actions import SetDividerThicknessAction
-from tabs.image_compare.canvas.features.guides.actions import SetGuidesThicknessAction
+from tabs.image_compare.canvas.features.guides.input.actions import SetGuidesThicknessAction
 from tabs.image_compare.canvas.features.magnifier.input.actions import (
     SetMagnifierPositionAction,
     ToggleMagnifierAction,
