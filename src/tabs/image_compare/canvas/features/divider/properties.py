@@ -9,7 +9,7 @@ from shared.keyframing.adapters_base import (
 )
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureProperty
 
-from tabs.image_compare.canvas.features.divider.state import DividerWidgetState, get_divider_widget_state
+from tabs.image_compare.canvas.features.divider.state.feature_state import DividerWidgetState, get_divider_widget_state
 
 
 def set_snapshot_divider_state(snap, state: DividerWidgetState) -> None:

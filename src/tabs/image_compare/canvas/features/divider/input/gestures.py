@@ -12,7 +12,7 @@ from events.canvas_input.owner_ids import SPLIT_DRAG_OWNER
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureGestureBinding
 from tabs.image_compare.canvas.registry import registry
 
-from tabs.image_compare.canvas.features.divider.interaction import apply_split_drag
+from tabs.image_compare.canvas.features.divider.input.interaction import apply_split_drag
 
 
 def _matches_split_drag(ctx) -> bool:
