@@ -9,19 +9,19 @@ from ui.canvas_infra.scene.widget_contract import (
     CanvasWidgetFeature,
 )
 
-from tabs.image_compare.canvas.features.guides.actions import (
+from tabs.image_compare.canvas.features.guides.input.actions import (
     SetGuidesColorAction,
     SetGuidesEnabledAction,
     SetGuidesSmoothingEnabledAction,
     SetGuidesSmoothingInterpolationMethodAction,
     SetGuidesThicknessAction,
 )
-from tabs.image_compare.canvas.features.guides.commands import build_guides_commands
+from tabs.image_compare.canvas.features.guides.commands.registry import build_guides_commands
 from tabs.image_compare.canvas.features.guides.properties import build_guides_properties
 from tabs.image_compare.canvas.features.guides.runtime_hooks import build_guides_render_scene_overrides
 from tabs.image_compare.canvas.features.guides.settings_bindings import build_guides_settings_event_bindings
-from tabs.image_compare.canvas.features.guides.state import GuidesWidgetState, replace_guides_widget_state
-from tabs.image_compare.canvas.features.guides.toolbar import build_guides_toolbar_bindings
+from tabs.image_compare.canvas.features.guides.state.feature_state import GuidesWidgetState, replace_guides_widget_state
+from tabs.image_compare.canvas.features.guides.toolbar.bindings import build_guides_toolbar_bindings
 
 
 def _clone_guides_widget_state(view_state: ViewState) -> GuidesWidgetState:
@@ -62,7 +62,7 @@ def reduce_guides_render_config(config: RenderConfig, action: Action) -> RenderC
 
 def build_guides_state_queries():
     """Build state queries for direct feature state access."""
-    from tabs.image_compare.canvas.features.guides.commands import query_guides_widget_state
+    from tabs.image_compare.canvas.features.guides.commands.registry import query_guides_widget_state
 
     return (
         CanvasFeatureStateQuery(
@@ -73,7 +73,7 @@ def build_guides_state_queries():
 
 def build_guides_state_commands():
     """Build state commands for direct feature state modification."""
-    from tabs.image_compare.canvas.features.guides.commands import (
+    from tabs.image_compare.canvas.features.guides.commands.registry import (
         command_set_guides_thickness,
         command_toggle_guides,
         command_viewport_set_smoothing_enabled,
