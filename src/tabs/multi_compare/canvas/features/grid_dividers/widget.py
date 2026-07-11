@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from ui.canvas_infra.scene.widget_contract import CanvasWidgetFeature
 
-from .gestures import build_grid_dividers_gesture_bindings
+from tabs.multi_compare.canvas.features.grid_dividers.input.gestures import build_grid_dividers_gesture_bindings
 
 
 def _noop_reduce_view_state(view_state, action):
