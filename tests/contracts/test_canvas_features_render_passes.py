@@ -54,7 +54,8 @@ def _local_pass_modules(feature: Path, path: Path, seen: set[Path]) -> None:
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom) or node.level < 1 or not node.module:
             continue
-        sibling = feature / f"{node.module}.py"
+        parts = node.module.split(".")
+        sibling = feature.joinpath(*parts[:-1], f"{parts[-1]}.py")
         if sibling.exists():
             _local_pass_modules(feature, sibling, seen)
 

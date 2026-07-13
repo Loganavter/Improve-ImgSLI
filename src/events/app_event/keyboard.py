@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QLineEdit, QPlainTextEdit, QTextEdit
 
 from plugins.export.events import ExportPasteImageFromClipboardEvent
 from events.app_event.common import get_event_bus, get_main_controller
+from tabs.registry import get_shared_tab_registry
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -41,41 +42,14 @@ class GlobalKeyboardHandler:
             "space_stray_release",
         }
 
-    @staticmethod
-    def _is_same_widget_or_descendant(candidate: QObject | None, target: QObject | None) -> bool:
-        current = candidate
-        while current is not None:
-            if current is target:
-                return True
-            current = current.parent()
-        return False
-
-    @classmethod
-    def _belongs_to_canvas(cls, candidate: QObject | None, image_label: QObject | None) -> bool:
-        if candidate is None or image_label is None:
-            return False
-        if cls._is_same_widget_or_descendant(candidate, image_label):
-            return True
-        for attr_name in ("_window_container", "_canvas_window"):
-            owned = getattr(image_label, attr_name, None)
-            if candidate is owned:
-                return True
-            if cls._is_same_widget_or_descendant(candidate, owned):
-                return True
-        return False
-
     def should_route_globally(self, event: QKeyEvent, watched_obj: QObject) -> bool:
-        presenter = self.presenter
-        if presenter is not None and hasattr(presenter, "ui") and presenter.ui is not None:
-            image_label = getattr(presenter.ui, "image_label", None)
-            if self._belongs_to_canvas(watched_obj, image_label):
-                return False
+        active_tab = get_shared_tab_registry().get_active_tab()
+        if active_tab is not None and active_tab.owns_widget(watched_obj):
+            return False
 
         focused_widget = QApplication.focusWidget()
-        if presenter is not None and hasattr(presenter, "ui") and presenter.ui is not None:
-            image_label = getattr(presenter.ui, "image_label", None)
-            if self._belongs_to_canvas(focused_widget, image_label):
-                return False
+        if active_tab is not None and active_tab.owns_widget(focused_widget):
+            return False
         if isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
             return False
 

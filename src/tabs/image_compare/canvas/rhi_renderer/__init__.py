@@ -7,15 +7,17 @@ from PySide6.QtGui import QRhiCommandBuffer, QRhiDepthStencilClearValue, QRhiVie
 from ui.widgets.canvas.rhi_backend import query_max_texture_size
 from ui.widgets.canvas.render_common import should_render_blank_white
 from ui.widgets.canvas.render_executor import iter_active_render_passes
+from shared.rendering.tile_texture_service import (
+    TileTextureService,
+    _tile_indices_with_margin,
+)
 from ..render_context import build_render_runtime_context
 from ..texture_parts.tile_geometry import (
     _apron_rect,
     _TILE_APRON_PX,
-    _tile_indices_with_margin,
     _viewport_zoom_offset_for_tile,
     _visible_side_image_rect,
 )
-from ..texture_parts.tile_texture_service import TileTextureService
 from ._debug import rhi_render_debug
 from .draw_plan import build_draw_plan
 from .resources import _LIVE_TILE_EXTENT, _TILE_CACHE_BUDGET_BYTES, RhiResources
@@ -199,6 +201,34 @@ class RhiCanvasRenderer:
         for render_pass in active_feature_passes:
             render_pass.prepare(widget, ctx, updates)
 
+        # The common (non-tiled) case packs the single draw item's uniforms
+        # into the same pre-pass `updates` batch as everything else (divider
+        # included), so it is committed to the GPU at beginPass() time —
+        # exactly like the divider's own UBO write. Previously this single
+        # uniform write was deferred to a mid-pass resourceUpdate() call
+        # (see the tiled branch below), which is backend-defined territory:
+        # QRhi's Vulkan/D3D/Metal backends internally rotate multiple
+        # frame-in-flight copies of a Dynamic buffer, and a write applied
+        # mid-pass is not guaranteed to land in the same rotation slot the
+        # divider's pre-pass write did. That asymmetry reproduced as a
+        # transient one-frame divider/image split desync during fast drags
+        # on Vulkan only (never on OpenGL, which has no such rotation) — see
+        # docs/dev/rendering/investigations/divider-blank-white-and-drag-desync.md.
+        single_tile_uniforms = None
+        if draw_plan and len(draw_plan) == 1:
+            single_tile_uniforms = pack_base_uniforms(
+                self.rhi,
+                base_image,
+                diff_source_ready=ctx.diff_source_ready,
+                tile_rect1=draw_plan[0].rect1,
+                tile_rect2=draw_plan[0].rect2,
+                viewport_zoom=viewport_zoom,
+                viewport_offset=viewport_offset,
+            )
+            updates.updateDynamicBuffer(
+                self.resources.uniform_buffer, 0, single_tile_uniforms
+            )
+
         command_buffer.beginPass(
             target,
             clear_color,
@@ -216,31 +246,33 @@ class RhiCanvasRenderer:
             # per visible (image1 tile, image2 tile) pair — only the tiles
             # the current viewport actually needs (Phase 2), not the whole
             # grid. Each pair carries its own tileRect1/tileRect2 in
-            # per-side normalized-image space, so the uniform buffer is
-            # repacked and pushed via a mid-pass resourceUpdate() before
-            # every draw call. Images that fit within one _LIVE_TILE_EXTENT
-            # tile (the common case) run this loop exactly once with
-            # tileRect == (0,0,1,1), unchanged from pre-tiling behavior.
+            # per-side normalized-image space. For the multi-tile case the
+            # uniform buffer is still repacked and pushed via a mid-pass
+            # resourceUpdate() before every draw call (each item needs a
+            # different tileRect at draw time, which the single pre-pass
+            # write above cannot express) — this branch is unaffected by the
+            # single-tile fix above and behaves exactly as before.
             for item in draw_plan:
                 srb = self.resources.ensure_srb_for(
                     (item.key1, item.key2, item.diff_key), item.sampler_name
                 )
                 command_buffer.setShaderResources(srb)
-                tile_updates = self.rhi.nextResourceUpdateBatch()
-                tile_updates.updateDynamicBuffer(
-                    self.resources.uniform_buffer,
-                    0,
-                    pack_base_uniforms(
-                        self.rhi,
-                        base_image,
-                        diff_source_ready=ctx.diff_source_ready,
-                        tile_rect1=item.rect1,
-                        tile_rect2=item.rect2,
-                        viewport_zoom=viewport_zoom,
-                        viewport_offset=viewport_offset,
-                    ),
-                )
-                command_buffer.resourceUpdate(tile_updates)
+                if single_tile_uniforms is None:
+                    tile_updates = self.rhi.nextResourceUpdateBatch()
+                    tile_updates.updateDynamicBuffer(
+                        self.resources.uniform_buffer,
+                        0,
+                        pack_base_uniforms(
+                            self.rhi,
+                            base_image,
+                            diff_source_ready=ctx.diff_source_ready,
+                            tile_rect1=item.rect1,
+                            tile_rect2=item.rect2,
+                            viewport_zoom=viewport_zoom,
+                            viewport_offset=viewport_offset,
+                        ),
+                    )
+                    command_buffer.resourceUpdate(tile_updates)
                 command_buffer.draw(4)
         for render_pass in active_feature_passes:
             render_pass.record(command_buffer, widget, ctx)

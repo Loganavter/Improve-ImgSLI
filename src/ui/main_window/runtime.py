@@ -286,6 +286,10 @@ def _clear_rhi_resize_shields(window) -> None:
             _resize_debug("shield clear failed %s", _rhi_debug_id(rhi), exc_info=True)
 
 
+def _active_image_compare_widget(window):
+    return getattr(window, "image_compare_widget", None)
+
+
 class MainWindowRuntime:
     def __init__(self, window):
         self.window = window
@@ -311,15 +315,16 @@ class MainWindowRuntime:
             window.geometry_manager.update_normal_geometry_if_needed()
 
         window.startup_runtime.sync_cover_geometry()
-        if window.ui is not None:
-            window.ui.image_startup_placeholder.sync_geometry()
-            window.ui.zoom_indicator.sync_position()
+        widget = _active_image_compare_widget(window)
+        if widget is not None:
+            widget.image_startup_placeholder.sync_geometry()
+            widget.zoom_indicator.sync_position()
         if getattr(window, "onboarding_overlay", None):
             window.onboarding_overlay.resize(window.size())
-        if window.ui is not None:
-            window.ui.update_drag_overlays(
+        if widget is not None:
+            widget.update_drag_overlays(
                 window.store.viewport.view_state.is_horizontal,
-                window.ui.is_drag_overlay_visible(),
+                widget.is_drag_overlay_visible(),
             )
 
     def handle_resize(self) -> None:
@@ -350,9 +355,10 @@ class MainWindowRuntime:
     def handle_move(self) -> None:
         window = self.window
         window.startup_runtime.sync_cover_geometry()
-        if window.ui is not None:
-            window.ui.image_startup_placeholder.sync_geometry()
-            window.ui.zoom_indicator.sync_position()
+        widget = _active_image_compare_widget(window)
+        if widget is not None:
+            widget.image_startup_placeholder.sync_geometry()
+            widget.zoom_indicator.sync_position()
         if getattr(window, "onboarding_overlay", None):
             window.onboarding_overlay.resize(window.size())
         self._hide_unified_flyout()
@@ -362,9 +368,10 @@ class MainWindowRuntime:
     def handle_show(self) -> None:
         window = self.window
         window.startup_runtime.sync_cover_geometry()
-        if window.ui is not None:
-            window.ui.image_startup_placeholder.sync_geometry()
-            window.ui.zoom_indicator.sync_position()
+        widget = _active_image_compare_widget(window)
+        if widget is not None:
+            widget.image_startup_placeholder.sync_geometry()
+            widget.zoom_indicator.sync_position()
         if (
             window.onboarding_overlay is not None
             and not window._startup_visual_ready_emitted

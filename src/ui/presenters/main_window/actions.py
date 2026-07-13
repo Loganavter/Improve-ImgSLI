@@ -66,15 +66,15 @@ def on_ui_update_requested(presenter, components: list):
 
 def update_image_name(presenter, image_number: int, name: str):
     if image_number == 1:
-        presenter.ui.edit_name1.blockSignals(True)
-        presenter.ui.edit_name1.setText(name)
-        presenter.ui.edit_name1.setCursorPosition(0)
-        presenter.ui.edit_name1.blockSignals(False)
+        presenter.widget.edit_name1.blockSignals(True)
+        presenter.widget.edit_name1.setText(name)
+        presenter.widget.edit_name1.setCursorPosition(0)
+        presenter.widget.edit_name1.blockSignals(False)
     elif image_number == 2:
-        presenter.ui.edit_name2.blockSignals(True)
-        presenter.ui.edit_name2.setText(name)
-        presenter.ui.edit_name2.setCursorPosition(0)
-        presenter.ui.edit_name2.blockSignals(False)
+        presenter.widget.edit_name2.blockSignals(True)
+        presenter.widget.edit_name2.setText(name)
+        presenter.widget.edit_name2.setCursorPosition(0)
+        presenter.widget.edit_name2.blockSignals(False)
 
 def start_interactive_movement(presenter):
     image_canvas = presenter.get_feature("image_canvas")

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QEvent, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 
 from core.constants import AppConstants
+from sli_ui_toolkit.managers import DelayedActionTimer
 from tabs.image_compare.canvas.registry import registry
 
 
@@ -17,8 +18,26 @@ def _query_overlay(store, capability_id: str, default=None):
 
 
 class MagnifierVisibilityController:
-    def __init__(self, manager):
+    def __init__(self, manager, widget):
         self.manager = manager
+        self.widget = widget
+        self._hover_timer = DelayedActionTimer(
+            lambda: self.show(reason="hover"), parent=manager.host
+        )
+        self._wire_button()
+
+    def _wire_button(self) -> None:
+        host = self.manager.host
+        btn = getattr(self.widget, "btn_magnifier", None)
+        if btn is None or host.magnifier_visibility_flyout is None:
+            return
+        btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        btn.installEventFilter(host)
+        host.magnifier_visibility_flyout.installEventFilter(host)
+        host.magnifier_visibility_flyout.btn_left.installEventFilter(host)
+        host.magnifier_visibility_flyout.btn_center.installEventFilter(host)
+        host.magnifier_visibility_flyout.btn_right.installEventFilter(host)
+        btn.toggled.connect(self.on_toggle_with_hover)
 
     def update_states(self):
         host = self.manager.host
@@ -35,13 +54,12 @@ class MagnifierVisibilityController:
             pass
 
     def on_toggle_with_hover(self, checked: bool):
-        host = self.manager.host
-        btn = getattr(host.ui, "btn_magnifier", None)
+        btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:
             return
         if not checked:
             try:
-                host._magn_hover_timer.stop()
+                self._hover_timer.stop()
             except Exception:
                 pass
             self.hide(reason="main_toggle_disabled")
@@ -59,7 +77,7 @@ class MagnifierVisibilityController:
         except Exception:
             pass
         self.update_states()
-        btn = getattr(host.ui, "btn_magnifier", None)
+        btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:
             return
         host.magnifier_visibility_flyout.show_for_button(
@@ -77,7 +95,7 @@ class MagnifierVisibilityController:
     def hide(self, reason: str = "explicit"):
         host = self.manager.host
         try:
-            host._magn_hover_timer.stop()
+            self._hover_timer.stop()
         except Exception:
             pass
         host.magnifier_visibility_flyout.hide()
@@ -85,7 +103,7 @@ class MagnifierVisibilityController:
 
     def event_filter(self, watched, event):
         host = self.manager.host
-        btn = getattr(host.ui, "btn_magnifier", None)
+        btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:
             return False
         if watched is btn:
@@ -105,15 +123,15 @@ class MagnifierVisibilityController:
         host = self.manager.host
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
-            host._magn_hover_timer.stop()
+            self._hover_timer.stop()
             use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
             if use_magnifier:
-                host._magn_hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+                self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
             else:
                 host.magnifier_visibility_flyout.hide()
             return False
         if et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
-            host._magn_hover_timer.stop()
+            self._hover_timer.stop()
             host.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
             )

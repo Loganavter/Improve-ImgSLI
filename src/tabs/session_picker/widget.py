@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QLineF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
@@ -13,13 +14,15 @@ from sli_ui_toolkit.widgets import (
     HorizontalSplit,
     Label,
     OverlayScrollArea,
+    ThemedWidget,
 )
 
-from ui.icon_manager import AppIcon, get_app_icon
+from ui.icon_manager import AppIcon
+from ui.theming import resolve_theme_color
 
 SESSION_TYPE_ICONS: dict[str, AppIcon] = {
     "image_compare": AppIcon.PHOTO,
-    "multi_compare": AppIcon.VERTICAL_SPLIT,
+    "multi_compare": AppIcon.GRID,
 }
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
@@ -36,7 +39,7 @@ class _SeamlessHorizontalSplit(HorizontalSplit):
         return []
 
 
-class SessionPickerWidget(QWidget):
+class SessionPickerWidget(ThemedWidget, QWidget):
     def __init__(self, parent=None, *, context):
         super().__init__(parent)
         self._context = context
@@ -51,6 +54,15 @@ class SessionPickerWidget(QWidget):
         self._populated = False
         self.setObjectName("SessionPickerPage")
         self._build()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self._bg_color)
+        painter.end()
+
+    def on_theme_changed(self) -> None:
+        self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+        super().on_theme_changed()
 
     def _build(self) -> None:
         outer = QVBoxLayout(self)
@@ -194,7 +206,7 @@ class SessionPickerWidget(QWidget):
             f"descriptions.{session_type}",
             "",
         )
-        icon = get_app_icon(SESSION_TYPE_ICONS.get(session_type, AppIcon.ADD))
+        icon = SESSION_TYPE_ICONS.get(session_type, AppIcon.ADD)
 
         rows = [
             ButtonRow(

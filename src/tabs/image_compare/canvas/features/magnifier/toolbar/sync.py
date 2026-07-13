@@ -7,9 +7,9 @@ from tabs.image_compare.canvas.features.magnifier.toolbar.shared import set_chec
 
 def sync_magnifier_toolbar_state(presenter) -> None:
     from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
-    ui = getattr(presenter, "ui", None)
+    ui = getattr(presenter, "widget", None)
     viewport = presenter.store.viewport
     state = get_magnifier_widget_state(viewport.view_state)
     model = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
@@ -40,9 +40,10 @@ def sync_magnifier_toolbar_state(presenter) -> None:
 
 def sync_magnifier_enabled_state(presenter) -> None:
     from tabs.image_compare.canvas.features.magnifier.state.mode import MagnifierModeService
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService, active_or_default_divider_color
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.store import active_or_default_divider_color
 
-    ui = getattr(presenter, "ui", None)
+    ui = getattr(presenter, "widget", None)
     scene_state = MagnifierStoreService(presenter.store)
     mode_service = MagnifierModeService(presenter.store)
     active_magnifier = scene_state.get_active_or_first_magnifier()
@@ -83,9 +84,9 @@ def sync_magnifier_enabled_state(presenter) -> None:
 
 
 def sync_magnifier_freeze_state(presenter) -> None:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
-    ui = getattr(presenter, "ui", None)
+    ui = getattr(presenter, "widget", None)
     scene_state = MagnifierStoreService(presenter.store)
     active = scene_state.get_active_or_first_magnifier()
     set_checked_quietly(
@@ -95,14 +96,16 @@ def sync_magnifier_freeze_state(presenter) -> None:
 
 
 def sync_magnifier_orientation_state(presenter) -> None:
-    from tabs.image_compare.canvas.features.magnifier.state.store import (
+    from tabs.image_compare.canvas.features.magnifier.state.service import (
         MagnifierStoreService,
+    )
+    from tabs.image_compare.canvas.features.magnifier.state.store import (
         active_or_default_divider_color,
         active_or_default_divider_thickness,
         active_or_default_divider_visible,
     )
 
-    ui = getattr(presenter, "ui", None)
+    ui = getattr(presenter, "widget", None)
     model = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
     magnifier_is_horizontal = bool(model.is_horizontal) if model is not None else False
     view_state = presenter.store.viewport.view_state
@@ -128,9 +131,10 @@ def sync_magnifier_orientation_state(presenter) -> None:
 
 
 def sync_magnifier_size_state(presenter) -> None:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService, default_magnifier_size
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.store import default_magnifier_size
 
-    ui = getattr(presenter, "ui", None)
+    ui = getattr(presenter, "widget", None)
     scene_state = MagnifierStoreService(presenter.store)
     active_magnifier = scene_state.get_active_or_first_magnifier()
     magnifier_size = (

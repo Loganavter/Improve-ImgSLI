@@ -200,7 +200,9 @@ class ViewportReducer:
         new_geometry_state = self.geometry_state_reducer.reduce(
             state.geometry_state, action, session_type
         )
-        new_session_data = reduce_session_data_extensions(state.session_data, action)
+        new_session_data = reduce_session_data_extensions(
+            state.session_data, action, session_type
+        )
 
         if (
             new_view_state is state.view_state

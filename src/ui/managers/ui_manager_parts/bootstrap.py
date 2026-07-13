@@ -1,22 +1,19 @@
 from __future__ import annotations
 
 import logging
-import time
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from sli_ui_toolkit.managers import DelayedActionTimer
 from shared_toolkit.ui.managers.font_manager import FontManager
 
 logger = logging.getLogger("ImproveImgSLI")
 
-def initialize_ui_manager(manager) -> None:
+def initialize_ui_manager_pre_transient(manager) -> None:
     _init_unified_flyout(manager)
     _init_popup_state(manager)
-    _wrap_button_menus(manager)
-    _init_magnifier_flyout(manager)
-    _init_magnifier_instances_popup(manager)
+    _init_magnifier_flyout_widget(manager)
+
+def initialize_ui_manager_post_transient(manager) -> None:
     _connect_services(manager)
 
 def _init_unified_flyout(manager) -> None:
@@ -40,101 +37,24 @@ def _init_popup_state(manager) -> None:
 
     manager._interp_flyout = None
     manager._interp_popup_open = False
-    manager._interp_last_open_ts = 0.0
 
     manager._font_popup_open = False
-    manager._font_popup_last_open_ts = 0.0
-
-    manager._diff_mode_popup_open = False
-    manager._diff_mode_last_open_ts = 0.0
-    manager._channel_mode_popup_open = False
-    manager._channel_mode_last_open_ts = 0.0
 
     manager._magn_popup_open = False
     manager._magn_popup_last_open_ts = 0.0
     manager._magn_instances_popup_open = False
 
-def _wrap_button_menus(manager) -> None:
-    ui = manager.ui
-    if ui is None:
-        return
-
-    _install_menu_tracker(
-        manager,
-        button_name="btn_diff_mode",
-        original_attr="_original_diff_show_menu",
-        open_attr="_diff_mode_popup_open",
-        opened_at_attr="_diff_mode_last_open_ts",
-    )
-    _install_menu_tracker(
-        manager,
-        button_name="btn_channel_mode",
-        original_attr="_original_channel_show_menu",
-        open_attr="_channel_mode_popup_open",
-        opened_at_attr="_channel_mode_last_open_ts",
-    )
-
-def _install_menu_tracker(
-    manager,
-    *,
-    button_name: str,
-    original_attr: str,
-    open_attr: str,
-    opened_at_attr: str,
-) -> None:
-    button = getattr(manager.ui, button_name, None)
-    if button is None:
-        return
-
-    try:
-        original_show_menu = button.show_menu
-    except AttributeError as exc:
-        logger.warning(
-            "UIManager bootstrap: %s.show_menu not available: %s",
-            button_name,
-            exc,
-        )
-        return
-
-    setattr(manager, original_attr, original_show_menu)
-
-    def wrapped_show_menu():
-        result = original_show_menu()
-        if hasattr(button, "_menu_visible") and button._menu_visible:
-            setattr(manager, open_attr, True)
-            setattr(manager, opened_at_attr, time.monotonic())
-        return result
-
-    button.show_menu = wrapped_show_menu
-
-def _init_magnifier_flyout(manager) -> None:
+def _init_magnifier_flyout_widget(manager) -> None:
     from tabs.registry import TabRegistry
 
     registry = TabRegistry()
     registry.discover()
-    manager.magnifier_visibility_flyout = registry.create_service(
+    manager.magnifier_visibility_flyout = registry.create_startup_service(
         "magnifier_visibility_flyout",
         manager.parent_widget,
     )
     if manager.magnifier_visibility_flyout is None:
         return
-    manager._magn_hover_timer = DelayedActionTimer(
-        lambda: manager._show_magnifier_visibility_flyout(reason="hover"),
-        parent=manager,
-    )
-
-    btn_magnifier = getattr(manager.ui, "btn_magnifier", None)
-    if btn_magnifier is None:
-        return
-
-    btn_magnifier.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    btn_magnifier.installEventFilter(manager)
-    manager.magnifier_visibility_flyout.installEventFilter(manager)
-    manager.magnifier_visibility_flyout.btn_left.installEventFilter(manager)
-    manager.magnifier_visibility_flyout.btn_center.installEventFilter(manager)
-    manager.magnifier_visibility_flyout.btn_right.installEventFilter(manager)
-    btn_magnifier.toggled.connect(manager._on_magnifier_toggle_with_hover)
-
     _connect_magnifier_visibility_buttons(manager)
 
 def _connect_magnifier_visibility_buttons(manager) -> None:
@@ -185,20 +105,6 @@ def query_current_visibility(store, part: str) -> bool:
         return True
     part_key = f"visible_{part}"
     return bool(state.get(part_key, True))
-
-def _init_magnifier_instances_popup(manager) -> None:
-    button = getattr(manager.ui, "btn_magnifier_instances", None)
-    if button is None:
-        return
-
-    button.countChanged.connect(
-        lambda _count: manager._on_magnifier_instances_count_changed()
-    )
-
-    targets = button.popup_targets() if hasattr(button, "popup_targets") else (button,)
-    for target in targets:
-        target.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        target.installEventFilter(manager)
 
 def _connect_services(manager) -> None:
     font_manager = FontManager.get_instance()

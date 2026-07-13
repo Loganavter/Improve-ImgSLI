@@ -18,11 +18,13 @@ from PySide6.QtGui import (
     QRhiTexture,
 )
 
+from shared.rendering.tile_texture_service import TileTextureService
 from tabs.multi_compare.canvas.registry import registry
 from tabs.multi_compare.scene.passes import BaseImagesPass
 from tabs.multi_compare.scene.projection import build_render_context
+from tabs.multi_compare.scene.resources import SLOT_LIVE_TILE_EXTENT
 from ui.widgets.canvas.render_executor import iter_active_render_passes
-from ui.widgets.canvas.rhi_backend import log_initialized_rhi_widget
+from ui.widgets.canvas.rhi_backend import log_initialized_rhi_widget, query_max_texture_size
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -44,6 +46,7 @@ class MultiCompareRhiRenderer:
         self.target = None
         self.sampler = None
         self.placeholder = None
+        self.tile_service = TileTextureService()
         self.image_pass = BaseImagesPass()
         self.feature_passes: list = []
         self.initialized = False
@@ -72,6 +75,12 @@ class MultiCompareRhiRenderer:
             return
         self.rhi = rhi
         self.target = target
+        # docs/dev/TILED_RENDERING_DESIGN.md Phase 2: fixed tile size
+        # (SLOT_LIVE_TILE_EXTENT), clamped by the backend's real max texture
+        # size as a defensive floor only.
+        self.tile_service = TileTextureService(
+            max_tile_extent=min(SLOT_LIVE_TILE_EXTENT, query_max_texture_size(rhi))
+        )
 
         self.sampler = rhi.newSampler(
             QRhiSampler.Filter.Linear,

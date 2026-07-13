@@ -13,8 +13,10 @@ _log = logging.getLogger("ImproveImgSLI.magnifier")
 
 
 def command_build_render_canvas_payload(store) -> dict[str, Any]:
-    from tabs.image_compare.canvas.features.magnifier.state.store import (
+    from tabs.image_compare.canvas.features.magnifier.state.service import (
         MagnifierStoreService,
+    )
+    from tabs.image_compare.canvas.features.magnifier.state.store import (
         default_capture_size,
         default_magnifier_size,
         iter_magnifier_models,
@@ -122,7 +124,8 @@ def command_build_render_canvas_payload(store) -> dict[str, Any]:
 
 
 def prepare_magnifier_worker_viewport(source_store, worker_viewport) -> None:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService, update_magnifier_model
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.store import update_magnifier_model
 
     source_scene_state = MagnifierStoreService(source_store)
     active_magnifier = source_scene_state.get_active_or_first_magnifier()

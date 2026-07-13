@@ -25,8 +25,8 @@ from __future__ import annotations
 
 from ui.canvas_infra.scene.pass_contract import CanvasRenderPass
 
-from tabs.image_compare.canvas.features.magnifier.render.arc_passes import HiddenSelectionPass, OccludedArcPass
-from tabs.image_compare.canvas.features.magnifier.render.magnifier_pass import MagnifierPass
+from .render.arc_passes import HiddenSelectionPass, OccludedArcPass
+from .render.magnifier_pass import MagnifierPass
 
 __all__ = [
     "MagnifierPass",

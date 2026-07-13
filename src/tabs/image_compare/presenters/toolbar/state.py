@@ -37,8 +37,8 @@ def _set_slider_value_quietly(slider, value: int) -> None:
         del blocker
 
 def check_name_lengths(presenter):
-    len1 = len(presenter.ui.edit_name1.text().strip())
-    len2 = len(presenter.ui.edit_name2.text().strip())
+    len1 = len(presenter.widget.edit_name1.text().strip())
+    len2 = len(presenter.widget.edit_name2.text().strip())
     limit = presenter.store.viewport.render_config.max_name_length
     if (
         len1 > limit or len2 > limit
@@ -48,44 +48,44 @@ def check_name_lengths(presenter):
             presenter.store.settings.current_language,
             limit=limit,
         )
-        presenter.ui.update_name_length_warning(warning, "", True)
+        presenter.widget.update_name_length_warning(warning, "", True)
     else:
-        presenter.ui.update_name_length_warning("", "", False)
+        presenter.widget.update_name_length_warning("", "", False)
 
 def _update_canvas_feature_control_availability(presenter) -> None:
-    ui = getattr(presenter, "ui", None)
-    if ui is None:
+    widget = getattr(presenter, "widget", None)
+    if widget is None:
         return
     for attr_name, control_ids in _TOOLBAR_CONTROL_GROUPS:
-        widget = getattr(ui, attr_name, None)
-        if widget is None or not hasattr(widget, "setEnabled"):
+        control = getattr(widget, attr_name, None)
+        if control is None or not hasattr(control, "setEnabled"):
             continue
-        widget.setEnabled(
+        control.setEnabled(
             any(registry().get_feature_toolbar_binding(control_id) is not None for control_id in control_ids)
         )
 
 def update_toolbar_states(presenter):
-    presenter.ui.btn_file_names.setChecked(
+    presenter.widget.btn_file_names.setChecked(
         presenter.store.viewport.render_config.include_file_names_in_saved, emit_signal=False
     )
-    image_label = getattr(presenter.ui, "image_label", None)
+    image_label = getattr(presenter.widget, "image_label", None)
     zoom_level = get_zoom_level(image_label) if image_label is not None else 1.0
     file_names_temporarily_hidden = (
         presenter.store.viewport.render_config.include_file_names_in_saved and abs(zoom_level - 1.0) > 1e-6
     )
-    if hasattr(presenter.ui.btn_file_names, "setVisualIconOverride"):
-        presenter.ui.btn_file_names.setVisualIconOverride(
+    if hasattr(presenter.widget.btn_file_names, "setVisualIconOverride"):
+        presenter.widget.btn_file_names.setVisualIconOverride(
             AppIcon.DIVIDER_HIDDEN if file_names_temporarily_hidden else None
         )
     lang = presenter.store.settings.current_language
-    presenter.ui.btn_file_names.setToolTip(
+    presenter.widget.btn_file_names.setToolTip(
         tr("tooltip.file_names_hidden_on_zoom", lang)
         if file_names_temporarily_hidden
         else tr("ui.include_file_names_in_saved_image", lang)
     )
     _update_canvas_feature_control_availability(presenter)
     _set_slider_value_quietly(
-        presenter.ui.slider_speed,
+        presenter.widget.slider_speed,
         int(presenter.store.viewport.view_state.movement_speed_per_sec * 100),
     )
     for binding in registry().get_feature_toolbar_bindings():

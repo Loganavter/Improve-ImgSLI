@@ -3,6 +3,6 @@ pillow==12.1.1
 numpy>=1.24,<2.4
 PySide6==6.11.1
 shiboken6==6.11.1
--e ../sli-ui-toolkit
+sli-ui-toolkit==0.3.0
 scikit-image==0.26.0
 imagecodecs>=2024.1.1

@@ -44,6 +44,19 @@ class ExportContextBuilder:
         if not original1_full or not original2_full:
             raise ValueError("Full resolution images are not available for saving.")
 
+        # docs/dev/rendering/tile-rendering-system.md Phase 3: saving/exporting
+        # needs full pixel data regardless (resize, compositing), so
+        # there's no way to avoid materializing a lazy source here -- but
+        # it's a one-shot, user-triggered action, not a permanent
+        # resident, so the transient cost is acceptable (same category as
+        # the original decode itself).
+        from shared.image_processing.lazy_pixel_source import LazyPixelSource
+
+        if isinstance(original1_full, LazyPixelSource):
+            original1_full = original1_full.to_pil()
+        if isinstance(original2_full, LazyPixelSource):
+            original2_full = original2_full.to_pil()
+
         preview_img = None
         live_snapshot = build_live_frame_snapshot(self.store)
         resize_method = get_effective_export_interpolation_method(

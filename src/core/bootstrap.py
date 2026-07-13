@@ -120,6 +120,20 @@ class ApplicationContext:
         self.theme_manager = ThemeManager.get_instance()
         self.theme_manager.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
 
+        # Resolve the saved theme now, before any icons get fetched (e.g. the
+        # title bar built in MainWindow.__init__). ThemeManager defaults to
+        # "light" until set_theme() is called; icons resolved against that
+        # default get cached forever in IconService and never refreshed, so
+        # is_dark() must already be correct by the time UI construction
+        # starts. lifecycle.py's ApplyThemeStep re-applies the same value
+        # later (to also push QSS/palette onto the QApplication instance),
+        # this call only needs to fix is_dark() early.
+        theme_from_env = os.getenv("APP_THEME", "auto").lower()
+        initial_theme = (
+            theme_from_env if theme_from_env != "auto" else self.store.settings.theme
+        )
+        self.theme_manager.set_theme(initial_theme)
+
         for qss_path in (
             self._resource_path("shared_toolkit/ui/resources/styles/base.qss"),
             self._resource_path("shared_toolkit/ui/resources/styles/widgets.qss"),

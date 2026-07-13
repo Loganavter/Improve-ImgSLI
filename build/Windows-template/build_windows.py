@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = REPO_ROOT / "build" / "Windows-template" / "Improve_ImgSLI.spec"
 INNO_PATH = REPO_ROOT / "build" / "Windows-template" / "inno_setup_6.iss"
 REQUIREMENTS_PATH = REPO_ROOT / "requirements-gui.txt"
-SETUP_EXE = REPO_ROOT / "build" / "Windows-template" / "Output" / "Improve_ImgSLI_Setup_v9.0.0.exe"
+SETUP_EXE = REPO_ROOT / "build" / "Windows-template" / "Output" / "Improve_ImgSLI_Setup_v10.0.0.exe"
 
 FFMPEG_ZIP_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 FFMPEG_EXE_SUBPATH = "ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe"

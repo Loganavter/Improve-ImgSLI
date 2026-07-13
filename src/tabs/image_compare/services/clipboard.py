@@ -12,9 +12,10 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 class ClipboardService:
-    def __init__(self, store, main_controller):
+    def __init__(self, store, main_controller, widget):
         self.store = store
         self.main_controller = main_controller
+        self.widget = widget
         self._paste_dialog = None
         self._paste_overlay_canvas = None
 
@@ -164,7 +165,7 @@ class ClipboardService:
             self._clear_canvas_paste_overlay()
             overlay = PasteDirectionOverlay(
                 main_window,
-                main_window.ui.image_label,
+                self.widget.image_label,
                 is_horizontal=self.store.viewport.view_state.is_horizontal,
             )
             overlay.set_language(self.store.settings.current_language)

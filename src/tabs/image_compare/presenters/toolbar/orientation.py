@@ -46,8 +46,8 @@ def _show_orientation_popup(presenter):
         if not current_orientation
         else AppIcon.VERTICAL_SPLIT
     )
-    ui = getattr(presenter, "ui", None)
-    button = getattr(ui, "btn_orientation", None)
+    widget = getattr(presenter, "widget", None)
+    button = getattr(widget, "btn_orientation", None)
     if button is None:
         return
     overlay_layer = get_overlay_layer(button)

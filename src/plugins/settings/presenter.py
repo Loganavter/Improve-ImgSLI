@@ -25,7 +25,6 @@ class SettingsPresenter(QObject):
         )
         self.view_state = SettingsViewStateCoordinator(
             store=store,
-            main_window_app=main_window_app,
             tr_func=self._tr,
         )
 
@@ -75,7 +74,7 @@ class SettingsPresenter(QObject):
 
         registry = TabRegistry()
         registry.discover()
-        coordinator = registry.create_service(
+        coordinator = registry.create_startup_service(
             "settings_color_picker_coordinator",
             **kwargs,
         )

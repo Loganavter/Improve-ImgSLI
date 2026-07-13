@@ -224,7 +224,7 @@ def _set_slider_value_quietly(slider, value: int) -> None:
 
 
 def _sync_capture_toolbar_state(presenter) -> None:
-    slider = getattr(getattr(presenter, "ui", None), "slider_capture", None)
+    slider = getattr(getattr(presenter, "widget", None), "slider_capture", None)
     if slider is None:
         return
     size = _capture_size_from_view_state(presenter.store.viewport.view_state)

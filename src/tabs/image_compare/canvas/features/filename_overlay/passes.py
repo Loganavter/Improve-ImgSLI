@@ -71,7 +71,7 @@ class FilenameOverlayPass(CanvasRenderPass):
         return ctx.width > 0 and ctx.height > 0
 
     def prepare(self, widget, ctx, resource_updates) -> None:
-        for slot in self._slots:
+        for slot in self._gpu.slots:
             slot.active = False
             slot.vertices = None
 

@@ -14,6 +14,9 @@ that keep them consistent across the live editor, preview, and export paths.
 - **[contracts.md](contracts.md)** — `CanvasWidgetFeature`, `CanvasSceneFeature`, `CanvasFeatureProperty`, command aliases, canvas layout contract, scene pipeline, keyframing, source-of-truth rules
 - **[zoom-pan.md](zoom-pan.md)** — gesture bindings, viewport change contract, zoom/pan invariants, semantic geometry vs paint extents, debugging
 - **[checklist.md](checklist.md)** — anti-patterns and the pre-merge checklist
+- **[display-image-pipeline.md](display-image-pipeline.md)** — unify → display-cache → render pipeline; single-writer/single-picker rule for `render_cache.display_cache_image1/2`
+- **[tile-rendering-system.md](tile-rendering-system.md)** — GPU tile grid for oversized sources (`TileTextureService`), apron padding, residency/draw-plan invariant, and host-side memory bounding (`_texture_upload_cache` LRU, `LazyPixelSource`)
+- **[investigations/divider-blank-white-and-drag-desync.md](investigations/divider-blank-white-and-drag-desync.md)** — divider-vs-image sync: the `blank_white`/`requires_content` load-flash fix, and why the drag-time "ghosting" is likely compositor tearing, not app code
 
 **Core idea**: a feature doesn't handle zoom, pan, coordinate transforms, raw
 Qt events, or serialization — the infrastructure does. See

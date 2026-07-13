@@ -31,8 +31,24 @@ from shared.rendering import TargetSurfaceSpec
 @pytest.fixture(autouse=True)
 def _register_image_compare_canvas_features():
     from tabs.image_compare.tab import ImageCompareTab
+    from tabs.registry import get_shared_tab_registry
 
     ImageCompareTab().register_canvas_features()
+
+    # `build_live_frame_snapshot` goes through
+    # `TabRegistry.create_service("live_frame_snapshot", ...)`, which
+    # resolves strictly against the shared registry's active session type
+    # (see docs/dev/TAB_CONTRACT.md) — these tests build a bare
+    # `Store()` without going through the real session-activation flow, so
+    # force the shared singleton's active tab directly for the duration of
+    # each test.
+    registry = get_shared_tab_registry()
+    previous_active = registry._active_session_type
+    registry._active_session_type = "image_compare"
+    try:
+        yield
+    finally:
+        registry._active_session_type = previous_active
 
 class _FakeGpuExportService:
     def __init__(self):

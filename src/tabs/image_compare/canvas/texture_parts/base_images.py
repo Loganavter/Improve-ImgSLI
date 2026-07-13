@@ -3,6 +3,8 @@ import logging
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
+from shared.image_processing.lazy_pixel_source import LazyPixelSource
+from shared.rendering.image_identity import image_uid
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 
 from .upload_queue import queue_prepared_texture_upload, queue_texture_upload
@@ -49,6 +51,18 @@ def upload_source_pil_image(widget, pil_image, slot_index: int):
     if not texture_id:
         return
 
+    if isinstance(pil_image, LazyPixelSource):
+        # docs/dev/rendering/tile-rendering-system.md Phase 3: a lazy source is
+        # always past PHASE3_LAZY_THRESHOLD_PX, so its tile grid is never
+        # 1x1 -- realize_tile_plan() (rhi_renderer/resources.py) crops
+        # tiles directly from the memmap via _pil_image_for_texture_key(),
+        # which reads state._source_pil_images set below regardless of
+        # whether a whole-image texture was ever queued here. Queuing one
+        # would only pay for a full materialize+convert+tobytes+QImage
+        # copy chain (qimage_from_pil's lazy safety net) on the calling
+        # thread for a texture that's immediately superseded by tiles.
+        return
+
     queue_texture_upload(widget, pil_image, texture_id)
 
 
@@ -63,7 +77,7 @@ def upload_diff_source_pil_image(widget, pil_image):
             cache.pop(widget._diff_source_texture_id, None)
         return
 
-    image_id = id(pil_image)
+    image_id = image_uid(pil_image)
     if state._diff_source_ready and state._diff_source_image_id == image_id:
         return
 
@@ -75,6 +89,14 @@ def upload_diff_source_pil_image(widget, pil_image):
 
 def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage.Image:
     state = widget.runtime_state
+    # Rare fallback: the "stored" (display) role normally resolves to the
+    # small display-cache image, never the raw unify result -- but a cache
+    # invalidation can momentarily leave only the LazyPixelSource behind
+    # (see plan_builder.build_live_store_presentation). LazyPixelSource
+    # doesn't implement .convert(), so materialize the small-side-effect-
+    # free way (transient, not retained).
+    if isinstance(img, LazyPixelSource):
+        img = img.to_pil()
     cw, ch = _canvas_dims(widget)
     if cw <= 0 or ch <= 0:
         if slot_index >= 0:
@@ -179,8 +201,8 @@ def upload_pil_images(
         display_cache_key
         if display_cache_key is not None
         else (
-            id(pil_image1) if pil_image1 is not None else 0,
-            id(pil_image2) if pil_image2 is not None else 0,
+            image_uid(pil_image1),
+            image_uid(pil_image2),
             pil_image1.size if pil_image1 is not None else None,
             pil_image2.size if pil_image2 is not None else None,
             bool(shader_letterbox),
@@ -193,8 +215,8 @@ def upload_pil_images(
     has_explicit_source = source_image1 is not None and source_image2 is not None
     if has_explicit_source:
         explicit_source_sig = (
-            id(source_image1) if source_image1 is not None else 0,
-            id(source_image2) if source_image2 is not None else 0,
+            image_uid(source_image1),
+            image_uid(source_image2),
             source_image1.size if source_image1 is not None else None,
             source_image2.size if source_image2 is not None else None,
         )
@@ -220,18 +242,26 @@ def upload_pil_images(
     if pil_image1 and stored_changed:
         if state._shader_letterbox_mode:
             update_common_letterbox_geometry(widget, pil_image1, pil_image2)
-            queue_texture_upload(
-                widget, pil_image1, widget.texture_ids[0], slot_index=0
-            )
+            # docs/dev/rendering/tile-rendering-system.md Phase 3: skip the
+            # whole-image upload for lazy sources -- see the matching
+            # comment in upload_source_pil_image; realize_tile_plan()
+            # crops tiles from state._stored_pil_images (set below)
+            # directly, so this texture would just be wasted main-thread
+            # work materializing the whole memmap.
+            if not isinstance(pil_image1, LazyPixelSource):
+                queue_texture_upload(
+                    widget, pil_image1, widget.texture_ids[0], slot_index=0
+                )
         else:
             lb1 = letterbox_pil(widget, pil_image1, slot_index=0)
             queue_texture_upload(widget, lb1, widget.texture_ids[0], slot_index=0)
     if pil_image2 and stored_changed:
         if state._shader_letterbox_mode:
             update_common_letterbox_geometry(widget, pil_image1, pil_image2)
-            queue_texture_upload(
-                widget, pil_image2, widget.texture_ids[1], slot_index=1
-            )
+            if not isinstance(pil_image2, LazyPixelSource):
+                queue_texture_upload(
+                    widget, pil_image2, widget.texture_ids[1], slot_index=1
+                )
         else:
             lb2 = letterbox_pil(widget, pil_image2, slot_index=1)
             queue_texture_upload(widget, lb2, widget.texture_ids[1], slot_index=1)

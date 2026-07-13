@@ -3,26 +3,31 @@ from __future__ import annotations
 from PySide6.QtCore import QPointF
 
 from domain.types import Point, Rect
+from tabs.registry import get_shared_tab_registry
 
 class ImageLabelGeometry:
-    """Neutral coordinate-conversion helper for the image-label widget.
+    """Neutral coordinate-conversion helper for the active tab's canvas.
 
     This class contains only coordinate math (screen-to-image,
-    widget-local-px, content-rect resolution). Feature-specific interaction
-    logic lives in each tab feature's ``interaction.py`` module.
+    widget-local-px, content-rect resolution). It never touches a tab's
+    canvas widget directly — it asks the active `TabContract` narrow,
+    behavioral questions (canvas size, view-transform, content rect) and
+    does the math itself, so it never depends on the tab's widget shape.
     """
 
     def __init__(self, handler):
         self.handler = handler
 
     def event_position_in_label(self, event, clamp: bool = False) -> QPointF:
-        label = self._get_image_label()
-        if label is None:
+        tab = self._active_tab()
+        if tab is None:
             return event.position()
 
         if hasattr(event, "globalPosition"):
             global_pos = event.globalPosition().toPoint()
-            mapped_pos = label.mapFromGlobal(global_pos)
+            mapped_pos = tab.map_global_to_canvas_local(global_pos)
+            if mapped_pos is None:
+                return event.position()
             local_pos = QPointF(float(mapped_pos.x()), float(mapped_pos.y()))
         else:
             local_pos = event.position()
@@ -30,20 +35,17 @@ class ImageLabelGeometry:
         if not clamp:
             return local_pos
 
-        max_x = max(0.0, float((label.width() or 1) - 1))
-        max_y = max(0.0, float((label.height() or 1) - 1))
+        size = tab.get_canvas_size()
+        if size is None:
+            return local_pos
+        max_x = max(0.0, float((size[0] or 1) - 1))
+        max_y = max(0.0, float((size[1] or 1) - 1))
         return QPointF(
             max(0.0, min(float(local_pos.x()), max_x)),
             max(0.0, min(float(local_pos.y()), max_y)),
         )
 
     def screen_to_image_rel(self, cursor_pos, clamp: bool = True, *, ignore_pan: bool = False):
-        label = self._get_image_label()
-        if label is not None and hasattr(label, "map_cursor_to_image_rel"):
-            mapped = label.map_cursor_to_image_rel(cursor_pos)
-            if mapped is not None:
-                return mapped
-
         rect = self._get_effective_interaction_rect()
         if rect is None or rect.w <= 0 or rect.h <= 0:
             return None, None
@@ -65,10 +67,15 @@ class ImageLabelGeometry:
             return self._screen_to_widget_local_px(pos)
         return Point(float(pos.x()), float(pos.y()))
 
-    def _get_image_label(self):
-        if self.handler.presenter and hasattr(self.handler.presenter, "ui"):
-            return getattr(self.handler.presenter.ui, "image_label", None)
-        return None
+    def get_zoom_level(self) -> float:
+        tab = self._active_tab()
+        if tab is None:
+            return 1.0
+        zoom, _pan_x, _pan_y = tab.get_canvas_zoom_pan()
+        return float(zoom or 1.0)
+
+    def _active_tab(self):
+        return get_shared_tab_registry().get_active_tab()
 
     def _clamp_pos_to_image_display_rect(self, cursor_pos: QPointF) -> QPointF:
         rect = self._get_effective_interaction_rect()
@@ -80,13 +87,11 @@ class ImageLabelGeometry:
         )
 
     def _get_effective_interaction_rect(self):
-        label = self._get_image_label()
-        state = getattr(label, "runtime_state", None) if label is not None else None
-        content_rect = getattr(state, "_content_rect_px", None) if state is not None else None
+        tab = self._active_tab()
+        content_rect = tab.get_canvas_content_rect_px() if tab is not None else None
         if content_rect:
             x, y, w, h = content_rect
-            if int(w) > 0 and int(h) > 0:
-                return Rect(int(x), int(y), int(w), int(h))
+            return Rect(x, y, w, h)
 
         rect = self.handler.store.viewport.geometry_state.image_display_rect_on_label
         if rect.w <= 0 or rect.h <= 0:
@@ -94,18 +99,16 @@ class ImageLabelGeometry:
         return Rect(int(rect.x), int(rect.y), int(rect.w), int(rect.h))
 
     def _screen_to_widget_local_px(self, cursor_pos: QPointF, *, ignore_pan: bool = False) -> Point:
-        label = self._get_image_label()
-        if label is None:
+        tab = self._active_tab()
+        size = tab.get_canvas_size() if tab is not None else None
+        if tab is None or size is None:
             return Point(float(cursor_pos.x()), float(cursor_pos.y()))
-        width = max(1.0, float(label.width() or 1))
-        height = max(1.0, float(label.height() or 1))
-        zoom = float(getattr(label, "zoom_level", 1.0) or 1.0)
+        width = max(1.0, float(size[0] or 1))
+        height = max(1.0, float(size[1] or 1))
+        zoom, pan_x, pan_y = tab.get_canvas_zoom_pan()
         if ignore_pan:
             pan_x = 0.0
             pan_y = 0.0
-        else:
-            pan_x = float(getattr(label, "pan_offset_x", 0.0) or 0.0)
-            pan_y = float(getattr(label, "pan_offset_y", 0.0) or 0.0)
         screen_norm_x = float(cursor_pos.x()) / width
         screen_norm_y = float(cursor_pos.y()) / height
         local_norm_x = (screen_norm_x - 0.5) / zoom + 0.5 - pan_x

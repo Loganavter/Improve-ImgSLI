@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from core.store import INITIAL_WORKSPACE_SESSION_TYPE
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -24,7 +26,7 @@ def on_new_workspace_tab_requested(presenter):
         return
     try:
         presenter.main_controller.workspace.create_workspace_session(
-            "session_picker",
+            INITIAL_WORKSPACE_SESSION_TYPE,
             activate=True,
         )
     except Exception:
@@ -46,7 +48,7 @@ def sync_session_mode(presenter):
     if not presenter.session_manager:
         return
     active = presenter.session_manager.get_active_session()
-    session_type = active.session_type if active else "session_picker"
+    session_type = active.session_type if active else INITIAL_WORKSPACE_SESSION_TYPE
     session_title = active.title if active else None
     presenter.ui.sync_session_mode(session_type, session_title)
 
@@ -120,7 +122,7 @@ def on_workspace_tab_close_requested(presenter, index: int):
     ):
         try:
             presenter.main_controller.workspace.create_workspace_session(
-                "session_picker", activate=True
+                INITIAL_WORKSPACE_SESSION_TYPE, activate=True
             )
         except Exception:
             logger.exception(

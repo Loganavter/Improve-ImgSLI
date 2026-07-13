@@ -13,11 +13,11 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class ImageCanvasPresenter(QObject):
 
-    def __init__(self, store: Store, main_controller, ui, main_window_app, parent=None):
+    def __init__(self, store: Store, main_controller, widget, main_window_app, parent=None):
         super().__init__(parent)
         self.store = store
         self.main_controller = main_controller
-        self.ui = ui
+        self.widget = widget
         self.main_window_app = main_window_app
         components = build_image_canvas_components(self)
         self.lifecycle = components.lifecycle

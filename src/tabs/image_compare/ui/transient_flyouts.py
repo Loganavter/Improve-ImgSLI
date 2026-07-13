@@ -5,8 +5,9 @@ import time
 from PySide6.QtCore import QTimer
 
 class FlyoutController:
-    def __init__(self, manager):
+    def __init__(self, manager, widget):
         self.manager = manager
+        self.widget = widget
 
     def show_flyout(self, image_number: int):
         from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
@@ -23,8 +24,8 @@ class FlyoutController:
 
         if host.unified_flyout is not None and host.unified_flyout.isVisible():
             if host.unified_flyout.mode == FlyoutMode.DOUBLE:
-                host.ui.combo_image1.setFlyoutOpen(False)
-                host.ui.combo_image2.setFlyoutOpen(False)
+                self.widget.combo_image1.setFlyoutOpen(False)
+                self.widget.combo_image2.setFlyoutOpen(False)
                 host.unified_flyout.start_closing_animation()
                 return
 
@@ -32,7 +33,7 @@ class FlyoutController:
                 host.unified_flyout.mode in (FlyoutMode.SINGLE_LEFT, FlyoutMode.SINGLE_RIGHT)
                 and host.unified_flyout.source_list_num == image_number
             ):
-                button = host.ui.combo_image1 if image_number == 1 else host.ui.combo_image2
+                button = self.widget.combo_image1 if image_number == 1 else self.widget.combo_image2
                 button.setFlyoutOpen(False)
                 host.unified_flyout.start_closing_animation()
                 return
@@ -42,8 +43,8 @@ class FlyoutController:
         if len(target_list) == 0:
             return
 
-        button = host.ui.combo_image1 if image_number == 1 else host.ui.combo_image2
-        other_button = host.ui.combo_image2 if image_number == 1 else host.ui.combo_image1
+        button = self.widget.combo_image1 if image_number == 1 else self.widget.combo_image2
+        other_button = self.widget.combo_image2 if image_number == 1 else self.widget.combo_image1
         other_button.setFlyoutOpen(False)
         button.setFlyoutOpen(True)
 
@@ -57,8 +58,8 @@ class FlyoutController:
 
         host = self.manager.host
         if host.unified_flyout.mode == FlyoutMode.DOUBLE:
-            host.ui.combo_image1.setFlyoutOpen(True)
-            host.ui.combo_image2.setFlyoutOpen(True)
+            self.widget.combo_image1.setFlyoutOpen(True)
+            self.widget.combo_image2.setFlyoutOpen(True)
 
     def repopulate_flyouts(self):
         from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
@@ -75,7 +76,7 @@ class FlyoutController:
 
     def on_flyout_closed(self, image_number: int):
         host = self.manager.host
-        button = host.ui.combo_image1 if image_number == 1 else host.ui.combo_image2
+        button = self.widget.combo_image1 if image_number == 1 else self.widget.combo_image2
         button.setFlyoutOpen(False)
 
     def on_unified_flyout_closed(self):
@@ -84,7 +85,7 @@ class FlyoutController:
         host = self.manager.host
         if host.unified_flyout is not None:
             host.unified_flyout.mode = FlyoutMode.HIDDEN
-        host.ui.combo_image1.setFlyoutOpen(False)
-        host.ui.combo_image2.setFlyoutOpen(False)
+        self.widget.combo_image1.setFlyoutOpen(False)
+        self.widget.combo_image2.setFlyoutOpen(False)
         self.on_flyout_closed(1)
         self.on_flyout_closed(2)

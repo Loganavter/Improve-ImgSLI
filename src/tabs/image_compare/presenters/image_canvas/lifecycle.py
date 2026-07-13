@@ -21,7 +21,7 @@ def initialize_canvas_presenter(presenter) -> None:
     presenter.window_handler = WindowEventHandler(
         presenter.store,
         presenter.main_controller,
-        presenter.ui,
+        presenter.widget,
         presenter.main_window_app,
     )
 
@@ -73,7 +73,7 @@ def debug_log_gate():
 
 
 def get_current_label_dimensions(presenter) -> tuple[int, int]:
-    canvas = get_canvas(presenter.ui)
+    canvas = get_canvas(presenter.widget)
     if canvas is not None:
         size = canvas.size()
         return (size.width(), size.height())
@@ -85,7 +85,7 @@ def update_minimum_window_size(presenter):
         return
 
     layout = presenter.main_window_app.layout()
-    canvas = get_canvas(presenter.ui)
+    canvas = get_canvas(presenter.widget)
     if not layout or canvas is None:
         return
 
@@ -144,7 +144,7 @@ def invalidate_render_state(presenter):
             pass
     presenter._active_diff_toast_id = None
 
-    image_label = get_canvas(getattr(presenter, "ui", None))
+    image_label = get_canvas(getattr(presenter, "widget", None))
     if image_label is not None:
         clear_canvas_diff_source(image_label)
 

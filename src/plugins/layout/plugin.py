@@ -29,7 +29,7 @@ class LayoutPlugin(Plugin):
 
         registry = TabRegistry()
         registry.discover()
-        self.manager = registry.create_service("layout_manager", ui, parent_window)
+        self.manager = registry.create_startup_service("layout_manager", ui, parent_window)
         if self.manager is None:
             return
 

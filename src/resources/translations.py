@@ -27,9 +27,7 @@ def add_i18n_root(path: str | Path) -> None:
 
 
 def emit_language_changed(lang_code: str) -> None:
-    language = str(lang_code or "en")
-    _manager._current_lang = language
-    _emit_language_changed(language)
+    _emit_language_changed(str(lang_code or "en"))
 
 
 __all__ = [

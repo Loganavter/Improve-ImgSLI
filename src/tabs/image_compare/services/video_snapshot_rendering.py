@@ -19,6 +19,7 @@ from ui.canvas_presentation.models import CanvasTarget
 from ui.canvas_presentation.layout import compute_content_layout
 from tabs.image_compare.canvas.presentation.plan_builder import CanvasGeometry
 from shared.rendering import get_effective_export_interpolation_method
+from shared.rendering.image_identity import image_uid
 from tabs.image_compare.plugins.video_editor.services.video_export_models import RenderedFrame, VideoRenderRequest
 from tabs.image_compare.plugins.video_editor.services.video_export_models import GlobalCanvasBounds
 from tabs.image_compare.canvas.presentation.plan_builder import (
@@ -198,7 +199,7 @@ class SnapshotFrameRenderer:
                 int(scaled_global_bounds.base_height),
             )
         return (
-            id(img1), id(img2),
+            image_uid(img1), image_uid(img2),
             img1.size if img1 else None,
             img2.size if img2 else None,
             request.fit_content,
@@ -505,12 +506,12 @@ class SnapshotFrameRenderer:
                 "plan_image1_size": getattr(getattr(plan, "image1", None), "size", None),
                 "plan_image2_size": getattr(getattr(plan, "image2", None), "size", None),
                 "display_cache_key": repr(getattr(plan, "display_cache_key", None)),
-                "gl_zoom_interpolation": getattr(
+                "qrhi_zoom_interpolation": getattr(
                     getattr(plan, "render_scene", None),
                     "zoom_interpolation_method",
                     None,
                 ),
-                "gl_diff_mode": getattr(getattr(plan, "render_scene", None), "diff_mode_int", None),
+                "qrhi_diff_mode": getattr(getattr(plan, "render_scene", None), "diff_mode_int", None),
                 "overlay_clip_rect": getattr(
                     getattr(plan, "render_scene", None),
                     "overlay_clip_rect",

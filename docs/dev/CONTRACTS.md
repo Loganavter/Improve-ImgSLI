@@ -21,7 +21,7 @@ Each feature lives in **its own abstraction layer** — like a plugin in OpenFX.
 - Multiple coordinate systems (widget-px, canvas-px, image-px, screen-px)
 - Zoom, pan, rotation, or any viewport transformations
 - Raw Qt mouse/keyboard events
-- Texture uploads, buffer management, or GL context state
+- Texture uploads, buffer management, or QRhi context state
 - Serialization or deserialization details
 
 **What the feature receives from the core:**
@@ -56,7 +56,7 @@ Each feature lives in **its own abstraction layer** — like a plugin in OpenFX.
 ## Canvas Features (The Core Problem)
 
 Canvas features are tools like magnifier, divider, or guides that:
-1. Appear on the canvas (need scene objects and GL rendering)
+1. Appear on the canvas (need scene objects and QRhi rendering)
 2. React to interactions (need command handlers)
 3. Have editable properties (size, color, visibility)
 4. Appear in the toolbar and settings
@@ -204,9 +204,11 @@ Unions all feature requirements to get the final virtual canvas size.
 
 ## Canvas Widgets (The Rendering Backend Problem)
 
-Multiple renderers (GL, QPainter, export offscreen) need a common interface.
+Multiple renderers (QRhi, QPainter, export offscreen) need a common interface.
 
 ### BaseCanvasProtocol, GlLikeCanvasProtocol, ExportCanvasProtocol
+
+(`GlLikeCanvasProtocol` is a pre-QRhi-migration name kept for the live QRhi canvas widget — not renamed to avoid a wide, purely-cosmetic diff.)
 
 Duck-typing protocols that let code call a canvas without knowing its concrete type.
 

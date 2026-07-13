@@ -3,6 +3,7 @@ import logging
 from PySide6.QtGui import QPixmap
 
 from domain.types import Rect
+from shared.rendering.display_image_picker import pick_first_real
 from tabs.image_compare.canvas.registry import registry
 
 _mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
@@ -84,18 +85,18 @@ def update_comparison_if_needed(presenter):
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         image_to_show = (
-            (
-                presenter.store.viewport.session_data.render_cache.display_cache_image1
-                or presenter.store.viewport.session_data.render_cache.scaled_image1_for_display
-                or presenter.store.viewport.session_data.image_state.image1
-                or source1
+            pick_first_real(
+                presenter.store.viewport.session_data.render_cache.display_cache_image1,
+                presenter.store.viewport.session_data.render_cache.scaled_image1_for_display,
+                presenter.store.viewport.session_data.image_state.image1,
+                source1,
             )
             if presenter.store.viewport.view_state.showing_single_image_mode == 1
-            else (
-                presenter.store.viewport.session_data.render_cache.display_cache_image2
-                or presenter.store.viewport.session_data.render_cache.scaled_image2_for_display
-                or presenter.store.viewport.session_data.image_state.image2
-                or source2
+            else pick_first_real(
+                presenter.store.viewport.session_data.render_cache.display_cache_image2,
+                presenter.store.viewport.session_data.render_cache.scaled_image2_for_display,
+                presenter.store.viewport.session_data.image_state.image2,
+                source2,
             )
         )
         presenter.view.display_single_image_on_label(image_to_show)
@@ -107,7 +108,7 @@ def update_comparison_if_needed(presenter):
         or not source1
         or not source2
     ):
-        presenter.ui.image_label.clear()
+        presenter.widget.image_label.clear()
         presenter.current_displayed_pixmap = None
         return False
 
@@ -188,7 +189,7 @@ def update_comparison_if_needed(presenter):
 
     if bg_is_dirty:
         if presenter.view.is_canvas_widget():
-            image_label = get_canvas_widget(presenter.ui)
+            image_label = get_canvas_widget(presenter.widget)
             img1 = (
                 presenter.store.viewport.session_data.render_cache.display_cache_image1
                 or presenter.store.viewport.session_data.render_cache.scaled_image1_for_display
@@ -265,7 +266,7 @@ def update_comparison_if_needed(presenter):
     if _should_render and visible_models:
         current_mag_sig = presenter.overlay.get_signature()
         last_mag_sig = getattr(presenter, "_last_mag_signature", None)
-        image_label = presenter.ui.image_label
+        image_label = presenter.widget.image_label
         current_mag_state = (
             current_mag_sig,
             getattr(image_label, "_source_images_ready", False),
@@ -278,7 +279,7 @@ def update_comparison_if_needed(presenter):
             presenter._last_mag_signature = current_mag_state
             return True
     else:
-        reset_canvas_overlays(presenter.ui.image_label)
+        reset_canvas_overlays(presenter.widget.image_label)
         presenter._last_mag_signature = None
     return False
 

@@ -19,7 +19,7 @@ def render_magnifier_layer(presenter, sig):
     presenter.overlay.rebuild_overlay()
     presenter._last_mag_signature = (
         sig,
-        getattr(presenter.ui.image_label, "_source_images_ready", False),
-        tuple(getattr(presenter.ui.image_label, "_source_image_ids", []) or []),
+        getattr(presenter.widget.image_label, "_source_images_ready", False),
+        tuple(getattr(presenter.widget.image_label, "_source_image_ids", []) or []),
     )
     return True

@@ -12,6 +12,12 @@ Shared event code (``events/runtime.py``) constructs the controller via the
 no-op stub if the magnifier feature is absent.
 """
 
+# File-Size-Exempt: InteractiveMovementController is one stateful QTimer-driven
+# controller (lifecycle, input resolution, damping/convergence, debug logging
+# all mutate the same self.store/self.movement_timer/self._last_* fields);
+# splitting its methods across files would mean either a mixin split with no
+# cohesion gain or threading that shared state through a new module boundary.
+
 from __future__ import annotations
 
 import logging

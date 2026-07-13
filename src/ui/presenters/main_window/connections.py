@@ -76,20 +76,20 @@ def connect_signals(presenter):
         image_canvas.stop_interactive_movement
     )
 
-    presenter.ui.btn_image1.clicked.connect(lambda: open_image_dialog(presenter, 1))
-    presenter.ui.btn_image2.clicked.connect(lambda: open_image_dialog(presenter, 2))
-    presenter.ui.btn_text_settings.clicked.connect(
+    presenter.widget.btn_image1.clicked.connect(lambda: open_image_dialog(presenter, 1))
+    presenter.widget.btn_image2.clicked.connect(lambda: open_image_dialog(presenter, 2))
+    presenter.widget.btn_text_settings.clicked.connect(
         lambda: presenter.ui_manager.transient.toggle_font_settings_flyout(
-            anchor_widget=presenter.ui.btn_text_settings
+            anchor_widget=presenter.widget.btn_text_settings
         )
     )
 
     presenter._connect_button_action(
-        presenter.ui.btn_quick_save,
+        presenter.widget.btn_quick_save,
         "quick_save",
         export_presenter.quick_save,
     )
-    presenter.ui.btn_save.clicked.connect(export_presenter.save_result)
+    presenter.widget.btn_save.clicked.connect(export_presenter.save_result)
     presenter.ui.workspace_tabs.currentChanged.connect(
         lambda index: on_workspace_tab_changed(presenter, index)
     )
@@ -109,7 +109,7 @@ def connect_event_handler_signals(presenter, event_handler):
     toolbar_presenter = presenter.get_feature("toolbar")
     image_canvas.connect_event_handler_signals(event_handler)
 
-    image_label = getattr(presenter.ui, "image_label", None)
+    image_label = getattr(presenter.widget, "image_label", None)
     if image_label is not None:
         image_label.set_store(presenter.store)
         if hasattr(image_label, "set_session_controller"):
@@ -131,10 +131,10 @@ def connect_event_handler_signals(presenter, event_handler):
         image_label.zoomChanged.connect(
             lambda _zoom: toolbar_presenter.update_toolbar_states()
         )
-        ui = getattr(presenter, "ui", None)
-        if ui is not None and hasattr(ui, "update_zoom_indicator"):
-            image_label.zoomChanged.connect(ui.update_zoom_indicator)
-        btn_zoom_reset = getattr(ui, "btn_zoom_reset", None) if ui is not None else None
+        widget = getattr(presenter, "widget", None)
+        if widget is not None:
+            image_label.zoomChanged.connect(widget.update_zoom_indicator)
+        btn_zoom_reset = getattr(widget, "btn_zoom_reset", None) if widget is not None else None
         if btn_zoom_reset is not None:
             btn_zoom_reset.clicked.connect(lambda: image_label.reset_view())
 
@@ -147,10 +147,6 @@ def connect_event_handler_signals(presenter, event_handler):
     presenter.main_controller.stop_interactive_movement.connect(
         event_handler.stop_interactive_movement
     )
-
-
-def on_interpolation_combo_clicked(presenter):
-    presenter.ui_manager.transient.toggle_interpolation_flyout()
 
 
 def repopulate_flyouts(presenter):
@@ -169,54 +165,54 @@ def handle_global_mouse_press(presenter, event):
 
 def on_font_flyout_closed(presenter):
     presenter.ui_manager.transient.mark_font_popup_closed()
-    presenter.ui.btn_text_settings.setFlyoutOpen(False)
+    presenter.widget.btn_text_settings.setFlyoutOpen(False)
 
 
 def _connect_magnifier_color_controls(presenter):
     settings_presenter = presenter.get_feature("settings")
-    if hasattr(presenter.ui.btn_magnifier_color_settings, "set_store"):
-        presenter.ui.btn_magnifier_color_settings.set_store(presenter.store)
+    if hasattr(presenter.widget.btn_magnifier_color_settings, "set_store"):
+        presenter.widget.btn_magnifier_color_settings.set_store(presenter.store)
 
-    presenter.ui.btn_magnifier_color_settings.smartColorSetRequested.connect(
+    presenter.widget.btn_magnifier_color_settings.smartColorSetRequested.connect(
         settings_presenter.apply_smart_magnifier_colors
     )
-    presenter.ui.btn_magnifier_color_settings.colorOptionClicked.connect(
+    presenter.widget.btn_magnifier_color_settings.colorOptionClicked.connect(
         lambda option: on_color_option_clicked(presenter, option)
     )
-    presenter.ui.btn_magnifier_color_settings.elementHovered.connect(
+    presenter.widget.btn_magnifier_color_settings.elementHovered.connect(
         lambda element_name: on_magnifier_element_hovered(presenter, element_name)
     )
-    presenter.ui.btn_magnifier_color_settings.elementHoverEnded.connect(
+    presenter.widget.btn_magnifier_color_settings.elementHoverEnded.connect(
         lambda: on_magnifier_element_hover_ended(presenter)
     )
 
-    if hasattr(presenter.ui, "btn_magnifier_color_settings_beginner"):
-        if hasattr(presenter.ui.btn_magnifier_color_settings_beginner, "set_store"):
-            presenter.ui.btn_magnifier_color_settings_beginner.set_store(
+    if hasattr(presenter.widget, "btn_magnifier_color_settings_beginner"):
+        if hasattr(presenter.widget.btn_magnifier_color_settings_beginner, "set_store"):
+            presenter.widget.btn_magnifier_color_settings_beginner.set_store(
                 presenter.store
             )
-        presenter.ui.btn_magnifier_color_settings_beginner.smartColorSetRequested.connect(
+        presenter.widget.btn_magnifier_color_settings_beginner.smartColorSetRequested.connect(
             settings_presenter.apply_smart_magnifier_colors
         )
-        presenter.ui.btn_magnifier_color_settings_beginner.colorOptionClicked.connect(
+        presenter.widget.btn_magnifier_color_settings_beginner.colorOptionClicked.connect(
             lambda option: on_color_option_clicked(presenter, option)
         )
-        presenter.ui.btn_magnifier_color_settings_beginner.elementHovered.connect(
+        presenter.widget.btn_magnifier_color_settings_beginner.elementHovered.connect(
             lambda element_name: on_magnifier_element_hovered(presenter, element_name)
         )
-        presenter.ui.btn_magnifier_color_settings_beginner.elementHoverEnded.connect(
+        presenter.widget.btn_magnifier_color_settings_beginner.elementHoverEnded.connect(
             lambda: on_magnifier_element_hover_ended(presenter)
         )
 
-    presenter.ui.btn_magnifier_guides.toggled.connect(
+    presenter.widget.btn_magnifier_guides.toggled.connect(
         lambda checked: on_magnifier_guides_toggled(presenter, not checked)
     )
-    presenter.ui.btn_magnifier_guides.valueChanged.connect(
+    presenter.widget.btn_magnifier_guides.valueChanged.connect(
         lambda value: on_magnifier_guides_thickness_changed(presenter, value)
     )
 
-    if hasattr(presenter.ui, "btn_magnifier_guides_simple"):
-        presenter.ui.btn_magnifier_guides_simple.toggled.connect(
+    if hasattr(presenter.widget, "btn_magnifier_guides_simple"):
+        presenter.widget.btn_magnifier_guides_simple.toggled.connect(
             lambda checked: on_magnifier_guides_toggled(presenter, checked)
         )
     # btn_magnifier_guides_width.valueChanged is wired by the owning tab's
