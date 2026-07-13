@@ -63,7 +63,7 @@ class ExportPresenter(QObject):
 
         registry = TabRegistry()
         registry.discover()
-        builder = registry.create_service("export_save_context_builder", **kwargs)
+        builder = registry.create_startup_service("export_save_context_builder", **kwargs)
         if builder is None:
             raise RuntimeError(
                 "No tab provides export_save_context_builder; still-image export "
@@ -76,7 +76,7 @@ class ExportPresenter(QObject):
 
         registry = TabRegistry()
         registry.discover()
-        state = registry.create_service("export_state_coordinator", **kwargs)
+        state = registry.create_startup_service("export_state_coordinator", **kwargs)
         if state is None:
             raise RuntimeError(
                 "No tab provides export_state_coordinator; still-image export "
@@ -89,7 +89,7 @@ class ExportPresenter(QObject):
 
         registry = TabRegistry()
         registry.discover()
-        flow = registry.create_service("export_save_flow", **kwargs)
+        flow = registry.create_startup_service("export_save_flow", **kwargs)
         if flow is None:
             raise RuntimeError(
                 "No tab provides export_save_flow; still-image export save flow "
@@ -102,7 +102,7 @@ class ExportPresenter(QObject):
 
         registry = TabRegistry()
         registry.discover()
-        service = registry.create_service("image_export_service", **kwargs)
+        service = registry.create_startup_service("image_export_service", **kwargs)
         if service is None:
             raise RuntimeError(
                 "No tab provides image_export_service; still-image export "

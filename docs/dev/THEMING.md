@@ -132,9 +132,80 @@ For shared/app QSS: add `theme_manager.register_qss_path(...)` in `bootstrap._co
 - **QSS edit not picked up**: the template is built once at startup; call `theme_manager.apply_theme_to_app(app)` (or restart) to rebuild.
 - **Want a per-dialog override**: use `polish_themed_dialog(theme_manager, dialog)` from `src/ui/theming.py`.
 
+## Repaint on theme change: the `ThemedWidget` mixin
+
+Repaint responsibility used to be split across four independent,
+mutually-unaware mechanisms: toolkit widgets self-subscribing to
+`theme_changed` (the pattern above), app dialogs doing the same
+copy-pasted per file, `TabContract.apply_appearance` requiring each tab to
+enumerate every widget it owns by hand, and a window-level tree-walk in
+`MainWindowAppearance.update_chrome_background` that only reached one
+layout level deep. Nothing failed loudly when a widget fell into the gap
+between them — this is exactly how multi_compare's toolbar/footer
+background went stale until 2026-07-13.
+
+This is now unified behind one mixin: `ThemedWidget`
+(`sli_ui_toolkit.ui.widgets.themed.ThemedWidget`, exported from
+`sli_ui_toolkit.widgets`). It subscribes to `theme_changed` in `__init__`
+and calls `on_theme_changed()` (override this instead of connecting your
+own signal; default implementation just calls `self.update()`).
+`src/ui/widgets/themed_container.py::ThemedBackgroundContainer` pairs the
+mixin with a plain `QWidget` for chrome bars/containers that need to paint
+their own background from a theme token, instead of relying on inheriting
+a painted background from an ancestor.
+
+Migrated onto `ThemedWidget`/`ThemedBackgroundContainer`: `MultiCompareToolbar`,
+`MultiCompareFooter`, `ImageCompareWidget`, `SessionPickerWidget`, and
+image_compare's chrome widgets (`selection_widget`, `checkbox_widget`,
+`footer_info_widget`, `edit_layout_widget`, `save_buttons_widget` in
+`tabs/image_compare/ui/layout.py`). `MainWindowAppearance.update_chrome_background`
+had no remaining caller once these landed and was deleted outright.
+
+Not migrated (opportunistic only, not a scheduled sweep — they already
+work, just inconsistent): app dialogs (`settings/dialog.py`,
+`image_properties/dialog.py`, `export/dialog.py`, `video_editor/dialog.py`,
+each with their own `theme_changed → self._apply_styles` wiring), and the
+~20 existing toolkit widgets with hand-written
+`theme_changed.connect(self.update)`. Migrate these when touched for other
+reasons, not as a dedicated pass.
+
+## Known Qt quirk: don't repaint backgrounds via `setPalette()` + `setAutoFillBackground`
+
+The "implicit" Qt repaint path — `setPalette()` + `setAutoFillBackground(True)`,
+relying on Qt's own background-paint step before `paintEvent` — is
+unreliable in this app: affected widgets visibly "warm up," taking 2-3
+repeated theme switches before they start repainting correctly, and a
+single switch does not reliably repaint. Confirmed via `QWidget.grab()`
+that the stale pixels are in the actual rendered pixmap, not a
+presentation/compositor artifact. Root Qt-internal mechanism is still
+unknown. Fix: override `paintEvent()` and paint the background explicitly
+from a `QColor` cached in `on_theme_changed()`:
+
+```python
+def paintEvent(self, event) -> None:
+    painter = QPainter(self)
+    painter.fillRect(self.rect(), self._bg_color)
+    painter.end()
+
+def on_theme_changed(self) -> None:
+    self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+    super().on_theme_changed()  # still calls self.update()
+```
+
+Full details and confirmed call sites: [KNOWN_BUGS.md](KNOWN_BUGS.md).
+
+## Known gotcha: icons must resolve lazily, not eagerly
+
+Pass `AppIcon` enum values (or another lazy handle) into widgets rather
+than eagerly resolving to a `QIcon` at construction time — eager
+resolution freezes the icon at whatever theme was active when the widget
+was built, so it never updates on theme switch. (`session_picker`'s card
+icons had exactly this bug.)
+
 ## See also
 
 - `src/ui/theming.py` — small facade (`install_application_theme`, `polish_themed_dialog`, `resolve_theme_color`)
 - [PLUGINS.md](PLUGINS.md) — `get_qss_paths()` plugin contribution hook
 - [UI_INSPECTOR.md](UI_INSPECTOR.md) — runtime tool for inspecting which color token a widget resolves to
+- [KNOWN_BUGS.md](KNOWN_BUGS.md) — Qt/platform quirks, including the palette/autoFillBackground issue above
 - `sli-ui-toolkit/docs/DESIGN_LANGUAGE.md` — toolkit-side conventions

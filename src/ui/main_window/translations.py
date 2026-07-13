@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sli_ui_toolkit.i18n import translatable_callback
+from sli_ui_toolkit.i18n import translatable_callback, translatable_tooltip
 
 from resources.translations import tr
 
@@ -13,6 +13,10 @@ def install_translations(ui) -> None:
         ui.main_window,
         lambda lang: ui.main_window.setWindowTitle(tr("app.name", lang)),
     )
+    # `btn_new_session` is host-owned chrome (the workspace tab strip's "+"
+    # button, always visible regardless of active tab) — bind it here, not
+    # in any tab's translations, since no single tab owns it.
+    translatable_tooltip(ui.btn_new_session, "tooltip.create_workspace_session")
     _install_tab_translations(ui)
 
 
@@ -21,4 +25,4 @@ def _install_tab_translations(ui) -> None:
 
     registry = TabRegistry()
     registry.discover()
-    registry.create_service("install_translations", ui)
+    registry.notify_all("install_translations", ui)

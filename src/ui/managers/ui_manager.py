@@ -8,7 +8,10 @@ from core.plugin_system.ui_integration import PluginUIRegistry
 from ui.managers.dialog_manager import DialogManager
 from ui.managers.message_manager import MessageManager
 from ui.managers.transient_ui_manager import TransientUIManager
-from ui.managers.ui_manager_parts import initialize_ui_manager
+from ui.managers.ui_manager_parts import (
+    initialize_ui_manager_post_transient,
+    initialize_ui_manager_pre_transient,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -33,8 +36,9 @@ class UIManager(QObject):
         self._unified_flyout_ref = None
 
         self._active_message_boxes = []
+        initialize_ui_manager_pre_transient(self)
         self.transient = TransientUIManager(self)
-        initialize_ui_manager(self)
+        initialize_ui_manager_post_transient(self)
         self.dialogs = DialogManager(self)
         self.messages = MessageManager(self)
 

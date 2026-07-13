@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -80,7 +81,15 @@ class CanvasRuntimeState:
         }
     )
     _pending_texture_uploads: list = field(default_factory=list)
-    _texture_upload_cache: dict = field(default_factory=dict)
+    # OrderedDict (not plain dict) so cache reads can call move_to_end() to
+    # track real recency -- see evict_texture_upload_cache_over_budget in
+    # texture_parts/upload_queue.py and docs/dev/rendering/tile-rendering-system.md
+    # Phase 2.
+    _texture_upload_cache: OrderedDict = field(default_factory=OrderedDict)
+    # docs/dev/rendering/tile-rendering-system.md Phase 3: bounded LRU of
+    # already-decoded QImages keyed by image_uid(), see
+    # texture_parts/upload_queue.py's queue_texture_upload().
+    _qimage_by_uid_cache: OrderedDict = field(default_factory=OrderedDict)
     _resize_overlay_sync_active: bool = False
     _zoom_viewport_state: object | None = None
     _dynamic_feature_overrides: dict = field(default_factory=dict)
@@ -99,6 +108,7 @@ class CanvasRuntimeState:
     _laser_color: object = field(default_factory=QColor)
     _guides_thickness: int = 0
     _capture_color: object = field(default_factory=QColor)
+    _export_canvas_viewport: tuple | None = None
 
 
 def init_widget_state(widget):

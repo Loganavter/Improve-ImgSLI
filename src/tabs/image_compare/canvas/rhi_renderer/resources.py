@@ -18,14 +18,22 @@ from PySide6.QtGui import (
     QShader,
 )
 
+from shared.image_processing.lazy_pixel_source import LazyPixelSource
+from shared.rendering.tile_texture_service import TileTextureService
+
 from ..texture_parts.tile_geometry import (
     _apron_rect,
     _TILE_APRON_PX,
     _TILE_RESIDENCY_MARGIN,
     _visible_side_image_rect,
 )
-from ..texture_parts.tile_texture_service import TileTextureService
-from ..texture_parts.upload_queue import queue_texture_upload
+from ..texture_parts.upload_queue import (
+    cache_texture_upload,
+    evict_texture_upload_cache_over_budget,
+    qimage_from_pil,
+    queue_texture_upload,
+    touch_texture_upload_cache,
+)
 from ._debug import rhi_render_debug
 from .uniforms import _UNIFORM_BLOCK_SIZE
 
@@ -47,6 +55,20 @@ _LIVE_TILE_EXTENT = 8192
 # pan/zoom doesn't thrash the cache, while still bounding memory during a
 # "pan all over a huge image" session.
 _TILE_CACHE_BUDGET_BYTES = 512 * 1024 * 1024
+# docs/dev/rendering/tile-rendering-system.md Phase 2 -- byte budget over the
+# *full-resolution* host-side QImage residents in
+# ``widget.runtime_state._texture_upload_cache`` (stored_0/1, source_0/1,
+# diff), as opposed to _TILE_CACHE_BUDGET_BYTES above which bounds cropped
+# GPU tiles. Sized to comfortably hold the entries actually needed to
+# render *this* frame (both stored sides + an active diff -- up to ~3x one
+# full image) without forcing eviction of something still on screen; only
+# the currently-unused role (typically the hi-res source_N pair, resident
+# only for the magnifier) gets evicted once it's the oldest-touched entry
+# over budget. Evicted entries are lazily rebuilt from the still-retained
+# PIL image on next use (see the cache-miss fallback in
+# ``realize_tile_plan`` below), so eviction here is a memory/recompute
+# tradeoff, never a correctness one.
+_HOST_TEXTURE_CACHE_BUDGET_BYTES = 3 * 1024 * 1024 * 1024
 _VERTICES = struct.pack(
     "<16f",
     -1.0,
@@ -66,6 +88,23 @@ _VERTICES = struct.pack(
     1.0,
     1.0,
 )
+
+
+def _pil_image_for_texture_key(widget, key):
+    """Maps a texture key back to the PIL image it was decoded from, for
+    ``realize_tile_plan``'s cache-miss fallback. These PIL images (``state.
+    _stored_pil_images``/``_source_pil_images``/``_diff_source_pil_image``)
+    are retained for the widget's whole lifetime independent of
+    ``_texture_upload_cache``, so this never misses for a key that was
+    ever legitimately uploaded."""
+    state = widget.runtime_state
+    if key in widget.texture_ids:
+        return state._stored_pil_images[widget.texture_ids.index(key)]
+    if key in widget._source_texture_ids:
+        return state._source_pil_images[widget._source_texture_ids.index(key)]
+    if key == widget._diff_source_texture_id:
+        return state._diff_source_pil_image
+    return None
 
 
 def _load_shader(name: str) -> QShader:
@@ -245,9 +284,8 @@ class RhiResources:
         state = widget.runtime_state
         if state._pending_texture_uploads:
             return
-        cache = getattr(state, "_texture_upload_cache", {}) or {}
         for slot, texture_key in enumerate(widget.texture_ids):
-            cached = cache.get(texture_key)
+            cached = touch_texture_upload_cache(widget, texture_key)
             if cached is not None:
                 state._pending_texture_uploads.append((texture_key, cached, slot))
                 state._images_uploaded[slot] = True
@@ -255,14 +293,14 @@ class RhiResources:
                 image = state._stored_pil_images[slot]
                 queue_texture_upload(widget, image, texture_key, slot)
         for slot, texture_key in enumerate(widget._source_texture_ids):
-            cached = cache.get(texture_key)
+            cached = touch_texture_upload_cache(widget, texture_key)
             if cached is not None:
                 state._pending_texture_uploads.append((texture_key, cached, None))
             else:
                 image = state._source_pil_images[slot]
                 queue_texture_upload(widget, image, texture_key)
         diff_key = widget._diff_source_texture_id
-        cached_diff = cache.get(diff_key)
+        cached_diff = touch_texture_upload_cache(widget, diff_key)
         if cached_diff is not None:
             state._pending_texture_uploads.append((diff_key, cached_diff, None))
         elif state._diff_source_pil_image is not None:
@@ -291,12 +329,16 @@ class RhiResources:
         should be resident (visible rect plus a ``_TILE_RESIDENCY_MARGIN``
         ring) and aren't already, and destroys the GPU textures for
         whatever ``tile_service.evict_over_budget()`` decides to evict.
-        Tiles are cropped from the full-resolution QImage already cached at
+        Tiles are cropped from the full-resolution QImage cached at
         ``widget.runtime_state._texture_upload_cache`` (the same cache
-        ``restore_texture_uploads`` uses to survive context loss), not
-        re-decoded. This method reads residency decisions from
-        ``tile_service`` and performs them -- it never decides on its own
-        which indices should be resident.
+        ``restore_texture_uploads`` uses to survive context loss). That
+        cache is bounded (docs/dev/rendering/tile-rendering-system.md Phase 2)
+        and can evict an unused side/diff entry between frames; if this
+        side's entry was evicted, it's transparently re-decoded here from
+        the still-retained PIL source before cropping -- see
+        ``_pil_image_for_texture_key``. This method reads residency
+        decisions from ``tile_service`` and performs them -- it never
+        decides on its own which indices should be resident.
 
         ``diff_key`` (Phase 4): the diff overlay is treated as a third
         "side" positioned like image1 (same letterbox), since diff is
@@ -306,15 +348,34 @@ class RhiResources:
         pairs = list(zip(texture_keys, letterboxes))
         if diff_key is not None:
             pairs.append((diff_key, letterboxes[0]))
-        cache = getattr(widget.runtime_state, "_texture_upload_cache", {}) or {}
         protected_by_key: dict[object, set[tuple[int, int]]] = {}
         for key, letterbox in pairs:
             grid = tile_service.grid_for(key)
             if grid is None or (grid.rows == 1 and grid.columns == 1):
                 continue
-            full_image = cache.get(key)
-            if full_image is None:
-                continue
+            pil_source = _pil_image_for_texture_key(widget, key)
+            is_lazy = isinstance(pil_source, LazyPixelSource)
+            full_image = None
+            if is_lazy:
+                # docs/dev/rendering/tile-rendering-system.md Phase 3: this
+                # source is past the size threshold and spilled to a
+                # memmap-backed LazyPixelSource -- never materialize a
+                # full-size QImage for it (that would defeat the point).
+                # Tiles are cropped directly from the memmap below.
+                pass
+            else:
+                full_image = touch_texture_upload_cache(widget, key)
+                if full_image is None:
+                    # Evicted by evict_texture_upload_cache_over_budget
+                    # (Phase 2) or never cached this session -- rebuild
+                    # from the PIL image that's retained for this key's
+                    # whole lifetime regardless (see docs/dev/
+                    # tile-rendering-system.md), so this is a
+                    # recompute cost, not a data loss.
+                    if pil_source is None:
+                        continue
+                    full_image = qimage_from_pil(pil_source)
+                    cache_texture_upload(widget, key, full_image)
             visible_rect = _visible_side_image_rect(
                 base_image,
                 letterbox,
@@ -348,9 +409,13 @@ class RhiResources:
                     grid.total_width, grid.total_height, region, _TILE_APRON_PX
                 )
                 tile_key = tile_service.tile_key(key, *index)
-                tile_image = full_image.copy(
-                    QRect(left, top, right - left, bottom - top)
-                )
+                if is_lazy:
+                    cropped_pil = pil_source.crop((left, top, right, bottom))
+                    tile_image = qimage_from_pil(cropped_pil)
+                else:
+                    tile_image = full_image.copy(
+                        QRect(left, top, right - left, bottom - top)
+                    )
                 self.upload_whole(tile_key, tile_image, updates)
                 tile_service.mark_resident(
                     key, index, (right - left) * (bottom - top) * 4
@@ -364,6 +429,9 @@ class RhiResources:
             if texture is not None:
                 texture.destroy()
             self.texture_sizes.pop(tile_key, None)
+        evict_texture_upload_cache_over_budget(
+            widget, {key for key, _ in pairs}, _HOST_TEXTURE_CACHE_BUDGET_BYTES
+        )
 
     def ensure_srb_for(self, texture_keys: tuple[object, object, object], sampler_name: str):
         """Returns a ready-to-bind QRhiShaderResourceBindings for this exact

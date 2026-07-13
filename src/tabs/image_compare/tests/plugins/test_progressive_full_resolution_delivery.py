@@ -74,7 +74,7 @@ def test_successful_unification_clears_pending_paths():
 
     on_unified_images_ready(
         controller,
-        (image1, image2, None, None, "left.png", "right.png", 3),
+        (image1, image2, "left.png", "right.png", 3),
     )
 
     assert render_cache.unification_in_progress is False

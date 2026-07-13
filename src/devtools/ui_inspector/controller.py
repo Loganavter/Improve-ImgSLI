@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QWidget
+
+logger = logging.getLogger("ImproveImgSLI")
 
 from devtools.ui_inspector.overlay import InspectorOverlay
 from devtools.ui_inspector.panel import InspectorPanel
@@ -27,6 +31,11 @@ class UiInspectorController(QObject):
         self._hover_timer = QTimer(self)
         self._hover_timer.setInterval(30)
         self._hover_timer.timeout.connect(self._poll_hover)
+        self._panel.toggle_native_window_requested.connect(
+            self._toggle_native_window
+        )
+        self._panel.force_repaint_requested.connect(self._force_repaint)
+        self._panel.force_update_requested.connect(self._force_update)
         self._app.installEventFilter(self)
 
     def shutdown(self) -> None:
@@ -140,6 +149,55 @@ class UiInspectorController(QObject):
             self._qss_index.candidates_for(widget),
             global_pos=global_pos,
         )
+
+    def _toggle_native_window(self) -> None:
+        widget = self._committed_widget
+        if widget is None:
+            return
+        snapshot = inspect_widget(widget, self._theme_manager)
+        if snapshot.window_has_qrhiwidget:
+            logger.warning(
+                "DIAG ui_inspector refused WA_NativeWindow toggle on %s: "
+                "top-level window contains a QRhiWidget; this has been "
+                "observed to corrupt QRhiWidget rendering app-wide on "
+                "Wayland with no clean undo. Restart required if this was "
+                "already toggled once.",
+                type(widget).__name__,
+            )
+            return
+        currently_native = widget.testAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        widget.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, not currently_native)
+        if not currently_native:
+            widget.winId()
+        logger.warning(
+            "DIAG ui_inspector toggled WA_NativeWindow on %s: %s -> %s",
+            type(widget).__name__,
+            currently_native,
+            not currently_native,
+        )
+        widget.repaint()
+        self._resnapshot_committed()
+
+    def _force_repaint(self) -> None:
+        widget = self._committed_widget
+        if widget is None:
+            return
+        widget.repaint()
+        self._resnapshot_committed()
+
+    def _force_update(self) -> None:
+        widget = self._committed_widget
+        if widget is None:
+            return
+        widget.update()
+        self._resnapshot_committed()
+
+    def _resnapshot_committed(self) -> None:
+        widget = self._committed_widget
+        if widget is None:
+            return
+        snapshot = inspect_widget(widget, self._theme_manager)
+        self._panel.set_snapshot(snapshot, self._qss_index.candidates_for(widget))
 
     def _poll_hover(self) -> None:
         if not self._enabled or not self._shift_held:

@@ -187,6 +187,13 @@ class SessionController(QObject):
                 )
                 self._load_full_resolution_async(path, image_number, index_in_list)
             else:
+                from shared.image_processing.lazy_pixel_source import (
+                    close_if_lazy,
+                    maybe_wrap_for_lazy_storage,
+                )
+
+                close_if_lazy(getattr(document, f"full_res_image{image_number}", None))
+                pil_img = maybe_wrap_for_lazy_storage(pil_img)
                 self._update_image_slot(
                     image_number,
                     image=pil_img,
@@ -294,43 +301,42 @@ class SessionController(QObject):
 
     def _unify_images_worker_task(
         self,
-        img1: Image.Image,
-        img2: Image.Image,
+        img1,
+        img2,
         path1: str | None,
         path2: str | None,
-        display_resolution_limit: int,
         task_id: int,
     ):
+        """Produces the full-resolution unified pair only. The downscaled
+        "display cache" used for the on-screen preview is a separate,
+        per-frame concern owned exclusively by ``image_cache.create_preview_cache_async``
+        (docs/dev/DISPLAY_IMAGE_PIPELINE.md) -- this used to also compute its
+        own downscaled copy here and write it into ``display_cache_image1/2``,
+        which raced against that per-frame writer and could leave the stale,
+        non-downscaled pair in place (the "shrink" bug)."""
         try:
+            from shared.image_processing.lazy_pixel_source import (
+                maybe_wrap_for_lazy_storage,
+                to_real_pil_copy,
+            )
             from shared.image_processing.resize import resize_images_processor
 
-            u1, u2 = resize_images_processor(img1, img2)
+            real_img1 = to_real_pil_copy(img1)
+            real_img2 = to_real_pil_copy(img2)
+            u1, u2 = resize_images_processor(real_img1, real_img2)
 
-            cached_u1, cached_u2 = self._create_display_cache(
-                u1, u2, display_resolution_limit
-            )
+            # Wrap only after the (real-PIL-only) unify step -- LazyPixelSource
+            # has no .resize(). unified_image_cache and image_state.image1/2
+            # downstream can hold >16384px pairs otherwise resident as full
+            # plain PIL images (see docs/dev/rendering/tile-rendering-system.md
+            # Phase 3).
+            u1 = maybe_wrap_for_lazy_storage(u1)
+            u2 = maybe_wrap_for_lazy_storage(u2)
 
-            return u1, u2, cached_u1, cached_u2, path1, path2, task_id
+            return u1, u2, path1, path2, task_id
         except Exception as e:
             logger.error(f"Failed to unify images: {e}")
             return None
-
-    def _create_display_cache(self, u1: Image.Image, u2: Image.Image, limit: int):
-        try:
-            w, h = u1.size
-            if limit > 0 and max(w, h) > limit:
-                if w > h:
-                    new_w, new_h = limit, int(h * limit / w)
-                else:
-                    new_h, new_w = limit, int(w * limit / h)
-                cached_u1 = u1.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                cached_u2 = u2.resize((new_w, new_h), Image.Resampling.LANCZOS)
-            else:
-                cached_u1, cached_u2 = u1, u2
-            return cached_u1, cached_u2
-        except Exception as e:
-            logger.error(f"Failed to create display cache: {e}")
-            return u1, u2
 
     def _on_unified_images_ready(self, result):
         loading.on_unified_images_ready(self, result)

@@ -89,22 +89,18 @@ def test_multi_compare_base_image_pass_reuses_slot_srb_until_texture_changes(
     monkeypatch.setattr(base_images_module, "QRhiShaderResourceBinding", _FakeBinding)
 
     render_pass = BaseImagesPass()
-    render_pass.slot_textures[1] = object()
+    texture_a = object()
+    render_pass.slot_textures[1] = texture_a
     render_pass.slot_uniform_buffers.append(object())
-    render_pass.slot_srbs.append(_FakeSrb())
-    render_pass.slot_srb_texture_ids.append(None)
     renderer = SimpleNamespace(rhi=_FakeRhi(), sampler=object())
 
-    render_pass._ensure_slot_srb(renderer, 0, 1)
-    first_bound = render_pass.slot_srbs[0]
+    first_bound = render_pass._ensure_tile_srb(renderer, 0, 1, texture_a)
 
-    render_pass._ensure_slot_srb(renderer, 0, 1)
+    assert render_pass._ensure_tile_srb(renderer, 0, 1, texture_a) is first_bound
 
-    assert render_pass.slot_srbs[0] is first_bound
+    texture_b = object()
+    render_pass.slot_textures[1] = texture_b
+    second_bound = render_pass._ensure_tile_srb(renderer, 0, 1, texture_b)
 
-    render_pass._invalidate_slot_srbs_for_texture(1)
-    render_pass.slot_textures[1] = object()
-    render_pass._ensure_slot_srb(renderer, 0, 1)
-
-    assert render_pass.slot_srbs[0] is not first_bound
+    assert second_bound is not first_bound
     assert first_bound.destroyed is True

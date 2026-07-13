@@ -111,6 +111,18 @@ A tab is a self-contained workspace mode: it owns its widget tree, a state slot 
 
 Each tab implements a `TabContract` (`tab.py`) responsible for page creation and session lifecycle.
 
+### Extending tab capabilities
+
+Beyond the fixed lifecycle hooks (`create_page`, `on_activated`, `accepts_drop`, ...),
+host code and tabs exchange capabilities through a small set of sanctioned
+mechanisms — `create_service` (the default), `notify_all` (broadcast-only),
+and `CanvasGeometryProvider` (typed protocol, canvas hot-path only). Full
+reference, current status, and the "never do this instead" rules (no 11th
+abstract method on `TabContract`, no `getattr(widget, "btn_x", None)`
+implied lookups) live in [TAB_CONTRACT.md](TAB_CONTRACT.md)'s "Capability
+mechanisms" section — that is the single source of truth for this topic, not
+duplicated here.
+
 ## Canvas Stack
 
 The canvas is treated as its own subsystem per tab because it mixes interaction, scene building, and QRhi rendering. Shared canvas infrastructure lives in `ui/canvas_infra/` and `ui/canvas_presentation/`; each canvas-owning tab (currently `image_compare`) has its own `canvas/` package built on top of that infrastructure.
@@ -131,6 +143,7 @@ flowchart LR
 | Part | Role |
 |---|---|
 | `ui/canvas_infra/` | shared viewport geometry/zoom/focus, scene hit-testing, stacking rules, gesture resolution — used by all canvas-owning tabs |
+| `ui/canvas_infra/viewport/contract.py` | `CanvasGeometryProvider` protocol — the one `TabContract`-adjacent extension point for hot-path canvas coordinate math (see "Extending tab capabilities" above) |
 | `ui/canvas_presentation/` | shared render-plan contracts (`CanvasRenderPlan`, `CompositionNode`, `plan_applicator`) |
 | `tabs/image_compare/canvas/` | tab-specific `CanvasWidget` (QRhiWidget), renderer, scene, interaction, state, shaders, textures |
 | `tabs/image_compare/canvas/presentation/` | tab-specific render plan assembly |

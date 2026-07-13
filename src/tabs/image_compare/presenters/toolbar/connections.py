@@ -83,7 +83,7 @@ def _connect_session_actions(presenter):
     if controller is None or controller.sessions is None:
         return
 
-    ui = presenter.ui
+    ui = presenter.widget
     ui.btn_swap.shortClicked.connect(controller.sessions.swap_current_images)
     ui.btn_swap.longPressed.connect(controller.sessions.swap_entire_lists)
     ui.btn_clear_list1.shortClicked.connect(
@@ -101,7 +101,7 @@ def _connect_session_actions(presenter):
 
 def _connect_name_editing(presenter):
     controller = presenter.main_controller
-    ui = presenter.ui
+    ui = presenter.widget
     if controller is not None and controller.sessions is not None:
         ui.edit_name1.editingFinished.connect(
             lambda: controller.sessions.on_edit_name_changed(1, ui.edit_name1.text())
@@ -121,7 +121,7 @@ def _connect_name_editing(presenter):
 
 def _connect_viewport_controls(presenter):
     controller = presenter.main_controller
-    ui = presenter.ui
+    ui = presenter.widget
     event_bus = presenter.event_bus
     interpolation_handler = _resolve_interpolation_handler(controller)
 
@@ -263,7 +263,7 @@ def _connect_viewport_controls(presenter):
             ui.combo_interpolation.currentIndexChanged.connect(interpolation_handler)
 
 def _connect_orientation_controls(presenter):
-    ui = presenter.ui
+    ui = presenter.widget
     ui.btn_orientation.rightClicked.connect(
         lambda: on_orientation_right_clicked(presenter)
     )
@@ -302,7 +302,7 @@ def _connect_orientation_controls(presenter):
 
 def _connect_mode_specific_controls(presenter):
     controller = presenter.main_controller
-    ui = presenter.ui
+    ui = presenter.widget
 
     if not controller:
         return
@@ -390,7 +390,7 @@ def _connect_mode_specific_controls(presenter):
 
 
 def _connect_ui_manager_controls(presenter):
-    ui = presenter.ui
+    ui = presenter.widget
     ui_manager = presenter.ui_manager
 
     if (
@@ -420,7 +420,7 @@ def _connect_ui_manager_controls(presenter):
 
 def _connect_session_comboboxes(presenter):
     controller = presenter.main_controller
-    ui = presenter.ui
+    ui = presenter.widget
     session_handler = _resolve_session_handler(controller)
     interpolation_handler = _resolve_interpolation_handler(controller)
     if controller is None or session_handler is None:

@@ -93,19 +93,19 @@ def _session_provides_resource_namespace(
 
 
 def apply_initial_settings_to_ui(presenter):
-    ui = presenter.ui
+    widget = presenter.widget
     viewport = presenter.store.viewport
 
     _set_slider_value_quietly(
-        ui.slider_speed, int(viewport.view_state.movement_speed_per_sec * 100)
+        widget.slider_speed, int(viewport.view_state.movement_speed_per_sec * 100)
     )
-    ui.btn_file_names.setChecked(
+    widget.btn_file_names.setChecked(
         viewport.render_config.include_file_names_in_saved, emit_signal=False
     )
 
     _sync_canvas_feature_bindings(presenter)
     _apply_orientation_underline_mode(presenter)
-    ui.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
+    widget.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
 
     from domain.qt_adapters import color_to_qcolor
 
@@ -164,13 +164,13 @@ def on_store_state_changed(presenter, domain: str):
     if domain == "settings":
         _apply_orientation_underline_mode(presenter)
 
-    ui = presenter.ui
+    widget = presenter.widget
     viewport = presenter.store.viewport
 
     _sync_canvas_feature_bindings(presenter)
     _apply_orientation_underline_mode(presenter)
 
-    ui.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
+    widget.toggle_edit_layout_visibility(viewport.render_config.include_file_names_in_saved)
     presenter.ui_batcher.schedule_batch_update(
         [
             "file_names",
@@ -196,18 +196,18 @@ def do_update_resolution_labels(presenter):
             res1_text = f"{dim[0]}x{dim[1]}"
         if dim := get_image_dimensions(presenter, 2):
             res2_text = f"{dim[0]}x{dim[1]}"
-    presenter.ui.update_resolution_labels(res1_text, res1_text, res2_text, res2_text)
+    presenter.widget.update_resolution_labels(res1_text, res1_text, res2_text, res2_text)
 
     psnr_visible = presenter.store.viewport.session_data.image_state.auto_calculate_psnr
-    presenter.ui.psnr_label.setVisible(psnr_visible)
+    presenter.widget.psnr_label.setVisible(psnr_visible)
     if psnr_visible:
         psnr = presenter.store.viewport.session_data.image_state.psnr_value
         if psnr is not None:
-            presenter.ui.psnr_label.setText(
+            presenter.widget.psnr_label.setText(
                 f"{tr('ui.psnr', presenter.store.settings.current_language)}: {psnr:.2f} dB"
             )
         else:
-            presenter.ui.psnr_label.setText(
+            presenter.widget.psnr_label.setText(
                 f"{tr('ui.psnr', presenter.store.settings.current_language)}: --"
             )
 
@@ -215,15 +215,15 @@ def do_update_resolution_labels(presenter):
         presenter.store.viewport.session_data.image_state.auto_calculate_ssim
         or presenter.store.viewport.view_state.diff_mode == "ssim"
     )
-    presenter.ui.ssim_label.setVisible(ssim_visible)
+    presenter.widget.ssim_label.setVisible(ssim_visible)
     if ssim_visible:
         ssim = presenter.store.viewport.session_data.image_state.ssim_value
         if ssim is not None:
-            presenter.ui.ssim_label.setText(
+            presenter.widget.ssim_label.setText(
                 f"{tr('ui.ssim', presenter.store.settings.current_language)}: {ssim:.4f}"
             )
         else:
-            presenter.ui.ssim_label.setText(
+            presenter.widget.ssim_label.setText(
                 f"{tr('ui.ssim', presenter.store.settings.current_language)}: --"
             )
 
@@ -239,7 +239,7 @@ def do_update_file_names_display(presenter):
     lang = presenter.store.settings.current_language
     show_labels = bool(name1 != "-----" or name2 != "-----")
 
-    presenter.ui.update_file_names_display(
+    presenter.widget.update_file_names_display(
         name1_text=name1,
         name2_text=name2,
         is_horizontal=presenter.store.viewport.view_state.is_horizontal,
@@ -247,17 +247,17 @@ def do_update_file_names_display(presenter):
         show_labels=show_labels,
     )
 
-    if hasattr(presenter.ui, "edit_name1") and not presenter.ui.edit_name1.hasFocus():
-        presenter.ui.edit_name1.blockSignals(True)
-        presenter.ui.edit_name1.setText(active_name1)
-        presenter.ui.edit_name1.setCursorPosition(0)
-        presenter.ui.edit_name1.blockSignals(False)
+    if not presenter.widget.edit_name1.hasFocus():
+        presenter.widget.edit_name1.blockSignals(True)
+        presenter.widget.edit_name1.setText(active_name1)
+        presenter.widget.edit_name1.setCursorPosition(0)
+        presenter.widget.edit_name1.blockSignals(False)
 
-    if hasattr(presenter.ui, "edit_name2") and not presenter.ui.edit_name2.hasFocus():
-        presenter.ui.edit_name2.blockSignals(True)
-        presenter.ui.edit_name2.setText(active_name2)
-        presenter.ui.edit_name2.setCursorPosition(0)
-        presenter.ui.edit_name2.blockSignals(False)
+    if not presenter.widget.edit_name2.hasFocus():
+        presenter.widget.edit_name2.blockSignals(True)
+        presenter.widget.edit_name2.setText(active_name2)
+        presenter.widget.edit_name2.setCursorPosition(0)
+        presenter.widget.edit_name2.blockSignals(False)
 
     presenter.check_name_lengths()
 
@@ -266,6 +266,9 @@ def do_update_combobox_displays(presenter):
     document = _document(presenter)
     if document is None:
         return
+    settings_presenter = presenter.get_feature("settings")
+    if settings_presenter is not None:
+        settings_presenter.update_interpolation_combo_box_ui()
     count1 = len(document.image_list1)
     idx1 = document.current_index1
     text1 = (
@@ -273,7 +276,7 @@ def do_update_combobox_displays(presenter):
         if 0 <= idx1 < count1
         else tr("misc.select_an_image", presenter.store.settings.current_language)
     )
-    presenter.ui.update_combobox_display(1, count1, idx1, text1, "")
+    presenter.widget.update_combobox_display(1, count1, idx1, text1, "")
 
     count2 = len(document.image_list2)
     idx2 = document.current_index2
@@ -282,7 +285,7 @@ def do_update_combobox_displays(presenter):
         if 0 <= idx2 < count2
         else tr("misc.select_an_image", presenter.store.settings.current_language)
     )
-    presenter.ui.update_combobox_display(2, count2, idx2, text2, "")
+    presenter.widget.update_combobox_display(2, count2, idx2, text2, "")
 
     if (
         presenter.ui_manager
@@ -302,7 +305,7 @@ def do_update_slider_tooltips(presenter):
         payload = build_payload(presenter.store)
         magnifier_size = float(payload.get("size", 0.2))
         capture_size = float(payload.get("capture_size", 0.1))
-    presenter.ui.update_slider_tooltips(
+    presenter.widget.update_slider_tooltips(
         presenter.store.viewport.view_state.movement_speed_per_sec,
         magnifier_size,
         capture_size,
@@ -311,10 +314,10 @@ def do_update_slider_tooltips(presenter):
 
 
 def do_update_rating_displays(presenter):
-    presenter.ui.update_rating_display(
+    presenter.widget.update_rating_display(
         1, get_current_score(presenter, 1), presenter.store.settings.current_language
     )
-    presenter.ui.update_rating_display(
+    presenter.widget.update_rating_display(
         2, get_current_score(presenter, 2), presenter.store.settings.current_language
     )
 
@@ -360,7 +363,7 @@ def on_language_changed(presenter):
     do_update_rating_displays(presenter)
     do_update_file_names_display(presenter)
     presenter.repopulate_flyouts()
-    presenter.ui.reapply_button_styles()
+    presenter.widget.reapply_button_styles()
 
 
 def get_current_display_name(presenter, image_number: int) -> str:
@@ -403,5 +406,5 @@ def get_image_dimensions(presenter, image_number: int) -> tuple[int, int] | None
 
 def _apply_orientation_underline_mode(presenter):
     current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
-    if hasattr(presenter.ui.btn_orientation, "set_show_underline"):
-        presenter.ui.btn_orientation.set_show_underline(current_mode == "expert")
+    if hasattr(presenter.widget.btn_orientation, "set_show_underline"):
+        presenter.widget.btn_orientation.set_show_underline(current_mode == "expert")

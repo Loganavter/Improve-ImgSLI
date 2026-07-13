@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def preview_begin(store):
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
@@ -18,7 +18,7 @@ def preview_begin(store):
 
 
 def preview_restore(store, *, prev_left: bool, prev_right: bool):
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return
@@ -36,7 +36,7 @@ def preview_restore(store, *, prev_left: bool, prev_right: bool):
 
 
 def preview_set_side(store, *, side: str):
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return

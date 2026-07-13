@@ -4,30 +4,15 @@ import logging
 
 from PySide6.QtCore import QEvent, Qt
 
+from tabs.registry import get_shared_tab_registry
+
 logger = logging.getLogger("ImproveImgSLI")
 
-def _is_same_object_or_descendant(candidate, target) -> bool:
-    current = candidate
-    while current is not None:
-        if current is target:
-            return True
-        current = current.parent()
-    return False
-
 def _belongs_to_canvas(event_handler, watched_obj) -> bool:
-    presenter = getattr(event_handler, "presenter", None)
-    if presenter is None or getattr(presenter, "ui", None) is None:
+    tab = get_shared_tab_registry().get_active_tab()
+    if tab is None:
         return False
-    image_label = getattr(presenter.ui, "image_label", None)
-    if image_label is None:
-        return False
-    if _is_same_object_or_descendant(watched_obj, image_label):
-        return True
-    for attr_name in ("_window_container", "_canvas_window"):
-        owned = getattr(image_label, attr_name, None)
-        if watched_obj is owned or _is_same_object_or_descendant(watched_obj, owned):
-            return True
-    return False
+    return tab.owns_widget(watched_obj)
 
 def route_drag_and_drop_override(event_handler, event: QEvent, dnd_service) -> bool:
     event_type = event.type()

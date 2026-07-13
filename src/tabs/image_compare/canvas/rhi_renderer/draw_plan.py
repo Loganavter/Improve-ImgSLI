@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from shared.rendering.tile_texture_service import TileTextureService
+
 from ..texture_parts.tile_geometry import _apron_rect, _TILE_APRON_PX, _visible_side_image_rect
-from ..texture_parts.tile_texture_service import TileTextureService
 from .uniforms import _FULL_TILE_RECT
 
 

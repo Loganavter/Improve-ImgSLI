@@ -156,7 +156,7 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
 
         registry = TabRegistry()
         registry.discover()
-        service = registry.create_service(
+        service = registry.create_startup_service(
             "clipboard_paste_service",
             self.store,
             main_controller,

@@ -51,6 +51,15 @@ Rules:
 - `should_paint()` should check data availability and feature-local presentation rules, not export-vs-interactive policy
 - interactive-only payloads should usually be suppressed earlier in feature `apply()`
 - single-image preview is not a central render-executor flag; if a pass should be silent in that mode, it should decide that locally in `should_paint()`
+- **blank-white gating is centralized, not per-pass.** `iter_active_render_passes()`
+  (`ui/widgets/canvas/render_executor.py`) checks `should_render_blank_white(ctx.scene_frame)`
+  once and skips every pass whose `requires_content` is `True` (the default) before
+  `should_paint()` is even called. A new feature pass is blank-white-safe automatically;
+  it does not need its own `blank_white` check in `should_paint()`. Only opt out
+  (`requires_content = False`) for passes that must render on an empty canvas — e.g.
+  `PasteOverlayPass` (drag/drop hint shown before any image pair is loaded). See
+  [investigations/divider-blank-white-and-drag-desync.md](investigations/divider-blank-white-and-drag-desync.md)
+  for why this exists.
 
 Scene visibility:
 

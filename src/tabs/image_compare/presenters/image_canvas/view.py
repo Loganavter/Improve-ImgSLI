@@ -4,6 +4,7 @@ import PIL.Image
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 
+from shared.rendering.image_identity import image_uid
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
@@ -38,14 +39,14 @@ def _source_kwargs(presenter):
 
 
 def is_canvas_widget(presenter):
-    return get_canvas_widget(presenter.ui) is not None
+    return get_canvas_widget(presenter.widget) is not None
 
 
 def _apply_render_scene(presenter):
-    image_label = getattr(presenter.ui, "image_label", None)
+    image_label = getattr(presenter.widget, "image_label", None)
     if image_label is None or not is_canvas_widget(presenter):
         return
-    image_label = get_canvas_widget(presenter.ui)
+    image_label = get_canvas_widget(presenter.widget)
     image_label.set_render_scene(
         build_render_scene(
             presenter.store,
@@ -72,7 +73,7 @@ def _sync_split_position(presenter, split_position: float):
     command = registry().get_feature_command_by_alias("splitter.sync_split_position")
     if command is not None:
         command(presenter, split_position)
-    image_label = get_canvas_widget(presenter.ui)
+    image_label = get_canvas_widget(presenter.widget)
     if image_label is not None:
         image_label.set_render_scene(
             build_render_scene(
@@ -93,7 +94,7 @@ def set_image_layers(
         img2 = presentation.display_image2
         if overlay is None and overlay_pos is None:
             apply_store_to_canvas(
-                presenter.ui.image_label,
+                presenter.widget.image_label,
                 presenter.store,
                 img1,
                 img2,
@@ -103,7 +104,7 @@ def set_image_layers(
             )
         else:
             _apply_render_scene(presenter)
-            presenter.ui.image_label.set_pil_layers(
+            presenter.widget.image_label.set_pil_layers(
                 img1,
                 img2,
                 overlay,
@@ -112,13 +113,13 @@ def set_image_layers(
                 **_source_kwargs(presenter),
             )
     else:
-        presenter.ui.image_label.set_layers(
+        presenter.widget.image_label.set_layers(
             background, overlay, overlay_pos, coords_snapshot
         )
 
 
 def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
-    image_label = get_canvas(presenter.ui)
+    image_label = get_canvas(presenter.widget)
     if image_label is None:
         return
     if not pil_image:
@@ -128,7 +129,7 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
 
     try:
         if is_canvas_widget(presenter):
-            image_label = get_canvas_widget(presenter.ui)
+            image_label = get_canvas_widget(presenter.widget)
             zoom_level = get_zoom_level(image_label)
             pan_x = get_pan_offset_x(image_label)
             pan_y = get_pan_offset_y(image_label)
@@ -139,7 +140,7 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
                 presenter.store.viewport.view_state.showing_single_image_mode,
                 document.image1_path,
                 document.image2_path,
-                id(pil_image),
+                image_uid(pil_image),
                 pil_image.size,
             )
             apply_store_to_canvas(

@@ -56,7 +56,7 @@ def _toggle_active_magnifier_laser(presenter, enabled: bool) -> None:
 
 def sync_guides_toolbar_state(presenter) -> None:
     state = get_guides_widget_state(presenter.store.viewport.view_state)
-    ui = getattr(presenter, "ui", None)
+    ui = getattr(presenter, "widget", None)
 
     btn_guides = getattr(ui, "btn_magnifier_guides", None)
     if btn_guides is not None:

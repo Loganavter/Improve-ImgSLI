@@ -34,6 +34,7 @@ _UNIFORM_SIZE = 64
 class PasteOverlayPass(CanvasRenderPass):
     stack_role = CanvasStackRole.TRANSIENT_PREVIEW
     visibility = SceneVisibility.INTERACTIVE
+    requires_content = False
 
     def __init__(self) -> None:
         self.rhi = None

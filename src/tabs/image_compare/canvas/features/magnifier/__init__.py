@@ -5,9 +5,9 @@ _BOUNDS_EXPORTS = {
     "compute_magnifier_union_bbox",
 }
 _MODE_EXPORTS = {"MagnifierModeService"}
+_SERVICE_EXPORTS = {"MagnifierStoreService"}
 _STORE_EXPORTS = {
     "DEFAULT_MAGNIFIER_ID",
-    "MagnifierStoreService",
     "active_magnifier_id",
     "add_magnifier_model",
     "default_capture_size",
@@ -22,7 +22,7 @@ _STORE_EXPORTS = {
     "update_magnifier_model",
 }
 
-__all__ = sorted(_BOUNDS_EXPORTS | _MODE_EXPORTS | _STORE_EXPORTS)
+__all__ = sorted(_BOUNDS_EXPORTS | _MODE_EXPORTS | _SERVICE_EXPORTS | _STORE_EXPORTS)
 
 
 def __getattr__(name: str):
@@ -34,6 +34,10 @@ def __getattr__(name: str):
         from tabs.image_compare.canvas.features.magnifier.state import mode
 
         return getattr(mode, name)
+    if name in _SERVICE_EXPORTS:
+        from tabs.image_compare.canvas.features.magnifier.state import service
+
+        return getattr(service, name)
     if name in _STORE_EXPORTS:
         from tabs.image_compare.canvas.features.magnifier.state import store
 

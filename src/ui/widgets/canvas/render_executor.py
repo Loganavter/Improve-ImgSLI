@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ui.canvas_infra.scene.pass_contract import RenderPhase, SceneVisibility
+from ui.widgets.canvas.render_common import should_render_blank_white
 
 PHASE_ORDER: tuple[RenderPhase, ...] = (
     RenderPhase.IMAGE_DECORATION,
@@ -51,12 +52,15 @@ def execute_render_passes(widget, ctx, passes) -> None:
 
 def iter_active_render_passes(ctx, passes) -> tuple:
     current_visibility = _resolve_scene_visibility(ctx)
+    blank_white = should_render_blank_white(getattr(ctx, "scene_frame", None))
     active = []
     for pass_ in iter_ordered_render_passes(passes):
         if not _visibility_matches(
             getattr(pass_, "visibility", SceneVisibility.ALL),
             current_visibility,
         ):
+            continue
+        if blank_white and getattr(pass_, "requires_content", True):
             continue
         if pass_.should_paint(ctx):
             active.append(pass_)

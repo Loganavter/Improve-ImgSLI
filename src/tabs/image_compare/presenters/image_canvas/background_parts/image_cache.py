@@ -3,13 +3,15 @@ import logging
 import PIL.Image
 from sli_ui_toolkit.workers import GenericWorker
 
+from shared.rendering.image_identity import image_uid
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
 def _display_cache_key(img1, img2, limit):
     return (
-        id(img1),
-        id(img2),
+        image_uid(img1),
+        image_uid(img2),
         int(limit),
     )
 
@@ -108,13 +110,17 @@ def start_scaling_worker(presenter, src1, src2, w, h):
         scaling_task_id = presenter.current_scaling_task_id
 
         def scale_task(img1, img2, width, height, tid):
-            i1 = img1.resize((width, height), PIL.Image.Resampling.BILINEAR)
-            i2 = img2.resize((width, height), PIL.Image.Resampling.BILINEAR)
+            from shared.image_processing.lazy_pixel_source import to_real_pil_copy
+
+            i1 = to_real_pil_copy(img1).resize(
+                (width, height), PIL.Image.Resampling.BILINEAR
+            )
+            i2 = to_real_pil_copy(img2).resize(
+                (width, height), PIL.Image.Resampling.BILINEAR
+            )
             return i1, i2, width, height, tid
 
-        worker = GenericWorker(
-            scale_task, src1.copy(), src2.copy(), w, h, scaling_task_id
-        )
+        worker = GenericWorker(scale_task, src1, src2, w, h, scaling_task_id)
         worker.signals.result.connect(presenter.background.on_display_scaling_ready)
         priority = (
             0 if presenter.store.viewport.interaction_state.is_interactive_mode else 1
@@ -155,7 +161,6 @@ def create_preview_cache_async(presenter, img1, img2):
 
     w, h = img1.size
     if limit <= 0 or max(w, h) <= limit:
-
         presenter._display_cache_request_key = None
         _set_display_cache(presenter, img1, img2, request_key)
         return True
@@ -166,21 +171,17 @@ def create_preview_cache_async(presenter, img1, img2):
     presenter._display_cache_request_key = request_key
 
     def cache_task(i1, i2, requested_limit, key):
-        w, h = i1.size
-        if requested_limit > 0 and max(w, h) > requested_limit:
-            ratio = min(requested_limit / w, requested_limit / h)
-            nw, nh = int(w * ratio), int(h * ratio)
-            return (
-                i1.resize((nw, nh), PIL.Image.Resampling.LANCZOS),
-                i2.resize((nw, nh), PIL.Image.Resampling.LANCZOS),
-                key,
-            )
-        return i1, i2, key
+        from shared.image_processing.lazy_pixel_source import to_real_pil_copy
+        from shared.image_processing.resize import downscale_pair_to_limit
+
+        i1, i2 = to_real_pil_copy(i1), to_real_pil_copy(i2)
+        d1, d2 = downscale_pair_to_limit(i1, i2, requested_limit)
+        return d1, d2, key
 
     worker = GenericWorker(
         cache_task,
-        img1.copy(),
-        img2.copy(),
+        img1,
+        img2,
         limit,
         request_key,
     )

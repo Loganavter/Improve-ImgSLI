@@ -6,12 +6,12 @@ from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 logger = logging.getLogger("ImproveImgSLI")
 
 class WindowEventHandler(QObject):
-    def __init__(self, store, main_controller, ui, parent=None):
+    def __init__(self, store, main_controller, widget, parent=None):
         super().__init__(parent)
         self.store = store
 
         self.main_controller = main_controller
-        self.ui = ui
+        self.widget = widget
         self.main_window = parent
         self._first_external_load_pending = True
         self._drag_leave_timer = QTimer(self)
@@ -53,9 +53,9 @@ class WindowEventHandler(QObject):
             event.ignore()
 
     def _safe_update_drag_overlays(self, visible):
-        if self.ui is not None and hasattr(self.ui, "update_drag_overlays"):
+        if self.widget is not None and hasattr(self.widget, "update_drag_overlays"):
             try:
-                self.ui.update_drag_overlays(
+                self.widget.update_drag_overlays(
                     self.store.viewport.view_state.is_horizontal, visible=visible
                 )
             except (AttributeError, RuntimeError) as e:
@@ -126,7 +126,7 @@ class WindowEventHandler(QObject):
             session = self.store.get_active_workspace_session()
             if session is None:
                 return False
-            registry = getattr(self.ui, "_tab_registry", None)
+            registry = getattr(getattr(self.main_window, "ui", None), "_tab_registry", None)
             if registry is None:
                 return False
             from pathlib import Path
@@ -138,32 +138,32 @@ class WindowEventHandler(QObject):
             return False
 
     def handle_resize(self, event):
-        self.ui.update_drag_overlays(
-            self.store.viewport.view_state.is_horizontal, self.ui.is_drag_overlay_visible()
+        self.widget.update_drag_overlays(
+            self.store.viewport.view_state.is_horizontal, self.widget.is_drag_overlay_visible()
         )
 
     def handle_close(self, event):
         event.accept()
 
     def _is_in_left_area(self, pos: QPoint) -> bool:
-        if not self.ui.image_label.isVisible():
+        if not self.widget.image_label.isVisible():
             return True
-        label_rect = self.ui.image_label.geometry()
+        label_rect = self.widget.image_label.geometry()
         local_to_label = (
-            0 <= pos.x() <= self.ui.image_label.width()
-            and 0 <= pos.y() <= self.ui.image_label.height()
+            0 <= pos.x() <= self.widget.image_label.width()
+            and 0 <= pos.y() <= self.widget.image_label.height()
         )
 
         if not self.store.viewport.view_state.is_horizontal:
             mid_x = (
-                self.ui.image_label.width() / 2
+                self.widget.image_label.width() / 2
                 if local_to_label
                 else label_rect.x() + label_rect.width() / 2
             )
             return pos.x() < mid_x
         else:
             mid_y = (
-                self.ui.image_label.height() / 2
+                self.widget.image_label.height() / 2
                 if local_to_label
                 else label_rect.y() + label_rect.height() / 2
             )

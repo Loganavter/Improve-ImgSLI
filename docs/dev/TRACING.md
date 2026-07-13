@@ -146,7 +146,7 @@ Typical loop for "X causes weird behavior":
    Then reproduce one preview frame and inspect `video.preview.request`,
    `video.render.prescale.*`, `video.render.layout`, and `video.render.plan`.
    These records show the requested preview size, prescale target/result,
-   content/canvas sizes, and the GL filter source used by the export scene.
+   content/canvas sizes, and the QRhi zoom-interpolation/diff-mode used by the export scene.
 2. Reproduce the bug in a minimal scenario (single click, single zoom tick).
 3. `print_tree --list` to find the relevant `trace_id` (usually the slowest
    or last-by-seq).
@@ -255,5 +255,7 @@ Qt event ──> patched handler ──> Tracer.begin_trace("mpress")
 - **Memory leaks or async-thread issues**: tracer captures call sites and
   cross-thread events but doesn't track object lifetimes or Qt signal/slot
   graph. Use `objgraph` or Qt's own debug builds.
-- **GL state / shader bugs**: tracer sees CPU-side render-plan, not GL calls.
-  Use `apitrace`, `RenderDoc`, or the `qt.qpa.gl=true` logging category.
+- **QRhi state / shader bugs**: tracer sees CPU-side render-plan, not GPU
+  calls. Use `RenderDoc` (backend-agnostic), or `apitrace`/`qt.qpa.gl=true`
+  when the active QRhi backend is OpenGL (`IMPROVE_IMGSLI_RHI_BACKEND`,
+  see `ui/widgets/canvas/rhi_backend.py`; platform-default otherwise).

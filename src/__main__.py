@@ -7,6 +7,23 @@ from pathlib import Path
 
 faulthandler.enable()
 
+# Opt-in diagnostics for hangs/freezes that don't raise a fatal signal (so
+# faulthandler.enable()'s default segfault-only handler never fires): dumps
+# every live thread's Python-level stack to a file every N seconds, so a
+# freeze can be diagnosed from *where* each thread is stuck without
+# attaching a debugger. Set IMGSLI_FAULT_DUMP=1 to enable.
+if os.environ.get("IMGSLI_FAULT_DUMP"):
+    _fault_dump_path = os.environ.get(
+        "IMGSLI_FAULT_DUMP_FILE", "/tmp/imgsli_fault_dump.log"
+    )
+    _fault_dump_file = open(_fault_dump_path, "w")
+    faulthandler.enable(file=_fault_dump_file, all_threads=True)
+    faulthandler.dump_traceback_later(
+        int(os.environ.get("IMGSLI_FAULT_DUMP_INTERVAL", "15")),
+        repeat=True,
+        file=_fault_dump_file,
+    )
+
 try:
 
     current_dir = Path(__file__).resolve().parent

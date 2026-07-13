@@ -41,33 +41,9 @@ class MainWindowAppearance:
         if registry is not None:
             registry.apply_appearance(window)
 
-    def update_chrome_background(self) -> None:
-        """Paint workspace shell and tab pages with the app Window color.
-
-        QWidget children that don't paint a background (toolbars/footers/
-        selection rows) inherit visually from their themed page parent, so
-        the dark theme reaches every region that isn't the image canvas.
-        """
-        window = self.window
-        if window.ui is None:
-            return
-        bg = QColor(resolve_theme_color(window.theme_manager, "Window"))
-        if not bg.isValid():
-            return
-        targets = [
-            getattr(window.ui, "workspace_stack", None),
-        ]
-        stack = getattr(window.ui, "workspace_stack", None)
-        if stack is not None:
-            for i in range(stack.count()):
-                targets.append(stack.widget(i))
-        for widget in targets:
-            self._apply_widget_background(widget, bg)
-
     def on_theme_changed(self) -> None:
         window = self.window
         self.update_image_label_background()
-        self.update_chrome_background()
         try:
             FontManager.get_instance().apply_from_state(window.store)
             current_font = QApplication.font()

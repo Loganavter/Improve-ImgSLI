@@ -160,6 +160,26 @@ def resize_images_processor(
 
     return (final_processed_image1, final_processed_image2)
 
+def downscale_pair_to_limit(
+    img1: Image.Image,
+    img2: Image.Image,
+    limit: int,
+) -> Tuple[Image.Image, Image.Image]:
+    """Single canonical place for the display-cache downscale used across
+    the app (session unification, per-frame preview cache) -- previously
+    duplicated with slightly different aspect-ratio math in each caller,
+    which made it easy for one copy to silently diverge/regress while the
+    other stayed correct."""
+    w, h = img1.size
+    if limit <= 0 or max(w, h) <= limit:
+        return img1, img2
+    ratio = min(limit / w, limit / h)
+    new_w, new_h = max(1, int(w * ratio)), max(1, int(h * ratio))
+    return (
+        img1.resize((new_w, new_h), Image.Resampling.LANCZOS),
+        img2.resize((new_w, new_h), Image.Resampling.LANCZOS),
+    )
+
 def get_auto_crop_box(
     pil_img: Image.Image, threshold: int = 15
 ) -> Optional[Tuple[int, int, int, int]]:

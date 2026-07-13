@@ -23,7 +23,11 @@ def _scene_compare_pos(
 
 
 def _get_canvas_scene(handler):
-    label = handler.geometry._get_image_label()
+    from tabs.image_compare.canvas.features.magnifier.workers.common import (
+        get_live_image_label,
+    )
+
+    label = get_live_image_label(handler.presenter)
     state = getattr(label, "runtime_state", None) if label is not None else None
     return getattr(state, "_canvas_scene_graph", None) if state is not None else None
 

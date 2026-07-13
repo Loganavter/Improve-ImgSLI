@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+# File-Size-Exempt: build_magnifier_layout is one non-decomposable per-frame
+# layout algorithm — its inner closures (_capture_geometry, _make_slot,
+# _resolve_border_width_canvas_px) share a dozen locals from the enclosing
+# scope (render_scale, content offsets, width/height, target_max, ...);
+# splitting them out would require threading that whole parameter set through
+# a new module boundary for no cohesion gain.
+
 import math
 from dataclasses import replace
 

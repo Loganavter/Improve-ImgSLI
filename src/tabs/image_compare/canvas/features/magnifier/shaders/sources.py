@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# File-Size-Exempt: raw GLSL shader source strings for every magnifier pass —
+# it's data, not logic; splitting would just scatter one shader's vert/frag
+# pair across multiple files for no cohesion gain.
+
 from dataclasses import dataclass
 
 ARC_VERT = """

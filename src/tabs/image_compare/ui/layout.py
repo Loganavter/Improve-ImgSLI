@@ -20,6 +20,7 @@ from sli_ui_toolkit.widgets import ButtonGroup, Label, Slider
 
 from sli_ui_toolkit.i18n import tr
 from ui.widgets.startup_placeholder import StartupPlaceholder
+from ui.widgets.themed_container import ThemedBackgroundContainer
 from ui.widgets.zoom_indicator import ZoomIndicator
 
 
@@ -33,15 +34,16 @@ class ImageCompareLayoutBuilder:
     legacy callers keep working.
     """
 
-    def __init__(self, ui) -> None:
-        self.ui = ui
+    def __init__(self, target, host) -> None:
+        self.target = target
+        self.host = host
 
     def build_into(self, page: QWidget) -> QVBoxLayout:
         """Build all containers and assemble them into ``page``.
 
         Returns the top-level layout installed on ``page``.
         """
-        ui = self.ui
+        ui = self.target
         ui.selection_widget = self._selection_widget(page)
         ui.checkbox_widget = self._checkbox_widget(page)
         ui.image_container_layout = self._image_container_layout()
@@ -56,7 +58,7 @@ class ImageCompareLayoutBuilder:
 
         ui.drag_overlay = DragDropOverlay(ui.image_container_widget)
         ui.footer_info_widget = self._footer_info_widget(page)
-        ui.edit_layout_widget = QWidget()
+        ui.edit_layout_widget = ThemedBackgroundContainer()
         ui.edit_layout = self._edit_layout()
         ui.edit_layout_widget.setLayout(ui.edit_layout)
         ui.save_buttons_widget = self._save_buttons_widget()
@@ -74,7 +76,7 @@ class ImageCompareLayoutBuilder:
         return layout
 
     def _selection_widget(self, parent: QWidget) -> QWidget:
-        widget = QWidget(parent)
+        widget = ThemedBackgroundContainer(parent)
         layout = QVBoxLayout(widget)
         layout.setSpacing(3)
         layout.addLayout(self._button_row())
@@ -82,7 +84,7 @@ class ImageCompareLayoutBuilder:
         return widget
 
     def _checkbox_widget(self, parent: QWidget) -> QWidget:
-        widget = QWidget(parent)
+        widget = ThemedBackgroundContainer(parent)
         widget.setLayout(self._checkbox_layout())
         return widget
 
@@ -93,30 +95,30 @@ class ImageCompareLayoutBuilder:
 
     def _image_container_widget(self) -> QWidget:
         widget = QWidget()
-        widget.setLayout(self.ui.image_container_layout)
+        widget.setLayout(self.target.image_container_layout)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         return widget
 
     def _create_image_startup_placeholder(self) -> None:
-        ui = self.ui
+        ui = self.target
         ui.image_startup_placeholder = StartupPlaceholder(
             ui.image_container_widget, target_widget=ui.image_label
         )
 
     def _create_zoom_indicator(self) -> None:
-        ui = self.ui
+        ui = self.target
         ui.zoom_indicator = ZoomIndicator(
             ui.image_container_widget,
-            lang_provider=ui._current_language,
+            lang_provider=self.host._current_language,
             target_widget=ui.image_label,
         )
         ui.btn_zoom_reset = ui.zoom_indicator.btn_zoom_reset
 
     def _footer_info_widget(self, parent: QWidget) -> QWidget:
-        ui = self.ui
+        ui = self.target
         ui.psnr_label = Label("PSNR: --", variant="group-title")
         ui.ssim_label = Label("SSIM: --", variant="group-title")
-        widget = QWidget(parent)
+        widget = ThemedBackgroundContainer(parent)
         layout = QVBoxLayout(widget)
         layout.setSpacing(0)
         layout.addLayout(self._resolution_layout())
@@ -126,7 +128,7 @@ class ImageCompareLayoutBuilder:
         return widget
 
     def _resolution_layout(self) -> QHBoxLayout:
-        ui = self.ui
+        ui = self.target
         layout = QHBoxLayout()
         layout.addWidget(ui.resolution_label1, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addStretch()
@@ -139,7 +141,7 @@ class ImageCompareLayoutBuilder:
         return layout
 
     def _file_names_layout(self) -> QHBoxLayout:
-        ui = self.ui
+        ui = self.target
         layout = QHBoxLayout()
         ui.file_name_label1.setMinimumHeight(22)
         ui.file_name_label2.setMinimumHeight(22)
@@ -150,7 +152,7 @@ class ImageCompareLayoutBuilder:
         return layout
 
     def _button_row(self) -> QHBoxLayout:
-        ui = self.ui
+        ui = self.target
         layout = QHBoxLayout()
         layout.setSpacing(8)
         ui.btn_image1.setSizePolicy(
@@ -167,7 +169,7 @@ class ImageCompareLayoutBuilder:
         return layout
 
     def _combobox_row(self) -> QHBoxLayout:
-        ui = self.ui
+        ui = self.target
         main_layout = QHBoxLayout()
         main_layout.setSpacing(8)
         main_layout.addLayout(
@@ -201,7 +203,7 @@ class ImageCompareLayoutBuilder:
         return layout
 
     def _checkbox_groups_layout(self) -> QHBoxLayout:
-        ui = self.ui
+        ui = self.target
         groups_layout = QHBoxLayout()
         groups_layout.setSpacing(16)
         groups_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -236,7 +238,7 @@ class ImageCompareLayoutBuilder:
         return ButtonGroup(buttons, label=tr(label_key, "en"))
 
     def _checkbox_actions_layout(self) -> QHBoxLayout:
-        ui = self.ui
+        ui = self.target
         layout = QHBoxLayout()
         layout.setSpacing(8)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -246,7 +248,7 @@ class ImageCompareLayoutBuilder:
         return layout
 
     def _slider_panel_layout(self) -> QWidget:
-        ui = self.ui
+        ui = self.target
         panel = ui.magnifier_settings_panel
         panel_layout = QVBoxLayout(panel)
         panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
@@ -267,7 +269,7 @@ class ImageCompareLayoutBuilder:
         return panel
 
     def _magnifier_sliders_row(self) -> QHBoxLayout:
-        ui = self.ui
+        ui = self.target
         layout = QHBoxLayout()
         layout.setSpacing(10)
         self._configure_slider(
@@ -315,7 +317,7 @@ class ImageCompareLayoutBuilder:
             layout.addSpacing(trailing_spacing)
 
     def _edit_layout(self) -> QHBoxLayout:
-        ui = self.ui
+        ui = self.target
         layout = QHBoxLayout()
         layout.setSpacing(8)
         ui.edit_name1.setMinimumHeight(30)
@@ -330,7 +332,7 @@ class ImageCompareLayoutBuilder:
         return layout
 
     def _save_buttons_widget(self) -> QWidget:
-        ui = self.ui
+        ui = self.target
         layout = QHBoxLayout()
         layout.setSpacing(0)
         layout.setContentsMargins(5, 2, 5, 2)
@@ -339,6 +341,6 @@ class ImageCompareLayoutBuilder:
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         layout.addWidget(ui.btn_save, 1)
-        widget = QWidget()
+        widget = ThemedBackgroundContainer()
         widget.setLayout(layout)
         return widget

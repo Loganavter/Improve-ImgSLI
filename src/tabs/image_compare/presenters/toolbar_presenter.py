@@ -20,12 +20,13 @@ class ToolbarPresenter(QObject):
         ui,
         main_window_app,
         ui_manager=None,
+        widget=None,
         parent=None,
     ):
         super().__init__(parent)
         self.store = store
         self.main_controller = main_controller
-        self.ui = ui
+        self.widget = widget
         self.main_window_app = main_window_app
         self.ui_manager = ui_manager
         self.event_bus = main_controller.event_bus if main_controller else None

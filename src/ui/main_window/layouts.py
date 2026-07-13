@@ -60,24 +60,11 @@ class LayoutComposer:
 
     def _finalize(self) -> None:
         ui = self.ui
-        ui.toggle_edit_layout_visibility(False)
-        ui.magnifier_settings_panel.setVisible(False)
+        ui._tab_registry.finalize_host_pages(ui)
         active = getattr(getattr(ui.main_window, "store", None), "get_active_workspace_session", lambda: None)()
         if active is not None:
             ui.sync_session_mode(active.session_type)
-        self.apply_icon_sizes()
         self._configure_workspace_tabs()
-
-    def apply_icon_sizes(self) -> None:
-        ui = self.ui
-        ui.btn_quick_save.setIconSizePx(24)
-        ui.help_button.setIconSizePx(24)
-        ui.btn_clear_list1.setIconSizePx(22)
-        ui.btn_clear_list2.setIconSizePx(22)
-        ui.btn_divider_color.setIconSizePx(22)
-        ui.btn_divider_width.setIconSizePx(22)
-        ui.btn_magnifier_divider_width.setIconSizePx(22)
-        ui.btn_magnifier_guides_width.setIconSizePx(22)
 
     def _configure_workspace_tabs(self) -> None:
         ui = self.ui
@@ -203,6 +190,17 @@ class LayoutComposer:
             },
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
+        # The main-window shell (composer.py's "image_canvas" feature, etc.)
+        # is built before any workspace session exists to activate via
+        # `sync_session_mode()`. Seed whichever registered tab declares
+        # itself the bootstrap default (see `TabContract.is_bootstrap_default`)
+        # so `create_service`/`create_main_window_feature` — which resolve
+        # *only* against the active tab, see docs/dev/TAB_CONTRACT.md —
+        # have someone to route to during this bootstrap window. The first
+        # real `sync_session_mode()` call reconciles this with the actual
+        # initial session's type. Deliberately tab-name-agnostic: this file
+        # must not know which tab that is.
+        ui._tab_registry.activate_default()
 
         if event_bus is not None:
             from core.events import (

@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-from PySide6.QtCore import QRect
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QRhiWidget, QWidget
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,24 @@ class ColorValue:
 
 
 @dataclass(frozen=True)
+class NativeWindowInfo:
+    class_name: str
+    object_name: str
+    is_top_level: bool
+    has_native_window: bool
+    wa_native_window: bool
+    wa_paint_on_screen: bool
+    is_qrhiwidget: bool
+    sibling_qrhiwidgets: tuple[str, ...] = ()
+
+    @property
+    def selector(self) -> str:
+        if self.object_name:
+            return f"{self.class_name}#{self.object_name}"
+        return self.class_name
+
+
+@dataclass(frozen=True)
 class WidgetSnapshot:
     class_name: str
     object_name: str
@@ -48,12 +66,21 @@ class WidgetSnapshot:
     palette: tuple[ColorValue, ...] = ()
     theme_token_sources: dict[str, ThemeColorSource] = field(default_factory=dict)
     widget_theme_sources: tuple[ThemeColorSource, ...] = ()
+    native_chain: tuple[NativeWindowInfo, ...] = ()
+    window_has_qrhiwidget: bool = False
 
     @property
     def selector(self) -> str:
         if self.object_name:
             return f"{self.class_name}#{self.object_name}"
         return self.class_name
+
+    @property
+    def nearest_native_ancestor(self) -> NativeWindowInfo | None:
+        for info in self.native_chain[1:]:
+            if info.has_native_window:
+                return info
+        return None
 
 
 PALETTE_ROLES: tuple[tuple[str, QPalette.ColorRole], ...] = (
@@ -105,7 +132,58 @@ def inspect_widget(widget: QWidget, theme_manager=None) -> WidgetSnapshot:
         palette=tuple(colors),
         theme_token_sources=token_sources,
         widget_theme_sources=_widget_theme_sources(widget, token_sources),
+        native_chain=tuple(_native_chain(widget)),
+        window_has_qrhiwidget=_window_has_qrhiwidget(widget),
     )
+
+
+def _window_has_qrhiwidget(widget: QWidget) -> bool:
+    top = widget.window()
+    if top is None:
+        return False
+    if isinstance(top, QRhiWidget):
+        return True
+    return bool(top.findChildren(QRhiWidget))
+
+
+def _native_chain(widget: QWidget) -> Iterable[NativeWindowInfo]:
+    current: QWidget | None = widget
+    while current is not None:
+        yield NativeWindowInfo(
+            class_name=type(current).__name__,
+            object_name=current.objectName(),
+            is_top_level=current.isWindow(),
+            has_native_window=current.internalWinId() != 0,
+            wa_native_window=current.testAttribute(
+                Qt.WidgetAttribute.WA_NativeWindow
+            ),
+            wa_paint_on_screen=current.testAttribute(
+                Qt.WidgetAttribute.WA_PaintOnScreen
+            ),
+            is_qrhiwidget=isinstance(current, QRhiWidget),
+            sibling_qrhiwidgets=_sibling_qrhiwidgets(current),
+        )
+        if current.isWindow():
+            break
+        parent = current.parentWidget()
+        current = parent if isinstance(parent, QWidget) else None
+
+
+def _sibling_qrhiwidgets(widget: QWidget) -> tuple[str, ...]:
+    parent = widget.parentWidget()
+    if parent is None:
+        return ()
+    result: list[str] = []
+    for child in parent.findChildren(
+        QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly
+    ):
+        if child is widget or not isinstance(child, QRhiWidget):
+            continue
+        label = type(child).__name__
+        if child.objectName():
+            label = f"{label}#{child.objectName()}"
+        result.append(label)
+    return tuple(result)
 
 
 def _widget_path(widget: QWidget) -> Iterable[str]:

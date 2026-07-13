@@ -26,6 +26,7 @@ from ui.main_window.lifecycle import (
 from ui.main_window.runtime import MainWindowRuntime
 from ui.main_window.startup import MainWindowStartupRuntime
 from ui.theming import install_application_theme, resolve_theme_color
+from tabs.registry import get_shared_tab_registry
 from utils.geometry import GeometryManager
 from utils.resource_loader import resource_path
 
@@ -146,10 +147,17 @@ class MainWindow(QWidget):
         from PySide6.QtCore import QRectF
         from PySide6.QtGui import QPainter, QPainterPath
         painter = QPainter(self)
+        rect = QRectF(self.rect())
+        # Reset the backing store to fully transparent first. Without this,
+        # antialiased edge pixels blend against whatever was left in the
+        # buffer instead of true transparency, producing a light-gray fringe
+        # around rounded corners on dark backgrounds.
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(rect, Qt.GlobalColor.transparent)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(self._window_bg_color)
-        rect = QRectF(self.rect())
         use_custom = getattr(self, "_use_custom_decorations", False)
         radius = (
             float(self.CORNER_RADIUS)
@@ -227,8 +235,6 @@ class MainWindow(QWidget):
     def apply_application_theme(self, theme_name: str):
         app = QApplication.instance()
         self.theme_manager.set_theme(theme_name, app)
-        if self.ui is not None:
-            self.ui.reapply_button_styles()
 
     def changeEvent(self, event: QEvent):
         super().changeEvent(event)
@@ -272,22 +278,13 @@ class MainWindow(QWidget):
 
     def mousePressEvent(self, event):
         focused = self.focusWidget()
-        if self.ui is not None and focused in (self.ui.edit_name1, self.ui.edit_name2):
-            focused.clearFocus()
+        tab = get_shared_tab_registry().get_active_tab()
+        if tab is not None:
+            tab.create_service("clear_transient_text_focus", focused)
         super().mousePressEvent(event)
 
     def schedule_update(self):
         if self.presenter is not None:
             self.presenter.schedule_canvas_update()
 
-    def update_interpolation_combo_state(
-        self, count: int, current_index: int, text: str, items: list[str]
-    ):
-        if self.ui is not None and hasattr(self.ui, "combo_interpolation"):
-            self.ui.combo_interpolation.updateState(
-                count=count,
-                current_index=current_index,
-                text=text,
-                items=items,
-            )
 

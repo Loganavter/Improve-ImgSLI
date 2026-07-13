@@ -119,7 +119,7 @@ pytest tests/runtime/test_event_bus_depth.py::TestEventBusDepth
 
 ### 2. Контракты поведения (`tests/render/`, `tests/runtime/`, `src/tabs/*/tests/{render,runtime,video}/`)
 
-Импортируют рантайм-классы и собирают минимальный контекст вручную — без Qt-приложения, без OpenGL. Паттерн — `SimpleNamespace` вместо моков:
+Импортируют рантайм-классы и собирают минимальный контекст вручную — без Qt-приложения, без QRhi/GPU-контекста. Паттерн — `SimpleNamespace` вместо моков:
 
 ```python
 from types import SimpleNamespace
@@ -136,13 +136,13 @@ def _build_ctx(*, show_divider, thickness, images_uploaded, content_rect):
     )
 ```
 
-Проверяй *что* pass делает (вызвал ли painter, какие команды записал), а не *как* — без Qt-окна и реального GL.
+Проверяй *что* pass делает (вызвал ли painter, какие команды записал), а не *как* — без Qt-окна и реального QRhi-рендеринга.
 
 ## Правила написания новых тестов
 
 1. **Тест на каждый контракт, а не на каждую фичу.** Если правило применимо ко всем фичам — пиши параметризованный тест в `tests/contracts/`, который автоматически покроет будущие фичи.
 2. **Один файл — одна тема.** Имя в стиле `test_<thing>_contracts.py` для контрактных, `test_<feature>.py` для поведенческих.
-3. **Никакого Qt/GL в юнитах.** Если тесту нужен `QApplication` — это уже интеграция; вынеси в app-level тест рядом с проверяемой подсистемой и явно создавай `QApplication.instance() or QApplication([])` в фикстуре.
+3. **Никакого Qt/QRhi в юнитах.** Если тесту нужен `QApplication` — это уже интеграция; вынеси в app-level тест рядом с проверяемой подсистемой и явно создавай `QApplication.instance() or QApplication([])` в фикстуре.
 4. **`SimpleNamespace` вместо `MagicMock`.** Mock ловит ошибки только когда падает, namespace — на этапе AttributeError. Тесты должны падать на отсутствующих полях контракта, а не молча проходить.
 5. **Документируй догму в docstring.** Первой строкой — ссылка на раздел в `docs/dev/`, чтобы при изменении правила было понятно, какой документ обновить вместе с тестом.
 6. **Не мокай Store.** Если нужно проверить редьюсер — диспатчь реальный action в реальный store; если pass — собирай `scene_frame` вручную.
@@ -151,12 +151,12 @@ def _build_ctx(*, show_divider, thickness, images_uploaded, content_rect):
 
 - Падает contract-тест после добавления фичи/плагина — фича не соответствует догме (`docs/dev/QRHI_CANVAS_FEATURES.md` или `CONTRACTS.md`). Чини фичу, не тест.
 - Падает render-контракт — поменялось поведение pass. Если изменение намеренное, обнови docstring теста и сам assertion одной правкой.
-- Падает на импорте — проверь, что новый код не тянет Qt/GL на верхнем уровне модуля. Lazy import внутри функции.
+- Падает на импорте — проверь, что новый код не тянет Qt/QRhi на верхнем уровне модуля. Lazy import внутри функции.
 
 ## Что НЕ покрыто тестами
 
-- Реальный GL-рендеринг — пиксели из шейдеров (нужен контекст, драйверо-зависимо).
-  Шов вокруг GL (render plan, `render_scene` params, fake-GPU payload) — покрыт, см.
+- Реальный QRhi-рендеринг — пиксели из шейдеров (нужен GPU-контекст, backend- и драйверо-зависимо).
+  Шов вокруг QRhi (render plan, `render_scene` params, fake-GPU payload) — покрыт, см.
   `src/tabs/image_compare/tests/video/test_video_export_preview_parity_matrix.py`.
 - Многооконные сценарии и DnD из ОС (**транспорт**). Маршрутизация drop'а
   (`route_drop`/`accepts_drop`) — покрыта в `contracts/test_tabs.py` +

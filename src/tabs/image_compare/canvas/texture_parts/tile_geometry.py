@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-# 1px of real neighboring source pixels duplicated on every tile edge so
-# bilinear filtering at a tile boundary samples true neighbor data instead
-# of ClampToEdge-repeating its own edge texel (which would show as a seam).
-# tileRect1/tileRect2 describe this padded region, not the bare grid cell,
-# so the shader's tileUV mapping (base.frag) stays a plain 0..1 span over
-# whatever the texture actually contains.
-_TILE_APRON_PX = 1
-# Extra ring of tiles kept GPU-resident beyond what's strictly visible this
-# frame, so a one-tile pan/zoom nudge doesn't immediately re-crop/re-upload
-# from the CPU-side cached QImage next frame.
-_TILE_RESIDENCY_MARGIN = 1
+from shared.rendering.tile_geometry import _apron_rect, _TILE_APRON_PX, _TILE_RESIDENCY_MARGIN
+
+__all__ = [
+    "_apron_rect",
+    "_TILE_APRON_PX",
+    "_TILE_RESIDENCY_MARGIN",
+    "_viewport_zoom_offset_for_tile",
+    "_visible_side_image_rect",
+]
 
 
 def _visible_side_image_rect(
@@ -63,28 +61,6 @@ def _visible_side_image_rect(
         right * grid.total_width,
         bottom * grid.total_height,
     )
-
-
-def _apron_rect(
-    total_width: int, total_height: int, region, apron: int
-) -> tuple[int, int, int, int]:
-    left = max(0, region.left - apron)
-    top = max(0, region.top - apron)
-    right = min(total_width, region.right + apron)
-    bottom = min(total_height, region.bottom + apron)
-    return left, top, right, bottom
-
-
-def _tile_indices_with_margin(grid, visible_indices, margin: int) -> set[tuple[int, int]]:
-    target: set[tuple[int, int]] = set()
-    for row, col in visible_indices:
-        for delta_row in range(-margin, margin + 1):
-            for delta_col in range(-margin, margin + 1):
-                candidate_row = row + delta_row
-                candidate_col = col + delta_col
-                if 0 <= candidate_row < grid.rows and 0 <= candidate_col < grid.columns:
-                    target.add((candidate_row, candidate_col))
-    return target
 
 
 def _viewport_zoom_offset_for_tile(

@@ -367,4 +367,4 @@ def _create_tab_snapshot_renderer(*args, **kwargs):
 
     registry = TabRegistry()
     registry.discover()
-    return registry.create_service("snapshot_frame_renderer", *args, **kwargs)
+    return registry.create_startup_service("snapshot_frame_renderer", *args, **kwargs)

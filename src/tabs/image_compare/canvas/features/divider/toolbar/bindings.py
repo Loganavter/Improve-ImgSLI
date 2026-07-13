@@ -77,7 +77,7 @@ def show_divider_color_picker(presenter) -> None:
                 )
 
         def post_apply(color):
-            ui = getattr(presenter, "ui", None)
+            ui = getattr(presenter, "widget", None)
             btn = getattr(ui, "btn_orientation", None) if ui is not None else None
             if btn is not None and hasattr(btn, "setUnderlineColor"):
                 btn.setUnderlineColor(color)
@@ -95,7 +95,7 @@ def on_toolbar_middle_clicked(presenter) -> None:
     current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
     if current_mode != "expert":
         return
-    button = presenter.ui.btn_orientation
+    button = presenter.widget.btn_orientation
     current_value = button.get_value()
     if current_value == 0:
         saved_value = button.get_saved_value()
@@ -126,7 +126,7 @@ def _has_loaded_images(store) -> bool:
 
 
 def sync_toolbar_state(presenter) -> None:
-    ui = presenter.ui
+    ui = presenter.widget
     viewport = presenter.store.viewport
     divider_state = get_divider_widget_state(viewport.view_state)
     divider_thickness = 0 if not divider_state.visible else divider_state.thickness

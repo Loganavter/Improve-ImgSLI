@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -40,7 +39,6 @@ from ui.widgets.zoom_indicator import ZoomIndicator
 if TYPE_CHECKING:
     import numpy as np
 
-logger = logging.getLogger("ImproveImgSLI")
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 
 
@@ -93,7 +91,12 @@ class MultiCompareWidget(QWidget):
         layout.setSpacing(0)
 
         self.toolbar = MultiCompareToolbar(self)
-        self.canvas = MultiCompareCanvasWidget(self, translate=translate)
+        self._canvas_container = QWidget(self)
+        canvas_container_layout = QVBoxLayout(self._canvas_container)
+        canvas_container_layout.setContentsMargins(0, 0, 0, 0)
+        canvas_container_layout.setSpacing(0)
+        self.canvas = MultiCompareCanvasWidget(self._canvas_container, translate=translate)
+        canvas_container_layout.addWidget(self.canvas)
         self.footer = MultiCompareFooter(self)
         self._translate = translate or (lambda _key, default=None: default or _key)
         self._pending_duplicate_source: int | None = None
@@ -109,7 +112,7 @@ class MultiCompareWidget(QWidget):
         self._font_popup_open = False
 
         layout.addWidget(self.toolbar)
-        layout.addWidget(self.canvas, 1)
+        layout.addWidget(self._canvas_container, 1)
         layout.addWidget(self.footer)
 
         self.canvas.set_dispatch(self.store.dispatch)
@@ -127,7 +130,9 @@ class MultiCompareWidget(QWidget):
         self.footer.save_clicked.connect(self.save_requested)
         self._sync_divider_toolbar()
 
-        self._startup_placeholder = StartupPlaceholder(self, target_widget=self.canvas)
+        self._startup_placeholder = StartupPlaceholder(
+            self, target_widget=self._canvas_container
+        )
         self._startup_placeholder.set_background_color(
             self.canvas._theme_or_palette_bg()
         )
@@ -137,7 +142,7 @@ class MultiCompareWidget(QWidget):
         self.zoom_indicator = ZoomIndicator(
             self,
             lang_provider=lang_provider or (lambda: "en"),
-            target_widget=self.canvas,
+            target_widget=self._canvas_container,
         )
         self.zoom_indicator.btn_zoom_reset.clicked.connect(
             lambda: self.store.dispatch(actions.reset_view())
