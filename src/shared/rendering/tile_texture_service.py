@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from shared.image_processing.regions import UniformTileGrid, build_uniform_tile_grid
 
-from .tile_geometry import _tile_indices_with_margin
-
 # Phase 0 default (docs/dev/TILED_RENDERING_DESIGN.md). Deliberately not the
 # eventual 2048/4096 target tile size yet: the base quad draw loop only
 # proves the N=1 abstraction in Phase 0 (16384px guard is still in force
@@ -15,6 +13,18 @@ DEFAULT_TILE_EXTENT = 16384
 TileIndex = tuple[int, int]
 
 
+def _tile_indices_with_margin(grid, visible_indices, margin: int) -> set[TileIndex]:
+    target: set[TileIndex] = set()
+    for row, col in visible_indices:
+        for delta_row in range(-margin, margin + 1):
+            for delta_col in range(-margin, margin + 1):
+                candidate_row = row + delta_row
+                candidate_col = col + delta_col
+                if 0 <= candidate_row < grid.rows and 0 <= candidate_col < grid.columns:
+                    target.add((candidate_row, candidate_col))
+    return target
+
+
 class TileTextureService:
     """Owns, per registered source_id, one UniformTileGrid, the set of tile
     indices currently resident as GPU textures, and the LRU/byte-budget
@@ -24,11 +34,14 @@ class TileTextureService:
     case); a >max_tile_extent image gets an NxM grid instead.
 
     This service decides *which* tile indices should be resident/evicted;
-    it never creates, uploads to, or destroys a QRhiTexture itself --
-    that's ``rhi_renderer/resources.py``'s job, driven by what
-    ``resolve_visible_tiles``/``evict_over_budget`` return. Keeping GPU
-    calls out of this class is what makes it unit-testable with plain
-    Python objects (see the ``_grid``-based tests)."""
+    it never creates, uploads to, or destroys a GPU texture itself -- that's
+    the caller's job (e.g. a compare tab's own ``canvas/rhi_renderer/
+    resources.py``), driven by what ``resolve_visible_tiles``/
+    ``evict_over_budget`` return. Keeping GPU calls out of this class is
+    what makes it unit-testable with plain Python objects, and is why it
+    lives at the shared rendering level rather than under any one tab --
+    any canvas (the compare tabs, ...) that needs to render
+    images larger than one GPU texture can reuse it as-is."""
 
     def __init__(self, *, max_tile_extent: int = DEFAULT_TILE_EXTENT) -> None:
         self._max_tile_extent = max(1, int(max_tile_extent))
@@ -36,8 +49,8 @@ class TileTextureService:
         self._resident: dict[object, set[TileIndex]] = {}
         # LRU state for byte-budget eviction, keyed by (source_id, tile
         # index). Populated only for multi-tile grids -- see
-        # resolve_visible_tiles/mark_resident, driven from
-        # rhi_renderer/resources.py.
+        # resolve_visible_tiles/mark_resident, driven from the caller's
+        # GPU resource manager.
         self._tile_byte_sizes: dict[tuple[object, TileIndex], int] = {}
         self._tile_last_used: dict[tuple[object, TileIndex], int] = {}
         self._tile_use_counter = 0
@@ -106,8 +119,7 @@ class TileTextureService:
         visible_rect: tuple[float, float, float, float] | None,
         margin: int = 0,
     ) -> set[TileIndex]:
-        """Visible + margin ring, grid-clipped. Replaces the free function
-        ``_tile_indices_with_margin`` composed with ``visible_tiles()``."""
+        """Visible + margin ring, grid-clipped."""
         grid = self._grids.get(source_id)
         if grid is None:
             return set()
@@ -121,9 +133,9 @@ class TileTextureService:
 
     def mark_resident(self, source_id: object, index: TileIndex, byte_size: int) -> None:
         """Records ``index`` as resident with its byte cost, bumps its LRU
-        timestamp. Caller (``rhi_renderer/resources.py``) calls this only
-        after the actual QRhiTexture upload succeeded -- this service tracks
-        the *decision*, never performs the upload itself."""
+        timestamp. Caller calls this only after the actual GPU texture
+        upload succeeded -- this service tracks the *decision*, never
+        performs the upload itself."""
         self._resident.setdefault(source_id, set()).add(index)
         cache_key = (source_id, index)
         self._tile_byte_sizes[cache_key] = byte_size
@@ -144,8 +156,8 @@ class TileTextureService:
     ) -> list[tuple[object, TileIndex]]:
         """Returns the (source_id, index) pairs to evict, least-recently-used
         first, never selecting anything in ``protected``. Also removes them
-        from internal residency/LRU bookkeeping. Does NOT touch any
-        QRhiTexture -- caller destroys the corresponding GPU textures."""
+        from internal residency/LRU bookkeeping. Does NOT touch any GPU
+        texture -- caller destroys the corresponding GPU textures."""
         total_bytes = sum(self._tile_byte_sizes.values())
         if total_bytes <= budget_bytes:
             return []

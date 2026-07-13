@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import time
-
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from core.constants import AppConstants
-from resources.translations import tr
+from sli_ui_toolkit.i18n import tr
 
 class InterpolationFlyoutController:
-    def __init__(self, manager):
+    def __init__(self, manager, widget):
         self.manager = manager
+        self.widget = widget
 
     def toggle(self):
         host = self.manager.host
@@ -74,7 +73,7 @@ class InterpolationFlyoutController:
 
         item_height = 34
         item_font = QApplication.font()
-        combo = getattr(host.ui, "combo_interpolation", None)
+        combo = getattr(self.widget, "combo_interpolation", None)
         if combo is not None:
             if hasattr(combo, "getItemHeight"):
                 item_height = combo.getItemHeight()
@@ -88,20 +87,18 @@ class InterpolationFlyoutController:
 
         if combo is not None:
             combo.setFlyoutOpen(True)
-            host._interp_last_open_ts = time.monotonic()
 
         def _do_show():
             if host._interp_flyout is not None and combo is not None:
                 host._interp_flyout.show_below(combo)
                 host._interp_popup_open = True
-                host._interp_last_open_ts = time.monotonic()
 
         QTimer.singleShot(0, _do_show)
 
     def apply_choice(self, idx: int):
         host = self.manager.host
         try:
-            combo = getattr(host.ui, "combo_interpolation", None)
+            combo = getattr(self.widget, "combo_interpolation", None)
             if combo is not None and 0 <= idx < combo.count():
                 combo.setCurrentIndex(idx)
                 controller = getattr(host, "main_controller", None)
@@ -117,14 +114,28 @@ class InterpolationFlyoutController:
         host = self.manager.host
         if host._interp_flyout is not None:
             host._interp_flyout.hide()
-        combo = getattr(host.ui, "combo_interpolation", None)
+        combo = getattr(self.widget, "combo_interpolation", None)
         if combo is not None:
             combo.setFlyoutOpen(False)
         host._interp_popup_open = False
 
     def on_closed(self):
         host = self.manager.host
-        combo = getattr(host.ui, "combo_interpolation", None)
+        combo = getattr(self.widget, "combo_interpolation", None)
         if combo is not None:
             combo.setFlyoutOpen(False)
         host._interp_popup_open = False
+
+    def has_focus_inside(self, new_widget) -> bool:
+        if new_widget is None:
+            return False
+        host = self.manager.host
+        for anchor in (getattr(self.widget, "combo_interpolation", None), host._interp_flyout):
+            if anchor is None:
+                continue
+            parent = new_widget
+            while parent is not None:
+                if parent is anchor:
+                    return True
+                parent = parent.parent()
+        return False

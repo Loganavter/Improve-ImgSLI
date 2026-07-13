@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 _dlog = logging.getLogger("ImproveImgSLI.divider_debug")
@@ -172,6 +173,11 @@ def command_end_split_drag(actions) -> None:
 
 def command_update_split_drag(actions, position: float) -> None:
     clamped = max(0.0, min(1.0, float(position)))
+    _dlog.debug(
+        "[split-sync-debug] dispatch t=%.3f position=%.6f",
+        time.perf_counter() * 1000.0,
+        clamped,
+    )
     if dispatch_viewport_action(actions, SetSplitPositionAction(clamped)):
         viewport = getattr(getattr(actions, "store", None), "viewport", None)
         interaction = (

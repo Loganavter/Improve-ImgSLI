@@ -94,13 +94,13 @@ def trigger_preview_unification(controller, image_number: int):
 
             controller._unification_task_id += 1
             current_task_id = controller._unification_task_id
+
             worker = GenericWorker(
                 controller._unify_images_worker_task,
-                source1.copy(),
-                source2.copy(),
+                source1,
+                source2,
                 document.image1_path,
                 document.image2_path,
-                controller.store.viewport.render_config.display_resolution_limit,
                 current_task_id,
             )
             worker.signals.result.connect(controller._on_unified_images_ready)
@@ -129,6 +129,13 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     ):
         return
 
+    from shared.image_processing.lazy_pixel_source import (
+        close_if_lazy,
+        maybe_wrap_for_lazy_storage,
+    )
+
+    close_if_lazy(getattr(document, f"full_res_image{image_number}", None))
+    full_img = maybe_wrap_for_lazy_storage(full_img)
     item = target_list[index_in_list]
     item.image = full_img
     controller._update_image_slot(
@@ -143,25 +150,25 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
         return
 
     def trigger_unification():
-        source1 = document.full_res_image1 or document.preview_image1
-        source2 = document.full_res_image2 or document.preview_image2
+        live_document = controller.store.get_session_state_slot("document")
+        source1 = live_document.full_res_image1 or live_document.preview_image1
+        source2 = live_document.full_res_image2 or live_document.preview_image2
         if source1 and source2:
             controller.store.viewport.session_data.render_cache.unification_in_progress = (
                 True
             )
             controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-                document.image1_path,
-                document.image2_path,
+                live_document.image1_path,
+                live_document.image2_path,
             )
             controller._unification_task_id += 1
             current_task_id = controller._unification_task_id
             worker = GenericWorker(
                 controller._unify_images_worker_task,
-                source1.copy(),
-                source2.copy(),
-                document.image1_path,
-                document.image2_path,
-                controller.store.viewport.render_config.display_resolution_limit,
+                source1,
+                source2,
+                live_document.image1_path,
+                live_document.image2_path,
                 current_task_id,
             )
             worker.signals.result.connect(controller._on_unified_images_ready)
@@ -302,7 +309,10 @@ def _finalize_loaded_paths(
 
         if controller.presenter:
             controller.presenter.ui_batcher.schedule_update("combobox")
-        QTimer.singleShot(50, lambda: controller.set_current_image(image_number))
+
+        QTimer.singleShot(
+            50, lambda num=image_number: controller.set_current_image(num)
+        )
 
         if controller.presenter:
             from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
@@ -389,6 +399,7 @@ def set_current_image(
     controller._invalidate_image_canvas_render_state(clear_magnifier=False)
     controller._schedule_image_canvas_update()
 
+    document = controller.store.get_session_state_slot("document")
     path1 = document.image1_path
     path2 = document.image2_path
     if path1 and path2:
@@ -399,11 +410,20 @@ def set_current_image(
             u1, u2 = cache[cache_key]
             controller.store.viewport.session_data.image_state.image1 = u1
             controller.store.viewport.session_data.image_state.image2 = u2
+            # display_cache_image1/2 is exclusively owned/refreshed by the
+            # per-frame create_preview_cache_async pipeline (see
+            # docs/dev/DISPLAY_IMAGE_PIPELINE.md) -- clear it here rather than
+            # writing the full-resolution u1/u2 pair into it directly, which
+            # bypassed downscaling entirely and was the actual cause of the
+            # "images shrink into a tiny square" bug with >8192px images.
             controller.store.viewport.session_data.render_cache.display_cache_image1 = (
-                u1
+                None
             )
             controller.store.viewport.session_data.render_cache.display_cache_image2 = (
-                u2
+                None
+            )
+            controller.store.viewport.session_data.render_cache.last_display_cache_params = (
+                None
             )
             controller.store.viewport.session_data.render_cache.unification_in_progress = (
                 False
@@ -443,11 +463,8 @@ def on_unified_images_ready(controller, result):
         controller.metrics_service.on_metrics_calculated(None)
         return
     try:
-        if isinstance(result, tuple) and len(result) == 7:
-            u1, u2, cached_u1, cached_u2, path1, path2, task_id = result
-        elif isinstance(result, tuple) and len(result) == 5:
+        if isinstance(result, tuple) and len(result) == 5:
             u1, u2, path1, path2, task_id = result
-            cached_u1, cached_u2 = None, None
         else:
             controller.metrics_service.on_metrics_calculated(None)
             return
@@ -479,28 +496,25 @@ def on_unified_images_ready(controller, result):
         controller.store.viewport.session_data.image_state.image1 = u1
         controller.store.viewport.session_data.image_state.image2 = u2
         _invalidate_diff_cache(controller)
+        # display_cache_image1/2 is exclusively owned/refreshed by the
+        # per-frame create_preview_cache_async pipeline (see
+        # docs/dev/DISPLAY_IMAGE_PIPELINE.md) -- clear it here so a stale
+        # display cache from the previous image pair never lingers, rather
+        # than writing a second, competing copy of it from this worker
+        # result.
         controller.store.viewport.session_data.render_cache.scaled_image1_for_display = (
             None
         )
         controller.store.viewport.session_data.render_cache.scaled_image2_for_display = (
             None
         )
+        controller.store.viewport.session_data.render_cache.display_cache_image1 = None
+        controller.store.viewport.session_data.render_cache.display_cache_image2 = None
+        controller.store.viewport.session_data.render_cache.last_display_cache_params = None
         controller.store.invalidate_render_cache()
         controller._invalidate_image_canvas_render_state(clear_magnifier=False)
         controller._schedule_image_canvas_update()
 
-        if cached_u1 is not None and cached_u2 is not None:
-            controller.store.viewport.session_data.render_cache.display_cache_image1 = (
-                cached_u1
-            )
-            controller.store.viewport.session_data.render_cache.display_cache_image2 = (
-                cached_u2
-            )
-            controller.store.viewport.session_data.render_cache.last_display_cache_params = (
-                id(u1),
-                id(u2),
-                controller.store.viewport.render_config.display_resolution_limit,
-            )
         try:
             cache_key = (path1, path2)
             cache = (

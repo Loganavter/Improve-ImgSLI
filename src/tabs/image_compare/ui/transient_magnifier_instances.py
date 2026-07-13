@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QSize
+from PySide6.QtCore import QEvent, Qt, QSize
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
@@ -8,8 +8,9 @@ from ui.managers.transient_ui_parts.anchored_popup import AnchoredPopupBubbleCon
 
 
 class MagnifierInstancesPopupController:
-    def __init__(self, manager):
+    def __init__(self, manager, widget):
         self.manager = manager
+        self.widget = widget
         self._requested_open = False
         self._hover_timer = DelayedActionTimer(self.show, parent=manager.host)
         self._bubble = AnchoredPopupBubbleController(
@@ -22,9 +23,20 @@ class MagnifierInstancesPopupController:
             on_hidden=self._mark_closed,
             should_keep_open=lambda: self._requested_open,
         )
+        self._wire_button()
 
     def _button(self):
-        return getattr(self.manager.host.ui, "btn_magnifier_instances", None)
+        return getattr(self.widget, "btn_magnifier_instances", None)
+
+    def _wire_button(self) -> None:
+        button = self._button()
+        if button is None:
+            return
+        button.countChanged.connect(lambda _count: self.on_count_changed())
+        targets = button.popup_targets() if hasattr(button, "popup_targets") else (button,)
+        for target in targets:
+            target.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+            target.installEventFilter(self.manager.host)
 
     def _mark_closed(self) -> None:
         self.manager.host._magn_instances_popup_open = False

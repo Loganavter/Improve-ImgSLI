@@ -10,6 +10,8 @@ from typing import Any
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
 
+from ui.canvas_infra.viewport.contract import CanvasGeometryProvider
+
 
 @dataclass(frozen=True)
 class TabTransitionHint:
@@ -69,6 +71,21 @@ class TabContract(ABC):
     def icon(self) -> QIcon | None:
         """Optional icon for the new-session menu."""
         return None
+
+    @property
+    def is_bootstrap_default(self) -> bool:
+        """True if this tab should be the registry's active tab before any
+        workspace session exists to activate one via `sync_session_mode()`.
+
+        `TabRegistry.create_service`/`create_main_window_feature` resolve
+        strictly against the active tab (see docs/dev/TAB_CONTRACT.md)
+        — during the narrow bootstrap window before the first session is
+        created, something still needs to answer main-window-shell feature
+        requests. Exactly one registered tab should return True here; the
+        host (`TabRegistry.activate_default`) picks whichever one does
+        without needing to name it.
+        """
+        return False
 
     @property
     def resources_dir(self) -> Path | None:
@@ -165,9 +182,50 @@ class TabContract(ABC):
         """
         return False
 
+    def finalize_host_page(self, ui: Any) -> None:
+        """One-time cosmetic pass over this tab's own chrome once the host
+        finishes building the workspace shell (initial visibility, icon
+        sizing). Called once per registered tab; no-op unless overridden.
+        """
+
     def apply_host_session_mode(self, ui: Any, session_title: str | None = None) -> bool:
         """Apply host chrome state for this tab when it becomes active."""
         return False
+
+    def get_canvas_geometry_provider(self) -> CanvasGeometryProvider | None:
+        """Return this tab's `CanvasGeometryProvider`, or `None` if it has
+        no canvas concept.
+
+        This is the *only* growth point for canvas coordinate-math/hit-test
+        needs — see `ui.canvas_infra.viewport.contract.CanvasGeometryProvider`
+        for the full method set. Do not add more single-purpose canvas
+        methods directly on `TabContract`; extend the provider protocol
+        instead, so tabs without a canvas never have to stub anything.
+        """
+        return None
+
+    def owns_widget(self, candidate: Any) -> bool:
+        """True if `candidate` belongs to this tab's canvas. Forwards to
+        `get_canvas_geometry_provider()`; do not override directly.
+        """
+        provider = self.get_canvas_geometry_provider()
+        return provider is not None and provider.owns_widget(candidate)
+
+    def get_canvas_size(self) -> tuple[int, int] | None:
+        provider = self.get_canvas_geometry_provider()
+        return provider.get_size() if provider is not None else None
+
+    def map_global_to_canvas_local(self, global_pos: Any) -> Any | None:
+        provider = self.get_canvas_geometry_provider()
+        return provider.map_global_to_local(global_pos) if provider is not None else None
+
+    def get_canvas_content_rect_px(self) -> tuple[int, int, int, int] | None:
+        provider = self.get_canvas_geometry_provider()
+        return provider.get_content_rect_px() if provider is not None else None
+
+    def get_canvas_zoom_pan(self) -> tuple[float, float, float]:
+        provider = self.get_canvas_geometry_provider()
+        return provider.get_zoom_pan() if provider is not None else (1.0, 0.0, 0.0)
 
     def register_canvas_features(self) -> None:
         """Register tab-owned canvas feature packages with the host canvas shell.

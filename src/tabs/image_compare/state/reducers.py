@@ -173,6 +173,8 @@ class SessionDataReducer:
         self.render_cache_reducer = RenderCacheReducer()
 
     def reduce(self, session_data: SessionData, action: Action) -> SessionData:
+        if session_data.render_cache is None:
+            return session_data
         new_image_state = self.image_session_reducer.reduce(
             session_data.image_state, action
         )

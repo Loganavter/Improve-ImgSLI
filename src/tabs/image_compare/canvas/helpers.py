@@ -5,19 +5,27 @@ from tabs.image_compare.canvas.contracts import (
     ExportCanvasProtocol,
     GlLikeCanvasProtocol,
 )
+from tabs.image_compare.canvas.widget import CanvasWidget
 
 
-def get_canvas(ui) -> BaseCanvasProtocol | None:
-    return getattr(ui, "image_label", None)
+def get_canvas(widget) -> BaseCanvasProtocol | None:
+    return getattr(widget, "image_label", None)
 
 
-def get_canvas_widget(ui) -> GlLikeCanvasProtocol | None:
-    canvas = get_canvas(ui)
-    return canvas if isinstance(canvas, GlLikeCanvasProtocol) else None
+def get_canvas_widget(widget) -> GlLikeCanvasProtocol | None:
+    # Nominal isinstance() against the concrete class instead of the
+    # runtime_checkable Protocol: this runs on every drag/render frame, and
+    # typing.Protocol's structural check (__instancecheck__) walks every
+    # declared attribute via inspect.getattr_static, ~30x the cost of a
+    # normal isinstance for this protocol. CanvasWidget is the only
+    # implementation (see tests/contracts/test_canvas_protocols.py), so the
+    # result is identical.
+    canvas = get_canvas(widget)
+    return canvas if isinstance(canvas, CanvasWidget) else None
 
 
 def get_export_canvas(canvas) -> ExportCanvasProtocol | None:
-    return canvas if isinstance(canvas, ExportCanvasProtocol) else None
+    return canvas if isinstance(canvas, CanvasWidget) else None
 
 
 def reset_canvas_overlays(canvas: BaseCanvasProtocol) -> None:

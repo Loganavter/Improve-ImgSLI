@@ -13,7 +13,7 @@ CLOC_EXCLUDE_DIRS="${CLOC_EXCLUDE_DIRS:-.git,.venv,venv,__pycache__,.pytest_cach
 usage() {
     cat <<'EOF'
 Usage:
-  ./context.sh [options]
+  ./launcher.sh context [options]
 
 Build an AI context bundle for Improve-ImgSLI and the external sli-ui-toolkit.
 
@@ -77,6 +77,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 IGNORE_DIR_RE='(^|/)(\.git|\.venv|venv|__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|build|dist|Cache|blob_storage|\.idea|\.vscode|\.codex|\.agents|\.claude)(/|$)'
 TREE_IGNORE='*.git|.venv|venv|__pycache__|.pytest_cache|.mypy_cache|.ruff_cache|build|dist|Cache|blob_storage|.idea|.vscode|.codex|.agents|.claude|context.txt|app_context.txt'
@@ -424,7 +425,7 @@ resolve_toolkit_dir() {
     fi
 
     for candidate in \
-        "$SCRIPT_DIR/../sli-ui-toolkit" \
+        "$REPO_ROOT/../sli-ui-toolkit" \
         "/home/jorj/Загрузки/sli-ui-toolkit"; do
         if [[ -d "$candidate" ]]; then
             printf '%s\n' "$(cd "$candidate" && pwd)"
@@ -432,8 +433,8 @@ resolve_toolkit_dir() {
         fi
     done
 
-    if [[ -x "$SCRIPT_DIR/venv/bin/python" ]]; then
-        "$SCRIPT_DIR/venv/bin/python" - <<'PY' 2>/dev/null || true
+    if [[ -x "$REPO_ROOT/venv/bin/python" ]]; then
+        "$REPO_ROOT/venv/bin/python" - <<'PY' 2>/dev/null || true
 from pathlib import Path
 import sli_ui_toolkit
 print(Path(sli_ui_toolkit.__file__).resolve().parent)
@@ -474,7 +475,7 @@ write_line "Collected file contents: *.md and *.txt only"
 write_line "Max file lines: $MAX_FILE_LINES"
 write_line "Max total chars: $MAX_TOTAL_CHARS"
 
-process_repo "$SCRIPT_DIR" "$STATS_THRESHOLD"
+process_repo "$REPO_ROOT" "$STATS_THRESHOLD"
 
 if [[ -n "$TOOLKIT_DIR" && -d "$TOOLKIT_DIR" ]]; then
     process_repo "$TOOLKIT_DIR" 0

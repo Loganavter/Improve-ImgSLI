@@ -13,13 +13,13 @@ _log = logging.getLogger("ImproveImgSLI.magnifier.overlay")
 class _StorePresenterAdapter:
     def __init__(self, store, canvas):
         self.store = store
-        self.ui = _CanvasUI(canvas)
+        self.widget = _CanvasWidget(canvas)
 
     def get_current_label_dimensions(self):
-        return self.ui.image_label.width(), self.ui.image_label.height()
+        return self.widget.image_label.width(), self.widget.image_label.height()
 
 
-class _CanvasUI:
+class _CanvasWidget:
     def __init__(self, canvas):
         self.image_label = canvas
 

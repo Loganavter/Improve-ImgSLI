@@ -111,7 +111,7 @@ def magnifier_orientation_middle_click_handler(presenter) -> None:
     if current_mode != "expert":
         return
 
-    button = presenter.ui.btn_magnifier_orientation
+    button = presenter.widget.btn_magnifier_orientation
     current_value = button.get_value()
 
     if current_value == 0:
@@ -177,7 +177,7 @@ def magnifier_instances_remove_handler(presenter) -> None:
 def do_toggle_magnifier_orientation(presenter) -> None:
     from ui.canvas_infra.scene.feature_state_api import execute_feature_command
 
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     model = MagnifierStoreService(presenter.store).get_active_or_first_magnifier()
     current_orientation = bool(model.is_horizontal) if model is not None else False

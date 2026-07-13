@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.widgets import Button
+from sli_ui_toolkit.widgets import Button, ThemedWidget
 from ui.widgets.scroll_value_button import ScrollValueButton
 
 from sli_ui_toolkit.i18n import tr
@@ -24,7 +24,7 @@ def _tr_with_default(key: str, default: str):
     return _resolve
 
 
-class MultiCompareToolbar(QWidget):
+class MultiCompareToolbar(ThemedWidget, QWidget):
     """Top toolbar: add image + cross-tab help/settings/quick-save + divider controls."""
 
     add_clicked = Signal()
@@ -84,7 +84,7 @@ class MultiCompareToolbar(QWidget):
         self.btn_divider_color.clicked.connect(self.divider_color_clicked)
 
         self.btn_divider_width = ScrollValueButton(
-            icon=AppIcon.VERTICAL_SPLIT,
+            icon=AppIcon.GRID,
             min_value=0,
             max_value=10,
             zero_icon=AppIcon.DIVIDER_HIDDEN,
@@ -211,3 +211,12 @@ class MultiCompareToolbar(QWidget):
     def _on_divider_width_right_clicked(self) -> None:
         if self._ui_mode == "expert":
             self.divider_color_clicked.emit()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self._bg_color)
+        painter.end()
+
+    def on_theme_changed(self) -> None:
+        self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+        super().on_theme_changed()

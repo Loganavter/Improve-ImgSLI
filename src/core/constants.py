@@ -61,6 +61,14 @@ class AppConstants:
     # ~2.7GB at this ceiling). Raise further only alongside a real streaming
     # decode path (design doc "Provider callback cost" open question).
     MAX_SUPPORTED_IMAGE_DIMENSION = 32768
+    # docs/dev/rendering/tile-rendering-system.md Phase 3: past this size per
+    # side, the decoded full-res image is spilled to a memmap-backed
+    # LazyPixelSource instead of staying resident as a Python-owned PIL
+    # buffer for the document's lifetime. 2x the live tile extent (8192,
+    # see rhi_renderer/resources.py's _LIVE_TILE_EXTENT) -- large enough
+    # that ordinary images never engage this path, matching the doc's own
+    # suggested threshold.
+    PHASE3_LAZY_THRESHOLD_PX = 16384
 
 class Events(StrEnum):
 

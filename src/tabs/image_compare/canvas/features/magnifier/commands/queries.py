@@ -32,14 +32,14 @@ def _serialize_magnifier_model(model) -> dict[str, Any]:
 
 
 def query_is_horizontal(store) -> bool:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     model = MagnifierStoreService(store).get_active_or_first_magnifier()
     return bool(model.is_horizontal) if model is not None else False
 
 
 def query_active_magnifier_state(store) -> dict[str, Any] | None:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return None
@@ -58,7 +58,7 @@ def query_total_count(store) -> int:
 
 
 def query_all_magnifier_states(store) -> tuple[dict[str, Any], ...]:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return ()
@@ -102,7 +102,7 @@ def query_should_show_panel(store) -> bool:
 
 
 def query_are_all_frozen(store) -> bool:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return False
@@ -110,7 +110,7 @@ def query_are_all_frozen(store) -> bool:
 
 
 def query_active_combined(store) -> bool:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
     if store is None or getattr(store, "viewport", None) is None:
         return False
@@ -142,7 +142,8 @@ def query_active_border_color(store):
 
 
 def query_active_capture_size(store) -> float:
-    from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService, default_capture_size
+    from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
+    from tabs.image_compare.canvas.features.magnifier.state.store import default_capture_size
 
     if store is None or getattr(store, "viewport", None) is None:
         return 0.1
@@ -157,7 +158,7 @@ class MagnifierMovementHandler:
         self._store = store
 
     def _svc(self):
-        from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+        from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
         return MagnifierStoreService(self._store)
 

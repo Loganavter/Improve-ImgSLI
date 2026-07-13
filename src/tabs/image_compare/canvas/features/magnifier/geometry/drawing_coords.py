@@ -7,7 +7,7 @@ from PySide6.QtCore import QPoint, QPointF, QRect
 
 from core.store import Store
 
-from tabs.image_compare.canvas.features.magnifier.state.store import MagnifierStoreService
+from tabs.image_compare.canvas.features.magnifier.state.service import MagnifierStoreService
 
 _mlog = logging.getLogger("ImproveImgSLI.video_magnifier_layout")
 

@@ -4,7 +4,7 @@ from .diff_toasts import dismiss_active_diff_toast
 
 
 def sync_diff_texture(presenter, diff_mode):
-    image_label = get_canvas_widget(getattr(presenter, "ui", None))
+    image_label = get_canvas_widget(getattr(presenter, "widget", None))
     if image_label is None:
         return
 

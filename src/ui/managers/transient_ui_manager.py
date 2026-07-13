@@ -2,19 +2,15 @@ import logging
 
 from PySide6.QtCore import QPointF
 
-from ui.managers.transient_ui_parts import (
-    FontSettingsController,
-    InterpolationFlyoutController,
-    PopupClosingController,
-)
+from ui.managers.transient_ui_parts import PopupClosingController
 logger = logging.getLogger("ImproveImgSLI")
 
 class TransientUIManager:
     def __init__(self, host):
         self.host = host
         self.flyouts = self._create_tab_service("unified_flyout_controller")
-        self.interpolation = InterpolationFlyoutController(self)
-        self.font_settings = FontSettingsController(self)
+        self.interpolation = self._create_tab_service("interpolation_flyout_controller")
+        self.font_settings = self._create_tab_service("font_settings_flyout_controller")
         self.magnifier = self._create_tab_service("magnifier_visibility_controller")
         self.magnifier_instances = self._create_tab_service(
             "magnifier_instances_popup_controller"
@@ -41,7 +37,7 @@ class TransientUIManager:
 
         registry = TabRegistry()
         registry.discover()
-        service = registry.create_service(service_id, self)
+        service = registry.create_startup_service(service_id, self)
         if service is None:
             raise RuntimeError(f"Tab transient UI service is unavailable: {service_id}")
         return service

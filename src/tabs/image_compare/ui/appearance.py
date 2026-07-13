@@ -1,9 +1,10 @@
 """Tab-side appearance handler for the image-compare canvas widgets.
 
-Owns the theme-aware repaint of the image label, image container, startup
-placeholder and any QRhiWidget children. The host's ``MainWindowAppearance``
-invokes :func:`apply_image_canvas_appearance` from its ``on_theme_changed``
-hook so the host does not need to know about image-compare-specific widgets.
+Owns the theme-aware repaint of the image label, image container and startup
+placeholder. The host's ``MainWindowAppearance`` invokes
+:func:`apply_image_canvas_appearance` from its ``on_theme_changed`` hook so
+the host does not need to know about image-compare-specific widgets. Other
+tabs own their own QRhiWidget repaint via their own ``apply_appearance``.
 """
 
 from __future__ import annotations
@@ -54,11 +55,3 @@ def apply_image_canvas_appearance(host_window) -> None:
     placeholder = getattr(ui, "image_startup_placeholder", None)
     if placeholder is not None:
         placeholder.set_background_color(bg)
-    for rhi_widget in host_window.findChildren(QRhiWidget):
-        if rhi_widget is image_label:
-            continue
-        if hasattr(rhi_widget, "apply_theme_background"):
-            rhi_widget.apply_theme_background(QColor(bg))
-        else:
-            rhi_widget._theme_background_color = QColor(bg)
-        rhi_widget.update()

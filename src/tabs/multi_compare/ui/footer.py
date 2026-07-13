@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
-from sli_ui_toolkit.widgets import Button
+from sli_ui_toolkit.widgets import Button, ThemedWidget
 
 from sli_ui_toolkit.i18n import tr
 from ui.icon_manager import AppIcon
+from ui.theming import resolve_theme_color
 
 
 def _save_result_tr(_key: str, lang: str) -> str:
@@ -25,7 +27,7 @@ def _save_tooltip_tr(_key: str, lang: str) -> str:
     )
 
 
-class MultiCompareFooter(QWidget):
+class MultiCompareFooter(ThemedWidget, QWidget):
     """Bottom bar: save composed grid (mirrors main workspace btn_save)."""
 
     save_clicked = Signal()
@@ -53,3 +55,12 @@ class MultiCompareFooter(QWidget):
         self.btn_save.clicked.connect(self.save_clicked)
 
         layout.addWidget(self.btn_save, 1)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self._bg_color)
+        painter.end()
+
+    def on_theme_changed(self) -> None:
+        self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+        super().on_theme_changed()

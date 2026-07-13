@@ -1,7 +1,45 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Protocol, runtime_checkable
+
+@runtime_checkable
+class CanvasGeometryProvider(Protocol):
+    """Structural capability for a tab's canvas widget: coordinate math and
+    hit-testing that host-generic event routing needs (global keyboard
+    routing, drag/drop, screen<->image coordinate conversion), without
+    exposing the widget itself.
+
+    A canvas-owning tab implements this once and returns an instance from
+    ``TabContract.get_canvas_geometry_provider()``. Host code never receives
+    the canvas widget — only these six primitive-returning queries. This is
+    the single growth point for canvas-geometry needs: a new query is a new
+    method here (and on the one provider implementation per canvas-owning
+    tab), not a new method on ``TabContract`` that every tab, canvas or not,
+    has to stub.
+    """
+
+    def owns_widget(self, candidate: Any) -> bool:
+        """True if ``candidate`` is (or descends from) this tab's canvas."""
+        ...
+
+    def get_size(self) -> tuple[int, int] | None:
+        """Canvas widget size in pixels, or ``None`` if not ready."""
+        ...
+
+    def map_global_to_local(self, global_pos: Any) -> Any | None:
+        """Map a global (screen) ``QPoint`` into canvas-local coordinates."""
+        ...
+
+    def get_content_rect_px(self) -> tuple[int, int, int, int] | None:
+        """Content rect in local pixels ``(x, y, w, h)`` — the area the
+        image occupies inside the canvas, excluding letterboxing.
+        """
+        ...
+
+    def get_zoom_pan(self) -> tuple[float, float, float]:
+        """Current ``(zoom, pan_offset_x, pan_offset_y)``."""
+        ...
 
 @dataclass(frozen=True, slots=True)
 class DisplaySplitPositionRequest:

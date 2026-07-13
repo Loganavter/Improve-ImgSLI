@@ -23,7 +23,7 @@ from tabs.image_compare.canvas.features.magnifier.render.tile_capture import (
     uv_segment_to_tc_range,
 )
 from tabs.image_compare.canvas.rhi_renderer import _apron_rect, _TILE_APRON_PX
-from tabs.image_compare.canvas.texture_parts.tile_texture_service import (
+from shared.rendering.tile_texture_service import (
     TileTextureService,
 )
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from tabs.image_compare.canvas.rhi_renderer.draw_plan import _resolve_diff_tile_key
-from tabs.image_compare.canvas.texture_parts.tile_texture_service import (
+from shared.rendering.tile_texture_service import (
     TileTextureService,
 )
 

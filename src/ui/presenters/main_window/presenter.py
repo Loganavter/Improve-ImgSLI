@@ -51,6 +51,7 @@ class MainWindowPresenter(QObject):
         store: Store,
         main_controller: MainController,
         features: MainWindowFeatureSet,
+        widget,
         plugin_ui_registry: PluginUIRegistry | None = None,
     ):
         super().__init__(main_window_app)
@@ -67,6 +68,12 @@ class MainWindowPresenter(QObject):
         self.features = features
         self.ui_manager = features.ui_manager
         self.ui_batcher = UIUpdateBatcher(self)
+        if widget is None:
+            raise RuntimeError(
+                "MainWindowPresenter requires the bootstrap-default tab's "
+                "widget to be assembled and passed in explicitly by the composer"
+            )
+        self.widget = widget
 
         from ui.widgets.font_settings_flyout import FontSettingsFlyout
 
@@ -95,7 +102,7 @@ class MainWindowPresenter(QObject):
             self.sync_workspace_tabs()
             self.sync_session_mode()
             self.update_slider_tooltips()
-            self.ui.reapply_button_styles()
+            self.widget.reapply_button_styles()
             self.repopulate_flyouts()
         except Exception:
             logger.exception(
@@ -126,10 +133,10 @@ class MainWindowPresenter(QObject):
         self.features.export.shutdown()
 
     def set_magnifier_orientation_checked(self, is_checked: bool) -> None:
-        self.ui.btn_magnifier_orientation.setChecked(is_checked, emit_signal=False)
+        self.widget.btn_magnifier_orientation.setChecked(is_checked, emit_signal=False)
 
     def toggle_magnifier_panel_visibility(self, is_visible: bool) -> None:
-        self.ui.toggle_magnifier_panel_visibility(is_visible)
+        self.widget.toggle_magnifier_panel_visibility(is_visible)
 
     def _connect_signals(self):
         return connect_signals_impl(self)

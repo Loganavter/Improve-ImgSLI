@@ -17,70 +17,44 @@ Status markers:
 - `Blocked` - waiting on another task or external constraint.
 - `In progress` - actively being worked on.
 
-## P1 - Large images above 16384 px
+## P2 - Unify theme-repaint mechanism
 
-Status: `Design done, implementation not started` (design landed 2026-07-10)
+Status: `In progress` (design landed 2026-07-13; Phases 0-2 of the migration
+plan implemented 2026-07-13 — `ThemedWidget` mixin + `multi_compare`
+toolbar/footer migrated, `image_compare` chrome widgets migrated onto
+`ThemedBackgroundContainer`, `ImageCompareWidget`/`SessionPickerWidget` page
+backgrounds self-paint and `MainWindowAppearance.update_chrome_background`
+is deleted; Phases 3-4 still open, opportunistic. The separate
+multi_compare backdrop-staleness symptom that motivated this work is
+root-caused and fixed — see [KNOWN_BUGS.md](KNOWN_BUGS.md) — turned out to
+be the `setPalette()`/`setAutoFillBackground` Qt quirk, not a
+compositing/Wayland issue.)
 
-Area: live canvas, export, video snapshots, diff rendering
+Area: theming, `ui/main_window/appearance.py`, `TabContract.apply_appearance`,
+toolkit widget base classes
 
 Related local docs:
 
-- [Tiled Rendering — Architecture Design](./TILED_RENDERING_DESIGN.md) — full
-  design doc, supersedes the phase summaries previously inlined here.
-- [Multi Compare TODO](../../src/tabs/multi_compare/docs/TODO.md#p2---tiled-large-image-support)
+- [THEMING.md](./THEMING.md#repaint-on-theme-change-the-themedwidget-mixin) —
+  `ThemedWidget` mixin, migration status, what it intentionally does not
+  solve.
+- [KNOWN_BUGS.md](./KNOWN_BUGS.md) — the `setPalette()`/`autoFillBackground`
+  root cause and fix for the backdrop-staleness symptom that originally
+  motivated this unification.
 
-Current state:
-
-- Images above `16384 px` on either side are blocked by software guard.
-- The current live renderer maps each loaded image side to one GPU texture.
-- Many GPUs/backends report max texture sizes around `16384` or `32768`; the
-  app cannot safely assume larger textures exist.
-
-Why this is not just "raise the limit":
-
-- Live canvas, export preview, final image export, and video snapshot rendering
-  must stay visually consistent.
-- Diff modes (`highlight`, `grayscale`, `edges`, `ssim`) currently depend on
-  whole-image or cached diff textures in several paths.
-- Magnifier capture/readback assumes a coherent image source and must not show
-  seams or stale tiles.
-- Full-resolution export cannot render a >16k target as one GPU texture either;
-  it needs chunked render/write logic.
-
-Planned direction, per the design doc: tiling as a **foundational** service
-(`TileTextureService`), not an additive path for oversized images only.
-Every texture consumer — base quad draw, diff modes, magnifier, export, video
-snapshot — is refactored to read tiles through this one service, so a normal
-image is simply the N=1 case of the same code path a >16k image uses. See
-[Tiled Rendering — Architecture Design](./TILED_RENDERING_DESIGN.md) for the
-full data model, per-consumer migration notes, and coordinate-mapping
-contract.
-
-Revised phases (see design doc for detail):
-
-- **Phase 0** (new) - `TileTextureService` + tiled base quad draw loop,
-  behavior-neutral for existing images (N=1 tile). Backend `maxTextureSize`
-  query added here, replacing the hardcoded constant.
-- **Phase 1** - Large image display: lift the guard, extend the progressive
-  CPU source provider for windowed full-res reads. Full-resolution export
-  stays gated until Phase 3.
-- **Phase 2** - Viewport-driven tile residency/eviction, zoom/pan seam
-  correctness.
-- **Phase 3** - Tiled/streaming export (`gpu_export_proxy.py`), video
-  snapshot inherits this automatically (thin wrapper, confirmed).
-- **Phase 4** - Diff modes and magnifier consume tiles on the GPU side
-  (not just CPU-tiled-then-reassembled, as diff modes do today); regression
-  tests for seam alignment, visible-tile selection, export/live parity, and
-  N=1 behavior-neutrality.
-
-Open questions (see design doc for context on each):
-
-- Tile size: fixed constant vs. backend-derived from queried `maxTextureSize`.
-- Cache/eviction budget: tile count, byte budget, or GPU-memory-query driven.
-- Provider callback cost for already-decoded in-memory sources (copy vs.
-  zero-copy view per tile).
-- Which export formats get real tiled/streaming writers in Phase 3 vs. a
-  full-buffer-assembly fallback.
+Found while debugging multi_compare's toolbar/footer staying on the old
+theme color after a theme switch. Four independent, mutually-unaware
+mechanisms currently repaint widgets on `theme_changed` — toolkit widgets
+self-subscribing (~20+ files, opt-in per widget), app dialogs
+self-subscribing separately (settings/image_properties/export/video_editor,
+copy-pasted per file), the `TabContract.apply_appearance` per-tab hook
+(tabs must remember to repaint every owned widget by hand — multi_compare
+forgot toolbar/footer), and `MainWindowAppearance.update_chrome_background`
+(window-level, one-layout-level-deep tree-walk, duplicates responsibility
+`apply_appearance` already owns). None of these fail loudly when a widget
+isn't covered by any of them — full inventory and the `ThemedWidget` mixin
+are in THEMING.md. Do not do a big-bang migration of the ~20 already-working
+toolkit widgets — only fold widgets in as they're touched.
 
 ## P2 - Session-state infrastructure
 
@@ -159,8 +133,8 @@ baked into the state-slot factory).
 
 Status: `In progress` — infrastructure landed 2026-07-09, no UI yet.
 
-`state_slots` and `resources` hold runtime objects such as numpy arrays and GL
-handles. No JSON/pickle layer existed. For "open project" or "recent session" the
+`state_slots` and `resources` hold runtime objects such as numpy arrays and QRhi
+texture handles. No JSON/pickle layer existed. For "open project" or "recent session" the
 two options considered were per-tab serializers registered on `TabContract`, or
 a `SessionBlueprint.snapshot/restore` pair invoked by a project I/O service.
 Went with the former: `SessionBlueprint` (`core/session_blueprints.py`) is a
@@ -253,7 +227,7 @@ itself, likely as a new `state_slots["action_history"]` or a dedicated
 - deep-copy `document` and decide whether image refs are shared or cloned,
 - deep-copy `viewport.session_data`,
 - copy `state_slots`/`resources` opt-in per blueprint because some entries are
-  intentionally session-local, such as thread pools and GL textures.
+  intentionally session-local, such as thread pools and QRhi textures.
 
 This probably belongs on `SessionBlueprint` as a `clone(session) -> session`
 hook.
@@ -276,5 +250,83 @@ is swapped via `replace_state`. Long-term it would be cleaner to:
 - which hooks fire when,
 - recommended way to use `state_slots` vs ad-hoc instance dicts,
 - ownership rules for `resources` namespaces.
+
+## P2 - Bring multi_compare up to image_compare's host-memory bounding
+
+Status: `Open`
+
+Area: `src/tabs/multi_compare/scene/passes/base_images.py`,
+`src/tabs/multi_compare/scene/resources.py`,
+`src/shared/rendering/tile_texture_service.py`,
+[tile-rendering-system.md](rendering/tile-rendering-system.md#host-side-memory-bounding)
+
+The GPU-side tile grid is already properly shared: `TileTextureService`
+(`shared/rendering/tile_texture_service.py`) and apron padding
+(`shared/rendering/tile_geometry.py`'s `_apron_rect`/`_TILE_APRON_PX`) live
+in `shared/rendering/` and both `image_compare` and `multi_compare` already
+import the same code (`multi_compare/scene/renderer.py` constructs its own
+`TileTextureService` instance, not a reimplementation). Per-side visible-rect
+math (`_visible_side_image_rect` vs `_visible_slot_image_rect`) is
+deliberately *not* shared — it mirrors each tab's own shader uv derivation,
+and the two viewport models genuinely differ (image_compare: letterbox +
+split + separate hi-res "source" role; multi_compare: plain per-slot
+pan/zoom/fit) — forcing a shared abstraction here risks exactly the
+draw/residency mismatch bug the tiling system is fragile to.
+
+What is a real, confirmed gap (checked 2026-07-13, `grep` for
+`LazyPixelSource`/`_texture_upload_cache` under `src/tabs/multi_compare/`
+returns nothing):
+
+- `multi_compare` has GPU-tile eviction (`tile_service.evict_over_budget`,
+  `SLOT_TILE_CACHE_BUDGET_BYTES`) but **no host-side QImage cache budget**
+  equivalent to image_compare's `_texture_upload_cache` LRU
+  (`touch_texture_upload_cache`/`evict_texture_upload_cache_over_budget` in
+  `image_compare/canvas/texture_parts/upload_queue.py`). Every slot's
+  full-resolution QImage stays resident in host RAM uncapped.
+- `LazyPixelSource`/`maybe_wrap_for_lazy_storage` (the memmap-spill large-image
+  path, see tile-rendering-system.md) is wired into image_compare's load path
+  only (`_session_controller.py`, `use_cases/loading.py`). A multi_compare
+  slot loaded with an 18000×18000px image today hits the same anonymous-heap
+  OOM risk that motivated Phase 2/3 originally, just not yet fixed here.
+
+Proposed direction: generalize the host-texture-cache LRU helpers in
+`upload_queue.py` into `shared/rendering/` (keyed generically rather than on
+image_compare's fixed 5 texture-key roles), and wire
+`maybe_wrap_for_lazy_storage`/`close_if_lazy` into multi_compare's slot-load
+path. This is consistent with `TAB_CONTRACT.md`'s isolation rule — that rule
+targets app-level i18n/theme/QSS keys specifically; `shared/rendering/` is
+already the sanctioned place for cross-tab render infra reuse (precedent:
+`TileTextureService` itself).
+
+## P3 - Consider a GEGL-style always-tiled pixel storage model
+
+Status: `Open`
+
+Area: `src/shared/image_processing/lazy_pixel_source.py`,
+`src/tabs/image_compare/canvas/rhi_renderer/resources.py`,
+[tile-rendering-system.md](rendering/tile-rendering-system.md#host-side-memory-bounding)
+
+Today large-source memory handling is threshold-gated: images stay a plain
+in-memory PIL image until they cross `AppConstants.PHASE3_LAZY_THRESHOLD_PX`
+(16384px), at which point they switch to `LazyPixelSource` (memmap-backed,
+disk-spilled). This is a two-tier model — small images get the fast/simple
+path, huge ones get the safe-but-slower path — and the threshold has to be
+picked and defended (see 2026-07-13 conversation reasoning: below the
+threshold, memmap spill is pure overhead — disk I/O on every load, per-access
+`.crop()`/`.to_pil()` materialization cost, extra failure surface from
+`tempfile.mkstemp`/`os.makedirs`).
+
+GIMP's GEGL backend does not have this two-tier split at all — every image,
+regardless of size, goes through the same tiled (`GeglBuffer`, ~128×128px
+tiles) lazy-cache architecture with disk swap under memory pressure. Worth
+evaluating whether a similar "always tiled, no threshold" model would be
+simpler to reason about long-term than maintaining a manually-tuned
+threshold plus two separate code paths (`is_lazy` branches throughout
+`realize_tile_plan`, `qimage_from_pil`, SSIM diff, export). Not clearly a
+win — GEGL's tile size (128px) and update cadence are tuned for a very
+different workload (arbitrary compositing graph, not a two-image compare
+viewer), and rewriting the whole pixel-storage layer to be unconditionally
+tiled is a much bigger and riskier change than tuning one threshold.
+Captured as a "worth investigating," not a committed plan.
 
 Right now contributors have no source of truth besides reading code.

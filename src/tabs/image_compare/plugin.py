@@ -31,7 +31,7 @@ from tabs.image_compare.state.reducers import (
 )
 
 register_state_slot_reducer("document", DocumentReducer.reduce)
-register_session_data_reducer(SessionDataReducer().reduce)
+register_session_data_reducer("image_compare", SessionDataReducer().reduce)
 register_render_config_reducer(ImageRenderConfigReducer.reduce)
 from tabs.image_compare.services.analysis import (
     AnalysisRuntime,

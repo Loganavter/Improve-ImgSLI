@@ -3,8 +3,9 @@ from __future__ import annotations
 from domain.qt_adapters import color_to_qcolor
 
 class FontSettingsController:
-    def __init__(self, manager):
+    def __init__(self, manager, widget):
         self.manager = manager
+        self.widget = widget
 
     def toggle(self, anchor_widget=None):
         host = self.manager.host
@@ -18,7 +19,7 @@ class FontSettingsController:
         if not host.font_settings_flyout:
             return
         if anchor_widget is None:
-            anchor_widget = getattr(host.ui, "btn_text_settings", None)
+            anchor_widget = getattr(self.widget, "btn_text_settings", None)
         host._font_anchor_widget = anchor_widget
         host.font_settings_flyout.set_values(
             host.store.viewport.render_config.font_size_percent,
@@ -35,8 +36,6 @@ class FontSettingsController:
             if hasattr(anchor_widget, "setFlyoutOpen"):
                 anchor_widget.setFlyoutOpen(True)
         host._font_popup_open = True
-        import time
-        host._font_popup_last_open_ts = time.monotonic()
 
     def hide(self):
         host = self.manager.host
@@ -52,7 +51,36 @@ class FontSettingsController:
     def on_font_changed(self):
         host = self.manager.host
         host.repopulate_visible_flyouts()
-        if hasattr(host.ui, "reapply_button_styles"):
-            host.ui.reapply_button_styles()
+        self.widget.reapply_button_styles()
         if host.parent_widget is not None:
             host.parent_widget.update()
+
+    def has_focus_inside(self, new_widget) -> bool:
+        if new_widget is None:
+            return False
+        host = self.manager.host
+        flyout = host.font_settings_flyout
+        if self._is_alive_and_visible(flyout):
+            parent = new_widget
+            while parent is not None:
+                if parent is flyout:
+                    return True
+                parent = parent.parent()
+            if hasattr(flyout, "has_active_dialog") and flyout.has_active_dialog():
+                return True
+        anchor = host._font_anchor_widget or getattr(self.widget, "btn_text_settings", None)
+        if anchor is not None:
+            parent = new_widget
+            while parent is not None:
+                if parent is anchor:
+                    return True
+                parent = parent.parent()
+        return False
+
+    def _is_alive_and_visible(self, widget) -> bool:
+        if widget is None:
+            return False
+        try:
+            return bool(widget.isVisible())
+        except RuntimeError:
+            return False

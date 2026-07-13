@@ -35,7 +35,7 @@ def build_main_window_features(
 
     registry = TabRegistry()
     registry.discover()
-    toolbar = registry.create_service(
+    toolbar = registry.create_startup_service(
         "toolbar_presenter",
         store,
         main_controller,

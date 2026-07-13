@@ -72,10 +72,46 @@ Responsibilities:
 - `panel.py` shows the selected widget details and copy actions in a separate
   opaque tool window, so dialogs and plugin windows remain inspectable.
 - `widget_snapshot.py` collects widget identity, palette, inline style sheet,
-  dynamic properties, parent path, and theme-token matches.
+  dynamic properties, parent path, theme-token matches, and the native-window
+  chain (see below).
 - `qss_index.py` reads registered QSS files and returns likely selector
   candidates. Qt does not expose browser-like computed CSS origins, so these
   rules are shown as candidates, not guaranteed matched rules.
+
+## Native window / composited-children diagnostics
+
+Added while investigating a theme-repaint bug where a widget's `QPalette`
+was confirmed correct (via this inspector) but the on-screen pixels stayed
+stale. Root-caused since as a Qt quirk (`setPalette()` +
+`setAutoFillBackground` unreliable for this app), not a
+presentation/compositing issue — see `docs/dev/KNOWN_BUGS.md`.
+
+The panel's "Native window" section (compact view) / "Native Window" section
+(Copy details) walks the selected widget's ancestor chain up to the
+top-level window and reports, per level:
+
+- whether the widget already has a native platform window
+  (`internalWinId() != 0`, read-only — never forces creation)
+- whether `Qt.WA_NativeWindow` is explicitly set
+- whether it's a `QRhiWidget`
+- whether it has any `QRhiWidget` siblings under the same immediate parent
+  (`sibling_qrhiwidgets` — this directly tests the "QRhiWidget as a direct
+  layout neighbor forces composited-children painting for its siblings"
+  hypothesis without needing to add temporary logging/instrumentation)
+
+Three experiment buttons act on the currently selected (`Shift+LeftClick`ed)
+widget and immediately re-snapshot it:
+
+- **Toggle native window** — flips `Qt.WA_NativeWindow` and, when turning it
+  on, calls `winId()` once to force the platform window into existence, so
+  you can test "does giving this widget its own native surface fix the
+  stale-paint symptom" live, without editing code.
+- **Force repaint()** / **Force update()** — trigger a synchronous vs. queued
+  repaint on the selected widget only, to isolate whether a symptom is
+  update-scheduling-specific.
+
+These are diagnostic-only controls; they mutate live widget attributes for
+the current session and are not persisted.
 
 ## Initial Feature Set
 
@@ -91,6 +127,6 @@ Responsibilities:
 ## Future Canvas Inspector
 
 The QWidget inspector is intentionally separate from canvas/render diagnostics.
-Canvas elements are often GL passes or `QPainter` drawings rather than Qt
+Canvas elements are often QRhi render passes or `QPainter` drawings rather than Qt
 widgets. A later canvas tab can inspect render passes, feature payloads, and
 store-backed colors around the cursor.

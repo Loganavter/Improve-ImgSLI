@@ -8,6 +8,7 @@ from resources.translations import tr
 from sli_ui_toolkit.widgets import Button
 from ui.icon_manager import AppIcon
 from ui.theming import polish_themed_dialog, resolve_theme_color
+from ui.widgets.scroll_value_button import ScrollValueButton
 
 
 def build_modes(store) -> list[dict[str, str]]:
@@ -89,9 +90,10 @@ def _add_beginner_demo(overlay, demo_container, demo_layout, current_lang: str) 
 
     b3.clicked.connect(_on_beginner_color_clicked)
 
-    b4 = Button(
-        AppIcon.DIVIDER_WIDTH,
-        scrollable=(1, 10),
+    b4 = ScrollValueButton(
+        icon=AppIcon.DIVIDER_WIDTH,
+        min_value=1,
+        max_value=10,
         show_underline=True,
         parent=demo_container,
     )
@@ -111,10 +113,11 @@ def _add_beginner_demo(overlay, demo_container, demo_layout, current_lang: str) 
 
 
 def _add_advanced_demo(overlay, demo_container, demo_layout, current_lang: str) -> None:
-    b_smart = Button(
+    b_smart = ScrollValueButton(
         icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
         toggle=True,
-        scrollable=(0, 20),
+        min_value=0,
+        max_value=20,
         show_underline=True,
         parent=demo_container,
     )
@@ -146,10 +149,11 @@ def _add_advanced_demo(overlay, demo_container, demo_layout, current_lang: str) 
 
 
 def _add_expert_demo(overlay, demo_container, demo_layout, current_lang: str) -> None:
-    b_expert = Button(
+    b_expert = ScrollValueButton(
         icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
         toggle=True,
-        scrollable=(0, 20),
+        min_value=0,
+        max_value=20,
         show_underline=True,
         parent=demo_container,
     )

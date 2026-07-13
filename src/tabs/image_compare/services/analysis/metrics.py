@@ -26,7 +26,7 @@ class MetricsService:
         self._show_ssim_metrics_toast_if_needed(calc_ssim)
 
         worker = GenericWorker(
-            self.metrics_worker_task, img1.copy(), img2.copy(), calc_psnr, calc_ssim
+            self.metrics_worker_task, img1, img2, calc_psnr, calc_ssim
         )
         worker.signals.result.connect(self.on_metrics_calculated)
         worker.signals.error.connect(
@@ -63,7 +63,9 @@ class MetricsService:
         """Worker task to compute metrics."""
         try:
             from shared.analysis import calculate_psnr, calculate_ssim
+            from shared.image_processing.lazy_pixel_source import to_real_pil_copy
 
+            img1, img2 = to_real_pil_copy(img1), to_real_pil_copy(img2)
             psnr_val, ssim_val = None, None
             if calc_psnr:
                 psnr_val = calculate_psnr(img1, img2)

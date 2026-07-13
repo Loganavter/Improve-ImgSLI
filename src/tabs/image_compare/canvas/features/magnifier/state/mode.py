@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from tabs.image_compare.canvas.features.magnifier.state.store import (
+from tabs.image_compare.canvas.features.magnifier.state.service import (
     MagnifierStoreService,
+)
+from tabs.image_compare.canvas.features.magnifier.state.store import (
     iter_magnifier_models,
     magnifier_enabled,
     set_magnifier_enabled_flag,

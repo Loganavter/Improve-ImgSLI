@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QGuiApplication, QTextOption
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -15,10 +15,18 @@ from PySide6.QtWidgets import (
 from sli_ui_toolkit.widgets import Button, MinimalistScrollBar
 
 from devtools.ui_inspector.qss_index import QssRule
-from devtools.ui_inspector.widget_snapshot import ThemeColorSource, WidgetSnapshot
+from devtools.ui_inspector.widget_snapshot import (
+    NativeWindowInfo,
+    ThemeColorSource,
+    WidgetSnapshot,
+)
 
 
 class InspectorPanel(QWidget):
+    toggle_native_window_requested = Signal()
+    force_repaint_requested = Signal()
+    force_update_requested = Signal()
+
     def __init__(self, parent: QWidget | None = None):
         if parent is None:
             flags = Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint
@@ -67,6 +75,32 @@ class InspectorPanel(QWidget):
         buttons.addStretch(1)
         layout.addLayout(buttons)
 
+        experiments = QHBoxLayout()
+        experiments.setSpacing(6)
+        self.toggle_native_button = Button(
+            text="Toggle native window",
+            variant="surface",
+            size=(160, 32),
+            parent=self,
+        )
+        self.force_repaint_button = Button(
+            text="Force repaint()",
+            variant="surface",
+            size=(126, 32),
+            parent=self,
+        )
+        self.force_update_button = Button(
+            text="Force update()",
+            variant="surface",
+            size=(122, 32),
+            parent=self,
+        )
+        experiments.addWidget(self.toggle_native_button)
+        experiments.addWidget(self.force_repaint_button)
+        experiments.addWidget(self.force_update_button)
+        experiments.addStretch(1)
+        layout.addLayout(experiments)
+
         self.text = QTextEdit(self)
         self.text.setObjectName("UiInspectorDetails")
         self.text.setFont(self.font())
@@ -84,6 +118,11 @@ class InspectorPanel(QWidget):
         self.copy_selector_button.clicked.connect(self.copy_selector)
         self.copy_path_button.clicked.connect(self.copy_path)
         self.copy_details_button.clicked.connect(self.copy_details)
+        self.toggle_native_button.clicked.connect(
+            self.toggle_native_window_requested
+        )
+        self.force_repaint_button.clicked.connect(self.force_repaint_requested)
+        self.force_update_button.clicked.connect(self.force_update_requested)
         self.hide()
 
     def position_in_parent(self) -> None:
@@ -120,6 +159,16 @@ class InspectorPanel(QWidget):
         self._snapshot = snapshot
         self._details = _format_full_snapshot(snapshot, qss_candidates)
         self.text.setHtml(_format_compact_snapshot_html(snapshot, qss_candidates))
+        unsafe = snapshot.window_has_qrhiwidget
+        self.toggle_native_button.setEnabled(not unsafe)
+        self.toggle_native_button.setToolTip(
+            "Disabled: this window contains a QRhiWidget. Forcing "
+            "WA_NativeWindow here has been observed to corrupt QRhiWidget "
+            "rendering app-wide on Wayland and cannot be cleanly undone "
+            "(restart required)."
+            if unsafe
+            else "Force this widget to get its own native platform window."
+        )
         if self.parentWidget() is None:
             self.position_as_window(global_pos)
         else:
@@ -170,6 +219,36 @@ def _format_compact_snapshot(
         lines.append("Properties")
         lines.extend(f"  {key}: {value}" for key, value in useful_props)
         lines.append("")
+
+    nearest = snapshot.nearest_native_ancestor
+    lines.append("Native window")
+    lines.append(
+        f"  this: native={_bool_yes_no(snapshot.native_chain[0].has_native_window) if snapshot.native_chain else '-'} "
+        f"WA_NativeWindow={_bool_yes_no(snapshot.native_chain[0].wa_native_window) if snapshot.native_chain else '-'}"
+    )
+    if nearest is not None:
+        lines.append(
+            f"  nearest native ancestor: {nearest.selector}"
+            f"{' (QRhiWidget)' if nearest.is_qrhiwidget else ''}"
+        )
+    else:
+        lines.append("  nearest native ancestor: none (top-level window itself)")
+    own_siblings = snapshot.native_chain[0].sibling_qrhiwidgets if snapshot.native_chain else ()
+    if own_siblings:
+        lines.append(
+            "  QRhiWidget siblings (same parent): " + ", ".join(own_siblings)
+        )
+    ancestor_siblings = [
+        (info, info.sibling_qrhiwidgets)
+        for info in snapshot.native_chain[1:]
+        if info.sibling_qrhiwidgets
+    ]
+    for info, siblings in ancestor_siblings:
+        lines.append(
+            f"  QRhiWidget siblings under {info.selector}'s parent: "
+            + ", ".join(siblings)
+        )
+    lines.append("")
 
     theme_sources = _theme_sources_for_widget(snapshot, qss_candidates)
     if theme_sources:
@@ -265,6 +344,19 @@ def _format_full_snapshot(
     for color in snapshot.palette:
         suffix = f" -> {', '.join(color.theme_keys)}" if color.theme_keys else ""
         lines.append(f"  {color.name}: {color.value}{suffix}")
+
+    lines.extend(["", "Native Window (widget -> top-level)"])
+    if snapshot.native_chain:
+        for info in snapshot.native_chain:
+            lines.append(f"  {_native_info_line(info)}")
+        nearest = snapshot.nearest_native_ancestor
+        if nearest is not None:
+            lines.append(
+                f"  composited-children boundary: nearest native ancestor is "
+                f"{nearest.selector}"
+            )
+    else:
+        lines.append("  none")
 
     lines.extend(["", "Inline StyleSheet"])
     lines.append(snapshot.inline_stylesheet.strip() or "  none")
@@ -439,6 +531,29 @@ def _hover_qss_candidates(qss_candidates: tuple[QssRule, ...]) -> tuple[QssRule,
         if ":hover" in selector or '[state="hover"]' in selector or ".hover" in selector:
             result.append(rule)
     return tuple(result)
+
+
+def _native_info_line(info: NativeWindowInfo) -> str:
+    flags = []
+    if info.is_top_level:
+        flags.append("top-level")
+    if info.has_native_window:
+        flags.append("native")
+    if info.wa_native_window:
+        flags.append("WA_NativeWindow")
+    if info.wa_paint_on_screen:
+        flags.append("WA_PaintOnScreen")
+    if info.is_qrhiwidget:
+        flags.append("QRhiWidget")
+    suffix = f" [{', '.join(flags)}]" if flags else ""
+    line = f"{info.selector}{suffix}"
+    if info.sibling_qrhiwidgets:
+        line += f" — QRhiWidget siblings: {', '.join(info.sibling_qrhiwidgets)}"
+    return line
+
+
+def _bool_yes_no(value: bool) -> str:
+    return "yes" if value else "no"
 
 
 def _swatch_html(color: str) -> str:

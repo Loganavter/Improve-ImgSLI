@@ -64,6 +64,7 @@ class MainWindowComposer:
             )
             tray_manager.quit_requested.connect(QApplication.instance().quit)
 
+        image_compare_widget = window.image_compare_widget
         main_controller = MainController(self.context)
         event_handler = EventHandler(self.context.store, None)
         image_canvas = self._create_tab_owned_feature(
@@ -89,6 +90,7 @@ class MainWindowComposer:
             main_controller,
             features=features,
             plugin_ui_registry=self.context.plugin_ui_registry,
+            widget=image_compare_widget,
         )
         event_handler.presenter = presenter
         main_controller.attach_window_shell(presenter)

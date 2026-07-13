@@ -18,6 +18,7 @@ from tabs.image_compare.services.gpu_export_scene import (
     build_export_render_scene,
 )
 from tabs.image_compare.plugins.video_editor.services.video_export_models import GlobalCanvasBounds
+from shared.rendering.image_identity import image_uid
 from shared.rendering import (
     NormalizedBounds,
     TargetSurfaceSpec,
@@ -308,10 +309,10 @@ class SnapshotRenderPlanBuilder:
             )
 
         scene_cache_key = (
-            id(image1),
-            id(image2),
-            id(source_image1),
-            id(source_image2),
+            image_uid(image1),
+            image_uid(image2),
+            image_uid(source_image1),
+            image_uid(source_image2),
             canvas_plan.canvas_width,
             canvas_plan.canvas_height,
             canvas_plan.padding_left,

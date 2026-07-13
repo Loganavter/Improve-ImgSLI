@@ -32,6 +32,7 @@ class AppIcon(Enum):
     TEXT_MANIPULATOR = "text-manipulator.svg"
     VERTICAL_SPLIT = "vertical_split.svg"
     HORIZONTAL_SPLIT = "horizontal_split.svg"
+    GRID = "grid.svg"
     MAGNIFIER = "magnifier.svg"
     FREEZE = "freeze.svg"
     TEXT_FILENAME = "text_filename.svg"

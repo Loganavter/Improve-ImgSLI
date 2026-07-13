@@ -49,6 +49,8 @@ show_help() {
     echo "                       --ui-inspector       Enable the developer UI inspector."
     echo "  test [args...]     Run the test suite (pytest). Extra args pass through,"
     echo "                     e.g. '$0 test tests/runtime -k gesture'."
+    echo "  context [args...]  Build an AI context bundle (context.txt). Extra args pass"
+    echo "                     through to scripts/dev_utils/context_cloc.sh, e.g. '--no-stats'."
     echo "  install            Create the virtual environment and/or install dependencies."
     echo "  recreate           Forcibly recreate the virtual environment."
     echo "  delete             Delete the virtual environment and Python caches."
@@ -131,6 +133,11 @@ uninstall_desktop_action() {
     else
         log_info "Desktop entry not found, nothing to remove."
     fi
+}
+
+context_action() {
+    shift
+    (cd "$SCRIPT_DIR" && bash "$SCRIPT_DIR/scripts/dev_utils/context_cloc.sh" "$@")
 }
 
 test_action() {
@@ -240,6 +247,10 @@ run)
 
 test)
     test_action "$@"
+    ;;
+
+context)
+    context_action "$@"
     ;;
 
 recreate)

@@ -213,7 +213,9 @@ class ColorSettingsButton(Button):
             self.refresh_visual_state()
             if self.flyout.isVisible():
                 if self.flyout.has_visible_actions():
-                    self.flyout.show_aligned(self, "top-center", "bottom-center")
+                    self.flyout.show_aligned(
+                        self, "top-center", "bottom-center", toggle=False
+                    )
                 else:
                     self.flyout.hide()
 
@@ -222,7 +224,9 @@ class ColorSettingsButton(Button):
         self.elementHovered.emit("magnifier")
         self.flyout.update_state()
         if self.flyout.has_visible_actions():
-            self.flyout.show_aligned(self, "top-center", "bottom-center")
+            self.flyout.show_aligned(
+                self, "top-center", "bottom-center", toggle=False
+            )
             self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def leaveEvent(self, event):

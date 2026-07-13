@@ -347,6 +347,35 @@ class MultiCompareTab(TabContract):
 
         register_canvas_feature_package("multi_compare", features_pkg)
 
+    def _canvas(self):
+        if self._widget is None:
+            return None
+        return self._widget.canvas
+
+    def get_canvas_geometry_provider(self):
+        if self._widget is None:
+            return None
+        from tabs.multi_compare.canvas_geometry_provider import (
+            MultiCompareCanvasGeometryProvider,
+        )
+
+        return MultiCompareCanvasGeometryProvider(self._canvas)
+
+    def apply_appearance(self, host_window) -> None:
+        canvas = self._canvas()
+        if canvas is None:
+            return
+        theme_manager = getattr(host_window, "theme_manager", None)
+        if theme_manager is None:
+            return
+        from PySide6.QtGui import QColor
+
+        from ui.theming import resolve_theme_color
+
+        bg = resolve_theme_color(theme_manager, "label.image.background")
+        canvas.apply_theme_background(QColor(bg))
+        canvas.update()
+
     def contribute_settings(self, registry) -> None:
 
         return

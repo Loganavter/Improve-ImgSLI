@@ -1,5 +1,3 @@
-import logging
-
 from PySide6.QtCore import QRect
 
 from ui.canvas_infra.viewport.contract import DisplaySplitPositionRequest
@@ -8,8 +6,6 @@ from ui.canvas_infra.viewport.pipeline import compute_display_split_position
 from ui.canvas_infra.viewport.state import set_display_split_position
 
 from ui.widgets.canvas.render_common import widget_px_to_screen_px
-
-_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 
 def update_display_split_position(

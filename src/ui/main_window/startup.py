@@ -146,19 +146,21 @@ class MainWindowStartupRuntime:
         window.ui.main_window = window
         from ui.main_window.layouts import apply_workspace_tabs_visibility
         apply_workspace_tabs_visibility(window.ui)
-        image_label = window.ui.image_label
+        bootstrap_tab = window.ui._tab_registry.bootstrap_default_tab()
+        image_compare_widget = window.ui.legacy_tab_widgets.get(
+            bootstrap_tab.session_type
+        )
+        window.image_compare_widget = image_compare_widget
+        image_label = image_compare_widget.image_label
         window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
         window._startup_canvas_first_frame_rendered = False
         window._startup_canvas_first_visual_ready = False
         window.appearance.update_image_label_background()
-        window.appearance.update_chrome_background()
         self.show_cover()
         image_label.firstFrameRendered.connect(self.on_image_label_first_frame_rendered)
         image_label.firstVisualFrameReady.connect(
             self.on_image_label_first_visual_frame_ready
         )
-
-        window.ui.install_rating_wheel_handlers()
 
         components = window.app_context.create_window_dependent_components(window)
         window.geometry_manager = components.geometry_manager
@@ -169,21 +171,20 @@ class MainWindowStartupRuntime:
         window.ui_resource_manager = components.ui_resource_manager
 
         window.installEventFilter(window.event_handler)
-        window.ui.image_label.installEventFilter(window.event_handler)
+        image_label.installEventFilter(window.event_handler)
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(window.event_handler)
 
         window.appearance.update_image_label_background()
-        window.appearance.update_chrome_background()
         if window.main_controller and window.main_controller.sessions:
             window.main_controller.sessions.initialize_app_display()
-        window.ui.reapply_button_styles()
+        image_compare_widget.reapply_button_styles()
         from tabs.registry import TabRegistry
 
         _tab_registry = TabRegistry()
         _tab_registry.discover()
-        _tab_registry.create_service("refresh_startup_button_visuals", window.ui)
+        _tab_registry.notify_all("refresh_startup_button_visuals", window.ui)
 
         window._startup_stack.setCurrentWidget(window._app_host)
         self.sync_cover_geometry()
@@ -230,6 +231,22 @@ class MainWindowStartupRuntime:
             )
         return window._startup_canvas_first_visual_ready
 
+    def _active_tab(self):
+        # The tab whose page is currently shown in the workspace stack —
+        # the single resolution point shared by every startup hook below
+        # that needs to ask "what is on screen right now".
+        window = self.window
+        tab_registry = getattr(window.ui, "_tab_registry", None)
+        stack = getattr(window.ui, "workspace_stack", None)
+        if tab_registry is None or stack is None:
+            return None
+        current_widget = stack.currentWidget()
+        for session_type in tab_registry.registered_types:
+            if tab_registry.get_page(session_type) is not current_widget:
+                continue
+            return tab_registry.get_tab(session_type)
+        return None
+
     def _active_tab_requires_first_frame_gate(self) -> bool:
         # The startup cover is gated on the active tab's canvas rendering its
         # first frame, but that signal only fires for tabs whose canvas
@@ -237,58 +254,22 @@ class MainWindowStartupRuntime:
         # a tab without that signal (e.g. session_picker) is shown at
         # startup, the cover would stay up forever, so the gate does not
         # apply then.
-        window = self.window
-        tab_registry = getattr(window.ui, "_tab_registry", None)
-        stack = getattr(window.ui, "workspace_stack", None)
-        if tab_registry is None or stack is None:
+        tab = self._active_tab()
+        if tab is None:
             return True
-        current_widget = stack.currentWidget()
-        for session_type in tab_registry.registered_types:
-            if tab_registry.get_page(session_type) is not current_widget:
-                continue
-            tab = tab_registry.get_tab(session_type)
-            if tab is None:
-                return True
-            try:
-                return bool(
-                    tab.create_service("requires_first_frame_startup_gate")
-                )
-            except Exception:
-                return True
-        return True
+        try:
+            return bool(tab.create_service("requires_first_frame_startup_gate"))
+        except Exception:
+            return True
 
     def is_canvas_content_ready(self) -> bool:
         window = self.window
         if window.ui is None:
             return False
-        image_label = getattr(window.ui, "image_label", None)
-        if image_label is None:
+        tab = self._active_tab()
+        if tab is None:
             return False
-
-        source_ready = bool(getattr(image_label, "_source_images_ready", False))
-        if source_ready:
-            return True
-
-        uploaded = getattr(image_label, "_images_uploaded", None)
-        if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
-            return True
-
-        runtime_state = getattr(image_label, "runtime_state", None)
-        if runtime_state is not None:
-            uploaded = getattr(runtime_state, "_images_uploaded", None)
-            if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
-                return True
-            background = getattr(runtime_state, "_background_pixmap", None)
-            if background is not None and not background.isNull():
-                return True
-
-        stored_qimages = getattr(image_label, "_stored_qimages", None)
-        if isinstance(stored_qimages, (list, tuple)):
-            for image in stored_qimages:
-                if image is not None and not image.isNull():
-                    return True
-
-        return False
+        return bool(tab.create_service("is_canvas_content_ready"))
 
     def reveal_if_ready(self) -> None:
         window = self.window
@@ -299,7 +280,9 @@ class MainWindowStartupRuntime:
         if not window._main_app_revealed:
             window._startup_stack.setCurrentWidget(window._app_host)
             window._main_app_revealed = True
-        window.ui.image_startup_placeholder.hide()
+        widget = window.image_compare_widget
+        if widget is not None:
+            widget.image_startup_placeholder.hide()
         self.hide_cover()
         self.emit_visual_ready()
 

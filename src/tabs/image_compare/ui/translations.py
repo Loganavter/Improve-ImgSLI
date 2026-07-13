@@ -68,7 +68,6 @@ def _bind_tooltips(ui) -> None:
         (ui.btn_record, "tooltip.record_video"),
         (ui.btn_pause, "tooltip.pause_recording"),
         (ui.btn_video_editor, "tooltip.open_video_editor"),
-        (ui.btn_new_session, "tooltip.create_workspace_session"),
         (ui.btn_settings, "tooltip.open_application_settings"),
         (ui.help_button, "tooltip.show_help"),
         (ui.combo_interpolation, "tooltip.magnifier_interpolation"),
@@ -109,12 +108,11 @@ def _bind_group_titles(ui) -> None:
         ("record_group_container", "button.record"),
     )
     for attr_name, key in groups:
-        container = getattr(ui, attr_name, None)
-        if container is not None:
-            translatable_callback(
-                container,
-                lambda lang, c=container, k=key: c.set_label_text(tr(k, lang)),
-            )
+        container = getattr(ui, attr_name)
+        translatable_callback(
+            container,
+            lambda lang, c=container, k=key: c.set_label_text(tr(k, lang)),
+        )
 
 
 def _bind_slider_labels(ui) -> None:
@@ -131,6 +129,5 @@ def _bind_color_button_updates(ui) -> None:
         "btn_magnifier_color_settings",
         "btn_magnifier_color_settings_beginner",
     ):
-        widget = getattr(ui, attr, None)
-        if widget is not None and hasattr(widget, "update_language"):
-            translatable_callback(widget, widget.update_language)
+        widget = getattr(ui, attr)
+        translatable_callback(widget, widget.update_language)

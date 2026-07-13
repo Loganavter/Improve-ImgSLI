@@ -71,7 +71,7 @@ def _command_toggle_filename_overlay(actions, enabled: bool) -> None:
 
 
 def _sync_filename_overlay_toolbar_state(presenter) -> None:
-    control = getattr(getattr(presenter, "ui", None), "btn_file_names", None)
+    control = getattr(getattr(presenter, "widget", None), "btn_file_names", None)
     if control is None:
         return
     enabled = bool(presenter.store.viewport.render_config.include_file_names_in_saved)
