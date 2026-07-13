@@ -1,2 +1,15 @@
 __pycache__/
 *.pyc
+
+# Agent tooling
+.claude/
+.agents/
+.codex/
+.cursor/
+.windsurf/
+.aider*
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
