@@ -16,7 +16,6 @@ def _strip(parent=None) -> AdaptiveTabStrip:
     return AdaptiveTabStrip(
         add_icon=AppIcon.ADD,
         close_icon=AppIcon.CLOSE,
-        add_button_menu=[],
         parent=parent,
     )
 

@@ -1,0 +1,56 @@
+Improve ImgSLI — Qt / PySide6 notice (Windows bundle)
+=====================================================
+
+This Windows build uses Qt for Python (PySide6), shiboken6, and Qt 6 runtime
+libraries under the GNU Lesser General Public License v3.0 or later
+(LGPL-3.0-or-later).
+
+Application source code
+-----------------------
+Improve-ImgSLI itself is licensed under GPL-3.0-or-later.
+See LICENSE in the installation directory.
+
+LGPL libraries in this bundle
+-----------------------------
+Qt and PySide6 are dynamically linked. The following directories contain
+replaceable library files (not baked into Improve_ImgSLI.exe):
+
+  PySide6\              Qt and PySide6 .dll / .pyd files
+  PySide6\plugins\      Qt platform and imageformat plugins
+  PySide6\translations\ Qt translation files (optional)
+
+You may replace these files with your own LGPL-compliant builds of the same
+Qt 6 major version, provided the replacements remain ABI-compatible with the
+version recorded in licenses\Qt_BUNDLE_INFO.txt.
+
+How to replace Qt / PySide6 libraries
+-------------------------------------
+1. Close Improve ImgSLI.
+2. Open the installation folder (same folder as Improve_ImgSLI.exe).
+3. Back up the existing PySide6\ directory.
+4. Copy your replacement .dll / .pyd files into PySide6\ (and PySide6\plugins\
+   for platform plugins), keeping file names identical unless you know the
+   loader search order and dependencies.
+5. Restart Improve ImgSLI.
+
+If the application fails to start after replacement, restore your backup.
+
+Corresponding source code
+-------------------------
+Qt 6 source archives:
+  https://download.qt.io/official_releases/qt/
+
+PySide6 / Qt for Python:
+  https://doc.qt.io/qtforpython/
+
+Full LGPL-3.0 license text:
+  licenses\LGPL-3.0.txt
+  https://www.gnu.org/licenses/lgpl-3.0.html
+
+Other bundled components
+------------------------
+See THIRD_PARTY_LICENSES.md in the installation directory.
+FFmpeg (when bundled as ffmpeg.exe) is GPL-licensed; see licenses\FFMPEG_NOTICE.txt.
+
+This notice is provided for attribution and compliance convenience. It is not
+legal advice.

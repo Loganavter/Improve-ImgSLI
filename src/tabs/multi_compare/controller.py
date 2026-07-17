@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-
-import numpy as np
 from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QDialog, QFileDialog
 
@@ -28,7 +26,6 @@ class MultiCompareController:
 
     SAVE_OUTPUT_W = 1920
     SAVE_OUTPUT_H = 1080
-    NATIVE_CANVAS_MAX_EDGE = 16384
     PREVIEW_MAX_EDGE = 1024
 
     def __init__(
@@ -118,7 +115,20 @@ class MultiCompareController:
         toolbar.apply_ui_mode(mode)
         self.widget.sync_divider_toolbar()
         self._last_applied_ui_mode = mode
+        # Hidden toolbar slots must drop Find Action rows and shortcuts.
+        self._resync_action_shortcuts_after_mode_change()
 
+    def _resync_action_shortcuts_after_mode_change(self) -> None:
+        try:
+            from ui.actions.binder import resync_action_shortcuts
+
+            window = self.widget.window() if self.widget is not None else None
+            resync_action_shortcuts(window, active_tab="multi_compare")
+        except Exception:
+            logger.debug(
+                "[mc-actions] shortcut resync after ui_mode failed",
+                exc_info=True,
+            )
     def _on_divider_color_picker_requested(self) -> None:
         from PySide6.QtWidgets import QColorDialog
 
@@ -136,7 +146,90 @@ class MultiCompareController:
         self._call_service("show_help_dialog")
 
     def _on_quick_save_requested(self) -> None:
-        self._on_save_requested()
+        """Save immediately with last export settings — no dialog."""
+        if not slot_ids_in_tree(self.widget.state.root):
+            return
+        try:
+            options = self._build_quick_export_options()
+            from shared.untested_export_resolution import (
+                confirm_untested_export_resolution,
+            )
+
+            if not confirm_untested_export_resolution(
+                self.dialog_parent,
+                int(options["width"]),
+                int(options["height"]),
+                translate=self.translate,
+                suppressed=self._untested_export_suppressed(),
+                on_suppress=self._suppress_untested_export_warning,
+            ):
+                return
+            image = self._compose_image(
+                int(options["width"]),
+                int(options["height"]),
+                background_color=QColor(*options["background_color"]),
+                fill_background=bool(options["fill_background"]),
+            )
+            from shared.image_processing.qt_conversion import qimage_to_pil
+
+            self._get_save_flow().start_save_worker(qimage_to_pil(image), options)
+        except Exception:
+            logger.exception("Multi Compare quick save failed")
+
+    def _build_quick_export_options(self) -> dict:
+        """Options for quick save — last export prefs, no dialog interaction."""
+        settings = getattr(self.store, "settings", None)
+        native_w, native_h = self._native_canvas_size() or self._live_view_size()
+        scale = float(
+            getattr(settings, "export_resolution_scale", 1.0) or 1.0
+        ) if settings is not None else 1.0
+        bg = self._background_color_from_settings(settings)
+        keep_comment = bool(
+            getattr(settings, "export_comment_keep_default", False)
+        ) if settings is not None else False
+        return {
+            "output_dir": self._resolve_quick_save_output_dir(),
+            "file_name": "multi_compare",
+            "format": (
+                getattr(settings, "export_last_format", "PNG") or "PNG"
+            ) if settings is not None else "PNG",
+            "quality": int(
+                getattr(settings, "export_quality", 95) or 95
+            ) if settings is not None else 95,
+            "png_compress_level": int(
+                getattr(settings, "export_png_compress_level", 9) or 9
+            ) if settings is not None else 9,
+            "png_optimize": bool(
+                getattr(settings, "export_png_optimize", True)
+            ) if settings is not None else True,
+            "fill_background": bool(
+                getattr(settings, "export_fill_background", True)
+            ) if settings is not None else True,
+            "background_color": (bg.red(), bg.green(), bg.blue(), bg.alpha()),
+            "comment_text": (
+                getattr(settings, "export_comment_text", "") or ""
+            ) if keep_comment and settings is not None else "",
+            "include_metadata": keep_comment,
+            "width": max(1, int(round(native_w * scale))),
+            "height": max(1, int(round(native_h * scale))),
+            "is_quick_save": True,
+        }
+
+    def _resolve_quick_save_output_dir(self) -> str:
+        settings = getattr(self.store, "settings", None) if self.store else None
+        if settings is not None:
+            if (
+                getattr(settings, "export_use_default_dir", True)
+                and getattr(settings, "export_default_dir", None)
+            ):
+                return settings.export_default_dir
+            favorite = getattr(settings, "export_favorite_dir", None)
+            if favorite:
+                return favorite
+            default = getattr(settings, "export_default_dir", None)
+            if default:
+                return default
+        return str(Path.home())
 
     def _get_save_flow(self) -> MultiCompareSaveFlowCoordinator:
         if self._save_flow is None:
@@ -159,6 +252,26 @@ class MultiCompareController:
     def load_images(self, paths: list[Path]) -> None:
         for path in paths:
             self._load_single_auto(path)
+
+    def begin_paste_placement(self, paths: list[Path]) -> None:
+        """Start cursor-tracked DnD highlight, same cycle as external file drop."""
+        self.widget.begin_pending_paste(paths)
+
+    def rehydrate_slots(self, state) -> bool:
+        """Decode ``path`` into ``slot.image`` for persisted slots (project load).
+
+        Uses the same ``_read_image`` path as drag-open / file dialog loading.
+        """
+        changed = False
+        for slot in state.slots:
+            if slot.path is None or slot.image is not None:
+                continue
+            path = slot.path if isinstance(slot.path, Path) else Path(slot.path)
+            arr = self._read_image(path)
+            if arr is not None:
+                slot.image = arr
+                changed = True
+        return changed
 
     def clear(self) -> None:
         self.widget.store.dispatch(mc_actions.clear())
@@ -244,6 +357,19 @@ class MultiCompareController:
         if int(result_code) != int(QDialog.DialogCode.Accepted):
             return
         try:
+            from shared.untested_export_resolution import (
+                confirm_untested_export_resolution,
+            )
+
+            if not confirm_untested_export_resolution(
+                self.dialog_parent,
+                int(options["width"]),
+                int(options["height"]),
+                translate=self.translate,
+                suppressed=self._untested_export_suppressed(),
+                on_suppress=self._suppress_untested_export_warning,
+            ):
+                return
             t0 = time.perf_counter()
             image = self._compose_image(
                 int(options["width"]),
@@ -309,9 +435,7 @@ class MultiCompareController:
         plan = build_composition_plan(self.widget.state, include_labels=False)
         if plan is None:
             return None
-        return compute_native_canvas_size(
-            plan.root, max_edge=self.NATIVE_CANVAS_MAX_EDGE
-        )
+        return compute_native_canvas_size(plan.root)
 
     def _render_export_preview(
         self,
@@ -359,6 +483,23 @@ class MultiCompareController:
         )
         return QColor(*channels)
 
+    def _untested_export_suppressed(self) -> bool:
+        settings = getattr(self.store, "settings", None)
+        return bool(
+            getattr(settings, "export_suppress_untested_resolution_warning", False)
+        )
+
+    def _suppress_untested_export_warning(self) -> None:
+        settings = getattr(self.store, "settings", None)
+        if settings is not None:
+            settings.export_suppress_untested_resolution_warning = True
+        main_window = getattr(self.context, "main_window", None) if self.context else None
+        manager = getattr(main_window, "settings_manager", None) if main_window else None
+        if manager is not None:
+            manager._save_setting(
+                "export_suppress_untested_resolution_warning", True
+            )
+
     def _persist_export_preferences(self, options: dict) -> None:
         settings = getattr(self.store, "settings", None)
         if settings is None:
@@ -393,10 +534,9 @@ class MultiCompareController:
 
     def _read_image(self, path: Path):
         try:
-            from PIL import Image
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-            img = Image.open(path).convert("RGB")
-            return np.ascontiguousarray(np.array(img, dtype=np.uint8))
+            return TiledPixelStore.from_path(path)
         except Exception as e:
             logger.error("Failed to load %s: %s", path, e)
             return None

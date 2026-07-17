@@ -6,8 +6,7 @@ from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QLineEdit, QPlainTextEdit, QTextEdit
 
-from plugins.export.events import ExportPasteImageFromClipboardEvent
-from events.app_event.common import get_event_bus, get_main_controller
+from events.app_event.common import get_main_controller
 from tabs.registry import get_shared_tab_registry
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -56,15 +55,6 @@ class GlobalKeyboardHandler:
         key = event.key()
         if key in self.OVERLAY_MOVEMENT_KEYS:
             return True
-        modifiers = event.modifiers()
-        if key == Qt.Key.Key_V and modifiers & Qt.KeyboardModifier.ControlModifier:
-            return True
-        if key == Qt.Key.Key_S and modifiers == Qt.KeyboardModifier.ControlModifier:
-            return True
-        if key == Qt.Key.Key_S and modifiers == (
-            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
-        ):
-            return True
         if key == Qt.Key.Key_Space:
             return True
         if key == Qt.Key.Key_Shift and self.store.viewport.interaction_state.space_bar_pressed:
@@ -73,14 +63,6 @@ class GlobalKeyboardHandler:
 
     def handle_key_press(self, event: QKeyEvent) -> None:
         key_code = event.key()
-        modifiers = event.modifiers()
-        if key_code == Qt.Key.Key_V and modifiers & Qt.KeyboardModifier.ControlModifier:
-            event_bus = get_event_bus(self.presenter)
-            if event_bus is not None:
-                event_bus.emit(ExportPasteImageFromClipboardEvent())
-            event.accept()
-            return
-
         is_overlay_key = key_code in self.OVERLAY_MOVEMENT_KEYS
         result = self.keyboard_state.press(key_code, is_auto_repeat=event.isAutoRepeat())
         if not result.applied:

@@ -4,8 +4,10 @@ image_compare)."""
 
 from types import SimpleNamespace
 
-from PySide6.QtGui import QImage
+from PIL import Image
 
+from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from shared.rendering.host_texture_cache import HostTextureUploadCache
 from shared.rendering.tile_texture_service import TileTextureService
 from tabs.multi_compare.scene.passes.base_images import BaseImagesPass
 from tabs.multi_compare.scene.tile_geometry import build_slot_draw_plan
@@ -110,35 +112,56 @@ def test_oversized_slot_lazily_uploads_only_visible_tiles(monkeypatch):
     monkeypatch.setattr(base_images_module, "QRhiShaderResourceBinding", _FakeBinding)
 
     render_pass = BaseImagesPass()
+    host = SimpleNamespace()
     renderer = SimpleNamespace(
-        rhi=_FakeRhi(), sampler=object(), tile_service=TileTextureService(max_tile_extent=64)
+        rhi=_FakeRhi(),
+        sampler=object(),
+        tile_service=TileTextureService(max_tile_extent=64),
+        host=host,
     )
 
-    image = QImage(128, 64, QImage.Format.Format_RGBA8888)
-    image.fill(0)
-    render_pass.queue_upload(1, image)
-    updates = _FakeUpdates()
-    render_pass.apply_pending_texture_ops(renderer, updates)
+    store = TiledPixelStore.from_pil(Image.new("RGBA", (128, 64), (0, 0, 0, 255)))
+    try:
+        render_pass.queue_upload(1, store)
+        updates = _FakeUpdates()
+        render_pass.apply_pending_texture_ops(renderer, updates)
 
-    grid = renderer.tile_service.grid_for(1)
-    assert (grid.rows, grid.columns) == (1, 2)
-    # Oversized slots defer tile texture creation to residency realization.
-    assert render_pass.slot_textures == {}
-    assert render_pass.slot_full_images[1] is image
+        grid = renderer.tile_service.grid_for(1)
+        assert (grid.rows, grid.columns) == (1, 2)
+        assert render_pass.slot_textures == {}
+        assert render_pass.slot_pixel_sources[1] is store
 
-    layer = SimpleNamespace(
-        slot_id=1,
-        rect_fb=(0.0, 0.0, 100.0, 100.0),
-        fit_x=1.0,
-        fit_y=1.0,
-        zoom=5.0,
-        pan_x=0.25,
-        pan_y=0.0,
-    )
-    ctx = SimpleNamespace(projected_layers=[layer])
-    render_pass._realize_tile_residency(renderer, ctx, updates)
+        layer = SimpleNamespace(
+            slot_id=1,
+            rect_fb=(0.0, 0.0, 100.0, 100.0),
+            fit_x=1.0,
+            fit_y=1.0,
+            zoom=5.0,
+            pan_x=0.25,
+            pan_y=0.0,
+        )
+        ctx = SimpleNamespace(projected_layers=[layer])
+        render_pass._realize_tile_residency(renderer, ctx, updates)
 
-    # Residency (unlike the draw-time visible set) keeps a
-    # _TILE_RESIDENCY_MARGIN=1 ring around the visible tile, which for a
-    # 1x2 grid always spans both columns once tile (0, 0) is visible.
-    assert set(render_pass.slot_textures) == {(1, 0, 0), (1, 0, 1)}
+        assert set(render_pass.slot_textures) == {(1, 0, 0), (1, 0, 1)}
+        cache = getattr(host, "_host_texture_upload_cache", None)
+        assert isinstance(cache, HostTextureUploadCache)
+        assert cache.entries
+    finally:
+        store.close()
+
+
+def test_host_cache_evicts_when_over_budget():
+    host = SimpleNamespace()
+    renderer = SimpleNamespace(host=host)
+    render_pass = BaseImagesPass()
+    cache = render_pass._host_cache(renderer)
+    from PySide6.QtGui import QImage
+
+    big = QImage(512, 512, QImage.Format.Format_RGBA8888)
+    per = big.sizeInBytes()
+    cache.store("slot_a", big)
+    cache.store("slot_b", big)
+    cache.evict_over_budget({"slot_a"}, budget_bytes=per)
+    assert "slot_a" in cache.entries
+    assert "slot_b" not in cache.entries

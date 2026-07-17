@@ -126,9 +126,6 @@ class MainWindowPresenter(QObject):
             clear_magnifier=clear_magnifier
         )
 
-    def finish_resize_delay(self):
-        self.features.image_canvas.lifecycle.finish_resize_delay()
-
     def shutdown(self):
         self.features.export.shutdown()
 

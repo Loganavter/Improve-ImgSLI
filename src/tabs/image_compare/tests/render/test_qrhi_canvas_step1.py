@@ -37,6 +37,17 @@ def test_resolve_clear_color_prefers_export_plan_fill():
     assert resolve_clear_color(widget).getRgb() == (12, 34, 56, 78)
 
 
+def test_resolve_clear_color_export_without_fill_is_transparent():
+    widget = SimpleNamespace(
+        _active_render_plan=SimpleNamespace(fill_rgba=None),
+        _use_plan_fill_clear=True,
+        _theme_background_color=QColor(1, 2, 3),
+        palette=lambda: _Palette(QColor("black")),
+    )
+
+    assert resolve_clear_color(widget).getRgb() == (0, 0, 0, 0)
+
+
 def test_render_clear_frame_delegates_to_qrhi_renderer():
     calls = []
 
@@ -89,7 +100,7 @@ def test_base_uniform_block_matches_shader_std140_layout():
         tile_rect2=(0.1, 0.2, 0.3, 0.4),
     )
 
-    assert len(block) == 192
+    assert len(block) == 224
     assert struct.unpack_from("<4f", block, 64) == (0.25, -0.5, 2.0, 2.0)
     assert struct.unpack_from("<f", block, 80) == (0.75,)
     assert struct.unpack_from("<4i", block, 128) == (1, 3, 4, 1)
@@ -122,7 +133,7 @@ def test_base_uniform_block_defaults_to_full_tile_rect():
 
     block = pack_base_uniforms(rhi, base, diff_source_ready=False)
 
-    assert len(block) == 192
+    assert len(block) == 224
     assert struct.unpack_from("<4f", block, 160) == (0.0, 0.0, 1.0, 1.0)
     assert struct.unpack_from("<4f", block, 176) == (0.0, 0.0, 1.0, 1.0)
 

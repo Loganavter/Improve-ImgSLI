@@ -16,7 +16,7 @@ from ui.canvas_infra.scene.registry import get_canvas_registry
 
 def test_discovery_with_no_plugins_returns_empty(monkeypatch):
     monkeypatch.setattr(registry_mod, "get_registered_plugins", lambda: [])
-    monkeypatch.setattr(PluginRegistry, "_scan_package", lambda self, name: None)
+    monkeypatch.setattr(PluginRegistry, "_import_plugin_module", lambda self, name: None)
 
     registry = PluginRegistry(app_context=object())
     created = registry.discover_plugins()

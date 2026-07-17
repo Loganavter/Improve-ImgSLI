@@ -27,7 +27,7 @@ def _register_image_compare_canvas_features():
     # adapter under test) goes through
     # `TabRegistry.create_service("canvas_feature_command_alias", ...)`,
     # which resolves strictly against the shared registry's active session
-    # type (see docs/dev/TAB_CONTRACT.md). `store.create_workspace_session`
+    # type (see docs/dev/tabs/isolation.md). `store.create_workspace_session`
     # only updates the `Store`'s own workspace bookkeeping — it never
     # touches the registry (that only happens via real UI event routing) —
     # so force the shared singleton's active tab directly for the duration

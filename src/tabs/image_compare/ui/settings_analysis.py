@@ -1,7 +1,8 @@
 """Analysis page — image-compare specific metrics and auto-crop.
 
-Registration is owned by ``ImageCompareTab.contribute_settings``; this
-module only exposes the page-building function. Field values live in
+Registration is owned by ``ImageCompareTab`` via
+``create_service("contribute_settings", registry)``; this module only
+exposes the page-building function. Field values live in
 ``p.tab_extras["image_compare_performance"]``.
 """
 

@@ -11,26 +11,45 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from sli_ui_toolkit.widgets import ComboBox, CustomGroupWidget, RadioButton, SpinBox
+from sli_ui_toolkit.widgets import ComboBox, RadioButton, SpinBox
 from ui.icon_manager import AppIcon
 
 from plugins.settings.registry import SettingsSection
+from plugins.settings.search import SearchIndex, group
+
+UI_MODE = group(
+    "settings.ui_mode",
+    "settings.ui_mode_beginner",
+    "settings.ui_mode_advanced",
+    "settings.ui_mode_expert",
+)
+UI_FONT = group(
+    "settings.ui_font",
+    "settings.builtin_font",
+    "settings.system_default",
+    "settings.custom",
+)
+MAX_NAME = group("settings.maximum_name_length_ui")
+SEARCH = SearchIndex.of(UI_MODE, UI_FONT, MAX_NAME)
 
 
 def build(dialog, p):
     dialog.page_interface, layout = dialog._create_scrollable_page()
-    dialog.ui_mode_group = CustomGroupWidget(dialog.tr("settings.ui_mode", dialog.current_language))
+    dialog.ui_mode_group = UI_MODE.widget(dialog)
     row = QHBoxLayout()
     row.setContentsMargins(5, 5, 5, 5)
     dialog.radio_ui_mode_beginner = RadioButton(
-        dialog.tr("settings.ui_mode_beginner", dialog.current_language)
+        UI_MODE.text(dialog, "settings.ui_mode_beginner")
     )
     dialog.radio_ui_mode_advanced = RadioButton(
-        dialog.tr("settings.ui_mode_advanced", dialog.current_language)
+        UI_MODE.text(dialog, "settings.ui_mode_advanced")
     )
     dialog.radio_ui_mode_expert = RadioButton(
-        dialog.tr("settings.ui_mode_expert", dialog.current_language)
+        UI_MODE.text(dialog, "settings.ui_mode_expert")
     )
+    UI_MODE.tag_member(dialog.radio_ui_mode_beginner, "settings.ui_mode_beginner")
+    UI_MODE.tag_member(dialog.radio_ui_mode_advanced, "settings.ui_mode_advanced")
+    UI_MODE.tag_member(dialog.radio_ui_mode_expert, "settings.ui_mode_expert")
     dialog._ui_mode_group = QButtonGroup(dialog)
     for rb in (dialog.radio_ui_mode_beginner, dialog.radio_ui_mode_advanced, dialog.radio_ui_mode_expert):
         dialog._ui_mode_group.addButton(rb)
@@ -41,19 +60,27 @@ def build(dialog, p):
         p.current_ui_mode, dialog.radio_ui_mode_beginner
     ).setChecked(True)
 
-    dialog.font_group = CustomGroupWidget(dialog.tr("settings.ui_font", dialog.current_language))
+    dialog.font_group = UI_FONT.widget(dialog)
     font_radio_layout = QVBoxLayout()
     font_radio_layout.setContentsMargins(5, 5, 5, 5)
-    dialog.radio_font_builtin = RadioButton(dialog.tr("settings.builtin_font", dialog.current_language))
-    dialog.radio_font_system_default = RadioButton(
-        dialog.tr("settings.system_default", dialog.current_language)
+    dialog.radio_font_builtin = RadioButton(
+        UI_FONT.text(dialog, "settings.builtin_font")
     )
-    dialog.radio_font_system_custom = RadioButton(dialog.tr("settings.custom", dialog.current_language))
+    dialog.radio_font_system_default = RadioButton(
+        UI_FONT.text(dialog, "settings.system_default")
+    )
+    dialog.radio_font_system_custom = RadioButton(
+        UI_FONT.text(dialog, "settings.custom")
+    )
+    UI_FONT.tag_member(dialog.radio_font_builtin, "settings.builtin_font")
+    UI_FONT.tag_member(dialog.radio_font_system_default, "settings.system_default")
+    UI_FONT.tag_member(dialog.radio_font_system_custom, "settings.custom")
     for rb in (dialog.radio_font_builtin, dialog.radio_font_system_default, dialog.radio_font_system_custom):
         font_radio_layout.addWidget(rb)
     dialog.font_group.add_layout(font_radio_layout)
 
     dialog.combo_font_family = ComboBox()
+    UI_FONT.tag_combo(dialog.combo_font_family, "settings.custom")
     dialog.combo_font_family.setFixedWidth(320)
     dialog.combo_font_family.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     from PySide6.QtGui import QFontDatabase
@@ -97,13 +124,12 @@ def build(dialog, p):
         rb.toggled.connect(sync_font_ui)
     sync_font_ui()
 
-    dialog.other_ui_group = CustomGroupWidget(
-        dialog.tr("settings.maximum_name_length_ui", dialog.current_language)
-    )
+    dialog.other_ui_group = MAX_NAME.widget(dialog)
     len_layout = QHBoxLayout()
     len_layout.setContentsMargins(12, 5, 12, 5)
     value = max(p.min_limit, min(p.max_limit, p.current_max_length))
     dialog.spin_max_length = SpinBox(default_value=value)
+    MAX_NAME.tag_member(dialog.spin_max_length, "settings.maximum_name_length_ui")
     dialog.spin_max_length.setRange(p.min_limit, p.max_limit)
     dialog.spin_max_length.setValue(value)
     dialog.spin_max_length.setFixedWidth(100)
@@ -122,4 +148,6 @@ SECTION = SettingsSection(
     build=build,
     owner_tab=None,
     order=20,
+    action_description_key="action.settings.appearance_desc",
+    search=SEARCH,
 )

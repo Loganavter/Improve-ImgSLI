@@ -124,9 +124,7 @@ QWidget#ToastProgressContainer[hasProgress="true"] {
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
 }
-QWidget#ToastNotification QLabel {
-    color: @toast.text;
-}
+/* Toast message color/font: apply_text_color + UiFont in toast.py */
 QWidget#ToastNotification QPushButton {
     background-color: transparent;
     color: @toast.text;
@@ -134,23 +132,15 @@ QWidget#ToastNotification QPushButton {
     border-radius: 6px;
     padding: 4px 10px;
 }
-QWidget#ToastNotification QProgressBar#ToastProgressBar {
-    background-color: @toast.progress.background;
-    border: 1px solid @toast.border;
-    border-radius: 4px;
-}
-QWidget#ToastNotification QProgressBar#ToastProgressBar::chunk {
-    background-color: @accent;
-    border-radius: 3px;
-}
+/* ToastProgressBar is painter-owned — do not style via QSS. */
 
-/* Style for CustomLineEdit */
+/* CustomLineEdit paints its own chrome — do not add QSS padding/bg here;
+   that stacks on setTextMargins and clips descenders / inflates left inset. */
 QLineEdit[custom-line-edit="true"] {
-    background-color: @dialog.input.background;
-    color: @dialog.text;
+    background: transparent;
     border: none !important;
-    border-radius: 8px;
-    padding: 6px 10px;
+    padding: 0;
+    margin: 0;
     outline: none;
 }
 QLineEdit[custom-line-edit="true"]:focus {
@@ -158,14 +148,7 @@ QLineEdit[custom-line-edit="true"]:focus {
     outline: none;
 }
 
-/* --- Стили для PathTooltip --- */
-QLabel#TooltipContentWidget {
-    background-color: @tooltip.background;
-    color: @tooltip.text;
-    border: 1px solid @tooltip.border;
-    padding: 4px 6px;
-    border-radius: 5px;
-}
+/* PathTooltip chrome/text: painted + palette in tooltips.py (no QLabel QSS). */
 
 /* --- ComboBox --- */
 QComboBox[fluent-combobox="true"] {

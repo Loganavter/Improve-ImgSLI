@@ -232,8 +232,11 @@ class ScrollValueButton(Button):
     # ---------- hover: single region idle, icon+value split on hover ----------
 
     def enterEvent(self, event) -> None:
-        super().enterEvent(event)
+        # Public Button hover seeding (enterEvent → group= mirror) only sees
+        # the regions that already exist. Expand to the icon+value capsule
+        # first so both siblings share group= when HOVERED is applied.
         self._set_hover_split(True)
+        super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
         super().leaveEvent(event)

@@ -1,0 +1,15 @@
+{
+  "menu": {
+    "file": "File",
+    "help": "Help",
+    "new_session": "New Session",
+    "open_project": "Open Project",
+    "save_project": "Save Project",
+    "settings": "Settings",
+    "quit": "Quit",
+    "show_help": "Show Help",
+    "find_action": "Find Action",
+    "find_action_soon": "Command palette — coming soon",
+    "project_filter": "Improve ImgSLI Project (*.imgsli-project)"
+  }
+}

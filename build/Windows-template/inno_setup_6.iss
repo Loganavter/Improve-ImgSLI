@@ -23,6 +23,9 @@ SolidCompression=yes
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile=icons/icon.ico
+LicenseFile=..\..\LICENSE
+InfoBeforeFile=licenses\WINDOWS_QT_NOTICE.txt
+InfoAfterFile=licenses\FFMPEG_NOTICE.txt
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -41,6 +44,8 @@ Root: HKCU; Subkey: "Software\improve-imgsli"; Flags: uninsdeletekeyifempty
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autoprograms}\{#MyAppName}\Third-Party Licenses"; Filename: notepad.exe; Parameters: """{app}\licenses\WINDOWS_QT_NOTICE.txt"""
+Name: "{autoprograms}\{#MyAppName}\Qt Bundle Info"; Filename: notepad.exe; Parameters: """{app}\licenses\Qt_BUNDLE_INFO.txt"""
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]

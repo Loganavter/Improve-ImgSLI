@@ -24,7 +24,7 @@ from tabs.image_compare.plugins.video_editor.services.recording_flow import Reco
 logger = logging.getLogger("ImproveImgSLI")
 
 
-@plugin(name="video_editor", version="1.0")
+@plugin(name="video_editor", version="1.0", startup_tier="deferred", startup_order=0)
 class VideoEditorPlugin(Plugin, ISessionPlugin):
     def __init__(self):
         super().__init__()
@@ -57,6 +57,12 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
                 try:
                     if self._editor_dialog.isMinimized():
                         self._editor_dialog.showNormal()
+                    # Re-contribute: showEvent does not fire when already visible.
+                    contribute = getattr(
+                        self._editor_dialog, "_contribute_find_actions", None
+                    )
+                    if callable(contribute):
+                        contribute()
                     self._editor_dialog.show()
                     self._editor_dialog.raise_()
                     self._editor_dialog.activateWindow()
@@ -74,6 +80,10 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
             dialog.destroyed.connect(self._forget_editor)
             dialog.readyToShow.connect(self._show_editor_dialog)
             dialog.show()
+            # Belt-and-suspenders: ensure catalog is live even if showEvent was odd.
+            contribute = getattr(dialog, "_contribute_find_actions", None)
+            if callable(contribute):
+                contribute()
         except Exception as e:
             logger.exception(
                 f"VideoEditorPlugin.open_editor: Error creating/showing dialog: {e}"
@@ -125,7 +135,17 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
         return active_window is None or active_window is dialog
 
     def _forget_editor(self, *_args) -> None:
+        dialog = self._editor_dialog
         self._editor_dialog = None
+        if dialog is not None:
+            withdraw = getattr(dialog, "_withdraw_find_actions", None)
+            if callable(withdraw):
+                try:
+                    withdraw()
+                except Exception:
+                    logger.debug(
+                        "[find-action] withdraw on forget failed", exc_info=True
+                    )
 
     def _on_language_changed(self, event: SettingsChangeLanguageEvent) -> None:
         if self._editor_dialog is not None:

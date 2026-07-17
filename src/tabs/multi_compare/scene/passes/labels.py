@@ -24,6 +24,7 @@ class LabelsOverlaySource:
     LABEL_CORNER_RADIUS_PX = 6.0
     LABEL_SAFE_GAP_PX = 8.0
     LABEL_TEXT_INSET_PX = 10.0
+    LABEL_GLYPH_OVERSCAN_PX = 2.0
 
     def should_paint(self, composition) -> bool:
         return bool(
@@ -104,6 +105,7 @@ class LabelsOverlaySource:
             corner_radius_fb=_du(self.LABEL_CORNER_RADIUS_PX),
             safe_gap_fb=_du(self.LABEL_SAFE_GAP_PX),
             text_inset_fb=_du(self.LABEL_TEXT_INSET_PX),
+            glyph_overscan_fb=_du(self.LABEL_GLYPH_OVERSCAN_PX),
             text_color=text_color,
             bg_color=bg_color,
             font_weight=max(0, int(getattr(settings, "font_weight", 0) or 0)),

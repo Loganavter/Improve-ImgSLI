@@ -191,7 +191,8 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
         feature_payloads=feature_payloads,
     )
     resolved_style = resolve_canvas_style(scene_frame, render_metrics)
-    display_split_position = update_display_split_position(
+    # Side effect: refresh widget display_split for DividerPass (white line).
+    update_display_split_position(
         widget,
         scene=scene_frame,
         zoom_level=float(get_zoom_level(widget) or 1.0),
@@ -218,11 +219,31 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
         if state._shader_letterbox_mode and hasattr(widget, "get_letterbox_params")
         else (0.0, 0.0, 1.0, 1.0)
     )
-    resolved_split_position = (
-        float(display_split_position) if display_split_position is not None else 0.5
+    canvas_letterbox = getattr(state, "_canvas_frame_letterbox", None) or (
+        0.0,
+        0.0,
+        0.0,
+        0.0,
     )
+    fill = getattr(state, "_letterbox_fill_rgba", None)
+    letterbox_fill = (
+        (
+            float(fill[0]) / 255.0,
+            float(fill[1]) / 255.0,
+            float(fill[2]) / 255.0,
+            float(fill[3]) / 255.0,
+        )
+        if fill is not None and len(fill) >= 4 and float(fill[3]) > 0
+        else (0.0, 0.0, 0.0, 0.0)
+    )
+    # Base shader compares spit in letterboxed image UV (magnifier parity).
+    # DividerPass still reads display_split_position for the white line.
+    content_split = float(scene_frame.split_position_visual)
+    if getattr(scene_frame, "split_override", None) is not None:
+        content_split = float(scene_frame.split_override)
+    content_split = max(0.0, min(1.0, content_split))
     base_image = BaseImagePrimitive(
-        split_position=resolved_split_position,
+        split_position=content_split,
         is_horizontal=bool(scene_frame.is_horizontal),
         zoom=float(get_zoom_level(widget) or 1.0),
         pan_offset_x=float(get_pan_offset_x(widget) or 0.0),
@@ -232,6 +253,8 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
         use_hires=use_hires,
         letterbox1=tuple(float(v) for v in letterbox1),
         letterbox2=tuple(float(v) for v in letterbox2),
+        canvas_letterbox=tuple(float(v) for v in canvas_letterbox),
+        letterbox_fill=letterbox_fill,
     )
     overlay_state = state._feature_overlay_gpu
     render_list = build_render_list(
@@ -317,6 +340,12 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
 
 def resize_canvas(widget, w: int, h: int):
     state = widget.runtime_state
+    store = getattr(state, "_store", None) or getattr(widget, "_store", None)
+    interaction = getattr(getattr(store, "viewport", None), "interaction_state", None)
+    resizing = bool(
+        interaction is not None and getattr(interaction, "resize_in_progress", False)
+    )
+
     letterbox_focus = None
     if state._shader_letterbox_mode and state._stored_pil_images[0] is not None:
         from ui.canvas_infra.viewport.focus import capture_letterbox_focus
@@ -330,7 +359,11 @@ def resize_canvas(widget, w: int, h: int):
 
         restore_letterbox_focus(widget, letterbox_focus)
     elif img1 is not None:
-
+        if resizing:
+            # Live redraw with current textures; defer PIL letterbox rebuild.
+            sync_runtime_overlays_after_resize(widget)
+            widget.update()
+            return
         _schedule_pil_letterbox_refresh(widget)
         sync_runtime_overlays_after_resize(widget)
         widget.update()

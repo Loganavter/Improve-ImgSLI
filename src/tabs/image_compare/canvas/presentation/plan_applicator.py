@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import logging
-
 from domain.types import Rect
-
-_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.focus import (
@@ -14,25 +10,34 @@ from ui.canvas_infra.viewport.focus import (
 from ui.canvas_presentation.plan import CanvasRenderPlan
 
 
+def _plan_owns_padded_framebuffer(plan) -> bool:
+    """True when ``canvas_w/h`` is the padded frame and clip/letterbox apply.
+
+    Live main-window plans may carry ``overlay_clip_rect`` for uncrop without
+    owning letterbox (images still fit by raw size). Export/video snapshot
+    plans set ``geometry_letterbox`` for that ownership instead of baking
+    pads into pixels (``image_is_padded_composite``).
+    """
+    return bool(
+        getattr(plan, "image_is_padded_composite", False)
+        or getattr(plan, "geometry_letterbox", False)
+    )
+
+
 def _refresh_live_content_rect(canvas, state, plan) -> None:
     """``state._content_rect_px`` is otherwise only refreshed by
     ``letterbox_pil``/``update_letterbox_geometry`` on image upload, which
     leaves it stale after a resize until the next image upload. Re-derive it
-    every call for the live, store-backed canvas. The base image pair is
-    never padding-aware (features like the magnifier must not shrink or
-    reposition it — see docs/dev/QRHI_CANVAS_FEATURES.md), so
-    this fits the raw (unpadded) image dimensions — unless
-    ``plan.image_is_padded_composite`` (set authoritatively by the plan
-    builder, never inferred here), in which case the full ``plan.canvas_w/h``
-    frame must be fit instead, and ``_compute_inner_content_rect`` narrows it
-    back down via ``overlay_clip_rect``. Offscreen/export canvases set
-    ``state._store = None`` and pass their own resolved ``content_rect_px``
-    in explicitly (see ``configure_offscreen_render``), so this is a no-op
-    for them."""
+    every call for the live, store-backed canvas.
+
+    Live (default): fit raw image size. Export/video with
+    ``geometry_letterbox`` / padded composite: fit the full ``canvas_w/h``
+    frame so ``overlay_clip_rect`` can recover the content box.
+    """
     store = getattr(state, "_store", None)
     if store is None:
         return
-    if plan.image_is_padded_composite:
+    if _plan_owns_padded_framebuffer(plan):
         fit_width, fit_height = plan.canvas_w, plan.canvas_h
     else:
         base_image = plan.image1
@@ -75,31 +80,22 @@ def _compute_inner_content_rect(state, plan):
 
     The base image pair is never padding-aware (see
     ``_refresh_live_content_rect``/``update_letterbox_geometry``): whenever
-    ``plan.image_is_padded_composite`` is ``False``, ``inner == outer ==
-    _content_rect_px``, no ``overlay_clip_rect`` narrowing, no split
-    override. Only when ``plan.image_is_padded_composite`` is ``True`` (set
-    authoritatively by the plan builder — true for the store-less
-    export/offscreen path *and* for store-backed preview rendering of an
-    export/video-snapshot plan, e.g. the video editor's preview) do we honor
-    ``plan.render_scene.overlay_clip_rect`` to narrow back down to the real image
-    region. This is keyed off the plan's own declared shape, not ``store is
-    None`` and not a local dimension-comparison heuristic — the plan is the
-    single source of truth for whether padding is baked in.
+    the plan does not own a padded framebuffer, ``inner == outer ==
+    _content_rect_px`` — live ``overlay_clip_rect`` must not shrink letterbox.
 
-    Returns ``(inner_rect, inner_split)`` where:
-    - ``inner_rect`` is a ``(x, y, w, h)`` tuple in widget-px, or ``None`` if
-      letterbox geometry is not yet available.
-    - ``inner_split`` is ``split_position_visual`` itself (already content-relative,
-      i.e. a fraction of the inner/unpadded image rect — see the note inline),
-      or ``None`` when no clip_rect padding is active.
+    When ``image_is_padded_composite`` or ``geometry_letterbox`` is set, honor
+    ``overlay_clip_rect`` to narrow back down to the real image region.
     """
     content_rect = state._content_rect_px
     if not content_rect:
         return None, None
 
-    if plan.canvas_w <= 0 or plan.canvas_h <= 0 or not plan.image_is_padded_composite:
+    if plan.canvas_w <= 0 or plan.canvas_h <= 0 or not _plan_owns_padded_framebuffer(plan):
         ox, oy, dw, dh = content_rect
-        return (int(round(ox)), int(round(oy)), max(1, int(round(dw))), max(1, int(round(dh)))), None
+        return (
+            (int(round(ox)), int(round(oy)), max(1, int(round(dw))), max(1, int(round(dh)))),
+            None,
+        )
 
     ox, oy, dw, dh = content_rect
     sx = dw / plan.canvas_w
@@ -107,11 +103,12 @@ def _compute_inner_content_rect(state, plan):
 
     clip_rect = getattr(plan.render_scene, "overlay_clip_rect", None)
     if clip_rect is None:
-        # overlay_clip_rect isn't always populated for a padded-composite plan
-        # (e.g. the video snapshot pipeline only sets it on the fit_content
-        # branch) — fall back to treating the whole canvas as content rather
-        # than crashing on the unconditional unpack below.
-        inner = (int(round(ox)), int(round(oy)), max(1, int(round(dw))), max(1, int(round(dh))))
+        inner = (
+            int(round(ox)),
+            int(round(oy)),
+            max(1, int(round(dw))),
+            max(1, int(round(dh))),
+        )
         return inner, None
 
     clip_x, clip_y, clip_w, clip_h = clip_rect
@@ -122,15 +119,86 @@ def _compute_inner_content_rect(state, plan):
         max(1, int(round(clip_h * sy))),
     )
 
-    # split_position_visual is already content-relative (a fraction of the
-    # unpadded image box), matching command_build_export_overlay's
-    # ``pad_top + image_height * split_position_visual`` convention — it is
-    # NOT a fraction of the padded canvas, so no clip_rect rescale is needed
-    # here. Treating it as canvas-relative (as this used to) shifted the
-    # divider whenever padding was active.
     raw_split = float(getattr(plan.render_scene, "split_position_visual", 0.5))
     inner_split = max(0.0, min(1.0, raw_split))
     return inner, inner_split
+
+
+def _apply_plan_letterbox_from_clip(canvas, plan) -> None:
+    """Place unpadded export/video images via shader letterbox.
+
+    ``overlay_clip_rect`` is in canvas-px. The preview/export widget may be a
+    different size than ``canvas_w/h``, so first fit the padded canvas frame
+    into the widget, then nest the clip inside that frame. Applying clip/canvas
+    fractions directly as widget UV stretches the image to the pane (wrong for
+    video preview).
+
+    Pad fill is painted by the base shader inside the canvas frame only
+    (``_canvas_frame_letterbox`` + ``_letterbox_fill_rgba``); widget chrome
+    outside the frame stays the theme clear color.
+    """
+    state = canvas.runtime_state
+    state._canvas_frame_letterbox = None
+    state._letterbox_fill_rgba = None
+
+    if not bool(getattr(plan, "geometry_letterbox", False)):
+        return
+    if bool(getattr(plan, "image_is_padded_composite", False)):
+        # Baked canvas-sized images already match the framebuffer 1:1.
+        return
+    clip = getattr(getattr(plan, "render_scene", None), "overlay_clip_rect", None)
+    cw = int(getattr(plan, "canvas_w", 0) or 0)
+    ch = int(getattr(plan, "canvas_h", 0) or 0)
+    if clip is None or cw <= 0 or ch <= 0:
+        return
+
+    widget_w = int(canvas.width()) if callable(getattr(canvas, "width", None)) else 0
+    widget_h = int(canvas.height()) if callable(getattr(canvas, "height", None)) else 0
+    if widget_w <= 0 or widget_h <= 0:
+        return
+
+    frame = resolve_canvas_content_geometry(
+        widget_width=widget_w,
+        widget_height=widget_h,
+        image_width=cw,
+        image_height=ch,
+        virtual_layout=None,
+    )
+    inner = frame.inner_rect_px
+    if inner is None:
+        return
+    ox, oy, fw, fh = inner
+    if fw <= 0 or fh <= 0:
+        return
+
+    cx, cy, cww, chh = clip
+    sx = float(fw) / float(cw)
+    sy = float(fh) / float(ch)
+    params = (
+        (float(ox) + float(cx) * sx) / float(widget_w),
+        (float(oy) + float(cy) * sy) / float(widget_h),
+        (float(cww) * sx) / float(widget_w),
+        (float(chh) * sy) / float(widget_h),
+    )
+    while len(state._letterbox_params) < 2:
+        state._letterbox_params.append((0.0, 0.0, 1.0, 1.0))
+    state._letterbox_params[0] = params
+    state._letterbox_params[1] = params
+    state._canvas_frame_letterbox = (
+        float(ox) / float(widget_w),
+        float(oy) / float(widget_h),
+        float(fw) / float(widget_w),
+        float(fh) / float(widget_h),
+    )
+    fill = getattr(plan, "fill_rgba", None)
+    if fill is not None and len(fill) >= 4:
+        state._letterbox_fill_rgba = (
+            float(fill[0]),
+            float(fill[1]),
+            float(fill[2]),
+            float(fill[3]),
+        )
+
 
 
 def apply_plan_runtime_overlays(canvas, plan: CanvasRenderPlan) -> None:
@@ -306,6 +374,7 @@ def _apply_plan_full(
             display_cache_key=plan.display_cache_key,
             shader_letterbox=True,
         )
+        _apply_plan_letterbox_from_clip(canvas, plan)
         if plan.preserve_zoom:
             restore_letterbox_focus(canvas, letterbox_focus)
 
@@ -358,6 +427,7 @@ def _apply_plan_scene_only(
             )
             update_common_letterbox_geometry(canvas, img0, img1)
             restore_letterbox_focus(canvas, letterbox_focus)
+        _apply_plan_letterbox_from_clip(canvas, plan)
 
         _apply_overlays(canvas, plan, store=store)
 

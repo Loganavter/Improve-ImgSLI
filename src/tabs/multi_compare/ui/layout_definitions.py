@@ -10,17 +10,17 @@ LAYOUT_DEFINITIONS: Dict[str, Dict[str, List[str]]] = {
             "btn_divider_width",
         ],
         "label_group": ["btn_text_settings"],
-        "action_group": ["btn_quick_save", "btn_settings", "help_button"],
+        "action_group": ["btn_quick_save"],
     },
     "expert": {
         "line_group": ["btn_divider_width"],
         "label_group": ["btn_text_settings"],
-        "action_group": ["btn_quick_save", "btn_settings", "help_button"],
+        "action_group": ["btn_quick_save"],
     },
     "advanced": {
         "line_group": ["btn_divider_color", "btn_divider_width"],
         "label_group": ["btn_text_settings"],
-        "action_group": ["btn_quick_save", "btn_settings", "help_button"],
+        "action_group": ["btn_quick_save"],
     },
     "minimal": {
         "line_group": [],
@@ -35,6 +35,4 @@ ALL_KNOWN_WIDGETS = {
     "btn_divider_width",
     "btn_text_settings",
     "btn_quick_save",
-    "btn_settings",
-    "help_button",
 }

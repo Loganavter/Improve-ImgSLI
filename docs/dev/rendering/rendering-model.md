@@ -29,3 +29,8 @@ Preferred export/video direction:
 
 Image export preview/final and video preview/export differ by snapshot
 source and target surface, not by feature-specific scene assembly.
+
+Snapshot prepare must **not** bake letterbox or feature padding into image
+pixels. Keep `TiledPixelStore` (or other unpadded sources) on the plan and
+express pads via `CanvasGeometry` / `overlay_clip_rect` + shader letterbox,
+matching the live canvas geometry model.

@@ -32,13 +32,21 @@ class PluginLifecycleManager:
 
     def initialize_all(self, context: Any) -> None:
         for name, plugin in self._plugins.items():
-            self._safe_call(
-                plugin, "initialize", context, name, PluginState.INITIALIZED
-            )
+            self.initialize_one(plugin, context)
+
+    def initialize_one(self, plugin: Plugin, context: Any) -> None:
+        name = self._plugin_name(plugin)
+        self._safe_call(
+            plugin, "initialize", context, name, PluginState.INITIALIZED
+        )
 
     def activate_all(self) -> None:
         for name, plugin in self._plugins.items():
-            self._safe_call(plugin, "activate", None, name, PluginState.ACTIVE)
+            self.activate_one(plugin)
+
+    def activate_one(self, plugin: Plugin) -> None:
+        name = self._plugin_name(plugin)
+        self._safe_call(plugin, "activate", None, name, PluginState.ACTIVE)
 
     def deactivate_all(self) -> None:
         for name, plugin in self._plugins.items():

@@ -1,0 +1,15 @@
+{
+  "menu": {
+    "file": "文件",
+    "help": "帮助",
+    "new_session": "新建会话",
+    "open_project": "打开项目",
+    "save_project": "保存项目",
+    "settings": "设置",
+    "quit": "退出",
+    "show_help": "显示帮助",
+    "find_action": "查找操作",
+    "find_action_soon": "命令面板 — 即将推出",
+    "project_filter": "Improve ImgSLI 项目 (*.imgsli-project)"
+  }
+}

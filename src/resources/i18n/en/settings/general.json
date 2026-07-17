@@ -39,14 +39,24 @@
     "system_default": "System default",
     "show_workspace_tabs": "Workspace tabs",
     "system_notifications": "System notifications",
-    "use_custom_decorations": "Custom window decorations",
-    "use_custom_decorations_tooltip": "Draw window title bar inside the app instead of using the system window manager. Eliminates the dark frame flash on startup.",
     "ui_font": "UI Font",
     "ui_mode": "UI Mode",
     "ui_mode_advanced": "Advanced",
     "ui_mode_beginner": "Beginner",
     "ui_mode_expert": "Expert",
     "video_recording": "Video Recording",
-    "zoom_interpolation": "Zoom Interpolation"
+    "zoom_interpolation": "Zoom Interpolation",
+    "language_en": "English",
+    "language_ru": "Russian",
+    "language_zh": "Chinese",
+    "language_pt_br": "Portuguese",
+    "keyboard": "Keyboard",
+    "keyboard_hint": "Click a binding, then press a new shortcut. Esc / Backspace clears. Empty = unbound. Reset restores the default.",
+    "keyboard_search": "Filter shortcuts…",
+    "keyboard_reset": "Reset",
+    "keyboard_reset_all": "Reset all shortcuts",
+    "keyboard_group_platform": "Platform",
+    "keyboard_group_image_compare": "Image Compare",
+    "keyboard_group_multi_compare": "Multi Compare"
   }
 }

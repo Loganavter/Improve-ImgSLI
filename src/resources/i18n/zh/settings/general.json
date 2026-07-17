@@ -39,14 +39,24 @@
     "system_default": "系统默认",
     "show_workspace_tabs": "工作区标签页",
     "system_notifications": "系统通知",
-    "use_custom_decorations": "自定义窗口装饰",
-    "use_custom_decorations_tooltip": "在应用程序内绘制窗口标题栏，而不是使用系统窗口管理器。消除启动时的深色框闪现。",
     "ui_font": "UI字体",
     "ui_mode": "UI模式",
     "ui_mode_advanced": "高级",
     "ui_mode_beginner": "初学者",
     "ui_mode_expert": "专家",
     "video_recording": "视频录制",
-    "zoom_interpolation": "缩放插值"
+    "zoom_interpolation": "缩放插值",
+    "language_en": "英语",
+    "language_ru": "俄语",
+    "language_zh": "中文",
+    "language_pt_br": "葡萄牙语",
+    "keyboard": "键盘",
+    "keyboard_hint": "点击绑定后按下新快捷键。Esc / Backspace 清除。空=未绑定。Reset 恢复默认。",
+    "keyboard_search": "筛选快捷键…",
+    "keyboard_reset": "重置",
+    "keyboard_reset_all": "重置全部",
+    "keyboard_group_platform": "平台",
+    "keyboard_group_image_compare": "Image Compare",
+    "keyboard_group_multi_compare": "Multi Compare"
   }
 }

@@ -9,7 +9,7 @@ from core.plugin_system.interfaces import ISessionPlugin
 from core.session_blueprints import SessionBlueprint, SessionSlotBlueprint
 
 
-@plugin(name="multi_compare", version="0.1")
+@plugin(name="multi_compare", version="0.1", startup_tier="deferred")
 class MultiComparePlugin(Plugin, ISessionPlugin):
     def __init__(self):
         super().__init__()
@@ -22,7 +22,7 @@ class MultiComparePlugin(Plugin, ISessionPlugin):
         self.event_bus = getattr(context, "event_bus", None)
 
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
-        from tabs.multi_compare.tab import _default_state
+        from tabs.multi_compare.tab import _fresh_default_state
 
         return (
             SessionBlueprint(
@@ -32,7 +32,7 @@ class MultiComparePlugin(Plugin, ISessionPlugin):
                 state_slots=(
                     SessionSlotBlueprint(
                         name="multi_compare.state",
-                        factory=_default_state,
+                        factory=_fresh_default_state,
                     ),
                 ),
             ),

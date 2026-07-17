@@ -23,7 +23,8 @@ class SettingsState:
     video_editor_preview_render_scale: float = 1.0
     show_workspace_tabs: bool = True
     rhi_backend: str = "default"
-    use_custom_decorations: bool = True
+    # Sparse map action_id → PortableText chord ("" = explicitly unbound).
+    keyboard_overrides: dict[str, str] = field(default_factory=dict)
 
     export_use_default_dir: bool = True
     export_default_dir: str | None = None
@@ -48,6 +49,7 @@ class SettingsState:
     export_comment_text: str = ""
     export_comment_keep_default: bool = False
     export_resolution_scale: float = 1.0
+    export_suppress_untested_resolution_warning: bool = False
 
     window_width: int = 1024
     window_height: int = 768

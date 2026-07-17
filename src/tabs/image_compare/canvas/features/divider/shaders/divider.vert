@@ -10,6 +10,7 @@ layout(std140, binding = 0) uniform UBuf
     float positionPx;
     float halfThicknessPx;
     vec4 color;
+    vec4 clipRectPx;
     int isHorizontal;
 };
 

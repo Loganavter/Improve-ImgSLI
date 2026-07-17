@@ -24,6 +24,9 @@
     "ssim_calculation_in_progress": "SSIM 计算中...",
     "starting_video_export_please_wait": "开始导出视频... 请稍候。",
     "select_both_images_first": "请先在两个插槽中加载并选择图像。",
-    "specify_output_directory_and_file_name": "请指定输出目录和文件名。"
+    "specify_output_directory_and_file_name": "请指定输出目录和文件名。",
+    "export_untested_resolution_title": "未经测试的导出分辨率",
+    "export_untested_resolution_body": "导出分辨率单边超过 {edge} 像素（{width}×{height}）。渲染可能失败或内存不足——超过 {edge} 像素不保证可用，我们也未测试。是否继续？",
+    "dont_show_again": "不再显示"
   }
 }

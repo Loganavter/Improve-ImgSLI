@@ -43,6 +43,38 @@ class PlaylistMetadataController:
                 self.store.state_changed.emit("document")
                 emit_ui_update(self.main_controller, ["combobox", "file_names"])
 
+    def rename_image_at_index(
+        self, image_number: int, index: int, new_name: str
+    ) -> None:
+        target_list = get_target_list(self.store, image_number)
+        if not (0 <= index < len(target_list)):
+            return
+        name = str(new_name).strip()
+        item = target_list[index]
+        if name == item.display_name:
+            return
+        item.display_name = name
+        self.store.state_changed.emit("document")
+        emit_ui_update(self.main_controller, ["combobox", "file_names"])
+        current_index = get_current_index(self.store, image_number)
+        if index == current_index:
+            emit_ui_update(self.main_controller, ["file_names"])
+        QTimer.singleShot(
+            0,
+            lambda: self._refresh_visible_flyout_labels(image_number),
+        )
+
+    def _refresh_visible_flyout_labels(self, image_number: int) -> None:
+        presenter = get_presenter(self.main_controller)
+        if presenter is None:
+            return
+        ui_manager = getattr(presenter, "ui_manager", None)
+        flyout = getattr(ui_manager, "unified_flyout", None) if ui_manager else None
+        if flyout is None or not flyout.isVisible():
+            return
+        if hasattr(flyout, "sync_from_store"):
+            flyout.sync_from_store()
+
     def _change_rating(self, image_number: int, index_to_change: int, delta: int) -> None:
         target_list = get_target_list(self.store, image_number)
         current_index = get_current_index(self.store, image_number)

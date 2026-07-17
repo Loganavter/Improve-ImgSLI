@@ -1,5 +1,76 @@
 {
   "image_compare": {
-    "session_type": "Comparar imagens"
+    "session_type": "Comparar imagens",
+    "help": {
+      "hub": {
+        "desc": "Comparar dois imagens, lupa, exportação"
+      },
+      "page": {
+        "comparison": {
+          "title": "Comparação",
+          "desc": "Linha divisória, rótulos, modos de diferença"
+        },
+        "magnifier": {
+          "title": "Lupa",
+          "desc": "Área de captura, congelar, modo combinado"
+        },
+        "export": {
+          "title": "Exportação",
+          "desc": "Imagens e salvamento rápido"
+        },
+        "video": {
+          "title": "Editor de vídeo",
+          "desc": "Gravar, cortar, codificar"
+        }
+      }
+    },
+    "action": {
+      "magnifier": "Alternar lupa",
+      "swap": "Trocar imagens",
+      "freeze": "Congelar lupa",
+      "file_names": "Sobreposição de nomes",
+      "file_names_desc": "Mostrar ou ocultar rótulos de nome de arquivo no canvas",
+      "text_settings": "Configurações de texto do rótulo",
+      "quick_save": "Salvamento rápido",
+      "save": "Salvar resultado",
+      "magnifier_orientation": "Orientação da lupa",
+      "magnifier_divider_combined": "Divisor da lupa",
+      "magnifier_divider_combined_desc": "Orientação, espessura e cor do divisor da lupa (rolar / botão direito)",
+      "magnifier_guides": "Guias da lupa",
+      "magnifier_divider_visible": "Visibilidade do divisor da lupa",
+      "magnifier_colors": "Cores da lupa",
+      "magnifier_instances": "Instâncias da lupa",
+      "magnifier_divider_width": "Largura do divisor da lupa",
+      "magnifier_guides_width": "Largura das guias da lupa",
+      "clear_list1": "Remover imagem atual (lado 1)",
+      "clear_list2": "Remover imagem atual (lado 2)",
+      "add_image1": "Adicionar imagens (lado 1)",
+      "add_image2": "Adicionar imagens (lado 2)",
+      "divider_orientation": "Orientação da divisão",
+      "divider_combined": "Divisor",
+      "divider_combined_desc": "Orientação, largura e cor da linha de divisão (rolar / botão direito / meio)",
+      "divider_visible": "Visibilidade do divisor",
+      "divider_color": "Cor do divisor",
+      "divider_width": "Largura do divisor",
+      "diff_mode": "Modo de diferença",
+      "channel_mode": "Modo de canal",
+      "diff_highlight": "Destaque",
+      "diff_grayscale": "Escala de cinza",
+      "diff_edges": "Bordas",
+      "diff_ssim": "SSIM",
+      "record": "Gravar vídeo",
+      "pause_recording": "Pausar gravação",
+      "video_editor": "Editor de vídeo",
+      "breadcrumb": {
+        "toolbar": "Barra de ferramentas",
+        "magnifier": "Lupa",
+        "session": "Sessão",
+        "labels": "Rótulos",
+        "export": "Exportar",
+        "divider": "Divisor",
+        "analysis": "Análise",
+        "video": "Vídeo"
+      }
+    }
   }
 }

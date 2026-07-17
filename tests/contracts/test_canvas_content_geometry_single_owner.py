@@ -17,13 +17,13 @@ Two independent rules, both grep/AST-based (no runtime execution):
    ``resolve_canvas_content_geometry(_for_store)`` /
    ``resolve_canvas_clip_rect_px`` (``ui/canvas_infra/scene/frame_geometry.py``).
 
-   The allowlist includes the CPU-pixel-baking video-export chain
-   (``snapshot_render_plan_builder.py``, ``video_snapshot_rendering.py``) —
-   the refactor doc explicitly calls this out as "Explicitly out of scope": a
-   structurally different, legitimate technique (bakes padding into output
-   pixels rather than expressing a widget-px rect), not the split-position
-   duplication bug this guard targets. It is not a hole in this test, it is
-   the doc's own stated scope boundary.
+   The allowlist historically included the CPU-pixel-baking video-export chain
+   (``snapshot_render_plan_builder.py``, ``video_snapshot_rendering/``) when
+   that path baked padding into PIL. Snapshot prepare now keeps unpadded
+   stores and expresses pads in geometry (see
+   ``docs/dev/rendering/rendering-model.md``); those modules remain allowlisted
+   only where they still read ``canvas_bounds`` to *derive* clip/geometry, not
+   to reintroduce pixel bake.
 
 2. ``split_position_visual`` (or ``split_visual``) must never be combined via
    arithmetic (``BinOp``) with ``content_rect``/``canvas_bounds``/
@@ -47,11 +47,19 @@ _BOUNDS_ALLOWLIST = {
     "src/ui/canvas_infra/scene/layout_requirements.py",
     # Defines VirtualCanvasLayout/NormalizedBounds themselves.
     "src/shared/rendering/layout_contract.py",
-    # Explicitly out of scope per the doc: CPU-pixel-baking headless export
-    # path (compute_canvas_plan's sibling chain), a different technique for a
-    # different problem, not the split-position duplication this guards.
+    # Snapshot prepare / headless export still read canvas_bounds to derive
+    # geometry and clip (unpadded stores + CanvasGeometry), not to bake
+    # padding into pixels. Keep allowlisted so this guard stays about
+    # split-position duplication, not prepare.
     "src/tabs/image_compare/services/snapshot_render_plan_builder.py",
-    "src/tabs/image_compare/services/video_snapshot_rendering.py",
+    "src/tabs/image_compare/services/video_snapshot_rendering/geometry.py",
+    "src/tabs/image_compare/services/video_snapshot_rendering/prepare.py",
+    "src/tabs/image_compare/services/video_snapshot_rendering/prepare_hit.py",
+    "src/tabs/image_compare/services/video_snapshot_rendering/prepare_miss.py",
+    "src/tabs/image_compare/services/video_snapshot_rendering/store_rebuild.py",
+    "src/tabs/image_compare/services/video_snapshot_rendering/plan_build.py",
+    "src/tabs/image_compare/services/video_snapshot_rendering/render.py",
+    "src/tabs/image_compare/services/video_snapshot_rendering/renderer.py",
 }
 
 _SPLIT_NAMES = {"split_position_visual", "split_visual"}

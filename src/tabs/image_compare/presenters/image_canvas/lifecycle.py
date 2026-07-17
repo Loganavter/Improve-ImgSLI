@@ -4,7 +4,6 @@ import time
 
 from PySide6.QtCore import QPoint, QTimer
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QSizePolicy
 
 from events.image_label_event_handler import ImageLabelEventHandler
 from events.window_event_handler import WindowEventHandler
@@ -81,49 +80,13 @@ def get_current_label_dimensions(presenter) -> tuple[int, int]:
 
 
 def update_minimum_window_size(presenter):
-    if not getattr(presenter.main_window_app, "_is_ui_stable", False):
+    main_window = presenter.main_window_app
+    if not getattr(main_window, "_is_ui_stable", False):
         return
 
-    layout = presenter.main_window_app.layout()
-    canvas = get_canvas(presenter.widget)
-    if not layout or canvas is None:
-        return
+    from ui.layout_geometry import apply_main_window_minimum
 
-    original_policy = canvas.sizePolicy()
-    temp_policy = QSizePolicy(
-        QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
-    )
-    temp_policy.setHeightForWidth(original_policy.hasHeightForWidth())
-    temp_policy.setWidthForHeight(original_policy.hasWidthForHeight())
-    temp_policy.setVerticalPolicy(
-        QSizePolicy.Policy.Preferred
-        if original_policy.verticalPolicy() != QSizePolicy.Policy.Ignored
-        else QSizePolicy.Policy.Ignored
-    )
-    temp_policy.setHorizontalPolicy(
-        QSizePolicy.Policy.Preferred
-        if original_policy.horizontalPolicy() != QSizePolicy.Policy.Ignored
-        else QSizePolicy.Policy.Ignored
-    )
-
-    try:
-        canvas.setSizePolicy(temp_policy)
-        canvas.updateGeometry()
-        layout.invalidate()
-        layout.activate()
-
-        layout_hint_size = layout.sizeHint()
-        new_min_w = max(250, layout_hint_size.width()) + 10
-        new_min_h = max(300, layout_hint_size.height()) + 10
-        current_min = presenter.main_window_app.minimumSize()
-        if current_min.width() != new_min_w or current_min.height() != new_min_h:
-            presenter.main_window_app.setMinimumSize(new_min_w, new_min_h)
-    finally:
-        if canvas.sizePolicy() != original_policy:
-            canvas.setSizePolicy(original_policy)
-            canvas.updateGeometry()
-            layout.invalidate()
-            layout.activate()
+    apply_main_window_minimum(main_window)
 
 
 def invalidate_render_state(presenter):

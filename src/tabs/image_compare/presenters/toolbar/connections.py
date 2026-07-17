@@ -1,6 +1,6 @@
 import logging
 
-from PySide6.QtWidgets import QMessageBox
+from shared_toolkit.ui.message_dialog import MessageKind
 
 from tabs.image_compare.events import (
     AnalysisSetChannelViewModeEvent,
@@ -30,9 +30,9 @@ def _show_unavailable_toolbar_capability(presenter, control_id: str) -> None:
     if ui_manager is None or getattr(ui_manager, "messages", None) is None:
         return
     ui_manager.messages.show_non_modal_message(
-        QMessageBox.Icon.Warning,
-        "Feature unavailable",
-        f"The '{control_id}' capability is not available in this build.",
+        kind=MessageKind.WARNING,
+        title="Feature unavailable",
+        text=f"The '{control_id}' capability is not available in this build.",
     )
 
 def _invoke_toolbar_binding(control_id: str, hook_name: str, presenter, *args):
@@ -76,6 +76,7 @@ def connect_signals(presenter):
     _connect_orientation_controls(presenter)
     _connect_mode_specific_controls(presenter)
     _connect_ui_manager_controls(presenter)
+    _connect_topic_palette_entry_points(presenter)
     _connect_session_comboboxes(presenter)
 
 def _connect_session_actions(presenter):
@@ -410,13 +411,36 @@ def _connect_ui_manager_controls(presenter):
     if ui_manager:
         ui.combo_image1.clicked.connect(lambda: ui_manager.show_flyout(1))
         ui.combo_image2.clicked.connect(lambda: ui_manager.show_flyout(2))
-        ui.help_button.clicked.connect(ui_manager.dialogs.show_help_dialog)
-        ui.btn_settings.clicked.connect(ui_manager.dialogs.show_settings_dialog)
     else:
         logger.warning("ToolbarPresenter: ui_manager not set, flyout connections skipped")
-        logger.warning(
-            "ToolbarPresenter: ui_manager not set, help/settings connections skipped"
-        )
+
+
+def _open_topic_palette(presenter, topic: str) -> None:
+    from ui.actions.palette import show_command_palette
+
+    parent = getattr(presenter, "main_window_app", None)
+    if parent is None:
+        widget = getattr(presenter, "widget", None)
+        parent = widget.window() if widget is not None else None
+    show_command_palette(topic=topic, parent=parent)
+
+
+def _connect_topic_palette_entry_points(presenter):
+    """Middle-click toolbar chrome → Find Action filtered by topic."""
+    ui = presenter.widget
+
+    def _bind(button, topic: str) -> None:
+        if button is None or not hasattr(button, "middleClicked"):
+            return
+        button.middleClicked.connect(lambda t=topic: _open_topic_palette(presenter, t))
+
+    _bind(getattr(ui, "btn_freeze", None), "magnifier")
+    _bind(getattr(ui, "btn_save", None), "export")
+    _bind(getattr(ui, "btn_quick_save", None), "export")
+    _bind(getattr(ui, "btn_record", None), "video")
+    _bind(getattr(ui, "btn_divider_visible", None), "divider")
+    _bind(getattr(ui, "btn_file_names", None), "labels")
+
 
 def _connect_session_comboboxes(presenter):
     controller = presenter.main_controller
@@ -439,10 +463,10 @@ def _connect_session_comboboxes(presenter):
     if event_bus is None:
         return
 
-    ui.btn_diff_mode.triggered.connect(
+    ui.btn_diff_mode_picker.selected.connect(
         lambda data: event_bus.emit(AnalysisSetDiffModeEvent(data))
     )
-    ui.btn_channel_mode.triggered.connect(
+    ui.btn_channel_mode_picker.selected.connect(
         lambda data: event_bus.emit(AnalysisSetChannelViewModeEvent(data))
     )
     ui.btn_record.toggled.connect(

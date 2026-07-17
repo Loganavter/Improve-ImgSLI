@@ -12,7 +12,7 @@ from .dialog import ImagePropertiesDialog
 from .service import build_image_properties
 
 
-@plugin(name="image_properties", version="1.0")
+@plugin(name="image_properties", version="1.0", startup_tier="deferred")
 class ImagePropertiesPlugin(Plugin, IControllablePlugin):
     capabilities = ("image_properties",)
 

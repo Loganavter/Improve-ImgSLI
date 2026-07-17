@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QScrollArea, QSizePolicy
+from PySide6.QtWidgets import QScrollArea, QSizePolicy
 
+from plugins.settings.layout_geometry import apply_settings_dialog_geometry
+from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
 from sli_ui_toolkit.widgets import (
     ScrollableDialogPage,
     SidebarDialogShell,
@@ -75,48 +76,7 @@ def apply_styles(dialog):
     dialog._update_sidebar_icons()
 
 def defer_geometry(dialog):
-    QTimer.singleShot(0, dialog._calculate_and_apply_geometry)
+    defer_dialog_geometry(dialog, dialog._calculate_and_apply_geometry)
 
 def calculate_and_apply_geometry(dialog):
-    dialog.ensurePolished()
-    sidebar_width = dialog.sidebar.width()
-    content_margins = dialog.content_layout.contentsMargins()
-    total_width_margins = content_margins.left() + content_margins.right() + 40
-
-    max_group_width = 0
-    max_content_height = 0
-    for i in range(dialog.pages_stack.count()):
-        page_wrapper = dialog.pages_stack.widget(i)
-        scroll_area = page_wrapper.findChild(QScrollArea)
-        if scroll_area:
-            content_widget = scroll_area.widget()
-            content_widget.ensurePolished()
-            content_widget.adjustSize()
-
-            groups = content_widget.findChildren(dialog._custom_group_widget_cls)
-            if groups:
-                for group in groups:
-                    max_group_width = max(max_group_width, group.sizeHint().width())
-            else:
-                max_group_width = max(max_group_width, content_widget.sizeHint().width())
-            max_content_height = max(max_content_height, content_widget.sizeHint().height())
-
-    required_width = sidebar_width + max_group_width + total_width_margins
-    final_width = max(800, min(required_width, 1200))
-    bottom_controls_height = 80
-    sidebar_req_height = dialog.sidebar.count() * 45 + 40
-    required_height = max(sidebar_req_height, max_content_height + bottom_controls_height)
-    screen_h = QApplication.primaryScreen().availableGeometry().height()
-    final_height = min(required_height, screen_h - 100) + 5
-
-    dialog.setMinimumSize(300, 200)
-    if dialog.isVisible():
-        dialog.updateGeometry()
-        return
-
-    dialog.resize(final_width, final_height)
-    parent = dialog.parent() if hasattr(dialog, "parent") else None
-    if parent:
-        geo = dialog.geometry()
-        geo.moveCenter(parent.geometry().center())
-        dialog.move(geo.topLeft())
+    apply_settings_dialog_geometry(dialog)

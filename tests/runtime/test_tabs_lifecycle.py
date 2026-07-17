@@ -3,7 +3,7 @@
 Drop routing must respect ``accepts_drop`` (a tab only sees a drop it claimed)
 and ``dispose()`` must be idempotent.
 
-Dogma source: docs/dev/TAB_CONTRACT.md.
+Dogma source: docs/dev/tabs/isolation.md.
 """
 
 from __future__ import annotations

@@ -2,10 +2,12 @@
   "action": {
     "export_video": "Экспортировать видео",
     "context_copy_path": "Копировать путь",
+    "context_duplicate": "Дублировать",
     "context_name": "Имя",
     "context_path": "Путь",
     "context_properties": "Свойства",
     "context_remove": "Удалить",
+    "context_rename": "Переименовать",
     "context_size": "Размер",
     "open_application_settings": "Открыть настройки приложения",
     "open_last_file": "Открыть последний файл",

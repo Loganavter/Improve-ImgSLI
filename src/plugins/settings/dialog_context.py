@@ -31,6 +31,7 @@ class SettingsDialogContext:
     current_video_fps: int = 60
     rhi_backend: str = "default"
     store: object | None = None
+    keyboard_overrides: dict[str, str] = field(default_factory=dict)
     tab_extras: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def get_section(self, section_id: str) -> dict[str, Any]:

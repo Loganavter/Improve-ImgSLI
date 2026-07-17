@@ -1,9 +1,9 @@
 """image_compare's canvas surface follows theme background changes.
 
 Covers apply_image_canvas_appearance, the tab-owned counterpart of the
-host's generic MainWindowAppearance.update_image_label_background (see
+host's MainWindowAppearance.update_image_label_background (see
 tests/plugins/test_main_window_canvas_theme_background.py for the
-host-generic startup-placeholder/cover half).
+self-themed startup surfaces).
 """
 
 from __future__ import annotations
@@ -36,18 +36,14 @@ class _ThemeManager:
         return QColor(self.color)
 
 
-def test_apply_image_canvas_appearance_paints_label_container_and_placeholder():
+def test_apply_image_canvas_appearance_paints_label_and_container():
     app = _app()
     color = QColor("#123456")
     image_label = QWidget()
     container = QWidget()
-    startup_placeholder = QWidget()
-    startup_cover = QWidget()
     placeholder = StartupPlaceholder(container, target_widget=image_label)
     window = SimpleNamespace(
         theme_manager=_ThemeManager(color),
-        _startup_placeholder=startup_placeholder,
-        _startup_cover=startup_cover,
         ui=SimpleNamespace(
             image_label=image_label,
             image_container_widget=container,
@@ -62,16 +58,25 @@ def test_apply_image_canvas_appearance_paints_label_container_and_placeholder():
     assert image_label.palette().color(QPalette.ColorRole.Base) == color
     assert container.palette().color(QPalette.ColorRole.Window) == color
     assert container.palette().color(QPalette.ColorRole.Base) == color
-    assert placeholder.palette().color(QPalette.ColorRole.Window) == color
-    assert placeholder.palette().color(QPalette.ColorRole.Base) == color
-    assert startup_placeholder.palette().color(QPalette.ColorRole.Window) == color
-    assert startup_cover.palette().color(QPalette.ColorRole.Window) == color
     assert container.autoFillBackground() is True
-    assert placeholder.autoFillBackground() is True
 
     placeholder.deleteLater()
-    startup_cover.deleteLater()
-    startup_placeholder.deleteLater()
     container.deleteLater()
     image_label.deleteLater()
+    app.processEvents()
+
+
+def test_startup_placeholder_tracks_theme_token():
+    app = _app()
+    color = QColor("#123456")
+    theme_manager = _ThemeManager(color)
+    parent = QWidget()
+    placeholder = StartupPlaceholder(parent, target_widget=None)
+    placeholder._theme_manager = theme_manager
+    placeholder.on_theme_changed()
+
+    assert placeholder._bg_color == color
+
+    placeholder.deleteLater()
+    parent.deleteLater()
     app.processEvents()

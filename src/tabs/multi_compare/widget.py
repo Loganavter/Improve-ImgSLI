@@ -31,13 +31,14 @@ from tabs.multi_compare.ui.canvas_widget import (
 )
 from tabs.multi_compare.ui.footer import MultiCompareFooter
 from tabs.multi_compare.ui.toolbar import MultiCompareToolbar
+from tabs.multi_compare.icons import Icon
 from ui.context_menu.manager import install_context_menu_provider
 from ui.widgets.font_settings_flyout import FontSettingsFlyout
 from ui.widgets.startup_placeholder import StartupPlaceholder
 from ui.widgets.zoom_indicator import ZoomIndicator
 
 if TYPE_CHECKING:
-    import numpy as np
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 
@@ -100,6 +101,7 @@ class MultiCompareWidget(QWidget):
         self.footer = MultiCompareFooter(self)
         self._translate = translate or (lambda _key, default=None: default or _key)
         self._pending_duplicate_source: int | None = None
+        self._pending_paste_paths: list[Path] | None = None
         self._divider_toolbar_sync_pending = False
         self._context_menu_provider = install_context_menu_provider(
             MultiCompareContextMenuProvider(self)
@@ -143,6 +145,7 @@ class MultiCompareWidget(QWidget):
             self,
             lang_provider=lang_provider or (lambda: "en"),
             target_widget=self._canvas_container,
+            reset_icon=Icon.SYNC,
         )
         self.zoom_indicator.btn_zoom_reset.clicked.connect(
             lambda: self.store.dispatch(actions.reset_view())
@@ -269,6 +272,12 @@ class MultiCompareWidget(QWidget):
         if self._font_popup_open:
             self.font_settings_flyout.hide()
             return
+        self.show_font_settings_flyout()
+
+    def show_font_settings_flyout(self) -> None:
+        """Open the text flyout without toggle-close (Find Action reveal/run)."""
+        if self._font_popup_open:
+            return
         self._sync_font_settings_flyout()
         self.font_settings_flyout.show_aligned(
             self.toolbar.btn_text_settings,
@@ -317,7 +326,7 @@ class MultiCompareWidget(QWidget):
         self.store.dispatch(actions.set_label_settings(settings))
 
     def add_image_auto(
-        self, path: Path, image: "np.ndarray", label: str = ""
+        self, path: Path, image: "TiledPixelStore", label: str = ""
     ) -> int | None:
         """Append an image by splitting the largest leaf along its longer axis."""
         if len(self.state.slots) >= self.state.max_slots:
@@ -343,7 +352,7 @@ class MultiCompareWidget(QWidget):
     def add_image_at(
         self,
         path: Path,
-        image: "np.ndarray",
+        image: "TiledPixelStore",
         label: str,
         target_path: tuple[int, ...] | None,
         side: str | None,
@@ -437,6 +446,7 @@ class MultiCompareWidget(QWidget):
         )
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        self._cancel_pending_placements()
         if self._has_internal_slot(event.mimeData()):
             self._apply_drag_preview(event, internal=True)
             event.acceptProposedAction()
@@ -521,38 +531,47 @@ class MultiCompareWidget(QWidget):
         return first[0].slot_id if first else None
 
     def keyPressEvent(self, event) -> None:
-        if (
-            self._pending_duplicate_source is not None
-            and event.key() == Qt.Key.Key_Escape
-        ):
-            self._end_pending_duplicate()
+        if event.key() == Qt.Key.Key_Escape and self._has_pending_placement():
+            self._cancel_pending_placements()
             event.accept()
             return
         self.canvas.keyPressEvent(event)
 
     def begin_pending_duplicate(self, source_slot_id: int) -> None:
-        if self._pending_duplicate_source is not None:
-            self._end_pending_duplicate()
+        self._cancel_pending_placements()
         source = next((s for s in self.state.slots if s.id == source_slot_id), None)
         if source is None or source.image is None:
             return
         if len(self.state.slots) >= self.state.max_slots:
             return
         self._pending_duplicate_source = source_slot_id
-        self.canvas.setCursor(Qt.CursorShape.DragCopyCursor)
-        self.canvas.installEventFilter(self)
-        self.store.dispatch(
-            actions.set_drag_state(
-                active=True,
-                internal=True,
-                source_slot_id=source_slot_id,
-            )
+        self._arm_pending_placement_input()
+        self._update_pending_drag_preview(self._canvas_cursor_pos(), internal=True)
+
+    def begin_pending_paste(self, paths: list[Path]) -> None:
+        """Enter external DnD placement: highlight under cursor, click to drop."""
+        self._cancel_pending_placements()
+        valid = [Path(p) for p in paths if Path(p).is_file()]
+        if not valid:
+            return
+        if len(slot_ids_in_tree(self.state.root)) >= self.state.max_slots:
+            return
+        self._pending_paste_paths = valid
+        self._arm_pending_placement_input()
+        self._update_pending_drag_preview(self._canvas_cursor_pos(), internal=False)
+
+    def _has_pending_placement(self) -> bool:
+        return (
+            self._pending_duplicate_source is not None
+            or self._pending_paste_paths is not None
         )
 
-    def _end_pending_duplicate(self) -> None:
-        if self._pending_duplicate_source is None:
-            return
+    def _cancel_pending_placements(self) -> None:
+        had = self._has_pending_placement()
         self._pending_duplicate_source = None
+        self._pending_paste_paths = None
+        if not had:
+            return
         try:
             self.canvas.removeEventFilter(self)
         except Exception:
@@ -560,18 +579,21 @@ class MultiCompareWidget(QWidget):
         self.canvas.unsetCursor()
         self.store.dispatch(actions.set_drag_state(active=False))
 
-    def eventFilter(self, watched, event) -> bool:
-        if self._pending_duplicate_source is None or watched is not self.canvas:
-            return False
-        et = event.type()
-        if et == QEvent.Type.MouseMove:
-            pos = (
-                event.position().toPoint()
-                if hasattr(event, "position")
-                else event.pos()
-            )
+    def _arm_pending_placement_input(self) -> None:
+        self.canvas.setCursor(Qt.CursorShape.DragCopyCursor)
+        self.canvas.installEventFilter(self)
+        self.canvas.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _canvas_cursor_pos(self):
+        from PySide6.QtGui import QCursor
+
+        return self.canvas.mapFromGlobal(QCursor.pos())
+
+    def _update_pending_drag_preview(self, pos, *, internal: bool) -> None:
+        include_center = internal
+        if internal:
             tgt_path, side, root_tgt, swap_id = self.canvas.compute_drop_target(
-                pos, include_center=False
+                pos, include_center=include_center
             )
             self.store.dispatch(
                 actions.set_drag_state(
@@ -584,6 +606,33 @@ class MultiCompareWidget(QWidget):
                     target_swap_slot_id=swap_id,
                 )
             )
+            return
+        if len(slot_ids_in_tree(self.state.root)) >= self.state.max_slots:
+            self.store.dispatch(actions.set_drag_state(active=False))
+            return
+        tgt_path, side, root_tgt, _ = self.canvas.compute_drop_target(pos)
+        self.store.dispatch(
+            actions.set_drag_state(
+                active=True,
+                internal=False,
+                target_path=tgt_path,
+                target_side=side,
+                target_root=root_tgt,
+            )
+        )
+
+    def eventFilter(self, watched, event) -> bool:
+        if not self._has_pending_placement() or watched is not self.canvas:
+            return False
+        internal = self._pending_duplicate_source is not None
+        et = event.type()
+        if et == QEvent.Type.MouseMove:
+            pos = (
+                event.position().toPoint()
+                if hasattr(event, "position")
+                else event.pos()
+            )
+            self._update_pending_drag_preview(pos, internal=internal)
             return True
         if et == QEvent.Type.MouseButtonPress:
             button = event.button()
@@ -593,19 +642,38 @@ class MultiCompareWidget(QWidget):
                     if hasattr(event, "position")
                     else event.pos()
                 )
-                tgt_path, side, root_tgt, _ = self.canvas.compute_drop_target(
-                    pos, include_center=False
-                )
-                self._finalize_pending_duplicate(tgt_path, side, root_tgt)
-                self._end_pending_duplicate()
+                if internal:
+                    tgt_path, side, root_tgt, _ = self.canvas.compute_drop_target(
+                        pos, include_center=False
+                    )
+                    self._finalize_pending_duplicate(tgt_path, side, root_tgt)
+                else:
+                    tgt_path, side, root_tgt, _ = self.canvas.compute_drop_target(pos)
+                    self._finalize_pending_paste(tgt_path, side, root_tgt)
+                self._cancel_pending_placements()
                 return True
             if button == Qt.MouseButton.RightButton:
-                self._end_pending_duplicate()
+                self._cancel_pending_placements()
                 return True
         if et == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
-            self._end_pending_duplicate()
+            self._cancel_pending_placements()
             return True
         return False
+
+    def _finalize_pending_paste(
+        self,
+        target_path: tuple[int, ...] | None,
+        side: str | None,
+        target_root: bool,
+    ) -> None:
+        paths = self._pending_paste_paths
+        if not paths:
+            return
+        # Empty canvas: compute_drop_target returns (None, None, True, None).
+        # Real file dropEvent still emits; add_image_at treats target_root.
+        if side is None and not target_root:
+            return
+        self.images_dropped.emit(list(paths), (target_path, target_root), side)
 
     def _finalize_pending_duplicate(
         self,

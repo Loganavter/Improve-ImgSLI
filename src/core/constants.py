@@ -54,21 +54,16 @@ class AppConstants:
 
     PROGRESSIVE_LOAD_THRESHOLD_BYTES = 2 * 1024 * 1024
     PROGRESSIVE_LOAD_THRESHOLD_PIXELS = 1920 * 1080
-    # docs/dev/TILED_RENDERING_DESIGN.md Phase 1: the live canvas now tiles
-    # images bigger than one GPU texture (TileTextureService), so this is no
-    # longer a "single texture" ceiling — it is a sanity bound against
-    # pathological/corrupt files, decoded fully into memory once (RGBA8:
-    # ~2.7GB at this ceiling). Raise further only alongside a real streaming
-    # decode path (design doc "Provider callback cost" open question).
-    MAX_SUPPORTED_IMAGE_DIMENSION = 32768
-    # docs/dev/rendering/tile-rendering-system.md Phase 3: past this size per
-    # side, the decoded full-res image is spilled to a memmap-backed
-    # LazyPixelSource instead of staying resident as a Python-owned PIL
-    # buffer for the document's lifetime. 2x the live tile extent (8192,
-    # see rhi_renderer/resources.py's _LIVE_TILE_EXTENT) -- large enough
-    # that ordinary images never engage this path, matching the doc's own
-    # suggested threshold.
-    PHASE3_LAZY_THRESHOLD_PX = 16384
+    # Sanity bound against pathological/corrupt files. Codecs still decompress
+    # a full frame once; spill into TiledPixelStore is strip-written (no second
+    # full HxWx4 copy). Raise further only with real streaming/region decode.
+    MAX_SUPPORTED_IMAGE_DIMENSION = 65536
+    # Soft ceiling for still-image export. Above this we warn that the path is
+    # untested; we do not block or silently clamp output / native canvas size.
+    EXPORT_TESTED_MAX_EDGE = 16384
+    # Host tile size for TiledPixelStore (GEGL-style always-tiled storage).
+    # Separate from GPU live tile extent (8192 in rhi_renderer/resources.py).
+    PIXEL_TILE_SIZE = 512
 
 class Events(StrEnum):
 

@@ -1,0 +1,34 @@
+{
+  "multi_compare": {
+    "help": {
+      "hub": {
+        "desc": "Layouts com várias imagens"
+      },
+      "page": {
+        "overview": {
+          "title": "Visão geral do Multi Compare",
+          "desc": "Layouts e zonas de soltar"
+        }
+      }
+    },
+    "action": {
+      "add_images": "Adicionar imagens",
+      "add_images_desc": "Adicionar imagens à tela multi-compare",
+      "divider_visible": "Visibilidade da grade",
+      "divider_color": "Cor da grade",
+      "divider_width": "Linhas da grade",
+      "divider_width_desc": "Espessura, cor (botão direito) e visibilidade das linhas (zero oculta)",
+      "text_settings": "Configurações de rótulo",
+      "text_settings_desc": "Abrir configurações de texto dos rótulos",
+      "quick_save": "Salvamento rápido",
+      "save": "Salvar grade",
+      "breadcrumb": {
+        "toolbar": "Barra de ferramentas",
+        "session": "Sessão",
+        "labels": "Rótulos",
+        "export": "Exportar",
+        "divider": "Grade"
+      }
+    }
+  }
+}

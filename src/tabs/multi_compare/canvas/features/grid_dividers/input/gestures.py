@@ -20,12 +20,13 @@ DIVIDER_DRAG_OWNER = "multi_compare.divider_drag"
 
 
 def _matches_divider_press(ctx) -> bool:
-    from tabs.multi_compare.ui.canvas_widget import _dividers_locked
+    from tabs.multi_compare.canvas.features.grid_dividers.input.hit import divider_at
+    from tabs.multi_compare.ui.canvas_helpers import _dividers_locked
 
     handler = ctx.handler
     if _dividers_locked(handler.state):
         return False
-    return handler._divider_at(ctx.local_pos) is not None
+    return divider_at(handler, ctx.local_pos) is not None
 
 
 def _is_divider_dragging(handler) -> bool:

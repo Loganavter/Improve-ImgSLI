@@ -18,7 +18,6 @@ from sli_ui_toolkit.core import setup_logging
 from sli_ui_toolkit.widgets import install_application_tooltips
 from shared_toolkit.ui.managers.ui_resource_manager import UIResourceManager
 from sli_ui_toolkit.theme import ThemeManager
-from ui.main_window.composer import MainWindowComposer
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -44,19 +43,26 @@ class ApplicationContext:
         self.session_manager: Optional[SessionManager] = None
         self.ui_resource_manager: Optional[UIResourceManager] = None
         self._initialized = False
+        self._deferred_plugins_loaded = False
         self._is_shutting_down = False
 
     def initialize(self):
         if self._initialized:
             return
 
+        from core.startup_trace import startup_mark
+
+        startup_mark("ctx.begin")
         self._maybe_install_tracer()
         self._build_core_services()
+        startup_mark("ctx.core_services")
         self._load_persistent_state()
         self._configure_logging()
         self._configure_theme_manager()
+        self._configure_flyout_manager()
         self._build_runtime_services()
         self._initialize_plugins()
+        startup_mark("ctx.plugins.bootstrap")
         self._load_canvas_feature_settings()
 
         self._initialized = True
@@ -141,12 +147,19 @@ class ApplicationContext:
         ):
             self.theme_manager.register_qss_path(qss_path)
 
+    def _configure_flyout_manager(self):
+        from ui.flyout_policy import install_flyout_show_policy
+
+        install_flyout_show_policy()
+
     def _build_runtime_services(self):
         self.plugin_registry = PluginRegistry(self)
         self.plugin_definition_registry = PluginDefinitionRegistry()
 
     def _initialize_plugins(self):
-        discovered_plugins = self.plugin_registry.discover_plugins()
+        discovered_plugins = list(
+            self.plugin_registry.discover_plugins(tier="bootstrap")
+        )
         self.plugin_definition_registry.register_plugins(discovered_plugins)
         for plugin in discovered_plugins:
             for qss_path in plugin.get_qss_paths():
@@ -157,6 +170,49 @@ class ApplicationContext:
         self.plugin_coordinator.initialize(self)
         self.session_manager = SessionManager(self.store, self.plugin_coordinator)
 
+    def ensure_deferred_plugins_loaded(self) -> tuple[str, ...]:
+        """Load deferred plugins if not already loaded. Idempotent."""
+        if self._deferred_plugins_loaded:
+            return ()
+        return self.load_deferred_plugins()
+
+    def load_deferred_plugins(self) -> tuple[str, ...]:
+        """Discover, register, and start deferred-tier plugins."""
+        from core.startup_trace import startup_mark
+
+        if self._deferred_plugins_loaded:
+            return ()
+
+        discovered = list(self.plugin_registry.discover_plugins(tier="deferred"))
+        if not discovered:
+            self._deferred_plugins_loaded = True
+            startup_mark("ctx.plugins.deferred")
+            return ()
+
+        self.plugin_definition_registry.register_plugins(discovered)
+        deferred_qss = False
+        for plugin in discovered:
+            paths = tuple(plugin.get_qss_paths())
+            for qss_path in paths:
+                self.theme_manager.register_qss_path(qss_path)
+            if paths:
+                deferred_qss = True
+
+        started = self.plugin_coordinator.register_and_start(discovered, self)
+        self._deferred_plugins_loaded = True
+
+        # register_qss_path only rebuilds the template; push it live so deferred
+        # styles (e.g. video editor tab bar) are not stuck on the native Qt look.
+        if deferred_qss:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None and bool(app.styleSheet()):
+                self.theme_manager.apply_theme_to_app(app)
+
+        startup_mark("ctx.plugins.deferred")
+        return started
+
     def _resource_path(self, relative_path: str) -> str:
         from utils.resource_loader import resource_path
 
@@ -165,6 +221,8 @@ class ApplicationContext:
     def create_window_dependent_components(self, window):
         if not self._initialized:
             raise RuntimeError("ApplicationContext not initialized")
+        from ui.main_window.composer import MainWindowComposer
+
         components = MainWindowComposer(self).compose(window)
         self.ui_resource_manager = components.ui_resource_manager
         return components

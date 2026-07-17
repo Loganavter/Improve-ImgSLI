@@ -9,10 +9,24 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy
-from sli_ui_toolkit.widgets import ComboBox, CustomGroupWidget
+from sli_ui_toolkit.widgets import ComboBox
 
 from plugins.settings.registry import SettingsSection
+from plugins.settings.search import SearchIndex, group
 from ui.icon_manager import AppIcon
+
+RENDER_BACKEND = group(
+    "settings.render_backend",
+    "settings.render_backend_label",
+    "settings.render_backend_default",
+    "settings.render_backend_opengl",
+    "settings.render_backend_vulkan",
+    "settings.render_backend_d3d11",
+    "settings.render_backend_d3d12",
+    "settings.render_backend_metal",
+    "settings.render_backend_restart_hint",
+)
+SEARCH = SearchIndex.of(RENDER_BACKEND)
 
 
 def build(dialog, p):
@@ -30,15 +44,17 @@ def build(dialog, p):
 
 
 def _build_render_backend_group(dialog, layout, p):
-    dialog.render_backend_group = CustomGroupWidget(
-        dialog.tr("settings.render_backend", dialog.current_language)
-    )
+    dialog.render_backend_group = RENDER_BACKEND.widget(dialog)
     row = QHBoxLayout()
     row.setContentsMargins(5, 5, 5, 5)
     dialog.lbl_rhi_backend = QLabel(
-        dialog.tr("settings.render_backend_label", dialog.current_language) + ":"
+        RENDER_BACKEND.text(dialog, "settings.render_backend_label") + ":"
+    )
+    RENDER_BACKEND.tag_member(
+        dialog.lbl_rhi_backend, "settings.render_backend_label"
     )
     dialog.combo_rhi_backend = ComboBox()
+    RENDER_BACKEND.tag_combo(dialog.combo_rhi_backend)
     dialog.combo_rhi_backend.setMinimumWidth(180)
     dialog.combo_rhi_backend.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -63,9 +79,10 @@ def _build_render_backend_group(dialog, layout, p):
         if value not in keep:
             continue
         dialog.combo_rhi_backend.addItem(
-            dialog.tr(key, dialog.current_language),
+            RENDER_BACKEND.text(dialog, key),
             userData=value,
         )
+        RENDER_BACKEND.note_combo_option(dialog.combo_rhi_backend, key)
     idx = dialog.combo_rhi_backend.findData(p.rhi_backend or "default")
     if idx != -1:
         dialog.combo_rhi_backend.setCurrentIndex(idx)
@@ -74,13 +91,15 @@ def _build_render_backend_group(dialog, layout, p):
     dialog.render_backend_group.add_layout(row)
 
     dialog.lbl_rhi_backend_hint = QLabel(
-        dialog.tr("settings.render_backend_restart_hint", dialog.current_language)
+        RENDER_BACKEND.text(dialog, "settings.render_backend_restart_hint")
+    )
+    RENDER_BACKEND.tag_member(
+        dialog.lbl_rhi_backend_hint, "settings.render_backend_restart_hint"
     )
     dialog.lbl_rhi_backend_hint.setWordWrap(True)
     dialog.render_backend_group.add_widget(dialog.lbl_rhi_backend_hint)
 
     layout.addWidget(dialog.render_backend_group)
-
 
 
 SECTION = SettingsSection(
@@ -90,4 +109,6 @@ SECTION = SettingsSection(
     build=build,
     owner_tab=None,
     order=30,
+    action_description_key="action.settings.optimization_desc",
+    search=SEARCH,
 )

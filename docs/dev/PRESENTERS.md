@@ -197,4 +197,4 @@ You want: "when `viewport.session_data` changes, update some new label."
 - [STORE.md](STORE.md) — what `state_changed` scopes mean and how to dispatch
 - [CONTRACTS.md](CONTRACTS.md) — broader architectural rules
 - [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — the canvas-feature subsystem (parallel to but separate from these presenters)
-- [TAB_CONTRACT.md](TAB_CONTRACT.md) — workspace-tab interface used by `workspace.py`
+- [tabs/index.md](tabs/index.md) — workspace-tab interface used by `workspace.py`

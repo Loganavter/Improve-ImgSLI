@@ -1,0 +1,15 @@
+{
+  "menu": {
+    "file": "Arquivo",
+    "help": "Ajuda",
+    "new_session": "Nova sessão",
+    "open_project": "Abrir projeto",
+    "save_project": "Salvar projeto",
+    "settings": "Configurações",
+    "quit": "Sair",
+    "show_help": "Mostrar ajuda",
+    "find_action": "Localizar ação",
+    "find_action_soon": "Paleta de comandos — em breve",
+    "project_filter": "Projeto Improve ImgSLI (*.imgsli-project)"
+  }
+}

@@ -36,11 +36,7 @@ def restore_letterbox_focus(host, focus: tuple[float, float] | None) -> bool:
     if lb is None:
         return False
 
-    from .state import get_zoom_level, set_pan_offsets
-
-    if float(get_zoom_level(host) or 1.0) <= 1.0:
-        set_pan_offsets(host, 0.0, 0.0)
-        return True
+    from .state import set_pan_offsets
 
     ox, oy, sx, sy = lb
     sample_x, sample_y = focus

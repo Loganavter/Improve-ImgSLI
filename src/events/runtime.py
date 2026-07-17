@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from PySide6.QtCore import QTimer
-
 from events.app_event import GlobalKeyboardHandler
 from events.app_event.null_movement import NullKeyboardMovementController
 from events.keyboard_state_service import KeyboardStateService
@@ -15,7 +13,6 @@ class EventHandlerRuntime:
     interactive_movement: Any
     keyboard_handler: GlobalKeyboardHandler
     keyboard_state: KeyboardStateService
-    resize_timer: QTimer
 
 class _LazyKeyboardMovementController:
     """Resolves the real per-session movement controller on first use.
@@ -75,11 +72,8 @@ def build_event_handler_runtime(store, presenter_provider, parent=None) -> Event
         movement_controller=interactive_movement,
         keyboard_state=keyboard_state,
     )
-    resize_timer = QTimer(parent)
-    resize_timer.setSingleShot(True)
     return EventHandlerRuntime(
         interactive_movement=interactive_movement,
         keyboard_handler=keyboard_handler,
         keyboard_state=keyboard_state,
-        resize_timer=resize_timer,
     )

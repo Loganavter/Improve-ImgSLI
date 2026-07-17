@@ -187,6 +187,31 @@ class RhiCanvasRenderer:
                 viewport_zoom=viewport_zoom,
                 viewport_offset=viewport_offset,
             )
+            # Magnifier always samples source_* when letterbox sources are
+            # ready (see MagnifierPass.prepare), even while the base canvas
+            # stays on stored_* at zoom <= 1. TiledPixelStore sources skip
+            # eager whole-image upload, so realize them whenever the overlay
+            # will bind them — otherwise content binds the transparent
+            # placeholder while the border disk still draws.
+            overlay = getattr(ctx, "feature_overlay", None)
+            if (
+                not base_image.use_hires
+                and overlay is not None
+                and overlay.gpu_active
+                and ctx.source_images_ready
+                and ctx.source_texture_ids[0]
+                and ctx.source_texture_ids[1]
+            ):
+                self.resources.realize_tile_plan(
+                    self.tile_service,
+                    widget,
+                    tuple(ctx.source_texture_ids),
+                    base_image,
+                    updates,
+                    diff_key=None,
+                    viewport_zoom=viewport_zoom,
+                    viewport_offset=viewport_offset,
+                )
             draw_plan = build_draw_plan(
                 self.tile_service,
                 texture_keys,

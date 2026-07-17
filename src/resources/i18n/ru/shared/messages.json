@@ -24,6 +24,9 @@
     "ssim_calculation_in_progress": "Расчет SSIM...",
     "starting_video_export_please_wait": "Начало экспорта видео... Пожалуйста, подождите.",
     "select_both_images_first": "Пожалуйста, сначала загрузите и выберите изображения в обеих панелях.",
-    "specify_output_directory_and_file_name": "Укажите выходную директорию и имя файла."
+    "specify_output_directory_and_file_name": "Укажите выходную директорию и имя файла.",
+    "export_untested_resolution_title": "Непроверенное разрешение экспорта",
+    "export_untested_resolution_body": "Разрешение экспорта больше {edge} px по стороне ({width}×{height}). Рендер может не пройти или не хватить памяти — выше {edge} px ничего не гарантируется, мы это не тестировали. Продолжить?",
+    "dont_show_again": "Больше не показывать"
   }
 }

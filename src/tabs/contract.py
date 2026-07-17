@@ -78,7 +78,7 @@ class TabContract(ABC):
         workspace session exists to activate one via `sync_session_mode()`.
 
         `TabRegistry.create_service`/`create_main_window_feature` resolve
-        strictly against the active tab (see docs/dev/TAB_CONTRACT.md)
+        strictly against the active tab (see docs/dev/tabs/capability-mechanisms.md)
         — during the narrow bootstrap window before the first session is
         created, something still needs to answer main-window-shell feature
         requests. Exactly one registered tab should return True here; the
@@ -86,6 +86,9 @@ class TabContract(ABC):
         without needing to name it.
         """
         return False
+
+    startup_tier: str = "deferred"
+    """When ``TabRegistry.discover(tier=...)`` imports this tab: ``bootstrap`` or ``deferred``."""
 
     @property
     def resources_dir(self) -> Path | None:
@@ -149,16 +152,12 @@ class TabContract(ABC):
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         """Called when a session of this tab's type is closed."""
 
+    def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
+        """Called when the active workspace session id changes while this tab's
+        page is visible (same ``session_type``, different ``session_id``)."""
+
     def on_quick_save(self, context: TabContext) -> None:
         """Handle the cross-tab quick-save button when this tab is active."""
-
-    def contribute_settings(self, registry: "SettingsRegistry") -> None:
-        """Register settings sections this tab contributes.
-
-        Called once during app startup. ``registry`` provides ``add(section_id,
-        title, factory, *, tab=None)`` where ``tab`` is the session_type the
-        section belongs to (None = always shown).
-        """
 
     def create_main_window_feature(self, feature_id: str, **kwargs: Any) -> Any:
         """Create a tab-owned feature still hosted by the legacy main presenter.
@@ -280,6 +279,16 @@ class TabContract(ABC):
         already hold blueprint defaults) — implementations should overwrite
         those defaults with `data`, not assume slots are empty.
         """
+
+    def rehydrate_session(self, session_id: str, context: TabContext) -> None:
+        """Reload runtime media (decoded pixels, GPU caches) from persisted
+        paths after ``deserialize_session``. No-op unless overridden."""
+
+    def duplicate_session(
+        self, source_session_id: str, context: TabContext
+    ) -> dict[str, Any] | None:
+        """Return a snapshot suitable for cloning ``source_session_id``."""
+        return self.serialize_session(source_session_id, context)
 
     def dispose(self) -> None:
         """Cleanup when the tab is being unloaded."""

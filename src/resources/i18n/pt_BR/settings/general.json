@@ -39,14 +39,24 @@
     "system_default": "Padrão do sistema",
     "show_workspace_tabs": "Abas do espaço de trabalho",
     "system_notifications": "Notificações do sistema",
-    "use_custom_decorations": "Decorações de janela personalizadas",
-    "use_custom_decorations_tooltip": "Desenhar a barra de título da janela dentro do aplicativo em vez de usar o gerenciador de janelas do sistema. Elimina o flash de quadro escuro na inicialização.",
     "ui_font": "Fonte da UI",
     "ui_mode": "Modo da UI",
     "ui_mode_advanced": "Avançado",
     "ui_mode_beginner": "Iniciante",
     "ui_mode_expert": "Especialista",
     "video_recording": "Gravação de Vídeo",
-    "zoom_interpolation": "Interpolação do Zoom"
+    "zoom_interpolation": "Interpolação do Zoom",
+    "language_en": "Inglês",
+    "language_ru": "Russo",
+    "language_zh": "Chinês",
+    "language_pt_br": "Português",
+    "keyboard": "Teclado",
+    "keyboard_hint": "Clique em um atalho e pressione a nova combinação. Esc / Backspace limpa. Vazio = sem atalho. Reset restaura o padrão.",
+    "keyboard_search": "Filtrar atalhos…",
+    "keyboard_reset": "Redefinir",
+    "keyboard_reset_all": "Redefinir todos",
+    "keyboard_group_platform": "Plataforma",
+    "keyboard_group_image_compare": "Image Compare",
+    "keyboard_group_multi_compare": "Multi Compare"
   }
 }

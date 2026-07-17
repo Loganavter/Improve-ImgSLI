@@ -92,15 +92,13 @@ class Ui_ImageComparisonApp:
             tabs.blockSignals(False)
 
     def _localized_session_title(self, session, language: str) -> str:
+        from domain.workspace import WorkspaceState
+
         title = getattr(session, "title", "") or ""
         session_type = getattr(session, "session_type", "")
-        default_prefix = session_type.replace("_", " ").title()
-        if title != default_prefix and not title.startswith(f"{default_prefix} "):
+        if not WorkspaceState.is_auto_title(title, session_type):
             return title
-        suffix = title.removeprefix(default_prefix)
-        if suffix and not suffix.strip().isdigit():
-            return title
-        return f"{self._localized_session_type_label(session_type, language)}{suffix}"
+        return self._localized_session_type_label(session_type, language)
 
     def _localized_session_type_label(self, session_type: str, language: str) -> str:
         tab_registry = getattr(self, "_tab_registry", None)

@@ -103,3 +103,51 @@ def test_thumbnail_coordinator_prefers_timeline_viewport_indices():
     )
 
     assert coordinator.get_visible_frame_indices() == [12, 24, 36]
+
+
+def test_timeline_resize_debounces_thumbnail_generation(monkeypatch):
+    """Window/timeline resize must not queue GPU thumbnails on every pixel."""
+    from PySide6.QtCore import QObject
+
+    from tabs.image_compare.plugins.video_editor.presenter_parts.thumbnails import (
+        ThumbnailCoordinator,
+    )
+
+    generate_calls: list[list[int]] = []
+    thumbnail_service = SimpleNamespace(
+        generate_additional_thumbnails=lambda indices, fps=None: generate_calls.append(
+            list(indices)
+        ),
+    )
+    timeline = SimpleNamespace(
+        get_visible_thumbnail_frame_indices=lambda overscan_blocks=0: [4, 8, 12],
+    )
+    timer_parent = QObject()
+    coordinator = ThumbnailCoordinator(
+        view=SimpleNamespace(timeline=timeline),
+        editor_service=SimpleNamespace(
+            get_fps=lambda: 60,
+            get_frame_count=lambda: 100,
+        ),
+        playback_engine=SimpleNamespace(),
+        thumbnail_service=thumbnail_service,
+        emit_thumbnails_updated=lambda _thumbnails: None,
+        timer_parent=timer_parent,
+    )
+    coordinator._test_timer_parent = timer_parent
+    pings: list[int] = []
+    monkeypatch.setattr(
+        coordinator._visible_refresh,
+        "ping",
+        lambda: pings.append(1),
+    )
+
+    coordinator.on_timeline_resized()
+    coordinator.on_timeline_viewport_changed()
+    coordinator.on_timeline_resized()
+
+    assert pings == [1, 1, 1]
+    assert generate_calls == []
+
+    coordinator._refresh_visible_thumbnails()
+    assert generate_calls == [[4, 8, 12]]

@@ -1,0 +1,15 @@
+{
+  "menu": {
+    "file": "Файл",
+    "help": "Справка",
+    "new_session": "Новая сессия",
+    "open_project": "Открыть проект",
+    "save_project": "Сохранить проект",
+    "settings": "Настройки",
+    "quit": "Выход",
+    "show_help": "Показать справку",
+    "find_action": "Найти действие",
+    "find_action_soon": "Палитра команд — скоро",
+    "project_filter": "Проект Improve ImgSLI (*.imgsli-project)"
+  }
+}

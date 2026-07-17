@@ -27,10 +27,13 @@ breakdown):
   assumption breaks here, tiling machinery still "works" but produces the
   wrong visual result — see that doc's "bug this replaced" section for what
   happens when it doesn't.
-- **"source"** (`source_0`/`source_1`) — the hi-res role, only bound when
-  `base_image.use_hires` is true (`shader_letterbox_mode`, not diff mode,
-  `zoom_level > 1.0`, source images ready). This is the role genuinely
-  expected to be tiled for large images.
+- **"source"** (`source_0`/`source_1`) — the hi-res role. The base canvas binds
+  it when `base_image.use_hires` is true (`shader_letterbox_mode`, not diff
+  mode, `zoom_level > 1.0`, source images ready). The magnifier also samples
+  this role whenever letterbox sources are ready (including at zoom ≤ 1), so
+  `RhiCanvasRenderer` realizes `source_*` tiles whenever the magnifier GPU
+  overlay is active even if the canvas is still on `stored_*`. This is the
+  role genuinely expected to be tiled for large images.
 
 ## `TileTextureService` — grid bookkeeping
 
@@ -42,9 +45,9 @@ owns a dict of `source_id -> grid` for every texture key currently in use.
   `RhiResources.upload_source`, which itself is only reachable through the
   `queue_texture_upload` → `apply_pending_uploads` path. If a key never goes
   through that path, its grid is never (re-)registered and `grid_for(key)`
-  returns `None` or a stale grid — this used to be a real footgun for lazy
-  sources, since `upload_pil_images` intentionally skips queuing an upload
-  for a `LazyPixelSource` in the "stored" role.
+  returns `None` or a stale grid — a footgun for lazy sources, since
+  `upload_pil_images` intentionally skips queuing an upload
+  for a `TiledPixelStore` in the "stored" role (display cache is downscaled PIL).
 - A grid smaller than `_LIVE_TILE_EXTENT` on both axes registers as a
   trivial 1×1 grid — the common case, treated as "not tiled" everywhere
   downstream (`grid.rows == 1 and grid.columns == 1` is the standard
@@ -81,11 +84,10 @@ For each `(texture_key, letterbox)` pair that has a real (non-1×1) grid:
 
 1. Determine which tiles are currently visible (same `visible_tiles` call the
    draw plan will use).
-2. Crop and upload only those tiles. If the underlying PIL image is a
-   `LazyPixelSource` (memmap-backed, over the lazy-storage threshold — see
-   "Host-side memory bounding" below), tiles are cropped directly from the
-   memmap via `.crop()` — the whole image is never materialized in memory
-   just to cut tiles out of it.
+2. Crop and upload only those tiles. Underlying full-res pixels live in
+   `TiledPixelStore` (memmap-backed — see "GEGL-style pixel storage" below);
+   tiles are cropped via `.crop()` — the whole image is never materialized
+   in memory just to cut tiles out of it.
 3. Evict tiles that are no longer in the protected (visible) set, so GPU
    memory for a given source stays bounded to roughly "what's on screen"
    rather than growing to the full grid over a pan session.
@@ -119,6 +121,82 @@ interactive pan/zoom, when image1's *display* texture is transiently
 downscaled for smoothing and simultaneously both it and the diff exceed a
 single tile — cosmetic-only, not a correctness bug.
 
+## GEGL-style pixel storage
+
+`TiledPixelStore` (`shared/image_processing/tiled_pixel_store.py`) is the
+single full-res pixel backend for all canvas tabs. Every decoded image is
+spilled to a memmap RGBA8 file in host tiles of
+`AppConstants.PIXEL_TILE_SIZE` (512px). There is no small-image fast path at
+the public API — `maybe_wrap_pixel_store()` always wraps.
+
+Shared cross-tab render helpers (2026-07-15):
+
+- `shared/rendering/host_texture_cache.py` — LRU QImage upload cache
+- `shared/rendering/export_tiling.py` — `TiledFramebufferExporter`,
+  `iter_export_tile_rects`
+- `shared/rendering/tile_geometry.py` — `crop_apron_tile`,
+  `viewport_zoom_offset_for_tile`
+
+## PixelSource contract and tier rules
+
+Two explicit tiers — cross-tier work goes through `shared/image_processing/pixel_ops/`:
+
+| Tier | Type | Used for |
+|------|------|----------|
+| Full-res | `TiledPixelStore` | `document.full_res_image*`, unified pair, GPU source role |
+| Display | `PIL.Image` | preview, `display_cache_image*`, scaled display, thumbnails |
+
+### Preview-at-load tier
+
+Progressive load (`load_preview_image`, ≤1024 px long edge) writes
+`document.preview_image*` as **`PIL.Image` only**. Workers pass
+`is_preview=True` and must not call `maybe_wrap_pixel_store` on that path;
+full-res decode is a separate async step into `full_res_image*`
+(`TiledPixelStore`). Contract: `tests/contracts/test_preview_tier_contract.py`.
+
+Replacing PIL preview with `QImage` decode is tracked in
+[TODO.md](../TODO.md) (P2, design needed) — not required for tier correctness.
+
+### Host vs GPU tile granularity
+
+Two tile sizes are **intentional**, not drift:
+
+| Layer | Constant | Typical size | Role |
+|-------|----------|--------------|------|
+| Host storage / CPU ops | `AppConstants.PIXEL_TILE_SIZE` | 512 (square) | memmap `TiledPixelStore`, crop/read_tile, pixel_ops blocks |
+| GPU residency | `_LIVE_TILE_EXTENT` / `SLOT_LIVE_TILE_EXTENT` | 8192 | texture upload grid, draw-plan cross product, VRAM budget |
+
+**GEGL precedent:** storage uses small tiles (env default `128×64`; commit
+history moved between `128×128`, `512×64`, etc. via `GEGL_TILE_SIZE`), while
+the operation graph evaluates **larger ROIs** — OpenCL code batches regions
+like 2048×4096 because kernel launch overhead dominates at storage-tile size.
+Storage granularity controls RAM, swap, tile-cache, and mipmap damage; compute
+granularity controls throughput.
+
+Improve-ImgSLI follows the same split: host 512 keeps CPU crops bounded;
+GPU 8192 keeps draw/residency manageable. Requirement: GPU extent should
+remain a whole multiple of host tile size (8192 = 16×512). Formal shared
+constants + contract tests: [TODO.md](../TODO.md) (P2).
+
+
+- **`PixelSource`** protocol: [`pixel_source.py`](../../src/shared/image_processing/pixel_source.py)
+- **`StoreLease`**: [`store_lease.py`](../../src/shared/image_processing/store_lease.py) — workers capture `(store, generation)` and bail if the store was closed
+- **Tile-native ops**: `pixel_ops/downscale.py` (display cache), `pixel_ops/unify.py` (load unify), `shared/analysis/ssim_source.py` and `shared/analysis/diff_source.py` (SSIM/highlight/grayscale/edges without full RGB materialize)
+- **`materialize_full()` / `to_real_pil_copy()`** — escape hatches only; AST contract [`tests/contracts/test_pixel_source_tiers.py`](../../tests/contracts/test_pixel_source_tiers.py) keeps call sites confined
+
+### Audit: former hot spots (2026-07)
+
+| Call site | Tier rule today |
+|-----------|-----------------|
+| `image_cache.py` display worker | `pixel_ops/downscale` only |
+| `_session_controller` unify worker | `pixel_ops/unify` + `StoreLease` |
+| `cached_diff.py` / `background_layers.py` | `ssim_source` / `diff_source` tile-fed |
+| `metrics.py` | display cache first; else bounded downscale |
+| `image_export/context_builder.py` | `unify_pair` + GPU snapshot primary |
+| `qimage_from_pixel_source` whole store | host-tile stitch, no `materialize_full` |
+| magnifier `diff_cache.py` worker | `StoreLease` on async SSIM |
+| video/export snapshot prepare | unpadded `TiledPixelStore` + `CanvasGeometry` / `overlay_clip_rect`; GPU `shader_letterbox` (no PIL letterbox/pad bake) |
+
 ## Host-side memory bounding
 
 GPU tile residency (above) only bounds *GPU* memory. Two complementary
@@ -127,45 +205,35 @@ an OOM investigation (18000×18000px sources driving the process to a
 13GB+ RSS peak and swap-thrashing) but are permanent architecture, not a
 one-off fix:
 
-- **`_texture_upload_cache` LRU budget** (`texture_parts/upload_queue.py`,
-  `canvas/state.py`) — the host-side QImage cache behind texture uploads
-  (`stored_0/1`, `source_0/1`, `diff`) is an `OrderedDict` with a byte budget
-  (`_HOST_TEXTURE_CACHE_BUDGET_BYTES`, 3 GiB) and real LRU-by-recent-use
-  (`touch_texture_upload_cache()` on every read hit). `RhiResources.realize_tile_plan`
-  calls `evict_texture_upload_cache_over_budget(widget, protected, budget_bytes)`
-  once per frame with `protected` = whichever texture keys this frame
-  actually reads — so the on-screen role can never be evicted mid-frame, only
-  the currently-unused role (e.g. `source_N` while not in hi-res mode) ages
-  out. Eviction is a memory/recompute tradeoff, never a correctness one: a
-  cache miss in `realize_tile_plan` re-decodes from the retained PIL source
-  (`_pil_image_for_texture_key`) and repopulates the cache before cropping.
-  Tests: `src/tabs/image_compare/tests/render/test_host_texture_cache_budget.py`.
+- **`HostTextureUploadCache`** (`shared/rendering/host_texture_cache.py`) —
+  generalized from image_compare's `upload_queue.py`; image_compare keeps a
+  thin facade keyed on its five texture roles. Tests:
+  `tests/render/test_host_texture_cache.py` and
+  `src/tabs/image_compare/tests/render/test_host_texture_cache_budget.py`.
 
-- **`LazyPixelSource`** (`src/shared/image_processing/lazy_pixel_source.py`)
-  — for source images over `AppConstants.PHASE3_LAZY_THRESHOLD_PX` (16384px,
-  `2 * _LIVE_TILE_EXTENT`), the decoded RGBA8 buffer is spilled to a
-  memory-mapped temp file instead of held as anonymous heap for the
-  document's lifetime, so it's OS-page-cache backed and reclaimable under
-  memory pressure instead of forcing swap. It duck-types `.size`/`.width`/
-  `.height`/`.mode`/`.info`/`.crop()` so existing readers need minimal
-  branching; `.crop(box)` returns a small materialized PIL Image (what
-  `realize_tile_plan` uses per-tile, never materializing the whole image),
-  while `.to_pil()` returns a full one-shot materialized copy for the few
-  consumers that need one regardless of size (SSIM diff, export/save — both
-  inherently touch every pixel anyway). `maybe_wrap_for_lazy_storage()` /
-  `close_if_lazy()` are the threshold-gate and cleanup helpers, called from
-  `_session_controller.py`'s `_update_image_slot` and `use_cases/loading.py`'s
-  `handle_full_image_loaded`. Tests:
-  `src/tabs/image_compare/tests/render/test_lazy_pixel_source.py`.
+- **`TiledPixelStore`** — see [GEGL-style pixel storage](#gegl-style-pixel-storage).
+  `.crop(box)` / `read_tile(row, col)` return small materialized regions for
+  GPU residency; `.materialize_full()` / `.to_pil()` are explicit escape
+  hatches for SSIM diff and export/save. `close_pixel_store()` closes stores.
+  Tests: `tests/render/test_tiled_pixel_store.py`.
 
 The one remaining permanent resident this doesn't (and can't cheaply) bound
-is `document.full_res_image1/2` itself — one full-res PIL/`LazyPixelSource`
+is `document.full_res_image1/2` itself — one full-res `TiledPixelStore`
 per side, kept for the document's lifetime because consumers (magnifier pan,
 the tile re-decode fallback above) need repeated random-offset access, and
 some sources (clipboard paste, video-editor extracted frames) have no file
-path to re-decode from. Reducing that further would mean true on-disk
-streaming decode (no current codec dependency supports it for PNG/JPEG/WebP)
-— not attempted, treated as working-as-intended.
+path to re-decode from.
+
+**Strip spill on load (plan A):** `TiledPixelStore.from_pil` /
+`from_path` write RGBA into the memmap in `PIXEL_TILE_SIZE` strips instead of
+`memmap[:] = np.asarray(full)`. Peak host RAM during spill is one decode
+buffer plus a strip, not a second full `HxWx4` copy. File loads in
+image_compare / video export / multi_compare go through `from_path` (with
+optional `auto_crop` via a bounded downscale probe). This is **not** codec
+ROI streaming — JPEG/PNG/WebP still decompress the whole frame once; only the
+second contiguous copy is avoided. Raising
+`MAX_SUPPORTED_IMAGE_DIMENSION` (65536) still waits on a real streaming
+decode path.
 
 ## Summary of the invariant
 

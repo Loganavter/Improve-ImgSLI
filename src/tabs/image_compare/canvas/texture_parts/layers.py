@@ -127,6 +127,9 @@ def clear(widget):
     state._clip_overlays_to_content_rect = False
     state._content_scissor_depth = 0
     state._letterbox_params = [None, None]
+    state._canvas_frame_letterbox = None
+    state._letterbox_fill_rgba = None
+    state._store = None
     state._feature_overlay_quad_ndc = None
     state._capture_center = None
     state._capture_radius = 0.0

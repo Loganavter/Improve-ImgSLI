@@ -65,7 +65,7 @@ class SettingsManager:
         )
         s.show_workspace_tabs = self._get_setting("show_workspace_tabs", True, bool)
         s.rhi_backend = self._get_setting("rhi_backend", "default", str)
-        s.use_custom_decorations = self._get_setting("use_custom_decorations", True, bool)
+        s.keyboard_overrides = self._load_keyboard_overrides()
 
         render.font_size_percent = self._get_setting("font_size_percent", 120, int)
         render.font_weight = self._get_setting("font_weight", 0, int)
@@ -123,6 +123,9 @@ class SettingsManager:
         s.export_comment_keep_default = self._get_setting(
             "export_comment_keep_default", False, bool
         )
+        s.export_suppress_untested_resolution_warning = self._get_setting(
+            "export_suppress_untested_resolution_warning", False, bool
+        )
         s.export_video_favorite_dir = self._get_setting(
             "export_video_favorite_dir", None, str
         )
@@ -174,7 +177,7 @@ class SettingsManager:
         )
         self._save_setting("show_workspace_tabs", s.show_workspace_tabs)
         self._save_setting("rhi_backend", s.rhi_backend)
-        self._save_setting("use_custom_decorations", s.use_custom_decorations)
+        self._save_keyboard_overrides(s.keyboard_overrides)
 
         self._save_setting("font_size_percent", render.font_size_percent)
         self._save_setting("font_weight", render.font_weight)
@@ -211,6 +214,10 @@ class SettingsManager:
         self._save_setting("export_comment_text", s.export_comment_text)
         self._save_setting(
             "export_comment_keep_default", s.export_comment_keep_default
+        )
+        self._save_setting(
+            "export_suppress_untested_resolution_warning",
+            s.export_suppress_untested_resolution_warning,
         )
         self._save_setting("export_video_favorite_dir", s.export_video_favorite_dir)
         self._save_setting("export_video_container", s.export_video_container)
@@ -272,6 +279,28 @@ class SettingsManager:
             store,
             self._save_setting,
         )
+
+    def _load_keyboard_overrides(self) -> dict[str, str]:
+        import json
+
+        raw = self.settings.value("keyboard_overrides", "")
+        if not raw:
+            return {}
+        try:
+            if isinstance(raw, dict):
+                data = raw
+            else:
+                data = json.loads(str(raw))
+            if not isinstance(data, dict):
+                return {}
+            return {str(k): str(v) for k, v in data.items()}
+        except Exception:
+            return {}
+
+    def _save_keyboard_overrides(self, overrides: dict[str, str]) -> None:
+        import json
+
+        self.settings.setValue("keyboard_overrides", json.dumps(dict(overrides or {})))
 
     def _save_setting(self, key, value):
         if value is None:

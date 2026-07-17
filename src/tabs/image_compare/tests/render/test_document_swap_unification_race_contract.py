@@ -135,7 +135,7 @@ class _FakeController:
     def _schedule_image_canvas_update(self):
         pass
 
-    def _unify_images_worker_task(self, img1, img2, path1, path2, task_id):
+    def _unify_images_worker_task(self, img1, img2, path1, path2, task_id, method_name="LANCZOS"):
         return img1, img2, path1, path2, task_id
 
     def _on_unified_images_ready(self, result):

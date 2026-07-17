@@ -96,3 +96,11 @@ class SetExportFavoriteDirAction(Action):
     def __init__(self, path: str):
         super().__init__(type=ActionType.SET_EXPORT_FAVORITE_DIR); self.path = path
     def get_payload(self): return {"path": self.path}
+
+@dataclass
+class SetKeyboardOverridesAction(Action):
+    overrides: dict[str, str]
+    def __init__(self, overrides: dict[str, str]):
+        super().__init__(type=ActionType.SET_KEYBOARD_OVERRIDES)
+        self.overrides = dict(overrides)
+    def get_payload(self): return {"overrides": dict(self.overrides)}

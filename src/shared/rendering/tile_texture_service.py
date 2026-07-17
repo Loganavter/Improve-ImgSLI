@@ -4,10 +4,10 @@ from shared.image_processing.regions import UniformTileGrid, build_uniform_tile_
 
 # Phase 0 default (docs/dev/TILED_RENDERING_DESIGN.md). Deliberately not the
 # eventual 2048/4096 target tile size yet: the base quad draw loop only
-# proves the N=1 abstraction in Phase 0 (16384px guard is still in force
-# upstream), and per-tile fragment-shader clipping/seam handling for N>1
-# is Phase 1/2 work. Callers that need the real 16384px-safe ceiling should
-# pass max_tile_extent=query_max_texture_size(...) explicitly.
+# proves the N=1 abstraction in Phase 0, and per-tile fragment-shader
+# clipping/seam handling for N>1 is Phase 1/2 work. Callers that need a
+# hardware-safe ceiling should pass max_tile_extent=query_max_texture_size(...)
+# explicitly.
 DEFAULT_TILE_EXTENT = 16384
 
 TileIndex = tuple[int, int]

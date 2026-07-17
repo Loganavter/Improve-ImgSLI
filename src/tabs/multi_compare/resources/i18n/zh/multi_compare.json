@@ -1,0 +1,34 @@
+{
+  "multi_compare": {
+    "help": {
+      "hub": {
+        "desc": "多图布局"
+      },
+      "page": {
+        "overview": {
+          "title": "多图对比概览",
+          "desc": "布局与拖放区域"
+        }
+      }
+    },
+    "action": {
+      "add_images": "添加图像",
+      "add_images_desc": "向多图对比画布添加图像",
+      "divider_visible": "网格可见性",
+      "divider_color": "网格颜色",
+      "divider_width": "网格线",
+      "divider_width_desc": "网格线宽度、颜色（右键）与可见性（设为 0 隐藏）",
+      "text_settings": "标签设置",
+      "text_settings_desc": "打开图层标签文字设置",
+      "quick_save": "快速保存",
+      "save": "保存网格",
+      "breadcrumb": {
+        "toolbar": "工具栏",
+        "session": "会话",
+        "labels": "标签",
+        "export": "导出",
+        "divider": "网格"
+      }
+    }
+  }
+}

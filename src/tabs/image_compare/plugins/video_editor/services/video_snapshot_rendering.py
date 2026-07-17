@@ -12,7 +12,6 @@ from tabs.image_compare.plugins.video_editor.services.video_export_models import
     VideoRenderRequest,
 )
 from shared.image_processing.prescale import prescale_pair
-from shared.image_processing.resize import resample_image
 from shared.rendering import get_effective_export_interpolation_method
 
 
@@ -91,30 +90,21 @@ class SnapshotFrameRenderer:
 
     @staticmethod
     def _fit_source_to_content(
-        source: Image.Image,
+        source,
         content_size: tuple[int, int],
         fill_rgba: tuple[int, int, int, int] | None = None,
         resize_method: str = "LANCZOS",
-    ) -> Image.Image:
-        cw, ch = content_size
-        sw, sh = source.width, source.height
-        if (sw, sh) == (cw, ch):
-            return source
-        if sw > cw or sh > ch:
-            fit_r = min(cw / max(1, sw), ch / max(1, sh))
-            sw = max(1, int(sw * fit_r))
-            sh = max(1, int(sh * fit_r))
-            source = resample_image(
-                source,
-                (sw, sh),
-                resize_method,
-                is_interactive_render=False,
-            )
-        canvas = Image.new("RGBA", (cw, ch), fill_rgba or (0, 0, 0, 255))
-        ox = (cw - sw) // 2
-        oy = (ch - sh) // 2
-        canvas.alpha_composite(source.convert("RGBA"), (ox, oy))
-        return canvas
+    ):
+        from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+            fit_source_to_content,
+        )
+
+        return fit_source_to_content(
+            source,
+            content_size,
+            fill_rgba=fill_rgba,
+            resize_method=resize_method,
+        )
 
     def render(self, snap, request: VideoRenderRequest) -> RenderedFrame:
         if self._gpu_export_service is None:

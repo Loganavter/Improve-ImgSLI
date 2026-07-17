@@ -412,3 +412,17 @@ def test_plugins_do_not_call_canvas_feature_command_registry_directly():
                     "(use a tab-owned service boundary)"
                 )
     assert not leaks, "\n  - " + "\n  - ".join(leaks)
+
+
+def test_help_plugin_does_not_import_tab_packages():
+    """Help merges tab topics via contribute_help — no tabs.* imports in the plugin."""
+    help_root = PLUGINS_ROOT / "help"
+    leaks: list[str] = []
+    for py in iter_py(help_root):
+        for module, lineno in module_imports(py):
+            if module == "tabs" or module.startswith("tabs."):
+                leaks.append(
+                    f"{rel(py)}:{lineno} imports {module!r} "
+                    "(TabRegistry.contribute_all_help installs contributions)"
+                )
+    assert not leaks, "\n  - " + "\n  - ".join(leaks)

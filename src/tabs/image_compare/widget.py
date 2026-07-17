@@ -84,15 +84,8 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         self.btn_magnifier_guides_width.setIconSizePx(22)
 
     def reapply_button_styles(self) -> None:
-        import logging
-        logger = logging.getLogger("ImproveImgSLI")
         self.apply_icon_sizes()
-        for i, btn in enumerate((self.btn_settings, self.btn_quick_save, self.help_button)):
-            btn._diag_tag = f"ic_{i}_{type(btn).__name__}"
-            logger.warning(
-                "DIAG requesting repaint tag=%s visible=%s",
-                btn._diag_tag, btn.isVisible(),
-            )
+        for btn in (self.btn_settings, self.btn_quick_save, self.help_button):
             btn.style().unpolish(btn)
             btn.style().polish(btn)
             btn.update()

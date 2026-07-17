@@ -12,7 +12,7 @@ from ui.widgets.scroll_value_button import ScrollValueButton
 
 from sli_ui_toolkit.i18n import tr
 from tabs.multi_compare.ui.layout_manager import MultiCompareLayoutManager
-from ui.icon_manager import AppIcon
+from tabs.multi_compare.icons import Icon
 from ui.theming import resolve_theme_color
 
 
@@ -25,7 +25,7 @@ def _tr_with_default(key: str, default: str):
 
 
 class MultiCompareToolbar(ThemedWidget, QWidget):
-    """Top toolbar: add image + cross-tab help/settings/quick-save + divider controls."""
+    """Top toolbar: add image, quick-save, divider controls, label settings."""
 
     add_clicked = Signal()
     text_settings_clicked = Signal()
@@ -55,7 +55,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         accent = QColor(resolve_theme_color(ThemeManager.get_instance(), "accent"))
 
         self.btn_divider_visible = Button(
-            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN),
+            icon=(Icon.DIVIDER_VISIBLE, Icon.DIVIDER_HIDDEN),
             toggle=True,
             parent=self,
         )
@@ -71,7 +71,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         )
 
         self.btn_divider_color = Button(
-            AppIcon.DIVIDER_COLOR,
+            Icon.DIVIDER_COLOR,
             show_underline=True,
             parent=self,
         )
@@ -84,18 +84,19 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         self.btn_divider_color.clicked.connect(self.divider_color_clicked)
 
         self.btn_divider_width = ScrollValueButton(
-            icon=AppIcon.GRID,
+            icon=Icon.GRID,
             min_value=0,
             max_value=10,
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
+            zero_icon=Icon.DIVIDER_HIDDEN,
             parent=self,
         )
         self.btn_divider_width.setObjectName("mc_btn_divider_width")
         translatable_tooltip(
             self.btn_divider_width,
-            "tooltip.adjust_divider_width",
+            "multi_compare.action.divider_width_desc",
             tr_func=_tr_with_default(
-                "tooltip.adjust_divider_width", "Adjust divider width"
+                "multi_compare.action.divider_width_desc",
+                "Grid line width, color (right-click), and visibility (set to zero)",
             ),
         )
         if hasattr(self.btn_divider_width, "valueChanged"):
@@ -105,7 +106,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
                 self._on_divider_width_right_clicked
             )
 
-        self.btn_add = Button(AppIcon.PHOTO, text=text, variant="surface", parent=self)
+        self.btn_add = Button(Icon.PHOTO, text=text, variant="surface", parent=self)
         translatable_text(
             self.btn_add,
             "add_images",
@@ -124,8 +125,8 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         self.btn_add.clicked.connect(self.add_clicked)
 
         self.btn_text_settings = Button(
-            AppIcon.TEXT_FILENAME,
-            variant="surface",
+            Icon.TEXT_FILENAME,
+            variant="default",
             parent=self,
         )
         translatable_tooltip(
@@ -139,7 +140,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         self.btn_text_settings.clicked.connect(self.text_settings_clicked)
 
         self.btn_quick_save = Button(
-            AppIcon.QUICK_SAVE, variant="surface", background_color=accent, parent=self
+            Icon.QUICK_SAVE, variant="surface", background_color=accent, parent=self
         )
         self.btn_quick_save.setIconSizePx(24)
         translatable_tooltip(
@@ -152,29 +153,16 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         )
         self.btn_quick_save.clicked.connect(self.quick_save_clicked)
 
+        # Host title bar owns app Settings/Help — keep widgets for wiring compat but hide.
         self.btn_settings = Button(
-            AppIcon.SETTINGS, variant="surface", background_color=accent, parent=self
+            Icon.SETTINGS, variant="surface", background_color=accent, parent=self
         )
-        translatable_tooltip(
-            self.btn_settings,
-            "tooltip.open_application_settings",
-            tr_func=_tr_with_default(
-                "tooltip.open_application_settings",
-                "Open app and workspace settings",
-            ),
-        )
-        self.btn_settings.clicked.connect(self.settings_clicked)
-
+        self.btn_settings.hide()
         self.help_button = Button(
-            AppIcon.HELP, variant="surface", background_color=accent, parent=self
+            Icon.HELP, variant="surface", background_color=accent, parent=self
         )
         self.help_button.setIconSizePx(24)
-        translatable_tooltip(
-            self.help_button,
-            "tooltip.show_help",
-            tr_func=_tr_with_default("tooltip.show_help", "Open help for this workflow"),
-        )
-        self.help_button.clicked.connect(self.help_clicked)
+        self.help_button.hide()
 
         self.line_group_container = self._button_group(
             [self.btn_divider_visible, self.btn_divider_color, self.btn_divider_width],
@@ -183,7 +171,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
             [self.btn_text_settings],
         )
         self.action_group_container = self._button_group(
-            [self.btn_quick_save, self.btn_settings, self.help_button],
+            [self.btn_quick_save],
         )
 
         layout.addWidget(self.line_group_container)

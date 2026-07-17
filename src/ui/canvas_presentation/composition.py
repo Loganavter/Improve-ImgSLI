@@ -239,7 +239,7 @@ def _walk(
 def compute_native_canvas_size(
     plan_root: CompositionNode,
     *,
-    max_edge: int = 16384,
+    max_edge: int | None = None,
 ) -> tuple[int, int]:
     """Return the smallest canvas where every leaf renders at native resolution.
 
@@ -247,7 +247,7 @@ def compute_native_canvas_size(
     the tree weights. For each leaf we need ``rect_w >= img_w`` and
     ``rect_h >= img_h`` to avoid downscaling. ``W = max(img_w / fw)``,
     ``H = max(img_h / fh)`` across leaves. Gaps are ignored as a small constant
-    cost. Result is clamped to ``max_edge`` on the longest side.
+    cost. When ``max_edge`` is set, the longest side is clamped to that value.
     """
     fractions: list[tuple[float, float, int, int]] = []
     _collect_fractions(plan_root, 1.0, 1.0, fractions)
@@ -258,8 +258,8 @@ def compute_native_canvas_size(
     width = max(1, int(round(w_scale)))
     height = max(1, int(round(h_scale)))
     longest = max(width, height)
-    if longest > max_edge:
-        scale = max_edge / longest
+    if max_edge is not None and longest > int(max_edge):
+        scale = int(max_edge) / longest
         width = max(1, int(round(width * scale)))
         height = max(1, int(round(height * scale)))
     return width, height

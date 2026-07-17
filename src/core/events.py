@@ -36,3 +36,9 @@ class WorkspaceSessionCreatedEvent:
 class WorkspaceSessionClosedEvent:
     session_id: str
     session_type: str
+
+@dataclass(frozen=True)
+class WorkspaceSessionActivatedEvent:
+    session_id: str
+    session_type: str
+    previous_session_id: str | None = None

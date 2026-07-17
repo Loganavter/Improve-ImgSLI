@@ -4,13 +4,14 @@ QCheckBox {
 }
 QCheckBox::indicator { width: 0px; height: 0px; }
 
-QLabel, QRadioButton, QCheckBox {
+/* Never put color/font on QLabel here — stylesheet text rules make Qt
+   ignore setFont()/UiFont when painting (title bar, lists, toolkit Label). */
+QRadioButton, QCheckBox {
     color: @dialog.text;
 }
 
 /* --- Стили для диалогов (core/shared) --- */
-QDialog QLabel, 
-QDialog QRadioButton, 
+QDialog QRadioButton,
 QDialog QCheckBox {
     color: @dialog.text;
 }
@@ -22,6 +23,14 @@ QDialog QSpinBox {
     border: 1px solid @dialog.border;
     border-radius: 8px;
     padding: 4px;
+}
+
+/* Toolkit CustomLineEdit / SpinBox paint their own chrome. */
+QDialog QLineEdit[custom-line-edit="true"],
+QDialog QSpinBox[custom-line-edit="true"] {
+    background: transparent;
+    border: none;
+    padding: 0;
 }
 
 QDialog QSpinBox::up-button,
@@ -56,7 +65,7 @@ QDialog QPushButton#okButton:hover {
 QColorDialog {
     background-color: @color_dialog.background;
 }
-QColorDialog QLabel, QColorDialog QLineEdit, QColorDialog QPushButton {
+QColorDialog QLineEdit, QColorDialog QPushButton {
     color: @color_dialog.text;
     background-color: @color_dialog.input.background;
     border: 1px solid @color_dialog.input.border;
@@ -152,16 +161,7 @@ QWidget#FlyoutWidget QScrollArea, QWidget#FlyoutWidget QScrollArea > QWidget > Q
     background-color: transparent; border: none;
 }
 
-/* --- Стили для RatingListItem --- */
-RatingListItem > QLabel {
-    background: transparent;
-}
-RatingListItem > QLabel#ratingLabel {
-    color: @list_item.text.rating;
-}
-RatingListItem > QLabel#nameLabel {
-    color: @list_item.text.normal;
-}
+/* RatingListItem text: palette + UiFont in Python (no QLabel color/font QSS). */
 RatingListItem > AutoRepeatButton {
     border-radius: 11px;
     padding: 0px;
@@ -196,9 +196,7 @@ QWidget#ToastProgressContainer[hasProgress="true"] {
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
 }
-QWidget#ToastNotification QLabel {
-    color: @toast.text;
-}
+/* Toast message color/font: apply_text_color + UiFont in toast.py */
 QWidget#ToastNotification QPushButton {
     background-color: transparent;
     color: @toast.text;
@@ -206,23 +204,8 @@ QWidget#ToastNotification QPushButton {
     border-radius: 6px;
     padding: 4px 10px;
 }
-QWidget#ToastNotification QProgressBar#ToastProgressBar {
-    background-color: @toast.progress.background;
-    border: 1px solid @toast.border;
-    border-radius: 4px;
-}
-QWidget#ToastNotification QProgressBar#ToastProgressBar::chunk {
-    background-color: @accent;
-    border-radius: 3px;
-}
-/* --- Стили для PathTooltip --- */
-QLabel#TooltipContentWidget {
-    background-color: @tooltip.background;
-    color: @tooltip.text;
-    border: 1px solid @tooltip.border;
-    padding: 4px 6px;
-    border-radius: 5px;
-}
+/* ToastProgressBar is painter-owned — do not style via QSS. */
+/* PathTooltip chrome/text: painted + palette in tooltips.py (no QLabel QSS). */
 
 /* --- ToggleIconButton / SimpleIconButton / ScrollableIconButton / MagnifierInstancesButton --- */
 /* Используем селектор по типу класса, так как они наследуются от QPushButton */
@@ -303,16 +286,11 @@ QWidget#menuContainer {
     border-radius: 8px;
 }
 
-/* --- Value Popup (ScrollableButton) --- */
-#ValuePopupLabel {
+/* Value popup chrome lives on #ValuePopupContainer; label uses UiFont + palette. */
+#ValuePopupContainer {
     background-color: @flyout.background;
-    color: @dialog.text;
     border: 1px solid @flyout.border;
     border-radius: 6px;
-    padding: 4px 6px;
-    font-size: 13px;
-    font-weight: 600;
-    font-family: "Segoe UI", Arial, sans-serif;
 }
 
 /* --- MagnifierVisibilityFlyout --- */
@@ -330,21 +308,6 @@ QPushButton[class="color-preview"] {
 }
 
 /* --- SimpleOptionsFlyout --- */
-/* Стили для меток в опциях */
-QLabel[class="option-label"] {
-    color: @list_item.text.normal;
-    background: transparent;
-}
-
-/* --- Дополнительные стили для новых классов --- */
-/* Стили для debug markers */
-QLabel[class="debug-marker"] {
-    background-color: @accent;
-    border: 1px solid @dialog.border;
-    color: @HighlightedText;
-    font-weight: bold;
-}
-
 /* Стили для opacity property */
 QWidget[opacity="0.4"] {
     opacity: 0.4;

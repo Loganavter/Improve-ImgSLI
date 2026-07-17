@@ -18,6 +18,7 @@ from PySide6.QtGui import (
     QRhiTexture,
 )
 
+from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from shared.rendering.tile_texture_service import TileTextureService
 from tabs.multi_compare.canvas.registry import registry
 from tabs.multi_compare.scene.passes import BaseImagesPass
@@ -57,8 +58,8 @@ class MultiCompareRhiRenderer:
     def slot_texture_ids(self) -> list[int]:
         return self.image_pass.slot_texture_ids()
 
-    def queue_upload(self, slot_id: int, image: QImage) -> None:
-        self.image_pass.queue_upload(slot_id, image)
+    def queue_upload(self, slot_id: int, source: TiledPixelStore) -> None:
+        self.image_pass.queue_upload(slot_id, source)
 
     def queue_remove(self, slot_id: int) -> None:
         self.image_pass.queue_remove(slot_id)

@@ -11,6 +11,7 @@
     "png_compression_level": "Nível de Compressão PNG",
     "preview": "Pré-visualização",
     "remember_by_default": "Lembrar por padrão",
+    "lock_aspect_ratio": "Bloquear proporção",
     "select_background_color": "Selecionar Cor de Fundo",
     "select_output_directory": "Selecionar Diretório de Saída"
   }

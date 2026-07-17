@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 from ui.canvas_infra.viewport.contract import (
     CanvasViewportFeature,
     DisplaySplitPositionRequest,
@@ -10,8 +8,6 @@ from ui.canvas_infra.viewport.contract import (
     WheelZoomRequest,
 )
 from ui.canvas_infra.viewport.geometry import QuickContentRect, resolve_axis_position
-
-_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 def _resolve_content_rect(
     *,
@@ -65,24 +61,35 @@ def compute_zoom_display_split_position(request: DisplaySplitPositionRequest) ->
         ) / max(1.0, float(request.widget_width))
         pan = float(request.pan_offset_x)
 
-    if float(request.zoom_level) <= 1.0:
-        pan = 0.0
-
-    result = max(
-        0.0,
-        min(1.0, (base - 0.5 + pan) * float(request.zoom_level) + 0.5),
-    )
+    result = (base - 0.5 + pan) * float(request.zoom_level) + 0.5
+    # Do not clamp to ``[0, 1]``: when zoomed out / panned the content spit
+    # can leave the widget, and clamping glued the divider to the screen edge
+    # ("flies with the camera") while the image kept moving — worst on the
+    # spit axis that hits the clamp first (often Y with letterboxed height).
     return result
 
 def compute_zoom_split_position_for_view_transform(
     request: SplitPositionForViewTransformRequest,
 ) -> float | None:
+    """Dual-mode spit ownership along the comparison axis.
+
+    - ``zoom <= 1``: content-anchored — store spit stays put; the line/seam
+      ride with the image via display / letterboxed-UV math.
+    - ``zoom > 1``: camera-anchored — rewrite content spit so the **screen**
+      spit stays fixed while pan/zoom change (inspect / crop workflow).
+
+    Always clamp the rewritten value to content ``[0, 1]``. Returning
+    ``None`` means "leave store unchanged."
+    """
     if (
         request.image_width <= 0
         or request.image_height <= 0
         or request.widget_width <= 0
         or request.widget_height <= 0
     ):
+        return None
+
+    if float(request.new_zoom) <= 1.0:
         return None
 
     content_rect = _resolve_content_rect(
@@ -100,55 +107,29 @@ def compute_zoom_split_position_for_view_transform(
             content_rect.y, content_rect.height, request.split_position_visual
         ) / max(1.0, float(request.widget_height))
         old_pan = float(request.current_pan_y)
+        new_pan = float(request.new_pan_y)
+        axis_widget_size = float(request.widget_height)
+        axis_content_offset = float(content_rect.y)
+        axis_content_size = float(content_rect.height)
     else:
         base = resolve_axis_position(
             content_rect.x, content_rect.width, request.split_position_visual
         ) / max(1.0, float(request.widget_width))
         old_pan = float(request.current_pan_x)
+        new_pan = float(request.new_pan_x)
+        axis_widget_size = float(request.widget_width)
+        axis_content_offset = float(content_rect.x)
+        axis_content_size = float(content_rect.width)
 
-    axis_widget_size = float(request.widget_height if request.is_horizontal else request.widget_width)
-    axis_content_size = float(content_rect.height if request.is_horizontal else content_rect.width)
-    axis_content_offset = float(content_rect.y if request.is_horizontal else content_rect.x)
-    current_pan = float(request.current_pan_y if request.is_horizontal else request.current_pan_x)
-    new_pan = float(request.new_pan_y if request.is_horizontal else request.new_pan_x)
-    if float(request.current_zoom) <= 1.0:
-        old_pan = 0.0
-        current_pan = 0.0
-    if float(request.new_zoom) <= 1.0:
-        new_pan = 0.0
-
-    def _visible_axis_range(zoom: float, pan: float) -> tuple[float, float]:
-        local_start = ((0.0 - 0.5) / max(float(zoom), 1e-6)) + 0.5 - pan
-        local_end = ((1.0 - 0.5) / max(float(zoom), 1e-6)) + 0.5 - pan
-        rel_start = ((local_start * axis_widget_size) - axis_content_offset) / max(axis_content_size, 1.0)
-        rel_end = ((local_end * axis_widget_size) - axis_content_offset) / max(axis_content_size, 1.0)
-        lo = max(0.0, min(1.0, min(rel_start, rel_end)))
-        hi = max(0.0, min(1.0, max(rel_start, rel_end)))
-        return lo, hi
-
-    explicit_edge_epsilon = 1e-6
-    if request.split_position_visual <= explicit_edge_epsilon:
-        new_visible_min, _ = _visible_axis_range(request.new_zoom, new_pan)
-        return max(0.0, min(1.0, new_visible_min))
-    if request.split_position_visual >= 1.0 - explicit_edge_epsilon:
-        _, new_visible_max = _visible_axis_range(request.new_zoom, new_pan)
-        return max(0.0, min(1.0, new_visible_max))
-
-    if float(request.new_zoom) <= 1.0:
-        return float(request.split_position_visual)
-
+    # Hold the current screen spit fixed across the camera change, then
+    # invert back into content spit for the new pan/zoom.
     screen_pos = (base - 0.5 + old_pan) * float(request.current_zoom) + 0.5
-    new_base = (screen_pos - 0.5) / max(float(request.new_zoom), 1e-6) + 0.5 - new_pan
-
-    if request.is_horizontal:
-        new_split = (
-            (new_base * float(request.widget_height) - content_rect.y) / max(content_rect.height, 1.0)
-        )
-    else:
-        new_split = (
-            (new_base * float(request.widget_width) - content_rect.x) / max(content_rect.width, 1.0)
-        )
-
+    new_base = (
+        (screen_pos - 0.5) / max(float(request.new_zoom), 1e-6) + 0.5 - new_pan
+    )
+    new_split = (
+        (new_base * axis_widget_size) - axis_content_offset
+    ) / max(axis_content_size, 1.0)
     return max(0.0, min(1.0, new_split))
 
 def compute_zoom_wheel_transform(request: WheelZoomRequest) -> tuple[float, float, float] | None:
@@ -156,9 +137,6 @@ def compute_zoom_wheel_transform(request: WheelZoomRequest) -> tuple[float, floa
     new_zoom = max(0.1, min(float(request.current_zoom) * factor, 50.0))
     if abs(new_zoom - float(request.current_zoom)) <= 1e-6:
         return None
-
-    if new_zoom <= 1.0:
-        return new_zoom, 0.0, 0.0
 
     new_pan_x = float(request.current_pan_x)
     new_pan_y = float(request.current_pan_y)
@@ -178,8 +156,6 @@ def compute_zoom_pan_drag_transform(request: PanDragRequest) -> tuple[float, flo
     if request.widget_width <= 0 or request.widget_height <= 0:
         return None
 
-    if float(request.current_zoom) <= 1.0:
-        return 0.0, 0.0
     dx = (float(request.mouse_x) - float(request.last_mouse_x)) / (
         float(request.widget_width) * max(float(request.current_zoom), 1e-6)
     )

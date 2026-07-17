@@ -4,7 +4,7 @@ A subscriber that re-publishes the same event creates a circular chain. The bus
 must stop it at ``MAX_EMIT_DEPTH`` with a clear error instead of hanging or
 raising a bare ``RecursionError``.
 
-Dogma source: docs/dev/ARCHITECTURE.md / CLAUDE memory ("watch EventBus depth,
+Dogma source: docs/dev/ARCHITECTURE.md / AGENTS.md ("watch EventBus depth,
 max 10 levels").
 """
 

@@ -24,6 +24,9 @@
     "ssim_calculation_in_progress": "SSIM calculation...",
     "starting_video_export_please_wait": "Starting video export... Please wait.",
     "select_both_images_first": "Please load and select images in both slots first.",
-    "specify_output_directory_and_file_name": "Please specify output directory and file name."
+    "specify_output_directory_and_file_name": "Please specify output directory and file name.",
+    "export_untested_resolution_title": "Untested export resolution",
+    "export_untested_resolution_body": "Export resolution exceeds {edge} px on a side ({width}×{height}). Rendering may fail or run out of memory — sizes beyond {edge} px are not guaranteed and have not been tested. Continue anyway?",
+    "dont_show_again": "Don't show again"
   }
 }

@@ -39,14 +39,24 @@
     "system_default": "Системный",
     "show_workspace_tabs": "Вкладки рабочего пространства",
     "system_notifications": "Системные уведомления",
-    "use_custom_decorations": "Кастомные декорации окна",
-    "use_custom_decorations_tooltip": "Рисовать заголовок окна внутри приложения, а не использовать оконный менеджер. Убирает чёрную вспышку рамки при запуске.",
     "ui_font": "Шрифт интерфейса",
     "ui_mode": "Режим интерфейса",
     "ui_mode_advanced": "Продвинутый",
     "ui_mode_beginner": "Начинающий",
     "ui_mode_expert": "Эксперт",
     "video_recording": "Запись видео",
-    "zoom_interpolation": "Интерполяция зума"
+    "zoom_interpolation": "Интерполяция зума",
+    "language_en": "Английский",
+    "language_ru": "Русский",
+    "language_zh": "Китайский",
+    "language_pt_br": "Португальский",
+    "keyboard": "Клавиатура",
+    "keyboard_hint": "Нажмите на привязку, затем новую комбинацию. Esc / Backspace снимает. Пусто = без горячей клавиши. Reset — значение по умолчанию.",
+    "keyboard_search": "Фильтр сочетаний…",
+    "keyboard_reset": "Сброс",
+    "keyboard_reset_all": "Сбросить все",
+    "keyboard_group_platform": "Платформа",
+    "keyboard_group_image_compare": "Сравнение изображений",
+    "keyboard_group_multi_compare": "Мультисравнение"
   }
 }

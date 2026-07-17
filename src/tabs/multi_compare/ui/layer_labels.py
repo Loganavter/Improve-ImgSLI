@@ -38,6 +38,7 @@ class LayerLabelStyle:
     corner_radius_fb: float = 6.0
     safe_gap_fb: float = 8.0
     text_inset_fb: float = 10.0
+    glyph_overscan_fb: float = 2.0
     text_color: QColor = field(default_factory=lambda: QColor(255, 255, 255, 255))
     bg_color: QColor = field(default_factory=lambda: QColor(0, 0, 0, 170))
     font_weight: int = 0
@@ -48,7 +49,7 @@ class LayerLabelStyle:
             label_safe_gap_px=float(self.safe_gap_fb),
             label_padding_x_px=float(self.padding_x_fb),
             label_padding_y_px=float(self.padding_y_fb),
-            glyph_overscan_px=2.0,
+            glyph_overscan_px=float(self.glyph_overscan_fb),
             label_corner_radius_px=float(self.corner_radius_fb),
             text_inset_px=float(self.text_inset_fb),
             text_alpha=1.0,
@@ -80,7 +81,13 @@ def _label_rect_for_cell(
     fm = QFontMetrics(font)
 
     max_w = max(1.0, cw - style.safe_gap_fb * 2.0)
-    text_w_pref = float(fm.horizontalAdvance(text)) + style.padding_x_fb * 2.0
+    # Match image_compare label_rects: padding + glyph_overscan so pixel-snapping
+    # and fit_text's integer width never falsely elide text that fits the cell.
+    text_w_pref = (
+        float(fm.horizontalAdvance(text))
+        + style.padding_x_fb * 2.0
+        + style.glyph_overscan_fb
+    )
     label_w = max(1.0, min(max_w, text_w_pref))
     label_h = float(fm.height()) + style.padding_y_fb * 2.0
 
@@ -110,7 +117,8 @@ def paint_layer_label(
     overlay_style = style.to_filename_overlay_style()
     draw_round_rect(painter, rect, style.bg_color, overlay_style)
 
-    inner_w = rect.width() - style.padding_x_fb * 2.0
+    text_inset = float(style.text_inset_fb)
+    inner_w = rect.width() - text_inset * 2.0
     fitted = fit_text(text, fm, inner_w)
 
     painter.save()
@@ -126,13 +134,13 @@ def paint_layer_label(
             style.font_weight,
             int(rect.width()),
             int(rect.height()),
-            float(style.padding_x_fb),
+            text_inset,
         )
     else:
         painter.setFont(font)
         painter.setPen(style.text_color)
         text_rect = QRectF(
-            style.padding_x_fb,
+            text_inset,
             0.0,
             inner_w,
             rect.height(),
@@ -180,7 +188,8 @@ def rasterize_layer_label(
 
         font = _font(style)
         fm = QFontMetrics(font)
-        inner_w = local_rect.width() - style.padding_x_fb * 2.0
+        text_inset = float(style.text_inset_fb)
+        inner_w = local_rect.width() - text_inset * 2.0
         fitted = fit_text(text, fm, inner_w)
         if style.font_weight > 0:
             draw_text_bold_supersampled(
@@ -191,13 +200,13 @@ def rasterize_layer_label(
                 style.font_weight,
                 width,
                 height,
-                float(style.padding_x_fb),
+                text_inset,
             )
         else:
             painter.setFont(font)
             painter.setPen(style.text_color)
             text_rect = QRectF(
-                style.padding_x_fb,
+                text_inset,
                 0.0,
                 inner_w,
                 local_rect.height(),

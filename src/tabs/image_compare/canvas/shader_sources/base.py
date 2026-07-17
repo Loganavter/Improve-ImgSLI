@@ -72,8 +72,10 @@ void main() {
     }
 
     vec4 color;
-    float coord = isHorizontal ? TexCoord.y : TexCoord.x;
-    bool useFirst = coord < splitPosition;
+    // Content-space spit (magnifier parity) — ``splitPosition`` is store
+    // ``split_position_visual`` in ``[0,1]``, not a screen display fraction.
+    vec2 splitUV = (uv - letterbox1.xy) / letterbox1.zw;
+    bool useFirst = isHorizontal ? (splitUV.y < splitPosition) : (splitUV.x < splitPosition);
     vec4 letterbox = useFirst ? letterbox1 : letterbox2;
     vec2 sampleUV = (uv - letterbox.xy) / letterbox.zw;
     if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) {

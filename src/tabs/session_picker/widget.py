@@ -17,13 +17,10 @@ from sli_ui_toolkit.widgets import (
     ThemedWidget,
 )
 
-from ui.icon_manager import AppIcon
+from core.plugin_system.discovery_scan import iter_tab_entry_points
+from core.session_blueprints import SessionBlueprint
+from tabs.session_picker.icons import Icon as SessionPickerIcon, get_icon as get_session_picker_icon
 from ui.theming import resolve_theme_color
-
-SESSION_TYPE_ICONS: dict[str, AppIcon] = {
-    "image_compare": AppIcon.PHOTO,
-    "multi_compare": AppIcon.GRID,
-}
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
 
@@ -52,6 +49,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._recent_badge_label: Label | None = None
         self._recent_placeholder_label: Label | None = None
         self._populated = False
+        self._cards_by_type: dict[str, Button] = {}
         self.setObjectName("SessionPickerPage")
         self._build()
 
@@ -62,6 +60,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
     def on_theme_changed(self) -> None:
         self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+        # Cards store eager QIcons from build time; re-resolve light/dark SVGs.
+        # ThemedWidget calls this from __init__ before _populated exists.
+        if getattr(self, "_populated", False):
+            self.sync_icons()
         super().on_theme_changed()
 
     def _build(self) -> None:
@@ -149,12 +151,30 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self.refresh()
 
     def refresh(self) -> None:
+        """Build create-cards once from a filesystem scan of tab packages.
+
+        Deferred plugins (e.g. multi_compare) register SessionBlueprints after
+        bootstrap, but card buttons must not flicker in later — package names
+        under ``tabs/`` are known up front via ``iter_tab_entry_points``.
+        """
         if self._populated or self._cards_layout is None:
             return
-        for blueprint in self._session_blueprints():
-            card = self._build_card(blueprint)
-            self._cards_layout.addWidget(card)
+        blueprints = {
+            bp.session_type: bp for bp in self._registered_blueprints()
+        }
+        for session_type in self._creatable_session_types():
+            self._cards_layout.addWidget(
+                self._build_card(session_type, blueprints.get(session_type))
+            )
         self._populated = True
+
+    def sync_icons(self) -> None:
+        """Refresh card icons in place after deferred tabs register / theme change."""
+        if not getattr(self, "_populated", False):
+            return
+        for session_type, card in self._cards_by_type.items():
+            icon = self._icon_for_session_type(session_type)
+            card.update_region("icon", icon=icon)
 
     def _retranslate(self) -> None:
         if self._title_label is not None:
@@ -190,23 +210,40 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             self._populated = False
             self.refresh()
 
+    def card_for(self, session_type: str) -> Button | None:
+        """Return the live create-card for ``session_type``, building cards if needed."""
+        if not self._populated:
+            self.refresh()
+        return self._cards_by_type.get(session_type)
+
     def _clear_cards(self) -> None:
         if self._cards_layout is None:
             return
+        self._cards_by_type.clear()
         while self._cards_layout.count():
             item = self._cards_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
 
-    def _build_card(self, blueprint) -> Button:
-        session_type = blueprint.session_type
-        title = self._label_for(blueprint)
+    def _icon_for_session_type(self, session_type: str):
+        try:
+            icon = self._context.call_service("get_tab_icon", session_type)
+        except RuntimeError:
+            icon = None
+        if icon is not None and not icon.isNull():
+            return icon
+        return get_session_picker_icon(SessionPickerIcon.ADD)
+
+    def _build_card(
+        self, session_type: str, blueprint: SessionBlueprint | None
+    ) -> Button:
+        title = self._label_for(session_type, blueprint)
         description = self._context.tr(
             f"descriptions.{session_type}",
             "",
         )
-        icon = SESSION_TYPE_ICONS.get(session_type, AppIcon.ADD)
+        icon = self._icon_for_session_type(session_type)
 
         rows = [
             ButtonRow(
@@ -250,20 +287,47 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             parent=self._cards_container,
         )
         card.regionClicked.connect(lambda _id, st=session_type: self._create(st))
+        self._cards_by_type[session_type] = card
         return card
 
-    def _session_blueprints(self):
+    def _creatable_session_types(self) -> tuple[str, ...]:
+        """Session types offered on the picker, without waiting for plugins.
+
+        Package name under ``tabs/`` matches ``TabContract.session_type`` for
+        every shipped tab. Blueprints registered outside that convention are
+        appended so dynamic session plugins still appear.
+        """
+        seen: list[str] = []
+        for entry in iter_tab_entry_points():
+            name = entry.package_name
+            if name in HIDDEN_SESSION_TYPES or name in seen:
+                continue
+            seen.append(name)
+        for blueprint in self._registered_blueprints():
+            name = blueprint.session_type
+            if name in HIDDEN_SESSION_TYPES or name in seen:
+                continue
+            seen.append(name)
+        return tuple(seen)
+
+    def _registered_blueprints(self) -> list[SessionBlueprint]:
         try:
             blueprints = self._context.call_service("list_session_blueprints")
         except RuntimeError:
             return []
-        return [bp for bp in blueprints if bp.session_type not in HIDDEN_SESSION_TYPES]
+        return [
+            bp
+            for bp in blueprints
+            if bp.session_type not in HIDDEN_SESSION_TYPES
+        ]
 
-    def _label_for(self, blueprint) -> str:
-        key = f"types.{blueprint.session_type}"
+    def _label_for(
+        self, session_type: str, blueprint: SessionBlueprint | None
+    ) -> str:
+        key = f"types.{session_type}"
         fallback = (
-            blueprint.resolved_title()
-            or blueprint.session_type.replace("_", " ").title()
+            (blueprint.resolved_title() if blueprint is not None else None)
+            or session_type.replace("_", " ").title()
         )
         return self._context.tr(key, fallback)
 
