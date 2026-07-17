@@ -24,7 +24,7 @@ class ImageSizeLimitError(ValueError):
     pass
 
 def _ensure_supported_dimensions(width: int, height: int, image_path: str) -> None:
-    max_dim = int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 32768))
+    max_dim = int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 65536))
     if max(int(width), int(height)) > max_dim:
         raise ImageSizeLimitError(
             f"Image exceeds the current software limit of {max_dim}px on either side: "
@@ -68,6 +68,12 @@ def should_use_progressive_load(
         return False
 
 def load_preview_image(image_path: str, auto_crop: bool = False) -> Image.Image | None:
+    """Load a bounded progressive preview for display-tier use only.
+
+    Returns ``PIL.Image`` RGBA capped at 1024 px on the long edge. Callers
+    store the result in ``document.preview_image*`` — never wrap with
+    ``TiledPixelStore`` (full-res tier owns memmap storage).
+    """
     try:
 
         if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
@@ -121,26 +127,20 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> Image.Image 
         return None
 
 def load_full_image(image_path: str, auto_crop: bool = False) -> Image.Image | None:
+    """Load full-res as an in-memory PIL image (escape hatch).
+
+    Prefer ``TiledPixelStore.from_path`` for canvas/export paths. This helper
+    strip-spills via ``from_path`` then materializes — useful only where a
+    real ``PIL.Image`` is required.
+    """
     try:
+        from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-        if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
-            logger.info(f"Loading JXL full resolution: {image_path}")
-            decoded = imagecodecs.imread(image_path)
-            pil_img = Image.fromarray(decoded).convert("RGBA")
-            _ensure_supported_dimensions(pil_img.width, pil_img.height, image_path)
-            if auto_crop:
-                pil_img = crop_black_borders(pil_img)
-            pil_img.load()
-            return pil_img
-
-        with Image.open(image_path) as img:
-            _ensure_supported_dimensions(img.width, img.height, image_path)
-            img_to_process = img.copy()
-            pil_img = img_to_process.convert("RGBA")
-            if auto_crop:
-                pil_img = crop_black_borders(pil_img)
-            pil_img.load()
-            return pil_img
+        store = TiledPixelStore.from_path(image_path, auto_crop=auto_crop)
+        try:
+            return store.materialize_full()
+        finally:
+            store.close()
     except ImageSizeLimitError:
         raise
     except Exception as e:
@@ -183,7 +183,7 @@ def get_image_format_info(image_path: str) -> tuple[str, bool, bool]:
 class ProgressiveImageLoader:
     def __init__(self):
         self._preview_cache: dict[str, Image.Image] = {}
-        self._full_cache: dict[str, Image.Image] = {}
+        self._full_cache: dict[str, object] = {}
 
     def get_preview(
         self, image_path: str, force_reload: bool = False
@@ -196,19 +196,35 @@ class ProgressiveImageLoader:
         return preview
 
     def get_full(
-        self, image_path: str, force_reload: bool = False
-    ) -> Image.Image | None:
+        self, image_path: str, force_reload: bool = False, *, auto_crop: bool = False
+    ):
+        """Return a ``TiledPixelStore`` for ``image_path`` (cached)."""
         if not force_reload and image_path in self._full_cache:
             return self._full_cache[image_path]
-        full = load_full_image(image_path)
-        if full:
-            self._full_cache[image_path] = full
-        return full
+        try:
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+            store = TiledPixelStore.from_path(image_path, auto_crop=auto_crop)
+        except ImageSizeLimitError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to load full image {image_path}: {e}")
+            return None
+        if store is not None:
+            self._full_cache[image_path] = store
+        return store
 
     def clear_cache(self):
+        from shared.image_processing.tiled_pixel_store import close_pixel_store
+
+        for store in self._full_cache.values():
+            close_pixel_store(store)
         self._preview_cache.clear()
         self._full_cache.clear()
 
     def invalidate_cache(self, image_path: str):
+        from shared.image_processing.tiled_pixel_store import close_pixel_store
+
+        old = self._full_cache.pop(image_path, None)
+        close_pixel_store(old)
         self._preview_cache.pop(image_path, None)
-        self._full_cache.pop(image_path, None)

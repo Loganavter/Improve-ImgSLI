@@ -1,6 +1,6 @@
 # UI Toolkit Library
 
-`sli-ui-toolkit` is a reusable, versioned PySide6 UI library used by Improve-ImgSLI and Tkonverter.
+`sli-ui-toolkit` is a reusable, versioned PySide6 UI library.
 
 It contains widgets, an i18n system, styling tools, themes, icons, workers, and utilities. Application-specific behavior (such as icons, translation roots, overlay layers, and drag-and-drop logic) is injected via configuration hooks at startup. Application state, canvas logic, feature services, and plugins remain within the main application.
 
@@ -67,6 +67,9 @@ Improve-ImgSLI supplies icons and session lifecycle callbacks; tab painting,
 adaptive close-button visibility, stable tab sizing, and add-button placement
 remain toolkit-owned.
 
+Dialog content sections (e.g. video editor export tabs) use `TopTabHost` /
+`TopTabBar` — the horizontal twin of sidebar `IconListWidget`, not `QTabWidget`.
+
 ## Boundary Rules
 
 Code inside the `sli_ui_toolkit` package must not import application packages such as `core`, `domain`, `features`, `ui`, or `services`. It also must not directly depend on application concepts such as store objects, viewport state, or document state.
@@ -88,6 +91,8 @@ The current package is organized around these reusable areas:
 - `i18n`: full i18n system — JSON tree loading, caching, dotted-key resolution.
 - `icons`: icon loading service.
 - `managers`: flyout and other generic UI managers.
+  Hosts own coexistence via `FlyoutManager.set_show_policy(GroupShowPolicy(...))`
+  (see toolkit `FLYOUT_SYSTEM.md`); app wiring lives in `ui/flyout_policy.py`.
 - `services`: widget and window lifecycle helpers.
 - `theme`: palette and QSS theme management.
 - `utils`: generic file and path helpers.
@@ -116,6 +121,22 @@ The toolkit includes self-contained data visualization composites:
 - `TimelineWidget` — keyframe timeline with thumbnail strip and grouped tracks.
 
 All three accept state through plain data objects and emit signals for user interaction — no application imports required.
+
+## App-side dialog geometry (`shared_toolkit/ui/layout_sizing.py`)
+
+Improve-ImgSLI keeps content-driven dialog sizing in the app layer (not in `sli-ui-toolkit`).
+
+**Full guide (skeleton, CSD, crush-resistant layouts, preview sizeHints, i18n):**
+[DIALOGS.md](DIALOGS.md).
+
+Short recipe:
+
+1. **Primitives** — `widget_width_hint`, `sum_visible_widget_height_hint`, `measure_scroll_pages_stack`, `clamp_to_screen`.
+2. **Per-dialog module** — e.g. `plugins/export/layout_geometry.py`, `plugins/settings/layout_geometry.py`.
+3. **Apply** — `apply_dialog_geometry` + `GeometryApplyPolicy` (`lock_minimum_to_computed` for non-scroll dialogs; `force_resize` on the **initial** finalize after CSD).
+4. **Lifecycle** — `ThemedDialog.install_dialog_geometry`; deferred finalize via `QTimer.singleShot(0, …)`; `sync_csd_chrome` after programmatic resize.
+
+Reference consumers: Export (preview + form — best template for content-locked dialogs), Settings (sidebar + scroll pages), Video editor, Help, Image properties.
 
 ## Extension Rule
 

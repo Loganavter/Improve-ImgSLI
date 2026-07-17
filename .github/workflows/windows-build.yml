@@ -23,6 +23,7 @@ jobs:
         shell: pwsh
         run: |
           python build/ci/validate_release_metadata.py
+          python build/ci/validate_license_files.py
 
   tests:
     name: Run tests
@@ -99,6 +100,11 @@ jobs:
         run: |
           python build/Windows-template/build_windows.py
 
+      - name: Verify Windows License Bundle
+        shell: pwsh
+        run: |
+          python build/ci/validate_license_files.py --windows-bundle dist/Improve_ImgSLI
+
       - name: Upload Windows Bundle
         uses: actions/upload-artifact@v4
         with:
@@ -124,6 +130,11 @@ jobs:
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
         with:
           path: build/Windows-template/inno_setup_6.iss
+
+      - name: Verify Installer License Pages
+        shell: pwsh
+        run: |
+          python build/ci/validate_license_files.py
 
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4

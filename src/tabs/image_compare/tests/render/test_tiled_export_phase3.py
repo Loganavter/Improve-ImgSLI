@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from plugins.export.services.gpu_export_proxy import _iter_export_tile_rects
-from tabs.image_compare.canvas.rhi_renderer import _viewport_zoom_offset_for_tile
+from shared.rendering.export_tiling import iter_export_tile_rects
+from shared.rendering.tile_geometry import viewport_zoom_offset_for_tile as _viewport_zoom_offset_for_tile
 
 
 def test_iter_export_tile_rects_single_tile_when_within_extent():
-    rects = list(_iter_export_tile_rects(1920, 1080, 4096))
+    rects = list(iter_export_tile_rects(1920, 1080, 4096))
 
     assert rects == [(0, 0, 1920, 1080)]
 
@@ -25,7 +25,7 @@ def test_iter_export_tile_rects_covers_canvas_without_overrun():
     canvas_w, canvas_h = 9000, 5000
     max_extent = 4096
 
-    rects = list(_iter_export_tile_rects(canvas_w, canvas_h, max_extent))
+    rects = list(iter_export_tile_rects(canvas_w, canvas_h, max_extent))
 
     assert len(rects) > 1
     total_area = 0
@@ -48,7 +48,7 @@ def test_iter_export_tile_rects_covers_canvas_without_overrun():
 
 
 def test_iter_export_tile_rects_tiles_are_disjoint():
-    rects = list(_iter_export_tile_rects(9000, 5000, 4096))
+    rects = list(iter_export_tile_rects(9000, 5000, 4096))
 
     boxes = [(left, top, left + w, top + h) for left, top, w, h in rects]
     for i, (l1, t1, r1, b1) in enumerate(boxes):

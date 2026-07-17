@@ -1,0 +1,504 @@
+"""Register image_compare toolbar actions into the host action catalog."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+
+from core.actions.types import ActionDescriptor, ActionTarget
+from ui.actions.registry import ActionRegistry, get_action_registry
+
+OWNER = "image_compare"
+
+_BC_TOOLBAR = "image_compare.action.breadcrumb.toolbar"
+_BC_MAGNIFIER = "image_compare.action.breadcrumb.magnifier"
+_BC_SESSION = "image_compare.action.breadcrumb.session"
+_BC_LABELS = "image_compare.action.breadcrumb.labels"
+_BC_EXPORT = "image_compare.action.breadcrumb.export"
+_BC_DIVIDER = "image_compare.action.breadcrumb.divider"
+_BC_ANALYSIS = "image_compare.action.breadcrumb.analysis"
+_BC_VIDEO = "image_compare.action.breadcrumb.video"
+
+_TOPIC_HELP: dict[str, str] = {
+    "magnifier": "magnifier",
+    "session": "file_management",
+    "labels": "comparison",
+    "divider": "comparison",
+    "analysis": "comparison",
+    "export": "export",
+    "video": "video",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class _WidgetAction:
+    action_id: str
+    attr: str
+    label_key: str
+    description_key: str | None
+    breadcrumb: tuple[str, ...]
+    topic: str
+    kind: str = "toggle"  # toggle | click | short_click
+    help_page: str | None = None
+    shortcut: str | None = None
+
+
+def _toggle_button(button) -> None:
+    if button is None:
+        return
+    if hasattr(button, "isChecked") and hasattr(button, "setChecked"):
+        button.setChecked(not bool(button.isChecked()))
+        return
+    _click_button(button)
+
+
+def _click_button(button) -> None:
+    if button is None:
+        return
+    click = getattr(button, "click", None)
+    if callable(click):
+        click()
+        return
+    activate = getattr(button, "_activate_via_keyboard", None)
+    if callable(activate):
+        activate()
+        return
+    clicked = getattr(button, "clicked", None)
+    if clicked is not None and hasattr(clicked, "emit"):
+        clicked.emit()
+
+
+def _short_click_button(button) -> None:
+    if button is None:
+        return
+    short = getattr(button, "shortClicked", None)
+    if short is not None and hasattr(short, "emit"):
+        short.emit()
+        return
+    _click_button(button)
+
+
+# Mode-picker toolbar buttons: shortcuts cycle; mouse click still opens the menu.
+_PICKER_CYCLE: dict[str, str] = {
+    "btn_channel_mode": "btn_channel_mode_picker",
+    "btn_diff_mode": "btn_diff_mode_picker",
+}
+
+
+def _help_for(topic: str, explicit: str | None = None) -> str | None:
+    if explicit is not None:
+        return explicit
+    return _TOPIC_HELP.get(topic)
+
+
+_SPECS: tuple[_WidgetAction, ...] = (
+    _WidgetAction(
+        "image_compare.magnifier.enabled",
+        "btn_magnifier",
+        "image_compare.action.magnifier",
+        "tooltip.toggle_magnifier",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        shortcut="M",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.freeze",
+        "btn_freeze",
+        "image_compare.action.freeze",
+        "tooltip.freeze_magnifier_position",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        shortcut="F",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.orientation",
+        "btn_magnifier_orientation",
+        "image_compare.action.magnifier_divider_combined",
+        "image_compare.action.magnifier_divider_combined_desc",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "toggle",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.orientation_simple",
+        "btn_magnifier_orientation_simple",
+        "image_compare.action.magnifier_orientation",
+        "tooltip.magnifier_orientation",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "toggle",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.guides",
+        "btn_magnifier_guides",
+        "image_compare.action.magnifier_guides",
+        "tooltip.magnifier_guides",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "toggle",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.guides_simple",
+        "btn_magnifier_guides_simple",
+        "image_compare.action.magnifier_guides",
+        "tooltip.magnifier_guides",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "toggle",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.divider_visible",
+        "btn_magnifier_divider_visible",
+        "image_compare.action.magnifier_divider_visible",
+        "tooltip.toggle_magnifier_divider_visibility",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "toggle",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.color_settings",
+        "btn_magnifier_color_settings",
+        "image_compare.action.magnifier_colors",
+        "tooltip.magnifier_colors",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.color_settings_beginner",
+        "btn_magnifier_color_settings_beginner",
+        "image_compare.action.magnifier_colors",
+        "tooltip.magnifier_colors",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.instances",
+        "btn_magnifier_instances",
+        "image_compare.action.magnifier_instances",
+        "tooltip.add_or_remove_magnifier",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.divider_width",
+        "btn_magnifier_divider_width",
+        "image_compare.action.magnifier_divider_width",
+        "tooltip.adjust_magnifier_divider_width",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.magnifier.guides_width",
+        "btn_magnifier_guides_width",
+        "image_compare.action.magnifier_guides_width",
+        "tooltip.adjust_magnifier_guides_width",
+        (_BC_TOOLBAR, _BC_MAGNIFIER),
+        "magnifier",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.swap",
+        "btn_swap",
+        "image_compare.action.swap",
+        "tooltip.click_swap_current_images",
+        (_BC_TOOLBAR, _BC_SESSION),
+        "session",
+        "short_click",
+        shortcut="X",
+    ),
+    _WidgetAction(
+        "image_compare.clear_list1",
+        "btn_clear_list1",
+        "image_compare.action.clear_list1",
+        "tooltip.click_remove_current_image",
+        (_BC_TOOLBAR, _BC_SESSION),
+        "session",
+        "short_click",
+    ),
+    _WidgetAction(
+        "image_compare.clear_list2",
+        "btn_clear_list2",
+        "image_compare.action.clear_list2",
+        "tooltip.click_remove_current_image",
+        (_BC_TOOLBAR, _BC_SESSION),
+        "session",
+        "short_click",
+    ),
+    _WidgetAction(
+        "image_compare.add_image1",
+        "btn_image1",
+        "image_compare.action.add_image1",
+        "tooltip.add_images_1",
+        (_BC_TOOLBAR, _BC_SESSION),
+        "session",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.add_image2",
+        "btn_image2",
+        "image_compare.action.add_image2",
+        "tooltip.add_images_2",
+        (_BC_TOOLBAR, _BC_SESSION),
+        "session",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.filename_overlay",
+        "btn_file_names",
+        "image_compare.action.file_names",
+        "image_compare.action.file_names_desc",
+        (_BC_TOOLBAR, _BC_LABELS),
+        "labels",
+        shortcut="N",
+    ),
+    _WidgetAction(
+        "image_compare.text_settings",
+        "btn_text_settings",
+        "image_compare.action.text_settings",
+        "tooltip.open_file_name_text_settings",
+        (_BC_TOOLBAR, _BC_LABELS),
+        "labels",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.divider.orientation",
+        "btn_orientation",
+        "image_compare.action.divider_combined",
+        "image_compare.action.divider_combined_desc",
+        (_BC_TOOLBAR, _BC_DIVIDER),
+        "divider",
+        "toggle",
+    ),
+    _WidgetAction(
+        "image_compare.divider.orientation_simple",
+        "btn_orientation_simple",
+        "image_compare.action.divider_orientation",
+        "tooltip.split_orientation",
+        (_BC_TOOLBAR, _BC_DIVIDER),
+        "divider",
+        "toggle",
+    ),
+    _WidgetAction(
+        "image_compare.divider.visible",
+        "btn_divider_visible",
+        "image_compare.action.divider_visible",
+        "tooltip.toggle_divider_visibility",
+        (_BC_TOOLBAR, _BC_DIVIDER),
+        "divider",
+        "toggle",
+        shortcut="D",
+    ),
+    _WidgetAction(
+        "image_compare.divider.color",
+        "btn_divider_color",
+        "image_compare.action.divider_color",
+        "tooltip.divider_color",
+        (_BC_TOOLBAR, _BC_DIVIDER),
+        "divider",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.divider.width",
+        "btn_divider_width",
+        "image_compare.action.divider_width",
+        "tooltip.adjust_divider_width",
+        (_BC_TOOLBAR, _BC_DIVIDER),
+        "divider",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.diff_mode",
+        "btn_diff_mode",
+        "image_compare.action.diff_mode",
+        "tooltip.change_diff_mode",
+        (_BC_TOOLBAR, _BC_ANALYSIS),
+        "analysis",
+        "click",
+        shortcut="H",
+    ),
+    _WidgetAction(
+        "image_compare.channel_mode",
+        "btn_channel_mode",
+        "image_compare.action.channel_mode",
+        "tooltip.change_channel_mode",
+        (_BC_TOOLBAR, _BC_ANALYSIS),
+        "analysis",
+        "click",
+        shortcut="C",
+    ),
+    _WidgetAction(
+        "image_compare.quick_save",
+        "btn_quick_save",
+        "image_compare.action.quick_save",
+        "tooltip.quick_save_image",
+        (_BC_TOOLBAR, _BC_EXPORT),
+        "export",
+        "click",
+        shortcut="Ctrl+S",
+    ),
+    _WidgetAction(
+        "image_compare.save",
+        "btn_save",
+        "image_compare.action.save",
+        "tooltip.save_result",
+        (_BC_TOOLBAR, _BC_EXPORT),
+        "export",
+        "click",
+        shortcut="Ctrl+Shift+S",
+    ),
+    _WidgetAction(
+        "image_compare.record",
+        "btn_record",
+        "image_compare.action.record",
+        "tooltip.record_video",
+        (_BC_TOOLBAR, _BC_VIDEO),
+        "video",
+        "click",
+        shortcut="R",
+    ),
+    _WidgetAction(
+        "image_compare.pause_recording",
+        "btn_pause",
+        "image_compare.action.pause_recording",
+        "tooltip.pause_recording",
+        (_BC_TOOLBAR, _BC_VIDEO),
+        "video",
+        "click",
+    ),
+    _WidgetAction(
+        "image_compare.video_editor",
+        "btn_video_editor",
+        "image_compare.action.video_editor",
+        "tooltip.open_video_editor",
+        (_BC_TOOLBAR, _BC_VIDEO),
+        "video",
+        "click",
+        shortcut="Ctrl+E",
+    ),
+)
+
+
+def register_image_compare_actions(
+    *,
+    widget,
+    presenter,
+    registry: ActionRegistry | None = None,
+    quick_save: Callable[[], None] | None = None,
+) -> None:
+    """Register IC toolbar actions with explicit widget targets.
+
+    Call after toolbar signal wiring so clicks/toggles reuse live handlers.
+    Replaces any previous ``image_compare`` contributions.
+    ``quick_save`` is accepted for back-compat but ignored — the button's
+    connected click handler is the source of truth.
+    """
+    _ = presenter
+    _ = quick_save
+    reg = registry if registry is not None else get_action_registry()
+    reg.unregister_owner(OWNER)
+
+    specs: list[ActionDescriptor] = []
+    for spec in _SPECS:
+        button = getattr(widget, spec.attr, None)
+        if button is None:
+            continue
+        picker_attr = _PICKER_CYCLE.get(spec.attr)
+        picker = getattr(widget, picker_attr, None) if picker_attr else None
+        if picker is not None and hasattr(picker, "cycle_next"):
+            run: Callable[[], None] = lambda p=picker: p.cycle_next()
+        elif spec.kind == "toggle":
+            run = lambda b=button: _toggle_button(b)
+        elif spec.kind == "short_click":
+            run = lambda b=button: _short_click_button(b)
+        else:
+            run = lambda b=button: _click_button(b)
+
+        specs.append(
+            ActionDescriptor(
+                action_id=spec.action_id,
+                label_key=spec.label_key,
+                description_key=spec.description_key,
+                breadcrumb=spec.breadcrumb,
+                owner_tab=OWNER,
+                topic=spec.topic,
+                shortcut=spec.shortcut,
+                help_page=_help_for(spec.topic, spec.help_page),
+                run=run,
+                target=ActionTarget(widget=button),
+            )
+        )
+
+    for action in specs:
+        reg.register(action)
+
+    _contribute_font_settings_flyout(reg)
+
+
+def _host_font_settings_flyout():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return None
+    for top in app.topLevelWidgets():
+        presenter = getattr(top, "presenter", None)
+        flyout = getattr(presenter, "font_settings_flyout", None) if presenter else None
+        if flyout is not None:
+            return flyout
+    return None
+
+
+def _show_host_font_settings_flyout() -> None:
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    for top in app.topLevelWidgets():
+        presenter = getattr(top, "presenter", None)
+        ui = getattr(presenter, "ui_manager", None) if presenter else None
+        show = getattr(ui, "show_font_settings_flyout", None) if ui else None
+        if callable(show):
+            show()
+            return
+
+
+def _contribute_font_settings_flyout(reg: ActionRegistry) -> None:
+    from ui.actions.flyout_contribute import contribute_flyout_search_actions
+    from ui.widgets.font_settings_search import font_settings_search
+
+    flyout = _host_font_settings_flyout()
+    if flyout is None:
+        return
+    title_key = "image_compare.action.text_settings"
+    contribute_flyout_search_actions(
+        flyout,
+        index=font_settings_search(title_key, include_placement=True),
+        prefix="image_compare.font_settings.",
+        owner_tab=OWNER,
+        topic="labels",
+        breadcrumb=(_BC_TOOLBAR, _BC_LABELS),
+        show_flyout=_show_host_font_settings_flyout,
+        help_page=_help_for("labels"),
+        registry=reg,
+    )
+
+
+def contribute_keymap_defaults(registry) -> None:
+    """Metadata-only defaults for Settings → Keyboard (no live widgets)."""
+    from ui.actions.keymap import KeymapDefaultEntry
+
+    for spec in _SPECS:
+        registry.register(
+            KeymapDefaultEntry(
+                action_id=spec.action_id,
+                label_key=spec.label_key,
+                default_shortcut=spec.shortcut,
+                owner_tab=OWNER,
+                breadcrumb=spec.breadcrumb,
+            )
+        )

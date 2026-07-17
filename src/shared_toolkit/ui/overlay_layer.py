@@ -9,6 +9,8 @@ from shared_toolkit.ui.in_window_surface import (
     create_shadow_surface,
     paint_shadowed_surface,
 )
+from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.ui.managers.ui_font import apply_text_color, apply_ui_font
 
 class _PopupBubble(QWidget):
     SHADOW_RADIUS = 8
@@ -37,8 +39,17 @@ class _PopupBubble(QWidget):
         self.label = QLabel(self.container)
         self.label.setObjectName("ValuePopupLabel")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setContentsMargins(4, 4, 4, 4)
+        self.label.setStyleSheet("")
+        self._apply_label_typography()
         self.content_layout.addWidget(self.label)
         self.hide()
+
+    def _apply_label_typography(self) -> None:
+        apply_ui_font(self.label, pixel_size=13, bold=True)
+        apply_text_color(
+            self.label, ThemeManager.get_instance().get_color("dialog.text")
+        )
 
     def set_content(
         self,
@@ -273,9 +284,7 @@ class OverlayLayer(QObject):
         popup = self._popup_label(key)
         try:
             popup.set_content(text=text, pixmap=pixmap, size=size)
-
-            popup.label.style().unpolish(popup.label)
-            popup.label.style().polish(popup.label)
+            popup._apply_label_typography()
             popup.label.update()
             popup.setGeometry(
                 self.place_global_rect_relative_to_anchor(

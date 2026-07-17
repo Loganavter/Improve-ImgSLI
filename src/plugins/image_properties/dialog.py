@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon
+from shared_toolkit.ui.themed_dialog import ThemedDialog
 from PySide6.QtWidgets import (
-    QDialog,
     QFrame,
     QGridLayout,
     QSizePolicy,
@@ -13,15 +13,16 @@ from PySide6.QtWidgets import (
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Button, Label, OverlayScrollArea
 
+from plugins.image_properties.layout_geometry import apply_image_properties_dialog_geometry
 from resources.translations import get_current_language
 from resources.translations import tr as app_tr
-from ui.theming import polish_themed_dialog
+from shared_toolkit.ui.layout_sizing import handle_application_font_change
 from utils.resource_loader import resource_path
 
 from .service import ImageProperties, ImagePropertyRow, ImagePropertySection
 
 
-class ImagePropertiesDialog(QDialog):
+class ImagePropertiesDialog(ThemedDialog):
     def __init__(
         self,
         properties: ImageProperties,
@@ -44,16 +45,49 @@ class ImagePropertiesDialog(QDialog):
             | Qt.WindowType.WindowTitleHint
             | Qt.WindowType.WindowCloseButtonHint
         )
-        self.resize(640, 520)
         self.setSizeGripEnabled(True)
+        self.properties_section_frames: list[QFrame] = []
 
         self._init_ui()
-        self._apply_styles()
-        self.theme_manager.theme_changed.connect(self._apply_styles)
+        self.install_dialog_geometry(self._apply_dialog_geometry)
+        self.mark_theme_ui_ready()
 
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
 
         decorate_dialog(self, title=self._tr("image_properties.title", "Properties"))
+        # CSD adjustSize + deferred geometry can land after first map; re-apply
+        # once so section frames stretch across the scroll content.
+        QTimer.singleShot(0, self._finalize_layout_and_size)
+
+    def _apply_dialog_geometry(self) -> None:
+        apply_image_properties_dialog_geometry(self)
+
+    def _finalize_layout_and_size(self) -> None:
+        apply_image_properties_dialog_geometry(self)
+        try:
+            from sli_ui_toolkit.ui.windows.csd_helpers import sync_csd_chrome
+
+            sync_csd_chrome(self)
+        except Exception:
+            pass
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # First paint can race deferred geometry; activate stretch on show.
+        QTimer.singleShot(0, self._finalize_layout_and_size)
+
+    def changeEvent(self, event):
+        handle_application_font_change(self, event)
+        super().changeEvent(event)
+
+    def update_language(self, language: str) -> None:
+        self.current_language = language or "en"
+        self.setWindowTitle(self._tr("image_properties.title", "Properties"))
+        self.copy_all_button.setText(
+            self._tr("image_properties.copy_all", "Copy all")
+        )
+        self.close_button.setText(self._tr("image_properties.close", "Close"))
+        self._apply_dialog_geometry()
 
     def _init_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -65,19 +99,23 @@ class ImagePropertiesDialog(QDialog):
         scroll.set_corner_radius(0)
 
         content = QWidget(scroll)
+        self.properties_scroll_content = content
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(10)
 
         for section in self.properties.sections:
             if section.rows:
-                content_layout.addWidget(self._build_section(section))
+                frame = self._build_section(section)
+                self.properties_section_frames.append(frame)
+                content_layout.addWidget(frame)
         content_layout.addStretch()
 
         scroll.setWidget(content)
         root.addWidget(scroll, 1)
 
         actions = QWidget(self)
+        self.properties_actions = actions
         action_layout = QGridLayout(actions)
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setHorizontalSpacing(8)
@@ -158,12 +196,6 @@ class ImagePropertiesDialog(QDialog):
         QGuiApplication.clipboard().setText(
             self.properties.as_plain_text(lambda key: self._tr(key, key))
         )
-
-    def _apply_styles(self) -> None:
-        # QFrame#ImagePropertiesSection styling lives in resources/styles/app.qss
-        # (registered globally with ThemeManager) so it cascades here without an
-        # ad-hoc per-dialog setStyleSheet call.
-        polish_themed_dialog(self.theme_manager, self)
 
     def _row_value(self, row: ImagePropertyRow) -> str:
         if row.value_key:

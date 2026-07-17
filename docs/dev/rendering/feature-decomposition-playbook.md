@@ -110,8 +110,7 @@ git mv old_module.py state/new_name.py
 # ...repeat per the map from Step 2
 ```
 
-If `git mv` fails with "не под версионным контролем" / "not under version
-control" on a source path — check `git status` first. It usually means the
+If `git mv` fails with "not under version control" on a source path — check `git status` first. It usually means the
 working tree has stray untracked files (typically `__pycache__/*.pyc`)
 sitting next to the `.py` file, not that the move is unsafe. Falling back
 to plain `mv` + `git add` for the affected files is fine once you've
@@ -153,7 +152,7 @@ shallow is easy to miss until the feature renders wrong at runtime.
 
 1. `python3 -m py_compile` / `ast.parse` every file under the feature
    directory again.
-2. Repo-wide grep for the feature's old flat import paths
+2. Repo-wide grep for the feature's pre-split import paths
    (`tabs\.<tab>\.canvas\.features\.<name>\.(old_module_1|old_module_2|...)`)
    to confirm zero remaining hits, including in tests outside the feature
    directory.

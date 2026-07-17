@@ -2,7 +2,42 @@
 
 This file is for CLI AI agents and other automated coding assistants. Read it before making changes.
 
+Human-oriented cheat sheet: [docs/dev/README.md](docs/dev/README.md). IDE-specific entry points: [.github/copilot-instructions.md](.github/copilot-instructions.md), [.cursor/rules/improve-imgsli.mdc](.cursor/rules/improve-imgsli.mdc). Cursor skills: [.cursor/skills/imgsli-devtools/](.cursor/skills/imgsli-devtools/), [.cursor/skills/sli-ui-toolkit-docs-first/](.cursor/skills/sli-ui-toolkit-docs-first/).
+
 The codebase is a Python/PySide6 application under `src/` (production, declarative, well-decomposed).
+
+---
+
+## Agent Tooling
+
+Commands and facilities wired for automated assistants:
+
+| Tool | Command / env | Purpose |
+|---|---|---|
+| cloc | `./launcher.sh context --cloc-only` | Per-directory code stats for Improve-ImgSLI + `sli-ui-toolkit` → `cloc.txt` (gitignored), full tree expansion. `--toolkit-dir DIR` if the sibling checkout is not auto-found. |
+| Contract tests | `./launcher.sh test tests/contracts -q` | Fast AST/architecture dogmas — run before large refactors. See `tests/contracts/_framework.py`. |
+| Runtime tracer | `IMGSLI_TRACE=1` or `./launcher.sh run --debug` | Causal chain across dispatch / EventBus / render. Output: `~/.local/share/ImproveImgSLI/trace.jsonl`. See [docs/dev/TRACING.md](docs/dev/TRACING.md). |
+| UI inspector | `./launcher.sh run --ui-inspector` | In-app widget, palette, theme-token, QSS diagnostics. See [docs/dev/UI_INSPECTOR.md](docs/dev/UI_INSPECTOR.md). |
+| Startup phases | `IMGSLI_STARTUP_TRACE=1` | Bootstrap timing via `src/core/startup_trace.py`. |
+| Focused tests | `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` | Offscreen Qt for headless runs. |
+
+Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor/rules/` and `.cursor/skills/`), `.claude/`, `.agents/`, `.codex/`, `.windsurf/`, `.aider*`.
+
+### Task routing
+
+| Task | Start here |
+|---|---|
+| Architecture overview | [docs/dev/ARCHITECTURE.md](docs/dev/ARCHITECTURE.md) |
+| Protocols / isolation | [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) |
+| New canvas feature | [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md) |
+| New workspace tab | [docs/dev/tabs/index.md](docs/dev/tabs/index.md) |
+| Dialog / CSD chrome | [docs/dev/DIALOGS.md](docs/dev/DIALOGS.md) |
+| Toolkit widgets | [docs/dev/UI_TOOLKIT_LIBRARY.md](docs/dev/UI_TOOLKIT_LIBRARY.md) |
+| Find Action / palette | [docs/dev/ACTIONS.md](docs/dev/ACTIONS.md) |
+| Help authoring | [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md) |
+| “Weird after click/zoom” | [docs/dev/TRACING.md](docs/dev/TRACING.md) |
+| Known Qt quirks | [docs/dev/KNOWN_BUGS.md](docs/dev/KNOWN_BUGS.md) |
+| Open engineering debt | [docs/dev/TODO.md](docs/dev/TODO.md) |
 
 ---
 
@@ -14,11 +49,11 @@ The Python tree under `src/` is the reference implementation and the production 
 
 Read:
 
-1. [docs/dev/QRHI_CANVAS_FEATURES.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/QRHI_CANVAS_FEATURES.md)
-2. [docs/dev/CONTRACTS.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/CONTRACTS.md) — complete contracts reference
-3. [src/ui/canvas_presentation](/home/jorj/Загрузки/Improve-ImgSLI/src/ui/canvas_presentation)
-4. [src/ui/widgets/canvas](/home/jorj/Загрузки/Improve-ImgSLI/src/ui/widgets/canvas)
-5. [src/tabs/image_compare/canvas](/home/jorj/Загрузки/Improve-ImgSLI/src/tabs/image_compare/canvas)
+1. [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md)
+2. [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) — complete contracts reference
+3. [src/ui/canvas_presentation](src/ui/canvas_presentation)
+4. [src/ui/widgets/canvas](src/ui/widgets/canvas)
+5. [src/tabs/image_compare/canvas](src/tabs/image_compare/canvas)
 
 Important:
 
@@ -30,13 +65,15 @@ Important:
 
 Read:
 
-1. [docs/dev/HELP_WIDGET.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/HELP_WIDGET.md)
-2. [src/plugins/help/dialog.py](/home/jorj/Загрузки/Improve-ImgSLI/src/plugins/help/dialog.py)
-3. `sli_ui_toolkit.ui.widgets.composite.markdown_help_dialog` in the external `Loganavter/sli-ui-toolkit` repository
+1. [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md) — host shell, tab `contribute_help`, authoring, figure budgets
+2. [src/plugins/help/dialog.py](src/plugins/help/dialog.py)
+3. `sli_ui_toolkit.widgets.HelpDocumentView` in the external
+   `Loganavter/sli-ui-toolkit` repository
 
 Important:
 
-- Help content lives in `src/resources/help/<lang>/`.
+- Host topics: `src/resources/help/` (`tree.json` + `en|ru/ui|platform/`). Tab topics: `src/tabs/<tab>/resources/help/`.
+- Prefer `HelpDocumentView` + illustrated topic pages over `QTextBrowser` HTML.
 - Keep help pages scenario-based, anchor-friendly, and split into short `###` sections.
 - When features change, update help pages as part of the same task.
 
@@ -45,12 +82,11 @@ Important:
 Read:
 
 1. External toolkit repository: `https://github.com/Loganavter/sli-ui-toolkit`
-2. Local toolkit checkout: [/home/jorj/Загрузки/sli-ui-toolkit](/home/jorj/Загрузки/sli-ui-toolkit)
-3. App-side overview: [docs/dev/UI_TOOLKIT_LIBRARY.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/UI_TOOLKIT_LIBRARY.md)
-4. Toolkit [docs/dev/README.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/dev/README.md) and [docs/dev/ARCHITECTURE.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/dev/ARCHITECTURE.md)
-5. Toolkit [docs/user/API_CATALOG.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/user/API_CATALOG.md)
-6. Toolkit [docs/dev/DESIGN_LANGUAGE.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/dev/DESIGN_LANGUAGE.md)
-7. For button/control work, also read [docs/user/BUTTON_API.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/user/BUTTON_API.md) and [docs/user/FLYOUT_SYSTEM.md](/home/jorj/Загрузки/sli-ui-toolkit/docs/user/FLYOUT_SYSTEM.md) when relevant.
+2. Local checkout (optional): sibling `../sli-ui-toolkit` or `--toolkit-dir DIR` for `./launcher.sh context --cloc-only`
+3. App-side overview: [docs/dev/UI_TOOLKIT_LIBRARY.md](docs/dev/UI_TOOLKIT_LIBRARY.md)
+4. Toolkit `docs/dev/README.md` and `docs/dev/ARCHITECTURE.md` (in the toolkit repo)
+5. Toolkit `docs/user/API_CATALOG.md` and `docs/dev/DESIGN_LANGUAGE.md`
+6. For button/control work, also read toolkit `docs/user/BUTTON_API.md` and `docs/user/FLYOUT_SYSTEM.md` when relevant.
 
 Important:
 
@@ -64,9 +100,9 @@ Important:
 
 Read:
 
-1. [src/tabs/image_compare/services/image_export.py](/home/jorj/Загрузки/Improve-ImgSLI/src/tabs/image_compare/services/image_export.py) and [src/tabs/multi_compare/services/image_export.py](/home/jorj/Загрузки/Improve-ImgSLI/src/tabs/multi_compare/services/image_export.py)
-2. [src/tabs/image_compare/services/snapshot_render_plan_builder.py](/home/jorj/Загрузки/Improve-ImgSLI/src/tabs/image_compare/services/snapshot_render_plan_builder.py)
-3. [src/tabs/image_compare/plugins/video_editor/services/video_snapshot_rendering.py](/home/jorj/Загрузки/Improve-ImgSLI/src/tabs/image_compare/plugins/video_editor/services/video_snapshot_rendering.py)
+1. [src/tabs/image_compare/services/image_export/](src/tabs/image_compare/services/image_export/) and [src/tabs/multi_compare/services/image_export.py](src/tabs/multi_compare/services/image_export.py)
+2. [src/tabs/image_compare/services/snapshot_render_plan_builder.py](src/tabs/image_compare/services/snapshot_render_plan_builder.py)
+3. [src/tabs/image_compare/services/video_snapshot_rendering/](src/tabs/image_compare/services/video_snapshot_rendering) (tab implementation; plugin stub proxies via `create_startup_service`)
 
 Important:
 
@@ -77,12 +113,12 @@ Important:
 
 Read:
 
-1. [docs/dev/TAB_CONTRACT.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/TAB_CONTRACT.md) — tab interface, file layout, session lifecycle
-2. [docs/dev/STORE.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/STORE.md) — Redux-style state contract (`Action → Dispatcher → RootReducer → Store`)
-3. [docs/dev/EVENT_BUS.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/EVENT_BUS.md) — pub/sub for cross-component notifications, not for state
-4. [docs/dev/THEMING.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/THEMING.md) — palette + QSS pipeline (toolkit `ThemeManager` + app-side wiring)
-5. [src/core/store.py](/home/jorj/Загрузки/Improve-ImgSLI/src/core/store.py), [src/core/state_management/dispatcher.py](/home/jorj/Загрузки/Improve-ImgSLI/src/core/state_management/dispatcher.py), [src/core/state_management/reducers.py](/home/jorj/Загрузки/Improve-ImgSLI/src/core/state_management/reducers.py)
-6. [src/core/plugin_system/event_bus.py](/home/jorj/Загрузки/Improve-ImgSLI/src/core/plugin_system/event_bus.py)
+1. [docs/dev/tabs/index.md](docs/dev/tabs/index.md) — tab interface, file layout, session lifecycle
+2. [docs/dev/STORE.md](docs/dev/STORE.md) — Redux-style state contract (`Action → Dispatcher → RootReducer → Store`)
+3. [docs/dev/EVENT_BUS.md](docs/dev/EVENT_BUS.md) — pub/sub for cross-component notifications, not for state
+4. [docs/dev/THEMING.md](docs/dev/THEMING.md) — palette + QSS pipeline (toolkit `ThemeManager` + app-side wiring)
+5. [src/core/store.py](src/core/store.py), [src/core/state_management/dispatcher.py](src/core/state_management/dispatcher.py), [src/core/state_management/reducers.py](src/core/state_management/reducers.py)
+6. [src/core/plugin_system/event_bus.py](src/core/plugin_system/event_bus.py)
 
 Important:
 
@@ -113,17 +149,18 @@ Use this mental model for `src/`:
 
 ## Known Constraints
 
-- Images above `16384 px` on either side are currently unsupported by software guard.
+- Image load rejects sources above `65536 px` on a side (`AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION`). This is a decode/RAM sanity bound (codec still decompresses a full frame once; spill into `TiledPixelStore` is strip-written without a second full `HxWx4` copy), not a GPU-tile ceiling. Still-image export above `16384 px` (`AppConstants.EXPORT_TESTED_MAX_EDGE`) is allowed but warns that the path is untested (Image Compare and Multi Compare).
+- Full-resolution pixel data for all canvas tabs lives in `TiledPixelStore` (`shared/image_processing/tiled_pixel_store.py`) — memmap-backed, always tiled. Shared render helpers: `shared/rendering/host_texture_cache.py`, `export_tiling.py`, `tile_geometry.py`.
 - `ssim` has special handling because some paths depend on cached diff images and GPU diff textures.
 - Help pages now support anchors and generated in-page TOC. Keep headings stable.
 
 ## Tests
 
-See [docs/dev/TESTING.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/TESTING.md) for full layout and conventions.
+See [docs/dev/TESTING.md](docs/dev/TESTING.md) for full layout and conventions.
 
 Tests are grouped by subsystem under `tests/`:
 
-- `tests/contracts/` — static architectural dogmas (AST scan, no runtime).
+- `tests/contracts/` — static architectural dogmas (AST scan, no runtime). **Run these first** after structural changes: `./launcher.sh test tests/contracts -q`. Each test encodes a rule from `docs/dev/CONTRACTS.md`, `ARCHITECTURE.md`, or canvas-feature docs — read the failing test name and its module docstring before “fixing” code around the dogma.
 - `tests/runtime/` — registry, Feature State API, stacking policy.
 - `tests/render/` — GL pass behavior with fake `SimpleNamespace` context.
 - `tests/plugins/` — plugin behavior (export, help, settings, toast, clipboard).
@@ -140,7 +177,15 @@ When fixing a rendering/export/UI wiring bug, prefer adding a focused regression
 
 ## Debugging Runtime Issues
 
-When something goes wrong after a click / zoom / state change and the cause is not obvious from the diff, use the runtime tracer described in [docs/dev/TRACING.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/TRACING.md). It captures the causal chain across Redux dispatches, EventBus publishes, and render frames — much faster than instrumenting with `logger` calls by hand.
+When something goes wrong after a click / zoom / state change and the cause is not obvious from the diff:
+
+1. Reproduce with `./launcher.sh run --debug` (tracer on) or `IMGSLI_TRACE=1 ./launcher.sh run`.
+2. Read `~/.local/share/ImproveImgSLI/trace.jsonl` — filter by `trace_id` from the input event that opened the chain.
+3. See [docs/dev/TRACING.md](docs/dev/TRACING.md) for kind/category reference and filtering tips.
+4. For plain text logs (not causal chains): [docs/dev/LOGGING.md](docs/dev/LOGGING.md) (`~/.local/share/ImproveImgSLI/log.txt`, overwritten each start).
+5. For widget/theme/QSS mismatches: `./launcher.sh run --ui-inspector` — [docs/dev/UI_INSPECTOR.md](docs/dev/UI_INSPECTOR.md).
+
+The tracer captures Redux dispatches, EventBus publishes, and render frames — much faster than hand-instrumenting with `logger` calls.
 
 ## When To Update Docs
 
@@ -153,15 +198,19 @@ Update documentation in the same task if you change:
 
 Usually this means touching one of:
 
-- [src/resources/help/en](/home/jorj/Загрузки/Improve-ImgSLI/src/resources/help/en)
-- external `sli-ui-toolkit` docs/user/API_CATALOG.md
-- external `sli-ui-toolkit` docs/dev/ARCHITECTURE.md
-- [docs/dev/HELP_WIDGET.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/HELP_WIDGET.md)
-- [docs/dev/QRHI_CANVAS_FEATURES.md](/home/jorj/Загрузки/Improve-ImgSLI/docs/dev/QRHI_CANVAS_FEATURES.md)
+- [src/resources/help/en](src/resources/help/en)
+- external `sli-ui-toolkit` `docs/user/API_CATALOG.md`
+- external `sli-ui-toolkit` `docs/dev/ARCHITECTURE.md`
+- [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md)
+- [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md)
 
 ## Good Defaults For Agents
 
-- Prefer `search_files` for code search.
+- Read [docs/dev/README.md](docs/dev/README.md) for misconceptions before assuming web-app patterns.
+- For codebase size / where-the-code-lives questions, run `./launcher.sh context --cloc-only` and read `cloc.txt`. For everything else, search and read docs in the repo directly.
+- Run `./launcher.sh test tests/contracts -q` after refactors that touch imports, canvas features, plugins, or tab layout.
+- Prefer codebase search over guessing file locations.
 - Prefer small, explicit patches.
 - Prefer adding a focused regression test when fixing rendering/export/UI wiring bugs.
 - If a bug involves preview vs export mismatch, inspect both code paths before changing anything.
+- If runtime behavior is unclear after reading code, enable the tracer (`--debug`) before adding log statements.

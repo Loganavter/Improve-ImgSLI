@@ -1,7 +1,5 @@
 """Multi-compare dividers preserve content-scale sanity."""
 
-import numpy as np
-
 from tabs.multi_compare.models import (
     CompareSlot,
     LeafNode,
@@ -13,12 +11,13 @@ from tabs.multi_compare.scene.layout_constraints import (
     is_symmetric_layout,
     natural_pair_weight_ratio,
 )
+from tabs.multi_compare.tests.pixel_fixtures import slot_image
 
 
 def _slot(slot_id: int, width: int, height: int) -> CompareSlot:
     return CompareSlot(
         id=slot_id,
-        image=np.zeros((height, width, 3), dtype=np.uint8),
+        image=slot_image(width, height),
     )
 
 

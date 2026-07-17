@@ -4,7 +4,7 @@ QDialog#HelpDialog {
 
 QDialog#HelpDialog QListWidget {
     background-color: @help.nav.background;
-    border-right: 1px solid @help.nav.border;
+    border: none;
     font-size: 14px;
     padding-top: 5px;
     outline: 0;
@@ -26,4 +26,10 @@ QDialog#HelpDialog QListWidget::item:selected {
     background-color: @help.nav.selected;
     color: @help.nav.selected.text;
     border-radius: 4px;
+}
+
+QDialog#HelpDialog QSplitter#HelpSidebarSplitter::handle:horizontal {
+    background-color: @help.nav.border;
+    width: 1px;
+    margin: 0;
 }

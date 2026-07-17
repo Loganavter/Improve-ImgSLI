@@ -19,7 +19,7 @@ from core.plugin_system.interfaces import (
 )
 from plugins.export.controller import ExportController
 
-@plugin(name="export", version="1.0")
+@plugin(name="export", version="1.0", startup_tier="deferred", startup_order=10)
 class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     capabilities = ("export", "recording")
 
@@ -152,6 +152,13 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         )
 
     def _create_clipboard_service(self, main_controller: Any | None) -> Any:
+        """Bootstrap-default paste service for early shell wiring.
+
+        Live Ctrl+V resolves through ``ExportController.paste_image_from_clipboard``
+        → active-tab ``create_service("clipboard_paste_service")``. This startup
+        instance remains as a fallback when no active tab owns paste (e.g.
+        session_picker).
+        """
         from tabs.registry import TabRegistry
 
         registry = TabRegistry()
@@ -164,7 +171,7 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         if service is None:
             raise RuntimeError(
                 "No tab provides clipboard_paste_service; clipboard paste "
-                "must be supplied by the active tab owner."
+                "must be supplied by a tab owner."
             )
         return service
 

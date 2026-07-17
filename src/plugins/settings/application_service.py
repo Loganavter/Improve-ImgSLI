@@ -11,6 +11,7 @@ from core.state_management.actions import (
     SetAutoCropBlackBordersAction,
     SetDebugModeEnabledAction,
     SetDisplayResolutionLimitAction,
+    SetKeyboardOverridesAction,
     SetMaxNameLengthAction,
     SetShowWorkspaceTabsAction,
     SetSystemNotificationsEnabledAction,
@@ -115,18 +116,6 @@ class SettingsApplicationService(QObject):
                 container = getattr(ui, "workspace_tabs_bar", None)
                 if container is not None:
                     container.setVisible(data.show_workspace_tabs)
-
-        if data.use_custom_decorations != getattr(
-            self.store.settings, "use_custom_decorations", True
-        ):
-            self.store.settings.use_custom_decorations = data.use_custom_decorations
-            self._save_setting("use_custom_decorations", data.use_custom_decorations)
-            window_shell = (
-                self.main_controller.window_shell if self.main_controller else None
-            )
-            window = getattr(window_shell, "main_window_app", None)
-            if window is not None and hasattr(window, "apply_decoration_mode"):
-                window.apply_decoration_mode(data.use_custom_decorations)
 
         return render_update_needed
 
@@ -263,8 +252,42 @@ class SettingsApplicationService(QObject):
             self._save_setting("rhi_backend", new_backend)
             self._notify_render_backend_restart_required(new_backend)
 
+        self._apply_keyboard_overrides(data)
+
+    def _apply_keyboard_overrides(self, data: SettingsDialogData) -> None:
+        import json
+
+        new_overrides = dict(getattr(data, "keyboard_overrides", None) or {})
+        current = dict(getattr(self.store.settings, "keyboard_overrides", None) or {})
+        if new_overrides == current:
+            return
+        dispatcher = self.store.get_dispatcher()
+        dispatcher.dispatch(SetKeyboardOverridesAction(new_overrides))
+        self._save_setting("keyboard_overrides", json.dumps(new_overrides))
+        try:
+            from ui.actions.binder import resync_action_shortcuts
+
+            window_shell = (
+                self.main_controller.window_shell if self.main_controller else None
+            )
+            window = (
+                getattr(window_shell, "main_window_app", None)
+                if window_shell is not None
+                else None
+            )
+            if window is None:
+                window = getattr(self.parent(), "parent_widget", None)
+            resync_action_shortcuts(window, overrides=new_overrides)
+        except Exception:
+            import logging
+
+            logging.getLogger("ImproveImgSLI").exception(
+                "Failed to resync action shortcuts after keyboard override apply"
+            )
+
     def _notify_render_backend_restart_required(self, backend: str) -> None:
-        from PySide6.QtWidgets import QMessageBox
+        from shared_toolkit.ui.message_dialog import AppMessageDialog
+
         window_shell = self.main_controller.window_shell if self.main_controller else None
         parent = getattr(window_shell, "main_window_app", None) if window_shell else None
         tr_lang = getattr(self.store.settings, "current_language", "en")
@@ -272,10 +295,17 @@ class SettingsApplicationService(QObject):
             from resources.translations import tr as app_tr
             title = app_tr("settings.render_backend_restart_title", tr_lang)
             text = app_tr("settings.render_backend_restart_message", tr_lang)
+            ok_text = app_tr("common.ok", tr_lang)
         except Exception:
             title = "Restart required"
             text = "The render backend will change after restart."
-        QMessageBox.information(parent, title, text.format(backend=backend))
+            ok_text = "OK"
+        AppMessageDialog.information(
+            parent,
+            title,
+            text.format(backend=backend),
+            ok_text=ok_text,
+        )
 
     def _emit_ui_mode_changed(self, ui_mode: str) -> None:
         if self.event_bus is not None:

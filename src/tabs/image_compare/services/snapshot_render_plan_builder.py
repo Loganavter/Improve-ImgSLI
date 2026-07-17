@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import replace
 
-from PIL import Image
 from PySide6.QtGui import QColor
-
-_pblog = logging.getLogger("ImproveImgSLI.plan_builder")
 
 from core.store import Store
 from tabs.image_compare.services.analysis.background_layers import (
@@ -82,6 +78,10 @@ def query_active_magnifier_divider_thickness(store) -> int:
     return int(command(store) if command is not None else 0)
 
 
+    command = registry().get_feature_command_by_alias("overlay.active_divider_thickness")
+    return int(command(store) if command is not None else 0)
+
+
 def calculate_still_snapshot_bounds(snap, image1, image2) -> GlobalCanvasBounds:
     base_w = max(
         1,
@@ -95,7 +95,7 @@ def calculate_still_snapshot_bounds(snap, image1, image2) -> GlobalCanvasBounds:
     )
 
     temp_store = Store()
-    # See the matching comment in video_snapshot_rendering.py's
+    # See the matching comment in video_snapshot_rendering/store_rebuild.py's
     # `_rebuild_snapshot_store`: `resolve_feature_virtual_layout` below needs
     # an "image_compare" session active, not the default "session_picker".
     temp_store.create_workspace_session(session_type="image_compare", activate=True)
@@ -392,6 +392,18 @@ class SnapshotRenderPlanBuilder:
             image_w=canvas_plan.image_width,
             image_h=canvas_plan.image_height,
         )
+        if getattr(render_scene, "overlay_clip_rect", None) is None:
+            pad_l = int(canvas_plan.padding_left)
+            pad_t = int(canvas_plan.padding_top)
+            img_w = int(canvas_plan.image_width)
+            img_h = int(canvas_plan.image_height)
+            canv_w = int(canvas_plan.canvas_width)
+            canv_h = int(canvas_plan.canvas_height)
+            if pad_l or pad_t or img_w != canv_w or img_h != canv_h:
+                render_scene = replace(
+                    render_scene,
+                    overlay_clip_rect=(pad_l, pad_t, img_w, img_h),
+                )
         base_image1 = scene_images["bg1"]
         base_image2 = scene_images["bg2"]
         if scene_images["diff"] is not None:
@@ -437,25 +449,10 @@ class SnapshotRenderPlanBuilder:
                 if target_surface is not None
                 else False
             ),
-            image_is_padded_composite=True,
+            image_is_padded_composite=False,
+            geometry_letterbox=True,
         )
         return plan
-
-    @staticmethod
-    def _pad_scene_image(
-        image: Image.Image | None,
-        *,
-        canvas_w: int,
-        canvas_h: int,
-        pad_left: int,
-        pad_top: int,
-        fill_rgba: tuple[int, int, int, int],
-    ):
-        if image is None:
-            return None
-        result = Image.new("RGBA", (canvas_w, canvas_h), fill_rgba)
-        result.paste(image.convert("RGBA"), (pad_left, pad_top))
-        return result
 
     def _prepare_canvas_scene_images(
         self,
@@ -468,6 +465,12 @@ class SnapshotRenderPlanBuilder:
         cached_diff_image,
         canvas_fill_rgba=None,
     ):
+        """Keep scene images unpadded; pads live in ``canvas_plan`` + fill.
+
+        GPU export applies ``shader_letterbox=True`` and clears with
+        ``fill_rgba``; baking pad into PIL would force a whole-image
+        materialize of ``TiledPixelStore`` sources.
+        """
         aligned_source1 = source_image1
         aligned_source2 = source_image2
         export_size = (
@@ -482,40 +485,11 @@ class SnapshotRenderPlanBuilder:
             aligned_source1 = image1
             aligned_source2 = image2
 
-        fill_rgba = tuple(canvas_fill_rgba or (0, 0, 0, 0))
-        canvas_w = int(canvas_plan.canvas_width)
-        canvas_h = int(canvas_plan.canvas_height)
-        pad_left = int(canvas_plan.padding_left)
-        pad_top = int(canvas_plan.padding_top)
-        scene_images = {
-            "bg1": self._pad_scene_image(
-                image1,
-                canvas_w=canvas_w,
-                canvas_h=canvas_h,
-                pad_left=pad_left,
-                pad_top=pad_top,
-                fill_rgba=fill_rgba,
-            ),
-            "bg2": self._pad_scene_image(
-                image2,
-                canvas_w=canvas_w,
-                canvas_h=canvas_h,
-                pad_left=pad_left,
-                pad_top=pad_top,
-                fill_rgba=fill_rgba,
-            ),
+        return {
+            "bg1": image1,
+            "bg2": image2,
             "src1": aligned_source1,
             "src2": aligned_source2,
-            "diff": self._pad_scene_image(
-                cached_diff_image,
-                canvas_w=canvas_w,
-                canvas_h=canvas_h,
-                pad_left=pad_left,
-                pad_top=pad_top,
-                fill_rgba=fill_rgba,
-            )
-            if cached_diff_image is not None
-            else None,
+            "diff": cached_diff_image,
             "raw_diff": cached_diff_image,
         }
-        return scene_images

@@ -181,11 +181,14 @@ class OnboardingOverlay(QWidget):
 
         for i, btn in enumerate(self.mode_buttons):
             if i == index:
+                # Exact accent base; keep hover/press overlays (unlocked).
+                btn.set_bg_locked(False)
                 btn.set_override_bg_color(accent_color)
                 btn.setProperty("textColor", highlighted_text)
                 btn.update()
             else:
                 btn.set_override_bg_color(None)
+                btn.set_bg_locked(False)
                 btn.setProperty("textColor", text_color)
                 btn.update()
 

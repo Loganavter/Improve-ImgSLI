@@ -61,6 +61,7 @@
     "toast.text": "#000000",
     "toast.border": "#19000000",
     "toast.progress.background": "#24000000",
+    "toast.progress.fill": "#0078D4",
     "slider.track.background": "#929292",
     "slider.track.unfilled": "#706f6f",
     "slider.thumb.outer": "#ffffff",
@@ -80,7 +81,10 @@
     "button.toggle.background.hover": "#e6e6e6",
     "button.toggle.background.pressed": "#dcdcdc",
     "button.toggle.background.checked": "#c0c0c0",
-    "button.toggle.background.checked.hover": "#b0b0b0"
+    "button.toggle.background.checked.hover": "#b0b0b0",
+    "titlebar.background": "#f5f5f5",
+    "titlebar.text": "#1f1f1f",
+    "titlebar.menu.hover": "#e8e8e8"
   },
   "dark": {
     "Window": "#2b2b2b",
@@ -144,6 +148,7 @@
     "toast.text": "#ffffff",
     "toast.border": "#19FFFFFF",
     "toast.progress.background": "#40FFFFFF",
+    "toast.progress.fill": "#0096FF",
     "slider.track.background": "#5a5a5a",
     "slider.track.unfilled": "#9a9a9a",
     "slider.thumb.outer": "#454545",
@@ -163,6 +168,9 @@
     "button.toggle.background.hover": "#4a4a4a",
     "button.toggle.background.pressed": "#353535",
     "button.toggle.background.checked": "#555555",
-    "button.toggle.background.checked.hover": "#606060"
+    "button.toggle.background.checked.hover": "#606060",
+    "titlebar.background": "#2b2b2b",
+    "titlebar.text": "#dfdfdf",
+    "titlebar.menu.hover": "#3a3a3a"
   }
 }

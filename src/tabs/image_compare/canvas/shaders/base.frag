@@ -15,6 +15,10 @@ layout(std140, binding = 0) uniform UBuf
     float diffThreshold;
     vec4 tileRect1;
     vec4 tileRect2;
+    // Expanding-canvas frame in widget UV + fill for pads inside it
+    // (video uncrop / export). zw==0 disables; fill.a==0 → transparent.
+    vec4 canvasLetterbox;
+    vec4 letterboxFill;
 };
 
 layout(binding = 1) uniform sampler2D image1;
@@ -76,10 +80,24 @@ void main()
         return;
     }
 
-    bool useFirst = (isHorizontal != 0 ? vTexCoord.y : vTexCoord.x) < splitPosition;
+    // Content-space spit (same model as magnifier ``internalSplit``): compare
+    // against the letterboxed image UV, not screen ``vTexCoord``. ``splitPosition``
+    // is store ``split_position_visual`` in ``[0,1]`` — pan/zoom must not be
+    // baked into this uniform. Screen-space display spit is only for DividerPass.
+    vec2 splitUV = (uv - letterbox1.xy) / letterbox1.zw;
+    bool useFirst = (isHorizontal != 0 ? splitUV.y : splitUV.x) < splitPosition;
     vec4 letterbox = useFirst ? letterbox1 : letterbox2;
     vec2 sampleUV = (uv - letterbox.xy) / letterbox.zw;
     if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) {
+        // Inside the padded canvas frame but outside the image → fill color.
+        // Outside the canvas frame → transparent (theme chrome shows through).
+        if (canvasLetterbox.z > 0.0 && canvasLetterbox.w > 0.0 && letterboxFill.a > 0.0) {
+            vec2 canvasUV = (uv - canvasLetterbox.xy) / canvasLetterbox.zw;
+            if (canvasUV.x >= 0.0 && canvasUV.x <= 1.0 && canvasUV.y >= 0.0 && canvasUV.y <= 1.0) {
+                fragColor = letterboxFill;
+                return;
+            }
+        }
         fragColor = vec4(0.0);
         return;
     }

@@ -24,7 +24,7 @@ class ImageCompareLayoutManager:
         # wrong object was passed in, not a legitimately-absent widget.
         # Let that surface as an immediate AttributeError instead of a
         # widget silently never being placed into its layout (see
-        # docs/dev/TAB_CONTRACT.md "No Implied Lookups").
+        # docs/dev/tabs/isolation.md "No Implied Lookups").
         self.ui = ui
         self.parent_window = parent_window
         self.toast_manager = None

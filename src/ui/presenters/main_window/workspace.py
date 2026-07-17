@@ -15,10 +15,8 @@ def initialize_workspace_state(presenter) -> None:
 
 def configure_workspace_actions(presenter):
     # The add-tab button always opens the session picker directly (see
-    # on_new_workspace_tab_requested) instead of popping up a session-type
-    # menu, so no menu actions are attached here.
-    btn = presenter.ui.btn_new_session
-    btn.set_actions([])
+    # on_new_workspace_tab_requested). Button no longer embeds dropdown menus.
+    pass
 
 
 def on_new_workspace_tab_requested(presenter):
@@ -31,6 +29,49 @@ def on_new_workspace_tab_requested(presenter):
         )
     except Exception:
         logger.exception("on_new_workspace_tab_requested: create session_picker failed")
+
+
+def ensure_session_picker_visible(presenter) -> None:
+    """Activate an existing Session Picker tab, or create one if none exists.
+
+    Used by Find Action reveal / Open Session Picker — must not spawn a
+    duplicate ``session_picker`` when one is already open. The workspace-tabs
+    ``+`` button still goes through ``on_new_workspace_tab_requested``.
+    """
+    if not presenter.main_controller:
+        return
+    workspace = presenter.main_controller.workspace
+    sessions = ()
+    session_manager = getattr(presenter, "session_manager", None)
+    if session_manager is not None:
+        try:
+            sessions = session_manager.list_sessions()
+        except Exception:
+            sessions = ()
+    for session in sessions:
+        if getattr(session, "session_type", None) != INITIAL_WORKSPACE_SESSION_TYPE:
+            continue
+        active = (
+            session_manager.get_active_session()
+            if session_manager is not None
+            else None
+        )
+        if active is not None and active.id == session.id:
+            return
+        try:
+            workspace.switch_workspace_session(session.id)
+        except Exception:
+            logger.exception(
+                "ensure_session_picker_visible: switch to existing picker failed"
+            )
+        return
+    try:
+        workspace.create_workspace_session(
+            INITIAL_WORKSPACE_SESSION_TYPE,
+            activate=True,
+        )
+    except Exception:
+        logger.exception("ensure_session_picker_visible: create session_picker failed")
 
 
 def sync_workspace_tabs(presenter):

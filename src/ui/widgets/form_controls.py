@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from sli_ui_toolkit.widgets import Button, CustomLineEdit
 
@@ -18,18 +25,58 @@ class DialogActionBar(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        # Fixed vertically so height squeeze collapses stretch above, not OK/Cancel.
+        self.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         layout.addStretch()
 
-        self.secondary_button = Button(text=secondary_text, variant="surface", parent=self)
-        self.secondary_button.setMinimumSize(*secondary_min_size)
-        self.primary_button = Button(text=primary_text, variant="surface", parent=self)
-        self.primary_button.setMinimumSize(*primary_min_size)
+        self._primary_min_size = primary_min_size
+        self._secondary_min_size = secondary_min_size
+
+        # Create with real text (like settings) so toolkit Button takes the
+        # text-geometry path — empty→setText clears minimumWidth and lets
+        # buttons collapse to ~36px.
+        self.secondary_button = Button(
+            text=secondary_text, variant="surface", parent=self
+        )
+        self.primary_button = Button(
+            text=primary_text, variant="surface", parent=self
+        )
+        self._apply_button_minimums()
 
         layout.addWidget(self.secondary_button)
         layout.addWidget(self.primary_button)
+        self.lock_content_minimum_height()
+
+    def _apply_button_minimums(self) -> None:
+        self.secondary_button.setMinimumSize(*self._secondary_min_size)
+        self.primary_button.setMinimumSize(*self._primary_min_size)
+        for button in (self.secondary_button, self.primary_button):
+            button.setSizePolicy(
+                QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+            )
+
+    def lock_content_minimum_height(self) -> None:
+        """Pin bar height to the taller of configured mins and sizeHint."""
+        self.ensurePolished()
+        hint_h = max(
+            self.sizeHint().height(),
+            self._primary_min_size[1],
+            self._secondary_min_size[1],
+        )
+        if hint_h > 0:
+            self.setMinimumHeight(max(self.minimumHeight(), hint_h))
+            self.setMaximumHeight(max(self.minimumHeight(), hint_h))
+
+    def set_button_texts(self, primary_text: str, secondary_text: str) -> None:
+        self.primary_button.setText(primary_text)
+        self.secondary_button.setText(secondary_text)
+        self._apply_button_minimums()
+        self.lock_content_minimum_height()
 
 
 class OutputPathSection(QWidget):
@@ -51,12 +98,21 @@ class OutputPathSection(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        # Prefer horizontal flex; never shrink below content height — Preferred
+        # vertical would crush Browse / favorite buttons when the dialog is
+        # height-compressed (CSD startSystemResize often ignores Qt mins).
+        self.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum
+        )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
         self.dir_label = QLabel(directory_label_text, self)
         self.dir_picker_row = QWidget(self)
+        self.dir_picker_row.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
         dir_layout = QHBoxLayout(self.dir_picker_row)
         dir_layout.setContentsMargins(0, 0, 0, 0)
         dir_layout.setSpacing(6)
@@ -64,6 +120,9 @@ class OutputPathSection(QWidget):
         self.edit_dir = CustomLineEdit(self) if use_custom_line_edit else QLineEdit(self)
         self.btn_browse_dir = Button(text=browse_text, variant="surface", parent=self)
         self.favorite_actions = QWidget(self)
+        self.favorite_actions.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
         fav_layout = QHBoxLayout(self.favorite_actions)
         fav_layout.setContentsMargins(0, 0, 0, 0)
         fav_layout.setSpacing(6)
@@ -97,3 +156,11 @@ class OutputPathSection(QWidget):
         layout.addWidget(self.favorite_actions)
         layout.addWidget(self.filename_label)
         layout.addWidget(self.filename_edit)
+
+    def lock_content_minimum_height(self) -> None:
+        """Pin vertical minimum to the current content sizeHint."""
+        self.ensurePolished()
+        self.adjustSize()
+        hint_h = self.sizeHint().height()
+        if hint_h > 0:
+            self.setMinimumHeight(max(self.minimumHeight(), hint_h))

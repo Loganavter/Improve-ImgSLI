@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from domain.qt_adapters import color_to_qcolor
 
+
 class FontSettingsController:
     def __init__(self, manager, widget):
         self.manager = manager
@@ -18,8 +19,10 @@ class FontSettingsController:
         host = self.manager.host
         if not host.font_settings_flyout:
             return
-        if anchor_widget is None:
-            anchor_widget = getattr(self.widget, "btn_text_settings", None)
+        # Find Action / cold open: edit row (btn_text_settings) is hidden until
+        # filename labels are on — reveal that chrome before anchoring.
+        self._ensure_text_settings_chrome()
+        anchor_widget = self._resolve_anchor(anchor_widget)
         host._font_anchor_widget = anchor_widget
         host.font_settings_flyout.set_values(
             host.store.viewport.render_config.font_size_percent,
@@ -36,6 +39,69 @@ class FontSettingsController:
             if hasattr(anchor_widget, "setFlyoutOpen"):
                 anchor_widget.setFlyoutOpen(True)
         host._font_popup_open = True
+
+    def _ensure_text_settings_chrome(self) -> None:
+        """Show the bottom edit toolbar so ``btn_text_settings`` can be anchored."""
+        widget = self.widget
+        btn = getattr(widget, "btn_text_settings", None)
+        if self._is_alive_and_visible(btn):
+            return
+
+        host = self.manager.host
+        store = getattr(host, "store", None)
+        render = getattr(getattr(store, "viewport", None), "render_config", None)
+        if store is not None and render is not None and not bool(
+            getattr(render, "include_file_names_in_saved", False)
+        ):
+            from core.state_management.appearance_actions import (
+                SetIncludeFileNamesInSavedAction,
+            )
+
+            dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+            if dispatcher is not None:
+                dispatcher.dispatch(
+                    SetIncludeFileNamesInSavedAction(True),
+                    scope="viewport",
+                )
+
+        toggle = getattr(widget, "toggle_edit_layout_visibility", None)
+        if callable(toggle):
+            toggle(True)
+
+        file_btn = getattr(widget, "btn_file_names", None)
+        if file_btn is not None and hasattr(file_btn, "setChecked"):
+            try:
+                file_btn.setChecked(True, emit_signal=False)
+            except TypeError:
+                if not bool(file_btn.isChecked()):
+                    file_btn.setChecked(True)
+
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+        except Exception:
+            pass
+
+    def _resolve_anchor(self, preferred=None):
+        """Prefer a visible text-settings / file-names button for placement."""
+        widget = self.widget
+        candidates = []
+        if preferred is not None:
+            candidates.append(preferred)
+        for attr in ("btn_text_settings", "btn_file_names"):
+            candidate = getattr(widget, attr, None)
+            if candidate is not None and candidate not in candidates:
+                candidates.append(candidate)
+        for candidate in candidates:
+            if self._is_alive_and_visible(candidate):
+                return candidate
+        for candidate in candidates:
+            if candidate is not None:
+                return candidate
+        return None
 
     def hide(self):
         host = self.manager.host

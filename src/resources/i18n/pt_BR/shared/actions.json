@@ -1,10 +1,12 @@
 {
   "action": {
     "context_copy_path": "Copiar caminho",
+    "context_duplicate": "Duplicar",
     "context_name": "Nome",
     "context_path": "Caminho",
     "context_properties": "Propriedades",
     "context_remove": "Remover",
+    "context_rename": "Renomear",
     "context_size": "Tamanho",
     "export_video": "Exportar Vídeo",
     "open_application_settings": "Abrir Configurações do Aplicativo",

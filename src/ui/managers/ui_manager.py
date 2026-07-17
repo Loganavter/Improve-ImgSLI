@@ -1,8 +1,9 @@
 import logging
 from typing import Any, Callable
 
-from PySide6.QtCore import QEvent, QObject, QPointF
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QEvent, QObject, QPointF, Qt, QTimer
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import QApplication
 
 from core.plugin_system.ui_integration import PluginUIRegistry
 from ui.managers.dialog_manager import DialogManager
@@ -128,24 +129,61 @@ class UIManager(QObject):
         app = QApplication.instance()
         if (
             watched is self.parent_widget
-            and event.type()
-            in (QEvent.Type.WindowDeactivate, QEvent.Type.Hide, QEvent.Type.Close)
+            and event.type() == QEvent.Type.WindowDeactivate
         ):
-            self.hide_transient_same_window_ui()
+            self._schedule_hide_transient_if_still_inactive()
+        elif watched is self.parent_widget and event.type() in (
+            QEvent.Type.Hide,
+            QEvent.Type.Close,
+        ):
+            self.transient.hide_transient_same_window_ui(reason="window_hide_or_close")
         elif watched is app and event.type() == QEvent.Type.ApplicationDeactivate:
-            self.hide_transient_same_window_ui()
+            self._schedule_hide_transient_if_still_inactive()
         if self.transient.event_filter(watched, event):
             return True
         return super().eventFilter(watched, event)
 
+    def _schedule_hide_transient_if_still_inactive(self) -> None:
+        """Wayland often flickers WindowDeactivate when in-window menus close.
+
+        Defer the sweep and only run it if the app/window is still inactive.
+        Modal rename/properties dialogs deactivate the main window while the
+        app stays active — those must not dismiss the list flyout.
+        """
+        if getattr(self, "_deactivate_hide_scheduled", False):
+            return
+        self._deactivate_hide_scheduled = True
+
+        def _maybe_hide() -> None:
+            self._deactivate_hide_scheduled = False
+            from ui.managers.transient_ui_parts.closing import (
+                _modal_dialog_blocks_transient_hide,
+            )
+
+            if _modal_dialog_blocks_transient_hide(self):
+                return
+            gui = QGuiApplication.instance()
+            app_active = (
+                gui is not None
+                and gui.applicationState() == Qt.ApplicationState.ApplicationActive
+            )
+            win_active = bool(self.parent_widget.isActiveWindow())
+            if app_active and win_active:
+                return
+            self.transient.hide_transient_same_window_ui(
+                reason="window_or_app_deactivate"
+            )
+
+        QTimer.singleShot(0, _maybe_hide)
+
     def close_all_flyouts_if_needed(self, global_pos: QPointF):
         self.transient.close_all_flyouts_if_needed(global_pos)
 
-    def show_help_dialog(self):
-        self.dialogs.show_help_dialog()
+    def show_help_dialog(self, *, page: str | None = None, anchor: str | None = None):
+        self.dialogs.show_help_dialog(page=page, anchor=anchor)
 
-    def show_settings_dialog(self):
-        self.dialogs.show_settings_dialog()
+    def show_settings_dialog(self, *, section_id: str | None = None):
+        self.dialogs.show_settings_dialog(section_id=section_id)
 
     def show_export_dialog(
         self,
@@ -159,11 +197,20 @@ class UIManager(QObject):
             dialog_state, preview_image, suggested_filename, on_set_favorite_dir, native_size
         )
 
-    def show_non_modal_message(self, icon, title: str, text: str):
-        self.messages.show_non_modal_message(icon, title, text)
+    def show_non_modal_message(self, kind, title: str, text: str):
+        self.messages.show_non_modal_message(kind, title, text)
 
     def repopulate_visible_flyouts(self):
-        if self.unified_flyout and self.unified_flyout.isVisible():
+        import shiboken6 as sip
+
+        flyout = self.unified_flyout
+        if flyout is None or not sip.isValid(flyout):
+            return
+        try:
+            visible = flyout.isVisible()
+        except RuntimeError:
+            return
+        if visible:
             self.repopulate_flyouts()
 
     def hide_transient_same_window_ui(self):

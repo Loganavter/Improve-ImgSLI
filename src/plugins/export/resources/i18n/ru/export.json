@@ -11,6 +11,7 @@
     "png_compression_level": "Уровень сжатия PNG",
     "preview": "Предпросмотр",
     "remember_by_default": "Запоминать по умолчанию",
+    "lock_aspect_ratio": "Заблокировать соотношение сторон",
     "select_background_color": "Выбрать цвет фона",
     "select_output_directory": "Выбрать выходную директорию"
   }

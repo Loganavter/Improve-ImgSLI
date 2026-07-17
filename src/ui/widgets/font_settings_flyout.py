@@ -16,6 +16,9 @@ class FontSettingsFlyout(BaseFlyout):
     interaction_started = Signal(str)
     interaction_finished = Signal(str)
 
+    # Identity for host ``GroupShowPolicy``.
+    flyout_group = "font_settings"
+
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.current_language = "en"
@@ -31,25 +34,23 @@ class FontSettingsFlyout(BaseFlyout):
         self.bg_color_swatch = ColorSwatch(QColor("#000000"), parent=self)
         self.draw_bg_switch = Switch(parent=self)
 
-        self._size_label = self.add_row(self._tr("label.font_size"), self.size_slider, label_pixel_size=13)
-        self._weight_label = self.add_row(self._tr("label.bold"), self.weight_slider, label_pixel_size=13)
-        self._opacity_label = self.add_row(self._tr("label.opacity"), self.opacity_slider, label_pixel_size=13)
-        self._color_label = self.add_row(self._tr("label.color"), self.color_swatch, label_pixel_size=13)
-        self._bg_label = self.add_row(self._tr("label.background"), self.bg_color_swatch, label_pixel_size=13)
-        self._draw_bg_label = self.add_row(
-            self._tr("label.background"),
-            self.draw_bg_switch,
-            label_pixel_size=13,
-        )
+        self._size_label = self.add_row("", self.size_slider, label_pixel_size=13)
+        self._weight_label = self.add_row("", self.weight_slider, label_pixel_size=13)
+        self._opacity_label = self.add_row("", self.opacity_slider, label_pixel_size=13)
+        self._color_label = self.add_row("", self.color_swatch, label_pixel_size=13)
+        self._bg_label = self.add_row("", self.bg_color_swatch, label_pixel_size=13)
+        self._draw_bg_label = self.add_row("", self.draw_bg_switch, label_pixel_size=13)
         self._placement_label, self._pos_group, self._pos_radios = self.add_radio_row(
-            self._tr("settings.text_position"),
+            "",
             [
-                (self._tr("settings.position_edges"), "edges"),
-                (self._tr("settings.position_split_line"), "split_line"),
+                ("", "edges"),
+                ("", "split_line"),
             ],
             default="edges",
         )
         self._placement_label.setPixelSize(13)
+        self._tag_find_action_chrome()
+        self._retranslate()
 
         for slider in (self.size_slider, self.weight_slider, self.opacity_slider):
             slider.valueChanged.connect(self._emit_settings_changed)
@@ -58,6 +59,11 @@ class FontSettingsFlyout(BaseFlyout):
         self.draw_bg_switch.checkedChanged.connect(self._emit_settings_changed)
         for radio in self._pos_radios.values():
             radio.toggled.connect(lambda *_: self._emit_settings_changed())
+
+    def _tag_find_action_chrome(self) -> None:
+        from ui.widgets.font_settings_search import tag_font_settings_flyout
+
+        tag_font_settings_flyout(self, include_placement=True)
 
     @staticmethod
     def _slider(minimum: int, maximum: int, value: int) -> Slider:
@@ -70,6 +76,21 @@ class FontSettingsFlyout(BaseFlyout):
     def _tr(self, key: str) -> str:
         value = tr(key, self.current_language)
         return value if value != key else key.rsplit(".", 1)[-1].replace("_", " ").title()
+
+    def _retranslate(self) -> None:
+        self._size_label.setText(self._tr("label.font_size"))
+        self._weight_label.setText(self._tr("label.bold"))
+        self._opacity_label.setText(self._tr("label.opacity"))
+        self._color_label.setText(self._tr("label.color"))
+        self._bg_label.setText(self._tr("label.background"))
+        self._draw_bg_label.setText(self._tr("label.draw_text_background"))
+        self._placement_label.setText(self._tr("label.text_position"))
+        edges = self._pos_radios.get("edges")
+        if edges is not None:
+            edges.setText(self._tr("label.position_edges"))
+        split = self._pos_radios.get("split_line")
+        if split is not None:
+            split.setText(self._tr("label.position_split_line"))
 
     def set_values(
         self,
@@ -84,6 +105,7 @@ class FontSettingsFlyout(BaseFlyout):
     ) -> None:
         if language:
             self.current_language = language
+            self._retranslate()
         blockers = [
             QSignalBlocker(self.size_slider),
             QSignalBlocker(self.weight_slider),
@@ -116,6 +138,11 @@ class FontSettingsFlyout(BaseFlyout):
 
     def has_active_dialog(self) -> bool:
         return self._active_dialog
+
+    def restore_focus_on_hide(self) -> bool:
+        # Same as context menus: activateWindow/setFocus on hide re-enters
+        # focusChanged and can jerk the canvas / desync toggle state.
+        return False
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)

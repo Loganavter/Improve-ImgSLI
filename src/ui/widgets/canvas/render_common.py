@@ -42,9 +42,11 @@ def resolve_widget_background(widget) -> QColor:
     """Return the effective background color for the QRhi clear color."""
     plan = getattr(widget, "_active_render_plan", None)
     fill_rgba = getattr(plan, "fill_rgba", None)
-    if bool(getattr(widget, "_use_plan_fill_clear", False)) and fill_rgba is not None:
-        r, g, b, a = fill_rgba
-        return QColor(int(r), int(g), int(b), int(a))
+    if bool(getattr(widget, "_use_plan_fill_clear", False)):
+        if fill_rgba is not None and len(fill_rgba) >= 4:
+            r, g, b, a = fill_rgba
+            return QColor(int(r), int(g), int(b), int(a))
+        return QColor(0, 0, 0, 0)
     bg = getattr(widget, "_theme_background_color", None)
     if not isinstance(bg, QColor) or not bg.isValid():
         palette = widget.palette()

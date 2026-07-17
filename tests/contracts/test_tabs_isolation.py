@@ -7,7 +7,7 @@ i18n namespace and resources. It must NOT:
   * reference foreign i18n namespaces (``app.*``, ``main.*``, ``common.*``)
     in its own translation JSON.
 
-Dogma source: docs/dev/TAB_CONTRACT.md (tabs use only their own namespace).
+Dogma source: docs/dev/tabs/isolation.md (tabs use only their own namespace).
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ TAB_PKGS = _tab_packages()
 TAB_IDS = [d.name for d in TAB_PKGS]
 
 _FORBIDDEN_IMPORT_RE = re.compile(
-    r"^(?:src\.)?(resources\.i18n|resources\.translations|shared_toolkit)\b"
+    r"^(?:src\.)?(resources\.i18n|resources\.translations|shared_toolkit|ui\.icon_manager)\b"
 )
 _FOREIGN_NS = ("app.", "main.", "common.")
 

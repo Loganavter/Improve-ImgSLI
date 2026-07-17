@@ -96,8 +96,9 @@ class StopWindowTimersStep(WindowShutdownStep):
     name = "stop_window_timers"
 
     def run(self, window) -> None:
-        if hasattr(window, "_debounced_resize_timer"):
-            window._debounced_resize_timer.stop()
+        runtime = getattr(window, "runtime", None)
+        if runtime is not None and hasattr(runtime, "cancel_resize_settle"):
+            runtime.cancel_resize_settle()
 
 class CloseDerivedWindowsStep(WindowShutdownStep):
     name = "close_derived_windows"

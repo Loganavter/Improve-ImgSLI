@@ -92,8 +92,8 @@ class TransientUIManager:
     def close_all_flyouts_if_needed(self, global_pos: QPointF):
         self.closing.close_all_flyouts_if_needed(global_pos)
 
-    def hide_transient_same_window_ui(self):
-        self.closing.hide_transient_same_window_ui()
+    def hide_transient_same_window_ui(self, *, reason: str = "transient_ui_manager"):
+        self.closing.hide_transient_same_window_ui(reason=reason)
 
     def on_app_focus_changed(self, old_widget, new_widget):
         self.closing.on_app_focus_changed(old_widget, new_widget)

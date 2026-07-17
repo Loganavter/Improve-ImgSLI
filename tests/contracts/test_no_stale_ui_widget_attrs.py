@@ -1,6 +1,6 @@
 """No reads of image_compare widget-only attributes through ``.ui``.
 
-Dogma source: docs/dev/TAB_CONTRACT.md "Dependency Wiring Rule: No Implied
+Dogma source: docs/dev/tabs/isolation.md "Dependency Wiring Rule: No Implied
 Lookups". ``ImageComparePrimitivesFactory`` (tabs/image_compare/ui/primitives.py)
 is the sole owner of the image_compare tab's widgets: every one of them is
 assigned as ``target.<attr> = ...`` where ``target`` is the tab-owned

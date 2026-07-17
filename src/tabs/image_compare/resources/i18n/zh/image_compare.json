@@ -1,5 +1,76 @@
 {
   "image_compare": {
-    "session_type": "图像比较"
+    "session_type": "图像比较",
+    "help": {
+      "hub": {
+        "desc": "双图对比、放大镜、导出"
+      },
+      "page": {
+        "comparison": {
+          "title": "对比",
+          "desc": "分割线、标签、差异模式"
+        },
+        "magnifier": {
+          "title": "放大镜",
+          "desc": "捕获区域、冻结、合并模式"
+        },
+        "export": {
+          "title": "导出",
+          "desc": "静帧与快速保存"
+        },
+        "video": {
+          "title": "视频编辑器",
+          "desc": "录制、裁剪、编码"
+        }
+      }
+    },
+    "action": {
+      "magnifier": "切换放大镜",
+      "swap": "交换图像",
+      "freeze": "冻结放大镜",
+      "file_names": "文件名叠加",
+      "file_names_desc": "显示或隐藏画布上的文件名标签",
+      "text_settings": "标签文字设置",
+      "quick_save": "快速保存",
+      "save": "保存结果",
+      "magnifier_orientation": "放大镜方向",
+      "magnifier_divider_combined": "放大镜分割线",
+      "magnifier_divider_combined_desc": "放大镜分割线的方向、粗细与颜色（滚轮 / 右键）",
+      "magnifier_guides": "放大镜辅助线",
+      "magnifier_divider_visible": "放大镜分割线可见性",
+      "magnifier_colors": "放大镜颜色",
+      "magnifier_instances": "放大镜实例",
+      "magnifier_divider_width": "放大镜分割线宽度",
+      "magnifier_guides_width": "放大镜辅助线宽度",
+      "clear_list1": "移除当前图像（侧 1）",
+      "clear_list2": "移除当前图像（侧 2）",
+      "add_image1": "添加图像（侧 1）",
+      "add_image2": "添加图像（侧 2）",
+      "divider_orientation": "分割方向",
+      "divider_combined": "分割线",
+      "divider_combined_desc": "分割线的方向、宽度与颜色（滚轮 / 右键 / 中键）",
+      "divider_visible": "分割线可见性",
+      "divider_color": "分割线颜色",
+      "divider_width": "分割线宽度",
+      "diff_mode": "差异模式",
+      "channel_mode": "通道模式",
+      "diff_highlight": "高亮",
+      "diff_grayscale": "灰度",
+      "diff_edges": "边缘",
+      "diff_ssim": "SSIM",
+      "record": "录制视频",
+      "pause_recording": "暂停录制",
+      "video_editor": "视频编辑器",
+      "breadcrumb": {
+        "toolbar": "工具栏",
+        "magnifier": "放大镜",
+        "session": "会话",
+        "labels": "标签",
+        "export": "导出",
+        "divider": "分割线",
+        "analysis": "分析",
+        "video": "视频"
+      }
+    }
   }
 }

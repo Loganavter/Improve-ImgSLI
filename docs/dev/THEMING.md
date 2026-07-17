@@ -131,20 +131,11 @@ For shared/app QSS: add `theme_manager.register_qss_path(...)` in `bootstrap._co
 - **Dark mode is wrong**: check that the token exists in *both* palettes.
 - **QSS edit not picked up**: the template is built once at startup; call `theme_manager.apply_theme_to_app(app)` (or restart) to rebuild.
 - **Want a per-dialog override**: use `polish_themed_dialog(theme_manager, dialog)` from `src/ui/theming.py`.
+- **Dialog / label text stuck on the old theme after switch**: with an application stylesheet, `style().unpolish()` / `polish()` *after* `setPalette()` restores the previous palette. `ThemeManager.apply_theme_to_dialog` polishes first, then sets the palette. Toolkit `Label` also re-applies `apply_text_color` on `ParentChange` / `StyleChange` because reparent can wipe `WA_SetPalette` text colors. Do not put `color:` on `QLabel` in QSS — use palette / `apply_text_color` so `setFont` / `UiFont` still work.
 
 ## Repaint on theme change: the `ThemedWidget` mixin
 
-Repaint responsibility used to be split across four independent,
-mutually-unaware mechanisms: toolkit widgets self-subscribing to
-`theme_changed` (the pattern above), app dialogs doing the same
-copy-pasted per file, `TabContract.apply_appearance` requiring each tab to
-enumerate every widget it owns by hand, and a window-level tree-walk in
-`MainWindowAppearance.update_chrome_background` that only reached one
-layout level deep. Nothing failed loudly when a widget fell into the gap
-between them — this is exactly how multi_compare's toolbar/footer
-background went stale until 2026-07-13.
-
-This is now unified behind one mixin: `ThemedWidget`
+Theme repaint for app chrome and dialogs goes through `ThemedWidget`
 (`sli_ui_toolkit.ui.widgets.themed.ThemedWidget`, exported from
 `sli_ui_toolkit.widgets`). It subscribes to `theme_changed` in `__init__`
 and calls `on_theme_changed()` (override this instead of connecting your
@@ -154,20 +145,31 @@ mixin with a plain `QWidget` for chrome bars/containers that need to paint
 their own background from a theme token, instead of relying on inheriting
 a painted background from an ancestor.
 
-Migrated onto `ThemedWidget`/`ThemedBackgroundContainer`: `MultiCompareToolbar`,
-`MultiCompareFooter`, `ImageCompareWidget`, `SessionPickerWidget`, and
-image_compare's chrome widgets (`selection_widget`, `checkbox_widget`,
-`footer_info_widget`, `edit_layout_widget`, `save_buttons_widget` in
-`tabs/image_compare/ui/layout.py`). `MainWindowAppearance.update_chrome_background`
-had no remaining caller once these landed and was deleted outright.
+App surfaces on `ThemedWidget` / `ThemedBackgroundContainer` include
+`MultiCompareToolbar`, `MultiCompareFooter`, `ImageCompareWidget`,
+`SessionPickerWidget`, and image_compare chrome widgets
+(`selection_widget`, `checkbox_widget`, `footer_info_widget`,
+`edit_layout_widget`, `save_buttons_widget` in
+`tabs/image_compare/ui/layout.py`).
 
-Not migrated (opportunistic only, not a scheduled sweep — they already
-work, just inconsistent): app dialogs (`settings/dialog.py`,
-`image_properties/dialog.py`, `export/dialog.py`, `video_editor/dialog.py`,
-each with their own `theme_changed → self._apply_styles` wiring), and the
-~20 existing toolkit widgets with hand-written
-`theme_changed.connect(self.update)`. Migrate these when touched for other
-reasons, not as a dedicated pass.
+App dialogs inherit `ThemedDialog`
+(`shared_toolkit/ui/themed_dialog.py`): settings, image_properties, export,
+video_editor. Call `mark_theme_ui_ready()` after building the widget tree;
+override `on_dialog_theme_changed()` (not `on_theme_changed()`) for
+dialog-specific extras such as sidebar icon refresh or preview palette. Help
+uses toolkit `MarkdownHelpDialog`'s own `theme_changed` wiring until that
+class moves to `ThemedWidget`.
+
+Startup surfaces (`_startup_placeholder`, `_startup_cover`, `StartupPlaceholder`)
+use `ThemedSurface` (`ui/widgets/themed_surface.py`) — same explicit-`paintEvent`
+pattern as `ThemedBackgroundContainer`, keyed on `label.image.background`.
+`MainWindowAppearance.update_image_label_background` only forwards to tab
+`apply_appearance` hooks. QRhi canvas backgrounds go through
+`apply_qrhi_theme_background` in the same module.
+
+Still on hand-written `theme_changed.connect(self.update)` (fold in when
+touched, not as a dedicated sweep): toolkit `MarkdownHelpDialog` and the ~20
+existing toolkit widgets that already self-subscribe.
 
 ## Known Qt quirk: don't repaint backgrounds via `setPalette()` + `setAutoFillBackground`
 

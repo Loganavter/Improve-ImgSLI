@@ -1,0 +1,43 @@
+{
+  "action": {
+    "palette": {
+      "search_placeholder": "Pesquisar ações…",
+      "empty": "Nenhuma ação correspondente",
+      "learn_more": "Saiba mais",
+      "run": "Executar",
+      "cancel": "Cancelar"
+    },
+    "settings": {
+      "page_desc": "Abrir esta página de configurações",
+      "group_desc": "Abrir este grupo de configurações",
+      "slot_desc": "Abrir esta configuração",
+      "general_desc": "Abrir Configurações → Geral",
+      "appearance_desc": "Abrir Configurações → Aparência",
+      "optimization_desc": "Abrir Configurações → Otimização",
+      "keyboard_desc": "Abrir Configurações → Teclado",
+      "analysis_desc": "Abrir Configurações → Detalhes da análise"
+    },
+    "breadcrumb": {
+      "workspace": "Espaço de trabalho"
+    },
+    "platform": {
+      "settings_desc": "Abrir as configurações do aplicativo",
+      "help_desc": "Abrir a documentação de ajuda",
+      "new_session_desc": "Criar uma nova sessão do espaço de trabalho",
+      "find_action_desc": "Pesquisar e executar uma ação",
+      "quit_desc": "Sair do aplicativo",
+      "find_action_context": "Localizar ação (contexto)",
+      "find_action_context_desc": "Abrir a paleta filtrada pelo controle em foco",
+      "paste_clipboard_image": "Colar imagem da área de transferência",
+      "paste_clipboard_image_desc": "Colar uma imagem da área de transferência na sessão ativa"
+    },
+    "workspace": {
+      "open_session_picker": "Abrir seletor de sessão",
+      "open_session_picker_desc": "Abrir a página inicial do workspace para escolher o tipo de sessão",
+      "new_image_compare": "Nova sessão Image Compare",
+      "new_image_compare_desc": "Criar e abrir uma sessão de comparação de imagens",
+      "new_multi_compare": "Nova sessão Multi Compare",
+      "new_multi_compare_desc": "Criar e abrir uma sessão multi-compare"
+    }
+  }
+}

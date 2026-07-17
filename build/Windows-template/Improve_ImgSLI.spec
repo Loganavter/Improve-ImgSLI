@@ -83,7 +83,11 @@ def find_pyside6_root():
 PYSIDE6_ROOT = find_pyside6_root()
 QT6_ROOT = PYSIDE6_ROOT / "Qt6" if (PYSIDE6_ROOT / "Qt6").exists() else PYSIDE6_ROOT
 
+LICENSE_TEMPLATE_DIR = SPEC_DIR / "licenses"
+
 APP_DATAS = [
+    (str(REPO_ROOT / "LICENSE"), "."),
+    (str(REPO_ROOT / "THIRD_PARTY_LICENSES.md"), "."),
     (str(REPO_ROOT / "src" / "resources"), "resources"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "resources"), "shared_toolkit/resources"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "ui" / "resources"), "shared_toolkit/ui/resources"),
@@ -92,6 +96,7 @@ APP_DATAS = [
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "plugins", "plugins"))
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "tabs", "tabs"))
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "ui" / "canvas_features", "ui/canvas_features"))
+APP_DATAS.extend(collect_tree(LICENSE_TEMPLATE_DIR, "licenses"))
 
 PYSIDE6_DATAS = []
 PYSIDE6_DATAS.extend(collect_tree(QT6_ROOT / "plugins", "PySide6/plugins"))
@@ -355,7 +360,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=True,
     target_arch=None,
@@ -369,7 +374,6 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
-    upx_exclude=[],
+    upx=False,
     name=APP_NAME,
 )

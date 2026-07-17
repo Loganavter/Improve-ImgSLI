@@ -6,8 +6,9 @@ The project uses Python's stdlib `logging` exclusively — **never `print()`** i
 
 | Path | Role |
 |---|---|
-| `sli_ui_toolkit/core/logging.py:setup_logging` | Builds the `"ImproveImgSLI"` logger: stream handler (stdout) + file handler (per-OS data dir), uniform formatter |
+| `sli_ui_toolkit/core/logging.py:setup_logging` | Builds the `"ImproveImgSLI"` logger: stream handler (**stderr**) + file handler (per-OS data dir), uniform formatter |
 | `src/core/bootstrap.py:_configure_logging` | Calls `setup_logging("ImproveImgSLI", effective_debug, "IMPROVE_DEBUG")` at startup |
+| `src/core/startup_trace.py` | Optional phase timing when `IMGSLI_STARTUP_TRACE=1` (logger name `ImproveImgSLI.startup`) |
 | `src/__main__.py` | CLI flags `--debug` / `--enable-logging` / `--disable-logging` |
 
 Log file location (cleared on every start, `mode="w"`):
@@ -107,6 +108,13 @@ logging.getLogger("ImproveImgSLI.rhi").setLevel(logging.WARNING)
 
 Or, for env-gated streams, just unset the env var.
 
+Cold-startup phase timing (bootstrap vs deferred plugin load):
+
+```bash
+IMGSLI_STARTUP_TRACE=1 python src/__main__.py
+grep 'ImproveImgSLI.startup' ~/.local/share/ImproveImgSLI/log.txt
+```
+
 ## Reading existing logs
 
 ```bash
@@ -120,4 +128,4 @@ The log file is overwritten on every app start (`mode="w"`), so capture sessions
 
 - [TRACING.md](TRACING.md) — structured tracer for Redux/EventBus/render chains (separate facility, complementary to plain logging)
 - `sli_ui_toolkit/core/logging.py:setup_logging` — full source
-- [AGENTS.md "Working style" §3](/home/jorj/Загрузки/Improve-ImgSLI/AGENTS.md) — collaborative-debug pivot guidance
+- [AGENTS.md](../../AGENTS.md) — agent guide; see **Debugging Runtime Issues** and **Agent Tooling**

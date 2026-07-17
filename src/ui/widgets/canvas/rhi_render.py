@@ -6,8 +6,19 @@ from PySide6.QtGui import QColor, QPalette
 def resolve_clear_color(widget) -> QColor:
     plan = getattr(widget, "_active_render_plan", None)
     fill_rgba = getattr(plan, "fill_rgba", None)
-    if bool(getattr(widget, "_use_plan_fill_clear", False)) and fill_rgba is not None:
-        return QColor(*fill_rgba)
+    if bool(getattr(widget, "_use_plan_fill_clear", False)):
+        # Export offscreen: plan fill paints the virtual-canvas chrome. When
+        # fill is off, clear must stay transparent so pad pixels remain
+        # alpha=0 (theme clear would bake an opaque wrong color that
+        # ``apply_background_fill`` cannot replace).
+        if fill_rgba is not None and len(fill_rgba) >= 4:
+            return QColor(
+                int(fill_rgba[0]),
+                int(fill_rgba[1]),
+                int(fill_rgba[2]),
+                int(fill_rgba[3]),
+            )
+        return QColor(0, 0, 0, 0)
 
     color = getattr(widget, "_theme_background_color", None)
     if isinstance(color, QColor) and color.isValid():

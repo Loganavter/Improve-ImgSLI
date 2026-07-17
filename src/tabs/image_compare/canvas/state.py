@@ -49,6 +49,10 @@ class CanvasRuntimeState:
     _content_scissor_depth: int = 0
     _canvas_scene_graph: object | None = None
     _letterbox_params: list = field(default_factory=lambda: [None, None])
+    # Expanding-canvas frame in widget UV + pad fill (video uncrop / export).
+    # Disabled when zw==(0,0) or fill.a==0 — see base.frag canvasLetterbox.
+    _canvas_frame_letterbox: tuple[float, float, float, float] | None = None
+    _letterbox_fill_rgba: tuple[float, float, float, float] | None = None
     _store: object | None = None
     _render_scene: object | None = None
     _render_scene_dirty: bool = False
@@ -86,6 +90,7 @@ class CanvasRuntimeState:
     # texture_parts/upload_queue.py and docs/dev/rendering/tile-rendering-system.md
     # Phase 2.
     _texture_upload_cache: OrderedDict = field(default_factory=OrderedDict)
+    _host_texture_upload_cache: object | None = None
     # docs/dev/rendering/tile-rendering-system.md Phase 3: bounded LRU of
     # already-decoded QImages keyed by image_uid(), see
     # texture_parts/upload_queue.py's queue_texture_upload().

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Callable
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator
 
 from core.session_blueprints import SessionBlueprint
 from core.store_viewport import ViewportState, create_session_data
@@ -355,6 +356,26 @@ class WorkspaceStoreMixin:
         self.workspace.active_session_id = session.id
         self.document = session.document
         self.viewport = session.viewport
+
+    @contextmanager
+    def using_workspace_session(self, session_id: str) -> Iterator[WorkspaceSession | None]:
+        """Temporarily activate ``session_id`` for the duration of ``with`` block."""
+        session = self.get_workspace_session(session_id)
+        if session is None:
+            yield None
+            return
+        previous_id = self.workspace.active_session_id
+        if previous_id == session_id:
+            yield session
+            return
+        self._activate_workspace_session(session)
+        try:
+            yield session
+        finally:
+            if previous_id:
+                previous = self.get_workspace_session(previous_id)
+                if previous is not None:
+                    self._activate_workspace_session(previous)
 
     def _slot_factory_registry(self) -> dict[str, Callable]:
         """Per-slot-name factory registered by session blueprints.

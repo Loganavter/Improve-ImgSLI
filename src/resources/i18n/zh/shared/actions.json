@@ -1,10 +1,12 @@
 {
   "action": {
     "context_copy_path": "复制路径",
+    "context_duplicate": "复制",
     "context_name": "名称",
     "context_path": "路径",
     "context_properties": "属性",
     "context_remove": "删除",
+    "context_rename": "重命名",
     "context_size": "大小",
     "export_video": "导出视频",
     "open_application_settings": "打开应用程序设置",

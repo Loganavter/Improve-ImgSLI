@@ -45,8 +45,6 @@ def route_main_window_event(event_handler, watched_obj, event: QEvent, dnd_servi
         event_handler.drop_event_signal.emit(event)
         return True
     if event_type == QEvent.Type.Resize and is_main_window:
-        event_handler.resize_timer.stop()
-        event_handler.resize_timer.start(200)
         event_handler.resize_event_signal.emit(event)
         return False
     if event_type == QEvent.Type.Close and is_main_window:

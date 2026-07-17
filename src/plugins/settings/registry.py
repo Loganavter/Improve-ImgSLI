@@ -13,9 +13,12 @@ to ``dialog.pages_stack`` (mirroring the existing ``init_*_page`` signatures).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from PySide6.QtGui import QIcon
+
+from plugins.settings.search import SearchIndex
 from ui.icon_manager import AppIcon
 
 
@@ -27,17 +30,33 @@ SectionSeeder = Callable[[object], dict[str, Any]]
 class SettingsSection:
     section_id: str
     title_key: str
-    icon: AppIcon
+    icon: AppIcon | QIcon
     build: Callable[[object, object], None]
     owner_tab: Optional[str] = None
     order: int = 100
+    # Single source of truth for Find Action chrome (groups + keys).
+    search: SearchIndex = field(default_factory=SearchIndex)
+    # Optional Find Action description (defaults to generic page_desc).
+    action_description_key: str | None = None
+
+    @property
+    def search_keys(self) -> tuple[str, ...]:
+        return self.search.keys
 
 
 class SettingsRegistry:
     def __init__(self) -> None:
         self._sections: list[SettingsSection] = []
         self._section_extras: dict[
-            str, list[tuple[Callable[[object, object], None], str | None, int]]
+            str,
+            list[
+                tuple[
+                    Callable[[object, object], None],
+                    str | None,
+                    int,
+                    SearchIndex,
+                ]
+            ],
         ] = {}
         self._payload_readers: dict[str, SectionReader] = {}
         self._payload_seeders: dict[str, SectionSeeder] = {}
@@ -93,11 +112,12 @@ class SettingsRegistry:
         *,
         owner_tab: str | None = None,
         order: int = 100,
+        search: SearchIndex | None = None,
     ) -> None:
         extras = self._section_extras.setdefault(section_id, [])
-        if any(existing is build for existing, _owner, _order in extras):
+        if any(existing is build for existing, _owner, _order, _search in extras):
             return
-        extras.append((build, owner_tab, order))
+        extras.append((build, owner_tab, order, search or SearchIndex()))
 
     def extras_for(
         self,
@@ -107,10 +127,42 @@ class SettingsRegistry:
         extras = self._section_extras.get(section_id, ())
         visible = [
             (build, order)
-            for build, owner_tab, order in extras
+            for build, owner_tab, order, _search in extras
             if owner_tab is None or owner_tab == active_tab
         ]
         return [build for build, _order in sorted(visible, key=lambda item: item[1])]
+
+    def iter_extra_searches(
+        self,
+        section_id: str,
+    ) -> list[tuple[str | None, SearchIndex]]:
+        """``(owner_tab, search)`` for every extra on ``section_id``."""
+        return [
+            (owner_tab, extra_search)
+            for _build, owner_tab, _order, extra_search in self._section_extras.get(
+                section_id, ()
+            )
+        ]
+
+    def search_for(
+        self,
+        section: SettingsSection,
+        *,
+        active_tab: str | None = None,
+    ) -> SearchIndex:
+        """Section search plus extras visible for ``active_tab``.
+
+        Tab-owned extras (e.g. image_compare performance groups) are omitted
+        when the active session cannot show them in Settings.
+        """
+        index = section.search
+        for _build, owner_tab, _order, extra_search in self._section_extras.get(
+            section.section_id, ()
+        ):
+            if owner_tab is not None and owner_tab != active_tab:
+                continue
+            index = index.merged(extra_search)
+        return index
 
     def sections_for(self, active_tab: str | None) -> list[SettingsSection]:
         visible = [s for s in self._sections if s.owner_tab is None or s.owner_tab == active_tab]
@@ -139,12 +191,13 @@ def ensure_tab_settings_contributions() -> None:
     _TAB_CONTRIBUTIONS_LOADED = True
     registry = get_settings_registry()
     try:
-        from tabs.registry import TabRegistry
+        from tabs.registry import TabRegistry, get_shared_tab_registry
 
-        tabs = TabRegistry()
-        tabs.discover()
-        for tab in tabs.list_tabs():
-            tab.contribute_settings(registry)
+        tabs = get_shared_tab_registry()
+        if not tabs.list_tabs():
+            tabs = TabRegistry()
+            tabs.discover()
+        tabs.notify_all("contribute_settings", registry)
     except Exception:
         import logging
 

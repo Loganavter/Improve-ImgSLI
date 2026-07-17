@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 
-from PySide6.QtCore import QRect, QRectF, QSize
+from PySide6.QtCore import QRectF, QSize
 from PySide6.QtGui import (
     QImage,
     QRhiBuffer,
@@ -15,10 +15,20 @@ from PySide6.QtGui import (
     QRhiViewport,
 )
 
-from shared.rendering.tile_geometry import _apron_rect, _TILE_APRON_PX, _TILE_RESIDENCY_MARGIN
+from shared.image_processing.tiled_pixel_store import (
+    TiledPixelStore,
+    qimage_from_pixel_source,
+)
+from shared.rendering.host_texture_cache import cache_for_host
+from shared.rendering.tile_geometry import (
+    _TILE_APRON_PX,
+    _TILE_RESIDENCY_MARGIN,
+    crop_apron_tile,
+)
 from tabs.multi_compare.scene.projection import build_screen_quad_vertices
 from tabs.multi_compare.scene.resources import (
     FULLSCREEN_VERTICES,
+    SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
     SLOT_TILE_CACHE_BUDGET_BYTES,
     SLOT_UNIFORM_SIZE,
     load_shader,
@@ -58,50 +68,52 @@ def _tile_key_slot_id(tile_key: object) -> object:
     return tile_key
 
 
+def _slot_host_key(slot_id: int) -> str:
+    return f"slot_{int(slot_id)}"
+
+
+def _slot_tile_host_key(slot_id: int, row: int, col: int) -> str:
+    return f"slot_{int(slot_id)}_{int(row)}_{int(col)}"
+
+
 class BaseImagesPass(CanvasRenderPass):
     """Owns image textures, tile pipeline, uniforms, and draw recording.
 
-    Core-owned, not a discoverable feature (see MULTI_COMPARE_QRHI_REFACTOR.md
-    A6): wired directly by ``MultiCompareRhiRenderer``, never through
-    ``get_canvas_render_passes()``, so it declares no ``stack_role`` — nothing
-    ever resolves this pass's stacking order against the shared registry.
-
-    Slots larger than one GPU texture are backed by
-    ``shared.rendering.tile_texture_service.TileTextureService`` (the same
-    service image_compare uses for its base image), keyed by slot id: a
-    normal slot gets a 1x1 grid and is uploaded as a single whole-image
-    texture exactly like before; an oversized slot gets an NxM grid whose
-    tiles are lazily cropped from ``slot_full_images`` and drawn as one
-    extra ``command_buffer.draw(4)`` per GPU-resident tile, each carrying
-    its own ``tileRect`` uniform (see ``multi_compare.frag``).
+    Full-res slot pixels live in :class:`TiledPixelStore` (session state).
+    This pass keeps GPU residency via ``TileTextureService`` and a bounded
+    host-side ``HostTextureUploadCache`` on the canvas widget for decoded
+    QImage uploads — never an uncapped full-res QImage dict.
     """
 
     def __init__(self) -> None:
         self.pipeline = None
         self.slot_textures: dict[object, object] = {}
         self.slot_texture_sizes: dict[object, tuple[int, int]] = {}
-        self.slot_full_images: dict[int, QImage] = {}
+        self.slot_pixel_sources: dict[int, TiledPixelStore] = {}
         self.slot_vertex_buffers: list[object] = []
         self.slot_uniform_buffers: list[object] = []
-        # (layer index, tile key) -> (srb, bound texture). Keyed by layer
-        # index (not slot id) because the uniform buffer a tile's SRB binds
-        # is itself per-layer-index (see _ensure_slot_resources).
         self._tile_srbs: dict[tuple[int, object], tuple[object, object]] = {}
         self.layer_draw_items: list[list[SlotDrawItem]] = []
-        self.pending_uploads: list[tuple[int, QImage]] = []
+        self.pending_uploads: list[tuple[int, TiledPixelStore]] = []
         self.pending_removes: list[int] = []
 
     def has_slot_texture(self, slot_id: int) -> bool:
-        return int(slot_id) in self.slot_full_images
+        return int(slot_id) in self.slot_pixel_sources
 
     def slot_texture_ids(self) -> list[int]:
-        return list(self.slot_full_images)
+        return list(self.slot_pixel_sources)
 
-    def queue_upload(self, slot_id: int, image: QImage) -> None:
-        self.pending_uploads.append((int(slot_id), image))
+    def queue_upload(self, slot_id: int, source: TiledPixelStore) -> None:
+        self.pending_uploads.append((int(slot_id), source))
 
     def queue_remove(self, slot_id: int) -> None:
         self.pending_removes.append(int(slot_id))
+
+    def _host_cache(self, renderer):
+        return cache_for_host(
+            renderer.host,
+            budget_bytes=SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
+        )
 
     def initialize(self, renderer, target) -> None:
         self.pipeline = renderer.rhi.newGraphicsPipeline()
@@ -148,8 +160,8 @@ class BaseImagesPass(CanvasRenderPass):
         for sid in self.pending_removes:
             self._release_slot(tile_service, sid)
         self.pending_removes.clear()
-        for sid, image in self.pending_uploads:
-            self._upload_slot(renderer, tile_service, sid, image, updates)
+        for sid, source in self.pending_uploads:
+            self._upload_slot(renderer, tile_service, sid, source, updates)
         self.pending_uploads.clear()
 
     def prepare(self, renderer, ctx, updates) -> None:
@@ -179,10 +191,6 @@ class BaseImagesPass(CanvasRenderPass):
         command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_w, fb_h))
         for index, layer in enumerate(ctx.projected_layers):
             command_buffer.setVertexInput(0, [(self.slot_vertex_buffers[index], 0)])
-            # One draw call per GPU-resident tile this slot needs this frame
-            # (docs/dev/TILED_RENDERING_DESIGN.md pattern): the common case
-            # (slot fits in one texture) runs this loop exactly once with
-            # tileRect == (0,0,1,1), unchanged from pre-tiling behavior.
             for item in self.layer_draw_items[index]:
                 texture = self.slot_textures.get(item.tile_key)
                 if texture is None:
@@ -198,28 +206,26 @@ class BaseImagesPass(CanvasRenderPass):
                 command_buffer.resourceUpdate(tile_updates)
                 command_buffer.draw(4)
 
-    # -- texture upload / residency -----------------------------------
-
     def _release_slot(self, tile_service, sid: int) -> None:
-        self.slot_full_images.pop(sid, None)
+        self.slot_pixel_sources.pop(sid, None)
         tile_service.invalidate_source(sid)
         self._destroy_slot_textures(sid, keep=frozenset())
         self._purge_tile_srbs_for_slot(sid)
 
-    def _upload_slot(self, renderer, tile_service, sid: int, image: QImage, updates) -> None:
-        size = (image.width(), image.height())
+    def _upload_slot(
+        self, renderer, tile_service, sid: int, source: TiledPixelStore, updates
+    ) -> None:
+        size = source.size
         grid = tile_service.register_source(sid, size)
-        self.slot_full_images[sid] = image
+        self.slot_pixel_sources[sid] = source
         self._purge_tile_srbs_for_slot(sid)
+        host_cache = self._host_cache(renderer)
         if grid.rows == 1 and grid.columns == 1:
             tile_key = tile_service.tile_key(sid, 0, 0)
             self._destroy_slot_textures(sid, keep={tile_key})
-            self._upload_tile(renderer, tile_key, image, updates)
+            qimage = host_cache.qimage_from_source(source, _slot_host_key(sid))
+            self._upload_tile(renderer, tile_key, qimage, updates)
             return
-        # Multi-tile: nothing uploaded eagerly here -- _realize_tile_residency
-        # (called every frame from prepare()) lazily crops+uploads only
-        # whichever tiles the current viewport actually needs, from
-        # slot_full_images[sid].
         self._destroy_slot_textures(sid, keep=frozenset())
 
     def _upload_tile(self, renderer, tile_key: object, image: QImage, updates) -> None:
@@ -238,21 +244,18 @@ class BaseImagesPass(CanvasRenderPass):
         updates.uploadTexture(self.slot_textures[tile_key], image)
 
     def _realize_tile_residency(self, renderer, ctx, updates) -> None:
-        """Viewport-driven partial residency for oversized slots (docs/dev/
-        TILED_RENDERING_DESIGN.md Phase 2): crops+uploads whichever tiles
-        each multi-tile slot's current viewport needs (visible rect plus a
-        ``_TILE_RESIDENCY_MARGIN`` ring) and aren't already resident, then
-        evicts whatever ``tile_service.evict_over_budget()`` decides to
-        evict across every slot combined."""
         tile_service = renderer.tile_service
+        host_cache = self._host_cache(renderer)
+        protected_host: set[str] = set()
         protected_by_key: dict[object, set[tuple[int, int]]] = {}
         for layer in ctx.projected_layers:
             sid = int(layer.slot_id)
+            protected_host.add(_slot_host_key(sid))
             grid = tile_service.grid_for(sid)
             if grid is None or (grid.rows == 1 and grid.columns == 1):
                 continue
-            full_image = self.slot_full_images.get(sid)
-            if full_image is None:
+            pixel_source = self.slot_pixel_sources.get(sid)
+            if pixel_source is None:
                 continue
             pan = (layer.pan_x, layer.pan_y)
             fit = (max(layer.fit_x, 1e-6), max(layer.fit_y, 1e-6))
@@ -262,21 +265,32 @@ class BaseImagesPass(CanvasRenderPass):
             )
             protected_by_key[sid] = target
             regions = {(row, col): region for row, col, region in grid.iter_regions()}
-            for index in target:
-                if tile_service.is_resident(sid, index):
-                    tile_service.touch(sid, index)
+            for row, col in target:
+                protected_host.add(_slot_tile_host_key(sid, row, col))
+                if tile_service.is_resident(sid, (row, col)):
+                    tile_service.touch(sid, (row, col))
                     continue
-                region = regions.get(index)
+                region = regions.get((row, col))
                 if region is None:
                     continue
-                left, top, right, bottom = _apron_rect(
-                    grid.total_width, grid.total_height, region, _TILE_APRON_PX
+                cropped = crop_apron_tile(
+                    pixel_source,
+                    region.left,
+                    region.top,
+                    region.right,
+                    region.bottom,
+                    _TILE_APRON_PX,
                 )
-                tile_key = tile_service.tile_key(sid, *index)
-                tile_image = full_image.copy(QRect(left, top, right - left, bottom - top))
+                tile_key = tile_service.tile_key(sid, row, col)
+                tile_image = qimage_from_pixel_source(cropped)
+                host_cache.store(_slot_tile_host_key(sid, row, col), tile_image)
                 self._upload_tile(renderer, tile_key, tile_image, updates)
-                tile_service.mark_resident(sid, index, (right - left) * (bottom - top) * 4)
-        evicted = tile_service.evict_over_budget(protected_by_key, SLOT_TILE_CACHE_BUDGET_BYTES)
+                tile_service.mark_resident(
+                    sid, (row, col), cropped.width * cropped.height * 4
+                )
+        evicted = tile_service.evict_over_budget(
+            protected_by_key, SLOT_TILE_CACHE_BUDGET_BYTES
+        )
         for sid, index in evicted:
             tile_key = tile_service.tile_key(sid, *index)
             texture = self.slot_textures.pop(tile_key, None)
@@ -287,6 +301,7 @@ class BaseImagesPass(CanvasRenderPass):
                     pass
             self.slot_texture_sizes.pop(tile_key, None)
             self._purge_tile_srb_entry(tile_key)
+        host_cache.evict_over_budget(protected_host, SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES)
 
     def _destroy_slot_textures(self, sid: int, *, keep: frozenset | set) -> None:
         stale = [
@@ -302,8 +317,6 @@ class BaseImagesPass(CanvasRenderPass):
                 except RuntimeError:
                     pass
             self.slot_texture_sizes.pop(key, None)
-
-    # -- GPU resources: buffers / shader resource bindings --------------
 
     def _build_slot_srb(self, renderer, texture, uniform):
         srb = renderer.rhi.newShaderResourceBindings()
@@ -355,10 +368,6 @@ class BaseImagesPass(CanvasRenderPass):
             self.slot_uniform_buffers.append(buf)
 
     def _ensure_tile_srb(self, renderer, index: int, tile_key: object, texture):
-        """Returns a ready-to-bind SRB for (layer index, tile) -- cached
-        across frames and only rebuilt when the bound texture object
-        identity changes (a fresh upload/resize, or a tile that got
-        evicted-then-recreated)."""
         cache_key = (index, tile_key)
         cached = self._tile_srbs.get(cache_key)
         if cached is not None and cached[1] is texture:

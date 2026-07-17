@@ -10,7 +10,7 @@ Today, I view Improve ImgSLI as a valuable public asset. ~~Today, I view Improve
 
 The core value of Improve ImgSLI lies in its efficiency. Manually creating detailed image comparisons can be a laborious process, often taking several minutes. This program accomplishes the same, often superior, results in approximately 30 seconds, all through an intuitive, user-friendly interface. It's this transformation of a cumbersome task into a swift, accessible one that I believe makes Improve ImgSLI a genuinely useful tool.
 
-It's difficult to pinpoint the exact time spent on the project, but I would estimate it to be approximately 500 hours in total, excluding the time required for package construction. A total of about $100–150 was spent on various subscriptions, but the project has already paid off indirectly in this expense category.
+It's difficult to pinpoint the exact time spent on the project, but I would estimate it to be approximately 500 hours in total, excluding the time required for package construction. A total of about $150–200 was spent on various subscriptions, but the project has already paid off indirectly in this expense category.
 
 ---
 

@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "root_id": "root",
+  "aliases": {
+    "introduction": "platform.getting_started",
+    "file_management": "platform.file_project",
+    "view_navigation": "ui.canvas_navigation",
+    "settings": "platform.settings",
+    "hotkeys": "platform.hotkeys",
+    "image_properties": "platform.image_properties",
+    "session_picker": "platform.workspace",
+    "workspace_tabs": "platform.workspace"
+  },
+  "nodes": {
+    "root": {
+      "kind": "hub",
+      "title_key": "help.hub.root.title",
+      "description_key": "help.hub.root.desc",
+      "title": "Help",
+      "description": "Browse topics by area",
+      "icon": "help.svg",
+      "children": ["workspace", "ui", "platform"]
+    },
+    "workspace": {
+      "kind": "hub",
+      "title_key": "help.hub.workspace.title",
+      "description_key": "help.hub.workspace.desc",
+      "title": "Workspace",
+      "description": "Session types and compare tools",
+      "icon": "photo_icon.svg",
+      "children": []
+    },
+    "ui": {
+      "kind": "hub",
+      "title_key": "help.hub.ui.title",
+      "description_key": "help.hub.ui.desc",
+      "title": "UI",
+      "description": "Controls, lists, canvas chrome",
+      "icon": "text-manipulator.svg",
+      "children": ["ui.buttons", "ui.lists_flyouts", "ui.canvas_navigation"]
+    },
+    "ui.buttons": {
+      "kind": "page",
+      "title_key": "help.page.buttons.title",
+      "description_key": "help.page.buttons.desc",
+      "title": "Buttons and Controls",
+      "description": "Toolbar and panel gestures",
+      "icon": "check.svg",
+      "body": "ui/buttons.md"
+    },
+    "ui.lists_flyouts": {
+      "kind": "page",
+      "title_key": "help.page.lists.title",
+      "description_key": "help.page.lists.desc",
+      "title": "Lists and Panels",
+      "description": "Image lists and menus",
+      "icon": "add.svg",
+      "body": "ui/lists_flyouts.md"
+    },
+    "ui.canvas_navigation": {
+      "kind": "page",
+      "title_key": "help.page.canvas_nav.title",
+      "description_key": "help.page.canvas_nav.desc",
+      "title": "Canvas Navigation",
+      "description": "Zoom, pan, fit",
+      "icon": "sync.svg",
+      "body": "ui/canvas_navigation.md"
+    },
+    "platform": {
+      "kind": "hub",
+      "title_key": "help.hub.platform.title",
+      "description_key": "help.hub.platform.desc",
+      "title": "Platform",
+      "description": "Settings, files, shortcuts",
+      "icon": "settings.svg",
+      "children": [
+        "platform.getting_started",
+        "platform.workspace",
+        "platform.image_properties",
+        "platform.settings",
+        "platform.hotkeys",
+        "platform.file_project"
+      ]
+    },
+    "platform.getting_started": {
+      "kind": "page",
+      "title_key": "help.page.getting_started.title",
+      "description_key": "help.page.getting_started.desc",
+      "title": "Getting Started",
+      "description": "Quick orientation",
+      "icon": "play.svg",
+      "body": "platform/getting_started.md"
+    },
+    "platform.workspace": {
+      "kind": "page",
+      "title_key": "help.page.workspace.title",
+      "description_key": "help.page.workspace.desc",
+      "title": "Workspace Tabs",
+      "description": "Session picker and tab strip",
+      "icon": "add.svg",
+      "body": "platform/workspace.md"
+    },
+    "platform.image_properties": {
+      "kind": "page",
+      "title_key": "help.page.image_properties.title",
+      "description_key": "help.page.image_properties.desc",
+      "title": "Image Properties",
+      "description": "File metadata and in-app context",
+      "icon": "link.svg",
+      "body": "platform/image_properties.md"
+    },
+    "platform.settings": {
+      "kind": "page",
+      "title_key": "help.page.settings.title",
+      "description_key": "help.page.settings.desc",
+      "title": "Settings",
+      "description": "Appearance and performance",
+      "icon": "settings.svg",
+      "body": "platform/settings.md"
+    },
+    "platform.hotkeys": {
+      "kind": "page",
+      "title_key": "help.page.hotkeys.title",
+      "description_key": "help.page.hotkeys.desc",
+      "title": "Hotkeys",
+      "description": "Defaults and overrides",
+      "icon": "enter.svg",
+      "body": "platform/hotkeys.md"
+    },
+    "platform.file_project": {
+      "kind": "page",
+      "title_key": "help.page.file_project.title",
+      "description_key": "help.page.file_project.desc",
+      "title": "Files and Projects",
+      "description": "Load, paste, project files",
+      "icon": "link.svg",
+      "body": "platform/file_project.md"
+    }
+  }
+}

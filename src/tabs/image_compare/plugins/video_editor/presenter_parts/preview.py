@@ -9,11 +9,13 @@ from tabs.image_compare.plugins.video_editor.services.keyframing.engine.values i
     frozen_value,
     viewport_fingerprint,
 )
+from sli_ui_toolkit.managers import SettleGate
 from sli_ui_toolkit.workers import GenericWorker
 from ui.canvas_presentation import apply_canvas_render_plan
 
 logger = logging.getLogger("ImproveImgSLI")
 _vplog = logging.getLogger("ImproveImgSLI.video_preview")
+
 
 class PreviewCoordinator:
     def __init__(
@@ -44,6 +46,7 @@ class PreviewCoordinator:
         self._bounds_calculation_pending = False
         self._stored_crop_resolution = None
 
+        # ``prepare_key`` / ``plan`` / ``store`` / optional ``frame_pil``.
         self._preview_frame_cache = None
 
         self._preview_updater = QTimer(timer_parent)
@@ -51,12 +54,21 @@ class PreviewCoordinator:
         self._preview_updater.setInterval(1)
         self._preview_updater.timeout.connect(self.do_update_preview_heavy)
 
+        # Cheap refit on every pulse; full prepare/GPU after quiet period.
+        self._resize_settle = SettleGate(
+            on_settle=self._on_resize_gpu_settled,
+            on_pulse=self._refit_cached_preview_to_widget,
+            interval_ms=SettleGate.DEFAULT_INTERVAL_MS,
+            parent=timer_parent,
+        )
+
     def detach_view(self):
         self.view = None
 
     def on_view_destroyed(self, *_args):
         self._view_destroyed = True
         self._preview_updater.stop()
+        self._resize_settle.cancel()
         self.view = None
 
     def has_live_view(self) -> bool:
@@ -77,6 +89,49 @@ class PreviewCoordinator:
     def reset_render_state(self):
         self._last_render_params = (None, None, None)
         self._preview_frame_cache = None
+
+    def _clip_overlays_for_mode(self) -> bool:
+        return not self.fit_content_mode
+
+    def _refit_cached_preview_to_widget(self) -> bool:
+        """Cheap path: re-letterbox last plan into the current widget size.
+
+        Textures stay uploaded; ``apply_canvas_render_plan`` takes the scene-only
+        branch when display keys match. Same idea as export dialog scaling a
+        baked pixmap on resize.
+        """
+        cache = self._preview_frame_cache or {}
+        plan = cache.get("plan")
+        if plan is None:
+            frame_pil = cache.get("frame_pil")
+            request_key = cache.get("request_key")
+            if frame_pil is not None and request_key is not None:
+                self._apply_preview_frame(frame_pil, request_key)
+                return True
+            return False
+        canvas = getattr(self.view, "preview_label", None)
+        if canvas is None:
+            return False
+        apply_canvas_render_plan(
+            canvas,
+            plan,
+            store=cache.get("store"),
+            clip_overlays_to_image_bounds=self._clip_overlays_for_mode(),
+        )
+        update = getattr(canvas, "update", None)
+        if callable(update):
+            update()
+        return True
+
+    def _on_resize_gpu_settled(self):
+        if not self.has_live_view():
+            return
+        if self.playback_engine.is_playing():
+            return
+        # Allow size-change detection without dropping the prepare cache.
+        frame, _, _ = self._last_render_params
+        self._last_render_params = (frame, None, None)
+        self.schedule_update()
 
     def do_update_preview_heavy(self):
         if self._is_rendering_preview or not self.has_live_view():
@@ -194,6 +249,7 @@ class PreviewCoordinator:
         )
 
     def _apply_preview_frame(self, frame_pil: Image.Image, request_key) -> None:
+        """Fallback: already-composited output frame (pads baked into pixels)."""
         canvas = getattr(self.view, "preview_label", None)
         if canvas is None:
             return
@@ -204,6 +260,8 @@ class PreviewCoordinator:
             )
             canvas._preview_source_key = request_key
             reset_canvas_overlays(canvas)
+            # Composited frame already includes fill; do not clear with plan fill.
+            canvas._use_plan_fill_clear = False
             state = getattr(canvas, "runtime_state", None)
             if state is not None:
                 state._store = None
@@ -257,11 +315,21 @@ class PreviewCoordinator:
             thumbnail=False,
         )
 
+        # Theme chrome outside the letterboxed canvas frame. Pad fill inside
+        # the expanding canvas is painted by base.frag (canvasLetterbox +
+        # letterboxFill), not by clearing the whole preview pane.
+        canvas._use_plan_fill_clear = False
+
+        # Crop mode: clip overlays to the export frame (inner == outer for
+        # non-padded plans). Fit-content / uncrop: the padded canvas extends
+        # beyond the image; clipping to the inner image rect would crop the
+        # magnifier — export uses clip_overlays=False for the same reason
+        # (gpu_export_scene.py).
         apply_canvas_render_plan(
             canvas,
             prepared.plan,
             store=prepared.store,
-            clip_overlays_to_image_bounds=True,
+            clip_overlays_to_image_bounds=self._clip_overlays_for_mode(),
         )
         self._trace(
             "video.preview.apply_scene",
@@ -277,6 +345,15 @@ class PreviewCoordinator:
                     "size",
                     None,
                 ),
+                "image_is_padded_composite": bool(
+                    getattr(prepared.plan, "image_is_padded_composite", False)
+                ),
+                "overlay_clip_rect": getattr(
+                    getattr(prepared.plan, "render_scene", None),
+                    "overlay_clip_rect",
+                    None,
+                ),
+                "fill_rgba": getattr(prepared.plan, "fill_rgba", None),
                 "output_size": (
                     int(getattr(prepared, "output_width", 0) or 0),
                     int(getattr(prepared, "output_height", 0) or 0),
@@ -290,6 +367,13 @@ class PreviewCoordinator:
         )
 
         canvas._preview_source_key = request_key
+        self._preview_frame_cache = {
+            "prepare_key": None,  # filled by caller
+            "plan": prepared.plan,
+            "store": prepared.store,
+            "request_key": request_key,
+            "frame_pil": None,
+        }
         return True
 
     def render_preview_gpu(self, snap) -> bool:
@@ -323,30 +407,45 @@ class PreviewCoordinator:
             viewport_fingerprint(snap.viewport_state),
             frozen_value(snap.settings_state),
         )
-        request_key = (
+        # Prepare key ignores widget display size: same render buffer can be
+        # re-letterboxed into a resized preview pane without re-prepare.
+        prepare_key = (
             snapshot_signature,
             render_w,
             render_h,
-            preview_w,
-            preview_h,
             self.fit_content_mode,
             fill_color_tuple,
             global_bounds,
         )
-        request_id = self._render_task_id
-        frame_cache_key = (
-            request_key,
+        request_key = (
+            prepare_key,
+            preview_w,
+            preview_h,
         )
+        request_id = self._render_task_id
         cache = self._preview_frame_cache or {}
-        if cache.get("key") == frame_cache_key:
+        if (
+            cache.get("prepare_key") == prepare_key
+            and cache.get("plan") is not None
+        ):
             _vplog.debug(
-                "preview_cache_hit task=%s render=%sx%s display=%sx%s",
+                "preview_cache_hit_refit task=%s render=%sx%s display=%sx%s",
                 request_id,
                 render_w,
                 render_h,
                 preview_w,
                 preview_h,
             )
+            canvas = getattr(self.view, "preview_label", None)
+            if canvas is not None:
+                canvas._use_plan_fill_clear = False
+                apply_canvas_render_plan(
+                    canvas,
+                    cache["plan"],
+                    store=cache.get("store"),
+                    clip_overlays_to_image_bounds=self._clip_overlays_for_mode(),
+                )
+                canvas._preview_source_key = request_key
         else:
             _vplog.debug(
                 "preview_render task=%s render=%sx%s display=%sx%s",
@@ -377,7 +476,17 @@ class PreviewCoordinator:
                 if frame_pil is None:
                     return False
                 self._apply_preview_frame(frame_pil, request_key)
-            self._preview_frame_cache = {"key": frame_cache_key}
+                self._preview_frame_cache = {
+                    "prepare_key": prepare_key,
+                    "plan": None,
+                    "store": None,
+                    "request_key": request_key,
+                    "frame_pil": frame_pil,
+                }
+            else:
+                cache = self._preview_frame_cache or {}
+                cache["prepare_key"] = prepare_key
+                self._preview_frame_cache = cache
 
         if request_id != self._render_task_id or not self.has_live_view():
             _vplog.debug(
@@ -503,13 +612,16 @@ class PreviewCoordinator:
         logger.error(f"Error calculating global bounds: {err}")
 
     def on_window_resized(self):
-        self.reset_render_state()
-        if self.has_live_view() and not self.playback_engine.is_playing():
-            self.schedule_update()
+        if not self.has_live_view():
+            return
+        if self.playback_engine.is_playing():
+            return
+        self._resize_settle.ping()
 
     def cleanup(self):
         self._view_destroyed = True
         self._preview_updater.stop()
+        self._resize_settle.cancel()
         self._preview_frame_cache = None
         if self.has_live_view() and hasattr(self.view, "preview_label"):
             self.view.preview_label._preview_source_key = None

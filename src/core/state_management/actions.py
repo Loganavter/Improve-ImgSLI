@@ -66,6 +66,7 @@ from core.state_management.settings_actions import (
     SetDebugModeEnabledAction,
     SetExportFavoriteDirAction,
     SetLanguageAction,
+    SetKeyboardOverridesAction,
     SetShowWorkspaceTabsAction,
     SetSystemNotificationsEnabledAction,
     SetThemeAction,

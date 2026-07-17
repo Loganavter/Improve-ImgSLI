@@ -65,6 +65,14 @@ def initialize_app_display(controller):
     controller.store.emit_state_change("document")
 
 
+def _unify_resize_method(controller) -> str:
+    from tabs.image_compare.canvas.features.magnifier.workers.common import (
+        get_effective_main_interpolation_method,
+    )
+
+    return get_effective_main_interpolation_method(controller.store.viewport)
+
+
 def trigger_preview_unification(controller, image_number: int):
     if controller.presenter:
         controller.presenter.ui_batcher.schedule_batch_update(
@@ -102,6 +110,7 @@ def trigger_preview_unification(controller, image_number: int):
                 document.image1_path,
                 document.image2_path,
                 current_task_id,
+                _unify_resize_method(controller),
             )
             worker.signals.result.connect(controller._on_unified_images_ready)
             controller.thread_pool.start(worker, priority=1)
@@ -129,13 +138,19 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     ):
         return
 
-    from shared.image_processing.lazy_pixel_source import (
-        close_if_lazy,
-        maybe_wrap_for_lazy_storage,
+    from shared.image_processing.tiled_pixel_store import (
+        TiledPixelStore,
+        close_pixel_store,
+        maybe_wrap_pixel_store,
     )
 
-    close_if_lazy(getattr(document, f"full_res_image{image_number}", None))
-    full_img = maybe_wrap_for_lazy_storage(full_img)
+    outgoing = getattr(document, f"full_res_image{image_number}", None)
+    other = 2 if image_number == 1 else 1
+    other_full = getattr(document, f"full_res_image{other}", None)
+    if outgoing is not None and outgoing is not other_full:
+        close_pixel_store(outgoing)
+    if not isinstance(full_img, TiledPixelStore):
+        full_img = maybe_wrap_pixel_store(full_img)
     item = target_list[index_in_list]
     item.image = full_img
     controller._update_image_slot(
@@ -170,6 +185,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
                 live_document.image1_path,
                 live_document.image2_path,
                 current_task_id,
+                _unify_resize_method(controller),
             )
             worker.signals.result.connect(controller._on_unified_images_ready)
             controller.thread_pool.start(worker, priority=1)
@@ -391,6 +407,13 @@ def set_current_image(
     item = target_list[current_index]
     pil_img = item.image
     path = item.path
+    if pil_img is None:
+        # Path-only selection must not keep the previous slot's full_res/preview.
+        # Cross-list move of the live current image onto an empty list leaves the
+        # remaining unloaded item as current: SetImagePathAction alone used to
+        # keep the moved image's store on this slot, so a premature unify shared
+        # it and close_pixel_store later closed the other side's live store.
+        document_store_ops.clear_image_slot_data(controller.store, image_number)
     controller._update_image_slot(
         image_number, image=pil_img, path=path, is_full_res=bool(pil_img), emit=False
     )
@@ -460,12 +483,24 @@ def set_current_image(
 
 def on_unified_images_ready(controller, result):
     if not result:
+        controller.store.viewport.session_data.render_cache.unification_in_progress = (
+            False
+        )
+        controller.store.viewport.session_data.render_cache.pending_unification_paths = (
+            None
+        )
         controller.metrics_service.on_metrics_calculated(None)
         return
     try:
         if isinstance(result, tuple) and len(result) == 5:
             u1, u2, path1, path2, task_id = result
         else:
+            controller.store.viewport.session_data.render_cache.unification_in_progress = (
+                False
+            )
+            controller.store.viewport.session_data.render_cache.pending_unification_paths = (
+                None
+            )
             controller.metrics_service.on_metrics_calculated(None)
             return
 

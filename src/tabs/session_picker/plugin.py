@@ -9,7 +9,7 @@ from core.plugin_system.interfaces import ISessionPlugin
 from core.session_blueprints import SessionBlueprint
 
 
-@plugin(name="session_picker", version="0.1")
+@plugin(name="session_picker", version="0.1", startup_tier="bootstrap")
 class SessionPickerPlugin(Plugin, ISessionPlugin):
     def __init__(self):
         super().__init__()

@@ -2,10 +2,12 @@ import logging
 from typing import Callable, Dict, List
 
 from PySide6.QtGui import QPixmap
+from sli_ui_toolkit.managers import SettleGate
 
 from .common import VIDEO_EDITOR_AUTO_CROP
 
 logger = logging.getLogger("ImproveImgSLI")
+
 
 class ThumbnailCoordinator:
     def __init__(
@@ -15,6 +17,7 @@ class ThumbnailCoordinator:
         playback_engine,
         thumbnail_service,
         emit_thumbnails_updated: Callable[[Dict[int, QPixmap]], None],
+        timer_parent=None,
     ):
         self.view = view
         self.editor_service = editor_service
@@ -22,7 +25,15 @@ class ThumbnailCoordinator:
         self.thumbnail_service = thumbnail_service
         self.emit_thumbnails_updated = emit_thumbnails_updated
 
+        # Coalesce resize + scrollbar-range churn while the window is dragged.
+        self._visible_refresh = SettleGate(
+            on_settle=self._refresh_visible_thumbnails,
+            interval_ms=SettleGate.DEFAULT_INTERVAL_MS,
+            parent=timer_parent,
+        )
+
     def detach_view(self):
+        self._visible_refresh.cancel()
         self.view = None
 
     def calculate_optimal_thumbnail_count(self) -> int:
@@ -50,6 +61,7 @@ class ThumbnailCoordinator:
         return max(20, min(visible_count, 200))
 
     def generate_thumbnails(self):
+        self._visible_refresh.cancel()
         if self.view is not None and hasattr(self.view, "timeline") and hasattr(
             self.view.timeline, "clear_thumbnails"
         ):
@@ -80,15 +92,19 @@ class ThumbnailCoordinator:
         return None
 
     def on_timeline_viewport_changed(self):
+        self._visible_refresh.ping()
+
+    def on_timeline_resized(self):
+        # Do not queue GPU thumbnails while the strip is refitting; settle first.
+        self._visible_refresh.ping()
+
+    def _refresh_visible_thumbnails(self):
         visible_indices = self.get_visible_frame_indices()
         if visible_indices:
             self.thumbnail_service.generate_additional_thumbnails(
                 visible_indices,
                 fps=self.editor_service.get_fps(),
             )
-
-    def on_timeline_resized(self):
-        self.on_timeline_viewport_changed()
 
     def get_visible_frame_indices(self, margin: int = 2) -> List[int]:
         if self.view is None or not hasattr(self.view, "timeline"):
@@ -119,4 +135,5 @@ class ThumbnailCoordinator:
             return list(range(min(10, total_frames)))
 
     def cleanup(self):
+        self._visible_refresh.cancel()
         self.thumbnail_service.cancel()

@@ -1,5 +1,76 @@
 {
   "image_compare": {
-    "session_type": "Image Compare"
+    "session_type": "Image Compare",
+    "help": {
+      "hub": {
+        "desc": "Two-image compare, magnifier, export"
+      },
+      "page": {
+        "comparison": {
+          "title": "Comparison",
+          "desc": "Split line, labels, difference modes"
+        },
+        "magnifier": {
+          "title": "Magnifier",
+          "desc": "Capture area, freeze, combined mode"
+        },
+        "export": {
+          "title": "Export",
+          "desc": "Stills and quick-save"
+        },
+        "video": {
+          "title": "Video Editor",
+          "desc": "Record, trim, encode"
+        }
+      }
+    },
+    "action": {
+      "magnifier": "Toggle Magnifier",
+      "swap": "Swap Images",
+      "freeze": "Freeze Magnifier",
+      "file_names": "Filename Overlay",
+      "file_names_desc": "Show or hide filename labels on the canvas",
+      "text_settings": "Label Text Settings",
+      "quick_save": "Quick Save",
+      "save": "Save Result",
+      "magnifier_orientation": "Magnifier Orientation",
+      "magnifier_divider_combined": "Magnifier Divider",
+      "magnifier_divider_combined_desc": "Orientation, thickness, and color of the magnifier split (scroll / right-click)",
+      "magnifier_guides": "Magnifier Guides",
+      "magnifier_divider_visible": "Magnifier Divider Visibility",
+      "magnifier_colors": "Magnifier Colors",
+      "magnifier_instances": "Magnifier Instances",
+      "magnifier_divider_width": "Magnifier Divider Width",
+      "magnifier_guides_width": "Magnifier Guides Width",
+      "clear_list1": "Remove Current Image (Side 1)",
+      "clear_list2": "Remove Current Image (Side 2)",
+      "add_image1": "Add Images (Side 1)",
+      "add_image2": "Add Images (Side 2)",
+      "divider_orientation": "Split Orientation",
+      "divider_combined": "Divider",
+      "divider_combined_desc": "Orientation, width, and color of the split line (scroll / right-click / middle-click)",
+      "divider_visible": "Divider Visibility",
+      "divider_color": "Divider Color",
+      "divider_width": "Divider Width",
+      "diff_mode": "Difference Mode",
+      "channel_mode": "Channel Mode",
+      "diff_highlight": "Highlight",
+      "diff_grayscale": "Grayscale",
+      "diff_edges": "Edges",
+      "diff_ssim": "SSIM",
+      "record": "Record Video",
+      "pause_recording": "Pause Recording",
+      "video_editor": "Video Editor",
+      "breadcrumb": {
+        "toolbar": "Toolbar",
+        "magnifier": "Magnifier",
+        "session": "Session",
+        "labels": "Labels",
+        "export": "Export",
+        "divider": "Divider",
+        "analysis": "Analysis",
+        "video": "Video"
+      }
+    }
   }
 }

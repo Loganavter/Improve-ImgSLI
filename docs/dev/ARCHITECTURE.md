@@ -23,7 +23,7 @@ flowchart LR
 | `core/` | bootstrap, dispatcher, store, state_management (reducers/actions), plugin_system, event bus |
 | `domain/` | Qt-agnostic data shapes (workspace/session model, geometry types) and Qt adapters |
 | `ui/` | main window shell, presenters, canvas infra shared across tabs, dialogs, transient UI |
-| `plugins/` | capability modules that are not tied to a single tab: export, settings, help, image_properties, layout, video file I/O |
+| `plugins/` | app-wide capability modules not tied to a single tab: export, settings, help, image_properties, layout |
 | `tabs/` | self-contained workspace modes (image_compare, multi_compare, session_picker), each owning its own widget tree, state slot, and canvas features |
 | `shared/` | app-specific rendering and image-processing utilities (analysis, offscreen render, interpolation) |
 | `shared_toolkit/` | vendored `sli-ui-toolkit` — base widgets, theming, i18n, gesture resolvers |
@@ -61,19 +61,24 @@ flowchart TB
 sequenceDiagram
     participant Main as __main__.py
     participant Ctx as ApplicationContext
+    participant Startup as MainWindowStartupRuntime
     participant Composer as MainWindowComposer
 
     Main->>Main: configure QRhi backend / Qt logging
     Main->>Ctx: create QApplication, MainWindow(runtime_flags)
-    Ctx->>Ctx: build core services (Store, Dispatcher, EventBus, PluginUIRegistry)
+    Ctx->>Ctx: build core services (Store, Dispatcher, EventBus)
     Ctx->>Ctx: load persistent state (SettingsManager -> Store)
-    Ctx->>Ctx: build runtime services (PluginRegistry, PluginDefinitionRegistry)
-    Ctx->>Ctx: discover + initialize plugins (PluginCoordinator, SessionManager)
-    Ctx->>Composer: compose main window
-    Composer->>Composer: GeometryManager, UIResourceManager, MainController, EventHandler, Presenter
+    Ctx->>Ctx: discover_plugins(tier=bootstrap) + initialize
+    Startup->>Startup: TabRegistry.discover(tier=bootstrap)
+    Startup->>Composer: compose main window (lazy import)
+    Composer->>Composer: GeometryManager, MainController, Presenter
+    Startup->>Startup: QRhi first-frame gate -> startupVisualReady
+    Startup->>Ctx: load_deferred_plugins() via QTimer.singleShot(0)
+    Ctx->>Ctx: discover_plugins(tier=deferred) + register_and_start
+    Startup->>Startup: TabRegistry.discover(tier=deferred), install_missing_pages
 ```
 
-`core/bootstrap.py` (`ApplicationContext`) owns steps up through plugin initialization; `ui/main_window/composer.py` (`MainWindowComposer`) assembles the window shell on top of it.
+`core/bootstrap.py` (`ApplicationContext`) owns bootstrap-tier plugin initialization; deferred plugins load after the startup cover is dismissed. `ui/main_window/composer.py` (`MainWindowComposer`) is imported lazily inside `create_window_dependent_components()`.
 
 ## Main Data Flow
 
@@ -119,9 +124,8 @@ mechanisms — `create_service` (the default), `notify_all` (broadcast-only),
 and `CanvasGeometryProvider` (typed protocol, canvas hot-path only). Full
 reference, current status, and the "never do this instead" rules (no 11th
 abstract method on `TabContract`, no `getattr(widget, "btn_x", None)`
-implied lookups) live in [TAB_CONTRACT.md](TAB_CONTRACT.md)'s "Capability
-mechanisms" section — that is the single source of truth for this topic, not
-duplicated here.
+implied lookups) live in [tabs/capability-mechanisms.md](tabs/capability-mechanisms.md) —
+that is the single source of truth for this topic, not duplicated here.
 
 ## Canvas Stack
 
@@ -157,7 +161,9 @@ Canvas features are discovered automatically from `tabs/<tab>/canvas/features/<n
 
 ## Plugins
 
-Plugins hold app-level capabilities that are not tied to a single tab.
+Anything with `@plugin(...)` participates in the same lifecycle — both
+app-wide modules under `plugins/` and tab/session modules under `tabs/`.
+Full inventory (tiers, interfaces, layouts): [PLUGINS.md](PLUGINS.md).
 
 ```mermaid
 flowchart LR
@@ -167,22 +173,32 @@ flowchart LR
     Act --> Shutdown["Shutdown Cleanly"]
 ```
 
+### App-wide (`src/plugins/`)
+
 | Plugin | Role |
 |---|---|
-| `plugins/export/` | export pipeline integration (image/video) |
 | `plugins/settings/` | settings dialog + `SettingsManager` (disk persistence) |
-| `plugins/help/` | in-app help widget |
+| `plugins/layout/` | UI-mode bridge; resolves tab `layout_manager` via registry |
+| `plugins/export/` | export pipeline integration (image/video) + recording commands |
+| `plugins/help/` | in-app help dialog |
 | `plugins/image_properties/` | image metadata display |
-| `plugins/layout/` | multi-column / side-by-side layout management |
 
-Note: `video_editor` (file I/O, dialogs, timeline, keyframing, and
-preview-canvas integration) lives under `tabs/image_compare/plugins/video_editor/` —
-it is tab-owned code, not a `plugins/<name>/` entry, since it has no consumer
-outside `tabs/image_compare/`. It still registers itself as a `Plugin` (via
-an explicit import from `tabs/image_compare/plugin.py`, since
-`PluginRegistry`'s scan of `tabs/` is one level deep) so the rest of the
-plugin lifecycle (event bus, `get_plugin("video_editor")` lookups) is
-unaffected by where the code lives.
+### Tab / session plugins (`src/tabs/`)
+
+| Plugin name | Path | Role |
+|---|---|---|
+| `comparison` | `tabs/image_compare/` | primary two-image compare session (incl. analysis services) |
+| `session_picker` | `tabs/session_picker/` | transient new-session switcher |
+| `multi_compare` | `tabs/multi_compare/` | grid multi-image compare session |
+| `video_editor` | `tabs/image_compare/plugins/video_editor/` | tab-owned video editor (deferred, before export) |
+
+Note: `video_editor` (dialogs, timeline, keyframing, recorder/export flows, and
+preview-canvas integration) is tab-owned under
+`tabs/image_compare/plugins/video_editor/` — not a `plugins/<name>/` entry —
+because it has no consumer outside `image_compare`. Discovery still finds it
+via nested filesystem scan (`discovery_scan.iter_plugin_entry_points`); the
+plugin lifecycle (`get_plugin("video_editor")`, event bus) is the same as for
+app-wide plugins.
 
 The keyframe snapshot contracts (`FrameSnapshot`, `ChannelDescriptor`,
 `TrackDescriptor`, `ToolDescriptor`, `KeyframeToolAdapter`) live in

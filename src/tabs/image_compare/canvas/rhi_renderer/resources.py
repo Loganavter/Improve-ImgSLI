@@ -18,7 +18,7 @@ from PySide6.QtGui import (
     QShader,
 )
 
-from shared.image_processing.lazy_pixel_source import LazyPixelSource
+from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from shared.rendering.tile_texture_service import TileTextureService
 
 from ..texture_parts.tile_geometry import (
@@ -291,6 +291,9 @@ class RhiResources:
                 state._images_uploaded[slot] = True
             else:
                 image = state._stored_pil_images[slot]
+                if isinstance(image, TiledPixelStore):
+                    state._images_uploaded[slot] = True
+                    continue
                 queue_texture_upload(widget, image, texture_key, slot)
         for slot, texture_key in enumerate(widget._source_texture_ids):
             cached = touch_texture_upload_cache(widget, texture_key)
@@ -298,6 +301,8 @@ class RhiResources:
                 state._pending_texture_uploads.append((texture_key, cached, None))
             else:
                 image = state._source_pil_images[slot]
+                if isinstance(image, TiledPixelStore):
+                    continue
                 queue_texture_upload(widget, image, texture_key)
         diff_key = widget._diff_source_texture_id
         cached_diff = touch_texture_upload_cache(widget, diff_key)
@@ -350,28 +355,48 @@ class RhiResources:
             pairs.append((diff_key, letterboxes[0]))
         protected_by_key: dict[object, set[tuple[int, int]]] = {}
         for key, letterbox in pairs:
-            grid = tile_service.grid_for(key)
-            if grid is None or (grid.rows == 1 and grid.columns == 1):
-                continue
             pil_source = _pil_image_for_texture_key(widget, key)
-            is_lazy = isinstance(pil_source, LazyPixelSource)
+            is_tiled_store = isinstance(pil_source, TiledPixelStore)
+            grid = tile_service.grid_for(key)
+            if grid is None:
+                if is_tiled_store and pil_source is not None:
+                    grid = tile_service.register_source(key, pil_source.size)
+                else:
+                    continue
+            if grid.rows == 1 and grid.columns == 1:
+                if is_tiled_store and pil_source is not None:
+                    index = (0, 0)
+                    if tile_service.is_resident(key, index):
+                        tile_service.touch(key, index)
+                    else:
+                        region = next(
+                            (
+                                region
+                                for row, col, region in grid.iter_regions()
+                                if (row, col) == index
+                            ),
+                            None,
+                        )
+                        if region is not None:
+                            left, top, right, bottom = _apron_rect(
+                                grid.total_width,
+                                grid.total_height,
+                                region,
+                                _TILE_APRON_PX,
+                            )
+                            tile_key = tile_service.tile_key(key, *index)
+                            cropped_pil = pil_source.crop((left, top, right, bottom))
+                            tile_image = qimage_from_pil(cropped_pil)
+                            self.upload_whole(tile_key, tile_image, updates)
+                            tile_service.mark_resident(
+                                key, index, (right - left) * (bottom - top) * 4
+                            )
+                    protected_by_key[key] = {index}
+                continue
             full_image = None
-            if is_lazy:
-                # docs/dev/rendering/tile-rendering-system.md Phase 3: this
-                # source is past the size threshold and spilled to a
-                # memmap-backed LazyPixelSource -- never materialize a
-                # full-size QImage for it (that would defeat the point).
-                # Tiles are cropped directly from the memmap below.
-                pass
-            else:
+            if not is_tiled_store:
                 full_image = touch_texture_upload_cache(widget, key)
                 if full_image is None:
-                    # Evicted by evict_texture_upload_cache_over_budget
-                    # (Phase 2) or never cached this session -- rebuild
-                    # from the PIL image that's retained for this key's
-                    # whole lifetime regardless (see docs/dev/
-                    # tile-rendering-system.md), so this is a
-                    # recompute cost, not a data loss.
                     if pil_source is None:
                         continue
                     full_image = qimage_from_pil(pil_source)
@@ -409,7 +434,7 @@ class RhiResources:
                     grid.total_width, grid.total_height, region, _TILE_APRON_PX
                 )
                 tile_key = tile_service.tile_key(key, *index)
-                if is_lazy:
+                if is_tiled_store:
                     cropped_pil = pil_source.crop((left, top, right, bottom))
                     tile_image = qimage_from_pil(cropped_pil)
                 else:

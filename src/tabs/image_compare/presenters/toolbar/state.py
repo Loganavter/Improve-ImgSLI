@@ -3,7 +3,7 @@ from PySide6.QtCore import QSignalBlocker
 from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.canvas.registry import registry
 from ui.canvas_infra.viewport.state import get_zoom_level
-from ui.icon_manager import AppIcon
+from tabs.image_compare.icons import Icon
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -75,7 +75,7 @@ def update_toolbar_states(presenter):
     )
     if hasattr(presenter.widget.btn_file_names, "setVisualIconOverride"):
         presenter.widget.btn_file_names.setVisualIconOverride(
-            AppIcon.DIVIDER_HIDDEN if file_names_temporarily_hidden else None
+            Icon.DIVIDER_HIDDEN if file_names_temporarily_hidden else None
         )
     lang = presenter.store.settings.current_language
     presenter.widget.btn_file_names.setToolTip(

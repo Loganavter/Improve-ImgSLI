@@ -10,6 +10,6 @@ Start with the local documentation:
   export, and coordinate contracts
 - [docs/TODO.md](docs/TODO.md) - tab-local backlog
 
-The tab follows the host [Tab Contract](../../../docs/dev/TAB_CONTRACT.md) but
+The tab follows the host [Tab Contract](../../../docs/dev/tabs/index.md) but
 keeps its own state, translations, resources, renderer passes, and export
 helpers under this package.

@@ -27,5 +27,5 @@ def test_multi_compare_buttons_are_constructed_with_visible_text():
     toolbar_source = (TAB_ROOT / "ui" / "toolbar.py").read_text(encoding="utf-8")
     footer_source = (TAB_ROOT / "ui" / "footer.py").read_text(encoding="utf-8")
 
-    assert 'AppIcon.PHOTO, text=text' in toolbar_source
-    assert 'AppIcon.SAVE, text=text' in footer_source
+    assert 'Icon.PHOTO, text=text' in toolbar_source
+    assert 'Icon.SAVE, text=text' in footer_source

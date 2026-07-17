@@ -4,7 +4,7 @@ Every package under ``src/tabs/`` must expose a ``TabContract`` subclass
 with a filled-in ``session_type`` and ``display_name``; ``session_type`` must
 be unique across tabs (it is the routing key in ``TabRegistry``).
 
-Dogma source: docs/dev/TAB_CONTRACT.md.
+Dogma source: docs/dev/tabs/contract.md.
 """
 
 from __future__ import annotations

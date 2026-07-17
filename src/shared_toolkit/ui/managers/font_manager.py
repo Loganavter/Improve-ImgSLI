@@ -123,6 +123,17 @@ class FontManager(QObject):
 
             app.setFont(new_font)
 
+            try:
+                from sli_ui_toolkit.managers import UiFont
+
+                ui = UiFont.get_instance()
+                # Pin the resolved family so toolkit widgets don't race
+                # ApplicationFontChange / bake a pre-apply system face.
+                ui.set_family(new_font.family() or None)
+                ui.sync_from_application()
+            except Exception:
+                pass
+
             self._force_widget_update(app)
             self.font_changed.emit()
 
@@ -130,19 +141,22 @@ class FontManager(QObject):
             fallback_font = QFont()
             fallback_font.setPointSize(11)
             app.setFont(fallback_font)
+            try:
+                from sli_ui_toolkit.managers import UiFont
+
+                ui = UiFont.get_instance()
+                ui.set_family(fallback_font.family() or None)
+                ui.sync_from_application()
+            except Exception:
+                pass
 
     def _force_widget_update(self, app):
         try:
-            widgets = app.allWidgets()
-            new_app_font = app.font()
-
-            for widget in widgets:
+            for widget in app.allWidgets():
                 if widget and not widget.objectName().startswith("qt_"):
                     try:
-
                         widget.style().unpolish(widget)
                         widget.style().polish(widget)
-
                         widget.updateGeometry()
                         widget.update()
                     except Exception:

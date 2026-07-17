@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from ui.widgets.themed_surface import ThemedSurface
 
-class StartupPlaceholder(QWidget):
+
+class StartupPlaceholder(ThemedSurface):
     """Transparent overlay shown over the image area before any image is loaded.
 
     Tracks the geometry of a target widget (the image canvas) and exposes
@@ -17,7 +19,6 @@ class StartupPlaceholder(QWidget):
         self._target_widget = target_widget
 
         self.setObjectName("ImageStartupPlaceholder")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         layout = QVBoxLayout(self)
@@ -35,6 +36,11 @@ class StartupPlaceholder(QWidget):
         self.show()
         self.raise_()
 
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self._bg_color)
+        painter.end()
+
     def set_target(self, target: QWidget):
         self._target_widget = target
 
@@ -45,10 +51,5 @@ class StartupPlaceholder(QWidget):
         self.raise_()
 
     def set_background_color(self, color):
-        bg = QColor(color)
-        pal = self.palette()
-        pal.setColor(QPalette.ColorRole.Window, bg)
-        pal.setColor(QPalette.ColorRole.Base, bg)
-        self.setPalette(pal)
-        self.setAutoFillBackground(True)
+        """Backward-compatible no-op: background tracks theme via ThemedSurface."""
         self.update()

@@ -11,6 +11,7 @@
     "png_compression_level": "PNG压缩级别",
     "preview": "预览",
     "remember_by_default": "默认记住",
+    "lock_aspect_ratio": "锁定宽高比",
     "select_background_color": "选择背景颜色",
     "select_output_directory": "选择输出目录"
   }

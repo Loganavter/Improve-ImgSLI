@@ -3,12 +3,12 @@ from __future__ import annotations
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.widgets import IndexedToggleFlyout
-from ui.icon_manager import AppIcon
+from tabs.image_compare.icons import Icon
 
 
 class MagnifierVisibilityFlyout(IndexedToggleFlyout):
     def __init__(self, parent_widget: QWidget):
-        super().__init__(parent_widget, slot_count=3, slot_icon=AppIcon.MAGNIFIER)
+        super().__init__(parent_widget, slot_count=3, slot_icon=Icon.MAGNIFIER)
         self.btn_left = self.buttons[0]
         self.btn_center = self.buttons[1]
         self.btn_right = self.buttons[2]

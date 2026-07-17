@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QRhiWidget, QWidget
-
-from shared_toolkit.ui.managers.font_manager import FontManager
-from ui.theming import resolve_theme_color
+from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
+from ui.layout_geometry import apply_main_window_minimum
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -15,26 +12,8 @@ class MainWindowAppearance:
     def __init__(self, window):
         self.window = window
 
-    @staticmethod
-    def _apply_widget_background(widget: QWidget | None, bg) -> None:
-        if widget is None:
-            return
-        pal = widget.palette()
-        pal.setColor(widget.backgroundRole(), bg)
-        pal.setColor(widget.foregroundRole(), bg)
-        pal.setColor(QPalette.ColorRole.Window, bg)
-        pal.setColor(QPalette.ColorRole.Base, bg)
-        widget.setPalette(pal)
-        widget.setAutoFillBackground(True)
-        if isinstance(widget, QRhiWidget):
-            widget._theme_background_color = QColor(bg)
-        widget.update()
-
     def update_image_label_background(self) -> None:
         window = self.window
-        bg = resolve_theme_color(window.theme_manager, "label.image.background")
-        self._apply_widget_background(getattr(window, "_startup_placeholder", None), bg)
-        self._apply_widget_background(getattr(window, "_startup_cover", None), bg)
         if window.ui is None:
             return
         registry = getattr(window.ui, "_tab_registry", None)
@@ -45,11 +24,23 @@ class MainWindowAppearance:
         window = self.window
         self.update_image_label_background()
         try:
+            from shared_toolkit.ui.managers.font_manager import FontManager
+            from PySide6.QtWidgets import QApplication
+
             FontManager.get_instance().apply_from_state(window.store)
             current_font = QApplication.font()
             window.setFont(current_font)
+            try:
+                from sli_ui_toolkit.managers import UiFont
+
+                UiFont.get_instance().set_family(current_font.family() or None)
+                UiFont.get_instance().sync_from_application()
+            except Exception:
+                pass
         except Exception as exc:
             logger.error("Error enforcing font style: %s", exc)
+
+        defer_dialog_geometry(window, lambda: apply_main_window_minimum(window))
 
         window.style().unpolish(window)
         window.style().polish(window)

@@ -22,7 +22,8 @@ from ui.widgets.scroll_value_button import ScrollValueButton
 from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.canvas.widget import CanvasWidget
 from tabs.image_compare.ui.magnifier_color_controls import ColorSettingsButton
-from ui.icon_manager import AppIcon
+from tabs.image_compare.icons import Icon
+from shared_toolkit.ui.mode_picker import ModePicker
 from ui.theming import resolve_theme_color
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -71,19 +72,19 @@ class ImageComparePrimitivesFactory:
         target = self.target
         language = self.host._current_language()
         target.btn_image1 = Button(
-            AppIcon.PHOTO,
+            Icon.PHOTO,
             text=tr("button.add_images_1", language),
             variant="surface",
             parent=parent,
         )
         target.btn_image2 = Button(
-            AppIcon.PHOTO,
+            Icon.PHOTO,
             text=tr("button.add_images_2", language),
             variant="surface",
             parent=parent,
         )
         target.btn_swap = Button(
-            AppIcon.SYNC,
+            Icon.SYNC,
             long_press=True,
             variant="surface",
             background_color=QColor(
@@ -92,14 +93,14 @@ class ImageComparePrimitivesFactory:
             parent=parent,
         )
         target.btn_clear_list1 = Button(
-            AppIcon.DELETE,
+            Icon.DELETE,
             long_press=True,
             variant="surface",
             background_color=QColor("#D93025"),
             parent=parent,
         )
         target.btn_clear_list2 = Button(
-            AppIcon.DELETE,
+            Icon.DELETE,
             long_press=True,
             variant="surface",
             background_color=QColor("#D93025"),
@@ -109,40 +110,42 @@ class ImageComparePrimitivesFactory:
             resolve_theme_color(ThemeManager.get_instance(), "accent")
         )
         target.help_button = Button(
-            AppIcon.HELP,
+            Icon.HELP,
             variant="surface",
             background_color=accent_color,
             parent=parent,
         )
         target.btn_settings = Button(
-            AppIcon.SETTINGS,
+            Icon.SETTINGS,
             variant="surface",
             background_color=accent_color,
             parent=parent,
         )
+        target.btn_settings.hide()
+        target.help_button.hide()
         target.btn_text_settings = Button(
-            AppIcon.TEXT_MANIPULATOR,
+            Icon.TEXT_MANIPULATOR,
             variant="surface",
             background_color=accent_color,
             parent=parent,
         )
         target.btn_quick_save = Button(
-            AppIcon.QUICK_SAVE,
+            Icon.QUICK_SAVE,
             variant="surface",
             background_color=accent_color,
             parent=parent,
         )
         target.btn_magnifier_orientation = ScrollValueButton(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+            icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
             toggle=True,
             show_underline=True,
             min_value=0,
             max_value=10,
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
+            zero_icon=Icon.DIVIDER_HIDDEN,
             parent=parent,
         )
         target.btn_save = Button(
-            AppIcon.SAVE,
+            Icon.SAVE,
             text=tr("button.save_result", language),
             variant="surface",
             parent=parent,
@@ -158,64 +161,70 @@ class ImageComparePrimitivesFactory:
     def _create_view_controls(self, parent: QWidget) -> None:
         target = self.target
         target.btn_orientation = ScrollValueButton(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+            icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
             toggle=True,
             show_underline=True,
             min_value=0,
             max_value=10,
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
+            zero_icon=Icon.DIVIDER_HIDDEN,
             parent=parent,
         )
-        target.btn_magnifier = Button(AppIcon.MAGNIFIER, toggle=True, parent=parent)
+        target.btn_magnifier = Button(Icon.MAGNIFIER, toggle=True, parent=parent)
         target.btn_magnifier_instances = InstancesCounterButton(parent=parent)
-        target.btn_freeze = Button(AppIcon.FREEZE, toggle=True, parent=parent)
-        target.btn_file_names = Button(AppIcon.TEXT_FILENAME, toggle=True, parent=parent)
+        target.btn_freeze = Button(Icon.FREEZE, toggle=True, parent=parent)
+        target.btn_file_names = Button(Icon.TEXT_FILENAME, toggle=True, parent=parent)
 
         target.btn_diff_mode = Button(
-            AppIcon.HIGHLIGHT_DIFFERENCES, menu=[], parent=parent
+            Icon.HIGHLIGHT_DIFFERENCES, parent=parent
         )
-        target.btn_channel_mode = Button(AppIcon.PHOTO, menu=[], parent=parent)
+        target.btn_channel_mode = Button(Icon.PHOTO, parent=parent)
+        target.btn_diff_mode_picker = ModePicker.attach(
+            target.btn_diff_mode, id_prefix="diff_mode"
+        )
+        target.btn_channel_mode_picker = ModePicker.attach(
+            target.btn_channel_mode, id_prefix="channel_mode"
+        )
 
         target.btn_magnifier_color_settings = ColorSettingsButton(
             parent=parent, current_language="en"
         )
         target.btn_magnifier_guides = ScrollValueButton(
-            icon=AppIcon.MAGNIFIER_GUIDES,
+            icon=Icon.MAGNIFIER_GUIDES,
             toggle=True,
             show_underline=True,
             min_value=0,
             max_value=10,
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
+            zero_icon=Icon.DIVIDER_HIDDEN,
             parent=parent,
         )
 
         target.btn_orientation_simple = Button(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+            icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
             toggle=True,
             parent=parent,
         )
         target.btn_divider_visible = Button(
-            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN),
+            icon=(Icon.DIVIDER_VISIBLE, Icon.DIVIDER_HIDDEN),
             toggle=True,
             parent=parent,
         )
         target.btn_divider_color = Button(
-            AppIcon.DIVIDER_COLOR, show_underline=True, parent=parent
+            Icon.DIVIDER_COLOR, show_underline=True, parent=parent
         )
         target.btn_divider_width = ScrollValueButton(
-            icon=AppIcon.DIVIDER_WIDTH,
+            icon=Icon.DIVIDER_WIDTH,
             min_value=0,
             max_value=10,
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
+            zero_icon=Icon.DIVIDER_HIDDEN,
             parent=parent,
         )
         target.btn_magnifier_orientation_simple = Button(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
+            icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
             toggle=True,
             parent=parent,
         )
         target.btn_magnifier_divider_visible = Button(
-            icon=(AppIcon.DIVIDER_VISIBLE, AppIcon.DIVIDER_HIDDEN),
+            icon=(Icon.DIVIDER_VISIBLE, Icon.DIVIDER_HIDDEN),
             toggle=True,
             parent=parent,
         )
@@ -224,17 +233,17 @@ class ImageComparePrimitivesFactory:
             parent=parent, current_language="en"
         )
         target.btn_magnifier_divider_width = ScrollValueButton(
-            icon=AppIcon.DIVIDER_WIDTH,
+            icon=Icon.DIVIDER_WIDTH,
             show_underline=True,
             min_value=1,
             max_value=10,
             parent=parent,
         )
         target.btn_magnifier_guides_simple = Button(
-            AppIcon.MAGNIFIER_GUIDES, toggle=True, parent=parent
+            Icon.MAGNIFIER_GUIDES, toggle=True, parent=parent
         )
         target.btn_magnifier_guides_width = ScrollValueButton(
-            icon=AppIcon.DIVIDER_WIDTH,
+            icon=Icon.DIVIDER_WIDTH,
             show_underline=True,
             min_value=1,
             max_value=10,
@@ -244,13 +253,13 @@ class ImageComparePrimitivesFactory:
     def _create_video_controls(self, parent: QWidget) -> None:
         target = self.target
         target.btn_record = Button(
-            icon=(AppIcon.RECORD, AppIcon.STOP), toggle=True, parent=parent
+            icon=(Icon.RECORD, Icon.STOP), toggle=True, parent=parent
         )
         target.btn_pause = Button(
-            icon=(AppIcon.PAUSE, AppIcon.PLAY), toggle=True, parent=parent
+            icon=(Icon.PAUSE, Icon.PLAY), toggle=True, parent=parent
         )
         target.btn_pause.setEnabled(False)
-        target.btn_video_editor = Button(AppIcon.EXPORT_VIDEO, parent=parent)
+        target.btn_video_editor = Button(Icon.EXPORT_VIDEO, parent=parent)
 
     def _create_slider_controls(self, parent: QWidget) -> None:
         target = self.target
@@ -285,6 +294,11 @@ class ImageComparePrimitivesFactory:
 
     def _init_warning_label(self) -> None:
         target = self.target
-        target.length_warning_label.setProperty("class", "warning-label")
+        from PySide6.QtGui import QColor
+
+        if hasattr(target.length_warning_label, "setBold"):
+            target.length_warning_label.setBold(True)
+        if hasattr(target.length_warning_label, "setTextColor"):
+            target.length_warning_label.setTextColor(QColor("#FF4500"))
         target.length_warning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         target.length_warning_label.setVisible(False)

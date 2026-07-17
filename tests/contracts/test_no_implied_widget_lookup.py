@@ -1,6 +1,6 @@
 """No implied lookups for dependencies that should be passed explicitly.
 
-Dogma source: docs/dev/TAB_CONTRACT.md "Dependency Wiring Rule: No Implied
+Dogma source: docs/dev/tabs/isolation.md "Dependency Wiring Rule: No Implied
 Lookups". A widget/presenter/controller reference must reach its consumer
 either as a constructor/method argument from the object that owns it, or as
 `self`'s own state set in `__init__`. Reaching for it via a string-keyed

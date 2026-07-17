@@ -64,6 +64,9 @@ class _FakeWorkspaceStore:
     def get_active_workspace_session(self):
         return self.sessions[self.active_session_id]
 
+    def list_workspace_sessions(self):
+        return tuple(self.sessions.values())
+
     def ensure_session_state_slot(
         self,
         slot_name,
@@ -73,6 +76,7 @@ class _FakeWorkspaceStore:
         default=None,
         emit_change=False,
     ):
+        # Match WorkspaceStoreMixin: no emit_scope kwarg (regression for seed).
         session = self.sessions[session_id or self.active_session_id]
         if slot_name not in session.state_slots:
             session.state_slots[slot_name] = factory() if factory else default
@@ -89,6 +93,12 @@ class _FakeWorkspaceStore:
         session = self.sessions[session_id or self.active_session_id]
         session.state_slots[slot_name] = value
         return value
+
+    def get_session_state_slot(self, slot_name, *, session_id=None, default=None):
+        session = self.sessions.get(session_id or self.active_session_id)
+        if session is None:
+            return default
+        return session.state_slots.get(slot_name, default)
 
 
 def test_text_settings_button_sits_before_add_button(qapp):
@@ -129,6 +139,13 @@ def test_toolbar_ui_modes_recompose_button_groups(qapp):
     assert not toolbar.btn_divider_visible.isHidden()
     assert not toolbar.btn_divider_color.isHidden()
     assert not toolbar.btn_divider_width.isHidden()
+
+    action_layout = toolbar.action_group_container.layout()
+    assert action_layout.indexOf(toolbar.btn_quick_save) >= 0
+    assert action_layout.indexOf(toolbar.btn_settings) < 0
+    assert action_layout.indexOf(toolbar.help_button) < 0
+    assert toolbar.btn_settings.isHidden()
+    assert toolbar.help_button.isHidden()
 
 
 def test_toolbar_ui_modes_keep_tooltips_on_visible_controls(qapp):
@@ -251,11 +268,8 @@ def test_multi_compare_state_is_saved_per_workspace_session(qapp):
     )
 
     store.active_session_id = "b"
-    tab.on_activated(context)
-    # New sessions inherit the globally remembered last-used divider/label
-    # settings (persisted via QSettings, see tab.py's `_default_state`) rather
-    # than hardcoded defaults, so session "b" starts out matching session "a".
-    assert widget.state.divider_settings.color_rgba == (10, 20, 30, 40)
+    tab.on_active_session_changed("b", context)
+    assert widget.state.divider_settings.color_rgba == (180, 180, 180, 230)
 
     widget.apply_divider_color(QColor(1, 2, 3, 4))
     assert store.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
@@ -266,7 +280,7 @@ def test_multi_compare_state_is_saved_per_workspace_session(qapp):
     )
 
     store.active_session_id = "a"
-    tab.on_activated(context)
+    tab.on_active_session_changed("a", context)
     assert widget.state.divider_settings.color_rgba == (10, 20, 30, 40)
 
 
@@ -384,3 +398,187 @@ def test_font_flyout_opens_down_and_right_from_text_button(qapp, monkeypatch):
     assert captured["anchor_widget"] is widget.toolbar.btn_text_settings
     assert captured["anchor_point"] == "bottom-right"
     assert captured["flyout_point"] == "top-left"
+
+
+def test_first_multi_compare_session_seeds_from_qsettings(qapp, monkeypatch):
+    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareLabelSettings
+    from tabs.multi_compare.tab import MultiCompareTab, _settings_from_qsettings
+
+    remembered_divider = MultiCompareDividerSettings(color_rgba=(9, 8, 7, 6))
+    remembered_label = MultiCompareLabelSettings(font_size_percent=120)
+    monkeypatch.setattr(
+        "tabs.multi_compare.tab._settings_from_qsettings",
+        lambda: __import__(
+            "tabs.multi_compare.models", fromlist=["MultiCompareState"]
+        ).MultiCompareState(
+            divider_settings=remembered_divider,
+            label_settings=remembered_label,
+        ),
+    )
+
+    store = _FakeWorkspaceStore()
+    store.sessions = {
+        "mc1": SimpleNamespace(
+            id="mc1",
+            session_type="multi_compare",
+            state_slots={},
+        ),
+    }
+    tab = MultiCompareTab()
+    tab.on_session_created("mc1", SimpleNamespace(store=store))
+
+    state = store.sessions["mc1"].state_slots[_STATE_SLOT]
+    assert state.divider_settings.color_rgba == (9, 8, 7, 6)
+    assert state.label_settings.font_size_percent == 120
+
+
+def test_second_multi_compare_session_keeps_fresh_defaults(qapp, monkeypatch):
+    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
+    from tabs.multi_compare.tab import MultiCompareTab
+
+    monkeypatch.setattr(
+        "tabs.multi_compare.tab._settings_from_qsettings",
+        lambda: MultiCompareState(
+            divider_settings=MultiCompareDividerSettings(color_rgba=(1, 2, 3, 4)),
+        ),
+    )
+
+    store = _FakeWorkspaceStore()
+    store.sessions = {
+        "mc1": SimpleNamespace(id="mc1", session_type="multi_compare", state_slots={}),
+    }
+    tab = MultiCompareTab()
+    tab.on_session_created("mc1", SimpleNamespace(store=store))
+
+    assert store.sessions["mc1"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+        1,
+        2,
+        3,
+        4,
+    )
+
+    store.sessions["mc2"] = SimpleNamespace(
+        id="mc2", session_type="multi_compare", state_slots={}
+    )
+    tab.on_session_created("mc2", SimpleNamespace(store=store))
+
+    assert store.sessions["mc2"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+        180,
+        180,
+        180,
+        230,
+    )
+
+
+def test_deferred_page_restores_seeded_divider_color_after_early_activation(qapp):
+    """Session activate can run before deferred create_page — must still restore."""
+    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
+
+    store = _FakeWorkspaceStore()
+    store.sessions = {
+        "mc1": SimpleNamespace(id="mc1", session_type="multi_compare", state_slots={}),
+    }
+    store.active_session_id = "mc1"
+    context = SimpleNamespace(
+        store=store,
+        tr=lambda key, default=None: default or key,
+        main_window=None,
+        call_service=lambda *_a, **_k: None,
+        settings=None,
+    )
+
+    tab = MultiCompareTab()
+    tab.on_session_created("mc1", context)
+    store.set_session_state_slot(
+        _STATE_SLOT,
+        MultiCompareState(
+            divider_settings=MultiCompareDividerSettings(color_rgba=(9, 8, 7, 6)),
+        ),
+        session_id="mc1",
+        emit_scope=None,
+    )
+
+    # Activate before the page/widget exists (deferred multi_compare path).
+    tab.on_active_session_changed("mc1", context)
+    assert tab._widget is None
+    assert tab._active_session_id == "mc1"
+
+    page = tab.create_page(None, context)
+    assert tab._widget.state.divider_settings.color_rgba == (9, 8, 7, 6)
+
+    # Hitting activate again for the same session must keep the restored color.
+    tab.on_activated(context)
+    assert tab._widget.state.divider_settings.color_rgba == (9, 8, 7, 6)
+    page.deleteLater()
+
+
+def test_seed_after_activate_updates_live_widget(qapp, monkeypatch):
+    """Workspace emit activates the tab before CreatedEvent seeds QSettings."""
+    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
+
+    remembered = MultiCompareState(
+        divider_settings=MultiCompareDividerSettings(color_rgba=(9, 8, 7, 6)),
+    )
+    monkeypatch.setattr(
+        "tabs.multi_compare.tab._settings_from_qsettings",
+        lambda: remembered,
+    )
+
+    store = _FakeWorkspaceStore()
+    store.sessions = {
+        "mc1": SimpleNamespace(id="mc1", session_type="multi_compare", state_slots={}),
+    }
+    store.active_session_id = "mc1"
+    context = SimpleNamespace(
+        store=store,
+        tr=lambda key, default=None: default or key,
+        main_window=None,
+        call_service=lambda *_a, **_k: None,
+        settings=None,
+    )
+
+    tab = MultiCompareTab()
+    page = tab.create_page(None, context)
+    # Presenter activates from workspace emit *before* CreatedEvent.
+    tab.on_active_session_changed("mc1", context)
+    assert tab._widget.state.divider_settings.color_rgba == (180, 180, 180, 230)
+
+    tab.on_session_created("mc1", context)
+    assert store.sessions["mc1"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+        9,
+        8,
+        7,
+        6,
+    )
+    assert tab._widget.state.divider_settings.color_rgba == (9, 8, 7, 6)
+    page.deleteLater()
+
+
+def test_replace_state_does_not_clobber_qsettings_last_prefs(qapp, monkeypatch):
+    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
+
+    saved = []
+
+    monkeypatch.setattr(
+        "tabs.multi_compare.tab._save_last_settings",
+        lambda divider, label: saved.append(tuple(divider.color_rgba)),
+    )
+
+    widget = MultiCompareWidget()
+    tab = MultiCompareTab()
+    store = _FakeWorkspaceStore()
+    tab._widget = widget
+    tab._store_context = store
+    tab._active_session_id = "a"
+    widget.store.subscribe(tab._on_widget_state_changed)
+
+    widget.store.replace_state(
+        MultiCompareState(
+            divider_settings=MultiCompareDividerSettings(color_rgba=(1, 1, 1, 1)),
+        )
+    )
+    assert saved == []
+
+    widget.apply_divider_color(QColor(2, 3, 4, 5))
+    assert saved == [(2, 3, 4, 5)]
+

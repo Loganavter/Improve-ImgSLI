@@ -1,4 +1,4 @@
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 
 from ui.presenters.main_window.actions import (
     on_color_option_clicked,
@@ -17,7 +17,9 @@ from ui.presenters.main_window.workspace import (
     on_workspace_tab_changed,
     on_workspace_tab_close_requested,
 )
-
+from ui.presenters.main_window.workspace_tab_menu import (
+    on_workspace_tab_context_menu_requested,
+)
 
 def connect_signals(presenter):
     image_canvas = presenter.get_feature("image_canvas")
@@ -99,9 +101,34 @@ def connect_signals(presenter):
     presenter.ui.workspace_tabs.addRequested.connect(
         lambda: on_new_workspace_tab_requested(presenter)
     )
+    presenter.ui.workspace_tabs.tabContextMenuRequested.connect(
+        lambda index, global_pos: on_workspace_tab_context_menu_requested(
+            presenter, index, global_pos
+        )
+    )
 
     _connect_magnifier_color_controls(presenter)
     toolbar_presenter.connect_signals()
+    _refresh_active_tab_actions()
+
+
+def _refresh_active_tab_actions() -> None:
+    from tabs.registry import get_shared_tab_registry
+    from ui.actions.binder import resync_action_shortcuts
+    from ui.actions.registry import get_action_registry
+    from PySide6.QtWidgets import QApplication
+
+    get_shared_tab_registry().create_service(
+        "contribute_actions",
+        get_action_registry(),
+    )
+    window = QApplication.activeWindow()
+    if window is None:
+        for top in QApplication.topLevelWidgets():
+            if getattr(top, "presenter", None) is not None:
+                window = top
+                break
+    resync_action_shortcuts(window)
 
 
 def connect_event_handler_signals(presenter, event_handler):
@@ -155,9 +182,17 @@ def repopulate_flyouts(presenter):
 
 
 def handle_global_mouse_press(presenter, event):
+    if event.button() == Qt.MouseButton.RightButton:
+        return
     global_pos = event.globalPosition()
 
+    # Coalesce bursts (duplicate filters / synthetic presses) into one close.
+    if getattr(presenter, "_popup_close_scheduled", False):
+        return
+    presenter._popup_close_scheduled = True
+
     def _close_popups():
+        presenter._popup_close_scheduled = False
         presenter.ui_manager.transient.close_all_flyouts_if_needed(global_pos)
 
     QTimer.singleShot(0, _close_popups)

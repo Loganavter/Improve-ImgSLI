@@ -7,6 +7,9 @@ Dogma source: docs/dev/QRHI_CANVAS_FEATURES.md §GPU/Canvas Rendering Contract.
 from __future__ import annotations
 from types import SimpleNamespace
 
+import pytest
+
+
 def _build_ctx(*, show_divider: bool, thickness: int, images_uploaded, content_rect):
     return SimpleNamespace(
         widget=SimpleNamespace(width=lambda: 100, height=lambda: 100, runtime_state=None),
@@ -90,3 +93,23 @@ def test_divider_is_discovered_as_qrhi_render_pass():
 
     render_passes = get_canvas_registry("image_compare").get_render_passes()
     assert any(isinstance(render_pass, DividerPass) for render_pass in render_passes)
+
+
+def test_divider_position_from_transformed_content_rect():
+    """Vertical spit line X = clip.x + clip.w * spit after camera transform."""
+    from ui.canvas_infra.viewport.geometry import map_content_rect_through_view
+
+    raw = (0.0, 100.0, 800.0, 400.0)
+    clip = map_content_rect_through_view(
+        raw,
+        widget_width=800.0,
+        widget_height=600.0,
+        zoom_level=0.39,
+        pan_offset_x=0.25,
+        pan_offset_y=-0.6,
+    )
+    spit = 0.5
+    position_px = clip[0] + clip[2] * spit
+    # Must sit inside the transformed image AABB, not the fit-zoom letterbox.
+    assert clip[1] < 100.0  # moved up from letterbox top
+    assert clip[0] <= position_px <= clip[0] + clip[2]

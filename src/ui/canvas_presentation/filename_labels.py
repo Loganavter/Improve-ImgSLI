@@ -147,7 +147,10 @@ def draw_round_rect(
 
 
 def fit_text(text: str, font_metrics: QFontMetrics, available_width: float) -> str:
-    if font_metrics.horizontalAdvance(text) <= int(available_width):
+    # Compare against the full float width — truncating with int() falsely
+    # elides when fractional padding/overscan leaves e.g. advance=141 and
+    # available=140.6 after pixel snap.
+    if font_metrics.horizontalAdvance(text) <= available_width:
         return text
     return font_metrics.elidedText(
         text, Qt.TextElideMode.ElideRight, max(1, int(available_width))

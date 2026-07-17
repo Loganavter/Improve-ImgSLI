@@ -1,5 +1,67 @@
 {
   "help": {
-    "help": "Help"
+    "help": "Help",
+    "open_topic": "Open topic",
+    "context": {
+      "copy": "Copy",
+      "select_all": "Select all",
+      "copy_markdown": "Copy as Markdown"
+    },
+    "hub": {
+      "root": {
+        "title": "Help",
+        "desc": "Browse topics by area"
+      },
+      "workspace": {
+        "title": "Workspace",
+        "desc": "Session types and compare tools"
+      },
+      "ui": {
+        "title": "UI",
+        "desc": "Controls, lists, canvas chrome"
+      },
+      "platform": {
+        "title": "Platform",
+        "desc": "Settings, files, shortcuts"
+      }
+    },
+    "page": {
+      "buttons": {
+        "title": "Buttons and Controls",
+        "desc": "Toolbar and panel gestures"
+      },
+      "lists": {
+        "title": "Lists and Panels",
+        "desc": "Image lists and menus"
+      },
+      "canvas_nav": {
+        "title": "Canvas Navigation",
+        "desc": "Zoom, pan, fit"
+      },
+      "getting_started": {
+        "title": "Getting Started",
+        "desc": "Quick orientation"
+      },
+      "settings": {
+        "title": "Settings",
+        "desc": "Appearance and performance"
+      },
+      "hotkeys": {
+        "title": "Hotkeys",
+        "desc": "Defaults and overrides"
+      },
+      "file_project": {
+        "title": "Files and Projects",
+        "desc": "Load, paste, project files"
+      },
+      "workspace": {
+        "title": "Workspace Tabs",
+        "desc": "Session picker and tab strip"
+      },
+      "image_properties": {
+        "title": "Image Properties",
+        "desc": "File metadata and in-app context"
+      }
+    }
   }
 }

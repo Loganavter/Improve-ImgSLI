@@ -129,15 +129,25 @@ by combining primitives by hand.**
 
 - For overlay geometry: call the existing canvas-px → widget-px conversion.
   Don't hand-roll `sr`.
-- For base-image-anchored geometry: call the viewport-layer formula
-  (`get_display_split_position` / `compute_display_split_position` /
-  `compute_zoom_split_position_for_view_transform`) and treat its output as
-  **already fully resolved** — already widget-normalized, already
-  letterbox-aware, already zoom/pan-aware. Do not take that output and
-  combine it *again* with `content_rect_px`, widget dimensions, or zoom by
-  hand "just to be sure." If the formula didn't already do what you need,
-  the fix belongs inside the formula (one owner), not layered on top of its
-  output (two owners silently disagreeing).
+- For base-image-anchored geometry:
+  - **Image halves** use store ``split_position_visual`` in letterboxed UV
+    inside ``base.frag`` (magnifier ``internalSplit`` parity).
+  - **White divider line** uses the view-transformed letterbox AABB
+    (``map_content_rect_through_view`` / ``clip.origin + clip.size * spit``)
+    and clips in the fragment shader — do not rely on live QRhi content
+    scissor for that segment.
+  - ``compute_zoom_display_split_position`` is the shared content→screen
+    formula when you need a full-widget fraction; do not clamp it to
+    ``[0, 1]``, and do not recombine its output with ``content_rect_px`` /
+    zoom by hand.
+  - Semantic ``split_position_visual`` stays in content ``[0, 1]``. At
+    ``zoom <= 1`` it is not rewritten on pan/zoom; at ``zoom > 1`` it is
+    rewritten (still clamped) so the screen spit stays fixed — see
+    [zoom-pan.md](zoom-pan.md) and
+    [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
+
+  Details and failure modes:
+  [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
 
 Violating this rule looks identical in both models: correct-looking code
 that's subtly wrong by an amount proportional to distance from some neutral

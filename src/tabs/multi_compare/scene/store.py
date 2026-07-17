@@ -19,9 +19,10 @@ import dataclasses
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 
-import numpy as np
+if TYPE_CHECKING:
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 from tabs.multi_compare.models import (
     CompareSlot,
@@ -51,7 +52,7 @@ class MultiCompareAction:
 @dataclass(frozen=True)
 class AddSlot(MultiCompareAction):
     path: Path
-    image: np.ndarray
+    image: "TiledPixelStore"
     label: str
     target_path: tuple[int, ...] | None
     side: str | None
@@ -151,7 +152,7 @@ class actions:
     @staticmethod
     def add_slot(
         path: Path,
-        image: np.ndarray,
+        image: "TiledPixelStore",
         label: str,
         target_path: tuple[int, ...] | None = None,
         side: str | None = None,
@@ -318,6 +319,12 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, slots=new_slots, root=new_root)
 
     if isinstance(action, RemoveSlot):
+        for slot in state.slots:
+            if slot.id == action.slot_id and slot.image is not None:
+                from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+                if isinstance(slot.image, TiledPixelStore):
+                    slot.image.close()
         new_slots = [s for s in state.slots if s.id != action.slot_id]
         new_root = tree_ops.remove_leaf(state.root, action.slot_id)
         focused = (
@@ -433,6 +440,11 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, root=action.root, focused_slot_id=focused)
 
     if isinstance(action, Clear):
+        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+        for slot in state.slots:
+            if isinstance(slot.image, TiledPixelStore):
+                slot.image.close()
         return MultiCompareState()
 
     logger.warning("multi_compare reducer: unhandled action %s", type(action).__name__)

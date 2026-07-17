@@ -4,6 +4,15 @@ Owns the image-pair document model (``image_list1/2``, ``current_index1/2``,
 ``original_image1/2``, ``full_res_image1/2``, ``preview_image1/2``,
 ``image1_path/image2_path`` and load-state flags).
 
+Tier contract (see ``docs/dev/rendering/tile-rendering-system.md``):
+
+- ``full_res_image*`` — ``TiledPixelStore`` (memmap full-res tier)
+- ``preview_image*`` — ``PIL.Image`` only (bounded progressive preview, ≤1024 px)
+- ``original_image*`` — ``PIL.Image`` (legacy/small paste paths)
+
+Preview fields must never hold ``TiledPixelStore``; load workers set
+``is_preview=True`` and skip ``maybe_wrap_pixel_store``.
+
 This module is the authoritative location for ``DocumentModel`` and
 ``ImageItem`` (see step 8 of ``docs/dev/TAB_OWNERSHIP_AUDIT.md``). The
 "document" session state slot is registered by this tab's
@@ -14,12 +23,17 @@ reaches it via ``store.get_session_state_slot("document")``.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Optional
+
+from PIL import Image
+
+if TYPE_CHECKING:
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 
 @dataclass
 class ImageItem:
-    image: Optional[Any] = None
+    image: Optional["TiledPixelStore | Image.Image"] = None
     path: str = ""
     display_name: str = ""
     rating: int = 0
@@ -31,14 +45,14 @@ class DocumentModel:
     image_list2: list[ImageItem] = field(default_factory=list)
     current_index1: int = -1
     current_index2: int = -1
-    original_image1: Optional[Any] = None
-    original_image2: Optional[Any] = None
-    full_res_image1: Optional[Any] = None
-    full_res_image2: Optional[Any] = None
+    original_image1: Optional[Image.Image] = None
+    original_image2: Optional[Image.Image] = None
+    full_res_image1: Optional["TiledPixelStore"] = None
+    full_res_image2: Optional["TiledPixelStore"] = None
     image1_path: Optional[str] = None
     image2_path: Optional[str] = None
-    preview_image1: Optional[Any] = None
-    preview_image2: Optional[Any] = None
+    preview_image1: Optional[Image.Image] = None
+    preview_image2: Optional[Image.Image] = None
     full_res_ready1: bool = False
     full_res_ready2: bool = False
     preview_ready1: bool = False

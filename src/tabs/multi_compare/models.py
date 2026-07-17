@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
-import numpy as np
+if TYPE_CHECKING:
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 
 @dataclass
@@ -16,7 +17,7 @@ class CompareSlot:
     id: int
     path: Path | None = None
     label: str = ""
-    image: np.ndarray | None = None
+    image: "TiledPixelStore | None" = None
 
     @property
     def is_loaded(self) -> bool:

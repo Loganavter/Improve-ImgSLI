@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import logging
-
 from shared.rendering import VirtualCanvasLayout, resolve_virtual_canvas_layout
 from ui.canvas_infra.scene.registry import get_canvas_registry
-
-_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 def resolve_feature_virtual_layout(
     store,

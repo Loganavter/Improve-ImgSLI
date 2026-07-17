@@ -1,5 +1,76 @@
 {
   "image_compare": {
-    "session_type": "Сравнение изображений"
+    "session_type": "Сравнение изображений",
+    "help": {
+      "hub": {
+        "desc": "Два изображения, лупа, экспорт"
+      },
+      "page": {
+        "comparison": {
+          "title": "Сравнение",
+          "desc": "Линия разделения, подписи, режимы разницы"
+        },
+        "magnifier": {
+          "title": "Лупа",
+          "desc": "Захват, заморозка, объединённый режим"
+        },
+        "export": {
+          "title": "Экспорт",
+          "desc": "Кадры и быстрое сохранение"
+        },
+        "video": {
+          "title": "Видеоредактор",
+          "desc": "Запись, обрезка, кодирование"
+        }
+      }
+    },
+    "action": {
+      "magnifier": "Переключить лупу",
+      "swap": "Поменять изображения",
+      "freeze": "Заморозить лупу",
+      "file_names": "Подписи имён файлов",
+      "file_names_desc": "Показать или скрыть имена файлов на холсте",
+      "text_settings": "Настройки текста подписей",
+      "quick_save": "Быстрое сохранение",
+      "save": "Сохранить результат",
+      "magnifier_orientation": "Ориентация лупы",
+      "magnifier_divider_combined": "Разделитель лупы",
+      "magnifier_divider_combined_desc": "Ориентация, толщина и цвет разделителя лупы (скролл / ПКМ)",
+      "magnifier_guides": "Направляющие лупы",
+      "magnifier_divider_visible": "Видимость разделителя лупы",
+      "magnifier_colors": "Цвета лупы",
+      "magnifier_instances": "Экземпляры лупы",
+      "magnifier_divider_width": "Ширина разделителя лупы",
+      "magnifier_guides_width": "Толщина направляющих лупы",
+      "clear_list1": "Удалить текущее изображение (сторона 1)",
+      "clear_list2": "Удалить текущее изображение (сторона 2)",
+      "add_image1": "Добавить изображения (сторона 1)",
+      "add_image2": "Добавить изображения (сторона 2)",
+      "divider_orientation": "Ориентация разделения",
+      "divider_combined": "Разделитель",
+      "divider_combined_desc": "Ориентация, ширина и цвет линии разделения (скролл / ПКМ / СКМ)",
+      "divider_visible": "Видимость разделителя",
+      "divider_color": "Цвет разделителя",
+      "divider_width": "Ширина разделителя",
+      "diff_mode": "Режим различий",
+      "channel_mode": "Режим канала",
+      "diff_highlight": "Подсветка",
+      "diff_grayscale": "Оттенки серого",
+      "diff_edges": "Края",
+      "diff_ssim": "SSIM",
+      "record": "Запись видео",
+      "pause_recording": "Пауза записи",
+      "video_editor": "Видеоредактор",
+      "breadcrumb": {
+        "toolbar": "Панель",
+        "magnifier": "Лупа",
+        "session": "Сессия",
+        "labels": "Подписи",
+        "export": "Экспорт",
+        "divider": "Разделитель",
+        "analysis": "Анализ",
+        "video": "Видео"
+      }
+    }
   }
 }

@@ -1,15 +1,11 @@
-import logging
-
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
-from shared.image_processing.lazy_pixel_source import LazyPixelSource
+from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from shared.rendering.image_identity import image_uid
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 
 from .upload_queue import queue_prepared_texture_upload, queue_texture_upload
-
-_dlog = logging.getLogger("ImproveImgSLI.divider_debug")
 
 
 def _canvas_dims(widget) -> tuple[int, int]:
@@ -51,16 +47,10 @@ def upload_source_pil_image(widget, pil_image, slot_index: int):
     if not texture_id:
         return
 
-    if isinstance(pil_image, LazyPixelSource):
-        # docs/dev/rendering/tile-rendering-system.md Phase 3: a lazy source is
-        # always past PHASE3_LAZY_THRESHOLD_PX, so its tile grid is never
-        # 1x1 -- realize_tile_plan() (rhi_renderer/resources.py) crops
-        # tiles directly from the memmap via _pil_image_for_texture_key(),
-        # which reads state._source_pil_images set below regardless of
-        # whether a whole-image texture was ever queued here. Queuing one
-        # would only pay for a full materialize+convert+tobytes+QImage
-        # copy chain (qimage_from_pil's lazy safety net) on the calling
-        # thread for a texture that's immediately superseded by tiles.
+    if isinstance(pil_image, TiledPixelStore):
+        # Full-res pixels live in the memmap store; realize_tile_plan() crops
+        # tiles directly from state._source_pil_images without materializing a
+        # whole-image QImage here.
         return
 
     queue_texture_upload(widget, pil_image, texture_id)
@@ -91,11 +81,9 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
     state = widget.runtime_state
     # Rare fallback: the "stored" (display) role normally resolves to the
     # small display-cache image, never the raw unify result -- but a cache
-    # invalidation can momentarily leave only the LazyPixelSource behind
-    # (see plan_builder.build_live_store_presentation). LazyPixelSource
-    # doesn't implement .convert(), so materialize the small-side-effect-
-    # free way (transient, not retained).
-    if isinstance(img, LazyPixelSource):
+    # invalidation can momentarily leave only the TiledPixelStore behind
+    # (see plan_builder.build_live_store_presentation).
+    if isinstance(img, TiledPixelStore):
         img = img.to_pil()
     cw, ch = _canvas_dims(widget)
     if cw <= 0 or ch <= 0:
@@ -212,6 +200,12 @@ def upload_pil_images(
     state._stored_pil_images = [pil_image1, pil_image2]
     state._stored_image_ids = stored_ids
     state._shader_letterbox_mode = bool(shader_letterbox)
+    if __debug__ and not shader_letterbox:
+        for slot_img in (pil_image1, pil_image2):
+            if slot_img is not None and isinstance(slot_img, TiledPixelStore):
+                raise AssertionError(
+                    "stored display role must be PIL.Image, not TiledPixelStore"
+                )
     has_explicit_source = source_image1 is not None and source_image2 is not None
     if has_explicit_source:
         explicit_source_sig = (
@@ -248,7 +242,9 @@ def upload_pil_images(
             # crops tiles from state._stored_pil_images (set below)
             # directly, so this texture would just be wasted main-thread
             # work materializing the whole memmap.
-            if not isinstance(pil_image1, LazyPixelSource):
+            if isinstance(pil_image1, TiledPixelStore):
+                state._images_uploaded[0] = True
+            else:
                 queue_texture_upload(
                     widget, pil_image1, widget.texture_ids[0], slot_index=0
                 )
@@ -258,7 +254,9 @@ def upload_pil_images(
     if pil_image2 and stored_changed:
         if state._shader_letterbox_mode:
             update_common_letterbox_geometry(widget, pil_image1, pil_image2)
-            if not isinstance(pil_image2, LazyPixelSource):
+            if isinstance(pil_image2, TiledPixelStore):
+                state._images_uploaded[1] = True
+            else:
                 queue_texture_upload(
                     widget, pil_image2, widget.texture_ids[1], slot_index=1
                 )

@@ -24,8 +24,8 @@ class InterpolationFlyoutController:
         host = self.manager.host
         if host._interp_flyout is None:
             host._interp_flyout = SimpleOptionsFlyout(host.parent_widget)
-            host._interp_flyout._drop_offset_px = 24
             host._interp_flyout.closed.connect(self.on_closed)
+            host._interp_flyout.item_chosen.connect(self.apply_choice)
 
         lang = host.store.settings.current_language
 
@@ -66,13 +66,10 @@ class InterpolationFlyoutController:
         except (AttributeError, ValueError, IndexError):
             current_index = 0
 
-        try:
-            host._interp_flyout.item_chosen.disconnect()
-        except TypeError:
-            pass
-
         item_height = 34
-        item_font = QApplication.font()
+        from sli_ui_toolkit.managers import ui_font
+
+        item_font = ui_font()
         combo = getattr(self.widget, "combo_interpolation", None)
         if combo is not None:
             if hasattr(combo, "getItemHeight"):
@@ -83,7 +80,6 @@ class InterpolationFlyoutController:
         host._interp_flyout.set_row_height(item_height)
         host._interp_flyout.set_row_font(item_font)
         host._interp_flyout.populate(labels, current_index)
-        host._interp_flyout.item_chosen.connect(self.apply_choice)
 
         if combo is not None:
             combo.setFlyoutOpen(True)

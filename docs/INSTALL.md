@@ -1,6 +1,9 @@
 # Install Improve-ImgSLI
 
-This document provides installation methods for end users and a minimal "run from source" setup. For developer-oriented packaging/build instructions, see [CONTRIBUTING.md](../CONTRIBUTING.md).
+This document provides installation methods for end users and a minimal "run from source" setup.
+
+For launcher command details, see [LAUNCHER.md](LAUNCHER.md).
+For developer-oriented packaging/build instructions, see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Quick install (recommended)
 
@@ -47,10 +50,10 @@ The launcher:
 
 Helpful commands:
 ```bash
-./launcher.sh --help
+./launcher.sh help
 ./launcher.sh recreate       # recreate venv
 ./launcher.sh delete         # delete venv
-./launcher.sh enable-logging # enable extended logging
+./launcher.sh --enable-logging # enable extended logging
 ```
 
 Manual venv (optional):
@@ -78,7 +81,7 @@ Entry topic (EN): src/resources/help/en/introduction.md
 
 - Blank window or crashes:
   - Ensure your GPU drivers are up-to-date.
-  - Try running with logging enabled: `./launcher.sh enable-logging && ./launcher.sh run`.
+  - Try running with logging enabled: `./launcher.sh --enable-logging && ./launcher.sh run`.
 - Missing fonts/icons:
   - Verify that `src/resources/` assets are available and not removed.
 - Slow performance with very large images:
@@ -90,5 +93,7 @@ Entry topic (EN): src/resources/help/en/introduction.md
 
 ## License
 
-Improve-ImgSLI is MIT-licensed. See:
-- LICENSE.txt
+Improve-ImgSLI is licensed under **GPL-3.0-or-later**. See:
+
+- [LICENSE](../LICENSE)
+- [THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) — PySide6/Qt (LGPL) and other runtime dependencies

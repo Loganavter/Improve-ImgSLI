@@ -2,7 +2,7 @@ import logging
 
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QDialog
+from shared_toolkit.ui.themed_dialog import ThemedDialog
 
 from plugins.settings.dialog_context import SettingsDialogContext
 from plugins.settings.dialog_shell import (
@@ -27,7 +27,7 @@ from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
 
-class SettingsDialog(QDialog):
+class SettingsDialog(ThemedDialog):
     def __init__(
         self,
         current_language,
@@ -90,6 +90,11 @@ class SettingsDialog(QDialog):
             current_video_fps=current_video_fps,
             rhi_backend=rhi_backend,
             store=store,
+            keyboard_overrides=dict(
+                getattr(getattr(store, "settings", None), "keyboard_overrides", {}) or {}
+            )
+            if store is not None
+            else {},
             tab_extras=get_settings_registry().seed_payloads(store),
         )
         self._custom_group_widget_cls = CustomGroupWidget
@@ -114,10 +119,69 @@ class SettingsDialog(QDialog):
         for section in self._active_sections:
             section.build(self, self.context)
         self._setup_sidebar_items()
-        self._apply_styles()
-        self.theme_manager.theme_changed.connect(self._apply_styles)
+        self.install_dialog_geometry(self._calculate_and_apply_geometry)
+        self.mark_theme_ui_ready()
         self.sidebar.setCurrentRow(0)
         calculate_and_apply_geometry(self)
+
+    def select_section(self, section_id: str) -> None:
+        """Select a sidebar page by ``SettingsSection.section_id``."""
+        if not section_id:
+            return
+        sections = getattr(self, "_active_sections", None) or ()
+        for index, section in enumerate(sections):
+            if section.section_id == section_id:
+                self.sidebar.setCurrentRow(index)
+                return
+
+    def sidebar_row_widget_for(self, section_id: str):
+        """Return the nav-row button for ``section_id``, or ``None``.
+
+        Uses toolkit ``IconListWidget.row_button`` so Find Action can pulse the
+        sidebar without poking row internals.
+        """
+        if not section_id:
+            return None
+        sections = getattr(self, "_active_sections", None) or ()
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is None:
+            return None
+        row_button = getattr(sidebar, "row_button", None)
+        for index, section in enumerate(sections):
+            if section.section_id != section_id:
+                continue
+            if callable(row_button):
+                return row_button(index)
+            # Older toolkit: fall back through item proxy.
+            item = sidebar.item(index)
+            if item is None:
+                return None
+            spec = getattr(item, "_spec", None)
+            return getattr(spec, "button", None) if spec is not None else None
+        return None
+
+    def group_widget_for(self, group_key: str):
+        """Return the ``CustomGroupWidget`` tagged with ``group_key``, or ``None``.
+
+        Scrolls the group into the page viewport so Find Action pulse is visible.
+        """
+        if not group_key:
+            return None
+        from PySide6.QtWidgets import QWidget
+        from plugins.settings.member_resolve import scroll_widget_into_view
+        from ui.actions.search_index import PROP_GROUP
+
+        for child in self.findChildren(QWidget):
+            if child.property(PROP_GROUP) == group_key:
+                scroll_widget_into_view(child)
+                return child
+        return None
+
+    def member_widget_for(self, group_key: str, member_key: str):
+        """Return a tagged control inside ``group_key`` (or the dialog), prepared for reveal."""
+        from plugins.settings.member_resolve import resolve_member_widget
+
+        return resolve_member_widget(self, group_key, member_key)
 
     def changeEvent(self, event: QEvent):
         if event.type() == QEvent.Type.ApplicationFontChange:
@@ -141,6 +205,9 @@ class SettingsDialog(QDialog):
 
     def _on_category_changed(self, row):
         self.pages_stack.setCurrentIndex(row)
+        self._update_sidebar_icons()
+
+    def on_dialog_theme_changed(self) -> None:
         self._update_sidebar_icons()
 
     def _apply_styles(self):
@@ -252,7 +319,11 @@ class SettingsDialog(QDialog):
             video_recording_fps=_val("spin_fps", ctx.current_video_fps),
             show_workspace_tabs=self.show_workspace_tabs_checkbox.isChecked(),
             rhi_backend=(_val("combo_rhi_backend", ctx.rhi_backend) or "default"),
-            use_custom_decorations=self.use_custom_decorations_checkbox.isChecked(),
+            keyboard_overrides=dict(
+                getattr(self, "_keyboard_overrides", None)
+                or getattr(ctx, "keyboard_overrides", None)
+                or {}
+            ),
             tab_extras=get_settings_registry().read_payloads(self),
         )
 
@@ -266,6 +337,7 @@ class SettingsDialog(QDialog):
         curr = self.sidebar.currentRow()
         self.sidebar.setCurrentRow(-1)
         self.sidebar.setCurrentRow(curr)
+        defer_geometry(self)
 
     def accept(self):
         self._reset_button_states()

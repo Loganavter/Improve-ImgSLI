@@ -138,6 +138,11 @@ def main() -> int:
         print("PyInstaller build failed.")
         return 1
 
+    license_script = REPO_ROOT / "build" / "Windows-template" / "write_license_bundle.py"
+    if run_command([sys.executable, str(license_script), str(REPO_ROOT)]) != 0:
+        print("Failed to write Windows license bundle.")
+        return 1
+
     if fetch_ffmpeg() != 0:
         print("Failed to fetch ffmpeg. Continuing without it.")
 

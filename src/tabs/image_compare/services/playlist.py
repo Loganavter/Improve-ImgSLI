@@ -86,3 +86,6 @@ class PlaylistManager:
 
     def on_edit_name_changed(self, image_number, new_name):
         self.metadata.on_edit_name_changed(image_number, new_name)
+
+    def rename_image_at_index(self, image_number: int, index: int, new_name: str):
+        self.metadata.rename_image_at_index(image_number, index, new_name)

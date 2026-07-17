@@ -140,6 +140,8 @@ def test_snapshot_render_plan_export_preview_parity_matrix(
             render_scene=kwargs["render_scene"],
             display_cache_key=kwargs["display_cache_key"],
             fill_rgba=kwargs["fill_color"],
+            image_is_padded_composite=kwargs.get("image_is_padded_composite", False),
+            geometry_letterbox=kwargs.get("geometry_letterbox", False),
         )
 
     monkeypatch.setattr(builder_module, "build_canvas_plan", _capture_build_canvas_plan)
@@ -168,36 +170,36 @@ def test_snapshot_render_plan_export_preview_parity_matrix(
     assert captured["pad_top"] == canvas_geometry.padding_top
     assert plan.fill_rgba == fill_rgba
     assert plan.render_scene.zoom_interpolation_method == "LANCZOS"
+    assert plan.image_is_padded_composite is False
+    assert plan.geometry_letterbox is True
+    if fit_content:
+        assert getattr(plan.render_scene, "overlay_clip_rect", None) == (
+            canvas_geometry.padding_left,
+            canvas_geometry.padding_top,
+            canvas_geometry.image_width,
+            canvas_geometry.image_height,
+        )
 
     if diff_mode == "off":
         assert plan.render_scene.diff_mode_int == 0
         assert plan.display_cache_key == ("display",)
-        if fit_content:
-            assert captured["image1"].getpixel((0, 0)) == fill_rgba
-            assert captured["image1"].getpixel((canvas_geometry.padding_left, 0)) == (
-                1,
-                2,
-                3,
-                255,
-            )
-        else:
-            assert captured["image1"].getpixel((0, 0)) == (1, 2, 3, 255)
+        # Unpadded sources — fill/pads live in geometry + clear color, not pixels.
+        assert captured["image1"].getpixel((0, 0)) == (1, 2, 3, 255)
+        assert captured["image1"].size == (
+            canvas_geometry.image_width,
+            canvas_geometry.image_height,
+        )
         return
 
     assert plan.render_scene.diff_mode_int == 0
     assert plan.display_cache_key[0] == "diff_base"
     assert captured["image1"] is captured["image2"]
     assert store.viewport.session_data.render_cache.cached_diff_image is diff_image
-    if fit_content:
-        assert captured["image1"].getpixel((0, 0)) == fill_rgba
-        assert captured["image1"].getpixel((canvas_geometry.padding_left, 0)) == (
-            240,
-            10,
-            20,
-            255,
-        )
-    else:
-        assert captured["image1"].getpixel((0, 0)) == (240, 10, 20, 255)
+    assert captured["image1"].getpixel((0, 0)) == (240, 10, 20, 255)
+    assert captured["image1"].size == (
+        canvas_geometry.image_width,
+        canvas_geometry.image_height,
+    )
 
 def test_prescale_pair_keeps_mismatched_sources_at_one_shared_target_size():
     """QRHI_CANVAS_FEATURES.md: video prescale must not downscale low-res side then upscale it."""

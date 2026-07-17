@@ -50,6 +50,7 @@ modules:
       - cd ${FLATPAK_DEST}/lib/Improve-ImgSLI/src && mv __main__.py .. && mv __init__.py ..
       - install -Dm644 src/resources/icons/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
       - install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/Improve-ImgSLI/LICENSE
+      - install -Dm644 THIRD_PARTY_LICENSES.md ${FLATPAK_DEST}/share/licenses/Improve-ImgSLI/THIRD_PARTY_LICENSES.md
       - desktop-file-edit --set-key=Categories --set-value="Graphics;Utility;Viewer;Photography;" build/AUR-template/improve-imgsli.desktop
       - desktop-file-edit --set-icon="${FLATPAK_ID}" build/AUR-template/improve-imgsli.desktop
       - desktop-file-edit --set-key=Exec --set-value="Improve-ImgSLI" build/AUR-template/improve-imgsli.desktop

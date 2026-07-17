@@ -16,7 +16,7 @@ The tab owns:
 | Canvas features | `canvas/features/<name>/` |
 | Canvas input routing | `events/` |
 | Image-compare presenters | `presenters/` |
-| Export and snapshots for this tab | `services/image_export.py`, `services/gpu_export_scene.py`, `services/snapshot_render_plan_builder.py`, `services/video_snapshot_rendering.py` |
+| Export and snapshots for this tab | `services/image_export/`, `services/gpu_export_scene.py`, `services/snapshot_render_plan_builder.py`, `services/video_snapshot_rendering/` |
 | Analysis/diff/metrics | `services/analysis/` |
 | Video recording/editor integration | `video_editor/` |
 | Tab-specific state reducers/models | `state/` |

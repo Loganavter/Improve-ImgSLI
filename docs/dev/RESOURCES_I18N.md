@@ -17,7 +17,7 @@ src/resources/
 ├── styles/app.qss              # app-wide QSS
 ├── icons/                      # SVG/PNG icon assets
 ├── assets/                     # other static binaries
-└── help/                       # help pages (markdown per language)
+└── help/                       # host Help shell (tree.json + ui/platform bodies; tab topics under tabs/<tab>/resources/help — see HELP_SYSTEM.md)
 ```
 
 Plus per-plugin, per-tab, and per-canvas-feature i18n roots:
@@ -25,6 +25,13 @@ Plus per-plugin, per-tab, and per-canvas-feature i18n roots:
 src/plugins/<name>/resources/i18n/{en,ru,...}/<plugin>.json
 src/tabs/<tab>/resources/i18n/{en,ru,...}/*.json
 src/tabs/image_compare/canvas/features/<name>/resources/i18n/{en,ru,...}/*.json
+```
+
+Tab-owned icon assets (see [Icons](#icons) and [tabs/package-structure.md](tabs/package-structure.md)):
+```
+src/tabs/<tab>/icons.py                         # Icon enum + get_icon()
+src/tabs/<tab>/resources/icons/{light,dark}/*.svg
+src/tabs/icon_loader.py                         # shared tab_icon_resolver helper
 ```
 
 These are auto-discovered and registered as additional i18n roots — see "Bootstrap" below. Note that `plugins/` and `tabs/` are scanned the same way: several top-level app features (e.g. `image_compare`, `multi_compare`, `session_picker`) live under `src/tabs/` rather than `src/plugins/`, but both packages are plugins from the discovery system's point of view (see [PLUGINS.md](PLUGINS.md)).
@@ -49,7 +56,7 @@ configure_i18n(i18n_root=Path(resource_path("resources/i18n")))
 
 Then per-plugin / per-tab / per-feature directories are merged in via `add_i18n_root(path)` during the discovery walk:
 
-- plugins and tabs: `PluginRegistry._scan_package("plugins")` / `_scan_package("tabs")` → `add_i18n_root(<plugins|tabs>/<name>/resources/i18n)`
+- plugins and tabs: `PluginRegistry` / `discovery_scan.iter_plugin_entry_points()` → `add_i18n_root(<plugin>/resources/i18n)` per entry point
 - canvas features: `widget_registry.get_canvas_widget_features` → `add_i18n_root(<feature>/resources/i18n)`
 
 ## JSON format & key resolution
@@ -152,15 +159,102 @@ Don't add app-wide keys to a plugin's or tab's i18n root — they won't be found
 
 ## Icons
 
-Stored under `src/resources/icons/` (SVG preferred, themed via QSS color tokens where possible). Loaded through `src/ui/icon_manager.py:AppIcon` (an enum-like registry — `AppIcon.DIVIDER_HIDDEN`, etc.). Use the enum, not a raw path string.
+Icons are split between **host/app-shell** assets and **tab-owned** assets.
+Tabs must not import `ui.icon_manager` — they vendor whatever SVG they need
+under their own `resources/icons/` (see [tabs/isolation.md](tabs/isolation.md)).
+
+### App / host icons
+
+Stored under `src/resources/assets/icons/{light,dark}/` (SVG preferred).
+The app window icon lives at `src/resources/icons/icon.png`.
+
+Loaded through `src/ui/icon_manager.py`:
+
+| Symbol | Role |
+|---|---|
+| `AppIcon` | Enum for host-only icons: window chrome, workspace tabs bar, settings dialog sidebar (built-in sections), shared host widgets |
+| `get_app_icon()` | Resolves `AppIcon` via the app `IconService`; also delegates `tabs.*.icons.Icon` enums to each tab's `get_icon()` so toolkit `Button(Icon.X)` works without tab code touching the host resolver |
+
+Use the enum (or a tab `Icon` enum — see below), not a raw path string.
+
+Current `AppIcon` members are intentionally narrow — shell/settings only
+(`SETTINGS`, `ADD`, `CLOSE`, window controls, …). Comparison-toolbar icons
+live in the tab packages.
+
+### Tab icons
+
+Each tab that needs toolbar/UI icons provides:
+
+```
+src/tabs/<tab>/
+    icons.py                          # class Icon(Enum) + get_icon = tab_icon_resolver(...)
+    resources/icons/
+        light/*.svg
+        dark/*.svg
+```
+
+Pattern (`tabs/image_compare/icons.py` is the reference):
+
+```python
+from enum import Enum
+from pathlib import Path
+from tabs.icon_loader import tab_icon_resolver
+
+_TAB_DIR = Path(__file__).resolve().parent
+get_icon = tab_icon_resolver(_TAB_DIR)
+
+class Icon(Enum):
+    PHOTO = "photo_icon.svg"
+    MAGNIFIER = "magnifier.svg"
+    # ...
+```
+
+`tab_icon_resolver()` (`tabs/icon_loader.py`) wraps toolkit `IconService`
+with `icons_relative_path="resources/icons"` relative to the tab package dir.
+
+Usage inside tab code:
+
+```python
+from tabs.image_compare.icons import Icon, get_icon
+
+Button(Icon.MAGNIFIER, toggle=True)          # toolkit resolves via get_app_icon delegation
+pixmap = get_icon(Icon.VERTICAL_SPLIT).pixmap(18, 18)  # direct QIcon when needed
+```
+
+**Session-type icons** (new-session picker cards): implement
+`TabContract.icon` on the tab class; other tabs fetch them via the host service
+`context.call_service("get_tab_icon", session_type)` — do not hardcode another
+tab's icon enum in `session_picker`.
+
+**Settings sections contributed by a tab** may pass a resolved `QIcon`
+(`get_icon(Icon.HIGHLIGHT_DIFFERENCES)`) into `SettingsSection.icon` when the
+icon is tab-specific; built-in settings pages continue to use `AppIcon`.
+
+### Adding a new tab icon
+
+1. Copy `light/` and `dark/` SVGs into `src/tabs/<tab>/resources/icons/`.
+2. Add a member to `tabs/<tab>/icons.py` `Icon` enum (filename must match).
+3. Use `Icon.MEMBER` in tab UI code — never `AppIcon` or a path string.
+4. Contract test `tests/contracts/test_tab_icons.py` verifies every enum member
+   has both theme variants and resolves to a non-null `QIcon`.
+
+### Plugins
+
+Host plugins under `src/plugins/` still use `AppIcon` / `get_app_icon` for
+their dialogs and settings pages. They do not yet have a per-plugin icon root
+analogous to tabs; add one only when a plugin needs icons no other owner uses.
 
 ## Help content
 
-Per-language markdown under `src/resources/help/<lang>/`. See [HELP_WIDGET.md](HELP_WIDGET.md) for the rendering side.
+Host shell: `src/resources/help/tree.json` + `en|ru/ui/…` + `en|ru/platform/…`
++ shared `assets/`. Tab topics: `src/tabs/<tab>/resources/help/<lang>/` via
+`notify_all("contribute_help", …)`. Chrome labels in bodies use `{{tr:…}}` —
+authoring rules in [HELP_SYSTEM.md § Language keys](HELP_SYSTEM.md#language-keys-tr).
 
 ## See also
 
 - [THEMING.md](THEMING.md) — palette & QSS pipeline
-- [HELP_WIDGET.md](HELP_WIDGET.md) — help content rendering
+- [tabs/index.md](tabs/index.md) — tab-owned resources & isolation rules
+- [HELP_SYSTEM.md](HELP_SYSTEM.md) — Help shell, contribution, and authoring
 - [PLUGINS.md](PLUGINS.md) — plugin i18n auto-discovery in `PluginRegistry`
 - `sli-ui-toolkit/i18n.py` — full TranslationManager source

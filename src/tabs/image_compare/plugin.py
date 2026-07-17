@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import tabs.image_compare.bootstrap_reducers  # noqa: F401 — reducer side effects
 from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import ISessionPlugin
 from core.session_blueprints import (
@@ -9,48 +10,8 @@ from core.session_blueprints import (
     SessionResourceBlueprint,
     SessionSlotBlueprint,
 )
-from core.state_management.extension_reducers import (
-    register_render_config_reducer,
-    register_session_data_reducer,
-)
-from core.state_management.slot_reducers import register_state_slot_reducer
 from tabs.image_compare.models import ImageCompareState
-
-# `tabs.image_compare.plugins.video_editor` is a nested subpackage, so
-# PluginRegistry._scan_package("tabs") (one level deep) never imports its
-# plugin.py on its own — import it here for the @plugin decorator's
-# registration side effect. Its i18n root is registered by
-# `ImageCompareTab.extra_i18n_roots` (see tab.py), not here, since this
-# module must not import the host's translation infrastructure directly.
-from tabs.image_compare.plugins.video_editor.plugin import VideoEditorPlugin  # noqa: F401
 from tabs.image_compare.state.document import DocumentModel
-from tabs.image_compare.state.reducer import DocumentReducer
-from tabs.image_compare.state.reducers import (
-    ImageRenderConfigReducer,
-    SessionDataReducer,
-)
-
-register_state_slot_reducer("document", DocumentReducer.reduce)
-register_session_data_reducer("image_compare", SessionDataReducer().reduce)
-register_render_config_reducer(ImageRenderConfigReducer.reduce)
-from tabs.image_compare.services.analysis import (
-    AnalysisRuntime,
-    CachedDiffService,
-    CoreUpdateDispatcher,
-    MetricsService,
-    UIUpdateDispatcher,
-)
-from tabs.image_compare.events import (
-    AnalysisRequestMetricsEvent,
-    AnalysisSetChannelViewModeEvent,
-    AnalysisSetDiffModeEvent,
-    AnalysisToggleDiffModeEvent,
-    ComparisonErrorEvent,
-    ComparisonUpdateRequestedEvent,
-)
-from plugins.settings.events import SettingsAnalysisMetricsRequestedEvent
-from tabs.image_compare._session_controller import SessionController
-from tabs.image_compare.services.playlist import PlaylistManager
 
 
 class _ComparisonControllerProxy:
@@ -76,20 +37,39 @@ class _ComparisonControllerProxy:
         )
 
 
-@plugin(name="comparison", version="1.0")
+@plugin(name="comparison", version="1.0", startup_tier="bootstrap")
 class ComparisonPlugin(Plugin, ISessionPlugin):
     def __init__(self):
         super().__init__()
         self.event_bus: Any | None = None
         self.thread_pool: Any | None = None
         self.store: Any | None = None
-        self.metrics_service: MetricsService | None = None
+        self.metrics_service: Any | None = None
         self.main_controller_proxy: _ComparisonControllerProxy | None = None
-        self.playlist_manager: PlaylistManager | None = None
-        self.session_ctrl: SessionController | None = None
+        self.playlist_manager: Any | None = None
+        self.session_ctrl: Any | None = None
         self.presenter: Any | None = None
 
     def initialize(self, context: Any) -> None:
+        from plugins.settings.events import SettingsAnalysisMetricsRequestedEvent
+        from tabs.image_compare._session_controller import SessionController
+        from tabs.image_compare.events import (
+            AnalysisRequestMetricsEvent,
+            AnalysisSetChannelViewModeEvent,
+            AnalysisSetDiffModeEvent,
+            AnalysisToggleDiffModeEvent,
+            ComparisonErrorEvent,
+            ComparisonUpdateRequestedEvent,
+        )
+        from tabs.image_compare.services.analysis.runtime import (
+            AnalysisRuntime,
+            CoreUpdateDispatcher,
+            UIUpdateDispatcher,
+        )
+        from tabs.image_compare.services.analysis.cached_diff import CachedDiffService
+        from tabs.image_compare.services.analysis.metrics import MetricsService
+        from tabs.image_compare.services.playlist import PlaylistManager
+
         super().initialize(context)
         self.store = getattr(context, "store", None)
         self.thread_pool = getattr(context, "thread_pool", None)
@@ -135,10 +115,14 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
             )
 
     def _emit_error(self, message: str) -> None:
+        from tabs.image_compare.events import ComparisonErrorEvent
+
         if self.event_bus:
             self.event_bus.emit(ComparisonErrorEvent(message))
 
     def _emit_update(self) -> None:
+        from tabs.image_compare.events import ComparisonUpdateRequestedEvent
+
         if self.event_bus:
             self.event_bus.emit(ComparisonUpdateRequestedEvent())
 

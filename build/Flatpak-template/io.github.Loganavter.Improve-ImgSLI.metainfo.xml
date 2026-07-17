@@ -21,7 +21,9 @@
       <li>Use persistent settings, multilingual interface support, and structured diagnostics for advanced troubleshooting.</li>
     </ul>
     <p>
-      The application is distributed under the GPL-3.0 License.
+      The application is distributed under the GPL-3.0-or-later License.
+      It uses PySide6 and Qt 6 (LGPL-3.0-or-later). See LICENSE and
+      THIRD_PARTY_LICENSES.md in the source repository for details.
     </p>
   </description>
   <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>

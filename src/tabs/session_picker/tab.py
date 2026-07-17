@@ -11,6 +11,8 @@ from tabs.session_picker.widget import SessionPickerWidget
 
 
 class SessionPickerTab(TabContract):
+    startup_tier = "bootstrap"
+
     @property
     def session_type(self) -> str:
         return "session_picker"
@@ -36,3 +38,6 @@ class SessionPickerTab(TabContract):
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         return SessionPickerWidget(parent, context=context)
+
+    def apply_host_session_mode(self, ui, session_title: str | None = None) -> bool:
+        return True

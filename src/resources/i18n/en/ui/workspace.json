@@ -5,6 +5,14 @@
       "video_compare": "Video Compare",
       "multi_compare": "Multi Compare",
       "session_picker": "New Tab"
+    },
+    "tab_menu": {
+      "close": "Close Tab",
+      "rename": "Rename Tab",
+      "rename_prompt": "Name",
+      "duplicate": "Duplicate Tab",
+      "close_others": "Close Other Tabs",
+      "new": "New Tab"
     }
   }
 }
