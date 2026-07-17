@@ -1,0 +1,43 @@
+{
+  "action": {
+    "palette": {
+      "search_placeholder": "Search actions…",
+      "empty": "No matching actions",
+      "learn_more": "Learn more",
+      "run": "Run",
+      "cancel": "Cancel"
+    },
+    "settings": {
+      "page_desc": "Open this settings page",
+      "group_desc": "Open this settings group",
+      "slot_desc": "Open this setting",
+      "general_desc": "Open Settings → General",
+      "appearance_desc": "Open Settings → Appearance",
+      "optimization_desc": "Open Settings → Optimization",
+      "keyboard_desc": "Open Settings → Keyboard",
+      "analysis_desc": "Open Settings → Analysis details"
+    },
+    "breadcrumb": {
+      "workspace": "Workspace"
+    },
+    "platform": {
+      "settings_desc": "Open application settings",
+      "help_desc": "Open help documentation",
+      "new_session_desc": "Create a new workspace session",
+      "find_action_desc": "Search and run an action",
+      "quit_desc": "Quit the application",
+      "find_action_context": "Find Action (context)",
+      "find_action_context_desc": "Open Find Action filtered to the focused control",
+      "paste_clipboard_image": "Paste image from clipboard",
+      "paste_clipboard_image_desc": "Paste an image from the system clipboard into the active session"
+    },
+    "workspace": {
+      "open_session_picker": "Open Session Picker",
+      "open_session_picker_desc": "Open the workspace home page to choose a session type",
+      "new_image_compare": "New Image Compare Session",
+      "new_image_compare_desc": "Create and open an image compare workspace session",
+      "new_multi_compare": "New Multi Compare Session",
+      "new_multi_compare_desc": "Create and open a multi-compare workspace session"
+    }
+  }
+}

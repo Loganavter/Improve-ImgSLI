@@ -7,6 +7,9 @@ from .reducers import RootReducer
 
 logger = logging.getLogger("ImproveImgSLI")
 
+_ACTION_HISTORY_SLOT = "action_history"
+
+
 class Dispatcher:
 
     def __init__(self, store):
@@ -15,7 +18,39 @@ class Dispatcher:
         self._lock = threading.Lock()
         self._subscribers: List[Callable[[Action], None]] = []
         self._action_history: List[Action] = []
+        self._bound_session_id: str | None = None
         self._max_history_size = 100
+        self._bind_history_to_active_session()
+
+    def bind_history_for_session(self, session_id: str) -> None:
+        """Point undo history at ``session_id``'s ``action_history`` slot."""
+        with self._lock:
+            if self._bound_session_id == session_id:
+                return
+            store = self._store
+            get_session = getattr(store, "get_workspace_session", None)
+            if not callable(get_session):
+                return
+            session = get_session(session_id)
+            if session is None:
+                return
+            history = session.state_slots.get(_ACTION_HISTORY_SLOT)
+            if history is None:
+                history = []
+                session.state_slots[_ACTION_HISTORY_SLOT] = history
+            self._action_history = history
+            self._bound_session_id = session_id
+
+    def _bind_history_to_active_session(self) -> None:
+        get_active = getattr(self._store, "get_active_workspace_session", None)
+        if not callable(get_active):
+            return
+        try:
+            active = get_active()
+        except Exception:
+            return
+        if active is not None:
+            self.bind_history_for_session(active.id)
 
     @property
     def store(self):

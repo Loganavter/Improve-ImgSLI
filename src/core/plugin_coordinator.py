@@ -30,6 +30,21 @@ class PluginCoordinator:
         self.lifecycle.initialize_all(context)
         self.lifecycle.activate_all()
 
+    def register_and_start(
+        self, plugins: Iterable[Plugin], context: Any
+    ) -> tuple[str, ...]:
+        """Register, initialize, and activate plugins not yet in the lifecycle."""
+        started: list[str] = []
+        for plugin in plugins:
+            plugin_name = self.lifecycle.plugin_name(plugin)
+            if self.lifecycle.get(plugin_name) is not None:
+                continue
+            self.register_plugin(plugin)
+            self.lifecycle.initialize_one(plugin, context)
+            self.lifecycle.activate_one(plugin)
+            started.append(plugin_name)
+        return tuple(started)
+
     def get_plugin(self, name: str) -> Plugin | None:
         return self.lifecycle.get(name)
 

@@ -1,10 +1,9 @@
 import logging
 
-from PIL import Image
 from PySide6.QtCore import QObject, QTimer, Signal
 from sli_ui_toolkit.workers import GenericWorker
 
-from core.events import CoreErrorOccurredEvent
+from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
 from core.state_management.actions import (
     SetChannelViewModeAction,
     SetDiffModeAction,
@@ -86,11 +85,10 @@ class SessionController(QObject):
 
     def _load_image_async(self, path, image_number, index_in_list, target_size=None):
         from shared.image_processing.progressive_loader import (
-            load_full_image,
             load_preview_image,
             should_use_progressive_load,
         )
-        from shared.image_processing.resize import crop_black_borders
+        from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
         should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
 
@@ -102,18 +100,8 @@ class SessionController(QObject):
                 if preview:
                     return preview, path, image_number, index_in_list, True
 
-                pil_img = load_full_image(path, should_crop)
-                return pil_img, path, image_number, index_in_list, False
-            else:
-                with Image.open(path) as img:
-                    img_to_process = img.copy()
-                    pil_img = img_to_process.convert("RGBA")
-
-                    if pil_img and should_crop:
-                        pil_img = crop_black_borders(pil_img)
-
-                    pil_img.load()
-                return pil_img, path, image_number, index_in_list, False
+            store = TiledPixelStore.from_path(path, auto_crop=should_crop)
+            return store, path, image_number, index_in_list, False
         except Exception as e:
             if self.event_bus:
                 self.event_bus.emit(
@@ -187,13 +175,21 @@ class SessionController(QObject):
                 )
                 self._load_full_resolution_async(path, image_number, index_in_list)
             else:
-                from shared.image_processing.lazy_pixel_source import (
-                    close_if_lazy,
-                    maybe_wrap_for_lazy_storage,
+                from shared.image_processing.tiled_pixel_store import (
+                    TiledPixelStore,
+                    close_pixel_store,
+                    maybe_wrap_pixel_store,
                 )
 
-                close_if_lazy(getattr(document, f"full_res_image{image_number}", None))
-                pil_img = maybe_wrap_for_lazy_storage(pil_img)
+                outgoing = getattr(document, f"full_res_image{image_number}", None)
+                other = 2 if image_number == 1 else 1
+                other_full = getattr(document, f"full_res_image{other}", None)
+                # Never close a store still installed on the other compare slot
+                # (stale path-only selections used to share one store across both).
+                if outgoing is not None and outgoing is not other_full:
+                    close_pixel_store(outgoing)
+                if not isinstance(pil_img, TiledPixelStore):
+                    pil_img = maybe_wrap_pixel_store(pil_img)
                 self._update_image_slot(
                     image_number,
                     image=pil_img,
@@ -229,13 +225,13 @@ class SessionController(QObject):
         loading.trigger_preview_unification(self, image_number)
 
     def _load_full_resolution_async(self, path, image_number, index_in_list):
-        from shared.image_processing.progressive_loader import load_full_image
+        from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
         should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
 
         def load_full_task(path_str, crop_flag, slot_number, item_index):
             return (
-                load_full_image(path_str, crop_flag),
+                TiledPixelStore.from_path(path_str, auto_crop=crop_flag),
                 path_str,
                 slot_number,
                 item_index,
@@ -306,6 +302,7 @@ class SessionController(QObject):
         path1: str | None,
         path2: str | None,
         task_id: int,
+        method_name: str = "LANCZOS",
     ):
         """Produces the full-resolution unified pair only. The downscaled
         "display cache" used for the on-screen preview is a separate,
@@ -315,23 +312,20 @@ class SessionController(QObject):
         which raced against that per-frame writer and could leave the stale,
         non-downscaled pair in place (the "shrink" bug)."""
         try:
-            from shared.image_processing.lazy_pixel_source import (
-                maybe_wrap_for_lazy_storage,
-                to_real_pil_copy,
+            from shared.image_processing.pixel_ops.unify import unify_pair
+            from shared.image_processing.store_lease import StoreLease
+
+            lease1 = StoreLease.capture(img1)
+            lease2 = StoreLease.capture(img2)
+            u1, u2 = unify_pair(
+                img1,
+                img2,
+                method_name,
+                lease1=lease1,
+                lease2=lease2,
             )
-            from shared.image_processing.resize import resize_images_processor
-
-            real_img1 = to_real_pil_copy(img1)
-            real_img2 = to_real_pil_copy(img2)
-            u1, u2 = resize_images_processor(real_img1, real_img2)
-
-            # Wrap only after the (real-PIL-only) unify step -- LazyPixelSource
-            # has no .resize(). unified_image_cache and image_state.image1/2
-            # downstream can hold >16384px pairs otherwise resident as full
-            # plain PIL images (see docs/dev/rendering/tile-rendering-system.md
-            # Phase 3).
-            u1 = maybe_wrap_for_lazy_storage(u1)
-            u2 = maybe_wrap_for_lazy_storage(u2)
+            if u1 is None and u2 is None:
+                return None
 
             return u1, u2, path1, path2, task_id
         except Exception as e:
@@ -435,6 +429,9 @@ class SessionController(QObject):
 
     def on_edit_name_changed(self, image_number, new_name):
         list_ops.on_edit_name_changed(self, image_number, new_name)
+
+    def rename_image_at_index(self, image_number: int, index: int, new_name: str):
+        list_ops.rename_image_at_index(self, image_number, index, new_name)
 
     def activate_single_image_mode(self, image_number: int):
         navigation.activate_single_image_mode(self, image_number)

@@ -13,7 +13,7 @@ from sli_ui_toolkit.i18n import tr as app_tr
 from tabs.multi_compare.models import CompareSlot, leaves
 from tabs.multi_compare.scene import actions
 from ui.context_menu.models import ContextMenuRequest
-from ui.icon_manager import AppIcon
+from tabs.multi_compare.icons import Icon
 
 
 class MultiCompareContextMenuProvider:
@@ -34,13 +34,13 @@ class MultiCompareContextMenuProvider:
             ContextMenuAction(
                 "multi_compare.rename_slot",
                 self._tr("context.rename", "Rename"),
-                icon=AppIcon.TEXT_MANIPULATOR,
+                icon=Icon.TEXT_MANIPULATOR,
                 data=slot.id,
             ),
             ContextMenuAction(
                 "multi_compare.duplicate_slot",
                 self._tr("context.duplicate", "Duplicate"),
-                icon=AppIcon.ADD,
+                icon=Icon.ADD,
                 enabled=slot.image is not None
                 and len(self.widget.state.slots) < self.widget.state.max_slots,
                 data=slot.id,
@@ -48,14 +48,14 @@ class MultiCompareContextMenuProvider:
             ContextMenuAction(
                 "multi_compare.show_slot_properties",
                 self._tr("context.properties", "Properties"),
-                icon=AppIcon.PHOTO,
+                icon=Icon.PHOTO,
                 data=slot.id,
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "multi_compare.remove_slot",
                 self._tr("context.remove", "Remove"),
-                icon=AppIcon.DELETE,
+                icon=Icon.DELETE,
                 danger=True,
                 data=slot.id,
             ),

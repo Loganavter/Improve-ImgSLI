@@ -4,6 +4,9 @@ from PySide6.QtGui import QPixmap
 
 from domain.types import Rect
 from shared.rendering.display_image_picker import pick_first_real
+
+# Display-tier images are chosen via pick_first_real (display cache / scaled /
+# image_state before full-res TiledPixelStore). See display-image-pipeline.md.
 from tabs.image_compare.canvas.registry import registry
 
 _mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
@@ -190,15 +193,20 @@ def update_comparison_if_needed(presenter):
     if bg_is_dirty:
         if presenter.view.is_canvas_widget():
             image_label = get_canvas_widget(presenter.widget)
-            img1 = (
-                presenter.store.viewport.session_data.render_cache.display_cache_image1
-                or presenter.store.viewport.session_data.render_cache.scaled_image1_for_display
-                or presenter.store.viewport.session_data.image_state.image1
+            render_cache = presenter.store.viewport.session_data.render_cache
+            img1 = pick_first_real(
+                render_cache.display_cache_image1,
+                render_cache.scaled_image1_for_display,
+                presenter.store.viewport.session_data.image_state.image1,
+                _document.preview_image1,
+                _document.original_image1,
             )
-            img2 = (
-                presenter.store.viewport.session_data.render_cache.display_cache_image2
-                or presenter.store.viewport.session_data.render_cache.scaled_image2_for_display
-                or presenter.store.viewport.session_data.image_state.image2
+            img2 = pick_first_real(
+                render_cache.display_cache_image2,
+                render_cache.scaled_image2_for_display,
+                presenter.store.viewport.session_data.image_state.image2,
+                _document.preview_image2,
+                _document.original_image2,
             )
             render_img1, render_img2 = img1, img2
 
@@ -307,9 +315,3 @@ def should_use_dirty_rects_optimization(presenter, render_params_dict, label_dim
     ):
         return False
     return True
-
-
-def finish_resize_delay(presenter):
-    if presenter.store.viewport.interaction_state.resize_in_progress:
-        presenter.store.viewport.interaction_state.resize_in_progress = False
-        presenter.schedule_update()

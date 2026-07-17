@@ -4,39 +4,23 @@ from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication
 from PIL import Image
 
-from shared.image_processing.regions import build_uniform_tile_grid
+from shared.rendering.export_tiling import (
+    DEFAULT_EXPORT_TILE_MAX_EXTENT,
+    TiledFramebufferExporter,
+    iter_export_tile_rects,
+    qimage_to_pil_rgba,
+)
+from shared.rendering.offscreen_canvas import (
+    configure_offscreen_widget,
+    render_widget_frame,
+    resize_offscreen_widget,
+    show_offscreen_widget,
+    shutdown_offscreen_widget,
+)
 from shared.rendering.tab_canvas_services import create_canvas_widget
 
 logger = logging.getLogger("ImproveImgSLI")
 
-# Fixed tile extent for tiled export, capped further by the backend's actual
-# max texture size at render time. A fixed constant keeps tile counts
-# deterministic across machines/backends for testing; see
-# docs/dev/TILED_RENDERING_DESIGN.md "Open questions".
-_EXPORT_TILE_MAX_EXTENT = 4096
-
-
-def _iter_export_tile_rects(canvas_width: int, canvas_height: int, max_extent: int):
-    """Yield (left, top, width, height) tile rects covering the export canvas.
-
-    Unlike UniformTileGrid.iter_regions (which clamps to the padded grid
-    size), this clamps to the true canvas size so the last row/column never
-    reads past the actual export dimensions.
-    """
-    grid = build_uniform_tile_grid(
-        canvas_width, canvas_height, max_tile_width=max_extent
-    )
-    for row in range(grid.rows):
-        top = row * grid.tile_height
-        if top >= canvas_height:
-            continue
-        height = min(grid.tile_height, canvas_height - top)
-        for col in range(grid.columns):
-            left = col * grid.tile_width
-            if left >= canvas_width:
-                continue
-            width = min(grid.tile_width, canvas_width - left)
-            yield left, top, width, height
 
 class GpuExportProxy(QObject):
     render_requested = Signal(object)
@@ -54,12 +38,9 @@ class GpuExportProxy(QObject):
 
         widget = create_canvas_widget()
         widget.setObjectName("gpu_export_canvas")
-        widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
-        widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        widget.setAutoFillBackground(False)
+        configure_offscreen_widget(widget)
         widget._use_plan_fill_clear = True
-        widget.show()
-        QApplication.processEvents()
+        show_offscreen_widget(widget)
         if self._resource_manager is not None:
             self._resource_manager.register_widget(widget, name="gpu_export_canvas")
         self._widget = widget
@@ -70,34 +51,35 @@ class GpuExportProxy(QObject):
         widget = self._widget
         self._widget = None
         self._last_widget_size = None
-        if widget is None:
-            return
-        try:
-            widget.hide()
-        except Exception:
-            pass
-        try:
-            widget.close()
-        except Exception:
-            pass
-        try:
-            widget.deleteLater()
-        except Exception:
-            pass
+        shutdown_offscreen_widget(widget)
 
     def _render_widget_frame(self, widget):
-        # QRhiWidget renders in its own render(cb) callback. Requesting an
-        # update + flushing the event loop schedules a frame; grabFramebuffer()
-        # then performs a synchronous render and returns the QImage.
-        widget.update()
-        QApplication.processEvents()
+        render_widget_frame(widget)
+
+    def _build_exporter(self, widget, plan, diff_image):
+        from ui.canvas_presentation.plan_applicator import apply_render_plan_to_canvas
+        from ui.widgets.canvas.rhi_backend import query_max_texture_size
+
+        def set_export_viewport(viewport):
+            widget.runtime_state._export_canvas_viewport = viewport
+
+        def prepare_frame():
+            apply_render_plan_to_canvas(widget, plan)
+            widget.upload_diff_source_pil_image(diff_image)
+
+        return TiledFramebufferExporter(
+            widget,
+            set_export_viewport=set_export_viewport,
+            prepare_frame=prepare_frame,
+            query_max_texture_size=lambda: query_max_texture_size(widget.rhi()),
+        )
 
     def _render_plan_frame(self, widget, plan, diff_image, debug_timings, store=None):
         from ui.widgets.canvas.rhi_backend import query_max_texture_size
 
         canvas_w, canvas_h = int(plan.canvas_w), int(plan.canvas_h)
         tile_extent = min(
-            _EXPORT_TILE_MAX_EXTENT, query_max_texture_size(widget.rhi())
+            DEFAULT_EXPORT_TILE_MAX_EXTENT, query_max_texture_size(widget.rhi())
         )
         if canvas_w <= tile_extent and canvas_h <= tile_extent:
             widget.runtime_state._export_canvas_viewport = None
@@ -111,48 +93,16 @@ class GpuExportProxy(QObject):
     def _render_plan_frame_tiled(
         self, widget, plan, diff_image, debug_timings, tile_extent, store=None
     ):
-        from ui.canvas_presentation.plan_applicator import apply_render_plan_to_canvas
-        from PySide6.QtGui import QImage as _QImage
-
         canvas_w, canvas_h = int(plan.canvas_w), int(plan.canvas_h)
         tile_started = time.perf_counter()
-        tile_rects = list(
-            _iter_export_tile_rects(canvas_w, canvas_h, tile_extent)
-        )
+        tile_rects = list(iter_export_tile_rects(canvas_w, canvas_h, tile_extent))
         debug_timings["export_tile_count"] = float(len(tile_rects))
 
-        final_image = Image.new("RGBA", (canvas_w, canvas_h))
-        for tile_left, tile_top, tile_w, tile_h in tile_rects:
-            target_widget_size = (tile_w, tile_h)
-            if self._last_widget_size != target_widget_size:
-                widget.resize(*target_widget_size)
-                widget.show()
-                QApplication.processEvents()
-                self._last_widget_size = target_widget_size
-
-            widget.runtime_state._export_canvas_viewport = (
-                canvas_w,
-                canvas_h,
-                tile_left,
-                tile_top,
-            )
-            apply_render_plan_to_canvas(widget, plan)
-            widget.upload_diff_source_pil_image(diff_image)
-
-            self._render_widget_frame(widget)
-            self._render_widget_frame(widget)
-
-            qimg = widget.grabFramebuffer()
-            qimg_rgba = qimg.convertToFormat(_QImage.Format.Format_RGBA8888)
-            raw_bytes = bytes(qimg_rgba.constBits())
-            tile_image = Image.frombytes(
-                "RGBA", (qimg_rgba.width(), qimg_rgba.height()), raw_bytes
-            )
-            if tile_image.size != target_widget_size:
-                tile_image = tile_image.resize(
-                    target_widget_size, Image.Resampling.BILINEAR
-                )
-            final_image.paste(tile_image, (tile_left, tile_top))
+        exporter = self._build_exporter(widget, plan, diff_image)
+        final_image = exporter.render_rgba(
+            canvas_w, canvas_h, max_extent=tile_extent
+        )
+        self._last_widget_size = exporter._last_size
 
         widget.runtime_state._export_canvas_viewport = None
         debug_timings["export_tiled_total_ms"] = (
@@ -171,9 +121,8 @@ class GpuExportProxy(QObject):
         target_widget_size = (int(plan.canvas_w), int(plan.canvas_h))
         widget_size_changed = self._last_widget_size != target_widget_size
         if widget_size_changed:
-            widget.resize(*target_widget_size)
-            widget.show()
-            QApplication.processEvents()
+            resize_offscreen_widget(widget, target_widget_size)
+            show_offscreen_widget(widget)
             self._last_widget_size = target_widget_size
         debug_timings["widget_resize_show_ms"] = (
             time.perf_counter() - resize_show_started
@@ -202,32 +151,15 @@ class GpuExportProxy(QObject):
         debug_timings["grab_raw_ms"] = (time.perf_counter() - grab_started) * 1000.0
 
         convert_started = time.perf_counter()
-        from PySide6.QtGui import QImage as _QImage
-        qimg_rgba = qimg.convertToFormat(_QImage.Format.Format_RGBA8888)
+        image = qimage_to_pil_rgba(qimg)
         debug_timings["qimage_convert_ms"] = (time.perf_counter() - convert_started) * 1000.0
 
-        bits_started = time.perf_counter()
-        ptr = qimg_rgba.constBits()
-        raw_bytes = bytes(ptr)
-        debug_timings["qimage_bits_ms"] = (time.perf_counter() - bits_started) * 1000.0
-
-        pil_started = time.perf_counter()
-        image = Image.frombytes(
-            "RGBA",
-            (qimg_rgba.width(), qimg_rgba.height()),
-            raw_bytes,
-        )
-        debug_timings["pil_frombytes_ms"] = (time.perf_counter() - pil_started) * 1000.0
-        # Cache the raw RGBA bytes alongside the PIL image so downstream consumers
-        # (notably the video export ffmpeg-write loop) can skip a redundant
-        # PIL.tobytes() memcpy when no resize/composite is needed. ~5ms saved
-        # per 4K frame in measurements.
+        raw_bytes = image.tobytes()
         image._raw_rgba_bytes = raw_bytes
 
         resize_started = time.perf_counter()
         if image.size != target_widget_size:
             image = image.resize(target_widget_size, Image.Resampling.BILINEAR)
-            # Resize allocates new buffers; the cached raw bytes no longer match.
             if hasattr(image, "_raw_rgba_bytes"):
                 try:
                     delattr(image, "_raw_rgba_bytes")

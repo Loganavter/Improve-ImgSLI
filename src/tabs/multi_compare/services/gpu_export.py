@@ -17,10 +17,20 @@ from __future__ import annotations
 import dataclasses
 import logging
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
+from shared.rendering.export_tiling import (
+    DEFAULT_EXPORT_TILE_MAX_EXTENT,
+    TiledFramebufferExporter,
+)
+from shared.rendering.offscreen_canvas import (
+    configure_offscreen_widget,
+    render_widget_frame,
+    resize_offscreen_widget,
+    show_offscreen_widget,
+    shutdown_offscreen_widget,
+)
 from tabs.multi_compare.ui.canvas_widget import MultiCompareCanvasWidget
 from ui.canvas_presentation.composition import CompositionPlan
 from ui.canvas_presentation.plan import CanvasRenderPlan
@@ -37,19 +47,11 @@ class MultiCompareGpuExporter:
     def _ensure_widget(self) -> MultiCompareCanvasWidget:
         if self._widget is not None:
             return self._widget
-        import time
-
-        t0 = time.perf_counter()
         widget = MultiCompareCanvasWidget()
         widget.setObjectName("multi_compare_export_canvas")
-        widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
-        widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        widget.setAutoFillBackground(False)
+        configure_offscreen_widget(widget)
         widget._allow_transparent_clear = True
-        t_show = time.perf_counter()
-        widget.show()
-        t_pe = time.perf_counter()
-        QApplication.processEvents()
+        show_offscreen_widget(widget)
         self._widget = widget
         return widget
 
@@ -57,54 +59,20 @@ class MultiCompareGpuExporter:
         widget = self._widget
         self._widget = None
         self._last_size = None
-        if widget is None:
-            return
-        try:
-            widget.hide()
-        except Exception:
-            pass
-        try:
-            widget.close()
-        except Exception:
-            pass
-        try:
-            widget.deleteLater()
-        except Exception:
-            pass
+        shutdown_offscreen_widget(widget)
 
-    def render_to_qimage(
+    def _apply_composition(
         self,
+        widget: MultiCompareCanvasWidget,
         composition: CompositionPlan,
         *,
-        output_w: int,
-        output_h: int,
         background_color: QColor | None,
         fill_background: bool,
-    ) -> QImage:
-        """Render ``composition`` into a QImage of ``output_w`` × ``output_h``.
-
-        The composition's own ``canvas_w/canvas_h`` is the canonical scene size.
-        ``output_w/h`` is the framebuffer; ``render()`` letterboxes the scene
-        into it with ``sr = min(output/canvas)``. No second resample.
-        """
-        import time
-
-        t_total = time.perf_counter()
-        widget = self._ensure_widget()
-        target_size = (max(1, int(output_w)), max(1, int(output_h)))
-
+    ) -> CompositionPlan:
         if fill_background and background_color is not None:
             widget._theme_background_color = QColor(background_color)
         else:
             widget._theme_background_color = QColor(0, 0, 0, 0)
-
-        size_changed = self._last_size != target_size
-        if size_changed:
-            t0 = time.perf_counter()
-            widget.resize(*target_size)
-            t_pe = time.perf_counter()
-            QApplication.processEvents()
-            self._last_size = target_size
 
         export_fill_rgba = (
             (
@@ -119,7 +87,6 @@ class MultiCompareGpuExporter:
         composition_for_export = dataclasses.replace(
             composition, fill_rgba=export_fill_rgba
         )
-
         render_plan = CanvasRenderPlan(
             image1=None,
             image2=None,
@@ -139,31 +106,80 @@ class MultiCompareGpuExporter:
             composition_root=composition_for_export.root,
             composition_plan=composition_for_export,
         )
-        t0 = time.perf_counter()
         apply_canvas_render_plan(widget, render_plan)
+        return composition_for_export
 
-        if size_changed:
-            # QRhiWidget swapchain rebuilds asynchronously after resize(); the
-            # first frame painted at a new size can still target the stale
-            # framebuffer. A throwaway warm-up frame here forces the resize to
-            # settle before the frame we actually grab.
+    def render_to_qimage(
+        self,
+        composition: CompositionPlan,
+        *,
+        output_w: int,
+        output_h: int,
+        background_color: QColor | None,
+        fill_background: bool,
+    ) -> QImage:
+        """Render ``composition`` into a QImage of ``output_w`` × ``output_h``."""
+        from ui.widgets.canvas.rhi_backend import query_max_texture_size
+
+        widget = self._ensure_widget()
+        output_w = max(1, int(output_w))
+        output_h = max(1, int(output_h))
+        target_size = (output_w, output_h)
+
+        def prepare_frame():
+            self._apply_composition(
+                widget,
+                composition,
+                background_color=background_color,
+                fill_background=fill_background,
+            )
+            widget._mc_overlay_debug = True
             widget.update()
             QApplication.processEvents()
+            widget._mc_overlay_debug = False
 
-        widget._mc_overlay_debug = True
-        t0 = time.perf_counter()
-        widget.update()
-        t_pe = time.perf_counter()
-        QApplication.processEvents()
-        widget._mc_overlay_debug = False
+        def set_export_viewport(viewport):
+            widget._export_canvas_viewport = viewport
 
-        t0 = time.perf_counter()
-        image = widget.grabFramebuffer()
-        if (image.width(), image.height()) != target_size:
-            image = image.scaled(
-                target_size[0],
-                target_size[1],
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        return image
+        tile_extent = min(
+            DEFAULT_EXPORT_TILE_MAX_EXTENT,
+            query_max_texture_size(widget.rhi()) if widget.rhi() else DEFAULT_EXPORT_TILE_MAX_EXTENT,
+        )
+        if output_w <= tile_extent and output_h <= tile_extent:
+            set_export_viewport(None)
+            if self._last_size != target_size:
+                resize_offscreen_widget(widget, target_size)
+                show_offscreen_widget(widget)
+                self._last_size = target_size
+            prepare_frame()
+            render_widget_frame(widget)
+            render_widget_frame(widget)
+            image = widget.grabFramebuffer()
+            if (image.width(), image.height()) != target_size:
+                from PySide6.QtCore import Qt
+
+                image = image.scaled(
+                    target_size[0],
+                    target_size[1],
+                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            return image
+
+        exporter = TiledFramebufferExporter(
+            widget,
+            set_export_viewport=set_export_viewport,
+            prepare_frame=prepare_frame,
+            query_max_texture_size=lambda: query_max_texture_size(widget.rhi()),
+        )
+        pil_image = exporter.render_rgba(
+            output_w, output_h, max_extent=DEFAULT_EXPORT_TILE_MAX_EXTENT
+        )
+        self._last_size = exporter._last_size
+        return QImage(
+            pil_image.tobytes(),
+            pil_image.width,
+            pil_image.height,
+            pil_image.width * 4,
+            QImage.Format.Format_RGBA8888,
+        ).copy()

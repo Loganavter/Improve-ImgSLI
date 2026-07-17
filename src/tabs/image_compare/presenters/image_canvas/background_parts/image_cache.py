@@ -109,18 +109,30 @@ def start_scaling_worker(presenter, src1, src2, w, h):
         presenter.current_scaling_task_id += 1
         scaling_task_id = presenter.current_scaling_task_id
 
-        def scale_task(img1, img2, width, height, tid):
-            from shared.image_processing.lazy_pixel_source import to_real_pil_copy
+        def scale_task(img1, img2, width, height, tid, lease1, lease2):
+            from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
+            from shared.image_processing.store_lease import StoreLease
 
-            i1 = to_real_pil_copy(img1).resize(
-                (width, height), PIL.Image.Resampling.BILINEAR
-            )
-            i2 = to_real_pil_copy(img2).resize(
-                (width, height), PIL.Image.Resampling.BILINEAR
-            )
+            if lease1 is not None and not lease1.valid:
+                return None
+            if lease2 is not None and not lease2.valid:
+                return None
+            i1 = downscale_source_to_pil(img1, (width, height), resample=PIL.Image.Resampling.BILINEAR)
+            i2 = downscale_source_to_pil(img2, (width, height), resample=PIL.Image.Resampling.BILINEAR)
             return i1, i2, width, height, tid
 
-        worker = GenericWorker(scale_task, src1, src2, w, h, scaling_task_id)
+        from shared.image_processing.store_lease import StoreLease
+
+        worker = GenericWorker(
+            scale_task,
+            src1,
+            src2,
+            w,
+            h,
+            scaling_task_id,
+            StoreLease.capture(src1),
+            StoreLease.capture(src2),
+        )
         worker.signals.result.connect(presenter.background.on_display_scaling_ready)
         priority = (
             0 if presenter.store.viewport.interaction_state.is_interactive_mode else 1
@@ -161,6 +173,14 @@ def create_preview_cache_async(presenter, img1, img2):
 
     w, h = img1.size
     if limit <= 0 or max(w, h) <= limit:
+        from shared.image_processing.pixel_ops.downscale import downscale_pair_to_limit
+        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+        if isinstance(img1, TiledPixelStore) or isinstance(img2, TiledPixelStore):
+            presenter._display_cache_request_key = None
+            d1, d2 = downscale_pair_to_limit(img1, img2, max(w, h))
+            _set_display_cache(presenter, d1, d2, request_key)
+            return True
         presenter._display_cache_request_key = None
         _set_display_cache(presenter, img1, img2, request_key)
         return True
@@ -170,13 +190,17 @@ def create_preview_cache_async(presenter, img1, img2):
 
     presenter._display_cache_request_key = request_key
 
-    def cache_task(i1, i2, requested_limit, key):
-        from shared.image_processing.lazy_pixel_source import to_real_pil_copy
-        from shared.image_processing.resize import downscale_pair_to_limit
+    def cache_task(i1, i2, requested_limit, key, lease1, lease2):
+        from shared.image_processing.pixel_ops.downscale import downscale_pair_to_limit
+        from shared.image_processing.store_lease import StoreLease
 
-        i1, i2 = to_real_pil_copy(i1), to_real_pil_copy(i2)
-        d1, d2 = downscale_pair_to_limit(i1, i2, requested_limit)
-        return d1, d2, key
+        if lease1 is not None and not lease1.valid:
+            return None
+        if lease2 is not None and not lease2.valid:
+            return None
+        return (*downscale_pair_to_limit(i1, i2, requested_limit), key)
+
+    from shared.image_processing.store_lease import StoreLease
 
     worker = GenericWorker(
         cache_task,
@@ -184,6 +208,8 @@ def create_preview_cache_async(presenter, img1, img2):
         img2,
         limit,
         request_key,
+        StoreLease.capture(img1),
+        StoreLease.capture(img2),
     )
     worker.signals.result.connect(presenter.background.on_preview_cache_ready)
     worker.signals.error.connect(

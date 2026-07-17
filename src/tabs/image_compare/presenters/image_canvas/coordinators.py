@@ -10,9 +10,6 @@ from tabs.image_compare.presenters.image_canvas.background_parts.image_cache imp
     start_scaling_worker,
 )
 from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import (
-    finish_resize_delay,
-)
-from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import (
     schedule_update as schedule_update_impl,
 )
 from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import (
@@ -105,9 +102,6 @@ class CanvasLifecycleCoordinator:
 
     def invalidate_render_state(self, clear_magnifier: bool = False):
         return invalidate_render_state(self.presenter)
-
-    def finish_resize_delay(self):
-        return finish_resize_delay(self.presenter)
 
     def start_interactive_movement(self):
         return start_interactive_movement(self.presenter)

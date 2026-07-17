@@ -269,6 +269,7 @@ def do_update_combobox_displays(presenter):
     settings_presenter = presenter.get_feature("settings")
     if settings_presenter is not None:
         settings_presenter.update_interpolation_combo_box_ui()
+        settings_presenter.setup_view_buttons()
     count1 = len(document.image_list1)
     idx1 = document.current_index1
     text1 = (
@@ -349,6 +350,7 @@ def on_language_changed(presenter):
     that doesn't go through ``translatable_*`` bindings.
     """
     lang_code = presenter.store.settings.current_language
+    from domain.qt_adapters import color_to_qcolor
     from ui.presenters.main_window.workspace import configure_workspace_actions
 
     configure_workspace_actions(presenter)
@@ -362,8 +364,28 @@ def on_language_changed(presenter):
     do_update_slider_tooltips(presenter)
     do_update_rating_displays(presenter)
     do_update_file_names_display(presenter)
+    if presenter.font_settings_flyout is not None:
+        presenter.font_settings_flyout.set_values(
+            presenter.store.viewport.render_config.font_size_percent,
+            presenter.store.viewport.render_config.font_weight,
+            color_to_qcolor(presenter.store.viewport.render_config.file_name_color),
+            color_to_qcolor(presenter.store.viewport.render_config.file_name_bg_color),
+            presenter.store.viewport.render_config.draw_text_background,
+            presenter.store.viewport.render_config.text_placement_mode,
+            getattr(
+                presenter.store.viewport.render_config, "text_alpha_percent", 100
+            ),
+            lang_code,
+        )
     presenter.repopulate_flyouts()
     presenter.widget.reapply_button_styles()
+    from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
+    from ui.layout_geometry import apply_main_window_minimum
+
+    defer_dialog_geometry(
+        presenter.main_window_app,
+        lambda: apply_main_window_minimum(presenter.main_window_app),
+    )
 
 
 def get_current_display_name(presenter, image_number: int) -> str:

@@ -25,8 +25,16 @@ class MetricsService:
 
         self._show_ssim_metrics_toast_if_needed(calc_ssim)
 
+        from shared.image_processing.store_lease import StoreLease
+
         worker = GenericWorker(
-            self.metrics_worker_task, img1, img2, calc_psnr, calc_ssim
+            self.metrics_worker_task,
+            img1,
+            img2,
+            calc_psnr,
+            calc_ssim,
+            StoreLease.capture(img1),
+            StoreLease.capture(img2),
         )
         worker.signals.result.connect(self.on_metrics_calculated)
         worker.signals.error.connect(
@@ -58,14 +66,24 @@ class MetricsService:
         return image_state.image1, image_state.image2
 
     def metrics_worker_task(
-        self, img1: Image.Image, img2: Image.Image, calc_psnr: bool, calc_ssim: bool
+        self, img1, img2, calc_psnr: bool, calc_ssim: bool, lease1, lease2
     ) -> Optional[Tuple[Optional[float], Optional[float]]]:
         """Worker task to compute metrics."""
         try:
             from shared.analysis import calculate_psnr, calculate_ssim
-            from shared.image_processing.lazy_pixel_source import to_real_pil_copy
+            from shared.image_processing.pixel_ops.downscale import downscale_pair_to_limit
+            from shared.image_processing.store_lease import StoreLease
+            from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
-            img1, img2 = to_real_pil_copy(img1), to_real_pil_copy(img2)
+            if lease1 is not None and not lease1.valid:
+                return None
+            if lease2 is not None and not lease2.valid:
+                return None
+            if isinstance(img1, TiledPixelStore) or isinstance(img2, TiledPixelStore):
+                img1, img2 = downscale_pair_to_limit(img1, img2, 4096)
+            else:
+                img1 = img1.copy() if img1 is not None else None
+                img2 = img2.copy() if img2 is not None else None
             psnr_val, ssim_val = None, None
             if calc_psnr:
                 psnr_val = calculate_psnr(img1, img2)

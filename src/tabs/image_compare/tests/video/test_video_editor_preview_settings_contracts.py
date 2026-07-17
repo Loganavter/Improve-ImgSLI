@@ -41,9 +41,16 @@ def test_video_preview_quality_i18n_keys_exist_for_all_languages():
 
 def test_preview_quality_settings_use_translation_keys_only():
     """HELP_WIDGET.md: UI construction must not hardcode translated preview labels."""
-    source = (REPO / "src" / "tabs" / "image_compare" / "plugins" / "video_editor" / "dialog_sections.py").read_text(
-        encoding="utf-8"
-    )
+    source = (
+        REPO
+        / "src"
+        / "tabs"
+        / "image_compare"
+        / "plugins"
+        / "video_editor"
+        / "dialog"
+        / "sections.py"
+    ).read_text(encoding="utf-8")
     tree = ast.parse(source)
     forbidden = {
         "Preview Quality:",

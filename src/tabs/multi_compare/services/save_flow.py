@@ -48,17 +48,23 @@ class MultiCompareSaveFlowCoordinator:
         success: bool,
         duration: int = 0,
         progress: int | None = None,
+        actions=None,
     ) -> None:
         toast_manager = self._get_toast_manager()
         if toast_manager is None or save_task_id is None:
             return
         try:
+            kwargs = {
+                "success": success,
+                "duration": duration,
+                "progress": progress,
+            }
+            if actions is not None:
+                kwargs["actions"] = actions
             toast_manager.update_toast(
                 save_task_id,
                 message,
-                success=success,
-                duration=duration,
-                progress=progress,
+                **kwargs,
             )
         except Exception as exc:
             logger.error("Toast update failed for %s: %s", save_task_id, exc)
@@ -225,6 +231,8 @@ class MultiCompareSaveFlowCoordinator:
             success_message,
             success=True,
             duration=4000,
+            progress=100,
+            actions=[],
         )
         self._finalize_save_worker(save_task_id)
 

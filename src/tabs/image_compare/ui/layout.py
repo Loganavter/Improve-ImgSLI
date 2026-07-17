@@ -187,7 +187,10 @@ class ImageCompareLayoutBuilder:
         layout.setSpacing(4)
         rating_label.setFixedWidth(30)
         rating_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        rating_label.setProperty("class", "rating-label")
+        if hasattr(rating_label, "setBold"):
+            rating_label.setBold(True)
+        if hasattr(rating_label, "setPixelSize"):
+            rating_label.setPixelSize(14)
         combo.setMinimumHeight(28)
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(rating_label)
@@ -243,8 +246,6 @@ class ImageCompareLayoutBuilder:
         layout.setSpacing(8)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addWidget(ui.btn_quick_save)
-        layout.addWidget(ui.btn_settings)
-        layout.addWidget(ui.help_button)
         return layout
 
     def _slider_panel_layout(self) -> QWidget:

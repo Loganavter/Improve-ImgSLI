@@ -67,7 +67,20 @@ class ExportController(QObject):
         )
 
     def paste_image_from_clipboard(self):
-        return self.clipboard_service.paste_image_from_clipboard()
+        # Session-scoped: resolve against the active tab, not the bootstrap-
+        # default clipboard instance built at export-plugin configure time.
+        from tabs.registry import get_shared_tab_registry
+
+        service = get_shared_tab_registry().create_service(
+            "clipboard_paste_service",
+            self.store,
+            self.main_controller,
+        )
+        if service is None:
+            service = self.clipboard_service
+        if service is None:
+            return False
+        return service.paste_image_from_clipboard()
 
     def on_toggle_recording(self, event: ExportToggleRecordingEvent):
         self.toggle_recording()

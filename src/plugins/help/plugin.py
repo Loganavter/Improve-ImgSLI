@@ -7,7 +7,7 @@ from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import IControllablePlugin, IUIPlugin
 from plugins.help.dialog import HelpDialog
 
-@plugin(name="help", version="1.0")
+@plugin(name="help", version="1.0", startup_tier="deferred")
 class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
     capabilities = ("help_dialog",)
 
@@ -40,24 +40,35 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
     def provides_capability(self, capability: str) -> bool:
         return capability == "help_dialog"
 
-    def show_dialog(self, *, parent: Any = None, language: str = "en") -> None:
+    def show_dialog(
+        self,
+        *,
+        parent: Any = None,
+        language: str = "en",
+        page: str | None = None,
+        anchor: str | None = None,
+    ) -> None:
+        # Never Qt-parent Help to the main window. A transient-for link makes
+        # the WM raise the whole main-window group when Help activates, which
+        # buries independent top-levels like Video Editor / Export.
+        # ``parent`` is kept as a geometry hint only (centering).
+        del parent
         if self._dialog is None:
             self._dialog = HelpDialog(
                 current_language=language,
                 app_name="Improve-ImgSLI",
-                parent=parent,
+                parent=None,
             )
             self._dialog.destroyed.connect(self._on_dialog_destroyed)
 
         if self._dialog.current_language != language:
             self._dialog.update_language(language)
 
-        if parent is not None and self._dialog.parent() is None:
-            self._dialog.setParent(parent)
-
         self._dialog.show()
         self._dialog.raise_()
         self._dialog.activateWindow()
+        if page:
+            self._dialog.navigate_to(page, anchor)
 
     def _on_dialog_destroyed(self) -> None:
         self._dialog = None

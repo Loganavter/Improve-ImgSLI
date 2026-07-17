@@ -5,13 +5,16 @@ import struct
 # std140 layout of base.frag/base.vert's UBuf: mat4 mvp(64) + vec2 offset(8)
 # + vec2 zoom(8) + float splitPosition(4) + 12B pad + vec4 letterbox1(16) +
 # vec4 letterbox2(16) + 4 ints(16) + float diffThreshold(4) + 12B pad +
-# vec4 tileRect1(16) + vec4 tileRect2(16) = 192. zoom became vec2 in Phase 3
+# vec4 tileRect1(16) + vec4 tileRect2(16) + vec4 canvasLetterbox(16) +
+# vec4 letterboxFill(16) = 224. zoom became vec2 in Phase 3
 # (docs/dev/TILED_RENDERING_DESIGN.md) to support the anisotropic crop
 # window tiled export needs; see pack_base_uniforms's format string, which
 # must stay byte-for-byte in sync with this layout.
-_UNIFORM_BLOCK_SIZE = 192
+_UNIFORM_BLOCK_SIZE = 224
 
 _FULL_TILE_RECT = (0.0, 0.0, 1.0, 1.0)
+_DISABLED_CANVAS_LETTERBOX = (0.0, 0.0, 0.0, 0.0)
+_DISABLED_LETTERBOX_FILL = (0.0, 0.0, 0.0, 0.0)
 
 
 def pack_base_uniforms(
@@ -36,8 +39,14 @@ def pack_base_uniforms(
         float(base_image.pan_offset_x),
         float(base_image.pan_offset_y),
     )
+    canvas_letterbox = getattr(
+        base_image, "canvas_letterbox", None
+    ) or _DISABLED_CANVAS_LETTERBOX
+    letterbox_fill = getattr(
+        base_image, "letterbox_fill", None
+    ) or _DISABLED_LETTERBOX_FILL
     return struct.pack(
-        "<32f4i12f",
+        "<32f4i20f",
         *matrix,
         offset_x,
         offset_y,
@@ -59,4 +68,6 @@ def pack_base_uniforms(
         0.0,
         *tile_rect1,
         *tile_rect2,
+        *tuple(float(v) for v in canvas_letterbox),
+        *tuple(float(v) for v in letterbox_fill),
     )

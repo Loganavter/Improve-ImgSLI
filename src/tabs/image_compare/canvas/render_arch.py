@@ -49,6 +49,8 @@ class BaseImagePrimitive:
     use_hires: bool
     letterbox1: tuple[float, float, float, float]
     letterbox2: tuple[float, float, float, float]
+    canvas_letterbox: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    letterbox_fill: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
 
 @dataclass(frozen=True, slots=True)

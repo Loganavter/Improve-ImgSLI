@@ -1,17 +1,8 @@
 /* --- Application-specific styles (main window / app shell) --- */
 
-/* --- RatingListItem --- */
-RatingListItem > QLabel {
-    background: transparent;
-}
-
-RatingListItem > QLabel#ratingLabel {
-    color: @list_item.text.rating;
-}
-
-RatingListItem > QLabel#nameLabel {
-    color: @list_item.text.normal;
-}
+/* RatingListItem / ZoomIndicator / title text: color+font via palette + UiFont.
+   Do not put color/font rules on QLabel — any QSS on a QLabel makes Qt ignore
+   setFont() when painting (system face fallback). */
 
 RatingListItem > AutoRepeatButton {
     border-radius: 11px;
@@ -46,55 +37,8 @@ QWidget#ImageStartupPlaceholder {
 
 /* --- Custom title bar (client-side decorations) --- */
 QWidget#CustomTitleBar {
-    background-color: @Window;
-    border-top-left-radius: 10px;
-    border-top-right-radius: 10px;
-}
-
-QLabel#CustomTitleBarTitle {
-    color: @WindowText;
     background: transparent;
-}
-
-
-QWidget#ImageStartupPlaceholder QLabel {
-    background: transparent;
-}
-
-QWidget#ZoomIndicator QLabel {
-    color: white;
-    padding: 0px 6px;
-    background: transparent;
-}
-
-QLabel[class="drag-overlay"] {
-    background-color: rgba(0, 100, 200, 0.6);
-    color: white;
-    font-size: 20px;
-    border-radius: 10px;
-    padding: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-}
-
-QLabel[class="rating-label"] {
-    font-weight: bold;
-    font-size: 14px;
-}
-
-QLabel[class="warning-label"] {
-    color: #FF4500;
-    font-weight: bold;
-}
-
-QLabel[class="placeholder-label"] {
-    color: rgba(255,255,255,0.4);
-}
-
-QLabel[class="debug-marker"] {
-    background-color: #FF0000;
-    border: 1px solid black;
-    color: white;
-    font-weight: bold;
+    border: none;
 }
 
 QWidget[opacity="0.4"] {

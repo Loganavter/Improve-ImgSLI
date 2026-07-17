@@ -9,7 +9,7 @@ Decoupled, type-safe pub/sub for cross-component async notifications. Use it whe
 | Path | Role |
 |---|---|
 | `src/core/plugin_system/event_bus.py` | `EventBus` class, `MAX_EMIT_DEPTH`, `EventBusDepthExceeded` |
-| `src/core/events.py` | Cross-cutting domain events (frozen dataclasses): `CoreUpdateRequestedEvent`, `CoreErrorOccurredEvent`, `CoreUIComponentsUpdateEvent`, `PluginEvent` |
+| `src/core/events.py` | Cross-cutting domain events (frozen dataclasses): `CoreUpdateRequestedEvent`, `CoreErrorOccurredEvent`, `CoreUIComponentsUpdateEvent`, `WorkspaceSessionCreatedEvent`, `WorkspaceSessionClosedEvent`, `WorkspaceSessionActivatedEvent`, `PluginEvent` |
 | `src/plugins/<x>/events.py` | Plugin-local events (e.g. `src/plugins/export/events.py`, `src/plugins/settings/events.py`) |
 | `src/tabs/image_compare/events/__init__.py` | Tab-local events (e.g. `ComparisonUpdateRequestedEvent`, `AnalysisRequestMetricsEvent`) |
 | `src/tabs/image_compare/canvas/features/<name>/events.py` | Canvas-feature-local events (e.g. `divider/events.py`, `magnifier/events.py`) |
@@ -94,6 +94,9 @@ Rule of thumb: if the receiver only needs to do something *once* per occurrence,
 
 ## Built-in events (selected)
 
+- `core/events.py:WorkspaceSessionCreatedEvent(session_id, session_type)` — emitted after `WorkspaceSessionActions.create_workspace_session`.
+- `core/events.py:WorkspaceSessionClosedEvent(session_id, session_type)` — emitted after a session is closed.
+- `core/events.py:WorkspaceSessionActivatedEvent(session_id, session_type, previous_session_id)` — emitted when the active session id changes (create with activate, switch, or close promoted another session). Routed to `TabRegistry.notify_active_session_changed` and `Dispatcher.bind_history_for_session`.
 - `core/events.py:PluginEvent(plugin_name, stage)` — emitted by `PluginLifecycleManager` on initialize/activate/deactivate/shutdown/error.
 - `tabs/image_compare/events/__init__.py:ComparisonUpdateRequestedEvent` — comparison tab asks for a recomputation.
 - `tabs/image_compare/events/__init__.py:ComparisonErrorEvent` — comparison failure.

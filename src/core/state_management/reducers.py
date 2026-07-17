@@ -34,6 +34,7 @@ from .actions import (
     SetInteractiveModeAction,
     SetIsDraggingSliderAction,
     SetLanguageAction,
+    SetKeyboardOverridesAction,
     SetLastHorizontalMovementKeyAction,
     SetLastSpacingMovementKeyAction,
     SetLastVerticalMovementKeyAction,
@@ -256,6 +257,8 @@ class SettingsReducer:
             )
         if isinstance(action, SetExportFavoriteDirAction):
             return replace(settings, export_favorite_dir=action.path)
+        if isinstance(action, SetKeyboardOverridesAction):
+            return replace(settings, keyboard_overrides=dict(action.overrides))
         return settings
 
 

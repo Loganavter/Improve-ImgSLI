@@ -127,15 +127,32 @@ class LayoutComposer:
                 else None
             )
 
-        def show_help_dialog():
+        def show_help_dialog(*, page: str | None = None, anchor: str | None = None):
             mgr = _ui_manager()
             if mgr is not None:
-                mgr.dialogs.show_help_dialog()
+                mgr.dialogs.show_help_dialog(page=page, anchor=anchor)
 
-        def show_settings_dialog():
+        def show_settings_dialog(*, section_id: str | None = None):
             mgr = _ui_manager()
             if mgr is not None:
-                mgr.dialogs.show_settings_dialog()
+                mgr.dialogs.show_settings_dialog(section_id=section_id)
+
+        def show_command_palette(
+            query: str = "",
+            topic: str | None = None,
+            preselect_action_id: str | None = None,
+            auto_pulse: bool = False,
+        ):
+            from ui.actions.palette import show_command_palette as _show
+
+            parent = ui.main_window.window()
+            _show(
+                query=query,
+                topic=topic,
+                preselect_action_id=preselect_action_id,
+                auto_pulse=auto_pulse,
+                parent=parent,
+            )
 
         def open_image_export_dialog(*, dialog_state, **kwargs):
             from PySide6.QtWidgets import QDialog
@@ -154,7 +171,7 @@ class LayoutComposer:
         )
 
         ui._tab_registry = TabRegistry()
-        ui._tab_registry.discover()
+        ui._tab_registry.discover(tier="bootstrap")
         transition_mask = WorkspaceTransitionMask(ui.main_window)
         ui.main_window._workspace_transition_mask = transition_mask
         # `ui.main_window` is set inside `Ui_ImageComparisonApp.setupUi()` to the
@@ -173,6 +190,15 @@ class LayoutComposer:
         thread_pool = getattr(main_controller, "thread_pool", None) or getattr(
             app_context, "thread_pool", None
         )
+        def get_tab_icon(session_type: str):
+            from PySide6.QtGui import QIcon
+
+            tab = ui._tab_registry.get_tab(session_type)
+            if tab is None:
+                return QIcon()
+            icon = tab.icon
+            return icon if icon is not None else QIcon()
+
         context = TabContext(
             store=store,
             event_bus=event_bus,
@@ -185,7 +211,9 @@ class LayoutComposer:
                 "close_workspace_session": close_workspace_session,
                 "show_help_dialog": show_help_dialog,
                 "show_settings_dialog": show_settings_dialog,
+                "show_command_palette": show_command_palette,
                 "open_image_export_dialog": open_image_export_dialog,
+                "get_tab_icon": get_tab_icon,
                 "workspace.transition_mask": transition_mask,
             },
         )
@@ -195,7 +223,7 @@ class LayoutComposer:
         # `sync_session_mode()`. Seed whichever registered tab declares
         # itself the bootstrap default (see `TabContract.is_bootstrap_default`)
         # so `create_service`/`create_main_window_feature` — which resolve
-        # *only* against the active tab, see docs/dev/TAB_CONTRACT.md —
+        # *only* against the active tab, see docs/dev/tabs/capability-mechanisms.md —
         # have someone to route to during this bootstrap window. The first
         # real `sync_session_mode()` call reconciles this with the actual
         # initial session's type. Deliberately tab-name-agnostic: this file
@@ -204,6 +232,7 @@ class LayoutComposer:
 
         if event_bus is not None:
             from core.events import (
+                WorkspaceSessionActivatedEvent,
                 WorkspaceSessionClosedEvent,
                 WorkspaceSessionCreatedEvent,
             )
@@ -220,3 +249,20 @@ class LayoutComposer:
                     e.session_type, e.session_id
                 ),
             )
+            event_bus.subscribe(
+                WorkspaceSessionActivatedEvent,
+                lambda e: ui._tab_registry.notify_active_session_changed(
+                    e.session_id,
+                    e.session_type,
+                    e.previous_session_id,
+                ),
+            )
+            dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+            if dispatcher is not None:
+                event_bus.subscribe(
+                    WorkspaceSessionActivatedEvent,
+                    lambda e: dispatcher.bind_history_for_session(e.session_id),
+                )
+                active = store.get_active_workspace_session()
+                if active is not None:
+                    dispatcher.bind_history_for_session(active.id)

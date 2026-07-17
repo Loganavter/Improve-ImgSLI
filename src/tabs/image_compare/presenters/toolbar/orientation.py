@@ -38,13 +38,13 @@ def on_orientation_right_clicked(presenter):
 
 def _show_orientation_popup(presenter):
     from PySide6.QtCore import QSize
-    from ui.icon_manager import AppIcon, get_app_icon
+    from tabs.image_compare.icons import Icon, get_icon
 
     current_orientation = _query_overlay_orientation(presenter.store)
     icon_enum = (
-        AppIcon.HORIZONTAL_SPLIT
+        Icon.HORIZONTAL_SPLIT
         if not current_orientation
-        else AppIcon.VERTICAL_SPLIT
+        else Icon.VERTICAL_SPLIT
     )
     widget = getattr(presenter, "widget", None)
     button = getattr(widget, "btn_orientation", None)
@@ -57,7 +57,7 @@ def _show_orientation_popup(presenter):
     overlay_layer.show_popup(
         "orientation_popup",
         button,
-        pixmap=get_app_icon(icon_enum).pixmap(18, 18),
+        pixmap=get_icon(icon_enum).pixmap(18, 18),
         size=QSize(32, 28),
         position="top",
         offset=6,

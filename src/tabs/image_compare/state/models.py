@@ -22,6 +22,8 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from PIL import Image
+
 from core.store_viewport import RenderConfig, SessionData
 
 __all__ = [
@@ -55,10 +57,10 @@ class ImageSessionState:
 @dataclass
 class RenderCacheState:
 
-    display_cache_image1: Optional[Any] = None
-    display_cache_image2: Optional[Any] = None
-    scaled_image1_for_display: Optional[Any] = None
-    scaled_image2_for_display: Optional[Any] = None
+    display_cache_image1: Optional[Image.Image] = None
+    display_cache_image2: Optional[Image.Image] = None
+    scaled_image1_for_display: Optional[Image.Image] = None
+    scaled_image2_for_display: Optional[Image.Image] = None
     cached_scaled_image_dims: Optional[tuple[int, int]] = None
     last_display_cache_params: Optional[tuple] = None
 

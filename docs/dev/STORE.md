@@ -13,7 +13,7 @@ This document is the contract reference. For the broader "why" and architectural
 | Path | Role |
 |---|---|
 | `src/core/store.py` | `Store` — root holder of `viewport`, `document`, `settings`, `workspace`, `runtime_cache` |
-| `src/core/store_viewport.py` | Dataclasses: `ViewportState`, `ViewState`, `InteractionState`, `GeometryState`; legacy compatibility imports for image render/session data while migration C9 is in progress |
+| `src/core/store_viewport.py` | Dataclasses: `ViewportState`, `ViewState`, `InteractionState`, `GeometryState`; re-exports image-compare render/session types while Step 9 extraction is open (see below) |
 | `src/tabs/image_compare/state/models.py` | Image-compare render/session/cache models (`RenderConfig`, `ImageSessionState`, `RenderCacheState`, `SessionData`) |
 | `src/core/store_document.py` | `DocumentModel`, `ImageItem` |
 | `src/core/store_settings.py` | `SettingsState`, `WorkerStoreSnapshot` |
@@ -136,7 +136,7 @@ self.store.state_changed.disconnect(self._on_store_changed)
 
 ## Invariants — what you MUST hold
 
-1. **Never mutate state in-place.** Reducers must return new dataclasses (`dataclasses.replace(state, field=value)`), not `state.field = value`. Same rule for UI/services: dispatch an action, never write `store.viewport.X = Y` directly. (Common offender — see `src/ui/canvas_presentation/plan_builder.py` for in-progress migration.)
+1. **Never mutate state in-place.** Reducers must return new dataclasses (`dataclasses.replace(state, field=value)`), not `state.field = value`. Same rule for UI/services: dispatch an action, never write `store.viewport.X = Y` directly.
 2. **All state changes go through the Dispatcher.** Direct mutation skips:
    - the lock (race conditions),
    - action history (tracing/devtools),
@@ -174,11 +174,11 @@ self.store.state_changed.disconnect(self._on_store_changed)
 
 ## Plugin state — the escape hatch
 
-Plugins (analysis, export) keep state outside the Action/Reducer path via opaque attributes on `viewport`:
+Some paths keep state outside the Action/Reducer path via opaque attributes on `viewport`:
 - `viewport._viewport_plugin_state` — viewport-level
-- `viewport._analysis_plugin_state` — view-state level
+- `viewport._analysis_plugin_state` — analysis services under `tabs/image_compare/services/analysis/` (owned by `comparison`); keep the attribute name — dispatcher sync depends on it
 
-`Dispatcher` preserves these across reductions and re-syncs matching fields back into the new viewport via `_sync_plugin_states`. Don't add new opaque attrs without updating the dispatcher.
+`Dispatcher` preserves these across reductions and re-syncs matching fields back into the new viewport via `_sync_plugin_states`. Prefer session `state_slots` for new plugin/tab state. Don't add new opaque attrs without updating the dispatcher. See [PLUGINS.md](PLUGINS.md#inventory).
 
 ## See also
 

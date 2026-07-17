@@ -4,6 +4,14 @@
       "image_compare": "图像比较",
       "multi_compare": "多图比较",
       "session_picker": "新标签页"
+    },
+    "tab_menu": {
+      "close": "关闭标签页",
+      "rename": "重命名标签页",
+      "rename_prompt": "名称",
+      "duplicate": "复制标签页",
+      "close_others": "关闭其他标签页",
+      "new": "新建标签页"
     }
   }
 }

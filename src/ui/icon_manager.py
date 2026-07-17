@@ -13,63 +13,44 @@ from sli_ui_toolkit.ui.widgets.atomic.text_labels import (
     LabelVariantSpec,
     register_label_variant,
 )
-from sli_ui_toolkit.ui.widgets.buttons._dropdown_menu import DropdownMenu
-
-DropdownMenu.APPEAR_EXTRA_Y = 12
 
 register_label_variant(
     LabelVariantSpec("group-title", pixel_size=14, bold=False, color_token="dialog.text", elide=True)
 )
 
 class AppIcon(Enum):
+    """Host/app-shell icons — tab UI icons live under ``tabs/<name>/icons.py``."""
+
     SETTINGS = "settings.svg"
-    SAVE = "save_icon.svg"
-    QUICK_SAVE = "quick_save.svg"
     HELP = "help.svg"
-    PHOTO = "photo_icon.svg"
-    SYNC = "sync.svg"
-    DELETE = "delete.svg"
     TEXT_MANIPULATOR = "text-manipulator.svg"
-    VERTICAL_SPLIT = "vertical_split.svg"
-    HORIZONTAL_SPLIT = "horizontal_split.svg"
-    GRID = "grid.svg"
-    MAGNIFIER = "magnifier.svg"
-    FREEZE = "freeze.svg"
-    TEXT_FILENAME = "text_filename.svg"
+    PLAY = "play.svg"
     HIGHLIGHT_DIFFERENCES = "highlight_diff_icon.svg"
-    DIVIDER_VISIBLE = "divider_visible.svg"
-    DIVIDER_HIDDEN = "divider_hidden.svg"
-    DIVIDER_COLOR = "divider_color.svg"
-    DIVIDER_WIDTH = "divider_width.svg"
     ADD = "add.svg"
     ADD_CIRCLE = "add_circle.svg"
     REMOVE = "remove.svg"
     CLOSE = "close.svg"
     CHECK = "check.svg"
+    ENTER = "enter.svg"
     MINIMIZE = "window_minimize.svg"
     MAXIMIZE = "window_maximize.svg"
     RESTORE = "window_restore.svg"
     WINDOW_CLOSE = "window_close.svg"
-
-    RECORD = "record.svg"
-    STOP = "stop.svg"
-    PAUSE = "pause.svg"
-    PLAY = "play.svg"
-    EXPORT_VIDEO = "video.svg"
-    VIDEO_EDIT = "edit_video.svg"
-    UNDO = "undo.svg"
-    REDO = "redo.svg"
-    SCISSORS = "scissors.svg"
-    CROP_IN = "crop_in.svg"
-    CROP_OUT = "crop_out.svg"
-
+    SYNC = "sync.svg"
     LINK = "link.svg"
     UNLINK = "unlink.svg"
-    MAGNIFIER_GUIDES = "laser.svg"
-    CAPTURE_AREA_COLOR = "circle_outline.svg"
-    MAGNIFIER_BORDER_COLOR = "magnifier.svg"
 
 def get_app_icon(icon: AppIcon | str) -> QIcon:
+    if isinstance(icon, Enum):
+        enum_module = getattr(type(icon), "__module__", "")
+        if enum_module.startswith("tabs.") and enum_module.endswith(".icons"):
+            import importlib
+
+            mod = importlib.import_module(enum_module)
+            getter = getattr(mod, "get_icon", None)
+            if getter is not None:
+                return getter(icon)
+
     project_root = Path(__file__).resolve().parents[1]
     service = get_icon_service("Improve-ImgSLI", project_root=str(project_root))
     if isinstance(icon, AppIcon):
@@ -84,12 +65,11 @@ def get_app_icon(icon: AppIcon | str) -> QIcon:
 configure_icon_resolver(
     get_app_icon,
     named_icons={
-        "divider_hidden": AppIcon.DIVIDER_HIDDEN,
-        "magnifier": AppIcon.MAGNIFIER,
         "add": AppIcon.ADD,
         "add_circle": AppIcon.ADD_CIRCLE,
         "remove": AppIcon.REMOVE,
         "check": AppIcon.CHECK,
+        "enter": AppIcon.ENTER,
     },
 )
 

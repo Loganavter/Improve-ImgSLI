@@ -74,13 +74,24 @@ def build_render_context(
 
     fb_w, fb_h = framebuffer_size
     scale, ox, oy = 1.0, 0.0, 0.0
+    export_viewport = None
+    if widget is not None:
+        export_viewport = getattr(widget, "_export_canvas_viewport", None)
     layers = []
     if composition is not None and composition.layers:
         canvas_w = max(1, int(composition.canvas_w))
         canvas_h = max(1, int(composition.canvas_h))
-        scale = min(fb_w / canvas_w, fb_h / canvas_h)
-        ox = (fb_w - canvas_w * scale) * 0.5
-        oy = (fb_h - canvas_h * scale) * 0.5
+        if export_viewport is not None:
+            full_fb_w, full_fb_h, tile_left, tile_top = export_viewport
+            scale = min(full_fb_w / canvas_w, full_fb_h / canvas_h)
+            ox_full = (full_fb_w - canvas_w * scale) * 0.5
+            oy_full = (full_fb_h - canvas_h * scale) * 0.5
+            ox = ox_full - float(tile_left)
+            oy = oy_full - float(tile_top)
+        else:
+            scale = min(fb_w / canvas_w, fb_h / canvas_h)
+            ox = (fb_w - canvas_w * scale) * 0.5
+            oy = (fb_h - canvas_h * scale) * 0.5
         layers = list(composition.layers)
 
     projected: list[ProjectedLayer] = []

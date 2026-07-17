@@ -1,72 +1,52 @@
-"""Canvas host widget for the multi-compare scene."""
+"""Canvas host widget for the multi-compare scene.
+
+Input chrome lives in ``canvas/interaction.py``; drop/hit projection in
+``ui/drop_targets.py`` and ``ui/hit_projection.py``. Feature gestures stay
+under ``canvas/features/*/input/``.
+"""
 
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
-import numpy as np
-from PySide6.QtCore import QMimeData, QPoint, QPointF, QRect, Qt, Signal
-from PySide6.QtGui import (
-    QColor,
-    QDrag,
-    QImage,
-    QMouseEvent,
-    QPalette,
-    QWheelEvent,
-)
+from PySide6.QtCore import QPoint, QPointF, QRect, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPalette, QWheelEvent
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from ui.widgets.canvas.rhi_backend import configure_rhi_widget
 
-INTERNAL_SLOT_MIME = "application/x-imgsli-multi-slot"
-
-from tabs.multi_compare.canvas.gesture_resolver import (
-    GesturePressContext,
-    iter_active,
-    resolve_press,
-)
+from tabs.multi_compare.canvas import interaction as canvas_interaction
 from tabs.multi_compare.models import (
     CompareSlot,
     LeafNode,
     MultiCompareState,
-    SplitNode,
 )
-from tabs.multi_compare.scene import MultiCompareAction, actions
+from tabs.multi_compare.scene import MultiCompareAction
 from tabs.multi_compare.scene.renderer import MultiCompareRhiRenderer
-from tabs.multi_compare.ui import layout_geometry
-from ui.context_menu.manager import open_context_menu
-from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
+from tabs.multi_compare.ui import drop_targets, hit_projection
+from tabs.multi_compare.ui.canvas_helpers import (
+    INTERNAL_SLOT_MIME,
+    _dividers_locked,
+    _layout_is_symmetric,
+)
 
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger("ImproveImgSLI")
 
-
-def _layout_is_symmetric(node) -> bool:
-    if node is None or isinstance(node, LeafNode):
-        return True
-    if not isinstance(node, SplitNode):
-        return True
-    ws = node.normalized_weights()
-    if ws:
-        target = 1.0 / len(ws)
-        if any(abs(w - target) > 1e-4 for w in ws):
-            return False
-    return all(_layout_is_symmetric(c) for c in node.children)
-
-
-def _dividers_locked(state) -> bool:
-    if getattr(state, "zoom", 1.0) <= 1.0:
-        return True
-    return _layout_is_symmetric(state.root)
+# Re-exports for feature modules / tests that import from this module.
+__all__ = [
+    "INTERNAL_SLOT_MIME",
+    "MultiCompareCanvasWidget",
+    "_dividers_locked",
+    "_layout_is_symmetric",
+]
 
 
 class MultiCompareCanvasWidget(QRhiWidget):
     """QRhi canvas host for multi-compare rendering and input dispatch."""
-
-    DIVIDER_GRAB_PX = 8
 
     ZOOM_MIN = 1.0
     ZOOM_MAX = 50.0
@@ -91,6 +71,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self._dispatch: callable | None = None
 
         self._active_composition = None
+        self._export_canvas_viewport: tuple[int, int, int, int] | None = None
 
         self._renderer = MultiCompareRhiRenderer(self)
         self._first_frame_emitted = False
@@ -148,254 +129,54 @@ class MultiCompareCanvasWidget(QRhiWidget):
         super().resizeEvent(event)
         self.update()
 
+    # --- drop / hit projection (thin wrappers for features + tests) ---
+
     def compute_drop_target(
         self, pos: QPoint, *, include_center: bool = False
     ) -> tuple[tuple[int, ...] | None, str | None, bool, int | None]:
-        """Return (target_path, side, target_root, swap_slot_id).
-
-        target_root=True when tree is empty (whole widget is the drop zone).
-        When include_center=True, the central half of a leaf maps to side="center";
-        in that case swap_slot_id holds the leaf's slot id (for internal drag swap).
-        All zones are relative to the target leaf, never to the whole grid or an
-        enclosing split.
-        """
-        if self.state.root is None:
-            return None, None, True, None
-        leaf_entries = self._leaf_paths_and_rects()
-        if not leaf_entries:
-            return None, None, True, None
-
-        gap_target = self._drop_target_for_gap(pos)
-        if gap_target is not None:
-            return gap_target
-
-        target_leaf = None
-        target_rect = None
-        target_path: tuple[int, ...] = ()
-        for leaf, rect, path in leaf_entries:
-            if rect.contains(pos):
-                target_leaf = leaf
-                target_rect = rect
-                target_path = path
-                break
-        if target_leaf is None:
-            best_d2 = None
-            for leaf, rect, path in leaf_entries:
-                dx = max(rect.x() - pos.x(), 0, pos.x() - (rect.x() + rect.width() - 1))
-                dy = max(
-                    rect.y() - pos.y(), 0, pos.y() - (rect.y() + rect.height() - 1)
-                )
-                d2 = dx * dx + dy * dy
-                if best_d2 is None or d2 < best_d2:
-                    best_d2 = d2
-                    target_leaf = leaf
-                    target_rect = rect
-                    target_path = path
-            if target_leaf is None:
-                return None, None, False, None
-
-        u = (pos.x() - target_rect.x()) / max(target_rect.width(), 1)
-        v = (pos.y() - target_rect.y()) / max(target_rect.height(), 1)
-        if include_center and 0.25 <= u <= 0.75 and 0.25 <= v <= 0.75:
-            return target_path, "center", False, target_leaf.slot_id
-
-        distances = {"left": u, "right": 1 - u, "top": v, "bottom": 1 - v}
-        side = min(distances, key=lambda k: distances[k])
-        return target_path, side, False, None
+        return drop_targets.compute_drop_target(
+            self, pos, include_center=include_center
+        )
 
     def _drop_target_for_gap(
         self, pos: QPoint
     ) -> tuple[tuple[int, ...], str, bool, None] | None:
-        """Resolve the dedicated zones inside an actual split gap.
-
-        A vertical gap is split by height: the top quarter inserts above the
-        whole split, the bottom quarter below it, and the middle half inserts
-        between the adjacent children. Horizontal gaps use the symmetric
-        left/middle/right behavior.
-        """
-        for split, split_path, divider_index, divider_rect in self._drop_gaps():
-            if not divider_rect.contains(pos):
-                continue
-
-            adjacent_path = split_path + (divider_index + 1,)
-            if split.direction == "h":
-                fraction = (pos.y() - divider_rect.y()) / max(divider_rect.height(), 1)
-                if fraction < 0.25:
-                    return split_path, "top", False, None
-                if fraction >= 0.75:
-                    return split_path, "bottom", False, None
-                return adjacent_path, "left", False, None
-
-            fraction = (pos.x() - divider_rect.x()) / max(divider_rect.width(), 1)
-            if fraction < 0.25:
-                return split_path, "left", False, None
-            if fraction >= 0.75:
-                return split_path, "right", False, None
-            return adjacent_path, "top", False, None
-        return None
+        return drop_targets.drop_target_for_gap(self, pos)
 
     def _canvas_layout(self) -> tuple[int, int, float, float, float] | None:
-        """Return ``(canvas_w, canvas_h, sr, ox, oy)`` for projecting composition
-        canvas-px to widget-px using the same letterbox formula as ``render()``.
-
-        ``sr = min(fb_w/canvas_w, fb_h/canvas_h)``; ``ox/oy`` are letterbox
-        offsets. Mirrors :func:`tabs.multi_compare.scene.projection.build_render_context`
-        so hit-testing and rendering are guaranteed to agree.
-        """
-        if self.state.root is None or self.width() <= 0 or self.height() <= 0:
-            return None
-        comp = self._active_composition
-        if comp is not None and comp.canvas_w > 0 and comp.canvas_h > 0:
-            canvas_w = int(comp.canvas_w)
-            canvas_h = int(comp.canvas_h)
-        else:
-            from tabs.multi_compare.services.composition_builder import (
-                build_composition_plan,
-            )
-
-            plan = build_composition_plan(self.state, include_labels=False)
-            if plan is None:
-                return None
-            canvas_w = int(plan.canvas_w)
-            canvas_h = int(plan.canvas_h)
-        if canvas_w <= 0 or canvas_h <= 0:
-            return None
-        fb_w = float(self.width())
-        fb_h = float(self.height())
-        sr = min(fb_w / canvas_w, fb_h / canvas_h)
-        ox = (fb_w - canvas_w * sr) * 0.5
-        oy = (fb_h - canvas_h * sr) * 0.5
-        return canvas_w, canvas_h, sr, ox, oy
+        return hit_projection.canvas_layout(self)
 
     def _project_canvas_rect(
         self, rect_canvas: QRect, sr: float, ox: float, oy: float
     ) -> QRect:
-        x = int(round(ox + rect_canvas.x() * sr))
-        y = int(round(oy + rect_canvas.y() * sr))
-        w = max(1, int(round(rect_canvas.width() * sr)))
-        h = max(1, int(round(rect_canvas.height() * sr)))
-        return QRect(x, y, w, h)
+        return hit_projection.project_canvas_rect(rect_canvas, sr, ox, oy)
 
     @staticmethod
     def _composition_gap_canvas_px() -> int:
-        from tabs.multi_compare.services.composition_builder import (
-            DEFAULT_SPLIT_GAP_PX,
-        )
+        return hit_projection.composition_gap_canvas_px()
 
-        return int(DEFAULT_SPLIT_GAP_PX)
+    def _drop_gaps(self):
+        return hit_projection.drop_gaps(self)
 
-    def _drop_gaps(
-        self,
-    ) -> list[tuple[SplitNode, tuple[int, ...], int, QRect]]:
-        """Return split gaps with their tree paths for drop-zone hit-testing.
-
-        Walks the layout in canvas-px (same gap as ``composition_builder``) and
-        projects rects through the composition letterbox transform so divider
-        hit-zones line up with what the renderer draws.
-        """
-        layout = self._canvas_layout()
-        if layout is None:
-            return []
-        canvas_w, canvas_h, sr, ox, oy = layout
-        canvas_rect = QRect(0, 0, canvas_w, canvas_h)
-        gaps_canvas = layout_geometry.drop_gaps(
-            self.state.root,
-            canvas_rect,
-            gap=self._composition_gap_canvas_px(),
-        )
-        return [
-            (split, path, idx, self._project_canvas_rect(rect, sr, ox, oy))
-            for (split, path, idx, rect) in gaps_canvas
-        ]
-
-    def _leaf_paths_and_rects(self) -> list[tuple[LeafNode, QRect, tuple[int, ...]]]:
-        layout = self._canvas_layout()
-        if layout is None:
-            return []
-        canvas_w, canvas_h, sr, ox, oy = layout
-        canvas_rect = QRect(0, 0, canvas_w, canvas_h)
-        leaves, _splits = layout_geometry.walk_paths(
-            self.state.root,
-            canvas_rect,
-            gap=self._composition_gap_canvas_px(),
-        )
-        return [
-            (leaf, self._project_canvas_rect(rect, sr, ox, oy), path)
-            for (leaf, rect, path) in leaves
-        ]
-
-    def _ancestor_splits_with_rects(
-        self, leaf_path: tuple[int, ...]
-    ) -> list[tuple[SplitNode, QRect, tuple[int, ...]]]:
-        """Splits enclosing the leaf, ordered outermost → innermost."""
-        layout = self._canvas_layout()
-        if layout is None:
-            return []
-        canvas_w, canvas_h, sr, ox, oy = layout
-        canvas_rect = QRect(0, 0, canvas_w, canvas_h)
-        _leaves, splits = layout_geometry.walk_paths(
-            self.state.root,
-            canvas_rect,
-            only_path=leaf_path,
-            gap=self._composition_gap_canvas_px(),
-        )
-        return [
-            (split, self._project_canvas_rect(rect, sr, ox, oy), path)
-            for (split, rect, path) in splits
-        ]
+    def _leaf_paths_and_rects(self):
+        return hit_projection.leaf_paths_and_rects(self)
 
     def _node_rect_at_path(self, path: tuple[int, ...]) -> QRect | None:
-        if self.state.root is None:
-            return None
-        if not path:
-            return self.rect()
-        layout = self._canvas_layout()
-        if layout is None:
-            return None
-        canvas_w, canvas_h, sr, ox, oy = layout
-        canvas_rect = QRect(0, 0, canvas_w, canvas_h)
-        leaves, splits = layout_geometry.walk_paths(
-            self.state.root,
-            canvas_rect,
-            only_path=path,
-            gap=self._composition_gap_canvas_px(),
-        )
-        for _, rect, p in splits:
-            if p == path:
-                return self._project_canvas_rect(rect, sr, ox, oy)
-        for _, rect, p in leaves:
-            if p == path:
-                return self._project_canvas_rect(rect, sr, ox, oy)
-        return None
+        return hit_projection.node_rect_at_path(self, path)
+
+    def _leaf_rects(self) -> list[tuple[LeafNode, QRect]]:
+        return hit_projection.leaf_rects(self)
+
+    # --- textures / RHI ---
 
     def upload_image(self, slot: CompareSlot) -> None:
         if slot.image is None:
             return
-        self.upload_image_array(slot.id, slot.image)
+        self.upload_pixel_source(slot.id, slot.image)
 
-    def upload_image_array(self, slot_id: int, arr) -> None:
-        image = self._numpy_to_qimage(arr)
-        if image is None:
-            return
-        self._renderer.queue_upload(slot_id, image)
+    def upload_pixel_source(self, slot_id: int, source) -> None:
+        self._renderer.queue_upload(slot_id, source)
         self.update()
-
-    @staticmethod
-    def _numpy_to_qimage(arr: np.ndarray) -> QImage | None:
-        if arr.ndim == 3:
-            h, w, channels = arr.shape
-        elif arr.ndim == 2:
-            h, w = arr.shape
-            channels = 1
-        else:
-            return None
-        if channels == 4:
-            img = QImage(arr.tobytes(), w, h, w * 4, QImage.Format.Format_RGBA8888)
-        elif channels == 3:
-            img = QImage(arr.tobytes(), w, h, w * 3, QImage.Format.Format_RGB888)
-        else:
-            img = QImage(arr.tobytes(), w, h, w, QImage.Format.Format_Grayscale8)
-        return img.convertToFormat(QImage.Format.Format_RGBA8888).copy()
 
     def remove_texture(self, slot_id: int) -> None:
         self._renderer.queue_remove(slot_id)
@@ -418,9 +199,9 @@ class MultiCompareCanvasWidget(QRhiWidget):
                 if layer.image is not None:
                     sources.setdefault(int(layer.layer_id), layer.image)
 
-        for sid, arr in sources.items():
+        for sid, source in sources.items():
             if not self._renderer.has_slot_texture(sid):
-                self.upload_image_array(sid, arr)
+                self.upload_pixel_source(sid, source)
         stale = [sid for sid in self._renderer.slot_texture_ids() if sid not in sources]
         for sid in stale:
             self.remove_texture(sid)
@@ -466,315 +247,38 @@ class MultiCompareCanvasWidget(QRhiWidget):
             bg.setAlpha(255)
         return bg
 
-    def _leaf_rects(self) -> list[tuple[LeafNode, QRect]]:
-        """Leaf rects in widget-px, projected from the composition layout."""
-        return [(leaf, rect) for (leaf, rect, _path) in self._leaf_paths_and_rects()]
+    # --- chrome input (stubs → canvas/interaction.py) ---
 
     @staticmethod
     def _clamp_pan_values(
         pan_x: float, pan_y: float, zoom: float
     ) -> tuple[float, float]:
-        """Clamp pan so the image edges never reveal background.
-
-        Derivation: img_uv = (cell_uv − 0.5)/(fit·zoom) + 0.5 − pan. The visible
-        image region in cell-uv is [0.5 ± fit/2], at whose ends img_uv = 0 or 1
-        before pan. Forcing img_uv ∈ [0, 1] across that range yields
-        |pan| ≤ (zoom − 1) / (2·zoom), independent of fit.
-        """
-        z = max(zoom, 1.0)
-        limit = (z - 1.0) / (2.0 * z)
-        return max(-limit, min(limit, pan_x)), max(-limit, min(limit, pan_y))
+        return canvas_interaction.clamp_pan_values(pan_x, pan_y, zoom)
 
     @staticmethod
     def _fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
-        if slot.image is None or rect.width() <= 0 or rect.height() <= 0:
-            return 1.0, 1.0
-        h, w = slot.image.shape[:2]
-        if h <= 0 or w <= 0:
-            return 1.0, 1.0
-        img_ar = w / h
-        cell_ar = rect.width() / rect.height()
-        if img_ar > cell_ar:
-            return 1.0, cell_ar / img_ar
-        return img_ar / cell_ar, 1.0
+        return canvas_interaction.fit_scale_for(slot, rect)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
-        leaf_rects = self._leaf_rects()
-        if not leaf_rects:
-            event.ignore()
-            return
-
-        pos = event.position().toPoint()
-        leaf, rect = self._leaf_at(pos, leaf_rects) or (None, None)
-        if leaf is None:
-            event.ignore()
-            return
-
-        slot = next((s for s in self.state.slots if s.id == leaf.slot_id), None)
-        if slot is None:
-            event.ignore()
-            return
-
-        fit_x, fit_y = self._fit_scale_for(slot, rect)
-        cell_u = (pos.x() - rect.x()) / rect.width()
-        cell_v = (pos.y() - rect.y()) / rect.height()
-
-        delta = event.angleDelta().y()
-        if delta == 0:
-            event.accept()
-            return
-        factor = self.ZOOM_STEP if delta > 0 else 1.0 / self.ZOOM_STEP
-        z1 = self.state.zoom
-        z2 = max(self.ZOOM_MIN, min(self.ZOOM_MAX, z1 * factor))
-        if z2 == z1:
-            event.accept()
-            return
-
-        new_pan_x = self.state.pan_x + (cell_u - 0.5) / max(fit_x, 1e-6) * (
-            1.0 / z2 - 1.0 / z1
-        )
-        new_pan_y = self.state.pan_y + (cell_v - 0.5) / max(fit_y, 1e-6) * (
-            1.0 / z2 - 1.0 / z1
-        )
-        new_pan_x, new_pan_y = self._clamp_pan_values(new_pan_x, new_pan_y, z2)
-        self._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
-        event.accept()
+        canvas_interaction.handle_wheel_event(self, event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        pos = event.position().toPoint()
-
-        if event.button() == Qt.MouseButton.RightButton:
-            picked = self._leaf_at(pos, self._leaf_rects())
-            if picked is None:
-                return
-            leaf, rect = picked
-            slot = next((s for s in self.state.slots if s.id == leaf.slot_id), None)
-            open_context_menu(
-                ContextMenuRequest(
-                    source_widget=self,
-                    global_pos=event.globalPosition().toPoint(),
-                    local_pos=pos,
-                    session_type="multi_compare",
-                    target=ContextMenuTarget(
-                        kind="multi_compare_slot",
-                        id=leaf.slot_id,
-                        payload={
-                            "rect": rect,
-                            "path": slot.path if slot is not None else None,
-                            "label": slot.label if slot is not None else "",
-                        },
-                    ),
-                )
-            )
-            event.accept()
-            return
-
-        if event.button() == Qt.MouseButton.LeftButton:
-            ctx = GesturePressContext(
-                handler=self,
-                local_pos=event.position(),
-                button=event.button().value,
-                modifiers=int(event.modifiers().value),
-            )
-            binding = resolve_press(ctx)
-            if binding is not None:
-                if binding.begin is not None:
-                    binding.begin(self, event.position())
-                event.accept()
-                return
-
-        if event.button() == Qt.MouseButton.MiddleButton:
-            self._panning = True
-            self._pan_start_pos = event.position()
-            self._pan_start_state = (self.state.pan_x, self.state.pan_y)
-            leaf_rects = self._leaf_rects()
-            picked = self._leaf_at(pos, leaf_rects)
-            if picked is not None:
-                leaf, rect = picked
-                slot = next((s for s in self.state.slots if s.id == leaf.slot_id), None)
-                self._pan_ref_rect = rect
-                self._pan_ref_fit = (
-                    self._fit_scale_for(slot, rect) if slot is not None else (1.0, 1.0)
-                )
-            else:
-                self._pan_ref_rect = self.rect()
-                self._pan_ref_fit = (1.0, 1.0)
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-            return
+        canvas_interaction.handle_mouse_press_event(self, event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        active = iter_active(self)
-        if active:
-            buttons = event.buttons()
-            consumed = False
-            for binding in active:
-                if not (buttons & Qt.MouseButton(binding.button)):
-                    continue
-                if binding.update is not None:
-                    binding.update(self, event.position())
-                    consumed = True
-            if consumed:
-                event.accept()
-                return
-
-        if self._panning:
-            ref = self._pan_ref_rect
-            if ref.width() <= 0 or ref.height() <= 0:
-                return
-            fit_x, fit_y = self._pan_ref_fit
-            z = max(self.state.zoom, 1e-6)
-            delta = event.position() - self._pan_start_pos
-            new_pan_x = self._pan_start_state[0] + (delta.x() / ref.width()) / (
-                max(fit_x, 1e-6) * z
-            )
-            new_pan_y = self._pan_start_state[1] + (delta.y() / ref.height()) / (
-                max(fit_y, 1e-6) * z
-            )
-            new_pan_x, new_pan_y = self._clamp_pan_values(
-                new_pan_x, new_pan_y, self.state.zoom
-            )
-            self._do_dispatch(actions.set_pan(new_pan_x, new_pan_y))
-            event.accept()
-            return
-
-        div = self._divider_at(event.position())
-        if div is not None and not _dividers_locked(self.state):
-            _path, _idx, _rect, direction, _ws = div
-            self.setCursor(
-                Qt.CursorShape.SplitHCursor
-                if direction == "h"
-                else Qt.CursorShape.SplitVCursor
-            )
-        else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+        canvas_interaction.handle_mouse_move_event(self, event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        released_button = event.button().value
-        ended_any = False
-        for binding in iter_active(self):
-            if binding.button != released_button:
-                continue
-            if binding.end is not None:
-                binding.end(self)
-            ended_any = True
-        if ended_any:
-            event.accept()
-            return
-        if event.button() == Qt.MouseButton.MiddleButton and self._panning:
-            self._panning = False
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-            event.accept()
+        canvas_interaction.handle_mouse_release_event(self, event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            pos = event.position().toPoint()
-            div = self._divider_at(event.position())
-            if div is not None:
-                split_path, _idx, _drect, _direction, weights = div
-                n = len(weights)
-                if n > 0:
-                    self._do_dispatch(actions.set_split_weights(split_path, [1.0] * n))
-                event.accept()
-                return
-            leaf_rects = self._leaf_rects()
-            picked = self._leaf_at(pos, leaf_rects)
-            if picked is not None:
-                leaf, _ = picked
-                new_focus = None if self.state.is_focused else leaf.slot_id
-                self._do_dispatch(actions.set_focus(new_focus))
-            event.accept()
+        canvas_interaction.handle_mouse_double_click_event(self, event)
 
     def keyPressEvent(self, event) -> None:
-        key = event.key()
-        if key == Qt.Key.Key_Escape and self.state.is_focused:
-            self._do_dispatch(actions.set_focus(None))
-            event.accept()
-        elif key == Qt.Key.Key_0:
-            self._do_dispatch(actions.reset_view())
-            event.accept()
-        else:
-            super().keyPressEvent(event)
+        canvas_interaction.handle_key_press_event(self, event)
 
     def _start_internal_drag(self, slot_id: int) -> None:
-        slot = next((s for s in self.state.slots if s.id == slot_id), None)
-        mime = QMimeData()
-        mime.setData(INTERNAL_SLOT_MIME, str(slot_id).encode("utf-8"))
-        drag = QDrag(self)
-        drag.setMimeData(mime)
-
-        rects = self._leaf_rects()
-        rect = next((r for l, r in rects if l.slot_id == slot_id), None)
-        if rect is not None and slot is not None and slot.image is not None:
-            from PySide6.QtGui import QImage, QPixmap
-
-            h, w = slot.image.shape[:2]
-            channels = slot.image.shape[2] if slot.image.ndim == 3 else 1
-            fmt = (
-                QImage.Format.Format_RGB888
-                if channels == 3
-                else QImage.Format.Format_RGBA8888
-            )
-            qimg = QImage(slot.image.tobytes(), w, h, w * channels, fmt)
-            preview = QPixmap.fromImage(qimg).scaledToWidth(
-                160, Qt.TransformationMode.SmoothTransformation
-            )
-            drag.setPixmap(preview)
-            drag.setHotSpot(QPoint(preview.width() // 2, preview.height() // 2))
-        drag.exec(Qt.DropAction.MoveAction)
+        canvas_interaction.start_internal_drag(self, slot_id)
 
     def _leaf_at(self, pos: QPoint, leaf_rects) -> tuple[LeafNode, QRect] | None:
-        for leaf, rect in leaf_rects:
-            if rect.contains(pos):
-                return leaf, rect
-        return None
-
-    def _divider_at(
-        self, pos: QPointF
-    ) -> tuple[tuple[int, ...], int, QRect, str, list[float]] | None:
-        """Return ``(split_path, divider_idx, divider_rect, direction, weights)``.
-
-        ``split_path`` is the chain of child indices from the root tree node to
-        the SplitNode that owns this divider. Used by mousePressEvent to drive
-        ``SetSplitWeights`` dispatches independent of any specific SplitNode
-        identity (the tree is immutable from the store's perspective).
-        """
-        grab = self.DIVIDER_GRAB_PX
-        for split, split_path, idx, drect in self._drop_gaps():
-            expanded = drect.adjusted(-grab, -grab, grab, grab)
-            if expanded.contains(pos.toPoint()):
-                return split_path, idx, drect, split.direction, list(split.weights)
-        return None
-
-    def _split_container_size_at(
-        self, split_path: tuple[int, ...], direction: str
-    ) -> int:
-        """Width / height of the SplitNode container at ``split_path``."""
-        rect = self._node_rect_at_path(split_path)
-        if rect is None:
-            return 0
-        return rect.width() if direction == "h" else rect.height()
-
-    MIN_PANE_FRACTION = 0.15
-    MIN_PANE_PIXELS = 100
-    MAX_CELL_ASPECT = 5.0
-
-    def _min_pane_weight(
-        self,
-        split_path: tuple[int, ...],
-        direction: str,
-        container_size_px: int,
-        total_weights: float,
-    ) -> float:
-        """Translate the readability floors into a weight value."""
-        rect = self._node_rect_at_path(split_path)
-        perp_size_px = 0
-        if rect is not None:
-            perp_size_px = rect.height() if direction == "h" else rect.width()
-        floor_px = self.MIN_PANE_PIXELS
-        if perp_size_px > 0:
-            floor_px = max(floor_px, int(perp_size_px / self.MAX_CELL_ASPECT))
-        floor_px = min(floor_px, container_size_px // 2)
-        frac_from_pct = self.MIN_PANE_FRACTION
-        frac_from_px = floor_px / container_size_px if container_size_px > 0 else 0.0
-        return max(frac_from_pct, frac_from_px) * total_weights
+        return canvas_interaction.leaf_at(pos, leaf_rects)

@@ -57,6 +57,27 @@ class SettingsPresenter(QObject):
     def show_capture_ring_color_picker(self):
         self.color_pickers.show_capture_ring_color_picker()
 
+    def show_color_picker(
+        self,
+        *,
+        key: str,
+        current_color,
+        title_key: str,
+        on_selected,
+        post_apply=None,
+        show_alpha: bool = False,
+        parent_window=None,
+    ):
+        self.color_pickers.show_color_picker(
+            key=key,
+            current_color=current_color,
+            title_key=title_key,
+            on_selected=on_selected,
+            post_apply=post_apply,
+            show_alpha=show_alpha,
+            parent_window=parent_window,
+        )
+
     def apply_smart_magnifier_colors(self):
         self.color_pickers.apply_smart_magnifier_colors()
 

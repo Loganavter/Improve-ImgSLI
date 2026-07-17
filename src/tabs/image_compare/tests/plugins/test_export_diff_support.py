@@ -38,7 +38,7 @@ def _register_image_compare_canvas_features():
     # `build_live_frame_snapshot` goes through
     # `TabRegistry.create_service("live_frame_snapshot", ...)`, which
     # resolves strictly against the shared registry's active session type
-    # (see docs/dev/TAB_CONTRACT.md) — these tests build a bare
+    # (see docs/dev/tabs/isolation.md) — these tests build a bare
     # `Store()` without going through the real session-activation flow, so
     # force the shared singleton's active tab directly for the duration of
     # each test.
@@ -95,6 +95,64 @@ def test_export_service_passes_cached_diff_image_to_gpu_render_plan(tmp_path):
 
     assert os.path.isfile(out_path)
     assert gpu.calls[0]["diff_image"] is diff_image
+
+
+def test_export_service_stamps_fill_rgba_onto_cached_plan(tmp_path):
+    from dataclasses import replace
+
+    from ui.canvas_presentation.plan import CanvasRenderPlan
+
+    gpu = _FakeGpuExportService()
+    service = ExportService(font_path_absolute="", gpu_export_service=gpu)
+    base_plan = CanvasRenderPlan(
+        image1=None,
+        image2=None,
+        source_image1=None,
+        source_image2=None,
+        source_key=(),
+        canvas_w=8,
+        canvas_h=8,
+        render_scene=SimpleNamespace(),
+        overlay_layout=None,
+        capture_visible=False,
+        capture_color=None,
+        guides_enabled=False,
+        guides_color=None,
+        guides_thickness=0,
+        fill_rgba=None,
+        geometry_letterbox=True,
+    )
+    # Size matches so export reuses the cached plan instead of rebuilding.
+    export_options = {
+        "output_dir": str(tmp_path),
+        "file_name": "fill-stamp",
+        "format": "PNG",
+        "width": 8,
+        "height": 8,
+        "fill_background": True,
+        "background_color": (10, 20, 30, 255),
+        "include_metadata": False,
+    }
+
+    service.export_image(
+        store=SimpleNamespace(),
+        original_image1=Image.new("RGBA", (8, 8), (0, 0, 0, 255)),
+        original_image2=Image.new("RGBA", (8, 8), (255, 255, 255, 255)),
+        export_options=export_options,
+        render_plan=base_plan,
+        render_store=SimpleNamespace(viewport=None),
+    )
+
+    rendered_plan = gpu.calls[0]["plan"]
+    assert rendered_plan is not base_plan
+    assert rendered_plan.fill_rgba == (10, 20, 30, 255)
+    assert replace(base_plan, fill_rgba=(10, 20, 30, 255)).fill_rgba == (
+        10,
+        20,
+        30,
+        255,
+    )
+
 
 def test_snapshot_frame_renderer_passes_cached_diff_image_to_gpu_preview():
     gpu = _FakeGpuExportService()

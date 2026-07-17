@@ -46,6 +46,10 @@ def on_edit_name_changed(controller, image_number, new_name):
     controller.playlist_manager.on_edit_name_changed(image_number, new_name)
 
 
+def rename_image_at_index(controller, image_number: int, index: int, new_name: str):
+    controller.playlist_manager.rename_image_at_index(image_number, index, new_name)
+
+
 def increment_rating(controller, image_number: int, index: int):
     controller.playlist_manager.increment_rating(image_number, index)
 

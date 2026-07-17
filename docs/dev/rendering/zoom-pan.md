@@ -53,20 +53,10 @@ not.
 
 ### Why This Matters
 
-Before the gesture-binding refactor, `mouse.py` had a central if-tree:
-"if overlay enabled and visible → start capture drag, else start split drag."
-That looks innocent but:
-
-- Adding a new overlay feature required editing `mouse.py`.
-- Hiding all magnifier instances broke divider movement, because
-  `is_enabled=True` routed clicks into capture-drag even with nothing visible
-  to drag.
-- `mouse.py` knew the shape of magnifier's `overlay.active_state` payload
-  (`visible_left`/`visible_right`), so any change to that payload silently
-  broke routing.
-
 With gesture bindings, `mouse.py` knows nothing about which features exist —
-it just asks the resolver.
+it just asks the resolver. Adding or hiding an overlay does not require
+editing the central mouse router, and routing does not peek into another
+feature's `overlay.active_state` payload shape.
 
 ## Viewport Change Contract
 
@@ -111,30 +101,43 @@ With viewport changes:
 - State changes are visible instantly
 - No need for user interaction to see feedback
 
-## Pan-at-zoom invariant
+## Pan at any zoom
 
-At `zoom <= 1.0`, pan must always be `(0, 0)`. When the image fully fits the
-widget, panning has no meaning; a non-zero pan at `zoom <= 1.0` desyncs the
-shader (which always uses raw pan) from overlay formulas (which treat pan as
-zero at this zoom) — the image moves, overlays don't, overlays visually "fly
-away." Enforced at the source in `compute_zoom_wheel_transform` /
+Middle-button pan is allowed at every zoom level, including fit (`zoom == 1.0`).
+At fit zoom this can reveal letterbox/empty margins — that is intentional.
+
+Shader, split **display**, and overlay formulas must use the **same** raw pan
+values. Do not special-case `zoom <= 1.0` by forcing pan to `(0, 0)` in the
+display path while the base shader still applies pan — that desyncs the image
+from overlays. Pan drag/wheel math lives in `compute_zoom_wheel_transform` /
 `compute_zoom_pan_drag_transform` (`src/ui/canvas_infra/viewport/zoom.py`).
-Any new pass or feature that computes its own pan-like transform (for either
-coordinate model in [coordinate-systems.md](coordinate-systems.md)) must
-clamp pan the same way at the source — never read pan at `zoom <= 1.0` and
-try to interpolate or "smooth" across the boundary; treat it as guaranteed
-zero instead.
 
-## Split-position dual-mode behavior
+## Split: content-anchored at fit, camera-anchored when zoomed in
 
-The split line has two distinct anchoring modes tied to the same invariant:
-at `zoom > 1.0` it's camera-anchored (store `split_position` recomputes as
-zoom/pan change to keep the visual position fixed on screen —
-`compute_zoom_split_position_for_view_transform`); at `zoom <= 1.0` it's
-image-anchored (store value unchanged, pan is zero by the invariant above —
-`compute_zoom_display_split_position`). Any new base-image-anchored pass
-with similar "where on the image am I" semantics should follow the same
-split at `zoom == 1.0`, not invent a third behavior.
+``split_position`` / ``split_position_visual`` are **base-image** fractions
+(`0.0..1.0` along the comparison content — see
+[coordinate-systems.md](coordinate-systems.md)).
+
+Dual-mode via ``compute_zoom_split_position_for_view_transform``:
+
+| Zoom | Store spit on pan/zoom | Line / seam feel |
+|---|---|---|
+| ``zoom <= 1`` | unchanged (``None``) | rides with the image |
+| ``zoom > 1`` | rewritten (clamped to ``[0, 1]``) so **screen** spit stays fixed | sticks to the viewport ("follows the camera") |
+
+Drawing maps content → screen via ``compute_zoom_display_split_position``:
+
+```text
+display = (base - 0.5 + pan) * zoom + 0.5
+```
+
+Do **not** clamp display to ``[0, 1]`` when zoomed out — that pins the line to
+the viewport edge while the image keeps moving.
+
+The base-image shader compares spit in **letterboxed image UV** (magnifier
+``internalSplit`` parity). The white divider uses the view-transformed
+letterbox + fragment clip. Full write-up:
+[investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
 
 ## Semantic geometry vs paint extents
 
@@ -197,7 +200,7 @@ and where to look:
 
 | Symptom | Likely cause | Where to look |
 |---|---|---|
-| Overlay drifts during zoom-out | Some code wrote pan at `zoom <= 1.0` | `git grep 'pan_offset' src/tabs/image_compare/canvas/` |
+| Overlay drifts during pan at fit zoom | Some path still zeros pan when `zoom <= 1.0` | `git grep 'zoom.*<=.*1' src/ui/canvas_infra src/tabs/image_compare/canvas/` |
 | Overlay flickers / jumps during interaction | Reducer reset a runtime-cache field | Check `_build_new_viewport_state` for missing field carryover; move field to `ViewportRuntimeCache` |
 | Mouse hit lands on wrong feature | Hit-test uses widget-px but feature stores widget-px instead of canvas-px | Search for direct `widget.width()` / `widget.height()` in your feature's geometry math |
 | Position correct at `zoom = 1` but wrong otherwise | Feature draws using raw store value instead of going through the viewport display formula | Use `compute_display_split_position` / equivalent contract instead of reading store directly in render |

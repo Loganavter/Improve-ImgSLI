@@ -29,6 +29,18 @@
 - Reimplementing a viewport-resolved transform locally (combining
   `content_rect_px`, widget dimensions, zoom, or pan by hand) instead of
   calling the one owning formula and trusting its output.
+- Rewriting semantic spit / overlay anchors on pan/zoom when ``zoom <= 1``,
+  or leaving an unclamped camera rewrite in the store. Camera-anchored
+  rewrite is intentional only for ``zoom > 1`` (clamped to content
+  ``[0, 1]``) — see
+  [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
+- Clamping a display mapping to `[0, 1]` when the point can leave the
+  widget at zoom-out.
+- Clipping a camera-moved overlay with the fit-zoom `content_rect_px` via
+  live QRhi content scissor (or assuming magnifier correctness proves that
+  path — live magnifier often skips content scissor).
+- Using screen `vTexCoord` spit for geometry that belongs in letterboxed
+  image UV / local overlay UV (magnifier model).
 - Leaving a pipeline's `TargetBlend` alpha factors at a default that mirrors
   the color factors, instead of setting `srcAlpha = One` /
   `dstAlpha = OneMinusSrcAlpha` explicitly.
@@ -73,8 +85,12 @@ Before merging a new canvas feature:
 - [ ] `record()` is the only place device-pixel/DPR conversion happens
 - [ ] Any position derived from a viewport-formula function is treated as
       final — not recombined with `content_rect_px`/widget dims/zoom
+- [ ] Semantic spit / camera-locked overlays stay in content space; paint
+      that must follow the zoomed image uses
+      `map_content_rect_through_view` (or equivalent), not fit-zoom scissor
+      alone — see [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md)
 - [ ] Overlay-style geometry stays in canvas-px end to end; base-image-
-      anchored geometry stays in full-widget-fraction end to end — not mixed
+      anchored geometry stays in its declared space end to end — not mixed
 - [ ] Blend pipeline sets `TargetBlend` alpha factors explicitly
       (`srcAlpha = One`, `dstAlpha = OneMinusSrcAlpha`) if it blends at all
 - [ ] `RENDER_PASSES` exported from the feature's own `passes.py` — nothing

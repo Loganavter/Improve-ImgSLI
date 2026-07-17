@@ -11,11 +11,19 @@ are not yet restorable from a project file.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+from core.store import INITIAL_WORKSPACE_SESSION_TYPE
+
+logger = logging.getLogger("ImproveImgSLI")
+
 PROJECT_FORMAT = "imgsli-project"
 PROJECT_VERSION = 1
+_KNOWN_PROJECT_KEYS = frozenset(
+    {"format", "version", "active_session_index", "sessions"}
+)
 
 
 def build_project_data(store: Any, tab_registry: Any) -> dict[str, Any]:
@@ -47,8 +55,73 @@ def build_project_data(store: Any, tab_registry: Any) -> dict[str, Any]:
     }
 
 
+def _validate_project_container(project: dict[str, Any]) -> None:
+    if project.get("format") != PROJECT_FORMAT:
+        raise ValueError(f"Not a {PROJECT_FORMAT!r} project file")
+
+    version = project.get("version")
+    if not isinstance(version, int):
+        raise ValueError("Project file is missing a valid version field")
+    if version > PROJECT_VERSION:
+        raise ValueError(
+            f"Project file version {version} is newer than supported "
+            f"version {PROJECT_VERSION}"
+        )
+
+    unknown = set(project.keys()) - _KNOWN_PROJECT_KEYS
+    if unknown:
+        logger.warning(
+            "Project file contains unknown top-level fields (ignored): %s",
+            sorted(unknown),
+        )
+
+
+def clear_workspace_sessions(
+    workspace_actions: Any,
+    store: Any,
+    *,
+    keep_one_picker: bool = True,
+) -> str | None:
+    """Close every workspace session except one placeholder picker session.
+
+    Returns the session id that was kept (or created). Used before a
+    programmatic "replace workspace" project load.
+    """
+    sessions = list(store.list_workspace_sessions())
+    keeper_id: str | None = None
+    if keep_one_picker:
+        for session in sessions:
+            if session.session_type == INITIAL_WORKSPACE_SESSION_TYPE:
+                keeper_id = session.id
+                break
+        if keeper_id is None:
+            picker = workspace_actions.create_workspace_session(
+                INITIAL_WORKSPACE_SESSION_TYPE,
+                activate=False,
+            )
+            keeper_id = picker.id
+            sessions = list(store.list_workspace_sessions())
+
+    for session in list(store.list_workspace_sessions()):
+        if keeper_id is not None and session.id == keeper_id:
+            continue
+        if len(store.list_workspace_sessions()) <= 1:
+            break
+        workspace_actions.close_workspace_session(session.id)
+
+    if keeper_id is not None:
+        workspace_actions.switch_workspace_session(keeper_id)
+    active = store.get_active_workspace_session()
+    return active.id if active is not None else keeper_id
+
+
 def load_project_data(
-    project: dict[str, Any], workspace_actions: Any, store: Any, tab_registry: Any
+    project: dict[str, Any],
+    workspace_actions: Any,
+    store: Any,
+    tab_registry: Any,
+    *,
+    replace_workspace: bool = False,
 ) -> list[Any]:
     """Create a fresh workspace session per persisted entry and restore each
     via its owning tab's `deserialize_session`.
@@ -58,13 +131,15 @@ def load_project_data(
     `docs/dev/TODO.md`'s "Wire on_session_created / on_session_closed") so
     session-blueprint defaults and lifecycle events fire normally;
     `deserialize_session` then overwrites those defaults with the persisted
-    data. Does not close or replace any pre-existing sessions — callers that
-    want a clean "Open Project" should close existing sessions first.
+    data. When ``replace_workspace`` is True, existing sessions are cleared
+    first (keeping one ``session_picker`` placeholder).
 
     Returns the created `WorkspaceSession` objects, in file order.
     """
-    if project.get("format") != PROJECT_FORMAT:
-        raise ValueError(f"Not a {PROJECT_FORMAT!r} project file")
+    _validate_project_container(project)
+
+    if replace_workspace:
+        clear_workspace_sessions(workspace_actions, store, keep_one_picker=True)
 
     created_ids: list[str] = []
     for entry in project.get("sessions", []):
@@ -73,6 +148,7 @@ def load_project_data(
             session_type, activate=False, title=entry.get("title")
         )
         tab_registry.deserialize_session(session_type, session.id, entry.get("data") or {})
+        tab_registry.rehydrate_session(session_type, session.id)
         created_ids.append(session.id)
 
     active_index = project.get("active_session_index")
@@ -88,7 +164,18 @@ def save_project_file(path: str | Path, store: Any, tab_registry: Any) -> None:
 
 
 def load_project_file(
-    path: str | Path, workspace_actions: Any, store: Any, tab_registry: Any
+    path: str | Path,
+    workspace_actions: Any,
+    store: Any,
+    tab_registry: Any,
+    *,
+    replace_workspace: bool = False,
 ) -> list[Any]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return load_project_data(data, workspace_actions, store, tab_registry)
+    return load_project_data(
+        data,
+        workspace_actions,
+        store,
+        tab_registry,
+        replace_workspace=replace_workspace,
+    )

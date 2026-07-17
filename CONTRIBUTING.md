@@ -28,6 +28,15 @@ The launcher script manages a virtual environment, installs dependencies, and ru
 ./launcher.sh help
 ```
 Common actions:
+```bash
+./launcher.sh run
+./launcher.sh test
+./launcher.sh context --cloc-only   # cloc tables → cloc.txt (see AGENTS.md)
+```
+
+**AI assistants:** read [AGENTS.md](AGENTS.md) before suggesting changes. GitHub Copilot: [.github/copilot-instructions.md](.github/copilot-instructions.md). Cursor: [.cursor/rules/improve-imgsli.mdc](.cursor/rules/improve-imgsli.mdc). Docs live in-repo — search `docs/dev/` and `AGENTS.md`; use `./launcher.sh context --cloc-only` only for code-size stats.
+
+Other launcher commands (see `./launcher.sh help`):
 - Install/refresh dependencies: `./launcher.sh install`
 - Recreate venv from scratch: `./launcher.sh recreate`
 - Delete venv and Python caches: `./launcher.sh delete`
@@ -38,6 +47,8 @@ Common actions:
 - Debug logging for one session: `./launcher.sh run --debug`
 - Force a theme: `./launcher.sh run --theme dark`
 - Inspect UI colors and QSS candidates: `./launcher.sh run --ui-inspector`
+
+User-facing launcher guide: [docs/LAUNCHER.md](docs/LAUNCHER.md).
 
 Tip: Prefer updating the in-app Help when you add features; the README links to those docs.
 
@@ -53,7 +64,7 @@ Tip: Prefer updating the in-app Help when you add features; the README links to 
 - src/shared_toolkit: shared utilities reused by the app and launcher scripts
 - src/resources: application assets (icons, fonts, styles, themes) and user Help in multiple languages
 - sli-ui-toolkit: external versioned UI toolkit consumed by the app (widgets, managers, services)
-- build: packaging templates (Windows / Flatpak / AUR) and CI helpers
+- build: packaging templates (Windows / Flatpak / AUR), CI helpers (`build/ci/`)
 - tests: pytest suite (contracts, plugins, render, runtime, toolkit, video)
 - launcher.sh: CLI helper to manage venv and run common tasks
 
@@ -78,7 +89,7 @@ Useful entry points:
 - Logging: use the standard `logging` module via the project's logger. Avoid `print` statements.
 - Shared components: consider using the external `sli-ui-toolkit` package and `src/shared_toolkit` for reusable UI and utilities. Toolkit changes belong in the `Loganavter/sli-ui-toolkit` repository, not in this app tree.
 
-More background: see `docs/dev/ARCHITECTURE.md`, `docs/dev/CONTRACTS.md`, `docs/dev/TAB_CONTRACT.md`, `docs/dev/UI_TOOLKIT_LIBRARY.md`, `docs/dev/TESTING.md`, `docs/dev/TRACING.md`, and the top-level `AGENTS.md` / `VISION.md`.
+More background: see `docs/dev/ARCHITECTURE.md`, `docs/dev/CONTRACTS.md`, `docs/dev/tabs/index.md`, `docs/dev/UI_TOOLKIT_LIBRARY.md`, `docs/dev/TESTING.md`, `docs/dev/TRACING.md`, and the top-level `AGENTS.md` / `VISION.md`.
 
 Developer UI inspection: `docs/dev/UI_INSPECTOR.md` describes the
 `--ui-inspector` launcher flag and the Wayland-safe in-app overlay used for
@@ -150,17 +161,32 @@ See `docs/dev/TESTING.md` for conventions and layout of the `tests/` tree.
 
 ### Windows (PyInstaller + Inno Setup)
 
-1) Create binaries with PyInstaller using the provided spec:
+Preferred: use the helper script (PyInstaller, license bundle, optional ffmpeg, optional Inno Setup):
+
 ```bash
 python -m pip install -r requirements-gui.txt pyinstaller
-python -m PyInstaller build/Windows-template/Improve_ImgSLI.spec
+python build/Windows-template/build_windows.py
 ```
-- Spec file: build/Windows-template/Improve_ImgSLI.spec
-- Helper script: build/Windows-template/build_windows.py (and build.bat)
+
+Manual steps:
+
+1) Create binaries with PyInstaller using the provided spec:
+```bash
+python -m PyInstaller build/Windows-template/Improve_ImgSLI.spec
+python build/Windows-template/write_license_bundle.py
+```
+- Spec file: `build/Windows-template/Improve_ImgSLI.spec` (onedir layout; Qt `.dll` under `PySide6\`; UPX disabled for replaceable libraries)
+- License bundle: `build/Windows-template/write_license_bundle.py` writes `dist/Improve_ImgSLI/licenses/` (`WINDOWS_QT_NOTICE.txt`, `LGPL-3.0.txt`, `Qt_BUNDLE_INFO.txt`)
+- Helper script: `build/Windows-template/build_windows.py` (and `build.bat`)
 
 2) Build installer with Inno Setup:
-- Open build/Windows-template/inno_setup_6.iss in Inno Setup Compiler
-- Press F9 (Compile) to produce the installer in build/Windows-template/Output
+- Open `build/Windows-template/inno_setup_6.iss` in Inno Setup Compiler
+- Press F9 (Compile) to produce the installer in `build/Windows-template/Output`
+- The installer shows GPL (`LICENSE`) plus the Qt notice during setup (`build/Windows-template/inno_setup_6.iss`).
+
+CI (`.github/workflows/windows-build.yml`) runs on release tags and:
+- `build/ci/validate_release_metadata.py` — version sync across Flatpak/AUR/Windows
+- `build/ci/validate_license_files.py` — GPL/LGPL artifacts in repo and in `dist/Improve_ImgSLI`
 
 ### Flatpak (Flathub)
 
@@ -219,5 +245,7 @@ Thanks to everyone who has helped shape Improve-ImgSLI over the years. A few spe
 
 ## License
 
-This project is licensed under the MIT License. See:
-- LICENSE
+Improve-ImgSLI is licensed under **GPL-3.0-or-later**. See:
+
+- [LICENSE](LICENSE) — application source code
+- [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) — PySide6/Qt (LGPL), bundled libraries, and binary-distribution notes

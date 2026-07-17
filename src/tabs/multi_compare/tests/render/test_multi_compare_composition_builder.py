@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
-
 from tabs.multi_compare.models import (
     CompareSlot,
     LeafNode,
@@ -11,6 +9,7 @@ from tabs.multi_compare.models import (
     SplitNode,
 )
 from tabs.multi_compare.services.composition_builder import build_composition_plan
+from tabs.multi_compare.tests.pixel_fixtures import slot_image
 from ui.canvas_presentation.composition import (
     LayerNode,
     SplitNode as CompSplitNode,
@@ -19,8 +18,7 @@ from ui.canvas_presentation.composition import (
 
 
 def _slot(slot_id: int, w: int, h: int, label: str = "") -> CompareSlot:
-    arr = np.zeros((h, w, 3), dtype=np.uint8)
-    return CompareSlot(id=slot_id, image=arr, label=label or f"slot{slot_id}")
+    return CompareSlot(id=slot_id, image=slot_image(w, h), label=label or f"slot{slot_id}")
 
 
 def test_empty_tree_returns_none():

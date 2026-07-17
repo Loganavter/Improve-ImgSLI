@@ -1,4 +1,4 @@
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import (
     QDragEnterEvent,
     QDragMoveEvent,
@@ -27,6 +27,7 @@ class EventHandler(QObject):
     resize_event_signal = Signal(QEvent)
     close_event_signal = Signal(QEvent)
     mouse_press_event_signal = Signal(QMouseEvent)
+    mouse_release_event_signal = Signal(QMouseEvent)
     global_keyboard_press_event_signal = Signal(QKeyEvent)
     global_keyboard_release_event_signal = Signal(QKeyEvent)
     canvas_keyboard_press_event_signal = Signal(QKeyEvent)
@@ -48,8 +49,6 @@ class EventHandler(QObject):
         self.interactive_movement = self.runtime.interactive_movement
         self.keyboard_handler = self.runtime.keyboard_handler
         self.keyboard_state = self.runtime.keyboard_state
-        self.resize_timer = self.runtime.resize_timer
-        self.resize_timer.timeout.connect(self._finish_resize)
 
         self.global_keyboard_press_event_signal.connect(self.handle_key_press)
         self.global_keyboard_release_event_signal.connect(self.handle_key_release)
@@ -73,7 +72,17 @@ class EventHandler(QObject):
                 self._reset_keyboard_state(f"event:{int(event_type)}")
 
         if event_type == QEvent.Type.MouseButtonPress:
-            self.mouse_press_event_signal.emit(event)
+            # Same QMouseEvent is delivered to every installEventFilter target
+            # (app + window + image_label). Emit once per physical press.
+            press_key = (id(event), event.button(), event.timestamp())
+            if press_key != getattr(self, "_last_mouse_press_key", None):
+                self._last_mouse_press_key = press_key
+                self.mouse_press_event_signal.emit(event)
+        elif event_type == QEvent.Type.MouseButtonRelease:
+            release_key = (id(event), event.button(), event.timestamp())
+            if release_key != getattr(self, "_last_mouse_release_key", None):
+                self._last_mouse_release_key = release_key
+                self.mouse_release_event_signal.emit(event)
 
         if route_global_keyboard_event(self, watched_obj, event):
             return True
@@ -94,9 +103,6 @@ class EventHandler(QObject):
 
     def handle_key_release(self, event: QKeyEvent):
         self.keyboard_handler.handle_key_release(event)
-
-    def _finish_resize(self):
-        self.presenter.finish_resize_delay()
 
     def _reset_keyboard_state(self, reason: str) -> None:
         result = self.keyboard_state.reset()

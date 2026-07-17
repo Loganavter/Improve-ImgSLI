@@ -77,85 +77,35 @@ See also [THEMING.md](THEMING.md#known-qt-quirk-dont-repaint-backgrounds-via-set
 and the `ThemedWidget` mixin that now owns theme repaint for most chrome
 widgets.
 
-## Qt: light-gray fringe on rounded window corners over dark backgrounds (unresolved)
+## Qt: CSD corner rounding / clipping
 
-**Status:** not root-caused. One fix attempt applied, did not resolve it.
+**Status:** paint-path + child masks (2026-07-15).
 
-`MainWindow` (`src/ui/main_window/window.py`) is `WA_TranslucentBackground`
-with custom-drawn rounded corners: `paintEvent()` fills a rounded
-`QPainterPath` with `self._window_bg_color`, and `_apply_rounded_mask()`
-deliberately calls `clearMask()` instead of a `QBitmap` mask (a 1-bit mask
-has no antialiasing and chops the rounded edge into a staircase — see the
-comment at `window.py:174-179`).
+Opaque children (especially `CustomTitleBar.fillsRect` and full-bleed content)
+were painting square pixels into the translucent corner regions. Top-level
+`setMask` is often input-only on Wayland, so rounding relied on alpha:
 
-Symptom: when something dark is behind the window (dark wallpaper, another
-dark window), the corner/edge pixels of the rounded window show up as
-light gray instead of blending transparently — as if alpha isn't being
-composited correctly right at the antialiased edge.
+- window body: `paint_rounded_window_background` (4 corners)
+- title bar: `paint_top_rounded_background` (transparent outside top arcs)
+- content hosts: `apply_bottom_rounded_mask` on `_startup_stack` / cover
+- QSS for `#CustomTitleBar` is transparent (no square stylesheet fill)
 
-**Tried:** explicitly clearing the paint rect to `Qt.GlobalColor.transparent`
-via `CompositionMode_Source` before drawing the rounded-rect brush in
-`SourceOver` mode (theory: leftover non-transparent pixels in the backing
-store were blending with the AA edge). This did **not** fix the symptom in
-practice, so stale backing-store content is not the (whole) mechanism.
+Slight staircasing from 1-bit child masks is expected at low DPI.
 
-**Not yet tried / suspected**: the fringe may originate below the
-`QPainter`/backing-store level — e.g. in how the windowing
-system/compositor (X11/Wayland) or Qt's own platform integration
-composites a translucent top-level surface's edge pixels, or in the QRhi
-swapchain/surface format not actually carrying alpha the way a plain
-`QWidget` backing store does. Needs investigation with a compositor-level
-inspection (e.g. screenshot the raw surface alpha channel, or test under a
-different platform plugin) rather than more `QPainter` composition-mode
-tweaking.
+## multi_compare: large slot images and tiled export — fixed (2026-07-15)
 
-## multi_compare: no host-memory bounding for large slot images, and export resolution hard-capped by real GPU texture limit
+**Status:** fixed.
 
-**Status:** confirmed via code inspection (2026-07-13), not fixed — tracked
-as a TODO item, not a live incident.
+Multi Compare now loads slots via `TiledPixelStore.from_path` (memmap RGBA8,
+same GEGL-style storage as image_compare). GPU residency crops per-tile from
+the store (`crop_apron_tile` + `qimage_from_pixel_source`) instead of
+keeping uncapped full QImages. Export uses shared `TiledFramebufferExporter`
+when `output_w` or `output_h` exceeds `min(4096, query_max_texture_size(rhi))`.
+Native composition canvas is uncapped; still-image export above
+`AppConstants.EXPORT_TESTED_MAX_EDGE` (16384) shows an untested-resolution
+warning instead of silently clamping.
 
-`multi_compare` never got the large-image hardening that `image_compare`
-has (see [tile-rendering-system.md](rendering/tile-rendering-system.md#host-side-memory-bounding)
-and [TODO.md](TODO.md) "Bring multi_compare up to image_compare's
-host-memory bounding"). Two separate, confirmed gaps:
-
-**1. Loading a slot never wraps large images as lazy/memmap.**
-`tabs/multi_compare/controller.py`'s `_read_image()` does
-`Image.open(path).convert("RGB")` → `np.array(..., dtype=np.uint8)`
-unconditionally — no size check, no `LazyPixelSource` wrap, no downscale.
-`grep` for `LazyPixelSource`/`maybe_wrap_for_lazy_storage`/
-`_texture_upload_cache` under `src/tabs/multi_compare/` returns nothing.
-GPU-side tile eviction exists (`TileTextureService.evict_over_budget`,
-`SLOT_TILE_CACHE_BUDGET_BYTES` in `scene/resources.py`) but there is no
-equivalent host-side QImage cache budget. A single large image (e.g.
-16000×16000px, ~768MB as an RGB numpy array) will load fine on its own on a
-typical machine, but nothing ever evicts it, and there's no cap as more/
-larger slots accumulate — the same unbounded-host-RAM shape of bug that
-`LARGE_IMAGE_MEMORY_REFACTOR`'s Phase 2/3 fixed for `image_compare`, just
-never ported here.
-
-**2. Export resolution is genuinely capped by the real GPU max texture size — image_compare's isn't.**
-`image_compare`'s exporter (`plugins/export/services/gpu_export_proxy.py`)
-tiles the *output framebuffer* itself when the requested canvas exceeds
-`min(_EXPORT_TILE_MAX_EXTENT=4096, query_max_texture_size(rhi))`
-(`_render_plan_frame_tiled`): each tile is rendered and grabbed separately
-via `grabFramebuffer()` and stitched into one PIL image on the CPU side, so
-the final exported resolution is bounded only by host RAM/time, not by any
-GPU texture/framebuffer size limit.
-
-`multi_compare`'s exporter (`services/gpu_export.py`) does not do this — it
-resizes the offscreen widget directly to the *entire* requested
-`output_w`/`output_h` and does a single `grabFramebuffer()` call, with no
-tiling and no call to `query_max_texture_size` at all. Requesting an export
-resolution above the backend's real max texture/framebuffer size has no
-graceful fallback — the swapchain/framebuffer just can't be created at that
-size (silent failure or garbage frame, not a caught/reported error).
-
-**Fix (not yet done):** port `image_compare`'s tiled-framebuffer export
-pattern into `multi_compare/services/gpu_export.py`, and wire
-`maybe_wrap_for_lazy_storage`/`close_if_lazy` (or a generalized host-cache
-LRU, see the TODO item) into `multi_compare/controller.py`'s `_read_image`/
-slot-load path.
+See [tile-rendering-system.md](rendering/tile-rendering-system.md).
 
 ## Qt/SVG: thin diagonal strokes render jagged and asymmetric at small icon sizes
 
@@ -193,14 +143,14 @@ consistency, the other window-control icons) from `1` to `1.33` — matching
 `close.svg`'s effective post-scale width. Rule of thumb going forward: any
 icon with a 45°-diagonal stroke needs a nominal stroke-width around
 `1.3–1.4×` what a horizontal/vertical stroke of the same visual weight
-would use, especially at small render sizes (~16px) where there's little
+would use, especially at small render sizes (~16px) where there is little
 margin for anti-aliasing to smooth over.
 
-В том же стиле это можно оформить так. Основано на текущем документе .
+## Startup: first launch takes 2–3 minutes on some low-end systems (partially mitigated)
 
-## Startup: first launch takes 2–3 minutes on some low-end systems (unresolved)
-
-**Status:** confirmed by user reports, not root-caused.
+**Status:** confirmed by user reports; code-side mitigation landed 2026-07-15.
+Environmental cold-cache effects (OS page cache, `.pyc`, antivirus, GPU shader
+cache on first process start) may still dominate on low-end Windows hardware.
 
 On some weaker machines the very first application launch after starting
 the process can take **2–3 minutes** before the UI becomes usable.
@@ -210,50 +160,131 @@ The delay appears to affect only the initial startup path. Once the
 application has finished launching, closing and reopening it does not
 reproduce the issue until the next "cold" start.
 
-**Current understanding:** unknown. No convincing hypothesis yet. The
-bottleneck has not been isolated to a particular subsystem (Qt
-initialization, plugin loading, GPU initialization, shader compilation,
-filesystem scanning, configuration migration, etc.).
+**Code-side mitigation (2026-07-15):** staged plugin/tab discovery — bootstrap
+tier (`comparison`, `settings`, `layout`, `session_picker`) loads before the
+main window; deferred tier (`export`, `video_editor`, `help`, `image_properties`,
+`multi_compare`) loads after `startupVisualReady`. See
+[PLUGINS.md](PLUGINS.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
 
-**TODO:** profile a cold startup on affected hardware and instrument the
-startup sequence with timestamps around major initialization stages to
-identify where the time is actually being spent before attempting any
-optimization.
+**Profiling on affected hardware:**
 
-## Custom decorations: decoration list refresh does not update decoration icons
+- Set `IMGSLI_STARTUP_TRACE=1` — logs monotonic timestamps for bootstrap phases
+  (`ctx.plugins.bootstrap`, `startup.visual_ready`, `ctx.plugins.deferred`, …).
+- Or run `python -X importtime src/__main__.py` and inspect the slowest imports.
 
-**Status:** confirmed, not investigated.
-
-Refreshing the list of custom decorations correctly updates the available
-decoration entries, but the preview icons associated with those
-decorations remain stale. Newly added or modified icons are not reflected
-in the UI.
-
-The icons only update after a full application restart.
-
-This suggests that the underlying decoration data is refreshed correctly,
-while the corresponding icon cache/model/view is not invalidated or
-reloaded.
-
-**Fix:** unknown. The decoration icon cache (or the model supplying the
-icons) likely needs to be explicitly invalidated when custom decorations
-are refreshed.
+**Still open:** confirm remaining delay on Win 2C/8GB after staged discovery;
+further wins may require OS-level caching rather than app changes.
 
 ## Video editor: preview overlaps the right-side controls in narrow windows
 
-**Status:** confirmed, not investigated.
+**Status:** fixed (2026-07-15).
 
-When the video editor window becomes too narrow, the preview area expands
+When the video editor window became too narrow, the preview area expanded
 into the space reserved for the right-hand control panel instead of
 respecting the available layout width.
 
-As a result, the preview renders underneath the controls, making both the
-preview and the control panel partially unusable.
+**Root cause:** the top row used a plain ``QHBoxLayout`` with
+``preview_label.setMinimumSize(480, 270)`` plus a settings panel at
+``setFixedWidth(350…650)``, while the dialog itself allowed
+``setMinimumSize(820, …)``. Below ~870px the layout could not satisfy
+both minimums and the preview pane overlapped the settings panel.
 
-The layout does not appear to enforce an appropriate minimum width or
-reallocate space once the available horizontal size falls below the
-required threshold.
+**Fix:** use a plain top-row ``QHBoxLayout`` (preview stretch + fixed-width
+settings panel), lower the preview minimum to 240×135, and derive both the
+settings width and dialog minimum width from measured export controls via
+``layout_geometry.apply_top_row_geometry`` (built on shared
+``shared_toolkit.ui.layout_sizing`` helpers). Recompute after theme and
+language changes.
 
-**Fix:** unknown. The layout should either enforce a minimum window width,
-allow the preview to shrink appropriately, or switch to an alternative
-layout once the available horizontal space becomes insufficient.
+## Video editor: magnifier is clipped during uncrop mode
+
+**Status:** fixed (2026-07-15).
+
+When using the uncrop tool, the magnifier overlay becomes partially
+clipped instead of rendering in its entirety.
+
+**Root cause:** the video preview path called
+``apply_canvas_render_plan(..., clip_overlays_to_image_bounds=True)``
+unconditionally. In fit-content / uncrop mode the render plan is a
+padded composite (`image_is_padded_composite=True`); overlay clipping
+uses ``_inner_content_rect_px`` (the unpadded image region), so any
+magnifier geometry that extends into the padding area was scissored away.
+GPU export already used ``clip_overlays_to_image_bounds=False``
+(``gpu_export_scene.py``), so preview and export disagreed only in uncrop
+mode.
+
+**Fix:** pass ``clip_overlays_to_image_bounds=not fit_content_mode`` from
+``PreviewCoordinator._apply_preview_scene`` — crop mode still clips to
+the export frame; uncrop mode matches export and allows the magnifier to
+render across the full padded canvas.
+
+
+## Video editor: background-color indicator always shows blue, color picker dialog needs cleanup
+
+**Status:** fixed (2026-07-15).
+
+The underline indicating the currently selected background color always
+rendered as blue, regardless of the actual background color selected by the
+user.
+
+Additionally, the background-color picker dialog was visually inconsistent
+and awkwardly constructed compared to the rest of the editor UI.
+
+**Root cause (underline):** ``update_fit_fill_color_button`` guarded on
+``hasattr(btn, "set_color")`` but called ``setUnderlineColor`` — toolkit
+``Button`` exposes the latter, not the former, so the guard always failed
+and the underline stayed at the default accent color.
+
+**Root cause (picker):** the handler opened a blocking modal ``QColorDialog``
+without ``polish_themed_dialog``, which clashed with the editor's custom
+window chrome and theming pipeline.
+
+**Fix:** call ``setUnderlineColor`` directly (same pattern as divider/guide
+color buttons elsewhere). Open the picker through
+``SettingsColorPickerCoordinator`` / ``SettingsPresenter.show_color_picker``
+— the same path as image-compare toolbar color buttons, with alpha enabled
+for fit-content fill.
+
+## Custom CSD: error dialogs always use dark background and clip rounded corners incorrectly
+
+**Status:** fixed (2026-07-15) via first-party ``AppMessageDialog``.
+
+Error dialogs using the custom client-side decorations (CSD) always rendered
+with a dark background regardless of the active application theme, and the
+rounded-corner region looked clipped/broken. In light theme the body stayed
+near-black while labels kept dark ``@dialog.text`` — unreadable contrast.
+
+**Root cause:** ``QMessageBox`` was auto-decorated with monkey-patched
+``paintEvent`` and transparent QSS hacks. That path is unreliable on some
+platforms; the native ``QMessageBox`` panel could still paint over CSD.
+
+**Fix:** app code now uses ``shared_toolkit/ui/message_dialog.AppMessageDialog``
+(``ThemedDialog`` + toolkit ``Label``/``Button`` + explicit ``decorate_dialog``).
+``QMessageBox`` remains only as a fallback for the auto-decorator on stray
+third-party dialogs; new alerts must go through ``AppMessageDialog`` or
+``MessageManager.show_non_modal_message``.
+
+## Mutter (GNOME): session-picker create-cards look missing while the widget tree is fine
+
+**Status:** compositor presentation quirk; not an app logic bug (2026-07-17).
+
+**Symptom:** under GNOME Wayland (Mutter), a Session Picker create-card
+(e.g. Multi Compare) can appear absent or stale on screen even though the
+app already built it.
+
+**What we checked:** with temporary `[session-picker-debug]` logging,
+`SessionPickerWidget.refresh()` scanned `tabs/` via
+`iter_tab_entry_points()`, created both `image_compare` and `multi_compare`
+cards (`layout_count=2`), and deferred startup successfully ran
+`sync_icons` with non-null icons for both. No missing blueprint / failed
+create path in that run — the Qt widget tree had the buttons.
+
+**Interpretation:** the frame Mutter presents can lag or drop updates for
+widgets added/updated during early startup (bootstrap page show + deferred
+icon sync shortly after). Do not “fix” this by repeatedly rebuilding
+picker cards when logs already show they exist; confirm with a resize,
+tab switch away/back, or restart before chasing app-side card discovery.
+
+**App-side posture (kept):** cards are built once from the filesystem tab
+scan so deferred plugins do not force a visible card rebuild; icons may
+still update in place after deferred tab registration.

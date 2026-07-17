@@ -6,6 +6,7 @@ from typing import Any
 
 from sli_ui_toolkit.workers import GenericWorker
 
+from shared.image_processing.store_lease import StoreLease
 from shared.rendering.image_identity import image_uid
 from tabs.image_compare.services.analysis.runtime import AnalysisRuntime
 
@@ -59,6 +60,8 @@ class CachedDiffService:
             diff_mode,
             channel_mode,
             optimize_ssim,
+            StoreLease.capture(image1),
+            StoreLease.capture(image2),
         )
         worker.signals.result.connect(
             lambda diff_image, key=request_key: self._on_diff_map_ready(diff_image, key)
@@ -69,23 +72,14 @@ class CachedDiffService:
         self.runtime.thread_pool.start(worker, priority=1)
 
     @staticmethod
-    def _generate_diff_map_task(img1, img2, mode, channel_mode, optimize_ssim):
+    def _generate_diff_map_task(
+        img1, img2, mode, channel_mode, optimize_ssim, lease1, lease2
+    ):
         started_at = time.perf_counter()
         try:
-            from shared.image_processing.lazy_pixel_source import LazyPixelSource
             from tabs.image_compare.services.analysis.background_layers import (
                 build_cached_diff_image,
             )
-
-            # docs/dev/rendering/tile-rendering-system.md Phase 3: diff needs both
-            # full images as real arrays for SSIM; materialize lazy sources
-            # here, inside the worker thread (transient, freed after the
-            # diff worker finishes) rather than teaching the SSIM path
-            # itself about memmap sources.
-            if isinstance(img1, LazyPixelSource):
-                img1 = img1.to_pil()
-            if isinstance(img2, LazyPixelSource):
-                img2 = img2.to_pil()
 
             result = build_cached_diff_image(
                 img1,
@@ -93,6 +87,8 @@ class CachedDiffService:
                 mode,
                 channel_mode,
                 optimize_ssim=optimize_ssim,
+                lease1=lease1,
+                lease2=lease2,
             )
             logger.debug(
                 "[DIFF_TASK] mode=%s channel=%s size1=%s size2=%s elapsed_ms=%.1f result=%s",

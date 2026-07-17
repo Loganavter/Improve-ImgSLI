@@ -75,6 +75,46 @@ def get_content_rect_screen_px(widget) -> tuple[int, int, int, int] | None:
     return (left, top, width, height)
 
 
+def get_view_transformed_content_rect_widget_px(
+    widget,
+) -> tuple[float, float, float, float] | None:
+    """Letterbox content rect after the live zoom/pan camera (widget-px).
+
+    Used by ``DividerPass`` so the line's clip/position track the base image
+    on both axes after zoom/pan.
+    """
+    from ui.canvas_infra.viewport.geometry import map_content_rect_through_view
+    from ui.canvas_infra.viewport.state import (
+        get_pan_offset_x,
+        get_pan_offset_y,
+        get_zoom_level,
+    )
+
+    state = getattr(widget, "runtime_state", None)
+    if state is None:
+        return None
+    content_rect = (
+        getattr(state, "_inner_content_rect_px", None) or state._content_rect_px
+    )
+    if not content_rect:
+        return None
+    x, y, w, h = content_rect
+    if w <= 0 or h <= 0:
+        return None
+    widget_w = float(widget.width())
+    widget_h = float(widget.height())
+    if widget_w <= 0 or widget_h <= 0:
+        return None
+    return map_content_rect_through_view(
+        (float(x), float(y), float(w), float(h)),
+        widget_width=widget_w,
+        widget_height=widget_h,
+        zoom_level=get_zoom_level(widget),
+        pan_offset_x=get_pan_offset_x(widget),
+        pan_offset_y=get_pan_offset_y(widget),
+    )
+
+
 def get_local_visible_image_rect(
     widget,
     *,

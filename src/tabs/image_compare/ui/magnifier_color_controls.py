@@ -6,7 +6,7 @@ from PySide6.QtGui import QColor
 from core.constants import AppConstants
 from domain.qt_adapters import color_to_qcolor
 from tabs.image_compare.canvas.registry import registry
-from ui.icon_manager import AppIcon
+from tabs.image_compare.icons import Icon
 
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.widgets import (
@@ -30,25 +30,25 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
         return [
             IconAction(
                 "capture",
-                AppIcon.CAPTURE_AREA_COLOR,
+                Icon.CAPTURE_AREA_COLOR,
                 tr("magnifier.capture_ring", self.current_language),
                 visible=self._is_capture_active(),
             ),
             IconAction(
                 "laser",
-                AppIcon.MAGNIFIER_GUIDES,
+                Icon.MAGNIFIER_GUIDES,
                 tr("label.guides", self.current_language),
                 visible=self._is_laser_active(),
             ),
             IconAction(
                 "border",
-                AppIcon.MAGNIFIER_BORDER_COLOR,
+                Icon.MAGNIFIER_BORDER_COLOR,
                 tr("label.border", self.current_language),
                 visible=self._is_magnifier_active(),
             ),
             IconAction(
                 "divider",
-                AppIcon.VERTICAL_SPLIT,
+                Icon.VERTICAL_SPLIT,
                 tr("ui.choose_magnifier_divider_line_color", self.current_language),
                 visible=self._is_divider_active(),
             ),
@@ -102,7 +102,7 @@ class ColorSettingsButton(Button):
 
     def __init__(self, parent=None, current_language: str = "en", store=None):
         super().__init__(
-            AppIcon.DIVIDER_COLOR,
+            Icon.DIVIDER_COLOR,
             show_underline=True,
             parent=parent,
         )

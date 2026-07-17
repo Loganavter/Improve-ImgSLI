@@ -24,6 +24,11 @@ _manager._current_lang = ""
 
 def add_i18n_root(path: str | Path) -> None:
     _manager.add_i18n_root(path)
+    # Defensive: older toolkit builds cleared the pack cache but left the
+    # live ``_translations`` pack stale. Rebuild when a language is active.
+    current = getattr(_manager, "_current_lang", "") or ""
+    if current:
+        _manager._translations = _manager.ensure_loaded(current)
 
 
 def emit_language_changed(lang_code: str) -> None:

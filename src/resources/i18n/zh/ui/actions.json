@@ -1,0 +1,43 @@
+{
+  "action": {
+    "palette": {
+      "search_placeholder": "搜索操作…",
+      "empty": "没有匹配的操作",
+      "learn_more": "了解更多",
+      "run": "运行",
+      "cancel": "取消"
+    },
+    "settings": {
+      "page_desc": "打开此设置页",
+      "group_desc": "打开此设置分组",
+      "slot_desc": "打开此设置项",
+      "general_desc": "打开设置 → 常规",
+      "appearance_desc": "打开设置 → 外观",
+      "optimization_desc": "打开设置 → 优化",
+      "keyboard_desc": "打开设置 → 键盘",
+      "analysis_desc": "打开设置 → 分析详情"
+    },
+    "breadcrumb": {
+      "workspace": "工作区"
+    },
+    "platform": {
+      "settings_desc": "打开应用程序设置",
+      "help_desc": "打开帮助文档",
+      "new_session_desc": "创建新的工作区会话",
+      "find_action_desc": "搜索并运行操作",
+      "quit_desc": "退出应用程序",
+      "find_action_context": "查找操作（上下文）",
+      "find_action_context_desc": "打开按焦点控件筛选的操作面板",
+      "paste_clipboard_image": "从剪贴板粘贴图像",
+      "paste_clipboard_image_desc": "将系统剪贴板中的图像粘贴到当前会话"
+    },
+    "workspace": {
+      "open_session_picker": "打开会话选择器",
+      "open_session_picker_desc": "打开工作区主页以选择会话类型",
+      "new_image_compare": "新建图像对比会话",
+      "new_image_compare_desc": "创建并打开图像对比工作区会话",
+      "new_multi_compare": "新建多图对比会话",
+      "new_multi_compare_desc": "创建并打开多图对比工作区会话"
+    }
+  }
+}

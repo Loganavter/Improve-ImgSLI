@@ -208,7 +208,7 @@ Multiple renderers (QRhi, QPainter, export offscreen) need a common interface.
 
 ### BaseCanvasProtocol, GlLikeCanvasProtocol, ExportCanvasProtocol
 
-(`GlLikeCanvasProtocol` is a pre-QRhi-migration name kept for the live QRhi canvas widget — not renamed to avoid a wide, purely-cosmetic diff.)
+(`GlLikeCanvasProtocol` names the live QRhi canvas widget protocol.)
 
 Duck-typing protocols that let code call a canvas without knowing its concrete type.
 
@@ -246,4 +246,4 @@ Base protocol for all events. Lets code emit/listen to events without knowing co
 
 - [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — Detailed guide to adding new canvas features
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Overall app architecture
-- [TAB_CONTRACT.md](TAB_CONTRACT.md) — Tab system details
+- [tabs/index.md](tabs/index.md) — Tab system details

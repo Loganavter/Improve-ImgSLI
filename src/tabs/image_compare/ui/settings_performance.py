@@ -9,9 +9,29 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy
-from sli_ui_toolkit.widgets import CheckBox, ComboBox, CustomGroupWidget, SpinBox
+from sli_ui_toolkit.widgets import CheckBox, ComboBox, SpinBox
 
 from core.constants import AppConstants
+from plugins.settings.search import SearchIndex, group
+
+RESOLUTION = group(
+    "settings.display_cache_resolution",
+    "settings.original",
+    "settings.resolution_8k",
+    "settings.resolution_4k",
+    "settings.resolution_2k",
+    "settings.resolution_full_hd",
+)
+INTERACTIVE = group(
+    "settings.interactive_optimization",
+    "settings.zoom_interpolation",
+    "settings.optimize_magnifier_movement",
+    "settings.optimize_laser_smoothing",
+    "settings.magnifier_intersection_highlight",
+    "settings.magnifier_auto_color_new_instances",
+)
+VIDEO = group("settings.video_recording", "settings.recording_fps")
+SEARCH = SearchIndex.of(RESOLUTION, INTERACTIVE, VIDEO)
 
 
 def build_image_perf_extras(dialog, p) -> None:
@@ -24,12 +44,11 @@ def build_image_perf_extras(dialog, p) -> None:
 
 
 def _build_resolution_group(dialog, layout, p):
-    dialog.res_group = CustomGroupWidget(
-        dialog.tr("settings.display_cache_resolution", dialog.current_language)
-    )
+    dialog.res_group = RESOLUTION.widget(dialog)
     res_layout = QHBoxLayout()
     res_layout.setContentsMargins(5, 5, 5, 5)
     dialog.combo_resolution = ComboBox()
+    RESOLUTION.tag_combo(dialog.combo_resolution)
     dialog.combo_resolution.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
     )
@@ -41,10 +60,13 @@ def _build_resolution_group(dialog, layout, p):
         "Full HD (1080p)": "settings.resolution_full_hd",
     }
     for name_key, limit in AppConstants.DISPLAY_RESOLUTION_OPTIONS.items():
+        key = mapping.get(name_key, name_key)
         dialog.combo_resolution.addItem(
-            dialog.tr(mapping.get(name_key, name_key), dialog.current_language),
+            RESOLUTION.text(dialog, key) if key.startswith("settings.") else key,
             userData=limit,
         )
+        if key.startswith("settings."):
+            RESOLUTION.note_combo_option(dialog.combo_resolution, key)
     idx_res = dialog.combo_resolution.findData(p.current_resolution_limit)
     if idx_res != -1:
         dialog.combo_resolution.setCurrentIndex(idx_res)
@@ -54,16 +76,16 @@ def _build_resolution_group(dialog, layout, p):
 
 
 def _build_interactive_optimization_group(dialog, layout, p):
-    dialog.interactive_opt_group = CustomGroupWidget(
-        dialog.tr("settings.interactive_optimization", dialog.current_language)
-    )
+    dialog.interactive_opt_group = INTERACTIVE.widget(dialog)
 
     row_zoom = QHBoxLayout()
     row_zoom.setContentsMargins(0, 5, 0, 5)
     dialog.lbl_zoom_interp = QLabel(
-        dialog.tr("settings.zoom_interpolation", dialog.current_language)
+        INTERACTIVE.text(dialog, "settings.zoom_interpolation")
     )
+    INTERACTIVE.tag_member(dialog.lbl_zoom_interp, "settings.zoom_interpolation")
     dialog.combo_zoom_interp = ComboBox()
+    INTERACTIVE.tag_combo(dialog.combo_zoom_interp, "settings.zoom_interpolation")
     dialog.combo_zoom_interp.setMinimumWidth(140)
     dialog.combo_zoom_interp.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -75,9 +97,12 @@ def _build_interactive_optimization_group(dialog, layout, p):
     row_mag = QHBoxLayout()
     row_mag.setContentsMargins(0, 5, 0, 5)
     dialog.optimize_movement_checkbox = CheckBox(
-        dialog.tr("settings.optimize_magnifier_movement", dialog.current_language)
+        INTERACTIVE.text(dialog, "settings.optimize_magnifier_movement")
     )
     dialog.optimize_movement_checkbox.setChecked(p.optimize_magnifier_movement)
+    INTERACTIVE.tag_member(
+        dialog.optimize_movement_checkbox, "settings.optimize_magnifier_movement"
+    )
     dialog.combo_mag_interp = ComboBox()
     dialog.combo_mag_interp.setMinimumWidth(140)
     dialog.combo_mag_interp.setSizePolicy(
@@ -91,9 +116,12 @@ def _build_interactive_optimization_group(dialog, layout, p):
     row_laser = QHBoxLayout()
     row_laser.setContentsMargins(0, 5, 0, 5)
     dialog.laser_smoothing_checkbox = CheckBox(
-        dialog.tr("settings.optimize_laser_smoothing", dialog.current_language)
+        INTERACTIVE.text(dialog, "settings.optimize_laser_smoothing")
     )
     dialog.laser_smoothing_checkbox.setChecked(p.optimize_laser_smoothing)
+    INTERACTIVE.tag_member(
+        dialog.laser_smoothing_checkbox, "settings.optimize_laser_smoothing"
+    )
     dialog.combo_laser_interp = ComboBox()
     dialog.combo_laser_interp.setMinimumWidth(140)
     dialog.combo_laser_interp.setSizePolicy(
@@ -105,22 +133,28 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.interactive_opt_group.add_layout(row_laser)
 
     dialog.magnifier_intersection_highlight_checkbox = CheckBox(
-        dialog.tr("settings.magnifier_intersection_highlight", dialog.current_language)
+        INTERACTIVE.text(dialog, "settings.magnifier_intersection_highlight")
     )
     dialog.magnifier_intersection_highlight_checkbox.setChecked(
         p.magnifier_intersection_highlight_enabled
+    )
+    INTERACTIVE.tag_member(
+        dialog.magnifier_intersection_highlight_checkbox,
+        "settings.magnifier_intersection_highlight",
     )
     dialog.interactive_opt_group.add_widget(
         dialog.magnifier_intersection_highlight_checkbox
     )
 
     dialog.magnifier_auto_color_checkbox = CheckBox(
-        dialog.tr(
-            "settings.magnifier_auto_color_new_instances", dialog.current_language
-        )
+        INTERACTIVE.text(dialog, "settings.magnifier_auto_color_new_instances")
     )
     dialog.magnifier_auto_color_checkbox.setChecked(
         p.magnifier_auto_color_new_instances
+    )
+    INTERACTIVE.tag_member(
+        dialog.magnifier_auto_color_checkbox,
+        "settings.magnifier_auto_color_new_instances",
     )
     dialog.interactive_opt_group.add_widget(dialog.magnifier_auto_color_checkbox)
 
@@ -179,15 +213,12 @@ def _populate_interpolation_combos(dialog, p):
 
 
 def _build_video_group(dialog, layout, p):
-    dialog.video_group = CustomGroupWidget(
-        dialog.tr("settings.video_recording", dialog.current_language)
-    )
+    dialog.video_group = VIDEO.widget(dialog)
     video_layout = QHBoxLayout()
     video_layout.setContentsMargins(5, 5, 5, 5)
-    dialog.lbl_fps = QLabel(
-        dialog.tr("settings.recording_fps", dialog.current_language) + ":"
-    )
+    dialog.lbl_fps = QLabel(VIDEO.text(dialog, "settings.recording_fps") + ":")
     dialog.spin_fps = SpinBox(default_value=60)
+    VIDEO.tag_member(dialog.spin_fps, "settings.recording_fps")
     dialog.spin_fps.setRange(10, 144)
     dialog.spin_fps.setValue(p.current_video_fps)
     dialog.spin_fps.setFixedWidth(100)

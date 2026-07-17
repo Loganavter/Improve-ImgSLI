@@ -3,13 +3,77 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QCursor
+
 
 class FlyoutController:
     def __init__(self, manager, widget):
         self.manager = manager
         self.widget = widget
+        self._context_menu_provider = None
+        flyout = getattr(manager.host, "unified_flyout", None)
+        if flyout is not None and hasattr(flyout, "set_list_anchors"):
+            left = getattr(widget, "combo_image1", None)
+            right = getattr(widget, "combo_image2", None)
+            if left is not None and right is not None:
+                flyout.set_list_anchors(left, right)
+        self._install_context_menu()
+
+    def _sync_flyout_anchors(self) -> None:
+        flyout = getattr(self.manager.host, "unified_flyout", None)
+        if flyout is None or not hasattr(flyout, "set_list_anchors"):
+            return
+        left = getattr(self.widget, "combo_image1", None)
+        right = getattr(self.widget, "combo_image2", None)
+        if left is not None and right is not None:
+            flyout.set_list_anchors(left, right)
+
+    def _install_context_menu(self) -> None:
+        from tabs.image_compare.ui.context_menu import ImageCompareContextMenuProvider
+        from ui.context_menu.manager import install_context_menu_provider
+
+        host = self.manager.host
+        store = getattr(host, "store", None)
+        if store is None:
+            return
+        canvas = getattr(self.widget, "image_label", None)
+        flyout = getattr(host, "unified_flyout", None)
+        provider = ImageCompareContextMenuProvider(
+            canvas, store, flyout=flyout, ui_manager=host
+        )
+        sessions = getattr(getattr(host, "main_controller", None), "sessions", None)
+        if sessions is not None:
+            provider.attach_session_controller(sessions)
+        self._context_menu_provider = install_context_menu_provider(provider)
+        if canvas is not None and hasattr(canvas, "set_context_menu_provider"):
+            canvas.set_context_menu_provider(provider)
+        if flyout is not None and hasattr(flyout, "item_context_menu_requested"):
+            flyout.item_context_menu_requested.connect(self._on_item_context_menu)
+
+    def _on_item_context_menu(self, list_num: int, index: int) -> None:
+        from ui.context_menu.manager import open_context_menu
+        from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
+
+        flyout = getattr(self.manager.host, "unified_flyout", None)
+        if flyout is None:
+            return
+        global_pos = QCursor.pos()
+        open_context_menu(
+            ContextMenuRequest(
+                source_widget=flyout,
+                global_pos=global_pos,
+                local_pos=flyout.mapFromGlobal(global_pos),
+                session_type="image_compare",
+                target=ContextMenuTarget(
+                    kind="image_compare_list_item",
+                    id=(list_num, index),
+                    payload={"list_num": list_num, "index": index},
+                ),
+            )
+        )
 
     def show_flyout(self, image_number: int):
+        self._sync_flyout_anchors()
         from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
 
         host = self.manager.host

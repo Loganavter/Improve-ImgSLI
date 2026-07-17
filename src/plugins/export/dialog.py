@@ -4,38 +4,30 @@ import logging
 import PIL.Image
 import shiboken6 as sip
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QImage, QIntValidator, QMouseEvent, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QImage, QMouseEvent, QPainter, QPixmap
+from shared_toolkit.ui.themed_dialog import ThemedDialog
 from PySide6.QtWidgets import (
     QColorDialog,
-    QDialog,
     QFileDialog,
-    QFrame,
-    QHBoxLayout,
-    QLabel,
     QLineEdit,
-    QSizePolicy,
-    QVBoxLayout,
-    QWidget,
 )
 
 from domain.qt_adapters import color_to_qcolor
+from plugins.export.dialog_sections import assemble_export_ui
+from plugins.export.layout_geometry import apply_export_dialog_geometry
 from plugins.export.models import ExportDialogState
 from resources.translations import tr as app_tr
+from shared_toolkit.ui.layout_sizing import handle_application_font_change
+from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
+from sli_ui_toolkit.managers import SettleGate
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.widgets import (
-    Button,
-    CheckBox,
-    ComboBox,
-    Slider,
-)
-from ui.icon_manager import AppIcon
 from ui.theming import polish_themed_dialog
-from ui.widgets.form_controls import DialogActionBar, OutputPathSection
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger("ImproveImgSLI")
 
-class ExportDialog(QDialog):
+
+class ExportDialog(ThemedDialog):
     def __init__(
         self,
         dialog_state: ExportDialogState,
@@ -49,7 +41,9 @@ class ExportDialog(QDialog):
         super().__init__(parent)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
         self.setObjectName("ExportDialog")
-        self.tr = tr_func if callable(tr_func) else app_tr
+        # Never assign to ``self.tr`` — QObject.tr() is Qt's own API and
+        # shadowing it makes translations look like raw keys.
+        self._tr_func = tr_func if callable(tr_func) else app_tr
         self.dialog_state = dialog_state
         self.theme_manager = ThemeManager.get_instance()
         self.suggested_filename = suggested_filename
@@ -67,18 +61,22 @@ class ExportDialog(QDialog):
         except (TypeError, ValueError):
             self._initial_scale = 1.0
 
-        self.setWindowTitle(
-            self.tr("misc.export", self.dialog_state.current_language)
-        )
+        self.setWindowTitle(self._tr("misc.export", "Export"))
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.WindowTitleHint
             | Qt.WindowType.WindowCloseButtonHint
         )
-        self.resize(860, 540)
         self.setSizeGripEnabled(True)
 
         self._preview_source_pixmap: QPixmap | None = None
+        # Cheap pixmap scale on pulse; quiet-period re-apply for final pane size.
+        self._preview_resize_settle = SettleGate(
+            on_settle=self._apply_preview_pixmap,
+            on_pulse=self._apply_preview_pixmap,
+            interval_ms=SettleGate.DEFAULT_INTERVAL_MS,
+            parent=self,
+        )
 
         if preview_image is not None:
             if isinstance(preview_image, QPixmap):
@@ -99,10 +97,13 @@ class ExportDialog(QDialog):
                     self._preview_source_pixmap = None
 
         self._init_ui()
-        self._apply_styles()
-        self.theme_manager.theme_changed.connect(self._apply_styles)
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog
-        decorate_dialog(self, title=self.tr("misc.export", self.dialog_state.current_language))
+        self._bind_translations()
+        self._reapply_bound_texts()
+        self.install_dialog_geometry(self._apply_dialog_geometry)
+        self.mark_theme_ui_ready()
+        from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
+        decorate_dialog(self, title=self._tr("misc.export", "Export"))
+        install_dialog_help_menu(self, page="export")
 
         self._populate_from_state()
         self._suggest_default_filename()
@@ -113,231 +114,179 @@ class ExportDialog(QDialog):
             line_edit.returnPressed.connect(line_edit.clearFocus)
         self.setFocus()
 
+        self.finished.connect(self._withdraw_find_actions)
+        self._contribute_find_actions()
         QTimer.singleShot(0, self._finalize_layout_and_size)
+
+    def _tr(self, key: str, default: str | None = None) -> str:
+        lang = self.dialog_state.current_language or "en"
+        text = self._tr_func(key, lang)
+        if text == key and default is not None:
+            return default
+        return text
+
+    def _tr_for_bind(self, key: str, language: str | None = None) -> str:
+        """Adapter for ``translatable_text`` / ``translatable_tooltip``.
+
+        Prefer the dialog's language (``dialog_state``) so the first bind pass
+        does not depend on whether the global TranslationManager language has
+        already been emitted.
+        """
+        lang = self.dialog_state.current_language or language or "en"
+        text = self._tr_func(key, lang)
+        return text
+
+    def _apply_dialog_geometry(self) -> None:
+        apply_export_dialog_geometry(self)
+
+    def changeEvent(self, event):
+        handle_application_font_change(self, event)
+        super().changeEvent(event)
+
+    def update_language(self, language: str) -> None:
+        self.dialog_state.current_language = language or "en"
+        self.setWindowTitle(self._tr("misc.export", "Export"))
+        title_bar = getattr(self, "_csd_title_bar", None)
+        if title_bar is not None and hasattr(title_bar, "set_title"):
+            title_bar.set_title(self._tr("misc.export", "Export"))
+        # Re-apply bound texts for the new dialog language (bind helpers read
+        # dialog_state, so a no-op callback refresh is enough via setters).
+        self._reapply_bound_texts()
+        self._apply_dialog_geometry()
+
+    def _reapply_bound_texts(self) -> None:
+        """Force bound widgets to the current ``dialog_state`` language."""
+        pairs = (
+            (self.export_preview_title, "export.preview", ""),
+            (self.output_section.dir_label, "label.output_directory", ":"),
+            (self.btn_browse_dir, "button.browse", ""),
+            (self.btn_set_favorite, "misc.set_as_favorite", ""),
+            (self.btn_use_favorite, "tooltip.use_favorite", ""),
+            (self.name_label, "label.file_name", ":"),
+            (self.fmt_label, "label.format", ":"),
+            (self.resolution_label, "label.resolution", ":"),
+            (self.quality_label, "label.quality", ":"),
+            (self.label_png_compress, "export.png_compression_level", ":"),
+            (self.checkbox_png_optimize, "export.optimize_png", ""),
+            (self.checkbox_fill_bg, "export.fill_background", ""),
+            (self.btn_bg_color, "export.background_color", ""),
+            (self.checkbox_include_metadata, "export.include_metadata", ""),
+            (self.comment_label, "export.comment", ":"),
+            (self.checkbox_comment_default, "export.remember_by_default", ""),
+            (self.btn_ok, "common.ok", ""),
+            (self.btn_cancel, "common.cancel", ""),
+        )
+        for widget, key, suffix in pairs:
+            widget.setText(self._tr(key, key) + suffix)
+        self.btn_lock_ratio.setToolTip(
+            self._tr("export.lock_aspect_ratio", "Lock aspect ratio")
+        )
+        if hasattr(self.action_bar, "_apply_button_minimums"):
+            self.action_bar._apply_button_minimums()
+        if hasattr(self.action_bar, "lock_content_minimum_height"):
+            self.action_bar.lock_content_minimum_height()
+        self._harden_text_buttons(
+            self.btn_browse_dir,
+            self.btn_set_favorite,
+            self.btn_use_favorite,
+            self.btn_bg_color,
+        )
+        if hasattr(self, "output_section"):
+            self.output_section.lock_content_minimum_height()
+
+    @staticmethod
+    def _harden_text_buttons(*buttons) -> None:
+        """Keep text buttons from collapsing below their content sizeHint.
+
+        Do not use ``setFixedHeight`` here — toolkit text buttons hint at
+        ``fontMetrics.height() + 16`` (often > 32), and a tighter fixed height
+        clips the bottom edge / corner radius.
+        """
+        from PySide6.QtWidgets import QSizePolicy
+
+        for button in buttons:
+            if button is None:
+                continue
+            # Drop any leftover fixed-height clamp from construction.
+            button.setMinimumHeight(0)
+            button.setMaximumHeight(16777215)
+            hint = button.sizeHint()
+            button.setMinimumSize(
+                max(button.minimumWidth(), hint.width()),
+                max(32, hint.height()),
+            )
+            button.setSizePolicy(
+                QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+            )
 
     def _finalize_layout_and_size(self):
         self._apply_preview_pixmap()
+        # Force computed size: CSD adjustSize may already have overgrown from
+        # the preview pixmap before this deferred pass runs.
+        apply_export_dialog_geometry(self, force_resize=True)
+        try:
+            from sli_ui_toolkit.ui.windows.csd_helpers import sync_csd_chrome
+
+            sync_csd_chrome(self)
+        except Exception:
+            pass
+
+    def _bind_translations(self) -> None:
+        trb = self._tr_for_bind
+        translatable_text(self.export_preview_title, "export.preview", tr_func=trb)
+        translatable_text(
+            self.output_section.dir_label,
+            "label.output_directory",
+            suffix=":",
+            tr_func=trb,
+        )
+        translatable_text(self.btn_browse_dir, "button.browse", tr_func=trb)
+        translatable_text(self.btn_set_favorite, "misc.set_as_favorite", tr_func=trb)
+        translatable_text(self.btn_use_favorite, "tooltip.use_favorite", tr_func=trb)
+        translatable_text(
+            self.name_label, "label.file_name", suffix=":", tr_func=trb
+        )
+        translatable_text(self.fmt_label, "label.format", suffix=":", tr_func=trb)
+        translatable_text(
+            self.resolution_label, "label.resolution", suffix=":", tr_func=trb
+        )
+        translatable_tooltip(
+            self.btn_lock_ratio, "export.lock_aspect_ratio", tr_func=trb
+        )
+        translatable_text(
+            self.quality_label, "label.quality", suffix=":", tr_func=trb
+        )
+        translatable_text(
+            self.label_png_compress,
+            "export.png_compression_level",
+            suffix=":",
+            tr_func=trb,
+        )
+        translatable_text(
+            self.checkbox_png_optimize, "export.optimize_png", tr_func=trb
+        )
+        translatable_text(
+            self.checkbox_fill_bg, "export.fill_background", tr_func=trb
+        )
+        translatable_text(
+            self.btn_bg_color, "export.background_color", tr_func=trb
+        )
+        translatable_text(
+            self.checkbox_include_metadata, "export.include_metadata", tr_func=trb
+        )
+        translatable_text(
+            self.comment_label, "export.comment", suffix=":", tr_func=trb
+        )
+        translatable_text(
+            self.checkbox_comment_default,
+            "export.remember_by_default",
+            tr_func=trb,
+        )
+        translatable_text(self.btn_ok, "common.ok", tr_func=trb)
+        translatable_text(self.btn_cancel, "common.cancel", tr_func=trb)
 
     def _init_ui(self):
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
-
-        left_frame = QFrame()
-        left_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        left_layout = QVBoxLayout(left_frame)
-        left_layout.setContentsMargins(8, 8, 8, 8)
-        left_layout.setSpacing(8)
-
-        preview_title = QLabel(
-            self.tr("export.preview", self.dialog_state.current_language)
-        )
-        preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label = QLabel()
-        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setMinimumSize(QSize(300, 300))
-        self.preview_label.setFrameShape(QFrame.Shape.NoFrame)
-        self.preview_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-
-        left_layout.addWidget(preview_title)
-        left_layout.addWidget(self.preview_label, 1)
-
-        right_frame = QFrame()
-        right_frame.setFrameShape(QFrame.Shape.NoFrame)
-        right_layout = QVBoxLayout(right_frame)
-        right_layout.setContentsMargins(8, 8, 8, 8)
-        right_layout.setSpacing(10)
-
-        self.output_section = OutputPathSection(
-            directory_label_text=self.tr(
-                "label.output_directory", self.dialog_state.current_language
-            )
-            + ":",
-            browse_text=self.tr("button.browse", self.dialog_state.current_language),
-            set_favorite_text=self.tr(
-                "misc.set_as_favorite", self.dialog_state.current_language
-            ),
-            use_favorite_text=self.tr(
-                "tooltip.use_favorite", self.dialog_state.current_language
-            ),
-            filename_label_text=self.tr(
-                "label.file_name", self.dialog_state.current_language
-            )
-            + ":",
-            on_browse=self._choose_directory,
-            on_set_favorite=self._set_favorite_from_current,
-            on_use_favorite=self._use_favorite_dir,
-            use_custom_line_edit=False,
-            filename_editor_factory=QLineEdit,
-            button_fixed_height=32,
-        )
-        self.dir_picker_row = self.output_section.dir_picker_row
-        self.edit_dir = self.output_section.edit_dir
-        self.btn_browse_dir = self.output_section.btn_browse_dir
-        self.favorite_actions = self.output_section.favorite_actions
-        self.btn_set_favorite = self.output_section.btn_set_favorite
-        self.btn_use_favorite = self.output_section.btn_use_favorite
-        self.name_label = self.output_section.filename_label
-        self.edit_name = self.output_section.filename_edit
-
-        fmt_label = QLabel(
-            self.tr("label.format", self.dialog_state.current_language) + ":"
-        )
-        self.combo_format = ComboBox()
-        for fmt in ["PNG", "JPEG", "WEBP", "BMP", "TIFF", "JXL"]:
-            self.combo_format.addItem(fmt)
-        self.combo_format.currentIndexChanged.connect(
-            self._update_controls_visity_by_format
-        )
-
-        self.resolution_row = QWidget()
-        res_layout = QHBoxLayout(self.resolution_row)
-        res_layout.setContentsMargins(0, 0, 0, 0)
-        res_layout.setSpacing(8)
-        res_layout.addWidget(QLabel(
-            self.tr("label.resolution", self.dialog_state.current_language) + ":"
-        ))
-        self.edit_width = QLineEdit()
-        self.edit_width.setValidator(QIntValidator(1, 32768))
-        self.edit_width.setFixedWidth(72)
-        self.edit_width.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.edit_height = QLineEdit()
-        self.edit_height.setValidator(QIntValidator(1, 32768))
-        self.edit_height.setFixedWidth(72)
-        self.edit_height.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.btn_lock_ratio = Button(
-            icon=(AppIcon.UNLINK, AppIcon.LINK), toggle=True, size=(32, 32)
-        )
-        self.btn_lock_ratio.setChecked(True)
-        self.btn_lock_ratio.setToolTip(
-            self.tr("video.lock_aspect_ratio", self.dialog_state.current_language)
-        )
-        res_layout.addWidget(self.edit_width)
-        res_layout.addWidget(self.btn_lock_ratio)
-        res_layout.addWidget(self.edit_height)
-        res_layout.addStretch()
-
-        if self._native_width > 0 and self._native_height > 0:
-            initial_w = max(1, int(round(self._native_width * self._initial_scale)))
-            initial_h = max(1, int(round(self._native_height * self._initial_scale)))
-        else:
-            initial_w, initial_h = 1920, 1080
-        self.edit_width.setText(str(initial_w))
-        self.edit_height.setText(str(initial_h))
-        self.edit_width.editingFinished.connect(self._on_width_edited)
-        self.edit_height.editingFinished.connect(self._on_height_edited)
-        self.resolution_row.setVisible(self._native_width > 0 and self._native_height > 0)
-
-        self.quality_row = QWidget()
-        quality_layout = QHBoxLayout(self.quality_row)
-        quality_layout.setContentsMargins(0, 0, 0, 0)
-        quality_layout.setSpacing(8)
-        quality_label = QLabel(
-            self.tr("label.quality", self.dialog_state.current_language) + ":"
-        )
-        self.slider_quality = Slider(Qt.Orientation.Horizontal)
-        self.slider_quality.setRange(1, 100)
-        self.slider_quality.setValue(95)
-        self.label_quality_value = QLabel("95")
-        self.slider_quality.valueChanged.connect(
-            lambda v: self.label_quality_value.setText(str(v))
-        )
-        quality_layout.addWidget(quality_label)
-        quality_layout.addWidget(self.slider_quality, 1)
-        quality_layout.addWidget(self.label_quality_value)
-
-        self.png_row = QWidget()
-        png_layout = QHBoxLayout(self.png_row)
-        png_layout.setContentsMargins(0, 0, 0, 0)
-        png_layout.setSpacing(8)
-        self.label_png_compress = QLabel(
-            self.tr(
-                "export.png_compression_level", self.dialog_state.current_language
-            )
-            + ":"
-        )
-        self.slider_png_compress = Slider(Qt.Orientation.Horizontal)
-        self.slider_png_compress.setRange(0, 9)
-        self.slider_png_compress.setValue(9)
-        self.label_png_compress_value = QLabel("9")
-        self.slider_png_compress.valueChanged.connect(
-            lambda v: self.label_png_compress_value.setText(str(v))
-        )
-        self.checkbox_png_optimize = CheckBox(
-            self.tr("export.optimize_png", self.dialog_state.current_language)
-        )
-        png_layout.addWidget(self.label_png_compress)
-        png_layout.addWidget(self.slider_png_compress, 1)
-        png_layout.addWidget(self.label_png_compress_value)
-        png_layout.addWidget(self.checkbox_png_optimize)
-
-        self.checkbox_fill_bg = CheckBox(
-            self.tr("export.fill_background", self.dialog_state.current_language)
-        )
-
-        self.btn_bg_color = Button(
-            text=self.tr("export.background_color", self.dialog_state.current_language),
-            variant="surface",
-            size=(0, 32),
-        )
-        self.btn_bg_color.clicked.connect(self._pick_bg_color)
-
-        self.checkbox_fill_bg.toggled.connect(lambda _: self._apply_preview_pixmap())
-        bg_row = QHBoxLayout()
-        bg_row.addWidget(self.checkbox_fill_bg)
-        bg_row.addWidget(self.btn_bg_color)
-        self.current_bg_color = QColor(255, 255, 255, 255)
-
-        self.checkbox_include_metadata = CheckBox(
-            self.tr("export.include_metadata", self.dialog_state.current_language)
-        )
-        self.checkbox_include_metadata.toggled.connect(
-            self._on_include_metadata_toggled
-        )
-
-        self.comment_label = QLabel(
-            self.tr("export.comment", self.dialog_state.current_language) + ":"
-        )
-        self.edit_comment = QLineEdit()
-        self.checkbox_comment_default = CheckBox(
-            self.tr("export.remember_by_default", self.dialog_state.current_language)
-        )
-
-        self.action_bar = DialogActionBar(
-            self.tr("common.ok", self.dialog_state.current_language),
-            self.tr("common.cancel", self.dialog_state.current_language),
-            primary_min_size=(100, 36),
-            secondary_min_size=(100, 36),
-        )
-        self.btn_ok = self.action_bar.primary_button
-        self.btn_cancel = self.action_bar.secondary_button
-        self.btn_ok.clicked.connect(self.accept)
-        self.btn_cancel.clicked.connect(self.reject)
-        right_layout.addWidget(self.output_section)
-        right_layout.addSpacing(6)
-        right_layout.addWidget(fmt_label)
-        right_layout.addWidget(self.combo_format)
-        right_layout.addWidget(self.resolution_row)
-        right_layout.addWidget(self.quality_row)
-        right_layout.addWidget(self.png_row)
-        right_layout.addLayout(bg_row)
-        right_layout.addWidget(self.checkbox_include_metadata)
-        right_layout.addWidget(self.comment_label)
-        right_layout.addWidget(self.edit_comment)
-        right_layout.addWidget(self.checkbox_comment_default)
-        right_layout.addStretch()
-        right_layout.addWidget(self.action_bar)
-
-        main_layout.addWidget(left_frame, 1)
-        main_layout.addWidget(right_frame, 0)
-
-        self._on_include_metadata_toggled(self.checkbox_include_metadata.isChecked())
-
-    def _apply_styles(self):
-
-        polish_themed_dialog(self.theme_manager, self)
+        assemble_export_ui(self)
 
     def _populate_from_state(self):
         self.edit_dir.setText(self.dialog_state.output_dir)
@@ -359,6 +308,7 @@ class ExportDialog(QDialog):
         if self.dialog_state.background_color is not None:
             self.current_bg_color = color_to_qcolor(self.dialog_state.background_color)
         self.checkbox_fill_bg.setChecked(bool(self.dialog_state.fill_background))
+        self._sync_background_controls()
 
         self.checkbox_include_metadata.setChecked(True)
 
@@ -374,9 +324,7 @@ class ExportDialog(QDialog):
         file_dialog.setFileMode(QFileDialog.FileMode.Directory)
         file_dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
         file_dialog.setWindowTitle(
-            self.tr(
-                "export.select_output_directory", self.dialog_state.current_language
-            )
+            self._tr("export.select_output_directory", "Select Output Directory")
         )
         file_dialog.setDirectory(start_dir)
 
@@ -401,7 +349,36 @@ class ExportDialog(QDialog):
         if path:
             self.edit_dir.setText(path)
 
+    def _on_fill_background_toggled(self, _checked: bool = False) -> None:
+        self._sync_background_controls()
+        self._apply_preview_pixmap()
+
+    def _sync_background_controls(self) -> None:
+        """Color picker is only active while fill is enabled (or forced by format)."""
+        fmt = (
+            self.combo_format.currentText().upper()
+            if hasattr(self, "combo_format")
+            else "PNG"
+        )
+        has_transparency = fmt in ("PNG", "TIFF", "WEBP", "JXL")
+        fill_active = (
+            bool(self.checkbox_fill_bg.isChecked()) if has_transparency else True
+        )
+        btn = getattr(self, "btn_bg_color", None)
+        if btn is None:
+            return
+        btn.setEnabled(fill_active)
+        # Plain picker — never leave a latch/checked glow when fill is off.
+        set_checked = getattr(btn, "setChecked", None)
+        if callable(set_checked):
+            try:
+                set_checked(False, emit=False)
+            except TypeError:
+                set_checked(False)
+
     def _pick_bg_color(self):
+        if hasattr(self, "btn_bg_color") and not self.btn_bg_color.isEnabled():
+            return
         color = QColorDialog.getColor(
             (
                 self.current_bg_color
@@ -409,12 +386,11 @@ class ExportDialog(QDialog):
                 else QColor(255, 255, 255, 255)
             ),
             self,
-            self.tr(
-                "export.select_background_color", self.dialog_state.current_language
-            ),
+            self._tr("export.select_background_color", "Select Background Color"),
         )
         if color.isValid():
             self.current_bg_color = color
+            self._sync_background_controls()
             self._apply_preview_pixmap()
 
     def _update_controls_visity_by_format(self):
@@ -426,16 +402,83 @@ class ExportDialog(QDialog):
         has_transparency = fmt in ("PNG", "TIFF", "WEBP", "JXL")
         self.checkbox_fill_bg.setEnabled(has_transparency)
         self.checkbox_fill_bg.setVisible(has_transparency)
+        self._sync_background_controls()
 
         self._apply_preview_pixmap()
+        self._apply_dialog_geometry()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._apply_preview_pixmap()
+        # CSD startSystemResize can ignore QWidget/QWindow minimumSize on some
+        # compositors — pull the window back so form controls are not crushed.
+        min_size = self.minimumSize()
+        if self.width() < min_size.width() or self.height() < min_size.height():
+            if not getattr(self, "_restoring_min_size", False):
+                self._restoring_min_size = True
+
+                def _restore() -> None:
+                    try:
+                        if sip.isValid(self):
+                            self.resize(
+                                max(self.width(), min_size.width()),
+                                max(self.height(), min_size.height()),
+                            )
+                    finally:
+                        self._restoring_min_size = False
+
+                QTimer.singleShot(0, _restore)
+            return
+        self._preview_resize_settle.ping()
 
     def showEvent(self, event):
         super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.setMinimumSize(self.minimumSize())
+        try:
+            from sli_ui_toolkit.ui.windows.csd_helpers import sync_csd_chrome
+
+            sync_csd_chrome(self)
+        except Exception:
+            pass
+        # Deferred geometry may land after first show; rebuild CSD mask once
+        # more on the next tick so corner arcs cannot punch through the body.
+        QTimer.singleShot(0, self._sync_csd_chrome_safe)
         self._apply_preview_pixmap()
+        self._contribute_find_actions()
+
+    def _contribute_find_actions(self) -> None:
+        try:
+            from plugins.export.actions import OWNER, contribute_export_dialog_actions
+            from ui.actions.palette import install_dialog_find_action_shortcut
+
+            contribute_export_dialog_actions(self)
+            install_dialog_find_action_shortcut(self, active_tab=OWNER)
+        except Exception:
+            logger.debug(
+                "[find-action] export_dialog _contribute_find_actions failed",
+                exc_info=True,
+            )
+
+    def _withdraw_find_actions(self, *_args) -> None:
+        try:
+            from plugins.export.actions import withdraw_export_dialog_actions
+
+            withdraw_export_dialog_actions()
+        except Exception:
+            logger.debug(
+                "[find-action] export_dialog _withdraw_find_actions failed",
+                exc_info=True,
+            )
+    def _sync_csd_chrome_safe(self) -> None:
+        if not sip.isValid(self):
+            return
+        try:
+            from sli_ui_toolkit.ui.windows.csd_helpers import sync_csd_chrome
+
+            sync_csd_chrome(self)
+        except Exception:
+            pass
 
     def _apply_preview_pixmap(self):
 
@@ -448,7 +491,10 @@ class ExportDialog(QDialog):
         if target_size.isEmpty():
             target_size = self.preview_label.minimumSize()
             if target_size.isEmpty():
-                target_size = QSize(300, 300)
+                target_size = QSize(
+                    export_geo.EXPORT_PREVIEW_MIN_WIDTH,
+                    export_geo.EXPORT_PREVIEW_MIN_HEIGHT,
+                )
 
         fmt_current = (
             self.combo_format.currentText().upper()
@@ -458,6 +504,11 @@ class ExportDialog(QDialog):
         formats_with_alpha = {"PNG", "TIFF", "WEBP", "JXL"}
         force_fill = fmt_current not in formats_with_alpha
         effective_fill = bool(self.checkbox_fill_bg.isChecked()) or force_fill
+        bg = (
+            self.current_bg_color
+            if isinstance(self.current_bg_color, QColor)
+            else QColor(255, 255, 255, 255)
+        )
 
         scaled = self._preview_source_pixmap.scaled(
             target_size,
@@ -465,13 +516,14 @@ class ExportDialog(QDialog):
             Qt.TransformationMode.SmoothTransformation,
         )
         if effective_fill:
+            # Fill only the export frame (virtual canvas). Label chrome around
+            # the KeepAspectRatio letterbox stays the theme preview surface.
             composed = QPixmap(scaled.size())
-            composed.fill(
-                self.current_bg_color
-                if isinstance(self.current_bg_color, QColor)
-                else QColor(255, 255, 255, 255)
-            )
+            composed.fill(bg)
             painter = QPainter(composed)
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
             painter.drawPixmap(0, 0, scaled)
             painter.end()
             self.preview_label.setPixmap(composed)
@@ -484,17 +536,26 @@ class ExportDialog(QDialog):
             if pil_img.mode == "RGBA":
                 data = pil_img.tobytes("raw", "RGBA")
                 qimage = QImage(
-                    data, pil_img.width, pil_img.height, QImage.Format.Format_RGBA8888
+                    data,
+                    pil_img.width,
+                    pil_img.height,
+                    pil_img.width * 4,
+                    QImage.Format.Format_RGBA8888,
                 )
                 if not qimage.isNull():
-                    return QPixmap.fromImage(qimage)
+                    # Own the pixels — ``data`` is a temporary Python buffer.
+                    return QPixmap.fromImage(qimage.copy())
             elif pil_img.mode == "RGB":
                 data = pil_img.tobytes("raw", "RGB")
                 qimage = QImage(
-                    data, pil_img.width, pil_img.height, QImage.Format.Format_RGB888
+                    data,
+                    pil_img.width,
+                    pil_img.height,
+                    pil_img.width * 3,
+                    QImage.Format.Format_RGB888,
                 )
                 if not qimage.isNull():
-                    return QPixmap.fromImage(qimage)
+                    return QPixmap.fromImage(qimage.copy())
 
             buf = io.BytesIO()
             pil_img.save(buf, format="PNG")

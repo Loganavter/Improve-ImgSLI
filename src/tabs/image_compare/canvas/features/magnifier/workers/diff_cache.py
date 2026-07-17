@@ -2,6 +2,8 @@ import logging
 
 from sli_ui_toolkit.workers import GenericWorker
 
+from shared.image_processing.store_lease import StoreLease
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -9,6 +11,8 @@ def build_cached_diff_image_task(
     source1,
     source2,
     diff_mode,
+    lease1,
+    lease2,
     progress_callback=None,
 ):
     from tabs.image_compare.services.analysis.background_layers import (
@@ -22,6 +26,8 @@ def build_cached_diff_image_task(
         "RGB",
         optimize_ssim=False,
         progress_callback=progress_callback,
+        lease1=lease1,
+        lease2=lease2,
     )
 
 
@@ -76,7 +82,14 @@ def request_cached_diff_image_async(presenter, source1, source2, diff_mode):
         )
         dismiss_active_diff_toast(presenter)
 
-    worker = GenericWorker(build_cached_diff_image_task, source1, source2, diff_mode)
+    worker = GenericWorker(
+        build_cached_diff_image_task,
+        source1,
+        source2,
+        diff_mode,
+        StoreLease.capture(source1),
+        StoreLease.capture(source2),
+    )
     worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
     worker.signals.result.connect(_on_result)
     worker.signals.error.connect(_on_error)

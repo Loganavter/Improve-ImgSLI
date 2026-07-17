@@ -24,6 +24,9 @@
     "ssim_calculation_in_progress": "Cálculo de SSIM...",
     "starting_video_export_please_wait": "Iniciando exportação de vídeo... Por favor, aguarde.",
     "select_both_images_first": "Por favor, carregue e selecione imagens em ambos os slots primeiro.",
-    "specify_output_directory_and_file_name": "Por favor, especifique o diretório de saída e o nome do arquivo."
+    "specify_output_directory_and_file_name": "Por favor, especifique o diretório de saída e o nome do arquivo.",
+    "export_untested_resolution_title": "Resolução de exportação não testada",
+    "export_untested_resolution_body": "A resolução de exportação excede {edge} px em um lado ({width}×{height}). A renderização pode falhar ou esgotar a memória — acima de {edge} px nada é garantido e não foi testado. Continuar mesmo assim?",
+    "dont_show_again": "Não mostrar novamente"
   }
 }

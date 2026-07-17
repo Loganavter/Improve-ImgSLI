@@ -1,7 +1,5 @@
 """Multi-compare keeps state, canvas-px layout, and framebuffer projection separate."""
 
-import numpy as np
-
 from tabs.multi_compare.models import (
     CompareSlot,
     LeafNode,
@@ -14,11 +12,12 @@ from tabs.multi_compare.services.composition_builder import (
     DEFAULT_SPLIT_GAP_PX,
     build_composition_plan,
 )
+from tabs.multi_compare.tests.pixel_fixtures import slot_image
 from ui.canvas_presentation.composition import resolve_composition
 
 
 def _image(w=100, h=80):
-    return np.zeros((h, w, 3), dtype=np.uint8)
+    return slot_image(w, h)
 
 
 def _state(*, weights=(1.0, 1.0), focused_slot_id=None):

@@ -18,6 +18,8 @@ layout(std140, binding = 0) uniform UBuf
     float diffThreshold;
     vec4 tileRect1;
     vec4 tileRect2;
+    vec4 canvasLetterbox;
+    vec4 letterboxFill;
 };
 
 layout(location = 0) out vec2 vTexCoord;

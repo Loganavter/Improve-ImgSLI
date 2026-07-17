@@ -1,5 +1,67 @@
 {
   "help": {
-    "help": "帮助"
+    "help": "帮助",
+    "open_topic": "打开主题",
+    "context": {
+      "copy": "复制",
+      "select_all": "全选",
+      "copy_markdown": "复制为 Markdown"
+    },
+    "hub": {
+      "root": {
+        "title": "帮助",
+        "desc": "按功能区域浏览主题"
+      },
+      "workspace": {
+        "title": "工作区",
+        "desc": "会话类型与对比工具"
+      },
+      "ui": {
+        "title": "界面",
+        "desc": "控件、列表、画布"
+      },
+      "platform": {
+        "title": "平台",
+        "desc": "设置、文件、快捷键"
+      }
+    },
+    "page": {
+      "buttons": {
+        "title": "按钮与控件",
+        "desc": "工具栏与弹出手势"
+      },
+      "lists": {
+        "title": "列表与弹出",
+        "desc": "图像列表与菜单"
+      },
+      "canvas_nav": {
+        "title": "画布导航",
+        "desc": "缩放、平移、适配"
+      },
+      "getting_started": {
+        "title": "入门",
+        "desc": "快速导览"
+      },
+      "settings": {
+        "title": "设置",
+        "desc": "外观与性能"
+      },
+      "hotkeys": {
+        "title": "快捷键",
+        "desc": "默认与覆盖"
+      },
+      "file_project": {
+        "title": "文件与项目",
+        "desc": "加载、粘贴、项目文件"
+      },
+      "workspace": {
+        "title": "工作区标签",
+        "desc": "会话选择与标签栏"
+      },
+      "image_properties": {
+        "title": "图像属性",
+        "desc": "文件元数据与应用内上下文"
+      }
+    }
   }
 }

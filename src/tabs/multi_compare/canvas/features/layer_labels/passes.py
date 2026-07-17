@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import logging
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPainter
 
 from tabs.multi_compare.canvas.rhi_overlay_pass_base import FullscreenOverlayTexturePass
 from tabs.multi_compare.scene.passes.labels import LabelsOverlaySource
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-
-logger = logging.getLogger("ImproveImgSLI")
 
 
 class LayerLabelsPass(FullscreenOverlayTexturePass):
@@ -24,31 +20,11 @@ class LayerLabelsPass(FullscreenOverlayTexturePass):
         self._source = LabelsOverlaySource()
 
     def should_paint(self, ctx) -> bool:
-        composition = ctx.composition
-        result = self._source.should_paint(composition)
-        if getattr(ctx.widget, "_mc_overlay_debug", False):
-            labels = (
-                [
-                    (layer.layer_id, None if layer.label is None else layer.label.text)
-                    for layer in composition.layers
-                ]
-                if composition is not None
-                else None
-            )
-            logger.info(
-                "[mc-labels-debug] should_paint=%s composition=%s labels=%s",
-                result,
-                composition is not None,
-                labels,
-            )
-        return result
+        return self._source.should_paint(ctx.composition)
 
     def _raster(self, widget, ctx) -> QImage | None:
         composition = ctx.composition
-        debug = getattr(widget, "_mc_overlay_debug", False)
         if not self._source.should_paint(composition):
-            if debug:
-                logger.info("[mc-labels-debug] _raster: should_paint False, returning None")
             return None
         fb_w, fb_h = ctx.framebuffer_size
         img = QImage(
@@ -68,13 +44,6 @@ class LayerLabelsPass(FullscreenOverlayTexturePass):
             framebuffer_size=ctx.framebuffer_size,
         )
         painter.end()
-        if debug:
-            logger.info(
-                "[mc-labels-debug] _raster: rasterized fb=%sx%s isNull=%s",
-                fb_w,
-                fb_h,
-                img.isNull(),
-            )
         return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
 
 

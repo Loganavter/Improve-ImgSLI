@@ -13,7 +13,7 @@ from plugins.settings.controller import SettingsController
 from plugins.settings.manager import SettingsManager
 from ui.canvas_infra.scene.registry import get_canvas_registry
 
-@plugin(name="settings", version="1.0")
+@plugin(name="settings", version="1.0", startup_tier="bootstrap")
 class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
     capabilities = ("settings_management",)
 
@@ -22,6 +22,7 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
         self.controller: SettingsController | None = None
         self.settings_manager: SettingsManager | None = None
         self.event_bus: Any | None = None
+        self._canvas_bound_tab_types: set[str] = set()
 
     def initialize(self, context: Any) -> None:
         super().initialize(context)
@@ -34,13 +35,6 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
             )
 
         if self.event_bus and self.controller:
-            def _run_canvas_feature_command(feature_name: str, command_id: str, *args):
-                self.controller.execute_canvas_feature_command(
-                    feature_name,
-                    command_id,
-                    *args,
-                )
-
             self.event_bus.subscribe(
                 SettingsChangeLanguageEvent, self.controller.on_change_language
             )
@@ -54,21 +48,46 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
             from tabs.registry import TabRegistry
 
             tab_registry = TabRegistry()
-            tab_registry.discover()
-            for tab_type in tab_registry.registered_types:
-                bindings_by_feature = get_canvas_registry(
-                    tab_type
-                ).get_feature_settings_event_bindings()
-                for feature_name, bindings in bindings_by_feature.items():
-                    for binding in bindings:
-                        self.event_bus.subscribe(
-                            binding.event_type,
-                            lambda event, feature_name=feature_name, binding=binding: _run_canvas_feature_command(
-                                feature_name,
-                                binding.command_id,
-                                *binding.extract_args(event),
-                            ),
-                        )
+            tab_registry.discover(tier="bootstrap")
+            self.register_canvas_feature_bindings(tab_registry)
+
+    def register_canvas_feature_bindings(
+        self,
+        tab_registry: Any,
+        *,
+        tab_types: tuple[str, ...] | None = None,
+    ) -> None:
+        """Subscribe settings events to canvas feature commands for tab types."""
+        if not self.event_bus or not self.controller:
+            return
+
+        def _run_canvas_feature_command(
+            feature_name: str, command_id: str, *args
+        ):
+            self.controller.execute_canvas_feature_command(
+                feature_name,
+                command_id,
+                *args,
+            )
+
+        types = tab_types or tuple(tab_registry.registered_types)
+        for tab_type in types:
+            if tab_type in self._canvas_bound_tab_types:
+                continue
+            self._canvas_bound_tab_types.add(tab_type)
+            bindings_by_feature = get_canvas_registry(
+                tab_type
+            ).get_feature_settings_event_bindings()
+            for feature_name, bindings in bindings_by_feature.items():
+                for binding in bindings:
+                    self.event_bus.subscribe(
+                        binding.event_type,
+                        lambda event, feature_name=feature_name, binding=binding: _run_canvas_feature_command(
+                            feature_name,
+                            binding.command_id,
+                            *binding.extract_args(event),
+                        ),
+                    )
 
     def get_qss_paths(self) -> tuple[str, ...]:
         return (self.plugin_resource_path("resources", "settings.qss"),)

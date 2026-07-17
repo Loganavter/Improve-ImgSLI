@@ -49,6 +49,7 @@ OVERLAY_UNIFORM_SIZE = 64
 # tiles combined, since GPU memory is one pool, not N independent ones.
 SLOT_LIVE_TILE_EXTENT = 8192
 SLOT_TILE_CACHE_BUDGET_BYTES = 512 * 1024 * 1024
+SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES = 512 * 1024 * 1024
 
 
 def load_shader(name: str) -> QShader:

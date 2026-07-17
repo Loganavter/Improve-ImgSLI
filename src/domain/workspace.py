@@ -41,13 +41,28 @@ class WorkspaceSession:
 class WorkspaceState:
     sessions: list[WorkspaceSession] = field(default_factory=list)
     active_session_id: str | None = None
-    _title_counters: dict[str, int] = field(default_factory=dict)
+
+    @staticmethod
+    def default_title_prefix(session_type: str) -> str:
+        """Language-agnostic auto-title, e.g. ``image_compare`` → ``Image Compare``."""
+        return session_type.replace("_", " ").title()
+
+    @classmethod
+    def is_auto_title(cls, title: str, session_type: str) -> bool:
+        """True when ``title`` is still the store-side default (not a user rename).
+
+        Accepts legacy numbered defaults (``Image Compare 2``) so old projects
+        still localize as the bare type label.
+        """
+        prefix = cls.default_title_prefix(session_type)
+        if title == prefix:
+            return True
+        if not title.startswith(f"{prefix} "):
+            return False
+        return title[len(prefix) + 1 :].isdigit()
 
     def next_default_title(self, session_type: str) -> str:
-        next_index = self._title_counters.get(session_type, 0) + 1
-        self._title_counters[session_type] = next_index
-        suffix = session_type.replace("_", " ").title()
-        return f"{suffix} {next_index}"
+        return self.default_title_prefix(session_type)
 
     @staticmethod
     def new_session_id() -> str:

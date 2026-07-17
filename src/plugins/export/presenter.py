@@ -1,7 +1,9 @@
 import logging
 
 from PySide6.QtCore import QObject
-from PySide6.QtWidgets import QDialog, QMessageBox
+from PySide6.QtWidgets import QDialog
+
+from shared_toolkit.ui.message_dialog import MessageKind
 
 from core.store import Store
 from plugins.export.services.gpu_export import GpuExportService
@@ -57,6 +59,28 @@ class ExportPresenter(QObject):
 
     def _tr(self, text):
         return tr(text, self.store.settings.current_language)
+
+    def _tr_export(self, key: str, default: str | None = None) -> str:
+        text = self._tr(key)
+        if not text or text == key:
+            return default or key
+        return text
+
+    def _untested_export_suppressed(self) -> bool:
+        settings = getattr(self.store, "settings", None)
+        return bool(
+            getattr(settings, "export_suppress_untested_resolution_warning", False)
+        )
+
+    def _suppress_untested_export_warning(self) -> None:
+        settings = getattr(self.store, "settings", None)
+        if settings is not None:
+            settings.export_suppress_untested_resolution_warning = True
+        manager = getattr(self.main_controller, "settings_manager", None)
+        if manager is not None:
+            manager._save_setting(
+                "export_suppress_untested_resolution_warning", True
+            )
 
     def _create_export_context_builder(self, **kwargs):
         from tabs.registry import TabRegistry
@@ -139,7 +163,7 @@ class ExportPresenter(QObject):
     def open_video_editor(self, snapshots, export_controller, video_editor_plugin):
         if not snapshots or export_controller is None or video_editor_plugin is None:
             self.ui_manager.messages.show_non_modal_message(
-                icon=QMessageBox.Icon.Warning,
+                kind=MessageKind.WARNING,
                 title=self._tr("common.warning"),
                 text="Video editor is unavailable.",
             )
@@ -152,7 +176,7 @@ class ExportPresenter(QObject):
         except Exception as exc:
             logger.exception("Failed to open video editor: %s", exc)
             self.ui_manager.messages.show_non_modal_message(
-                icon=QMessageBox.Icon.Critical,
+                kind=MessageKind.CRITICAL,
                 title=self._tr("common.error"),
                 text=f"Failed to open video editor: {exc}",
             )
@@ -178,6 +202,20 @@ class ExportPresenter(QObject):
             if not self.save_flow.validate_export_options(export_opts):
                 return
 
+            from shared.untested_export_resolution import (
+                confirm_untested_export_resolution,
+            )
+
+            if not confirm_untested_export_resolution(
+                self.main_window_app,
+                int(export_opts.get("width") or 0),
+                int(export_opts.get("height") or 0),
+                translate=self._tr_export,
+                suppressed=self._untested_export_suppressed(),
+                on_suppress=self._suppress_untested_export_warning,
+            ):
+                return
+
             self.save_flow.start_save_worker(
                 save_ctx=save_ctx,
                 export_opts=export_opts,
@@ -187,7 +225,7 @@ class ExportPresenter(QObject):
         except Exception as e:
             logger.error(f"Error during save preparation: {e}", exc_info=True)
             self.ui_manager.messages.show_non_modal_message(
-                icon=QMessageBox.Icon.Critical,
+                kind=MessageKind.CRITICAL,
                 title=self._tr("common.error"),
                 text=f"{self._tr('msg.failed_to_save_image')}: {str(e)}",
             )
@@ -222,15 +260,30 @@ class ExportPresenter(QObject):
 
         try:
             save_ctx = self.context_builder.build_save_context(include_preview=False)
+            export_opts = self.state.build_quick_export_options()
+            from shared.untested_export_resolution import (
+                confirm_untested_export_resolution,
+            )
+
+            if not confirm_untested_export_resolution(
+                self.main_window_app,
+                int(export_opts.get("width") or 0),
+                int(export_opts.get("height") or 0),
+                translate=self._tr_export,
+                suppressed=self._untested_export_suppressed(),
+                on_suppress=self._suppress_untested_export_warning,
+            ):
+                return
+
             self.save_flow.start_save_worker(
                 save_ctx=save_ctx,
-                export_opts=self.state.build_quick_export_options(),
+                export_opts=export_opts,
             )
 
         except Exception as e:
             logger.error(f"Error during quick save preparation: {e}", exc_info=True)
             self.ui_manager.messages.show_non_modal_message(
-                icon=QMessageBox.Icon.Critical,
+                kind=MessageKind.CRITICAL,
                 title=self._tr("common.error"),
                 text=f"{self._tr('msg.failed_to_quick_save_image')}: {str(e)}",
             )
