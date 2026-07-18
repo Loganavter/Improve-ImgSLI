@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -117,7 +118,9 @@ def test_recent_panel_accepts_project_drop(qapp, tmp_path, monkeypatch):
     assert drop.isAccepted()
     qapp.processEvents()
     assert opened == []
-    assert recorded == [str(proj)]
+    # QUrl.toLocalFile may emit forward slashes on Windows; compare as Paths.
+    assert len(recorded) == 1
+    assert Path(recorded[0]) == proj
 
     panel.deleteLater()
 
