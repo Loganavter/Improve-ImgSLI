@@ -29,9 +29,9 @@ def iter_py(root: Path) -> list[Path]:
 
 def rel(p: Path) -> str:
     try:
-        return str(p.relative_to(ROOT))
+        return p.relative_to(ROOT).as_posix()
     except ValueError:
-        return str(p)
+        return Path(str(p)).as_posix()
 
 def read(p: Path) -> str:
     try:
