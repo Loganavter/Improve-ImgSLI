@@ -59,6 +59,8 @@ jobs:
 
       - name: Run Pytest
         shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           python -m pytest tests --maxfail=1 -q
 

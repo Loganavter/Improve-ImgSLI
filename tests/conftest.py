@@ -10,6 +10,9 @@ from __future__ import annotations
 import os
 import sys
 
+# Headless CI / agent runs: avoid requiring a display for PySide6 widgets.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 for _entry in (os.path.join(_REPO, "src"),):
