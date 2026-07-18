@@ -180,7 +180,10 @@ class TabRegistry:
                         )
                     self._tabs[instance.session_type] = instance
         except (ImportError, AttributeError):
-            pass
+            logger.exception(
+                "TabRegistry: failed to import/register tabs.%s.tab",
+                module_name,
+            )
 
     def get_tab(self, session_type: str) -> TabContract | None:
         return self._tabs.get(session_type)
