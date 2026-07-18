@@ -2,6 +2,11 @@ name: Build Windows
 
 on:
   workflow_dispatch:
+    inputs:
+      console:
+        description: "Build with console subsystem (shows startup tracebacks)"
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -99,6 +104,7 @@ jobs:
         shell: pwsh
         env:
           BUILD_INNO_SETUP: "0"
+          BUILD_CONSOLE: ${{ github.event.inputs.console == 'true' && '1' || '0' }}
         run: |
           python build/Windows-template/build_windows.py
 
@@ -110,7 +116,7 @@ jobs:
       - name: Upload Windows Bundle
         uses: actions/upload-artifact@v4
         with:
-          name: Improve_ImgSLI_windows_bundle
+          name: Improve_ImgSLI_windows_bundle${{ github.event.inputs.console == 'true' && '_console' || '' }}
           path: dist/Improve_ImgSLI/**
           if-no-files-found: error
 
@@ -125,7 +131,7 @@ jobs:
       - name: Download Bundle
         uses: actions/download-artifact@v4
         with:
-          name: Improve_ImgSLI_windows_bundle
+          name: Improve_ImgSLI_windows_bundle${{ github.event.inputs.console == 'true' && '_console' || '' }}
           path: dist/Improve_ImgSLI
 
       - name: Build Inno Setup Installer

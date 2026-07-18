@@ -21,6 +21,15 @@ QT_CONF_PATH = SPEC_DIR / "qt.conf"
 APP_NAME = "Improve_ImgSLI"
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+# Windowed by default. Set BUILD_CONSOLE=1 (or IMGSLI_WINDOWS_CONSOLE=1) for a
+# console subsystem build so startup crashes print a traceback.
+BUILD_CONSOLE = _env_flag("BUILD_CONSOLE") or _env_flag("IMGSLI_WINDOWS_CONSOLE")
+
+
 def collect_tree(source_dir, dest_dir, *, include_suffixes=None):
     source_path = Path(source_dir)
     if not source_path.exists():
@@ -361,8 +370,10 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=False,
-    disable_windowed_traceback=True,
+    console=BUILD_CONSOLE,
+    # Keep the bootloader dialog useful for windowed builds (e.g. when a
+    # third-party import still assumes stderr exists).
+    disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
