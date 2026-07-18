@@ -42,7 +42,9 @@ def test_oversized_files_declare_exemption(feature):
     violations = []
     for path in _feature_py_files(feature):
         src = read(path)
-        line_count = src.count("\n") + 1
+        # Match ``wc -l`` / editor line counts: a trailing newline does not
+        # invent an extra empty line (unlike ``count("\\n") + 1``).
+        line_count = len(src.splitlines())
         if line_count <= LINE_LIMIT:
             continue
         if _MARKER in src:

@@ -6,7 +6,7 @@ from enum import Enum
 
 
 class DemoIcon(Enum):
-    """Filenames match ``tabs/image_compare`` toolbar icons (shared app assets)."""
+    """Filenames match shared toolbar icons under the app asset pack."""
 
     VERTICAL_SPLIT = "vertical_split.svg"
     HORIZONTAL_SPLIT = "horizontal_split.svg"

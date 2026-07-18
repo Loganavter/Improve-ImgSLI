@@ -125,7 +125,7 @@ def scale_all_slides(overlay, scale: float) -> None:
 
 
 def _add_beginner_demo(overlay, page, demo_container, demo_layout, current_lang: str) -> None:
-    # Mirrors image_compare primitives: orientation_simple, divider_visible,
+    # Mirrors toolbar divider chrome: orientation_simple, divider_visible,
     # divider_color, divider_width — default unchecked / no forced demo state.
     b1 = Button(
         icon=(DemoIcon.VERTICAL_SPLIT, DemoIcon.HORIZONTAL_SPLIT),
@@ -137,7 +137,7 @@ def _add_beginner_demo(overlay, page, demo_container, demo_layout, current_lang:
         toggle=True,
         parent=demo_container,
     )
-    # Color keeps underline (IC btn_divider_color); width has none (IC btn_divider_width).
+    # Color keeps underline (toolbar color button); width has none (width button).
     b3 = Button(DemoIcon.DIVIDER_COLOR, show_underline=True, parent=demo_container)
     accent_color = resolve_theme_color(overlay.theme_manager, "accent")
     b3.setUnderlineColor(accent_color)
@@ -284,7 +284,7 @@ def _create_description_label(overlay, text: str) -> QLabel:
 def _style_demo_btn(
     btn, size: int = _DEMO_BTN_BASE_PX, icon_px: int = _DEMO_ICON_BASE_PX
 ) -> None:
-    """Size only — leave painter/checked state to the toolkit like image_compare."""
+    """Size only — leave painter/checked state to the toolkit like the main toolbar."""
     btn.setFixedSize(size, size)
     btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     if hasattr(btn, "setIconSizePx"):
