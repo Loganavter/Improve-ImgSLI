@@ -11,7 +11,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPalette, QWheelEvent
+from PySide6.QtGui import QColor, QContextMenuEvent, QMouseEvent, QPalette, QWheelEvent
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from ui.widgets.canvas.rhi_backend import configure_rhi_widget
@@ -130,6 +130,10 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
     def resizeEvent(self, event) -> None:  # noqa: D401 — Qt signature
         super().resizeEvent(event)
+        # Skip no-op geometry churn (popup/CSD micro-nudge) so we do not
+        # double-flush a zoomed frame when nothing actually changed.
+        if event.size() == event.oldSize():
+            return
         self.request_view_update()
 
     def set_dispatch(self, dispatch) -> None:
@@ -287,6 +291,9 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         canvas_interaction.handle_mouse_press_event(self, event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        canvas_interaction.handle_context_menu_event(self, event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         canvas_interaction.handle_mouse_move_event(self, event)

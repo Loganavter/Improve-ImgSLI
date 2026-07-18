@@ -36,7 +36,10 @@ from sli_ui_toolkit.widgets import install_application_tooltips
 from ui.main_window import MainWindow
 from ui.widgets.canvas.rhi_backend import (
     configure_rhi_process_environment,
+    configure_vulkan_layer_environment,
+    persist_rhi_backend_setting,
     requested_rhi_backend_name,
+    resolve_rhi_backend_with_fallback,
     supported_rhi_backend_names,
 )
 
@@ -133,8 +136,10 @@ def main():
             pass
     if not selected_rhi_backend:
         selected_rhi_backend = requested_rhi_backend_name()
+    cli_forced_rhi = args.rhi_backend is not None
     if selected_rhi_backend != "default":
         configure_rhi_process_environment(selected_rhi_backend)
+    configure_vulkan_layer_environment(selected_rhi_backend)
     _configure_qt_logging()
     _configure_linux_desktop_integrations()
 
@@ -154,6 +159,24 @@ def main():
     if os.name == "posix" and not getattr(sys, "frozen", False):
         argv[0] = "improve-imgsli"
     app = QApplication(argv)
+
+    # Probe after QApplication exists. Vulkan instance create needs a GUI app;
+    # fall back before any QRhiWidget is constructed.
+    effective_rhi, rhi_fallback_reason = resolve_rhi_backend_with_fallback(
+        selected_rhi_backend
+    )
+    if rhi_fallback_reason:
+        logging.getLogger("ImproveImgSLI.rhi").warning(
+            "%s (requested=%s)", rhi_fallback_reason, selected_rhi_backend
+        )
+        configure_rhi_process_environment(effective_rhi)
+        configure_vulkan_layer_environment(effective_rhi)
+        if not cli_forced_rhi and selected_rhi_backend == "vulkan":
+            persist_rhi_backend_setting(effective_rhi)
+    elif effective_rhi != "default":
+        configure_rhi_process_environment(effective_rhi)
+        configure_vulkan_layer_environment(effective_rhi)
+
     install_application_tooltips(app)
     from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
     install_application_dialog_decorations(app)
