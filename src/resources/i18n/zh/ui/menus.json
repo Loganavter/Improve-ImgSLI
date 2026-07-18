@@ -5,11 +5,19 @@
     "new_session": "新建会话",
     "open_project": "打开项目",
     "save_project": "保存项目",
+    "save_project_as": "项目另存为…",
     "settings": "设置",
     "quit": "退出",
     "show_help": "显示帮助",
     "find_action": "查找操作",
     "find_action_soon": "命令面板 — 即将推出",
-    "project_filter": "Improve ImgSLI 项目 (*.imgsli-project)"
+    "project_filter": "Improve ImgSLI 项目 (*.imgsli)",
+    "project_untitled": "未命名",
+    "project_opening": "正在打开项目…",
+    "project_saving": "正在保存项目…",
+    "project_open_failed": "无法打开项目文件。",
+    "project_file_missing": "项目文件缺失。已更新“最近”卡片。",
+    "project_save_failed": "无法保存项目文件。",
+    "project_missing_media": "项目已保存，但部分图像文件缺失，未能嵌入。"
   }
 }

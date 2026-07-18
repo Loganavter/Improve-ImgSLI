@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import logging
-
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 
+from plugins.onboarding import host as onboarding_host
 from ui.main_window.ui import Ui_ImageComparisonApp
-from ui.onboarding import OnboardingOverlay
 from ui.widgets.themed_surface import ThemedSurface
 
-logger = logging.getLogger("ImproveImgSLI")
 
 class MainWindowStartupRuntime:
     def __init__(self, window):
@@ -40,7 +37,7 @@ class MainWindowStartupRuntime:
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
         )
         window._startup_cover.hide()
-        window.onboarding_overlay = None
+        window.onboarding_host = None
         self.sync_cover_geometry()
 
     def _build_custom_title_bar(self):
@@ -78,32 +75,25 @@ class MainWindowStartupRuntime:
         window._startup_cover.hide()
 
     def should_show_onboarding(self) -> bool:
-        return self.window.settings_manager.is_first_run()
+        return onboarding_host.should_present(self.window)
 
     def bootstrap_content(self) -> None:
-        if self.should_show_onboarding():
-            self.show_onboarding_page()
-        else:
-            self.bootstrap_main_app()
-
-    def show_onboarding_page(self) -> None:
-        window = self.window
-        if window.onboarding_overlay is None:
-            window.onboarding_overlay = OnboardingOverlay(
-                window.settings_manager,
-                window.store,
-                window,
+        # Always build the real app first so «Приступить» is only a stack
+        # switch in the same window (not a second boot that looks like a new window).
+        will_onboard = self.should_show_onboarding()
+        self.bootstrap_main_app(hold_for_onboarding=will_onboard)
+        if will_onboard:
+            onboarding_host.maybe_present(
+                self.window, on_completed=self.on_onboarding_completed
             )
-            window.onboarding_overlay.completed.connect(self.on_onboarding_completed)
-        if window._startup_stack.indexOf(window.onboarding_overlay) < 0:
-            window._startup_stack.insertWidget(0, window.onboarding_overlay)
-        window.onboarding_overlay.resize(window.size())
-        window._startup_stack.setCurrentWidget(window.onboarding_overlay)
-        self.hide_cover()
 
-    def bootstrap_main_app(self) -> None:
+    def bootstrap_main_app(self, *, hold_for_onboarding: bool = False) -> None:
         window = self.window
         if window._main_app_bootstrapped:
+            if hold_for_onboarding:
+                self.show_cover()
+                self.sync_cover_geometry()
+                return
             window._startup_stack.setCurrentWidget(window._app_host)
             self.reveal_if_ready()
             return
@@ -162,8 +152,6 @@ class MainWindowStartupRuntime:
 
         startup_mark("main.bootstrap_main_app")
 
-        window._startup_stack.setCurrentWidget(window._app_host)
-        self.sync_cover_geometry()
         window._main_app_bootstrapped = True
         if getattr(window.runtime_flags, "ui_inspector", False):
             app = QApplication.instance()
@@ -171,6 +159,14 @@ class MainWindowStartupRuntime:
                 from devtools.ui_inspector.installer import install_ui_inspector
 
                 install_ui_inspector(app, window, window.theme_manager)
+        if hold_for_onboarding:
+            # Keep cover up; do not switch the stack to app_host yet — that
+            # would flash session_picker before onboarding is inserted.
+            self.show_cover()
+            self.sync_cover_geometry()
+            return
+        window._startup_stack.setCurrentWidget(window._app_host)
+        self.sync_cover_geometry()
         self.reveal_if_ready()
 
     def has_initial_canvas_content(self) -> bool:
@@ -193,8 +189,6 @@ class MainWindowStartupRuntime:
 
     def is_canvas_ready(self) -> bool:
         window = self.window
-        if window.onboarding_overlay is not None:
-            return True
         if window.ui is None:
             return False
         if not self._active_tab_requires_first_frame_gate():
@@ -253,14 +247,74 @@ class MainWindowStartupRuntime:
             return
         if not self.is_canvas_ready():
             return
+        if onboarding_host.is_active(window):
+            # App is warm under onboarding — load deferred work, but do NOT mark
+            # revealed: QStackedLayout only sizes the *current* page, so app_host
+            # must get its first geometry pass when we switch after Start.
+            widget = window.image_compare_widget
+            if widget is not None:
+                widget.image_startup_placeholder.hide()
+            self.emit_visual_ready()
+            return
         if not window._main_app_revealed:
             window._startup_stack.setCurrentWidget(window._app_host)
             window._main_app_revealed = True
+            self._sync_app_host_geometry()
         widget = window.image_compare_widget
         if widget is not None:
             widget.image_startup_placeholder.hide()
         self.hide_cover()
         self.emit_visual_ready()
+
+    def _sync_app_host_geometry(self) -> None:
+        """Size the warm app host to the startup stack (below CSD)."""
+        window = self.window
+        stack = getattr(window, "_startup_stack", None)
+        host = getattr(window, "_app_host", None)
+        if stack is None or host is None:
+            return
+        if stack.width() >= 64 and stack.height() >= 64:
+            host.setGeometry(0, 0, stack.width(), stack.height())
+        host.updateGeometry()
+        layout = host.layout()
+        if layout is not None:
+            layout.activate()
+        host.show()
+        host.raise_()
+        # Resizes during onboarding only re-mask the *current* stack page.
+        # app_host kept a stale tiny mask (~100x30) → white hole + strip corner.
+        apply_mask = getattr(window, "_apply_rounded_mask", None)
+        if callable(apply_mask):
+            apply_mask()
+        host.update()
+        window.update()
+        self._refresh_session_picker_surface()
+
+    def _refresh_session_picker_surface(self) -> None:
+        """Force Session Picker opaque fills after the host becomes visible."""
+        window = self.window
+        ui = getattr(window, "ui", None)
+        registry = getattr(ui, "_tab_registry", None) if ui is not None else None
+        if registry is None:
+            return
+        picker = registry.get_page("session_picker")
+        if picker is None:
+            return
+        recover = getattr(picker, "_sync_opaque_page_fills", None)
+        if callable(recover):
+            recover()
+        show_hook = getattr(picker, "refresh", None)
+        if callable(show_hook):
+            show_hook()
+        recent = getattr(picker, "_recent_panel", None)
+        if recent is not None:
+            on_shown = getattr(recent, "on_page_shown", None)
+            if callable(on_shown):
+                on_shown()
+            recover_recent = getattr(recent, "recover_opaque_surface", None)
+            if callable(recover_recent):
+                recover_recent()
+        picker.update()
 
     def emit_visual_ready(self) -> None:
         window = self.window
@@ -303,6 +357,10 @@ class MainWindowStartupRuntime:
             sync_icons = getattr(picker, "sync_icons", None)
             if callable(sync_icons):
                 sync_icons()
+            menu = getattr(window, "_menu_controller", None)
+            wire = getattr(menu, "_wire_session_picker_recent", None)
+            if callable(wire):
+                wire()
 
         main_controller = window.main_controller
         presenter = window.presenter
@@ -330,15 +388,46 @@ class MainWindowStartupRuntime:
         startup_mark("startup.deferred_complete")
 
     def on_onboarding_completed(self, mode_key: str) -> None:
+        """Reveal the warm app, then apply the chosen UI mode."""
         window = self.window
-        window.store.settings.ui_mode = mode_key
-        if window.onboarding_overlay:
-            try:
-                window._startup_stack.removeWidget(window.onboarding_overlay)
-            except Exception:
-                pass
-            window.onboarding_overlay.hide()
-            window.onboarding_overlay.deleteLater()
-        window.onboarding_overlay = None
-        self.bootstrap_main_app()
+
+        if not window._main_app_bootstrapped:
+            self.bootstrap_main_app()
+        else:
+            # Do NOT re-show the startup cover here. Canvas first-frame signals
+            # already fired while the app was warm under onboarding; waiting on
+            # them again leaves a permanent white StartupCover.
+            window._startup_stack.setCurrentWidget(window._app_host)
+            window._main_app_revealed = True
+            self._sync_app_host_geometry()
+            self.hide_cover()
+            widget = window.image_compare_widget
+            if widget is not None:
+                widget.image_startup_placeholder.hide()
+            self.emit_visual_ready()
+
+        # Apply mode after app_host is current so layout_manager sizes visible chrome.
+        plugin = onboarding_host.resolve_plugin(window)
+        if plugin is not None:
+            plugin.apply_ui_mode(mode_key)
+
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents()
+        self._sync_app_host_geometry()
         window.schedule_update()
+
+        # Second pass after mode rebuild (AdaptiveTabStrip / toolbars).
+        QTimer.singleShot(0, self._post_onboarding_tick)
+        QTimer.singleShot(50, self._post_onboarding_tick)
+
+    def _post_onboarding_tick(self) -> None:
+        self.hide_cover()
+        self._sync_app_host_geometry()
+        window = self.window
+        stack = getattr(window, "_startup_stack", None)
+        host = getattr(window, "_app_host", None)
+        if stack is not None and host is not None and stack.currentWidget() is not host:
+            stack.setCurrentWidget(host)
+        if window is not None:
+            window.schedule_update()

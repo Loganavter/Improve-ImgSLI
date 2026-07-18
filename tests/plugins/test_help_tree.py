@@ -28,6 +28,7 @@ def test_help_tree_loads_and_aliases_resolve():
     tree = get_help_tree()
     assert tree.root_id == "root"
     assert tree.resolve_alias("magnifier") == "workspace.image_compare.magnifier"
+    assert tree.resolve_alias("about") == "about"
     assert tree.resolve_alias("hotkeys") == "platform.hotkeys"
     assert tree.resolve_alias("video") == "workspace.image_compare.video"
     assert tree.resolve_alias("multi_compare") == "workspace.multi_compare.overview"
@@ -36,6 +37,11 @@ def test_help_tree_loads_and_aliases_resolve():
     assert tree.resolve_alias("workspace_tabs") == "platform.workspace"
     # Bare "workspace" is the Workspace hub, not the platform page.
     assert tree.resolve_alias("workspace") == "workspace"
+    assert tree.require("root").children[0] == "about"
+    about = tree.require("about")
+    assert about.kind == "page"
+    assert about.body == "about.md"
+    assert about.title_key == "help.page.about.title"
     assert tree.require("workspace").icon == "photo_icon.svg"
     assert tree.require("workspace").title_key == "help.hub.workspace.title"
     assert "workspace.image_compare" in tree.require("workspace").children
@@ -58,6 +64,8 @@ def test_help_tree_loads_and_aliases_resolve():
     ws = tree.require(tree.resolve_alias("session_picker"))
     assert ws.body == "platform/workspace.md"
     root = host_help_root()
+    for lang in ("en", "ru", "zh", "pt_BR"):
+        assert (root / lang / about.body).is_file()
     for lang in ("en", "ru"):
         assert (root / lang / props.body).is_file()
         assert (root / lang / ws.body).is_file()

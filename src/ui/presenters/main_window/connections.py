@@ -1,4 +1,5 @@
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QApplication
 
 from ui.presenters.main_window.actions import (
     on_color_option_clicked,
@@ -181,10 +182,39 @@ def repopulate_flyouts(presenter):
         presenter.ui_manager.transient.repopulate_flyouts()
 
 
+def _press_is_on_title_bar_menu(global_pos) -> bool:
+    """True when the press targets a CSD File/Help menu trigger.
+
+    Title-bar menus open on ``clicked`` (mouse *release*). The deferred
+    outside-click closer scheduled from this press would otherwise run on the
+    next event-loop tick and hide the menu that just opened — first click
+    looks like a no-op (common with Image/Multi Compare flyout stacks).
+    """
+    try:
+        point = global_pos.toPoint()
+    except AttributeError:
+        point = global_pos
+    widget = QApplication.widgetAt(point)
+    while widget is not None:
+        name = widget.objectName()
+        if name in {"TitleBarMenuTrigger", "TitleBarMenuStrip"}:
+            return True
+        parent = widget.parentWidget()
+        if parent is not None and parent.objectName() in {
+            "TitleBarMenuTrigger",
+            "TitleBarMenuStrip",
+        }:
+            return True
+        widget = parent
+    return False
+
+
 def handle_global_mouse_press(presenter, event):
     if event.button() == Qt.MouseButton.RightButton:
         return
     global_pos = event.globalPosition()
+    if _press_is_on_title_bar_menu(global_pos):
+        return
 
     # Coalesce bursts (duplicate filters / synthetic presses) into one close.
     if getattr(presenter, "_popup_close_scheduled", False):

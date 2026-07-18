@@ -393,14 +393,29 @@ def install_dialog_geometry_lifecycle(
     Prefer :class:`shared_toolkit.ui.themed_dialog.ThemedDialog` for app
     dialogs — it already defers geometry from :meth:`on_theme_changed`. Pass
     ``theme_manager`` here only for dialogs that do not inherit ThemedDialog
-    (e.g. toolkit ``MarkdownHelpDialog`` subclasses).
+    (e.g. toolkit ``MarkdownHelpDialog`` subclasses). When passed, the
+    connection is dropped on ``dialog.destroyed`` so deleteLater'd windows
+    cannot schedule geometry on a dead C++ object during later theme flips.
     """
     dialog._apply_dialog_geometry = apply_geometry
     defer_dialog_geometry(dialog, apply_geometry)
-    if theme_manager is not None:
-        theme_manager.theme_changed.connect(
-            lambda *_args: defer_dialog_geometry(dialog, apply_geometry)
-        )
+    if theme_manager is None:
+        return
+
+    def _on_theme_changed(*_args) -> None:
+        defer_dialog_geometry(dialog, apply_geometry)
+
+    theme_manager.theme_changed.connect(_on_theme_changed)
+
+    def _disconnect(*_args) -> None:
+        try:
+            theme_manager.theme_changed.disconnect(_on_theme_changed)
+        except (RuntimeError, TypeError):
+            pass
+
+    destroyed = getattr(dialog, "destroyed", None)
+    if destroyed is not None:
+        destroyed.connect(_disconnect)
 
 
 def handle_application_font_change(dialog: Any, event: QEvent) -> bool:
@@ -416,4 +431,14 @@ def defer_dialog_geometry(
     dialog: Any,
     callback: Callable[[], None],
 ) -> None:
-    QTimer.singleShot(0, callback)
+    def _run() -> None:
+        try:
+            from shiboken6 import isValid
+
+            if not isValid(dialog):
+                return
+        except ImportError:
+            pass
+        callback()
+
+    QTimer.singleShot(0, _run)

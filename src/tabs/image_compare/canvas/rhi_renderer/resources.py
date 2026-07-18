@@ -358,11 +358,24 @@ class RhiResources:
             pil_source = _pil_image_for_texture_key(widget, key)
             is_tiled_store = isinstance(pil_source, TiledPixelStore)
             grid = tile_service.grid_for(key)
-            if grid is None:
-                if is_tiled_store and pil_source is not None:
-                    grid = tile_service.register_source(key, pil_source.size)
-                else:
-                    continue
+            # Lazy TiledPixelStore sources skip upload_source(), so the only
+            # place their grid is created is here. If a stale 1×1 grid from a
+            # previous smaller image remains, zoom>1 (use_hires) crops only
+            # that top-left window and stretches it as the full image —
+            # looks like ~1000% zoom into one tile. Always re-register when
+            # the live source size disagrees with the cached grid.
+            if is_tiled_store and pil_source is not None:
+                src_w, src_h = pil_source.size
+                if (
+                    grid is None
+                    or int(grid.total_width) != int(src_w)
+                    or int(grid.total_height) != int(src_h)
+                ):
+                    if grid is not None:
+                        self._evict_stale_tiles(key, set())
+                    grid = tile_service.register_source(key, (src_w, src_h))
+            elif grid is None:
+                continue
             if grid.rows == 1 and grid.columns == 1:
                 if is_tiled_store and pil_source is not None:
                     index = (0, 0)

@@ -30,7 +30,7 @@ def viewport_zoom_offset_for_tile(
     base_zoom: tuple[float, float] = (1.0, 1.0),
     base_offset: tuple[float, float] = (0.0, 0.0),
 ) -> tuple[tuple[float, float], tuple[float, float]]:
-    """Zoom/offset for rendering one export tile (see image_compare export path)."""
+    """Zoom/offset for rendering one export tile (see tab export tiling path)."""
     left, top, right, bottom = tile_rect
     canvas_width = max(1, canvas_width)
     canvas_height = max(1, canvas_height)

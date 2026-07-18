@@ -15,3 +15,4 @@ class ExportSaveContext:
     suggested_filename: str
     native_width: int = 0
     native_height: int = 0
+    virtual_canvas_active: bool = False

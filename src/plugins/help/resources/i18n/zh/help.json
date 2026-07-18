@@ -42,6 +42,10 @@
         "title": "入门",
         "desc": "快速导览"
       },
+      "about": {
+        "title": "关于",
+        "desc": "Improve ImgSLI 是什么"
+      },
       "settings": {
         "title": "设置",
         "desc": "外观与性能"

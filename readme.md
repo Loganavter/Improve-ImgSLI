@@ -31,13 +31,8 @@
 ## 📸 Preview
 
 <div align="center">
-   <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.9.0/Improve_ImgSLI/screenshots/screenshot_1.jpg" width="75%">
+   <img src="https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_1.jpg" width="75%">
 </div>
-
-<details>
-  <summary>Full resolution save</summary>
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/1.4/Improve_ImgSLI/fullres/github_fullres.png" alt="Full resolution example" width="33%">
-</details>
 
 ---
 

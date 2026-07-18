@@ -12,10 +12,34 @@
     "image_compare": "使用分隔线、放大镜和分析工具进行并排图像比较。",
     "multi_compare": "用于同时比较多个来源的网格布局。"
   },
-  "drop_zone": "将图像文件拖到此处以开始比较",
   "recent": {
-    "title": "继续",
-    "badge": "开发中",
-    "placeholder": "此功能完成后，最近的工作区会显示在这里。"
+    "title": "最近",
+    "empty_title": "加载第一个项目",
+    "empty_hint": "将 .imgsli 文件拖到此处以固定",
+    "empty": "打开或保存 .imgsli 文件后，项目会显示在这里。将项目文件拖到此处可固定到列表。",
+    "sort_modified": "修改日期",
+    "sort_created": "创建日期",
+    "sort_name": "名称",
+    "sort_asc": "升序",
+    "sort_desc": "降序",
+    "view_grid": "网格",
+    "view_list": "列表",
+    "missing": "文件缺失",
+    "action_open": "打开",
+    "action_properties": "属性",
+    "action_remove": "从列表中移除",
+    "action_reveal": "在文件夹中显示",
+    "prop_status": "状态",
+    "prop_file_modified": "修改日期",
+    "prop_file_created": "创建日期",
+    "prop_pinned": "添加到最近",
+    "prop_opened": "上次打开",
+    "prop_sessions": "会话",
+    "relative": {
+      "just_now": "刚刚",
+      "minutes": "{n} 分钟前",
+      "hours": "{n} 小时前",
+      "days": "{n} 天前"
+    }
   }
 }

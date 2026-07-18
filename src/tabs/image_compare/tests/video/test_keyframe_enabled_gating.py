@@ -81,12 +81,20 @@ def test_magnifier_per_instance_keyframes_apply_when_globally_enabled():
     snapshot = _snapshot(store)
     adapter = DynamicMagnifierAdapter()
     tool = adapter.describe_tools(snapshot)[0]
+    track_ids = {track.id for track in tool.tracks}
+    assert "magnifier.default.position" in track_ids
+    assert "magnifier.default.offset" in track_ids
 
     adapter.apply_tool_values(
         snapshot,
         tool,
-        {"magnifier.default.size": {"value": 0.8}},
+        {
+            "magnifier.default.size": {"value": 0.8},
+            "magnifier.default.offset": {"x": 0.12, "y": -0.05},
+        },
     )
 
     model = store.viewport.view_state.canvas_widget_state["magnifier"].models["default"]
     assert model.size_relative == 0.8
+    assert abs(model.offset_relative.x - 0.12) < 1e-6
+    assert abs(model.offset_relative.y + 0.05) < 1e-6

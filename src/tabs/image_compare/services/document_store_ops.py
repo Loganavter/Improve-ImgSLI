@@ -27,28 +27,29 @@ def clear_image_slot_data(store, image_number: int) -> None:
         return
 
     document = store.get_session_state_slot("document")
+    cache = store.viewport.session_data.render_cache
+    image_state = store.viewport.session_data.image_state
     if image_number == 1:
         document.original_image1 = None
         document.full_res_image1 = None
         document.preview_image1 = None
         document.image1_path = None
         document.clear_last_display_name(1)
-        store.viewport.session_data.image_state.image1 = None
-        store.viewport.session_data.render_cache.display_cache_image1 = None
+        image_state.image1 = None
+        cache.display_cache_image1 = None
+        cache.scaled_image1_for_display = None
     else:
         document.original_image2 = None
         document.full_res_image2 = None
         document.preview_image2 = None
         document.image2_path = None
         document.clear_last_display_name(2)
-        store.viewport.session_data.image_state.image2 = None
-        store.viewport.session_data.render_cache.display_cache_image2 = None
+        image_state.image2 = None
+        cache.display_cache_image2 = None
+        cache.scaled_image2_for_display = None
 
-    session = store.viewport.session_data
-    session.render_cache.scaled_image1_for_display = None
-    session.render_cache.scaled_image2_for_display = None
-    session.render_cache.cached_scaled_image_dims = None
-    session.render_cache.last_display_cache_params = None
+    cache.cached_scaled_image_dims = None
+    cache.last_display_cache_params = None
     store.invalidate_render_cache()
 
 

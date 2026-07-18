@@ -1,6 +1,6 @@
 import logging
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QIcon
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 
@@ -28,6 +28,10 @@ from utils.resource_loader import resource_path
 logger = logging.getLogger("ImproveImgSLI")
 
 class SettingsDialog(ThemedDialog):
+    """Settings chrome. OK applies and keeps the window open; Cancel closes."""
+
+    settings_confirmed = Signal()
+
     def __init__(
         self,
         current_language,
@@ -123,6 +127,11 @@ class SettingsDialog(ThemedDialog):
         self.mark_theme_ui_ready()
         self.sidebar.setCurrentRow(0)
         calculate_and_apply_geometry(self)
+
+        from resources.translations import translation_events
+
+        # Stay open after Apply — retranslate chrome when language is confirmed.
+        translation_events().language_changed.connect(self.update_language)
 
     def select_section(self, section_id: str) -> None:
         """Select a sidebar page by ``SettingsSection.section_id``."""
@@ -333,15 +342,48 @@ class SettingsDialog(ThemedDialog):
         from plugins.settings.translations import apply_translations
 
         apply_translations(self, lang_code)
+        try:
+            from plugins.settings.pages import keyboard as keyboard_page
+
+            keyboard_page.refresh_language(self)
+        except Exception:
+            logger.exception("Settings keyboard page retranslation failed")
         self._setup_sidebar_items()
         curr = self.sidebar.currentRow()
         self.sidebar.setCurrentRow(-1)
         self.sidebar.setCurrentRow(curr)
         defer_geometry(self)
 
-    def accept(self):
+    def confirm_settings(self):
+        """Apply current values without closing the dialog."""
         self._reset_button_states()
-        super().accept()
+        self.settings_confirmed.emit()
+
+    def sync_from_store(self) -> None:
+        """Re-read live store values into general toggles before showing."""
+        store = getattr(self.context, "store", None)
+        settings = getattr(store, "settings", None) if store is not None else None
+        if settings is None:
+            return
+        notifications = bool(
+            getattr(settings, "system_notifications_enabled", True)
+        )
+        debug_enabled = bool(getattr(settings, "debug_mode_enabled", False))
+        show_tabs = bool(getattr(settings, "show_workspace_tabs", True))
+        self.context.system_notifications_enabled = notifications
+        self.context.debug_mode_enabled = debug_enabled
+        checkbox = getattr(self, "system_notifications_checkbox", None)
+        if checkbox is not None:
+            checkbox.setChecked(notifications)
+        debug_cb = getattr(self, "debug_checkbox", None)
+        if debug_cb is not None:
+            debug_cb.setChecked(debug_enabled)
+        tabs_cb = getattr(self, "show_workspace_tabs_checkbox", None)
+        if tabs_cb is not None:
+            tabs_cb.setChecked(show_tabs)
+
+    def accept(self):
+        self.confirm_settings()
 
     def reject(self):
         self._reset_button_states()

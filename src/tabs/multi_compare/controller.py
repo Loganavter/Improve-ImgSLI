@@ -203,8 +203,8 @@ class MultiCompareController:
                 getattr(settings, "export_png_optimize", True)
             ) if settings is not None else True,
             "fill_background": bool(
-                getattr(settings, "export_fill_background", True)
-            ) if settings is not None else True,
+                getattr(settings, "export_fill_background", False)
+            ) if settings is not None else False,
             "background_color": (bg.red(), bg.green(), bg.blue(), bg.alpha()),
             "comment_text": (
                 getattr(settings, "export_comment_text", "") or ""
@@ -340,7 +340,7 @@ class MultiCompareController:
                 getattr(
                     getattr(self.store, "settings", None),
                     "export_fill_background",
-                    True,
+                    False,
                 )
             ),
         )
@@ -408,7 +408,7 @@ class MultiCompareController:
             png_compress_level=int(
                 getattr(settings, "export_png_compress_level", 9) or 9
             ),
-            fill_background=bool(getattr(settings, "export_fill_background", True)),
+            fill_background=bool(getattr(settings, "export_fill_background", False)),
             background_color=qcolor_to_color(
                 self._background_color_from_settings(settings)
             ),
@@ -419,6 +419,7 @@ class MultiCompareController:
             resolution_scale=float(
                 getattr(settings, "export_resolution_scale", 1.0) or 1.0
             ),
+            virtual_canvas_active=True,
         )
 
     def _live_view_size(self) -> tuple[int, int]:
@@ -513,7 +514,8 @@ class MultiCompareController:
             settings.export_png_compress_level = int(options["png_compress_level"])
         if "png_optimize" in options:
             settings.export_png_optimize = bool(options["png_optimize"])
-        settings.export_fill_background = bool(options["fill_background"])
+        if bool(options.get("fill_background_editable", True)):
+            settings.export_fill_background = bool(options["fill_background"])
         if "resolution_scale" in options:
             settings.export_resolution_scale = float(options["resolution_scale"])
         if "comment_text" in options:
@@ -553,7 +555,7 @@ class MultiCompareController:
         h: int | None = None,
         *,
         background_color: QColor | None = None,
-        fill_background: bool = True,
+        fill_background: bool = False,
     ) -> QImage:
         """Render the multi-compare scene at ``w × h``.
 

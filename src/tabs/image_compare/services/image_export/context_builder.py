@@ -114,6 +114,7 @@ class ExportContextBuilder:
             suggested_filename=self.state.build_suggested_export_filename(),
             native_width=native_w,
             native_height=native_h,
+            virtual_canvas_active=bool(global_bounds.extends_beyond_unit()),
         )
 
     def _downscale_for_preview(

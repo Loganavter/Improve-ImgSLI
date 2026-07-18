@@ -144,25 +144,22 @@ class RenderCacheReducer:
                     cache_state = feature.reduce_cache_state(cache_state, action)
             return cache_state
         if isinstance(action, ClearImageSlotDataAction):
-            kwargs = (
-                {
+            # Only invalidate this slot's display/scaled caches. Pair-level
+            # layout params go stale, but wiping the other side's scaled
+            # image forces a blank flash of the live half (e.g. Duplicate
+            # onto an empty side via load_images_from_paths).
+            if action.slot == 1:
+                kwargs = {
                     "display_cache_image1": None,
                     "scaled_image1_for_display": None,
                 }
-                if action.slot == 1
-                else {
+            else:
+                kwargs = {
                     "display_cache_image2": None,
                     "scaled_image2_for_display": None,
                 }
-            )
-            kwargs.update(
-                {
-                    "scaled_image1_for_display": None,
-                    "scaled_image2_for_display": None,
-                    "cached_scaled_image_dims": None,
-                    "last_display_cache_params": None,
-                }
-            )
+            kwargs["cached_scaled_image_dims"] = None
+            kwargs["last_display_cache_params"] = None
             return replace(cache_state, **kwargs)
         return cache_state
 

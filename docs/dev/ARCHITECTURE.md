@@ -179,6 +179,7 @@ flowchart LR
 |---|---|
 | `plugins/settings/` | settings dialog + `SettingsManager` (disk persistence) |
 | `plugins/layout/` | UI-mode bridge; resolves tab `layout_manager` via registry |
+| `plugins/onboarding/` | first-run UI-mode picker (startup stack); uses settings `is_first_run` |
 | `plugins/export/` | export pipeline integration (image/video) + recording commands |
 | `plugins/help/` | in-app help dialog |
 | `plugins/image_properties/` | image metadata display |

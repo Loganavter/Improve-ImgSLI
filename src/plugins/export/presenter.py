@@ -195,6 +195,7 @@ class ExportPresenter(QObject):
                 save_ctx.preview_img,
                 save_ctx.suggested_filename,
                 native_size=(save_ctx.native_width, save_ctx.native_height),
+                virtual_canvas_active=bool(save_ctx.virtual_canvas_active),
             )
             if int(result_code) != int(QDialog.DialogCode.Accepted):
                 return
@@ -230,9 +231,18 @@ class ExportPresenter(QObject):
                 text=f"{self._tr('msg.failed_to_save_image')}: {str(e)}",
             )
 
-    def _open_export_dialog(self, preview_img, suggested_filename: str, native_size=None):
+    def _open_export_dialog(
+        self,
+        preview_img,
+        suggested_filename: str,
+        native_size=None,
+        *,
+        virtual_canvas_active: bool = True,
+    ):
+        dialog_state = self.state.build_export_dialog_state()
+        dialog_state.virtual_canvas_active = bool(virtual_canvas_active)
         return self.ui_manager.dialogs.show_export_dialog(
-            dialog_state=self.state.build_export_dialog_state(),
+            dialog_state=dialog_state,
             preview_image=preview_img,
             suggested_filename=suggested_filename,
             on_set_favorite_dir=self._set_export_favorite_dir,
@@ -261,6 +271,8 @@ class ExportPresenter(QObject):
         try:
             save_ctx = self.context_builder.build_save_context(include_preview=False)
             export_opts = self.state.build_quick_export_options()
+            if not save_ctx.virtual_canvas_active:
+                export_opts["fill_background"] = False
             from shared.untested_export_resolution import (
                 confirm_untested_export_resolution,
             )

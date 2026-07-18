@@ -20,7 +20,6 @@ from .interaction import (
     handle_mouse_press_event,
     handle_mouse_release_event,
     handle_wheel_event,
-    paste_overlay_button_at,
 )
 from .interaction import reset_view as reset_view_impl
 from .interaction import set_capture_area as set_capture_area_impl
@@ -29,13 +28,8 @@ from .interaction import set_drag_overlay_state as set_drag_overlay_state_impl
 from .interaction import set_guides_params as set_guides_params_impl
 from .interaction import set_overlay_coords as set_overlay_coords_impl
 from .interaction import set_pan as set_pan_impl
-from .interaction import (
-    set_paste_overlay_hover,
-)
-from .interaction import set_paste_overlay_state as set_paste_overlay_state_impl
 from .interaction import set_zoom as set_zoom_impl
 from .interaction import (
-    update_paste_overlay_rects,
     update_split_for_zoom,
 )
 from .render_context import (
@@ -78,8 +72,6 @@ class CanvasWidget(QRhiWidget):
     zoomChanged = Signal(float)
     keyPressed = Signal(object)
     keyReleased = Signal(object)
-    pasteOverlayDirectionSelected = Signal(str)
-    pasteOverlayCancelled = Signal()
     firstFrameRendered = Signal()
     firstVisualFrameReady = Signal()
 
@@ -171,31 +163,11 @@ class CanvasWidget(QRhiWidget):
         size = event.size()
         resize_canvas(self, size.width(), size.height())
 
-    def _update_paste_overlay_rects(self):
-        update_paste_overlay_rects(self)
-
-    def set_paste_overlay_state(
-        self,
-        visible: bool,
-        is_horizontal: bool = False,
-        texts: dict | None = None,
-    ):
-        set_paste_overlay_state_impl(self, visible, is_horizontal, texts)
-
-    def is_paste_overlay_visible(self) -> bool:
-        return bool(self.runtime_state._paste_overlay_visible)
-
     def set_session_controller(self, session_controller) -> None:
         if self._context_menu_provider is not None:
             self._context_menu_provider.attach_session_controller(session_controller)
         else:
             self._pending_session_controller = session_controller
-
-    def _paste_overlay_button_at(self, pos: QPointF | QPoint) -> str | None:
-        return paste_overlay_button_at(self, pos)
-
-    def _set_paste_overlay_hover(self, hovered: str | None):
-        set_paste_overlay_hover(self, hovered)
 
     def initialize(self, command_buffer):
         log_initialized_rhi_widget(self)
@@ -458,12 +430,28 @@ class CanvasWidget(QRhiWidget):
         handle_mouse_press_event(self, event)
 
     def contextMenuEvent(self, event: QContextMenuEvent):
-        slot = self._context_menu_slot_at(event.pos())
-        if slot is None:
-            event.ignore()
-            return
+        from ui.canvas_infra.scene.context_menu_zones import (
+            ContextMenuHitContext,
+            is_context_menu_suppressed,
+        )
+
         session_type = self._active_session_type()
         if session_type is None:
+            event.ignore()
+            return
+        store = getattr(self.runtime_state, "_store", None)
+        if store is not None and is_context_menu_suppressed(
+            ContextMenuHitContext(
+                store=store,
+                canvas=self,
+                local_pos=event.pos(),
+                session_type=session_type,
+            )
+        ):
+            event.accept()
+            return
+        slot = self._context_menu_slot_at(event.pos())
+        if slot is None:
             event.ignore()
             return
         menu = open_context_menu(

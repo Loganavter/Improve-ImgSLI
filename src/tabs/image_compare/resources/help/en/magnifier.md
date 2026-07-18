@@ -8,9 +8,9 @@ The magnifier samples a region of the compared images and shows an enlarged view
 - **Place** — click or drag on the image to set the capture area (red circle).
 - **Ring** — capture-ring size and color follow the lens styling.
 
-:::figure{side=right width=280}
-![Magnifier lens](magnifier/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}} (placeholder).
+:::figure{side=block width=280}
+![Magnifier lens]({{img:workspace.image_compare.magnifier.enabling}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}.
 :::
 
 ### Size and movement {#size-and-movement}
@@ -42,12 +42,12 @@ The magnifier samples a region of the compared images and shows an enlarged view
 - **Internal split** — drag with `RMB` inside the lens.
 - **Side preview** — `Space+Shift` can force a side preview while the lens is active.
 
-For a full-canvas compare without the lens, see [Comparison](help://comparison).
-
-:::figure{side=right width=280}
-![Combined magnifier](magnifier/placeholder.png)
-{{tr:image_compare.action.magnifier}} combined mode (placeholder).
+:::figure{side=block width=280}
+![Combined magnifier]({{img:workspace.image_compare.magnifier.combined_mode}})
+{{tr:image_compare.action.magnifier}} combined mode.
 :::
+
+For a full-canvas compare without the lens, see [Comparison](help://comparison).
 
 ### Settings that affect the magnifier {#related-settings}
 

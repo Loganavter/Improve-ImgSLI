@@ -31,10 +31,21 @@ swaps the active list on `WorkspaceSessionActivatedEvent`.
 
 ## Project I/O
 
-`services/io/project_io.py` calls `serialize_session` / `deserialize_session` /
-`rehydrate_session` via `TabRegistry`. Use `load_project_data(...,
-replace_workspace=True)` for a clean programmatic open. Tabs that return
-`None` from `serialize_session` (e.g. `session_picker`) are omitted from saves.
+`services/io/project_io.py` writes portable **ZIP** `.imgsli` packages
+(version 2): `project.json` plus byte-copied originals under
+`media/<asset_id>/`. Paths inside session blobs are rewritten to package
+members on save and to a per-project extract cache on load. Legacy plain-JSON
+v1 files remain loadable (path references only).
+
+`serialize_session` / `deserialize_session` / `rehydrate_session` go through
+`TabRegistry`. Use `load_project_file(..., replace_workspace=True)` (the Open
+Project default) for a clean workspace replace. Tabs that return `None` from
+`serialize_session` (e.g. `session_picker`) are omitted from saves.
+
+Image Compare session blobs include viewport/view settings, canvas feature
+property settings, magnifier instances, and camera (zoom/pan). Multi Compare
+keeps layout/zoom/pan/labels/dividers. Pixel buffers are never embedded —
+only file copies.
 
 Duplicate: `WorkspaceSessionActions.duplicate_workspace_session` →
 `duplicate_session` snapshot → new session → `deserialize_session` →
@@ -45,6 +56,7 @@ rehydrate), use `store.using_workspace_session(session_id)` — a public
 context manager on `WorkspaceStoreMixin` that temporarily swaps the active
 session and restores the previous one on exit.
 
-Multi Compare: the first `multi_compare` session in a workspace may seed
-divider/label defaults from QSettings (`_settings_from_qsettings`); every
-subsequent MC session in that workspace gets blueprint fresh defaults.
+Multi Compare: every new `multi_compare` session seeds divider/label chrome
+from QSettings last-used prefs (`_settings_from_qsettings`), falling back to
+another live MC session's slot when QSettings is empty. Live slots stay
+isolated after seed — editing one tab does not mutate another's slot.

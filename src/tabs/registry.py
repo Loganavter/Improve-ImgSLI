@@ -276,6 +276,30 @@ class TabRegistry:
             )
             raise
 
+    def create_service_for(
+        self, session_type: str, service_id: str, *args: Any, **kwargs: Any
+    ) -> Any:
+        """Create a service owned by a specific tab (not necessarily active).
+
+        For host chrome that addresses a known hub tab by ``session_type``
+        (typically ``core.store.INITIAL_WORKSPACE_SESSION_TYPE``). Prefer
+        ``create_service`` when the capability belongs to the *active*
+        session. Returns ``None`` if that tab is missing or does not
+        implement ``service_id``. See docs/dev/tabs/capability-mechanisms.md.
+        """
+        tab = self._tabs.get(session_type)
+        if tab is None:
+            return None
+        try:
+            return tab.create_service(service_id, *args, **kwargs)
+        except Exception:
+            logger.exception(
+                "Tab service-for hook failed for %s on %s",
+                service_id,
+                tab.session_type,
+            )
+            raise
+
     def create_startup_service(self, service_id: str, *args: Any, **kwargs: Any) -> Any:
         """Create a service owned by the bootstrap-default tab, not the active one.
 

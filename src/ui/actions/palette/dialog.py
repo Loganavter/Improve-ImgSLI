@@ -126,16 +126,14 @@ class FindActionDialog(ThemedDialog):
         self._app_filter_installed = False
         self._reload()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._search.clearFocus()
+        # Keep search focused so the first typed character uses the active
+        # keyboard layout / input method (not a Latin Key_A→'a' fallback).
+        self._search.setFocus(Qt.FocusReason.OtherFocusReason)
         self._maybe_auto_pulse()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        # Qt may still assign focus to the first input after the window maps.
-        self.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._search.clearFocus()
-        QTimer.singleShot(0, self._clear_search_focus)
+        self._search.setFocus(Qt.FocusReason.OtherFocusReason)
         self._install_app_event_filter()
 
     def hideEvent(self, event) -> None:
@@ -163,53 +161,67 @@ class FindActionDialog(ThemedDialog):
             app.removeEventFilter(self)
         self._app_filter_installed = False
 
-    def _clear_search_focus(self) -> None:
-        if self.focusWidget() is self._search:
-            self.setFocus(Qt.FocusReason.OtherFocusReason)
-            self._search.clearFocus()
-
-    def _typeahead_text(self, event) -> str:
-        """Printable character for search jump-in (empty if not typeahead)."""
+    def _is_typeahead_event(self, event) -> bool:
+        """True when a printable key should jump focus into the search field."""
         mods = event.modifiers()
         if mods & (
             Qt.KeyboardModifier.ControlModifier
             | Qt.KeyboardModifier.AltModifier
             | Qt.KeyboardModifier.MetaModifier
         ):
-            return ""
+            return False
         text = event.text()
         if text and text.isprintable():
-            return text
-        # Synthetic key events (tests / some platforms) may omit ``text``.
+            return True
+        # text() can be empty when focus is not on an input widget; still treat
+        # letter/digit keys as typeahead so we can focus+forward the event.
         key = event.key()
-        if Qt.Key.Key_A <= key <= Qt.Key.Key_Z:
-            ch = chr(ord("a") + (key - int(Qt.Key.Key_A)))
-            if mods & Qt.KeyboardModifier.ShiftModifier:
-                return ch.upper()
-            return ch
-        if Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
-            return chr(ord("0") + (key - int(Qt.Key.Key_0)))
-        return ""
+        return (
+            Qt.Key.Key_A <= key <= Qt.Key.Key_Z
+            or Qt.Key.Key_0 <= key <= Qt.Key.Key_9
+        )
 
     def _redirect_typeahead_to_search(self, event) -> bool:
         if self.focusWidget() is self._search:
             return False
-        text = self._typeahead_text(event)
-        if not text:
+        if not self._is_typeahead_event(event):
             return False
         self._search.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._search.insert(text)
+        text = event.text()
+        if text and text.isprintable():
+            # Layout-aware Unicode from the platform (Cyrillic, etc.).
+            self._search.insert(text)
+            return True
+        # Never synthesize Latin from key() — that forces English on the first
+        # character when text() is empty (common before the line edit is focused).
+        from PySide6.QtGui import QKeyEvent
+
+        clone = QKeyEvent(
+            QEvent.Type.KeyPress,
+            event.key(),
+            event.modifiers(),
+            event.nativeScanCode(),
+            event.nativeVirtualKey(),
+            event.nativeModifiers(),
+            event.text(),
+            event.isAutoRepeat(),
+            event.count(),
+        )
+        QApplication.sendEvent(self._search, clone)
         return True
 
     def _apply_independent_window_flags(self) -> None:
         """Force a normal top-level window, not a dialog/popup transient."""
         flags = self.windowFlags()
+        # Qt::ToolTip (0x00001000) — numeric literal avoids WindowType.ToolTip in
+        # source; flag is cleared so the palette is not a tooltip-class window.
+        _tooltip_window_flag = 0x00001000
         flags &= ~(
             Qt.WindowType.Dialog
             | Qt.WindowType.Sheet
             | Qt.WindowType.Drawer
             | Qt.WindowType.Tool
-            | Qt.WindowType.ToolTip
+            | _tooltip_window_flag
             | Qt.WindowType.Popup
             | Qt.WindowType.WindowStaysOnTopHint
         )

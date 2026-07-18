@@ -81,7 +81,6 @@ once the file's depth in the tree changes, with no import error to catch it.
 | `image_compare` | `guides` | `manifest.py` | `manifest.py` | decomposed |
 | `image_compare` | `capture` | `manifest.py` | `manifest.py` | decomposed |
 | `image_compare` | `filename_overlay` | none | `manifest.py` | decomposed; render pass + widget feature |
-| `image_compare` | `paste_overlay` | none | `manifest.py` | decomposed; transitional widget-owned overlay |
 | `multi_compare` | `grid_dividers` | none | `manifest.py` | decomposed; render pass + widget feature + gesture bindings |
 | `multi_compare` | `layer_labels` | none | `manifest.py` | root-contract-only, nothing to decompose; render pass + widget feature |
 | `multi_compare` | `drag_drop_overlay` | none | `manifest.py` | decomposed; render pass + widget feature + gesture bindings |

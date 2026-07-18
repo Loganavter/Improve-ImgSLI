@@ -138,7 +138,7 @@ def _load_last_settings():
 
 
 def _settings_from_qsettings():
-    """Last-used divider/label from QSettings — for the first MC session only."""
+    """Last-used divider/label from QSettings — seed for every new MC session."""
     loaded = _load_last_settings()
     if loaded is None:
         return None
@@ -146,6 +146,28 @@ def _settings_from_qsettings():
 
     divider, label = loaded
     return MultiCompareState(divider_settings=divider, label_settings=label)
+
+
+def _settings_from_sibling_session(store, *, exclude: str):
+    """Copy divider/label chrome from another live MC session (QSettings fallback)."""
+    from dataclasses import replace
+
+    from tabs.multi_compare.models import MultiCompareState
+
+    for session in store.list_workspace_sessions():
+        if getattr(session, "session_type", None) != "multi_compare":
+            continue
+        if session.id == exclude:
+            continue
+        slot = session.state_slots.get(_STATE_SLOT)
+        if slot is None:
+            continue
+        return replace(
+            MultiCompareState(),
+            divider_settings=slot.divider_settings,
+            label_settings=slot.label_settings,
+        )
+    return None
 
 
 def _fresh_default_state():
@@ -406,23 +428,26 @@ class MultiCompareTab(TabContract):
         )
         count = _multi_compare_session_count(store)
         seeded = False
-        if count == 1:
-            remembered = _settings_from_qsettings()
-            if remembered is not None:
-                from dataclasses import replace
+        # Every new MC tab inherits last-used divider/label chrome (QSettings).
+        # Session slots stay isolated — only the seed is shared, not live state.
+        remembered = _settings_from_qsettings()
+        if remembered is None and count > 1:
+            remembered = _settings_from_sibling_session(store, exclude=session_id)
+        if remembered is not None:
+            from dataclasses import replace
 
-                state = replace(
-                    state,
-                    divider_settings=remembered.divider_settings,
-                    label_settings=remembered.label_settings,
-                )
-                store.set_session_state_slot(
-                    _STATE_SLOT,
-                    state,
-                    session_id=session_id,
-                    emit_scope=None,
-                )
-                seeded = True
+            state = replace(
+                state,
+                divider_settings=remembered.divider_settings,
+                label_settings=remembered.label_settings,
+            )
+            store.set_session_state_slot(
+                _STATE_SLOT,
+                state,
+                session_id=session_id,
+                emit_scope=None,
+            )
+            seeded = True
         logger.debug(
             "[mc-divider-persist] on_session_created id=%s count=%s seeded=%s color=%s",
             session_id,
@@ -621,15 +646,29 @@ class MultiCompareTab(TabContract):
             from tabs.multi_compare.services.clipboard import ClipboardService
 
             return ClipboardService(*args, controller=self._controller, **kwargs)
+        if service_id == "begin_pending_image_insert":
+            paths = args[0] if args else kwargs.get("paths")
+            if paths is None or self._widget is None:
+                return False
+            image_paths = [
+                p for p in (Path(x) for x in paths) if p.suffix.lower() in _IMAGE_EXTENSIONS
+            ]
+            if not image_paths:
+                return False
+            self._widget.begin_pending_paste(image_paths)
+            return True
         return None
 
     def accepts_drop(self, paths: list[Path]) -> bool:
         return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
 
     def handle_drop(self, paths: list[Path], hint: dict | None = None) -> None:
-        if self._controller:
-            image_paths = [p for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
-            self._controller.load_images(image_paths)
+        if self._widget is None:
+            return
+        image_paths = [p for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
+        if image_paths:
+            # Same placement UX as external DnD / clipboard paste.
+            self._widget.begin_pending_paste(image_paths)
 
     def dispose(self) -> None:
         self._controller = None

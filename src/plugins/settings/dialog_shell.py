@@ -34,7 +34,7 @@ def setup_dialog_shell(dialog):
     )
     dialog.ok_button = dialog.action_bar.primary_button
     dialog.cancel_button = dialog.action_bar.secondary_button
-    dialog.ok_button.clicked.connect(dialog.accept)
+    dialog.ok_button.clicked.connect(dialog.confirm_settings)
     dialog.cancel_button.clicked.connect(dialog.reject)
     dialog.content_layout.addWidget(dialog.action_bar)
 
@@ -56,8 +56,6 @@ def setup_sidebar_items(dialog):
             ),
         ]
     dialog.sidebar.set_items(dialog._sidebar_items_data)
-    for row in getattr(dialog.sidebar, "_rows", ()):
-        row.button.setToolTip("")
 
 def create_scrollable_page():
     page = ScrollableDialogPage()

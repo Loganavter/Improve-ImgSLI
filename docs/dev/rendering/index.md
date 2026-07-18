@@ -8,10 +8,10 @@ that keep them consistent across the live editor, preview, and export paths.
 - **[overview.md](overview.md)** — Quick Start, layer split (`canvas_infra` / features / presentation / renderer), examples, doc status
 - **[package-structure.md](package-structure.md)** — feature package layout, auto-discovery, splitting a feature into subpackages, current feature status
 - **[feature-decomposition-playbook.md](feature-decomposition-playbook.md)** — step-by-step procedure for splitting an overgrown feature into the subpackage taxonomy (the `magnifier/` refactor, generalized)
-- **[render-pass-contract.md](render-pass-contract.md)** — `CanvasRenderPass` lifecycle, stack roles, scene visibility, alpha/blending rules
+- **[render-pass-contract.md](render-pass-contract.md)** — `CanvasRenderPass` interface + host call sequence, stack roles, scene visibility, alpha/blending rules
 - **[rendering-model.md](rendering-model.md)** — live authoring path vs. snapshot replay path, snapshot renderer notes
 - **[coordinate-systems.md](coordinate-systems.md)** — normalized base-image space, canvas-px overlay model, base-image-anchored geometry, the single-resolver rule
-- **[contracts.md](contracts.md)** — `CanvasWidgetFeature`, `CanvasSceneFeature`, `CanvasFeatureProperty`, command aliases, canvas layout contract, scene pipeline, keyframing, source-of-truth rules
+- **[contracts.md](contracts.md)** — interface field catalog (`CanvasWidgetFeature`, scene/property/aliases, layout); glossary in [CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract)
 - **[zoom-pan.md](zoom-pan.md)** — gesture bindings, viewport change contract, zoom/pan invariants, semantic geometry vs paint extents, debugging
 - **[checklist.md](checklist.md)** — anti-patterns and the pre-merge checklist
 - **[display-image-pipeline.md](display-image-pipeline.md)** — unify → display-cache → render pipeline; single-writer/single-picker rule for `render_cache.display_cache_image1/2`

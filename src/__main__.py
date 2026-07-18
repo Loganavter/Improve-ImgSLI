@@ -45,7 +45,7 @@ else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, application_path)
 
-from PySide6.QtCore import QLoggingCategory, QThreadPool, Qt
+from PySide6.QtCore import QLoggingCategory, QThreadPool, QTimer, Qt
 from PySide6.QtWidgets import QApplication
 from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
@@ -87,6 +87,22 @@ def _configure_linux_desktop_integrations() -> None:
         )
     except Exception:
         pass
+
+def _install_sigint_quit(app: QApplication) -> None:
+    """Make Ctrl+C quit the Qt event loop without a KeyboardInterrupt traceback.
+
+    Python only delivers SIGINT between bytecode instructions. While Qt blocks
+    in C++, the default handler never runs until some Python code wakes up —
+    often inside ``eventFilter``, which then prints a noisy traceback. A short
+    wake timer lets the signal handler call ``app.quit()`` cleanly.
+    """
+    import signal
+
+    signal.signal(signal.SIGINT, lambda *_args: app.quit())
+    wake = QTimer(app)
+    wake.setInterval(200)
+    wake.timeout.connect(lambda: None)
+    wake.start()
 
 def main():
     parser = argparse.ArgumentParser(description="Improve ImgSLI - Main entry point")
@@ -181,6 +197,7 @@ def main():
         QThreadPool.globalInstance().clear()
 
     app.aboutToQuit.connect(on_quit)
+    _install_sigint_quit(app)
     exit_code = app.exec()
     try:
         logging.shutdown()

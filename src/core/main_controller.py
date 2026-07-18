@@ -175,7 +175,7 @@ class MainController(QObject):
     def attach_window_shell(self, window_shell):
         self.window_shell = window_shell
         self.refresh_runtime_bindings()
-        for plugin_name in ("comparison", "export", "settings"):
+        for plugin_name in ("comparison", "export", "settings", "onboarding"):
             self._attach_plugin_window_shell(plugin_name, window_shell)
         self.refresh_runtime_bindings()
 

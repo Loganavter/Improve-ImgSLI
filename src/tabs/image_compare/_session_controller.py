@@ -280,6 +280,9 @@ class SessionController(QObject):
     def load_images_from_paths(self, file_paths: list[str], image_number: int):
         loading.load_images_from_paths(self, file_paths, image_number)
 
+    def duplicate_image_to_slot(self, source_slot: int, target_slot: int) -> None:
+        loading.duplicate_image_to_slot(self, source_slot, target_slot)
+
     def _invalidate_image_canvas_render_state(self, clear_magnifier: bool = False):
         presenter = getattr(self, "presenter", None)
         if presenter and hasattr(presenter, "invalidate_canvas_render_state"):

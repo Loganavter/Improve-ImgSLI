@@ -66,7 +66,16 @@ def _build_tool_descriptor(mag_id: str) -> ToolDescriptor:
         metadata={"magnifier_id": mag_id},
         tracks=(
             TrackDescriptor(
-                id=f"{p}.position", label="Position", kind="vec2",
+                # Capture-rect center on the image (drag capture ring).
+                id=f"{p}.position", label="Capture Position", kind="vec2",
+                channels=(
+                    ChannelDescriptor("x", "X", "scalar"),
+                    ChannelDescriptor("y", "Y", "scalar"),
+                ),
+            ),
+            TrackDescriptor(
+                # Lens/overlay offset from the capture center (drag the magnifier).
+                id=f"{p}.offset", label="Offset", kind="vec2",
                 channels=(
                     ChannelDescriptor("x", "X", "scalar"),
                     ChannelDescriptor("y", "Y", "scalar"),
@@ -142,6 +151,10 @@ class DynamicMagnifierAdapter:
         divider = model["divider_color"]
         return {
             f"{p}.position": {"x": float(model["position"].x), "y": float(model["position"].y)},
+            f"{p}.offset": {
+                "x": float(model["offset_relative"].x),
+                "y": float(model["offset_relative"].y),
+            },
             f"{p}.size": {"value": float(model["size_relative"])},
             f"{p}.capture_size": {"value": float(model["capture_size_relative"])},
             f"{p}.internal_split": {"value": float(model["internal_split"])},
@@ -188,6 +201,13 @@ class DynamicMagnifierAdapter:
             _execute_magnifier_command(
                 proxy,
                 "overlay.move_active_position",
+                Point(float(ch["x"]), float(ch["y"])),
+            )
+        if f"{p}.offset" in values_by_track_id:
+            ch = values_by_track_id[f"{p}.offset"]
+            _execute_magnifier_command(
+                proxy,
+                "overlay.set_active_offset",
                 Point(float(ch["x"]), float(ch["y"])),
             )
         if f"{p}.size" in values_by_track_id:

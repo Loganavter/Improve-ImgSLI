@@ -7,6 +7,8 @@ from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
 from sli_ui_toolkit.theme import ThemeManager
+
+from ui.theming import resolve_theme_color
 from sli_ui_toolkit.ui.widgets.helpers import unregister_hover_widget
 from sli_ui_toolkit.widgets import Button, Label
 
@@ -85,9 +87,10 @@ class HelpBackBar(QWidget):
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt API
         super().paintEvent(event)
         painter = QPainter(self)
-        color = ThemeManager.get_instance().get_color("separator.color")
+        tm = ThemeManager.get_instance()
+        color = resolve_theme_color(tm, "separator.color")
         if color is None or not color.isValid():
-            color = ThemeManager.get_instance().get_color("dialog.border")
+            color = resolve_theme_color(tm, "dialog.border")
         if color is not None and color.isValid():
             y = self.height() - 1
             painter.setPen(QPen(color, 1))

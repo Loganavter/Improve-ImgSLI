@@ -58,6 +58,28 @@ it just asks the resolver. Adding or hiding an overlay does not require
 editing the central mouse router, and routing does not peek into another
 feature's `overlay.active_state` payload shape.
 
+## Context-menu suppression zones
+
+Host canvas context menus (slot / image RMB menus) must likewise not hard-code
+feature geometry. A feature that owns a region — for example the combined
+magnifier overlay, which uses RMB for internal-split drag — declares a zone:
+
+```python
+from ui.canvas_infra.scene.widget_contract import CanvasFeatureContextMenuZone
+
+CanvasFeatureContextMenuZone(
+    zone_id="my_feature.overlay",
+    suppresses=fn(ctx) -> bool,   # ctx: ContextMenuHitContext
+    priority=10,                  # lower checked first; any True suppresses
+    owner="my_feature",
+)
+```
+
+Wire via `WIDGET_FEATURE.build_context_menu_zones`. The canvas
+`contextMenuEvent` calls `is_context_menu_suppressed(...)` from
+`ui.canvas_infra.scene.context_menu_zones` before opening a menu. Outside the
+zone, the normal slot menu still opens.
+
 ## Viewport Change Contract
 
 When feature commands modify state that affects UI rendering or panel visibility, they must emit viewport changes to notify the system.

@@ -164,21 +164,21 @@ def test_compact_panel_uses_widget_theme_sources_without_palette_noise():
         widget_theme_sources=(
             ThemeColorSource(
                 "/repo/src/resources/themes.json",
-                79,
+                80,
                 "light",
                 "button.toggle.background.normal",
                 "#f0f0f0",
             ),
             ThemeColorSource(
                 "/repo/src/resources/themes.json",
-                80,
+                81,
                 "light",
                 "button.toggle.background.hover",
                 "#e6e6e6",
             ),
             ThemeColorSource(
                 "/repo/src/resources/themes.json",
-                81,
+                82,
                 "light",
                 "button.toggle.background.pressed",
                 "#dcdcdc",
@@ -189,7 +189,7 @@ def test_compact_panel_uses_widget_theme_sources_without_palette_noise():
     compact = _format_compact_snapshot(snapshot, ())
     compact_html = _format_compact_snapshot_html(snapshot, ())
 
-    assert "source: /repo/src/resources/themes.json (79-81)" in compact
+    assert "source: /repo/src/resources/themes.json (80-82)" in compact
     assert '"button.toggle.background.hover": "#e6e6e6" ■' in compact
     assert '"Window": "#ffffff" ■' not in compact
     assert "QSS candidates\n  none" in compact

@@ -12,10 +12,34 @@
     "image_compare": "Side-by-side image comparison with a divider, magnifier, and analysis tools.",
     "multi_compare": "Grid layout for comparing several sources at once."
   },
-  "drop_zone": "Drop image files here to start a comparison",
   "recent": {
-    "title": "Continue",
-    "badge": "In development",
-    "placeholder": "Recent workspaces will appear here once this feature lands."
+    "title": "Recent",
+    "empty_title": "Load your first project",
+    "empty_hint": "Drop a .imgsli file here to pin it",
+    "empty": "Saved projects appear here after you open or save a .imgsli file. Drop a project file here to pin it to this list.",
+    "sort_modified": "Date modified",
+    "sort_created": "Date created",
+    "sort_name": "Name",
+    "sort_asc": "Ascending",
+    "sort_desc": "Descending",
+    "view_grid": "Grid",
+    "view_list": "List",
+    "missing": "File missing",
+    "action_open": "Open",
+    "action_properties": "Properties",
+    "action_remove": "Remove from list",
+    "action_reveal": "Show in folder",
+    "prop_status": "Status",
+    "prop_file_modified": "Date modified",
+    "prop_file_created": "Date created",
+    "prop_pinned": "Added to Recent",
+    "prop_opened": "Last opened",
+    "prop_sessions": "Sessions",
+    "relative": {
+      "just_now": "just now",
+      "minutes": "{n}m ago",
+      "hours": "{n}h ago",
+      "days": "{n}d ago"
+    }
   }
 }

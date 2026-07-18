@@ -2,6 +2,7 @@
   "action": {
     "export_video": "Export Video",
     "context_copy_path": "Copy path",
+    "context_carry_image": "Move",
     "context_duplicate": "Duplicate",
     "context_name": "Name",
     "context_path": "Path",

@@ -51,7 +51,7 @@ class VideoEditorDialogPersistence:
         idx = d.combo_quality_mode.findData(quality_mode)
         if idx >= 0:
             d.combo_quality_mode.setCurrentIndex(idx)
-            d.stack_quality.setCurrentIndex(idx)
+        d.stack_quality.setCurrentIndex(1 if quality_mode == "bitrate" else 0)
 
         for combo, attr, default in (
             (d.combo_preset, "export_video_preset", "medium"),

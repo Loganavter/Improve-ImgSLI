@@ -1,0 +1,13 @@
+{
+  "ui.buttons.toolbar": "ui/toolbar.jpg",
+  "ui.buttons.mode_beginner": "ui/mode_beginner.png",
+  "ui.buttons.mode_advanced": "ui/mode_advanced.png",
+  "ui.buttons.mode_expert": "ui/mode_expert.png",
+  "ui.buttons.long_press": "ui/long_press.png",
+  "ui.lists_flyouts.list_manager": "ui/lists_manager.jpg",
+  "ui.lists_flyouts.toolbar_flyouts": "ui/label_settings.jpg",
+  "ui.canvas_navigation.zoom": "ui/canvas_zoom.jpg",
+  "platform.workspace.session_picker": "platform/session_picker.jpg",
+  "platform.image_properties.open": "platform/image_properties.png",
+  "platform.file_project.paste_overlay": "platform/paste_overlay.jpg"
+}

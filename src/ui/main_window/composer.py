@@ -42,9 +42,12 @@ class MainWindowComposer:
         window.ui_resource_manager = ui_resource_manager
 
         from events.drag_drop_handler import DragAndDropService
+        from events.image_carry import ImageCarryService
 
         if DragAndDropService._instance is None:
             DragAndDropService._instance = DragAndDropService(self.context.store, window)
+        if ImageCarryService._instance is None:
+            ImageCarryService._instance = ImageCarryService(self.context.store, window)
 
         tray_manager = None
         if self._should_enable_system_tray():

@@ -1,14 +1,14 @@
 ## Listas e Painéis
 
-Os menus suspensos abrem painéis dentro da janela, sobre a janela principal. Trabalhe dentro do painel e depois feche com um clique fora ou `Esc`. Os gestos estão descritos em [Botões e Controles](help://ui.buttons); o estilo dos rótulos de nome de arquivo em [Comparação](help://comparison).
+Os menus suspensos abrem painéis dentro da janela, sobre a janela principal. Trabalhe dentro do painel e depois feche com um clique fora ou `Esc`. Layout da barra e gestos multi-ação: [Botões e Controles](help://ui.buttons). Estilo dos rótulos de nome de arquivo: [Comparação](help://comparison).
 
 ### Gerenciador de lista {#list-manager}
 
 Em uma sessão {{tr:workspace.session_types.image_compare}}, cada lado tem um menu suspenso de lista. Um clique abre o painel de gerenciamento de lista daquele lado (linhas, avaliações, arraste). O painel permanece fechado se a lista estiver vazia. Clique no mesmo menu suspenso novamente, clique fora, ou escolha uma linha para fechá-lo. Enquanto renomear ou propriedades estiver aberto, o painel não se fecha ao perder o foco.
 
-:::figure{side=center width=320}
-![Painel do gerenciador de lista](ui/placeholder.png)
-Menu suspenso de lista → painel do gerenciador de lista (placeholder).
+:::figure{side=block width=320}
+![Painel do gerenciador de lista]({{img:ui.lists_flyouts.list_manager}})
+Menu suspenso de lista → painel do gerenciador de lista.
 :::
 
 ### Rolagem {#scroll-lists}
@@ -47,12 +47,16 @@ Arrastar e soltar na janela pergunta qual lista deve receber os arquivos. `Ctrl+
 
 ### Painel de configurações de rótulo {#toolbar-flyouts}
 
-{{tr:image_compare.action.text_settings}} (ou clique com o botão direito em {{tr:image_compare.action.file_names}}) abre um painel para tamanho, peso, cores e posicionamento. Feche com `Esc` ou um clique fora. A cor do divisor usa um seletor de cor, não um painel — veja [Comparação](help://comparison). Painéis de opções da lupa: [Lupa](help://magnifier).
+Abrir: {{tr:image_compare.action.text_settings}} ou clique com o botão direito em {{tr:image_compare.action.file_names}}. Fechar: `Esc` ou clique fora.
 
-:::figure{side=left width=280}
-![Painel de configurações de rótulo](ui/placeholder.png)
-{{tr:image_compare.action.text_settings}} (placeholder).
+No painel: tamanho da fonte, peso, opacidade, cores do texto e do fundo, desenhar fundo e posição do rótulo (bordas / linha de divisão).
+
+:::figure{side=block width=280}
+![Painel de configurações de rótulo]({{img:ui.lists_flyouts.toolbar_flyouts}})
+{{tr:image_compare.action.text_settings}}.
 :::
+
+A cor da linha de divisão e os painéis da lupa ficam em outro lugar — [Comparação](help://comparison) e [Lupa](help://magnifier).
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 

@@ -8,9 +8,9 @@
 - **Поставить** — клик или перетаскивание по изображению задаёт зону захвата (красный круг).
 - **Кольцо** — размер и цвет кольца захвата совпадают с оформлением лупы.
 
-:::figure{side=right width=280}
-![Линза лупы](magnifier/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}} (временный скриншот).
+:::figure{side=block width=280}
+![Линза лупы]({{img:workspace.image_compare.magnifier.enabling}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}.
 :::
 
 ### Размер и движение {#size-and-movement}
@@ -42,12 +42,12 @@
 - **Внутренний раздел** — тяните `ПКМ` внутри линзы.
 - **Превью стороны** — `Space+Shift` может форсировать превью стороны.
 
-Для сравнения на всём холсте без линзы см. [Сравнение](help://comparison).
-
-:::figure{side=right width=280}
-![Объединённая лупа](magnifier/placeholder.png)
-{{tr:image_compare.action.magnifier}} — объединённый режим (временный скриншот).
+:::figure{side=block width=280}
+![Объединённая лупа]({{img:workspace.image_compare.magnifier.combined_mode}})
+{{tr:image_compare.action.magnifier}} — объединённый режим.
 :::
+
+Для сравнения на всём холсте без линзы см. [Сравнение](help://comparison).
 
 ### Настройки, влияющие на лупу {#related-settings}
 

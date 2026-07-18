@@ -219,29 +219,57 @@ def _invalidate_haystack_cache(action_id: str) -> None:
     _HAYSTACK_CACHE.pop(action_id, None)
 
 
+def compute_action_haystacks(
+    *,
+    action_id: str,
+    label_key: str,
+    description_key: str | None = None,
+    breadcrumb: tuple[str, ...] = (),
+    topic: str | None = None,
+    shortcut: str | None = None,
+    search_keys: tuple[str, ...] = (),
+    search_terms: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    """Normalized search texts for one catalog-shaped row (uncached).
+
+    Shared by Find Action and Settings → Keyboard so both surfaces match the
+    same fields: id, label, description, breadcrumb, topic, chord, aliases.
+    """
+    parts = [
+        action_id,
+        label_key,
+        description_key or "",
+        " ".join(breadcrumb),
+        topic or "",
+        shortcut or "",
+        " ".join(search_terms),
+    ]
+    for key in (
+        label_key,
+        description_key or "",
+        *breadcrumb,
+        *search_keys,
+    ):
+        if key:
+            parts.extend(_texts_for_key(key))
+    return tuple(_normalize(part) for part in parts if part)
+
+
 def _haystacks(action: ActionDescriptor) -> tuple[str, ...]:
     cached = _HAYSTACK_CACHE.get(action.action_id)
     if cached is not None:
         return cached
     search_keys = tuple(getattr(action, "search_keys", ()) or ())
-    parts = [
-        action.action_id,
-        action.label_key,
-        action.description_key or "",
-        " ".join(action.breadcrumb),
-        action.topic or "",
-        action.shortcut or "",
-        " ".join(getattr(action, "search_terms", ()) or ()),
-    ]
-    for key in (
-        action.label_key,
-        action.description_key or "",
-        *action.breadcrumb,
-        *search_keys,
-    ):
-        if key:
-            parts.extend(_texts_for_key(key))
-    normalized = tuple(_normalize(part) for part in parts if part)
+    normalized = compute_action_haystacks(
+        action_id=action.action_id,
+        label_key=action.label_key,
+        description_key=action.description_key,
+        breadcrumb=tuple(action.breadcrumb or ()),
+        topic=action.topic,
+        shortcut=action.shortcut,
+        search_keys=search_keys,
+        search_terms=tuple(getattr(action, "search_terms", ()) or ()),
+    )
     _HAYSTACK_CACHE[action.action_id] = normalized
     return normalized
 
@@ -257,12 +285,15 @@ def _rank_token_in_text(text: str, token: str) -> int | None:
     return None
 
 
-def _best_match_rank(action: ActionDescriptor, needle: str) -> int | None:
+def action_query_rank(
+    needle: str,
+    *,
+    haystacks: tuple[str, ...],
+) -> int | None:
     """Lower is better. Multi-word query: every token must match somewhere."""
     tokens = [t for t in needle.split() if t]
     if not tokens:
         return 0
-    haystacks = _haystacks(action)
     total = 0
     for token in tokens:
         best: int | None = None
@@ -274,6 +305,10 @@ def _best_match_rank(action: ActionDescriptor, needle: str) -> int | None:
             return None
         total += best
     return total
+
+
+def _best_match_rank(action: ActionDescriptor, needle: str) -> int | None:
+    return action_query_rank(needle, haystacks=_haystacks(action))
 
 
 def action_breadcrumb_text(

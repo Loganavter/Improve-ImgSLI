@@ -28,7 +28,7 @@ Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor
 | Task | Start here |
 |---|---|
 | Architecture overview | [docs/dev/ARCHITECTURE.md](docs/dev/ARCHITECTURE.md) |
-| Protocols / isolation | [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) |
+| Interface / isolation contracts | [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) (three senses) |
 | New canvas feature | [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md) |
 | New workspace tab | [docs/dev/tabs/index.md](docs/dev/tabs/index.md) |
 | Dialog / CSD chrome | [docs/dev/DIALOGS.md](docs/dev/DIALOGS.md) |

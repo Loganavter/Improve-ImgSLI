@@ -79,6 +79,83 @@ def test_continuous_scalar_track_avoids_step_pairs_for_sparse_drag() -> None:
         (0.20, 20.0, "linear"),
     ]
 
+
+def test_magnifier_position_vec2_avoids_step_pairs_like_divider() -> None:
+    """magnifier.<id>.position must use continuous curves (same as splitter.main.position)."""
+    track = TimelineTrack(id="magnifier.default.position", label="Capture Position", kind="vec2")
+
+    assert add_value_to_track(track, 0.0, {"x": 0.10, "y": 0.20}, fps=60) is True
+    assert add_value_to_track(track, 0.10, {"x": 0.30, "y": 0.40}, fps=60) is True
+    assert add_value_to_track(track, 0.20, {"x": 0.50, "y": 0.60}, fps=60) is True
+
+    assert track.channels["x"].prefer_continuous_curve is True
+    assert track.channels["y"].prefer_continuous_curve is True
+    assert [(kf.timestamp, kf.value) for kf in track.channels["x"].keyframes] == [
+        (0.0, 0.10),
+        (0.10, 0.30),
+        (0.20, 0.50),
+    ]
+    assert [(kf.timestamp, kf.value) for kf in track.channels["y"].keyframes] == [
+        (0.0, 0.20),
+        (0.10, 0.40),
+        (0.20, 0.60),
+    ]
+
+
+def test_magnifier_offset_vec2_uses_continuous_curve() -> None:
+    """Lens offset is a separate continuous track from capture position."""
+    track = TimelineTrack(id="magnifier.default.offset", label="Offset", kind="vec2")
+
+    assert add_value_to_track(track, 0.0, {"x": 0.0, "y": 0.0}, fps=60) is True
+    assert add_value_to_track(track, 0.10, {"x": 0.05, "y": -0.02}, fps=60) is True
+    assert add_value_to_track(track, 0.20, {"x": 0.10, "y": -0.04}, fps=60) is True
+
+    assert track.channels["x"].prefer_continuous_curve is True
+    assert track.channels["y"].prefer_continuous_curve is True
+    assert [(kf.timestamp, kf.value) for kf in track.channels["x"].keyframes] == [
+        (0.0, 0.0),
+        (0.10, 0.05),
+        (0.20, 0.10),
+    ]
+
+
+def test_continuous_idle_then_move_does_not_ramp_from_t0() -> None:
+    """Divider/magnifier sit still after record start, then move — curve starts at move."""
+    track = TimelineTrack(id="splitter.main.position", label="Position", kind="scalar")
+
+    assert add_value_to_track(track, 0.0, {"value": 0.5}, fps=60) is True
+    assert add_value_to_track(track, 0.10, {"value": 0.5}, fps=60) is True
+    assert add_value_to_track(track, 0.50, {"value": 0.5}, fps=60) is True
+    assert add_value_to_track(track, 0.52, {"value": 0.7}, fps=60) is True
+    assert add_value_to_track(track, 0.60, {"value": 0.9}, fps=60) is True
+
+    channel = track.channels["value"]
+    assert [(round(kf.timestamp, 4), kf.value) for kf in channel.keyframes] == [
+        (0.5, 0.5),
+        (0.52, 0.7),
+        (0.6, 0.9),
+    ]
+
+
+def test_magnifier_idle_then_move_does_not_ramp_from_t0() -> None:
+    track = TimelineTrack(id="magnifier.default.position", label="Position", kind="vec2")
+
+    assert add_value_to_track(track, 0.0, {"x": 0.2, "y": 0.3}, fps=60) is True
+    assert add_value_to_track(track, 0.40, {"x": 0.2, "y": 0.3}, fps=60) is True
+    assert add_value_to_track(track, 0.42, {"x": 0.4, "y": 0.5}, fps=60) is True
+    assert add_value_to_track(track, 0.50, {"x": 0.6, "y": 0.7}, fps=60) is True
+
+    assert [(round(kf.timestamp, 4), kf.value) for kf in track.channels["x"].keyframes] == [
+        (0.4, 0.2),
+        (0.42, 0.4),
+        (0.5, 0.6),
+    ]
+    assert [(round(kf.timestamp, 4), kf.value) for kf in track.channels["y"].keyframes] == [
+        (0.4, 0.3),
+        (0.42, 0.5),
+        (0.5, 0.7),
+    ]
+
 def test_text_color_tracks_are_declared_as_hold() -> None:
     adapter = build_viewport_base_adapter()
     descriptor = next(tool for tool in adapter.describe_tools() if tool.id == "viewport.base")

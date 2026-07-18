@@ -93,5 +93,6 @@ def test_multi_compare_provider_exposes_slot_actions(qapp):
         "multi_compare.rename_slot",
         "multi_compare.duplicate_slot",
         "multi_compare.show_slot_properties",
+        "multi_compare.carry_slot",
         "multi_compare.remove_slot",
     ]

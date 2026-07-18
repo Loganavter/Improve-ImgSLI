@@ -11,8 +11,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from shared_toolkit.ui.themed_dialog import ThemedDialog
-from shared_toolkit.ui.layout_sizing import handle_application_font_change
+from tabs.host_helpers import (
+    ThemedDialog,
+    decorate_dialog,
+    handle_application_font_change,
+    install_dialog_help_menu,
+)
 
 from tabs.image_compare.plugins.video_editor.dialog.sections import (
     build_settings_panel,
@@ -96,8 +100,6 @@ class VideoEditorDialog(ThemedDialog):
         self.update_language(self.current_language)
         self.install_dialog_geometry(self._update_settings_panel_width)
         self.mark_theme_ui_ready()
-        from shared_toolkit.ui.decorate_dialog import decorate_dialog, install_dialog_help_menu
-
         decorate_dialog(self, title=tr("video.video_editor_exporter", self.current_language))
         install_dialog_help_menu(self, page="export")
 
@@ -216,7 +218,10 @@ class VideoEditorDialog(ThemedDialog):
         self._setup_shortcuts()
 
     def _on_splitter_moved(self, _pos: int, _index: int):
+        # Dialog itself may not resize — only the preview/timeline panes do.
+        # Emit the same signal as resizeEvent so preview re-letterboxes.
         self.timelineHeightChanged.emit(self.scroll_area.viewport().height())
+        self.windowResized.emit()
 
     def _update_settings_panel_width(self):
         self.runtime.update_settings_panel_width()

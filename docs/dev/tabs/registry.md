@@ -43,6 +43,7 @@ registry.activate_default()                             # Activate the is_bootst
 registry.deactivate(session_type)                       # Notify deactivation
 registry.route_drop(session_type, paths)                # Route drag-and-drop
 registry.create_service(service_id, *args, **kwargs)    # Active-tab-only dispatch
+registry.create_service_for(session_type, service_id, …)  # Named hub tab (e.g. session picker)
 registry.create_startup_service(service_id, *a, **kw)   # Bootstrap-default-tab-only dispatch
 registry.create_main_window_feature(feature_id, **kw)   # Active-tab-only; do not extend (single-ID hook)
 registry.notify_all(hook_id, *args, **kwargs)           # Broadcast to every registered tab

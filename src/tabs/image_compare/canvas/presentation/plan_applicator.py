@@ -33,16 +33,24 @@ def _refresh_live_content_rect(canvas, state, plan) -> None:
     Live (default): fit raw image size. Export/video with
     ``geometry_letterbox`` / padded composite: fit the full ``canvas_w/h``
     frame so ``overlay_clip_rect`` can recover the content box.
+
+    Padded plans must refresh even when ``state._store`` is unset: video
+    preview binds the store on ``canvas._store``, and ``set_pil_layers``
+    clears ``state._store``. Skipping here leaves ``_content_rect_px`` as the
+    raw-image letterbox; ``_compute_inner_content_rect`` then scales
+    ``overlay_clip_rect`` against the wrong base, so the divider detaches
+    from the images and stretches into the uncrop pad.
     """
-    store = getattr(state, "_store", None)
-    if store is None:
-        return
-    if _plan_owns_padded_framebuffer(plan):
-        fit_width, fit_height = plan.canvas_w, plan.canvas_h
-    else:
+    owns_padded = _plan_owns_padded_framebuffer(plan)
+    if not owns_padded:
+        store = getattr(state, "_store", None) or getattr(canvas, "_store", None)
+        if store is None:
+            return
         base_image = plan.image1
         fit_width = getattr(base_image, "width", 0)
         fit_height = getattr(base_image, "height", 0)
+    else:
+        fit_width, fit_height = plan.canvas_w, plan.canvas_h
     if fit_width <= 0 or fit_height <= 0:
         return
     widget_width, widget_height = canvas.width(), canvas.height()
@@ -207,6 +215,14 @@ def apply_plan_runtime_overlays(canvas, plan: CanvasRenderPlan) -> None:
     """
     state = canvas.runtime_state
 
+    # Widget resize (video preview splitter, window drag) runs
+    # ``update_common_letterbox_geometry`` first, which fits the *raw* image.
+    # Uncrop plans must re-nest that letterbox inside the padded canvas frame
+    # before content/inner rects and DividerPass read them — otherwise images
+    # and the spit line diverge after every preview pane resize.
+    if _plan_owns_padded_framebuffer(plan):
+        _apply_plan_letterbox_from_clip(canvas, plan)
+
     _refresh_live_content_rect(canvas, state, plan)
 
     inner_rect, inner_split = _compute_inner_content_rect(state, plan)
@@ -261,7 +277,9 @@ def _setup_store_bindings(canvas, plan, *, store, clip_flag: bool) -> None:
 
     if store is not None:
         canvas._store = store
+        state._store = store
     else:
+        canvas._store = None
         state._store = None
 
     canvas._active_render_plan = plan
@@ -275,6 +293,14 @@ def _setup_store_bindings(canvas, plan, *, store, clip_flag: bool) -> None:
         canvas.set_apply_channel_mode_in_shader(True)
     else:
         state._apply_channel_mode_in_shader = True
+
+
+def _rebind_plan_store(canvas, store) -> None:
+    """``set_pil_layers`` clears ``state._store``; restore after texture upload."""
+    if store is None:
+        return
+    canvas._store = store
+    canvas.runtime_state._store = store
 
 
 def _apply_overlays(canvas, plan, *, store) -> None:
@@ -374,6 +400,7 @@ def _apply_plan_full(
             display_cache_key=plan.display_cache_key,
             shader_letterbox=True,
         )
+        _rebind_plan_store(canvas, store)
         _apply_plan_letterbox_from_clip(canvas, plan)
         if plan.preserve_zoom:
             restore_letterbox_focus(canvas, letterbox_focus)
@@ -427,6 +454,7 @@ def _apply_plan_scene_only(
             )
             update_common_letterbox_geometry(canvas, img0, img1)
             restore_letterbox_focus(canvas, letterbox_focus)
+        _rebind_plan_store(canvas, store)
         _apply_plan_letterbox_from_clip(canvas, plan)
 
         _apply_overlays(canvas, plan, store=store)

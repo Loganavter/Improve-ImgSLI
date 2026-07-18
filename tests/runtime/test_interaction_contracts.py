@@ -13,6 +13,11 @@ import pytest
 
 SRC = os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "src")
 
+import tabs.image_compare.canvas.features as image_compare_features
+from ui.canvas_infra.scene.registry import get_canvas_registry
+
+get_canvas_registry("image_compare").register_package(image_compare_features)
+
 _SHARED_EVENT_FILES = [
     "events/image_label/mouse.py",
     "events/image_label/keyboard.py",
@@ -61,8 +66,6 @@ class TestSharedEventLayerIsolation:
 class TestInteractionCommandAliases:
 
     def test_overlay_interaction_aliases_registered(self):
-        from ui.canvas_infra.scene.registry import get_canvas_registry
-
         aliases = get_canvas_registry("image_compare").get_feature_command_aliases()
         expected = [
             "overlay.begin_capture_drag",
@@ -73,8 +76,6 @@ class TestInteractionCommandAliases:
             assert alias in aliases, f"Missing interaction alias: {alias}"
 
     def test_splitter_interaction_aliases_registered(self):
-        from ui.canvas_infra.scene.registry import get_canvas_registry
-
         aliases = get_canvas_registry("image_compare").get_feature_command_aliases()
         expected = [
             "splitter.begin_drag",
@@ -85,8 +86,6 @@ class TestInteractionCommandAliases:
             assert alias in aliases, f"Missing interaction alias: {alias}"
 
     def test_all_interaction_aliases_resolve_to_callable(self):
-        from ui.canvas_infra.scene.registry import get_canvas_registry
-
         get_canvas_feature_command_by_alias = get_canvas_registry(
             "image_compare"
         ).get_feature_command_by_alias

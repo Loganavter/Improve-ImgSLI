@@ -48,6 +48,16 @@ class ApplyFontSettingsStep(WindowStartupStep):
             FontManager.get_instance().apply_from_state(window.store)
         except Exception:
             pass
+        # Shell may already have menus; force a sync remasure after the face
+        # is pinned so the first painted frame is not mid-jump.
+        menu = getattr(window, "_menu_controller", None)
+        strip = getattr(menu, "_menu_strip", None) if menu is not None else None
+        remasure = getattr(strip, "remasure", None)
+        if callable(remasure):
+            try:
+                remasure()
+            except Exception:
+                pass
 
 class BootstrapContentStep(WindowStartupStep):
     name = "bootstrap_content"
@@ -200,10 +210,33 @@ class MainWindowStartupController:
     def show(self, window) -> None:
         logger.debug("Main window startup controller: show")
         self.prepare(window)
+        # Final CSD menu widths + balance while still hidden, so the first
+        # exposed frame does not remasure and ghost «Справка».
+        menu = getattr(window, "_menu_controller", None)
+        strip = getattr(menu, "_menu_strip", None) if menu is not None else None
+        remasure = getattr(strip, "remasure", None)
+        if callable(remasure):
+            try:
+                remasure()
+            except Exception:
+                pass
+        title_bar = getattr(window, "_custom_title_bar", None)
+        if title_bar is not None:
+            sync = getattr(title_bar, "_sync_balance_spacer", None)
+            if callable(sync):
+                try:
+                    sync()
+                except Exception:
+                    pass
         window.show()
         app = QApplication.instance()
         if app is not None:
             app.processEvents()
+        # Onboarding is built during prepare() before the window has a real
+        # layout; re-apply geometry/scale after the first show pass.
+        from plugins.onboarding import host as onboarding_host
+
+        onboarding_host.prepare_after_show(window)
 
     def start(self, window) -> None:
         self.show(window)

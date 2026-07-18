@@ -156,15 +156,80 @@ def test_find_action_typeahead_focuses_search(qtbot):
     qtbot.addWidget(dialog)
     dialog.show()
     qtbot.waitExposed(dialog)
-    # Drain the showEvent singleShot that clears search focus.
-    qtbot.wait(20)
-    dialog.setFocus()
     dialog._search.clearFocus()
+    dialog.setFocus()
     assert dialog.focusWidget() is not dialog._search
 
     qtbot.keyClick(dialog, Qt.Key.Key_H)
     assert dialog.focusWidget() is dialog._search
     assert dialog._search.text() == "h"
+
+
+def test_find_action_typeahead_keeps_layout_text(qtbot):
+    """First jump-in character must use event.text(), not Latin from key()."""
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+
+    reset_action_registry_for_tests()
+    registry = get_action_registry()
+    registry.register(
+        ActionDescriptor(
+            action_id="platform.settings",
+            label_key="menu.settings",
+            run=lambda: None,
+        )
+    )
+    dialog = FindActionDialog(None, query="")
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    dialog._search.clearFocus()
+    dialog.setFocus()
+
+    # Same physical key as Latin 'A', but Russian layout text.
+    event = QKeyEvent(
+        QEvent.Type.KeyPress,
+        Qt.Key.Key_A,
+        Qt.KeyboardModifier.NoModifier,
+        "ф",
+    )
+    QApplication.sendEvent(dialog, event)
+    assert dialog.focusWidget() is dialog._search
+    assert dialog._search.text() == "ф"
+
+
+def test_find_action_typeahead_does_not_invent_latin(qtbot):
+    """Empty text() + Key_A must not insert 'a' (breaks non-Latin layouts)."""
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+
+    reset_action_registry_for_tests()
+    registry = get_action_registry()
+    registry.register(
+        ActionDescriptor(
+            action_id="platform.settings",
+            label_key="menu.settings",
+            run=lambda: None,
+        )
+    )
+    dialog = FindActionDialog(None, query="")
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    dialog._search.clearFocus()
+    dialog.setFocus()
+
+    event = QKeyEvent(
+        QEvent.Type.KeyPress,
+        Qt.Key.Key_A,
+        Qt.KeyboardModifier.NoModifier,
+        "",
+    )
+    QApplication.sendEvent(dialog, event)
+    assert dialog.focusWidget() is dialog._search
+    assert dialog._search.text() == ""
 
 
 def test_find_action_shift_enter_reveals(qtbot, monkeypatch):

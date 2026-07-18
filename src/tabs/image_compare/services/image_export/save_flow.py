@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 
-from shared_toolkit.ui.message_dialog import MessageKind
+from tabs.host_helpers import MessageKind
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_compare.services import document_store_ops

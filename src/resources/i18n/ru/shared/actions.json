@@ -2,6 +2,7 @@
   "action": {
     "export_video": "Экспортировать видео",
     "context_copy_path": "Копировать путь",
+    "context_carry_image": "Переместить",
     "context_duplicate": "Дублировать",
     "context_name": "Имя",
     "context_path": "Путь",

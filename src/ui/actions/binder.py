@@ -77,6 +77,15 @@ class ActionShortcutBinder:
     def clear(self) -> None:
         for shortcut in self._shortcuts:
             try:
+                # Unbind immediately — deleteLater alone can leave a duplicate
+                # chord live until the event loop runs, so two actions briefly
+                # share one key or neither fires (Qt ambiguity).
+                shortcut.activated.disconnect()
+            except Exception:
+                pass
+            try:
+                shortcut.setEnabled(False)
+                shortcut.setKey(QKeySequence())
                 shortcut.setParent(None)
                 shortcut.deleteLater()
             except Exception:

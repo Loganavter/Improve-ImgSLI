@@ -41,6 +41,7 @@ class ImagePropertiesPlugin(Plugin, IControllablePlugin):
         app_rows: Iterable[tuple[str, str, Any]] = (),
         language: str | None = None,
         tr_func=None,
+        probe_image: bool = True,
     ) -> None:
         open_image_properties_dialog(
             parent=parent,
@@ -50,6 +51,7 @@ class ImagePropertiesPlugin(Plugin, IControllablePlugin):
             app_rows=app_rows,
             language=language,
             tr_func=tr_func,
+            probe_image=probe_image,
         )
 
 
@@ -62,12 +64,14 @@ def open_image_properties_dialog(
     app_rows: Iterable[tuple[str, str, Any]] = (),
     language: str | None = None,
     tr_func=None,
+    probe_image: bool = True,
 ) -> None:
     properties = build_image_properties(
         path=path,
         display_name=display_name,
         image=image,
         app_rows=app_rows,
+        probe_image=probe_image,
     )
     dialog = ImagePropertiesDialog(
         properties,

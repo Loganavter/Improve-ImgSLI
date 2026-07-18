@@ -12,9 +12,9 @@ With the magnifier off, drag the divider across the pair.
 - **Visibility** (`D`) — {{tr:image_compare.action.divider_visible}} shows or hides the line.
 - **Combined** — {{tr:image_compare.action.divider_combined}} packs orientation, width, and color (scroll / right-click / middle-click); see the control tooltip.
 
-:::figure{side=right width=280}
-![Split line](ui/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}} (placeholder).
+:::figure{side=block width=280}
+![Split line]({{img:workspace.image_compare.comparison.split_line}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}.
 :::
 
 ### Scroll through images {#scroll-images}
@@ -35,6 +35,7 @@ With the magnifier off, drag the divider across the pair.
 
 - **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — off by default; enable auto-calculate in [Settings → Analysis](help://settings#analysis).
 - **Properties** — [Image Properties](help://image_properties) from a list-row context menu (file metadata and in-app side / rating).
+- **Move** — canvas or list context menu places a drag ghost of the image under the pointer (hanging bottom-left); move slightly, then click another workspace tab (or the canvas) to start the same insert flow as Duplicate / paste. `Esc` or right-click cancels.
 
 ### Channel modes {#channel-modes}
 
@@ -44,9 +45,9 @@ With the magnifier off, drag the divider across the pair.
 
 {{tr:image_compare.action.diff_mode}} (`H` cycles) emphasizes where the pair differs:
 
-:::figure{side=right width=280}
-![Difference mode](ui/placeholder.png)
-{{tr:image_compare.action.diff_mode}} (placeholder).
+:::figure{side=block width=280}
+![Difference mode]({{img:workspace.image_compare.comparison.difference_modes}})
+{{tr:image_compare.action.diff_mode}}.
 :::
 
 - **{{tr:image_compare.action.diff_highlight}}** — change regions on the live pair

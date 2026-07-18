@@ -175,6 +175,39 @@ class ImageCompareTab(TabContract):
             return None
         return getattr(session, "id", None)
 
+    def _canvas_host(self):
+        widget = self._widget
+        if widget is None:
+            return None
+        return getattr(widget, "image_label", None)
+
+    def _read_camera_from_host(self) -> tuple[float, float, float]:
+        from ui.canvas_infra.viewport import get_pan_offset_x, get_pan_offset_y, get_zoom_level
+
+        host = self._canvas_host()
+        if host is None:
+            return 1.0, 0.0, 0.0
+        try:
+            return (
+                float(get_zoom_level(host)),
+                float(get_pan_offset_x(host)),
+                float(get_pan_offset_y(host)),
+            )
+        except Exception:
+            return 1.0, 0.0, 0.0
+
+    def _apply_camera_to_host(self, zoom: float, pan_x: float, pan_y: float) -> None:
+        from ui.canvas_infra.viewport import set_pan_offsets, set_zoom_level
+
+        host = self._canvas_host()
+        if host is None:
+            return
+        try:
+            set_zoom_level(host, zoom)
+            set_pan_offsets(host, pan_x, pan_y)
+        except Exception:
+            logger.exception("Failed to apply camera to image_compare canvas host")
+
     def _snapshot_into(self, context: TabContext, session_id: str | None) -> None:
         if session_id is None or self._widget is None:
             return
@@ -184,10 +217,14 @@ class ImageCompareTab(TabContract):
         from tabs.image_compare.models import ImageCompareState
 
         widget = self._widget
+        zoom, pan_x, pan_y = self._read_camera_from_host()
         state = ImageCompareState(
             show_file_names=bool(getattr(getattr(widget, "btn_file_names", None), "isChecked", lambda: False)()),
             edit_name_1=getattr(getattr(widget, "edit_name1", None), "text", lambda: "")(),
             edit_name_2=getattr(getattr(widget, "edit_name2", None), "text", lambda: "")(),
+            zoom=zoom,
+            pan_x=pan_x,
+            pan_y=pan_y,
         )
         try:
             store.set_session_state_slot(
@@ -220,6 +257,11 @@ class ImageCompareTab(TabContract):
             edit = getattr(widget, attr, None)
             if edit is not None and hasattr(edit, "setText"):
                 edit.setText(value or "")
+        self._apply_camera_to_host(
+            float(getattr(state, "zoom", 1.0) or 1.0),
+            float(getattr(state, "pan_x", 0.0) or 0.0),
+            float(getattr(state, "pan_y", 0.0) or 0.0),
+        )
 
     def serialize_session(self, session_id: str, context: TabContext) -> dict | None:
         store = getattr(context, "store", None)
@@ -228,6 +270,11 @@ class ImageCompareTab(TabContract):
         session = store.get_workspace_session(session_id)
         if session is None or session.session_type != self.session_type:
             return None
+        # Sync camera from the live host when serializing the active session.
+        if session_id == self._active_session_id:
+            self._snapshot_into(context, session_id)
+            session = store.get_workspace_session(session_id) or session
+
         doc = session.document
         ui_state = session.state_slots.get(_STATE_SLOT)
 
@@ -237,8 +284,16 @@ class ImageCompareTab(TabContract):
                 for it in items
             ]
 
+        from tabs.image_compare.session_persistence import serialize_viewport_block
+
+        camera = {
+            "zoom": float(getattr(ui_state, "zoom", 1.0) or 1.0) if ui_state else 1.0,
+            "pan_x": float(getattr(ui_state, "pan_x", 0.0) or 0.0) if ui_state else 0.0,
+            "pan_y": float(getattr(ui_state, "pan_y", 0.0) or 0.0) if ui_state else 0.0,
+        }
+
         return {
-            "version": 1,
+            "version": 2,
             "image_list1": _items(doc.image_list1) if doc else [],
             "image_list2": _items(doc.image_list2) if doc else [],
             "current_index1": doc.current_index1 if doc else -1,
@@ -248,6 +303,8 @@ class ImageCompareTab(TabContract):
             "show_file_names": bool(ui_state.show_file_names) if ui_state else False,
             "edit_name_1": ui_state.edit_name_1 if ui_state else "",
             "edit_name_2": ui_state.edit_name_2 if ui_state else "",
+            "camera": camera,
+            "viewport": serialize_viewport_block(getattr(session, "viewport", None)),
         }
 
     def deserialize_session(self, session_id: str, data: dict, context: TabContext) -> None:
@@ -259,6 +316,7 @@ class ImageCompareTab(TabContract):
             return
         from tabs.image_compare.state.document import DocumentModel, ImageItem
         from tabs.image_compare.models import ImageCompareState
+        from tabs.image_compare.session_persistence import restore_viewport_block
 
         def _items(entries):
             # `image=None` — pixel data is not persisted, only the source
@@ -282,16 +340,37 @@ class ImageCompareTab(TabContract):
             image1_path=data.get("image1_path"),
             image2_path=data.get("image2_path"),
         )
+        camera = data.get("camera") or {}
         store.set_session_state_slot(
             _STATE_SLOT,
             ImageCompareState(
                 show_file_names=bool(data.get("show_file_names", False)),
                 edit_name_1=data.get("edit_name_1", ""),
                 edit_name_2=data.get("edit_name_2", ""),
+                zoom=float(camera.get("zoom", 1.0) or 1.0),
+                pan_x=float(camera.get("pan_x", 0.0) or 0.0),
+                pan_y=float(camera.get("pan_y", 0.0) or 0.0),
             ),
             session_id=session_id,
             emit_scope=None,
         )
+        restore_viewport_block(getattr(session, "viewport", None), data.get("viewport"))
+        # If this session is currently shown, push camera onto the host now.
+        active = None
+        try:
+            getter = getattr(store, "get_active_workspace_session", None)
+            if callable(getter):
+                active = getter()
+        except Exception:
+            active = None
+        if session_id == self._active_session_id or (
+            active is not None and getattr(active, "id", None) == session_id
+        ):
+            self._apply_camera_to_host(
+                float(camera.get("zoom", 1.0) or 1.0),
+                float(camera.get("pan_x", 0.0) or 0.0),
+                float(camera.get("pan_y", 0.0) or 0.0),
+            )
 
     def rehydrate_session(self, session_id: str, context: TabContext) -> None:
         store = getattr(context, "store", None)

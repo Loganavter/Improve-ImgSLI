@@ -42,7 +42,6 @@ class ZoomIndicator(RoundedOverlayWidget):
 
         self._label = QLabel("100%", self)
         self._label.setContentsMargins(0, 0, 6, 0)
-        self._label.setStyleSheet("")
         apply_ui_font(self._label)
         apply_text_color(self._label, QColor("white"))
         layout.addWidget(self._label)

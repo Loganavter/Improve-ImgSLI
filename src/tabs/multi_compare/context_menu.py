@@ -51,6 +51,13 @@ class MultiCompareContextMenuProvider:
                 icon=Icon.PHOTO,
                 data=slot.id,
             ),
+            ContextMenuAction(
+                "multi_compare.carry_slot",
+                self._tr("context.carry_image", "Move"),
+                icon=Icon.PHOTO,
+                enabled=bool(slot.path),
+                data=slot.id,
+            ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "multi_compare.remove_slot",
@@ -77,6 +84,9 @@ class MultiCompareContextMenuProvider:
             return True
         if action_id == "multi_compare.show_slot_properties":
             self._show_properties(slot)
+            return True
+        if action_id == "multi_compare.carry_slot":
+            self._begin_carry(slot)
             return True
         if action_id == "multi_compare.remove_slot":
             self.widget.remove_slot(slot.id)
@@ -108,6 +118,13 @@ class MultiCompareContextMenuProvider:
         if slot.image is None or self.widget.state.root is None:
             return
         self.widget.begin_pending_duplicate(slot.id)
+
+    def _begin_carry(self, slot: CompareSlot) -> None:
+        if not slot.path:
+            return
+        from events.image_carry import begin_image_carry
+
+        begin_image_carry([slot.path], image=slot.image)
 
     def _show_properties(self, slot: CompareSlot) -> None:
         ordered = [leaf.slot_id for leaf in leaves(self.widget.state.root)]

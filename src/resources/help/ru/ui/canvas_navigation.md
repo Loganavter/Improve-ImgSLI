@@ -8,9 +8,9 @@
 - **Панорама** — средняя кнопка мыши и перетаскивание, в том числе при `100%`.
 - **Режим** — отдельного инструмента навигации нет; жесты работают на живом холсте.
 
-:::figure{side=right width=280}
-![Зум и панорама](ui/placeholder.png)
-{{tr:workspace.session_types.image_compare}} → холст (временный скриншот).
+:::figure{side=block width=280}
+![Зум и панорама]({{img:ui.canvas_navigation.zoom}})
+{{tr:workspace.session_types.image_compare}} → холст.
 :::
 
 ### Быстрый превью стороны {#quick-side-preview}

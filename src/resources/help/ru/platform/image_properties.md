@@ -6,9 +6,9 @@
 
 Правый клик по строке списка {{tr:workspace.session_types.image_compare}} или по слоту {{tr:workspace.session_types.multi_compare}} → {{tr:image_properties.title}}. Диалог только для чтения, кроме {{tr:image_properties.copy_all}} — копирует все видимые строки в буфер обмена.
 
-:::figure{side=right width=280}
-![Диалог свойств изображения](ui/placeholder.png)
-{{tr:image_properties.title}} (временный скриншот).
+:::figure{side=block width=280}
+![Диалог свойств изображения]({{img:platform.image_properties.open}})
+{{tr:image_properties.title}}.
 :::
 
 ### Разделы {#sections}

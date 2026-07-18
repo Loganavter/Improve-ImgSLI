@@ -29,8 +29,6 @@ Infrastructure for sessions, `state_slots`, activation events, project
 serialize/deserialize hooks, and duplicate-as-new-session is in place.
 Still open:
 
-- "Save Project" / "Open Project" menu items, `QFileDialog`, or
-  `.imgsli-project` file-association wiring.
 - Inverse undo/redo reducers and hotkeys (`Dispatcher.bind_history_for_session`
   stores append-only history in `state_slots["action_history"]` only).
 - `session_picker` has nothing to serialize (inherits no-op default).
@@ -39,6 +37,9 @@ Still open:
   share one path (today the widget embeds a `MultiCompareStore` swapped via
   `replace_state`).
 
+Done: portable ZIP `.imgsli` (v2) with embedded media copies, full IC
+viewport/feature snapshot, Open/Save menu + Find Action wiring
+(`services/io/project_io.py`, `project_package.py`).
 ## P2 - Preview-at-load via QImage (skip transient PIL buffer)
 
 Status: `Open` (design needed)

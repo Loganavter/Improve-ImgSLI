@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QPoint, QPointF, QRect, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRect, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPalette, QWheelEvent
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
@@ -59,9 +59,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
     def __init__(self, parent: QWidget | None = None, *, translate=None):
         super().__init__(parent)
         configure_rhi_widget(self)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
+        # Match image_compare's CanvasWidget: never enable QWidget autofill on a
+        # QRhiWidget. Autofill + palette clear can fight RHI texture compositing
+        # (stale zoom after reset while render() already drew z=1). Clear color
+        # stays in the RHI pass via ``_theme_or_palette_bg()``.
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        self.setAutoFillBackground(True)
         self._allow_transparent_clear = False
         self.apply_theme_background()
         self._translate = translate or (lambda _key, default=None: default or _key)
@@ -87,6 +89,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
         self._lmb_press_pos: QPointF | None = None
         self._lmb_press_slot_id: int | None = None
+        self._view_update_pending = False
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -95,7 +98,39 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self.state = state
         self._sync_textures()
         self._rebuild_composition()
+        self.request_view_update()
+
+    def request_view_update(self) -> None:
+        """Ensure the QRhi backing store re-composites after view changes.
+
+        Immediate ``update()`` plus a next-tick pass so overlay hide/show in
+        the same stack frame (zoom-reset chip) cannot leave a stale frame.
+        """
         self.update()
+        if self._view_update_pending:
+            return
+        self._view_update_pending = True
+        QTimer.singleShot(0, self._flush_view_update)
+
+    def _flush_view_update(self) -> None:
+        self._view_update_pending = False
+        if not self.isVisible():
+            return
+        self.update()
+
+    def render(self, command_buffer) -> None:
+        painted = self._renderer.render(command_buffer)
+        if painted and not self._first_frame_emitted:
+            self._first_frame_emitted = True
+            self.firstFrameRendered.emit()
+
+    def setAutoFillBackground(self, enabled) -> None:  # noqa: N802 — Qt API
+        # Intentionally ignore — see __init__ comment. Image compare does the same.
+        return
+
+    def resizeEvent(self, event) -> None:  # noqa: D401 — Qt signature
+        super().resizeEvent(event)
+        self.request_view_update()
 
     def set_dispatch(self, dispatch) -> None:
         """Install the redux dispatch callable used for interaction-driven changes."""
@@ -124,10 +159,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
             self._active_composition = None
             return
         self._active_composition = resolve_composition(plan)
-
-    def resizeEvent(self, event) -> None:  # noqa: D401 — Qt signature
-        super().resizeEvent(event)
-        self.update()
 
     # --- drop / hit projection (thin wrappers for features + tests) ---
 
@@ -212,12 +243,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
     def releaseResources(self) -> None:
         self._renderer.release()
 
-    def render(self, command_buffer) -> None:
-        painted = self._renderer.render(command_buffer)
-        if painted and not self._first_frame_emitted:
-            self._first_frame_emitted = True
-            self.firstFrameRendered.emit()
-
     def apply_theme_background(self, color: QColor | None = None) -> None:
         bg = QColor(color) if isinstance(color, QColor) and color.isValid() else None
         if bg is None:
@@ -233,8 +258,6 @@ class MultiCompareCanvasWidget(QRhiWidget):
         palette.setColor(QPalette.ColorRole.Window, bg)
         palette.setColor(QPalette.ColorRole.Base, bg)
         self.setPalette(palette)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
-        self.setAutoFillBackground(True)
         self._theme_background_color = QColor(bg)
 
     def _theme_or_palette_bg(self) -> QColor:

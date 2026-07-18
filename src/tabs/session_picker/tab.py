@@ -39,5 +39,16 @@ class SessionPickerTab(TabContract):
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         return SessionPickerWidget(parent, context=context)
 
+    def create_service(self, service_id: str, *args, **kwargs):
+        if service_id == "session_picker.host_chrome":
+            from tabs.registry import TabRegistry
+            from tabs.session_picker.host_chrome import SessionPickerHostChromeAdapter
+
+            page = TabRegistry().get_page(self.session_type)
+            if page is None:
+                return None
+            return SessionPickerHostChromeAdapter(page)
+        return None
+
     def apply_host_session_mode(self, ui, session_title: str | None = None) -> bool:
         return True
