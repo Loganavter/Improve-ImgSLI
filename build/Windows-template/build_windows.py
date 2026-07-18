@@ -60,10 +60,17 @@ def ensure_python_dependencies() -> int:
     return 0
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def build_pyinstaller() -> int:
+    console = _env_flag("BUILD_CONSOLE") or _env_flag("IMGSLI_WINDOWS_CONSOLE")
     print(f"Running PyInstaller with {SPEC_PATH}")
+    print(f"Console subsystem: {'enabled' if console else 'disabled (windowed)'}")
     args = [sys.executable, "-m", "PyInstaller", str(SPEC_PATH)]
     print(f"> {' '.join(str(arg) for arg in args)}")
+    # Inherit BUILD_CONSOLE / IMGSLI_WINDOWS_CONSOLE for the .spec evaluation.
     completed = subprocess.run(args, cwd=REPO_ROOT)
     return int(completed.returncode)
 

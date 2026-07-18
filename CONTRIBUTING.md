@@ -168,6 +168,16 @@ python -m pip install -r requirements-gui.txt pyinstaller
 python build/Windows-template/build_windows.py
 ```
 
+Debug a frozen startup crash (console window + traceback; also writes `startup_crash.log` next to the exe):
+
+```powershell
+$env:BUILD_CONSOLE = "1"
+$env:BUILD_INNO_SETUP = "0"
+python build/Windows-template/build_windows.py
+```
+
+Or trigger **Build Windows** via `workflow_dispatch` with input `console: true` (artifact `Improve_ImgSLI_windows_bundle_console`).
+
 Manual steps:
 
 1) Create binaries with PyInstaller using the provided spec:
