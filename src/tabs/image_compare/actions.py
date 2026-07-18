@@ -321,14 +321,8 @@ _SPECS: tuple[_WidgetAction, ...] = (
         "analysis",
         "click",
         shortcut="H",
-        # Cycle action — modes are options, not separate keymap rows.
-        search_keys=(
-            "image_compare.action.diff_highlight",
-            "image_compare.action.diff_grayscale",
-            "image_compare.action.diff_edges",
-            "image_compare.action.diff_ssim",
-        ),
-        search_terms=("ssim", "highlight", "grayscale", "edges"),
+        # Mode names live on per-option rows (contribute_simple_options_actions),
+        # not on this cycle action — otherwise «ssim» also hits Difference Mode.
     ),
     _WidgetAction(
         "image_compare.channel_mode",
@@ -339,7 +333,6 @@ _SPECS: tuple[_WidgetAction, ...] = (
         "analysis",
         "click",
         shortcut="C",
-        search_terms=("rgb", "luminance"),
     ),
     _WidgetAction(
         "image_compare.quick_save",
@@ -448,7 +441,225 @@ def register_image_compare_actions(
     for action in specs:
         reg.register(action)
 
+    _contribute_mode_picker_options(widget, reg)
+    _contribute_interpolation_options(reg)
+    _contribute_name_edit_actions(widget, reg)
     _contribute_font_settings_flyout(reg)
+
+
+_DIFF_OPTION_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    ("off", "image_compare.action.diff_off", "off", ("off",)),
+    ("highlight", "image_compare.action.diff_highlight", "highlight", ("highlight",)),
+    ("grayscale", "image_compare.action.diff_grayscale", "grayscale", ("grayscale",)),
+    ("edges", "image_compare.action.diff_edges", "edges", ("edges",)),
+    ("ssim", "image_compare.action.diff_ssim", "ssim", ("ssim",)),
+)
+
+_CHANNEL_OPTION_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    ("rgb", "image_compare.action.channel_rgb", "RGB", ("rgb",)),
+    ("red", "image_compare.action.channel_red", "R", ("red", "r")),
+    ("green", "image_compare.action.channel_green", "G", ("green", "g")),
+    ("blue", "image_compare.action.channel_blue", "B", ("blue", "b")),
+    ("luminance", "image_compare.action.channel_luminance", "L", ("luminance", "luma")),
+)
+
+
+def _contribute_mode_picker_options(widget, reg: ActionRegistry) -> None:
+    from ui.actions.flyout_contribute import (
+        SimpleOptionAction,
+        contribute_simple_options_actions,
+    )
+
+    analysis_bc = (_BC_TOOLBAR, _BC_ANALYSIS)
+    help_page = _help_for("analysis")
+
+    diff_picker = getattr(widget, "btn_diff_mode_picker", None)
+    if diff_picker is not None:
+        contribute_simple_options_actions(
+            diff_picker,
+            options=tuple(
+                SimpleOptionAction(oid, label, data, search_terms=terms)
+                for oid, label, data, terms in _DIFF_OPTION_SPECS
+            ),
+            prefix="image_compare.diff_mode.",
+            owner_tab=OWNER,
+            topic="analysis",
+            breadcrumb=analysis_bc,
+            help_page=help_page,
+            registry=reg,
+            sort_base=(40,),
+        )
+
+    channel_picker = getattr(widget, "btn_channel_mode_picker", None)
+    if channel_picker is not None:
+        contribute_simple_options_actions(
+            channel_picker,
+            options=tuple(
+                SimpleOptionAction(oid, label, data, search_terms=terms)
+                for oid, label, data, terms in _CHANNEL_OPTION_SPECS
+            ),
+            prefix="image_compare.channel_mode.",
+            owner_tab=OWNER,
+            topic="analysis",
+            breadcrumb=analysis_bc,
+            help_page=help_page,
+            registry=reg,
+            sort_base=(41,),
+        )
+
+
+_INTERP_OPTION_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    ("nearest", "magnifier.nearest_neighbor", "NEAREST", ("nearest", "nn")),
+    ("bilinear", "magnifier.bilinear", "BILINEAR", ("bilinear",)),
+    ("bicubic", "magnifier.bicubic", "BICUBIC", ("bicubic",)),
+    ("lanczos", "magnifier.lanczos", "LANCZOS", ("lanczos",)),
+    ("ewa_lanczos", "magnifier.ewa_lanczos", "EWA_LANCZOS", ("ewa", "ewa_lanczos")),
+)
+
+
+def _host_interpolation_controller():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return None
+    for top in app.topLevelWidgets():
+        presenter = getattr(top, "presenter", None)
+        ui = getattr(presenter, "ui_manager", None) if presenter else None
+        transient = getattr(ui, "transient", None) if ui else None
+        controller = getattr(transient, "interpolation", None) if transient else None
+        if controller is not None:
+            return controller
+    return None
+
+
+def _contribute_interpolation_options(reg: ActionRegistry) -> None:
+    from ui.actions.flyout_contribute import (
+        SimpleOptionAction,
+        contribute_simple_options_actions,
+    )
+
+    controller = _host_interpolation_controller()
+    if controller is None:
+        return
+    contribute_simple_options_actions(
+        controller,
+        options=tuple(
+            SimpleOptionAction(oid, label, data, search_terms=terms)
+            for oid, label, data, terms in _INTERP_OPTION_SPECS
+        ),
+        prefix="image_compare.interpolation.",
+        owner_tab=OWNER,
+        topic="magnifier",
+        breadcrumb=(_BC_TOOLBAR, _BC_MAGNIFIER),
+        help_page=_help_for("magnifier"),
+        registry=reg,
+        sort_base=(30,),
+    )
+
+
+def _host_font_settings_controller():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return None
+    for top in app.topLevelWidgets():
+        presenter = getattr(top, "presenter", None)
+        ui = getattr(presenter, "ui_manager", None) if presenter else None
+        transient = getattr(ui, "transient", None) if ui else None
+        controller = getattr(transient, "font_settings", None) if transient else None
+        if controller is not None:
+            return controller
+    return None
+
+
+def _ensure_name_edit_chrome(widget) -> None:
+    """Show the bottom edit row (same chrome as text-settings Find Action)."""
+    controller = _host_font_settings_controller()
+    ensure = getattr(controller, "ensure_edit_row_visible", None) if controller else None
+    if callable(ensure):
+        ensure()
+        return
+    # Fallback when the transient controller is not wired yet.
+    toggle = getattr(widget, "toggle_edit_layout_visibility", None)
+    if callable(toggle):
+        toggle(True)
+    file_btn = getattr(widget, "btn_file_names", None)
+    if file_btn is not None and hasattr(file_btn, "setChecked"):
+        try:
+            file_btn.setChecked(True, emit=False)
+        except TypeError:
+            try:
+                file_btn.setChecked(True, emit_signal=False)
+            except TypeError:
+                if not bool(file_btn.isChecked()):
+                    file_btn.setChecked(True)
+
+
+def _focus_name_edit(edit) -> None:
+    if edit is None:
+        return
+    focus = getattr(edit, "setFocus", None)
+    if callable(focus):
+        focus()
+    select = getattr(edit, "selectAll", None)
+    if callable(select):
+        select()
+
+
+_NAME_EDIT_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    (
+        "image_compare.rename_image1",
+        "edit_name1",
+        "ui.edit_current_image_1_name",
+        ("rename", "name1", "image1"),
+    ),
+    (
+        "image_compare.rename_image2",
+        "edit_name2",
+        "ui.edit_current_image_2_name",
+        ("rename", "name2", "image2"),
+    ),
+)
+
+
+def _contribute_name_edit_actions(widget, reg: ActionRegistry) -> None:
+    labels_bc = (_BC_TOOLBAR, _BC_LABELS)
+    help_page = _help_for("labels")
+
+    def _ensure() -> None:
+        _ensure_name_edit_chrome(widget)
+
+    for order, (action_id, attr, label_key, terms) in enumerate(_NAME_EDIT_SPECS):
+        edit = getattr(widget, attr, None)
+        if edit is None:
+            continue
+
+        def _run(*, ensure=_ensure, field=edit) -> None:
+            ensure()
+            _focus_name_edit(field)
+
+        def _resolve(*, field=edit):
+            return field
+
+        reg.register(
+            ActionDescriptor(
+                action_id=action_id,
+                label_key=label_key,
+                breadcrumb=labels_bc,
+                owner_tab=OWNER,
+                topic="labels",
+                help_page=help_page,
+                search_terms=terms,
+                sort_key=(35, order),
+                run=_run,
+                target=ActionTarget(
+                    ensure_visible=_ensure,
+                    resolve_widget=_resolve,
+                ),
+            )
+        )
 
 
 def _host_font_settings_flyout():
