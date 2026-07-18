@@ -20,15 +20,27 @@ ContextMenuSurface = Literal["in_window", "popup"]
 def rmb_context_menu_surface() -> ContextMenuSurface:
     """Surface for right-click menus opened via ``ContextMenuManager``.
 
-    On Windows, a translucent ``Qt.Popup`` transient-parented to our frameless
-    CSD shell permanently breaks in-window alpha (toast black squares, File/Help
-    ghost/clip) until restart — see ``docs/dev/KNOWN_BUGS.md``. Prefer the
-    in-window overlay there; keep popup elsewhere so RMB still stacks above
-    ``UnifiedFlyout`` without host hacks.
+    Prefer ``popup`` so RMB stacks above ``UnifiedFlyout``. On Windows with
+    ``sli-ui-toolkit < 3.1.4``, a translucent ``Qt.Popup`` that calls
+    ``winId`` / ``setTransientParent`` against frameless CSD permanently
+    breaks in-window alpha — fall back to in-window until that toolkit fix
+    is installed (see ``docs/dev/KNOWN_BUGS.md``).
     """
-    if sys.platform.startswith("win"):
+    if not sys.platform.startswith("win"):
+        return "popup"
+    try:
+        from sli_ui_toolkit import __version__ as version
+    except Exception:
         return "in_window"
-    return "popup"
+    parts: list[int] = []
+    for piece in str(version).split(".")[:3]:
+        digits = "".join(ch for ch in piece if ch.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    if tuple(parts) >= (3, 1, 4):
+        return "popup"
+    return "in_window"
 
 
 class ContextMenuManager:
@@ -118,12 +130,8 @@ class ContextMenuManager:
             self._clear_active_menu()
         self._active_request = request
         self._active_key = key
-        # Arm guard before popup_at: popup can process events re-entrantly.
         self._ignore_outside_close = True
         surface = rmb_context_menu_surface()
-        # Non-Windows: separate Qt popup so RMB stacks above UnifiedFlyout.
-        # Windows: in-window overlay — popup + winId()/transientParent on the
-        # translucent CSD host corrupts in-window alpha for the process life.
         menu = ContextMenu(
             source_widget,
             entries=entries,
