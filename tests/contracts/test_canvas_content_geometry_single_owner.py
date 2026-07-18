@@ -17,6 +17,9 @@ Two independent rules, both grep/AST-based (no runtime execution):
    ``resolve_canvas_content_geometry(_for_store)`` /
    ``resolve_canvas_clip_rect_px`` (``ui/canvas_infra/scene/frame_geometry.py``).
 
+   Paths from ``rel()`` are always POSIX (``/``) so allowlist entries match
+   on Windows CI as well as Unix.
+
    The allowlist historically included the CPU-pixel-baking video-export chain
    (``snapshot_render_plan_builder.py``, ``video_snapshot_rendering/``) when
    that path baked padding into PIL. Snapshot prepare now keeps unpadded
