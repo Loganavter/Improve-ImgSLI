@@ -125,7 +125,33 @@ def test_mode_picker_opens_left_aligned_under_button(qtbot, monkeypatch):
     assert calls[0]["animation_axis"] == "vertical"
 
 
-def test_mode_picker_flyout_width_fits_short_labels(qtbot):
+def test_mode_picker_choose_data_emits_and_hides(qtbot):
+    host = QWidget()
+    qtbot.addWidget(host)
+    host.resize(400, 300)
+    host.show()
+    qtbot.waitExposed(host)
+
+    button = Button("settings", parent=host)
+    button.move(20, 20)
+    button.show()
+    picker = ModePicker.attach(button)
+    picker.set_actions([("RGB", "rgb"), ("SSIM", "ssim")])
+    picker.set_current("rgb")
+
+    selected: list[object] = []
+    picker.selected.connect(selected.append)
+
+    picker.open()
+    assert picker._flyout is not None
+    assert picker._flyout.isVisible()
+    assert picker.row_widget(1) is not None
+
+    picker.choose_data("ssim")
+    assert selected == ["ssim"]
+    assert picker._current == "ssim"
+    assert not picker._flyout.isVisible()
+
     host = QWidget()
     qtbot.addWidget(host)
     host.resize(400, 300)

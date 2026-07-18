@@ -50,8 +50,8 @@ sparse overrides only. Listing all tabs uses metadata via
 same ranking as Find Action (`action_query_rank` / `compute_action_haystacks`)
 across **all** groups and rows — id, label, description, breadcrumb, default
 and effective chords, group title, plus `search_keys` / `search_terms`
-(e.g. typing `ssim` finds the Difference Mode cycle `H`, not a separate
-per-mode binding).
+(e.g. typing `ssim` matches the dedicated Difference Mode option row, not
+the cycle action `H` — mode aliases live only on per-option descriptors).
 
 Hard-coded and **out of keymap**: WASD / Space / overlay movement in
 `GlobalKeyboardHandler` and canvas keyboard. Video-editor dialog-local
@@ -229,6 +229,36 @@ overrides are resolved once per rebuild (`current_keyboard_overrides` in
    - Enter runs meaningful controls (switch / radio); sliders / swatches
      open the flyout and pulse on reveal.
 
+5. **SimpleOptionsFlyout lists** (`ModePicker` — difference / channel mode):
+   - Expand via `contribute_simple_options_actions` (`SimpleOptionAction`
+     specs with stable `option_id` + `label_key` + store `data`).
+   - Parent toolbar action keeps the cycle shortcut (`H` / `C`) only — no
+     mode-name `search_keys` (those would make «ssim» also hit Difference Mode).
+   - Per-option rows: `image_compare.diff_mode.highlight`,
+     `image_compare.channel_mode.rgb`, … — breadcrumb is Toolbar › Analysis
+     only (no repeated «Difference Mode» / «Channel Mode» group title).
+     Enter calls `ModePicker.choose_data`; reveal uses `ModePicker.open()`
+     (never toggle-close) + `row_widget`.
+   - Ids stay under a dotted prefix so `unregister_prefix` can refresh them
+     without wiping the parent cycle action.
+
+6. **Magnifier interpolation** (`SimpleOptionsFlyout` under the combo):
+   - Same `contribute_simple_options_actions` bridge
+     (`image_compare.interpolation.lanczos`, …).
+   - `InterpolationFlyoutController.show` / `open` first runs
+     `_ensure_magnifier_panel_chrome` (enable magnifier + show
+     `magnifier_settings_panel`) — mirrors
+     `FontSettingsController._ensure_text_settings_chrome` for the edit row.
+   - Enter applies via `choose_data` / combo index; reveal opens the list
+     anchored under `combo_interpolation` without toggle-closing.
+
+7. **Bottom name LineEdits** (`edit_name1` / `edit_name2`):
+   - Ids `image_compare.rename_image1` / `rename_image2`.
+   - Lazy `ensure_visible` → `FontSettingsController.ensure_edit_row_visible`
+     (turn on filename labels + show `edit_layout_widget`); Enter focuses and
+     selects the field. Hidden while the edit row is closed — do not use a
+     plain `widget=` target.
+
 Host code under `ui/presenters/` and `ui/main_window/` must not import
 `tabs.*.actions` (enforced by `tests/contracts/test_host_actions_isolation.py`).
 
@@ -266,3 +296,9 @@ contribute path, help_page tagging, `unregister_prefix`.
 lifecycle + dialog Find Action shortcut.
 `tests/plugins/test_font_settings_flyout_find_actions.py` — text flyout tags,
 listed while hidden, run toggles switch.
+`tests/plugins/test_simple_options_find_actions.py` — ModePicker option rows
+listed while closed, open + choose_data on run/reveal.
+`tests/plugins/test_interpolation_find_actions.py` — magnifier panel chrome
+ensure + interpolation option contribute/run.
+`tests/plugins/test_name_edit_find_actions.py` — bottom rename LineEdits listed
+while hidden; run shows edit row and focuses.

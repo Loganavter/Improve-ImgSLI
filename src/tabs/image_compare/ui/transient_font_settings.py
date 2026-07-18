@@ -40,6 +40,10 @@ class FontSettingsController:
                 anchor_widget.setFlyoutOpen(True)
         host._font_popup_open = True
 
+    def ensure_edit_row_visible(self) -> None:
+        """Find Action: reveal the bottom name-edit row when it is hidden."""
+        self._ensure_text_settings_chrome()
+
     def _ensure_text_settings_chrome(self) -> None:
         """Show the bottom edit toolbar so ``btn_text_settings`` can be anchored."""
         widget = self.widget

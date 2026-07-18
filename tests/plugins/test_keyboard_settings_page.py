@@ -20,12 +20,13 @@ def test_keyboard_section_registers():
     assert SECTION.title_key == "settings.keyboard"
 
 
-def test_keymap_defaults_include_diff_mode_and_ssim_search():
+def test_keymap_defaults_include_diff_mode_cycle():
     defaults = {e.action_id: e for e in _collect_defaults().all_entries()}
     assert "image_compare.diff_mode" in defaults
     entry = defaults["image_compare.diff_mode"]
     assert entry.default_shortcut == "H"
-    assert keymap_entry_rank(entry, "ssim") is not None
+    # Mode names (ssim, …) are on per-option Find Action rows, not the cycle.
+    assert keymap_entry_rank(entry, "ssim") is None
     assert keymap_entry_rank(entry, "difference") is not None
     assert keymap_entry_rank(entry, "magnifier") is None
 
