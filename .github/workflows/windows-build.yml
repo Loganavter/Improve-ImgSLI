@@ -4,9 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       console:
-        description: "Build with console subsystem (shows startup tracebacks)"
-        type: boolean
-        default: false
+        description: "Console subsystem (debug startup crashes)"
+        type: choice
+        options:
+          - "false"
+          - "true"
+        default: "false"
   push:
     tags:
       - "v*"
