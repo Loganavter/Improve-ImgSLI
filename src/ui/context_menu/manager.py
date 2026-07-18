@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import sys
+from typing import Literal
 
 from sli_ui_toolkit.widgets import (
     ContextMenu,
@@ -11,6 +13,22 @@ from sli_ui_toolkit.widgets import (
 from ui.context_menu.models import ContextMenuProvider, ContextMenuRequest
 
 logger = logging.getLogger("ImproveImgSLI")
+
+ContextMenuSurface = Literal["in_window", "popup"]
+
+
+def rmb_context_menu_surface() -> ContextMenuSurface:
+    """Surface for right-click menus opened via ``ContextMenuManager``.
+
+    On Windows, a translucent ``Qt.Popup`` transient-parented to our frameless
+    CSD shell permanently breaks in-window alpha (toast black squares, File/Help
+    ghost/clip) until restart — see ``docs/dev/KNOWN_BUGS.md``. Prefer the
+    in-window overlay there; keep popup elsewhere so RMB still stacks above
+    ``UnifiedFlyout`` without host hacks.
+    """
+    if sys.platform.startswith("win"):
+        return "in_window"
+    return "popup"
 
 
 class ContextMenuManager:
@@ -102,14 +120,15 @@ class ContextMenuManager:
         self._active_key = key
         # Arm guard before popup_at: popup can process events re-entrantly.
         self._ignore_outside_close = True
-        # Right-click menus only: separate Qt popup so they stack above
-        # UnifiedFlyout without overlay raise hacks. Button-anchored menus
-        # (show_aligned / popup_context_menu_for_anchor) stay in-window.
+        surface = rmb_context_menu_surface()
+        # Non-Windows: separate Qt popup so RMB stacks above UnifiedFlyout.
+        # Windows: in-window overlay — popup + winId()/transientParent on the
+        # translucent CSD host corrupts in-window alpha for the process life.
         menu = ContextMenu(
             source_widget,
             entries=entries,
             on_triggered=on_triggered,
-            surface="popup",
+            surface=surface,
         )
         self._active_menu = menu
         menu.aboutToHide.connect(lambda: self._on_menu_hidden(menu))

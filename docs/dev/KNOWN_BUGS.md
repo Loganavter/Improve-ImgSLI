@@ -117,6 +117,68 @@ when content height changes in-place (e.g. recent shelf growing to a second
 row). Those scrolls use `set_corner_radius(0)`; rounding stays on the window
 paint path + host bottom masks.
 
+## Windows: RMB popup ContextMenu breaks in-window alpha (toasts, File/Help, shadows)
+
+**Status:** mitigated (2026-07-18) — Windows RMB uses in-window surface.
+Root Qt/DWM interaction with translucent popup still open if someone
+re-enables `surface="popup"` there.
+
+**Confirmed trigger:** opening a **right-click** toolkit context menu
+(`ContextMenuManager` → `ContextMenu(..., surface="popup")` → `popup_at`).
+Reproduced from the recent-projects card ПКМ (and likely any other host RMB
+that goes through the same manager). File/Help title-bar menus and toasts
+are *victims* after that; they are not the switch that flips the bad state.
+
+**Symptoms after the trigger (persist until restart):**
+- Title-bar File/Help (in-window `ContextMenu` / `show_aligned`): ghost strip
+  above the panel, bottom clipped / undrawn.
+- Toasts (`ToastNotification` child of the main window): solid black square
+  where soft alpha / rounded corners should be.
+- Same class of failure for any in-window surface that paints
+  `QColor(0,0,0,alpha)` shadows (`draw_rounded_shadow`) or relies on
+  translucent corners under the CSD host.
+
+**What the RMB path does differently:** canvas / recent ПКМ menus intentionally
+used a **top-level** frameless `Qt.Popup` (`configure_popup_widget`: Popup |
+Frameless | NoDropShadow + `WA_TranslucentBackground`) so they stack above
+`UnifiedFlyout` without OverlayLayer raise hacks. Before show,
+`bind_popup_transient_parent` forces native handles:
+
+```text
+host.winId()          # translucent frameless CSD main window
+widget.winId()        # translucent Popup
+popup.setTransientParent(host_handle)
+```
+
+Title-bar File/Help stay **in-window** (`popup_context_menu_for_anchor` /
+default surface). Toasts are also in-window children of `MainWindow` and do
+**not** use `create_shadow_surface`.
+
+**Working hypothesis:** on Windows, creating / mapping a translucent
+`Qt.Popup` as a transient child of our translucent frameless CSD shell (or
+the `winId()` touch that forces native window recreation) permanently
+degrades DWM / Qt alpha compositing for **sibling in-window** overlays on
+that host. Soft shadows become opaque black; geometry/clip updates for
+in-window menus look ghosted/clipped. Restart recreates the layered window
+and restores alpha.
+
+**Mitigation:** `ui.context_menu.manager.rmb_context_menu_surface()` returns
+`in_window` on Windows and `popup` elsewhere. RMB still `raise_()`s above
+sibling flyouts via `raise_active_menus`. Do not restore Windows popup
+without re-verifying toast + File/Help alpha after a ПКМ open.
+
+**Probe plan (if revisiting popup on Windows):**
+1. Cold start → toast / File menu OK → open any RMB via `ContextMenuManager`
+   → toast / File menu broken without further deletes/resizes.
+2. Same with title-bar File only (never RMB) — should stay healthy.
+3. Skip `host.winId()` / `setTransientParent` on Windows in
+   `sli_ui_toolkit.ui.popup_surface.bind_popup_transient_parent` and retest.
+4. Check whether `IMGSLI_RESIZE_SHIELD` / RHI freeze correlates or is
+   unrelated (menu open can also micro-resize chrome).
+
+**Likely deeper fix sites:** toolkit `ui/popup_surface.py`
+(`bind_popup_transient_parent` / `configure_popup_widget`) for a Windows-safe
+popup that does not poison CSD alpha.
 ## multi_compare: large slot images and tiled export — fixed (2026-07-15)
 
 **Status:** fixed.
