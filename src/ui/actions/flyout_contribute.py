@@ -3,12 +3,17 @@
 Unlike dialog contribute (live ``widget=`` refs that vanish while hidden),
 flyouts use lazy ``ensure_visible`` + ``resolve_widget`` so chrome stays in
 the catalog while the panel is closed — same idea as Settings pages.
+
+``contribute_simple_options_actions`` covers ``ModePicker`` /
+``SimpleOptionsFlyout`` lists (diff mode, channel mode, …): one catalog row
+per option, ``ensure_visible`` opens the list, Enter applies the value.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 from core.actions.types import ActionDescriptor, ActionTarget
 from ui.actions.dialog_contribute import _run_for_widget
@@ -19,6 +24,105 @@ from ui.actions.search_index import (
 )
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+@dataclass(frozen=True, slots=True)
+class SimpleOptionAction:
+    """One list row contributed from a ``ModePicker`` / options flyout."""
+
+    option_id: str
+    label_key: str
+    data: object
+    search_terms: tuple[str, ...] = ()
+    search_keys: tuple[str, ...] = ()
+
+
+def contribute_simple_options_actions(
+    picker,
+    *,
+    options: Sequence[SimpleOptionAction],
+    prefix: str,
+    owner_tab: str,
+    topic: str,
+    breadcrumb: tuple[str, ...],
+    help_page: str | None = None,
+    registry: ActionRegistry | None = None,
+    sort_base: tuple[int, ...] = (50,),
+) -> list[str]:
+    """Register one Find Action row per ``SimpleOptionsFlyout`` option.
+
+    ``picker`` must expose ``open()``, ``choose_data(data)``,
+    ``index_for_data(data)``, and ``row_widget(index)`` (see ``ModePicker``).
+    ``show`` / ``open`` must not toggle-close an already-visible panel.
+    """
+    reg = registry if registry is not None else get_action_registry()
+    if prefix:
+        reg.unregister_prefix(prefix)
+
+    registered: list[str] = []
+    open_fn = getattr(picker, "open", None)
+    choose = getattr(picker, "choose_data", None)
+    index_for = getattr(picker, "index_for_data", None)
+    row_at = getattr(picker, "row_widget", None)
+    if not callable(open_fn) or not callable(choose):
+        logger.warning(
+            "[find-action] simple-options contribute skipped: picker missing open/choose"
+        )
+        return registered
+
+    def _ensure() -> None:
+        open_fn()
+
+    for order, option in enumerate(options):
+        action_id = f"{prefix}{option.option_id}"
+        data = option.data
+
+        def _run(*, apply=choose, value=data) -> None:
+            apply(value)
+
+        def _resolve(
+            *,
+            find_index=index_for,
+            row=row_at,
+            value=data,
+        ):
+            # Rows exist only after populate; reveal already called ensure_visible.
+            if callable(find_index) and callable(row):
+                index = find_index(value)
+                if index >= 0:
+                    widget = row(index)
+                    if widget is not None:
+                        return widget
+            return None
+
+        reg.register(
+            ActionDescriptor(
+                action_id=action_id,
+                label_key=option.label_key,
+                breadcrumb=breadcrumb,
+                owner_tab=owner_tab,
+                topic=topic,
+                help_page=help_page,
+                search_keys=option.search_keys,
+                search_terms=option.search_terms,
+                sort_key=sort_base + (order,),
+                run=_run,
+                target=ActionTarget(
+                    ensure_visible=_ensure,
+                    resolve_widget=_resolve,
+                ),
+            )
+        )
+        registered.append(action_id)
+
+    logger.debug(
+        "[find-action] simple-options contribute prefix=%r registered=%d "
+        "catalog_total=%d",
+        prefix,
+        len(registered),
+        len(reg.all_actions()),
+    )
+    return registered
 
 
 def contribute_flyout_search_actions(
