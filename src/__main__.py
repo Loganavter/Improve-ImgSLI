@@ -1,33 +1,11 @@
 import argparse
-import faulthandler
 import logging
 import os
 import sys
 from pathlib import Path
 
-faulthandler.enable()
-
-# Opt-in diagnostics for hangs/freezes that don't raise a fatal signal (so
-# faulthandler.enable()'s default segfault-only handler never fires): dumps
-# every live thread's Python-level stack to a file every N seconds, so a
-# freeze can be diagnosed from *where* each thread is stuck without
-# attaching a debugger. Set IMGSLI_FAULT_DUMP=1 to enable.
-if os.environ.get("IMGSLI_FAULT_DUMP"):
-    _fault_dump_path = os.environ.get(
-        "IMGSLI_FAULT_DUMP_FILE", "/tmp/imgsli_fault_dump.log"
-    )
-    _fault_dump_file = open(_fault_dump_path, "w")
-    faulthandler.enable(file=_fault_dump_file, all_threads=True)
-    faulthandler.dump_traceback_later(
-        int(os.environ.get("IMGSLI_FAULT_DUMP_INTERVAL", "15")),
-        repeat=True,
-        file=_fault_dump_file,
-    )
-
 try:
-
     current_dir = Path(__file__).resolve().parent
-
     project_dir = current_dir.parent
     bundled_src_dir = current_dir / "src"
 
@@ -36,7 +14,6 @@ try:
     if bundled_src_dir.is_dir() and str(bundled_src_dir) not in sys.path:
         sys.path.insert(0, str(bundled_src_dir))
 except Exception:
-
     pass
 
 if getattr(sys, "frozen", False):
@@ -44,6 +21,12 @@ if getattr(sys, "frozen", False):
 else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, application_path)
+
+# Must run before any code that writes to stderr (windowed builds set it to None).
+from core.windowed_stdio import enable_faulthandler, ensure_stdio
+
+ensure_stdio()
+enable_faulthandler()
 
 from PySide6.QtCore import QLoggingCategory, QThreadPool, QTimer, Qt
 from PySide6.QtWidgets import QApplication
@@ -205,5 +188,37 @@ def main():
         pass
     os._exit(int(exit_code) if isinstance(exit_code, int) else 0)
 
+def _write_frozen_crash_log() -> Path | None:
+    if not getattr(sys, "frozen", False):
+        return None
+    try:
+        import traceback
+
+        path = Path(sys.executable).resolve().parent / "startup_crash.log"
+        path.write_text(traceback.format_exc(), encoding="utf-8")
+        print(f"Wrote crash log: {path}", file=sys.stderr)
+        return path
+    except Exception:
+        return None
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException:
+        logging.exception("Fatal error during startup")
+        try:
+            import traceback
+
+            traceback.print_exc()
+        except Exception:
+            pass
+        _write_frozen_crash_log()
+        if getattr(sys, "frozen", False):
+            try:
+                input("\nPress Enter to exit...")
+            except Exception:
+                pass
+        raise
