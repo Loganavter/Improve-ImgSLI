@@ -7,7 +7,7 @@ Feature-specific gestures (dividers, slot drag) stay in
 from __future__ import annotations
 
 from PySide6.QtCore import QMimeData, QPoint, Qt
-from PySide6.QtGui import QDrag, QMouseEvent, QWheelEvent
+from PySide6.QtGui import QContextMenuEvent, QDrag, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
 from tabs.multi_compare.canvas.features.grid_dividers.input.hit import divider_at
@@ -108,34 +108,46 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
     event.accept()
 
 
+def handle_context_menu_event(widget, event: QContextMenuEvent) -> None:
+    """Open the slot menu on Qt's context-menu request (not RMB press).
+
+    Opening a ``Qt.Popup`` from ``mousePressEvent`` on a ``QRhiWidget`` can
+    jerk presentation / micro-resize the host; Multi Compare then double-flushes
+    via ``request_view_update`` and the zoomed frame appears to advance.
+    Image Compare already uses ``contextMenuEvent`` for the same reason.
+    """
+    pos = event.pos()
+    picked = leaf_at(pos, widget._leaf_rects())
+    if picked is None:
+        event.ignore()
+        return
+    leaf, rect = picked
+    slot = next((s for s in widget.state.slots if s.id == leaf.slot_id), None)
+    menu = open_context_menu(
+        ContextMenuRequest(
+            source_widget=widget,
+            global_pos=event.globalPos(),
+            local_pos=pos,
+            session_type="multi_compare",
+            target=ContextMenuTarget(
+                kind="multi_compare_slot",
+                id=leaf.slot_id,
+                payload={
+                    "rect": rect,
+                    "path": slot.path if slot is not None else None,
+                    "label": slot.label if slot is not None else "",
+                },
+            ),
+        )
+    )
+    if menu is None:
+        event.ignore()
+        return
+    event.accept()
+
+
 def handle_mouse_press_event(widget, event: QMouseEvent) -> None:
     pos = event.position().toPoint()
-
-    if event.button() == Qt.MouseButton.RightButton:
-        picked = leaf_at(pos, widget._leaf_rects())
-        if picked is None:
-            return
-        leaf, rect = picked
-        slot = next((s for s in widget.state.slots if s.id == leaf.slot_id), None)
-        open_context_menu(
-            ContextMenuRequest(
-                source_widget=widget,
-                global_pos=event.globalPosition().toPoint(),
-                local_pos=pos,
-                session_type="multi_compare",
-                target=ContextMenuTarget(
-                    kind="multi_compare_slot",
-                    id=leaf.slot_id,
-                    payload={
-                        "rect": rect,
-                        "path": slot.path if slot is not None else None,
-                        "label": slot.label if slot is not None else "",
-                    },
-                ),
-            )
-        )
-        event.accept()
-        return
 
     if event.button() == Qt.MouseButton.LeftButton:
         ctx = GesturePressContext(

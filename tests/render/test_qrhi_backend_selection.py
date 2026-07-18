@@ -4,7 +4,9 @@ from ui.widgets.canvas.rhi_backend import (
     RHI_BACKEND_ENV,
     configure_rhi_process_environment,
     configure_rhi_widget,
+    platform_fallback_rhi_backend,
     requested_rhi_backend_name,
+    resolve_rhi_backend_with_fallback,
 )
 
 
@@ -54,3 +56,68 @@ def test_configure_rhi_process_environment_sets_backend_env(monkeypatch):
     configure_rhi_process_environment("vulkan")
 
     assert requested_rhi_backend_name() == "vulkan"
+
+
+def test_resolve_falls_back_when_vulkan_probe_fails(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod, "probe_vulkan_available", lambda: False)
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+
+    effective, reason = resolve_rhi_backend_with_fallback("vulkan")
+
+    assert effective == "d3d11"
+    assert reason is not None
+    assert "d3d11" in reason
+
+
+def test_resolve_keeps_vulkan_when_probe_ok(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod, "probe_vulkan_available", lambda: True)
+
+    effective, reason = resolve_rhi_backend_with_fallback("vulkan")
+
+    assert effective == "vulkan"
+    assert reason is None
+
+
+def test_resolve_skips_probe_when_unavailable(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod, "probe_vulkan_available", lambda: None)
+
+    effective, reason = resolve_rhi_backend_with_fallback("vulkan")
+
+    assert effective == "vulkan"
+    assert reason is None
+
+
+def test_platform_fallback_windows(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    assert platform_fallback_rhi_backend() == "d3d11"
+    monkeypatch.setattr(mod.sys, "platform", "darwin")
+    assert platform_fallback_rhi_backend() == "metal"
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    assert platform_fallback_rhi_backend() == "opengl"
+
+
+def test_render_failed_persists_fallback(monkeypatch):
+    persisted: list[str] = []
+    monkeypatch.setenv(RHI_BACKEND_ENV, "vulkan")
+    monkeypatch.setattr(
+        "ui.widgets.canvas.rhi_backend.platform_fallback_rhi_backend",
+        lambda: "d3d11",
+    )
+    monkeypatch.setattr(
+        "ui.widgets.canvas.rhi_backend.persist_rhi_backend_setting",
+        persisted.append,
+    )
+    widget = _Widget()
+    configure_rhi_widget(widget)
+
+    widget.renderFailed.callback()
+
+    assert persisted == ["d3d11"]
