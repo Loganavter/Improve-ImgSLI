@@ -102,14 +102,30 @@ def validate_windows_bundle(dist_dir: Path | None = None) -> int:
     if "PySide6 version:" not in qt_info:
         return _fail("Qt_BUNDLE_INFO.txt is missing PySide6 version metadata")
 
-    qt_dlls = list((bundle_dir / "PySide6").rglob("*.dll"))
-    qt_pyds = list((bundle_dir / "PySide6").rglob("*.pyd"))
+    # PyInstaller 6+ onedir keeps binaries under ``_internal/``; older builds
+    # (or ``contents_directory='.'``) keep ``PySide6/`` next to the exe.
+    pyside_roots = [
+        root
+        for root in (bundle_dir / "PySide6", bundle_dir / "_internal" / "PySide6")
+        if root.is_dir()
+    ]
+    qt_dlls: list[Path] = []
+    qt_pyds: list[Path] = []
+    for root in pyside_roots:
+        qt_dlls.extend(root.rglob("*.dll"))
+        qt_pyds.extend(root.rglob("*.pyd"))
     if not qt_dlls and not qt_pyds:
-        return _fail("Windows bundle has no replaceable Qt files under PySide6/")
+        return _fail(
+            "Windows bundle has no replaceable Qt files under PySide6/ "
+            "or _internal/PySide6/"
+        )
 
+    shown = ", ".join(
+        root.relative_to(bundle_dir).as_posix() for root in pyside_roots
+    )
     print(
         "Windows license bundle OK: "
-        f"{len(qt_dlls)} dll, {len(qt_pyds)} pyd under PySide6/"
+        f"{len(qt_dlls)} dll, {len(qt_pyds)} pyd under {shown}"
     )
     return 0
 
