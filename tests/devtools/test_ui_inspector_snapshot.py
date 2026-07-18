@@ -95,5 +95,7 @@ def test_widget_snapshot_reports_toolkit_button_state_theme_sources():
         "button.toggle.background.checked",
         "button.toggle.background.checked.hover",
     ]
-    assert snapshot.widget_theme_sources[1].path.endswith("src/resources/themes.json")
+    assert Path(snapshot.widget_theme_sources[1].path).as_posix().endswith(
+        "src/resources/themes.json"
+    )
     assert snapshot.widget_theme_sources[1].line == 81

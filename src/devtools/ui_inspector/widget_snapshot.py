@@ -349,7 +349,8 @@ def _toolkit_button_theme_keys(widget: QWidget) -> tuple[str, ...]:
 
 def _theme_source_path(theme_manager) -> str:
     for path in getattr(theme_manager, "_qss_paths", ()) or ():
-        if path.endswith("resources/styles/app.qss"):
+        # Windows CI stores backslash paths; match on POSIX form.
+        if Path(path).as_posix().endswith("resources/styles/app.qss"):
             return str(Path(path).parents[1] / "themes.json")
     return "resources/themes.json"
 
