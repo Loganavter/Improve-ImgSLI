@@ -171,11 +171,12 @@ No QVulkanInstance set for the top-level window, this is wrong.
 with no recovery — canvases stayed broken for the session.
 
 **Fix:** after `QApplication` starts, `resolve_rhi_backend_with_fallback`
-probes Vulkan (`QRhi.probe` / `QVulkanInstance`). On failure the process
-switches to the platform fallback (Windows `d3d11`, macOS `metal`, Linux
-`opengl`). Explicit Vulkan failures are persisted to QSettings for the next
-launch. `renderFailed` also logs an actionable hint and may persist the
-same fallback.
+probes Vulkan (`QRhi.probe` / `QVulkanInstance`). Explicit Vulkan is kept
+only when the probe returns **True**; `False`/`None` (missing bindings /
+`-9`) force the platform fallback (Windows `d3d11`, macOS `metal`, Linux
+`opengl`), persist it to QSettings, and set a process flag so widgets refuse
+`setApi(Vulkan)`. Probe stderr is filtered. `renderFailed` also logs an
+actionable hint and may persist the same fallback.
 
 ## multi_compare: large slot images and tiled export — fixed (2026-07-15)
 
