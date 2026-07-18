@@ -95,6 +95,13 @@ def create_service(
         from tabs.image_compare.services.clipboard import ClipboardService
 
         return ClipboardService(*args, widget=tab._widget, **kwargs)
+    if service_id == "begin_pending_image_insert":
+        from tabs.image_compare.pending_image_insert import begin_pending_image_insert
+
+        paths = args[0] if args else kwargs.get("paths")
+        if paths is None:
+            return False
+        return begin_pending_image_insert(tab, paths)
     if service_id == "layout_manager":
         if tab._widget is None:
             return None

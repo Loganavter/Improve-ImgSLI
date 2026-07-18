@@ -128,3 +128,31 @@ def test_session_picker_sync_icons_on_theme_change(qapp):
 
     icon_region = next(r for r in card._regions if r.id == "icon")
     assert icon_region.icon is dark
+
+
+def test_session_picker_retranslate_keeps_cards_alive(qapp):
+    """Language switch must not destroy create-cards (CSD opaque-paint holes)."""
+    ctx = _FakeContext(
+        [
+            SessionBlueprint(
+                session_type="image_compare",
+                plugin_name="comparison",
+                title="Image Compare",
+            ),
+        ]
+    )
+    widget = SessionPickerWidget(context=ctx)
+    widget.resize(900, 800)
+    widget.show()
+    qapp.processEvents()
+    widget.refresh()
+    card = widget._cards_by_type["image_compare"]
+    widget._retranslate()
+    qapp.processEvents()
+    assert widget._cards_by_type["image_compare"] is card
+    assert widget.updatesEnabled() is True
+    from PySide6.QtCore import Qt
+
+    assert widget.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) is False
+    assert widget._page_content.autoFillBackground() is True
+    widget.deleteLater()

@@ -13,6 +13,7 @@ Pressione `Ctrl+Shift+P` e digite um nome antes de memorizar uma lista. Execute 
 - `Ctrl+N` — Seletor de sessão / nova sessão
 - `Ctrl+Shift+P` — {{tr:menu.find_action}}
 - `Ctrl+V` — Colar imagem
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Abrir / salvar / salvar projeto como (`.imgsli`)
 - `Ctrl+Q` — Sair
 
 Os rótulos exatos seguem o seu pacote de idioma; remapeie em Configurações → Teclado → grupo de plataforma.
@@ -24,7 +25,7 @@ Os rótulos exatos seguem o seu pacote de idioma; remapeie em Configurações �
 - `H` / `C` — Modo de diferença / modo de canal
 - `X` — Trocar
 - `R` / `Ctrl+E` — Gravar / Editor de Vídeo
-- `Ctrl+S` / `Ctrl+Shift+S` — Salvamento rápido / Diálogo de salvar
+- `Ctrl+S` — Salvamento rápido
 - `WASD` / `QE` / `Space` — Mover lupa / espaçamento / pré-visualização de lado (fixos)
 
 Detalhes: [Comparação](help://comparison), [Lupa](help://magnifier), [Editor de Vídeo](help://video).
@@ -33,7 +34,7 @@ Detalhes: [Comparação](help://comparison), [Lupa](help://magnifier), [Editor d
 
 - `Ctrl+O` — Adicionar imagens (quando vinculado)
 - `D` — Visibilidade da grade
-- `Ctrl+S` / `Ctrl+Shift+S` — Salvamento rápido / Salvar
+- `Ctrl+S` — Salvamento rápido
 - `Esc` — Sair do foco do slot
 
 Veja [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).

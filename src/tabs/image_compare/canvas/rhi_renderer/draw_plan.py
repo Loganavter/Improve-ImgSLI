@@ -80,7 +80,15 @@ def _visible_tile_pairs(
                 (bottom - top) / grid.total_height,
             )
             side_tiles.append((tile_key, rect))
-        tiles_by_side.append(side_tiles or [(key, _FULL_TILE_RECT)])
+        # Never fall back to (bare_key, FULL_TILE_RECT) for a multi-tile grid:
+        # that key usually has no whole-image GPU texture (only per-tile keys),
+        # and would stretch a stale/missing binding as if it were the full image.
+        if side_tiles:
+            tiles_by_side.append(side_tiles)
+        else:
+            tiles_by_side.append([])
+    if not tiles_by_side[0] or not tiles_by_side[1]:
+        return []
     pairs = []
     for key1, rect1 in tiles_by_side[0]:
         for key2, rect2 in tiles_by_side[1]:

@@ -42,6 +42,10 @@
         "title": "Getting Started",
         "desc": "Quick orientation"
       },
+      "about": {
+        "title": "About",
+        "desc": "What Improve ImgSLI is"
+      },
       "settings": {
         "title": "Settings",
         "desc": "Appearance and performance"

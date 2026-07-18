@@ -15,13 +15,13 @@ Depois de parar, abra {{tr:image_compare.action.video_editor}} (`Ctrl+E`) para p
 ### Edição da linha do tempo {#timeline}
 
 - **Percorrer** — arraste o cursor de tempo.
-- **Intervalo** — as alças de seleção marcam um trecho; {{tr:button.trim_to_selection}} mantém só essa seleção.
+- **Intervalo** — `Shift`+arrastar marca um trecho; as alças e o meio da seleção movem-se à parte; {{tr:button.trim_to_selection}} mantém só essa seleção.
 - **Excluir** — `Delete` / `Backspace` removem o intervalo selecionado.
 - **Reproduzir** — `Space`; desfazer / refazer — `Ctrl+Z` / `Ctrl+Y`.
 
-:::figure{side=right width=280}
-![Linha do tempo de vídeo](ui/placeholder.png)
-{{tr:image_compare.action.video_editor}} — linha do tempo (placeholder).
+:::figure{side=block width=840}
+![Linha do tempo de vídeo]({{img:workspace.image_compare.video.timeline}})
+{{tr:image_compare.action.video_editor}} — linha do tempo.
 :::
 
 ### Trilhas e o que foi capturado {#tracks}
@@ -45,9 +45,9 @@ As trilhas de ferramentas (divisor, lupa, viewport e similares) mostram como os 
 - **Caminho** — arquivo de saída; botões de pasta favorita reutilizam a última pasta preferida.
 - **Progresso** — pode ser interrompido; o log reporta mensagens do codificador.
 
-:::figure{side=right width=280}
-![Painel de exportação de vídeo](ui/placeholder.png)
-{{tr:image_compare.action.video_editor}} — exportação (placeholder).
+:::figure{side=block width=630}
+![Painel de exportação de vídeo]({{img:workspace.image_compare.video.export_encode}})
+{{tr:image_compare.action.video_editor}} — exportação.
 :::
 
 ### {{tr:video.manual_cli}} {#manual-cli}

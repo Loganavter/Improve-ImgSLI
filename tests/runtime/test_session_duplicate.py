@@ -47,6 +47,9 @@ class _FakeSessionManager:
         self._active = session_id
         return True
 
+    def get_session_blueprint(self, session_type: str):
+        return SimpleNamespace(session_type=session_type)
+
 
 class _FakeStore:
     def __init__(self, sessions: dict[str, SimpleNamespace]):

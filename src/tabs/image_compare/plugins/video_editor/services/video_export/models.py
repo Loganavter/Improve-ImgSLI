@@ -31,6 +31,23 @@ class GlobalCanvasBounds:
     canvas_y_min: float = 0.0
     canvas_y_max: float = 1.0
 
+    def extends_beyond_unit(self, *, eps: float = 1e-9) -> bool:
+        """True when the resolved virtual canvas leaves normalized ``0..1``.
+
+        Fill-background only paints those pads; with a unit canvas the option
+        is meaningless and must stay off in the still-image exporter.
+        """
+        return (
+            float(self.canvas_x_min) < -eps
+            or float(self.canvas_x_max) > 1.0 + eps
+            or float(self.canvas_y_min) < -eps
+            or float(self.canvas_y_max) > 1.0 + eps
+            or int(self.pad_left) > 0
+            or int(self.pad_right) > 0
+            or int(self.pad_top) > 0
+            or int(self.pad_bottom) > 0
+        )
+
     def to_virtual_layout(self) -> VirtualCanvasLayout:
         return VirtualCanvasLayout(
             canvas_bounds=NormalizedBounds(

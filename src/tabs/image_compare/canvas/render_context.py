@@ -351,7 +351,6 @@ def resize_canvas(widget, w: int, h: int):
         from ui.canvas_infra.viewport.focus import capture_letterbox_focus
 
         letterbox_focus = capture_letterbox_focus(widget)
-    widget._update_paste_overlay_rects()
     img1, img2 = state._stored_pil_images
     if state._shader_letterbox_mode and img1 is not None:
         update_common_letterbox_geometry(widget, img1, img2)

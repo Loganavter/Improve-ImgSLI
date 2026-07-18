@@ -12,9 +12,9 @@
 - **Видимость** (`D`) — {{tr:image_compare.action.divider_visible}} показывает или скрывает линию.
 - **Комбинированный** — {{tr:image_compare.action.divider_combined}} собирает ориентацию, ширину и цвет (скролл / ПКМ / СКМ); жесты в подсказке контрола.
 
-:::figure{side=right width=280}
-![Линия раздела](ui/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}} (временный скриншот).
+:::figure{side=block width=280}
+![Линия раздела]({{img:workspace.image_compare.comparison.split_line}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}.
 :::
 
 ### Скролл по картинкам {#scroll-images}
@@ -35,6 +35,7 @@
 
 - **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — по умолчанию выкл.; авторасчёт в [Настройки → Анализ](help://settings#analysis).
 - **Свойства** — [Свойства изображения](help://image_properties) из контекстного меню строки списка (метаданные и сторона / рейтинг).
+- **Переместить** — пункт контекстного меню на холсте или в списке показывает ghost изображения слева-снизу от курсора; слегка сдвиньте курсор и кликните по другой вкладке (или холсту), чтобы запустить ту же вставку, что при дублировании / вставке. `Esc` или ПКМ — отмена.
 
 ### Режимы канала {#channel-modes}
 
@@ -44,9 +45,9 @@
 
 {{tr:image_compare.action.diff_mode}} (`H` циклически) подчёркивает отличия пары:
 
-:::figure{side=right width=280}
-![Режим разницы](ui/placeholder.png)
-{{tr:image_compare.action.diff_mode}} (временный скриншот).
+:::figure{side=block width=280}
+![Режим разницы]({{img:workspace.image_compare.comparison.difference_modes}})
+{{tr:image_compare.action.diff_mode}}.
 :::
 
 - **{{tr:image_compare.action.diff_highlight}}** — зоны изменений на живой паре

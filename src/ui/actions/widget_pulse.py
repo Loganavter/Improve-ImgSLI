@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.theme import ThemeManager
 
+from ui.theming import resolve_theme_color
+
 # Thin toolkit controls (sliders) need a larger hit-box so the ring is readable.
 _MIN_PULSE_HEIGHT = 28
 _MIN_PULSE_WIDTH = 40
@@ -48,7 +50,7 @@ class _PulseOverlay(QWidget):
         if self._target_rect.isNull() or not self._target_rect.isValid():
             return
         try:
-            accent = ThemeManager.get_instance().get_color("accent")
+            accent = resolve_theme_color(ThemeManager.get_instance(), "accent")
         except Exception:
             accent = QColor("#3d8bfd")
         ring = self._target_rect.adjusted(1, 1, -2, -2)

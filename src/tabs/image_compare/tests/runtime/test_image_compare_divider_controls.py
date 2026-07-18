@@ -83,7 +83,7 @@ def test_magnifier_guides_sync_colors_both_thickness_buttons_from_state(monkeypa
     btn_width = _ProbeButton()
     presenter = SimpleNamespace(
         store=SimpleNamespace(viewport=SimpleNamespace(view_state=SimpleNamespace())),
-        ui=SimpleNamespace(
+        widget=SimpleNamespace(
             btn_magnifier_guides=btn_guides,
             btn_magnifier_guides_simple=_ProbeButton(),
             btn_magnifier_guides_width=btn_width,

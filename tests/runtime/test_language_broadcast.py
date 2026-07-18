@@ -30,6 +30,7 @@ def test_language_broadcast_updates_global_current_language(monkeypatch):
     emitted = []
     monkeypatch.setattr(translations, "_emit_language_changed", emitted.append)
     previous = translations._manager._current_lang
+    previous_pack = translations._manager._translations
     try:
         translations.emit_language_changed("ru")
 
@@ -37,6 +38,12 @@ def test_language_broadcast_updates_global_current_language(monkeypatch):
         assert emitted == ["ru"]
     finally:
         translations._manager._current_lang = previous
+        if previous:
+            translations._manager._translations = translations._manager.ensure_loaded(
+                previous
+            )
+        else:
+            translations._manager._translations = previous_pack
 
 
 def test_main_window_host_exposes_store_before_ui_setup():

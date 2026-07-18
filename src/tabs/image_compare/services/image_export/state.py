@@ -121,9 +121,12 @@ class ExportStateCoordinator:
         settings = self.store.settings
         settings.export_last_format = export_opts.get("format", "PNG")
         settings.export_quality = int(export_opts.get("quality", 95))
-        settings.export_fill_background = bool(
-            export_opts.get("fill_background", False)
-        )
+        # Do not wipe the user's fill preference when the checkbox was forced
+        # off because the canvas was still unit-bounded (no virtual pads).
+        if bool(export_opts.get("fill_background_editable", True)):
+            settings.export_fill_background = bool(
+                export_opts.get("fill_background", False)
+            )
         bg_color = export_opts.get("background_color")
         settings.export_background_color = (
             self.color_from_tuple(bg_color) if bg_color else self.default_bg_color()

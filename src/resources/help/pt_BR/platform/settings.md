@@ -12,7 +12,7 @@ As configurações são agrupadas por finalidade — geral, aparência, desempen
 
 - **{{tr:label.language}}** — en / ru / zh / pt_BR.
 - **{{tr:label.theme}}** — automático / claro / escuro.
-- **{{tr:settings.system_notifications}}** — toast opcional após salvar.
+- **{{tr:settings.system_notifications}}** — notificações do sistema operacional após salvar (o toast no app é separado).
 - **{{tr:settings.enable_debug_logging}}** — logs detalhados para depuração.
 - **{{tr:settings.show_workspace_tabs}}** — mostrar ou ocultar a faixa de abas de sessão.
 

@@ -275,9 +275,8 @@ def test_snapshot_builder_uses_precomputed_diff_as_export_base(monkeypatch):
 
     assert plan.canvas_w == 4
     assert captured["image1"] is captured["image2"]
-    assert captured["image1"].size == (4, 2)
-    assert captured["image1"].getpixel((0, 0)) == (10, 20, 30, 255)
-    assert captured["image1"].getpixel((1, 0)) == (255, 0, 0, 255)
+    assert captured["image1"].size == (2, 2)
+    assert captured["image1"].getpixel((0, 0)) == (255, 0, 0, 255)
     assert captured["render_scene"].diff_mode_active is False
     assert captured["render_scene"].diff_mode_int == 0
     assert captured["render_scene"].channel_mode_int == 0

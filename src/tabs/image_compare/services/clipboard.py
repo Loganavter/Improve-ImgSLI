@@ -18,7 +18,6 @@ class ClipboardService:
         self.main_controller = main_controller
         self.widget = widget
         self._paste_dialog = None
-        self._paste_overlay_canvas = None
 
     def paste_image_from_clipboard(self):
         try:
@@ -28,11 +27,6 @@ class ClipboardService:
                         return False
                 except Exception:
                     self._paste_dialog = None
-            if (
-                self._paste_overlay_canvas is not None
-                and self._paste_overlay_canvas.is_paste_overlay_visible()
-            ):
-                return False
 
             items_to_process = collect_clipboard_image_items()
             if not items_to_process:
@@ -64,7 +58,6 @@ class ClipboardService:
                 return False
 
             def on_direction_selected(direction: str):
-                self._clear_canvas_paste_overlay()
                 slot_number = 1 if direction in ("up", "left") else 2
 
                 local_files = [i for i in items_to_process if os.path.exists(i)]
@@ -101,38 +94,17 @@ class ClipboardService:
                         self.main_controller.thread_pool.start(worker)
 
             from services.system.paste_direction_overlay import (
-                PasteDirectionOverlay,
+                show_paste_direction_overlay,
             )
 
-            self._clear_canvas_paste_overlay()
-            overlay = PasteDirectionOverlay(
-                main_window,
-                self.widget.image_label,
+            self._paste_dialog = show_paste_direction_overlay(
+                parent=main_window,
+                image_label=self.widget.image_label,
                 is_horizontal=self.store.viewport.view_state.is_horizontal,
+                language=self.store.settings.current_language,
+                on_direction=on_direction_selected,
+                on_cancelled=lambda: setattr(self, "_paste_dialog", None),
             )
-            overlay.set_language(self.store.settings.current_language)
-            self._paste_dialog = overlay
-            overlay.direction_selected.connect(on_direction_selected)
-            overlay.cancelled.connect(lambda: setattr(self, "_paste_dialog", None))
-            overlay.show_overlay()
             return True
         except Exception as e:
             logger.error(f"Overlay error: {e}")
-
-    def _clear_canvas_paste_overlay(self):
-        canvas = self._paste_overlay_canvas
-        self._paste_overlay_canvas = None
-        if canvas is None:
-            return
-        try:
-            canvas.pasteOverlayDirectionSelected.disconnect()
-        except Exception:
-            pass
-        try:
-            canvas.pasteOverlayCancelled.disconnect()
-        except Exception:
-            pass
-        try:
-            canvas.set_paste_overlay_state(False)
-        except Exception:
-            pass

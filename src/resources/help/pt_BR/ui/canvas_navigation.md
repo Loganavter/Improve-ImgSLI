@@ -8,9 +8,9 @@ Movimente-se dentro do canvas de comparação: aplique zoom em direção ao curs
 - **Panorâmica** — mantenha o botão do meio do mouse pressionado e arraste, mesmo em `100%` de zoom.
 - **Modo** — não há uma ferramenta de navegação separada; esses gestos funcionam direto no canvas ativo.
 
-:::figure{side=right width=280}
-![Zoom e panorâmica no canvas](ui/placeholder.png)
-{{tr:workspace.session_types.image_compare}} → canvas (placeholder).
+:::figure{side=block width=280}
+![Zoom e panorâmica no canvas]({{img:ui.canvas_navigation.zoom}})
+{{tr:workspace.session_types.image_compare}} → canvas.
 :::
 
 ### Pré-visualização rápida de lado {#quick-side-preview}

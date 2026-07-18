@@ -105,14 +105,35 @@ def update_comparison_if_needed(presenter):
         presenter.view.display_single_image_on_label(image_to_show)
         return False
 
-    if (
-        presenter.store.viewport.session_data.image_state.image1 is None
-        or presenter.store.viewport.session_data.image_state.image2 is None
-        or not source1
-        or not source2
-    ):
+    have1 = bool(
+        presenter.store.viewport.session_data.image_state.image1 or source1
+    )
+    have2 = bool(
+        presenter.store.viewport.session_data.image_state.image2 or source2
+    )
+    if not have1 and not have2:
         presenter.widget.image_label.clear()
         presenter.current_displayed_pixmap = None
+        return False
+    if not have1 or not have2:
+        # One side is mid-reload / empty. Keep showing the live half instead of
+        # blanking the whole canvas (ClearImageSlotData + path-only load).
+        image_to_show = (
+            pick_first_real(
+                presenter.store.viewport.session_data.render_cache.display_cache_image1,
+                presenter.store.viewport.session_data.render_cache.scaled_image1_for_display,
+                presenter.store.viewport.session_data.image_state.image1,
+                source1,
+            )
+            if have1
+            else pick_first_real(
+                presenter.store.viewport.session_data.render_cache.display_cache_image2,
+                presenter.store.viewport.session_data.render_cache.scaled_image2_for_display,
+                presenter.store.viewport.session_data.image_state.image2,
+                source2,
+            )
+        )
+        presenter.view.display_single_image_on_label(image_to_show)
         return False
 
     if presenter.background.ensure_images_unified(source1, source2):

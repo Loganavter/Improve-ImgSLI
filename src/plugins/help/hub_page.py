@@ -51,6 +51,8 @@ class HelpHubPage(QWidget):
         self._icon_resolvers: tuple = ()
         self._hub_id: str | None = None
         self._child_ids: tuple[str, ...] = ()
+        self._cards_by_id: dict[str, Button] = {}
+        self._icon_by_id: dict[str, str | None] = {}
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(16, 12, 16, 16)
         self._layout.setSpacing(12)
@@ -96,9 +98,23 @@ class HelpHubPage(QWidget):
         self._child_ids = child_ids
         self._clear_cards()
         for child in children:
-            self._cards.addWidget(self._build_card(child))
+            card = self._build_card(child)
+            self._cards_by_id[child.node_id] = card
+            self._icon_by_id[child.node_id] = child.icon
+            self._cards.addWidget(card)
+
+    def sync_icons(self) -> None:
+        """Re-resolve card icons after theme change (eager QIcons freeze theme)."""
+        for node_id, card in self._cards_by_id.items():
+            icon = resolve_help_icon(
+                self._icon_by_id.get(node_id),
+                resolvers=self._icon_resolvers,
+            )
+            card.update_region("icon", icon=icon)
 
     def _clear_cards(self) -> None:
+        self._cards_by_id.clear()
+        self._icon_by_id.clear()
         while self._cards.count():
             item = self._cards.takeAt(0)
             widget = item.widget()

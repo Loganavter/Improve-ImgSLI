@@ -2,6 +2,19 @@
 
 This document explains the 24+ contracts and protocols that define how different parts of the application communicate. Rather than listing every API, it focuses on *why* these contracts exist and how they solve specific architectural problems.
 
+## Three senses of “contract”
+
+The word **contract** is used consistently, but for three related ideas.
+`contract == interface` alone is incomplete.
+
+| Sense | Meaning | Where to read |
+|---|---|---|
+| **Interface** | Typed integration surface: implement these fields/methods to plug into the host (`TabContract`, `CanvasWidgetFeature`, `CanvasRenderPass`, …). | This page (why); field catalogs in [rendering/contracts.md](rendering/contracts.md), [tabs/contract.md](tabs/contract.md), [render-pass-contract.md](rendering/render-pass-contract.md) |
+| **Host call sequence** | Part of an interface: the host invokes methods in a fixed order (e.g. render pass `initialize` → `prepare` → `record` → `release`). Not a separate CI suite. | [render-pass-contract.md](rendering/render-pass-contract.md) |
+| **Architectural dogma** | Developer rules that keep isolation intact (“no direct feature imports in shared code”). Enforced by AST scans in CI — not a public API. | Design principles below; [TESTING.md](TESTING.md) (`tests/contracts/`) |
+
+This page is primarily about **interface** contracts and the isolation model behind them. Architectural dogmas appear here as principles; the executable checks live under `tests/contracts/`.
+
 ## The Big Picture
 
 The application uses **contract-based architecture** to solve a fundamental problem: how do you add visual features (magnifier, divider, guides) without scattering their logic across the renderer, state management, toolbar, settings, and export systems?
@@ -117,6 +130,16 @@ Maps toolbar UI controls to feature command handlers.
 Declares: *"When button 'btn_magnifier_size' slider changes, call my size command with the value."*
 
 **Why separate**: Toolbar code doesn't know about features. Features declare their toolbar needs. The binding system wires them at runtime.
+
+### CanvasFeatureContextMenuZone
+
+A feature declares geometric territory where the host must not open a slot/image context menu.
+
+Declares: *"On my combined magnifier overlay, all host context menus go away — I own RMB there."*
+
+**How**: `WIDGET_FEATURE.build_context_menu_zones` → `CanvasFeatureContextMenuZone(zone_id, suppresses(ctx), priority)`. Shared canvas `contextMenuEvent` asks `is_context_menu_suppressed(ContextMenuHitContext)` before opening a menu. No feature literals in the canvas widget.
+
+**Why**: Same reason as gesture bindings — RMB routing for overlays must not hard-code magnifier (or future feature) hit geometry in shared canvas code.
 
 ### CanvasFeatureCommandAlias
 
@@ -236,6 +259,10 @@ Base protocol for all events. Lets code emit/listen to events without knowing co
 
 ## Design Principles Behind These Contracts
 
+These are the **architectural** sense of contract — isolation rules that
+interface registration alone does not enforce. CI encodes many of them as
+AST dogmas in `tests/contracts/` (see [TESTING.md](TESTING.md)).
+
 1. **No direct imports of features in shared code** — Use contracts/aliases instead
 2. **Auto-discovery** — Features register, subsystems discover them
 3. **Graceful degradation** — Missing feature? The app still works, just doesn't respond to that feature's commands
@@ -246,4 +273,8 @@ Base protocol for all events. Lets code emit/listen to events without knowing co
 
 - [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — Detailed guide to adding new canvas features
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Overall app architecture
-- [tabs/index.md](tabs/index.md) — Tab system details
+- [tabs/index.md](tabs/index.md) · [tabs/contract.md](tabs/contract.md) — workspace tabs / `TabContract`
+- [rendering/contracts.md](rendering/contracts.md) — canvas feature field catalog
+- [rendering/render-pass-contract.md](rendering/render-pass-contract.md) — QRhi pass lifecycle
+- [TESTING.md](TESTING.md) — architectural AST dogmas vs behavior tests
+- [CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md) — command/property aliases without direct imports

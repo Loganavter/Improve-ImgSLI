@@ -5,11 +5,19 @@
     "new_session": "New Session",
     "open_project": "Open Project",
     "save_project": "Save Project",
+    "save_project_as": "Save Project As…",
     "settings": "Settings",
     "quit": "Quit",
     "show_help": "Show Help",
     "find_action": "Find Action",
     "find_action_soon": "Command palette — coming soon",
-    "project_filter": "Improve ImgSLI Project (*.imgsli-project)"
+    "project_filter": "Improve ImgSLI Project (*.imgsli)",
+    "project_untitled": "Untitled",
+    "project_opening": "Opening project…",
+    "project_saving": "Saving project…",
+    "project_open_failed": "Could not open the project file.",
+    "project_file_missing": "The project file is missing. The Recent card was updated.",
+    "project_save_failed": "Could not save the project file.",
+    "project_missing_media": "Project saved, but some image files were missing and were not embedded."
   }
 }

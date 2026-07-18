@@ -103,7 +103,30 @@ only against the active tab. This is a deliberately different method name
 from `create_service` (not a flag) so a call site can't silently pick the
 wrong resolution strategy by forgetting an argument.
 
+## host → tab: `create_service_for` (named hub tab)
+
+Rare companion to `create_service`: resolve a service against a **specific**
+`session_type`, not the active session. Legitimate when host chrome must talk
+to a known hub tab that may not be active — today that is the session picker,
+addressed via `core.store.INITIAL_WORKSPACE_SESSION_TYPE` (not a tab class
+name and not `getattr` on the page widget).
+
+```python
+chrome = TabRegistry().create_service_for(
+    INITIAL_WORKSPACE_SESSION_TYPE,
+    "session_picker.host_chrome",
+)
+# -> SessionPickerHostChrome | None
+```
+
+Do **not** use this to smuggle active-session workarounds ("I'll just name
+`image_compare`"). Active-session capabilities stay on `create_service`.
+Do not grow a second Protocol casually — see `CanvasGeometryProvider` above;
+`session_picker.host_chrome` is a small extension object with a documented
+shape in `tabs/session_picker/host_chrome.py`.
+
 ## host → tab: `create_main_window_feature` (do not extend)
+
 
 A narrow hook for **main-presenter-hosted features only.** Currently exactly
 one ID is ever requested, `"image_canvas"` (`ui/main_window/composer.py`),
@@ -251,19 +274,18 @@ and never let host code reach into a tab's widget by attribute name
 As of this writing:
 
 - Every `create_service`/`create_startup_service`/`create_main_window_feature`
-  ID in the codebase is implemented only by `ImageCompareTab`; `multi_compare`
-  and `session_picker` implement none. Several call sites treat the result as
-  mandatory (`raise RuntimeError(...)` on `None`) rather than degrading
-  gracefully — a policy violation per rule 1 above, not yet fully cleaned up.
-  This means the mechanism has never actually been exercised by a second
-  implementor: "designed to be generic" and "proven generic" are not the same
-  claim here. Verify, don't assume, before assuming a new ID "just works" for
+  ID in the codebase was historically implemented only by `ImageCompareTab`.
+  `session_picker` now implements `session_picker.host_chrome` (resolved via
+  `create_service_for`); `multi_compare` implements a few contribution /
+  clipboard IDs. Several call sites still treat some results as mandatory
+  (`raise RuntimeError(...)` on `None`) rather than degrading gracefully —
+  a policy violation per rule 1 above, not yet fully cleaned up.
+  Verify, don't assume, before assuming a new ID "just works" for
   a non-`image_compare` tab.
-- `multi_compare`/`session_picker` have no real (or deliberately-documented
-  no-op) implementations for the session-scoped IDs they could plausibly be
-  the active tab for (`canvas_widget_class`, `layout_manager`,
-  `toolbar_presenter` are the live candidates if those tabs are ever meant to
-  render their own canvas chrome). Not yet started.
+- `multi_compare`/`session_picker` still lack several session-scoped IDs they
+  could plausibly be the active tab for (`canvas_widget_class`,
+  `layout_manager`, `toolbar_presenter` are the live candidates if those
+  tabs are ever meant to render their own canvas chrome). Not yet started.
 - **No enforcement test exists yet** for "every `create_service(...)` call
   site's string literal is recognized by at least one tab's `create_service`
   override." A dangling/misspelled ID currently fails silently at runtime

@@ -307,6 +307,8 @@ class ExportDialog(ThemedDialog):
 
         if self.dialog_state.background_color is not None:
             self.current_bg_color = color_to_qcolor(self.dialog_state.background_color)
+        # Desired preference from settings; _update_controls_visity_by_format
+        # clears/disables when virtual canvas is inactive.
         self.checkbox_fill_bg.setChecked(bool(self.dialog_state.fill_background))
         self._sync_background_controls()
 
@@ -349,6 +351,18 @@ class ExportDialog(ThemedDialog):
         if path:
             self.edit_dir.setText(path)
 
+    def _fill_background_allowed(self) -> bool:
+        """Fill only when pads exist (virtual canvas past 0..1) and format has alpha."""
+        fmt = (
+            self.combo_format.currentText().upper()
+            if hasattr(self, "combo_format")
+            else "PNG"
+        )
+        has_transparency = fmt in ("PNG", "TIFF", "WEBP", "JXL")
+        return has_transparency and bool(
+            getattr(self.dialog_state, "virtual_canvas_active", True)
+        )
+
     def _on_fill_background_toggled(self, _checked: bool = False) -> None:
         self._sync_background_controls()
         self._apply_preview_pixmap()
@@ -361,8 +375,9 @@ class ExportDialog(ThemedDialog):
             else "PNG"
         )
         has_transparency = fmt in ("PNG", "TIFF", "WEBP", "JXL")
+        fill_allowed = self._fill_background_allowed()
         fill_active = (
-            bool(self.checkbox_fill_bg.isChecked()) if has_transparency else True
+            bool(self.checkbox_fill_bg.isChecked()) if fill_allowed else (not has_transparency)
         )
         btn = getattr(self, "btn_bg_color", None)
         if btn is None:
@@ -400,13 +415,25 @@ class ExportDialog(ThemedDialog):
         self.png_row.setVisible(fmt == "PNG")
 
         has_transparency = fmt in ("PNG", "TIFF", "WEBP", "JXL")
-        self.checkbox_fill_bg.setEnabled(has_transparency)
+        fill_allowed = self._fill_background_allowed()
         self.checkbox_fill_bg.setVisible(has_transparency)
+        self.checkbox_fill_bg.setEnabled(fill_allowed)
+        if has_transparency and not fill_allowed:
+            # Unit canvas (0..1): no pads to paint — keep fill off.
+            self.checkbox_fill_bg.blockSignals(True)
+            self.checkbox_fill_bg.setChecked(False)
+            self.checkbox_fill_bg.blockSignals(False)
+        elif fill_allowed and not self.checkbox_fill_bg.isChecked():
+            # Restore settings preference when pads become relevant again
+            # (format switch back to alpha with an active virtual canvas).
+            if bool(self.dialog_state.fill_background):
+                self.checkbox_fill_bg.blockSignals(True)
+                self.checkbox_fill_bg.setChecked(True)
+                self.checkbox_fill_bg.blockSignals(False)
         self._sync_background_controls()
 
         self._apply_preview_pixmap()
         self._apply_dialog_geometry()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         # CSD startSystemResize can ignore QWidget/QWindow minimumSize on some
@@ -449,11 +476,15 @@ class ExportDialog(ThemedDialog):
 
     def _contribute_find_actions(self) -> None:
         try:
-            from plugins.export.actions import OWNER, contribute_export_dialog_actions
+            from plugins.export.actions import (
+                _export_dialog_owner_tab,
+                contribute_export_dialog_actions,
+            )
             from ui.actions.palette import install_dialog_find_action_shortcut
 
-            contribute_export_dialog_actions(self)
-            install_dialog_find_action_shortcut(self, active_tab=OWNER)
+            owner = _export_dialog_owner_tab()
+            contribute_export_dialog_actions(self, owner_tab=owner)
+            install_dialog_find_action_shortcut(self, active_tab=owner)
         except Exception:
             logger.debug(
                 "[find-action] export_dialog _contribute_find_actions failed",
@@ -503,7 +534,11 @@ class ExportDialog(ThemedDialog):
         )
         formats_with_alpha = {"PNG", "TIFF", "WEBP", "JXL"}
         force_fill = fmt_current not in formats_with_alpha
-        effective_fill = bool(self.checkbox_fill_bg.isChecked()) or force_fill
+        fill_allowed = self._fill_background_allowed()
+        effective_fill = (
+            force_fill
+            or (fill_allowed and bool(self.checkbox_fill_bg.isChecked()))
+        )
         bg = (
             self.current_bg_color
             if isinstance(self.current_bg_color, QColor)
@@ -586,7 +621,15 @@ class ExportDialog(ThemedDialog):
             "file_name": self.edit_name.text().strip(),
             "format": fmt,
             "quality": int(self.slider_quality.value()),
-            "fill_background": bool(self.checkbox_fill_bg.isChecked()),
+            "fill_background": (
+                bool(self.checkbox_fill_bg.isChecked())
+                if self._fill_background_allowed()
+                else False
+            ),
+            "fill_background_editable": self._fill_background_allowed(),
+            "virtual_canvas_active": bool(
+                getattr(self.dialog_state, "virtual_canvas_active", True)
+            ),
             "background_color": (bg.red(), bg.green(), bg.blue(), bg.alpha()),
             "png_compress_level": int(self.slider_png_compress.value()),
             "png_optimize": bool(self.checkbox_png_optimize.isChecked()),

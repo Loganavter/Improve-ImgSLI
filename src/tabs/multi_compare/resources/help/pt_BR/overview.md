@@ -14,9 +14,9 @@ Escolha {{tr:workspace.session_types.multi_compare}} no Seletor de Sessão, ou e
 - **Pesos** — arraste os divisores da grade para alterar os tamanhos relativos.
 - **Mudança de layout** — mantém as imagens carregadas sempre que possível.
 
-:::figure{side=center width=320}
-![Grade do Multi Compare](ui/placeholder.png)
-{{tr:workspace.session_types.multi_compare}} — grade / soltura na lacuna (placeholder).
+:::figure{side=block width=320}
+![Grade do Multi Compare]({{img:workspace.multi_compare.overview.layouts}})
+{{tr:workspace.session_types.multi_compare}} — grade / soltura na lacuna.
 :::
 
 ### Modo de foco {#focus-mode}
@@ -33,12 +33,12 @@ Escolha {{tr:workspace.session_types.multi_compare}} no Seletor de Sessão, ou e
 
 ### Menu de contexto do slot {#context-menu}
 
-Clique com o botão direito em um slot para ações por imagem, incluindo [Propriedades da Imagem](help://image_properties) (metadados do arquivo e posição do slot).
+Clique com o botão direito em um slot para ações por imagem, incluindo [Propriedades da Imagem](help://image_properties) (metadados do arquivo e posição do slot) e **Mover** (fantasma de arraste → clique em outra aba da área de trabalho para iniciar o posicionamento como no arrastar/colar).
 
 ### Salvar e exportar {#save-and-export}
 
 - **Salvamento rápido** (`Ctrl+S`) — {{tr:multi_compare.action.quick_save}}.
-- **Diálogo de salvar** (`Ctrl+Shift+S`) — {{tr:multi_compare.action.save}}.
+- **Diálogo de salvar** — {{tr:multi_compare.action.save}} (barra de ferramentas ou {{tr:menu.find_action}}).
 - **Paridade** — a exportação corresponde à grade ao vivo (layout, rótulos, elementos do divisor), não a uma única divisão de {{tr:workspace.session_types.image_compare}}.
 
 Busque salvar / exportar em {{tr:menu.find_action}} enquanto a aba {{tr:workspace.session_types.multi_compare}} estiver em foco.

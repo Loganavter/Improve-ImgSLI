@@ -13,7 +13,30 @@ def _invalidate_diff_cache(controller) -> None:
     if getattr(controller, "diff_service", None) is not None:
         controller.diff_service.invalidate()
     else:
-        controller.store.viewport.session_data.render_cache.cached_diff_image = None
+        render_cache = _session_render_cache(controller)
+        if render_cache is not None:
+            render_cache.cached_diff_image = None
+
+
+def _session_render_cache(controller):
+    session_data = getattr(controller.store.viewport, "session_data", None)
+    if session_data is None:
+        return None
+    return getattr(session_data, "render_cache", None)
+
+
+def _clear_unification_flags(controller) -> None:
+    """Clear in-progress flags; no-op if the active session has no render_cache.
+
+    Unification workers can finish after a workspace switch (e.g. Move to
+    another tab). The new session's ``SessionData`` may have ``render_cache
+    is None`` — never assign attributes onto that.
+    """
+    render_cache = _session_render_cache(controller)
+    if render_cache is None:
+        return
+    render_cache.unification_in_progress = False
+    render_cache.pending_unification_paths = None
 
 
 def initialize_app_display(controller):
@@ -66,9 +89,7 @@ def initialize_app_display(controller):
 
 
 def _unify_resize_method(controller) -> str:
-    from tabs.image_compare.canvas.features.magnifier.workers.common import (
-        get_effective_main_interpolation_method,
-    )
+    from shared.rendering.interpolation import get_effective_main_interpolation_method
 
     return get_effective_main_interpolation_method(controller.store.viewport)
 
@@ -230,7 +251,19 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
                     None
                 )
         else:
-            document_store_ops.clear_image_slot_data(controller.store, image_number)
+            # First item on an empty list while the other side already has
+            # content. Only clear if this slot still holds stale document
+            # pixels/path — a no-op clear would thrash the live side's
+            # display caches for Duplicate / DnD onto an empty half.
+            stale = (
+                document.full_res_image1 is not None or document.image1_path
+                if image_number == 1
+                else document.full_res_image2 is not None or document.image2_path
+            )
+            if stale:
+                document_store_ops.clear_image_slot_data(
+                    controller.store, image_number
+                )
 
     load_errors, newly_added_indices = [], []
     current_paths_in_list = {entry.path for entry in target_list_ref if entry.path}
@@ -273,6 +306,77 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             )
 
     _finalize_loaded_paths(controller, image_number, newly_added_indices, load_errors)
+
+
+def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> None:
+    """Copy the current image on ``source_slot`` onto ``target_slot``.
+
+    Unlike ``load_images_from_paths``, this does not treat an empty target
+    list as a brand-new comparison and therefore does not clear the live
+    half's display caches. The target list entry is path-only (no shared
+    ``TiledPixelStore``); ``set_current_image`` loads/opens a fresh store.
+    """
+    if source_slot not in (1, 2) or target_slot not in (1, 2):
+        return
+    document = controller.store.get_session_state_slot("document")
+    if document is None:
+        return
+    source_list = document.image_list1 if source_slot == 1 else document.image_list2
+    source_index = (
+        document.current_index1 if source_slot == 1 else document.current_index2
+    )
+    if not (0 <= source_index < len(source_list)):
+        return
+    source_item = source_list[source_index]
+    path = source_item.path or ""
+    if not path:
+        return
+
+    target_list = document.image_list1 if target_slot == 1 else document.image_list2
+    for index, existing in enumerate(target_list):
+        if existing.path == path:
+            if target_slot == 1:
+                document.current_index1 = index
+            else:
+                document.current_index2 = index
+            if controller.presenter:
+                controller.presenter.ui_batcher.schedule_update("combobox")
+            QTimer.singleShot(
+                0, lambda slot=target_slot: controller.set_current_image(slot)
+            )
+            return
+
+    target_list.append(
+        ImageItem(
+            image=None,
+            path=path,
+            display_name=source_item.display_name,
+            rating=int(getattr(source_item, "rating", 0) or 0),
+        )
+    )
+    new_index = len(target_list) - 1
+    if target_slot == 1:
+        document.current_index1 = new_index
+    else:
+        document.current_index2 = new_index
+
+    if controller.presenter:
+        controller.presenter.ui_batcher.schedule_update("combobox")
+        from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
+
+        QTimer.singleShot(0, controller.presenter.repopulate_flyouts)
+        if (
+            controller.presenter.ui_manager.transient.unified_flyout.mode
+            == FlyoutMode.DOUBLE
+        ):
+            QTimer.singleShot(
+                50,
+                lambda: controller.presenter.ui_manager.transient.unified_flyout.refreshGeometry(
+                    immediate=False
+                ),
+            )
+
+    QTimer.singleShot(0, lambda slot=target_slot: controller.set_current_image(slot))
 
 
 def _reload_existing_path(
@@ -372,7 +476,9 @@ def set_current_image(
     if not (0 <= current_index < len(target_list)):
         document_store_ops.clear_image_slot_data(controller.store, image_number)
         _invalidate_diff_cache(controller)
-        controller.store.invalidate_geometry_cache()
+        # clear_image_slot_data already drops this slot's display/scaled caches.
+        # invalidate_geometry_cache() would also wipe the other side and flash
+        # a blank canvas while the live half is still valid.
         controller._invalidate_image_canvas_render_state(clear_magnifier=True)
         controller._schedule_image_canvas_update()
         if controller.presenter:
@@ -483,53 +589,46 @@ def set_current_image(
 
 def on_unified_images_ready(controller, result):
     if not result:
-        controller.store.viewport.session_data.render_cache.unification_in_progress = (
-            False
-        )
-        controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-            None
-        )
+        _clear_unification_flags(controller)
         controller.metrics_service.on_metrics_calculated(None)
         return
     try:
         if isinstance(result, tuple) and len(result) == 5:
             u1, u2, path1, path2, task_id = result
         else:
-            controller.store.viewport.session_data.render_cache.unification_in_progress = (
-                False
-            )
-            controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-                None
-            )
+            _clear_unification_flags(controller)
             controller.metrics_service.on_metrics_calculated(None)
             return
 
         if task_id != controller._unification_task_id:
             return
+
         document = controller.store.get_session_state_slot("document")
+        session_data = getattr(controller.store.viewport, "session_data", None)
+        render_cache = (
+            getattr(session_data, "render_cache", None) if session_data else None
+        )
+        image_state = (
+            getattr(session_data, "image_state", None) if session_data else None
+        )
+        # Worker finished after a workspace switch: no document / IC session_data.
+        if document is None or render_cache is None or image_state is None:
+            _clear_unification_flags(controller)
+            return
+
         current_paths_now = (document.image1_path, document.image2_path)
         if (path1 != current_paths_now[0]) or (path2 != current_paths_now[1]):
-            controller.store.viewport.session_data.render_cache.unification_in_progress = (
-                False
-            )
-            controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-                None
-            )
+            _clear_unification_flags(controller)
             controller.store.invalidate_geometry_cache()
             controller.store.emit_state_change("viewport")
             return
         if not (u1 and u2):
-            controller.store.viewport.session_data.render_cache.unification_in_progress = (
-                False
-            )
-            controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-                None
-            )
+            _clear_unification_flags(controller)
             controller.metrics_service.on_metrics_calculated(None)
             return
 
-        controller.store.viewport.session_data.image_state.image1 = u1
-        controller.store.viewport.session_data.image_state.image2 = u2
+        image_state.image1 = u1
+        image_state.image2 = u2
         _invalidate_diff_cache(controller)
         # display_cache_image1/2 is exclusively owned/refreshed by the
         # per-frame create_preview_cache_async pipeline (see
@@ -537,24 +636,18 @@ def on_unified_images_ready(controller, result):
         # display cache from the previous image pair never lingers, rather
         # than writing a second, competing copy of it from this worker
         # result.
-        controller.store.viewport.session_data.render_cache.scaled_image1_for_display = (
-            None
-        )
-        controller.store.viewport.session_data.render_cache.scaled_image2_for_display = (
-            None
-        )
-        controller.store.viewport.session_data.render_cache.display_cache_image1 = None
-        controller.store.viewport.session_data.render_cache.display_cache_image2 = None
-        controller.store.viewport.session_data.render_cache.last_display_cache_params = None
+        render_cache.scaled_image1_for_display = None
+        render_cache.scaled_image2_for_display = None
+        render_cache.display_cache_image1 = None
+        render_cache.display_cache_image2 = None
+        render_cache.last_display_cache_params = None
         controller.store.invalidate_render_cache()
         controller._invalidate_image_canvas_render_state(clear_magnifier=False)
         controller._schedule_image_canvas_update()
 
         try:
             cache_key = (path1, path2)
-            cache = (
-                controller.store.viewport.session_data.render_cache.unified_image_cache
-            )
+            cache = render_cache.unified_image_cache
             if cache_key in cache:
                 cache.move_to_end(cache_key)
             cache[cache_key] = (u1, u2)
@@ -563,12 +656,7 @@ def on_unified_images_ready(controller, result):
         except Exception:
             pass
 
-        controller.store.viewport.session_data.render_cache.unification_in_progress = (
-            False
-        )
-        controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-            None
-        )
+        _clear_unification_flags(controller)
         controller._trigger_metrics_calculation_if_needed()
         try:
             if controller.event_bus:
@@ -582,10 +670,8 @@ def on_unified_images_ready(controller, result):
         except Exception:
             pass
     except Exception:
-        controller.store.viewport.session_data.render_cache.unification_in_progress = (
-            False
-        )
-        controller.store.viewport.session_data.render_cache.pending_unification_paths = (
-            None
-        )
-        controller.metrics_service.on_metrics_calculated(None)
+        _clear_unification_flags(controller)
+        try:
+            controller.metrics_service.on_metrics_calculated(None)
+        except Exception:
+            pass

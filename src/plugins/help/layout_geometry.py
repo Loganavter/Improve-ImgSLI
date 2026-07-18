@@ -58,7 +58,7 @@ def compute_help_dialog_size(dialog) -> tuple[int, int]:
     back_bar = getattr(dialog, "_back_bar", None)
 
     nav_width = 0
-    if nav_widget is not None and nav_widget.isVisible():
+    if nav_widget is not None and getattr(nav_widget, "isVisible", lambda: False)():
         hint_w, _ = _size_hint(nav_widget)
         splitter = getattr(dialog, "_splitter", None)
         live_w = 0
@@ -68,7 +68,7 @@ def compute_help_dialog_size(dialog) -> tuple[int, int]:
             HELP_SIDEBAR_DEFAULT_WIDTH,
             HELP_NAV_MIN_WIDTH,
             hint_w,
-            nav_widget.minimumWidth(),
+            getattr(nav_widget, "minimumWidth", lambda: 0)(),
             live_w,
         )
 

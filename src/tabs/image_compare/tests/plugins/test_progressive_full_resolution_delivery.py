@@ -45,11 +45,12 @@ def test_successful_unification_clears_pending_paths():
         unified_image_cache=cache,
         cached_diff_image=None,
     )
+    document = SimpleNamespace(
+        image1_path="left.png",
+        image2_path="right.png",
+    )
     store = SimpleNamespace(
-        document=SimpleNamespace(
-            image1_path="left.png",
-            image2_path="right.png",
-        ),
+        get_session_state_slot=lambda name: document if name == "document" else None,
         viewport=SimpleNamespace(
             session_data=SimpleNamespace(
                 render_cache=render_cache,
@@ -79,3 +80,28 @@ def test_successful_unification_clears_pending_paths():
 
     assert render_cache.unification_in_progress is False
     assert render_cache.pending_unification_paths is None
+
+
+def test_unified_ready_after_session_switch_does_not_crash():
+    """Worker can finish after Move/tab switch left a bare SessionData."""
+    store = SimpleNamespace(
+        get_session_state_slot=lambda _name: None,
+        viewport=SimpleNamespace(
+            session_data=SimpleNamespace(render_cache=None, image_state=None),
+        ),
+    )
+    metrics = []
+    controller = SimpleNamespace(
+        _unification_task_id=1,
+        store=store,
+        metrics_service=SimpleNamespace(
+            on_metrics_calculated=lambda value: metrics.append(value)
+        ),
+    )
+
+    on_unified_images_ready(
+        controller,
+        (object(), object(), "a.png", "b.png", 1),
+    )
+    on_unified_images_ready(controller, None)
+    assert metrics == [None]

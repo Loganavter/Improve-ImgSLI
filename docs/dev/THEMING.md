@@ -201,8 +201,9 @@ Full details and confirmed call sites: [KNOWN_BUGS.md](KNOWN_BUGS.md).
 Pass `AppIcon` enum values (or another lazy handle) into widgets rather
 than eagerly resolving to a `QIcon` at construction time — eager
 resolution freezes the icon at whatever theme was active when the widget
-was built, so it never updates on theme switch. (`session_picker`'s card
-icons had exactly this bug.)
+was built, so it never updates on theme switch. (`session_picker` and
+Help hub cards had exactly this bug; both refresh via `sync_icons` on
+theme change when the icon must stay an eager `QIcon`.)
 
 ## See also
 

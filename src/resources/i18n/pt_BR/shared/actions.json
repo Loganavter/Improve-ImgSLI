@@ -1,6 +1,7 @@
 {
   "action": {
     "context_copy_path": "Copiar caminho",
+    "context_carry_image": "Mover",
     "context_duplicate": "Duplicar",
     "context_name": "Nome",
     "context_path": "Caminho",

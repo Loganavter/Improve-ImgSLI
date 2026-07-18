@@ -102,6 +102,15 @@ class MainWindow(QWidget):
             self.settings_manager.settings,
             self.store,
         )
+        # Title-bar File/Help widths are measured at strip construction. Apply
+        # the UI face first so Cyrillic labels are not sized with a fallback
+        # font (Help then sits where File should be until FontChange remasure).
+        try:
+            from shared_toolkit.ui.managers.font_manager import FontManager
+
+            FontManager.get_instance().apply_from_state(self.store)
+        except Exception:
+            pass
         self.startup_runtime.build_shell()
 
         try:
@@ -156,6 +165,19 @@ class MainWindow(QWidget):
         # Shell paints an AA rounded fill — do not setMask it (binary masks
         # destroy the antialiased edge). Clip opaque child hosts instead.
         self.clearMask()
+        stack = getattr(self, "_startup_stack", None)
+        host = getattr(self, "_app_host", None)
+        # Non-current stack pages do not receive QStackedLayout geometry. Keep
+        # app_host sized with the stack before masking, otherwise a resize
+        # during first-run onboarding freezes a ~100x30 mask on the warm host.
+        if (
+            stack is not None
+            and host is not None
+            and stack.width() >= 64
+            and stack.height() >= 64
+            and (host.width() != stack.width() or host.height() != stack.height())
+        ):
+            host.resize(stack.size())
         for attr in ("_startup_stack", "_startup_cover", "_app_host"):
             child = getattr(self, attr, None)
             if child is None:

@@ -106,4 +106,4 @@ def test_multi_compare_rehydrate_uses_controller_loader(qapp, tmp_path):
 
     assert read_calls == [img_path]
     assert state.slots[0].image is not None
-    assert state.slots[0].image.shape == (2, 2, 3)
+    assert state.slots[0].image.size == (2, 2)

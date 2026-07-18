@@ -290,7 +290,7 @@ APP_HIDDENIMPORTS = [
     "ui.managers.transient_ui_manager",
     "ui.managers.tray_manager",
     "ui.managers.ui_manager",
-    "ui.onboarding",
+    "plugins.onboarding",
     "ui.presenters.image_canvas.background",
     "ui.presenters.image_canvas.magnifier",
     "ui.presenters.image_canvas.results",

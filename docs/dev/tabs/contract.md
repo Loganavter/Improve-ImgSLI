@@ -1,5 +1,9 @@
 # TabContract & TabContext
 
+**Interface** contract for workspace tabs. Broader glossary (interface vs host
+call sequence vs architectural dogma):
+[CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract).
+
 ## TabContract (ABC)
 
 ```python
@@ -107,10 +111,15 @@ class TabContext:
     event_bus     # Event bus
     thread_pool   # Thread pool for background tasks
     main_window   # Reference to the main window
-    settings      # Application settings
+    settings      # Live `store.settings` (not a bootstrap snapshot)
     services      # dict — see capability-mechanisms.md §TabContext.services
 
     def get_active_session(self) -> Any
     def tr(self, key: str, default: str | None = None) -> str
     def call_service(self, service_id: str, *args, **kwargs) -> Any
 ```
+
+`settings` always reads the current `store.settings` object. The Redux
+settings reducer replaces that object on language/theme/etc. changes; a
+one-time reference captured at `install_pages` would freeze the startup
+language and break dynamic `tr()` (e.g. Session Picker after Apply).

@@ -4,15 +4,15 @@
 
 ### 保存静态图像 {#saving-an-image}
 
-{{tr:image_compare.action.save}}（`Ctrl+Shift+S`）会打开导出对话框。
+{{tr:image_compare.action.save}}（工具栏或 {{tr:menu.find_action}}）会打开导出对话框。
 
 - **路径** — 输出目录与文件名。
 - **格式** — PNG、JPEG、WEBP、BMP、TIFF 或 JXL。
 - **预览** — 实时预览面板会在写入文件前显示合成结果。
 
-:::figure{side=right width=280}
-![导出对话框](ui/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}（占位图）。
+:::figure{side=block width=630}
+![导出对话框]({{img:workspace.image_compare.export.dialog}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}。
 :::
 
 ### 分辨率与质量 {#resolution-and-quality}
@@ -20,7 +20,7 @@
 - **尺寸** — 已知源尺寸时可设置宽高；锁定可保持宽高比。
 - **质量** — 有损格式的 {{tr:label.quality}}。
 - **PNG** — 压缩级别与 {{tr:export.optimize_png}}。
-- **填充** — 支持透明的格式可启用 {{tr:export.fill_background}} 并选择填充颜色。
+- **填充** — 仅当虚拟画布超出 `0..1`（放大镜溢出 / uncrop 边距）时，透明格式才可启用 {{tr:export.fill_background}}；单位画布下保持关闭。
 
 ### 元数据与收藏 {#metadata-and-favorites}
 
@@ -31,7 +31,6 @@
 ### 快速保存 {#quick-save}
 
 - **`Ctrl+S`** — 使用上次的导出设置进行 {{tr:image_compare.action.quick_save}}。
-- **`Ctrl+Shift+S`** — 始终打开对话框。
 - **系统托盘** — 可在[设置 → 常规](help://settings#general)中开启对最近保存文件的快捷访问。
 
 ### 录制与视频 {#video-editor}

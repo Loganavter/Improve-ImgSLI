@@ -1,5 +1,9 @@
 # Render Pass Contract
 
+**Interface** contract whose methods the host calls in a fixed **lifecycle
+order**. Not an architectural AST dogma — see
+[CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract).
+
 Render passes are retained/staged: resource lifetime and per-frame recording
 are explicit, separate steps.
 
@@ -57,7 +61,7 @@ Rules:
   `should_paint()` is even called. A new feature pass is blank-white-safe automatically;
   it does not need its own `blank_white` check in `should_paint()`. Only opt out
   (`requires_content = False`) for passes that must render on an empty canvas — e.g.
-  `PasteOverlayPass` (drag/drop hint shown before any image pair is loaded). See
+  multi_compare's `DragDropOverlayPass` (drop hint before any slots are loaded). See
   [investigations/divider-blank-white-and-drag-desync.md](investigations/divider-blank-white-and-drag-desync.md)
   for why this exists.
 

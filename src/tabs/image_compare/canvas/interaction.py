@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
+from PySide6.QtCore import QPoint, QPointF, Qt
 
 _log = logging.getLogger("ImproveImgSLI.feature_overlay.interaction")
 
@@ -106,83 +106,6 @@ def compute_split_position_for_view_transform(
     )
 
 
-def update_paste_overlay_rects(widget):
-    state = widget.runtime_state
-    width = float(widget.width())
-    height = float(widget.height())
-    if width <= 0 or height <= 0:
-        return
-
-    center_x = width / 2.0
-    center_y = height / 2.0
-    button_size = state._paste_overlay_button_size
-    spacing = state._paste_overlay_spacing
-    center_size = state._paste_overlay_center_size
-
-    empty = QRectF()
-    state._paste_overlay_rects["up"] = empty
-    state._paste_overlay_rects["down"] = empty
-    state._paste_overlay_rects["left"] = empty
-    state._paste_overlay_rects["right"] = empty
-
-    if state._paste_overlay_horizontal:
-        state._paste_overlay_rects["up"] = QRectF(
-            center_x - button_size / 2.0,
-            center_y - button_size - spacing / 2.0 - center_size / 2.0,
-            button_size,
-            button_size,
-        )
-        state._paste_overlay_rects["down"] = QRectF(
-            center_x - button_size / 2.0,
-            center_y + spacing / 2.0 + center_size / 2.0,
-            button_size,
-            button_size,
-        )
-    else:
-        state._paste_overlay_rects["left"] = QRectF(
-            center_x - button_size - spacing / 2.0 - center_size / 2.0,
-            center_y - button_size / 2.0,
-            button_size,
-            button_size,
-        )
-        state._paste_overlay_rects["right"] = QRectF(
-            center_x + spacing / 2.0 + center_size / 2.0,
-            center_y - button_size / 2.0,
-            button_size,
-            button_size,
-        )
-
-    state._paste_overlay_rects["cancel"] = QRectF(
-        center_x - center_size / 2.0,
-        center_y - center_size / 2.0,
-        center_size,
-        center_size,
-    )
-
-
-def set_paste_overlay_state(
-    widget,
-    visible: bool,
-    is_horizontal: bool = False,
-    texts: dict | None = None,
-):
-    state = widget.runtime_state
-    state._paste_overlay_visible = visible
-    state._paste_overlay_horizontal = is_horizontal
-    if texts is not None:
-        state._paste_overlay_texts = {
-            "up": texts.get("up", ""),
-            "down": texts.get("down", ""),
-            "left": texts.get("left", ""),
-            "right": texts.get("right", ""),
-        }
-    if not visible:
-        state._paste_overlay_hovered_button = None
-        widget.unsetCursor()
-    update_paste_overlay_rects(widget)
-    widget.update()
-
-
 def set_drag_overlay_state(
     widget,
     visible: bool,
@@ -205,31 +128,6 @@ def set_drag_overlay_state(
     state._drag_overlay_texts = new_texts
     state._drag_overlay_cache_key = None
     state._drag_overlay_cached_image = None
-    widget.update()
-
-
-def paste_overlay_button_at(widget, pos: QPointF | QPoint) -> str | None:
-    state = widget.runtime_state
-    if not state._paste_overlay_visible:
-        return None
-
-    point = QPointF(pos)
-    for direction in ("up", "down", "left", "right", "cancel"):
-        rect = state._paste_overlay_rects.get(direction)
-        if rect is not None and not rect.isNull() and rect.contains(point):
-            return direction
-    return None
-
-
-def set_paste_overlay_hover(widget, hovered: str | None):
-    state = widget.runtime_state
-    if state._paste_overlay_hovered_button == hovered:
-        return
-    state._paste_overlay_hovered_button = hovered
-    if hovered is None:
-        widget.unsetCursor()
-    else:
-        widget.setCursor(Qt.CursorShape.PointingHandCursor)
     widget.update()
 
 
@@ -497,19 +395,6 @@ def handle_mouse_press_event(widget, event):
         event.accept()
         return
 
-    if (
-        widget.runtime_state._paste_overlay_visible
-        and event.button() == Qt.MouseButton.LeftButton
-    ):
-        button = paste_overlay_button_at(widget, event.position())
-        if button == "cancel" or button is None:
-            set_paste_overlay_state(widget, False)
-            widget.pasteOverlayCancelled.emit()
-        else:
-            set_paste_overlay_state(widget, False)
-            widget.pasteOverlayDirectionSelected.emit(button)
-        event.accept()
-        return
     if event.button() == Qt.MouseButton.MiddleButton:
         widget._pan_dragging = True
         widget._pan_last_pos = event.position()
@@ -563,39 +448,10 @@ def handle_mouse_move_event(widget, event):
             widget.update()
         event.accept()
         return
-    if widget.runtime_state._paste_overlay_visible:
-        set_paste_overlay_hover(
-            widget, paste_overlay_button_at(widget, event.position())
-        )
-        event.accept()
-        return
     widget.mouseMoved.emit(event)
 
 
 def handle_key_press_event(widget, event):
-    state = widget.runtime_state
-    if state._paste_overlay_visible:
-        key_to_direction = {
-            Qt.Key.Key_Up: "up",
-            Qt.Key.Key_W: "up",
-            Qt.Key.Key_Down: "down",
-            Qt.Key.Key_S: "down",
-            Qt.Key.Key_Left: "left",
-            Qt.Key.Key_A: "left",
-            Qt.Key.Key_Right: "right",
-            Qt.Key.Key_D: "right",
-        }
-        if event.key() == Qt.Key.Key_Escape:
-            set_paste_overlay_state(widget, False)
-            widget.pasteOverlayCancelled.emit()
-            event.accept()
-            return
-        direction = key_to_direction.get(event.key())
-        if direction and not state._paste_overlay_rects[direction].isNull():
-            set_paste_overlay_state(widget, False)
-            widget.pasteOverlayDirectionSelected.emit(direction)
-            event.accept()
-            return
     widget.keyPressed.emit(event)
 
 
@@ -604,6 +460,4 @@ def handle_key_release_event(widget, event):
 
 
 def handle_leave_event(widget, event):
-    if widget.runtime_state._paste_overlay_visible:
-        set_paste_overlay_hover(widget, None)
     super(type(widget), widget).leaveEvent(event)

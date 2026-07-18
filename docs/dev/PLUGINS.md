@@ -98,7 +98,7 @@ class Plugin(ABC):
 
 ## Inventory
 
-Live `@plugin` entry points (2026-07-17). Source of truth: filesystem scan of every `plugin.py` under `src/plugins/` and `src/tabs/` (incl. nested `tabs/*/plugins/*/`).
+Live `@plugin` entry points (2026-07-18). Source of truth: filesystem scan of every `plugin.py` under `src/plugins/` and `src/tabs/` (incl. nested `tabs/*/plugins/*/`).
 
 ### App-wide (`src/plugins/`)
 
@@ -106,6 +106,7 @@ Live `@plugin` entry points (2026-07-17). Source of truth: filesystem scan of ev
 |---|---|---|:-:|---|---|
 | `settings` | `plugins/settings/` | bootstrap | — | `IUIPlugin`, `IServicePlugin` | Settings dialog, `SettingsManager` disk persistence, canvas-feature setting bindings |
 | `layout` | `plugins/layout/` | bootstrap | — | — | UI-mode subscriber; obtains `layout_manager` via tab `create_startup_service` (not a local manager module) |
+| `onboarding` | `plugins/onboarding/` | bootstrap | — | — | First-run UI-mode picker on the startup stack; reads `SettingsManager.is_first_run` |
 | `export` | `plugins/export/` | deferred | 10 | `IControllablePlugin`, `IServicePlugin` | Still/video export dialog, recording/clipboard commands, export QSS |
 | `help` | `plugins/help/` | deferred | — | `IUIPlugin`, `IControllablePlugin` | In-app help dialog (hub/tree); see [HELP_SYSTEM.md](HELP_SYSTEM.md) |
 | `image_properties` | `plugins/image_properties/` | deferred | — | `IControllablePlugin` | Image metadata dialog + `service.build_image_properties` |
@@ -176,6 +177,7 @@ class ComparisonPlugin(Plugin, ISessionPlugin):
 | `multi_compare` | ✓ | (tab UI) | `services/` | — | `multi_compare.state` slot |
 | `help` | self (`IControllable`) | `dialog.py` | — | — | — |
 | `image_properties` | self (`IControllable`) | `dialog.py` | `service.py` | — | — |
+| `onboarding` | — | `overlay.py` / `host.py` | — | — | first-run only; `is_first_run` owned by settings |
 
 Patterns:
 - **Controller** appears when the plugin exposes commands (buttons / menus / shortcuts) — typically `IControllablePlugin.handle_command`, or a tab-local controller.

@@ -9,6 +9,8 @@ from tests.contracts._framework import ROOT, iter_py, rel
 ALLOWLIST = {
     "src/shared/image_processing/tiled_pixel_store.py",
     "src/shared/image_processing/pixel_ops/unify.py",
+    # Escape hatch: ``load_full_image`` spills via ``from_path`` then materializes.
+    "src/shared/image_processing/progressive_loader.py",
     "src/tabs/image_compare/services/image_export/context_builder.py",
     "src/tabs/image_compare/services/image_export/service.py",
 }

@@ -23,7 +23,7 @@ from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.canvas.widget import CanvasWidget
 from tabs.image_compare.ui.magnifier_color_controls import ColorSettingsButton
 from tabs.image_compare.icons import Icon
-from shared_toolkit.ui.mode_picker import ModePicker
+from tabs.host_helpers import ModePicker
 from ui.theming import resolve_theme_color
 
 logger = logging.getLogger("ImproveImgSLI")

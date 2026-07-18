@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QEvent, QSize, QTimer, Qt, QUrl
+from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -51,6 +51,46 @@ from ui.icon_manager import AppIcon, get_app_icon
 logger = logging.getLogger("ImproveImgSLI")
 
 
+class _HelpMouseNavFilter(QObject):
+    """App-wide mouse back/forward filter owned by ``HelpDialog``.
+
+    Must not be the dialog itself: if ``HelpDialog`` is the installed filter,
+    ``deleteLater`` leaves a dangling app filter and theme/paint storms then
+    blow up with ``HelpDialog already deleted`` inside ``eventFilter``.
+    A child ``QObject`` is destroyed with the dialog and Qt removes it from the
+    application filter list automatically.
+    """
+
+    def __init__(self, dialog: HelpDialog) -> None:
+        super().__init__(dialog)
+        self._dialog = dialog
+
+    def eventFilter(self, watched, event) -> bool:
+        dialog = self._dialog
+        try:
+            from shiboken6 import isValid
+
+            if not isValid(dialog) or not isValid(self):
+                return False
+        except ImportError:
+            pass
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and dialog.isVisible()
+            and isinstance(watched, QWidget)
+            and (watched is dialog or dialog.isAncestorOf(watched))
+            and isinstance(event, QMouseEvent)
+        ):
+            button = event.button()
+            if button == Qt.MouseButton.BackButton and dialog._nav.can_go_back():
+                dialog._go_back()
+                return True
+            if button == Qt.MouseButton.ForwardButton and dialog._nav.can_go_forward():
+                dialog._go_forward()
+                return True
+        return False
+
+
 class HelpDialog(ThemedDialog):
     def __init__(self, current_language: str, app_name: str, parent=None):
         super().__init__(parent)
@@ -61,6 +101,7 @@ class HelpDialog(ThemedDialog):
         self._pending_anchor: str | None = None
         self._syncing_sidebar = False
         self.overlay_layer = OverlayLayer(self)
+        self._mouse_nav_filter: _HelpMouseNavFilter | None = None
 
         title = tr("help.help", language=current_language)
         self.setWindowTitle(title)
@@ -81,18 +122,15 @@ class HelpDialog(ThemedDialog):
 
         self._build_ui()
         self.install_dialog_geometry(self._apply_dialog_geometry)
-        install_dialog_geometry_lifecycle(
-            self,
-            self._apply_dialog_geometry,
-            theme_manager=self._theme_manager,
-        )
+        # ThemedDialog already reconnects geometry on theme_changed; do not pass
+        # theme_manager here — a bare lambda would outlive deleteLater'd dialogs.
+        install_dialog_geometry_lifecycle(self, self._apply_dialog_geometry)
         self.mark_theme_ui_ready()
 
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
 
         decorate_dialog(self, title=title)
         self._render_current()
-        self._mouse_nav_filter_installed = False
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -106,39 +144,43 @@ class HelpDialog(ThemedDialog):
         self._remove_mouse_nav_filter()
         super().closeEvent(event)
 
+    def deleteLater(self) -> None:
+        self._remove_mouse_nav_filter()
+        super().deleteLater()
+
     def _install_mouse_nav_filter(self) -> None:
-        if self._mouse_nav_filter_installed:
+        if self._mouse_nav_filter is not None:
             return
         app = QApplication.instance()
         if app is None:
             return
-        app.installEventFilter(self)
-        self._mouse_nav_filter_installed = True
+        filt = _HelpMouseNavFilter(self)
+        app.installEventFilter(filt)
+        self._mouse_nav_filter = filt
 
     def _remove_mouse_nav_filter(self) -> None:
-        if not self._mouse_nav_filter_installed:
+        filt = self._mouse_nav_filter
+        if filt is None:
             return
         app = QApplication.instance()
         if app is not None:
-            app.removeEventFilter(self)
-        self._mouse_nav_filter_installed = False
+            try:
+                app.removeEventFilter(filt)
+            except RuntimeError:
+                pass
+        self._mouse_nav_filter = None
+        try:
+            filt.deleteLater()
+        except RuntimeError:
+            pass
 
     def eventFilter(self, watched, event) -> bool:
-        if (
-            event.type() == QEvent.Type.MouseButtonPress
-            and self.isVisible()
-            and isinstance(watched, QWidget)
-            and (watched is self or self.isAncestorOf(watched))
-            and isinstance(event, QMouseEvent)
-        ):
-            button = event.button()
-            if button == Qt.MouseButton.BackButton and self._nav.can_go_back():
-                self._go_back()
-                return True
-            if button == Qt.MouseButton.ForwardButton and self._nav.can_go_forward():
-                self._go_forward()
-                return True
-        return super().eventFilter(watched, event)
+        # Tests call this directly for mouse back/forward; delegate to the
+        # dedicated filter object when present.
+        filt = self._mouse_nav_filter
+        if filt is not None:
+            return filt.eventFilter(watched, event)
+        return False
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -204,7 +246,7 @@ class HelpDialog(ThemedDialog):
         self._document = HelpDocumentView(
             parent=self._content_host,
             resolve_asset=self._resolve_asset,
-            open_external_links=True,
+            open_external_links=False,
             show_toc=True,
             toc_title=toc_title_for_language(self.current_language),
         )
@@ -267,6 +309,11 @@ class HelpDialog(ThemedDialog):
     def changeEvent(self, event: QEvent) -> None:
         handle_application_font_change(self, event)
         super().changeEvent(event)
+
+    def on_dialog_theme_changed(self) -> None:
+        # Hub cards store eager QIcons; same freeze as session_picker had.
+        self.setWindowIcon(get_app_icon(AppIcon.HELP))
+        self._hub_page.sync_icons()
 
     def update_language(self, new_language: str) -> None:
         self.current_language = new_language

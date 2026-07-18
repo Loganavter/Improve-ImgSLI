@@ -28,6 +28,7 @@ from sli_ui_toolkit.ui.widgets.buttons.layers.ripple import (
     _ripple_for,
 )
 from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState
+from ui.theming import resolve_theme_color
 from sli_ui_toolkit.widgets import Button, ButtonRegion, ButtonRow
 from ui.actions.keymap import effective_shortcut
 from ui.actions.palette.common import (
@@ -138,7 +139,7 @@ def row_capsule_rect(widget_rect: QRectF) -> QRectF:
 
 def chrome_hover_color(tm: ThemeManager, *, strength: int = 118) -> QColor:
     """Deeper monochrome wash over the row hover — no accent tint."""
-    base = QColor(tm.get_color("list_item.background.hover"))
+    base = QColor(resolve_theme_color(tm, "list_item.background.hover"))
     if tm.is_dark():
         return base.lighter(strength)
     return base.darker(strength)
@@ -182,7 +183,7 @@ class RowBackgroundLayer(Layer):
         painter = ctx.painter
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(tm.get_color(key)))
+        painter.setBrush(QBrush(resolve_theme_color(tm, key)))
         painter.drawRoundedRect(rect, _ROW_CORNER_RADIUS, _ROW_CORNER_RADIUS)
 
 
@@ -322,7 +323,7 @@ class CurrentIndicatorLayer(Layer):
 
     def draw(self, ctx, tm: ThemeManager) -> None:
         rect = ctx.rect.toRect()
-        pen = QPen(tm.get_color("accent"))
+        pen = QPen(resolve_theme_color(tm, "accent"))
         pen.setWidth(3)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter = ctx.painter
@@ -348,8 +349,8 @@ class ActionPaletteRow(Button):
         parent: QWidget | None = None,
     ) -> None:
         tm = ThemeManager.get_instance()
-        rating = tm.get_color("list_item.text.rating")
-        accent = tm.get_color("accent")
+        rating = resolve_theme_color(tm, "list_item.text.rating")
+        accent = resolve_theme_color(tm, "accent")
 
         title = tr_action(action.label_key, action.label_key)
         crumb = _breadcrumb_text(action, query, active_tab=active_tab)

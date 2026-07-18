@@ -1,6 +1,7 @@
 {
   "action": {
     "context_copy_path": "复制路径",
+    "context_carry_image": "移动",
     "context_duplicate": "复制",
     "context_name": "名称",
     "context_path": "路径",

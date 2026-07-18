@@ -14,9 +14,9 @@
 - **Веса** — тяните разделители сетки, чтобы менять доли.
 - **Смена раскладки** — по возможности сохраняет загруженные изображения.
 
-:::figure{side=center width=320}
-![Сетка мультисравнения](ui/placeholder.png)
-{{tr:workspace.session_types.multi_compare}} — сетка / разрез по зазору (временный скриншот).
+:::figure{side=block width=320}
+![Сетка мультисравнения]({{img:workspace.multi_compare.overview.layouts}})
+{{tr:workspace.session_types.multi_compare}} — сетка / разрез по зазору.
 :::
 
 ### Режим фокуса {#focus-mode}
@@ -33,12 +33,12 @@
 
 ### Контекстное меню слота {#context-menu}
 
-Правый клик по слоту — действия для изображения, в том числе [Свойства изображения](help://image_properties) (метаданные файла и позиция слота).
+Правый клик по слоту — действия для изображения, в том числе [Свойства изображения](help://image_properties) (метаданные файла и позиция слота) и **Переместить** (ghost → клик по другой вкладке запускает размещение как при DnD / вставке).
 
 ### Сохранение и экспорт {#save-and-export}
 
 - **Быстрое сохранение** (`Ctrl+S`) — {{tr:multi_compare.action.quick_save}}.
-- **Диалог** (`Ctrl+Shift+S`) — {{tr:multi_compare.action.save}}.
+- **Диалог** — {{tr:multi_compare.action.save}} (панель или {{tr:menu.find_action}}).
 - **Паритет** — экспорт как на экране (раскладка, подписи, линии), не одиночный разрез {{tr:workspace.session_types.image_compare}}.
 
 Ищите сохранение и экспорт в {{tr:menu.find_action}}, пока вкладка {{tr:workspace.session_types.multi_compare}} в фокусе.

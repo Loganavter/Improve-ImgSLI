@@ -135,3 +135,87 @@ def test_live_with_clip_keeps_inner_equal_outer():
     inner, split = _compute_inner_content_rect(state, plan)
     assert inner == (20, 0, 160, 100)
     assert split is None
+
+
+def test_geometry_letterbox_refreshes_content_rect_without_state_store():
+    """Video preview clears state._store in set_pil_layers; uncrop still needs
+    the padded canvas frame so divider length/position match the images."""
+    widget_w, widget_h = 400, 300
+    state = SimpleNamespace(
+        _store=None,
+        _content_rect_px=(0, 25, 400, 250),  # stale raw-image letterbox
+        _letterbox_params=[(0.0, 0.0, 1.0, 1.0), (0.0, 0.0, 1.0, 1.0)],
+        _canvas_frame_letterbox=None,
+        _letterbox_fill_rgba=None,
+    )
+    canvas = SimpleNamespace(
+        runtime_state=state,
+        width=lambda: widget_w,
+        height=lambda: widget_h,
+    )
+    plan = _plan(
+        clip=(20, 0, 160, 100),
+        geometry_letterbox=True,
+        canvas=(200, 100),
+        image_size=(160, 100),
+    )
+    _apply_plan_letterbox_from_clip(canvas, plan)
+    _refresh_live_content_rect(canvas, state, plan)
+    inner, _ = _compute_inner_content_rect(state, plan)
+
+    lb = state._letterbox_params[0]
+    lb_px = (lb[0] * widget_w, lb[1] * widget_h, lb[2] * widget_w, lb[3] * widget_h)
+    assert state._content_rect_px == (0, 50, 400, 200)
+    assert inner == (40, 50, 320, 200)
+    assert inner == tuple(int(round(v)) for v in lb_px)
+    # Divider spit must land on the image seam, not the padded outer frame.
+    spit = 0.25
+    assert abs((inner[0] + inner[2] * spit) - (lb_px[0] + lb_px[2] * spit)) < 1e-6
+    assert inner[3] == lb_px[3]
+
+
+def test_apply_plan_runtime_overlays_restores_letterbox_after_raw_image_refit(monkeypatch):
+    """Preview-pane resize fits raw image first; uncrop overlays must re-nest."""
+    from tabs.image_compare.canvas.presentation import plan_applicator as applicator
+
+    widget_w, widget_h = 400, 300
+    state = SimpleNamespace(
+        _store=None,
+        # Stale raw-image letterbox as left by update_common_letterbox_geometry.
+        _content_rect_px=(0, 25, 400, 250),
+        _letterbox_params=[(0.0, 0.08333333333333333, 1.0, 0.8333333333333334)] * 2,
+        _canvas_frame_letterbox=None,
+        _letterbox_fill_rgba=None,
+        _inner_content_rect_px=None,
+        _inner_split_position=None,
+        _content_sr=1.0,
+        _clip_overlays_to_content_rect=False,
+    )
+    canvas = SimpleNamespace(
+        runtime_state=state,
+        width=lambda: widget_w,
+        height=lambda: widget_h,
+        _clip_overlays_to_content_rect=False,
+    )
+    plan = _plan(
+        clip=(20, 0, 160, 100),
+        geometry_letterbox=True,
+        canvas=(200, 100),
+        image_size=(160, 100),
+    )
+    monkeypatch.setattr(
+        applicator,
+        "registry",
+        lambda: SimpleNamespace(
+            apply_feature_plan_runtime_overlays=lambda *_a, **_k: None
+        ),
+    )
+
+    applicator.apply_plan_runtime_overlays(canvas, plan)
+
+    lb = state._letterbox_params[0]
+    lb_px = (lb[0] * widget_w, lb[1] * widget_h, lb[2] * widget_w, lb[3] * widget_h)
+    assert state._content_rect_px == (0, 50, 400, 200)
+    assert state._inner_content_rect_px == (40, 50, 320, 200)
+    assert state._inner_content_rect_px == tuple(int(round(v)) for v in lb_px)
+    assert state._canvas_frame_letterbox == (0.0, 50 / 300, 1.0, 200 / 300)

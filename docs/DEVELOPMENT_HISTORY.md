@@ -183,4 +183,4 @@ That tiling/spill path (`TiledPixelStore`, strip write into memmap, GPU residenc
 
 In the same stretch the shell moved further toward an IDE-style custom chrome, and a Find Action palette landed — inspired by GIMP’s action search, but with this app’s own grouping, pulse-into-view behavior, and settings/export wiring. The in-app help system was fully reworked into a hierarchical hub/tree of scenario pages (host + tab contributions), and another large pile of bugs and UX rough edges got cleaned up along the way.
 
-Overall the application feels about **95% ready**. The remaining big product gap is still proper project save/load — useful, obvious, and intentionally postponed for whenever I stop being lazy about it.
+Overall the application feels about **100% ready** as a product for the current scope. Looking further ahead, the next workspace people will likely invent their way into is a dedicated video-comparison tab — not a near-term commitment, but the natural next mode once the existing tab foundation and comparison habits have been lived with for a while.

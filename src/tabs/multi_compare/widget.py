@@ -186,7 +186,17 @@ class MultiCompareWidget(QWidget):
 
     def _on_store_change(self, _action, new_state: MultiCompareState) -> None:
         self.canvas.set_state(new_state)
+        # Indicator show/hide sits above the QRhi canvas; sync after set_state,
+        # then poke another view update so reset-from-overlay cannot leave a
+        # stale backing frame (see MultiCompareCanvasWidget.request_view_update).
         self._sync_zoom_indicator()
+        action_type = getattr(_action, "type", "") or ""
+        if action_type in {
+            "multi_compare/set_zoom",
+            "multi_compare/set_pan",
+            "multi_compare/reset_view",
+        }:
+            self.canvas.request_view_update()
         self.sync_divider_toolbar()
         if self._font_popup_open:
             self._sync_font_settings_flyout()

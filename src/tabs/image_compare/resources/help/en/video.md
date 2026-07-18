@@ -15,18 +15,18 @@ After you stop, open {{tr:image_compare.action.video_editor}} (`Ctrl+E`) to scru
 ### Timeline editing {#timeline}
 
 - **Scrub** — drag the time cursor.
-- **Range** — selection handles mark a span; {{tr:button.trim_to_selection}} keeps only that selection.
+- **Range** — `Shift`+drag marks a span; edge handles and the middle of the selection move independently; {{tr:button.trim_to_selection}} keeps only that selection.
 - **Delete** — `Delete` / `Backspace` remove the selected range.
 - **Play** — `Space`; undo / redo — `Ctrl+Z` / `Ctrl+Y`.
 
-:::figure{side=right width=280}
-![Video timeline](ui/placeholder.png)
-{{tr:image_compare.action.video_editor}} — timeline (placeholder).
+:::figure{side=block width=840}
+![Video timeline]({{img:workspace.image_compare.video.timeline}})
+{{tr:image_compare.action.video_editor}} — timeline.
 :::
 
 ### Tracks and what was captured {#tracks}
 
-Tool tracks (splitter, magnifier, viewport, and similar) show how recorded controls change over time. Between sample points the editor blends values so playback follows the live session.
+Tool tracks (splitter, magnifier, viewport, and similar) show how recorded controls change over time. Between sample points the editor blends values so playback follows the live session. Magnifier records **Capture Position** (capture ring on the image) and **Offset** (lens offset from that capture) as separate tracks.
 
 ### Preview quality {#preview-quality}
 
@@ -45,9 +45,9 @@ Tool tracks (splitter, magnifier, viewport, and similar) show how recorded contr
 - **Path** — output file; favorite directory buttons reuse the last preferred folder.
 - **Progress** — can be stopped; the log reports encoder messages.
 
-:::figure{side=right width=280}
-![Video export panel](ui/placeholder.png)
-{{tr:image_compare.action.video_editor}} — export (placeholder).
+:::figure{side=block width=630}
+![Video export panel]({{img:workspace.image_compare.video.export_encode}})
+{{tr:image_compare.action.video_editor}} — export.
 :::
 
 ### {{tr:video.manual_cli}} {#manual-cli}

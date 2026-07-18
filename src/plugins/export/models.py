@@ -17,3 +17,6 @@ class ExportDialogState:
     comment_text: str
     comment_keep_default: bool
     resolution_scale: float = 1.0
+    # Image Compare: only when magnifier/uncrop grew the canvas past 0..1.
+    # Multi Compare keeps True so transparent formats can still fill empty slots.
+    virtual_canvas_active: bool = True

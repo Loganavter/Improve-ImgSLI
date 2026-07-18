@@ -22,7 +22,12 @@ _RESOLUTION_KEY_MAP = {
 
 
 def apply_translations(dialog, lang: str) -> None:
-    dialog.setWindowTitle(dialog.tr("misc.settings", lang))
+    title = dialog.tr("misc.settings", lang)
+    dialog.setWindowTitle(title)
+    title_bar = getattr(dialog, "_csd_title_bar", None)
+    set_title = getattr(title_bar, "set_title", None) if title_bar is not None else None
+    if callable(set_title):
+        set_title(title)
     _apply_buttons(dialog, lang)
     _apply_simple_texts(dialog, lang)
     _apply_group_titles(dialog, lang)
@@ -41,6 +46,10 @@ def _apply_buttons(dialog, lang: str) -> None:
 
 def _apply_simple_texts(dialog, lang: str) -> None:
     candidates = [
+        ("radio_en", "settings.language_en"),
+        ("radio_ru", "settings.language_ru"),
+        ("radio_zh", "settings.language_zh"),
+        ("radio_pt_br", "settings.language_pt_br"),
         ("system_notifications_checkbox", "settings.system_notifications"),
         ("debug_checkbox", "settings.enable_debug_logging"),
         ("show_workspace_tabs_checkbox", "settings.show_workspace_tabs"),
@@ -75,6 +84,7 @@ def _apply_simple_texts(dialog, lang: str) -> None:
 def _apply_group_titles(dialog, lang: str) -> None:
     groups = [
         ("lang_group", "label.language"),
+        ("sys_group", "settings.appearance"),
         ("general_group", "settings.general"),
         ("appearance_group", "settings.appearance"),
         ("ui_mode_group", "settings.ui_mode"),

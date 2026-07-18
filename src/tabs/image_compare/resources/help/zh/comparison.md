@@ -12,9 +12,9 @@
 - **可见性**（`D`）— {{tr:image_compare.action.divider_visible}} 用于显示或隐藏分割线。
 - **组合控件** — {{tr:image_compare.action.divider_combined}} 集合了方向、宽度与颜色（滚轮 / 右键 / 中键）；详见控件提示。
 
-:::figure{side=right width=280}
-![分割线](ui/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}（占位图）。
+:::figure{side=block width=280}
+![分割线]({{img:workspace.image_compare.comparison.split_line}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}。
 :::
 
 ### 滚动切换图像 {#scroll-images}
@@ -35,6 +35,7 @@
 
 - **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — 默认关闭，可在[设置 → 分析](help://settings#analysis)中启用自动计算。
 - **属性** — 从列表行的右键菜单打开[图像属性](help://image_properties)（文件元数据与应用内的侧 / 评分信息）。
+- **移动** — 画布或列表右键菜单会在指针左下方显示拖拽幽灵；稍稍移动后点击其他工作区标签（或画布）即可启动与复制/粘贴相同的插入流程。`Esc` 或右键取消。
 
 ### 通道模式 {#channel-modes}
 
@@ -44,9 +45,9 @@
 
 {{tr:image_compare.action.diff_mode}}（按 `H` 循环切换）用于突出两张图像的差异之处：
 
-:::figure{side=right width=280}
-![差异模式](ui/placeholder.png)
-{{tr:image_compare.action.diff_mode}}（占位图）。
+:::figure{side=block width=280}
+![差异模式]({{img:workspace.image_compare.comparison.difference_modes}})
+{{tr:image_compare.action.diff_mode}}。
 :::
 
 - **{{tr:image_compare.action.diff_highlight}}** — 在原图上高亮变化区域

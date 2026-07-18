@@ -3,12 +3,13 @@ from __future__ import annotations
 import logging
 import os
 
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QRhiWidget
 from sli_ui_toolkit.managers import SettleGate
 
 from core.state_management.interaction_actions import SetResizeInProgressAction
+from plugins.onboarding import host as onboarding_host
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -332,8 +333,8 @@ class MainWindowRuntime:
         if not window.isMaximized() and not window.isFullScreen():
             window.geometry_manager.update_normal_geometry_if_needed()
 
-        if getattr(window, "onboarding_overlay", None):
-            window.onboarding_overlay.resize(window.size())
+        if onboarding_host.is_active(window):
+            onboarding_host.sync_geometry(window)
         widget = _active_image_compare_widget(window)
         if widget is not None:
             widget.update_drag_overlays(
@@ -349,8 +350,8 @@ class MainWindowRuntime:
         if widget is not None:
             widget.image_startup_placeholder.sync_geometry()
             widget.zoom_indicator.sync_position()
-        if getattr(window, "onboarding_overlay", None):
-            window.onboarding_overlay.resize(window.size())
+        if onboarding_host.is_active(window):
+            onboarding_host.sync_geometry(window)
 
     def _pulse_resize(self) -> None:
         window = self.window
@@ -386,8 +387,8 @@ class MainWindowRuntime:
         if widget is not None:
             widget.image_startup_placeholder.sync_geometry()
             widget.zoom_indicator.sync_position()
-        if getattr(window, "onboarding_overlay", None):
-            window.onboarding_overlay.resize(window.size())
+        if onboarding_host.is_active(window):
+            onboarding_host.sync_geometry(window)
         self._hide_unified_flyout()
         if not window.isMaximized() and not window.isFullScreen():
             window.geometry_manager.update_normal_geometry_if_needed()
@@ -399,10 +400,7 @@ class MainWindowRuntime:
         if widget is not None:
             widget.image_startup_placeholder.sync_geometry()
             widget.zoom_indicator.sync_position()
-        if (
-            window.onboarding_overlay is not None
-            and not window._startup_visual_ready_emitted
-        ):
+        if onboarding_host.is_active(window) and not window._startup_visual_ready_emitted:
             window.startup_runtime.emit_visual_ready()
         if window._offscreen_prewarm_active:
             return

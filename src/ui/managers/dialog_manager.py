@@ -141,7 +141,7 @@ class DialogManager:
         self.host._settings_dialog.setAttribute(
             Qt.WidgetAttribute.WA_DeleteOnClose, True
         )
-        self.host._settings_dialog.accepted.connect(
+        self.host._settings_dialog.settings_confirmed.connect(
             lambda: self.host._settings_application_service.apply(
                 self.host._settings_dialog.get_settings()
             )
@@ -160,6 +160,9 @@ class DialogManager:
             hex(id(dialog)),
             dialog.isVisible(),
         )
+        sync = getattr(dialog, "sync_from_store", None)
+        if callable(sync):
+            sync()
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()

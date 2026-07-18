@@ -154,6 +154,29 @@ BuildCanvasFeatureGestureBindingsFn = Callable[
     [], tuple[CanvasFeatureGestureBinding, ...]
 ]
 
+ContextMenuZoneSuppressFn = Callable[[Any], bool]
+
+@dataclass(frozen=True, slots=True)
+class CanvasFeatureContextMenuZone:
+    """A canvas feature declares territory where host context menus are suppressed.
+
+    Shared canvas code (``contextMenuEvent``) must not hard-code feature geometry.
+    Instead it walks zones from ``build_context_menu_zones`` and, if any
+    ``suppresses(ctx)`` returns True, skips opening the slot/image menu.
+
+    ``ctx`` is a ``ContextMenuHitContext`` (store, canvas, local_pos, session_type).
+    Predicates live in the feature package and may use scene hit-tests / aliases.
+    """
+
+    zone_id: str
+    suppresses: ContextMenuZoneSuppressFn
+    priority: int = 100
+    owner: str | None = None
+
+BuildCanvasFeatureContextMenuZonesFn = Callable[
+    [], tuple[CanvasFeatureContextMenuZone, ...]
+]
+
 @dataclass(frozen=True, slots=True)
 class CanvasWidgetFeature:
     name: str
@@ -168,6 +191,7 @@ class CanvasWidgetFeature:
     command_aliases: tuple[CanvasFeatureCommandAlias, ...] = ()
     build_settings_event_bindings: BuildCanvasFeatureSettingsEventsFn | None = None
     build_gesture_bindings: BuildCanvasFeatureGestureBindingsFn | None = None
+    build_context_menu_zones: BuildCanvasFeatureContextMenuZonesFn | None = None
     build_state_queries: BuildCanvasFeatureStateQueriesFn | None = None
     build_state_commands: BuildCanvasFeatureStateCommandsFn | None = None
     build_render_scene_overrides: RenderSceneOverridesBuilder | None = None

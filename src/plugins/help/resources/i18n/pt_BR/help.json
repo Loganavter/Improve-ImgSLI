@@ -42,6 +42,10 @@
         "title": "Primeiros passos",
         "desc": "Orientação rápida"
       },
+      "about": {
+        "title": "Sobre",
+        "desc": "O que é o Improve ImgSLI"
+      },
       "settings": {
         "title": "Configurações",
         "desc": "Aparência e desempenho"

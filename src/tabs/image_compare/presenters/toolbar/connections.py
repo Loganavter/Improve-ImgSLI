@@ -1,6 +1,6 @@
 import logging
 
-from shared_toolkit.ui.message_dialog import MessageKind
+from tabs.host_helpers import MessageKind
 
 from tabs.image_compare.events import (
     AnalysisSetChannelViewModeEvent,

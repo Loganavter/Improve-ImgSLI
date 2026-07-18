@@ -57,6 +57,10 @@ from tabs.image_compare.canvas.features.magnifier.commands.viewport import (
     viewport_set_internal_split,
     viewport_toggle_enabled,
 )
+from tabs.image_compare.canvas.features.magnifier.persistence import (
+    restore_magnifier_from_project,
+    serialize_magnifier_for_project,
+)
 
 
 def _settings_set_border_color(settings, color) -> bool:
@@ -184,6 +188,8 @@ def build_magnifier_commands(render_canvas_payload) -> dict[str, Any]:
             else 0
         ),
         "query.is_horizontal": query_is_horizontal,
+        "project.serialize": serialize_magnifier_for_project,
+        "project.restore": restore_magnifier_from_project,
         "viewport.toggle_enabled": viewport_toggle_enabled,
         "viewport.ensure_active": viewport_ensure_active,
         "viewport.set_active_size": viewport_set_active_size,

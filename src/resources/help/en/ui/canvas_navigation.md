@@ -8,9 +8,9 @@ Move inside the compare canvas: zoom toward the cursor, pan with the middle butt
 - **Pan** — hold the middle mouse button and drag, including at `100%` zoom.
 - **Mode** — there is no separate navigation tool; these gestures work on the live canvas.
 
-:::figure{side=right width=280}
-![Canvas zoom and pan](ui/placeholder.png)
-{{tr:workspace.session_types.image_compare}} → canvas (placeholder).
+:::figure{side=block width=280}
+![Canvas zoom and pan]({{img:ui.canvas_navigation.zoom}})
+{{tr:workspace.session_types.image_compare}} → canvas.
 :::
 
 ### Quick side preview {#quick-side-preview}

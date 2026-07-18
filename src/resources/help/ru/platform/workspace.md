@@ -5,12 +5,12 @@
 ### Выбор сессии {#session-picker}
 
 - **Открыть** — {{tr:action.workspace.open_session_picker}} (или кнопка новой вкладки).
-- **Выбрать** — карточку {{tr:workspace.session_types.image_compare}} или {{tr:workspace.session_types.multi_compare}}, либо бросьте файлы в зону дропа.
-- **Недавние** — зарезервировано; может показывать заглушку «в разработке».
+- **Выбрать** — карточку {{tr:workspace.session_types.image_compare}} или {{tr:workspace.session_types.multi_compare}}.
+- **Недавние** — недавние проекты ``.imgsli`` (сетка или список, сортировка по дате или имени). Клик открывает проект. На карточке показывается превью сцены из ``preview.jpg`` внутри проекта, если оно есть. Перетащите файл проекта на панель, чтобы добавить его в список без открытия. ПКМ — убрать из списка или показать в папке.
 
-:::figure{side=right width=280}
-![Выбор сессии](ui/placeholder.png)
-{{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}} (временный скриншот).
+:::figure{side=block width=420}
+![Выбор сессии]({{img:platform.workspace.session_picker}})
+{{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}.
 :::
 
 ### Открыть сессию без выбора {#new-session-actions}

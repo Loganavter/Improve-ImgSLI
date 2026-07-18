@@ -13,6 +13,7 @@ Press `Ctrl+Shift+P` and type a name before memorizing a list. Run the action fr
 - `Ctrl+N` — Session picker / new session
 - `Ctrl+Shift+P` — {{tr:menu.find_action}}
 - `Ctrl+V` — Paste image
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Open / save / save project as (`.imgsli`)
 - `Ctrl+Q` — Quit
 
 Exact labels follow your language pack; remap under Settings → Keyboard → platform group.
@@ -24,7 +25,7 @@ Exact labels follow your language pack; remap under Settings → Keyboard → pl
 - `H` / `C` — Difference mode / channel mode
 - `X` — Swap
 - `R` / `Ctrl+E` — Record / Video Editor
-- `Ctrl+S` / `Ctrl+Shift+S` — Quick save / Save dialog
+- `Ctrl+S` — Quick save
 - `WASD` / `QE` / `Space` — Magnifier move / spacing / side preview (fixed)
 
 Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video Editor](help://video).
@@ -33,7 +34,7 @@ Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video 
 
 - `Ctrl+O` — Add images (when bound)
 - `D` — Grid visibility
-- `Ctrl+S` / `Ctrl+Shift+S` — Quick save / Save
+- `Ctrl+S` — Quick save
 - `Esc` — Exit slot focus
 
 See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).

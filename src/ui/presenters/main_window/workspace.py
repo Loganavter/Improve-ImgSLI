@@ -92,6 +92,12 @@ def sync_session_mode(presenter):
     session_type = active.session_type if active else INITIAL_WORKSPACE_SESSION_TYPE
     session_title = active.title if active else None
     presenter.ui.sync_session_mode(session_type, session_title)
+    # Active page may declare a higher window floor (e.g. Session Picker).
+    main_window = getattr(presenter, "main_window_app", None)
+    if main_window is not None and getattr(main_window, "_is_ui_stable", False):
+        from ui.layout_geometry import apply_main_window_minimum
+
+        apply_main_window_minimum(main_window)
 
 
 def on_workspace_tab_changed(presenter, index: int):

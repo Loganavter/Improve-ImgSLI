@@ -70,8 +70,15 @@ def test_app_message_dialog_is_edge_resizable(qapp):
 
 
 def test_app_message_dialog_updates_paint_state_on_theme_change(qapp):
+    from PySide6.QtCore import QEvent
+
     from core.theme import LIGHT_THEME_PALETTE, DARK_THEME_PALETTE
     from sli_ui_toolkit.theme import ThemeManager
+
+    # Flush deleteLater'd dialogs (e.g. HelpDialog) from earlier tests so their
+    # app-wide event filters are gone before we trigger a theme repaint storm.
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
 
     tm = ThemeManager.get_instance()
     tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
@@ -89,4 +96,7 @@ def test_app_message_dialog_updates_paint_state_on_theme_change(qapp):
     qapp.processEvents()
 
     assert dialog._csd_paint_state["color"] == QColor(tm.get_color("Window"))
+    dialog.close()
     dialog.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
