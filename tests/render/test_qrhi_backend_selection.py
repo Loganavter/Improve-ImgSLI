@@ -63,18 +63,21 @@ def test_resolve_falls_back_when_vulkan_probe_fails(monkeypatch):
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: False)
     monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "_vulkan_rejected_for_process", False)
 
     effective, reason = resolve_rhi_backend_with_fallback("vulkan")
 
     assert effective == "d3d11"
     assert reason is not None
     assert "d3d11" in reason
+    assert mod._vulkan_rejected_for_process is True
 
 
 def test_resolve_keeps_vulkan_when_probe_ok(monkeypatch):
     import ui.widgets.canvas.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: True)
+    monkeypatch.setattr(mod, "_vulkan_rejected_for_process", False)
 
     effective, reason = resolve_rhi_backend_with_fallback("vulkan")
 
@@ -82,15 +85,35 @@ def test_resolve_keeps_vulkan_when_probe_ok(monkeypatch):
     assert reason is None
 
 
-def test_resolve_skips_probe_when_unavailable(monkeypatch):
+def test_resolve_falls_back_when_probe_unavailable(monkeypatch):
+    """Missing Vulkan bindings must not leave setApi(Vulkan) active."""
     import ui.widgets.canvas.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: None)
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "_vulkan_rejected_for_process", False)
 
     effective, reason = resolve_rhi_backend_with_fallback("vulkan")
 
-    assert effective == "vulkan"
-    assert reason is None
+    assert effective == "d3d11"
+    assert reason is not None
+    assert mod._vulkan_rejected_for_process is True
+
+
+def test_configure_rhi_widget_refuses_rejected_vulkan(monkeypatch):
+    from PySide6.QtWidgets import QRhiWidget
+
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setenv(RHI_BACKEND_ENV, "vulkan")
+    monkeypatch.setattr(mod, "_vulkan_rejected_for_process", True)
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    widget = _Widget()
+
+    configure_rhi_widget(widget)
+
+    assert widget.selected == QRhiWidget.Api.Direct3D11
+    assert requested_rhi_backend_name() == "d3d11"
 
 
 def test_platform_fallback_windows(monkeypatch):
