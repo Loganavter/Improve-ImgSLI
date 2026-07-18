@@ -37,6 +37,14 @@ def write_license_bundle(repo_root: Path | None = None) -> Path:
     if not dist_dir.is_dir():
         raise FileNotFoundError(f"Windows bundle directory not found: {dist_dir}")
 
+    # PyInstaller 6+ onedir puts Analysis datas under ``_internal/``. User-facing
+    # license files must still sit next to Improve_ImgSLI.exe (validator + zip).
+    for name in ("LICENSE", "THIRD_PARTY_LICENSES.md"):
+        source = repo_root / name
+        if not source.is_file():
+            raise FileNotFoundError(f"Missing {source}")
+        (dist_dir / name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
     licenses_dir = dist_dir / "licenses"
     licenses_dir.mkdir(parents=True, exist_ok=True)
 
