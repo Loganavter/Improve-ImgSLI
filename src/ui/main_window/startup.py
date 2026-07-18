@@ -105,6 +105,12 @@ class MainWindowStartupRuntime:
         from ui.main_window.layouts import apply_workspace_tabs_visibility
         apply_workspace_tabs_visibility(window.ui)
         bootstrap_tab = window.ui._tab_registry.bootstrap_default_tab()
+        if bootstrap_tab is None:
+            raise RuntimeError(
+                "No bootstrap default tab registered — tab discovery likely "
+                "failed (frozen builds need import-based discovery when "
+                "tabs/*/tab.py are not on disk)."
+            )
         image_compare_widget = window.ui.legacy_tab_widgets.get(
             bootstrap_tab.session_type
         )

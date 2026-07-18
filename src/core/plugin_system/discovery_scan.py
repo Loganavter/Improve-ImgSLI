@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import ast
+import importlib
+import logging
+import pkgutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -12,6 +15,8 @@ _PLUGINS_ROOT = _SRC / "plugins"
 _TABS_ROOT = _SRC / "tabs"
 
 _SKIP_TAB_PACKAGES = frozenset({"contract", "registry"})
+
+logger = logging.getLogger("ImproveImgSLI.discovery_scan")
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +37,47 @@ class TabEntryPoint:
 
 
 def iter_plugin_entry_points(*, src_root: Path | None = None) -> tuple[PluginEntryPoint, ...]:
-    """Filesystem scan of every ``plugin.py`` entry point (incl. nested tab plugins)."""
+    """Discover plugin entry points (filesystem AST scan, import fallback).
+
+    Dev checkouts have ``plugin.py`` on disk. Frozen PyInstaller bundles often
+    ship only ``resources/`` under ``plugins/`` / ``tabs/`` as datas, so the
+    filesystem scan finds nothing — fall back to ``pkgutil`` + import.
+    """
+    entries = _iter_plugin_entry_points_from_filesystem(src_root)
+    if entries:
+        return entries
+    return _iter_plugin_entry_points_via_import()
+
+
+def plugin_modules_for_tier(tier: StartupTier, *, src_root: Path | None = None) -> tuple[str, ...]:
+    entries = [
+        e
+        for e in iter_plugin_entry_points(src_root=src_root)
+        if e.startup_tier == tier
+    ]
+    entries.sort(key=lambda e: (e.startup_order, e.module_name))
+    return tuple(e.module_name for e in entries)
+
+
+def iter_tab_entry_points(*, src_root: Path | None = None) -> tuple[TabEntryPoint, ...]:
+    """Discover tab packages (filesystem AST scan, import fallback)."""
+    entries = _iter_tab_entry_points_from_filesystem(src_root)
+    if entries:
+        return entries
+    return _iter_tab_entry_points_via_import()
+
+
+def tab_packages_for_tier(tier: StartupTier, *, src_root: Path | None = None) -> tuple[str, ...]:
+    return tuple(
+        e.package_name
+        for e in iter_tab_entry_points(src_root=src_root)
+        if e.startup_tier == tier
+    )
+
+
+def _iter_plugin_entry_points_from_filesystem(
+    src_root: Path | None,
+) -> tuple[PluginEntryPoint, ...]:
     root = src_root or _SRC
     plugins_root = root / "plugins"
     tabs_root = root / "tabs"
@@ -78,17 +123,9 @@ def iter_plugin_entry_points(*, src_root: Path | None = None) -> tuple[PluginEnt
     return tuple(entries)
 
 
-def plugin_modules_for_tier(tier: StartupTier, *, src_root: Path | None = None) -> tuple[str, ...]:
-    entries = [
-        e
-        for e in iter_plugin_entry_points(src_root=src_root)
-        if e.startup_tier == tier
-    ]
-    entries.sort(key=lambda e: (e.startup_order, e.module_name))
-    return tuple(e.module_name for e in entries)
-
-
-def iter_tab_entry_points(*, src_root: Path | None = None) -> tuple[TabEntryPoint, ...]:
+def _iter_tab_entry_points_from_filesystem(
+    src_root: Path | None,
+) -> tuple[TabEntryPoint, ...]:
     root = src_root or _SRC
     tabs_root = root / "tabs"
     entries: list[TabEntryPoint] = []
@@ -116,12 +153,127 @@ def iter_tab_entry_points(*, src_root: Path | None = None) -> tuple[TabEntryPoin
     return tuple(entries)
 
 
-def tab_packages_for_tier(tier: StartupTier, *, src_root: Path | None = None) -> tuple[str, ...]:
-    return tuple(
-        e.package_name
-        for e in iter_tab_entry_points(src_root=src_root)
-        if e.startup_tier == tier
-    )
+def _iter_plugin_entry_points_via_import() -> tuple[PluginEntryPoint, ...]:
+    entries: list[PluginEntryPoint] = []
+
+    try:
+        import plugins as plugins_pkg
+    except ImportError:
+        plugins_pkg = None
+
+    if plugins_pkg is not None:
+        for _, name, is_pkg in pkgutil.iter_modules(list(plugins_pkg.__path__)):
+            if not is_pkg or name.startswith("_"):
+                continue
+            entry = _plugin_entry_from_import(f"plugins.{name}.plugin")
+            if entry is not None:
+                entries.append(entry)
+
+    try:
+        import tabs as tabs_pkg
+    except ImportError:
+        return tuple(entries)
+
+    for _, tab_name, is_pkg in pkgutil.iter_modules(list(tabs_pkg.__path__)):
+        if not is_pkg or tab_name.startswith("_") or tab_name in _SKIP_TAB_PACKAGES:
+            continue
+        entry = _plugin_entry_from_import(f"tabs.{tab_name}.plugin")
+        if entry is not None:
+            entries.append(entry)
+        try:
+            nested_pkg = importlib.import_module(f"tabs.{tab_name}.plugins")
+        except ImportError:
+            continue
+        nested_path = getattr(nested_pkg, "__path__", None)
+        if nested_path is None:
+            continue
+        for _, nested_name, nested_is_pkg in pkgutil.iter_modules(list(nested_path)):
+            if not nested_is_pkg or nested_name.startswith("_"):
+                continue
+            entry = _plugin_entry_from_import(
+                f"tabs.{tab_name}.plugins.{nested_name}.plugin"
+            )
+            if entry is not None:
+                entries.append(entry)
+
+    return tuple(entries)
+
+
+def _iter_tab_entry_points_via_import() -> tuple[TabEntryPoint, ...]:
+    from tabs.contract import TabContract
+
+    try:
+        import tabs as tabs_pkg
+    except ImportError:
+        return ()
+
+    entries: list[TabEntryPoint] = []
+    for _, name, is_pkg in pkgutil.iter_modules(list(tabs_pkg.__path__)):
+        if not is_pkg or name.startswith("_") or name in _SKIP_TAB_PACKAGES:
+            continue
+        module_name = f"tabs.{name}.tab"
+        try:
+            mod = importlib.import_module(module_name)
+        except ImportError:
+            logger.exception("Import-based tab discovery failed for %s", module_name)
+            continue
+
+        tier: StartupTier = "deferred"
+        for attr_name in dir(mod):
+            obj = getattr(mod, attr_name)
+            if (
+                isinstance(obj, type)
+                and issubclass(obj, TabContract)
+                and obj is not TabContract
+            ):
+                raw = getattr(obj, "startup_tier", "deferred")
+                if raw in ("bootstrap", "deferred"):
+                    tier = raw  # type: ignore[assignment]
+                break
+
+        module_file = getattr(mod, "__file__", None)
+        entries.append(
+            TabEntryPoint(
+                module_name=module_name,
+                tab_py=Path(module_file) if module_file else Path(f"<import {module_name}>"),
+                package_name=name,
+                startup_tier=tier,
+            )
+        )
+
+    return tuple(entries)
+
+
+def _plugin_entry_from_import(module_name: str) -> PluginEntryPoint | None:
+    try:
+        mod = importlib.import_module(module_name)
+    except ImportError:
+        logger.debug("Import-based plugin discovery skipped %s", module_name, exc_info=True)
+        return None
+
+    for attr_name in dir(mod):
+        obj = getattr(mod, attr_name)
+        if not isinstance(obj, type):
+            continue
+        meta = getattr(obj, "_plugin_meta", None)
+        if not isinstance(meta, dict):
+            continue
+        name = meta.get("name")
+        tier = meta.get("startup_tier")
+        if not isinstance(name, str) or tier not in ("bootstrap", "deferred"):
+            continue
+        order = meta.get("startup_order", 0)
+        if not isinstance(order, int):
+            order = 0
+        module_file = getattr(mod, "__file__", None)
+        return PluginEntryPoint(
+            module_name=module_name,
+            plugin_py=Path(module_file) if module_file else Path(f"<import {module_name}>"),
+            plugin_name=name,
+            startup_tier=tier,
+            startup_order=order,
+        )
+    return None
 
 
 def _parse_plugin_entry(*, module_name: str, plugin_py: Path) -> PluginEntryPoint:
