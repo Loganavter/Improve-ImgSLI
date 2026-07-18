@@ -185,9 +185,9 @@ Manual steps:
 python -m PyInstaller build/Windows-template/Improve_ImgSLI.spec
 python build/Windows-template/write_license_bundle.py
 ```
-- Spec file: `build/Windows-template/Improve_ImgSLI.spec` (onedir layout; Qt `.dll` under `PySide6\`; UPX disabled for replaceable libraries)
+- Spec file: `build/Windows-template/Improve_ImgSLI.spec` (onedir layout; Qt `.dll` under `PySide6\`; UPX disabled for replaceable libraries; includes `tabs/**/*.qsb` / `ui/**/*.qsb` for QRhi)
 - License bundle: `build/Windows-template/write_license_bundle.py` writes `dist/Improve_ImgSLI/licenses/` (`WINDOWS_QT_NOTICE.txt`, `LGPL-3.0.txt`, `Qt_BUNDLE_INFO.txt`)
-- Helper script: `build/Windows-template/build_windows.py` (and `build.bat`)
+- Helper script: `build/Windows-template/build_windows.py` (and `build.bat`) — also runs `build/ci/validate_windows_shaders.py`
 
 2) Build installer with Inno Setup:
 - Open `build/Windows-template/inno_setup_6.iss` in Inno Setup Compiler

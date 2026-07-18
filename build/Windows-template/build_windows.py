@@ -150,6 +150,22 @@ def main() -> int:
         print("Failed to write Windows license bundle.")
         return 1
 
+    shader_script = REPO_ROOT / "build" / "ci" / "validate_windows_shaders.py"
+    bundle_dir = REPO_ROOT / "dist" / "Improve_ImgSLI"
+    if (
+        run_command(
+            [
+                sys.executable,
+                str(shader_script),
+                "--windows-bundle",
+                str(bundle_dir),
+            ]
+        )
+        != 0
+    ):
+        print("Windows bundle is missing QRhi *.qsb shaders.")
+        return 1
+
     if fetch_ffmpeg() != 0:
         print("Failed to fetch ffmpeg. Continuing without it.")
 
