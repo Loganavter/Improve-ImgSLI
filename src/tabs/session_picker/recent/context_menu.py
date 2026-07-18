@@ -10,8 +10,8 @@ from PySide6.QtGui import QCursor, QDesktopServices
 from sli_ui_toolkit.widgets import ContextMenuAction, ContextMenuSeparator
 
 from plugins.image_properties.plugin import open_image_properties_dialog
-from resources.translations import get_current_language
-from resources.translations import tr as app_tr
+from sli_ui_toolkit.i18n import get_current_language
+from sli_ui_toolkit.i18n import tr as app_tr
 from services.io.recent_projects import RecentProjectRecord, _snapshot_file_times
 from tabs.session_picker.recent.cards import format_session_types
 from tabs.session_picker.recent.relative_time import format_absolute_timestamp
