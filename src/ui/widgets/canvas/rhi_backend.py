@@ -14,6 +14,9 @@ FALLBACK_MAX_TEXTURE_SIZE = 4096
 RHI_BACKEND_ENV = "IMPROVE_IMGSLI_RHI_BACKEND"
 ALLOW_LSFGVK_ENV = "IMPROVE_IMGSLI_ALLOW_LSFGVK"
 DISABLE_LSFGVK_ENV = "DISABLE_LSFGVK"
+RHI_SETTINGS_ORG = "improve-imgsli"
+RHI_SETTINGS_APP = "improve-imgsli"
+RHI_SETTINGS_KEY = "rhi_backend"
 
 _API_BY_NAME = {
     "default": None,
@@ -39,6 +42,15 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def platform_fallback_rhi_backend() -> str:
+    """Conservative API when the preferred backend cannot start."""
+    if sys.platform.startswith("win"):
+        return "d3d11"
+    if sys.platform == "darwin":
+        return "metal"
+    return "opengl"
+
+
 def configure_vulkan_layer_environment(backend_name: str) -> bool:
     """Disable known-bad implicit Vulkan layers for the app's QRhi widgets."""
     if (
@@ -52,8 +64,89 @@ def configure_vulkan_layer_environment(backend_name: str) -> bool:
 
 
 def configure_rhi_process_environment(backend_name: str) -> None:
-    """Apply the process-wide backend selection before QApplication exists."""
+    """Apply the process-wide backend selection before widgets call setApi."""
     os.environ[RHI_BACKEND_ENV] = backend_name
+
+
+def probe_vulkan_available() -> bool | None:
+    """Probe whether Qt can create a Vulkan instance for QRhi.
+
+    Returns:
+        ``True`` / ``False`` when a probe ran, or ``None`` when this PySide
+        build has no Vulkan probe symbols (leave the caller's choice alone).
+    """
+    try:
+        from PySide6.QtGui import QRhiVulkanInitParams  # type: ignore[attr-defined]
+    except ImportError:
+        QRhiVulkanInitParams = None  # type: ignore[misc, assignment]
+    if QRhiVulkanInitParams is not None:
+        try:
+            return bool(QRhi.probe(QRhi.Implementation.Vulkan, QRhiVulkanInitParams()))
+        except Exception as exc:
+            logger.warning("QRhi.probe(Vulkan) failed: %s", exc)
+            return False
+
+    try:
+        from PySide6.QtGui import QVulkanInstance  # type: ignore[attr-defined]
+    except ImportError:
+        return None
+
+    try:
+        instance = QVulkanInstance()
+        try:
+            from PySide6.QtGui import QRhiVulkanInitParams as _Params  # type: ignore
+
+            instance.setExtensions(_Params.preferredInstanceExtensions())
+        except Exception:
+            pass
+        if instance.create():
+            return True
+        error = getattr(instance, "errorCode", lambda: None)()
+        logger.warning("QVulkanInstance.create failed (error=%s)", error)
+        return False
+    except Exception as exc:
+        logger.warning("Vulkan probe raised: %s", exc)
+        return False
+
+
+def resolve_rhi_backend_with_fallback(requested: str) -> tuple[str, str | None]:
+    """Return ``(effective_backend, fallback_reason_or_None)``.
+
+    Must run after ``QApplication`` exists so Vulkan/QRhi probes can talk to
+    the platform. Does not mutate env or QSettings — callers decide persistence.
+    """
+    name = (requested or "default").strip().lower()
+    if name not in _API_BY_NAME:
+        name = "default"
+
+    should_probe = name == "vulkan" or (
+        name == "default" and sys.platform.startswith("linux")
+    )
+    if not should_probe:
+        return name, None
+
+    available = probe_vulkan_available()
+    if available is not False:
+        return name, None
+
+    fallback = platform_fallback_rhi_backend()
+    if fallback == name:
+        return name, None
+    reason = f"Vulkan unavailable; falling back to {fallback}"
+    return fallback, reason
+
+
+def persist_rhi_backend_setting(backend_name: str) -> None:
+    """Write the backend into QSettings so the next launch skips a broken API."""
+    if backend_name not in _API_BY_NAME:
+        return
+    try:
+        from PySide6.QtCore import QSettings
+
+        qs = QSettings(RHI_SETTINGS_ORG, RHI_SETTINGS_APP)
+        qs.setValue(RHI_SETTINGS_KEY, backend_name)
+    except Exception:
+        logger.exception("Failed to persist rhi_backend=%s", backend_name)
 
 
 def configure_rhi_widget(widget: QRhiWidget) -> None:
@@ -61,15 +154,23 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
     api = _API_BY_NAME[name]
     if api is not None:
         widget.setApi(api)
-    actual_name = getattr(widget.api(), "name", "platform-default")
-    widget.renderFailed.connect(
-        lambda: logger.error(
-            "%s renderFailed requested=%s actual=%s",
+    fallback = platform_fallback_rhi_backend()
+
+    def _on_render_failed() -> None:
+        actual = getattr(widget.api(), "name", "platform-default")
+        logger.error(
+            "%s renderFailed requested=%s actual=%s — try Settings → "
+            "Render Backend → %s (or --rhi-backend %s) and restart",
             type(widget).__name__,
             name,
-            getattr(widget.api(), "name", "platform-default"),
+            actual,
+            fallback,
+            fallback,
         )
-    )
+        if name in ("vulkan", "default") and fallback != name:
+            persist_rhi_backend_setting(fallback)
+
+    widget.renderFailed.connect(_on_render_failed)
 
 
 def log_initialized_rhi_widget(widget: QRhiWidget) -> None:

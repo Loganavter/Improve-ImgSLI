@@ -141,6 +141,42 @@ parent for xdg_popup.
 **Interim app fallback:** `rmb_context_menu_surface()` returns `in_window` on
 Windows until `sli_ui_toolkit.__version__ >= 3.1.4`.
 
+## Multi Compare: RMB context menu nudged the zoomed frame — fixed (2026-07-19)
+
+**Status:** fixed.
+
+Opening the slot context menu from Multi Compare while zoomed could visually
+"push" the zoom frame even though `zoom` / `pan` state did not change.
+
+**Root cause:** the menu was opened from `mousePressEvent` (while the button
+was still down) as a `Qt.Popup` on the `QRhiWidget`. That popup handoff can
+jerk QRhi presentation / micro-nudge host geometry; MC then always called
+`request_view_update()` from `resizeEvent`, double-flushing the backing store.
+
+**Fix:** open the menu from `contextMenuEvent` (same as Image Compare); skip
+`request_view_update` when `resizeEvent` size is unchanged.
+
+## Vulkan / QRhi backend has no startup fallback — fixed (2026-07-19)
+
+**Status:** fixed.
+
+On Windows, selecting Vulkan (or a broken Vulkan runtime) produced:
+
+```text
+Failed to create Vulkan instance: -9
+QVulkanDefaultInstance: Failed to create Vulkan instance
+No QVulkanInstance set for the top-level window, this is wrong.
+```
+
+with no recovery — canvases stayed broken for the session.
+
+**Fix:** after `QApplication` starts, `resolve_rhi_backend_with_fallback`
+probes Vulkan (`QRhi.probe` / `QVulkanInstance`). On failure the process
+switches to the platform fallback (Windows `d3d11`, macOS `metal`, Linux
+`opengl`). Explicit Vulkan failures are persisted to QSettings for the next
+launch. `renderFailed` also logs an actionable hint and may persist the
+same fallback.
+
 ## multi_compare: large slot images and tiled export — fixed (2026-07-15)
 
 **Status:** fixed.
