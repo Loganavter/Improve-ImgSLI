@@ -1,5 +1,9 @@
 # Contracts
 
+Field catalog for **interface** canvas contracts. For *why* they exist and how
+“contract” is used elsewhere (host call sequences, AST dogmas), start at
+[CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract).
+
 ## CanvasWidgetFeature (`widget_contract.py`)
 
 Presentation-layer contract.
@@ -23,6 +27,8 @@ Optional fields:
 | `build_properties` | Register keyframe-animatable properties |
 | `build_toolbar_bindings` | Connect toolbar controls |
 | `build_settings_event_bindings` | React to settings dialog events |
+| `build_gesture_bindings` | Declare mouse gestures the feature claims |
+| `build_context_menu_zones` | Declare territory where host context menus are suppressed |
 | `build_render_scene_overrides` | Contribute data to the render scene |
 | `prepare_worker_viewport` | Prepare viewport state for background workers |
 | `apply_plan_runtime_overlay` | Apply overlays from render plan |

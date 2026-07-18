@@ -14,9 +14,9 @@
 - **权重** — 拖动网格分割线可调整相对大小。
 - **切换布局** — 会尽量保留已加载的图像。
 
-:::figure{side=center width=320}
-![多图对比网格](ui/placeholder.png)
-{{tr:workspace.session_types.multi_compare}} — 网格 / 缝隙拖放（占位图）。
+:::figure{side=block width=320}
+![多图对比网格]({{img:workspace.multi_compare.overview.layouts}})
+{{tr:workspace.session_types.multi_compare}} — 网格 / 缝隙拖放。
 :::
 
 ### 聚焦模式 {#focus-mode}
@@ -33,12 +33,12 @@
 
 ### 槽位右键菜单 {#context-menu}
 
-右键单击某个槽位可查看该图像的相关操作，包括[图像属性](help://image_properties)（文件元数据与槽位位置）。
+右键单击某个槽位可查看该图像的相关操作，包括[图像属性](help://image_properties)（文件元数据与槽位位置），以及**移动**（拖拽幽灵 → 点击其他工作区标签以启动与拖放/粘贴相同的放置流程）。
 
 ### 保存与导出 {#save-and-export}
 
 - **快速保存**（`Ctrl+S`）— {{tr:multi_compare.action.quick_save}}。
-- **保存对话框**（`Ctrl+Shift+S`）— {{tr:multi_compare.action.save}}。
+- **保存对话框** — {{tr:multi_compare.action.save}}（工具栏或 {{tr:menu.find_action}}）。
 - **一致性** — 导出结果与实时网格保持一致（布局、标签、分割线样式），而不是单个 {{tr:workspace.session_types.image_compare}} 分割视图。
 
 在 {{tr:workspace.session_types.multi_compare}} 标签页处于焦点状态时，可在 {{tr:menu.find_action}} 中搜索保存 / 导出相关操作。

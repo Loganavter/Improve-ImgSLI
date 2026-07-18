@@ -13,6 +13,7 @@
 - `Ctrl+N` — 会话选择器 / 新建会话
 - `Ctrl+Shift+P` — {{tr:menu.find_action}}
 - `Ctrl+V` — 粘贴图像
+- `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — 打开 / 保存 / 项目另存为（`.imgsli`）
 - `Ctrl+Q` — 退出
 
 具体标签取决于所用语言包；可在设置 → 键盘 → 平台分组中重新绑定。
@@ -24,7 +25,7 @@
 - `H` / `C` — 差异模式 / 通道模式
 - `X` — 交换
 - `R` / `Ctrl+E` — 录制 / 视频编辑器
-- `Ctrl+S` / `Ctrl+Shift+S` — 快速保存 / 打开保存对话框
+- `Ctrl+S` — 快速保存
 - `WASD` / `QE` / `Space` — 放大镜移动 / 间距 / 单侧预览（固定不变）
 
 详情见[对比](help://comparison)、[放大镜](help://magnifier)、[视频编辑器](help://video)。
@@ -33,7 +34,7 @@
 
 - `Ctrl+O` — 添加图像（如已绑定）
 - `D` — 网格可见性
-- `Ctrl+S` / `Ctrl+Shift+S` — 快速保存 / 保存
+- `Ctrl+S` — 快速保存
 - `Esc` — 退出槽位焦点
 
 见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。

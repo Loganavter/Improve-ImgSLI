@@ -51,7 +51,7 @@ collect contributions with `notify_all("contribute_help", registry)`, then
 | `contribution.py` | `HelpContributionRegistry` API for tabs |
 | `labels.py` | `title_key` / `description_key` via `tr()` |
 | `icons.py` | App icons + contributed tab resolvers |
-| `interpolate.py` | `{{tr:dotted.key}}` in markdown bodies |
+| `interpolate.py` | `{{tr:dotted.key}}` / `{{img:figure.slot}}` in markdown bodies |
 | `layout_geometry.py` | Dialog size / sidebar widths |
 
 Toolkit owns rendering only (`HelpDocumentView` / `parse_help_blocks`).
@@ -60,9 +60,10 @@ Toolkit owns rendering only (`HelpDocumentView` / `parse_help_blocks`).
 
 ## Tree merge contract
 
-Host `resources/help/tree.json` defines root hubs (`workspace`, `ui`,
-`platform`) and host pages. `workspace.children` starts **empty**; tabs
-append hubs under `attach_under="workspace"`.
+Host `resources/help/tree.json` defines the root hub (About page +
+`workspace` / `ui` / `platform` children) and host pages.
+`workspace.children` starts **empty**; tabs append hubs under
+`attach_under="workspace"`.
 
 Tab contribution (example: `tabs/image_compare/help.py`):
 
@@ -74,6 +75,7 @@ def contribute_help(registry: HelpContributionRegistry) -> None:
         nodes={...},           # hub + pages (same JSON shape as tree.json nodes)
         aliases={"magnifier": "workspace.image_compare.magnifier", ...},
         body_root=Path(__file__).parent / "resources" / "help",
+        asset_root=Path(__file__).parent / "resources" / "help",
         resolve_icon=resolve_help_icon,  # optional
     )
 ```
@@ -83,8 +85,9 @@ Rules:
 - Contributed `node_id`s must be unique across the merged tree.
 - Alias conflicts (same slug → different targets) raise at merge.
 - Page `body` paths are relative to that tab's `body_root/<lang>/`.
-- Shared figures stay under host `resources/help/assets/`; tabs may pass
-  `asset_root` for their own screenshots.
+- Tab figures live under that tab’s `figures.json` + `assets/`; pass
+  `asset_root` (usually the same as `body_root`) so screenshots resolve.
+  Host `resources/help/assets/` is for platform/UI shots only.
 - Stable `help_page` slugs live as **aliases** on the contributing tab (or
   host for platform/UI), so Learn more / F1 do not break when nodes move.
 
@@ -94,15 +97,25 @@ Rules:
 
 ```text
 src/plugins/help/                 # dialog + merge
-src/resources/help/
-  tree.json                       # host shell only
-  en|ru|zh|pt_BR/ui/…  en|ru|zh|pt_BR/platform/…    # host topics
-  assets/                         # optional screenshots when a page needs them
+src/resources/help/               # host package
+  tree.json
+  figures.json                    # host {{img:slot}} → assets/ path
+  en|ru|zh|pt_BR/ui|platform/…    # host topic bodies
+  assets/
+    _stub.jpg                     # canonical stub (byte-match = still todo)
+    ui/… platform/…               # host screenshots only
 src/tabs/<tab>/
-  help.py                         # contribute_help(...)
-  resources/help/<lang>/*.md      # tab topic bodies
+  help.py                         # contribute_help(..., asset_root=…)
+  resources/help/                 # tab package (bodies + figures + assets)
+    figures.json
+    <lang>/*.md
+    assets/*.jpg
   resources/i18n/<lang>/….json    # <tab>.help.* keys
 ```
+
+Bodies reference figures as `{{img:slot.id}}`. Paths live in the owning
+package’s `figures.json` — host for platform/UI, tab for workspace topics
+(see [Figure tokens](#figure-tokens-img)).
 
 ---
 
@@ -173,7 +186,7 @@ Rules:
 
 In user-facing text say **panel** / **всплывающая панель** / **painel** /
 **面板** (or **панель**), never “flyout”. Reserve “flyout” for code, themes,
-and anchor ids (`#toolbar-flyouts`, `#flyouts`). Contrast: panel = in-window
+and anchor ids (`#toolbar-flyouts`). Contrast: panel = in-window
 chrome; dialog = separate window (export, settings, properties).
 
 ### Figures and tips
@@ -197,6 +210,31 @@ See also [RESOURCES_I18N](./RESOURCES_I18N.md). In Help bodies:
 - Host pages use host packs; tab pages may use that tab’s `resources/i18n`
   (loaded with the tab).
 
+### Figure tokens (`{{img:…}}`)
+
+Bodies never hardcode screenshot paths. Use a slot id that resolves through
+merged package `figures.json` maps at read time (host + each
+`tabs/<tab>/resources/help/figures.json`):
+
+```markdown
+:::figure{side=block height=107}
+![Session Picker]({{img:platform.workspace.session_picker}})
+{{tr:action.workspace.open_session_picker}}.
+:::
+```
+
+- Slot ids are stable (match the [per-topic figure slots](#per-topic-figure-slots)
+  table: `topic.section`).
+- Values are asset-relative paths under **that package’s** `assets/` (resolved
+  via host + contributed `asset_root`s in `resolve_help_asset`). Prefer final
+  filenames so shipping a shot means overwriting the file — no md / locale edits.
+- Tab topics own their screenshots under `tabs/<tab>/resources/help/assets/`;
+  do not put compare figures in host `resources/help/assets/`.
+- Canonical stub bytes live at host `assets/_stub.jpg`. Any figure file that
+  still matches those bytes is reported as **needs screenshot** by
+  `python src/devtools/check_help_figures.py`.
+- Unknown slot → token left unchanged (broken image is intentional / visible).
+
 ### What the renderer cannot do yet
 
 Tracked as toolkit / Help follow-ups — do **not** author pages as if these
@@ -211,7 +249,7 @@ already work:
 | Figure left / center / right | `side=left\|center\|right\|block` (v1+) |
 | Glossary dotted links | Normal `help://` / http(s) links |
 
-Style reference: `ui.lists_flyouts` (definition bullets + `center` / `left`
+Style reference: `ui.lists_flyouts` (definition bullets + `center` / `block`
 figures).
 
 ---
@@ -227,31 +265,40 @@ Add `:::figure` only when a screenshot answers a question that prose cannot
 
 | Budget | When | Placement | Examples (current tree) |
 |---|---|---|---|
-| **0 — none** | Chord inventories, settings inventories, short orientation, anything fully named by UI strings | — | `platform.hotkeys`, `platform.settings`, `ui.buttons` |
-| **1 — one** | One primary surface or spatial idea for the whole page | After the intro paragraph (or beside the one `###` that needs it); `side=right` | `getting_started` (session picker), `file_project` (paste overlay), `export` (dialog), `multi_compare.overview` (`#layouts`), `canvas_navigation` (`#zoom`) |
+| **0 — none** | Chord inventories, settings inventories, short orientation, anything fully named by UI strings | — | `platform.hotkeys`, `platform.settings` |
+| **1 — one** | One primary surface or spatial idea for the whole page | After the intro paragraph (or under the one `###` that needs it); prefer `side=block` | `getting_started` (session picker), `file_project` (paste overlay), `export` (dialog), `multi_compare.overview` (`#layouts`), `canvas_navigation` (`#zoom`) |
 | **2 — several** | Page teaches **distinct visual states** that look different | One figure **next to the `###` section** it illustrates — not a stack under the title | `comparison` (`#split-line` + `#difference-modes`), `magnifier` (`#enabling` + `#combined-mode`), `video` (`#timeline` + `#export-encode`), `lists_flyouts` (`#list-manager` + `#toolbar-flyouts`) |
+| **3+ — exception** | Several modes / gestures that each *look* different and must not share one collage | One figure per mode or gesture section | `ui.buttons` (toolbar + three modes + long-press) |
 
 More than two figures on one page is uncommon; a third is allowed only for
-another distinct visual state (e.g. magnifier multi-instance). A fourth usually
-means split the topic into another hub child.
+another distinct visual state. Going above that needs an explicit exception in
+the per-topic table (do not use it to decorate every bullet).
 
 ### Rules
 
 1. **Need before asset.** Write the section first; add a figure only if a
    reader would still ask “what does that look like?”
-2. **Screenshots.** Prefer real product shots. Temporary `placeholder.png` is
-   allowed **only** in budgeted slots below, with a caption that says
-   placeholder / временный скриншот. Do not sprinkle extras.
+2. **Screenshots.** Prefer real product shots under the final paths already
+   listed in `figures.json`. Until then, those files may still be stub images
+   (detected by `check_help_figures.py`). Do not sprinkle extras.
 3. **Caption = UI path.** Prefer `{{tr:…}}` breadcrumbs in the caption; do not
    invent English control names.
 4. **Side layout.** `:::figure{side=…}`:
-   - `right` / `left` — float beside adjacent paragraphs (Blender-like wrap)
+   - `block` — full-width row, left-aligned (**default preference** for Help pages)
    - `center` — full-width row, image and caption centered
-   - `block` — full-width row, left-aligned (default)
-5. **Assets.** Host shared shots under `resources/help/assets/`; tab-owned
-   shots under that tab’s `asset_root` / `resources/help/assets/`. Prefer
+   - `right` / `left` — float beside adjacent paragraphs (Blender-like wrap; use sparingly)
+5. **Size.** `width=` (px or `%` of the help column) and/or `height=` (px).
+   The renderer fits the asset into that box with aspect ratio preserved
+   (and never wider than the column). Prefer `height=` for toolbar strips so
+   screenshots share a consistent vertical size.
+6. **Lightbox.** Click a figure to open a dimmed in-window viewer over the Help
+   content (below the CSD title bar; full-resolution asset, wheel zoom,
+   middle-mouse pan, click or Esc to close).
+7. **Assets.** Reference via `{{img:slot}}` (see [Figure tokens](#figure-tokens-img)).
+   Host shots under `resources/help/assets/`; tab shots under that tab’s
+   `resources/help/assets/` with `asset_root` on `contribute_help`. Prefer
    theme-neutral or ship light+dark when chrome color matters.
-6. **Tests do not require figures.** Scenario shape (`##` + `###`) is enough;
+8. **Tests do not require figures.** Scenario shape (`##` + `###`) is enough;
    see `test_help_page_bodies_are_scenario_cards`.
 
 ### Per-topic figure slots
@@ -260,25 +307,26 @@ Bodies ship in **en + ru + zh + pt_BR** (missing lang falls back to EN). Topic
 depth is `adequate` across the tree; do not claim deeper coverage without
 real encyclopedia-level pages.
 
-| Topic | Budget | Figure targets (placeholders until real shots) |
+| Topic | Budget | `{{img:…}}` slots (paths in `figures.json`) |
 |---|:-:|---|
-| `ui.buttons` | 0 | — |
-| `ui.lists_flyouts` | 2 | `#list-manager` (center), `#toolbar-flyouts` (left) |
-| `ui.canvas_navigation` | 1 | Beside `#zoom` |
+| `about` | 0 | — |
+| `ui.buttons` | 5 | `ui.buttons.toolbar`, `…mode_beginner`, `…mode_advanced`, `…mode_expert`, `…long_press` |
+| `ui.lists_flyouts` | 2 | `ui.lists_flyouts.list_manager`, `ui.lists_flyouts.toolbar_flyouts` |
+| `ui.canvas_navigation` | 1 | `ui.canvas_navigation.zoom` |
 | `platform.getting_started` | 0 | — |
-| `platform.workspace` | 1 | Beside `#session-picker` |
-| `platform.image_properties` | 1 | Beside `#open` |
+| `platform.workspace` | 1 | `platform.workspace.session_picker` |
+| `platform.image_properties` | 1 | `platform.image_properties.open` |
 | `platform.settings` | 0 | — |
 | `platform.hotkeys` | 0 | — |
-| `platform.file_project` | 1 | Beside `#loading-images` (paste overlay) |
-| `workspace.image_compare.comparison` | 2 | `#split-line`, `#difference-modes` |
-| `workspace.image_compare.magnifier` | 2 | `#enabling`, `#combined-mode` |
-| `workspace.image_compare.export` | 1 | Beside `#saving-an-image` |
-| `workspace.image_compare.video` | 2 | `#timeline`, `#export-encode` |
-| `workspace.multi_compare.overview` | 1 | `#layouts` (center) |
+| `platform.file_project` | 1 | `platform.file_project.paste_overlay` |
+| `workspace.image_compare.comparison` | 2 | `…comparison.split_line`, `…comparison.difference_modes` |
+| `workspace.image_compare.magnifier` | 2 | `…magnifier.enabling`, `…magnifier.combined_mode` |
+| `workspace.image_compare.export` | 1 | `workspace.image_compare.export.dialog` |
+| `workspace.image_compare.video` | 2 | `…video.timeline`, `…video.export_encode` |
+| `workspace.multi_compare.overview` | 1 | `workspace.multi_compare.overview.layouts` |
 
-Replace placeholders in place; do not add figures outside this table. Optional
-later gaps (still budget-0 unless raised): `ui.buttons` `#flyouts`,
+Update asset paths in `figures.json` only; do not add figures outside this
+table. Optional later gaps (still budget-0 unless raised):
 `platform.workspace` `#tab-strip`, `comparison` `#scroll-images`, settings shell.
 
 ---
@@ -342,7 +390,10 @@ No new methods on `TabContract` — only `create_service("contribute_help", …)
 ## Testing
 
 - `tests/plugins/test_help_tree.py` — aliases, merge, scenario page shape
-- `tests/plugins/test_help_interpolate.py` — `{{tr:}}`
+- `tests/plugins/test_help_interpolate.py` — `{{tr:}}` / `{{img:}}`
+- `tests/devtools/test_check_help_figures.py` — figure coverage report
+- `python src/devtools/check_help_figures.py` — ready / stub / missing inventory
+  (`--json`, `--strict`)
 - `tests/plugins/test_help_browser_navigation.py` — navigator / dialog UX
 - `tests/plugins/test_help_dialog_opens.py` — plugin open path
 - Toolkit: `HelpDocumentView` / block parse tests
@@ -351,13 +402,16 @@ Focused run:
 
 ```bash
 env QT_QPA_PLATFORM=offscreen pytest -q tests/plugins/test_help_*.py
+python src/devtools/check_help_figures.py
 ```
 
 ---
 
 ## Follow-ups
 
-- Real screenshots per [Figure policy](#figure-policy) (replace placeholders in budgeted slots)
+- Real screenshots per [Figure policy](#figure-policy): overwrite files under
+  the owning package’s `assets/` (host or `tabs/<tab>/resources/help/assets/`);
+  re-run `check_help_figures.py` until stubs = 0
 - Toolkit: optional `:::tip` / richer definition-list blocks if the subset grows
 - F1 → topic page without opening the palette
 - Optional Help menu demotion vs Find Action

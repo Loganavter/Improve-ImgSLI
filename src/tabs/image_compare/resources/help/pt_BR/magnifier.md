@@ -8,9 +8,9 @@ A lupa amostra uma região das imagens comparadas e mostra uma vista ampliada no
 - **Posicionar** — clique ou arraste na imagem para definir a área de captura (círculo vermelho).
 - **Anel** — tamanho e cor do anel de captura seguem o estilo da lente.
 
-:::figure{side=right width=280}
-![Lente da lupa](magnifier/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}} (placeholder).
+:::figure{side=block width=280}
+![Lente da lupa]({{img:workspace.image_compare.magnifier.enabling}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}.
 :::
 
 ### Tamanho e movimento {#size-and-movement}
@@ -42,12 +42,12 @@ A lupa amostra uma região das imagens comparadas e mostra uma vista ampliada no
 - **Divisão interna** — arraste com `RMB` dentro da lente.
 - **Pré-visualização de lado** — `Space+Shift` pode forçar a pré-visualização de um lado com a lente ativa.
 
-Para comparar o canvas inteiro sem a lente, veja [Comparação](help://comparison).
-
-:::figure{side=right width=280}
-![Lupa combinada](magnifier/placeholder.png)
-{{tr:image_compare.action.magnifier}} modo combinado (placeholder).
+:::figure{side=block width=280}
+![Lupa combinada]({{img:workspace.image_compare.magnifier.combined_mode}})
+{{tr:image_compare.action.magnifier}} modo combinado.
 :::
+
+Para comparar o canvas inteiro sem a lente, veja [Comparação](help://comparison).
 
 ### Configurações que afetam a lupa {#related-settings}
 

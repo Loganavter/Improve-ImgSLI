@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from shared_toolkit.ui.layout_sizing import (
+from tabs.host_helpers import (
     GeometryApplyPolicy,
     HorizontalPaneMinimum,
     apply_dialog_geometry,

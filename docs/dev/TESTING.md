@@ -43,8 +43,8 @@ instantiates a concrete tab as an example. Folder structure details —
 
 | Folder | What it checks | Style |
 |---|---|---|
-| `tests/contracts/` | Cross-cutting architectural dogmas, not tied to one tab (see `docs/dev/CONTRACTS.md`, `QRHI_CANVAS_FEATURES.md`). Scans sources with AST, no runtime. | Static analysis |
-| `tests/runtime/` | Shared import/runtime contracts: registry, event bus, stacking policy, presentation isolation, graceful degradation. | Import + assertions |
+| `tests/contracts/` | **Architectural dogmas** (AST), not the interface field catalogs. Isolation rules such as “no direct feature imports”. See [CONTRACTS.md](CONTRACTS.md#three-senses-of-contract); feature layout also in `QRHI_CANVAS_FEATURES.md`. | Static analysis |
+| `tests/runtime/` | Shared import/behavior checks: registry, event bus, stacking policy, presentation isolation, graceful degradation. Not the same as render-pass *lifecycle* docs. | Import + assertions |
 | `tests/render/` | Shared composition/render-plan behavior, not tied to a specific tab. | Fake-context |
 | `tests/plugins/` | Plugin behavior (`src/plugins/*`) not owned by one tab: settings, help, clipboard, workspace chrome. | Unit/integration |
 | `src/tabs/image_compare/tests/{contracts,render,runtime,plugins,video}/` | Everything specific to image_compare (canvas features, magnifier, divider, video editor). | Mixed — see [tabs/isolation.md](tabs/isolation.md) |
@@ -131,7 +131,10 @@ first line plays the same role — we do not duplicate a per-tab table here).
 
 ### 1. Architectural contracts (`tests/contracts/`, `src/tabs/*/tests/contracts/`)
 
-Do not launch the app — parse sources and enforce discipline:
+This is the **architectural dogma** sense of “contract” in
+[CONTRACTS.md](CONTRACTS.md#three-senses-of-contract) — not `TabContract` /
+`CanvasWidgetFeature` field lists. Do not launch the app — parse sources and
+enforce discipline:
 
 - `test_canvas_features_manifest.py` — every feature under `src/ui/canvas_features/` exports `WIDGET_FEATURE` with `name`.
 - `src/tabs/image_compare/tests/contracts/test_canvas_features_aliases.py` — capability aliases declared and unique.

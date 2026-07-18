@@ -264,7 +264,6 @@ def test_resize_gl_preserves_image_focus_when_letterbox_changes(monkeypatch):
     canvas = _canvas((0.10, 0.00, 0.80, 1.00))
     canvas.runtime_state._shader_letterbox_mode = True
     canvas.runtime_state._stored_pil_images = [object(), None]
-    canvas._update_paste_overlay_rects = lambda: None
     canvas.update = lambda: None
     set_zoom_level(canvas, 12.0)
     set_pan_offsets(canvas, 0.12, -0.04)
@@ -308,7 +307,6 @@ def test_resize_gl_recomputes_aspect_ratio_and_shared_interaction_rect(monkeypat
         ),
         width=lambda: dimensions["width"],
         height=lambda: dimensions["height"],
-        _update_paste_overlay_rects=lambda: None,
         update=lambda: None,
     )
     monkeypatch.setattr(

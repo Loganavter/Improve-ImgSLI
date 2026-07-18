@@ -432,7 +432,7 @@ def test_first_multi_compare_session_seeds_from_qsettings(qapp, monkeypatch):
     assert state.label_settings.font_size_percent == 120
 
 
-def test_second_multi_compare_session_keeps_fresh_defaults(qapp, monkeypatch):
+def test_second_multi_compare_session_seeds_last_used_colors(qapp, monkeypatch):
     from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
     from tabs.multi_compare.tab import MultiCompareTab
 
@@ -463,10 +463,62 @@ def test_second_multi_compare_session_keeps_fresh_defaults(qapp, monkeypatch):
     tab.on_session_created("mc2", SimpleNamespace(store=store))
 
     assert store.sessions["mc2"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
-        180,
-        180,
-        180,
-        230,
+        1,
+        2,
+        3,
+        4,
+    )
+    # Slots stay independent after seed — mutating mc2 must not rewrite mc1.
+    from dataclasses import replace
+
+    store.set_session_state_slot(
+        _STATE_SLOT,
+        replace(
+            store.sessions["mc2"].state_slots[_STATE_SLOT],
+            divider_settings=MultiCompareDividerSettings(color_rgba=(9, 9, 9, 9)),
+        ),
+        session_id="mc2",
+        emit_scope=None,
+    )
+    assert store.sessions["mc1"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+        1,
+        2,
+        3,
+        4,
+    )
+
+
+def test_second_session_falls_back_to_sibling_when_qsettings_empty(qapp, monkeypatch):
+    from tabs.multi_compare.models import MultiCompareDividerSettings, MultiCompareState
+    from tabs.multi_compare.tab import MultiCompareTab
+
+    monkeypatch.setattr("tabs.multi_compare.tab._settings_from_qsettings", lambda: None)
+
+    store = _FakeWorkspaceStore()
+    store.sessions = {
+        "mc1": SimpleNamespace(id="mc1", session_type="multi_compare", state_slots={}),
+    }
+    tab = MultiCompareTab()
+    tab.on_session_created("mc1", SimpleNamespace(store=store))
+    store.set_session_state_slot(
+        _STATE_SLOT,
+        MultiCompareState(
+            divider_settings=MultiCompareDividerSettings(color_rgba=(11, 22, 33, 44)),
+        ),
+        session_id="mc1",
+        emit_scope=None,
+    )
+
+    store.sessions["mc2"] = SimpleNamespace(
+        id="mc2", session_type="multi_compare", state_slots={}
+    )
+    tab.on_session_created("mc2", SimpleNamespace(store=store))
+
+    assert store.sessions["mc2"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+        11,
+        22,
+        33,
+        44,
     )
 
 

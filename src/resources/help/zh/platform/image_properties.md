@@ -6,9 +6,9 @@
 
 在 {{tr:workspace.session_types.image_compare}} 列表中的某一行，或 {{tr:workspace.session_types.multi_compare}} 的某个槽位上右键单击，选择 {{tr:image_properties.title}}。该对话框为只读，仅 {{tr:image_properties.copy_all}} 可用，用于将所有可见行复制到剪贴板。
 
-:::figure{side=right width=280}
-![图像属性对话框](ui/placeholder.png)
-{{tr:image_properties.title}}（占位图）。
+:::figure{side=block width=280}
+![图像属性对话框]({{img:platform.image_properties.open}})
+{{tr:image_properties.title}}。
 :::
 
 ### 分组 {#sections}

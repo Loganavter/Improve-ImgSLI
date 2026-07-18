@@ -90,6 +90,7 @@ class VideoEditorDialogExport:
         current_pix_fmt = d.combo_pix_fmt.currentData()
         has_quality = caps["has_crf"] or caps.get("has_cq", False) or caps["has_bitrate"]
         d.quality_controls_container.setVisible(has_quality)
+        d.stack_quality.setVisible(has_quality)
         if has_quality:
             d.combo_quality_mode.blockSignals(True)
             d.combo_quality_mode.clear()
@@ -113,7 +114,8 @@ class VideoEditorDialogExport:
             quality_idx = d.combo_quality_mode.findData(preferred_quality_mode)
             d.combo_quality_mode.setCurrentIndex(max(0, quality_idx))
             d.combo_quality_mode.blockSignals(False)
-            d.stack_quality.setCurrentIndex(d.combo_quality_mode.currentIndex())
+            mode = d.combo_quality_mode.currentData()
+            d.stack_quality.setCurrentIndex(1 if mode == "bitrate" else 0)
             if hasattr(d, "lbl_quality_value"):
                 quality_label = caps.get("quality_value_label", "video.crf_value_hint")
                 if isinstance(quality_label, str) and "." in quality_label:

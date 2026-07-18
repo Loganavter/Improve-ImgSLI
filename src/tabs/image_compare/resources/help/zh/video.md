@@ -15,13 +15,13 @@
 ### 时间轴编辑 {#timeline}
 
 - **拖动定位** — 拖动时间指示器。
-- **选取范围** — 用选区手柄标记一段范围；{{tr:button.trim_to_selection}} 只保留该选区。
+- **选取范围** — `Shift`+拖动标记一段范围；两端手柄和选区中部可单独移动；{{tr:button.trim_to_selection}} 只保留该选区。
 - **删除** — `Delete` / `Backspace` 删除选中的范围。
 - **播放** — `Space`；撤销 / 重做 — `Ctrl+Z` / `Ctrl+Y`。
 
-:::figure{side=right width=280}
-![视频时间轴](ui/placeholder.png)
-{{tr:image_compare.action.video_editor}} — 时间轴（占位图）。
+:::figure{side=block width=840}
+![视频时间轴]({{img:workspace.image_compare.video.timeline}})
+{{tr:image_compare.action.video_editor}} — 时间轴。
 :::
 
 ### 轨道与记录内容 {#tracks}
@@ -45,9 +45,9 @@
 - **路径** — 输出文件；收藏目录按钮可复用上次使用的文件夹。
 - **进度** — 可随时停止；日志会显示编码器的输出信息。
 
-:::figure{side=right width=280}
-![视频导出面板](ui/placeholder.png)
-{{tr:image_compare.action.video_editor}} — 导出（占位图）。
+:::figure{side=block width=630}
+![视频导出面板]({{img:workspace.image_compare.video.export_encode}})
+{{tr:image_compare.action.video_editor}} — 导出。
 :::
 
 ### {{tr:video.manual_cli}} {#manual-cli}

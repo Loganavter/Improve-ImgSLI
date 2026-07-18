@@ -152,7 +152,7 @@ class SettingsRegistry:
     ) -> SearchIndex:
         """Section search plus extras visible for ``active_tab``.
 
-        Tab-owned extras (e.g. image_compare performance groups) are omitted
+        Tab-owned extras (e.g. tab-specific performance groups) are omitted
         when the active session cannot show them in Settings.
         """
         index = section.search

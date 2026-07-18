@@ -148,6 +148,47 @@ def test_help_hub_set_hub_idempotent(qtbot):
     assert page._cards.itemAt(0).widget() is first
 
 
+def test_help_hub_sync_icons_on_theme_change(qtbot):
+    """Hub card icons are eager QIcons; theme switch must re-resolve them."""
+    from PySide6.QtGui import QIcon, QPixmap
+
+    from plugins.help.hub_page import HelpHubPage
+    from plugins.help.tree import HelpNode
+
+    light = QIcon()
+    light.addPixmap(QPixmap(16, 16))
+    dark = QIcon()
+    dark.addPixmap(QPixmap(24, 24))
+    icons = {"topic.svg": light}
+
+    hub = HelpNode(
+        node_id="hub",
+        kind="hub",
+        title="Hub",
+        description="",
+        children=("child",),
+    )
+    child = HelpNode(
+        node_id="child",
+        kind="page",
+        title="Child",
+        description="",
+        icon="topic.svg",
+    )
+    page = HelpHubPage()
+    qtbot.addWidget(page)
+    page.set_icon_resolvers((lambda name: icons.get(name),))
+    page.set_hub(hub, (child,))
+    card = page._cards_by_id["child"]
+    icon_region = next(r for r in card._regions if r.id == "icon")
+    assert icon_region.icon is light
+
+    icons["topic.svg"] = dark
+    page.sync_icons()
+    icon_region = next(r for r in card._regions if r.id == "icon")
+    assert icon_region.icon is dark
+
+
 def test_help_hub_dispose_cards_unregisters_hover(qtbot):
     from plugins.help.hub_page import HelpHubPage
     from plugins.help.tree import get_help_tree

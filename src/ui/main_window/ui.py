@@ -67,21 +67,14 @@ class Ui_ImageComparisonApp:
             active_index = -1
             for index, session in enumerate(sessions):
                 tab_text = self._localized_session_title(session, language)
-                session_type_label = self._localized_session_type_label(
-                    session.session_type,
-                    language,
-                )
-                tooltip = f"{tab_text} [{session_type_label}]"
                 if index < tabs.count():
                     if tabs.tabText(index) != tab_text:
                         tabs.setTabText(index, tab_text)
                     if tabs.tabData(index) != session.id:
                         tabs.setTabData(index, session.id)
-                    tabs.setTabToolTip(index, tooltip)
                 else:
                     tabs.addTab(tab_text)
                     tabs.setTabData(index, session.id)
-                    tabs.setTabToolTip(index, tooltip)
                 if session.id == active_session_id:
                     active_index = index
 

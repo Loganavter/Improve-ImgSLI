@@ -15,6 +15,11 @@ import pytest
 SRC = os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir, os.pardir)
 FEATURES_DIR = os.path.join(SRC, "tabs", "image_compare", "canvas", "features")
 
+import tabs.image_compare.canvas.features as image_compare_features
+from ui.canvas_infra.scene.registry import get_canvas_registry
+
+get_canvas_registry("image_compare").register_package(image_compare_features)
+
 class TestAutoDiscovery:
 
     def test_template_excluded_from_widget_features(self):
@@ -55,7 +60,6 @@ class TestAutoDiscovery:
             "filename_overlay",
             "guides",
             "magnifier",
-            "paste_overlay",
         }
         assert expected <= names, f"Missing features: {expected - names}"
 

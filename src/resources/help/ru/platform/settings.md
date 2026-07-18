@@ -12,7 +12,7 @@
 
 - **{{tr:label.language}}** — en / ru / zh / pt_BR.
 - **{{tr:label.theme}}** — auto / light / dark.
-- **{{tr:settings.system_notifications}}** — опциональные уведомления после сохранения.
+- **{{tr:settings.system_notifications}}** — системные (OS) уведомления после сохранения; тост в окне приложения отдельный.
 - **{{tr:settings.enable_debug_logging}}** — подробные логи для отладки.
 - **{{tr:settings.show_workspace_tabs}}** — показать или скрыть полоску вкладок сессий.
 

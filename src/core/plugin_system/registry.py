@@ -79,9 +79,8 @@ class PluginRegistry:
         if len(parts) < 2:
             return
         # plugins.export.plugin -> plugins/export/resources/i18n
-        # tabs.image_compare.plugin -> tabs/image_compare/resources/i18n
-        # tabs.image_compare.plugins.video_editor.plugin ->
-        #   tabs/image_compare/plugins/video_editor/resources/i18n
+        # tabs.<name>.plugin -> tabs/<name>/resources/i18n
+        # tabs.<name>.plugins.<sub>.plugin -> tabs/<name>/plugins/<sub>/resources/i18n
         if parts[0] == "plugins" and parts[-1] == "plugin":
             pkg_parts = parts[:-1]
         elif parts[0] == "tabs" and parts[-1] == "plugin":

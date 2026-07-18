@@ -6,9 +6,9 @@ Inspect file metadata and in-app context for one loaded image without leaving th
 
 Right-click a row in a {{tr:workspace.session_types.image_compare}} list, or a {{tr:workspace.session_types.multi_compare}} slot, and choose {{tr:image_properties.title}}. The dialog is read-only except for {{tr:image_properties.copy_all}}, which copies every visible row to the clipboard.
 
-:::figure{side=right width=280}
-![Image Properties dialog](ui/placeholder.png)
-{{tr:image_properties.title}} (placeholder).
+:::figure{side=block width=280}
+![Image Properties dialog]({{img:platform.image_properties.open}})
+{{tr:image_properties.title}}.
 :::
 
 ### Sections {#sections}

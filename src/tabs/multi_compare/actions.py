@@ -104,7 +104,7 @@ _SPECS: tuple[_McAction, ...] = (
         "tooltip.save_result",
         (_BC_TOOLBAR, _BC_EXPORT),
         "export",
-        shortcut="Ctrl+Shift+S",
+        shortcut=None,
     ),
 )
 
@@ -180,7 +180,8 @@ def _contribute_font_settings_flyout(toolbar, reg: ActionRegistry) -> None:
     from ui.actions.flyout_contribute import contribute_flyout_search_actions
     from ui.widgets.font_settings_search import font_settings_search
 
-    widget = toolbar.parentWidget() if toolbar is not None else None
+    parent_widget = getattr(toolbar, "parentWidget", None)
+    widget = parent_widget() if callable(parent_widget) else None
     flyout = getattr(widget, "font_settings_flyout", None) if widget is not None else None
     show = getattr(widget, "show_font_settings_flyout", None) if widget is not None else None
     if flyout is None or not callable(show):
@@ -208,5 +209,6 @@ def contribute_keymap_defaults(registry) -> None:
                 default_shortcut=spec.shortcut,
                 owner_tab=OWNER,
                 breadcrumb=spec.breadcrumb,
+                description_key=spec.description_key,
             )
         )

@@ -45,6 +45,10 @@ def remap_slice_uv_to_tc(slice_: dict, tc_x: tuple, tc_y: tuple) -> tuple:
     (by construction of ``tile_uv_slices``), so a narrower ``tc_x``/``tc_y``
     (a subset of the slice's own range) maps to a narrower uv_rect via linear
     interpolation — no need to re-derive tile geometry.
+
+    The result is still endpoint-relative to ``tc_x``/``tc_y`` (not absolute
+    disk ``TexCoord``). Pass it through ``expand_uv_rect_to_absolute_tc``
+    before uploading as ``uvRect1``/``uvRect2`` for ``mag.frag``.
     """
     left, top, right, bottom = slice_["uv_rect"]
     stx0, stx1 = slice_["tc_x"]
@@ -59,6 +63,39 @@ def remap_slice_uv_to_tc(slice_: dict, tc_x: tuple, tc_y: tuple) -> tuple:
         _lerp(left, right, fx1),
         _lerp(top, bottom, fy1),
     )
+
+
+def expand_uv_rect_to_absolute_tc(
+    uv_rect: tuple, tc_x: tuple, tc_y: tuple
+) -> tuple:
+    """Expand an endpoint-relative uv_rect so ``mix(uv, absolute_tc)`` is correct.
+
+    ``mag.frag`` samples with disk-absolute ``TexCoord`` in ``[0, 1]`` while
+    scissor limits which fragments run. ``uv_rect`` from ``tile_uv_slices``
+    (and from ``remap_slice_uv_to_tc``) describes samples only at the
+    endpoints of ``tc_x``/``tc_y``. Extrapolate to the full ``[0, 1]`` domain
+    so fragments inside that scissor window hit the right texels.
+
+    Identity when ``tc`` is already ``(0, 1)`` on both axes.
+    """
+    left, top, right, bottom = uv_rect
+    tx0, tx1 = tc_x
+    ty0, ty1 = tc_y
+    dx = tx1 - tx0
+    dy = ty1 - ty0
+    if abs(dx) <= 1e-12:
+        u0 = u1 = left
+    else:
+        span_u = (right - left) / dx
+        u0 = left - span_u * tx0
+        u1 = u0 + span_u
+    if abs(dy) <= 1e-12:
+        v0 = v1 = top
+    else:
+        span_v = (bottom - top) / dy
+        v0 = top - span_v * ty0
+        v1 = v0 + span_v
+    return (u0, v0, u1, v1)
 
 
 def restrict_tc_axis(tc_x: tuple, tc_y: tuple, axis: str, lo: float, hi: float):
@@ -173,8 +210,12 @@ def dual_source_tile_pairs(slices1: list, slices2: list) -> list:
                 {
                     "tile_key1": s1["tile_key"],
                     "tile_key2": s2["tile_key"],
-                    "uv_rect1": remap_slice_uv_to_tc(s1, tc_x, tc_y),
-                    "uv_rect2": remap_slice_uv_to_tc(s2, tc_x, tc_y),
+                    "uv_rect1": expand_uv_rect_to_absolute_tc(
+                        remap_slice_uv_to_tc(s1, tc_x, tc_y), tc_x, tc_y
+                    ),
+                    "uv_rect2": expand_uv_rect_to_absolute_tc(
+                        remap_slice_uv_to_tc(s2, tc_x, tc_y), tc_x, tc_y
+                    ),
                     "tc_x": tc_x,
                     "tc_y": tc_y,
                 }
@@ -240,18 +281,57 @@ def build_tile_records(
     record's sampling branch, left as the caller's placeholder).
     """
     if combined:
+        slices1 = list(source_slices_fn(tex_key_1, uv_rect1))
+        slices2 = list(source_slices_fn(tex_key_2, uv_rect2))
+        # Common case: each source is a single full-disk slice (untiled or
+        # capture fits in one tile). Draw once with both textures bound and
+        # let ``mag.frag`` pick the side via ``internalSplit`` — same UV
+        # mapping as split lenses. Half-scissor draws are only needed when
+        # a capture spans multiple tiles (different binds per sub-rect).
+        if (
+            len(slices1) == 1
+            and len(slices2) == 1
+            and is_full_tc(slices1[0]["tc_x"], slices1[0]["tc_y"])
+            and is_full_tc(slices2[0]["tc_x"], slices2[0]["tc_y"])
+        ):
+            return [
+                {
+                    "tc_x": _FULL_TC[0],
+                    "tc_y": _FULL_TC[1],
+                    "uv_rect1": expand_uv_rect_to_absolute_tc(
+                        slices1[0]["uv_rect"],
+                        slices1[0]["tc_x"],
+                        slices1[0]["tc_y"],
+                    ),
+                    "uv_rect2": expand_uv_rect_to_absolute_tc(
+                        slices2[0]["uv_rect"],
+                        slices2[0]["tc_x"],
+                        slices2[0]["tc_y"],
+                    ),
+                    "tex1_key": slices1[0]["tile_key"],
+                    "tex2_key": slices2[0]["tile_key"],
+                    "texd_key": None,
+                }
+            ]
+
         axis = "y" if comb_horizontal else "x"
         records = []
-        for half_is_source0, uv_rect, tex_key, split_lo, split_hi in (
-            (True, uv_rect1, tex_key_1, 0.0, internal_split),
-            (False, uv_rect2, tex_key_2, internal_split, 1.0),
+        for half_is_source0, slices, split_lo, split_hi in (
+            (True, slices1, 0.0, internal_split),
+            (False, slices2, internal_split, 1.0),
         ):
-            for sl in source_slices_fn(tex_key, uv_rect):
-                restricted = restrict_tc_axis(sl["tc_x"], sl["tc_y"], axis, split_lo, split_hi)
+            for sl in slices:
+                restricted = restrict_tc_axis(
+                    sl["tc_x"], sl["tc_y"], axis, split_lo, split_hi
+                )
                 if restricted is None:
                     continue
                 tc_x, tc_y = restricted
-                uv = remap_slice_uv_to_tc(sl, tc_x, tc_y)
+                # Half spit is scissor-only. Keep UV in absolute disk TexCoord
+                # form (same as split lenses); do not remap UV into the half.
+                uv = expand_uv_rect_to_absolute_tc(
+                    sl["uv_rect"], sl["tc_x"], sl["tc_y"]
+                )
                 rec = {
                     "tc_x": tc_x,
                     "tc_y": tc_y,
@@ -291,6 +371,9 @@ def build_tile_records(
 
     records = []
     for sl in source_slices_fn(active_key, active_uv):
+        abs_uv = expand_uv_rect_to_absolute_tc(
+            sl["uv_rect"], sl["tc_x"], sl["tc_y"]
+        )
         rec = {
             "tc_x": sl["tc_x"],
             "tc_y": sl["tc_y"],
@@ -301,9 +384,9 @@ def build_tile_records(
             "texd_key": None,
         }
         if slot in ("tex1_key", "texd_key"):
-            rec["uv_rect1"] = sl["uv_rect"]
+            rec["uv_rect1"] = abs_uv
         else:
-            rec["uv_rect2"] = sl["uv_rect"]
+            rec["uv_rect2"] = abs_uv
         rec[slot] = sl["tile_key"]
         records.append(rec)
     return records

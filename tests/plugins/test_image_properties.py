@@ -50,3 +50,33 @@ def test_image_properties_reads_numpy_shape_without_file():
     assert rows["image_properties.orientation"].value_key == (
         "image_properties.orientation_landscape"
     )
+
+
+def test_imgsli_project_is_not_probed_as_image(tmp_path):
+    path = tmp_path / "demo.imgsli"
+    path.write_bytes(b"PK\x03\x04not-an-image")
+
+    properties = build_image_properties(
+        path=path,
+        display_name="demo",
+        probe_image=True,
+    )
+    rows = _rows_by_label_key(properties)
+    assert "image_properties.read_error" not in rows
+    assert rows["image_properties.name"].value == "demo"
+    assert rows["image_properties.extension"].value == "IMGSLI"
+
+
+def test_probe_image_false_skips_pillow_even_for_png(tmp_path):
+    path = tmp_path / "sample.png"
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(path)
+
+    properties = build_image_properties(
+        path=path,
+        display_name="sample",
+        probe_image=False,
+    )
+    rows = _rows_by_label_key(properties)
+    assert "image_properties.format" not in rows
+    assert "image_properties.size" not in rows
+    assert rows["image_properties.file_size"].value

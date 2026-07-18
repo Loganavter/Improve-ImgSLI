@@ -8,7 +8,7 @@ and state — the host provides a slot, session lifecycle, and platform services
 
 - **[overview.md](overview.md)** — registered tabs, event routing, how to add a new tab
 - **[package-structure.md](package-structure.md)** — file layout, i18n, tab-owned icons / help
-- **[contract.md](contract.md)** — `TabContract` ABC, `TabContext`, design constraints
+- **[contract.md](contract.md)** — `TabContract` ABC / `TabContext` (interface contract; see [CONTRACTS.md](../CONTRACTS.md#three-senses-of-contract))
 - **[registry.md](registry.md)** — `TabRegistry` discovery tiers, singleton, registry API
 - **[session-lifecycle.md](session-lifecycle.md)** — workspace events, `state_slots`, project I/O
 - **[capability-mechanisms.md](capability-mechanisms.md)** — host↔tab wiring: `create_service`, `notify_all`, `CanvasGeometryProvider`, policy & gaps

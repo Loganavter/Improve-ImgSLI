@@ -8,9 +8,9 @@
 - **平移** — 按住鼠标中键拖动，即使在 `100%` 缩放下也可使用。
 - **模式** — 没有单独的导航工具；这些手势始终在实时画布上生效。
 
-:::figure{side=right width=280}
-![画布缩放与平移](ui/placeholder.png)
-{{tr:workspace.session_types.image_compare}} → 画布（占位图）。
+:::figure{side=block width=280}
+![画布缩放与平移]({{img:ui.canvas_navigation.zoom}})
+{{tr:workspace.session_types.image_compare}} → 画布。
 :::
 
 ### 快速单侧预览 {#quick-side-preview}

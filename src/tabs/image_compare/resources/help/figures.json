@@ -1,0 +1,9 @@
+{
+  "workspace.image_compare.comparison.split_line": "split_line.png",
+  "workspace.image_compare.comparison.difference_modes": "difference_modes.png",
+  "workspace.image_compare.magnifier.enabling": "magnifier.jpg",
+  "workspace.image_compare.magnifier.combined_mode": "magnifier_combined.jpg",
+  "workspace.image_compare.export.dialog": "export_dialog.jpg",
+  "workspace.image_compare.video.timeline": "video_timeline.jpg",
+  "workspace.image_compare.video.export_encode": "video_export.jpg"
+}

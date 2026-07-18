@@ -77,6 +77,7 @@ Before merging a new canvas feature:
 - [ ] Scene z_order uses `stack_role` via `CanvasFeatureZOrder`
 - [ ] No imports of this feature in shared `ui/`, `events/`, or `plugins/` code
 - [ ] Mouse gestures declared via `build_gesture_bindings`, not added to `mouse.py`
+- [ ] Host context-menu exclusions declared via `build_context_menu_zones`, not hard-coded in the canvas widget
 - [ ] User-editable values declared as `CanvasFeatureProperty`
 - [ ] No central registry file was edited
 - [ ] Feature-specific helpers not in `canvas_presentation`

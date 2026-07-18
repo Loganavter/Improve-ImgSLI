@@ -313,8 +313,20 @@ class TabContext:
         self.event_bus = event_bus
         self.thread_pool = thread_pool
         self.main_window = main_window
-        self.settings = settings
+        # Fallback only when there is no store (tests). Prefer ``settings``
+        # property — Redux replaces ``store.settings`` on every settings
+        # action, so a captured reference goes stale after language change.
+        self._settings_fallback = settings
         self.services = dict(services or {})
+
+    @property
+    def settings(self) -> Any:
+        store = self.store
+        if store is not None:
+            live = getattr(store, "settings", None)
+            if live is not None:
+                return live
+        return self._settings_fallback
 
     def get_active_session(self) -> Any:
         if self.store:
@@ -324,11 +336,13 @@ class TabContext:
     def tr(self, key: str, default: str | None = None) -> str:
         """Translate a key using the app's i18n system."""
         try:
-            from resources.translations import tr
+            from resources.translations import get_current_language, tr
 
-            settings = self.settings or getattr(self.store, "settings", None)
-            language = getattr(settings, "current_language", "en")
-            result = tr(key, language)
+            settings = self.settings
+            language = getattr(settings, "current_language", None) if settings else None
+            if not language:
+                language = get_current_language() or "en"
+            result = tr(key, language, default=default)
             return result if result != key else (default or key)
         except Exception:
             return default or key

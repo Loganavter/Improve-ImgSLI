@@ -5,6 +5,21 @@ don't re-diagnose them from scratch. Bugs with a long investigation trail
 get their own doc, linked from here; this file is the index plus anything
 too small to deserve a standalone doc.
 
+## PySide: app `eventFilter` + non-`QObject` watched (QRhi) — fixed (2026-07-18)
+
+**Status:** fixed in `sli-ui-toolkit` tooltip interceptors.
+
+Opening Video Editor (or any dialog while an RHI canvas is alive) could
+raise `TypeError: QObject.eventFilter(QRhi, QEvent)` and then
+`SystemError: QWidget returned NULL`. The app-level `PathTooltip`
+interceptor is installed on `QApplication` and receives events for
+non-`QObject` targets (notably `QRhi`). Calling `super().eventFilter`
+with those arguments is rejected by PySide and corrupts further widget
+construction.
+
+**Fix:** if `watched` is not a `QObject`, return `False` without calling
+`QObject.eventFilter`. Same for the per-widget interceptor.
+
 ## Qt: `setPalette()` + `setAutoFillBackground(True)` unreliable for bare leaf `QWidget`s
 
 **Status:** root-caused and fixed at every known call site; mechanism
@@ -72,6 +87,10 @@ only masking a narrower issue.
   never reproduced here, but converted anyway as a precaution once the
   pattern was known to be unreliable elsewhere; no functional change
   expected, just removes a latent risk.
+- `src/tabs/session_picker/recent/shelf_chrome.py` (`OpaqueFillHost`) —
+  recent-projects content well under translucent CSD. Palette autofill
+  plus destroy/rebuild card grids punched see-through holes; the host
+  paints explicitly and cards update in place by path identity.
 
 See also [THEMING.md](THEMING.md#known-qt-quirk-dont-repaint-backgrounds-via-setpalette--setautofillbackground)
 and the `ThemedWidget` mixin that now owns theme repaint for most chrome
@@ -92,6 +111,12 @@ were painting square pixels into the translucent corner regions. Top-level
 
 Slight staircasing from 1-bit child masks is expected at low DPI.
 
+Nested `OverlayScrollArea` viewport masks (default radius 8) on full-bleed
+pages like Session Picker can leave black wedges in the bottom CSD corners
+when content height changes in-place (e.g. recent shelf growing to a second
+row). Those scrolls use `set_corner_radius(0)`; rounding stays on the window
+paint path + host bottom masks.
+
 ## multi_compare: large slot images and tiled export — fixed (2026-07-15)
 
 **Status:** fixed.
@@ -106,6 +131,24 @@ Native composition canvas is uncapped; still-image export above
 warning instead of silently clamping.
 
 See [tile-rendering-system.md](rendering/tile-rendering-system.md).
+
+## QRhiWidget autofill fights Multi Compare zoom/pan presentation — fixed (2026-07-17)
+
+**Status:** fixed.
+
+Multi Compare zoom-reset (and zoom-then-pan) could leave a visually stale
+frame even though ``render()`` already drew the new ``zoom``/``pan``. Image
+Compare had a related "bounce" when a CSD dropdown micro-resize accidentally
+forced a redraw.
+
+**Root cause:** ``MultiCompareCanvasWidget`` enabled
+``setAutoFillBackground(True)`` on the ``QRhiWidget``. Image Compare's canvas
+no-ops that API. Autofill + palette clear can fight RHI texture compositing.
+
+**Fix:** no-op ``setAutoFillBackground`` (same as IC); clear color stays in
+the RHI pass. ``request_view_update()`` still does an immediate ``update()``
+plus a next-tick pass after zoom/pan/reset so overlay hide cannot swallow the
+first request.
 
 ## Qt/SVG: thin diagonal strokes render jagged and asymmetric at small icon sizes
 
@@ -217,6 +260,31 @@ mode.
 ``PreviewCoordinator._apply_preview_scene`` — crop mode still clips to
 the export frame; uncrop mode matches export and allows the magnifier to
 render across the full padded canvas.
+
+
+## Video editor: divider detaches / wrong size in uncrop mode
+
+**Status:** fixed (2026-07-18).
+
+With uncrop (fit-content) enabled, the white split line floated off the
+image pair and grew into the pad fill — position and length no longer
+matched the base-image seam.
+
+**Root cause:** ``_refresh_live_content_rect`` gated on ``state._store``,
+but video preview binds the store on ``canvas._store`` and
+``set_pil_layers`` clears ``state._store``. The refresh was skipped, so
+``_content_rect_px`` stayed as the raw-image letterbox while
+``_compute_inner_content_rect`` scaled ``overlay_clip_rect`` against that
+wrong base. DividerPass then clipped/positioned against a rect that did
+not match ``_letterbox_params``.
+
+**Fix:** always refresh content rect for ``geometry_letterbox`` /
+padded-composite plans (no store gate); rebind ``state._store`` after
+texture upload in the plan applicator. On preview-pane resize, re-apply
+``_apply_plan_letterbox_from_clip`` from ``apply_plan_runtime_overlays``
+(raw-image ``update_common_letterbox_geometry`` otherwise overwrites the
+nested uncrop letterbox), and emit ``windowResized`` from the
+preview/timeline splitter so the cheap refit path runs.
 
 
 ## Video editor: background-color indicator always shows blue, color picker dialog needs cleanup

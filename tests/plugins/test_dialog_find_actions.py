@@ -8,10 +8,12 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QWidget
 
 from core.actions.types import ActionDescriptor
 from plugins.export.actions import (
-    PREFIX as EXPORT_PREFIX,
     contribute_export_dialog_actions,
     withdraw_export_dialog_actions,
 )
+
+EXPORT_OWNER = "image_compare"
+EXPORT_PREFIX = f"{EXPORT_OWNER}.export_dialog."
 from plugins.export.search import ACTIONS, BACKGROUND, OUTPUT, RESOLUTION
 from tabs.image_compare.plugins.video_editor.actions import (
     PREFIX as VIDEO_PREFIX,
@@ -207,13 +209,15 @@ def test_export_dialog_actions_register_and_withdraw(qtbot):
     qtbot.addWidget(dialog)
     _tag_export_dialog(dialog)
 
-    contribute_export_dialog_actions(dialog, registry=registry)
-    ids = {a.action_id for a in registry.list_for(active_tab="image_compare")}
+    contribute_export_dialog_actions(
+        dialog, registry=registry, owner_tab=EXPORT_OWNER
+    )
+    ids = {a.action_id for a in registry.list_for(active_tab=EXPORT_OWNER)}
     assert f"{EXPORT_PREFIX}group.misc.export.common.ok" in ids
     assert f"{EXPORT_PREFIX}group.label.output_directory.button.browse" in ids
     assert f"{EXPORT_PREFIX}group.misc.export.export.include_metadata" in ids
 
-    withdraw_export_dialog_actions(registry=registry)
+    withdraw_export_dialog_actions(registry=registry, owner_tab=EXPORT_OWNER)
     assert registry.all_actions() == []
 
 

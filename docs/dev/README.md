@@ -75,7 +75,7 @@ Focused tests: `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` — se
 | Task | Start here |
 |---|---|
 | Architecture overview | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Protocols / isolation | [CONTRACTS.md](CONTRACTS.md) |
+| Interface / isolation contracts | [CONTRACTS.md](CONTRACTS.md) (three senses of “contract”) |
 | New canvas feature | [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) |
 | New workspace tab | [tabs/index.md](tabs/index.md) |
 | Dialog / CSD chrome | [DIALOGS.md](DIALOGS.md) |
@@ -91,7 +91,7 @@ Focused tests: `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` — se
 ### Architecture and state
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers and bootstrap
-- [CONTRACTS.md](CONTRACTS.md) — protocols and feature isolation
+- [CONTRACTS.md](CONTRACTS.md) — interface contracts, host call sequences, architectural dogmas
 - [STORE.md](STORE.md) — actions / reducers / store
 - [EVENT_BUS.md](EVENT_BUS.md) — pub/sub for facts, not state
 - [PRESENTERS.md](PRESENTERS.md) — UI ↔ store bridge

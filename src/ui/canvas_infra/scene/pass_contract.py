@@ -42,7 +42,7 @@ class CanvasRenderPassBase:
     visibility: SceneVisibility = SceneVisibility.ALL
     # False opts a pass out of the blank_white gate in ``iter_active_render_passes``
     # (ui/widgets/canvas/render_executor.py) -- for passes that must still draw
-    # while no image pair is loaded/decoding (e.g. the paste/drop-hint overlay).
+    # while no image pair is loaded/decoding (e.g. a drop-hint overlay).
     requires_content: bool = True
 
     def resolved_layer_and_priority(self) -> tuple[RenderPhase, int]:

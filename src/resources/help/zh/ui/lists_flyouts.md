@@ -1,14 +1,14 @@
 ## 列表与面板
 
-下拉按钮会在主窗口上方打开窗口内面板。在面板中完成操作后，点击外部区域或按 `Esc` 关闭。手势说明见[按钮与控件](help://ui.buttons)；文件名标签样式见[对比](help://comparison)。
+下拉按钮会在主窗口上方打开窗口内面板。在面板中完成操作后，点击外部区域或按 `Esc` 关闭。工具栏布局与同一控件上的多种手势见[按钮与控件](help://ui.buttons)；文件名标签样式见[对比](help://comparison)。
 
 ### 列表管理面板 {#list-manager}
 
 在 {{tr:workspace.session_types.image_compare}} 会话中，每一侧都有一个列表下拉按钮。点击即可打开该侧的列表管理面板（包含行、评分、拖拽）。若列表为空，面板不会打开。再次点击同一个下拉按钮、点击外部区域，或选中某一行，均可关闭面板。当重命名或属性对话框处于打开状态时，面板不会因失去焦点而关闭。
 
-:::figure{side=center width=320}
-![列表管理面板](ui/placeholder.png)
-列表下拉按钮 → 列表管理面板（占位图）。
+:::figure{side=block width=320}
+![列表管理面板]({{img:ui.lists_flyouts.list_manager}})
+列表下拉按钮 → 列表管理面板。
 :::
 
 ### 滚动 {#scroll-lists}
@@ -47,12 +47,16 @@
 
 ### 标签设置面板 {#toolbar-flyouts}
 
-{{tr:image_compare.action.text_settings}}（或右键点击 {{tr:image_compare.action.file_names}}）会打开一个面板，用于设置大小、粗细、颜色与位置。按 `Esc` 或点击外部区域关闭。分割线颜色使用颜色选择器，而非面板——见[对比](help://comparison)。放大镜的选项面板见[放大镜](help://magnifier)。
+打开方式：{{tr:image_compare.action.text_settings}}，或右键点击 {{tr:image_compare.action.file_names}}。关闭：`Esc` 或点击外部区域。
 
-:::figure{side=left width=280}
-![标签设置面板](ui/placeholder.png)
-{{tr:image_compare.action.text_settings}}（占位图）。
+面板可设置字号、粗细、不透明度、文字与背景颜色、是否绘制背景，以及标签位置（边缘 / 分割线）。
+
+:::figure{side=block width=280}
+![标签设置面板]({{img:ui.lists_flyouts.toolbar_flyouts}})
+{{tr:image_compare.action.text_settings}}。
 :::
+
+分割线颜色与放大镜选项面板另行设置——见[对比](help://comparison)与[放大镜](help://magnifier)。
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 

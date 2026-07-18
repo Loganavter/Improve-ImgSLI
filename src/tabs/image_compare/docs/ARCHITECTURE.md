@@ -59,7 +59,6 @@ Current feature packages include:
 - `guides`
 - `filename_overlay`
 - `capture`
-- `paste_overlay`
 
 Feature packages register through the generic canvas contracts in
 `src/ui/canvas_infra/scene/`, but the feature implementations are tab-local.

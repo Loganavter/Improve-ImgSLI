@@ -58,3 +58,31 @@ def test_chord_conflicts():
     chord = normalize_sequence("Ctrl+S")
     assert chord in conflicts
     assert set(conflicts[chord]) == {"a", "b"}
+
+
+def test_exclusive_overrides_unbinds_conflict_losers():
+    from ui.actions.keymap import exclusive_overrides, steal_chord_in_overrides
+
+    defaults = {
+        "platform.save_project": ("Shift+S", None),
+        "image_compare.quick_save": ("Ctrl+S", "image_compare"),
+    }
+    # Both end up on Shift+S via override on quick_save.
+    overrides = {"image_compare.quick_save": "Shift+S"}
+    fixed = exclusive_overrides(defaults, overrides)
+    assert fixed.get("image_compare.quick_save") == ""
+    assert "platform.save_project" not in fixed
+
+    stolen = steal_chord_in_overrides(
+        action_id="image_compare.quick_save",
+        chord="Shift+S",
+        defaults=defaults,
+        overrides={},
+    )
+    # Prefer the action that just stole the chord.
+    assert stolen.get("platform.save_project") == ""
+    assert effective_shortcut_for_id(
+        "image_compare.quick_save",
+        default="Ctrl+S",
+        overrides=stolen,
+    ) == normalize_sequence("Shift+S")

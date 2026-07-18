@@ -12,9 +12,9 @@ Com a lupa desligada, arraste o divisor sobre o par.
 - **Visibilidade** (`D`) — {{tr:image_compare.action.divider_visible}} mostra ou oculta a linha.
 - **Combinado** — {{tr:image_compare.action.divider_combined}} reúne orientação, largura e cor (rolagem / clique direito / clique do meio); veja a dica do controle.
 
-:::figure{side=right width=280}
-![Linha divisória](ui/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}} (placeholder).
+:::figure{side=block width=280}
+![Linha divisória]({{img:workspace.image_compare.comparison.split_line}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.divider}}.
 :::
 
 ### Percorrer imagens com a rolagem {#scroll-images}
@@ -35,6 +35,7 @@ Com a lupa desligada, arraste o divisor sobre o par.
 
 - **{{tr:ui.psnr}} / {{tr:ui.ssim}}** — desligados por padrão; ative o cálculo automático em [Configurações → Análise](help://settings#analysis).
 - **Propriedades** — [Propriedades da imagem](help://image_properties) pelo menu de contexto de uma linha da lista (metadados do arquivo e lado / avaliação na sessão).
+- **Mover** — o menu de contexto no canvas ou na lista coloca um fantasma de arraste sob o ponteiro (pendurado à esquerda e abaixo); mova um pouco e clique em outra aba da área de trabalho (ou no canvas) para iniciar o mesmo fluxo de inserção do Duplicar / colar. `Esc` ou clique direito cancela.
 
 ### Modos de canal {#channel-modes}
 
@@ -44,9 +45,9 @@ Com a lupa desligada, arraste o divisor sobre o par.
 
 {{tr:image_compare.action.diff_mode}} (`H` cicla) destaca onde o par difere:
 
-:::figure{side=right width=280}
-![Modo de diferença](ui/placeholder.png)
-{{tr:image_compare.action.diff_mode}} (placeholder).
+:::figure{side=block width=280}
+![Modo de diferença]({{img:workspace.image_compare.comparison.difference_modes}})
+{{tr:image_compare.action.diff_mode}}.
 :::
 
 - **{{tr:image_compare.action.diff_highlight}}** — regiões de mudança no par ao vivo

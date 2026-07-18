@@ -14,9 +14,9 @@ Choose {{tr:workspace.session_types.multi_compare}} in the Session Picker, or ru
 - **Weights** — drag grid dividers to change relative sizes.
 - **Layout change** — keeps loaded images where possible.
 
-:::figure{side=center width=320}
-![Multi Compare grid](ui/placeholder.png)
-{{tr:workspace.session_types.multi_compare}} — grid / gap-drop (placeholder).
+:::figure{side=block width=320}
+![Multi Compare grid]({{img:workspace.multi_compare.overview.layouts}})
+{{tr:workspace.session_types.multi_compare}} — grid / gap-drop.
 :::
 
 ### Focus mode {#focus-mode}
@@ -33,12 +33,12 @@ Choose {{tr:workspace.session_types.multi_compare}} in the Session Picker, or ru
 
 ### Slot context menu {#context-menu}
 
-Right-click a slot for per-image actions, including [Image Properties](help://image_properties) (file metadata and slot position).
+Right-click a slot for per-image actions, including [Image Properties](help://image_properties) (file metadata and slot position) and **Move** (drag ghost → click another workspace tab to start placement like DnD / paste).
 
 ### Save and export {#save-and-export}
 
 - **Quick save** (`Ctrl+S`) — {{tr:multi_compare.action.quick_save}}.
-- **Save dialog** (`Ctrl+Shift+S`) — {{tr:multi_compare.action.save}}.
+- **Save dialog** — {{tr:multi_compare.action.save}} (toolbar or {{tr:menu.find_action}}).
 - **Parity** — export matches the live grid (layout, labels, divider chrome), not a single {{tr:workspace.session_types.image_compare}} split.
 
 Search save / export in {{tr:menu.find_action}} while the {{tr:workspace.session_types.multi_compare}} tab is focused.

@@ -191,7 +191,6 @@ flat.
 | `image_compare/guides` | done | see [package-structure.md](package-structure.md) |
 | `image_compare/capture` | done | see [package-structure.md](package-structure.md) |
 | `image_compare/filename_overlay` | done | see [package-structure.md](package-structure.md) |
-| `image_compare/paste_overlay` | done | single module moved to `render/` |
 | `multi_compare/drag_drop_overlay` | done | `gestures.py`/`interaction.py` moved to `input/` |
 | `multi_compare/grid_dividers` | done | `gestures.py`/`interaction.py` moved to `input/` |
 | `multi_compare/layer_labels` | n/a | root-contract-only, nothing to move |

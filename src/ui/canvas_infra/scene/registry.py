@@ -12,6 +12,7 @@ from .feature_contract import CanvasSceneFeature
 from .pass_contract import CanvasRenderPass, CanvasRenderPassBase
 from .widget_contract import (
     CanvasFeatureCommandAlias,
+    CanvasFeatureContextMenuZone,
     CanvasFeatureGestureBinding,
     CanvasFeatureProperty,
     CanvasFeatureSettingsEventBinding,
@@ -50,6 +51,7 @@ class CanvasFeatureRegistry:
         self.get_feature_settings_event_bindings.cache_clear()
         self.get_feature_toolbar_bindings.cache_clear()
         self.get_feature_gesture_bindings.cache_clear()
+        self.get_feature_context_menu_zones.cache_clear()
         self.get_feature_toolbar_binding.cache_clear()
         self.get_feature_command.cache_clear()
         self.get_feature_command_by_alias.cache_clear()
@@ -233,6 +235,20 @@ class CanvasFeatureRegistry:
                 continue
             bindings.extend(feature.build_gesture_bindings())
         return tuple(sorted(bindings, key=lambda b: (b.priority, b.gesture_id)))
+
+    @lru_cache(maxsize=1)
+    def get_feature_context_menu_zones(
+        self,
+    ) -> tuple[CanvasFeatureContextMenuZone, ...]:
+        zones: list[CanvasFeatureContextMenuZone] = []
+        for feature in sorted(
+            self.get_widget_features(),
+            key=lambda item: (item.property_order, item.name),
+        ):
+            if feature.build_context_menu_zones is None:
+                continue
+            zones.extend(feature.build_context_menu_zones())
+        return tuple(sorted(zones, key=lambda z: (z.priority, z.zone_id)))
 
     @lru_cache(maxsize=32)
     def get_feature_toolbar_binding(

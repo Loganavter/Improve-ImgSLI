@@ -61,6 +61,59 @@ class RenderConfig:
             "max_name_length": self.max_name_length,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "RenderConfig":
+        cfg = cls()
+        if not data:
+            return cfg
+
+        def _color(value, default: Color) -> Color:
+            if value is None:
+                return default
+            if isinstance(value, Color):
+                return value
+            if isinstance(value, (list, tuple)) and len(value) >= 3:
+                a = int(value[3]) if len(value) > 3 else 255
+                return Color(int(value[0]), int(value[1]), int(value[2]), a)
+            if isinstance(value, dict):
+                return Color(
+                    int(value.get("r", default.r)),
+                    int(value.get("g", default.g)),
+                    int(value.get("b", default.b)),
+                    int(value.get("a", default.a)),
+                )
+            return default
+
+        for key in (
+            "interpolation_method",
+            "zoom_interpolation_method",
+            "movement_interpolation_method",
+            "interactive_movement_interpolation_method",
+            "text_placement_mode",
+        ):
+            if key in data and data[key] is not None:
+                setattr(cfg, key, str(data[key]))
+        for key in (
+            "display_resolution_limit",
+            "jpeg_quality",
+            "font_size_percent",
+            "font_weight",
+            "text_alpha_percent",
+            "max_name_length",
+        ):
+            if key in data and data[key] is not None:
+                setattr(cfg, key, int(data[key]))
+        for key in ("include_file_names_in_saved", "draw_text_background"):
+            if key in data and data[key] is not None:
+                setattr(cfg, key, bool(data[key]))
+        if "file_name_color" in data:
+            cfg.file_name_color = _color(data["file_name_color"], cfg.file_name_color)
+        if "file_name_bg_color" in data:
+            cfg.file_name_bg_color = _color(
+                data["file_name_bg_color"], cfg.file_name_bg_color
+            )
+        return cfg
+
 class SessionData:
     """Generic container for a tab's per-session, non-``state_slots`` data.
 

@@ -13,10 +13,9 @@ from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 class DragDropOverlayPass(FullscreenOverlayTexturePass):
     """Rasterizes live drag/drop affordances into their own overlay texture.
 
-    Live-only, interaction-driven — stacking-wise mirrors ``paste_overlay``'s
-    ``TRANSIENT_PREVIEW`` role (see MULTI_COMPARE_QRHI_REFACTOR.md B1). Does
-    *not* set ``visibility = SceneVisibility.INTERACTIVE`` like
-    ``paste_overlay`` does, unlike image_compare: ``MultiCompareRenderContext``
+    Live-only, interaction-driven — uses ``TRANSIENT_PREVIEW`` stacking (see
+    MULTI_COMPARE_QRHI_REFACTOR.md B1). Does *not* set
+    ``visibility = SceneVisibility.INTERACTIVE``: ``MultiCompareRenderContext``
     carries no render-mode signal (no ``render_metrics``/``render_intent``),
     so ``iter_active_render_passes``' visibility resolver always defaults to
     ``PREVIEW`` here — an ``INTERACTIVE``-only flag would silently disable

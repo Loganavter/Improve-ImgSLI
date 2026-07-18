@@ -12,10 +12,34 @@
     "image_compare": "Comparação lado a lado de imagens com divisor, lupa e ferramentas de análise.",
     "multi_compare": "Layout em grade para comparar várias fontes ao mesmo tempo."
   },
-  "drop_zone": "Solte arquivos de imagem aqui para iniciar uma comparação",
   "recent": {
-    "title": "Continuar",
-    "badge": "Em desenvolvimento",
-    "placeholder": "As áreas de trabalho recentes aparecerão aqui quando este recurso estiver pronto."
+    "title": "Recentes",
+    "empty_title": "Carregue o primeiro projeto",
+    "empty_hint": "Solte um arquivo .imgsli aqui para fixá-lo",
+    "empty": "Projetos salvos aparecem aqui depois de abrir ou salvar um arquivo .imgsli. Solte um arquivo de projeto aqui para adicioná-lo à lista.",
+    "sort_modified": "Data de modificação",
+    "sort_created": "Data de criação",
+    "sort_name": "Nome",
+    "sort_asc": "Crescente",
+    "sort_desc": "Decrescente",
+    "view_grid": "Grade",
+    "view_list": "Lista",
+    "missing": "Arquivo ausente",
+    "action_open": "Abrir",
+    "action_properties": "Propriedades",
+    "action_remove": "Remover da lista",
+    "action_reveal": "Mostrar na pasta",
+    "prop_status": "Status",
+    "prop_file_modified": "Data de modificação",
+    "prop_file_created": "Data de criação",
+    "prop_pinned": "Adicionado aos recentes",
+    "prop_opened": "Última abertura",
+    "prop_sessions": "Sessões",
+    "relative": {
+      "just_now": "agora mesmo",
+      "minutes": "há {n} min",
+      "hours": "há {n} h",
+      "days": "há {n} d"
+    }
   }
 }

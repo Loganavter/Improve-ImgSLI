@@ -2,6 +2,7 @@
   "version": 1,
   "root_id": "root",
   "aliases": {
+    "about": "about",
     "introduction": "platform.getting_started",
     "file_management": "platform.file_project",
     "view_navigation": "ui.canvas_navigation",
@@ -19,7 +20,16 @@
       "title": "Help",
       "description": "Browse topics by area",
       "icon": "help.svg",
-      "children": ["workspace", "ui", "platform"]
+      "children": ["about", "workspace", "ui", "platform"]
+    },
+    "about": {
+      "kind": "page",
+      "title_key": "help.page.about.title",
+      "description_key": "help.page.about.desc",
+      "title": "About",
+      "description": "What Improve ImgSLI is",
+      "icon": "about.svg",
+      "body": "about.md"
     },
     "workspace": {
       "kind": "hub",

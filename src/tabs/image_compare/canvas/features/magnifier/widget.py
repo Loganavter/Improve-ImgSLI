@@ -9,6 +9,9 @@ from ui.canvas_infra.scene.widget_contract import (
 
 from tabs.image_compare.canvas.features.magnifier.commands import build_magnifier_commands as assemble_magnifier_commands
 from tabs.image_compare.canvas.features.magnifier.input.gestures import build_magnifier_gesture_bindings
+from tabs.image_compare.canvas.features.magnifier.input.context_menu_zones import (
+    build_magnifier_context_menu_zones,
+)
 from tabs.image_compare.canvas.features.magnifier.render.overlay import apply_magnifier_overlay
 from tabs.image_compare.canvas.features.magnifier.render.plan_overlay import apply_magnifier_plan_overlay
 from tabs.image_compare.canvas.features.magnifier.properties import build_magnifier_properties
@@ -115,6 +118,7 @@ def build_magnifier_state_commands():
         viewport_set_active_freeze,
         viewport_set_active_instance,
         viewport_set_active_laser_enabled,
+        viewport_set_active_offset,
         viewport_set_active_orientation,
         viewport_set_active_size,
         viewport_set_active_visibility_parts,
@@ -147,6 +151,9 @@ def build_magnifier_state_commands():
         ),
         CanvasFeatureStateCommand(
             command_id="move_active_position", handler=viewport_move_active_position
+        ),
+        CanvasFeatureStateCommand(
+            command_id="set_active_offset", handler=viewport_set_active_offset
         ),
         CanvasFeatureStateCommand(
             command_id="add_instance", handler=viewport_add_instance
@@ -265,6 +272,9 @@ MAGNIFIER_COMMAND_ALIASES = (
     CanvasFeatureCommandAlias(
         "overlay.move_active_position", "viewport.move_active_position"
     ),
+    CanvasFeatureCommandAlias(
+        "overlay.set_active_offset", "viewport.set_active_offset"
+    ),
     CanvasFeatureCommandAlias("overlay.should_show_panel", "query.should_show_panel"),
     CanvasFeatureCommandAlias("overlay.add_instance", "viewport.add_instance"),
     CanvasFeatureCommandAlias(
@@ -355,6 +365,8 @@ MAGNIFIER_COMMAND_ALIASES = (
         "overlay.settings.set_movement_interpolation",
         "settings.set_movement_interpolation",
     ),
+    CanvasFeatureCommandAlias("project.serialize_magnifier", "project.serialize"),
+    CanvasFeatureCommandAlias("project.restore_magnifier", "project.restore"),
 )
 
 
@@ -372,6 +384,7 @@ def build_widget_feature() -> CanvasWidgetFeature:
         command_aliases=MAGNIFIER_COMMAND_ALIASES,
         build_settings_event_bindings=build_magnifier_settings_event_bindings,
         build_gesture_bindings=build_magnifier_gesture_bindings,
+        build_context_menu_zones=build_magnifier_context_menu_zones,
         build_state_queries=build_magnifier_state_queries,
         build_state_commands=build_magnifier_state_commands,
         build_render_scene_overrides=build_magnifier_render_scene_overrides,

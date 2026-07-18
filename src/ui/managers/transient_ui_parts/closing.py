@@ -117,6 +117,14 @@ class PopupClosingController:
                 service.cancel_drag()
         except Exception:
             pass
+        try:
+            from events.image_carry import ImageCarryService
+
+            carry = ImageCarryService.get_instance()
+            if carry.is_active():
+                carry.cancel()
+        except Exception:
+            pass
 
     def _focus_aware_owners(self):
         return (self._tab_extension, self.manager.interpolation, self.manager.font_settings)

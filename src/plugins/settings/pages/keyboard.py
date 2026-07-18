@@ -14,10 +14,11 @@ from PySide6.QtWidgets import (
 
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
-from sli_ui_toolkit.widgets import Button, CustomGroupWidget, CustomLineEdit, Label
+from sli_ui_toolkit.widgets import Button, CustomGroupWidget, CustomLineEdit
 from ui.actions.keymap import (
     KeymapDefaultsRegistry,
     effective_shortcut_for_id,
+    keymap_entry_rank,
     normalize_sequence,
 )
 from ui.actions.search_index import PROP_GROUP
@@ -25,7 +26,6 @@ from ui.icon_manager import AppIcon
 
 KEYBOARD = group(
     "settings.keyboard",
-    "settings.keyboard_hint",
     "settings.keyboard_search",
     "settings.keyboard_reset",
     "settings.keyboard_reset_all",
@@ -53,7 +53,11 @@ def _collect_defaults() -> KeymapDefaultsRegistry:
         tabs.discover()
         tabs.notify_all("contribute_keymap_defaults", registry)
     except Exception:
-        pass
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Failed to collect tab keymap defaults for Settings → Keyboard"
+        )
     return registry
 
 
@@ -125,31 +129,31 @@ class _ShortcutCaptureButton(Button):
 
 
 def build(dialog, p):
+    from ui.actions.keymap import exclusive_overrides
+
     dialog.page_keyboard, layout = dialog._create_scrollable_page()
     defaults = _collect_defaults()
-    overrides = dict(getattr(p, "keyboard_overrides", None) or {})
+    defaults_map = {
+        entry.action_id: (entry.default_shortcut, entry.owner_tab)
+        for entry in defaults.all_entries()
+    }
+    overrides = exclusive_overrides(
+        defaults_map,
+        dict(getattr(p, "keyboard_overrides", None) or {}),
+    )
     dialog._keyboard_overrides = overrides
     dialog._keyboard_capture_rows = {}
-
-    hint = Label(
-        _tr(
-            dialog,
-            "settings.keyboard_hint",
-            "Click a binding, then press a new shortcut. Esc / Backspace clears. "
-            "Empty = unbound. Reset restores the default.",
-        ),
-        variant="caption",
-        pixel_size=11,
-        parent=dialog.page_keyboard,
-    )
-    KEYBOARD.tag_member(hint, "settings.keyboard_hint")
-    layout.addWidget(hint)
+    dialog._keyboard_action_labels = []
+    dialog._keyboard_reset_buttons = []
+    dialog._keyboard_owner_groups = []
+    dialog._keyboard_filter_rows = []
 
     search = CustomLineEdit(parent=dialog.page_keyboard)
     search.setPlaceholderText(
         _tr(dialog, "settings.keyboard_search", "Filter shortcuts…")
     )
     KEYBOARD.tag_member(search, "settings.keyboard_search")
+    dialog._keyboard_search = search
     layout.addWidget(search)
 
     groups_host = QWidget(dialog.page_keyboard)
@@ -160,40 +164,62 @@ def build(dialog, p):
 
     owner_titles = {
         None: _tr(dialog, "settings.keyboard_group_platform", "Platform"),
-        "image_compare": _tr(
-            dialog, "settings.keyboard_group_image_compare", "Image Compare"
-        ),
-        "multi_compare": _tr(
-            dialog, "settings.keyboard_group_multi_compare", "Multi Compare"
-        ),
     }
     owner_group_keys = {
         None: KEYBOARD_PLATFORM.title_key,
-        "image_compare": KEYBOARD_IC.title_key,
-        "multi_compare": KEYBOARD_MC.title_key,
     }
+    try:
+        from tabs.registry import TabRegistry
+
+        for tab in TabRegistry().list_tabs():
+            session_type = tab.session_type
+            if session_type == "session_picker":
+                continue
+            group_key = f"settings.keyboard_group_{session_type}"
+            owner_titles[session_type] = _tr(
+                dialog, group_key, tab.display_name
+            )
+            owner_group_keys[session_type] = group_key
+    except Exception:
+        pass
 
     by_owner: dict[str | None, list] = {}
     for entry in defaults.all_entries():
         by_owner.setdefault(entry.owner_tab, []).append(entry)
 
-    row_widgets: list[tuple[str, QWidget, object]] = []
+    row_widgets: list[tuple[QWidget, object, object]] = []
+    dialog._keyboard_filter_rows = row_widgets
+
+    def _refresh_capture_labels() -> None:
+        for entry in defaults.all_entries():
+            cap = dialog._keyboard_capture_rows.get(entry.action_id)
+            if cap is None:
+                continue
+            current = effective_shortcut_for_id(
+                entry.action_id,
+                default=entry.default_shortcut,
+                overrides=dialog._keyboard_overrides,
+            )
+            cap.set_chord(current)
 
     def _set_override(action_id: str, default: str | None, chord: str) -> None:
-        normalized = normalize_sequence(chord)
-        default_norm = normalize_sequence(default)
-        if normalized == default_norm:
-            dialog._keyboard_overrides.pop(action_id, None)
-        elif not normalized:
-            dialog._keyboard_overrides[action_id] = ""
-        else:
-            dialog._keyboard_overrides[action_id] = normalized
+        from ui.actions.keymap import steal_chord_in_overrides
+
+        dialog._keyboard_overrides = steal_chord_in_overrides(
+            action_id=action_id,
+            chord=chord,
+            defaults=defaults_map,
+            overrides=dialog._keyboard_overrides,
+        )
+        _refresh_capture_labels()
 
     for owner, entries in by_owner.items():
-        group = CustomGroupWidget(owner_titles.get(owner, owner or "Platform"))
+        group_title = owner_titles.get(owner, owner or "Platform")
+        group = CustomGroupWidget(group_title)
         group_key = owner_group_keys.get(owner)
         if group_key:
             group.setProperty(PROP_GROUP, group_key)
+            dialog._keyboard_owner_groups.append((group, group_key))
         group_layout = QVBoxLayout()
         group_layout.setContentsMargins(4, 4, 4, 4)
         group_layout.setSpacing(4)
@@ -208,6 +234,7 @@ def build(dialog, p):
             name = QLabel(label_text)
             name.setWordWrap(True)
             row_layout.addWidget(name, 1)
+            dialog._keyboard_action_labels.append((name, entry.label_key))
 
             current = effective_shortcut_for_id(
                 entry.action_id,
@@ -229,21 +256,31 @@ def build(dialog, p):
                 size=(72, 28),
                 parent=row,
             )
+            dialog._keyboard_reset_buttons.append(reset)
 
             def _reset(
                 aid=entry.action_id,
                 default=entry.default_shortcut,
                 cap=capture,
             ):
+                from ui.actions.keymap import steal_chord_in_overrides
+
+                # Reset to default, but still steal that chord from others.
                 dialog._keyboard_overrides.pop(aid, None)
-                cap.set_chord(normalize_sequence(default) or None)
+                dialog._keyboard_overrides = steal_chord_in_overrides(
+                    action_id=aid,
+                    chord=default,
+                    defaults=defaults_map,
+                    overrides=dialog._keyboard_overrides,
+                )
+                _refresh_capture_labels()
 
             reset.clicked.connect(_reset)
             row_layout.addWidget(reset, 0)
 
             group_layout.addWidget(row)
             dialog._keyboard_capture_rows[entry.action_id] = capture
-            row_widgets.append((label_text.lower(), row, group))
+            row_widgets.append((row, group, entry))
 
         group.add_layout(group_layout)
         groups_layout.addWidget(group)
@@ -255,22 +292,42 @@ def build(dialog, p):
         parent=dialog.page_keyboard,
     )
     KEYBOARD.tag_member(reset_all, "settings.keyboard_reset_all")
+    dialog._keyboard_reset_all = reset_all
 
     def _reset_all() -> None:
+        from ui.actions.keymap import exclusive_overrides
+
         dialog._keyboard_overrides.clear()
-        for entry in defaults.all_entries():
-            cap = dialog._keyboard_capture_rows.get(entry.action_id)
-            if cap is not None:
-                cap.set_chord(normalize_sequence(entry.default_shortcut) or None)
+        # Re-apply exclusivity across defaults so two actions cannot keep the
+        # same built-in chord after a full reset.
+        dialog._keyboard_overrides = exclusive_overrides(defaults_map, {})
+        _refresh_capture_labels()
 
     reset_all.clicked.connect(_reset_all)
     layout.addWidget(reset_all, 0, Qt.AlignmentFlag.AlignLeft)
 
     def _filter(text: str) -> None:
-        needle = (text or "").strip().lower()
+        needle = (text or "").strip()
         visible_groups: dict[object, bool] = {}
-        for label, row, group in row_widgets:
-            show = not needle or needle in label
+        group_titles = {
+            group: title
+            for group, title_key in getattr(dialog, "_keyboard_owner_groups", ()) or ()
+            for title in (_tr(dialog, title_key, title_key),)
+        }
+        for row, group, entry in row_widgets:
+            current = effective_shortcut_for_id(
+                entry.action_id,
+                default=entry.default_shortcut,
+                overrides=dialog._keyboard_overrides,
+            )
+            extras = (
+                group_titles.get(group, ""),
+                current or "",
+                entry.owner_tab or "platform",
+            )
+            show = keymap_entry_rank(
+                entry, needle, extra_search_terms=extras
+            ) is not None
             row.setVisible(show)
             if show:
                 visible_groups[group] = True
@@ -283,6 +340,40 @@ def build(dialog, p):
     layout.addStretch(1)
     dialog.pages_stack.addWidget(dialog.page_keyboard)
 
+
+def refresh_language(dialog) -> None:
+    """Retranslate keyboard page chrome after a live language switch."""
+    if getattr(dialog, "page_keyboard", None) is None:
+        return
+
+    search = getattr(dialog, "_keyboard_search", None)
+    if search is not None:
+        search.setPlaceholderText(
+            _tr(dialog, "settings.keyboard_search", "Filter shortcuts…")
+        )
+
+    reset_all = getattr(dialog, "_keyboard_reset_all", None)
+    if reset_all is not None:
+        reset_all.setText(
+            _tr(dialog, "settings.keyboard_reset_all", "Reset all shortcuts")
+        )
+
+    reset_label = _tr(dialog, "settings.keyboard_reset", "Reset")
+    for button in getattr(dialog, "_keyboard_reset_buttons", ()) or ():
+        button.setText(reset_label)
+
+    for group, title_key in getattr(dialog, "_keyboard_owner_groups", ()) or ():
+        fallback = title_key.rsplit(".", 1)[-1].replace("_", " ").title()
+        group.set_title(_tr(dialog, title_key, fallback))
+
+    filter_rows = getattr(dialog, "_keyboard_filter_rows", None)
+    labels = getattr(dialog, "_keyboard_action_labels", ()) or ()
+    for name, label_key in labels:
+        name.setText(_tr(dialog, label_key, label_key))
+
+    if search is not None and filter_rows is not None:
+        # Re-run filter so group visibility stays correct after title/label change.
+        search.textChanged.emit(search.text())
 
 SECTION = SettingsSection(
     section_id="builtin.keyboard",

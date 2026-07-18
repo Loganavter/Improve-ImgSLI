@@ -19,6 +19,7 @@ ALLOWED_THEME_INFRA_FILES = {
     Path("devtools/ui_inspector/installer.py"),
     Path("devtools/ui_inspector/qss_index.py"),
     Path("devtools/ui_inspector/widget_snapshot.py"),
+    Path("shared_toolkit/ui/overlay_layer.py"),
     Path("ui/theming.py"),
 }
 

@@ -54,5 +54,6 @@ def contribute_help(registry) -> None:
         nodes=_NODES,
         aliases=_ALIASES,
         body_root=_HELP_ROOT,
+        asset_root=_HELP_ROOT,
         resolve_icon=resolve_help_icon,
     )

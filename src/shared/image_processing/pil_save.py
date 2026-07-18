@@ -1,7 +1,6 @@
 """Shared helpers for saving PIL images to disk.
 
-Common ground between each tab's still-image export service
-(``image_compare.services.image_export`` / ``multi_compare.services.image_export``) — filename
+Common ground between each tab's still-image export service — filename
 sanitization, collision-free path generation, background flattening for
 non-alpha formats, comment metadata, and a cancelable write.
 """

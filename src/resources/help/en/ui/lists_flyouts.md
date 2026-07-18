@@ -1,14 +1,14 @@
 ## Lists and Panels
 
-Dropdowns open in-window panels over the main window. Work inside the panel, then dismiss with an outside click or `Esc`. Gestures are covered in [Buttons and Controls](help://ui.buttons); filename label styling in [Comparison](help://comparison).
+Dropdowns open in-window panels over the main window. Work inside the panel, then dismiss with an outside click or `Esc`. Toolbar layout and multi-action gestures: [Buttons and Controls](help://ui.buttons). Filename label styling: [Comparison](help://comparison).
 
 ### List manager {#list-manager}
 
 In a {{tr:workspace.session_types.image_compare}} session each side has a list dropdown. A click opens that side’s list-manager panel (rows, ratings, drag). The panel stays closed if the list is empty. Click the same dropdown again, click outside, or pick a row to close it. While rename or properties is open, the panel does not dismiss on focus loss.
 
-:::figure{side=center width=320}
-![List manager panel](ui/placeholder.png)
-List dropdown → list-manager panel (placeholder).
+:::figure{side=block width=320}
+![List manager panel]({{img:ui.lists_flyouts.list_manager}})
+List dropdown → list-manager panel.
 :::
 
 ### Scroll {#scroll-lists}
@@ -47,12 +47,16 @@ Drag-and-drop onto the window asks which list should receive the files. `Ctrl+V`
 
 ### Label settings panel {#toolbar-flyouts}
 
-{{tr:image_compare.action.text_settings}} (or right-click {{tr:image_compare.action.file_names}}) opens a panel for size, weight, colors, and placement. Close with `Esc` or an outside click. Divider color uses a picker, not a panel — see [Comparison](help://comparison). Magnifier option panels: [Magnifier](help://magnifier).
+Open with {{tr:image_compare.action.text_settings}} or right-click {{tr:image_compare.action.file_names}}. Close with `Esc` or an outside click.
 
-:::figure{side=left width=280}
-![Label settings panel](ui/placeholder.png)
-{{tr:image_compare.action.text_settings}} (placeholder).
+The panel covers font size, weight, opacity, text and background colors, draw-background, and label placement (edges / split line).
+
+:::figure{side=block width=280}
+![Label settings panel]({{img:ui.lists_flyouts.toolbar_flyouts}})
+{{tr:image_compare.action.text_settings}}.
 :::
+
+Split-line color and magnifier option panels are separate — [Comparison](help://comparison) and [Magnifier](help://magnifier).
 
 ### {{tr:workspace.session_types.multi_compare}} {#multi-compare}
 

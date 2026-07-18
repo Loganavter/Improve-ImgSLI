@@ -322,10 +322,13 @@ def _wrap_tab_scroll(content: QWidget) -> QWidget:
 
     content.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
     content.setAutoFillBackground(False)
-    content.setSizePolicy(
-        QSizePolicy.Policy.Expanding,
-        QSizePolicy.Policy.Minimum,
-    )
+    # Prefer Expanding so equal stretch pads share leftover viewport height.
+    # Callers may already set Expanding; Minimum would collapse pads to zero.
+    if content.sizePolicy().verticalPolicy() != QSizePolicy.Policy.Expanding:
+        content.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
     content.setMinimumWidth(0)
     scroll_area = OverlayScrollArea(tab)
     # Host pane already paints rounded chrome; a viewport mask here clips
@@ -352,39 +355,78 @@ def _expand_form_control(widget: QWidget) -> None:
     widget.setMinimumWidth(0)
     widget.setMaximumWidth(16777215)
 
+
+def _lock_form_block_height(widget: QWidget) -> None:
+    """Section hosts must not absorb vertical stretch (DIALOGS.md stretch pads)."""
+    widget.setSizePolicy(
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.Maximum,
+    )
+
+
+def _add_labeled_field_column(
+    parent_layout: QVBoxLayout,
+    label: QWidget,
+    field: QWidget,
+    *,
+    field_spacing: int = 6,
+) -> None:
+    """Tight label→field pair; stretch pads live *between* these blocks."""
+    block = QWidget()
+    _lock_form_block_height(block)
+    col = QVBoxLayout(block)
+    col.setContentsMargins(0, 0, 0, 0)
+    col.setSpacing(field_spacing)
+    col.addWidget(label)
+    col.addWidget(field)
+    parent_layout.addWidget(block)
+
+
+def _sync_quality_stack_page(dialog) -> None:
+    """Map quality mode data → stack page (crf/cq share the value page)."""
+    mode = dialog.combo_quality_mode.currentData()
+    dialog.stack_quality.setCurrentIndex(1 if mode == "bitrate" else 0)
+
+
 def create_standard_export_tab(dialog):
     content = QWidget()
+    # Expand with the scroll viewport so equal addStretch(1) pads can share
+    # leftover height (same recipe as export dialog / docs/dev/DIALOGS.md).
+    content.setSizePolicy(
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.Expanding,
+    )
     layout = QVBoxLayout(content)
     layout.setContentsMargins(12, 16, 12, 16)
-    layout.setSpacing(12)
+    # Base gap between stacked rows; extra height goes to addStretch slots.
+    layout.setSpacing(8)
 
     dialog.lbl_container = Label(dialog._tr("label.container") + ":", variant="group-title")
-    layout.addWidget(dialog.lbl_container)
     dialog.combo_container = ComboBox()
     for container in ExportConfigBuilder.get_available_containers():
         dialog.combo_container.addItem(dialog._tr(container), container)
     dialog.combo_container.setCurrentIndex(max(0, dialog.combo_container.findData("mp4")))
     _expand_form_control(dialog.combo_container)
-    layout.addWidget(dialog.combo_container)
+    _add_labeled_field_column(layout, dialog.lbl_container, dialog.combo_container)
+
+    layout.addStretch(1)
 
     dialog.lbl_video_codec = Label(dialog._tr("label.video_codec") + ":", variant="group-title")
-    layout.addWidget(dialog.lbl_video_codec)
     dialog.combo_codec = ComboBox()
     for codec in ExportConfigBuilder.get_codecs_for_container("mp4"):
         dialog.combo_codec.addItem(
             dialog._tr(ExportConfigBuilder.get_codec_display_key(codec)), codec
         )
     _expand_form_control(dialog.combo_codec)
-    layout.addWidget(dialog.combo_codec)
+    _add_labeled_field_column(layout, dialog.lbl_video_codec, dialog.combo_codec)
+
+    layout.addStretch(1)
 
     dialog.pix_fmt_container = QWidget()
-    dialog.pix_fmt_container.setSizePolicy(
-        QSizePolicy.Policy.Expanding,
-        QSizePolicy.Policy.Preferred,
-    )
+    _lock_form_block_height(dialog.pix_fmt_container)
     pf_layout = QVBoxLayout(dialog.pix_fmt_container)
     pf_layout.setContentsMargins(0, 0, 0, 0)
-    pf_layout.setSpacing(12)
+    pf_layout.setSpacing(6)
     dialog.lbl_pix_fmt = Label(dialog._tr("video.pixel_format") + ":", variant="group-title")
     pf_layout.addWidget(dialog.lbl_pix_fmt)
     dialog.combo_pix_fmt = ComboBox()
@@ -395,39 +437,40 @@ def create_standard_export_tab(dialog):
     pf_layout.addWidget(dialog.combo_pix_fmt)
     layout.addWidget(dialog.pix_fmt_container)
 
+    layout.addStretch(1)
+
+    # Quality mode and CRF/bitrate value are separate stretch-separated
+    # sections (same recipe as Container → Codec), not one glued block.
     dialog.quality_controls_container = QWidget()
-    dialog.quality_controls_container.setSizePolicy(
-        QSizePolicy.Policy.Expanding,
-        QSizePolicy.Policy.Preferred,
-    )
+    _lock_form_block_height(dialog.quality_controls_container)
     qc_layout = QVBoxLayout(dialog.quality_controls_container)
     qc_layout.setContentsMargins(0, 0, 0, 0)
-    qc_layout.setSpacing(12)
+    qc_layout.setSpacing(6)
 
     dialog.lbl_quality_control = Label(
         dialog._tr("video.quality_control") + ":",
         variant="group-title",
     )
-    qc_layout.addWidget(dialog.lbl_quality_control)
     dialog.combo_quality_mode = ComboBox()
     dialog.combo_quality_mode.addItem(dialog._tr("video.crf_constant_quality"), "crf")
     dialog.combo_quality_mode.addItem(dialog._tr("video.bitrate_cbrvbr"), "bitrate")
     _expand_form_control(dialog.combo_quality_mode)
+    qc_layout.addWidget(dialog.lbl_quality_control)
     qc_layout.addWidget(dialog.combo_quality_mode)
-
-    dialog.stack_quality = create_quality_stack(dialog)
-    qc_layout.addWidget(dialog.stack_quality)
-
     layout.addWidget(dialog.quality_controls_container)
 
+    layout.addStretch(1)
+
+    dialog.stack_quality = create_quality_stack(dialog)
+    layout.addWidget(dialog.stack_quality)
+
+    layout.addStretch(1)
+
     dialog.preset_container = QWidget()
-    dialog.preset_container.setSizePolicy(
-        QSizePolicy.Policy.Expanding,
-        QSizePolicy.Policy.Preferred,
-    )
+    _lock_form_block_height(dialog.preset_container)
     p_layout = QVBoxLayout(dialog.preset_container)
     p_layout.setContentsMargins(0, 0, 0, 0)
-    p_layout.setSpacing(12)
+    p_layout.setSpacing(6)
 
     dialog.lbl_preset = Label(
         dialog._tr("video.encoding_speed_preset") + ":",
@@ -444,17 +487,23 @@ def create_standard_export_tab(dialog):
     layout.addWidget(dialog.preset_container)
 
     dialog.combo_quality_mode.currentIndexChanged.connect(
-        dialog.stack_quality.setCurrentIndex
+        lambda _index: _sync_quality_stack_page(dialog)
     )
+    _sync_quality_stack_page(dialog)
 
-    layout.addStretch()
+    layout.addStretch(1)
     _install_no_wheel_filter_recursive(content, dialog._settings_no_wheel_filter)
     return _wrap_tab_scroll(content)
 
 def create_manual_export_tab(dialog):
     content = QWidget()
+    content.setSizePolicy(
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.Expanding,
+    )
     layout = QVBoxLayout(content)
     layout.setContentsMargins(12, 16, 12, 16)
+    layout.setSpacing(8)
 
     dialog.lbl_manual_args_hint = Label(
         dialog._tr("video.ffmpeg_output_args_hint"),
@@ -468,15 +517,19 @@ def create_manual_export_tab(dialog):
     _expand_form_control(dialog.edit_manual_args)
     layout.addWidget(dialog.edit_manual_args)
 
-    layout.addStretch()
+    layout.addStretch(1)
     _install_no_wheel_filter_recursive(content, dialog._settings_no_wheel_filter)
     return _wrap_tab_scroll(content)
 
 def create_output_tab(dialog):
     content = QWidget()
+    content.setSizePolicy(
+        QSizePolicy.Policy.Expanding,
+        QSizePolicy.Policy.Expanding,
+    )
     layout = QVBoxLayout(content)
     layout.setContentsMargins(16, 16, 16, 16)
-    layout.setSpacing(12)
+    layout.setSpacing(8)
 
     dialog.output_section = OutputPathSection(
         directory_label_text=dialog._tr("export.select_output_directory") + ":",
@@ -504,14 +557,16 @@ def create_output_tab(dialog):
     dialog.edit_filename = dialog.output_section.filename_edit
     layout.addWidget(dialog.output_section)
 
-    layout.addStretch()
+    layout.addStretch(1)
     _install_no_wheel_filter_recursive(content, dialog._settings_no_wheel_filter)
     return _wrap_tab_scroll(content)
 
 def create_quality_stack(dialog):
     stack = QStackedWidget()
+    _lock_form_block_height(stack)
 
     p_crf = QWidget()
+    _lock_form_block_height(p_crf)
     l_crf = QVBoxLayout(p_crf)
     l_crf.setContentsMargins(0, 0, 0, 0)
     l_crf.setSpacing(6)
@@ -519,28 +574,27 @@ def create_quality_stack(dialog):
         dialog._tr("video.crf_value_hint") + ":",
         variant="group-title",
     )
-    l_crf.addWidget(dialog.lbl_quality_value)
-
     dialog.edit_crf = CustomLineEdit()
     dialog.edit_crf.setValidator(QIntValidator(0, 63))
     dialog.edit_crf.setText("23")
     dialog.edit_crf.setPlaceholderText("23")
     dialog.edit_crf.setFixedWidth(80)
     dialog.edit_crf.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    l_crf.addWidget(dialog.lbl_quality_value)
     l_crf.addWidget(dialog.edit_crf)
 
     stack.addWidget(p_crf)
 
     p_bit = QWidget()
+    _lock_form_block_height(p_bit)
     l_bit = QVBoxLayout(p_bit)
     l_bit.setContentsMargins(0, 0, 0, 0)
     l_bit.setSpacing(6)
     dialog.lbl_bitrate = Label(dialog._tr("video.bitrate_hint") + ":", variant="group-title")
-    l_bit.addWidget(dialog.lbl_bitrate)
-
     dialog.edit_bitrate = CustomLineEdit()
     dialog.edit_bitrate.setText("8000k")
     _expand_form_control(dialog.edit_bitrate)
+    l_bit.addWidget(dialog.lbl_bitrate)
     l_bit.addWidget(dialog.edit_bitrate)
 
     stack.addWidget(p_bit)

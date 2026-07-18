@@ -10,7 +10,7 @@ from sli_ui_toolkit.widgets import (
 )
 
 from plugins.image_properties.plugin import open_image_properties_dialog
-from shared_toolkit.ui.text_input_dialog import AppTextInputDialog
+from tabs.host_helpers import AppTextInputDialog
 from sli_ui_toolkit.i18n import get_current_language, tr
 from tabs.image_compare.services import document_store_ops
 from ui.context_menu.models import ContextMenuRequest
@@ -67,6 +67,9 @@ class ImageCompareContextMenuProvider:
         if action_id == "image_compare.show_properties":
             self._show_properties(slot)
             return True
+        if action_id == "image_compare.carry_image":
+            self._begin_carry_slot(slot)
+            return True
         if action_id == "image_compare.remove_image":
             self._remove_image(slot)
             return True
@@ -90,6 +93,12 @@ class ImageCompareContextMenuProvider:
                 "image_compare.show_properties",
                 self._tr("action.context_properties", "Properties"),
                 icon=Icon.PHOTO,
+                data=slot,
+            ),
+            ContextMenuAction(
+                "image_compare.carry_image",
+                self._tr("action.context_carry_image", "Move"),
+                icon=Icon.COPY,
                 data=slot,
             ),
             ContextMenuSeparator(),
@@ -133,6 +142,12 @@ class ImageCompareContextMenuProvider:
                 icon=Icon.PHOTO,
                 data=ref,
             ),
+            ContextMenuAction(
+                "image_compare.carry_list_item",
+                self._tr("action.context_carry_image", "Move"),
+                icon=Icon.COPY,
+                data=ref,
+            ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "image_compare.remove_list_item",
@@ -159,6 +174,9 @@ class ImageCompareContextMenuProvider:
             return True
         if action_id == "image_compare.show_properties":
             self._show_list_item_properties(list_num, index)
+            return True
+        if action_id == "image_compare.carry_list_item":
+            self._begin_carry_list_item(list_num, index)
             return True
         if action_id == "image_compare.remove_list_item":
             self._remove_list_item(list_num, index)
@@ -371,28 +389,18 @@ class ImageCompareContextMenuProvider:
         canvas = self.canvas
         if canvas is None:
             return
+        parent = canvas.window()
+        if parent is None:
+            return
         view_state = self.store.viewport.view_state
         is_horizontal = bool(getattr(view_state, "is_horizontal", False))
-        lang = get_current_language() or "en"
-
-        def _resolve(key: str, fallback: str) -> str:
-            text = tr(key, lang)
-            return fallback if text == key else text
-
-        def _cleanup() -> None:
-            for sig, slot_fn in (
-                (canvas.pasteOverlayDirectionSelected, on_dir),
-                (canvas.pasteOverlayCancelled, on_cancel),
-            ):
-                try:
-                    sig.disconnect(slot_fn)
-                except Exception:
-                    pass
 
         def on_dir(direction: str) -> None:
-            _cleanup()
             target = 1 if direction in ("up", "left") else 2
             ctrl = self._session_ctrl
+            if ctrl is not None and hasattr(ctrl, "duplicate_image_to_slot") and path:
+                ctrl.duplicate_image_to_slot(source_slot, target)
+                return
             if ctrl is not None and path and hasattr(ctrl, "load_images_from_paths"):
                 ctrl.load_images_from_paths([path], target)
                 return
@@ -405,19 +413,33 @@ class ImageCompareContextMenuProvider:
                 pass
             canvas.update()
 
-        def on_cancel() -> None:
-            _cleanup()
+        from services.system.paste_direction_overlay import show_paste_direction_overlay
 
-        canvas.pasteOverlayDirectionSelected.connect(on_dir)
-        canvas.pasteOverlayCancelled.connect(on_cancel)
+        show_paste_direction_overlay(
+            parent=parent,
+            image_label=canvas,
+            is_horizontal=is_horizontal,
+            language=get_current_language() or "en",
+            on_direction=on_dir,
+        )
 
-        left_label = _resolve("image_properties.side_left", "Left")
-        right_label = _resolve("image_properties.side_right", "Right")
-        if is_horizontal:
-            texts = {"up": left_label, "down": right_label, "left": "", "right": ""}
-        else:
-            texts = {"left": left_label, "right": right_label, "up": "", "down": ""}
-        canvas.set_paste_overlay_state(True, is_horizontal=is_horizontal, texts=texts)
+    def _begin_carry_slot(self, slot: int) -> None:
+        path = self._path_for(slot)
+        if not path:
+            return
+        document = self.store.get_session_state_slot("document")
+        image = getattr(document, f"original_image{slot}", None)
+        from events.image_carry import begin_image_carry
+
+        begin_image_carry([path], image=image)
+
+    def _begin_carry_list_item(self, list_num: int, index: int) -> None:
+        path = self._list_item_path(list_num, index)
+        if not path:
+            return
+        from events.image_carry import begin_image_carry
+
+        begin_image_carry([path])
 
     def _rating_for(self, slot: int) -> int | None:
         document = self.store.get_session_state_slot("document")

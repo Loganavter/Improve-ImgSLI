@@ -27,7 +27,13 @@ def test_bootstrap_and_deferred_plugin_sets_are_disjoint():
     entries = iter_plugin_entry_points()
     bootstrap = {e.plugin_name for e in entries if e.startup_tier == "bootstrap"}
     deferred = {e.plugin_name for e in entries if e.startup_tier == "deferred"}
-    assert bootstrap == {"comparison", "layout", "session_picker", "settings"}
+    assert bootstrap == {
+        "comparison",
+        "layout",
+        "onboarding",
+        "session_picker",
+        "settings",
+    }
     assert "export" in deferred
     assert "video_editor" in deferred
     assert bootstrap.isdisjoint(deferred)

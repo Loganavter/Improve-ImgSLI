@@ -23,6 +23,7 @@
     "name": "Name",
     "duplicate": "Duplicate",
     "properties": "Properties",
+    "carry_image": "Move",
     "remove": "Remove",
     "path": "Path",
     "size": "Size"

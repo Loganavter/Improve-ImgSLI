@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 from PySide6.QtCore import QLineF, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
 from sli_ui_toolkit.widgets import (
     Button,
     ButtonRegion,
-    DropZoneLabel,
     HorizontalSplit,
     Label,
     OverlayScrollArea,
@@ -19,7 +20,14 @@ from sli_ui_toolkit.widgets import (
 
 from core.plugin_system.discovery_scan import iter_tab_entry_points
 from core.session_blueprints import SessionBlueprint
+from tabs.session_picker.geometry import (
+    SESSION_PICKER_PAGE_MIN_HEIGHT,
+    SESSION_PICKER_PAGE_MIN_WIDTH,
+    SESSION_PICKER_WINDOW_MIN_HEIGHT,
+    SESSION_PICKER_WINDOW_MIN_WIDTH,
+)
 from tabs.session_picker.icons import Icon as SessionPickerIcon, get_icon as get_session_picker_icon
+from tabs.session_picker.recent.panel import RecentProjectsPanel
 from ui.theming import resolve_theme_color
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
@@ -44,27 +52,72 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._cards_layout: QVBoxLayout | None = None
         self._title_label: Label | None = None
         self._subtitle_label: Label | None = None
-        self._drop_zone: DropZoneLabel | None = None
-        self._recent_title_label: Label | None = None
-        self._recent_badge_label: Label | None = None
-        self._recent_placeholder_label: Label | None = None
+        self._recent_panel: RecentProjectsPanel | None = None
+        self._page_scroll: OverlayScrollArea | None = None
+        self._page_content: QWidget | None = None
         self._populated = False
         self._cards_by_type: dict[str, Button] = {}
         self.setObjectName("SessionPickerPage")
+        self.setMinimumSize(
+            SESSION_PICKER_PAGE_MIN_WIDTH,
+            SESSION_PICKER_PAGE_MIN_HEIGHT,
+        )
+        # CSD translucent windows punch through clear children — keep this page
+        # an opaque surface for the whole stack (scroll → content → recent).
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._build()
+
+    def window_minimum_size(self) -> tuple[int, int]:
+        """Main-window floor while this page is the active workspace content."""
+        return (
+            SESSION_PICKER_WINDOW_MIN_WIDTH,
+            SESSION_PICKER_WINDOW_MIN_HEIGHT,
+        )
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
-        painter.fillRect(self.rect(), self._bg_color)
+        bg = QColor(getattr(self, "_bg_color", QColor(255, 255, 255)))
+        if not bg.isValid() or bg.alpha() == 0:
+            bg = QColor(255, 255, 255)
+        bg.setAlpha(255)
+        painter.fillRect(self.rect(), bg)
         painter.end()
 
     def on_theme_changed(self) -> None:
         self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
+        if not self._bg_color.isValid():
+            self._bg_color = QColor(255, 255, 255)
+        self._bg_color.setAlpha(255)
+        self._sync_opaque_page_fills()
         # Cards store eager QIcons from build time; re-resolve light/dark SVGs.
         # ThemedWidget calls this from __init__ before _populated exists.
         if getattr(self, "_populated", False):
             self.sync_icons()
         super().on_theme_changed()
+
+    @staticmethod
+    def _apply_opaque_fill(widget: QWidget | None, color: QColor) -> None:
+        if widget is None:
+            return
+        fill = QColor(color)
+        fill.setAlpha(255)
+        widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        widget.setAutoFillBackground(True)
+        palette = widget.palette()
+        palette.setColor(widget.backgroundRole(), fill)
+        widget.setPalette(palette)
+
+    def _sync_opaque_page_fills(self) -> None:
+        bg = QColor(getattr(self, "_bg_color", QColor(255, 255, 255)))
+        bg.setAlpha(255)
+        self._apply_opaque_fill(self, bg)
+        scroll = getattr(self, "_page_scroll", None)
+        if scroll is not None:
+            self._apply_opaque_fill(scroll, bg)
+            self._apply_opaque_fill(scroll.viewport(), bg)
+        self._apply_opaque_fill(getattr(self, "_page_content", None), bg)
+        self._apply_opaque_fill(getattr(self, "_cards_container", None), bg)
 
     def _build(self) -> None:
         outer = QVBoxLayout(self)
@@ -72,10 +125,16 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         outer.setSpacing(0)
 
         scroll = OverlayScrollArea(self)
+        # Page fills the CSD content host; a 1-bit viewport mask here punches
+        # black wedges into the bottom window corners when the recent shelf
+        # grows and the scroll content reflows.
+        scroll.set_corner_radius(0)
         outer.addWidget(scroll)
+        self._page_scroll = scroll
 
         content = QWidget()
         scroll.setWidget(content)
+        self._page_content = content
 
         layout = QVBoxLayout(content)
         layout.setContentsMargins(48, 40, 48, 40)
@@ -99,56 +158,32 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._cards_layout.setSpacing(10)
         layout.addWidget(self._cards_container)
 
-        self._drop_zone = DropZoneLabel(
-            self._context.tr(
-                "drop_zone",
-                "Drop image files here to start a comparison",
-            )
+        self._recent_panel = RecentProjectsPanel(
+            self,
+            tr=self._context.tr,
+            context=self._context,
         )
-        self._drop_zone.file_dropped.connect(self._on_file_dropped)
-        layout.addWidget(self._drop_zone)
-
-        layout.addLayout(self._build_recent_section())
+        layout.addWidget(self._recent_panel)
         layout.addStretch(1)
+        self._sync_opaque_page_fills()
         translatable_callback(self, lambda _lang: self._retranslate())
 
-    def _build_recent_section(self) -> QVBoxLayout:
-        col = QVBoxLayout()
-        col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(4)
+    def set_open_project_handler(self, handler: Callable[[str], None] | None) -> None:
+        if self._recent_panel is not None:
+            self._recent_panel.set_open_project_handler(handler)
 
-        header = QHBoxLayout()
-        header.setSpacing(10)
-        self._recent_title_label = Label(
-            self._context.tr("recent.title", "Continue"),
-            pixel_size=16,
-            bold=True,
-        )
-        header.addWidget(self._recent_title_label)
-        self._recent_badge_label = Label(
-            self._context.tr("recent.badge", "In development"),
-            pixel_size=11,
-            bold=True,
-            color_token="accent",
-        )
-        header.addWidget(self._recent_badge_label)
-        header.addStretch(1)
-        col.addLayout(header)
-
-        self._recent_placeholder_label = Label(
-            self._context.tr(
-                "recent.placeholder",
-                "Recent workspaces will appear here once this feature lands.",
-            ),
-            pixel_size=12,
-            color_token="dialog.text",
-        )
-        col.addWidget(self._recent_placeholder_label)
-        return col
+    def refresh_recent(self) -> None:
+        if self._recent_panel is not None:
+            self._recent_panel.refresh()
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
+        # Create-cards first (changes page height). The recent shelf schedules
+        # its own first layout on show (or soft-refreshes if already laid out).
         self.refresh()
+        self._sync_opaque_page_fills()
+        if self._recent_panel is not None:
+            self._recent_panel.on_page_shown()
 
     def refresh(self) -> None:
         """Build create-cards once from a filesystem scan of tab packages.
@@ -183,38 +218,51 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             self._subtitle_label.setText(
                 self._context.tr("subtitle", "Pick a session type to begin")
             )
-        if self._drop_zone is not None:
-            self._drop_zone.setText(
-                self._context.tr(
-                    "drop_zone",
-                    "Drop image files here to start a comparison",
-                )
-            )
-        if self._recent_title_label is not None:
-            self._recent_title_label.setText(
-                self._context.tr("recent.title", "Continue")
-            )
-        if self._recent_badge_label is not None:
-            self._recent_badge_label.setText(
-                self._context.tr("recent.badge", "In development")
-            )
-        if self._recent_placeholder_label is not None:
-            self._recent_placeholder_label.setText(
-                self._context.tr(
-                    "recent.placeholder",
-                    "Recent workspaces will appear here once this feature lands.",
-                )
-            )
+        # Update create-cards in place. Destroy/rebuild collapses the page
+        # layout under WA_OpaquePaintEvent and leaves a CSD see-through hole
+        # where the recent shelf used to sit.
         if self._populated:
-            self._clear_cards()
-            self._populated = False
-            self.refresh()
+            self._retranslate_cards()
+        self._sync_opaque_page_fills()
+        self.update()
+        if self._recent_panel is not None:
+            # Panel has its own language callback; recover paints after our
+            # sibling text updates in case layout still nudged the shelf.
+            self._recent_panel.recover_opaque_surface()
 
     def card_for(self, session_type: str) -> Button | None:
         """Return the live create-card for ``session_type``, building cards if needed."""
         if not self._populated:
             self.refresh()
         return self._cards_by_type.get(session_type)
+
+    def _retranslate_cards(self) -> None:
+        blueprints = {
+            bp.session_type: bp for bp in self._registered_blueprints()
+        }
+        for session_type, card in self._cards_by_type.items():
+            title = self._label_for(session_type, blueprints.get(session_type))
+            description = self._context.tr(
+                f"descriptions.{session_type}",
+                "",
+            )
+            rows = [
+                ButtonRow(
+                    text=title,
+                    size=15,
+                    weight="bold",
+                    h_align=Qt.AlignmentFlag.AlignLeft,
+                )
+            ]
+            if description:
+                rows.append(
+                    ButtonRow(
+                        text=description,
+                        size=12,
+                        h_align=Qt.AlignmentFlag.AlignLeft,
+                    )
+                )
+            card.update_region("text", rows=rows)
 
     def _clear_cards(self) -> None:
         if self._cards_layout is None:
@@ -224,6 +272,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             item = self._cards_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
 
     def _icon_for_session_type(self, session_type: str):
@@ -336,6 +386,3 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._context.call_service("create_workspace_session", session_type, True)
         if picker_session is not None:
             self._context.call_service("close_workspace_session", picker_session.id)
-
-    def _on_file_dropped(self, _path: str) -> None:
-        self._create("image_compare")

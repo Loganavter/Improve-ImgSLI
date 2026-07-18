@@ -308,7 +308,17 @@ class SettingsManager:
         self.settings.setValue(key, value)
 
     def is_first_run(self) -> bool:
-        return self._get_setting("is_first_run", True, bool)
+        if not self.settings.contains("is_first_run"):
+            return True
+        val = self.settings.value("is_first_run")
+        if isinstance(val, bool):
+            return val
+        text = str(val).strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+        return True
 
     def set_first_run_completed(self):
         self._save_setting("is_first_run", False)

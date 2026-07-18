@@ -5,11 +5,19 @@
     "new_session": "Новая сессия",
     "open_project": "Открыть проект",
     "save_project": "Сохранить проект",
+    "save_project_as": "Сохранить проект как…",
     "settings": "Настройки",
     "quit": "Выход",
     "show_help": "Показать справку",
     "find_action": "Найти действие",
     "find_action_soon": "Палитра команд — скоро",
-    "project_filter": "Проект Improve ImgSLI (*.imgsli-project)"
+    "project_filter": "Проект Improve ImgSLI (*.imgsli)",
+    "project_untitled": "Без названия",
+    "project_opening": "Открытие проекта…",
+    "project_saving": "Сохранение проекта…",
+    "project_open_failed": "Не удалось открыть файл проекта.",
+    "project_file_missing": "Файл проекта не найден. Карточка в «Недавних» обновлена.",
+    "project_save_failed": "Не удалось сохранить файл проекта.",
+    "project_missing_media": "Проект сохранён, но некоторые файлы изображений отсутствовали и не были встроены."
   }
 }

@@ -9,25 +9,33 @@ from ui.actions.dialog_contribute import (
 )
 from ui.actions.registry import ActionRegistry
 
-OWNER = "image_compare"
-PREFIX = "image_compare.export_dialog."
-_BC_EXPORT = "image_compare.action.breadcrumb.export"
 _HELP = "export"
+
+
+def _export_dialog_owner_tab() -> str:
+    from tabs.registry import TabRegistry
+
+    tab = TabRegistry().get_active_tab()
+    return tab.session_type if tab is not None else ""
 
 
 def contribute_export_dialog_actions(
     dialog,
     *,
     registry: ActionRegistry | None = None,
+    owner_tab: str | None = None,
 ) -> None:
     """Register dialog chrome while the Export dialog is open."""
+    owner = owner_tab or _export_dialog_owner_tab()
+    prefix = f"{owner}.export_dialog." if owner else "export_dialog."
+    breadcrumb = (f"{owner}.action.breadcrumb.export",) if owner else ("action.breadcrumb.export",)
     contribute_dialog_search_actions(
         dialog,
         index=EXPORT_DIALOG_SEARCH,
-        prefix=PREFIX,
-        owner_tab=OWNER,
+        prefix=prefix,
+        owner_tab=owner or None,
         topic="export",
-        breadcrumb=(_BC_EXPORT,),
+        breadcrumb=breadcrumb,
         help_page=_HELP,
         registry=registry,
     )
@@ -36,5 +44,8 @@ def contribute_export_dialog_actions(
 def withdraw_export_dialog_actions(
     *,
     registry: ActionRegistry | None = None,
+    owner_tab: str | None = None,
 ) -> None:
-    withdraw_dialog_search_actions(PREFIX, registry=registry)
+    owner = owner_tab or _export_dialog_owner_tab()
+    prefix = f"{owner}.export_dialog." if owner else "export_dialog."
+    withdraw_dialog_search_actions(prefix, registry=registry)

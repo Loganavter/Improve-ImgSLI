@@ -91,14 +91,10 @@ class SettingsApplicationService(QObject):
                 "system_notifications_enabled",
                 data.system_notifications_enabled,
             )
-            window_shell = (
-                self.main_controller.window_shell if self.main_controller else None
-            )
-            window = getattr(window_shell, "main_window_app", None)
-            notification_service = getattr(window, "notification_service", None)
-            if notification_service is not None:
-                notification_service.set_enabled(data.system_notifications_enabled)
             self.store.emit_state_change("settings")
+        # Always push the live store flag into NotificationService (even when
+        # the checkbox did not change) so a stale _enabled cannot outlive OK.
+        self._sync_notification_service_enabled()
 
         if data.show_workspace_tabs != getattr(
             self.store.settings, "show_workspace_tabs", True
@@ -257,7 +253,18 @@ class SettingsApplicationService(QObject):
     def _apply_keyboard_overrides(self, data: SettingsDialogData) -> None:
         import json
 
-        new_overrides = dict(getattr(data, "keyboard_overrides", None) or {})
+        from ui.actions.keymap import exclusive_overrides
+        from plugins.settings.pages.keyboard import _collect_defaults
+
+        defaults = _collect_defaults()
+        defaults_map = {
+            entry.action_id: (entry.default_shortcut, entry.owner_tab)
+            for entry in defaults.all_entries()
+        }
+        new_overrides = exclusive_overrides(
+            defaults_map,
+            dict(getattr(data, "keyboard_overrides", None) or {}),
+        )
         current = dict(getattr(self.store.settings, "keyboard_overrides", None) or {})
         if new_overrides == current:
             return
@@ -278,6 +285,11 @@ class SettingsApplicationService(QObject):
             if window is None:
                 window = getattr(self.parent(), "parent_widget", None)
             resync_action_shortcuts(window, overrides=new_overrides)
+            # Keep CSD menu shortcut labels in sync with remapped chords.
+            menu = getattr(window, "_menu_controller", None) if window else None
+            rebuild = getattr(menu, "_on_language_changed", None) if menu else None
+            if callable(rebuild):
+                rebuild(getattr(self.store.settings, "current_language", "en"))
         except Exception:
             import logging
 
@@ -324,6 +336,30 @@ class SettingsApplicationService(QObject):
             and self.main_controller.settings_manager is not None
         ):
             self.main_controller.settings_manager._save_setting(key, value)
+
+    def _resolve_main_window(self):
+        window_shell = (
+            self.main_controller.window_shell if self.main_controller else None
+        )
+        window = (
+            getattr(window_shell, "main_window_app", None)
+            if window_shell is not None
+            else None
+        )
+        if window is None:
+            parent = self.parent()
+            window = getattr(parent, "parent_widget", None) if parent is not None else None
+        return window
+
+    def _sync_notification_service_enabled(self) -> None:
+        window = self._resolve_main_window()
+        service = getattr(window, "notification_service", None) if window else None
+        if service is None:
+            return
+        enabled = bool(
+            getattr(self.store.settings, "system_notifications_enabled", True)
+        )
+        service.set_enabled(enabled)
 
     def _emit_update_requested(self) -> None:
         if self.main_controller is not None:

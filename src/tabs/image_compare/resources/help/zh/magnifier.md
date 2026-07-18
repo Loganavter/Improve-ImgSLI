@@ -8,9 +8,9 @@
 - **放置** — 在图像上点击或拖动以设置捕获区域（红色圆环）。
 - **圆环** — 捕获圆环的大小与颜色遵循镜头样式设置。
 
-:::figure{side=right width=280}
-![放大镜镜头](magnifier/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}（占位图）。
+:::figure{side=block width=280}
+![放大镜镜头]({{img:workspace.image_compare.magnifier.enabling}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.magnifier}}。
 :::
 
 ### 大小与移动 {#size-and-movement}
@@ -42,12 +42,12 @@
 - **内部分割** — 在镜头内按住鼠标右键拖动。
 - **单侧预览** — 镜头激活时，按住 `Space+Shift` 可强制显示单侧图像。
 
-若需要在不使用镜头的情况下进行整幅画布对比，见[对比](help://comparison)。
-
-:::figure{side=right width=280}
-![合并放大镜](magnifier/placeholder.png)
-{{tr:image_compare.action.magnifier}} 合并模式（占位图）。
+:::figure{side=block width=280}
+![合并放大镜]({{img:workspace.image_compare.magnifier.combined_mode}})
+{{tr:image_compare.action.magnifier}} 合并模式。
 :::
+
+若需要在不使用镜头的情况下进行整幅画布对比，见[对比](help://comparison)。
 
 ### 影响放大镜的设置 {#related-settings}
 

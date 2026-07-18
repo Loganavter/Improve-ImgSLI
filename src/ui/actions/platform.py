@@ -49,6 +49,9 @@ def register_platform_actions(
     new_image_compare: Callable[[], None] | None = None,
     new_multi_compare: Callable[[], None] | None = None,
     paste_clipboard_image: Callable[[], None] | None = None,
+    open_project: Callable[[], None] | None = None,
+    save_project: Callable[[], None] | None = None,
+    save_project_as: Callable[[], None] | None = None,
     file_menu_button: object | None = None,
     help_menu_button: object | None = None,
     open_session_picker_target: ActionTarget | None = None,
@@ -87,6 +90,9 @@ def register_platform_actions(
 
     file_settings = _menu_target(file_menu_button, "file.settings")
     file_new = _menu_target(file_menu_button, "file.new_session")
+    file_open_project = _menu_target(file_menu_button, "file.open_project")
+    file_save_project = _menu_target(file_menu_button, "file.save_project")
+    file_save_project_as = _menu_target(file_menu_button, "file.save_project_as")
     file_quit = _menu_target(file_menu_button, "file.quit")
     help_show = _menu_target(help_menu_button, "help.show")
     help_find = _menu_target(help_menu_button, "help.find_action")
@@ -176,6 +182,59 @@ def register_platform_actions(
             target=file_quit,
         ),
     ]
+    if open_project is not None:
+        specs.insert(
+            3,
+            ActionDescriptor(
+                action_id="platform.open_project",
+                label_key="menu.open_project",
+                description_key="action.platform.open_project_desc",
+                breadcrumb=("menu.file", "menu.open_project"),
+                owner_tab=None,
+                topic="workspace",
+                shortcut="Ctrl+Shift+O",
+                help_page="file_management",
+                run=open_project,
+                target=file_open_project,
+            ),
+        )
+    if save_project is not None:
+        specs.insert(
+            4 if open_project is not None else 3,
+            ActionDescriptor(
+                action_id="platform.save_project",
+                label_key="menu.save_project",
+                description_key="action.platform.save_project_desc",
+                breadcrumb=("menu.file", "menu.save_project"),
+                owner_tab=None,
+                topic="workspace",
+                shortcut="Shift+S",
+                help_page="file_management",
+                run=save_project,
+                target=file_save_project,
+            ),
+        )
+    if save_project_as is not None:
+        insert_at = 3
+        if open_project is not None:
+            insert_at += 1
+        if save_project is not None:
+            insert_at += 1
+        specs.insert(
+            insert_at,
+            ActionDescriptor(
+                action_id="platform.save_project_as",
+                label_key="menu.save_project_as",
+                description_key="action.platform.save_project_as_desc",
+                breadcrumb=("menu.file", "menu.save_project_as"),
+                owner_tab=None,
+                topic="workspace",
+                shortcut="Ctrl+Shift+S",
+                help_page="file_management",
+                run=save_project_as,
+                target=file_save_project_as,
+            ),
+        )
     if open_session_picker is not None:
         specs.append(
             ActionDescriptor(
@@ -237,13 +296,52 @@ def contribute_platform_keymap_defaults(registry) -> None:
 
     entries = (
         KeymapDefaultEntry(
-            "platform.settings", "menu.settings", "Ctrl+,", None, ("menu.file",)
+            "platform.settings",
+            "menu.settings",
+            "Ctrl+,",
+            None,
+            ("menu.file",),
+            description_key="action.platform.settings_desc",
         ),
         KeymapDefaultEntry(
-            "platform.help", "menu.show_help", "Ctrl+F1", None, ("menu.help",)
+            "platform.help",
+            "menu.show_help",
+            "Ctrl+F1",
+            None,
+            ("menu.help",),
+            description_key="action.platform.help_desc",
         ),
         KeymapDefaultEntry(
-            "platform.new_session", "menu.new_session", "Ctrl+N", None, ("menu.file",)
+            "platform.new_session",
+            "menu.new_session",
+            "Ctrl+N",
+            None,
+            ("menu.file",),
+            description_key="action.platform.new_session_desc",
+        ),
+        KeymapDefaultEntry(
+            "platform.open_project",
+            "menu.open_project",
+            "Ctrl+Shift+O",
+            None,
+            ("menu.file",),
+            description_key="action.platform.open_project_desc",
+        ),
+        KeymapDefaultEntry(
+            "platform.save_project",
+            "menu.save_project",
+            "Shift+S",
+            None,
+            ("menu.file",),
+            description_key="action.platform.save_project_desc",
+        ),
+        KeymapDefaultEntry(
+            "platform.save_project_as",
+            "menu.save_project_as",
+            "Ctrl+Shift+S",
+            None,
+            ("menu.file",),
+            description_key="action.platform.save_project_as_desc",
         ),
         KeymapDefaultEntry(
             "platform.find_action",
@@ -251,6 +349,7 @@ def contribute_platform_keymap_defaults(registry) -> None:
             "Ctrl+Shift+P",
             None,
             ("menu.help",),
+            description_key="action.platform.find_action_desc",
         ),
         KeymapDefaultEntry(
             "platform.find_action_context",
@@ -258,6 +357,7 @@ def contribute_platform_keymap_defaults(registry) -> None:
             "F1",
             None,
             ("menu.help",),
+            description_key="action.platform.find_action_context_desc",
         ),
         KeymapDefaultEntry(
             "platform.paste_clipboard_image",
@@ -265,9 +365,15 @@ def contribute_platform_keymap_defaults(registry) -> None:
             "Ctrl+V",
             None,
             ("menu.file",),
+            description_key="action.platform.paste_clipboard_image_desc",
         ),
         KeymapDefaultEntry(
-            "platform.quit", "menu.quit", "Ctrl+Q", None, ("menu.file",)
+            "platform.quit",
+            "menu.quit",
+            "Ctrl+Q",
+            None,
+            ("menu.file",),
+            description_key="action.platform.quit_desc",
         ),
         KeymapDefaultEntry(
             "workspace.open_session_picker",
@@ -275,6 +381,7 @@ def contribute_platform_keymap_defaults(registry) -> None:
             None,
             None,
             ("action.breadcrumb.workspace",),
+            description_key="action.workspace.open_session_picker_desc",
         ),
         KeymapDefaultEntry(
             "workspace.new_image_compare",
@@ -282,6 +389,7 @@ def contribute_platform_keymap_defaults(registry) -> None:
             None,
             None,
             ("action.breadcrumb.workspace",),
+            description_key="action.workspace.new_image_compare_desc",
         ),
         KeymapDefaultEntry(
             "workspace.new_multi_compare",
@@ -289,6 +397,7 @@ def contribute_platform_keymap_defaults(registry) -> None:
             None,
             None,
             ("action.breadcrumb.workspace",),
+            description_key="action.workspace.new_multi_compare_desc",
         ),
     )
     for entry in entries:

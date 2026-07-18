@@ -41,6 +41,8 @@ class _WidgetAction:
     kind: str = "toggle"  # toggle | click | short_click
     help_page: str | None = None
     shortcut: str | None = None
+    search_keys: tuple[str, ...] = ()
+    search_terms: tuple[str, ...] = ()
 
 
 def _toggle_button(button) -> None:
@@ -319,6 +321,14 @@ _SPECS: tuple[_WidgetAction, ...] = (
         "analysis",
         "click",
         shortcut="H",
+        # Cycle action — modes are options, not separate keymap rows.
+        search_keys=(
+            "image_compare.action.diff_highlight",
+            "image_compare.action.diff_grayscale",
+            "image_compare.action.diff_edges",
+            "image_compare.action.diff_ssim",
+        ),
+        search_terms=("ssim", "highlight", "grayscale", "edges"),
     ),
     _WidgetAction(
         "image_compare.channel_mode",
@@ -329,6 +339,7 @@ _SPECS: tuple[_WidgetAction, ...] = (
         "analysis",
         "click",
         shortcut="C",
+        search_terms=("rgb", "luminance"),
     ),
     _WidgetAction(
         "image_compare.quick_save",
@@ -348,7 +359,7 @@ _SPECS: tuple[_WidgetAction, ...] = (
         (_BC_TOOLBAR, _BC_EXPORT),
         "export",
         "click",
-        shortcut="Ctrl+Shift+S",
+        shortcut=None,
     ),
     _WidgetAction(
         "image_compare.record",
@@ -427,6 +438,8 @@ def register_image_compare_actions(
                 topic=spec.topic,
                 shortcut=spec.shortcut,
                 help_page=_help_for(spec.topic, spec.help_page),
+                search_keys=spec.search_keys,
+                search_terms=spec.search_terms,
                 run=run,
                 target=ActionTarget(widget=button),
             )
@@ -500,5 +513,8 @@ def contribute_keymap_defaults(registry) -> None:
                 default_shortcut=spec.shortcut,
                 owner_tab=OWNER,
                 breadcrumb=spec.breadcrumb,
+                description_key=spec.description_key,
+                search_keys=spec.search_keys,
+                search_terms=spec.search_terms,
             )
         )

@@ -143,9 +143,6 @@ def clear(widget):
     state._drag_overlay_texts = ("", "")
     state._drag_overlay_cache_key = None
     state._drag_overlay_cached_image = None
-    state._paste_overlay_visible = False
-    state._paste_overlay_horizontal = False
-    state._paste_overlay_hovered_button = None
     state._pending_texture_uploads.clear()
     cache = getattr(state, "_texture_upload_cache", None)
     if cache is not None:

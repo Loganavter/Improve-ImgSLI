@@ -62,6 +62,7 @@ def test_list_item_menu_exposes_copy_properties_remove(qapp):
         "image_compare.rename_list_item",
         "image_compare.copy_path",
         "image_compare.show_properties",
+        "image_compare.carry_list_item",
         "image_compare.remove_list_item",
     ]
 

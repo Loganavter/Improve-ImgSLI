@@ -10,6 +10,29 @@ from sli_ui_toolkit.ui.widgets.overlays.in_window_overlay import (
 from ui.theming import resolve_theme_color
 
 
+def show_paste_direction_overlay(
+    *,
+    parent,
+    image_label,
+    is_horizontal: bool,
+    language: str,
+    on_direction,
+    on_cancelled=None,
+) -> "PasteDirectionOverlay":
+    """Shared direction picker used by Ctrl+V paste and Duplicate."""
+    overlay = PasteDirectionOverlay(
+        parent,
+        image_label,
+        is_horizontal=is_horizontal,
+    )
+    overlay.set_language(language)
+    overlay.direction_selected.connect(on_direction)
+    if on_cancelled is not None:
+        overlay.cancelled.connect(on_cancelled)
+    overlay.show_overlay()
+    return overlay
+
+
 class PasteDirectionOverlay(TopLevelInWindowOverlay):
     direction_selected = Signal(str)
     cancelled = Signal()

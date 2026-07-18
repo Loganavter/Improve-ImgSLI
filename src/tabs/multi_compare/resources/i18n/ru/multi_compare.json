@@ -23,6 +23,7 @@
     "name": "Имя",
     "duplicate": "Дублировать",
     "properties": "Свойства",
+    "carry_image": "Переместить",
     "remove": "Удалить",
     "path": "Путь",
     "size": "Размер"

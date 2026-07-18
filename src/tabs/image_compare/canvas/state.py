@@ -2,7 +2,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 
 import numpy as np
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
+from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QColor, QPixmap
 
 from ui.canvas_infra.viewport.state import ensure_zoom_viewport_state
@@ -66,24 +66,6 @@ class CanvasRuntimeState:
     _drag_overlay_texts: tuple[str, str] = ("", "")
     _drag_overlay_cache_key: object | None = None
     _drag_overlay_cached_image: object | None = None
-    _paste_overlay_visible: bool = False
-    _paste_overlay_horizontal: bool = False
-    _paste_overlay_texts: dict = field(
-        default_factory=lambda: {"up": "", "down": "", "left": "", "right": ""}
-    )
-    _paste_overlay_hovered_button: object | None = None
-    _paste_overlay_button_size: float = 120.0
-    _paste_overlay_spacing: float = 20.0
-    _paste_overlay_center_size: float = 60.0
-    _paste_overlay_rects: dict = field(
-        default_factory=lambda: {
-            "up": QRectF(),
-            "down": QRectF(),
-            "left": QRectF(),
-            "right": QRectF(),
-            "cancel": QRectF(),
-        }
-    )
     _pending_texture_uploads: list = field(default_factory=list)
     # OrderedDict (not plain dict) so cache reads can call move_to_end() to
     # track real recency -- see evict_texture_upload_cache_over_budget in

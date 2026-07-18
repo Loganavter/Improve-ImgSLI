@@ -5,12 +5,12 @@
 ### 会话选择器 {#session-picker}
 
 - **打开** — {{tr:action.workspace.open_session_picker}}（或使用新增标签页控件）。
-- **选择** — 点击 {{tr:workspace.session_types.image_compare}} 或 {{tr:workspace.session_types.multi_compare}} 卡片，也可以将图像文件拖到拖放区域中。
-- **最近使用** — 预留功能，可能显示开发中的占位内容。
+- **选择** — 点击 {{tr:workspace.session_types.image_compare}} 或 {{tr:workspace.session_types.multi_compare}} 卡片。
+- **最近使用** — 最近的 ``.imgsli`` 项目（网格或列表，可按最近打开或名称排序）。单击重新打开。若项目内有 ``preview.jpg``，卡片会显示场景预览。将项目文件拖到面板上可固定到列表而不打开。右键可从列表移除或在文件夹中显示。
 
-:::figure{side=right width=280}
-![会话选择器](ui/placeholder.png)
-{{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}（占位图）。
+:::figure{side=block width=420}
+![会话选择器]({{img:platform.workspace.session_picker}})
+{{tr:action.workspace.open_session_picker}} — {{tr:workspace.session_types.image_compare}} / {{tr:workspace.session_types.multi_compare}}。
 :::
 
 ### 不通过选择器打开会话 {#new-session-actions}

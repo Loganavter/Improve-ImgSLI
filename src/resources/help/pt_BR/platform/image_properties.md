@@ -6,9 +6,9 @@ Inspecione os metadados do arquivo e o contexto dentro do aplicativo para uma im
 
 Clique com o botão direito em uma linha de uma lista {{tr:workspace.session_types.image_compare}}, ou em um slot {{tr:workspace.session_types.multi_compare}}, e escolha {{tr:image_properties.title}}. O diálogo é somente leitura, exceto {{tr:image_properties.copy_all}}, que copia todas as linhas visíveis para a área de transferência.
 
-:::figure{side=right width=280}
-![Diálogo de Propriedades da Imagem](ui/placeholder.png)
-{{tr:image_properties.title}} (placeholder).
+:::figure{side=block width=280}
+![Diálogo de Propriedades da Imagem]({{img:platform.image_properties.open}})
+{{tr:image_properties.title}}.
 :::
 
 ### Seções {#sections}

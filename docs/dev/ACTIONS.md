@@ -15,6 +15,7 @@ Related: [TODO.md](./TODO.md) (P2 Action palette),
 | Dialog bridge (temporary contribute) | `src/ui/actions/dialog_contribute.py` |
 | Flyout bridge (lazy ensure_visible) | `src/ui/actions/flyout_contribute.py` |
 | Platform contributions | `src/ui/actions/platform.py` via `MainWindowMenuController` |
+| Project open/save | `src/ui/main_window/project_io.py` (`MainWindowProjectIo`) |
 | Tab chrome contributions | active tab `create_service("contribute_actions", registry)` → tab `actions.py` |
 | Settings bridge | `plugins/settings/actions.py` (expands `SearchIndex`; pages tag via `plugins/settings/search` re-export) |
 | Palette package | `src/ui/actions/palette/` — `row.py`, `dialog.py`, `__init__.py` (show/shortcuts) |
@@ -45,15 +46,21 @@ conflicts are skipped and logged. Resync after platform register, tab
 
 Settings page `builtin.keyboard` (`plugins/settings/pages/keyboard.py`) edits
 sparse overrides only. Listing all tabs uses metadata via
-`contribute_keymap_defaults` (no live widgets).
+`contribute_keymap_defaults` (no live widgets). The binder filter uses the
+same ranking as Find Action (`action_query_rank` / `compute_action_haystacks`)
+across **all** groups and rows — id, label, description, breadcrumb, default
+and effective chords, group title, plus `search_keys` / `search_terms`
+(e.g. typing `ssim` finds the Difference Mode cycle `H`, not a separate
+per-mode binding).
 
 Hard-coded and **out of keymap**: WASD / Space / overlay movement in
 `GlobalKeyboardHandler` and canvas keyboard. Video-editor dialog-local
 shortcuts (Space / Ctrl+Z / …) stay local on the dialog; their Find Action
 rows may list the same chords as hints only.
 
-`Ctrl+V` / `Ctrl+S` / `Ctrl+Shift+S` are catalog actions
-(`platform.paste_clipboard_image`, tab `*.quick_save` / `*.save`).
+`Ctrl+V` / `Ctrl+S` / `Shift+S` / `Ctrl+Shift+O` / `Ctrl+Shift+S` are catalog actions
+(`platform.paste_clipboard_image`, tab `*.quick_save`, `platform.save_project` /
+`platform.open_project` / `platform.save_project_as`).
 
 ## Descriptor shape
 

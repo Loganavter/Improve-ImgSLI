@@ -40,7 +40,6 @@ class _PopupBubble(QWidget):
         self.label.setObjectName("ValuePopupLabel")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setContentsMargins(4, 4, 4, 4)
-        self.label.setStyleSheet("")
         self._apply_label_typography()
         self.content_layout.addWidget(self.label)
         self.hide()

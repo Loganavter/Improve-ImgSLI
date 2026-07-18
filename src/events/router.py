@@ -16,6 +16,31 @@ def _belongs_to_canvas(event_handler, watched_obj) -> bool:
 
 def route_drag_and_drop_override(event_handler, event: QEvent, dnd_service) -> bool:
     event_type = event.type()
+
+    from events.image_carry import ImageCarryService
+
+    carry = ImageCarryService._instance
+    if carry is not None and carry.is_active():
+        if event_type == QEvent.Type.MouseMove:
+            carry.update_position(event)
+            return True
+        if event_type == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.LeftButton:
+                carry.finish(event)
+                return True
+            if event.button() == Qt.MouseButton.RightButton:
+                carry.cancel()
+                return True
+        if event_type == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            carry.cancel()
+            return True
+        if event_type in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.Enter,
+            QEvent.Type.Leave,
+        ):
+            return True
+
     if not dnd_service.is_dragging():
         return False
     if event_type == QEvent.Type.MouseMove:

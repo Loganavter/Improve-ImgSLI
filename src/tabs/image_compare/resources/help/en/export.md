@@ -4,15 +4,15 @@ Save what you see as a still image. Recording and the video editor have their ow
 
 ### Save a still {#saving-an-image}
 
-{{tr:image_compare.action.save}} (`Ctrl+Shift+S`) opens the export dialog.
+{{tr:image_compare.action.save}} (toolbar or {{tr:menu.find_action}}) opens the export dialog.
 
 - **Path** — output directory and file name.
 - **Format** — PNG, JPEG, WEBP, BMP, TIFF, or JXL.
 - **Preview** — live pane shows the composed result before you write the file.
 
-:::figure{side=right width=280}
-![Export dialog](ui/placeholder.png)
-{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}} (placeholder).
+:::figure{side=block width=630}
+![Export dialog]({{img:workspace.image_compare.export.dialog}})
+{{tr:image_compare.action.breadcrumb.toolbar}} → {{tr:image_compare.action.breadcrumb.export}}.
 :::
 
 ### Resolution and quality {#resolution-and-quality}
@@ -20,7 +20,7 @@ Save what you see as a still image. Recording and the video editor have their ow
 - **Size** — width and height when the source size is known; lock keeps aspect ratio.
 - **Quality** — {{tr:label.quality}} for lossy formats.
 - **PNG** — compression level and {{tr:export.optimize_png}}.
-- **Fill** — transparent formats can enable {{tr:export.fill_background}} and pick a fill color.
+- **Fill** — transparent formats can enable {{tr:export.fill_background}} when the virtual canvas extends past `0..1` (magnifier overflow / uncrop pads). With a unit canvas the option stays off.
 
 ### Metadata and favorites {#metadata-and-favorites}
 
@@ -31,7 +31,6 @@ Save what you see as a still image. Recording and the video editor have their ow
 ### Quick save {#quick-save}
 
 - **`Ctrl+S`** — {{tr:image_compare.action.quick_save}} with the last export settings.
-- **`Ctrl+Shift+S`** — always opens the dialog.
 - **Tray** — optional access to the last save under [Settings → General](help://settings#general).
 
 ### Recording and video {#video-editor}
