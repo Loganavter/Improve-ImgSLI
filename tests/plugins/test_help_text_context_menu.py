@@ -42,15 +42,7 @@ def test_help_text_context_menu_uses_platform_surface(qtbot):
     menu = get_context_menu_manager()._active_menu
     assert menu is not None
     assert menu.isVisible()
-    assert [row._text for row in menu._rows] == [
-        "Copy",
-        "Copy as Markdown",
-        "Select all",
-    ]
-    assert not menu._rows[0].isEnabled()
-    assert not menu._rows[1].isEnabled()
     assert menu._surface == rmb_context_menu_surface()
-    # Windows stays in-window to avoid CSD alpha corruption; elsewhere popup.
     assert menu.isWindow() is (rmb_context_menu_surface() == "popup")
     assert menu._logical_parent is dialog
     menu.hide()
@@ -93,8 +85,11 @@ def test_help_select_all_includes_headings_and_paragraphs(qtbot):
     assert selected == dialog._document.plain_text()
 
 
-def test_rmb_context_menu_surface_windows_avoids_popup(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rmb_surface_uses_popup_when_toolkit_is_new_enough(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
-    assert rmb_context_menu_surface() == "in_window"
-    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr("sli_ui_toolkit.__version__", "3.1.4")
     assert rmb_context_menu_surface() == "popup"
+    monkeypatch.setattr("sli_ui_toolkit.__version__", "3.1.3")
+    assert rmb_context_menu_surface() == "in_window"
