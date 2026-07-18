@@ -143,8 +143,13 @@ def test_image_compare_drop_uses_presenter_main_controller_when_window_has_no_di
     tab = ImageCompareTab()
     tab._widget = SimpleNamespace(_context=SimpleNamespace(main_window=main_window))
 
-    handled = tab.handle_drop([Path("/tmp/right.png")], hint={"slot": 2})
+    drop_path = Path("/tmp/right.png")
+    handled = tab.handle_drop([drop_path], hint={"slot": 2})
     QApplication.processEvents()
 
     assert handled is True
-    assert calls == [(["/tmp/right.png"], 2)]
+    assert len(calls) == 1
+    paths, slot = calls[0]
+    assert slot == 2
+    # Windows stringifies absolute POSIX-looking Paths with backslashes.
+    assert [Path(p) for p in paths] == [drop_path]
