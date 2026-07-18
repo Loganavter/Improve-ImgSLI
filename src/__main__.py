@@ -45,13 +45,29 @@ from ui.widgets.canvas.rhi_backend import (
 
 def _configure_qt_logging() -> None:
     current_rules = os.environ.get("QT_LOGGING_RULES", "").strip()
+    # QT_LOGGING_RULES uses ';' (or spaces). Newlines are treated as one
+    # malformed rule and Qt prints "Ignoring malformed logging rule".
     extra_rules = [
         "qt.qpa.wayland.warning=false",
         "qt.qpa.services.warning=false",
     ]
-    merged_rules = "\n".join(
-        rule for rule in [current_rules, *extra_rules] if rule
-    )
+    parts: list[str] = []
+    if current_rules:
+        parts.extend(
+            piece.strip()
+            for piece in current_rules.replace("\n", ";").split(";")
+            if piece.strip()
+        )
+    parts.extend(extra_rules)
+    # De-dupe while preserving order.
+    merged: list[str] = []
+    seen: set[str] = set()
+    for rule in parts:
+        if rule in seen:
+            continue
+        seen.add(rule)
+        merged.append(rule)
+    merged_rules = ";".join(merged)
     if merged_rules:
         os.environ["QT_LOGGING_RULES"] = merged_rules
         try:
@@ -171,11 +187,18 @@ def main():
         )
         configure_rhi_process_environment(effective_rhi)
         configure_vulkan_layer_environment(effective_rhi)
-        if not cli_forced_rhi and selected_rhi_backend == "vulkan":
+        # Persist for any Auto/Vulkan request that we had to override — not only
+        # the literal "vulkan" string — so the next launch skips the broken path.
+        if not cli_forced_rhi and selected_rhi_backend in ("vulkan", "default"):
             persist_rhi_backend_setting(effective_rhi)
     elif effective_rhi != "default":
         configure_rhi_process_environment(effective_rhi)
         configure_vulkan_layer_environment(effective_rhi)
+    logging.getLogger("ImproveImgSLI.rhi").info(
+        "QRhi backend effective=%s requested=%s",
+        effective_rhi,
+        selected_rhi_backend,
+    )
 
     install_application_tooltips(app)
     from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
