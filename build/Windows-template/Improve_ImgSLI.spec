@@ -105,6 +105,14 @@ APP_DATAS = [
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "plugins", "plugins"))
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "tabs", "tabs"))
 APP_DATAS.extend(collect_resource_dirs(REPO_ROOT / "src" / "ui" / "canvas_features", "ui/canvas_features"))
+# QRhi loads sibling *.qsb next to Python via Path(__file__).parent/.../shaders —
+# resources/ collection does not include those directories.
+APP_DATAS.extend(
+    collect_tree(REPO_ROOT / "src" / "tabs", "tabs", include_suffixes={".qsb"})
+)
+APP_DATAS.extend(
+    collect_tree(REPO_ROOT / "src" / "ui", "ui", include_suffixes={".qsb"})
+)
 APP_DATAS.extend(collect_tree(LICENSE_TEMPLATE_DIR, "licenses"))
 
 PYSIDE6_DATAS = []

@@ -116,6 +116,11 @@ jobs:
         run: |
           python build/ci/validate_license_files.py --windows-bundle dist/Improve_ImgSLI
 
+      - name: Verify Windows QRhi Shaders
+        shell: pwsh
+        run: |
+          python build/ci/validate_windows_shaders.py --windows-bundle dist/Improve_ImgSLI
+
       - name: Upload Windows Bundle
         uses: actions/upload-artifact@v4
         with:
