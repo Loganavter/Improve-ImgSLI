@@ -119,9 +119,9 @@ paint path + host bottom masks.
 
 ## Windows: RMB popup ContextMenu breaks in-window alpha (toasts, File/Help, shadows)
 
-**Status:** root-fixed in local `sli-ui-toolkit` 3.1.4 (`bind_popup_transient_parent`);
-app keeps a Windows in-window RMB fallback until that release is on PyPI.
-With toolkit ≥3.1.4 the app uses popup again automatically.
+**Status:** fixed in `sli-ui-toolkit` 3.1.4 (`bind_popup_transient_parent`);
+app pins that release. `rmb_context_menu_surface()` still falls back to
+in-window on Windows if an older toolkit is installed.
 
 **Confirmed trigger:** opening a **right-click** toolkit context menu
 (`ContextMenuManager` → `ContextMenu(..., surface="popup")` → `popup_at`).
