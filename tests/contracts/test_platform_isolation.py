@@ -103,11 +103,11 @@ def _iter_py_files() -> list[Path]:
         SRC / "ui" / "widgets" / "gl_canvas",
         SRC / "ui" / "widgets" / "gl_canvas" / "widget.py",
     ),
-    ids=lambda p: str(p.relative_to(ROOT)),
+    ids=lambda p: p.relative_to(ROOT).as_posix(),
 )
 def test_legacy_image_compare_platform_paths_are_removed(legacy_path: Path):
     assert not legacy_path.exists(), (
-        f"{legacy_path.relative_to(ROOT)} is image_compare-owned legacy code; "
+        f"{legacy_path.relative_to(ROOT).as_posix()} is image_compare-owned legacy code; "
         "use tabs.image_compare instead"
     )
 
@@ -188,10 +188,12 @@ def _iter_all_src_py_files() -> list[Path]:
 
 
 @pytest.mark.parametrize(
-    "py_file", _iter_all_src_py_files(), ids=lambda p: str(p.relative_to(ROOT))
+    "py_file",
+    _iter_all_src_py_files(),
+    ids=lambda p: p.relative_to(ROOT).as_posix(),
 )
 def test_document_mirror_attribute_not_used_outside_owner(py_file: Path):
-    rel = str(py_file.relative_to(ROOT))
+    rel = py_file.relative_to(ROOT).as_posix()
     if rel in _DOCUMENT_MIRROR_IMPL_FILES:
         pytest.skip("implements the store.document mirror attribute itself")
     if rel.startswith("src/tabs/image_compare/"):
