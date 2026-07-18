@@ -112,9 +112,9 @@ def test_legacy_image_compare_platform_paths_are_removed(legacy_path: Path):
     )
 
 
-@pytest.mark.parametrize("py_file", _iter_py_files(), ids=lambda p: str(p.relative_to(ROOT)))
+@pytest.mark.parametrize("py_file", _iter_py_files(), ids=lambda p: str(p.relative_to(ROOT).as_posix()))
 def test_platform_file_does_not_mention_image_compare(py_file: Path):
-    rel = str(py_file.relative_to(ROOT))
+    rel = py_file.relative_to(ROOT).as_posix()
     if rel in ALLOWLIST:
         pytest.skip(f"allowlisted compat bridge: {rel}")
     text = py_file.read_text(encoding="utf-8")
@@ -129,9 +129,9 @@ def test_platform_file_does_not_mention_image_compare(py_file: Path):
     )
 
 
-@pytest.mark.parametrize("py_file", _iter_py_files(), ids=lambda p: str(p.relative_to(ROOT)))
+@pytest.mark.parametrize("py_file", _iter_py_files(), ids=lambda p: str(p.relative_to(ROOT).as_posix()))
 def test_platform_file_does_not_import_tab_package_directly(py_file: Path):
-    rel = str(py_file.relative_to(ROOT))
+    rel = py_file.relative_to(ROOT).as_posix()
     if rel in ALLOWLIST:
         pytest.skip(f"allowlisted compat bridge: {rel}")
     hits = [
