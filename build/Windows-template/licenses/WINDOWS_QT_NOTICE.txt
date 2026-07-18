@@ -15,9 +15,12 @@ LGPL libraries in this bundle
 Qt and PySide6 are dynamically linked. The following directories contain
 replaceable library files (not baked into Improve_ImgSLI.exe):
 
-  PySide6\              Qt and PySide6 .dll / .pyd files
+  PySide6\              Qt and PySide6 .dll / .pyd (flat / legacy layout)
+  _internal\PySide6\    same files under PyInstaller 6+ default onedir
   PySide6\plugins\      Qt platform and imageformat plugins
   PySide6\translations\ Qt translation files (optional)
+
+See licenses\Qt_BUNDLE_INFO.txt for the concrete file list in this build.
 
 You may replace these files with your own LGPL-compliant builds of the same
 Qt 6 major version, provided the replacements remain ABI-compatible with the
@@ -27,10 +30,11 @@ How to replace Qt / PySide6 libraries
 -------------------------------------
 1. Close Improve ImgSLI.
 2. Open the installation folder (same folder as Improve_ImgSLI.exe).
-3. Back up the existing PySide6\ directory.
-4. Copy your replacement .dll / .pyd files into PySide6\ (and PySide6\plugins\
-   for platform plugins), keeping file names identical unless you know the
-   loader search order and dependencies.
+3. Locate the PySide6 tree (``PySide6\`` or ``_internal\PySide6\`` — see
+   Qt_BUNDLE_INFO.txt). Back up that directory.
+4. Copy your replacement .dll / .pyd files into that PySide6 tree (and its
+   plugins\ subfolder for platform plugins), keeping file names identical
+   unless you know the loader search order and dependencies.
 5. Restart Improve ImgSLI.
 
 If the application fails to start after replacement, restore your backup.
