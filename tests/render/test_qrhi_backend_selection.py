@@ -62,6 +62,7 @@ def test_resolve_falls_back_when_vulkan_probe_fails(monkeypatch):
     import ui.widgets.canvas.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: False)
+    monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
     monkeypatch.setattr(mod.sys, "platform", "win32")
     monkeypatch.setattr(mod, "_vulkan_rejected_for_process", False)
 
@@ -90,6 +91,7 @@ def test_resolve_falls_back_when_probe_unavailable_on_windows(monkeypatch):
     import ui.widgets.canvas.rhi_backend as mod
 
     monkeypatch.setattr(mod, "probe_vulkan_available", lambda: None)
+    monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
     monkeypatch.setattr(mod.sys, "platform", "win32")
     monkeypatch.setattr(mod, "_vulkan_rejected_for_process", False)
 
@@ -127,6 +129,121 @@ def test_resolve_leaves_linux_auto_alone_even_if_probe_false(monkeypatch):
     assert effective == "default"
     assert reason is None
     assert mod._vulkan_rejected_for_process is False
+
+
+def test_resolve_windows_auto_uses_explicit_d3d11(monkeypatch):
+    """Windows Auto must not land on legacy OpenGL (GLSL 120/130)."""
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
+
+    effective, reason = resolve_rhi_backend_with_fallback("default")
+
+    assert effective == "d3d11"
+    assert reason is None
+
+
+def test_resolve_windows_auto_falls_back_when_d3d11_missing(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "probe_d3d11_available", lambda: False)
+    monkeypatch.setattr(mod, "probe_opengl_usable_for_shaders", lambda: True)
+
+    effective, reason = resolve_rhi_backend_with_fallback("default")
+
+    assert effective == "opengl"
+    assert reason is not None
+    assert "Direct3D 11" in reason
+
+
+def test_resolve_exhausted_backends_use_null(monkeypatch):
+    """Only D3D9 / ancient GL: every candidate fails → Null + unsupported notice."""
+    import ui.widgets.canvas.rhi_backend as mod
+    from ui.widgets.canvas.rhi_backend import (
+        RHI_NOTICE_UNSUPPORTED,
+        record_rhi_fallback_notice,
+        take_rhi_fallback_notice,
+    )
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "probe_d3d11_available", lambda: False)
+    monkeypatch.setattr(mod, "probe_opengl_usable_for_shaders", lambda: False)
+    monkeypatch.setattr(mod, "probe_d3d12_available", lambda: False)
+
+    effective, reason = resolve_rhi_backend_with_fallback("default")
+
+    assert effective == "null"
+    assert reason is not None
+    assert "No usable QRhi backend" in reason
+
+    take_rhi_fallback_notice()
+    notice = record_rhi_fallback_notice("default", effective, reason)
+    assert notice.kind == RHI_NOTICE_UNSUPPORTED
+
+
+def test_resolve_falls_back_when_d3d12_missing(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "probe_d3d12_available", lambda: False)
+    monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
+
+    effective, reason = resolve_rhi_backend_with_fallback("d3d12")
+
+    assert effective == "d3d11"
+    assert reason is not None
+
+
+def test_resolve_falls_back_when_metal_missing(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    monkeypatch.setattr(mod, "probe_metal_available", lambda: False)
+    monkeypatch.setattr(mod, "probe_opengl_usable_for_shaders", lambda: True)
+
+    effective, reason = resolve_rhi_backend_with_fallback("metal")
+
+    assert effective == "opengl"
+    assert reason is not None
+
+
+def test_resolve_keeps_d3d11_when_probe_ok(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
+
+    effective, reason = resolve_rhi_backend_with_fallback("d3d11")
+
+    assert effective == "d3d11"
+    assert reason is None
+
+
+def test_resolve_falls_back_when_opengl_too_old(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod, "probe_opengl_usable_for_shaders", lambda: False)
+    monkeypatch.setattr(mod, "probe_d3d11_available", lambda: True)
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+
+    effective, reason = resolve_rhi_backend_with_fallback("opengl")
+
+    assert effective == "d3d11"
+    assert reason is not None
+    assert "GLSL 330" in reason
+
+
+def test_resolve_keeps_opengl_when_probe_ok(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod, "probe_opengl_usable_for_shaders", lambda: True)
+
+    effective, reason = resolve_rhi_backend_with_fallback("opengl")
+
+    assert effective == "opengl"
+    assert reason is None
 
 
 def test_configure_rhi_widget_refuses_rejected_vulkan(monkeypatch):
@@ -175,8 +292,38 @@ def test_render_failed_persists_fallback(monkeypatch):
     assert persisted == ["d3d11"]
 
 
+def test_platform_rhi_requirement_keys_are_os_filtered(monkeypatch):
+    import ui.widgets.canvas.rhi_backend as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    assert mod.platform_rhi_requirement_keys() == ("d3d11", "opengl", "vulkan")
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    assert mod.platform_rhi_requirement_keys() == ("opengl", "vulkan")
+    monkeypatch.setattr(mod.sys, "platform", "darwin")
+    assert mod.platform_rhi_requirement_keys() == ("metal", "opengl")
+
+
+def test_format_platform_rhi_requirements_omits_foreign_apis(monkeypatch):
+    from ui.widgets.canvas import rhi_backend as mod
+    from ui.widgets.canvas.rhi_fallback_notice import format_platform_rhi_requirements
+
+    monkeypatch.setattr(mod.sys, "platform", "linux")
+    text = format_platform_rhi_requirements("en")
+    assert "OpenGL" in text
+    assert "Vulkan" in text
+    assert "Metal" not in text
+    assert "Direct3D" not in text
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    text = format_platform_rhi_requirements("en")
+    assert "Direct3D" in text
+    assert "Metal" not in text
+
+
 def test_record_and_take_fallback_notice():
     from ui.widgets.canvas.rhi_backend import (
+        RHI_NOTICE_FALLBACK,
+        RHI_NOTICE_UNSUPPORTED,
         record_rhi_fallback_notice,
         take_rhi_fallback_notice,
     )
@@ -186,5 +333,12 @@ def test_record_and_take_fallback_notice():
     notice = record_rhi_fallback_notice("vulkan", "d3d11", "probe failed")
     assert notice.requested == "vulkan"
     assert notice.effective == "d3d11"
+    assert notice.kind == RHI_NOTICE_FALLBACK
     assert take_rhi_fallback_notice() is notice
     assert take_rhi_fallback_notice() is None
+
+    unsupported = record_rhi_fallback_notice(
+        "default", "null", "exhausted", kind=RHI_NOTICE_UNSUPPORTED
+    )
+    assert unsupported.kind == RHI_NOTICE_UNSUPPORTED
+    take_rhi_fallback_notice()

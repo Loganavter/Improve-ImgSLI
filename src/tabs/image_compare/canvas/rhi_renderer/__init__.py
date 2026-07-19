@@ -100,7 +100,13 @@ class RhiCanvasRenderer:
             render_pass.release()
         self.__init__()
 
-    def render(self, widget, command_buffer, clear_color) -> None:
+    def render(self, widget, command_buffer, clear_color) -> bool:
+        """Record one frame. Returns True after a completed beginPass/endPass.
+
+        Early skips (no target / no rhi) return False so callers must not
+        treat the frame as presented — Image Compare startup gates and the
+        Windows D3D first-present path depend on this.
+        """
         target = widget.renderTarget()
         if target is None or self.rhi is None:
             rhi_render_debug(
@@ -109,7 +115,7 @@ class RhiCanvasRenderer:
                 target,
                 self.rhi,
             )
-            return
+            return False
         self.resources.ensure_pipeline(widget)
 
         updates = self.rhi.nextResourceUpdateBatch()
@@ -309,3 +315,4 @@ class RhiCanvasRenderer:
             target_size.height(),
             should_draw,
         )
+        return True

@@ -31,6 +31,10 @@ SRC_ROOT = REPO_ROOT / "src"
 # Targets — covers desktop OpenGL 3.3+, OpenGL ES 3.0+, D3D11 (SM 5.0),
 # Metal 1.2+. SPIR-V (the canonical RHI intermediate) is emitted by qsb
 # automatically.
+#
+# Do NOT add GLSL 120/130: sources use #version 440 / UBO layouts that cannot
+# target those profiles. Legacy Windows OpenGL must fall back to D3D11 instead
+# (see ui.widgets.canvas.rhi_backend.resolve_rhi_backend_with_fallback).
 DEFAULT_TARGETS = [
     "--glsl", "330,300 es",
     "--hlsl", "50",

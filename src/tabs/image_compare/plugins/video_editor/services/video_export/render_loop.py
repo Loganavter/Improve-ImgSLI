@@ -15,6 +15,28 @@ from tabs.image_compare.plugins.video_editor.services.video_export.models import
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _contain_resize_rgba(
+    frame: Image.Image,
+    width: int,
+    height: int,
+    fill_rgba: tuple[int, int, int, int],
+) -> Image.Image:
+    """Scale ``frame`` into ``width``×``height`` without changing aspect ratio."""
+    tw, th = max(1, int(width)), max(1, int(height))
+    sw, sh = frame.size
+    if (sw, sh) == (tw, th):
+        return frame
+    scale = min(tw / max(1, sw), th / max(1, sh))
+    nw = max(1, int(round(sw * scale)))
+    nh = max(1, int(round(sh * scale)))
+    scaled = frame.resize((nw, nh), Image.Resampling.BILINEAR)
+    if (nw, nh) == (tw, th):
+        return scaled
+    canvas = Image.new("RGBA", (tw, th), fill_rgba)
+    canvas.paste(scaled, ((tw - nw) // 2, (th - nh) // 2), scaled)
+    return canvas
+
+
 class VideoRenderLoop:
     def __init__(self, exporter_service):
         self.exporter = exporter_service
@@ -161,8 +183,13 @@ class VideoRenderLoop:
 
         resize_ms = 0.0
         if frame_pil and frame_pil.size != (job.width, job.height):
+            # Contain-fit into the job framebuffer. A bilinear stretch here is
+            # how 4:3 snapshot frames became fat 16:9 when geometry pads were
+            # dropped earlier in prepare.
             resize_started = time.perf_counter()
-            frame_pil = frame_pil.resize((job.width, job.height), Image.Resampling.BILINEAR)
+            frame_pil = _contain_resize_rgba(
+                frame_pil, job.width, job.height, job.fill_rgba
+            )
             resize_ms = (time.perf_counter() - resize_started) * 1000.0
         return frame_pil, {
             "evaluate_ms": evaluate_ms,

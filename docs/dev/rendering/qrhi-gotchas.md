@@ -183,9 +183,37 @@ user-visible notice. Widgets must not `setApi(Vulkan)` after rejection.
 **Status note:** [KNOWN_BUGS.md](../KNOWN_BUGS.md) (fixed 2026-07-19).
 Code: `ui.widgets.canvas.rhi_backend`.
 
+## Windows OpenGL / missing GLSL 330 in .qsb
+
+**Symptom:**
+`No GLSL shader code found (versions tried: 130, 120)` then
+`Failed to create canvas graphics pipeline`.
+
+**Cause:** baked shaders only include GLSL 330 / 300 es; a legacy Windows
+OpenGL context cannot use them (sources are `#version 440`).
+
+**Fix:** Windows Auto → explicit D3D11 (FL 11_0 probe); probe explicit
+OpenGL for 3.3+, D3D12 / Metal similarly. If every candidate fails (e.g.
+Windows with only D3D9), resolve to QRhi **Null** and show an unsupported
+dialog with driver-update guidance + GitHub issues link.
+Code: `ui.widgets.canvas.rhi_backend`. Workaround: `--rhi-backend d3d11`.
+
+## Windows D3D empty first QRhi frame
+
+**Symptom:** first presented canvas frame is blank on Windows (D3D11/12);
+Linux OpenGL/Vulkan fine.
+
+**Cause:** Image Compare fired startup first-frame signals on a no-op
+render (no target / no pass). Cover could drop before a real present;
+D3D swapchains often need a second present anyway.
+
+**Fix:** gate signals on completed `beginPass`/`endPass`; next-tick
+`update()` after the first successful present (align with Multi Compare).
+Code: `tabs.image_compare.canvas.widget`, `rhi_renderer`, `rhi_render`.
+
 ---
 
-## Adding a new case
+## Adding a new caseс
 
 1. Write the full investigation under `investigations/<slug>.md` if the
    timeline / failed mitigations matter.
