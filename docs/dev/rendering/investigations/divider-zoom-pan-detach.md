@@ -7,7 +7,9 @@ below / beside the zoomed image — while the magnifier stayed locked to the
 picture on every axis.
 
 This page is the durable lesson for future features. Short pointers also live
-in [zoom-pan.md](../zoom-pan.md) and [coordinate-systems.md](../coordinate-systems.md).
+in [patterns.md](../patterns.md),
+[qrhi-gotchas.md](../qrhi-gotchas.md#divider-detaches-under-zoom-pan),
+and [zoom-pan.md](../zoom-pan.md).
 
 ## What was actually wrong (three stacked bugs)
 
@@ -92,6 +94,8 @@ asymmetry in the wrong orientation branch.
 
 ## Anti-patterns for new features
 
+Canonical short list: [patterns.md](../patterns.md). Case-specific:
+
 - Rewriting semantic spit on pan/zoom when ``zoom <= 1`` (fit/zoom-out must
   stay content-anchored). Camera-anchored rewrite is intentional only for
   ``zoom > 1``, and must stay clamped to content ``[0, 1]``.
@@ -120,6 +124,8 @@ asymmetry in the wrong orientation branch.
 
 ## Related
 
-- [zoom-pan.md](../zoom-pan.md) — spit / pan invariants
-- [coordinate-systems.md](../coordinate-systems.md) — content vs display spaces, scissor Y-flip notes
-- [checklist.md](../checklist.md) — anti-patterns for review
+- [zoom-pan.md](../zoom-pan.md) — spit / pan invariants, semantic vs paint extents
+- [coordinate-systems.md](../coordinate-systems.md) — content vs display spaces
+- [qrhi-gotchas.md](../qrhi-gotchas.md#divider-detaches-under-zoom-pan) — case catalog entry
+- [patterns.md](../patterns.md) — dual-mode spit / anti-patterns
+- [checklist.md](../checklist.md) — pre-merge tick list

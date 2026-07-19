@@ -35,11 +35,11 @@ FULLSCREEN_VERTICES = struct.pack(
 )
 # std140 layout of multi_compare.frag/vert's UBuf: mat4 mvp(64) +
 # vec2 panOffset(8) + vec2 fitScale(8) + float zoom(4) + 12B pad +
-# vec4 tileRect(16) = 112. tileRect carries the currently-drawn GPU tile's
-# rect in normalized slot-image space (docs/dev/TILED_RENDERING_DESIGN.md
-# pattern, reused here via shared.rendering.tile_texture_service); identity
-# (0,0,1,1) reproduces pre-tiling behavior unchanged.
-SLOT_UNIFORM_SIZE = 112
+# vec4 tileRect(16) + vec4 letterbox(16) + vec4 slotRect(16) = 144.
+# letterbox/slotRect are framebuffer/content UVs so slot draws use a
+# shared fullscreen quad (tiles stay in tileRect); identity letterbox
+# (0,0,1,1) + slotRect covering content reproduces a single full-bleed cell.
+SLOT_UNIFORM_SIZE = 144
 OVERLAY_UNIFORM_SIZE = 64
 # Mirrors image_compare's rhi_renderer/resources.py _LIVE_TILE_EXTENT /
 # _TILE_CACHE_BUDGET_BYTES (docs/dev/TILED_RENDERING_DESIGN.md Phase 2):

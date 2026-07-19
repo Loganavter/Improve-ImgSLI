@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from domain.qt_adapters import color_to_qcolor
+from domain.qt_adapters import ensure_visible_qcolor
+from domain.types import Color
 
 
 class FontSettingsController:
@@ -27,8 +28,14 @@ class FontSettingsController:
         host.font_settings_flyout.set_values(
             host.store.viewport.render_config.font_size_percent,
             host.store.viewport.render_config.font_weight,
-            color_to_qcolor(host.store.viewport.render_config.file_name_color),
-            color_to_qcolor(host.store.viewport.render_config.file_name_bg_color),
+            ensure_visible_qcolor(
+                host.store.viewport.render_config.file_name_color,
+                fallback=Color(255, 0, 0, 255),
+            ),
+            ensure_visible_qcolor(
+                host.store.viewport.render_config.file_name_bg_color,
+                fallback=Color(0, 0, 0, 255),
+            ),
             host.store.viewport.render_config.draw_text_background,
             host.store.viewport.render_config.text_placement_mode,
             getattr(host.store.viewport.render_config, "text_alpha_percent", 100),

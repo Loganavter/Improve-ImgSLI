@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from domain.qt_adapters import color_to_qcolor, qcolor_to_color
+from domain.qt_adapters import ensure_visible_qcolor, qcolor_to_color
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 
 from tabs.image_compare.canvas.features.divider.commands.registry import (
@@ -80,7 +80,7 @@ def show_divider_color_picker(presenter) -> None:
             ui = getattr(presenter, "widget", None)
             btn = getattr(ui, "btn_orientation", None) if ui is not None else None
             if btn is not None and hasattr(btn, "setUnderlineColor"):
-                btn.setUnderlineColor(color)
+                btn.setUnderlineColor(ensure_visible_qcolor(color))
 
         settings_presenter.show_canvas_feature_color_picker(
             key="divider",
@@ -136,7 +136,7 @@ def sync_toolbar_state(presenter) -> None:
     )
     if ui.btn_orientation.get_value() != divider_thickness:
         ui.btn_orientation.set_value(divider_thickness, emit=False)
-    ui.btn_orientation.setUnderlineColor(color_to_qcolor(divider_state.color))
+    ui.btn_orientation.setUnderlineColor(ensure_visible_qcolor(divider_state.color))
     if hasattr(ui, "btn_orientation_simple"):
         ui.btn_orientation_simple.setChecked(
             viewport.view_state.is_horizontal,
@@ -148,10 +148,10 @@ def sync_toolbar_state(presenter) -> None:
         if ui.btn_divider_width.get_value() != divider_thickness:
             ui.btn_divider_width.set_value(divider_thickness, emit=False)
     if hasattr(ui, "btn_divider_color"):
-        ui.btn_divider_color.setUnderlineColor(color_to_qcolor(divider_state.color))
+        ui.btn_divider_color.setUnderlineColor(ensure_visible_qcolor(divider_state.color))
     if hasattr(ui, "btn_magnifier_divider_width"):
         ui.btn_magnifier_divider_width.setUnderlineColor(
-            color_to_qcolor(divider_state.color)
+            ensure_visible_qcolor(divider_state.color)
         )
 
 

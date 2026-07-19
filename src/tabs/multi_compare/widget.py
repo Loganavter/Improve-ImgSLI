@@ -15,8 +15,11 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from domain.qt_adapters import ensure_visible_qcolor
+from domain.types import Color
 from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
 from tabs.multi_compare.models import (
+    DEFAULT_DIVIDER_COLOR_RGBA,
     MultiCompareDividerSettings,
     MultiCompareLabelSettings,
     MultiCompareState,
@@ -196,7 +199,13 @@ class MultiCompareWidget(QWidget):
             "multi_compare/set_pan",
             "multi_compare/reset_view",
         }:
+            from ui.widgets.canvas.rhi_present_sync import schedule_compositor_sync
+
             self.canvas.request_view_update()
+            # Flush the Wayland/Vulkan catch-up on gesture settle — otherwise
+            # the first flyout after zoom restacks and the image jumps while
+            # the zoom % chip stays unchanged.
+            schedule_compositor_sync(self.canvas, reason=action_type)
         self.sync_divider_toolbar()
         if self._font_popup_open:
             self._sync_font_settings_flyout()
@@ -228,7 +237,9 @@ class MultiCompareWidget(QWidget):
                 width_btn.blockSignals(True)
                 width_btn.set_value(ui_value)
                 width_btn.blockSignals(False)
-        color = QColor(*ds.color_rgba)
+        color = ensure_visible_qcolor(
+            ds.color_rgba, fallback=Color(*DEFAULT_DIVIDER_COLOR_RGBA)
+        )
         if hasattr(self.toolbar.btn_divider_color, "setUnderlineColor"):
             self.toolbar.btn_divider_color.setUnderlineColor(color)
         if hasattr(width_btn, "setUnderlineColor"):
@@ -258,21 +269,32 @@ class MultiCompareWidget(QWidget):
     def apply_divider_color(self, color: QColor) -> None:
         if color is None or not color.isValid():
             return
+        visible = ensure_visible_qcolor(
+            color, fallback=Color(*DEFAULT_DIVIDER_COLOR_RGBA)
+        )
         ds = self.store.state.divider_settings
         new_ds = MultiCompareDividerSettings(
             visible=ds.visible,
             thickness=ds.thickness,
-            color_rgba=(color.red(), color.green(), color.blue(), color.alpha()),
+            color_rgba=(
+                visible.red(),
+                visible.green(),
+                visible.blue(),
+                visible.alpha(),
+            ),
         )
         self.store.dispatch(actions.set_divider_settings(new_ds))
 
     def _sync_font_settings_flyout(self) -> None:
+        from domain.qt_adapters import ensure_visible_qcolor
+        from domain.types import Color
+
         st = self.state.label_settings
         self.font_settings_flyout.set_values(
             st.font_size_percent,
             st.font_weight,
-            QColor(*st.text_rgba),
-            QColor(*st.bg_rgba),
+            ensure_visible_qcolor(st.text_rgba, fallback=Color(255, 255, 255, 255)),
+            ensure_visible_qcolor(st.bg_rgba, fallback=Color(0, 0, 0, 255)),
             st.draw_background,
             "edges",
             st.text_alpha_percent,

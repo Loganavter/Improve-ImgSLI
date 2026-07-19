@@ -1,14 +1,12 @@
 """Projection helpers for Multi Compare rendering.
 
 This is the single source of truth for converting composition canvas
-coordinates into framebuffer-space rectangles and screen-space quad vertices.
+coordinates into framebuffer-space rectangles / UV letterbox uniforms.
+Slot images are drawn on a shared fullscreen quad; letterbox and slot
+cells live in the fragment shader (same idea as image_compare UV letterbox).
 """
 
 from __future__ import annotations
-
-import struct
-
-from PySide6.QtCore import QRectF
 
 from tabs.multi_compare.scene.context import (
     MultiCompareRenderContext,
@@ -16,31 +14,25 @@ from tabs.multi_compare.scene.context import (
 )
 
 
-def build_screen_quad_vertices(rect: QRectF, fb_w: float, fb_h: float) -> bytes:
-    """Return triangle-strip vertices for a framebuffer-space rect."""
+def letterbox_uv(
+    *,
+    framebuffer_size: tuple[float, float],
+    scale: float,
+    offset: tuple[float, float],
+    canvas_size: tuple[float, float],
+) -> tuple[float, float, float, float]:
+    """Composition letterbox as framebuffer UV ``(x, y, w, h)``."""
 
-    x0 = rect.left() / fb_w * 2.0 - 1.0
-    x1 = rect.right() / fb_w * 2.0 - 1.0
-    y0 = 1.0 - rect.top() / fb_h * 2.0
-    y1 = 1.0 - rect.bottom() / fb_h * 2.0
-    return struct.pack(
-        "<16f",
-        x0,
-        y0,
-        0.0,
-        0.0,
-        x0,
-        y1,
-        0.0,
-        1.0,
-        x1,
-        y0,
-        1.0,
-        0.0,
-        x1,
-        y1,
-        1.0,
-        1.0,
+    fb_w, fb_h = framebuffer_size
+    if fb_w <= 0.0 or fb_h <= 0.0:
+        return (0.0, 0.0, 1.0, 1.0)
+    ox, oy = offset
+    canvas_w, canvas_h = canvas_size
+    return (
+        float(ox) / fb_w,
+        float(oy) / fb_h,
+        max(1e-6, float(canvas_w) * float(scale) / fb_w),
+        max(1e-6, float(canvas_h) * float(scale) / fb_h),
     )
 
 
@@ -78,6 +70,8 @@ def build_render_context(
     if widget is not None:
         export_viewport = getattr(widget, "_export_canvas_viewport", None)
     layers = []
+    canvas_w = 1
+    canvas_h = 1
     if composition is not None and composition.layers:
         canvas_w = max(1, int(composition.canvas_w))
         canvas_h = max(1, int(composition.canvas_h))
@@ -95,6 +89,8 @@ def build_render_context(
         layers = list(composition.layers)
 
     projected: list[ProjectedLayer] = []
+    canvas_w_f = float(canvas_w)
+    canvas_h_f = float(canvas_h)
     for layer in layers:
         slot_id = int(layer.layer_id)
         if slot_id not in available_slot_ids:
@@ -110,6 +106,12 @@ def build_render_context(
                     oy + ly * scale,
                     max(1.0, lw * scale),
                     max(1.0, lh * scale),
+                ),
+                slot_rect_uv=(
+                    lx / canvas_w_f,
+                    ly / canvas_h_f,
+                    max(1e-6, lw / canvas_w_f),
+                    max(1e-6, lh / canvas_h_f),
                 ),
                 fit_x=fit_x,
                 fit_y=fit_y,

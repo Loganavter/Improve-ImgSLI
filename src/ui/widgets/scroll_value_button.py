@@ -369,6 +369,12 @@ class ScrollValueButton(Button):
     # ---------- flyout ----------
 
     def _show_flyout(self) -> None:
+        try:
+            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+
+            park_keyboard_focus_off_qrhi()
+        except Exception:
+            pass
         if self._flyout is None:
             self._flyout = _ScrollValueFlyout(self.window())
         if self._is_at_zero():

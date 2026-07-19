@@ -19,7 +19,7 @@ What works:
 - Keyboard shortcuts: `1`-`9` focus slots, `0` resets zoom, Escape exits focus.
 - QRhi rendering through the tab-owned canvas path.
 - Theme-aware clear/background color.
-- Always-on split dividers in the overlay pass.
+- Always-on split dividers as GPU quads (`GridDividersPass`).
 - Camera-fixed filename labels with tab-local label settings.
 - Export dialog with preview, output directory/favorites, filename, format,
   resolution, aspect-ratio lock, quality, and background settings.

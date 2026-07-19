@@ -25,19 +25,28 @@ def _color_to_dict(color: Color | None) -> dict[str, int] | None:
 
 
 def _color_from_dict(value: Any, default: Color | None = None) -> Color | None:
+    from domain.qt_adapters import ensure_visible_color
+
+    fallback = default if default is not None else Color(255, 255, 255, 255)
     if value is None:
         return default
     if isinstance(value, Color):
-        return value
+        return ensure_visible_color(value, fallback=fallback)
     if isinstance(value, (list, tuple)) and len(value) >= 3:
         a = int(value[3]) if len(value) > 3 else 255
-        return Color(int(value[0]), int(value[1]), int(value[2]), a)
+        return ensure_visible_color(
+            (int(value[0]), int(value[1]), int(value[2]), a),
+            fallback=fallback,
+        )
     if isinstance(value, dict):
-        return Color(
-            int(value.get("r", 255)),
-            int(value.get("g", 255)),
-            int(value.get("b", 255)),
-            int(value.get("a", 255)),
+        return ensure_visible_color(
+            (
+                int(value.get("r", 255)),
+                int(value.get("g", 255)),
+                int(value.get("b", 255)),
+                int(value.get("a", 255)),
+            ),
+            fallback=fallback,
         )
     return default
 

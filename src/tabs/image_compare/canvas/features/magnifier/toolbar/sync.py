@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from domain.qt_adapters import color_to_qcolor
+from domain.qt_adapters import ensure_visible_qcolor
 
 from tabs.image_compare.canvas.features.magnifier.toolbar.shared import set_checked_quietly, set_slider_value_quietly
 
@@ -35,7 +35,7 @@ def sync_magnifier_toolbar_state(presenter) -> None:
         divider_thickness,
     )
     if hasattr(ui, "btn_magnifier_orientation"):
-        ui.btn_magnifier_orientation.setUnderlineColor(color_to_qcolor(divider_color))
+        ui.btn_magnifier_orientation.setUnderlineColor(ensure_visible_qcolor(divider_color))
 
 
 def sync_magnifier_enabled_state(presenter) -> None:
@@ -67,7 +67,7 @@ def sync_magnifier_enabled_state(presenter) -> None:
     if hasattr(ui, "btn_magnifier_orientation"):
         viewport = presenter.store.viewport
         ui.btn_magnifier_orientation.setUnderlineColor(
-            color_to_qcolor(
+            ensure_visible_qcolor(
                 active_magnifier.divider_color
                 if active_magnifier is not None
                 else active_or_default_divider_color(viewport.view_state)
@@ -122,7 +122,7 @@ def sync_magnifier_orientation_state(presenter) -> None:
             set_checked_quietly(btn_orientation, magnifier_is_horizontal)
             set_slider_value_quietly(btn_orientation, magnifier_thickness)
         btn_orientation.setUnderlineColor(
-            color_to_qcolor(active_or_default_divider_color(view_state))
+            ensure_visible_qcolor(active_or_default_divider_color(view_state))
         )
     set_checked_quietly(
         getattr(ui, "btn_magnifier_orientation_simple", None),

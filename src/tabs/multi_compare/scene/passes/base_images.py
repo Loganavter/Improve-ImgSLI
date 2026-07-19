@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 
-from PySide6.QtCore import QRectF, QSize
+from PySide6.QtCore import QSize
 from PySide6.QtGui import (
     QImage,
     QRhiBuffer,
@@ -25,7 +25,7 @@ from shared.rendering.tile_geometry import (
     _TILE_RESIDENCY_MARGIN,
     crop_apron_tile,
 )
-from tabs.multi_compare.scene.projection import build_screen_quad_vertices
+from tabs.multi_compare.scene.projection import letterbox_uv
 from tabs.multi_compare.scene.resources import (
     FULLSCREEN_VERTICES,
     SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
@@ -46,9 +46,11 @@ def _pack_slot_uniforms(
     clip_matrix: tuple[float, ...],
     layer,
     tile_rect: tuple[float, float, float, float],
+    letterbox: tuple[float, float, float, float],
 ) -> bytes:
+    slot_rect = getattr(layer, "slot_rect_uv", (0.0, 0.0, 1.0, 1.0))
     return struct.pack(
-        "<16f 2f 2f f 3f 4f",
+        "<16f 2f 2f f 3f 4f 4f 4f",
         *clip_matrix,
         layer.pan_x,
         layer.pan_y,
@@ -59,6 +61,8 @@ def _pack_slot_uniforms(
         0.0,
         0.0,
         *tile_rect,
+        *letterbox,
+        *slot_rect,
     )
 
 
@@ -87,6 +91,8 @@ class BaseImagesPass(CanvasRenderPass):
 
     def __init__(self) -> None:
         self.pipeline = None
+        self._render_pass_descriptor = None
+        self._pipeline_sample_count: int | None = None
         self.slot_textures: dict[object, object] = {}
         self.slot_texture_sizes: dict[object, tuple[int, int]] = {}
         self.slot_pixel_sources: dict[int, TiledPixelStore] = {}
@@ -115,9 +121,33 @@ class BaseImagesPass(CanvasRenderPass):
             budget_bytes=SLOT_HOST_TEXTURE_CACHE_BUDGET_BYTES,
         )
 
-    def initialize(self, renderer, target) -> None:
-        self.pipeline = renderer.rhi.newGraphicsPipeline()
-        self.pipeline.setShaderStages(
+    def ensure_pipeline(self, renderer, target) -> bool:
+        """Recreate the graphics pipeline when the swapchain RT descriptor changes.
+
+        Mirrors image_compare ``RhiCanvasResources.ensure_pipeline``: a Qt.Popup
+        parented to the QRhiWidget can restack the color buffer; keeping a stale
+        ``renderPassDescriptor`` / ``sampleCount`` produces a present that looks
+        like a zoom nudge even when uniforms stay identical.
+        """
+        if target is None:
+            return False
+        descriptor = target.renderPassDescriptor()
+        sample_count = int(target.sampleCount())
+        if (
+            self.pipeline is not None
+            and descriptor is self._render_pass_descriptor
+            and sample_count == self._pipeline_sample_count
+        ):
+            return False
+        if self.pipeline is not None:
+            try:
+                self.pipeline.destroy()
+            except RuntimeError:
+                pass
+            self.pipeline = None
+
+        pipeline = renderer.rhi.newGraphicsPipeline()
+        pipeline.setShaderStages(
             [
                 QRhiShaderStage(
                     QRhiShaderStage.Type.Vertex, load_shader("multi_compare.vert.qsb")
@@ -127,18 +157,32 @@ class BaseImagesPass(CanvasRenderPass):
                 ),
             ]
         )
-        self.pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
-        self.pipeline.setSampleCount(target.sampleCount())
-        self.pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
+        pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
+        pipeline.setSampleCount(sample_count)
+        pipeline.setRenderPassDescriptor(descriptor)
+        blend = QRhiGraphicsPipeline.TargetBlend()
+        blend.enable = True
+        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha
+        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
+        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        pipeline.setTargetBlends([blend])
         first_srb = self._build_slot_srb(renderer, renderer.placeholder, None)
-        self.pipeline.setShaderResourceBindings(first_srb)
-        self.pipeline.setVertexInputLayout(vertex_input_layout())
-        if not self.pipeline.create():
+        pipeline.setShaderResourceBindings(first_srb)
+        pipeline.setVertexInputLayout(vertex_input_layout())
+        if not pipeline.create():
             raise RuntimeError("Failed to create multi_compare slot pipeline")
         try:
             first_srb.destroy()
         except RuntimeError:
             pass
+        self.pipeline = pipeline
+        self._render_pass_descriptor = descriptor
+        self._pipeline_sample_count = sample_count
+        return True
+
+    def initialize(self, renderer, target) -> None:
+        self.ensure_pipeline(renderer, target)
 
     def release(self) -> None:
         for res in (
@@ -165,17 +209,15 @@ class BaseImagesPass(CanvasRenderPass):
         self.pending_uploads.clear()
 
     def prepare(self, renderer, ctx, updates) -> None:
-        fb_w, fb_h = ctx.framebuffer_size
         self._ensure_slot_resources(renderer, len(ctx.projected_layers))
         self._realize_tile_residency(renderer, ctx, updates)
-        self.layer_draw_items = []
-        for index, layer in enumerate(ctx.projected_layers):
-            vx, vy, vw, vh = layer.rect_fb
+        # Shared fullscreen quad — letterbox + slot cell are UV uniforms.
+        if self.slot_vertex_buffers:
             updates.updateDynamicBuffer(
-                self.slot_vertex_buffers[index],
-                0,
-                build_screen_quad_vertices(QRectF(vx, vy, vw, vh), fb_w, fb_h),
+                self.slot_vertex_buffers[0], 0, FULLSCREEN_VERTICES
             )
+        self.layer_draw_items = []
+        for layer in ctx.projected_layers:
             pan = (layer.pan_x, layer.pan_y)
             fit = (max(layer.fit_x, 1e-6), max(layer.fit_y, 1e-6))
             items = build_slot_draw_plan(
@@ -184,13 +226,22 @@ class BaseImagesPass(CanvasRenderPass):
             self.layer_draw_items.append(items)
 
     def record(self, renderer, ctx, command_buffer) -> None:
-        if not ctx.projected_layers:
+        if not ctx.projected_layers or not self.slot_vertex_buffers:
             return
         fb_w, fb_h = ctx.framebuffer_size
+        composition = ctx.composition
+        canvas_w = float(getattr(composition, "canvas_w", 1) or 1)
+        canvas_h = float(getattr(composition, "canvas_h", 1) or 1)
+        lb = letterbox_uv(
+            framebuffer_size=(fb_w, fb_h),
+            scale=float(ctx.scale),
+            offset=tuple(ctx.offset),
+            canvas_size=(canvas_w, canvas_h),
+        )
         command_buffer.setGraphicsPipeline(self.pipeline)
         command_buffer.setViewport(QRhiViewport(0.0, 0.0, fb_w, fb_h))
+        command_buffer.setVertexInput(0, [(self.slot_vertex_buffers[0], 0)])
         for index, layer in enumerate(ctx.projected_layers):
-            command_buffer.setVertexInput(0, [(self.slot_vertex_buffers[index], 0)])
             for item in self.layer_draw_items[index]:
                 texture = self.slot_textures.get(item.tile_key)
                 if texture is None:
@@ -201,7 +252,9 @@ class BaseImagesPass(CanvasRenderPass):
                 tile_updates.updateDynamicBuffer(
                     self.slot_uniform_buffers[index],
                     0,
-                    _pack_slot_uniforms(ctx.clip_matrix, layer, item.tile_rect),
+                    _pack_slot_uniforms(
+                        ctx.clip_matrix, layer, item.tile_rect, lb
+                    ),
                 )
                 command_buffer.resourceUpdate(tile_updates)
                 command_buffer.draw(4)

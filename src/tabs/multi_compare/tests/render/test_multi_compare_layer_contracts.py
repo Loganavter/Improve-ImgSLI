@@ -63,6 +63,10 @@ def test_multi_compare_layers_are_resolved_in_canvas_px_before_sr_projection():
         (0.0, 0.0, 50.0, 100.0),
         (52.0, 0.0, 150.0, 100.0),
     ]
+    assert [projected.slot_rect_uv for projected in ctx.projected_layers] == [
+        (0.0, 0.0, 100.0 / 404.0, 1.0),
+        (104.0 / 404.0, 0.0, 300.0 / 404.0, 1.0),
+    ]
 
 
 def test_multi_compare_dividers_read_resolved_composition_gaps():

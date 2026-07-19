@@ -112,6 +112,8 @@ Focused tests: `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` — se
 
 - [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — feature system, zoom/pan
 - [rendering/index.md](rendering/index.md) — rendering docs hub
+- [rendering/patterns.md](rendering/patterns.md) — patterns & anti-patterns
+- [rendering/qrhi-gotchas.md](rendering/qrhi-gotchas.md) — QRhi / compositing case catalog
 - [rendering/display-image-pipeline.md](rendering/display-image-pipeline.md)
 - [rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
 - [RHI_RENDERER_REFACTOR.md](RHI_RENDERER_REFACTOR.md) · [CANVAS_FEATURE_REGISTRY_PER_TAB.md](CANVAS_FEATURE_REGISTRY_PER_TAB.md) — active plans

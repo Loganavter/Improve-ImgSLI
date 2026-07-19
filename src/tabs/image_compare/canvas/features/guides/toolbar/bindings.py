@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from domain.qt_adapters import color_to_qcolor
+from domain.qt_adapters import ensure_visible_qcolor
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 from tabs.image_compare.canvas.registry import registry
 
@@ -68,14 +68,14 @@ def sync_guides_toolbar_state(presenter) -> None:
                 btn_guides.set_saved_value(btn_guides.get_value())
             set_slider_value_quietly(btn_guides, 0)
             set_checked_quietly(btn_guides, True)
-        btn_guides.setUnderlineColor(color_to_qcolor(state.color))
+        btn_guides.setUnderlineColor(ensure_visible_qcolor(state.color))
     set_checked_quietly(
         getattr(ui, "btn_magnifier_guides_simple", None), bool(state.enabled)
     )
     btn_guides_width = getattr(ui, "btn_magnifier_guides_width", None)
     if btn_guides_width is not None:
         set_slider_value_quietly(btn_guides_width, int(state.thickness))
-        btn_guides_width.setUnderlineColor(color_to_qcolor(state.color))
+        btn_guides_width.setUnderlineColor(ensure_visible_qcolor(state.color))
 
 
 def build_guides_toolbar_bindings() -> tuple[CanvasFeatureToolbarBinding, ...]:

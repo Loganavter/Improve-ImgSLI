@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from PySide6.QtGui import QRhi
 from PySide6.QtWidgets import QRhiWidget
@@ -31,6 +32,40 @@ _API_BY_NAME = {
 
 # Set when resolve rejects Vulkan for this process — widgets must not setApi(Vulkan).
 _vulkan_rejected_for_process = False
+
+
+@dataclass(frozen=True, slots=True)
+class RhiFallbackNotice:
+    """Pending user-visible notice after a startup backend fallback."""
+
+    requested: str
+    effective: str
+    reason: str
+
+
+_pending_fallback_notice: RhiFallbackNotice | None = None
+
+
+def record_rhi_fallback_notice(
+    requested: str, effective: str, reason: str
+) -> RhiFallbackNotice:
+    """Remember a fallback so the UI can show an error after the main window."""
+    global _pending_fallback_notice
+    notice = RhiFallbackNotice(
+        requested=(requested or "default").strip().lower(),
+        effective=(effective or "default").strip().lower(),
+        reason=str(reason or ""),
+    )
+    _pending_fallback_notice = notice
+    return notice
+
+
+def take_rhi_fallback_notice() -> RhiFallbackNotice | None:
+    """Consume the pending fallback notice (once)."""
+    global _pending_fallback_notice
+    notice = _pending_fallback_notice
+    _pending_fallback_notice = None
+    return notice
 
 
 def supported_rhi_backend_names() -> tuple[str, ...]:
@@ -154,25 +189,26 @@ def resolve_rhi_backend_with_fallback(requested: str) -> tuple[str, str | None]:
     Must run after ``QApplication`` exists so Vulkan/QRhi probes can talk to
     the platform. Does not mutate env or QSettings — callers decide persistence.
 
-    Explicit ``vulkan`` requires a successful probe. A missing probe API
-    (``None``) is treated as failure so widgets never ``setApi(Vulkan)`` on a
-    broken runtime (Windows ``-9`` / missing ICD).
+    Only an **explicit** ``vulkan`` selection is probed. Auto (``default``) is
+    left to Qt's platform default — a speculative Linux Auto→OpenGL override
+    caused false negatives (working Vulkan reported unavailable) and then
+    persisted OpenGL forever.
     """
     global _vulkan_rejected_for_process
 
     name = (requested or "default").strip().lower()
     if name not in _API_BY_NAME:
         name = "default"
-
-    should_probe = name == "vulkan" or (
-        name == "default" and sys.platform.startswith("linux")
-    )
-    if not should_probe:
+    if name != "vulkan":
         return name, None
 
     available = probe_vulkan_available()
-    # Explicit Vulkan: only keep it when the probe positively succeeded.
-    if name == "vulkan" and available is not True:
+    if available is True:
+        return "vulkan", None
+
+    # Confirmed failure, or Windows with no probe API (cannot risk setApi(Vulkan)
+    # when QVulkanDefaultInstance would hard-fail with -9).
+    if available is False or sys.platform.startswith("win"):
         _vulkan_rejected_for_process = True
         fallback = platform_fallback_rhi_backend()
         reason = (
@@ -180,14 +216,9 @@ def resolve_rhi_backend_with_fallback(requested: str) -> tuple[str, str | None]:
         )
         return fallback, reason
 
-    # Linux Auto: if Vulkan is known-bad, force OpenGL so Qt does not pick it.
-    if name == "default" and available is False:
-        _vulkan_rejected_for_process = True
-        fallback = platform_fallback_rhi_backend()
-        if fallback != name:
-            return fallback, f"Vulkan unavailable; falling back to {fallback}"
-
-    return name, None
+    # Inconclusive probe on Linux/macOS: keep Vulkan and let QRhiWidget try;
+    # renderFailed can still recover for the next launch.
+    return "vulkan", None
 
 
 def persist_rhi_backend_setting(backend_name: str) -> None:
@@ -234,6 +265,11 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
             persist_rhi_backend_setting(fallback)
 
     widget.renderFailed.connect(_on_render_failed)
+    install = getattr(widget, "installEventFilter", None)
+    if callable(install):
+        from ui.widgets.canvas.rhi_focus import install_qrhi_focus_parking
+
+        install_qrhi_focus_parking(widget)
 
 
 def log_initialized_rhi_widget(widget: QRhiWidget) -> None:
