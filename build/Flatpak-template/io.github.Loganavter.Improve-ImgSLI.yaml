@@ -56,6 +56,17 @@ modules:
       - desktop-file-edit --set-key=Exec --set-value="Improve-ImgSLI" build/AUR-template/improve-imgsli.desktop
       - install -Dm644 build/AUR-template/improve-imgsli.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 build/linux/mime/application-x-improve-imgsli.xml ${FLATPAK_DEST}/share/mime/packages/application-x-improve-imgsli.xml
+      - install -Dm755 build/linux/bin/improve-imgsli-thumbnailer ${FLATPAK_DEST}/bin/improve-imgsli-thumbnailer
+      - install -Dm644 build/linux/thumbnailers/improve-imgsli.thumbnailer ${FLATPAK_DEST}/share/thumbnailers/improve-imgsli.thumbnailer
+      - install -Dm644 src/resources/icons/icon.png ${FLATPAK_DEST}/share/improve-imgsli/mark.png
+      - install -Dm644 build/linux/icons/mimetypes/application-x-improve-imgsli-16.png ${FLATPAK_DEST}/share/icons/hicolor/16x16/mimetypes/application-x-improve-imgsli.png
+      - install -Dm644 build/linux/icons/mimetypes/application-x-improve-imgsli-22.png ${FLATPAK_DEST}/share/icons/hicolor/22x22/mimetypes/application-x-improve-imgsli.png
+      - install -Dm644 build/linux/icons/mimetypes/application-x-improve-imgsli-32.png ${FLATPAK_DEST}/share/icons/hicolor/32x32/mimetypes/application-x-improve-imgsli.png
+      - install -Dm644 build/linux/icons/mimetypes/application-x-improve-imgsli-48.png ${FLATPAK_DEST}/share/icons/hicolor/48x48/mimetypes/application-x-improve-imgsli.png
+      - install -Dm644 build/linux/icons/mimetypes/application-x-improve-imgsli-64.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/mimetypes/application-x-improve-imgsli.png
+      - install -Dm644 build/linux/icons/mimetypes/application-x-improve-imgsli-128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/mimetypes/application-x-improve-imgsli.png
+      - install -Dm644 build/linux/icons/mimetypes/application-x-improve-imgsli-256.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/mimetypes/application-x-improve-imgsli.png
     sources:
       - type: archive
         path: Improve-ImgSLI-10.0.0.tar.gz

@@ -1,4 +1,4 @@
-"""Project preview.jpg embed / peek helpers."""
+"""Project preview.png embed / peek helpers (canvas scene grab)."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from services.io.project_package import write_project_zip
 from services.io.project_preview import (
     PREVIEW_MEMBER,
     peek_project_preview,
-    qimage_to_jpeg_bytes,
-    read_preview_jpeg_bytes,
+    qimage_to_png_bytes,
+    read_preview_image_bytes,
     zip_has_preview,
 )
 from services.io.recent_projects import RecentProjectRecord
@@ -27,20 +27,20 @@ def _tr(key: str, default: str = "", *args, **kwargs) -> str:
 def test_write_project_zip_embeds_preview(tmp_path, qapp):
     img = QImage(32, 18, QImage.Format.Format_RGB32)
     img.fill(QColor(30, 120, 200))
-    jpeg = qimage_to_jpeg_bytes(img)
-    assert jpeg
+    png = qimage_to_png_bytes(img)
+    assert png and png[:8] == b"\x89PNG\r\n\x1a\n"
 
     dest = tmp_path / "demo.imgsli"
     write_project_zip(
         dest,
         {"format": "imgsli", "version": 2, "sessions": []},
         {},
-        preview_jpeg=jpeg,
+        preview_png=png,
     )
     assert dest.is_file()
     assert zip_has_preview(dest)
-    raw = read_preview_jpeg_bytes(dest)
-    assert raw == jpeg
+    raw = read_preview_image_bytes(dest)
+    assert raw == png
     with zipfile.ZipFile(dest, "r") as zf:
         assert PREVIEW_MEMBER in zf.namelist()
         assert "project.json" in zf.namelist()
@@ -58,30 +58,70 @@ def test_peek_project_preview_loads_pixmap(tmp_path, qapp, monkeypatch):
 
     img = QImage(40, 24, QImage.Format.Format_RGB32)
     img.fill(QColor(200, 40, 40))
-    jpeg = qimage_to_jpeg_bytes(img)
+    png = qimage_to_png_bytes(img)
     dest = tmp_path / "shot.imgsli"
     write_project_zip(
         dest,
         {"format": "imgsli", "version": 2, "sessions": []},
         {},
-        preview_jpeg=jpeg,
+        preview_png=png,
     )
 
     pix = peek_project_preview(dest)
     assert pix is not None and not pix.isNull()
-    assert list(cache.glob("*.jpg"))
+    assert list(cache.glob("*.png"))
+
+
+def test_peek_returns_none_when_member_missing(tmp_path, qapp, monkeypatch):
+    cache = tmp_path / "previews"
+    cache.mkdir()
+    monkeypatch.setattr(
+        "services.io.project_preview.project_previews_cache_dir",
+        lambda: cache,
+    )
+    dest = tmp_path / "legacy.imgsli"
+    write_project_zip(
+        dest,
+        {"format": "imgsli", "version": 2, "sessions": []},
+        {},
+        preview_png=None,
+    )
+    assert not zip_has_preview(dest)
+    assert peek_project_preview(dest) is None
+
+
+def test_peek_accepts_legacy_preview_jpg(tmp_path, qapp, monkeypatch):
+    cache = tmp_path / "previews"
+    cache.mkdir()
+    monkeypatch.setattr(
+        "services.io.project_preview.project_previews_cache_dir",
+        lambda: cache,
+    )
+    img = QImage(24, 16, QImage.Format.Format_RGB32)
+    img.fill(QColor(10, 20, 30))
+    png = qimage_to_png_bytes(img)
+    dest = tmp_path / "old.imgsli"
+    with zipfile.ZipFile(dest, "w") as zf:
+        zf.writestr(
+            "project.json",
+            json.dumps({"format": "imgsli", "version": 2, "sessions": []}),
+        )
+        zf.writestr("preview.jpg", png)
+    assert zip_has_preview(dest)
+    pix = peek_project_preview(dest)
+    assert pix is not None and not pix.isNull()
 
 
 def test_grid_card_uses_pixmap_cover(tmp_path, qapp, monkeypatch):
     img = QImage(48, 28, QImage.Format.Format_RGB32)
     img.fill(QColor(10, 180, 90))
-    jpeg = qimage_to_jpeg_bytes(img)
+    png = qimage_to_png_bytes(img)
     dest = tmp_path / "card.imgsli"
     write_project_zip(
         dest,
         {"format": "imgsli", "version": 2, "sessions": []},
         {},
-        preview_jpeg=jpeg,
+        preview_png=png,
     )
     monkeypatch.setattr(
         "services.io.project_preview.project_previews_cache_dir",
@@ -105,7 +145,6 @@ def test_grid_card_uses_pixmap_cover(tmp_path, qapp, monkeypatch):
     assert region.pixmap is not None
     assert region.image_fill == "cover"
 
-    # Cover/preview is grid-only.
     card = build_grid_card(
         record,
         parent=None,
@@ -117,36 +156,3 @@ def test_grid_card_uses_pixmap_cover(tmp_path, qapp, monkeypatch):
     assert cover.pixmap is not None
     assert isinstance(cover.pixmap, QPixmap)
     card.deleteLater()
-
-
-def test_canvas_from_page_finds_nested_multi_compare_canvas(qapp):
-    """Multi Compare wraps the host; preview must still find ``.canvas``."""
-    from PySide6.QtWidgets import QVBoxLayout, QWidget
-
-    from services.io.project_preview import _canvas_from_page
-
-    class _FakeCanvas(QWidget):
-        def grabFramebuffer(self):
-            img = QImage(8, 8, QImage.Format.Format_RGB32)
-            img.fill(QColor(1, 2, 3))
-            return img
-
-    class _FakeMultiHost(QWidget):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            self.canvas = _FakeCanvas(self)
-
-    outer = QWidget()
-    layout = QVBoxLayout(outer)
-    host = _FakeMultiHost(outer)
-    layout.addWidget(host)
-
-    assert getattr(outer, "canvas", None) is None
-    assert _canvas_from_page(outer) is host.canvas
-
-    ic_page = QWidget()
-    ic_page.image_label = _FakeCanvas(ic_page)
-    assert _canvas_from_page(ic_page) is ic_page.image_label
-
-    outer.deleteLater()
-    ic_page.deleteLater()

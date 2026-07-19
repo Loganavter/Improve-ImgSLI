@@ -6,7 +6,7 @@
 
 - **打开** — {{tr:action.workspace.open_session_picker}}（或使用新增标签页控件）。
 - **选择** — 点击 {{tr:workspace.session_types.image_compare}} 或 {{tr:workspace.session_types.multi_compare}} 卡片。
-- **最近使用** — 最近的 ``.imgsli`` 项目（网格或列表，可按最近打开或名称排序）。单击重新打开。若项目内有 ``preview.jpg``，卡片会显示场景预览。将项目文件拖到面板上可固定到列表而不打开。右键可从列表移除或在文件夹中显示。
+- **最近使用** — 最近的 ``.imgsli`` 项目（网格或列表，可按最近打开或名称排序）。单击重新打开。卡片显示项目内 ``preview.png`` 的画布预览（旧包中的 ``preview.jpg`` 仍可用；否则使用会话类型图标）。将项目文件拖到面板上可固定到列表而不打开。右键可从列表移除或在文件夹中显示。
 
 :::figure{side=block width=420}
 ![会话选择器]({{img:platform.workspace.session_picker}})

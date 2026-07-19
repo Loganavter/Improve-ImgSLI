@@ -23,7 +23,7 @@ Show all commands:
 
 Main commands:
 
-- `./launcher.sh run` - start the app
+- `./launcher.sh run` - start the app (on Linux, also syncs `.desktop` / `.imgsli` MIME / thumbnailer if outdated)
 - `./launcher.sh run --theme dark` - force theme for this session (`dark` or `light`)
 - `./launcher.sh run --debug` - enable debug logging for this session
 - `./launcher.sh test` - run full pytest suite
@@ -31,8 +31,8 @@ Main commands:
 - `./launcher.sh recreate` - rebuild virtual environment from scratch
 - `./launcher.sh rm-cache` - remove Python caches only
 - `./launcher.sh delete` - remove virtual environment and caches
-- `./launcher.sh install-desktop` - install Linux desktop launcher
-- `./launcher.sh uninstall-desktop` - remove Linux desktop launcher
+- `./launcher.sh install-desktop` - force-install Linux desktop launcher, `.imgsli` MIME type, and thumbnailer
+- `./launcher.sh uninstall-desktop` - remove Linux desktop launcher / MIME / thumbnailer
 
 ## Logging modes
 
@@ -70,7 +70,14 @@ This writes `cloc.txt` in the repository root.
 
 - If startup fails after dependency updates: `./launcher.sh recreate`
 - If weird stale behavior persists: `./launcher.sh rm-cache`
-- If desktop shortcut is missing on Linux: `./launcher.sh install-desktop`
+- If desktop shortcut is missing on Linux: `./launcher.sh run` syncs it automatically;
+  or run `./launcher.sh install-desktop` explicitly
+  (registers `.imgsli` MIME + FM thumbnailer for `preview.png`)
+- If Dolphin still shows `.imgsli` as a Zip archive or a full-bleed logo: run the
+  app once (`./launcher.sh run`) or `install-desktop`, then
+  `killall dolphin` and clear stale thumbs (`rm -rf ~/.cache/thumbnails/*`).
+  Type icons are document + mark + `IMGSLI`; FM thumbs wrap `preview.png` in
+  the same document chrome.
 
 If problems continue, include:
 
