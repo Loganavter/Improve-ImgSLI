@@ -117,6 +117,18 @@ when content height changes in-place (e.g. recent shelf growing to a second
 row). Those scrolls use `set_corner_radius(0)`; rounding stays on the window
 paint path + host bottom masks.
 
+## Windows CI: access violation painting orphan toolkit buttons
+
+**Status:** mitigated in tests (destroy widgets before return).
+
+On Windows + `QT_QPA_PLATFORM=offscreen`, pytest-qt calls `processEvents()`
+at the end of each test call. Unparented toolkit `Button`/`Label` instances
+(e.g. UI inspector snapshot probes) become top-level windows; painting them
+in that hook can fatal AV inside `sli_ui_toolkit` `content._draw_row`
+(`QPainter.drawText`). pytest-qt only auto-closes widgets registered with
+`qtbot`. Always `hide`/`close`/`deleteLater` (+ `processEvents`) orphan
+toolkit controls before the test returns.
+
 ## Windows: RMB popup ContextMenu breaks in-window alpha (toasts, File/Help, shadows)
 
 **Status:** fixed in `sli-ui-toolkit` 3.1.4 (`bind_popup_transient_parent`);
