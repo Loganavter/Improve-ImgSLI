@@ -248,6 +248,43 @@ Probe stderr is filtered. After the main window is shown, an
 `AppMessageDialog` error explains an explicit-Vulkan fallback. `renderFailed`
 also logs an actionable hint and may persist the same fallback.
 
+## Windows OpenGL too old for baked .qsb (GLSL 120/130) — fixed (2026-07-19)
+
+**Status:** fixed.
+
+```text
+No GLSL shader code found (versions tried: QList(130, 120)) in baked shader
+Failed to create canvas graphics pipeline
+```
+
+Our `.qsb` bake set is GLSL **330 / 300 es** (+ HLSL 50 / MSL 12). Sources
+are `#version 440` UBO shaders — they cannot target GLSL 120/130. When Qt
+picked a legacy Windows OpenGL context (or the user chose OpenGL on a weak
+driver), pipeline create failed.
+
+**Fix:** Windows Auto resolves to explicit **Direct3D 11** (probed for
+Feature Level 11_0 via `D3D11CreateDevice` / `QRhi.probe` when bound).
+Explicit OpenGL is probed for GL 3.3+ / GLES 3.0+; D3D12 / Metal get the
+same style of availability check. Failures fall back along a platform
+chain; if nothing works (e.g. only D3D9), the app starts on QRhi Null and
+shows an unsupported-GPU dialog (update drivers / open a GitHub ticket).
+Workaround without a new build: Settings → Render Backend → Direct3D 11
+(or `--rhi-backend d3d11`) and restart.
+
+## Windows D3D: empty first QRhi present — fixed (2026-07-19)
+
+**Status:** fixed.
+
+Image Compare emitted `firstFrameRendered` / `firstVisualFrameReady` even
+when `renderTarget()` was still `None` (no `beginPass`). On Direct3D that
+could drop the startup cover onto an uninitialized swapchain buffer. Multi
+Compare already gated on a real pass and double-`update()`'d after view
+changes.
+
+**Fix:** return whether `beginPass`/`endPass` completed; emit only then;
+`QTimer.singleShot(0, update)` after the first successful present (same
+idea as Multi Compare's `request_view_update`).
+
 ## multi_compare: large slot images and tiled export — fixed (2026-07-15)
 
 **Status:** fixed.

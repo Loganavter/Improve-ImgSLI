@@ -581,6 +581,71 @@ def test_resolve_scaled_content_geometry_uses_target_not_letterboxed_render():
     )
 
 
+def test_resolve_scaled_content_geometry_keeps_export_target_without_virtual_layout():
+    """4:3 letterbox into a 16:9 export target must keep canvas = target.
+
+    Regression: returning render size as the canvas dropped side pads; the
+    export loop then stretched 749×562 → 1000×562 and MediaInfo reported a
+    fat 16:9 DAR for square-pixel 4:3 Tom & Jerry title cards.
+    """
+    from types import SimpleNamespace
+
+    from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+        resolve_scaled_content_geometry,
+    )
+    from ui.canvas_presentation.models import CanvasContentLayout, CanvasTarget
+
+    target = CanvasTarget(width=1000, height=562)
+    layout = CanvasContentLayout(
+        canvas_width=1000,
+        canvas_height=562,
+        content_x=125,
+        content_y=0,
+        content_width=749,
+        content_height=562,
+    )
+    frame = SimpleNamespace(
+        render_width=749,
+        render_height=562,
+        image_dest_x=125,
+        image_dest_y=0,
+        target=target,
+        layout=layout,
+        virtual_layout=None,
+    )
+    target_size, content_size, pad_left, pad_top = resolve_scaled_content_geometry(
+        frame
+    )
+    assert target_size == (1000, 562)
+    assert content_size == (749, 562)
+    assert pad_left == 125
+    assert pad_top == 0
+    assert target_size[0] - content_size[0] - pad_left == 126
+
+
+def test_video_export_contain_resize_does_not_stretch_aspect():
+    from PIL import Image, ImageDraw
+    import numpy as np
+
+    from tabs.image_compare.plugins.video_editor.services.video_export.render_loop import (
+        _contain_resize_rgba,
+    )
+
+    src = Image.new("RGBA", (400, 300), (0, 0, 0, 255))
+    draw = ImageDraw.Draw(src)
+    draw.ellipse((100, 50, 300, 250), fill=(255, 255, 255, 255))
+    out = _contain_resize_rgba(src, 1000, 562, (0, 0, 0, 255))
+    assert out.size == (1000, 562)
+    arr = np.asarray(out)
+    white = (arr[:, :, 0] > 200) & (arr[:, :, 1] > 200) & (arr[:, :, 2] > 200)
+    ys, xs = np.where(white)
+    bw = int(xs.max() - xs.min() + 1)
+    bh = int(ys.max() - ys.min() + 1)
+    assert abs(bw / bh - 1.0) < 0.05
+    # Pillarbox present on the sides.
+    assert float(arr[:, :80, :3].mean()) < 20.0
+
+
 def test_unpadded_store_plan_apply_sets_shader_letterbox_from_clip(monkeypatch):
     """prepare→apply smoke: unpadded TiledPixelStore + overlay_clip → letterbox."""
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
