@@ -126,6 +126,30 @@ def render(mark: QImage, size: int) -> QImage:
     return img
 
 
+# Also keep a Windows shell .ico in sync (Inno DefaultIcon + frozen bundle).
+def write_windows_ico() -> None:
+    try:
+        from PIL import Image
+    except ImportError:
+        return
+    src = OUT_DIR / f"{ICON_NAME}-256.png"
+    if not src.is_file():
+        return
+    win_dir = Path(__file__).resolve().parents[2] / "Windows-template" / "icons"
+    win_dir.mkdir(parents=True, exist_ok=True)
+    ico = win_dir / "imgsli-file.ico"
+    image = Image.open(src).convert("RGBA")
+    image.save(
+        ico,
+        format="ICO",
+        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    )
+    res = REPO / "src" / "resources" / "icons" / "imgsli-file.ico"
+    res.write_bytes(ico.read_bytes())
+    print(ico)
+    print(res)
+
+
 def main() -> int:
     if not MARK_PATH.is_file():
         print(f"missing mark: {MARK_PATH}", file=sys.stderr)
@@ -143,6 +167,7 @@ def main() -> int:
             print(f"failed to write {out}", file=sys.stderr)
             return 1
         print(out)
+    write_windows_ico()
     return 0
 
 

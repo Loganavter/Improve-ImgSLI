@@ -21,6 +21,7 @@ Load images into session lists, paste from the clipboard, and open or save porta
 ### Projects {#projects}
 
 - **Open / save** — `.imgsli` from the File menu (`Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S`, or {{tr:menu.find_action}}): **Save** writes the current file (or opens **Save As** when none yet); **Save As** suggests a renamed tab title when the active tab is custom, otherwise {{tr:menu.project_untitled}}. **Save** also retargets the file basename when the tab was renamed. Opening a project names the active tab after the file. Restores workspace sessions, compare settings (split, diff, magnifier, and related features), and embedded image copies.
+- **Double-click on Windows** — the installer associates `.imgsli` with Improve ImgSLI (document icon). Frozen builds also register the association on startup; if Properties still says “Choose application”, pick Improve ImgSLI once or run with `--register-file-types`.
 - **Portable package** — the file is a ZIP: session JSON plus a `media/` folder with byte-copies of the originals (not re-encoded pixel buffers).
 - **Missing sources on save** — if a listed path no longer exists, the project still saves; that image is omitted and you are warned.
 - **App preferences** — theme, language, and hotkeys stay in application settings; they are not part of the project file.
