@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor
 
 from core.events import WorkspaceSessionActivatedEvent
 from tabs.contract import TabContext, TabContract
+from tabs.multi_compare.models import DEFAULT_DIVIDER_COLOR_RGBA
 from tabs.multi_compare.tab import _STATE_SLOT, MultiCompareTab
 from tabs.multi_compare.widget import MultiCompareWidget
 from tabs.registry import TabRegistry
@@ -159,11 +160,9 @@ def test_switch_same_type_snapshots_do_not_cross_contaminate(qapp):
     store.active_session_id = "b"
     store.workspace.active_session_id = "b"
     tab.on_active_session_changed("b", context)
-    assert store.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
-        180,
-        180,
-        180,
-        230,
+    assert (
+        store.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba
+        == DEFAULT_DIVIDER_COLOR_RGBA
     )
     assert store.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
         10,
