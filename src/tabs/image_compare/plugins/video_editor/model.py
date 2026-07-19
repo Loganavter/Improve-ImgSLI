@@ -352,8 +352,10 @@ class VideoProjectModel:
     def set_resolution(self, width: int, height: int):
         self.width = width
         self.height = height
-
-        if not self.aspect_ratio_locked and height > 0:
+        # Always refresh the locked ratio from the absolute size. Leaving the
+        # default 16:9 after bootstrap from 4:3 sources made width edits (and
+        # some export paths) snap to the wrong DAR.
+        if height > 0:
             self.original_ratio = width / height
 
     def get_aspect_ratio(self) -> float:

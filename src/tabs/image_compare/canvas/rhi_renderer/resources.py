@@ -568,6 +568,10 @@ class RhiResources:
         pipeline.setTargetBlends([blend])
 
         if not pipeline.create():
-            raise RuntimeError("Failed to create canvas graphics pipeline")
+            raise RuntimeError(
+                "Failed to create canvas graphics pipeline "
+                "(often OpenGL < 3.3 / GLSL 120–130 with .qsb baked for 330+; "
+                "on Windows use Settings → Render Backend → Direct3D 11)"
+            )
         self.pipeline = pipeline
         self._render_pass_descriptor = descriptor

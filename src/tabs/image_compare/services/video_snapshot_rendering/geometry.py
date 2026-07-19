@@ -120,20 +120,15 @@ def resolve_scaled_content_geometry(
 ) -> tuple[tuple[int, int], tuple[int, int], int, int]:
     """Map a prepared frame to ``(canvas_size, content_size, pad_left, pad_top)``.
 
-    When ``virtual_layout`` is set, the padded canvas is the *target surface*
-    (``frame.target``), not the letterboxed image rect in ``frame.render_*``.
-    Using render size here shrinks content height by ``span_y`` and then
-    ``geometry_with_aspect_insets`` invents fake left/right pads — the
-    "loupe went up, canvas also grew right" bug.
-    """
-    if frame.virtual_layout is None:
-        return (
-            (frame.render_width, frame.render_height),
-            (frame.render_width, frame.render_height),
-            0,
-            0,
-        )
+    ``frame.render_*`` is the letterboxed *image* box from
+    ``build_render_frame_presentation``, not the export framebuffer. The
+    padded canvas must stay ``frame.target`` (export resolution). Using render
+    size as the canvas collapses pillar/letterbox pads; ``render_loop`` then
+    stretches the short frame to the job size (4:3 sources → fat 16:9 DAR).
 
+    With ``virtual_layout``, pads come from normalized canvas bounds (same
+    target-vs-render rule — otherwise span_y shrink invents fake side chrome).
+    """
     target = getattr(frame, "target", None)
     if target is not None and int(getattr(target, "width", 0) or 0) > 0:
         canvas_w = max(1, int(target.width))
@@ -141,6 +136,25 @@ def resolve_scaled_content_geometry(
     else:
         canvas_w = max(1, int(frame.render_width))
         canvas_h = max(1, int(frame.render_height))
+
+    if frame.virtual_layout is None:
+        content_w = max(1, int(frame.render_width))
+        content_h = max(1, int(frame.render_height))
+        pad_left = max(0, int(getattr(frame, "image_dest_x", 0) or 0))
+        pad_top = max(0, int(getattr(frame, "image_dest_y", 0) or 0))
+        # Prefer layout pads when present (same numbers as image_dest_*).
+        layout = getattr(frame, "layout", None)
+        if layout is not None:
+            pad_left = max(0, int(getattr(layout, "content_x", pad_left) or 0))
+            pad_top = max(0, int(getattr(layout, "content_y", pad_top) or 0))
+            content_w = max(1, int(getattr(layout, "content_width", content_w) or content_w))
+            content_h = max(1, int(getattr(layout, "content_height", content_h) or content_h))
+        return (
+            (canvas_w, canvas_h),
+            (content_w, content_h),
+            pad_left,
+            pad_top,
+        )
 
     bounds = frame.virtual_layout.canvas_bounds
     span_x = max(1e-6, float(bounds.x_max - bounds.x_min))

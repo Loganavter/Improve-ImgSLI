@@ -211,9 +211,13 @@ def main():
         record_rhi_fallback_notice(
             selected_rhi_backend, effective_rhi, rhi_fallback_reason
         )
-        # Only sticky-persist an explicit Vulkan failure. Never rewrite Auto —
-        # a false probe would otherwise lock the user on OpenGL forever.
-        if not cli_forced_rhi and selected_rhi_backend == "vulkan":
+        # Sticky-persist only an explicit Vulkan/OpenGL failure onto a *working*
+        # alternative. Never rewrite Auto from a probe, and never persist Null.
+        if (
+            not cli_forced_rhi
+            and selected_rhi_backend in ("vulkan", "opengl", "d3d11", "d3d12", "metal")
+            and effective_rhi not in ("null", "default", selected_rhi_backend)
+        ):
             persist_rhi_backend_setting(effective_rhi)
     elif effective_rhi != "default":
         configure_rhi_process_environment(effective_rhi)

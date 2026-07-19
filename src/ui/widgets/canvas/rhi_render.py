@@ -34,5 +34,10 @@ def resolve_clear_color(widget) -> QColor:
     return color
 
 
-def render_clear_frame(widget, command_buffer) -> None:
-    widget._rhi_renderer.render(widget, command_buffer, resolve_clear_color(widget))
+def render_clear_frame(widget, command_buffer) -> bool:
+    """Run the tab RHI renderer; return whether a pass was actually recorded."""
+    return bool(
+        widget._rhi_renderer.render(
+            widget, command_buffer, resolve_clear_color(widget)
+        )
+    )

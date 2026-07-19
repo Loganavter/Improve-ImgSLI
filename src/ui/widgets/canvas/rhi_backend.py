@@ -34,6 +34,14 @@ _API_BY_NAME = {
 _vulkan_rejected_for_process = False
 
 
+# User-facing ticket URL when every probed API is too old / missing.
+RHI_SUPPORT_ISSUES_URL = "https://github.com/Loganavter/Improve-ImgSLI/issues/new"
+
+# Soft: requested API failed, another works. Hard: nothing usable left.
+RHI_NOTICE_FALLBACK = "fallback"
+RHI_NOTICE_UNSUPPORTED = "unsupported"
+
+
 @dataclass(frozen=True, slots=True)
 class RhiFallbackNotice:
     """Pending user-visible notice after a startup backend fallback."""
@@ -41,20 +49,33 @@ class RhiFallbackNotice:
     requested: str
     effective: str
     reason: str
+    kind: str = RHI_NOTICE_FALLBACK
 
 
 _pending_fallback_notice: RhiFallbackNotice | None = None
 
 
 def record_rhi_fallback_notice(
-    requested: str, effective: str, reason: str
+    requested: str,
+    effective: str,
+    reason: str,
+    *,
+    kind: str | None = None,
 ) -> RhiFallbackNotice:
     """Remember a fallback so the UI can show an error after the main window."""
     global _pending_fallback_notice
+    notice_kind = (kind or "").strip().lower()
+    if notice_kind not in (RHI_NOTICE_FALLBACK, RHI_NOTICE_UNSUPPORTED):
+        notice_kind = (
+            RHI_NOTICE_UNSUPPORTED
+            if (effective or "").strip().lower() == "null"
+            else RHI_NOTICE_FALLBACK
+        )
     notice = RhiFallbackNotice(
         requested=(requested or "default").strip().lower(),
         effective=(effective or "default").strip().lower(),
         reason=str(reason or ""),
+        kind=notice_kind,
     )
     _pending_fallback_notice = notice
     return notice
@@ -88,6 +109,55 @@ def platform_fallback_rhi_backend() -> str:
     if sys.platform == "darwin":
         return "metal"
     return "opengl"
+
+
+def probe_opengl_usable_for_shaders() -> bool | None:
+    """Return whether OpenGL can run our baked ``.qsb`` shaders.
+
+    Baked targets are GLSL 330 / 300 es (+ HLSL/MSL). A Windows OpenGL 2.x
+    context only offers GLSL 120/130 → ``No GLSL shader code found`` and
+    ``Failed to create canvas graphics pipeline``.
+
+    Returns:
+        ``True`` / ``False`` when a probe ran, or ``None`` when OpenGL
+        symbols are missing from this PySide build.
+    """
+    try:
+        from PySide6.QtGui import QOpenGLContext, QSurfaceFormat
+    except ImportError:
+        return None
+
+    try:
+        fmt = QSurfaceFormat()
+        fmt.setVersion(3, 3)
+        fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+        fmt.setRenderableType(QSurfaceFormat.RenderableType.OpenGL)
+        ctx = QOpenGLContext()
+        ctx.setFormat(fmt)
+        if not ctx.create():
+            return False
+        actual = ctx.format()
+        major = int(actual.majorVersion())
+        minor = int(actual.minorVersion())
+        renderable = actual.renderableType()
+        if (
+            renderable == QSurfaceFormat.RenderableType.OpenGLES
+            and major >= 3
+        ):
+            return True
+        if major > 3 or (major == 3 and minor >= 3):
+            return True
+        logger.warning(
+            "OpenGL probe got %s.%s (renderable=%s); need 3.3+ / GLES 3.0+ "
+            "for baked QRhi shaders",
+            major,
+            minor,
+            renderable,
+        )
+        return False
+    except Exception as exc:
+        logger.warning("OpenGL probe raised: %s", exc)
+        return False
 
 
 def configure_vulkan_layer_environment(backend_name: str) -> bool:
@@ -183,42 +253,295 @@ def probe_vulkan_available() -> bool | None:
             return False
 
 
+def _probe_qrhi_with_init_params(impl: QRhi.Implementation, params_name: str) -> bool | None:
+    """Try ``QRhi.probe`` when PySide exposes the matching init-params type.
+
+    Returns ``None`` when the type is not bound (common for D3D/Metal on
+    Linux PySide builds); ``True``/``False`` when probe ran.
+    """
+    try:
+        from PySide6 import QtGui
+    except ImportError:
+        return None
+    params_cls = getattr(QtGui, params_name, None)
+    if params_cls is None:
+        return None
+    try:
+        return bool(QRhi.probe(impl, params_cls()))
+    except Exception as exc:
+        logger.warning("QRhi.probe(%s) failed: %s", impl, exc)
+        return False
+
+
+def _windows_d3d11_create_device_ok() -> bool:
+    """Create a D3D11 device at feature level 11_0 (matches QRhi + HLSL 5.0)."""
+    import ctypes
+
+    try:
+        d3d11 = ctypes.WinDLL("d3d11.dll")
+    except OSError as exc:
+        logger.warning("d3d11.dll unavailable: %s", exc)
+        return False
+
+    # D3D_FEATURE_LEVEL_11_0 … 9_1 — first matching level wins.
+    levels = (ctypes.c_int * 1)(0xB000)  # D3D_FEATURE_LEVEL_11_0
+    device = ctypes.c_void_p()
+    context = ctypes.c_void_p()
+    out_level = ctypes.c_int()
+    # HRESULT D3D11CreateDevice(
+    #   adapter, driver_type, software, flags, feature_levels, num,
+    #   sdk_version, device, feature_level, immediate_context)
+    create = d3d11.D3D11CreateDevice
+    create.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    create.restype = ctypes.c_long
+    hr = int(
+        create(
+            None,
+            1,  # D3D_DRIVER_TYPE_HARDWARE
+            None,
+            0,
+            levels,
+            1,
+            7,  # D3D11_SDK_VERSION
+            ctypes.byref(device),
+            ctypes.byref(out_level),
+            ctypes.byref(context),
+        )
+    )
+    if hr < 0 or not device:
+        logger.warning(
+            "D3D11CreateDevice failed hr=0x%08x (need Feature Level 11_0)",
+            hr & 0xFFFFFFFF,
+        )
+        return False
+    # Probe-only device: leave COM refs for process exit (one-shot startup).
+    return True
+
+
+def probe_d3d11_available() -> bool | None:
+    """Return whether Direct3D 11 (Feature Level 11_0+) can start.
+
+    Non-Windows → ``False``. Prefer ``QRhi.probe`` when PySide binds
+    ``QRhiD3D11InitParams``; otherwise ``D3D11CreateDevice``.
+    """
+    if not sys.platform.startswith("win"):
+        return False
+    probed = _probe_qrhi_with_init_params(
+        QRhi.Implementation.D3D11, "QRhiD3D11InitParams"
+    )
+    if probed is not None:
+        return probed
+    try:
+        return _windows_d3d11_create_device_ok()
+    except Exception as exc:
+        logger.warning("D3D11 probe raised: %s", exc)
+        return False
+
+
+def probe_d3d12_available() -> bool | None:
+    """Return whether Direct3D 12 looks usable on this host.
+
+    Non-Windows → ``False``. Prefer ``QRhi.probe``; otherwise require
+    ``d3d12.dll`` load (QRhi still does the real device create at runtime).
+    """
+    if not sys.platform.startswith("win"):
+        return False
+    probed = _probe_qrhi_with_init_params(
+        QRhi.Implementation.D3D12, "QRhiD3D12InitParams"
+    )
+    if probed is not None:
+        return probed
+    try:
+        import ctypes
+
+        ctypes.WinDLL("d3d12.dll")
+        return True
+    except OSError as exc:
+        logger.warning("d3d12.dll unavailable: %s", exc)
+        return False
+    except Exception as exc:
+        logger.warning("D3D12 probe raised: %s", exc)
+        return False
+
+
+def probe_metal_available() -> bool | None:
+    """Return whether Metal can start (macOS only).
+
+    Prefer ``QRhi.probe`` when bound; otherwise assume available on Darwin
+    (PySide often omits Metal init params outside Apple CI).
+    """
+    if sys.platform != "darwin":
+        return False
+    probed = _probe_qrhi_with_init_params(
+        QRhi.Implementation.Metal, "QRhiMetalInitParams"
+    )
+    if probed is not None:
+        return probed
+    return None
+
+
+def _probe_named_backend(name: str) -> bool | None:
+    """Capability probe for one API name (``True``/``False``/``None`` = skip)."""
+    if name == "opengl":
+        return probe_opengl_usable_for_shaders()
+    if name == "vulkan":
+        return probe_vulkan_available()
+    if name == "d3d11":
+        return probe_d3d11_available()
+    if name == "d3d12":
+        return probe_d3d12_available()
+    if name == "metal":
+        return probe_metal_available()
+    if name in ("null", "default"):
+        return None
+    return None
+
+
+def _platform_alt_backends() -> tuple[str, ...]:
+    """Ordered alternatives after the requested API is rejected."""
+    if sys.platform.startswith("win"):
+        return ("d3d11", "opengl")
+    if sys.platform == "darwin":
+        return ("metal", "opengl")
+    return ("opengl",)
+
+
+def platform_rhi_requirement_keys() -> tuple[str, ...]:
+    """APIs a user on this OS can realistically try to update / enable.
+
+    Used for unsupported-GPU copy so Windows users are not told to install
+    Metal, and Linux users are not pointed at Direct3D.
+    """
+    if sys.platform.startswith("win"):
+        return ("d3d11", "opengl", "vulkan")
+    if sys.platform == "darwin":
+        return ("metal", "opengl")
+    return ("opengl", "vulkan")
+
+
+def platform_rhi_requirements_summary() -> str:
+    """Short English summary for logs / technical fallback reasons."""
+    labels = {
+        "d3d11": "D3D11 FL 11_0+",
+        "opengl": "OpenGL 3.3+",
+        "vulkan": "Vulkan",
+        "metal": "Metal",
+        "d3d12": "D3D12",
+    }
+    keys = platform_rhi_requirement_keys()
+    return " / ".join(labels.get(k, k) for k in keys)
+
+
+def _resolution_candidates(requested: str) -> list[str]:
+    """Ordered backends to try for ``requested`` (first = preferred)."""
+    name = (requested or "default").strip().lower()
+    if name not in _API_BY_NAME:
+        name = "default"
+
+    if name == "default":
+        if sys.platform.startswith("win"):
+            return ["d3d11", "opengl"]
+        return ["default"]
+
+    out: list[str] = [name]
+    for alt in _platform_alt_backends():
+        if alt not in out:
+            out.append(alt)
+    return out
+
+
+def _reject_reason(name: str, probe: bool | None) -> str:
+    if name == "opengl":
+        return (
+            "OpenGL context too old for baked QRhi shaders "
+            "(need GLSL 330+ / GL 3.3)"
+        )
+    if name == "d3d11":
+        return "Direct3D 11 unavailable (need Feature Level 11_0+)"
+    if name == "d3d12":
+        return "Direct3D 12 unavailable"
+    if name == "metal":
+        return "Metal unavailable"
+    if name == "vulkan":
+        return f"Vulkan unavailable (probe={probe!r})"
+    return f"{name} unavailable"
+
+
 def resolve_rhi_backend_with_fallback(requested: str) -> tuple[str, str | None]:
     """Return ``(effective_backend, fallback_reason_or_None)``.
 
     Must run after ``QApplication`` exists so Vulkan/QRhi probes can talk to
     the platform. Does not mutate env or QSettings — callers decide persistence.
 
-    Only an **explicit** ``vulkan`` selection is probed. Auto (``default``) is
-    left to Qt's platform default — a speculative Linux Auto→OpenGL override
-    caused false negatives (working Vulkan reported unavailable) and then
-    persisted OpenGL forever.
+    Explicit backends are probed where we have a check (Vulkan, OpenGL 3.3+,
+    D3D11 FL 11_0, D3D12 DLL, Metal). Auto (``default``) on Linux/macOS stays
+    with Qt. On Windows, Auto resolves to explicit ``d3d11`` so Qt cannot land
+    on a legacy OpenGL context that lacks GLSL 330 (our ``.qsb`` bake set only
+    has 330 / 300 es / HLSL / MSL).
+
+    If every candidate probes ``False`` (e.g. Windows with only D3D9 / ancient
+    OpenGL), returns ``null`` so the UI can show an unsupported-GPU dialog
+    instead of silently picking a dead API.
     """
     global _vulkan_rejected_for_process
 
     name = (requested or "default").strip().lower()
     if name not in _API_BY_NAME:
         name = "default"
-    if name != "vulkan":
-        return name, None
 
-    available = probe_vulkan_available()
-    if available is True:
-        return "vulkan", None
+    # Linux/macOS Auto: leave the choice to Qt (no speculative rewrite).
+    if name == "default" and not sys.platform.startswith("win"):
+        return "default", None
 
-    # Confirmed failure, or Windows with no probe API (cannot risk setApi(Vulkan)
-    # when QVulkanDefaultInstance would hard-fail with -9).
-    if available is False or sys.platform.startswith("win"):
-        _vulkan_rejected_for_process = True
-        fallback = platform_fallback_rhi_backend()
-        reason = (
-            f"Vulkan unavailable (probe={available!r}); falling back to {fallback}"
-        )
-        return fallback, reason
+    candidates = _resolution_candidates(name)
+    rejected: list[str] = []
+    primary = candidates[0]
 
-    # Inconclusive probe on Linux/macOS: keep Vulkan and let QRhiWidget try;
-    # renderFailed can still recover for the next launch.
-    return "vulkan", None
+    for candidate in candidates:
+        probe = _probe_named_backend(candidate)
+
+        if candidate == "vulkan":
+            if probe is True:
+                return "vulkan", None
+            # Confirmed failure, or Windows with no probe API (cannot risk
+            # setApi(Vulkan) when QVulkanDefaultInstance would hard-fail).
+            if probe is False or sys.platform.startswith("win"):
+                _vulkan_rejected_for_process = True
+                rejected.append(_reject_reason(candidate, probe))
+                continue
+            # Inconclusive on Linux/macOS: keep Vulkan; renderFailed can recover.
+            return "vulkan", None
+
+        if probe is False:
+            rejected.append(_reject_reason(candidate, probe))
+            continue
+
+        # Usable or unprobed — accept.
+        if candidate == primary and not rejected:
+            return candidate, None
+        lead = rejected[0] if rejected else f"{primary} unavailable"
+        reason = f"{lead}; falling back to {candidate}"
+        return candidate, reason
+
+    # Nothing left (classic “only D3D9 / GL 2.x” Windows box).
+    detail = "; ".join(rejected) if rejected else "no candidates"
+    reason = (
+        "No usable QRhi backend on this system "
+        f"({detail}). Need {platform_rhi_requirements_summary()}."
+    )
+    return "null", reason
+
 
 
 def persist_rhi_backend_setting(backend_name: str) -> None:
@@ -261,7 +584,10 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
             fallback,
             fallback,
         )
-        if name in ("vulkan", "default") and fallback != name:
+        if (
+            name in ("vulkan", "opengl", "d3d11", "d3d12", "metal", "default")
+            and fallback != name
+        ):
             persist_rhi_backend_setting(fallback)
 
     widget.renderFailed.connect(_on_render_failed)

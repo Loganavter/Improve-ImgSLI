@@ -209,11 +209,20 @@ class CanvasWidget(QRhiWidget):
         )
 
     def render(self, command_buffer):
-        render_clear_frame(self, command_buffer)
+        # Match Multi Compare: only treat a completed beginPass/endPass as a
+        # real present. Emitting on a no-op (target/rhi still None) made the
+        # startup cover drop onto an empty D3D swapchain buffer on Windows.
+        painted = render_clear_frame(self, command_buffer)
+        if not painted:
+            return
         if not self._first_frame_rendered_emitted:
             self._first_frame_rendered_emitted = True
             self.firstFrameRendered.emit()
             self.firstVisualFrameReady.emit()
+            # D3D11/12 often shows an uninitialized first present; a next-tick
+            # update (same idea as MultiCompareCanvas.request_view_update)
+            # forces a second composite into the swapchain.
+            QTimer.singleShot(0, self._request_update)
 
     def _request_update(self):
         request_update(self)
