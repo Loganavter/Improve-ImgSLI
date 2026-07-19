@@ -61,6 +61,9 @@ def test_controller_requires_shift_left_click(monkeypatch):
         assert inspector._committed_widget is None
     finally:
         inspector.shutdown()
+        main.close()
+        main.deleteLater()
+        app.processEvents()
 
 
 def test_controller_can_inspect_plugin_top_level_window(monkeypatch):
@@ -87,3 +90,8 @@ def test_controller_can_inspect_plugin_top_level_window(monkeypatch):
         assert main not in inspector._overlays
     finally:
         inspector.shutdown()
+        plugin_window.close()
+        plugin_window.deleteLater()
+        main.close()
+        main.deleteLater()
+        app.processEvents()
