@@ -3,7 +3,7 @@
 Layout::
 
     project.json
-    preview.jpg          (optional scene thumbnail)
+    preview.png (optional canvas-grab thumbnail; legacy packages may use preview.jpg)
     media/<asset_id>/<original_basename>
 
 Images are byte-copied (not re-encoded). ``asset_id`` is the first 16 hex
@@ -232,11 +232,14 @@ def write_project_zip(
     path_to_member: dict[str, str],
     *,
     progress: Callable[[int, int, str], None] | None = None,
+    preview_png: bytes | None = None,
     preview_jpeg: bytes | None = None,
 ) -> None:
     """Atomically write a ZIP project containing ``project.json`` + media.
 
-    Optional ``preview_jpeg`` is stored as top-level ``preview.jpg`` (scene thumb).
+    Optional ``preview_png`` is stored as top-level ``preview.png`` (active
+    workspace canvas grab; see ``project_preview.capture_project_preview_png``).
+    ``preview_jpeg`` is accepted as a deprecated alias for the same bytes.
     """
     dest = Path(path)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -247,7 +250,8 @@ def write_project_zip(
         member_to_source.setdefault(member, Path(abs_path))
 
     members = sorted(member_to_source.keys())
-    has_preview = bool(preview_jpeg)
+    preview_bytes = preview_png if preview_png is not None else preview_jpeg
+    has_preview = bool(preview_bytes)
     total = len(members) + 1 + (1 if has_preview else 0)
 
     fd, tmp_name = tempfile.mkstemp(
@@ -269,7 +273,7 @@ def write_project_zip(
             if has_preview:
                 from services.io.project_preview import PREVIEW_MEMBER
 
-                zf.writestr(PREVIEW_MEMBER, preview_jpeg)
+                zf.writestr(PREVIEW_MEMBER, preview_bytes)
                 done += 1
                 if progress is not None:
                     progress(done, total, PREVIEW_MEMBER)

@@ -50,6 +50,20 @@ package() {
   install -vDm 644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -vDm 644 THIRD_PARTY_LICENSES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_LICENSES.md"
 
+  # MIME + thumbnailer + document-style MIME icons
+  install -vDm 644 build/linux/mime/application-x-improve-imgsli.xml \
+    "$pkgdir/usr/share/mime/packages/application-x-improve-imgsli.xml"
+  install -vDm 755 build/linux/bin/improve-imgsli-thumbnailer \
+    "$pkgdir/usr/bin/improve-imgsli-thumbnailer"
+  install -vDm 644 build/linux/thumbnailers/improve-imgsli.thumbnailer \
+    "$pkgdir/usr/share/thumbnailers/improve-imgsli.thumbnailer"
+  install -vDm 644 src/resources/icons/icon.png \
+    "$pkgdir/usr/share/improve-imgsli/mark.png"
+  for _sz in 16 22 32 48 64 128 256; do
+    install -vDm 644 "build/linux/icons/mimetypes/application-x-improve-imgsli-${_sz}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${_sz}x${_sz}/mimetypes/application-x-improve-imgsli.png"
+  done
+
   # Install application source code and all resources from the src directory
   install -d "$pkgdir/usr/lib/$pkgname"
   cp -r src/* "$pkgdir/usr/lib/$pkgname/"

@@ -2,9 +2,10 @@
 Type=Application
 Name=Improve ImgSLI
 Comment=Image comparison tool
-Exec=@LAUNCHER_PATH@ run
+Exec=@LAUNCHER_PATH@ run %F
 Icon=@ICON_PATH@
 Terminal=false
 Categories=Graphics;Photography;
+MimeType=application/x-improve-imgsli;
 StartupWMClass=improve-imgsli
 StartupNotify=true

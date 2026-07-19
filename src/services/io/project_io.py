@@ -204,12 +204,14 @@ def package_project_data(
     path: str | Path,
     *,
     progress: ProgressCallback | None = None,
+    preview_png: bytes | None = None,
     preview_jpeg: bytes | None = None,
 ) -> list[str]:
     """Embed media and write a ZIP from an already-built project snapshot.
 
     Safe to call off the UI thread: does not touch Qt widgets or the Store.
-    Optional ``preview_jpeg`` is written as top-level ``preview.jpg``.
+    Optional ``preview_png`` is written as top-level ``preview.png`` (canvas
+    scene grab). ``preview_jpeg`` is a deprecated alias.
     """
     source_paths = iter_session_media_paths(project_data)
     path_to_member, catalog, missing = embed_media(source_paths, progress=progress)
@@ -222,7 +224,7 @@ def package_project_data(
         rewritten,
         path_to_member,
         progress=progress,
-        preview_jpeg=preview_jpeg,
+        preview_png=preview_png if preview_png is not None else preview_jpeg,
     )
     if missing:
         logger.warning(

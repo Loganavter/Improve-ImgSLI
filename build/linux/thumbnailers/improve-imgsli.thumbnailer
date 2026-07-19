@@ -1,0 +1,4 @@
+[Thumbnailer Entry]
+TryExec=improve-imgsli-thumbnailer
+Exec=improve-imgsli-thumbnailer %i %o %s
+MimeType=application/x-improve-imgsli;
