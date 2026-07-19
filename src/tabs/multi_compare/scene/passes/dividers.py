@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF
-from PySide6.QtGui import QColor, QPainter, QPalette
+from PySide6.QtGui import QColor, QPainter
 
+from domain.qt_adapters import ensure_visible_qcolor
+from domain.types import Color
+from tabs.multi_compare.models import DEFAULT_DIVIDER_COLOR_RGBA
 from ui.widgets.canvas.render_metrics import resolve_relative_px
 
 
 class DividersOverlaySource:
-    """Paints every split gap as an explicit framebuffer overlay.
+    """Geometry + style for Multi Compare split dividers.
 
-    Reads gap geometry and styling entirely from the resolved
-    ``ResolvedComposition`` (``composition.gaps`` / ``composition.divider_settings``)
-    baked in by ``build_composition_plan`` — the same immutable snapshot the
-    live canvas and the offscreen exporter both build from source state, so
-    neither path needs a populated ``widget.state`` to draw dividers correctly.
+    Reads gap geometry and styling from the resolved ``ResolvedComposition``
+    (``composition.gaps`` / ``composition.divider_settings``) baked by
+    ``build_composition_plan`` — live canvas and offscreen export share the
+    same snapshot. ``GridDividersPass`` uploads projected rects as GPU quads;
+    ``paint()`` remains for CPU/debug paths and contract tests.
     """
 
     MIN_THICKNESS_FB = 1.0
@@ -118,20 +121,12 @@ class DividersOverlaySource:
         return QRectF(x, center - thickness * 0.5, max(1.0, w), thickness)
 
     def _divider_color(self, host, composition=None) -> QColor:
+        del host  # host palette is no longer used — transparent Mid was invisible
         settings = (
             getattr(composition, "divider_settings", None)
             if composition is not None
             else None
         )
-        if settings is not None:
-            r, g, b, a = settings.color_rgba
-            return QColor(int(r), int(g), int(b), int(a))
-        palette = host.palette()
-        color = palette.color(QPalette.ColorRole.Mid)
-        if not color.isValid() or color.alpha() <= 0:
-            color = palette.color(QPalette.ColorRole.WindowText)
-        if not color.isValid() or color.alpha() <= 0:
-            color = QColor(128, 128, 128)
-        color = QColor(color)
-        color.setAlpha(230)
-        return color
+        rgba = getattr(settings, "color_rgba", None) if settings is not None else None
+        fallback = Color(*DEFAULT_DIVIDER_COLOR_RGBA)
+        return ensure_visible_qcolor(rgba, fallback=fallback)

@@ -4,7 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 
 from core.constants import AppConstants
-from domain.qt_adapters import color_to_qcolor
+from domain.qt_adapters import ensure_visible_qcolor
 from tabs.image_compare.canvas.registry import registry
 from tabs.image_compare.icons import Icon
 
@@ -147,7 +147,7 @@ class ColorSettingsButton(Button):
         enabled_cmd = registry().get_feature_command_by_alias("overlay.enabled")
         use_mag = bool(enabled_cmd(self.store)) if enabled_cmd is not None else False
         if not use_mag:
-            self.setUnderlineColor(QColor(255, 255, 255, 100))
+            self.setUnderlineColor(QColor(255, 255, 255, 230))
             return
 
         state_cmd = registry().get_feature_command_by_alias("overlay.active_state")
@@ -162,19 +162,23 @@ class ColorSettingsButton(Button):
 
         def _dict_col(key, fallback: QColor, default_alpha=255):
             col = active_state.get(key) if active_state is not None else None
-            c = color_to_qcolor(col) if hasattr(col, "r") else QColor(fallback)
-            c.setAlpha(default_alpha)
+            c = (
+                ensure_visible_qcolor(col)
+                if hasattr(col, "r")
+                else ensure_visible_qcolor(fallback)
+            )
+            c.setAlpha(max(1, int(default_alpha)))
             return c
 
         def _dict_col_with_state_fallback(key, state_color, default_alpha=255):
             col = active_state.get(key) if active_state is not None else None
             if hasattr(col, "r"):
-                c = color_to_qcolor(col)
+                c = ensure_visible_qcolor(col)
             elif state_color is not None and hasattr(state_color, "r"):
-                c = color_to_qcolor(state_color)
+                c = ensure_visible_qcolor(state_color)
             else:
-                c = QColor(255, 255, 255)
-            c.setAlpha(default_alpha)
+                c = QColor(255, 255, 255, 255)
+            c.setAlpha(max(1, int(default_alpha)))
             return c
 
         capture_color = (

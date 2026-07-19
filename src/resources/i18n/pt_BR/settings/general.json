@@ -32,6 +32,8 @@
     "render_backend_restart_hint": "Aplicado no próximo lançamento. Alguns backends podem não ser suportados em seu sistema.",
     "render_backend_restart_title": "Reinicialização necessária",
     "render_backend_restart_message": "O backend de renderização mudará para '{backend}' no próximo lançamento.",
+    "render_backend_fallback_title": "Backend de renderização indisponível",
+    "render_backend_fallback_message": "Não foi possível inicializar {requested}. O aplicativo está usando {effective}. Você pode alterar isso em Configurações → Desempenho.",
     "resolution_2k": "2K (1440p)",
     "resolution_4k": "4K (2160p)",
     "resolution_8k": "8K (4320p)",

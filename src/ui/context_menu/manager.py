@@ -131,15 +131,28 @@ class ContextMenuManager:
         self._active_request = request
         self._active_key = key
         self._ignore_outside_close = True
-        surface = rmb_context_menu_surface()
+        surface = (
+            request.surface
+            if request is not None and request.surface is not None
+            else rmb_context_menu_surface()
+        )
+        menu_parent = source_widget
+        if request is not None and request.menu_parent is not None:
+            menu_parent = request.menu_parent
         menu = ContextMenu(
-            source_widget,
+            menu_parent,
             entries=entries,
             on_triggered=on_triggered,
             surface=surface,
         )
         self._active_menu = menu
         menu.aboutToHide.connect(lambda: self._on_menu_hidden(menu))
+        try:
+            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+
+            park_keyboard_focus_off_qrhi()
+        except Exception:
+            pass
         menu.popup_at(global_pos)
         self.raise_active_menus()
         return menu

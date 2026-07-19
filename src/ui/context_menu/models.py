@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Literal, Protocol
 
 from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.widgets import ContextMenuEntry
+
+ContextMenuSurface = Literal["in_window", "popup"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +25,13 @@ class ContextMenuRequest:
     local_pos: QPoint
     session_type: str
     target: ContextMenuTarget
+    # None → manager policy (rmb_context_menu_surface). Prefer leaving unset
+    # so Image Compare and Multi Compare share the same popup/parent path.
+    surface: ContextMenuSurface | None = None
+    # Optional QWidget parent for the toolkit ContextMenu. Leave unset to use
+    # source_widget (required for Multi Compare: MainWindow parent caused a
+    # one-frame QRhi clear wipe on Wayland).
+    menu_parent: QWidget | None = None
 
 
 class ContextMenuProvider(Protocol):

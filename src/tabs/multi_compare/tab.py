@@ -30,12 +30,25 @@ def _divider_to_dict(divider) -> dict:
 
 
 def _divider_from_dict(d: dict):
-    from tabs.multi_compare.models import MultiCompareDividerSettings
+    from tabs.multi_compare.models import (
+        DEFAULT_DIVIDER_COLOR_RGBA,
+        MultiCompareDividerSettings,
+    )
 
+    raw = d.get("color_rgba")
+    if (
+        isinstance(raw, (list, tuple))
+        and len(raw) == 4
+        and all(isinstance(v, (int, float)) for v in raw)
+        and int(raw[3]) > 0
+    ):
+        color_rgba = (int(raw[0]), int(raw[1]), int(raw[2]), int(raw[3]))
+    else:
+        color_rgba = DEFAULT_DIVIDER_COLOR_RGBA
     return MultiCompareDividerSettings(
         visible=d.get("visible", True),
         thickness=d.get("thickness", 4),
-        color_rgba=tuple(d.get("color_rgba", [180, 180, 180, 230])),
+        color_rgba=color_rgba,
     )
 
 
@@ -51,13 +64,19 @@ def _label_to_dict(label) -> dict:
 
 
 def _label_from_dict(l: dict):
+    from domain.qt_adapters import ensure_visible_color
+    from domain.types import Color
     from tabs.multi_compare.models import MultiCompareLabelSettings
 
+    text_fallback = Color(255, 255, 255, 255)
+    bg_fallback = Color(0, 0, 0, 255)
+    text = ensure_visible_color(l.get("text_rgba"), fallback=text_fallback)
+    bg = ensure_visible_color(l.get("bg_rgba"), fallback=bg_fallback)
     return MultiCompareLabelSettings(
         font_size_percent=l.get("font_size_percent", 100),
         font_weight=l.get("font_weight", 0),
-        text_rgba=tuple(l.get("text_rgba", [255, 255, 255, 255])),
-        bg_rgba=tuple(l.get("bg_rgba", [0, 0, 0, 255])),
+        text_rgba=(text.r, text.g, text.b, text.a),
+        bg_rgba=(bg.r, bg.g, bg.b, bg.a),
         draw_background=l.get("draw_background", True),
         text_alpha_percent=l.get("text_alpha_percent", 100),
     )

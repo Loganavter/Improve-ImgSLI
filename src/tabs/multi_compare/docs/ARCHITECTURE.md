@@ -46,23 +46,19 @@ Frame flow:
 
 1. Widget state changes through `MultiCompareStore.dispatch(...)`.
 2. The widget rebuilds or reuses the active `CompositionPlan`.
-3. `build_render_context(...)` projects the plan into framebuffer space.
-4. `BaseImagesPass` draws image slots.
-5. `MultiCompareOverlayPainter` rasterizes overlay sources into one overlay
-   texture.
-6. `OverlayTexturePass` composites that texture over the image pass.
+3. `build_render_context(...)` projects the plan: `sr`/`ox`/`oy` for overlays,
+   plus per-slot `slot_rect_uv` for the image pass.
+4. `BaseImagesPass` draws each slot on a **shared fullscreen quad**; composition
+   letterbox and the slot cell are applied in the fragment shader (UV), matching
+   image_compare's letterbox-in-UV model. GPU tiles still use `tileRect`.
+5. `GridDividersPass` draws split gaps as solid-color GPU quads (geometry from
+   `DividersOverlaySource` / `ResolvedComposition.gaps`) — same idea as
+   image_compare's `DividerPass`, without a framebuffer-sized overlay texture.
+6. Other feature overlays (`layer_labels`, `drag_drop_overlay`) still rasterize
+   into textured fullscreen quads over the image pass.
 
-Current overlay sources:
-
-- `DividersOverlaySource` paints split gaps from `ResolvedComposition.gaps` /
-  `.divider_settings` (baked into the plan by `build_composition_plan`, not
-  read from widget state — live and offscreen export share the same data).
-- `LabelsOverlaySource` paints camera-fixed filename labels, styled from
-  `ResolvedComposition.label_settings`.
-- `DragDropOverlaySource` paints live drag/drop affordances.
-
-Divider and label geometry is overlay data. It must not mutate composition
-layers or slot images.
+Divider and label geometry is framebuffer-pixel data derived from the
+composition plan. It must not mutate composition layers or slot images.
 
 ## Export
 

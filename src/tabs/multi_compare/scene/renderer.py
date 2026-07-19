@@ -148,12 +148,19 @@ class MultiCompareRhiRenderer:
         fb_w = float(target_size.width())
         fb_h = float(target_size.height())
 
+        # Match image_compare: refresh pipelines if popup/swapchain restacked
+        # the color buffer (stale renderPassDescriptor → wrong present).
+        self.image_pass.ensure_pipeline(self, target)
+        for render_pass in self.feature_passes:
+            ensure = getattr(render_pass, "_ensure_pipeline", None)
+            if callable(ensure):
+                ensure(target)
+
         updates = self.rhi.nextResourceUpdateBatch()
         self.host._sync_textures()
         self.image_pass.apply_pending_texture_ops(self, updates)
 
         composition = self.host._active_composition
-        clear_color = self.host._theme_or_palette_bg()
         ctx = build_render_context(
             composition=composition,
             framebuffer_size=(fb_w, fb_h),

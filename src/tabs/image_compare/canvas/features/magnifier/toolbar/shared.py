@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from domain.qt_adapters import qcolor_to_color
+from domain.qt_adapters import ensure_visible_qcolor, qcolor_to_color
 from tabs.image_compare.canvas.registry import registry
 
 
@@ -74,7 +74,7 @@ def show_magnifier_divider_color_picker(presenter) -> None:
             getattr(presenter, "widget", None), "btn_magnifier_orientation", None
         )
         if button is not None:
-            button.setUnderlineColor(color)
+            button.setUnderlineColor(ensure_visible_qcolor(color))
 
     show_canvas_feature_color_picker(
         presenter,

@@ -163,7 +163,7 @@ class FilenameOverlayPass(CanvasRenderPass):
         )
         raw_alpha = max(0, min(255, int(text_color.alpha() * overlay_style.text_alpha)))
         text_color.setAlpha(raw_alpha)
-        bg_color = qcolor(getattr(cfg, "file_name_bg_color", None), QColor(0, 0, 0, 80))
+        bg_color = qcolor(getattr(cfg, "file_name_bg_color", None), QColor(0, 0, 0, 255))
         bg_color.setAlpha(
             max(0, min(255, int(bg_color.alpha() * overlay_style.text_alpha)))
         )

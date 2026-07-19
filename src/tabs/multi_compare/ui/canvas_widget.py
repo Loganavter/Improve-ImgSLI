@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QTimer, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRect, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QContextMenuEvent, QMouseEvent, QPalette, QWheelEvent
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
@@ -90,6 +90,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self._lmb_press_pos: QPointF | None = None
         self._lmb_press_slot_id: int | None = None
         self._view_update_pending = False
+        self._color_buffer_frozen = False
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -118,6 +119,41 @@ class MultiCompareCanvasWidget(QRhiWidget):
             return
         self.update()
 
+    def is_color_buffer_frozen(self) -> bool:
+        fixed = self.fixedColorBufferSize()
+        return bool(fixed.isValid() and fixed.width() > 0 and fixed.height() > 0)
+
+    def freeze_color_buffer(self) -> bool:
+        """Pin the GPU color buffer (same idea as main-window CSD resize freeze).
+
+        Popup / CSD micro-geometry must not recreate the swapchain or
+        re-letterbox ``ox/oy/sr`` while a zoomed frame is on screen — that
+        looks like a zoom nudge even when ``zoom``/``pan`` are unchanged.
+        """
+        try:
+            if self.is_color_buffer_frozen():
+                self._color_buffer_frozen = True
+                return True
+            size = self.size()
+            if size.width() <= 0 or size.height() <= 0:
+                return False
+            self.setFixedColorBufferSize(size)
+            self._color_buffer_frozen = True
+            return True
+        except Exception:
+            logger.exception("freeze_color_buffer failed")
+            return False
+
+    def unfreeze_color_buffer(self) -> None:
+        """Clear a fixed color buffer pin and request one present."""
+        try:
+            self.setFixedColorBufferSize(QSize())
+        except Exception:
+            logger.exception("unfreeze_color_buffer failed")
+        self._color_buffer_frozen = False
+        if self.isVisible():
+            self.update()
+
     def render(self, command_buffer) -> None:
         painted = self._renderer.render(command_buffer)
         if painted and not self._first_frame_emitted:
@@ -130,9 +166,11 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
     def resizeEvent(self, event) -> None:  # noqa: D401 — Qt signature
         super().resizeEvent(event)
-        # Skip no-op geometry churn (popup/CSD micro-nudge) so we do not
-        # double-flush a zoomed frame when nothing actually changed.
+        # Skip no-op geometry churn and any resize while the color buffer is
+        # pinned for a popup/CSD interaction (context menu, window drag).
         if event.size() == event.oldSize():
+            return
+        if self._color_buffer_frozen or self.is_color_buffer_frozen():
             return
         self.request_view_update()
 
