@@ -170,43 +170,18 @@ inside the formula and once again by the caller.
   if a pass's `prepare()` step is reasoning about DPR, that's a sign the
   concern leaked one layer too early.
 
-## `isYUpInFramebuffer()` is not the whole Y-flip story for offscreen widgets
+## QRhi / compositing surprises (not coordinate math)
 
-`resolve_rhi_scissor()` (`tabs/image_compare/canvas/rhi_feature_common.py`)
-flips a scissor's Y when `rhi.isYUpInFramebuffer()` is true — correct for a
-widget that eventually gets composited on screen. But `QRhiWidget` always
-renders into a backing texture regardless of visibility; a **visible**
-widget goes through an extra compositing step (its backing texture is
-drawn into the top-level window, e.g. via `QPainter`) that silently absorbs
-the backend's Y convention. A widget that is never shown — created with
-`Qt.WidgetAttribute.WA_DontShowOnScreen` purely to call `grabFramebuffer()`
-on it (the GPU export/preview canvas, `gpu_export_canvas` in
-`plugins/export/services/gpu_export_proxy.py`) — never runs that
-compositing step, so the raw scissor Y must be flipped by hand even when
-`isYUpInFramebuffer()` reports `false` for that same RHI backend.
+Two frequent traps look like “wrong `content_rect_px` / wrong zoom” but are
+downstream of perfect CPU numbers:
 
-Symptom this produces if missed: a scissor-clipped pass (in practice,
-`DividerPass`) renders with the *correct height* but the *wrong offset* —
-shifted by exactly `framebuffer_height - 2*content_y - content_height`,
-i.e. it looks like it's anchored to the wrong edge — while anything drawn
-via direct vertex/UV geometry (the base image) is unaffected, because it
-never goes through a scissor rect at all. This is easy to misdiagnose as a
-`content_rect_px`/`_inner_content_rect_px`/split-position bug — a real
-instance of this misdiagnosis cost a full debugging pass: detailed log
-tracing of `resolve_rhi_scissor`/`_resolve_divider_state` confirmed
-`content_rect_px`, `display_split`, `position_px` and the computed scissor
-were all numerically correct on every frame, and the actual bug was purely
-in how the GPU backend consumed that already-correct scissor. Every geometry
-log along the way reports numerically correct values — the bug is downstream
-of all of them, at the point the scissor is actually consumed by the
-backend.
+- **Offscreen scissor Y-flip** — visible widgets absorb backend Y in
+  compositing; `WA_DontShowOnScreen` grab canvases do not.
+- **Display lagging the store** — Wayland + Vulkan can show a stale frame
+  until a transient restacks; zoom chip already correct.
 
-Fix in place: `resolve_rhi_scissor` flips when `y_up OR
-widget.testAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)`, not `y_up`
-alone. Any future pass or helper that builds its own `QRhiScissor`/
-`QRhiViewport` by hand (instead of calling `resolve_rhi_scissor`) must
-apply the same rule, or route through that function instead of
-reimplementing it.
+Catalog: [qrhi-gotchas.md](qrhi-gotchas.md). Short rules:
+[patterns.md](patterns.md).
 
 ## Target rule of thumb
 
@@ -214,3 +189,7 @@ Before combining a viewport-resolved value with `content_rect_px`, widget
 dimensions, or zoom "by hand," ask: did this value already come out of a
 viewport-formula function? If yes, it's already resolved — treat it as an
 opaque final answer, not a raw ingredient.
+
+And before “fixing zoom” because the picture jumped: if the zoom chip did
+not move, treat it as a display/compositor catch-up until proven otherwise
+([qrhi-gotchas.md#display-lags-store](qrhi-gotchas.md#display-lags-store)).

@@ -32,6 +32,8 @@
     "render_backend_restart_hint": "Применится после перезапуска. Не все бэкенды поддерживаются на каждой системе.",
     "render_backend_restart_title": "Требуется перезапуск",
     "render_backend_restart_message": "Бэкенд рендеринга переключится на '{backend}' после следующего запуска.",
+    "render_backend_fallback_title": "Бэкенд рендеринга недоступен",
+    "render_backend_fallback_message": "Не удалось инициализировать {requested}. Приложение использует {effective}. Изменить можно в Настройки → Производительность.",
     "resolution_2k": "2K (1440p)",
     "resolution_4k": "4K (2160p)",
     "resolution_8k": "8K (4320p)",

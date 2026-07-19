@@ -65,6 +65,11 @@ def leaf_at(pos: QPoint, leaf_rects) -> tuple[LeafNode, object] | None:
 
 
 def handle_wheel_event(widget, event: QWheelEvent) -> None:
+    from ui.widgets.canvas.rhi_present_sync import ensure_window_active_for_qrhi
+
+    # Wayland+Vulkan often marks the app Inactive while the user still
+    # scrolls the MC canvas; keep the window active so presents stay visible.
+    ensure_window_active_for_qrhi(widget)
     delta = event.angleDelta().y()
     leaf_rects = widget._leaf_rects()
     if not leaf_rects:
@@ -108,13 +113,25 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
     event.accept()
 
 
+def _rmb_surface_override():
+    """Optional A/B: ``IMGSLI_MC_RMB_SURFACE=in_window|popup``."""
+    import os
+
+    raw = os.environ.get("IMGSLI_MC_RMB_SURFACE", "").strip().lower()
+    if raw in ("in_window", "popup"):
+        return raw
+    return None
+
+
 def handle_context_menu_event(widget, event: QContextMenuEvent) -> None:
     """Open the slot menu on Qt's context-menu request (not RMB press).
 
-    Opening a ``Qt.Popup`` from ``mousePressEvent`` on a ``QRhiWidget`` can
-    jerk presentation / micro-resize the host; Multi Compare then double-flushes
-    via ``request_view_update`` and the zoomed frame appears to advance.
-    Image Compare already uses ``contextMenuEvent`` for the same reason.
+    Match Image Compare: manager defaults (``popup`` on Linux) with the QRhi
+    canvas as the toolkit parent. Do **not** set ``menu_parent`` to MainWindow —
+    that caused a one-frame clear wipe on Wayland while IC (canvas parent)
+    stays stable.
+
+    Optional A/B: ``IMGSLI_MC_RMB_SURFACE=in_window|popup``.
     """
     pos = event.pos()
     picked = leaf_at(pos, widget._leaf_rects())
@@ -123,6 +140,11 @@ def handle_context_menu_event(widget, event: QContextMenuEvent) -> None:
         return
     leaf, rect = picked
     slot = next((s for s in widget.state.slots if s.id == leaf.slot_id), None)
+
+    from ui.widgets.canvas.rhi_present_sync import ensure_window_active_for_qrhi
+
+    ensure_window_active_for_qrhi(widget)
+
     menu = open_context_menu(
         ContextMenuRequest(
             source_widget=widget,
@@ -138,11 +160,13 @@ def handle_context_menu_event(widget, event: QContextMenuEvent) -> None:
                     "label": slot.label if slot is not None else "",
                 },
             ),
+            surface=_rmb_surface_override(),
         )
     )
     if menu is None:
         event.ignore()
         return
+
     event.accept()
 
 

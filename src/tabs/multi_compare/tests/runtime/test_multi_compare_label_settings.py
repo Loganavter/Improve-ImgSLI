@@ -269,7 +269,7 @@ def test_multi_compare_state_is_saved_per_workspace_session(qapp):
 
     store.active_session_id = "b"
     tab.on_active_session_changed("b", context)
-    assert widget.state.divider_settings.color_rgba == (180, 180, 180, 230)
+    assert widget.state.divider_settings.color_rgba == (255, 255, 255, 255)
 
     widget.apply_divider_color(QColor(1, 2, 3, 4))
     assert store.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
@@ -593,7 +593,7 @@ def test_seed_after_activate_updates_live_widget(qapp, monkeypatch):
     page = tab.create_page(None, context)
     # Presenter activates from workspace emit *before* CreatedEvent.
     tab.on_active_session_changed("mc1", context)
-    assert tab._widget.state.divider_settings.color_rgba == (180, 180, 180, 230)
+    assert tab._widget.state.divider_settings.color_rgba == (255, 255, 255, 255)
 
     tab.on_session_created("mc1", context)
     assert store.sessions["mc1"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (

@@ -141,20 +141,76 @@ parent for xdg_popup.
 **Interim app fallback:** `rmb_context_menu_surface()` returns `in_window` on
 Windows until `sli_ui_toolkit.__version__ >= 3.1.4`.
 
-## Multi Compare: RMB context menu nudged the zoomed frame — fixed (2026-07-19)
+## Multi Compare: transient UI nudges zoomed canvas — mitigated (2026-07-19)
 
-**Status:** fixed.
+**Status:** mitigated (display catch-up after zoom settle). Image Compare did
+**not** reproduce on the same session.
 
-Opening the slot context menu from Multi Compare while zoomed could visually
-"push" the zoom frame even though `zoom` / `pan` state did not change.
+**Durable write-up:**
+[docs/dev/rendering/investigations/mc-transient-zoom-nudge.md](rendering/investigations/mc-transient-zoom-nudge.md)
+· case catalog:
+[docs/dev/rendering/qrhi-gotchas.md](rendering/qrhi-gotchas.md#display-lags-store)
+· rules:
+[docs/dev/rendering/patterns.md](rendering/patterns.md).
 
-**Root cause:** the menu was opened from `mousePressEvent` (while the button
-was still down) as a `Qt.Popup` on the `QRhiWidget`. That popup handoff can
-jerk QRhi presentation / micro-nudge host geometry; MC then always called
-`request_view_update()` from `resizeEvent`, double-flushing the backing store.
+**User-visible pattern:**
+1. Wheel-zoom on MC until the picture looks settled (do not touch).
+2. Open **first** RMB menu or toolbar scroll-value flyout → image jumps
+   further in the **same direction** as the last zoom.
+3. Zoom **percent chip unchanged** between those frames (store zoom stable).
+4. Later flyouts in the same zoomed view do **not** jump again.
 
-**Fix:** open the menu from `contextMenuEvent` (same as Image Compare); skip
-`request_view_update` when `resizeEvent` size is unchanged.
+So this is a one-shot **display catch-up** to an already-committed store
+zoom, deferred until the first transient restacks the Vulkan subsurface —
+not a second zoom step in Redux.
+
+**Triggers (same class):**
+- slot RMB `ContextMenu` (`Qt.Popup` parented to the QRhi canvas)
+- toolbar `ScrollValueButton` value cloud (`_ScrollValueFlyout` / `BaseFlyout`
+  in-window overlay above the divider-width control)
+
+**Probe facts:** store zoom/pan, widget `glob`, letterbox, GPU plan
+(`rect_fb`/`tile0`/`clip`) stay identical across the jump. `pipeline_rebuilt`
+never fires on RMB. UV letterbox migration did not remove the nudge.
+
+**Critical:** `setUpdatesEnabled(False)` removed the app `present#` entirely
+(no image *and* no overlay redraw) but the nudge **still appeared**. So the
+glitch is not “we redraw the scene wrong” — it is outside the QRhi color
+buffer content (Qt/Wayland stacking of a transient surface against this
+canvas).
+
+**Divider paint (was also reported dead):** migrated off the FB-sized overlay
+texture to GPU quads (`GridDividersPass`, 2026-07-19). Nudge is unrelated.
+
+**Failed mitigations (do not reintroduce):**
+- `menu_parent=MainWindow` + `popup` → one-frame clear wipe
+- `setUpdatesEnabled(False)` → halo; nudge remains
+- color-buffer freeze; force `in_window`; vertex→UV letterbox; `ensure_pipeline`
+- keyboard-focus parking alone (`rhi_focus`) — canvas `has_focus` cleared, but
+  MC stays `ApplicationInactive` during zoom and the one-shot jump remained
+
+**Current path:** same as IC menu policy (`popup`, parent = QRhi canvas).
+
+**A/B probe finding (2026-07-19):** same scroll-value flyout trigger —
+- **MC:** `app=ApplicationInactive`, `focus=none` (often already during wheel)
+- **IC:** `app=ApplicationActive`, `focus=ImageCompareWidget`
+Geometry / `glob` / Wayland attrs stable on both.
+
+**Mitigations in tree (2026-07-19):**
+1. `ui.widgets.canvas.rhi_focus` — park keyboard focus off `QRhiWidget` (hygiene;
+   insufficient alone).
+2. `ui.widgets.canvas.rhi_present_sync` — on wheel, re-activate the window if
+   Qt falsely reports Inactive; after zoom/pan/reset, debounce a compositor
+   flush (`activate` + `requestUpdate` + `update`) so catch-up happens on
+   gesture settle instead of on the first flyout.
+
+**If the jump returns:**
+1. Framebuffer readback / blank `Qt.Popup` A/B (toolkit-free)
+2. Force OpenGL backend A/B (`--rhi-backend opengl`)
+3. Compare MC vs IC with `./launcher.sh run --debug` + tracer
+   ([TRACING.md](TRACING.md)); watch for `ApplicationInactive` during MC wheel
+
+Optional surface A/B only: `IMGSLI_MC_RMB_SURFACE=in_window|popup`.
 
 ## Vulkan / QRhi backend has no startup fallback — fixed (2026-07-19)
 
@@ -170,13 +226,15 @@ No QVulkanInstance set for the top-level window, this is wrong.
 
 with no recovery — canvases stayed broken for the session.
 
-**Fix:** after `QApplication` starts, `resolve_rhi_backend_with_fallback`
-probes Vulkan (`QRhi.probe` / `QVulkanInstance`). Explicit Vulkan is kept
-only when the probe returns **True**; `False`/`None` (missing bindings /
-`-9`) force the platform fallback (Windows `d3d11`, macOS `metal`, Linux
-`opengl`), persist it to QSettings, and set a process flag so widgets refuse
-`setApi(Vulkan)`. Probe stderr is filtered. `renderFailed` also logs an
-actionable hint and may persist the same fallback.
+**Fix:** after `QApplication` starts, an **explicit** Vulkan selection is
+probed (`QRhi.probe` / `QVulkanInstance`). Confirmed failure (or Windows
+with no probe API) forces the platform fallback (Windows `d3d11`, macOS
+`metal`, Linux `opengl`), may persist that choice when Vulkan was selected
+explicitly, and sets a process flag so widgets refuse `setApi(Vulkan)`.
+**Auto is never overridden by the probe** — Qt keeps the platform default.
+Probe stderr is filtered. After the main window is shown, an
+`AppMessageDialog` error explains an explicit-Vulkan fallback. `renderFailed`
+also logs an actionable hint and may persist the same fallback.
 
 ## multi_compare: large slot images and tiled export — fixed (2026-07-15)
 

@@ -38,6 +38,7 @@ from ui.widgets.canvas.rhi_backend import (
     configure_rhi_process_environment,
     configure_vulkan_layer_environment,
     persist_rhi_backend_setting,
+    record_rhi_fallback_notice,
     requested_rhi_backend_name,
     resolve_rhi_backend_with_fallback,
     supported_rhi_backend_names,
@@ -67,11 +68,14 @@ def _configure_qt_logging() -> None:
             continue
         seen.add(rule)
         merged.append(rule)
-    merged_rules = ";".join(merged)
-    if merged_rules:
-        os.environ["QT_LOGGING_RULES"] = merged_rules
+    # Env var accepts ';'; setFilterRules on some Qt builds treats ';' as
+    # part of a single rule and warns "Ignoring malformed logging rule".
+    env_rules = ";".join(merged)
+    filter_rules = "\n".join(merged)
+    if env_rules:
+        os.environ["QT_LOGGING_RULES"] = env_rules
         try:
-            QLoggingCategory.setFilterRules(merged_rules)
+            QLoggingCategory.setFilterRules(filter_rules)
         except Exception:
             pass
 
@@ -187,9 +191,12 @@ def main():
         )
         configure_rhi_process_environment(effective_rhi)
         configure_vulkan_layer_environment(effective_rhi)
-        # Persist for any Auto/Vulkan request that we had to override — not only
-        # the literal "vulkan" string — so the next launch skips the broken path.
-        if not cli_forced_rhi and selected_rhi_backend in ("vulkan", "default"):
+        record_rhi_fallback_notice(
+            selected_rhi_backend, effective_rhi, rhi_fallback_reason
+        )
+        # Only sticky-persist an explicit Vulkan failure. Never rewrite Auto —
+        # a false probe would otherwise lock the user on OpenGL forever.
+        if not cli_forced_rhi and selected_rhi_backend == "vulkan":
             persist_rhi_backend_setting(effective_rhi)
     elif effective_rhi != "default":
         configure_rhi_process_environment(effective_rhi)
@@ -221,6 +228,9 @@ def main():
     )
     window = MainWindow(runtime_flags=runtime_flags)
     window.start()
+    from ui.widgets.canvas.rhi_fallback_notice import schedule_rhi_fallback_user_notice
+
+    schedule_rhi_fallback_user_notice(window)
 
     def on_quit():
         QThreadPool.globalInstance().clear()

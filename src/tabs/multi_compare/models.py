@@ -65,13 +65,18 @@ class MultiCompareLabelSettings:
     text_alpha_percent: int = 100
 
 
+# Default / safe fallback when unset or alpha is zero — match image_compare /
+# domain.qt_adapters.DEFAULT_VISIBLE_COLOR (opaque white).
+DEFAULT_DIVIDER_COLOR_RGBA: tuple[int, int, int, int] = (255, 255, 255, 255)
+
+
 @dataclass(frozen=True)
 class MultiCompareDividerSettings:
     """User-controllable divider line styling for multi-compare splits."""
 
     visible: bool = True
     thickness: int = 4
-    color_rgba: tuple[int, int, int, int] = (180, 180, 180, 230)
+    color_rgba: tuple[int, int, int, int] = DEFAULT_DIVIDER_COLOR_RGBA
 
 
 def leaves(node: LayoutNode | None) -> list[LeafNode]:

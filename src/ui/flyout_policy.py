@@ -174,6 +174,12 @@ def _install_context_menu_topmost_stacking(manager: FlyoutManager) -> None:
     original = manager.request_show
 
     def request_show(flyout):
+        try:
+            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+
+            park_keyboard_focus_off_qrhi()
+        except Exception:
+            pass
         ok = original(flyout)
         try:
             ensure = getattr(manager, "ensure_overlay_stacking", None)

@@ -12,6 +12,7 @@ Pick a tool by symptom. Read the linked doc only when you need filtering or inte
 | Symptom | Command | Doc |
 |---|---|---|
 | Weird after click / zoom / state change | `./launcher.sh run --debug` or `IMGSLI_TRACE=1 ./launcher.sh run` | [docs/dev/TRACING.md](../../../docs/dev/TRACING.md) |
+| MC zoom “jumps” on first flyout (chip unchanged) | re-check mitigations; see gotchas | [docs/dev/rendering/qrhi-gotchas.md](../../../docs/dev/rendering/qrhi-gotchas.md#display-lags-store) |
 | Widget color / palette / theme token / QSS candidate | `./launcher.sh run --ui-inspector` | [docs/dev/UI_INSPECTOR.md](../../../docs/dev/UI_INSPECTOR.md) |
 | Slow or unclear startup | `IMGSLI_STARTUP_TRACE=1 ./launcher.sh run` | `src/core/startup_trace.py` |
 | Where is the code mass? | `./launcher.sh context --cloc-only` → `cloc.txt` | [AGENTS.md](../../../AGENTS.md) |

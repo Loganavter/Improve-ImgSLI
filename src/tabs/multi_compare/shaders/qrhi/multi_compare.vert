@@ -10,6 +10,8 @@ layout(std140, binding = 0) uniform UBuf
     float _pad1;
     float _pad2;
     vec4 tileRect;
+    vec4 letterbox;
+    vec4 slotRect;
 };
 
 layout(location = 0) in vec2 aPos;

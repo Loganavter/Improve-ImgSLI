@@ -16,11 +16,16 @@ from ui.widgets.canvas.render_common import new_overlay_image
 
 
 def qcolor(value, fallback: QColor) -> QColor:
-    if isinstance(value, QColor):
-        return QColor(value)
-    if value is not None and all(hasattr(value, attr) for attr in ("r", "g", "b", "a")):
-        return QColor(int(value.r), int(value.g), int(value.b), int(value.a))
-    return QColor(fallback)
+    from domain.qt_adapters import ensure_visible_qcolor
+    from domain.types import Color
+
+    fb = Color(
+        fallback.red(),
+        fallback.green(),
+        fallback.blue(),
+        max(1, fallback.alpha()) if fallback.isValid() else 255,
+    )
+    return ensure_visible_qcolor(value, fallback=fb)
 
 
 def font_for_style(widget, style: FilenameOverlayStyle) -> QFont:

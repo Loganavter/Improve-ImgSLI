@@ -68,19 +68,27 @@ class RenderConfig:
             return cfg
 
         def _color(value, default: Color) -> Color:
+            from domain.qt_adapters import ensure_visible_color
+
             if value is None:
                 return default
             if isinstance(value, Color):
-                return value
+                return ensure_visible_color(value, fallback=default)
             if isinstance(value, (list, tuple)) and len(value) >= 3:
                 a = int(value[3]) if len(value) > 3 else 255
-                return Color(int(value[0]), int(value[1]), int(value[2]), a)
+                return ensure_visible_color(
+                    (int(value[0]), int(value[1]), int(value[2]), a),
+                    fallback=default,
+                )
             if isinstance(value, dict):
-                return Color(
-                    int(value.get("r", default.r)),
-                    int(value.get("g", default.g)),
-                    int(value.get("b", default.b)),
-                    int(value.get("a", default.a)),
+                return ensure_visible_color(
+                    (
+                        int(value.get("r", default.r)),
+                        int(value.get("g", default.g)),
+                        int(value.get("b", default.b)),
+                        int(value.get("a", default.a)),
+                    ),
+                    fallback=default,
                 )
             return default
 

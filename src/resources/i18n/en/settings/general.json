@@ -32,6 +32,8 @@
     "render_backend_restart_hint": "Applied on next launch. Some backends may not be supported on your system.",
     "render_backend_restart_title": "Restart required",
     "render_backend_restart_message": "The render backend will switch to '{backend}' on next launch.",
+    "render_backend_fallback_title": "Render backend unavailable",
+    "render_backend_fallback_message": "{requested} could not be initialized. The app is using {effective} instead. You can change this in Settings → Performance.",
     "resolution_2k": "2K (1440p)",
     "resolution_4k": "4K (2160p)",
     "resolution_8k": "8K (4320p)",
