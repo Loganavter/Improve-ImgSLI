@@ -51,6 +51,22 @@ def _app():
     return _APP
 
 
+def _destroy(widget) -> None:
+    """Drop toolkit widgets before pytest-qt's post-call ``processEvents``.
+
+    Unparented ``Button``/``Label`` become top-level windows. On Windows
+    offscreen CI, painting them after the test returns can AV inside the
+    toolkit painter (``content._draw_row``); pytest-qt closes only widgets
+    registered via ``qtbot``.
+    """
+    widget.hide()
+    widget.close()
+    widget.deleteLater()
+    app = QApplication.instance()
+    if app is not None:
+        app.processEvents()
+
+
 def test_widget_snapshot_collects_identity_properties_and_theme_matches():
     """Uses the toolkit's own Label(QLabel) — see API_CATALOG.md's "Label"
     entry — rather than a raw QLabel: a raw QLabel is a native Qt class with
@@ -58,44 +74,49 @@ def test_widget_snapshot_collects_identity_properties_and_theme_matches():
     empty for it (see widget_snapshot.py's _is_binary_or_thirdparty)."""
     _app()
     widget = Label("Rating")
-    widget.setObjectName("ratingLabel")
-    widget.setProperty("class", "rating-label")
-    widget.setStyleSheet("font-weight: bold;")
+    try:
+        widget.setObjectName("ratingLabel")
+        widget.setProperty("class", "rating-label")
+        widget.setStyleSheet("font-weight: bold;")
 
-    palette = widget.palette()
-    palette.setColor(QPalette.ColorRole.WindowText, QColor("#dfdfdf"))
-    widget.setPalette(palette)
+        palette = widget.palette()
+        palette.setColor(QPalette.ColorRole.WindowText, QColor("#dfdfdf"))
+        widget.setPalette(palette)
 
-    snapshot = inspect_widget(widget, _ThemeManagerProbe())
+        snapshot = inspect_widget(widget, _ThemeManagerProbe())
 
-    assert snapshot.class_name == "Label"
-    assert snapshot.object_name == "ratingLabel"
-    assert snapshot.selector == "Label#ratingLabel"
-    assert snapshot.dynamic_properties["class"] == "rating-label"
-    assert snapshot.inline_stylesheet == "font-weight: bold;"
-    assert snapshot.path[-1] == "Label#ratingLabel"
-    assert snapshot.source_file
+        assert snapshot.class_name == "Label"
+        assert snapshot.object_name == "ratingLabel"
+        assert snapshot.selector == "Label#ratingLabel"
+        assert snapshot.dynamic_properties["class"] == "rating-label"
+        assert snapshot.inline_stylesheet == "font-weight: bold;"
+        assert snapshot.path[-1] == "Label#ratingLabel"
+        assert snapshot.source_file
 
-    window_text = next(color for color in snapshot.palette if color.name == "WindowText")
-    assert window_text.value == "#ffdfdfdf"
-    assert window_text.theme_keys == ("dialog.text",)
+        window_text = next(color for color in snapshot.palette if color.name == "WindowText")
+        assert window_text.value == "#ffdfdfdf"
+        assert window_text.theme_keys == ("dialog.text",)
+    finally:
+        _destroy(widget)
 
 
 def test_widget_snapshot_reports_toolkit_button_state_theme_sources():
     _app()
     button = Button(variant="default")
+    try:
+        snapshot = inspect_widget(button, _ButtonThemeManagerProbe())
 
-    snapshot = inspect_widget(button, _ButtonThemeManagerProbe())
-
-    keys = [source.key for source in snapshot.widget_theme_sources]
-    assert keys == [
-        "button.toggle.background.normal",
-        "button.toggle.background.hover",
-        "button.toggle.background.pressed",
-        "button.toggle.background.checked",
-        "button.toggle.background.checked.hover",
-    ]
-    assert Path(snapshot.widget_theme_sources[1].path).as_posix().endswith(
-        "src/resources/themes.json"
-    )
-    assert snapshot.widget_theme_sources[1].line == 81
+        keys = [source.key for source in snapshot.widget_theme_sources]
+        assert keys == [
+            "button.toggle.background.normal",
+            "button.toggle.background.hover",
+            "button.toggle.background.pressed",
+            "button.toggle.background.checked",
+            "button.toggle.background.checked.hover",
+        ]
+        assert Path(snapshot.widget_theme_sources[1].path).as_posix().endswith(
+            "src/resources/themes.json"
+        )
+        assert snapshot.widget_theme_sources[1].line == 81
+    finally:
+        _destroy(button)
