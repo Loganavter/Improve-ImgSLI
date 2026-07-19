@@ -98,6 +98,8 @@ APP_DATAS = [
     (str(REPO_ROOT / "LICENSE"), "."),
     (str(REPO_ROOT / "THIRD_PARTY_LICENSES.md"), "."),
     (str(REPO_ROOT / "src" / "resources"), "resources"),
+    (str(SPEC_DIR / "icons" / "imgsli-file.ico"), "icons"),
+    (str(SPEC_DIR / "icons" / "icon.ico"), "icons"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "resources"), "shared_toolkit/resources"),
     (str(REPO_ROOT / "src" / "shared_toolkit" / "ui" / "resources"), "shared_toolkit/ui/resources"),
     (str(QT_CONF_PATH), "."),
