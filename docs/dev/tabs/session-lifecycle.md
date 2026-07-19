@@ -57,24 +57,24 @@ Install from source: `./launcher.sh run` (auto-syncs MIME/desktop on Linux) or
 `./launcher.sh install-desktop`. Packaged via AUR/Flatpak
 templates under `build/`.
 
-**Windows (not implemented yet — recommended path):**
+**Windows file association** (ProgID + icon + Open):
 
-1. **Minimum (file type + icon):** register a ProgID for `.imgsli` with
-   `DefaultIcon` pointing at an `.ico` (or DLL resource) of the app mark.
-   Installer (Inno/MSIX/WiX) writes `HKCU\Software\Classes` (or HKLM) and
-   sets “Open with” → `Improve-ImgSLI.exe "%1"`. Explorer will then stop
-   treating the file as a generic ZIP *if* the ProgID wins over ZIP sniffing
-   (same story as `.docx` / `.cbz`: distinctive extension + registered type).
-2. **Content thumbnails (optional later):** implement an in-process COM
-   `IThumbnailProvider` (+ `IInitializeWithStream`) DLL that opens the ZIP
-   stream, reads `preview.png` (or legacy `preview.jpg`), and returns an `HBITMAP`. Register under
-   `.<ext>\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}`. Microsoft docs:
+1. **Installer (Inno):** task `fileassoc` writes HKLM
+   `Software\Classes\.imgsli` → `ImproveImgSLI.Project` with
+   `DefaultIcon` (`icons\imgsli-file.ico`) and
+   `shell\open\command` → `Improve_ImgSLI.exe "%1"`.
+2. **Frozen app startup:** also idempotently registers the same ProgID under
+   HKCU (`services/system/windows_file_association.py`) so portable/unzipped
+   builds get Open-with without reinstall. Force with
+   `Improve_ImgSLI.exe --register-file-types`.
+3. **Content thumbnails (optional later):** COM `IThumbnailProvider` reading
+   `preview.png` — separate native shell extension; Explorer will keep using
+   the ProgID icon until that exists. Microsoft docs:
    [Thumbnail Handlers](https://learn.microsoft.com/en-us/windows/win32/shell/thumbnail-providers).
-   This is a separate native (or Rust) shell extension — not something PySide
-   can host cleanly inside the main EXE.
-3. Until (1)/(2) exist, double-click / branded thumbs on Windows are best-effort;
-   the in-app Session Picker already shows `preview.png` (canvas grab) or the
-   session-type icon when missing.
+4. If Properties still shows “Choose application”, pick Improve ImgSLI once
+   (or re-run the installer with file association checked / `--register-file-types`).
+   A prior “Open with → Explorer/ZIP” UserChoice may need resetting in
+   Settings → Default apps.
 
 **macOS:** later — UTI + Quick Look generator; same canvas ``preview.png`` can feed QL.
 
