@@ -138,6 +138,12 @@ def main():
         default=None,
         help="Select the QRhi backend for every render widget in the process.",
     )
+    parser.add_argument(
+        "project",
+        nargs="?",
+        default=None,
+        help="Optional portable .imgsli project to open after startup.",
+    )
 
     args = parser.parse_args()
 
@@ -231,6 +237,23 @@ def main():
     from ui.widgets.canvas.rhi_fallback_notice import schedule_rhi_fallback_user_notice
 
     schedule_rhi_fallback_user_notice(window)
+
+    if args.project:
+        from pathlib import Path
+
+        from PySide6.QtCore import QTimer
+
+        project_path = str(Path(args.project).expanduser().resolve())
+
+        def _open_startup_project(path: str = project_path) -> None:
+            menu = getattr(window, "_menu_controller", None)
+            opener = getattr(menu, "open_project_at_path", None) if menu else None
+            if callable(opener):
+                opener(path)
+
+        # Defer until after the first event-loop turn so project I/O / toasts
+        # see a fully started window (double-click / MIME association path).
+        QTimer.singleShot(0, _open_startup_project)
 
     def on_quit():
         QThreadPool.globalInstance().clear()

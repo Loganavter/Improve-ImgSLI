@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""XDG thumbnailer: ``.imgsli`` preview as a document-style project thumb.
+
+Invoked by file managers as::
+
+    improve-imgsli-thumbnailer INPUT OUTPUT SIZE
+
+Reads ``preview.png`` (or legacy ``preview.jpg``) from the ZIP and composites
+it into a dog-eared document with a small app-mark badge (PSD/Resolve style),
+instead of a full-bleed logo plate.
+"""
+
+from __future__ import annotations
+
+import sys
+import urllib.parse
+import zipfile
+from pathlib import Path
+
+PREVIEW_MEMBERS = ("preview.png", "preview.jpg")
+
+
+def _path_from_arg(value: str) -> Path:
+    raw = (value or "").strip()
+    if raw.startswith("file:"):
+        parsed = urllib.parse.urlparse(raw)
+        raw = urllib.parse.unquote(parsed.path)
+    return Path(raw)
+
+
+def _mark_candidates() -> list[Path]:
+    home = Path.home()
+    return [
+        home / ".local/share/improve-imgsli/mark.png",
+        Path("/usr/share/improve-imgsli/mark.png"),
+        home / ".local/share/icons/hicolor/128x128/apps/improve-imgsli.png",
+        Path("/usr/share/icons/hicolor/128x128/apps/improve-imgsli.png"),
+        Path("/usr/share/icons/hicolor/512x512/apps/improve-imgsli.png"),
+    ]
+
+
+def _load_mark(edge: int):
+    from PIL import Image
+
+    for path in _mark_candidates():
+        if not path.is_file():
+            continue
+        try:
+            mark = Image.open(path)
+            mark.load()
+            if mark.mode != "RGBA":
+                mark = mark.convert("RGBA")
+            mark.thumbnail((edge, edge), Image.Resampling.LANCZOS)
+            return mark
+        except Exception:
+            continue
+    return None
+
+
+def _cover_fit(image, box_w: int, box_h: int):
+    from PIL import Image
+
+    if image.mode not in ("RGB", "RGBA"):
+        image = image.convert("RGB")
+    src_w, src_h = image.size
+    if src_w <= 0 or src_h <= 0 or box_w <= 0 or box_h <= 0:
+        return Image.new("RGB", (max(1, box_w), max(1, box_h)), (40, 40, 40))
+    scale = max(box_w / src_w, box_h / src_h)
+    new_w = max(1, int(round(src_w * scale)))
+    new_h = max(1, int(round(src_h * scale)))
+    scaled = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    x = max(0, (new_w - box_w) // 2)
+    y = max(0, (new_h - box_h) // 2)
+    return scaled.crop((x, y, x + box_w, y + box_h))
+
+
+def _compose_document(preview_bytes: bytes, size: int):
+    """Document chrome + inset scene + corner badge."""
+    from PIL import Image, ImageDraw
+    import io
+
+    edge = max(32, int(size) if size > 0 else 256)
+    canvas = Image.new("RGBA", (edge, edge), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+
+    margin = int(round(edge * 0.07))
+    page_h = edge - 2 * margin
+    page_w = int(round(page_h / 1.28))
+    if page_w > edge - 2 * margin:
+        page_w = edge - 2 * margin
+        page_h = int(round(page_w * 1.28))
+    x0 = (edge - page_w) // 2
+    y0 = (edge - page_h) // 2
+    fold = max(6, int(round(page_w * 0.22)))
+
+    # Soft shadow
+    shadow = [
+        (x0 + 2, y0 + 3),
+        (x0 + page_w - fold + 2, y0 + 3),
+        (x0 + page_w + 2, y0 + fold + 3),
+        (x0 + page_w + 2, y0 + page_h + 3),
+        (x0 + 2, y0 + page_h + 3),
+    ]
+    draw.polygon(shadow, fill=(0, 0, 0, 50))
+
+    page = [
+        (x0, y0),
+        (x0 + page_w - fold, y0),
+        (x0 + page_w, y0 + fold),
+        (x0 + page_w, y0 + page_h),
+        (x0, y0 + page_h),
+    ]
+    draw.polygon(page, fill=(245, 246, 248, 255), outline=(190, 195, 205, 255))
+    draw.polygon(
+        [
+            (x0 + page_w - fold, y0),
+            (x0 + page_w, y0 + fold),
+            (x0 + page_w - fold, y0 + fold),
+        ],
+        fill=(228, 230, 236, 255),
+        outline=(190, 195, 205, 255),
+    )
+
+    # Inset preview area (leave chrome + room for badge).
+    inset = max(4, int(round(page_w * 0.08)))
+    box_x = x0 + inset
+    box_y = y0 + fold + inset // 2
+    box_w = page_w - 2 * inset
+    box_h = page_h - fold - 2 * inset
+    box_w = max(8, box_w)
+    box_h = max(8, box_h)
+
+    preview = Image.open(io.BytesIO(preview_bytes))
+    preview.load()
+    fitted = _cover_fit(preview, box_w, box_h).convert("RGBA")
+    canvas.paste(fitted, (box_x, box_y))
+
+    badge_edge = max(10, int(round(edge * 0.22)))
+    mark = _load_mark(badge_edge)
+    if mark is not None:
+        bx = x0 + page_w - badge_edge - max(2, inset // 2)
+        by = y0 + page_h - badge_edge - max(2, inset // 2)
+        # White plate behind badge so it reads on any scene.
+        plate = Image.new("RGBA", (badge_edge + 4, badge_edge + 4), (255, 255, 255, 230))
+        canvas.alpha_composite(plate, (bx - 2, by - 2))
+        canvas.alpha_composite(mark, (bx, by))
+
+    return canvas.convert("RGB")
+
+
+def _write_scaled(image_bytes: bytes, output: Path, size: int) -> bool:
+    try:
+        composed = _compose_document(image_bytes, size)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        composed.save(output, format="PNG", optimize=True)
+        return True
+    except Exception:
+        pass
+    try:
+        from PIL import Image
+        import io
+
+        image = Image.open(io.BytesIO(image_bytes))
+        image.load()
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+        edge = max(16, int(size) if size > 0 else 256)
+        image.thumbnail((edge, edge), Image.Resampling.LANCZOS)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        image.save(output, format="PNG", optimize=True)
+        return True
+    except Exception:
+        pass
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(image_bytes)
+    except OSError:
+        return False
+    return True
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 3:
+        print(
+            "usage: improve-imgsli-thumbnailer INPUT OUTPUT [SIZE]",
+            file=sys.stderr,
+        )
+        return 1
+    source = _path_from_arg(argv[1])
+    output = Path(argv[2])
+    try:
+        size = int(argv[3]) if len(argv) > 3 else 256
+    except ValueError:
+        size = 256
+    if not source.is_file():
+        return 1
+    try:
+        with zipfile.ZipFile(source, "r") as zf:
+            names = set(zf.namelist())
+            data = None
+            for member in PREVIEW_MEMBERS:
+                if member in names:
+                    data = zf.read(member)
+                    break
+            if data is None:
+                return 1
+    except (OSError, zipfile.BadZipFile):
+        return 1
+    if not data:
+        return 1
+    return 0 if _write_scaled(data, output, size) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

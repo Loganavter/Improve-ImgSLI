@@ -1,4 +1,9 @@
-"""Project scene thumbnail (``preview.jpg``) helpers for portable ``.imgsli`` files."""
+"""Project scene thumbnail (``preview.png``) for portable ``.imgsli`` files.
+
+Embedded preview is a cover-scaled grab of the active workspace canvas (IC /
+MC). Session Picker cards and the Linux XDG thumbnailer both read this
+member. Legacy packages may still carry ``preview.jpg``; readers accept both.
+"""
 
 from __future__ import annotations
 
@@ -9,13 +14,17 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPainter, QPixmap
 
 logger = logging.getLogger("ImproveImgSLI")
 
-PREVIEW_MEMBER = "preview.jpg"
+PREVIEW_MEMBER = "preview.png"
+PREVIEW_LEGACY_MEMBERS = ("preview.jpg",)
+PREVIEW_MEMBERS = (PREVIEW_MEMBER, *PREVIEW_LEGACY_MEMBERS)
 PREVIEW_WIDTH = 160
 PREVIEW_HEIGHT = 90
+PREVIEW_PNG_COMPRESS = 6
+# Kept for call sites / tests that still pass ``quality=``.
 PREVIEW_JPEG_QUALITY = 80
 
 _SKIP_SESSION_TYPES = frozenset({"session_picker", ""})
@@ -52,19 +61,16 @@ def _scale_cover(image: QImage, width: int, height: int) -> QImage:
     return scaled.copy(x, y, width, height)
 
 
-def qimage_to_jpeg_bytes(
+def qimage_to_png_bytes(
     image: QImage,
     *,
-    quality: int = PREVIEW_JPEG_QUALITY,
+    compress: int = PREVIEW_PNG_COMPRESS,
 ) -> bytes | None:
     if image.isNull():
         return None
-    # JPEG has no alpha — composite onto opaque black first.
     if image.hasAlphaChannel():
         flat = QImage(image.size(), QImage.Format.Format_RGB32)
         flat.fill(Qt.GlobalColor.black)
-        from PySide6.QtGui import QPainter
-
         painter = QPainter(flat)
         painter.drawImage(0, 0, image)
         painter.end()
@@ -74,11 +80,17 @@ def qimage_to_jpeg_bytes(
     ba = QByteArray()
     buf = QBuffer(ba)
     buf.open(QIODevice.OpenModeFlag.WriteOnly)
-    ok = image.save(buf, "JPG", int(quality))
+    ok = image.save(buf, "PNG", int(compress))
     buf.close()
     if not ok or ba.isEmpty():
         return None
     return bytes(ba)
+
+
+def qimage_to_jpeg_bytes(image: QImage, *, quality: int = PREVIEW_JPEG_QUALITY) -> bytes | None:
+    """Encode preview bytes (PNG). ``quality`` is ignored; kept for call-site compat."""
+    del quality
+    return qimage_to_png_bytes(image)
 
 
 def _canvas_attr(host) -> Any:
@@ -142,13 +154,13 @@ def _grab_widget_image(widget) -> QImage | None:
     return None
 
 
-def capture_project_preview_jpeg(
+def capture_project_preview_png(
     window,
     *,
     size: tuple[int, int] = (PREVIEW_WIDTH, PREVIEW_HEIGHT),
-    quality: int = PREVIEW_JPEG_QUALITY,
+    compress: int = PREVIEW_PNG_COMPRESS,
 ) -> bytes | None:
-    """Capture a small JPEG of the active workspace canvas (UI thread)."""
+    """Capture a small PNG of the active workspace canvas (UI thread)."""
     store = getattr(window, "store", None)
     if store is None:
         return None
@@ -185,7 +197,13 @@ def capture_project_preview_jpeg(
 
     out_w, out_h = int(size[0]), int(size[1])
     cover = _scale_cover(image, out_w, out_h)
-    return qimage_to_jpeg_bytes(cover, quality=quality)
+    return qimage_to_png_bytes(cover, compress=compress)
+
+
+def capture_project_preview_jpeg(window=None, **kwargs) -> bytes | None:
+    """Deprecated alias — canvas grab as PNG bytes (member name is ``preview.png``)."""
+    kwargs.pop("quality", None)
+    return capture_project_preview_png(window, **kwargs)
 
 
 def zip_has_preview(path: str | Path) -> bool:
@@ -194,32 +212,44 @@ def zip_has_preview(path: str | Path) -> bool:
         return False
     try:
         with zipfile.ZipFile(path, "r") as zf:
-            return PREVIEW_MEMBER in zf.namelist()
+            names = set(zf.namelist())
+            return any(name in names for name in PREVIEW_MEMBERS)
     except Exception:
         return False
 
 
-def read_preview_jpeg_bytes(path: str | Path) -> bytes | None:
+def read_preview_image_bytes(path: str | Path) -> bytes | None:
     path = Path(path)
     if not path.is_file():
         return None
     try:
         with zipfile.ZipFile(path, "r") as zf:
-            if PREVIEW_MEMBER not in zf.namelist():
-                return None
-            return zf.read(PREVIEW_MEMBER)
+            names = set(zf.namelist())
+            for member in PREVIEW_MEMBERS:
+                if member in names:
+                    return zf.read(member)
     except Exception:
-        logger.debug("Failed reading %s from %s", PREVIEW_MEMBER, path, exc_info=True)
+        logger.debug("Failed reading preview from %s", path, exc_info=True)
         return None
+    return None
+
+
+def read_preview_jpeg_bytes(path: str | Path) -> bytes | None:
+    """Deprecated alias for :func:`read_preview_image_bytes`."""
+    return read_preview_image_bytes(path)
 
 
 def peek_project_preview(path: str | Path) -> QPixmap | None:
-    """Load ``preview.jpg`` from a project zip, with an mtime-keyed disk cache."""
+    """Load ``preview.png`` (or legacy ``preview.jpg``), with mtime disk cache.
+
+    Returns ``None`` when the package has no preview member — cards then fall
+    back to the session-type icon (no branded logo placeholder).
+    """
     path = Path(path)
     if not path.is_file():
         return None
 
-    cache_path = project_previews_cache_dir() / f"{_cache_key(path)}.jpg"
+    cache_path = project_previews_cache_dir() / f"{_cache_key(path)}.png"
     try:
         if cache_path.is_file():
             pix = QPixmap(str(cache_path))
@@ -228,11 +258,11 @@ def peek_project_preview(path: str | Path) -> QPixmap | None:
     except Exception:
         pass
 
-    raw = read_preview_jpeg_bytes(path)
+    raw = read_preview_image_bytes(path)
     if not raw:
         return None
     pix = QPixmap()
-    if not pix.loadFromData(raw, "JPG"):
+    if not pix.loadFromData(raw):
         return None
     try:
         cache_path.write_bytes(raw)

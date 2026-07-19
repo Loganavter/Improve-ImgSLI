@@ -33,9 +33,50 @@ swaps the active list on `WorkspaceSessionActivatedEvent`.
 
 `services/io/project_io.py` writes portable **ZIP** `.imgsli` packages
 (version 2): `project.json` plus byte-copied originals under
-`media/<asset_id>/`. Paths inside session blobs are rewritten to package
-members on save and to a per-project extract cache on load. Legacy plain-JSON
-v1 files remain loadable (path references only).
+`media/<asset_id>/`, and optional top-level `preview.png` (cover-scaled grab
+of the active workspace canvas). Paths inside
+session blobs are rewritten to package members on save and to a per-project
+extract cache on load. Legacy plain-JSON v1 files remain loadable (path
+references only).
+
+**Linux desktop integration** (MIME + open-with + FM thumbnails):
+
+- MIME: `application/x-improve-imgsli` (`build/linux/mime/…`) with:
+  - magic priority 80: `PK\003\004` + first ZIP local name `project.json`
+    (beats `application/zip` magic at 60 — glob alone is not enough for
+    GIO/Dolphin, which prefer content sniffing)
+  - high-weight `*.imgsli` globs as a fallback for empty/corrupt packages
+  - document-style MIME icons (`build/linux/icons/mimetypes/…`: page + mark +
+    `IMGSLI`, PSD/XCF layout — not a full-bleed wordmark)
+- Desktop `MimeType=` + `Exec=… %F` opens a project path on startup
+- Thumbnailer composites `preview.png` into a document frame with a small
+  app-mark badge (`build/linux/bin/improve-imgsli-thumbnailer`)
+- After install, KDE needs `kbuildsycoca6` (done by `install-desktop`); restart Dolphin if the type still shows as Zip
+
+Install from source: `./launcher.sh run` (auto-syncs MIME/desktop on Linux) or
+`./launcher.sh install-desktop`. Packaged via AUR/Flatpak
+templates under `build/`.
+
+**Windows (not implemented yet — recommended path):**
+
+1. **Minimum (file type + icon):** register a ProgID for `.imgsli` with
+   `DefaultIcon` pointing at an `.ico` (or DLL resource) of the app mark.
+   Installer (Inno/MSIX/WiX) writes `HKCU\Software\Classes` (or HKLM) and
+   sets “Open with” → `Improve-ImgSLI.exe "%1"`. Explorer will then stop
+   treating the file as a generic ZIP *if* the ProgID wins over ZIP sniffing
+   (same story as `.docx` / `.cbz`: distinctive extension + registered type).
+2. **Content thumbnails (optional later):** implement an in-process COM
+   `IThumbnailProvider` (+ `IInitializeWithStream`) DLL that opens the ZIP
+   stream, reads `preview.png` (or legacy `preview.jpg`), and returns an `HBITMAP`. Register under
+   `.<ext>\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}`. Microsoft docs:
+   [Thumbnail Handlers](https://learn.microsoft.com/en-us/windows/win32/shell/thumbnail-providers).
+   This is a separate native (or Rust) shell extension — not something PySide
+   can host cleanly inside the main EXE.
+3. Until (1)/(2) exist, double-click / branded thumbs on Windows are best-effort;
+   the in-app Session Picker already shows `preview.png` (canvas grab) or the
+   session-type icon when missing.
+
+**macOS:** later — UTI + Quick Look generator; same canvas ``preview.png`` can feed QL.
 
 `serialize_session` / `deserialize_session` / `rehydrate_session` go through
 `TabRegistry`. Use `load_project_file(..., replace_workspace=True)` (the Open

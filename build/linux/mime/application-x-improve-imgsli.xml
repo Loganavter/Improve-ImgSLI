@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <!-- Portable Improve-ImgSLI project package (ZIP with project.json + media/).
+
+       Linux note: shared-mime-info / GIO often prefer content magic over
+       filename globs. application/zip matches PK\003\004 at priority 60, so a
+       glob-only rule still shows as "Zip archive" in Dolphin. Match the first
+       local-file name (project.json at offset 30) at a higher priority, same
+       pattern as application/epub+zip. Writers must keep project.json first
+       in the ZIP with no extra field on that local header.
+  -->
+  <mime-type type="application/x-improve-imgsli">
+    <comment>Improve ImgSLI project</comment>
+    <comment xml:lang="ru">Проект Improve ImgSLI</comment>
+    <comment xml:lang="pt_BR">Projeto Improve ImgSLI</comment>
+    <comment xml:lang="zh">Improve ImgSLI 项目</comment>
+    <acronym>ImgSLI</acronym>
+    <icon name="application-x-improve-imgsli"/>
+    <generic-icon name="x-office-document"/>
+    <!-- Above application/zip magic (60) and default glob weight (50). -->
+    <magic priority="80">
+      <match type="string" offset="0" value="PK\003\004">
+        <match type="string" offset="30" value="project.json"/>
+      </match>
+    </magic>
+    <glob weight="80" pattern="*.imgsli"/>
+    <glob weight="80" pattern="*.IMGSLI"/>
+  </mime-type>
+</mime-info>

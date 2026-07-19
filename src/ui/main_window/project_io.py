@@ -543,11 +543,11 @@ class MainWindowProjectIo:
             )
             return
 
-        preview_jpeg = None
+        preview_png = None
         try:
-            from services.io.project_preview import capture_project_preview_jpeg
+            from services.io.project_preview import capture_project_preview_png
 
-            preview_jpeg = capture_project_preview_jpeg(window)
+            preview_png = capture_project_preview_png(window)
         except Exception:
             logger.debug("Project preview capture skipped", exc_info=True)
 
@@ -602,7 +602,7 @@ class MainWindowProjectIo:
                 progress_callback.emit(int(100 * done / max(total, 1)))
 
             return package_project_data(
-                project_data, path, progress=_progress, preview_jpeg=preview_jpeg
+                project_data, path, progress=_progress, preview_png=preview_png
             )
 
         if pool is None:
@@ -611,7 +611,7 @@ class MainWindowProjectIo:
 
                 _on_done(
                     package_project_data(
-                        project_data, path, preview_jpeg=preview_jpeg
+                        project_data, path, preview_png=preview_png
                     )
                 )
             except Exception as exc:

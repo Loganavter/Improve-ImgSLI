@@ -6,7 +6,7 @@ Gerencie sessões na faixa de abas e abra novos tipos de comparação a partir d
 
 - **Abrir** — {{tr:action.workspace.open_session_picker}} (ou o controle de adicionar aba).
 - **Escolher** — cartão para {{tr:workspace.session_types.image_compare}} ou {{tr:workspace.session_types.multi_compare}}.
-- **Recentes** — projetos ``.imgsli`` recentes (grade ou lista; ordenar por último aberto ou nome). Clique para reabrir. Os cartões mostram uma prévia da cena de ``preview.jpg`` no projeto, quando disponível. Solte um arquivo de projeto no painel para adicioná-lo à lista sem abri-lo. Botão direito para remover / mostrar na pasta.
+- **Recentes** — projetos ``.imgsli`` recentes (grade ou lista; ordenar por último aberto ou nome). Clique para reabrir. Os cartões mostram a prévia do canvas a partir de ``preview.png`` no projeto (pacotes antigos com ``preview.jpg`` ainda funcionam; caso contrário usa-se o ícone do tipo de sessão). Solte um arquivo de projeto no painel para adicioná-lo à lista sem abri-lo. Botão direito para remover / mostrar na pasta.
 
 :::figure{side=block width=420}
 ![Seletor de Sessão]({{img:platform.workspace.session_picker}})
