@@ -126,6 +126,7 @@ def test_button_suppress_click_clears_context_menu_flag(qapp):
 
 
 def test_font_settings_flyout_group_and_registration(qapp):
+    from PySide6.QtCore import QEvent
     from PySide6.QtWidgets import QWidget
 
     assert FontSettingsFlyout.flyout_group == "font_settings"
@@ -134,6 +135,14 @@ def test_font_settings_flyout_group_and_registration(qapp):
     host.resize(320, 240)
     host.show()
     flyout = FontSettingsFlyout(host)
-    assert flyout in manager._registered_flyouts
-    flyout.deleteLater()
-    host.deleteLater()
+    try:
+        assert flyout in manager._registered_flyouts
+    finally:
+        flyout.hide()
+        flyout.close()
+        flyout.deleteLater()
+        host.hide()
+        host.close()
+        host.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()

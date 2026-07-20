@@ -84,15 +84,22 @@ def test_flyout_manager_deactivate_skips_when_app_active(qapp, monkeypatch):
     manager._active_flyout = flyout
     manager._install_event_filter()
 
-    _run_deactivate(manager, qapp, monkeypatch, application_active=True)
-    assert flyout.hide_calls == 0
-    assert flyout.isVisible()
-
-    manager.unregister_flyout(flyout)
-    flyout.deleteLater()
+    try:
+        _run_deactivate(manager, qapp, monkeypatch, application_active=True)
+        assert flyout.hide_calls == 0
+        assert flyout.isVisible()
+    finally:
+        manager.unregister_flyout(flyout)
+        flyout.hide()
+        flyout.close()
+        flyout.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
 
 
 def test_flyout_manager_deactivate_closes_when_app_inactive(qapp, monkeypatch):
+    from PySide6.QtCore import QEvent
+
     manager = FlyoutManager.get_instance()
     flyout = _VisibleFlyout()
     flyout.show()
@@ -100,14 +107,21 @@ def test_flyout_manager_deactivate_closes_when_app_inactive(qapp, monkeypatch):
     manager._active_flyout = flyout
     manager._install_event_filter()
 
-    _run_deactivate(manager, qapp, monkeypatch, application_active=False)
-    assert flyout.hide_calls == 1
-
-    manager.unregister_flyout(flyout)
-    flyout.deleteLater()
+    try:
+        _run_deactivate(manager, qapp, monkeypatch, application_active=False)
+        assert flyout.hide_calls == 1
+    finally:
+        manager.unregister_flyout(flyout)
+        flyout.hide()
+        flyout.close()
+        flyout.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
 
 
 def test_flyout_manager_deactivate_skips_when_modal_open(qapp, monkeypatch):
+    from PySide6.QtCore import QEvent
+
     manager = FlyoutManager.get_instance()
     flyout = _VisibleFlyout()
     flyout.show()
@@ -116,17 +130,24 @@ def test_flyout_manager_deactivate_skips_when_modal_open(qapp, monkeypatch):
     manager._install_event_filter()
 
     dialog = QDialog()
-    # App inactive + no activeWindow would previously close_all; modal must win.
-    _run_deactivate(
-        manager,
-        qapp,
-        monkeypatch,
-        application_active=False,
-        modal_widget=dialog,
-    )
-    assert flyout.hide_calls == 0
-    assert flyout.isVisible()
-
-    manager.unregister_flyout(flyout)
-    flyout.deleteLater()
-    dialog.deleteLater()
+    try:
+        # App inactive + no activeWindow would previously close_all; modal must win.
+        _run_deactivate(
+            manager,
+            qapp,
+            monkeypatch,
+            application_active=False,
+            modal_widget=dialog,
+        )
+        assert flyout.hide_calls == 0
+        assert flyout.isVisible()
+    finally:
+        manager.unregister_flyout(flyout)
+        flyout.hide()
+        flyout.close()
+        flyout.deleteLater()
+        dialog.hide()
+        dialog.close()
+        dialog.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()

@@ -33,6 +33,8 @@ def test_modal_dialog_blocks_transient_hide_via_active_modal(qapp):
 
 
 def test_focus_to_modal_does_not_schedule_flyout_hide(qapp, monkeypatch):
+    from PySide6.QtCore import QEvent
+
     parent = QWidget()
     parent.show()
     qapp.processEvents()
@@ -63,48 +65,60 @@ def test_focus_to_modal_does_not_schedule_flyout_hide(qapp, monkeypatch):
 
     dialog = QDialog(parent)
     dialog.setModal(True)
-    dialog.show()
-    qapp.processEvents()
+    try:
+        dialog.show()
+        qapp.processEvents()
 
-    scheduled = []
-    monkeypatch.setattr(
-        "PySide6.QtCore.QTimer.singleShot",
-        lambda _ms, fn: scheduled.append(fn),
-    )
+        scheduled = []
+        monkeypatch.setattr(
+            "PySide6.QtCore.QTimer.singleShot",
+            lambda _ms, fn: scheduled.append(fn),
+        )
 
-    controller.on_app_focus_changed(parent, dialog)
-    assert scheduled == []
-
-    dialog.close()
-    dialog.deleteLater()
-    parent.deleteLater()
+        controller.on_app_focus_changed(parent, dialog)
+        assert scheduled == []
+    finally:
+        dialog.hide()
+        dialog.close()
+        dialog.deleteLater()
+        parent.hide()
+        parent.close()
+        parent.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
 
 
 def test_deactivate_hide_respects_modal_flag(qapp, monkeypatch):
     """WindowDeactivate while rename dialog is up must not close the list."""
+    from PySide6.QtCore import QEvent
     from ui.managers.ui_manager import UIManager
 
     parent = QWidget()
-    parent.show()
-    qapp.processEvents()
+    try:
+        parent.show()
+        qapp.processEvents()
 
-    # Minimal stub — only exercise _schedule_hide_transient_if_still_inactive.
-    manager = UIManager.__new__(UIManager)
-    manager.parent_widget = parent
-    manager._is_modal_active = True
-    manager._deactivate_hide_scheduled = False
-    calls = []
-    manager.transient = SimpleNamespace(
-        hide_transient_same_window_ui=lambda **kw: calls.append(kw)
-    )
+        # Minimal stub — only exercise _schedule_hide_transient_if_still_inactive.
+        manager = UIManager.__new__(UIManager)
+        manager.parent_widget = parent
+        manager._is_modal_active = True
+        manager._deactivate_hide_scheduled = False
+        calls = []
+        manager.transient = SimpleNamespace(
+            hide_transient_same_window_ui=lambda **kw: calls.append(kw)
+        )
 
-    ran = []
-    monkeypatch.setattr(
-        "PySide6.QtCore.QTimer.singleShot",
-        lambda _ms, fn: ran.append(fn) or fn(),
-    )
+        ran = []
+        monkeypatch.setattr(
+            "PySide6.QtCore.QTimer.singleShot",
+            lambda _ms, fn: ran.append(fn) or fn(),
+        )
 
-    manager._schedule_hide_transient_if_still_inactive()
-    assert calls == []
-
-    parent.deleteLater()
+        manager._schedule_hide_transient_if_still_inactive()
+        assert calls == []
+    finally:
+        parent.hide()
+        parent.close()
+        parent.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
