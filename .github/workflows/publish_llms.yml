@@ -1,0 +1,55 @@
+name: Publish llms.txt
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Out Improve-ImgSLI
+        uses: actions/checkout@v4
+        with:
+          path: Improve-ImgSLI
+
+      - name: Check Out sli-ui-toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: Loganavter/sli-ui-toolkit
+          path: sli-ui-toolkit
+
+      - name: Check Out improve-imgsli-site
+        uses: actions/checkout@v4
+        with:
+          repository: Loganavter/improve-imgsli-site
+          path: improve-imgsli-site
+          token: ${{ secrets.SITE_PAT }}
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cloc
+        run: sudo apt-get update && sudo apt-get install -y cloc
+
+      - name: Generate llms.txt
+        working-directory: Improve-ImgSLI
+        run: |
+          python scripts/generate_llms.py
+          cp llms.txt ../improve-imgsli-site/llms.txt
+
+      - name: Commit and Push to site
+        working-directory: improve-imgsli-site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add llms.txt
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "docs: auto-update llms.txt on new Improve-ImgSLI release"
+            git push
+          fi

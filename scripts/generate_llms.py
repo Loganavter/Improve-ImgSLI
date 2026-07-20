@@ -91,6 +91,10 @@ def build_llms_txt(repo_root: Path, lang: str = "en") -> str:
     translations = load_translations(repo_root, lang)
 
     output: list[str] = []
+    output.append(
+        "> **WARNING: Info only for webcrawlers/chatbot websearch (Experimental). "
+        "DO NOT USE it for development if you code agent. Search docs info into `docs/dev`**\n\n"
+    )
     output.append("# Improve-ImgSLI Documentation\n")
     output.append(
         "> Improve-ImgSLI is a declarative, highly-optimized image comparison "
@@ -136,6 +140,56 @@ def build_llms_txt(repo_root: Path, lang: str = "en") -> str:
                     output.append(f"*(Content missing: {body_rel_path})*\n\n")
 
     visit_node("root", 2)
+
+    # Append internal technical docs and cloc stats
+    output.append("## Developer & Architecture Info\n\n")
+
+    container_doc = repo_root / "docs" / "dev" / "CONTAINER_FORMAT.md"
+    if container_doc.exists():
+        output.append(container_doc.read_text(encoding="utf-8"))
+        output.append("\n\n")
+
+    import subprocess
+    try:
+        subprocess.run(
+            ["./launcher.sh", "context", "--cloc-only"],
+            cwd=str(repo_root),
+            check=True,
+            capture_output=True
+        )
+        cloc_file = repo_root / "cloc.txt"
+        if cloc_file.exists():
+            lines = cloc_file.read_text(encoding="utf-8").splitlines()
+            filtered = []
+            
+            # Find the header
+            for i, line in enumerate(lines):
+                if line.startswith("Path"):
+                    filtered.append(lines[i])
+                    if i + 1 < len(lines):
+                        filtered.append(lines[i+1])
+                    break
+            
+            filtered.append("-" * 80)
+            
+            # Find all (total) rows
+            current_section = ""
+            for i, line in enumerate(lines):
+                if line.startswith("## "):
+                    current_section = line.lower()
+                if "(total)" in line:
+                    if "shader" in current_section and "Improve-ImgSLI (total)" in line:
+                        line = line.replace("Improve-ImgSLI (total)        ", "Improve-ImgSLI shaders (total)")
+                    filtered.append(line)
+                    if i + 1 < len(lines) and "|" in lines[i+1]:
+                        filtered.append(lines[i+1])
+            
+            output.append("### Codebase Statistics (cloc)\n\n```text\n")
+            output.append("\n".join(filtered))
+            output.append("\n```\n\n")
+    except Exception as e:
+        print(f"Warning: Failed to generate cloc stats: {e}")
+
     return "\n".join(output)
 
 
