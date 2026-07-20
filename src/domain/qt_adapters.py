@@ -43,12 +43,11 @@ def ensure_visible_color(
     Used for toolbar underlines and persisted chrome so a missing / zero-alpha
     value cannot make a control look "unset" or hide a canvas line.
     """
-    if value is None:
-        return fallback
-    if isinstance(value, Color):
-        if int(value.a) <= 0:
+    if hasattr(value, "r") and hasattr(value, "g") and hasattr(value, "b"):
+        a = getattr(value, "a", 255)
+        if int(a) <= 0:
             return fallback
-        return value
+        return Color(int(value.r), int(value.g), int(value.b), int(a))
     if isinstance(value, QColor):
         if not value.isValid() or value.alpha() <= 0:
             return fallback

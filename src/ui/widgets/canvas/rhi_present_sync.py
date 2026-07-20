@@ -47,12 +47,11 @@ def ensure_window_active_for_qrhi(widget: QWidget | None) -> bool:
 def flush_qrhi_compositor(widget: QWidget | None, *, reason: str = "") -> None:
     """One-shot present + window update mirroring the first-flyout restack."""
     _ = reason
-    if widget is None:
-        return
     try:
-        if not widget.isVisible():
+        is_vis = getattr(widget, "isVisible", None)
+        if is_vis is None or not is_vis():
             return
-    except RuntimeError:
+    except (RuntimeError, AttributeError):
         return
 
     ensure_window_active_for_qrhi(widget)
