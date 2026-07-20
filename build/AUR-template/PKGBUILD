@@ -15,7 +15,6 @@ depends=(
   'python-markdown'
   'python-numpy'
   'python-pillow'
-  'python-opengl'
   'pyside6'
   'python-scikit-image'
   'python-sli-ui-toolkit'
