@@ -29,7 +29,7 @@ def test_crop_matches_direct_pil_crop():
     expected = original.crop(box)
 
     assert cropped.size == expected.size
-    assert list(cropped.getdata()) == list(expected.getdata())
+    assert list(cropped.tobytes()) == list(expected.tobytes())
     store.close()
 
 
@@ -44,7 +44,7 @@ def test_read_tile_covers_grid():
     tile00 = store.read_tile(0, 0)
     assert tile00.size == (ts, ts)
     expected = original.crop((0, 0, ts, ts))
-    assert list(tile00.getdata()) == list(expected.getdata())
+    assert list(tile00.tobytes()) == list(expected.tobytes())
 
     tile11 = store.read_tile(1, 1)
     assert tile11.size == (10, 5)
@@ -56,7 +56,7 @@ def test_materialize_full_round_trip():
     store = TiledPixelStore.from_pil(original)
     restored = store.materialize_full()
     assert restored.size == original.size
-    assert list(restored.getdata()) == list(original.getdata())
+    assert list(restored.tobytes()) == list(original.tobytes())
     store.close()
 
 
@@ -81,8 +81,8 @@ def test_close_and_reopen_from_disk(tmp_path):
     reopened = TiledPixelStore.from_path(path)
     try:
         assert reopened.size == (48, 32)
-        assert list(reopened.crop((0, 0, 8, 8)).getdata()) == list(
-            original.crop((0, 0, 8, 8)).getdata()
+        assert list(reopened.crop((0, 0, 8, 8)).tobytes()) == list(
+            original.crop((0, 0, 8, 8)).tobytes()
         )
     finally:
         reopened.close()
@@ -126,7 +126,7 @@ def test_from_pil_strip_spill_pixel_parity():
     try:
         restored = store.materialize_full()
         assert restored.size == original.size
-        assert list(restored.getdata()) == list(original.getdata())
+        assert list(restored.tobytes()) == list(original.tobytes())
     finally:
         store.close()
 
