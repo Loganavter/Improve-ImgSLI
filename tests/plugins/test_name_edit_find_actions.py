@@ -20,104 +20,153 @@ from ui.actions.registry import ActionRegistry
 
 
 def test_name_edit_ensure_shows_edit_row(qtbot, monkeypatch):
+    from PySide6.QtCore import QEvent, QCoreApplication
+
     host = QWidget()
     qtbot.addWidget(host)
     host.show()
     qtbot.waitExposed(host)
 
-    edit_row = QWidget(host)
-    edit_row.hide()
-    edit = CustomLineEdit(host)
-    edit.hide()
-    file_btn = Button("settings", parent=host, toggle=True)
-    file_btn.setChecked(False)
-    text_btn = Button("settings", parent=host)
-    text_btn.hide()
+    try:
+        edit_row = QWidget(host)
+        edit_row.hide()
+        edit = CustomLineEdit(host)
+        edit.hide()
+        file_btn = Button("settings", parent=host, toggle=True)
+        file_btn.setChecked(False)
+        text_btn = Button("settings", parent=host)
+        text_btn.hide()
 
-    shown: list[bool] = []
+        shown: list[bool] = []
 
-    def _toggle(checked: bool) -> None:
-        shown.append(checked)
-        edit_row.setVisible(checked)
-        edit.setVisible(checked)
+        def _toggle(checked: bool) -> None:
+            shown.append(checked)
+            edit_row.setVisible(checked)
+            edit.setVisible(checked)
 
-    widget = SimpleNamespace(
-        edit_layout_widget=edit_row,
-        edit_name1=edit,
-        edit_name2=CustomLineEdit(host),
-        btn_file_names=file_btn,
-        btn_text_settings=text_btn,
-        toggle_edit_layout_visibility=_toggle,
-    )
+        widget = SimpleNamespace(
+            edit_layout_widget=edit_row,
+            edit_name1=edit,
+            edit_name2=CustomLineEdit(host),
+            btn_file_names=file_btn,
+            btn_text_settings=text_btn,
+            toggle_edit_layout_visibility=_toggle,
+        )
 
-    monkeypatch.setattr(
-        "tabs.image_compare.actions._host_font_settings_controller",
-        lambda: None,
-    )
-    _ensure_name_edit_chrome(widget)
-    assert shown == [True]
-    assert edit_row.isVisible()
-    assert file_btn.isChecked()
+        monkeypatch.setattr(
+            "tabs.image_compare.actions._host_font_settings_controller",
+            lambda: None,
+        )
+        _ensure_name_edit_chrome(widget)
+        assert shown == [True]
+        assert edit_row.isVisible()
+        assert file_btn.isChecked()
+    finally:
+        from sli_ui_toolkit.ui.widgets.helpers import hover_coordinator
+        hover_coordinator().clear_all()
+        edit.hide()
+        edit.close()
+        edit_row.hide()
+        edit_row.close()
+        host.hide()
+        host.close()
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.processEvents()
+            host.deleteLater()
+            app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
 
 
 def test_name_edit_actions_listed_while_hidden_and_run_shows(qtbot, monkeypatch):
+    from PySide6.QtCore import QEvent, QCoreApplication
+
     host = QWidget()
     qtbot.addWidget(host)
     host.resize(400, 200)
     host.show()
     qtbot.waitExposed(host)
 
-    edit1 = CustomLineEdit(host)
-    edit1.hide()
-    edit2 = CustomLineEdit(host)
-    edit2.hide()
-    file_btn = Button("settings", parent=host, toggle=True)
-    file_btn.setChecked(False)
-    text_btn = Button("settings", parent=host)
-    text_btn.hide()
+    try:
+        edit1 = CustomLineEdit(host)
+        edit1.hide()
+        edit2 = CustomLineEdit(host)
+        edit2.hide()
+        file_btn = Button("settings", parent=host, toggle=True)
+        file_btn.setChecked(False)
+        text_btn = Button("settings", parent=host)
+        text_btn.hide()
 
-    def _toggle(checked: bool) -> None:
-        edit1.setVisible(checked)
-        edit2.setVisible(checked)
+        def _toggle(checked: bool) -> None:
+            edit1.setVisible(checked)
+            edit2.setVisible(checked)
 
-    widget = SimpleNamespace(
-        edit_name1=edit1,
-        edit_name2=edit2,
-        btn_file_names=file_btn,
-        btn_text_settings=text_btn,
-        toggle_edit_layout_visibility=_toggle,
-    )
+        widget = SimpleNamespace(
+            edit_name1=edit1,
+            edit_name2=edit2,
+            btn_file_names=file_btn,
+            btn_text_settings=text_btn,
+            toggle_edit_layout_visibility=_toggle,
+        )
 
-    monkeypatch.setattr(
-        "tabs.image_compare.actions._host_font_settings_controller",
-        lambda: None,
-    )
+        monkeypatch.setattr(
+            "tabs.image_compare.actions._host_font_settings_controller",
+            lambda: None,
+        )
 
-    reg = ActionRegistry()
-    _contribute_name_edit_actions(widget, reg)
+        reg = ActionRegistry()
+        _contribute_name_edit_actions(widget, reg)
 
-    listed = reg.list_for(active_tab="image_compare", query="")
-    listed_ids = {a.action_id for a in listed}
-    assert "image_compare.rename_image1" in listed_ids
-    assert "image_compare.rename_image2" in listed_ids
+        listed = reg.list_for(active_tab="image_compare", query="")
+        listed_ids = {a.action_id for a in listed}
+        assert "image_compare.rename_image1" in listed_ids
+        assert "image_compare.rename_image2" in listed_ids
 
-    action = next(a for a in listed if a.action_id == "image_compare.rename_image1")
-    assert isinstance(action.target, ActionTarget)
-    assert callable(action.target.ensure_visible)
-    assert action.target.resolve_widget() is edit1
+        action = next(a for a in listed if a.action_id == "image_compare.rename_image1")
+        assert isinstance(action.target, ActionTarget)
+        assert callable(action.target.ensure_visible)
+        assert action.target.resolve_widget() is edit1
 
-    assert callable(action.run)
-    action.run()
-    assert edit1.isVisible()
+        assert callable(action.run)
+        action.run()
+        assert edit1.isVisible()
+    finally:
+        from sli_ui_toolkit.ui.widgets.helpers import hover_coordinator
+        hover_coordinator().clear_all()
+        edit1.hide()
+        edit1.close()
+        edit2.hide()
+        edit2.close()
+        host.hide()
+        host.close()
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.processEvents()
+            host.deleteLater()
+            app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
 
 
 def test_focus_name_edit_selects_text(qtbot):
+    from PySide6.QtCore import QEvent, QCoreApplication
+
     host = QWidget()
     qtbot.addWidget(host)
     host.show()
     qtbot.waitExposed(host)
-    edit = CustomLineEdit(host)
-    edit.setText("photo")
-    edit.show()
-    _focus_name_edit(edit)
-    assert edit.selectedText() == "photo"
+    try:
+        edit = CustomLineEdit(host)
+        edit.setText("photo")
+        edit.show()
+        _focus_name_edit(edit)
+        assert edit.selectedText() == "photo"
+    finally:
+        from sli_ui_toolkit.ui.widgets.helpers import hover_coordinator
+        hover_coordinator().clear_all()
+        host.hide()
+        host.close()
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.processEvents()
+            host.deleteLater()
+            app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
