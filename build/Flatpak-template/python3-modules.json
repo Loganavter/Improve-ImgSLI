@@ -59,7 +59,7 @@
                 },
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/b0/74/73a0d5264f04c9193d2d588400ae913a167911b4342320cbdde3040b753d/meson-1.2.3-py3-none-any.whl",
+                    "url": "https://files.pythonhosted.org/packages/b0/74/73a0d5264f04c9193d2d588400ae913.1.8911b4342320cbdde3040b753d/meson-1.2.3-py3-none-any.whl",
                     "sha256": "17d9124ffad38f5bbb6b198a8de5ecc55ebcd164d35a1d9dae06b8de0605a252"
                 },
                 {
@@ -134,13 +134,13 @@
             "name": "python3-sli-ui-toolkit",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==3.1.7\" --no-build-isolation --no-deps"
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==3.1.8\" --no-build-isolation --no-deps"
             ],
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/e1/4b/03ef63f65adde649b6c731e9baffb7db679aa697a4e12e3368ef0f0a80b0/sli_ui_toolkit-3.1.7.tar.gz",
-                    "sha256": "14a46a91479ff1db6b3dac29c900d4f4d175fccd035aed389795c43fee277d21"
+                    "url": "https://files.pythonhosted.org/packages/26/22/a25423b4f69f9f58adac081a844257d3fef163f0bcd6ef24b2787c2d7bc1/sli_ui_toolkit-3.1.8.tar.gz",
+                    "sha256": "c7a582d2192925561cc70cb4c5e1714192576043b6069c6ec07dd4b4fe2bcb28"
                 }
             ]
         },
