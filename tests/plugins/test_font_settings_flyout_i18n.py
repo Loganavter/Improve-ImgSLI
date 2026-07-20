@@ -8,7 +8,7 @@ from ui.widgets.font_settings_flyout import FontSettingsFlyout
 
 
 def test_font_settings_flyout_retranslates_on_language(qapp, monkeypatch):
-    host = qapp.activeWindow()
+    from PySide6.QtCore import QEvent
     from PySide6.QtWidgets import QWidget
 
     parent = QWidget()
@@ -41,21 +41,28 @@ def test_font_settings_flyout_retranslates_on_language(qapp, monkeypatch):
     monkeypatch.setattr("ui.widgets.font_settings_flyout.tr", fake_tr)
 
     flyout = FontSettingsFlyout(parent)
-    assert flyout._size_label.text() == "Font Size"
+    try:
+        assert flyout._size_label.text() == "Font Size"
 
-    flyout.set_values(
-        100,
-        50,
-        QColor("#fff"),
-        QColor("#000"),
-        True,
-        "edges",
-        100,
-        "ru",
-    )
-    assert flyout._size_label.text() == "Размер шрифта"
-    assert flyout._pos_radios["edges"].text() == "По краям"
-    assert flyout._draw_bg_label.text() == "Рисовать фон"
-
-    flyout.deleteLater()
-    parent.deleteLater()
+        flyout.set_values(
+            100,
+            50,
+            QColor("#fff"),
+            QColor("#000"),
+            True,
+            "edges",
+            100,
+            "ru",
+        )
+        assert flyout._size_label.text() == "Размер шрифта"
+        assert flyout._pos_radios["edges"].text() == "По краям"
+        assert flyout._draw_bg_label.text() == "Рисовать фон"
+    finally:
+        flyout.hide()
+        flyout.close()
+        flyout.deleteLater()
+        parent.hide()
+        parent.close()
+        parent.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
