@@ -177,20 +177,22 @@ class _DialogDecorationInterceptor(QObject):
     """
 
     def eventFilter(self, watched, event):
-        if event.type() != QEvent.Type.Polish:
-            return False
-        if not isinstance(watched, QDialog):
-            return False
-        if not watched.isWindow():
-            return False
-        if getattr(watched, "_csd_title_bar", None) is not None:
-            return False
-        if bool(getattr(watched, "_csd_decorating", False)):
-            return False
-        if bool(getattr(watched, "_csd_opt_out", False)):
-            return False
         try:
+            if event.type() != QEvent.Type.Polish:
+                return False
+            if not isinstance(watched, QDialog):
+                return False
+            if not watched.isWindow():
+                return False
+            if getattr(watched, "_csd_title_bar", None) is not None:
+                return False
+            if bool(getattr(watched, "_csd_decorating", False)):
+                return False
+            if bool(getattr(watched, "_csd_opt_out", False)):
+                return False
             decorate_dialog(watched, title=_resolve_dialog_title(watched))
+        except (RuntimeError, AttributeError, TypeError):
+            return False
         except Exception:
             pass
         return False

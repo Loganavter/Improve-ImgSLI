@@ -284,54 +284,60 @@ def test_startup_builds_title_bar_with_menu_strip(qapp):
 
 def test_global_press_skips_flyout_close_on_title_bar_menu(qapp):
     """Press on File/Help must not arm the deferred outside-close (first-click race)."""
+    from PySide6.QtCore import QEvent
     from ui.presenters.main_window import connections
 
     host = QWidget()
-    host.resize(200, 80)
-    host.show()
-    trigger = QWidget(host)
-    trigger.setObjectName("TitleBarMenuTrigger")
-    trigger.setGeometry(10, 10, 60, 24)
-    trigger.show()
-    QApplication.processEvents()
+    try:
+        host.resize(200, 80)
+        host.show()
+        trigger = QWidget(host)
+        trigger.setObjectName("TitleBarMenuTrigger")
+        trigger.setGeometry(10, 10, 60, 24)
+        trigger.show()
+        QApplication.processEvents()
 
-    center = trigger.mapToGlobal(trigger.rect().center())
-    assert connections._press_is_on_title_bar_menu(QPointF(center)) is True
+        center = trigger.mapToGlobal(trigger.rect().center())
+        assert connections._press_is_on_title_bar_menu(QPointF(center)) is True
 
-    other = QWidget(host)
-    other.setObjectName("SomethingElse")
-    other.setGeometry(100, 10, 60, 24)
-    other.show()
-    QApplication.processEvents()
-    other_center = other.mapToGlobal(other.rect().center())
-    assert connections._press_is_on_title_bar_menu(QPointF(other_center)) is False
+        other = QWidget(host)
+        other.setObjectName("SomethingElse")
+        other.setGeometry(100, 10, 60, 24)
+        other.show()
+        QApplication.processEvents()
+        other_center = other.mapToGlobal(other.rect().center())
+        assert connections._press_is_on_title_bar_menu(QPointF(other_center)) is False
 
-    presenter = SimpleNamespace(
-        _popup_close_scheduled=False,
-        ui_manager=SimpleNamespace(
-            transient=SimpleNamespace(close_all_flyouts_if_needed=MagicMock())
-        ),
-    )
-    press = QMouseEvent(
-        QMouseEvent.Type.MouseButtonPress,
-        QPointF(0, 0),
-        QPointF(center),
-        Qt.MouseButton.LeftButton,
-        Qt.MouseButton.LeftButton,
-        Qt.KeyboardModifier.NoModifier,
-    )
-    connections.handle_global_mouse_press(presenter, press)
-    assert presenter._popup_close_scheduled is False
+        presenter = SimpleNamespace(
+            _popup_close_scheduled=False,
+            ui_manager=SimpleNamespace(
+                transient=SimpleNamespace(close_all_flyouts_if_needed=MagicMock())
+            ),
+        )
+        press = QMouseEvent(
+            QMouseEvent.Type.MouseButtonPress,
+            QPointF(0, 0),
+            QPointF(center),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        connections.handle_global_mouse_press(presenter, press)
+        assert presenter._popup_close_scheduled is False
 
-    press_other = QMouseEvent(
-        QMouseEvent.Type.MouseButtonPress,
-        QPointF(0, 0),
-        QPointF(other_center),
-        Qt.MouseButton.LeftButton,
-        Qt.MouseButton.LeftButton,
-        Qt.KeyboardModifier.NoModifier,
-    )
-    connections.handle_global_mouse_press(presenter, press_other)
-    assert presenter._popup_close_scheduled is True
-
-    host.deleteLater()
+        press_other = QMouseEvent(
+            QMouseEvent.Type.MouseButtonPress,
+            QPointF(0, 0),
+            QPointF(other_center),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        connections.handle_global_mouse_press(presenter, press_other)
+        assert presenter._popup_close_scheduled is True
+    finally:
+        host.hide()
+        host.close()
+        host.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qapp.processEvents()
