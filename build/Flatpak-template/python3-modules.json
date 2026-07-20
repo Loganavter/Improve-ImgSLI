@@ -103,16 +103,44 @@
             ]
         },
         {
-            "name": "python3-sli-ui-toolkit",
+            "name": "python3-shiboken6",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==3.1.4\" --no-build-isolation"
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"shiboken6==6.11.1\" --no-build-isolation --no-deps"
             ],
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/a1/24/d82d121faf9f43f131a5f7879fa607d413ad2f15374c6b7ae743454772e9/sli_ui_toolkit-3.1.4-py3-none-any.whl",
-                    "sha256": "c7aa3a7501bd93bec1b88c93f8b07282c42e29649036607a17bb6b43b32fb2fa"
+                    "url": "https://files.pythonhosted.org/packages/c7/9b/e0355d8897b5c150770f1d95718aad17d432fcc9c035c04f3f58427d4693/shiboken6-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl",
+                    "sha256": "9a8bccfafc8805254cabcfa1edfaf55cd52889f4998c91ad0d9a4433fb1bcdbe"
+                }
+            ]
+        },
+        {
+            "name": "python3-PySide6-Essentials",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"PySide6-Essentials==6.11.1\" --no-build-isolation --no-deps"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/5c/49/0e1237c4400bec7e335d2c4eeb49bc40d9fd88a9ac44ca9083ce1abdc308/pyside6_essentials-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl",
+                    "sha256": "e3ef7027b41e4e55fadb56e3b3257dc8ee92154b639fe67fc4c8e05e9d976c60"
+                }
+            ]
+        },
+        {
+            "name": "python3-sli-ui-toolkit",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==3.1.5\" --no-build-isolation --no-deps"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/2d/cd/cac4685203b9341e4e72c82833b233e2ad01a568c1c4141148b2c3ecf045/sli_ui_toolkit-3.1.5.tar.gz",
+                    "sha256": "804c59f144a52d5429bde857e782f70f770ed0c7b7e1a91ce310f5183c976e48"
                 }
             ]
         },

@@ -267,23 +267,80 @@ Feature Level 11_0 via `D3D11CreateDevice` / `QRhi.probe` when bound).
 Explicit OpenGL is probed for GL 3.3+ / GLES 3.0+; D3D12 / Metal get the
 same style of availability check. Failures fall back along a platform
 chain; if nothing works (e.g. only D3D9), the app starts on QRhi Null and
-shows an unsupported-GPU dialog (update drivers / open a GitHub ticket).
+shows an unsupported-GPU dialog (update drivers / try legacy CPU-only
+`v7.9.0` / open a GitHub ticket).
 Workaround without a new build: Settings → Render Backend → Direct3D 11
 (or `--rhi-backend d3d11`) and restart.
 
-## Windows D3D: empty first QRhi present — fixed (2026-07-19)
+## Recent projects list capped at 1000 — known limit (2026-07-19)
+
+**Status:** intentional soft limit (raise on demand).
+
+`DEFAULT_CAP = 1000` in `services/io/recent_projects.py`. Past that, the
+oldest entry is dropped when a new project is recorded, and a toast explains
+the limit + links to GitHub issues. Raise the cap (or make it configurable)
+if users actually hit it.
+
+## Workspace tab transition flash missing — fixed (2026-07-19)
 
 **Status:** fixed.
 
-Image Compare emitted `firstFrameRendered` / `firstVisualFrameReady` even
-when `renderTarget()` was still `None` (no `beginPass`). On Direct3D that
-could drop the startup cover onto an uninitialized swapchain buffer. Multi
-Compare already gated on a real pass and double-`update()`'d after view
-changes.
+The solid workspace cover (“засветка”) on session switch looked up
+`_workspace_transition_mask` on `ui.main_window` after startup had reassigned
+that attribute from `_app_host` to `MainWindow`, while compose had stored the
+mask only on the host — so `cover()` never ran. Mask is now attached to the
+real top-level window; IC also releases on later `showEvent` because
+`firstVisualFrameReady` is one-shot.
 
-**Fix:** return whether `beginPass`/`endPass` completed; emit only then;
-`QTimer.singleShot(0, update)` after the first successful present (same
-idea as Multi Compare's `request_view_update`).
+A second miss: `cover()` was only hooked to `workspace_tabs.currentChanged`,
+but at the time the tab strip was hidden by default, so real
+switches (session picker / create session / Find Action) never covered.
+Cover now runs from the workspace store-change handler *before*
+`sync_session_mode` swaps the stack page. (The `show_workspace_tabs`
+setting was later removed entirely; the tab strip is now always visible.)
+
+## Theme switch freezes / fills in gradually — mitigated (2026-07-19)
+
+**Status:** mitigated in `sli-ui-toolkit` ≥ 3.1.5 (batch updates) / ≥ 3.1.6
+(Label recolor-only) / ≥ 3.1.7 (await active button ripple before QSS) /
+≥ 3.1.8 (`defer_when_hidden` language bindings) / ≥ 3.1.9 (process-wide
+`set_ripple_duration_ms` + `set_default_defer_click`) + app visible-tab
+appearance / deferred picker icons / selective
+`DEFER_CLICK_AWAIT_RIPPLE` on Settings Apply + session-picker create cards /
+language path skips `reapply_button_styles` and off-screen workspace chrome.
+
+Switching light/dark used to clear QSS, `processEvents()` (half-themed
+paint), set the full stylesheet, then fan out hundreds of `theme_changed`
+→ `update()` / Label `_apply_style` / all-tab appearance slots — long freeze
+and a visible gradual restyle. Heavy apply also froze the OK-button ripple
+mid-wave (same GUI thread as the ripple `QTimer`).
+
+**Fix:** batch `setUpdatesEnabled(False)` across apply + emit; drop mid-apply
+`processEvents`; Label theme flip only recolors; app skips hidden workspace
+pages and defers session-picker icon sync; theme apply waits out live
+ripples so the press animation finishes first. See [THEMING.md](THEMING.md).
+
+## Windows D3D: empty / see-through first QRhi present — open / unconfirmed (2026-07-19)
+
+**Status:** **possibly still present on Windows.** App-side mitigations are in
+tree (opaque clear + dual present + compositor flush), but the symptom
+**still reproduces in current testing**. Almost all Windows runs so far are
+under **WinBoat** (nested/containerized D3D + DWM), which is a plausible
+source of first-frame / alpha-hole artifacts that may **not** appear on bare
+metal. Treat as **unconfirmed product bug** until retested on a real Windows
+machine (and ideally A/B D3D11 vs OpenGL there).
+
+**Symptom:** first presented QRhi canvas frame blank, or punches through the
+translucent CSD shell to the desktop — especially with Direct3D.
+
+**What we already did (keep; do not rip out on a WinBoat-only “fix”):**
+completed-pass gate for first-frame signals; force live clear α=255; Windows
+waits for two presents before `firstVisualFrameReady`;
+`flush_qrhi_compositor` on early presents / `showEvent`.
+See [qrhi-gotchas.md](rendering/qrhi-gotchas.md#windows-d3d-empty-first-qrhi-frame--see-through-shell).
+
+**Next:** retest the same build on real hardware; if clean there, narrow this
+entry to “WinBoat / nested D3D only” and stop chasing QRhi for it.
 
 ## multi_compare: large slot images and tiled export — fixed (2026-07-15)
 

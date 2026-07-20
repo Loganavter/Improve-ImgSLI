@@ -41,6 +41,11 @@ class PlaylistManager:
     ):
         self.list_operations.reorder_item_in_list(image_number, source_index, dest_index)
 
+    def reorder_items_in_list(self, *, list_num: int, indices, dest_index: int):
+        self.list_operations.reorder_items_in_list(
+            list_num=list_num, indices=indices, dest_index=dest_index
+        )
+
     def move_item_between_lists(
         self,
         source_list_num: int,
@@ -50,6 +55,21 @@ class PlaylistManager:
     ):
         self.list_operations.move_item_between_lists(
             source_list_num, source_index, dest_list_num, dest_index
+        )
+
+    def move_items_between_lists(
+        self,
+        *,
+        source_list_num: int,
+        indices,
+        dest_list_num: int,
+        dest_index: int,
+    ):
+        self.list_operations.move_items_between_lists(
+            source_list_num=source_list_num,
+            indices=indices,
+            dest_list_num=dest_list_num,
+            dest_index=dest_index,
         )
 
     def _call_set_current_image(self, image_number: int, emit_signal: bool = True):

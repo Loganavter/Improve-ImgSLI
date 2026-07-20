@@ -1,9 +1,37 @@
 from __future__ import annotations
 
+import logging
 import time
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, QEvent, Qt, QTimer
 from PySide6.QtGui import QCursor
+
+_dbg = logging.getLogger("ImproveImgSLI.flyout")  # TEMP debug
+
+
+class _PressProbe(QObject):  # TEMP debug: who receives left presses while flyout is open
+    def __init__(self, get_flyout):
+        super().__init__()
+        self._get_flyout = get_flyout
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.MouseButtonPress:
+            try:
+                button = event.button()
+            except Exception:
+                button = None
+            if button == Qt.MouseButton.LeftButton:
+                flyout = self._get_flyout()
+                if flyout is not None and flyout.isVisible():
+                    from PySide6.QtWidgets import QWidget
+                    inside = flyout is watched or (
+                        isinstance(watched, QWidget) and flyout.isAncestorOf(watched)
+                    )
+                    _dbg.debug(
+                        "[DBG-MARQUEE] app press target=%s.%s inside_flyout=%s",
+                        type(watched).__name__, watched.objectName(), inside,
+                    )
+        return False
 
 
 class FlyoutController:
@@ -12,6 +40,9 @@ class FlyoutController:
         self.widget = widget
         self._context_menu_provider = None
         flyout = getattr(manager.host, "unified_flyout", None)
+        from PySide6.QtWidgets import QApplication
+        self._press_probe = _PressProbe(lambda: getattr(self.manager.host, "unified_flyout", None))
+        QApplication.instance().installEventFilter(self._press_probe)
         if flyout is not None and hasattr(flyout, "set_list_anchors"):
             left = getattr(widget, "combo_image1", None)
             right = getattr(widget, "combo_image2", None)

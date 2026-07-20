@@ -101,7 +101,7 @@ class ImageCarryService(QObject):
         else:
             self._hotspot = QPointF(hotspot)
 
-        from sli_ui_toolkit.widgets import DragGhostWidget
+        from ui.widgets.drag_ghost_widget import DragGhostWidget
 
         ghost_parent = None
         if self.main_window is not None:

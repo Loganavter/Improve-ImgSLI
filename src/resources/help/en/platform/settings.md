@@ -14,7 +14,6 @@ Settings are grouped by job — general, appearance, performance, analysis, and 
 - **{{tr:label.theme}}** — auto / light / dark.
 - **{{tr:settings.system_notifications}}** — desktop OS notifications after save (in-app toast is separate).
 - **{{tr:settings.enable_debug_logging}}** — verbose logs for troubleshooting.
-- **{{tr:settings.show_workspace_tabs}}** — show or hide the session tab strip.
 
 ### Appearance {#interface}
 

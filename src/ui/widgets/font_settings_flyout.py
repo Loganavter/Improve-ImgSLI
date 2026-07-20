@@ -134,6 +134,7 @@ class FontSettingsFlyout(BaseFlyout):
             flyout_point="bottom-right",
             offset=10,
             animation="slide",
+            animation_axis="vertical",
         )
 
     def has_active_dialog(self) -> bool:

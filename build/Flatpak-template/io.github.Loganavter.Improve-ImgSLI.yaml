@@ -70,4 +70,4 @@ modules:
     sources:
       - type: archive
         path: Improve-ImgSLI-10.0.0.tar.gz
-        sha256: fb0b29f4fd22d6f1d55bc1b28d223a4752d56d53f9c827fdd51070fecafcde59
+        sha256: SKIP

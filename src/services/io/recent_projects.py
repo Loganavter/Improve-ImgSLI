@@ -17,7 +17,7 @@ _SETTINGS_KEY = "recent_projects"
 _VIEW_KEY = "session_picker.recent.view"
 _SORT_KEY = "session_picker.recent.sort"
 _SORT_ORDER_KEY = "session_picker.recent.sort_order"
-DEFAULT_CAP = 16
+DEFAULT_CAP = 1000
 
 VIEW_GRID = "grid"
 VIEW_LIST = "list"
@@ -79,6 +79,18 @@ class RecentProjectRecord:
             file_created_at=created,
             session_types=tuple(types),
         )
+
+
+@dataclass(frozen=True)
+class RecordRecentResult:
+    """Outcome of pinning/opening a project into the Recent list."""
+
+    record: RecentProjectRecord
+    # Oldest entry dropped because the list was already at ``cap``.
+    evicted: RecentProjectRecord | None = None
+
+
+RECENT_CAP_ISSUES_URL = "https://github.com/Loganavter/Improve-ImgSLI/issues/new"
 
 
 def _now_iso() -> str:
@@ -177,7 +189,7 @@ def record_recent_project(
     session_types: Sequence[str] | None = None,
     settings=None,
     cap: int = DEFAULT_CAP,
-) -> RecentProjectRecord:
+) -> RecordRecentResult:
     qs = settings if settings is not None else _settings()
     normalized = _normalize_path(path)
     display_name = Path(normalized).stem or "Untitled"
@@ -218,9 +230,55 @@ def record_recent_project(
         session_types=types,
     )
     existing = [r for r in existing_all if _normalize_path(r.path) != normalized]
-    updated = [new_record, *existing][: max(1, int(cap))]
+    limit = max(1, int(cap))
+    combined = [new_record, *existing]
+    updated = combined[:limit]
+    dropped = combined[limit:]
+    evicted = dropped[-1] if dropped else None
     _write_records(qs, updated)
-    return new_record
+    return RecordRecentResult(record=new_record, evicted=evicted)
+
+
+def format_recent_cap_eviction_message(
+    evicted: RecentProjectRecord,
+    *,
+    cap: int = DEFAULT_CAP,
+    tr=None,
+) -> str:
+    """User-facing copy when the Recent list drops the oldest entry at cap."""
+
+    def _t(key: str, default: str) -> str:
+        if tr is None:
+            return default
+        try:
+            text = tr(key, default)
+        except TypeError:
+            text = tr(key)
+        return text if text else default
+
+    name = evicted.display_name or Path(evicted.path).stem or evicted.path
+    return _t(
+        "recent.cap_evicted",
+        "Recent list is full ({cap}). Dropped “{name}” to make room for the "
+        "new project — known limit for now. If you need a higher cap, open a "
+        "GitHub issue ({url}); you may be the first.",
+    ).format(cap=int(cap), name=name, url=RECENT_CAP_ISSUES_URL)
+
+
+def notify_recent_cap_eviction(
+    evicted: RecentProjectRecord | None,
+    *,
+    toast_manager=None,
+    tr=None,
+    cap: int = DEFAULT_CAP,
+) -> None:
+    if evicted is None or toast_manager is None:
+        return
+    message = format_recent_cap_eviction_message(evicted, cap=cap, tr=tr)
+    try:
+        toast_manager.show_toast(message, duration=10000)
+    except Exception:
+        logger.debug("Failed to show recent-cap eviction toast", exc_info=True)
 
 def remove_recent_project(path: str | Path, *, settings=None) -> bool:
     qs = settings if settings is not None else _settings()

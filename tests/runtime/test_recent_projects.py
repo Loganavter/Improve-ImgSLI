@@ -44,19 +44,52 @@ def test_record_dedupes_and_caps(qs, tmp_path):
         p = tmp_path / f"proj_{i}.imgsli"
         p.write_bytes(b"PK\x03\x04")  # not a real zip; peek fails → empty types
         paths.append(p)
-        record_recent_project(p, session_types=("image_compare",), settings=qs, cap=16)
+        result = record_recent_project(
+            p, session_types=("image_compare",), settings=qs, cap=16
+        )
+        assert result.record.display_name == f"proj_{i}"
+        if i >= 16:
+            assert result.evicted is not None
 
     records = list_recent_projects(settings=qs)
     assert len(records) == 16
     assert records[0].display_name == "proj_19"
     assert records[0].session_types == ("image_compare",)
 
-    # Re-open an older entry → moves to front, still capped.
-    record_recent_project(paths[0], session_types=("multi_compare",), settings=qs, cap=16)
+    # Re-open an older entry that is still in the capped list → moves to front.
+    still_in_list = records[-1].path
+    result = record_recent_project(
+        still_in_list, session_types=("multi_compare",), settings=qs, cap=16
+    )
+    assert result.evicted is None  # already in list; no growth past cap
     records = list_recent_projects(settings=qs)
     assert len(records) == 16
-    assert records[0].path == str(paths[0].resolve())
+    assert records[0].path == still_in_list
     assert records[0].session_types == ("multi_compare",)
+
+
+def test_record_reports_evicted_oldest_at_cap(qs, tmp_path):
+    from services.io.recent_projects import (
+        DEFAULT_CAP,
+        format_recent_cap_eviction_message,
+    )
+
+    assert DEFAULT_CAP == 1000
+    for i in range(2):
+        p = tmp_path / f"cap_{i}.imgsli"
+        p.write_text("{}")
+        result = record_recent_project(p, settings=qs, cap=2)
+        assert result.evicted is None
+
+    newest = tmp_path / "cap_new.imgsli"
+    newest.write_text("{}")
+    result = record_recent_project(newest, settings=qs, cap=2)
+    assert result.evicted is not None
+    assert result.evicted.display_name == "cap_0"
+    message = format_recent_cap_eviction_message(result.evicted, cap=2)
+    assert "cap_0" in message
+    assert "2" in message
+    assert "github.com" in message
 
 
 def test_remove_recent_project(qs, tmp_path):
@@ -145,7 +178,7 @@ def test_drop_missing(qs, tmp_path):
 def test_pinned_at_preserved_on_reopen(qs, tmp_path, monkeypatch):
     project = tmp_path / "keep.imgsli"
     project.write_text("{}")
-    first = record_recent_project(project, settings=qs)
+    first = record_recent_project(project, settings=qs).record
     assert first.pinned_at
     assert first.pinned_at == first.opened_at
     pinned = first.pinned_at
@@ -156,7 +189,7 @@ def test_pinned_at_preserved_on_reopen(qs, tmp_path, monkeypatch):
     monkeypatch.setattr(rp_mod, "_now_iso", lambda: "2099-01-01T00:00:00+00:00")
     second = record_recent_project(
         project, session_types=("multi_compare",), settings=qs
-    )
+    ).record
     assert second.pinned_at == pinned
     assert second.opened_at == "2099-01-01T00:00:00+00:00"
     assert second.session_types == ("multi_compare",)
@@ -188,7 +221,7 @@ def test_record_snapshots_file_times_and_keeps_them_when_missing(qs, tmp_path):
     project.write_text("{}")
     recorded = record_recent_project(
         project, session_types=("image_compare",), settings=qs
-    )
+    ).record
     assert recorded.file_modified_at
     assert recorded.file_created_at
     assert recorded.session_types == ("image_compare",)

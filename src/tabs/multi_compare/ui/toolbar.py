@@ -65,6 +65,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
             tr_func=_tr_with_default(
                 "tooltip.toggle_divider_visibility", "Toggle divider visibility"
             ),
+            defer_when_hidden=True,
         )
         self.btn_divider_visible.toggled.connect(
             lambda checked: self.divider_visible_toggled.emit(not checked)
@@ -80,6 +81,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
             self.btn_divider_color,
             "tooltip.divider_color",
             tr_func=_tr_with_default("tooltip.divider_color", "Divider color"),
+            defer_when_hidden=True,
         )
         self.btn_divider_color.clicked.connect(self.divider_color_clicked)
 
@@ -98,6 +100,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
                 "multi_compare.action.divider_width_desc",
                 "Grid line width, color (right-click), and visibility (set to zero)",
             ),
+            defer_when_hidden=True,
         )
         if hasattr(self.btn_divider_width, "valueChanged"):
             self.btn_divider_width.valueChanged.connect(self.divider_width_changed)
@@ -111,6 +114,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
             self.btn_add,
             "add_images",
             tr_func=_tr_with_default("add_images", "Add images"),
+            defer_when_hidden=True,
         )
         translatable_tooltip(
             self.btn_add,
@@ -118,6 +122,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
             tr_func=_tr_with_default(
                 "tooltip.multi_compare_add_images", "Add images to the comparison grid"
             ),
+            defer_when_hidden=True,
         )
         self.btn_add.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -136,6 +141,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
                 "tooltip.multi_compare_text_settings",
                 "Change labels drawn over grid images",
             ),
+            defer_when_hidden=True,
         )
         self.btn_text_settings.clicked.connect(self.text_settings_clicked)
 
@@ -150,6 +156,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
                 "tooltip.quick_save_image",
                 "Save immediately using the last export location",
             ),
+            defer_when_hidden=True,
         )
         self.btn_quick_save.clicked.connect(self.quick_save_clicked)
 

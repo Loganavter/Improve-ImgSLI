@@ -326,7 +326,6 @@ class SettingsDialog(ThemedDialog):
             ),
             ui_mode=ui_mode,
             video_recording_fps=_val("spin_fps", ctx.current_video_fps),
-            show_workspace_tabs=self.show_workspace_tabs_checkbox.isChecked(),
             rhi_backend=(_val("combo_rhi_backend", ctx.rhi_backend) or "default"),
             keyboard_overrides=dict(
                 getattr(self, "_keyboard_overrides", None)
@@ -369,7 +368,6 @@ class SettingsDialog(ThemedDialog):
             getattr(settings, "system_notifications_enabled", True)
         )
         debug_enabled = bool(getattr(settings, "debug_mode_enabled", False))
-        show_tabs = bool(getattr(settings, "show_workspace_tabs", True))
         self.context.system_notifications_enabled = notifications
         self.context.debug_mode_enabled = debug_enabled
         checkbox = getattr(self, "system_notifications_checkbox", None)
@@ -378,9 +376,6 @@ class SettingsDialog(ThemedDialog):
         debug_cb = getattr(self, "debug_checkbox", None)
         if debug_cb is not None:
             debug_cb.setChecked(debug_enabled)
-        tabs_cb = getattr(self, "show_workspace_tabs_checkbox", None)
-        if tabs_cb is not None:
-            tabs_cb.setChecked(show_tabs)
 
     def accept(self):
         self.confirm_settings()

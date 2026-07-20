@@ -20,6 +20,7 @@ Menu suspenso de lista → painel do gerenciador de lista.
 ### Linhas {#rows}
 
 - **Selecionar** — clique em uma linha para torná-la a atual; o painel fecha e o canvas é atualizado.
+- **Seleção múltipla** — `Ctrl`/`Cmd`+clique alterna linhas; arraste no espaço vazio do painel para um laço. Arrastar qualquer linha selecionada move o conjunto (o fantasma mostra a contagem).
 - **Reordenar** — arraste dentro de uma mesma lista.
 - **Mover entre listas** — arraste uma linha para fora do painel único para expandir o modo duplo, depois solte na outra lista.
 - **Dica de caminho** — passe o mouse sobre um nome truncado para ver o caminho completo.

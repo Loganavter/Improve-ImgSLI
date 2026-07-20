@@ -66,13 +66,6 @@ class SetVideoRecordingFpsAction(Action):
     def get_payload(self): return {"fps": self.fps}
 
 @dataclass
-class SetShowWorkspaceTabsAction(Action):
-    enabled: bool
-    def __init__(self, enabled: bool):
-        super().__init__(type=ActionType.SET_SHOW_WORKSPACE_TABS); self.enabled = enabled
-    def get_payload(self): return {"enabled": self.enabled}
-
-@dataclass
 class SetWindowWasMaximizedAction(Action):
     was_maximized: bool
     def __init__(self, was_maximized: bool):

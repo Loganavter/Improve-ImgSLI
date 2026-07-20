@@ -103,6 +103,39 @@ Do **not** cache `get_color()` results — re-read on every `theme_changed` so p
 
 For QPainter-based custom widgets, call `theme_manager.get_color(...)` inside `paintEvent` (or invalidate via `self.update()` in `_apply_styles`).
 
+## Theme switch performance
+
+`ThemeManager.set_theme` (toolkit ≥ 3.1.5) freezes top-level widget updates
+for the whole QSS apply **and** the `theme_changed` fan-out, then issues one
+`update()` pass. Labels (toolkit ≥ 3.1.6) only recolor on theme flip.
+
+Toolkit ≥ 3.1.7: `set_theme(..., await_ripples=True)` (default) postpones that
+blocking apply until any active button ripple finishes, so the press wave is
+not frozen mid-frame. Improve-ImgSLI does **not** set a process-wide
+`default_defer_click`; only heavy actions opt in with
+`set_defer_click(DEFER_CLICK_AWAIT_RIPPLE)` (Settings Apply, session-picker
+create cards). Tune duration via
+`set_ripple_duration_ms`. Top-levels that still host an active ripple are
+skipped by `suspend_widget_updates`.
+
+## Language switch performance
+
+Language Apply is a text fan-out (`language_changed` → `translatable_*`), not
+QSS. Toolkit ≥ 3.1.8: workspace-page bindings use `defer_when_hidden=True` so
+stacked-away tabs (Image Compare while the session picker is up, and vice
+versa) skip updates until the next `Show`. Presenter extras
+(`do_update_*` / flyouts) are gated the same way and flushed via
+`flush_stale_workspace_language` on session switch. Do not call
+`reapply_button_styles` from the language path — polish is theme-owned.
+
+App-side: `TabRegistry.apply_appearance` updates only the **visible**
+workspace page; hidden tabs flush on the next session switch. Session-picker
+icon SVG re-resolve is deferred off the hot path. Do not re-apply fonts from
+`MainWindowAppearance.on_theme_changed` — fonts are theme-independent.
+
+Do **not** call `QApplication.processEvents()` between clearing and setting
+the application stylesheet.
+
 ## Extension recipe — adding a color token
 
 1. Add the key under both `"light"` and `"dark"` in `src/resources/themes.json`:

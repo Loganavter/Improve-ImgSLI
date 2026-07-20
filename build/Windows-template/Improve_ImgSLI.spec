@@ -284,7 +284,7 @@ APP_HIDDENIMPORTS = [
     "sli_ui_toolkit.ui.widgets.atomic.tooltips",
     "sli_ui_toolkit.ui.widgets.composite.base_flyout",
     "sli_ui_toolkit.ui.widgets.composite.color_swatch",
-    "sli_ui_toolkit.ui.widgets.composite.drag_ghost_widget",
+    "ui.widgets.drag_ghost_widget",
     "sli_ui_toolkit.ui.widgets.composite.icon_action_flyout",
     "sli_ui_toolkit.ui.widgets.composite.simple_options_flyout",
     "sli_ui_toolkit.ui.widgets.composite.toast",

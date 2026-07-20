@@ -11,6 +11,7 @@ def initialize_workspace_state(presenter) -> None:
     presenter._file_dialog = None
     presenter._first_dialog_load_pending = True
     presenter._last_active_session_id = None
+    presenter._last_covered_session_id = None
 
 
 def configure_workspace_actions(presenter):
@@ -92,6 +93,9 @@ def sync_session_mode(presenter):
     session_type = active.session_type if active else INITIAL_WORKSPACE_SESSION_TYPE
     session_title = active.title if active else None
     presenter.ui.sync_session_mode(session_type, session_title)
+    from ui.presenters.main_window.state import flush_stale_workspace_language
+
+    flush_stale_workspace_language(presenter)
     # Active page may declare a higher window floor (e.g. Session Picker).
     main_window = getattr(presenter, "main_window_app", None)
     if main_window is not None and getattr(main_window, "_is_ui_stable", False):
@@ -102,19 +106,68 @@ def sync_session_mode(presenter):
 
 def on_workspace_tab_changed(presenter, index: int):
     if index < 0:
+        logger.debug("[workspace-transition] tab_changed ignored index=%s", index)
         return
     session_id = presenter.ui.workspace_tabs.tabData(index)
     if not (session_id and presenter.main_controller):
+        logger.warning(
+            "[workspace-transition] tab_changed early-out index=%s "
+            "session_id=%r has_controller=%s",
+            index,
+            session_id,
+            bool(presenter.main_controller),
+        )
         return
 
-    _cover_transition_for_session(presenter, session_id)
+    logger.debug(
+        "[workspace-transition] tab_changed index=%s session_id=%s",
+        index,
+        session_id,
+    )
+    # Cover runs from on_store_state_changed(workspace) so session-picker /
+    # Find Action / create-session paths also get the flash (workspace tabs
+    # strip is often hidden).
     presenter.main_controller.workspace.switch_workspace_session(session_id)
 
 
+def cover_active_session_transition(presenter) -> None:
+    """Cover before syncing the workspace stack to a newly active session.
+
+    Call from the workspace store-change handler, before ``sync_session_mode``.
+    """
+    session_manager = getattr(presenter, "session_manager", None)
+    if session_manager is None:
+        return
+    active = session_manager.get_active_session()
+    if active is None:
+        return
+    last_id = getattr(presenter, "_last_covered_session_id", None)
+    if last_id == active.id:
+        logger.debug(
+            "[workspace-transition] cover skipped: same session_id=%s",
+            active.id,
+        )
+        return
+    logger.debug(
+        "[workspace-transition] active session change %r -> %r type=%r",
+        last_id,
+        active.id,
+        getattr(active, "session_type", None),
+    )
+    presenter._last_covered_session_id = active.id
+    _cover_transition_for_session(presenter, active.id)
+
+
 def _cover_transition_for_session(presenter, session_id: str) -> None:
-    main_window = getattr(presenter.ui, "main_window", None)
-    mask = getattr(main_window, "_workspace_transition_mask", None)
+    mask, host = _resolve_workspace_transition_mask(presenter)
     if mask is None:
+        logger.warning(
+            "[workspace-transition] cover aborted: mask not found "
+            "(session_id=%s ui.main_window=%r main_window_app=%r)",
+            session_id,
+            type(getattr(getattr(presenter, "ui", None), "main_window", None)).__name__,
+            type(getattr(presenter, "main_window_app", None)).__name__,
+        )
         return
 
     hint = None
@@ -133,14 +186,68 @@ def _cover_transition_for_session(presenter, session_id: str) -> None:
 
         hint = TabTransitionHint()
     if not hint.cover_on_enter:
+        logger.debug(
+            "[workspace-transition] cover skipped: cover_on_enter=False "
+            "(session_type=%r)",
+            session_type,
+        )
         return
 
+    stack = getattr(presenter.ui, "workspace_stack", None)
+    logger.debug(
+        "[workspace-transition] requesting cover session_type=%r "
+        "hint=(min=%s max=%s) mask_id=%s host=%r stack=%r",
+        session_type,
+        hint.min_duration_ms,
+        hint.max_duration_ms,
+        id(mask),
+        type(host).__name__ if host is not None else None,
+        type(stack).__name__ if stack is not None else None,
+    )
     mask.cover(
-        getattr(presenter.ui, "workspace_stack", None),
+        stack,
         min_duration_ms=hint.min_duration_ms,
         max_duration_ms=hint.max_duration_ms,
         session_type=session_type,
     )
+
+
+def _resolve_workspace_transition_mask(presenter):
+    """Find the host transition mask after ``ui.main_window`` reassignment."""
+    candidates = []
+    ui = getattr(presenter, "ui", None)
+    if ui is not None:
+        candidates.append(getattr(ui, "main_window", None))
+    candidates.append(getattr(presenter, "main_window_app", None))
+    for window in candidates:
+        if window is None:
+            continue
+        mask = getattr(window, "_workspace_transition_mask", None)
+        if mask is not None:
+            logger.debug(
+                "[workspace-transition] mask resolved on %r id=%s",
+                type(window).__name__,
+                id(mask),
+            )
+            return mask, window
+        host = getattr(window, "_app_host", None)
+        if host is not None:
+            mask = getattr(host, "_workspace_transition_mask", None)
+            if mask is not None:
+                # Migrate so later lookups hit the MainWindow directly.
+                window._workspace_transition_mask = mask
+                logger.debug(
+                    "[workspace-transition] mask migrated from _app_host "
+                    "to %r id=%s",
+                    type(window).__name__,
+                    id(mask),
+                )
+                return mask, window
+    logger.debug(
+        "[workspace-transition] mask resolve failed candidates=%s",
+        [type(c).__name__ for c in candidates if c is not None],
+    )
+    return None, None
 
 
 def _resolve_session_type(presenter, session_id: str) -> str | None:

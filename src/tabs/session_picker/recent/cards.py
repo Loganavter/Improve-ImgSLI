@@ -247,9 +247,17 @@ def bind_card(
     # Multi-region cards (cover/text/meta) never hit ``_main``, so ``clicked``
     # stays silent — same pattern as SessionPicker create cards.
     # Handlers read live ``_recent_*`` attrs so in-place updates need no reconnect.
-    card.regionClicked.connect(
-        lambda _region_id, c=card: on_activate(c._recent_record, c._recent_missing)
-    )
+    # Keyboard modifiers are read at click time (Ctrl = toggle selection).
+    def _on_region(_region_id, c=card) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from tabs.session_picker.recent.selection import ctrl_held
+
+        modifiers = QApplication.keyboardModifiers()
+        on_activate(c._recent_record, c._recent_missing, modifiers)
+
+    # Keep signature flexible: panel may accept (record, missing) or +modifiers.
+    card.regionClicked.connect(_on_region)
     if hasattr(card, "rightClicked"):
         card.rightClicked.connect(
             lambda c=card: on_context_menu(c._recent_record)

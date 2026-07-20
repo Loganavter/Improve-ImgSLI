@@ -30,6 +30,12 @@ def reorder_item_in_list(
     )
 
 
+def reorder_items_in_list(controller, *, list_num: int, indices, dest_index: int):
+    controller.playlist_manager.reorder_items_in_list(
+        list_num=list_num, indices=indices, dest_index=dest_index
+    )
+
+
 def move_item_between_lists(
     controller,
     source_list_num: int,
@@ -39,6 +45,22 @@ def move_item_between_lists(
 ):
     controller.playlist_manager.move_item_between_lists(
         source_list_num, source_index, dest_list_num, dest_index
+    )
+
+
+def move_items_between_lists(
+    controller,
+    *,
+    source_list_num: int,
+    indices,
+    dest_list_num: int,
+    dest_index: int,
+):
+    controller.playlist_manager.move_items_between_lists(
+        source_list_num=source_list_num,
+        indices=indices,
+        dest_list_num=dest_list_num,
+        dest_index=dest_index,
     )
 
 

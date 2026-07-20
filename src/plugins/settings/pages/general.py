@@ -25,7 +25,6 @@ APPEARANCE = group(
     "settings.dark",
     "settings.system_notifications",
     "settings.enable_debug_logging",
-    "settings.show_workspace_tabs",
 )
 SEARCH = SearchIndex.of(LANGUAGE, APPEARANCE)
 
@@ -88,16 +87,6 @@ def build(dialog, p):
     dialog.debug_checkbox.setChecked(p.debug_mode_enabled)
     APPEARANCE.tag_member(dialog.debug_checkbox, "settings.enable_debug_logging")
     dialog.sys_group.add_widget(dialog.debug_checkbox)
-    dialog.show_workspace_tabs_checkbox = CheckBox(
-        APPEARANCE.text(dialog, "settings.show_workspace_tabs")
-    )
-    dialog.show_workspace_tabs_checkbox.setChecked(
-        getattr(p.store.settings, "show_workspace_tabs", True) if p.store else True
-    )
-    APPEARANCE.tag_member(
-        dialog.show_workspace_tabs_checkbox, "settings.show_workspace_tabs"
-    )
-    dialog.sys_group.add_widget(dialog.show_workspace_tabs_checkbox)
 
     layout.addWidget(dialog.sys_group)
     dialog.pages_stack.addWidget(dialog.page_general)

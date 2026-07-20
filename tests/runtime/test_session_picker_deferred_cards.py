@@ -24,6 +24,54 @@ class _FakeContext:
         return None
 
 
+def test_session_picker_populates_create_and_recent_during_build(
+    qapp, tmp_path, monkeypatch
+):
+    """First paint must not stagger empty recent → create-cards → recent cards."""
+    from services.io.recent_projects import RecentProjectRecord
+
+    path = tmp_path / "built.imgsli"
+    path.write_text("{}")
+    record = RecentProjectRecord(
+        path=str(path),
+        display_name="built",
+        opened_at="2026-01-01T00:00:00+00:00",
+        session_types=("image_compare",),
+    )
+    monkeypatch.setattr(
+        "tabs.session_picker.recent.panel.list_recent_projects",
+        lambda **kwargs: [record],
+    )
+    monkeypatch.setattr(
+        "tabs.session_picker.recent.panel.sort_recent_projects",
+        lambda recs, **kwargs: list(recs),
+    )
+    monkeypatch.setattr(
+        "tabs.session_picker.recent.panel.get_recent_view_mode",
+        lambda **kwargs: "grid",
+    )
+
+    ctx = _FakeContext(
+        [
+            SessionBlueprint(
+                session_type="image_compare",
+                plugin_name="comparison",
+                title="Image Compare",
+            ),
+        ]
+    )
+    widget = SessionPickerWidget(context=ctx)
+
+    assert widget._populated is True
+    assert "image_compare" in widget._cards_by_type
+    assert "multi_compare" in widget._cards_by_type
+    recent = widget._recent_panel
+    assert recent is not None
+    assert recent._layout_ready is True
+    assert recent._items.live_card_count == 1
+    widget.deleteLater()
+
+
 def test_session_picker_includes_scanned_tabs_before_blueprints(qapp):
     ctx = _FakeContext(
         [
@@ -125,6 +173,7 @@ def test_session_picker_sync_icons_on_theme_change(qapp):
 
     icons["image_compare"] = dark
     widget.on_theme_changed()
+    qapp.processEvents()
 
     icon_region = next(r for r in card._regions if r.id == "icon")
     assert icon_region.icon is dark

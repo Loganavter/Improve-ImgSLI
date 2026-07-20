@@ -20,9 +20,15 @@ def resolve_clear_color(widget) -> QColor:
             )
         return QColor(0, 0, 0, 0)
 
+    # Live QRhiWidget sits under a WA_TranslucentBackground CSD shell. Any
+    # clear alpha < 255 punches through to the desktop on Windows/D3D
+    # (see docs/dev/rendering/render-pass-contract.md + qrhi-gotchas).
+    # Match Multi Compare's ``_theme_or_palette_bg`` opaque rule.
     color = getattr(widget, "_theme_background_color", None)
     if isinstance(color, QColor) and color.isValid():
-        return QColor(color)
+        out = QColor(color)
+        out.setAlpha(255)
+        return out
 
     palette = widget.palette()
     color = palette.color(QPalette.ColorRole.Window)

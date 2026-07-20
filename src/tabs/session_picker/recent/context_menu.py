@@ -25,29 +25,50 @@ def open_recent_project_menu(
     tr: Callable[..., str],
     on_open: Callable[[RecentProjectRecord], None],
     on_remove: Callable[[RecentProjectRecord], None],
+    selected_paths: set[str] | None = None,
+    on_remove_selected: Callable[[], None] | None = None,
 ) -> None:
     missing = not Path(record.path).is_file()
+    multi = bool(selected_paths) and len(selected_paths) > 1 and record.path in selected_paths
     entries = [
         ContextMenuAction(
             "recent.open",
             tr("recent.action_open", "Open"),
-            enabled=not missing,
+            enabled=not missing and not multi,
         ),
         ContextMenuAction(
             "recent.properties",
             tr("recent.action_properties", "Properties"),
-        ),
-        ContextMenuAction(
-            "recent.remove",
-            tr("recent.action_remove", "Remove from list"),
-        ),
-        ContextMenuSeparator(),
-        ContextMenuAction(
-            "recent.reveal",
-            tr("recent.action_reveal", "Show in folder"),
-            enabled=Path(record.path).parent.is_dir(),
+            enabled=not multi,
         ),
     ]
+    if multi and on_remove_selected is not None:
+        entries.append(
+            ContextMenuAction(
+                "recent.remove_selected",
+                tr(
+                    "recent.action_remove_selected",
+                    "Remove selected ({n})",
+                ).format(n=len(selected_paths)),
+            )
+        )
+    else:
+        entries.append(
+            ContextMenuAction(
+                "recent.remove",
+                tr("recent.action_remove", "Remove from list"),
+            )
+        )
+    entries.extend(
+        [
+            ContextMenuSeparator(),
+            ContextMenuAction(
+                "recent.reveal",
+                tr("recent.action_reveal", "Show in folder"),
+                enabled=Path(record.path).parent.is_dir() and not multi,
+            ),
+        ]
+    )
 
     def on_triggered(action_id: str, _data: object) -> None:
         if action_id == "recent.open":
@@ -56,6 +77,8 @@ def open_recent_project_menu(
             open_recent_project_properties(record, tr=tr, parent=source_widget)
         elif action_id == "recent.remove":
             on_remove(record)
+        elif action_id == "recent.remove_selected" and on_remove_selected is not None:
+            on_remove_selected()
         elif action_id == "recent.reveal":
             parent = Path(record.path).parent
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(parent)))

@@ -419,6 +419,11 @@ class SessionController(QObject):
     ):
         list_ops.reorder_item_in_list(self, image_number, source_index, dest_index)
 
+    def reorder_items_in_list(self, *, list_num: int, indices, dest_index: int):
+        list_ops.reorder_items_in_list(
+            self, list_num=list_num, indices=indices, dest_index=dest_index
+        )
+
     def move_item_between_lists(
         self,
         source_list_num: int,
@@ -428,6 +433,22 @@ class SessionController(QObject):
     ):
         list_ops.move_item_between_lists(
             self, source_list_num, source_index, dest_list_num, dest_index
+        )
+
+    def move_items_between_lists(
+        self,
+        *,
+        source_list_num: int,
+        indices,
+        dest_list_num: int,
+        dest_index: int,
+    ):
+        list_ops.move_items_between_lists(
+            self,
+            source_list_num=source_list_num,
+            indices=indices,
+            dest_list_num=dest_list_num,
+            dest_index=dest_index,
         )
 
     def on_edit_name_changed(self, image_number, new_name):
