@@ -208,6 +208,7 @@ def test_empty_host_press_starts_in_window_marquee(qapp, tmp_path, monkeypatch):
     press = QMouseEvent(
         QMouseEvent.Type.MouseButtonPress,
         QPoint(20, host.height() - 4),
+        host.mapToGlobal(QPoint(20, host.height() - 4)),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
