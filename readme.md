@@ -59,6 +59,7 @@
 - 🗂️ File workflow tuned for large batches: drag and drop, reorder across left/right lists, clipboard paste, ratings, filename editing, and quick side switching with the mouse wheel.
 - 🎨 Deep UI customization: adjustable divider visibility/color/thickness, magnifier styling, text overlay styling, custom icon-based controls, light/dark themes, and custom UI fonts, all built on the project's own custom-drawn UI toolkit.
 - 🔎 Find Action + illustrated Help: search and run any command with `Ctrl+Shift+P` (Learn more opens the matching topic); hierarchical in-app Help with hubs, topic cards, and tab-owned pages for Image Compare / Multi Compare.
+- 💾 Project files (`.imgsli`): save your entire workspace state, including loaded images, splitters, magnifiers, and video sessions, into a single `.imgsli` container for easy sharing and resuming (see [technical format docs](docs/dev/CONTAINER_FORMAT.md)).
 - ⚙️ Polished desktop UX: persistent layout and settings, multilingual UI (EN/RU/zh/pt_BR), tray integration, save notifications, auto-cropping options, and a robust launcher for source-based runs.
 
 ---
