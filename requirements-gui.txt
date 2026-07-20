@@ -3,6 +3,6 @@ pillow==12.1.1
 numpy>=1.24,<2.4
 PySide6==6.11.1
 shiboken6==6.11.1
-git+https://github.com/Loganavter/sli-ui-toolkit.git@d779f55d212bd6b50a0a2e912a4f4442887b56dc
+git+https://github.com/Loganavter/sli-ui-toolkit.git@cbcd7c20777f5f68cffd857b2460ccc6cc36200d
 scikit-image==0.26.0
 imagecodecs>=2024.1.1
