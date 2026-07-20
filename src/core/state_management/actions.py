@@ -67,7 +67,6 @@ from core.state_management.settings_actions import (
     SetExportFavoriteDirAction,
     SetLanguageAction,
     SetKeyboardOverridesAction,
-    SetShowWorkspaceTabsAction,
     SetSystemNotificationsEnabledAction,
     SetThemeAction,
     SetUIFontFamilyAction,

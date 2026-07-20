@@ -24,11 +24,7 @@ def test_workspace_bar_is_toolkit_adaptive_tab_strip():
     window = QWidget()
     strip = _strip(window)
     ui = SimpleNamespace(
-        main_window=SimpleNamespace(
-            store=SimpleNamespace(
-                settings=SimpleNamespace(show_workspace_tabs=True),
-            )
-        ),
+        main_window=SimpleNamespace(store=SimpleNamespace()),
         workspace_tabs=strip,
         btn_new_session=strip.add_button,
     )

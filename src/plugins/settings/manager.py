@@ -63,7 +63,6 @@ class SettingsManager:
         s.video_editor_preview_render_scale = self._get_setting(
             "video_editor_preview_render_scale", 1.0, float
         )
-        s.show_workspace_tabs = self._get_setting("show_workspace_tabs", True, bool)
         s.rhi_backend = self._get_setting("rhi_backend", "default", str)
         s.keyboard_overrides = self._load_keyboard_overrides()
 
@@ -175,7 +174,6 @@ class SettingsManager:
             "video_editor_preview_render_scale",
             s.video_editor_preview_render_scale,
         )
-        self._save_setting("show_workspace_tabs", s.show_workspace_tabs)
         self._save_setting("rhi_backend", s.rhi_backend)
         self._save_keyboard_overrides(s.keyboard_overrides)
 

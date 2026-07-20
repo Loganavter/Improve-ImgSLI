@@ -10,7 +10,7 @@ from PySide6.QtCore import QSettings
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from tabs.contract import TabContext, TabContract
+from tabs.contract import TabContext, TabContract, TabTransitionHint
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +245,10 @@ class MultiCompareTab(TabContract):
         key = "tab_name"
         translated = tr(key, language)
         return translated if translated != key else self.display_name
+
+    def transition_hint(self) -> TabTransitionHint:
+        # No workspace.transition_mask.release() wired yet — avoid contract errors.
+        return TabTransitionHint(cover_on_enter=False)
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         from tabs.multi_compare.controller import MultiCompareController

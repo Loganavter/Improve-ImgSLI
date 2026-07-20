@@ -20,6 +20,7 @@ List dropdown → list-manager panel.
 ### Rows {#rows}
 
 - **Select** — click a row to make it current; the panel closes and the canvas updates.
+- **Multi-select** — `Ctrl`/`Cmd`+click toggles rows; drag on empty space in the panel for a marquee. Dragging any selected row moves the whole set (ghost shows the count).
 - **Reorder** — drag within one list.
 - **Move across lists** — drag a row outside the single panel to expand double mode, then drop on the other list.
 - **Path tip** — hover a truncated name for the full path.

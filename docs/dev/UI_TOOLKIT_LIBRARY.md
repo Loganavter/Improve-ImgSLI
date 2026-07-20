@@ -12,6 +12,9 @@ Typical toolkit code includes:
 
 - Reusable labels and buttons;
 - Generic flyout, dialog, and overlay infrastructure;
+  (`TopLevelInWindowOverlay`, `DragDropOverlay`, `MarqueeBandOverlay` /
+  `MarqueeBandGesture` for in-window multi-select rubber-bands — see toolkit
+  `FLYOUT_SYSTEM.md` / `API_CATALOG.md`);
 - A full i18n system (JSON-based translation loading, caching, dotted-key resolution);
 - Theme and icon managers;
 - Worker primitives;

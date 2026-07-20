@@ -115,6 +115,9 @@ class Ui_ImageComparisonApp:
             self.workspace_stack.setCurrentWidget(tab_page)
             if self._tab_registry:
                 self._tab_registry.activate(session_type)
+                # Theme may have flipped while this page was hidden.
+                main_window = self.workspace_stack.window()
+                self._tab_registry.flush_stale_appearance(main_window)
 
         handled = (
             self._tab_registry.apply_host_session_mode(

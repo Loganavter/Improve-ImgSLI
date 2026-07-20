@@ -1,36 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
 
-SHOW_WORKSPACE_TABS = False
-
-
-def apply_workspace_tabs_visibility(ui) -> None:
-    """Sync workspace-tabs row visibility with current store.settings.
-
-    Safe to call before or after the store is attached: falls back to
-    SHOW_WORKSPACE_TABS when no settings are available yet.
-    """
-    main_window = getattr(ui, "main_window", None)
-    settings = getattr(getattr(main_window, "store", None), "settings", None)
-    show = (
-        getattr(settings, "show_workspace_tabs", SHOW_WORKSPACE_TABS)
-        if settings is not None
-        else SHOW_WORKSPACE_TABS
-    )
-    tabs = getattr(ui, "workspace_tabs", None)
-    if tabs is not None:
-        tabs.setVisible(show)
-    btn = getattr(ui, "btn_new_session", None)
-    if btn is not None:
-        btn.setVisible(show)
-    container = getattr(ui, "workspace_tabs_bar", None)
-    if container is not None:
-        container.setVisible(show)
+logger = logging.getLogger("ImproveImgSLI")
 
 
 class LayoutComposer:
@@ -71,7 +49,6 @@ class LayoutComposer:
         tabs = ui.workspace_tabs
         tabs.setObjectName("WorkspaceTabsBar")
         tabs.tab_bar.setObjectName("WorkspaceTabs")
-        apply_workspace_tabs_visibility(ui)
 
     def _workspace_bar_widget(self, main_window: QWidget) -> QWidget:
         ui = self.ui
@@ -172,15 +149,20 @@ class LayoutComposer:
 
         ui._tab_registry = TabRegistry()
         ui._tab_registry.discover(tier="bootstrap")
-        transition_mask = WorkspaceTransitionMask(ui.main_window)
-        ui.main_window._workspace_transition_mask = transition_mask
-        # `ui.main_window` is set inside `Ui_ImageComparisonApp.setupUi()` to the
-        # widget passed in (`window._app_host`, a plain QWidget), *before* the
-        # caller overwrites it with the real MainWindow instance. So at this point
-        # in startup, `ui.main_window` is still the app_host stand-in and lacks
-        # `main_controller`/`app_context`/`thread_pool`. Walk up to the real
-        # top-level window instead of trusting `ui.main_window` here.
+        # `ui.main_window` is still the `_app_host` stand-in here; startup later
+        # reassigns ``ui.main_window = window`` (MainWindow). Attach the mask to
+        # the real top-level window so tab-switch cover lookups find it.
         real_window = ui.main_window.window()
+        transition_mask = WorkspaceTransitionMask(real_window)
+        real_window._workspace_transition_mask = transition_mask
+        ui.main_window._workspace_transition_mask = transition_mask
+        logger.debug(
+            "[workspace-transition] compose attached mask id=%s "
+            "real_window=%r app_host=%r",
+            id(transition_mask),
+            type(real_window).__name__,
+            type(ui.main_window).__name__,
+        )
         store = getattr(ui.main_window, "store", None)
         main_controller = getattr(real_window, "main_controller", None)
         app_context = getattr(real_window, "app_context", None)

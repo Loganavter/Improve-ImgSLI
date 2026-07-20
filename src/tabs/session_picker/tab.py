@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QWidget
 
-from tabs.contract import TabContext, TabContract
+from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.session_picker.widget import SessionPickerWidget
 
 
@@ -35,6 +35,10 @@ class SessionPickerTab(TabContract):
     @property
     def i18n_namespace(self) -> str | None:
         return "session_picker"
+
+    def transition_hint(self) -> TabTransitionHint:
+        # Lightweight page — no first-frame readiness signal wired yet.
+        return TabTransitionHint(cover_on_enter=False)
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         return SessionPickerWidget(parent, context=context)

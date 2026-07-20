@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtGui import (
     QDragEnterEvent,
     QDragLeaveEvent,
@@ -22,12 +22,14 @@ from services.io.recent_projects import (
     get_recent_sort_order,
     get_recent_view_mode,
     list_recent_projects,
+    notify_recent_cap_eviction,
     record_recent_project,
     remove_recent_project,
     RecentProjectRecord,
     sort_recent_projects,
     VIEW_GRID,
 )
+from tabs.session_picker.geometry import SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR
 from tabs.session_picker.recent.context_menu import open_recent_project_menu
 from tabs.session_picker.recent.drop_controller import RecentDropController
 from tabs.session_picker.recent.empty_drop_zone import EmptyDropZone
@@ -54,20 +56,22 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         self._sort_mode = get_recent_sort_mode()
         self._sort_order = get_recent_sort_order()
         self._records: list[RecentProjectRecord] = []
-        # First paint waits for a deferred layout pass so cards are not shown
-        # at 1-column / empty-shelf geometry and then jump.
+        # False until the first synchronous refresh builds cards (or empty zone).
         self._layout_ready = False
-        self._initial_refresh_scheduled = False
+        self._selected_paths: set[str] = set()
         self.setObjectName("RecentProjectsPanel")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setAcceptDrops(True)
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         # Prefer painting a full shelf fill without claiming OpaquePaintEvent —
         # that flag + a skipped/disabled update leaves CSD holes on tab return.
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAutoFillBackground(False)
         self._build()
         self._sync_opaque_fills()
-        translatable_callback(self, lambda _lang: self._retranslate())
+        translatable_callback(
+            self, lambda _lang: self._retranslate(), defer_when_hidden=True
+        )
 
     # --- test / legacy aliases (owned by composed children) -----------------
 
@@ -159,6 +163,9 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
             self._sync_header_controls()
         self._sync_opaque_fills()
         self._sync_empty_zone_colors()
+        items = getattr(self, "_items", None)
+        if items is not None:
+            items.refresh_selection_accent()
         self.update()
         super().on_theme_changed()
 
@@ -187,34 +194,24 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
-        # Prefer page-driven on_page_shown(); keep a deferred first layout only.
+        # Prefer page-driven on_page_shown(); sync first fill if we somehow
+        # became visible without an explicit populate.
         if not self._layout_ready:
-            self.schedule_initial_layout()
+            self.refresh()
 
     def on_page_shown(self) -> None:
         """Called when Session Picker becomes the active workspace page again."""
         self._sync_opaque_fills()
         self._sync_empty_zone_colors()
         if not self._layout_ready:
-            self.schedule_initial_layout()
+            self.refresh()
+            self.recover_opaque_surface()
             return
         # Do not destroy/rebuild cards on every tab return — that races the CSD
         # mask and leaves transparent holes. Soft-refresh only when MRU/prefs
         # actually changed.
         self._soft_refresh()
-        self.update()
-
-    def schedule_initial_layout(self) -> None:
-        """Defer the first card build until geometry is settled."""
-        if self._layout_ready or self._initial_refresh_scheduled:
-            return
-        self._initial_refresh_scheduled = True
-        QTimer.singleShot(0, self._run_initial_layout)
-
-    def _run_initial_layout(self) -> None:
-        self._initial_refresh_scheduled = False
-        if not self._layout_ready:
-            self.refresh()
+        self.recover_opaque_surface()
 
     def refresh(self) -> None:
         self._view_mode = get_recent_view_mode()
@@ -226,10 +223,13 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
             sort_by=self._sort_mode,
             sort_order=self._sort_order,
         )
+        alive = {r.path for r in self._records}
+        self._selected_paths &= alive
         self._rebuild_items()
         self._sync_header_controls()
         self._sync_opaque_fills()
         self._layout_ready = True
+        self._items.apply_selection()
 
     def _soft_refresh(self) -> None:
         """Update shelf contents only when records or view prefs changed."""
@@ -260,9 +260,11 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         self._sort_mode = sort_mode
         self._sort_order = sort_order
         self._records = records
+        self._selected_paths &= {r.path for r in records}
         self._rebuild_items()
         self._sync_header_controls()
         self._sync_opaque_fills()
+        self._items.apply_selection()
 
     def _build(self) -> None:
         root = QVBoxLayout(self)
@@ -277,10 +279,13 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         self._items.configure(
             tr=self._tr,
             context=self._context,
-            on_activate=self._activate,
+            on_activate=self._on_card_activate,
             on_context_menu=self._show_context_menu,
             content_width_provider=self._grid_content_width,
             on_viewport_height_changed=lambda: request_window_chrome_refresh(self),
+            selection_paths=lambda: set(self._selected_paths),
+            on_marquee_commit=self._on_marquee_commit,
+            on_marquee_preview=self._on_marquee_preview,
         )
         root.addWidget(self._items)
 
@@ -314,9 +319,15 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         self.update()
 
     def _pin_dropped_paths(self, paths: list[str]) -> None:
+        toast = getattr(self.window(), "toast_manager", None)
         for path in paths:
             try:
-                record_recent_project(path)
+                result = record_recent_project(path)
+                notify_recent_cap_eviction(
+                    result.evicted,
+                    toast_manager=toast,
+                    tr=self._tr,
+                )
             except Exception:
                 continue
         self.refresh()
@@ -366,9 +377,10 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
         )
 
     def _grid_content_width(self) -> int:
-        # Scroll fills the panel horizontally; its sizeHint can be tiny before
-        # the first layout pass, so never trust viewport width alone.
-        return max(0, int(self.width()))
+        # Scroll fills the panel horizontally; width can be 0 before the first
+        # layout pass. Floor so a sync first refresh does not paint a 1-column
+        # grid that jumps on the next resize.
+        return max(int(self.width()), SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR)
 
     def _rebuild_items(self) -> None:
         has_items = bool(self._records)
@@ -381,6 +393,63 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
             updates_owner=self,
         )
         self._sync_opaque_fills()
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        key = event.key()
+        if key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            if self._selected_paths:
+                self._remove_selected_paths()
+                event.accept()
+                return
+        if key == Qt.Key.Key_Escape:
+            if self._selected_paths:
+                self._clear_selection()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def _on_marquee_preview(self, paths: set[str], additive: bool) -> None:
+        from tabs.session_picker.recent.selection import preview_selection
+
+        # Non-additive: band-only preview (clears prior highlight while dragging).
+        base = self._selected_paths if additive else set()
+        self._items.apply_selection(
+            preview_selection(base, paths, additive=additive)
+        )
+
+    def _on_marquee_commit(self, paths: set[str], additive: bool) -> None:
+        if additive:
+            self._selected_paths |= paths
+        else:
+            self._selected_paths = set(paths)
+        self._items.apply_selection()
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+
+    def _clear_selection(self) -> None:
+        if not self._selected_paths:
+            return
+        self._selected_paths.clear()
+        self._items.apply_selection()
+
+    def _on_card_activate(
+        self,
+        record: RecentProjectRecord,
+        missing: bool,
+        modifiers=Qt.KeyboardModifier.NoModifier,
+    ) -> None:
+        from tabs.session_picker.recent.selection import ctrl_held
+
+        if ctrl_held(modifiers):
+            path = record.path
+            if path in self._selected_paths:
+                self._selected_paths.discard(path)
+            else:
+                self._selected_paths.add(path)
+            self._items.apply_selection()
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
+            return
+        self._clear_selection()
+        self._activate(record, missing)
 
     def _activate(self, record: RecentProjectRecord, missing: bool) -> None:
         # Re-check on disk: cards can stay "alive" after the file was deleted.
@@ -395,14 +464,30 @@ class RecentProjectsPanel(ThemedWidget, QWidget):
             self._on_open(record.path)
 
     def _show_context_menu(self, record: RecentProjectRecord) -> None:
+        selected = set(self._selected_paths)
+        if record.path not in selected:
+            # Right-click outside the current selection → single-item menu.
+            selected = set()
         open_recent_project_menu(
             source_widget=self.window() or self,
             record=record,
             tr=self._tr,
             on_open=lambda r: self._activate(r, missing=False),
             on_remove=self._remove_record,
+            selected_paths=selected,
+            on_remove_selected=self._remove_selected_paths,
         )
 
     def _remove_record(self, record: RecentProjectRecord) -> None:
         remove_recent_project(record.path)
+        self._selected_paths.discard(record.path)
+        self.refresh()
+
+    def _remove_selected_paths(self) -> None:
+        paths = list(self._selected_paths)
+        if not paths:
+            return
+        for path in paths:
+            remove_recent_project(path)
+        self._selected_paths.clear()
         self.refresh()

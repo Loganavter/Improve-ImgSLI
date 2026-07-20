@@ -604,7 +604,7 @@ class ImageCompareTab(TabContract):
         from tabs.image_compare.ui.appearance import apply_image_canvas_appearance
 
         apply_image_canvas_appearance(host_window)
-        if self._widget is not None:
+        if self._widget is not None and self._widget.isVisible():
             self._widget.reapply_button_styles()
 
     def dispose(self) -> None:

@@ -43,7 +43,6 @@ from .actions import (
     SetPressedKeysAction,
     SetResizeInProgressAction,
     SetShowingSingleImageModeAction,
-    SetShowWorkspaceTabsAction,
     SetSpaceBarPressedAction,
     SetSplitPositionAction,
     SetSplitPositionVisualAction,
@@ -243,8 +242,6 @@ class SettingsReducer:
             return replace(settings, system_notifications_enabled=action.enabled)
         if isinstance(action, SetVideoRecordingFpsAction):
             return replace(settings, video_recording_fps=action.fps)
-        if isinstance(action, SetShowWorkspaceTabsAction):
-            return replace(settings, show_workspace_tabs=action.enabled)
         if isinstance(action, SetWindowWasMaximizedAction):
             return replace(settings, window_was_maximized=action.was_maximized)
         if isinstance(action, SetWindowGeometryAction):

@@ -102,8 +102,11 @@ class MainWindowStartupRuntime:
         window._app_host.store = window.store
         window.ui.setupUi(window._app_host)
         window.ui.main_window = window
-        from ui.main_window.layouts import apply_workspace_tabs_visibility
-        apply_workspace_tabs_visibility(window.ui)
+        # Compose attached the transition mask while ``ui.main_window`` was still
+        # ``_app_host``; ensure the MainWindow keeps the same reference.
+        host_mask = getattr(window._app_host, "_workspace_transition_mask", None)
+        if host_mask is not None:
+            window._workspace_transition_mask = host_mask
         bootstrap_tab = window.ui._tab_registry.bootstrap_default_tab()
         if bootstrap_tab is None:
             raise RuntimeError(
@@ -309,6 +312,8 @@ class MainWindowStartupRuntime:
         recover = getattr(picker, "_sync_opaque_page_fills", None)
         if callable(recover):
             recover()
+        # Ensure create-cards + recent are present before the cover lifts
+        # (idempotent if _build already populated them).
         show_hook = getattr(picker, "refresh", None)
         if callable(show_hook):
             show_hook()

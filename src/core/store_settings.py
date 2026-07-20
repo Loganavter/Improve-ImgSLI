@@ -21,7 +21,6 @@ class SettingsState:
     auto_crop_black_borders: bool = True
     video_recording_fps: int = 60
     video_editor_preview_render_scale: float = 1.0
-    show_workspace_tabs: bool = True
     rhi_backend: str = "default"
     # Sparse map action_id → PortableText chord ("" = explicitly unbound).
     keyboard_overrides: dict[str, str] = field(default_factory=dict)

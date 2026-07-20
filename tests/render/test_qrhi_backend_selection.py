@@ -292,6 +292,40 @@ def test_render_failed_persists_fallback(monkeypatch):
     assert persisted == ["d3d11"]
 
 
+def test_unsupported_message_includes_legacy_cpu_release():
+    import json
+    from pathlib import Path
+
+    from ui.widgets.canvas.rhi_backend import (
+        RHI_LEGACY_CPU_RELEASE,
+        RHI_LEGACY_CPU_RELEASE_URL,
+        RHI_SUPPORT_ISSUES_URL,
+    )
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "resources"
+        / "i18n"
+        / "en"
+        / "settings"
+        / "general.json"
+    )
+    data = json.loads(path.read_text(encoding="utf-8"))
+    template = data["settings"]["render_backend_unsupported_message"]
+    text = template.format(
+        requirements="OpenGL 3.3 or newer, or Vulkan",
+        issues_url=RHI_SUPPORT_ISSUES_URL,
+        legacy_version=RHI_LEGACY_CPU_RELEASE,
+        legacy_url=RHI_LEGACY_CPU_RELEASE_URL,
+    )
+    assert RHI_LEGACY_CPU_RELEASE in text
+    assert RHI_LEGACY_CPU_RELEASE_URL in text
+    assert RHI_SUPPORT_ISSUES_URL in text
+    assert text.index(RHI_SUPPORT_ISSUES_URL) < text.index(RHI_LEGACY_CPU_RELEASE_URL)
+    assert "not a close substitute" in text.lower() or "much older" in text.lower()
+
+
 def test_platform_rhi_requirement_keys_are_os_filtered(monkeypatch):
     import ui.widgets.canvas.rhi_backend as mod
 

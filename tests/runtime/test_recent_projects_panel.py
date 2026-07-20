@@ -50,7 +50,7 @@ def test_recent_panel_empty_and_populated(qapp, tmp_path, monkeypatch):
     proj.write_text("{}")
     record = record_recent_project(
         proj, session_types=("image_compare",), settings=settings
-    )
+    ).record
 
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [record])
     monkeypatch.setattr(
@@ -66,10 +66,10 @@ def test_recent_panel_empty_and_populated(qapp, tmp_path, monkeypatch):
     assert panel._empty_zone.isHidden()
     assert panel._sort_button is not None
     assert not panel._sort_button.isHidden()
-    assert panel._items_layout is not None
-    assert panel._items_layout.count() == 1
+    assert panel._items.live_card_count == 1
 
-    card = panel._items_layout.itemAt(0).widget()
+    card = panel._items.card_for(record.path)
+    assert card is not None
     # Multi-region cards fire ``regionClicked``, not ``clicked``.
     card.regionClicked.emit("text")
     assert opened == [record.path]
@@ -315,10 +315,7 @@ def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch)
     panel.refresh()
     qapp.processEvents()
     assert panel._grid_columns == 3
-    before = [
-        panel._items_layout.itemAtPosition(*divmod(i, 3)).widget()
-        for i in range(6)
-    ]
+    before = [panel._items.card_for(records[i].path) for i in range(6)]
     assert all(w is not None for w in before)
 
     panel.resize(980, 800)
@@ -326,11 +323,7 @@ def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch)
     expected = grid_columns_for_width(panel._grid_content_width())
     assert expected > 3
     assert panel._grid_columns == expected
-    cols = panel._grid_columns
-    after = [
-        panel._items_layout.itemAtPosition(*divmod(i, cols)).widget()
-        for i in range(6)
-    ]
+    after = [panel._items.card_for(records[i].path) for i in range(6)]
     assert after == before
     panel.deleteLater()
 
@@ -356,13 +349,15 @@ def test_recent_panel_cards_use_fixed_size(qapp, tmp_path, monkeypatch):
 
     panel = RecentProjectsPanel(tr=_tr)
     panel.refresh()
-    card = panel._items_layout.itemAt(0).widget()
+    card = panel._items.card_for(record.path)
+    assert card is not None
     assert card.width() == GRID_CARD_W
     assert card.height() == GRID_CARD_H
 
     panel._view_mode = "list"
     panel._rebuild_items()
-    card = panel._items_layout.itemAt(0).widget()
+    card = panel._items.card_for(record.path)
+    assert card is not None
     assert card.height() == LIST_CARD_H
     assert card.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
     panel.deleteLater()
@@ -405,7 +400,7 @@ def test_recent_panel_clears_orphaned_card_widgets(qapp, tmp_path, monkeypatch):
     panel._rebuild_items()
     qapp.processEvents()
     live = [w for w in host.findChildren(Button) if w.parent() is host]
-    assert len(live) == panel._items_layout.count() == 2
+    assert len(live) == panel._items.live_card_count == 2
     panel.deleteLater()
 
 
@@ -430,7 +425,7 @@ def test_recent_panel_page_shown_soft_refresh_keeps_cards(qapp, tmp_path, monkey
     panel = RecentProjectsPanel(tr=_tr)
     panel._layout_ready = True
     panel.refresh()
-    card = panel._items_layout.itemAt(0).widget()
+    card = panel._items.card_for(record.path)
     assert card is not None
 
     rebuilds = {"n": 0}
@@ -443,7 +438,7 @@ def test_recent_panel_page_shown_soft_refresh_keeps_cards(qapp, tmp_path, monkey
     panel._rebuild_items = _counting_rebuild  # type: ignore[method-assign]
     panel.on_page_shown()
     assert rebuilds["n"] == 0
-    assert panel._items_layout.itemAt(0).widget() is card
+    assert panel._items.card_for(record.path) is card
     assert panel.updatesEnabled() is True
     panel.deleteLater()
 
@@ -475,7 +470,7 @@ def test_recent_panel_retranslate_keeps_opaque_shelf(qapp, tmp_path, monkeypatch
     panel.show()
     panel.refresh()
     qapp.processEvents()
-    card = panel._items_layout.itemAt(0).widget()
+    card = panel._items.card_for(record.path)
     assert card is not None
 
     panel._retranslate()
@@ -483,8 +478,8 @@ def test_recent_panel_retranslate_keeps_opaque_shelf(qapp, tmp_path, monkeypatch
 
     assert panel.updatesEnabled() is True
     assert panel.isVisible() is True
-    assert panel._items_layout.count() == 1
-    assert panel._items_layout.itemAt(0).widget() is card
+    assert panel._items.live_card_count == 1
+    assert panel._items.card_for(record.path) is card
     assert panel._scroll.isVisible() is True
     assert panel.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) is False
     host = panel._items_host
@@ -576,14 +571,14 @@ def test_recent_panel_relayout_never_leaves_updates_disabled(
     panel.deleteLater()
 
 
-def test_recent_panel_defers_initial_layout_until_timer(qapp, tmp_path, monkeypatch):
+def test_recent_panel_fills_cards_synchronously_on_show(qapp, tmp_path, monkeypatch):
     from services.io.recent_projects import RecentProjectRecord
 
-    path = tmp_path / "defer.imgsli"
+    path = tmp_path / "sync.imgsli"
     path.write_text("{}")
     record = RecentProjectRecord(
         path=str(path),
-        display_name="defer",
+        display_name="sync",
         opened_at="2026-01-01T00:00:00+00:00",
         session_types=("image_compare",),
     )
@@ -600,14 +595,12 @@ def test_recent_panel_defers_initial_layout_until_timer(qapp, tmp_path, monkeypa
     panel = RecentProjectsPanel(tr=_tr)
     panel.resize(560, 800)
     assert panel._layout_ready is False
-    assert panel._items_layout is not None
-    assert panel._items_layout.count() == 0
+    assert panel._items.live_card_count == 0
 
     panel.show()
-    assert panel._initial_refresh_scheduled is True
-    qapp.processEvents()
+    # No processEvents / singleShot — first show fills the shelf immediately.
     assert panel._layout_ready is True
-    assert panel._items_layout.count() == 1
+    assert panel._items.live_card_count == 1
     panel.deleteLater()
 
 
@@ -718,9 +711,9 @@ def test_recent_activate_refreshes_when_file_vanishes(qapp, tmp_path, monkeypatc
     project.unlink()
     panel._activate(record, missing=False)
     assert opened == []
-    assert panel._items_layout is not None
-    assert panel._items_layout.count() == 1
-    card = panel._items_layout.itemAt(0).widget()
+    assert panel._items.live_card_count == 1
+    card = panel._items.card_for(record.path)
+    assert card is not None
     cover = next(r for r in card.regions() if r.id == "cover")
     assert cover.override_bg_color is not None
     panel.deleteLater()
@@ -752,7 +745,88 @@ def test_recent_missing_click_does_not_remove(qapp, tmp_path, monkeypatch):
     panel.refresh()
     panel._activate(record, missing=True)
     assert removed == []
-    assert panel._items_layout.count() == 1
+    assert panel._items.live_card_count == 1
+    panel.deleteLater()
+
+
+def test_visible_row_window_includes_buffer():
+    from tabs.session_picker.recent.layout import (
+        ITEMS_MARGIN,
+        VIRTUAL_ROW_BUFFER,
+        row_stride,
+        visible_row_window,
+    )
+
+    stride = row_stride(52)
+    # At scroll 0, viewport tall enough for ~2 rows → first=0, last includes buffer.
+    first, last = visible_row_window(
+        0,
+        ITEMS_MARGIN + 2 * stride,
+        row_stride_px=stride,
+        total_rows=20,
+        buffer=VIRTUAL_ROW_BUFFER,
+    )
+    assert first == 0
+    assert last == 1 + VIRTUAL_ROW_BUFFER
+
+    # Scrolled down: window shifts and keeps buffer above/below.
+    first, last = visible_row_window(
+        ITEMS_MARGIN + 5 * stride,
+        2 * stride,
+        row_stride_px=stride,
+        total_rows=20,
+        buffer=1,
+    )
+    assert first == 4  # 5 - buffer
+    assert last == 7  # 5+1 visible-ish + buffer
+
+
+def test_recent_panel_virtualizes_large_list(qapp, tmp_path, monkeypatch):
+    from services.io.recent_projects import RecentProjectRecord, VIEW_LIST
+
+    def _record(i: int) -> RecentProjectRecord:
+        path = tmp_path / f"virt{i}.imgsli"
+        path.write_text("{}")
+        return RecentProjectRecord(
+            path=str(path),
+            display_name=f"virt{i}",
+            opened_at="2026-01-01T00:00:00+00:00",
+            session_types=("image_compare",),
+        )
+
+    records = [_record(i) for i in range(40)]
+    monkeypatch.setattr(
+        f"{_PANEL}.list_recent_projects",
+        lambda **kwargs: list(records),
+    )
+    monkeypatch.setattr(
+        f"{_PANEL}.sort_recent_projects",
+        lambda recs, **kwargs: list(recs),
+    )
+    monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_LIST)
+
+    panel = RecentProjectsPanel(tr=_tr)
+    panel.resize(560, 800)
+    panel.show()
+    panel.refresh()
+    qapp.processEvents()
+
+    live = panel._items.live_card_count
+    assert live < len(records)
+    assert live > 0
+    # Top of the list is live; far rows are not.
+    assert panel._items.card_for(records[0].path) is not None
+    assert panel._items.card_for(records[-1].path) is None
+
+    bar = panel._scroll.verticalScrollBar()
+    assert bar.maximum() > 0
+    top_paths = set(panel._items._cards_by_path)
+    bar.setValue(bar.maximum())
+    qapp.processEvents()
+    bottom_paths = set(panel._items._cards_by_path)
+    assert bottom_paths != top_paths
+    assert panel._items.card_for(records[-1].path) is not None
+    assert panel._items.live_card_count < len(records)
     panel.deleteLater()
 
 

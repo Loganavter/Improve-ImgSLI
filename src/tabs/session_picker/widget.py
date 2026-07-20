@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QLineF, QRectF, Qt
+from PySide6.QtCore import QLineF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
@@ -12,6 +12,7 @@ from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
 from sli_ui_toolkit.widgets import (
     Button,
     ButtonRegion,
+    DEFER_CLICK_AWAIT_RIPPLE,
     HorizontalSplit,
     Label,
     OverlayScrollArea,
@@ -93,7 +94,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         # Cards store eager QIcons from build time; re-resolve light/dark SVGs.
         # ThemedWidget calls this from __init__ before _populated exists.
         if getattr(self, "_populated", False):
-            self.sync_icons()
+            # Defer icon SVG re-resolve so it is not on the theme-switch hot path.
+            QTimer.singleShot(0, self.sync_icons)
         super().on_theme_changed()
 
     @staticmethod
@@ -166,7 +168,18 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         layout.addWidget(self._recent_panel)
         layout.addStretch(1)
         self._sync_opaque_page_fills()
-        translatable_callback(self, lambda _lang: self._retranslate())
+        # Build create-cards + recent shelf before the first visible paint so
+        # the page does not stagger (empty recent → cards → recent items).
+        # Do not wrap in setUpdatesEnabled(False): this page uses
+        # WA_OpaquePaintEvent, and a skipped update punches CSD holes.
+        self.refresh()
+        if self._recent_panel is not None:
+            self._recent_panel.refresh()
+            self._recent_panel.recover_opaque_surface()
+
+        translatable_callback(
+            self, lambda _lang: self._retranslate(), defer_when_hidden=True
+        )
 
     def set_open_project_handler(self, handler: Callable[[str], None] | None) -> None:
         if self._recent_panel is not None:
@@ -178,12 +191,15 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
-        # Create-cards first (changes page height). The recent shelf schedules
-        # its own first layout on show (or soft-refreshes if already laid out).
+        # Idempotent: _build already populated; soft-refresh recent on return.
+        # Always recover the shelf surface after show — soft-refresh can no-op
+        # while the OpaqueFillHost still needs a post-CSD paint.
         self.refresh()
         self._sync_opaque_page_fills()
         if self._recent_panel is not None:
             self._recent_panel.on_page_shown()
+            self._recent_panel.recover_opaque_surface()
+        self.update()
 
     def refresh(self) -> None:
         """Build create-cards once from a filesystem scan of tab packages.
@@ -334,6 +350,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             variant="default",
             size=(0, 76),
             corner_radius=10,
+            # Creating a workspace tab is heavy — finish the ripple first.
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
             parent=self._cards_container,
         )
         card.regionClicked.connect(lambda _id, st=session_type: self._create(st))

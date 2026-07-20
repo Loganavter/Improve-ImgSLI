@@ -13,7 +13,6 @@ from core.state_management.actions import (
     SetDisplayResolutionLimitAction,
     SetKeyboardOverridesAction,
     SetMaxNameLengthAction,
-    SetShowWorkspaceTabsAction,
     SetSystemNotificationsEnabledAction,
     SetThemeAction,
     SetUIFontFamilyAction,
@@ -95,23 +94,6 @@ class SettingsApplicationService(QObject):
         # Always push the live store flag into NotificationService (even when
         # the checkbox did not change) so a stale _enabled cannot outlive OK.
         self._sync_notification_service_enabled()
-
-        if data.show_workspace_tabs != getattr(
-            self.store.settings, "show_workspace_tabs", True
-        ):
-            dispatcher.dispatch(SetShowWorkspaceTabsAction(data.show_workspace_tabs))
-            self._save_setting("show_workspace_tabs", data.show_workspace_tabs)
-            window_shell = (
-                self.main_controller.window_shell if self.main_controller else None
-            )
-            window = getattr(window_shell, "main_window_app", None)
-            ui = getattr(window, "ui", None)
-            if ui is not None:
-                ui.workspace_tabs.setVisible(data.show_workspace_tabs)
-                ui.btn_new_session.setVisible(data.show_workspace_tabs)
-                container = getattr(ui, "workspace_tabs_bar", None)
-                if container is not None:
-                    container.setVisible(data.show_workspace_tabs)
 
         return render_update_needed
 

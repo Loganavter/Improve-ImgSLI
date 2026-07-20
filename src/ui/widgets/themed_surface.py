@@ -60,5 +60,8 @@ def apply_qrhi_theme_background(
     widget.setPalette(pal)
     widget.setAutoFillBackground(True)
     if isinstance(widget, QRhiWidget):
-        widget._theme_background_color = QColor(bg)
+        # Opaque clear into a translucent CSD shell — see rhi_render.resolve_clear_color.
+        opaque = QColor(bg)
+        opaque.setAlpha(255)
+        widget._theme_background_color = opaque
     widget.update()

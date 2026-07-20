@@ -42,11 +42,14 @@ class MultiCompareFooter(ThemedWidget, QWidget):
 
         text = _save_result_tr("save_result", "en")
         self.btn_save = Button(Icon.SAVE, text=text, variant="surface", parent=self)
-        translatable_text(self.btn_save, "save_result", tr_func=_save_result_tr)
+        translatable_text(
+            self.btn_save, "save_result", tr_func=_save_result_tr, defer_when_hidden=True
+        )
         translatable_tooltip(
             self.btn_save,
             "tooltip.multi_compare_save_grid",
             tr_func=_save_tooltip_tr,
+            defer_when_hidden=True,
         )
         self.btn_save.setMinimumHeight(32)
         self.btn_save.setSizePolicy(
