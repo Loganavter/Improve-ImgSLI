@@ -19,6 +19,9 @@ EMPTY_DROP_ZONE_H = ITEMS_MARGIN * 2 + GRID_CARD_H
 # that height the area stays fixed and scrolling kicks in.
 VISIBLE_ROWS_MAX = 2
 
+# Extra rows kept alive above/below the visible scroll window.
+VIRTUAL_ROW_BUFFER = 1
+
 # Button ``content_padding`` (left, top, right, bottom) — insets icon/text only.
 # Keep vertical insets modest: they apply to *every* region, and the text
 # strip already sits near the bottom of the card.
@@ -48,6 +51,11 @@ def grid_row_count(item_count: int, columns: int) -> int:
     return (int(item_count) + cols - 1) // cols
 
 
+def row_stride(card_h: int) -> int:
+    """Vertical distance from the top of one row to the top of the next."""
+    return int(card_h) + ITEMS_SPACING
+
+
 def content_height_for_rows(rows: int, *, card_h: int) -> int:
     """Unclamped height for ``rows`` of cards at ``card_h`` plus item margins."""
     rows = max(0, int(rows))
@@ -67,3 +75,32 @@ def scroll_viewport_height(*, content_rows: int, card_h: int) -> int:
     if needed <= 0:
         return content_height_for_rows(1, card_h=GRID_CARD_H)
     return min(needed, max_h)
+
+
+def visible_row_window(
+    scroll_y: int,
+    viewport_h: int,
+    *,
+    row_stride_px: int,
+    total_rows: int,
+    buffer: int = VIRTUAL_ROW_BUFFER,
+) -> tuple[int, int]:
+    """Inclusive ``(first_row, last_row)`` for the scroll window plus buffer.
+
+    ``scroll_y`` is the content offset (scrollbar value). Rows are measured
+    below the top ``ITEMS_MARGIN``. Returns ``(0, -1)`` when there are no rows.
+    """
+    total = max(0, int(total_rows))
+    if total <= 0:
+        return 0, -1
+    stride = max(1, int(row_stride_px))
+    buf = max(0, int(buffer))
+    # Y range of the viewport in content coordinates, relative to card origin.
+    y0 = max(0, int(scroll_y) - ITEMS_MARGIN)
+    y1 = max(y0, int(scroll_y) + max(0, int(viewport_h)) - ITEMS_MARGIN)
+    first = y0 // stride
+    # A row that starts at y is visible until y + card_h; approximate with stride.
+    last = max(first, (y1 - 1) // stride)
+    first = max(0, first - buf)
+    last = min(total - 1, last + buf)
+    return int(first), int(last)

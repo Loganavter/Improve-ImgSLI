@@ -14,7 +14,6 @@
 - **{{tr:label.theme}}** — 自动 / 浅色 / 深色。
 - **{{tr:settings.system_notifications}}** — 保存后的系统桌面通知（应用内 toast 单独控制）。
 - **{{tr:settings.enable_debug_logging}}** — 用于排查问题的详细日志。
-- **{{tr:settings.show_workspace_tabs}}** — 显示或隐藏会话标签栏。
 
 ### 外观 {#interface}
 

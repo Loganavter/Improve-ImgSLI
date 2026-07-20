@@ -14,11 +14,19 @@ def _get_session_handler(main_controller):
 @dataclass
 class RatingGestureTransaction:
     main_controller: object
-    image_number: int
-    item_index: int
-    starting_score: int
+    image_number: int | None = None
+    item_index: int = 0
+    starting_score: int = 0
+    list_num: int | None = None
     _accumulated_delta: int = 0
     _is_finalized: bool = False
+
+    def __post_init__(self) -> None:
+        side = self.list_num if self.list_num is not None else self.image_number
+        if side is None:
+            raise TypeError("RatingGestureTransaction requires list_num or image_number")
+        self.image_number = int(side)
+        self.list_num = int(side)
 
     def apply_delta(self, delta: int) -> None:
         if self._is_finalized:

@@ -195,7 +195,10 @@ class MainWindowProjectIo:
     def remember_project_path(self, path: str) -> None:
         from pathlib import Path
 
-        from services.io.recent_projects import record_recent_project
+        from services.io.recent_projects import (
+            notify_recent_cap_eviction,
+            record_recent_project,
+        )
 
         self.current_project_path = path
         settings = self.project_settings()
@@ -203,7 +206,11 @@ class MainWindowProjectIo:
         settings.setValue("project_last_dir", str(Path(path).parent))
         settings.sync()
         try:
-            record_recent_project(path, settings=settings)
+            result = record_recent_project(path, settings=settings)
+            notify_recent_cap_eviction(
+                result.evicted,
+                toast_manager=self._project_toast_manager(),
+            )
         except Exception:
             logger.exception("Failed to record recent project")
         self._apply_project_name_to_active_session(path)

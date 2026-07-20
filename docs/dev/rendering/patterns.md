@@ -53,11 +53,15 @@ here** — only the rule and a link to the detailed write-up when one exists.
 
 - Never enable QWidget autofill on a `QRhiWidget` (no-op like Image Compare)
   ([qrhi-gotchas.md#qrhiwidget-autofill](qrhi-gotchas.md#qrhiwidget-autofill)).
+- Live clear color must stay **opaque** (α=255) under the translucent CSD
+  shell — otherwise Windows/D3D shows a desktop hole on first present
+  ([qrhi-gotchas.md#windows-d3d-empty-first-qrhi-frame--see-through-shell](qrhi-gotchas.md#windows-d3d-empty-first-qrhi-frame--see-through-shell)).
 - If the zoom **percent chip** did not move but the picture jumped, treat it
   as display/compositor catch-up until proven otherwise
   ([qrhi-gotchas.md#display-lags-store](qrhi-gotchas.md#display-lags-store)).
 - After interactive zoom/pan on MC, settle the compositor on the gesture
-  (`rhi_present_sync`), not on the next flyout.
+  (`rhi_present_sync`), not on the next flyout. IC uses the same flush for
+  the first D3D presents.
 
 ### Chrome visibility
 

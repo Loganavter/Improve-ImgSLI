@@ -133,10 +133,13 @@ def on_store_state_changed(presenter, domain: str):
 
     if domain == "workspace":
         from ui.presenters.main_window.workspace import (
+            cover_active_session_transition,
             sync_session_mode,
             sync_workspace_tabs,
         )
 
+        # Cover before swapping the stack page so the flash hides first paint.
+        cover_active_session_transition(presenter)
         sync_workspace_tabs(presenter)
         sync_session_mode(presenter)
         _refresh_active_session_canvas(presenter)
@@ -348,9 +351,14 @@ def on_language_changed(presenter):
     Static text re-applies itself via the ``language_changed`` signal in
     ``sli_ui_toolkit.i18n``; this function only triggers dynamic content
     that doesn't go through ``translatable_*`` bindings.
+
+    Workspace-page chrome (Image Compare lists, flyouts, etc.) is skipped
+    while that page is stacked away — same idea as visible-only theme
+    ``apply_appearance``. Call ``flush_stale_workspace_language`` when the
+    page becomes current again. Button polish is not needed for text-only
+    changes.
     """
     lang_code = presenter.store.settings.current_language
-    from domain.qt_adapters import color_to_qcolor
     from ui.presenters.main_window.workspace import configure_workspace_actions
 
     configure_workspace_actions(presenter)
@@ -360,6 +368,27 @@ def on_language_changed(presenter):
         and presenter.main_window_app.tray_manager
     ):
         presenter.main_window_app.tray_manager.update_language(lang_code)
+
+    widget = getattr(presenter, "widget", None)
+    page_visible = widget is not None and widget.isVisible()
+    if page_visible:
+        presenter._workspace_language_stale = False
+        _refresh_visible_workspace_language(presenter, lang_code)
+    else:
+        presenter._workspace_language_stale = True
+
+    from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
+    from ui.layout_geometry import apply_main_window_minimum
+
+    defer_dialog_geometry(
+        presenter.main_window_app,
+        lambda: apply_main_window_minimum(presenter.main_window_app),
+    )
+
+
+def _refresh_visible_workspace_language(presenter, lang_code: str) -> None:
+    from domain.qt_adapters import color_to_qcolor
+
     do_update_combobox_displays(presenter)
     do_update_slider_tooltips(presenter)
     do_update_rating_displays(presenter)
@@ -378,14 +407,20 @@ def on_language_changed(presenter):
             lang_code,
         )
     presenter.repopulate_flyouts()
-    presenter.widget.reapply_button_styles()
-    from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
-    from ui.layout_geometry import apply_main_window_minimum
 
-    defer_dialog_geometry(
-        presenter.main_window_app,
-        lambda: apply_main_window_minimum(presenter.main_window_app),
-    )
+
+def flush_stale_workspace_language(presenter) -> None:
+    """Apply deferred language chrome when a workspace page becomes visible."""
+    if not getattr(presenter, "_workspace_language_stale", False):
+        return
+    widget = getattr(presenter, "widget", None)
+    if widget is None or not widget.isVisible():
+        return
+    presenter._workspace_language_stale = False
+    lang_code = presenter.store.settings.current_language
+    # Active tab is now the visible workspace page — refresh view/diff labels.
+    presenter.get_feature("settings").on_language_changed()
+    _refresh_visible_workspace_language(presenter, lang_code)
 
 
 def get_current_display_name(presenter, image_number: int) -> str:

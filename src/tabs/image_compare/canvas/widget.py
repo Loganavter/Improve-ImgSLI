@@ -63,6 +63,16 @@ from .texture_parts.layers import (
     set_pixmap,
 )
 
+# How many completed presents get a compositor settle kick (Win D3D hole).
+_FIRST_PRESENT_SETTLE_COUNT = 2
+
+
+def _first_visual_present_count() -> int:
+    """Presents required before first-frame signals (Windows D3D needs two)."""
+    import sys
+
+    return 2 if sys.platform.startswith("win") else 1
+
 
 class CanvasWidget(QRhiWidget):
     mousePressed = Signal(object)
@@ -81,6 +91,7 @@ class CanvasWidget(QRhiWidget):
         super().__init__(parent)
         configure_rhi_widget(self)
         self._first_frame_rendered_emitted = False
+        self._rhi_presents_completed = 0
         self._rhi_renderer = RhiCanvasRenderer()
         self._context_menu_provider = None
         init_widget_state(self)
@@ -155,6 +166,14 @@ class CanvasWidget(QRhiWidget):
     def is_drag_overlay_visible(self) -> bool:
         return bool(self.runtime_state._drag_overlay_visible)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Hidden stack pages never present; the first show on Windows/D3D often
+        # lands on an uninitialized swapchain buffer (see-through CSD shell).
+        self._request_update()
+        if self._rhi_presents_completed < _FIRST_PRESENT_SETTLE_COUNT:
+            QTimer.singleShot(0, self._settle_first_presents)
+
     def resizeEvent(self, event):
         state = self.runtime_state
         state._drag_overlay_cache_key = None
@@ -212,17 +231,38 @@ class CanvasWidget(QRhiWidget):
         # Match Multi Compare: only treat a completed beginPass/endPass as a
         # real present. Emitting on a no-op (target/rhi still None) made the
         # startup cover drop onto an empty D3D swapchain buffer on Windows.
+        #
+        # Docs: render-pass-contract (FBO α=1), qrhi-gotchas (display lags
+        # store / compositor), patterns (QRhiWidget under translucent CSD).
+        # On D3D the *first* presented buffer is often still an alpha hole
+        # through the shell; wait for a settle present + compositor flush.
         painted = render_clear_frame(self, command_buffer)
         if not painted:
+            return
+
+        self._rhi_presents_completed = int(self._rhi_presents_completed) + 1
+        if self._rhi_presents_completed <= _FIRST_PRESENT_SETTLE_COUNT:
+            self._settle_first_presents()
+
+        if self._rhi_presents_completed < _first_visual_present_count():
             return
         if not self._first_frame_rendered_emitted:
             self._first_frame_rendered_emitted = True
             self.firstFrameRendered.emit()
             self.firstVisualFrameReady.emit()
-            # D3D11/12 often shows an uninitialized first present; a next-tick
-            # update (same idea as MultiCompareCanvas.request_view_update)
-            # forces a second composite into the swapchain.
-            QTimer.singleShot(0, self._request_update)
+
+    def _settle_first_presents(self) -> None:
+        """Second present + window restack so D3D does not show a see-through hole."""
+
+        def _flush() -> None:
+            try:
+                from ui.widgets.canvas.rhi_present_sync import flush_qrhi_compositor
+
+                flush_qrhi_compositor(self, reason="ic-first-present")
+            except Exception:
+                self._request_update()
+
+        QTimer.singleShot(0, _flush)
 
     def _request_update(self):
         request_update(self)

@@ -21,6 +21,7 @@ if you need the full timeline / failed mitigations.
 | Dividers / underlines “missing” but geometry exists | [#invisible-chrome-vs-missing-geometry](#invisible-chrome-vs-missing-geometry) |
 | App `eventFilter` blows up on non-`QObject` (e.g. `QRhi`) | [#eventfilter-non-qobject](#eventfilter-non-qobject) |
 | Vulkan chosen but broken; no fallback | [#vulkan-startup-fallback](#vulkan-startup-fallback) |
+| First canvas frame blank / see-through on Windows D3D | [#windows-d3d-empty-first-qrhi-frame--see-through-shell](#windows-d3d-empty-first-qrhi-frame--see-through-shell) |
 
 Shared moral across several cases: **numerically perfect CPU/GPU plan logs
 do not prove the user sees that frame.** Failure can be scissor consumption,
@@ -198,18 +199,34 @@ Windows with only D3D9), resolve to QRhi **Null** and show an unsupported
 dialog with driver-update guidance + GitHub issues link.
 Code: `ui.widgets.canvas.rhi_backend`. Workaround: `--rhi-backend d3d11`.
 
-## Windows D3D empty first QRhi frame
+## Windows D3D empty first QRhi frame / see-through shell
 
-**Symptom:** first presented canvas frame is blank on Windows (D3D11/12);
-Linux OpenGL/Vulkan fine.
+**Symptom:** first presented canvas frame is blank **or punches through** the
+CSD window on Windows (D3D11/12); Linux OpenGL/Vulkan usually fine.
 
-**Cause:** Image Compare fired startup first-frame signals on a no-op
-render (no target / no pass). Cover could drop before a real present;
-D3D swapchains often need a second present anyway.
+**Cause (stacked):**
 
-**Fix:** gate signals on completed `beginPass`/`endPass`; next-tick
-`update()` after the first successful present (align with Multi Compare).
-Code: `tabs.image_compare.canvas.widget`, `rhi_renderer`, `rhi_render`.
+1. Image Compare used to fire startup first-frame signals on a no-op render
+   (no target / no pass).
+2. Live `QRhiWidget` sits under a `WA_TranslucentBackground` CSD shell.
+   Clear / theme colors that keep alpha &lt; 255 (or an uninitialized D3D
+   swapchain buffer) composite as a desktop hole — same class of failure as
+   “logs correct, display lags” / FBO α≠1
+   ([render-pass-contract.md](render-pass-contract.md),
+   [#display-lags-store](#display-lags-store)).
+3. Multi Compare already forced opaque clear and double-`update()`; IC did
+   not.
+
+**Fix:** gate signals on completed `beginPass`/`endPass`; force opaque live
+clear (match MC); on Windows require **two** successful presents before
+`firstVisualFrameReady`; settle with `flush_qrhi_compositor` (and on
+`showEvent`) so DWM restacks a real opaque buffer.
+
+**Code:** `tabs.image_compare.canvas.widget`, `rhi_render`,
+`rhi_present_sync`, `themed_surface.apply_qrhi_theme_background`.
+
+**Status note:** still seen under WinBoat after mitigations; bare-metal
+Windows retest pending — [KNOWN_BUGS.md](../KNOWN_BUGS.md).
 
 ---
 

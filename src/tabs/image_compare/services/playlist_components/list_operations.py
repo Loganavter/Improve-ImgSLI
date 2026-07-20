@@ -134,30 +134,114 @@ class PlaylistListOperations:
     def reorder_item_in_list(
         self, image_number: int, source_index: int, dest_index: int
     ) -> None:
-        target_list = get_target_list(self.store, image_number)
-        if not (0 <= source_index < len(target_list)):
+        self.reorder_items_in_list(
+            list_num=image_number,
+            indices=[source_index],
+            dest_index=dest_index,
+        )
+
+    def reorder_items_in_list(
+        self, *, list_num: int, indices, dest_index: int
+    ) -> None:
+        from sli_ui_toolkit.ui.widgets.composite.unified_flyout.multi_move import (
+            normalize_indices,
+            reorder_many,
+        )
+
+        normalized = normalize_indices(indices)
+        if not normalized:
             return
-
-        if source_index < dest_index:
-            dest_index -= 1
-
-        item_to_move = target_list.pop(source_index)
-        target_list.insert(dest_index, item_to_move)
-
-        current_index = get_current_index(self.store, image_number)
-        if current_index == source_index:
-            new_current_index = dest_index
-        elif source_index < current_index and dest_index >= current_index:
-            new_current_index = current_index - 1
-        elif source_index > current_index and dest_index <= current_index:
-            new_current_index = current_index + 1
-        else:
-            new_current_index = current_index
-
-        set_current_index(self.store, image_number, new_current_index)
+        target_list = get_target_list(self.store, list_num)
+        if not target_list:
+            return
+        current_path = get_current_item_path(self.store, list_num)
+        rebuilt = reorder_many(list(target_list), normalized, dest_index)
+        target_list[:] = rebuilt
+        new_current = find_index_by_path(target_list, current_path)
+        if new_current == -1 and target_list:
+            new_current = min(get_current_index(self.store, list_num), len(target_list) - 1)
+        set_current_index(self.store, list_num, new_current)
         emit_ui_update(self.main_controller, ["combobox"])
 
     def move_item_between_lists(
+        self,
+        source_list_num: int,
+        source_index: int,
+        dest_list_num: int,
+        dest_index: int,
+    ) -> None:
+        self.move_items_between_lists(
+            source_list_num=source_list_num,
+            indices=[source_index],
+            dest_list_num=dest_list_num,
+            dest_index=dest_index,
+        )
+
+    def move_items_between_lists(
+        self,
+        *,
+        source_list_num: int,
+        indices,
+        dest_list_num: int,
+        dest_index: int,
+    ) -> None:
+        from sli_ui_toolkit.ui.widgets.composite.unified_flyout.multi_move import (
+            normalize_indices,
+        )
+
+        normalized = normalize_indices(indices)
+        if not normalized:
+            return
+        if len(normalized) == 1:
+            # Keep the original single-item path (duplicate-path handling).
+            self._move_one_between_lists(
+                source_list_num, normalized[0], dest_list_num, dest_index
+            )
+            return
+
+        source_list = get_target_list(self.store, source_list_num)
+        dest_list = get_target_list(self.store, dest_list_num)
+        extracted = [source_list[i] for i in normalized if i < len(source_list)]
+        if not extracted:
+            return
+
+        path1_before = get_current_item_path(self.store, 1)
+        path2_before = get_current_item_path(self.store, 2)
+
+        for i in reversed(normalized):
+            if i < len(source_list):
+                source_list.pop(i)
+
+        insert_at = max(0, min(int(dest_index), len(dest_list)))
+        for item in extracted:
+            path = item.path if item else None
+            existing = find_index_by_path(dest_list, path)
+            if existing != -1:
+                dest_list.pop(existing)
+                if existing < insert_at:
+                    insert_at -= 1
+        insert_at = max(0, min(insert_at, len(dest_list)))
+        for offset, item in enumerate(extracted):
+            dest_list.insert(insert_at + offset, item)
+
+        # Resolve currents by path; for the source list, pretend the first
+        # removed index was the "source_index" hint used by the single helper.
+        hint = normalized[0]
+        idx1 = self._resolve_current_index_after_cross_move(
+            1, path1_before, source_list_num, hint
+        )
+        idx2 = self._resolve_current_index_after_cross_move(
+            2, path2_before, source_list_num, hint
+        )
+        set_current_index(self.store, 1, idx1)
+        set_current_index(self.store, 2, idx2)
+
+        emit_ui_update(self.main_controller, ["combobox"])
+        self._set_current_image(1, emit_signal=False)
+        self._set_current_image(2, emit_signal=False)
+        self.store.state_changed.emit("document")
+
+    def _move_one_between_lists(
         self,
         source_list_num: int,
         source_index: int,
@@ -184,8 +268,12 @@ class PlaylistListOperations:
         dest_index = max(0, min(dest_index, len(dest_list)))
         dest_list.insert(dest_index, item_to_move)
 
-        idx1 = self._resolve_current_index_after_cross_move(1, path1_before, source_list_num, source_index)
-        idx2 = self._resolve_current_index_after_cross_move(2, path2_before, source_list_num, source_index)
+        idx1 = self._resolve_current_index_after_cross_move(
+            1, path1_before, source_list_num, source_index
+        )
+        idx2 = self._resolve_current_index_after_cross_move(
+            2, path2_before, source_list_num, source_index
+        )
         set_current_index(self.store, 1, idx1)
         set_current_index(self.store, 2, idx2)
 

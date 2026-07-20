@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QScrollArea, QSizePolicy
 from plugins.settings.layout_geometry import apply_settings_dialog_geometry
 from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
 from sli_ui_toolkit.widgets import (
+    DEFER_CLICK_AWAIT_RIPPLE,
     ScrollableDialogPage,
     SidebarDialogShell,
 )
@@ -34,6 +35,9 @@ def setup_dialog_shell(dialog):
     )
     dialog.ok_button = dialog.action_bar.primary_button
     dialog.cancel_button = dialog.action_bar.secondary_button
+    # Theme / language / font apply is GUI-thread-bound — finish the OK
+    # ripple before the freeze (see BUTTON_API.md).
+    dialog.ok_button.set_defer_click(DEFER_CLICK_AWAIT_RIPPLE)
     dialog.ok_button.clicked.connect(dialog.confirm_settings)
     dialog.cancel_button.clicked.connect(dialog.reject)
     dialog.content_layout.addWidget(dialog.action_bar)

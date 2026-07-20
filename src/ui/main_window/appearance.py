@@ -21,27 +21,8 @@ class MainWindowAppearance:
             registry.apply_appearance(window)
 
     def on_theme_changed(self) -> None:
-        window = self.window
+        # Visible-tab canvas/chrome only — hidden pages flush on session switch.
+        # Do not re-apply fonts or polish the whole window here: fonts are
+        # theme-independent, and ThemeManager already polished during QSS apply.
         self.update_image_label_background()
-        try:
-            from shared_toolkit.ui.managers.font_manager import FontManager
-            from PySide6.QtWidgets import QApplication
-
-            FontManager.get_instance().apply_from_state(window.store)
-            current_font = QApplication.font()
-            window.setFont(current_font)
-            try:
-                from sli_ui_toolkit.managers import UiFont
-
-                UiFont.get_instance().set_family(current_font.family() or None)
-                UiFont.get_instance().sync_from_application()
-            except Exception:
-                pass
-        except Exception as exc:
-            logger.error("Error enforcing font style: %s", exc)
-
-        defer_dialog_geometry(window, lambda: apply_main_window_minimum(window))
-
-        window.style().unpolish(window)
-        window.style().polish(window)
-        window.update()
+        defer_dialog_geometry(self.window, lambda: apply_main_window_minimum(self.window))

@@ -219,6 +219,9 @@ class MainWindow(QWidget):
         self._startup_controller.start(self)
 
     def apply_application_theme(self, theme_name: str):
+        # ThemeManager.set_theme (sli-ui-toolkit ≥ 3.1.5) batches top-level
+        # updates across QSS apply + theme_changed so the UI does not fill in
+        # gradually mid-freeze.
         app = QApplication.instance()
         self.theme_manager.set_theme(theme_name, app)
 

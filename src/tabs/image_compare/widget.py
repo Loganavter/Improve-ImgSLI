@@ -8,6 +8,7 @@ this widget with the full image-compare layout tree.
 
 from __future__ import annotations
 
+import logging
 from typing import Tuple
 
 from PySide6.QtCore import Qt, QTimer
@@ -18,6 +19,8 @@ from sli_ui_toolkit.widgets import ThemedWidget
 from sli_ui_toolkit.i18n import tr
 from tabs.contract import TabContext
 from ui.theming import resolve_theme_color
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 class ImageCompareWidget(ThemedWidget, QWidget):
@@ -58,18 +61,53 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         except Exception:
             pass
 
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        # firstVisualFrameReady is one-shot; on later tab switches release as
+        # soon as this page is shown again if the canvas already painted.
+        canvas = getattr(self, "image_label", None)
+        already = bool(
+            canvas is not None
+            and getattr(canvas, "_first_frame_rendered_emitted", False)
+        )
+        logger.debug(
+            "[workspace-transition] IC showEvent already_painted=%s",
+            already,
+        )
+        if already:
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(0, self._release_transition_mask)
+
     def _on_first_visual_frame(self) -> None:
+        logger.debug("[workspace-transition] IC firstVisualFrameReady")
+        self._release_transition_mask()
+
+    def _release_transition_mask(self) -> None:
         context = self._context
         services = getattr(context, "services", None) if context else None
         if not services:
+            logger.debug(
+                "[workspace-transition] IC release skipped: no services "
+                "(context=%s)",
+                context is not None,
+            )
             return
         mask = services.get("workspace.transition_mask")
         if mask is None:
+            logger.warning(
+                "[workspace-transition] IC release skipped: service "
+                "'workspace.transition_mask' missing"
+            )
             return
         try:
+            logger.debug(
+                "[workspace-transition] IC calling mask.release id=%s",
+                id(mask),
+            )
             mask.release()
         except Exception:
-            pass
+            logger.exception("[workspace-transition] IC mask.release failed")
 
     # --- image_compare's own update/toggle API (moved out of the host shell) ---
 

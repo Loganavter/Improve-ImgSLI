@@ -26,7 +26,6 @@ class SettingsDialogData:
     auto_crop_black_borders: bool
     ui_mode: str
     video_recording_fps: int
-    show_workspace_tabs: bool = True
     rhi_backend: str = "default"
     keyboard_overrides: dict[str, str] = field(default_factory=dict)
     tab_extras: dict[str, dict[str, Any]] = field(default_factory=dict)

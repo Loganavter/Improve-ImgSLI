@@ -52,7 +52,6 @@ def _apply_simple_texts(dialog, lang: str) -> None:
         ("radio_pt_br", "settings.language_pt_br"),
         ("system_notifications_checkbox", "settings.system_notifications"),
         ("debug_checkbox", "settings.enable_debug_logging"),
-        ("show_workspace_tabs_checkbox", "settings.show_workspace_tabs"),
         ("radio_ui_mode_beginner", "settings.ui_mode_beginner"),
         ("radio_ui_mode_advanced", "settings.ui_mode_advanced"),
         ("radio_ui_mode_expert", "settings.ui_mode_expert"),

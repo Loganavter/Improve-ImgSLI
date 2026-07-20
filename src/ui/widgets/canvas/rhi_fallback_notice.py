@@ -8,6 +8,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget
 
 from ui.widgets.canvas.rhi_backend import (
+    RHI_LEGACY_CPU_RELEASE,
+    RHI_LEGACY_CPU_RELEASE_URL,
     RHI_NOTICE_UNSUPPORTED,
     RHI_SUPPORT_ISSUES_URL,
     RhiFallbackNotice,
@@ -76,6 +78,8 @@ def _show_fallback_dialog(parent: QWidget | None, notice: RhiFallbackNotice) -> 
         text = app_tr("settings.render_backend_unsupported_message", lang).format(
             requirements=format_platform_rhi_requirements(lang),
             issues_url=RHI_SUPPORT_ISSUES_URL,
+            legacy_version=RHI_LEGACY_CPU_RELEASE,
+            legacy_url=RHI_LEGACY_CPU_RELEASE_URL,
         )
     else:
         title = app_tr("settings.render_backend_fallback_title", lang)
