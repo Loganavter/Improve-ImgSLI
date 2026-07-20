@@ -2,7 +2,7 @@
 # Co-maintainer: Nebulosa
 
 pkgname=improve-imgsli
-pkgver=10.0.0
+pkgver=10.0.1
 pkgrel=1
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=('x86_64')
