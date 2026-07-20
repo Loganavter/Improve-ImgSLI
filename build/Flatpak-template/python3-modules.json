@@ -98,7 +98,18 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/c7/9b/e0355d8897b5c150770f1d95718aad17d432fcc9c035c04f3f58427d4693/shiboken6-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl",
-                    "sha256": "9a8bccfafc8805254cabcfa1edfaf55cd52889f4998c91ad0d9a4433fb1bcdbe"
+                    "sha256": "9a8bccfafc8805254cabcfa1edfaf55cd52889f4998c91ad0d9a4433fb1bcdbe",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/57/d5/dd4f1defed400be03340f2ede34b61f846776650b4e7ed9ebaf4c71979a2/shiboken6-6.11.1-cp310-abi3-manylinux_2_39_aarch64.whl",
+                    "sha256": "1bd2f4314414df2d122d9f646e03b731bc6d6b5f77a5f53f99a4fe4e97d84e6f",
+                    "only-arches": [
+                        "aarch64"
+                    ]
                 }
             ]
         },
@@ -112,7 +123,18 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/5c/49/0e1237c4400bec7e335d2c4eeb49bc40d9fd88a9ac44ca9083ce1abdc308/pyside6_essentials-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl",
-                    "sha256": "e3ef7027b41e4e55fadb56e3b3257dc8ee92154b639fe67fc4c8e05e9d976c60"
+                    "sha256": "e3ef7027b41e4e55fadb56e3b3257dc8ee92154b639fe67fc4c8e05e9d976c60",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/4c/c5/da4c5f23c6540ac5211a1f60177c8dee84b1bf40f2719479587ab8c60731/pyside6_essentials-6.11.1-cp310-abi3-manylinux_2_39_aarch64.whl",
+                    "sha256": "a039b6da68a3a4b9d243217b2b98d475eed3f617159ef6be925badab53c11b0d",
+                    "only-arches": [
+                        "aarch64"
+                    ]
                 }
             ]
         },
@@ -120,13 +142,13 @@
             "name": "python3-sli-ui-toolkit",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==3.1.8\" --no-build-isolation --no-deps"
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==3.1.9\" --no-build-isolation --no-deps"
             ],
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/26/22/a25423b4f69f9f58adac081a844257d3fef163f0bcd6ef24b2787c2d7bc1/sli_ui_toolkit-3.1.8.tar.gz",
-                    "sha256": "c7a582d2192925561cc70cb4c5e1714192576043b6069c6ec07dd4b4fe2bcb28"
+                    "url": "https://files.pythonhosted.org/packages/1f/8a/391ae19a91431bc01d5ade9ab5db567ae89941ebeee6c539f60c55ea0dcc/sli_ui_toolkit-3.1.9.tar.gz",
+                    "sha256": "e86670a9e8b50d42779b2430b43bd75cc17ccb474b4ac7f4c6cd0aa750e537fa"
                 }
             ]
         },
@@ -198,7 +220,18 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/11/6b/3443abcd0707d52e48eb315e33cc669a95e29fc102229919646f5a501171/scipy-1.16.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-                    "sha256": "1d8747f7736accd39289943f7fe53a8333be7f15a82eea08e4afe47d79568c32"
+                    "sha256": "1d8747f7736accd39289943f7fe53a8333be7f15a82eea08e4afe47d79568c32",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/ca/80/a561f2bf4c2da89fa631b3cbf31d120e21ea95db71fd9ec00cb0247c7a93/scipy-1.16.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+                    "sha256": "6b65d232157a380fdd11a560e7e21cde34fdb69d65c09cb87f6cc024ee376351",
+                    "only-arches": [
+                        "aarch64"
+                    ]
                 }
             ]
         },
@@ -217,7 +250,10 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/11/6b/3443abcd0707d52e48eb315e33cc669a95e29fc102229919646f5a501171/scipy-1.16.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-                    "sha256": "1d8747f7736accd39289943f7fe53a8333be7f15a82eea08e4afe47d79568c32"
+                    "sha256": "1d8747f7736accd39289943f7fe53a8333be7f15a82eea08e4afe47d79568c32",
+                    "only-arches": [
+                        "x86_64"
+                    ]
                 },
                 {
                     "type": "file",
@@ -227,7 +263,10 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/a3/b8/0d8eeb5a9fd7d34ba84f8a55753a0a3e2b5b51b2a5a0ade648a8db4a62f7/scikit_image-0.26.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
-                    "sha256": "b36ab5e778bf50af5ff386c3ac508027dc3aaeccf2161bdf96bde6848f44d21b"
+                    "sha256": "b36ab5e778bf50af5ff386c3ac508027dc3aaeccf2161bdf96bde6848f44d21b",
+                    "only-arches": [
+                        "x86_64"
+                    ]
                 },
                 {
                     "type": "file",
@@ -253,6 +292,14 @@
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/e6/5e/56c751afab61336cf0e7aa671b134255a30f15f59cd9e04f59c598a37ff5/tifffile-2025.10.16-py3-none-any.whl",
                     "sha256": "41463d979c1c262b0a5cdef2a7f95f0388a072ad82d899458b154a48609d759c"
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/07/a9/9564250dfd65cb20404a611016db52afc6268b2b371cd19c7538ea47580f/scikit_image-0.26.0-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl",
+                    "sha256": "915bb3ba66455cf8adac00dc8fdf18a4cd29656aec7ddd38cb4dda90289a6f21",
+                    "only-arches": [
+                        "aarch64"
+                    ]
                 }
             ]
         },
@@ -271,7 +318,18 @@
                 {
                     "type": "file",
                     "url": "https://files.pythonhosted.org/packages/8f/29/93ea9cbab7f57b4e60480c51fc51d8e138e399d11797c981d5f6e79f9832/imagecodecs-2026.3.6-cp311-abi3-manylinux_2_28_x86_64.whl",
-                    "sha256": "e30a14aa2e1c6c90e00375292726486c1d90bf003b1414d608ea4d1f62fd8a79"
+                    "sha256": "e30a14aa2e1c6c90e00375292726486c1d90bf003b1414d608ea4d1f62fd8a79",
+                    "only-arches": [
+                        "x86_64"
+                    ]
+                },
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/45/fa/f67c4e644fdf06503e120f9d1c8d8654b99066dea7093a674b67704fa4a4/imagecodecs-2026.3.6-cp311-abi3-manylinux_2_28_aarch64.whl",
+                    "sha256": "30fa140bb1a112a889926af36977214ed52a22e4557356043259b5e2f79cfba5",
+                    "only-arches": [
+                        "aarch64"
+                    ]
                 }
             ]
         }
