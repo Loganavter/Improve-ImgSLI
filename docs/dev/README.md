@@ -98,6 +98,7 @@ Focused tests: `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` — se
 - [PLUGINS.md](PLUGINS.md) — plugin host
 - [tabs/index.md](tabs/index.md) · [TAB_CONTRACT.md](TAB_CONTRACT.md) — workspace tabs
 - [CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md) — capability name aliases
+- [CONTAINER_FORMAT.md](CONTAINER_FORMAT.md) — `.imgsli` portable project format
 
 ### UI, chrome, product surfaces
 
