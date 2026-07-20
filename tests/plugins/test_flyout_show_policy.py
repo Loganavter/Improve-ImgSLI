@@ -116,8 +116,11 @@ def test_button_suppress_click_clears_context_menu_flag(qapp):
 
         button._emit_click_signals()
         assert clicks == [1]
-        button.deleteLater()
     finally:
+        button.hide()
+        button.close()
+        button.deleteLater()
+        qapp.processEvents()
         Button._emit_click_signals = previous_emit
         flyout_policy._BUTTON_SUPPRESS_PATCHED = previous_patched
 
