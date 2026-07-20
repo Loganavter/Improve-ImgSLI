@@ -134,13 +134,13 @@
             "name": "python3-sli-ui-toolkit",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==3.1.6\" --no-build-isolation --no-deps"
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"sli-ui-toolkit==3.1.7\" --no-build-isolation --no-deps"
             ],
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/af/5c/ee0b6a5e28d41e1db2a7364a5a5238e66388e1c0d3fbdc0fd55355dd0bac/sli_ui_toolkit-3.1.6.tar.gz",
-                    "sha256": "602d6afac4282d2d07a18c582a5954a97c5e627d625fa355a2ee69b543cb2f94"
+                    "url": "https://files.pythonhosted.org/packages/e1/4b/03ef63f65adde649b6c731e9baffb7db679aa697a4e12e3368ef0f0a80b0/sli_ui_toolkit-3.1.7.tar.gz",
+                    "sha256": "14a46a91479ff1db6b3dac29c900d4f4d175fccd035aed389795c43fee277d21"
                 }
             ]
         },
