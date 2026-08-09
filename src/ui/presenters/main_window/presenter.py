@@ -22,11 +22,11 @@ from ui.presenters.main_window.connections import (
 from ui.presenters.main_window.features import MainWindowFeatureSet
 from ui.presenters.main_window.state import (
     apply_initial_settings_to_ui,
+    do_sync_zoom_indicator,
     do_update_combobox_displays,
     do_update_file_names_display,
     do_update_rating_displays,
     do_update_resolution_labels,
-    do_update_slider_tooltips,
     get_current_display_name,
     get_current_score,
     get_image_dimensions,
@@ -101,7 +101,6 @@ class MainWindowPresenter(QObject):
             self._configure_workspace_actions()
             self.sync_workspace_tabs()
             self.sync_session_mode()
-            self.update_slider_tooltips()
             self.widget.reapply_button_styles()
             self.repopulate_flyouts()
         except Exception:
@@ -131,9 +130,6 @@ class MainWindowPresenter(QObject):
 
     def set_magnifier_orientation_checked(self, is_checked: bool) -> None:
         self.widget.btn_magnifier_orientation.setChecked(is_checked, emit_signal=False)
-
-    def toggle_magnifier_panel_visibility(self, is_visible: bool) -> None:
-        self.widget.toggle_magnifier_panel_visibility(is_visible)
 
     def _connect_signals(self):
         return connect_signals_impl(self)
@@ -177,6 +173,9 @@ class MainWindowPresenter(QObject):
     def _do_update_file_names_display(self):
         return do_update_file_names_display(self)
 
+    def _do_sync_zoom_indicator(self):
+        return do_sync_zoom_indicator(self)
+
     def check_name_lengths(self):
         self.features.toolbar.check_name_lengths()
 
@@ -185,12 +184,6 @@ class MainWindowPresenter(QObject):
 
     def _do_update_combobox_displays(self):
         return do_update_combobox_displays(self)
-
-    def update_slider_tooltips(self):
-        self.ui_batcher.schedule_update("slider_tooltips")
-
-    def _do_update_slider_tooltips(self):
-        return do_update_slider_tooltips(self)
 
     def update_rating_displays(self):
         self.ui_batcher.schedule_update("ratings")

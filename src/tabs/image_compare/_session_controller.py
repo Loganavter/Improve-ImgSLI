@@ -59,6 +59,15 @@ class SessionController(QObject):
         self.event_bus = event_bus
 
         self._unification_task_id = 0
+        self._pyramid_builds: set[int] = set()
+        # "Loading full version of image" toast, tracked per compare slot
+        # (not per pyramid uid) so it can start as soon as the quick QImage
+        # preview is shown -- well before a pyramid store exists to key on.
+        self._loading_toasts: dict[int, int] = {}  # image_number -> toast_id
+        self._loading_toast_uid_slot: dict[int, int] = {}  # pyramid uid -> image_number
+        # Slots with a full-resolution decode in flight; unify against a
+        # preview side is deferred while the real pixels are on the way.
+        self._pending_full_loads: dict[int, int] = {1: 0, 2: 0}
 
     def _update_image_slot(
         self,
@@ -100,7 +109,14 @@ class SessionController(QObject):
                 if preview:
                     return preview, path, image_number, index_in_list, True
 
-            store = TiledPixelStore.from_path(path, auto_crop=should_crop)
+            from shared.image_processing import pixel_cache_registry
+
+            cached = pixel_cache_registry.lookup(path)
+            if cached is not None:
+                cache_path, width, height = cached
+                store = TiledPixelStore.from_embedded_cache(cache_path, width, height)
+            else:
+                store = TiledPixelStore.from_path(path, auto_crop=should_crop)
             return store, path, image_number, index_in_list, False
         except Exception as e:
             if self.event_bus:
@@ -165,6 +181,7 @@ class SessionController(QObject):
             and target_list[index_in_list].path == path
         ):
             item = target_list[index_in_list]
+            self._show_loading_toast(image_number)
 
             if is_preview:
                 self._update_image_slot(
@@ -196,6 +213,7 @@ class SessionController(QObject):
                     path=path,
                     is_full_res=True,
                 )
+                self._mark_full_res_ready(image_number)
 
             item.image = pil_img
 
@@ -230,8 +248,16 @@ class SessionController(QObject):
         should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
 
         def load_full_task(path_str, crop_flag, slot_number, item_index):
+            from shared.image_processing import pixel_cache_registry
+
+            cached = pixel_cache_registry.lookup(path_str)
+            if cached is not None:
+                cache_path, width, height = cached
+                store = TiledPixelStore.from_embedded_cache(cache_path, width, height)
+            else:
+                store = TiledPixelStore.from_path(path_str, auto_crop=crop_flag)
             return (
-                TiledPixelStore.from_path(path_str, auto_crop=crop_flag),
+                store,
                 path_str,
                 slot_number,
                 item_index,
@@ -244,11 +270,28 @@ class SessionController(QObject):
             image_number,
             index_in_list,
         )
+        self._pending_full_loads[image_number] += 1
         worker.signals.result.connect(self._on_full_resolution_loaded_result)
         worker.signals.error.connect(
             lambda err: self._on_full_resolution_error(path, err)
         )
+        worker.signals.finished.connect(
+            lambda num=image_number: self._on_full_load_finished(num)
+        )
         self.thread_pool.start(worker)
+
+    def _on_full_load_finished(self, image_number: int) -> None:
+        self._pending_full_loads[image_number] = max(
+            0, self._pending_full_loads[image_number] - 1
+        )
+        if self._pending_full_loads[image_number]:
+            return
+        # If the decode failed, a unify deferred on this slot (see
+        # _defer_mixed_unify) would otherwise never run; fall back to
+        # unifying with whatever this slot still has.
+        document = self.store.get_session_state_slot("document")
+        if getattr(document, f"full_res_image{image_number}") is None:
+            self._trigger_preview_unification(image_number)
 
     def _on_full_resolution_loaded_result(self, result) -> None:
         if not isinstance(result, tuple) or len(result) != 4:
@@ -299,44 +342,91 @@ class SessionController(QObject):
         loading.set_current_image(self, image_number, force_refresh, emit_signal)
 
     def _unify_images_worker_task(
-        self,
-        img1,
-        img2,
-        path1: str | None,
-        path2: str | None,
-        task_id: int,
-        method_name: str = "LANCZOS",
+        self, img1, img2, path1, path2, task_id, method_name
     ):
-        """Produces the full-resolution unified pair only. The downscaled
-        "display cache" used for the on-screen preview is a separate,
-        per-frame concern owned exclusively by ``image_cache.create_preview_cache_async``
-        (docs/dev/DISPLAY_IMAGE_PIPELINE.md) -- this used to also compute its
-        own downscaled copy here and write it into ``display_cache_image1/2``,
-        which raced against that per-frame writer and could leave the stale,
-        non-downscaled pair in place (the "shrink" bug)."""
+        from shared.image_processing.pixel_ops.unify import unify_pair
+        from shared.image_processing.store_lease import StoreLease
+
         try:
-            from shared.image_processing.pixel_ops.unify import unify_pair
-            from shared.image_processing.store_lease import StoreLease
+            if task_id != self._unification_task_id:
+                return None
 
             lease1 = StoreLease.capture(img1)
             lease2 = StoreLease.capture(img2)
+            import time
+
+            t0 = time.perf_counter()
+            logger.info(
+                "[Unify] task %d started (%sx%s + %sx%s)",
+                task_id,
+                getattr(img1, "width", "?"),
+                getattr(img1, "height", "?"),
+                getattr(img2, "width", "?"),
+                getattr(img2, "height", "?"),
+            )
             u1, u2 = unify_pair(
                 img1,
                 img2,
                 method_name,
                 lease1=lease1,
                 lease2=lease2,
+                should_abort=lambda: task_id != self._unification_task_id,
             )
             if u1 is None and u2 is None:
+                logger.info(
+                    "[Unify] task %d aborted/empty after %.2fs",
+                    task_id,
+                    time.perf_counter() - t0,
+                )
                 return None
+            logger.info(
+                "[Unify] task %d finished in %.2fs", task_id, time.perf_counter() - t0
+            )
 
             return u1, u2, path1, path2, task_id
         except Exception as e:
-            logger.error(f"Failed to unify images: {e}")
+            import traceback
+            logger.error(f"Failed to unify images: {e}\n{traceback.format_exc()}")
             return None
 
     def _on_unified_images_ready(self, result):
         loading.on_unified_images_ready(self, result)
+
+    def _start_pyramid_builds(self, *stores):
+        loading.start_pyramid_builds(self, *stores)
+
+    def _pyramid_build_task(
+        self, pyramid, task_id, uid, total_levels, progress_callback=None
+    ):
+        return loading.pyramid_build_task(
+            self, pyramid, task_id, uid, total_levels, progress_callback
+        )
+
+    def _on_pyramid_level_ready(self, payload):
+        loading.on_pyramid_level_ready(self, payload)
+
+    def _get_toast_manager(self):
+        return loading.get_toast_manager(self)
+
+    # Progress checkpoints for the "loading full version of image" toast --
+    # see use_cases/loading.py's module-level constants of the same values.
+    _DECODE_DONE_PROGRESS = loading.DECODE_DONE_PROGRESS
+    _PYRAMID_START_PROGRESS = loading.PYRAMID_START_PROGRESS
+
+    def _show_loading_toast(self, image_number: int) -> None:
+        loading.show_loading_toast(self, image_number)
+
+    def _set_loading_toast_progress(self, image_number: int, percent: int) -> None:
+        loading.set_loading_toast_progress(self, image_number, percent)
+
+    def _mark_full_res_ready(self, image_number: int) -> None:
+        loading.mark_full_res_ready(self, image_number)
+
+    def _bump_loading_toast_pyramid_started(self, image_number: int) -> None:
+        loading.bump_loading_toast_pyramid_started(self, image_number)
+
+    def _finish_loading_toast(self, image_number: int) -> None:
+        loading.finish_loading_toast(self, image_number)
 
     def _trigger_metrics_calculation_if_needed(self):
         self.metrics_service.trigger_metrics_calculation_if_needed()

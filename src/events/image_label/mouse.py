@@ -72,6 +72,21 @@ class ImageLabelMouseHandler:
 
         if (
             viewport.view_state.showing_single_image_mode != 0
+            and viewport.interaction_state.space_bar_pressed
+        ):
+            # Space is still held: allow switching the previewed side with the
+            # other button without releasing space first.
+            sessions = self.handler.main_controller and self.handler.main_controller.sessions
+            if sessions is not None:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    sessions.activate_single_image_mode(1)
+                elif event.button() == Qt.MouseButton.RightButton:
+                    sessions.activate_single_image_mode(2)
+            event.accept()
+            return
+
+        if (
+            viewport.view_state.showing_single_image_mode != 0
             or not self._session_has_content()
             or viewport.interaction_state.resize_in_progress
         ):

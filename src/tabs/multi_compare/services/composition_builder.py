@@ -48,7 +48,7 @@ def build_composition_plan(
     canvas_h: int | None = None,
     fill_rgba: tuple[int, int, int, int] | None = None,
     label_font_pt: int = DEFAULT_LABEL_FONT_PX,
-    split_gap_px: int = DEFAULT_SPLIT_GAP_PX,
+    split_gap_px: int | None = None,
     include_labels: bool = True,
 ) -> CompositionPlan | None:
     """Translate state into a CompositionPlan, or None if there is nothing to draw.
@@ -56,12 +56,36 @@ def build_composition_plan(
     Canvas size defaults to the smallest size that lets every leaf render at
     native image resolution (computed from the tree fractions). Pass explicit
     ``canvas_w`` / ``canvas_h`` to override.
+
+    ``split_gap_px`` (the actual layout space reserved between sibling
+    images, consumed by ``resolve_composition``'s ``_walk``) defaults to
+    ``state.divider_settings.thickness`` (0 if ``visible`` is ``False``)
+    when not given -- previously every caller left this at the hardcoded
+    ``DEFAULT_SPLIT_GAP_PX``, so the divider-width toolbar control only
+    ever resized ``GridDividersPass``'s own (underlay) quad while the
+    neighboring images' rects kept reserving the same fixed 4px
+    regardless -- widening the divider setting had no visible effect (the
+    extra width was hidden under the images, which are drawn on top and
+    abut their neighbor's fixed gap), and narrowing it below 4px was too
+    small a difference to notice. Only a divider *color* change was ever
+    visibly wired all the way through, which read as "thickness doesn't
+    update until you touch color" (docs/dev/KNOWN_BUGS.md
+    same-slot-swap SSIM follow-up investigation's divider side-quest).
     """
     root = state.root
     if root is None or not slot_ids_in_tree(root):
         return None
     slots_by_id = {s.id: s for s in state.slots}
     focused = state.focused_slot_id if state.is_focused else None
+    if split_gap_px is None:
+        # ``thickness`` alone isn't enough: setting the toolbar width to 0
+        # keeps the last nonzero value in ``thickness`` (so re-enabling
+        # remembers it, see widget.py's _on_divider_width_changed) and just
+        # flips ``visible`` off instead -- collapse the reserved gap to 0
+        # too in that case, or images stay pulled apart by the old
+        # thickness with nothing drawn in the space to explain why.
+        ds = state.divider_settings
+        split_gap_px = max(0, int(ds.thickness)) if ds.visible else 0
     composition_root = _convert_node(
         root,
         slots_by_id,

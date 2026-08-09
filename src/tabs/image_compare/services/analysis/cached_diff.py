@@ -19,7 +19,15 @@ class CachedDiffService:
         self._pending_request_key = None
 
     def invalidate(self) -> None:
-        self.store.viewport.session_data.render_cache.cached_diff_image = None
+        render_cache = self.store.viewport.session_data.render_cache
+        render_cache.cached_diff_image = None
+        # Must be cleared alongside cached_diff_image: a stale
+        # cached_diff_source_key surviving a real invalidation (diff mode
+        # or channel-view-mode change) would make
+        # request_cached_diff_image_async think a same-images-different-mode
+        # request was already served and skip recomputing entirely (see
+        # that method's cached_diff_source_key comparison).
+        render_cache.cached_diff_source_key = None
         self._pending_request_key = None
 
     def request_generation(self, *, optimize_ssim: bool = False) -> None:

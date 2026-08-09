@@ -14,6 +14,8 @@
     "highlight_diff_in_progress": "Destaque de diferenças...",
     "invalid_data": "Dados Inválidos",
     "invalid_item_type_or_empty_path": "Tipo de item inválido ou caminho vazio",
+    "loading_full_image_done": "Versão completa carregada",
+    "loading_full_image_in_progress": "Carregando versão completa da imagem...",
     "loading_images_from_clipboard": "Carregando imagens do clipboard...",
     "no_image_in_clipboard": "Nenhuma imagem no clipboard",
     "saved": "Salvo",

@@ -24,3 +24,6 @@ cloc.txt
 .mypy_cache/
 
 venv/
+
+# image_gallery tab: internal work-in-progress, not ready to commit yet
+src/tabs/image_gallery/

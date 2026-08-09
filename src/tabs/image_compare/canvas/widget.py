@@ -43,6 +43,8 @@ from .render_context import (
 )
 from ui.widgets.canvas.rhi_backend import configure_rhi_widget, log_initialized_rhi_widget
 from ui.widgets.canvas.rhi_render import render_clear_frame
+from shared.rendering.coalesced_flush import CoalescedFlush
+from shared.rendering.glass_panel import GlassPanelRegistry
 from .rhi_renderer import RhiCanvasRenderer
 from .scene import build_render_scene
 from .state import init_widget_state
@@ -93,7 +95,14 @@ class CanvasWidget(QRhiWidget):
         self._first_frame_rendered_emitted = False
         self._rhi_presents_completed = 0
         self._rhi_renderer = RhiCanvasRenderer()
+        # Registered/unregistered by GlassHUD instances anchored to this
+        # canvas (see ui/widgets/glass_hud.py) -- consumed by
+        # RhiCanvasRenderer.render(), which populates
+        # self._glass_panel_sprites for each GlassHUD's own
+        # GlassPanelDisplayWidget to read.
+        self.glass_panels = GlassPanelRegistry()
         self._context_menu_provider = None
+        self._render_scene_flush = CoalescedFlush(self._flush_render_scene)
         init_widget_state(self)
 
     def set_store(self, store):
@@ -113,17 +122,11 @@ class CanvasWidget(QRhiWidget):
             self._pending_session_controller = None
 
     def _refresh_render_scene(self):
-        state = self.runtime_state
-        if not getattr(state, "_render_scene_dirty", False):
-            state._render_scene_dirty = True
-            QTimer.singleShot(0, self._flush_render_scene)
+        self._render_scene_flush.request()
         self.update()
 
     def _flush_render_scene(self):
         state = self.runtime_state
-        if not getattr(state, "_render_scene_dirty", False):
-            return
-        state._render_scene_dirty = False
         if state._store is None:
             return
         state._render_scene = build_render_scene(
@@ -489,6 +492,13 @@ class CanvasWidget(QRhiWidget):
             event.ignore()
             return
         store = getattr(self.runtime_state, "_store", None)
+        # Space+RMB is the single-image preview gesture — the host menu must
+        # not open on top of it.
+        if store is not None and bool(
+            store.viewport.interaction_state.space_bar_pressed
+        ):
+            event.accept()
+            return
         if store is not None and is_context_menu_suppressed(
             ContextMenuHitContext(
                 store=store,

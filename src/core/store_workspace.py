@@ -36,6 +36,13 @@ class WorkspaceStoreMixin:
             raise ValueError("session_type is required")
         new_viewport = ViewportState(session_data=create_session_data(session_type))
 
+        # Settings load into the viewport of whichever session is active at
+        # startup; carry them over so a fresh RenderConfig
+        # (display_resolution_limit=0 etc.) never shadows user settings.
+        current_render = getattr(getattr(self, "viewport", None), "render_config", None)
+        if current_render is not None:
+            new_viewport.render_config = copy.deepcopy(current_render)
+
         current_view = getattr(getattr(self, "viewport", None), "view_state", None)
         if current_view is not None and getattr(
             current_view, "canvas_widget_state", None

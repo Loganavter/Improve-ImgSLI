@@ -49,8 +49,11 @@ def test_find_action_dialog_lists_filters_and_runs(qtbot):
     assert dialog._current_index == 0
 
     qtbot.keyClick(dialog._search, Qt.Key.Key_Return)
-    qtbot.wait(20)
-    assert ran == ["help"]
+    # _run_action_id defers accept()+run until the row's click ripple
+    # finishes (get_ripple_duration_ms(), currently 280ms) — wait it out
+    # instead of a fixed short delay, or the pending QTimer fires during a
+    # later test and crashes against an already-deleted dialog.
+    qtbot.waitUntil(lambda: ran == ["help"], timeout=1000)
 
 
 def test_find_action_row_plate_click_reveals_not_runs(qtbot, monkeypatch):
@@ -102,8 +105,7 @@ def test_find_action_row_run_icon_runs(qtbot):
     dialog = FindActionDialog(None, query="")
     qtbot.addWidget(dialog)
     dialog._rows[0].regionClicked.emit("run")
-    qtbot.wait(20)
-    assert ran == ["run"]
+    qtbot.waitUntil(lambda: ran == ["run"], timeout=1000)
 
 
 def test_find_action_dialog_empty_state(qtbot):

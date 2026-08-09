@@ -8,24 +8,11 @@ from shared.rendering import (
 )
 
 from tabs.image_compare.canvas.features.magnifier.constants import MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE
+from tabs.image_compare.canvas.features.magnifier.geometry.core import (
+    clamp_capture_position as _clamp_capture_position,
+)
 from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
 from tabs.image_compare.canvas.features.magnifier.state.store import iter_magnifier_models
-
-
-def _clamp_capture_position(
-    rel_x: float,
-    rel_y: float,
-    width: int,
-    height: int,
-    capture_size_relative: float,
-) -> tuple[float, float]:
-    capture_ref = math.sqrt(float(width) * float(height))
-    radius_x = ((capture_size_relative * capture_ref) / 2.0) / max(1.0, float(width))
-    radius_y = ((capture_size_relative * capture_ref) / 2.0) / max(1.0, float(height))
-    return (
-        max(radius_x, min(float(rel_x), 1.0 - radius_x)),
-        max(radius_y, min(float(rel_y), 1.0 - radius_y)),
-    )
 
 
 def _union_rect(

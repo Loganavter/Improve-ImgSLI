@@ -130,7 +130,6 @@ def clear(widget):
     state._canvas_frame_letterbox = None
     state._letterbox_fill_rgba = None
     state._store = None
-    state._feature_overlay_quad_ndc = None
     state._capture_center = None
     state._capture_radius = 0.0
     state._capture_circles = []

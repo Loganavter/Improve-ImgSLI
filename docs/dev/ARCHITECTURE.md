@@ -153,7 +153,7 @@ flowchart LR
 | `tabs/image_compare/canvas/presentation/` | tab-specific render plan assembly |
 | `tabs/image_compare/canvas/features/` | auto-discovered canvas features (masks, analysis, rulers, guides, etc.) |
 
-Rendering uses **QRhi**, not raw OpenGL — see [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) for the feature contract and auto-discovery mechanism.
+Rendering uses **QRhi**, not raw OpenGL — see [rendering/index.md](rendering/index.md) for the feature contract and auto-discovery mechanism.
 
 ### Important constraint
 
@@ -270,5 +270,5 @@ For onboarding into the codebase, read files in this order:
 2. `src/ui/main_window/composer.py`
 3. `src/core/state_management/` and [STORE.md](STORE.md)
 4. `src/ui/canvas_infra/` and `src/ui/canvas_presentation/`
-5. `src/tabs/image_compare/tab.py`, then `src/tabs/image_compare/canvas/` and [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md)
+5. `src/tabs/image_compare/tab.py`, then `src/tabs/image_compare/canvas/` and [rendering/index.md](rendering/index.md)
 6. the specific plugin or tab you want to modify

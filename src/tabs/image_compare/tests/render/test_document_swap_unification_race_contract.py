@@ -33,12 +33,6 @@ class _RenderCache:
     def __init__(self):
         self.unification_in_progress = False
         self.pending_unification_paths = None
-        self.display_cache_image1 = None
-        self.display_cache_image2 = None
-        self.scaled_image1_for_display = None
-        self.scaled_image2_for_display = None
-        self.unified_image_cache = {}
-        self.last_display_cache_params = None
         self.cached_diff_image = None
 
 
@@ -133,6 +127,12 @@ class _FakeController:
         pass
 
     def _schedule_image_canvas_update(self):
+        pass
+
+    def _mark_full_res_ready(self, image_number):
+        pass
+
+    def _start_pyramid_builds(self, *stores):
         pass
 
     def _unify_images_worker_task(self, img1, img2, path1, path2, task_id, method_name="LANCZOS"):

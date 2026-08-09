@@ -101,7 +101,9 @@ def natural_aspect_for_node(
         if hasattr(image, "shape"):
             height, width = image.shape[:2]
         else:
-            width, height = image.width, image.height
+            from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+            width, height = pixel_source_size(image)
         if width <= 0 or height <= 0:
             return None
         return float(width) / float(height)

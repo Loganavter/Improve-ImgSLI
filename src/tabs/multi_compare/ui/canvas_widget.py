@@ -15,6 +15,8 @@ from PySide6.QtGui import QColor, QContextMenuEvent, QMouseEvent, QPalette, QWhe
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from ui.widgets.canvas.rhi_backend import configure_rhi_widget
+from shared.rendering.coalesced_flush import CoalescedFlush
+from shared.rendering.glass_panel import GlassPanelRegistry
 
 from tabs.multi_compare.canvas import interaction as canvas_interaction
 from tabs.multi_compare.models import (
@@ -76,7 +78,20 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self._export_canvas_viewport: tuple[int, int, int, int] | None = None
 
         self._renderer = MultiCompareRhiRenderer(self)
+        # Registered/unregistered by GlassHUD instances anchored to this
+        # canvas (see ui/widgets/glass_hud.py) -- consumed by
+        # MultiCompareRhiRenderer.render(), which populates
+        # self._glass_panel_sprites/_glass_panel_images for each GlassHUD's
+        # own GlassPanelDisplayWidget to read. Mirrors image_compare's
+        # CanvasWidget.glass_panels -- without this attribute existing at
+        # all, GlassHUD._refresh_backdrop() silently no-ops (see its own
+        # `registry is None` guard), so this canvas's ZoomIndicator never
+        # got a blurred backdrop or its zoom-percent text rendered, only
+        # the plain Qt-painted panel shape and the (real child widget)
+        # reset button -- reported live as "рендерится только кнопка".
+        self.glass_panels = GlassPanelRegistry()
         self._first_frame_emitted = False
+        self._composition_flush = CoalescedFlush(self._flush_composition)
 
         self._panning = False
         self._pan_start_pos = QPointF()
@@ -96,7 +111,16 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def set_state(self, state: MultiCompareState) -> None:
+        """Assign new state immediately (cheap); defer the expensive
+        texture-sync/composition-rebuild to a single coalesced flush per
+        event-loop tick, so N dispatches (zoom ticks, drag deltas, ...)
+        arriving before the next tick cost one rebuild, not N.
+        """
         self.state = state
+        self._composition_flush.request()
+        self.update()
+
+    def _flush_composition(self) -> None:
         self._sync_textures()
         self._rebuild_composition()
         self.request_view_update()
@@ -224,9 +248,8 @@ class MultiCompareCanvasWidget(QRhiWidget):
     ) -> QRect:
         return hit_projection.project_canvas_rect(rect_canvas, sr, ox, oy)
 
-    @staticmethod
-    def _composition_gap_canvas_px() -> int:
-        return hit_projection.composition_gap_canvas_px()
+    def _composition_gap_canvas_px(self) -> int:
+        return hit_projection.composition_gap_canvas_px(self)
 
     def _drop_gaps(self):
         return hit_projection.drop_gaps(self)
@@ -273,7 +296,10 @@ class MultiCompareCanvasWidget(QRhiWidget):
                     sources.setdefault(int(layer.layer_id), layer.image)
 
         for sid, source in sources.items():
-            if not self._renderer.has_slot_texture(sid):
+            if (
+                not self._renderer.has_slot_texture(sid)
+                or self._renderer.slot_texture_source(sid) is not source
+            ):
                 self.upload_pixel_source(sid, source)
         stale = [sid for sid in self._renderer.slot_texture_ids() if sid not in sources]
         for sid in stale:
@@ -284,6 +310,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
     def releaseResources(self) -> None:
         self._renderer.release()
+        self._composition_flush.cancel()
 
     def apply_theme_background(self, color: QColor | None = None) -> None:
         bg = QColor(color) if isinstance(color, QColor) and color.isValid() else None

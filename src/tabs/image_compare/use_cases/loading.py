@@ -1,3 +1,4 @@
+import logging
 import os
 
 from PySide6.QtCore import QTimer
@@ -6,7 +7,212 @@ from sli_ui_toolkit.workers import GenericWorker
 from core.events import CoreErrorOccurredEvent, CoreUpdateRequestedEvent
 from tabs.image_compare.services import document_store_ops
 from tabs.image_compare.state.document import ImageItem
-from sli_ui_toolkit.i18n import tr
+from sli_ui_toolkit.i18n import get_current_language, tr
+
+logger = logging.getLogger("ImproveImgSLI")
+
+# Progress checkpoints for the "loading full version of image" toast: 0 at
+# the quick preview, DECODE_DONE_PROGRESS once the full-res decode lands,
+# PYRAMID_START_PROGRESS..100 tracking pyramid level build-out (skipped
+# straight to 100 for stores that need no pyramid).
+DECODE_DONE_PROGRESS = 20
+PYRAMID_START_PROGRESS = 40
+
+
+def get_toast_manager(controller):
+    # controller.presenter is a MainWindowPresenter, not the window shell
+    # itself -- it owns main_window_app, which is where toast_manager
+    # actually lives (see ExportSaveFlowCoordinator._get_toast_manager,
+    # the same lookup used by the save-image toast).
+    toast_manager = getattr(
+        getattr(controller.presenter, "main_window_app", None), "toast_manager", None
+    )
+    if toast_manager is None:
+        logger.debug(
+            "[FullImageLoad] no toast_manager available (presenter=%r)",
+            controller.presenter,
+        )
+    return toast_manager
+
+
+def show_loading_toast(controller, image_number: int) -> None:
+    if image_number in controller._loading_toasts:
+        return
+    toast_manager = get_toast_manager(controller)
+    if toast_manager is None:
+        return
+    message = tr("msg.loading_full_image_in_progress", get_current_language())
+    try:
+        controller._loading_toasts[image_number] = toast_manager.show_toast(
+            message, duration=0, progress=0
+        )
+        logger.debug(
+            "[FullImageLoad] toast shown (slot=%s toast_id=%s msg=%r)",
+            image_number,
+            controller._loading_toasts[image_number],
+            message,
+        )
+    except Exception:
+        logger.exception("Failed to show full-image loading toast")
+
+
+def set_loading_toast_progress(controller, image_number: int, percent: int) -> None:
+    toast_manager = get_toast_manager(controller)
+    toast_id = controller._loading_toasts.get(image_number)
+    if toast_manager is None or toast_id is None:
+        logger.debug(
+            "[FullImageLoad] skip toast update (slot=%s toast_manager=%s "
+            "toast_id=%s percent=%d)",
+            image_number,
+            toast_manager is not None,
+            toast_id,
+            percent,
+        )
+        return
+    try:
+        toast_manager.update_toast(
+            toast_id,
+            tr("msg.loading_full_image_in_progress", get_current_language()),
+            success=False,
+            duration=0,
+            progress=max(0, min(99, percent)),
+        )
+    except Exception:
+        logger.exception("Failed to update full-image loading toast")
+
+
+def mark_full_res_ready(controller, image_number: int) -> None:
+    set_loading_toast_progress(controller, image_number, DECODE_DONE_PROGRESS)
+
+
+def bump_loading_toast_pyramid_started(controller, image_number: int) -> None:
+    set_loading_toast_progress(controller, image_number, PYRAMID_START_PROGRESS)
+
+
+def finish_loading_toast(controller, image_number: int) -> None:
+    toast_manager = get_toast_manager(controller)
+    toast_id = controller._loading_toasts.pop(image_number, None)
+    if toast_manager is None or toast_id is None:
+        return
+    try:
+        toast_manager.update_toast(
+            toast_id,
+            tr("msg.loading_full_image_done", get_current_language()),
+            success=True,
+            duration=2000,
+            progress=100,
+        )
+        logger.debug(
+            "[FullImageLoad] toast done (slot=%s toast_id=%s)",
+            image_number,
+            toast_id,
+        )
+    except Exception:
+        logger.exception("Failed to complete full-image loading toast")
+
+
+def start_pyramid_builds(controller, *stores) -> None:
+    # Called as start_pyramid_builds(controller, u1, u2) -- positional order
+    # matches image_state.image1/image2 at the call site, so slot number is
+    # simply the 1-based position here.
+    from shared.image_processing import pyramid_registry
+    from shared.image_processing.pyramid_pixel_store import estimate_total_levels
+    from shared.rendering.image_identity import image_uid
+
+    task_id = controller._unification_task_id
+    for slot_offset, store in enumerate(stores):
+        image_number = slot_offset + 1
+        # A cheap preview-resolution unify races ahead of the real
+        # full-res decode and can hit this same method with a trivial,
+        # already-complete pyramid. Only let the toast react once the
+        # slot's real decode has actually landed -- otherwise it closes
+        # over stale preview data before the real progress ever starts.
+        slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0
+        pyramid = pyramid_registry.ensure_pyramid(store)
+        if pyramid is None:
+            logger.debug(
+                "[Pyramid] skip build: no pyramid for store %dx%d",
+                getattr(store, "width", -1),
+                getattr(store, "height", -1),
+            )
+            if slot_toast_live:
+                controller._finish_loading_toast(image_number)
+            continue
+        if pyramid.is_complete():
+            logger.debug(
+                "[Pyramid] skip build: already complete for store %dx%d "
+                "(levels=%d)",
+                store.width,
+                store.height,
+                pyramid.level_count,
+            )
+            if slot_toast_live:
+                controller._finish_loading_toast(image_number)
+            continue
+        uid = image_uid(store)
+        if uid in controller._pyramid_builds:
+            logger.debug("[Pyramid] skip build: already in flight (uid=%s)", uid)
+            continue
+        controller._pyramid_builds.add(uid)
+        logger.info(
+            "[Pyramid] build started for store %dx%d (uid=%s)",
+            store.width,
+            store.height,
+            uid,
+        )
+        total_levels = estimate_total_levels(store.width, store.height)
+        if slot_toast_live:
+            controller._loading_toast_uid_slot[uid] = image_number
+            controller._bump_loading_toast_pyramid_started(image_number)
+        worker = GenericWorker(
+            controller._pyramid_build_task, pyramid, task_id, uid, total_levels
+        )
+        worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
+        worker.signals.partial_result.connect(controller._on_pyramid_level_ready)
+        worker.signals.finished.connect(
+            lambda uid=uid: controller._pyramid_builds.discard(uid)
+        )
+        controller.thread_pool.start(worker)
+
+
+def pyramid_build_task(
+    controller, pyramid, task_id, uid, total_levels, progress_callback=None
+):
+    # A newer unification supersedes this pair; abort at the next strip.
+    # Base-store closure aborts independently via pyramid validity.
+    def should_abort() -> bool:
+        return task_id != controller._unification_task_id
+
+    while pyramid.build_next_level(should_abort=should_abort):
+        complete = pyramid.is_complete()
+        if progress_callback is not None:
+            progress_callback((uid, pyramid.level_count, total_levels, complete))
+    return None
+
+
+def on_pyramid_level_ready(controller, payload) -> None:
+    uid, level_count, total_levels, complete = payload
+    # Only a *completed* pyramid can flip pick_display_image from the
+    # preview tier to the tiled store — that's the only publish that
+    # needs the pick signatures dropped. Intermediate levels just need
+    # a repaint so the per-frame LOD selector can use them; a full
+    # invalidation per level caused plan re-applies mid-interaction
+    # (docs/dev/rendering/display-image-pipeline.md, preview→store flip).
+    if complete:
+        controller._invalidate_image_canvas_render_state()
+    controller._schedule_image_canvas_update()
+    image_number = controller._loading_toast_uid_slot.get(uid)
+    if image_number is None:
+        return
+    if complete:
+        controller._loading_toast_uid_slot.pop(uid, None)
+        controller._finish_loading_toast(image_number)
+    else:
+        fraction = level_count / max(total_levels, 1)
+        percent = PYRAMID_START_PROGRESS + int(
+            fraction * (100 - PYRAMID_START_PROGRESS)
+        )
+        controller._set_loading_toast_progress(image_number, percent)
 
 
 def _invalidate_diff_cache(controller) -> None:
@@ -94,6 +300,45 @@ def _unify_resize_method(controller) -> str:
     return get_effective_main_interpolation_method(controller.store.viewport)
 
 
+def _defer_mixed_unify(controller, document) -> bool:
+    """True when unify would upscale a preview to full-res size for nothing.
+
+    A mixed pair (one side full-res, the other still a preview) with the
+    preview side's full decode in flight produces a doomed unify: LANCZOS
+    upscaling a ~1k preview to a 20k canvas for minutes, superseded the
+    moment the real pixels land. Defer; the finishing load re-triggers.
+    """
+    full1 = document.full_res_image1 is not None
+    full2 = document.full_res_image2 is not None
+    if full1 == full2:
+        return False
+    waiting_slot = 2 if full1 else 1
+    pending = getattr(controller, "_pending_full_loads", None)
+    if pending is None:
+        return False
+    if pending.get(waiting_slot, 0) > 0:
+        logger.info(
+            "[Unify] deferred: slot %d full-res decode still in flight",
+            waiting_slot,
+        )
+        return True
+    return False
+
+
+def _finish_toast_for_unpaired_slot(controller, document, image_number: int) -> None:
+    """Unify -- and the pyramid build that normally closes the loading
+    toast -- only ever runs once both slots hold an image. When the other
+    slot has no image at all, unify will never fire, so the toast for this
+    slot would otherwise hang forever. Close it here once this slot's own
+    full-res decode has actually landed.
+    """
+    own_full = getattr(document, f"full_res_image{image_number}", None)
+    other_number = 2 if image_number == 1 else 1
+    other_path = getattr(document, f"image{other_number}_path", None)
+    if own_full is not None and not other_path:
+        controller._finish_loading_toast(image_number)
+
+
 def trigger_preview_unification(controller, image_number: int):
     if controller.presenter:
         controller.presenter.ui_batcher.schedule_batch_update(
@@ -104,7 +349,7 @@ def trigger_preview_unification(controller, image_number: int):
     source1 = document.full_res_image1 or document.preview_image1
     source2 = document.full_res_image2 or document.preview_image2
 
-    if source1 and source2:
+    if source1 and source2 and not _defer_mixed_unify(controller, document):
         try:
             controller._cancel_pending_unification(
                 document.image1_path,
@@ -142,6 +387,7 @@ def trigger_preview_unification(controller, image_number: int):
             controller.metrics_service.on_metrics_calculated(None)
     else:
         controller.metrics_service.on_metrics_calculated(None)
+        _finish_toast_for_unpaired_slot(controller, document, image_number)
 
     if controller.presenter:
         QTimer.singleShot(10, lambda: controller.store.emit_state_change("viewport"))
@@ -177,7 +423,17 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     controller._update_image_slot(
         image_number, image=full_img, path=path, is_full_res=True
     )
-    _invalidate_diff_cache(controller)
+    controller._mark_full_res_ready(image_number)
+    # Deliberately not _invalidate_diff_cache(controller) here: this is a
+    # swap (a new image replacing an already-displayed one), not a removal
+    # -- clearing cached_diff_image upfront would blank the diff overlay
+    # for the whole time it takes render_flow.py's
+    # request_cached_diff_image_async to notice the source pair changed
+    # (via cached_diff_source_key) and recompute, showing a diff-vanishes/
+    # plain-image/diff-reappears flash. Leaving the stale diff in place
+    # lets the canvas keep showing it until the new one is ready, then
+    # swap atomically (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM
+    # follow-up).
 
     current_app_index = (
         document.current_index1 if image_number == 1 else document.current_index2
@@ -189,6 +445,8 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
         live_document = controller.store.get_session_state_slot("document")
         source1 = live_document.full_res_image1 or live_document.preview_image1
         source2 = live_document.full_res_image2 or live_document.preview_image2
+        if _defer_mixed_unify(controller, live_document):
+            return
         if source1 and source2:
             controller.store.viewport.session_data.render_cache.unification_in_progress = (
                 True
@@ -212,6 +470,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
             controller.thread_pool.start(worker, priority=1)
         else:
             controller.metrics_service.on_metrics_calculated(None)
+            _finish_toast_for_unpaired_slot(controller, live_document, image_number)
 
     QTimer.singleShot(50, trigger_unification)
 
@@ -238,12 +497,6 @@ def load_images_from_paths(controller, file_paths: list[str], image_number: int)
             document_store_ops.clear_image_slot_data(controller.store, 2)
             controller.store.viewport.session_data.image_state.image1 = None
             controller.store.viewport.session_data.image_state.image2 = None
-            controller.store.viewport.session_data.render_cache.display_cache_image1 = (
-                None
-            )
-            controller.store.viewport.session_data.render_cache.display_cache_image2 = (
-                None
-            )
             if getattr(controller, "diff_service", None) is not None:
                 controller.diff_service.invalidate()
             else:
@@ -389,16 +642,6 @@ def _reload_existing_path(
         item = target_list_ref[index]
         item.image = None
         doc = controller.store.get_session_state_slot("document")
-        other_path = doc.image2_path if image_number == 1 else doc.image1_path
-        cache_key = (
-            (normalized_path, other_path)
-            if image_number == 1
-            else (other_path, normalized_path)
-        )
-        cache = controller.store.viewport.session_data.render_cache.unified_image_cache
-        if cache_key in cache:
-            cache.pop(cache_key)
-
         if image_number == 1:
             doc.current_index1 = index
         else:
@@ -523,56 +766,11 @@ def set_current_image(
     controller._update_image_slot(
         image_number, image=pil_img, path=path, is_full_res=bool(pil_img), emit=False
     )
-    _invalidate_diff_cache(controller)
+    # Not _invalidate_diff_cache(controller): a swap, see the matching
+    # comment above _mark_full_res_ready's call site.
     controller.store.invalidate_render_cache()
     controller._invalidate_image_canvas_render_state(clear_magnifier=False)
     controller._schedule_image_canvas_update()
-
-    document = controller.store.get_session_state_slot("document")
-    path1 = document.image1_path
-    path2 = document.image2_path
-    if path1 and path2:
-        cache_key = (path1, path2)
-        cache = controller.store.viewport.session_data.render_cache.unified_image_cache
-        if cache_key in cache:
-            cache.move_to_end(cache_key)
-            u1, u2 = cache[cache_key]
-            controller.store.viewport.session_data.image_state.image1 = u1
-            controller.store.viewport.session_data.image_state.image2 = u2
-            # display_cache_image1/2 is exclusively owned/refreshed by the
-            # per-frame create_preview_cache_async pipeline (see
-            # docs/dev/DISPLAY_IMAGE_PIPELINE.md) -- clear it here rather than
-            # writing the full-resolution u1/u2 pair into it directly, which
-            # bypassed downscaling entirely and was the actual cause of the
-            # "images shrink into a tiny square" bug with >8192px images.
-            controller.store.viewport.session_data.render_cache.display_cache_image1 = (
-                None
-            )
-            controller.store.viewport.session_data.render_cache.display_cache_image2 = (
-                None
-            )
-            controller.store.viewport.session_data.render_cache.last_display_cache_params = (
-                None
-            )
-            controller.store.viewport.session_data.render_cache.unification_in_progress = (
-                False
-            )
-            controller.store.viewport.session_data.render_cache.scaled_image1_for_display = (
-                None
-            )
-            controller.store.viewport.session_data.render_cache.scaled_image2_for_display = (
-                None
-            )
-            controller.store.invalidate_render_cache()
-            controller._invalidate_image_canvas_render_state(clear_magnifier=False)
-            controller._schedule_image_canvas_update()
-            if emit_signal:
-                controller.store.emit_state_change("document")
-                if controller.event_bus:
-                    controller.event_bus.emit(CoreUpdateRequestedEvent())
-                else:
-                    controller.update_requested.emit()
-            return
 
     if pil_img is None and path:
         worker = GenericWorker(
@@ -629,32 +827,12 @@ def on_unified_images_ready(controller, result):
 
         image_state.image1 = u1
         image_state.image2 = u2
-        _invalidate_diff_cache(controller)
-        # display_cache_image1/2 is exclusively owned/refreshed by the
-        # per-frame create_preview_cache_async pipeline (see
-        # docs/dev/DISPLAY_IMAGE_PIPELINE.md) -- clear it here so a stale
-        # display cache from the previous image pair never lingers, rather
-        # than writing a second, competing copy of it from this worker
-        # result.
-        render_cache.scaled_image1_for_display = None
-        render_cache.scaled_image2_for_display = None
-        render_cache.display_cache_image1 = None
-        render_cache.display_cache_image2 = None
-        render_cache.last_display_cache_params = None
+        controller._start_pyramid_builds(u1, u2)
+        # Not _invalidate_diff_cache(controller): a swap, see the matching
+        # comment above _mark_full_res_ready's call site.
         controller.store.invalidate_render_cache()
         controller._invalidate_image_canvas_render_state(clear_magnifier=False)
         controller._schedule_image_canvas_update()
-
-        try:
-            cache_key = (path1, path2)
-            cache = render_cache.unified_image_cache
-            if cache_key in cache:
-                cache.move_to_end(cache_key)
-            cache[cache_key] = (u1, u2)
-            while len(cache) > 20:
-                cache.popitem(last=False)
-        except Exception:
-            pass
 
         _clear_unification_flags(controller)
         controller._trigger_metrics_calculation_if_needed()

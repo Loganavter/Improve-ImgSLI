@@ -125,6 +125,8 @@
     "flyout.border": "#4a4a4a",
     "list_item.background.normal": "#383838",
     "list_item.background.hover": "#424242",
+    "list_item.background.selected": "#424242",
+    "list_item.icon.selected": "#0096FF",
     "list_item.text.normal": "#f0f0f0",
     "list_item.text.rating": "#9a9a9a",
     "separator.color": "#4f4f4f",

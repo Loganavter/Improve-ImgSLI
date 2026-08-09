@@ -176,9 +176,18 @@ class GpuExportProxy(QObject):
 
     @Slot(object)
     def _render_on_main_thread(self, payload):
-        event = payload["event"]
-        result_box = payload["result_box"]
+        # Two calling conventions share this slot: the blocking one (an
+        # "event" to signal + "result_box" to fill, used by synchronous
+        # callers that park a background thread on Event.wait()) and the
+        # async one ("callback", used by callers that must not block their
+        # thread — e.g. video-editor thumbnail generation). Both still do
+        # the actual GPU render synchronously here, on the main thread.
+        event = payload.get("event")
+        result_box = payload.get("result_box")
+        callback = payload.get("callback")
         debug_timings = {}
+        image = None
+        error = None
         try:
             widget = self._ensure_widget()
             mode = payload.get("mode", "render")
@@ -187,16 +196,23 @@ class GpuExportProxy(QObject):
             plan = payload["plan"]
             store = payload.get("store")
             diff_image = payload.get("diff_image")
-            result_box["image"] = self._render_plan_frame(
+            image = self._render_plan_frame(
                 widget,
                 plan,
                 diff_image,
                 debug_timings,
                 store=store,
             )
-            result_box["debug_timings"] = debug_timings
+            if result_box is not None:
+                result_box["image"] = image
+                result_box["debug_timings"] = debug_timings
         except Exception as exc:
             logger.exception("GPU export rendering failed")
-            result_box["error"] = exc
+            error = exc
+            if result_box is not None:
+                result_box["error"] = exc
         finally:
-            event.set()
+            if callback is not None:
+                callback(image, debug_timings, error)
+            elif event is not None:
+                event.set()

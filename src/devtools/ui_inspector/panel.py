@@ -8,6 +8,7 @@ from PySide6.QtGui import QGuiApplication, QTextOption
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QFrame,
+    QLabel,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -26,6 +27,7 @@ class InspectorPanel(QWidget):
     toggle_native_window_requested = Signal()
     force_repaint_requested = Signal()
     force_update_requested = Signal()
+    dump_layout_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None):
         if parent is None:
@@ -69,11 +71,29 @@ class InspectorPanel(QWidget):
             size=(122, 32),
             parent=self,
         )
+        self.dump_layout_button = Button(
+            text="Dump layout",
+            variant="surface",
+            size=(122, 32),
+            parent=self,
+        )
+        self.dump_layout_button.setToolTip(
+            "Dump the whole widget tree of the last window that had focus "
+            "(main window, Settings, Help, ...) to a JSON file — geometry + "
+            "bound Find Action ids. Path is copied to the clipboard."
+        )
         buttons.addWidget(self.copy_selector_button)
         buttons.addWidget(self.copy_path_button)
         buttons.addWidget(self.copy_details_button)
+        buttons.addWidget(self.dump_layout_button)
         buttons.addStretch(1)
         layout.addLayout(buttons)
+
+        self.dump_status_label = QLabel(self)
+        self.dump_status_label.setObjectName("UiInspectorDumpStatus")
+        self.dump_status_label.setWordWrap(True)
+        self.dump_status_label.hide()
+        layout.addWidget(self.dump_status_label)
 
         experiments = QHBoxLayout()
         experiments.setSpacing(6)
@@ -123,6 +143,7 @@ class InspectorPanel(QWidget):
         )
         self.force_repaint_button.clicked.connect(self.force_repaint_requested)
         self.force_update_button.clicked.connect(self.force_update_requested)
+        self.dump_layout_button.clicked.connect(self.dump_layout_requested)
         self.hide()
 
     def position_in_parent(self) -> None:
@@ -194,6 +215,15 @@ class InspectorPanel(QWidget):
 
     def copy_details(self) -> None:
         QGuiApplication.clipboard().setText(self._details)
+
+    def show_dump_result(self, path: str | None) -> None:
+        if path is None:
+            self.dump_status_label.setText("Layout dump failed — see log.")
+        else:
+            self.dump_status_label.setText(
+                f"Dumped layout to: {path}\n(path copied to clipboard)"
+            )
+        self.dump_status_label.show()
 
 
 def _format_compact_snapshot(

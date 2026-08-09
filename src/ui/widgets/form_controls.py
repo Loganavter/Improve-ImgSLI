@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from sli_ui_toolkit.widgets import Button, CustomLineEdit
+from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, CustomLineEdit
 
 
 class DialogActionBar(QWidget):
@@ -118,7 +118,14 @@ class OutputPathSection(QWidget):
         dir_layout.setSpacing(6)
 
         self.edit_dir = CustomLineEdit(self) if use_custom_line_edit else QLineEdit(self)
-        self.btn_browse_dir = Button(text=browse_text, variant="surface", parent=self)
+        self.btn_browse_dir = Button(
+            text=browse_text,
+            variant="surface",
+            parent=self,
+            # on_browse (both Export and Video Editor dialogs) opens a
+            # modal QFileDialog -- ripple must finish first.
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
+        )
         self.favorite_actions = QWidget(self)
         self.favorite_actions.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed

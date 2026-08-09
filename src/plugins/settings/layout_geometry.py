@@ -29,6 +29,7 @@ SETTINGS_GEOMETRY_POLICY = GeometryApplyPolicy(
     minimum_floor=(300, 200),
     width_bounds=(SETTINGS_MIN_WIDTH, SETTINGS_MAX_WIDTH),
     center_on_parent=True,
+    remember_key="settings",
 )
 
 

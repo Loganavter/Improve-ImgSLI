@@ -162,6 +162,21 @@ def _bind_slider_labels(ui) -> None:
         suffix=":",
         defer_when_hidden=_DEFER,
     )
+    translatable_tooltip(
+        ui.icon_magnifier_size,
+        "label.magnifier_size",
+        defer_when_hidden=_DEFER,
+    )
+    translatable_tooltip(
+        ui.icon_capture_size,
+        "label.capture_size",
+        defer_when_hidden=_DEFER,
+    )
+    translatable_tooltip(
+        ui.icon_movement_speed,
+        "magnifier.move_speed",
+        defer_when_hidden=_DEFER,
+    )
 
 
 def _bind_color_button_updates(ui) -> None:

@@ -1,4 +1,9 @@
-"""Project file round-trip and workspace replace helpers."""
+"""Project file round-trip and workspace replace helpers.
+
+image_compare's own viewport-block/magnifier serialization round-trip is
+covered in
+``src/tabs/image_compare/tests/runtime/test_session_persistence_roundtrip.py``.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +16,6 @@ import pytest
 from PIL import Image
 
 from core.store import INITIAL_WORKSPACE_SESSION_TYPE
-from core.store_viewport import RenderConfig, ViewState, ViewportState
 from services.io.project_io import (
     PROJECT_FORMAT,
     PROJECT_VERSION,
@@ -28,10 +32,6 @@ from services.io.project_package import (
     iter_session_media_paths,
     read_project_json_from_zip,
     rewrite_session_paths,
-)
-from tabs.image_compare.session_persistence import (
-    restore_viewport_block,
-    serialize_viewport_block,
 )
 
 
@@ -414,77 +414,79 @@ def test_rewrite_and_embed_helpers(tmp_path):
     assert Path(extracted[member]).is_file()
 
 
-def test_render_config_and_viewport_block_roundtrip():
-    from tabs.image_compare.state.models import ImageSessionState
-    from core.store_viewport import SessionData
-
-    vp = ViewportState(
-        render_config=RenderConfig(font_size_percent=140, jpeg_quality=88),
-        view_state=ViewState(
-            split_position=0.33,
-            is_horizontal=True,
-            diff_mode="highlight",
-            channel_view_mode="R",
-            overlay_enabled=True,
-            showing_single_image_mode=1,
-            movement_speed_per_sec=3.5,
-        ),
-        session_data=SessionData(
-            image_state=ImageSessionState(
-                auto_calculate_psnr=True, auto_calculate_ssim=True
-            )
-        ),
+def test_zip_project_embeds_pixel_cache_and_registers_on_load(tmp_path, monkeypatch):
+    from shared.image_processing import pixel_cache_registry
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+    from services.io.project_io import (
+        build_project_data,
+        collect_pixel_cache_sources,
+        package_project_data,
+        prepare_project_file_for_load,
     )
-    blob = serialize_viewport_block(vp)
-    assert blob["view_state"]["diff_mode"] == "highlight"
-    assert blob["render_config"]["font_size_percent"] == 140
-    assert blob["image_state"]["auto_calculate_psnr"] is True
 
-    other = ViewportState(
-        session_data=SessionData(image_state=ImageSessionState())
-    )
-    restore_viewport_block(other, blob)
-    assert other.view_state.split_position == pytest.approx(0.33)
-    assert other.view_state.is_horizontal is True
-    assert other.view_state.diff_mode == "highlight"
-    assert other.render_config.font_size_percent == 140
-    assert other.session_data.image_state.auto_calculate_ssim is True
+    monkeypatch.setenv("IMGSLI_PROJECT_CACHE", str(tmp_path / "proj-cache"))
+    img = _write_png(tmp_path / "shot.png", color=(9, 8, 7))
+    pil = Image.open(img).convert("RGBA")
+    live_store = TiledPixelStore.from_pil(pil)
 
+    picker = _FakeSession("p1", INITIAL_WORKSPACE_SESSION_TYPE)
+    ic = _FakeSession("ic1", "image_compare")
+    store = _FakeStore([picker, ic], "ic1")
 
-def test_magnifier_models_roundtrip_in_viewport_block():
-    from tabs.image_compare.canvas.features.magnifier.state.feature_state import (
-        get_magnifier_widget_state,
-    )
-    from tabs.image_compare.canvas.features.magnifier.state.models import MagnifierModel
-    from tabs.image_compare.canvas.features.magnifier.persistence import (
-        restore_magnifier_from_project,
-        serialize_magnifier_for_project,
-    )
-    from domain.types import Color, Point
+    class _CacheTabRegistry(_FakeTabRegistry):
+        def collect_pixel_cache_sources(self, session_type: str, session_id: str):
+            if session_type == "image_compare" and session_id == "ic1":
+                return {str(img): live_store}
+            return {}
 
-    vp = ViewportState()
-    state = get_magnifier_widget_state(vp.view_state)
-    state.enabled = True
-    model = MagnifierModel(
-        id="mag-1",
-        position=Point(0.25, 0.75),
-        size_relative=0.3,
-        border_color=Color(1, 2, 3, 4),
-        is_horizontal=True,
-    )
-    state.models[model.id] = model
-    state.active_id = model.id
+    registry = _CacheTabRegistry()
+    registry._snapshots[("image_compare", "ic1")] = {
+        "version": 2,
+        "image_list1": [],
+        "image_list2": [],
+        "image1_path": str(img),
+        "image2_path": None,
+        "current_index1": -1,
+        "current_index2": -1,
+    }
 
-    blob = serialize_magnifier_for_project(vp.view_state)
-    assert blob["enabled"] is True
-    assert blob["models"][0]["id"] == "mag-1"
-    json.dumps(blob)
+    out = tmp_path / "cached.imgsli"
+    project_data = build_project_data(store, registry)
+    pixel_cache_sources = collect_pixel_cache_sources(store, registry)
+    assert str(img) in pixel_cache_sources
 
-    other = ViewportState()
-    restore_magnifier_from_project(other.view_state, blob)
-    restored = get_magnifier_widget_state(other.view_state)
-    assert restored.enabled is True
-    assert restored.active_id == "mag-1"
-    assert "mag-1" in restored.models
-    assert restored.models["mag-1"].position.x == pytest.approx(0.25)
-    assert restored.models["mag-1"].border_color.r == 1
+    try:
+        missing = package_project_data(
+            project_data, out, pixel_cache_sources=pixel_cache_sources
+        )
+    finally:
+        live_store.close()
+
+    assert missing == []
+    with zipfile.ZipFile(out, "r") as zf:
+        cache_members = [n for n in zf.namelist() if n.startswith("cache/")]
+        assert len(cache_members) == 1
+
+    data = read_project_json_from_zip(out)
+    assert data["pixel_cache"]
+    asset_id = next(iter(data["pixel_cache"]))
+    assert data["pixel_cache"][asset_id]["width"] == pil.width
+    assert data["pixel_cache"][asset_id]["height"] == pil.height
+
+    pixel_cache_registry.clear()
+    try:
+        loaded_data, _warnings = prepare_project_file_for_load(out)
+        restored_path = loaded_data["sessions"][0]["data"]["image1_path"]
+        cached = pixel_cache_registry.lookup(restored_path)
+        assert cached is not None
+        cache_path, width, height = cached
+        assert Path(cache_path).is_file()
+        assert (width, height) == (pil.width, pil.height)
+
+        reopened = TiledPixelStore.from_embedded_cache(cache_path, width, height)
+        try:
+            assert reopened.size == (pil.width, pil.height)
+        finally:
+            reopened.close()
+    finally:
+        pixel_cache_registry.clear()

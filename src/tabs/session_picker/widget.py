@@ -34,6 +34,30 @@ from ui.theming import resolve_theme_color
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
 
 
+class _OpaqueFillWidget(QWidget):
+    """Plain container that paints its background explicitly.
+
+    ``setPalette`` + ``setAutoFillBackground(True)`` is unreliable for bare
+    leaf widgets in this app (see docs/dev/KNOWN_BUGS.md) — the background
+    can silently keep the pre-switch color across a live theme change.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._fill = QColor(255, 255, 255)
+
+    def set_fill(self, color: QColor) -> None:
+        fill = QColor(color)
+        fill.setAlpha(255)
+        self._fill = fill
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(event.rect(), self._fill)
+        painter.end()
+
+
 class _SeamlessHorizontalSplit(HorizontalSplit):
     def compute(self, rect: QRectF, regions: list[ButtonRegion]) -> list[QRectF]:
         rects = super().compute(rect, regions)
@@ -104,11 +128,16 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             return
         fill = QColor(color)
         fill.setAlpha(255)
+        set_fill = getattr(widget, "set_fill", None)
+        if callable(set_fill):
+            set_fill(fill)
+            return
         widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         widget.setAutoFillBackground(True)
         palette = widget.palette()
         palette.setColor(widget.backgroundRole(), fill)
         widget.setPalette(palette)
+        widget.update()
 
     def _sync_opaque_page_fills(self) -> None:
         bg = QColor(getattr(self, "_bg_color", QColor(255, 255, 255)))
@@ -131,10 +160,14 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         # black wedges into the bottom window corners when the recent shelf
         # grows and the scroll content reflows.
         scroll.set_corner_radius(0)
+        # No reserved gutter: the reserve appears while the hidden page is
+        # momentarily scrollable during build, then drops after show — a 10px
+        # rightward jump of every card. Overlay bar rides the 48px page margin.
+        scroll.set_reserve_scrollbar_space(False)
         outer.addWidget(scroll)
         self._page_scroll = scroll
 
-        content = QWidget()
+        content = _OpaqueFillWidget()
         scroll.setWidget(content)
         self._page_content = content
 
@@ -154,7 +187,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         )
         layout.addWidget(self._subtitle_label)
 
-        self._cards_container = QWidget()
+        self._cards_container = _OpaqueFillWidget()
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
         self._cards_layout.setSpacing(10)

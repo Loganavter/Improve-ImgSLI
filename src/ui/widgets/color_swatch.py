@@ -1,4 +1,4 @@
-"""ColorSwatch — round Button that opens a themed QColorDialog on click.
+"""ColorSwatch — round Button that opens a themed ColorPickerDialog on click.
 
 App-level composite. Lives here (not in sli_ui_toolkit) because picker
 integration is a product concern, not a generic widget primitive.
@@ -8,12 +8,13 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QColorDialog, QWidget
+from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Button
 
-from ui.theming import polish_themed_dialog, resolve_theme_color
+from ui.theming import resolve_theme_color
+from ui.widgets.color_picker_dialog import ColorPickerDialog
 
 
 class ColorSwatch(Button):
@@ -37,7 +38,7 @@ class ColorSwatch(Button):
         self._color = initial
         # Exact chip color as base; hover overlays remain enabled (bg unlocked).
         self.set_override_bg_color(initial)
-        self._dialog: QColorDialog | None = None
+        self._dialog: ColorPickerDialog | None = None
         self._alpha = bool(alpha)
         self.clicked.connect(self._open_dialog)
         tm.theme_changed.connect(self._refresh_border)
@@ -71,11 +72,8 @@ class ColorSwatch(Button):
             self._dialog.activateWindow()
             return
         parent_window = self.window()
-        dialog = QColorDialog(self._color, parent_window)
-        if self._alpha:
-            dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+        dialog = ColorPickerDialog(self._color, parent_window, show_alpha=self._alpha)
         dialog.setModal(False)
-        polish_themed_dialog(ThemeManager.get_instance(), dialog)
 
         def on_selected(c: QColor) -> None:
             if c.isValid():

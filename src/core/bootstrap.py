@@ -53,9 +53,12 @@ class ApplicationContext:
         from core.startup_trace import startup_mark
 
         startup_mark("ctx.begin")
+        from PySide6.QtGui import QImageReader
+        QImageReader.setAllocationLimit(16384)
         self._maybe_install_tracer()
         self._build_core_services()
         startup_mark("ctx.core_services")
+        self._purge_stale_pixel_spill()
         self._load_persistent_state()
         self._configure_logging()
         self._configure_theme_manager()
@@ -83,6 +86,30 @@ class ApplicationContext:
             install_file_sink()
         except Exception as exc:
             logger.warning("tracer file sink install failed: %s", exc, exc_info=True)
+
+    def _purge_stale_pixel_spill(self) -> None:
+        """Purge leftover TiledPixelStore spill files from crashed sessions.
+
+        Runs in a daemon thread so startup is not blocked. The purge logic
+        writes a PID sentinel first so it safely skips files owned by *this*
+        process and bails out when another live ImgSLI instance is detected.
+        """
+        import threading
+
+        def _purge():
+            try:
+                from shared.image_processing.tiled_pixel_store import (
+                    purge_stale_spill_files,
+                    resolve_pixel_spill_dir,
+                )
+                # resolve_pixel_spill_dir writes the PID sentinel for this process.
+                resolve_pixel_spill_dir()
+                purge_stale_spill_files()
+            except Exception as exc:
+                logger.debug("Stale spill purge failed: %s", exc)
+
+        t = threading.Thread(target=_purge, daemon=True, name="SpillPurge")
+        t.start()
 
     def _load_canvas_feature_settings(self):
         self.settings_manager._load_canvas_feature_settings(self.store.viewport)
@@ -209,6 +236,28 @@ class ApplicationContext:
             app = QApplication.instance()
             if app is not None and bool(app.styleSheet()):
                 self.theme_manager.apply_theme_to_app(app)
+                # `apply_theme_to_app` re-applies the *global* app
+                # stylesheet (`app.setStyleSheet(...)`) -- confirmed live
+                # (IMGSLI_FLYOUT_DEBUG=1, a QEvent::FontChange filter on
+                # ZoomIndicator's label) that this resets already-explicit
+                # widget fonts (`WA_SetFont`-pinned via `apply_ui_font()`)
+                # to some earlier/default point size, even though
+                # `QApplication.font()` itself never actually changes --
+                # a Qt style-sheet-engine font re-resolution quirk, not a
+                # real `ApplicationFontChange` (so `UiFont.font_changed`
+                # never fires for it, and widgets relying on that signal
+                # to self-heal don't). Re-assert the correct app font
+                # right after, same call `window.py`/`ApplyFontSettingsStep`
+                # already make at startup, undoing whatever the stylesheet
+                # push broke -- see
+                # docs/dev/rendering/glass-panel-text-vibrancy-plan.md
+                # Phase 3 for the investigation this fixes.
+                try:
+                    from shared_toolkit.ui.managers.font_manager import FontManager
+
+                    FontManager.get_instance().apply_from_state(self.store)
+                except Exception:
+                    pass
 
         startup_mark("ctx.plugins.deferred")
         return started
@@ -231,6 +280,8 @@ class ApplicationContext:
         install_application_tooltips(app)
         from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
         install_application_dialog_decorations(app)
+        from ui.context_menu.line_edit_menu import install_line_edit_context_menu_policy
+        install_line_edit_context_menu_policy(app)
         self.theme_manager.apply_theme_to_app(app)
         self.theme_manager.theme_changed.connect(self._on_theme_changed)
 

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from sli_ui_toolkit import CustomTitleBar, decorate_dialog as _toolkit_decorate_dialog
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE
 from ui.theming import polish_themed_dialog, resolve_theme_color
 
 CUSTOM_DECORATION_RESIZE_MARGIN = 8
@@ -45,6 +46,10 @@ def decorate_dialog(
     show_maximize: bool = False,
     show_close: bool = True,
     resizable: bool = True,
+    # Closing a dialog can do real work (session save, plugin teardown) —
+    # let the close button's press ripple finish first by default. Pass
+    # None to opt a specific dialog out and keep the sync (instant) click.
+    defer_close_click: object = DEFER_CLICK_AWAIT_RIPPLE,
 ) -> CustomTitleBar | None:
     existing = getattr(dialog, "_csd_title_bar", None)
     if existing is not None:
@@ -73,6 +78,7 @@ def decorate_dialog(
             show_close=show_close,
             resizable=resizable,
             resize_margin=CUSTOM_DECORATION_RESIZE_MARGIN,
+            defer_close_click=defer_close_click,
         )
         return title_bar
     finally:

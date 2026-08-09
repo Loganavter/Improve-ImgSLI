@@ -16,9 +16,17 @@ DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES = 3 * 1024 * 1024 * 1024
 
 def qimage_from_pil(pil_image) -> QImage:
     """Convert PIL or TiledPixelStore to RGBA QImage."""
+    if isinstance(pil_image, QImage):
+        if pil_image.format() != QImage.Format.Format_RGBA8888:
+            return pil_image.convertToFormat(QImage.Format.Format_RGBA8888)
+        return pil_image.copy()
     if isinstance(pil_image, TiledPixelStore):
         return qimage_from_pixel_source(pil_image)
-    image = pil_image.convert("RGBA")
+    # PIL's convert() always copies even when mode already matches -- on a
+    # cropped hi-res tile (already RGBA out of TiledPixelStore.crop) that's a
+    # full extra tile-sized memcpy for nothing, and this path runs per-tile,
+    # synchronously, inside render()'s realize_tile_plan.
+    image = pil_image if pil_image.mode == "RGBA" else pil_image.convert("RGBA")
     return QImage(
         image.tobytes("raw", "RGBA"),
         image.width,

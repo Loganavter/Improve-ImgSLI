@@ -277,6 +277,10 @@ def _collect_fractions(
             return
         if hasattr(image, "shape"):
             h, w = image.shape[:2]
+        elif hasattr(image, "width") and callable(image.width):
+            # QImage (e.g. a progressive-load preview) — width/height are
+            # methods, not attributes, unlike PIL.Image/TiledPixelStore.
+            w, h = image.width(), image.height()
         else:
             w, h = image.width, image.height
         if w <= 0 or h <= 0:

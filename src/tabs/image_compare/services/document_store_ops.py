@@ -27,7 +27,6 @@ def clear_image_slot_data(store, image_number: int) -> None:
         return
 
     document = store.get_session_state_slot("document")
-    cache = store.viewport.session_data.render_cache
     image_state = store.viewport.session_data.image_state
     if image_number == 1:
         document.original_image1 = None
@@ -36,8 +35,6 @@ def clear_image_slot_data(store, image_number: int) -> None:
         document.image1_path = None
         document.clear_last_display_name(1)
         image_state.image1 = None
-        cache.display_cache_image1 = None
-        cache.scaled_image1_for_display = None
     else:
         document.original_image2 = None
         document.full_res_image2 = None
@@ -45,11 +42,7 @@ def clear_image_slot_data(store, image_number: int) -> None:
         document.image2_path = None
         document.clear_last_display_name(2)
         image_state.image2 = None
-        cache.display_cache_image2 = None
-        cache.scaled_image2_for_display = None
 
-    cache.cached_scaled_image_dims = None
-    cache.last_display_cache_params = None
     store.invalidate_render_cache()
 
 
@@ -109,14 +102,6 @@ def swap_all_image_data(store) -> None:
         vp.session_data.image_state.image2,
         vp.session_data.image_state.image1,
     )
-    vp.session_data.render_cache.display_cache_image1, vp.session_data.render_cache.display_cache_image2 = (
-        vp.session_data.render_cache.display_cache_image2,
-        vp.session_data.render_cache.display_cache_image1,
-    )
-    vp.session_data.render_cache.scaled_image1_for_display, vp.session_data.render_cache.scaled_image2_for_display = (
-        vp.session_data.render_cache.scaled_image2_for_display,
-        vp.session_data.render_cache.scaled_image1_for_display,
-    )
 
     store.invalidate_geometry_cache()
     store.emit_state_change("document")
@@ -141,6 +126,9 @@ def copy_for_worker(store):
     )
     new_session_data.render_cache.cached_diff_image = (
         src_session.render_cache.cached_diff_image
+    )
+    new_session_data.render_cache.cached_diff_source_key = (
+        src_session.render_cache.cached_diff_source_key
     )
 
     new_viewport = ViewportState(

@@ -118,6 +118,14 @@ class Ui_ImageComparisonApp:
                 # Theme may have flipped while this page was hidden.
                 main_window = self.workspace_stack.window()
                 self._tab_registry.flush_stale_appearance(main_window)
+                # Toasts are one shared host-owned manager; repoint it at
+                # the newly active tab's own canvas instead of leaving it
+                # anchored to whichever tab last claimed it.
+                toast_manager = getattr(main_window, "toast_manager", None)
+                if toast_manager is not None:
+                    anchor = self._tab_registry.create_service("toast_anchor_widget")
+                    if anchor is not None:
+                        toast_manager.set_anchor(anchor)
 
         handled = (
             self._tab_registry.apply_host_session_mode(

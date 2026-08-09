@@ -1,12 +1,11 @@
 import logging
 
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QPixmap
 
 from domain.types import Rect
-from shared.rendering.display_image_picker import pick_first_real
-
-# Display-tier images are chosen via pick_first_real (display cache / scaled /
-# image_state before full-res TiledPixelStore). See display-image-pipeline.md.
+from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from shared.rendering.display_image_picker import pick_display_image
+from shared.rendering.image_identity import image_uid
 from tabs.image_compare.canvas.registry import registry
 
 _mlog = logging.getLogger("ImproveImgSLI.magnifier.render_flow")
@@ -15,6 +14,29 @@ from tabs.image_compare.canvas.helpers import get_canvas_widget, reset_canvas_ov
 from tabs.image_compare.canvas.scene import build_render_scene
 
 from .diff import sync_diff_texture
+
+
+def _size_or_none(candidate):
+    """``candidate.size``, or ``None`` if unavailable.
+
+    ``image_state.image{1,2}`` is updated by a background unify worker on a
+    different schedule than ``document.full_res_image{1,2}`` (see
+    ``_session_controller._unify_images_worker_task`` / ``reducer.py``), so a
+    reference here can outlive ``close_pixel_store()`` closing that same
+    store from the load path. A closed ``TiledPixelStore`` is still truthy
+    (no ``__bool__`` override) but ``.size`` reads ``self._memmap.shape`` on
+    a ``None`` memmap and raises -- checked explicitly rather than relying on
+    the property to fail safely, since other call sites depend on that
+    property staying a bare attribute-style accessor.
+    """
+    if candidate is None:
+        return None
+    if isinstance(candidate, TiledPixelStore) and not candidate.is_open:
+        return None
+    if isinstance(candidate, (QImage, QPixmap)):
+        qsize = candidate.size()
+        return (qsize.width(), qsize.height())
+    return candidate.size
 
 
 def _query_overlay(store, capability_id: str, default=None):
@@ -88,18 +110,18 @@ def update_comparison_if_needed(presenter):
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         image_to_show = (
-            pick_first_real(
-                presenter.store.viewport.session_data.render_cache.display_cache_image1,
-                presenter.store.viewport.session_data.render_cache.scaled_image1_for_display,
+            pick_display_image(
                 presenter.store.viewport.session_data.image_state.image1,
                 source1,
+                _document.preview_image1,
+                _document.original_image1,
             )
             if presenter.store.viewport.view_state.showing_single_image_mode == 1
-            else pick_first_real(
-                presenter.store.viewport.session_data.render_cache.display_cache_image2,
-                presenter.store.viewport.session_data.render_cache.scaled_image2_for_display,
+            else pick_display_image(
                 presenter.store.viewport.session_data.image_state.image2,
                 source2,
+                _document.preview_image2,
+                _document.original_image2,
             )
         )
         presenter.view.display_single_image_on_label(image_to_show)
@@ -119,41 +141,30 @@ def update_comparison_if_needed(presenter):
         # One side is mid-reload / empty. Keep showing the live half instead of
         # blanking the whole canvas (ClearImageSlotData + path-only load).
         image_to_show = (
-            pick_first_real(
-                presenter.store.viewport.session_data.render_cache.display_cache_image1,
-                presenter.store.viewport.session_data.render_cache.scaled_image1_for_display,
+            pick_display_image(
                 presenter.store.viewport.session_data.image_state.image1,
                 source1,
+                _document.preview_image1,
+                _document.original_image1,
             )
             if have1
-            else pick_first_real(
-                presenter.store.viewport.session_data.render_cache.display_cache_image2,
-                presenter.store.viewport.session_data.render_cache.scaled_image2_for_display,
+            else pick_display_image(
                 presenter.store.viewport.session_data.image_state.image2,
                 source2,
+                _document.preview_image2,
+                _document.original_image2,
             )
         )
         presenter.view.display_single_image_on_label(image_to_show)
         return False
 
-    if presenter.background.ensure_images_unified(source1, source2):
-        if not presenter.background.create_preview_cache_async(
-            presenter.store.viewport.session_data.image_state.image1,
-            presenter.store.viewport.session_data.image_state.image2,
-        ):
-            return False
-
-    src_resize1 = (
-        presenter.store.viewport.session_data.render_cache.display_cache_image1
-        or presenter.store.viewport.session_data.image_state.image1
-    )
-    src_resize2 = (
-        presenter.store.viewport.session_data.render_cache.display_cache_image2
-        or presenter.store.viewport.session_data.image_state.image2
-    )
-    if src_resize1 and src_resize2:
-        img1_w, img1_h = src_resize1.size
-        img2_w, img2_h = src_resize2.size
+    src_resize1 = presenter.store.viewport.session_data.image_state.image1
+    src_resize2 = presenter.store.viewport.session_data.image_state.image2
+    size1 = _size_or_none(src_resize1) or _size_or_none(source1)
+    size2 = _size_or_none(src_resize2) or _size_or_none(source2)
+    if size1 and size2:
+        img1_w, img1_h = size1
+        img2_w, img2_h = size2
         scale1 = min(label_width / img1_w, label_height / img1_h)
         scale2 = min(label_width / img2_w, label_height / img2_h)
         scale = min(scale1, scale2)
@@ -161,12 +172,6 @@ def update_comparison_if_needed(presenter):
         scaled_h = max(1, int(img1_h * scale))
     else:
         scaled_w, scaled_h = label_width, label_height
-
-    if (
-        not presenter.view.is_canvas_widget()
-        and not presenter.background.ensure_images_scaled(scaled_w, scaled_h)
-    ):
-        return False
 
     presenter.store.viewport.geometry_state.pixmap_width = scaled_w
     presenter.store.viewport.geometry_state.pixmap_height = scaled_h
@@ -187,16 +192,15 @@ def update_comparison_if_needed(presenter):
     )
 
     diff_mode = getattr(presenter.store.viewport.view_state, "diff_mode", "off")
-    if (
-        presenter.view.is_canvas_widget()
-        and diff_mode == "ssim"
-        and getattr(
-            presenter.store.viewport.session_data.render_cache,
-            "cached_diff_image",
-            None,
-        )
-        is None
-    ):
+    if presenter.view.is_canvas_widget() and diff_mode == "ssim":
+        # Called every frame diff_mode=="ssim", not just when
+        # cached_diff_image is None -- request_cached_diff_image_async's own
+        # cached_diff_source_key comparison is what actually decides whether
+        # a recompute is needed, so the *previous* pair's diff stays cached
+        # and visible across an image swap instead of being cleared upfront
+        # and leaving a diff-vanishes/plain-image/diff-reappears flash while
+        # the new one computes (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM
+        # follow-up).
         request_cached_diff = registry().get_feature_command_by_alias(
             "overlay.request_cached_diff",
         )
@@ -214,17 +218,12 @@ def update_comparison_if_needed(presenter):
     if bg_is_dirty:
         if presenter.view.is_canvas_widget():
             image_label = get_canvas_widget(presenter.widget)
-            render_cache = presenter.store.viewport.session_data.render_cache
-            img1 = pick_first_real(
-                render_cache.display_cache_image1,
-                render_cache.scaled_image1_for_display,
+            img1 = pick_display_image(
                 presenter.store.viewport.session_data.image_state.image1,
                 _document.preview_image1,
                 _document.original_image1,
             )
-            img2 = pick_first_real(
-                render_cache.display_cache_image2,
-                render_cache.scaled_image2_for_display,
+            img2 = pick_display_image(
                 presenter.store.viewport.session_data.image_state.image2,
                 _document.preview_image2,
                 _document.original_image2,
@@ -237,14 +236,14 @@ def update_comparison_if_needed(presenter):
             source_key = (
                 document.image1_path,
                 document.image2_path,
-                id(gui_source1) if gui_source1 is not None else 0,
-                id(gui_source2) if gui_source2 is not None else 0,
+                image_uid(gui_source1),
+                image_uid(gui_source2),
                 gui_source1.size if gui_source1 is not None else None,
                 gui_source2.size if gui_source2 is not None else None,
             )
             img_sig = (
-                id(render_img1),
-                id(render_img2),
+                image_uid(render_img1),
+                image_uid(render_img2),
                 current_label_dims,
                 presenter.store.viewport.view_state.diff_mode,
                 presenter.store.viewport.view_state.channel_view_mode,

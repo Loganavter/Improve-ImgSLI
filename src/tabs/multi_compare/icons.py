@@ -14,6 +14,7 @@ get_icon = tab_icon_resolver(_TAB_DIR)
 class Icon(Enum):
     GRID = "grid.svg"
     PHOTO = "photo_icon.svg"
+    MOVE = "move.svg"
     DIVIDER_VISIBLE = "divider_visible.svg"
     DIVIDER_HIDDEN = "divider_hidden.svg"
     DIVIDER_COLOR = "divider_color.svg"

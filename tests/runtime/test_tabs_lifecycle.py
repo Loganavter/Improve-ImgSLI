@@ -4,13 +4,14 @@ Drop routing must respect ``accepts_drop`` (a tab only sees a drop it claimed)
 and ``dispose()`` must be idempotent.
 
 Dogma source: docs/dev/tabs/isolation.md.
+
+image_compare's own drop-routing fallback is covered in
+``src/tabs/image_compare/tests/runtime/test_handle_drop_presenter_fallback.py``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-
-from PySide6.QtWidgets import QApplication
 
 from tabs.contract import TabContext, TabContract
 from tabs.registry import TabRegistry
@@ -125,31 +126,3 @@ def test_registry_forwards_appearance_and_shutdown_hooks():
     registry.notify_window_shutdown(host)
 
     assert tab.lifecycle_calls == ["appearance", "shutdown"]
-
-def test_image_compare_drop_uses_presenter_main_controller_when_window_has_no_direct_controller():
-    from types import SimpleNamespace
-
-    from tabs.image_compare.tab import ImageCompareTab
-
-    QApplication.instance() or QApplication([])
-    calls = []
-    sessions = SimpleNamespace(
-        load_images_from_paths=lambda paths, slot: calls.append((paths, slot))
-    )
-    main_window = SimpleNamespace(
-        main_controller=None,
-        presenter=SimpleNamespace(main_controller=SimpleNamespace(sessions=sessions)),
-    )
-    tab = ImageCompareTab()
-    tab._widget = SimpleNamespace(_context=SimpleNamespace(main_window=main_window))
-
-    drop_path = Path("/tmp/right.png")
-    handled = tab.handle_drop([drop_path], hint={"slot": 2})
-    QApplication.processEvents()
-
-    assert handled is True
-    assert len(calls) == 1
-    paths, slot = calls[0]
-    assert slot == 2
-    # Windows stringifies absolute POSIX-looking Paths with backslashes.
-    assert [Path(p) for p in paths] == [drop_path]

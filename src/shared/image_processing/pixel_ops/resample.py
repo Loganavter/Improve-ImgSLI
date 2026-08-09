@@ -10,6 +10,14 @@ _BLOCK = 512
 
 
 def crop_source(source, box: tuple[int, int, int, int]) -> Image.Image:
+    from PySide6.QtGui import QImage
+    if isinstance(source, QImage):
+        left, top, right, bottom = box
+        cropped_qimg = source.copy(left, top, right - left, bottom - top)
+        if cropped_qimg.format() != QImage.Format.Format_RGBA8888:
+            cropped_qimg = cropped_qimg.convertToFormat(QImage.Format.Format_RGBA8888)
+        return Image.frombytes("RGBA", (cropped_qimg.width(), cropped_qimg.height()), bytes(cropped_qimg.constBits()))
+        
     if isinstance(source, TiledPixelStore):
         return source.crop(box)
     return source.crop(box)
@@ -24,7 +32,21 @@ def resample_output_region(
 ) -> Image.Image:
     """Map an output pixel rectangle back to source space and resample."""
     ox0, oy0, ox1, oy1 = out_box
-    sw, sh = source.size
+    
+    def _img_dims(img) -> tuple[int, int]:
+        if img is None: return (0, 0)
+        iw, ih = 0, 0
+        if hasattr(img, "width") and callable(img.width): iw = int(img.width())
+        elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): iw = int(img.size[0])
+        elif hasattr(img, "size") and callable(img.size): iw = int(img.size().width())
+        else: iw = int(getattr(img, "width", 0))
+        if hasattr(img, "height") and callable(img.height): ih = int(img.height())
+        elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): ih = int(img.size[1])
+        elif hasattr(img, "size") and callable(img.size): ih = int(img.size().height())
+        else: ih = int(getattr(img, "height", 0))
+        return iw, ih
+        
+    sw, sh = _img_dims(source)
     scale_x = sw / float(target_w)
     scale_y = sh / float(target_h)
     sx0 = int(ox0 * scale_x)
@@ -43,8 +65,13 @@ def write_resampled_to_store(
     resample: Image.Resampling,
     *,
     block: int = _BLOCK,
-) -> None:
+    should_abort=None,
+) -> bool:
+    """Returns False if aborted mid-write (store contents are partial)."""
+    import time
     for oy in range(0, target_h, block):
+        if should_abort is not None and should_abort():
+            return False
         oy1 = min(oy + block, target_h)
         for ox in range(0, target_w, block):
             ox1 = min(ox + block, target_w)
@@ -53,3 +80,5 @@ def write_resampled_to_store(
                 box,
                 resample_output_region(source, target_w, target_h, box, resample),
             )
+        time.sleep(0.001)
+    return True

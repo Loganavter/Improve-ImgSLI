@@ -26,28 +26,18 @@ from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
 def clamp_pan_values(
     pan_x: float, pan_y: float, zoom: float
 ) -> tuple[float, float]:
-    """Clamp pan so the image edges never reveal more than allowed travel.
-
-    Derivation for zoom > 1: img_uv = (cell_uv − 0.5)/(fit·zoom) + 0.5 − pan.
-    The visible image region in cell-uv is [0.5 ± fit/2], at whose ends
-    img_uv = 0 or 1 before pan. Forcing img_uv ∈ [0, 1] across that range
-    yields |pan| ≤ (zoom − 1) / (2·zoom), independent of fit.
-
-    At zoom ≤ 1 that classic limit is 0; allow half-cell travel so
-    middle-button pan still works at fit zoom (may reveal letterbox).
-    """
-    z = max(float(zoom), 1e-6)
-    if z <= 1.0:
-        limit = 0.5
-    else:
-        limit = (z - 1.0) / (2.0 * z)
-    return max(-limit, min(limit, pan_x)), max(-limit, min(limit, pan_y))
+    """No-op: pan is unrestricted, matching image_compare's free pan/zoom
+    (``ui/canvas_infra/viewport/zoom.py``'s ``compute_zoom_pan_drag_transform``/
+    ``compute_zoom_wheel_transform``, neither of which clamps pan)."""
+    return pan_x, pan_y
 
 
 def fit_scale_for(slot: CompareSlot, rect) -> tuple[float, float]:
     if slot.image is None or rect.width() <= 0 or rect.height() <= 0:
         return 1.0, 1.0
-    w, h = slot.image.width, slot.image.height
+    from shared.image_processing.tiled_pixel_store import pixel_source_size
+
+    w, h = pixel_source_size(slot.image)
     if h <= 0 or w <= 0:
         return 1.0, 1.0
     img_ar = w / h
@@ -95,20 +85,34 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
     if delta == 0:
         event.accept()
         return
-    factor = widget.ZOOM_STEP if delta > 0 else 1.0 / widget.ZOOM_STEP
+    # Scale by delta magnitude (Qt's 120-units-per-notch convention), not
+    # just sign -- see docs/dev/rendering/tile-array-atlas-plan.md Findings
+    # (image_compare's compute_zoom_wheel_transform had the same fixed-step-
+    # per-event bug: a coalesced multi-notch burst produced the same tiny
+    # step as a single click).
+    notches = delta / 120.0
+    factor = widget.ZOOM_STEP**notches
     z1 = widget.state.zoom
     z2 = max(widget.ZOOM_MIN, min(widget.ZOOM_MAX, z1 * factor))
     if z2 == z1:
         event.accept()
         return
 
-    new_pan_x = widget.state.pan_x + (cell_u - 0.5) / max(fit_x, 1e-6) * (
-        1.0 / z2 - 1.0 / z1
-    )
-    new_pan_y = widget.state.pan_y + (cell_v - 0.5) / max(fit_y, 1e-6) * (
-        1.0 / z2 - 1.0 / z1
-    )
-    new_pan_x, new_pan_y = clamp_pan_values(new_pan_x, new_pan_y, z2)
+    if z2 <= widget.ZOOM_MIN:
+        # At the zoom floor there's no meaningful cursor-anchored offset left
+        # (the whole cell is in view) -- snap pan to origin instead of
+        # carrying over the last wheel step's clamped remainder, which would
+        # otherwise leave a tiny nonzero pan that keeps the zoom indicator
+        # visible even though zoom is back at its default.
+        new_pan_x, new_pan_y = 0.0, 0.0
+    else:
+        new_pan_x = widget.state.pan_x + (cell_u - 0.5) / max(fit_x, 1e-6) * (
+            1.0 / z2 - 1.0 / z1
+        )
+        new_pan_y = widget.state.pan_y + (cell_v - 0.5) / max(fit_y, 1e-6) * (
+            1.0 / z2 - 1.0 / z1
+        )
+        new_pan_x, new_pan_y = clamp_pan_values(new_pan_x, new_pan_y, z2)
     widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
     event.accept()
 

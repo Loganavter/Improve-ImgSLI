@@ -159,7 +159,8 @@ the viewport edge while the image keeps moving.
 The base-image shader compares spit in **letterboxed image UV** (magnifier
 ``internalSplit`` parity). The white divider uses the view-transformed
 letterbox + fragment clip. Full write-up:
-[investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
+`src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md` in
+`improve-imgsli-internal-docs` (private, not in this repo).
 
 ## Semantic geometry vs paint extents
 

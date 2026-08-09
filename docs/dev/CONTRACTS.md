@@ -271,7 +271,7 @@ AST dogmas in `tests/contracts/` (see [TESTING.md](TESTING.md)).
 
 ## Related Documentation
 
-- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — Detailed guide to adding new canvas features
+- [rendering/index.md](rendering/index.md) — Detailed guide to adding new canvas features
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Overall app architecture
 - [tabs/index.md](tabs/index.md) · [tabs/contract.md](tabs/contract.md) — workspace tabs / `TabContract`
 - [rendering/contracts.md](rendering/contracts.md) — canvas feature field catalog

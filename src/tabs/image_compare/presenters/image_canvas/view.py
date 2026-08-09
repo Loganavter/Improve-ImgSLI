@@ -135,13 +135,20 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
             pan_y = get_pan_offset_y(image_label)
             reset_canvas_overlays(image_label)
             document = presenter.store.get_session_state_slot("document")
+            img_size = (
+                (pil_image.width(), pil_image.height())
+                if hasattr(pil_image, "width") and callable(pil_image.width)
+                else (pil_image.size().width(), pil_image.size().height())
+                if hasattr(pil_image, "size") and callable(pil_image.size)
+                else (pil_image.size[0], pil_image.size[1])
+            )
             single_key = (
                 "single_image_mode",
                 presenter.store.viewport.view_state.showing_single_image_mode,
                 document.image1_path,
                 document.image2_path,
                 image_uid(pil_image),
-                pil_image.size,
+                img_size,
             )
             apply_store_to_canvas(
                 image_label,
@@ -163,9 +170,12 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
             presenter.current_displayed_pixmap = None
         else:
             w, h = presenter.get_current_label_dimensions()
-            rgba = pil_image.convert("RGBA")
-            data = rgba.tobytes("raw", "RGBA")
-            qimg = QImage(data, rgba.width, rgba.height, QImage.Format.Format_RGBA8888)
+            if isinstance(pil_image, QImage):
+                qimg = pil_image.convertToFormat(QImage.Format.Format_RGBA8888)
+            else:
+                rgba = pil_image.convert("RGBA")
+                data = rgba.tobytes("raw", "RGBA")
+                qimg = QImage(data, rgba.width, rgba.height, QImage.Format.Format_RGBA8888)
             pix = QPixmap.fromImage(qimg).scaled(
                 w,
                 h,

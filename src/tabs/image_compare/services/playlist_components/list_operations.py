@@ -54,17 +54,6 @@ class PlaylistListOperations:
             document.image2_path,
             document.image1_path,
         )
-        self.store.viewport.session_data.render_cache.display_cache_image1, self.store.viewport.session_data.render_cache.display_cache_image2 = (
-            self.store.viewport.session_data.render_cache.display_cache_image2,
-            self.store.viewport.session_data.render_cache.display_cache_image1,
-        )
-        (
-            self.store.viewport.session_data.render_cache.scaled_image1_for_display,
-            self.store.viewport.session_data.render_cache.scaled_image2_for_display,
-        ) = (
-            self.store.viewport.session_data.render_cache.scaled_image2_for_display,
-            self.store.viewport.session_data.render_cache.scaled_image1_for_display,
-        )
         self.store.viewport.session_data.image_state.image1, self.store.viewport.session_data.image_state.image2 = (
             self.store.viewport.session_data.image_state.image2,
             self.store.viewport.session_data.image_state.image1,
@@ -85,7 +74,6 @@ class PlaylistListOperations:
         if not (0 <= current_index < len(target_list)):
             return
 
-        self._evict_unified_cache_entry()
         target_list.pop(current_index)
 
         new_index = min(current_index, len(target_list) - 1) if target_list else -1
@@ -104,7 +92,6 @@ class PlaylistListOperations:
         if not (0 <= index_to_remove < len(target_list)):
             return
 
-        self._evict_unified_cache_entry()
         target_list.pop(index_to_remove)
 
         if not target_list:
@@ -305,14 +292,6 @@ class PlaylistListOperations:
         if source_list_num == image_number and source_index == get_current_index(self.store, image_number):
             return min(source_index, len(target_list) - 1)
         return 0
-
-    def _evict_unified_cache_entry(self) -> None:
-        document = self.store.get_session_state_slot("document")
-        path1_before = document.image1_path
-        path2_before = document.image2_path
-        if path1_before and path2_before:
-            cache_key = (path1_before, path2_before)
-            self.store.viewport.session_data.render_cache.unified_image_cache.pop(cache_key, None)
 
     def _emit_metrics_update(self) -> None:
         if self._trigger_metrics is not None:

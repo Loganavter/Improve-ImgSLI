@@ -25,12 +25,6 @@ def test_live_presentation_uses_progressive_previews_as_sources():
         get_session_state_slot=lambda slot: document,
         viewport=SimpleNamespace(
             session_data=SimpleNamespace(
-                render_cache=SimpleNamespace(
-                    display_cache_image1=None,
-                    display_cache_image2=None,
-                    scaled_image1_for_display=None,
-                    scaled_image2_for_display=None,
-                ),
                 image_state=SimpleNamespace(image1=preview1, image2=preview2),
             )
         ),
@@ -64,12 +58,6 @@ def test_live_presentation_prefers_unified_pair_over_raw_full_res_sources():
         get_session_state_slot=lambda slot: document,
         viewport=SimpleNamespace(
             session_data=SimpleNamespace(
-                render_cache=SimpleNamespace(
-                    display_cache_image1=None,
-                    display_cache_image2=None,
-                    scaled_image1_for_display=None,
-                    scaled_image2_for_display=None,
-                ),
                 image_state=SimpleNamespace(
                     image1=unified1,
                     image2=unified2,

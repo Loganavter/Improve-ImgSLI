@@ -124,9 +124,9 @@ def test_compute_help_dialog_size_uses_nav_and_pages():
 
 
 def test_compute_image_properties_dialog_size():
-    section = SimpleNamespace(
+    document = SimpleNamespace(
         ensurePolished=lambda: None,
-        sizeHint=lambda: SimpleNamespace(width=lambda: 500, height=lambda: 180),
+        sizeHint=lambda: SimpleNamespace(width=lambda: 500, height=lambda: 380),
     )
     dialog = SimpleNamespace(
         ensurePolished=lambda: None,
@@ -138,7 +138,7 @@ def test_compute_image_properties_dialog_size():
             ensurePolished=lambda: None,
             sizeHint=lambda: SimpleNamespace(width=lambda: 220, height=lambda: 40),
         ),
-        properties_section_frames=(section,),
+        properties_document=document,
     )
 
     width, height = compute_image_properties_dialog_size(dialog)

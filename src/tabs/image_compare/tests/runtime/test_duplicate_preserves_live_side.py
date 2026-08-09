@@ -2,17 +2,14 @@
 
 Repro: side 1 has a loaded image, side 2 empty. Context-menu Duplicate onto
 side 2 used to call ``load_images_from_paths`` → ``clear_image_slot_data(2)``,
-and ``ClearImageSlotDataAction`` wiped *both* ``scaled_image*_for_display``
-caches — flashing the whole canvas. DnD onto a non-empty side never hit that
-path; Duplicate onto an empty half did.
+which used to wipe the live side's display caches — flashing the whole
+canvas. DnD onto a non-empty side never hit that path; Duplicate onto an
+empty half did.
 """
 
 from __future__ import annotations
 
-from core.state_management.actions import ClearImageSlotDataAction
 from tabs.image_compare.state.document import DocumentModel, ImageItem
-from tabs.image_compare.state.models import RenderCacheState
-from tabs.image_compare.state.reducers import RenderCacheReducer
 from tabs.image_compare.use_cases import loading
 
 
@@ -20,13 +17,6 @@ class _RenderCache:
     def __init__(self):
         self.unification_in_progress = False
         self.pending_unification_paths = None
-        self.display_cache_image1 = object()
-        self.display_cache_image2 = None
-        self.scaled_image1_for_display = object()
-        self.scaled_image2_for_display = None
-        self.unified_image_cache = {}
-        self.last_display_cache_params = ("stale",)
-        self.cached_scaled_image_dims = (1, 1)
         self.cached_diff_image = None
 
 
@@ -80,30 +70,6 @@ class _Controller:
         self.set_current_calls.append(image_number)
 
 
-def test_clear_image_slot_data_keeps_other_side_scaled_cache():
-    cache = RenderCacheState(
-        display_cache_image1=object(),
-        display_cache_image2=object(),
-        scaled_image1_for_display=object(),
-        scaled_image2_for_display=object(),
-        cached_scaled_image_dims=(10, 10),
-        last_display_cache_params=("x",),
-    )
-    live_scaled = cache.scaled_image1_for_display
-    live_display = cache.display_cache_image1
-
-    updated = RenderCacheReducer.reduce(
-        cache, ClearImageSlotDataAction(slot=2)
-    )
-
-    assert updated.scaled_image1_for_display is live_scaled
-    assert updated.display_cache_image1 is live_display
-    assert updated.scaled_image2_for_display is None
-    assert updated.display_cache_image2 is None
-    assert updated.cached_scaled_image_dims is None
-    assert updated.last_display_cache_params is None
-
-
 def test_duplicate_image_to_slot_appends_without_wiping_live_side(monkeypatch):
     document = DocumentModel(
         image_list1=[ImageItem(path="/a.png", display_name="a")],
@@ -114,8 +80,7 @@ def test_duplicate_image_to_slot_appends_without_wiping_live_side(monkeypatch):
         full_res_image1=object(),
     )
     store = _Store(document)
-    live_scaled = store.viewport.session_data.render_cache.scaled_image1_for_display
-    live_display = store.viewport.session_data.render_cache.display_cache_image1
+    live_image = store.viewport.session_data.image_state.image1
     controller = _Controller(store)
 
     timers: list[tuple] = []
@@ -130,13 +95,7 @@ def test_duplicate_image_to_slot_appends_without_wiping_live_side(monkeypatch):
     assert len(document.image_list2) == 1
     assert document.image_list2[0].path == "/a.png"
     assert document.current_index2 == 0
-    assert (
-        store.viewport.session_data.render_cache.scaled_image1_for_display
-        is live_scaled
-    )
-    assert (
-        store.viewport.session_data.render_cache.display_cache_image1 is live_display
-    )
+    assert store.viewport.session_data.image_state.image1 is live_image
     assert timers
     timers[0][1]()
     assert controller.set_current_calls == [2]
@@ -201,10 +160,6 @@ def test_render_flow_keeps_live_side_when_other_slot_empty():
                     image_state=SimpleNamespace(image1=live, image2=None),
                     render_cache=SimpleNamespace(
                         unification_in_progress=False,
-                        display_cache_image1=None,
-                        display_cache_image2=None,
-                        scaled_image1_for_display=live,
-                        scaled_image2_for_display=None,
                         cached_diff_image=None,
                     ),
                 ),

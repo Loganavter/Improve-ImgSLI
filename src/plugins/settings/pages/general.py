@@ -16,6 +16,24 @@ LANGUAGE = group(
     "settings.language_ru",
     "settings.language_zh",
     "settings.language_pt_br",
+    # Rows show native names (English/Русский/中文/Português) regardless of
+    # UI language, so Find Action can't rely on i18n-key expansion here —
+    # give each row its translated name in every supported UI language too
+    # (e.g. ru query "английский" must still hit the English row).
+    aliases={
+        "settings.language_en": (
+            "английский", "English", "英语", "inglês",
+        ),
+        "settings.language_ru": (
+            "русский", "Russian", "俄语", "russo",
+        ),
+        "settings.language_zh": (
+            "китайский", "Chinese", "中文", "chinês",
+        ),
+        "settings.language_pt_br": (
+            "португальский", "Portuguese", "葡萄牙语", "português",
+        ),
+    },
 )
 APPEARANCE = group(
     "settings.appearance",

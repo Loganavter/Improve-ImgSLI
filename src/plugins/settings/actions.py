@@ -226,5 +226,6 @@ def _register_group(
                 sort_key=(section.order, 1, group_order, 1, member_index),
                 run=member_run,
                 target=member_target,
+                search_terms=group.member_aliases.get(member_key, ()),
             )
         )

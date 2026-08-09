@@ -124,10 +124,37 @@ def on_workspace_tab_changed(presenter, index: int):
         index,
         session_id,
     )
+    _dismiss_ordinary_flyouts_on_tab_change()
     # Cover runs from on_store_state_changed(workspace) so session-picker /
     # Find Action / create-session paths also get the flash (workspace tabs
     # strip is often hidden).
     presenter.main_controller.workspace.switch_workspace_session(session_id)
+
+
+def _dismiss_ordinary_flyouts_on_tab_change() -> None:
+    """Close every non-pinned flyout when the active workspace tab changes.
+
+    Flyouts (font settings, interpolation, unified lists, ...) are all
+    reparented onto a single app-wide ``OverlayLayer`` host (see
+    ``sli_ui_toolkit``'s ``resolve_overlay_layer``/``OverlayLayer.attach``),
+    with no notion of which logical tab created them. Nothing about a
+    ``QTabWidget``/workspace-strip index change is a window (de)activation
+    or an outside click, so none of the existing dismiss paths
+    (``ui/managers/transient_ui_parts/closing.py``,
+    ``FlyoutManager``'s own event filter) ever fire for it, and a flyout
+    left open on tab A keeps rendering on top of tab B after switching.
+    ``pinned`` HUDs (InfoHUD/ZoomIndicator) aren't touched here — each tab
+    widget hides/resyncs its own via ``hideEvent``/``showEvent`` instead
+    (see ``ImageCompareWidget``/``MultiCompareWidget``), since they need to
+    reappear from current state when the tab is shown again, not just stay
+    hidden.
+    """
+    from sli_ui_toolkit.managers import FlyoutManager
+
+    manager = FlyoutManager.get_instance()
+    dismiss_passive = getattr(manager, "_dismiss_passive", None)
+    if callable(dismiss_passive):
+        dismiss_passive()
 
 
 def cover_active_session_transition(presenter) -> None:
@@ -154,6 +181,16 @@ def cover_active_session_transition(presenter) -> None:
         active.id,
         getattr(active, "session_type", None),
     )
+    # This fires for *every* active-session change (existing-tab click via
+    # on_workspace_tab_changed, brand-new tab creation via
+    # create_workspace_session(..., activate=True), programmatic switches
+    # from Find Action / session picker, ...), unlike
+    # on_workspace_tab_changed's own dismiss call above, which only covers
+    # the "click an existing tab" path -- confirmed via IMGSLI_FLYOUT_DEBUG
+    # log: opening a brand-new tab produces an "active session change" line
+    # here with no matching "tab_changed" line at all, so a flyout left
+    # open on the old tab never got dismissed for that path.
+    _dismiss_ordinary_flyouts_on_tab_change()
     presenter._last_covered_session_id = active.id
     _cover_transition_for_session(presenter, active.id)
 

@@ -59,7 +59,7 @@ def get_magnifier_drawing_coords(
     if magnifier is None:
         return empty_result
 
-    unified_ref_dim = math.sqrt(float(unified_width) * float(unified_height))
+    unified_ref_dim = float(min(unified_width, unified_height))
     capture_size_on_unified = float(magnifier.capture_size_relative) * unified_ref_dim
 
     drawing_ref_dim = max(1, min(drawing_width, drawing_height))
@@ -74,11 +74,16 @@ def get_magnifier_drawing_coords(
             max(1, int(round(capture_size_on_unified - thickness_on_unified))) or 1
         )
 
+    capture_radius_on_unified = min(
+        capture_size_on_unified / 2.0,
+        unified_width / 2.0,
+        unified_height / 2.0,
+    )
     radius_rel_x = (
-        (capture_size_on_unified / 2.0) / unified_width if unified_width > 0 else 0.0
+        capture_radius_on_unified / unified_width if unified_width > 0 else 0.0
     )
     radius_rel_y = (
-        (capture_size_on_unified / 2.0) / unified_height if unified_height > 0 else 0.0
+        capture_radius_on_unified / unified_height if unified_height > 0 else 0.0
     )
 
     interaction = getattr(store.viewport, "interaction_state", None)

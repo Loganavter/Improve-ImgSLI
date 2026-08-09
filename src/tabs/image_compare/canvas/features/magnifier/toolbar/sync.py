@@ -60,10 +60,6 @@ def sync_magnifier_enabled_state(presenter) -> None:
         if hasattr(btn_instances, "set_can_remove"):
             btn_instances.set_can_remove(count > 1)
 
-    panel_visible = mode_service.should_show_panel()
-    if hasattr(ui, "toggle_magnifier_panel_visibility"):
-        ui.toggle_magnifier_panel_visibility(panel_visible)
-
     if hasattr(ui, "btn_magnifier_orientation"):
         viewport = presenter.store.viewport
         ui.btn_magnifier_orientation.setUnderlineColor(

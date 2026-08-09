@@ -1,0 +1,9 @@
+{
+  "tooltip": {
+    "divider_color": "分隔线颜色",
+    "quick_save_image": "快速保存图像",
+    "reset_zoom": "重置缩放",
+    "save_result": "保存结果",
+    "toggle_divider_visibility": "切换分隔线可见性"
+  }
+}

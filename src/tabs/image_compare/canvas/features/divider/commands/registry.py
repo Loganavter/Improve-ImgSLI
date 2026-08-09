@@ -28,7 +28,15 @@ def dispatch_viewport_action(actions, action) -> bool:
     dispatcher = getattr(store, "_dispatcher", None) if store is not None else None
     if dispatcher is None:
         return False
-    dispatcher.dispatch(action, scope="viewport")
+    # Same fix as magnifier/commands/common.py:dispatch_viewport_action (a
+    # separate copy of this same helper): every caller here is a continuous
+    # split-line drag update and always follows up with
+    # emit_interaction_update() right after, so "viewport.interaction" is
+    # the scope actually intended. The bare "viewport" scope bypassed
+    # on_store_state_changed's {"interaction", "geometry"} subdomain skip,
+    # triggering a full UI batch refresh (incl. InfoHUD glass backdrop
+    # grab+blur) on every drag tick.
+    dispatcher.dispatch(action, scope="viewport.interaction")
     return True
 
 

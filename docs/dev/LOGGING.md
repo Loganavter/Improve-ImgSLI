@@ -80,7 +80,7 @@ Existing examples:
 - `src/ui/widgets/canvas/rhi_renderer.py:_rhi_render_debug` → `IMGSLI_RESIZE_DEBUG`
 - `src/ui/main_window/runtime.py:_resize_debug` → `IMGSLI_RESIZE_DEBUG` / `IMGSLI_RESIZE_DEBUG_VISUAL`
 
-Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise (the user has hit this; see [feedback_working_style](memory) on noise suppression).
+Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise (the user has hit this; see the AI agent's own working-style memory on noise suppression).
 
 ## Collaborative debugging — the right way
 

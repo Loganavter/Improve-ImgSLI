@@ -7,7 +7,7 @@ bridges expand the index into ``ActionRegistry`` rows.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sli_ui_toolkit.widgets import CustomGroupWidget
 
@@ -23,14 +23,27 @@ class SearchGroup:
 
     title_key: str
     member_keys: tuple[str, ...] = ()
+    # member_key -> extra literal search tokens not covered by its i18n key
+    # (e.g. a language row whose display text is a native name like "English"
+    # but must still be findable by its translated name, "английский").
+    member_aliases: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
-    def of(cls, title_key: str, *member_keys: str) -> SearchGroup:
+    def of(
+        cls,
+        title_key: str,
+        *member_keys: str,
+        aliases: dict[str, tuple[str, ...]] | None = None,
+    ) -> SearchGroup:
         seen: list[str] = []
         for key in member_keys:
             if key and key != title_key and key not in seen:
                 seen.append(key)
-        return cls(title_key=title_key, member_keys=tuple(seen))
+        return cls(
+            title_key=title_key,
+            member_keys=tuple(seen),
+            member_aliases=dict(aliases) if aliases else {},
+        )
 
     @property
     def keys(self) -> tuple[str, ...]:
@@ -119,9 +132,13 @@ class SearchIndex:
         )
 
 
-def group(title_key: str, *member_keys: str) -> SearchGroup:
+def group(
+    title_key: str,
+    *member_keys: str,
+    aliases: dict[str, tuple[str, ...]] | None = None,
+) -> SearchGroup:
     """Shorthand for ``SearchGroup.of`` at module level."""
-    return SearchGroup.of(title_key, *member_keys)
+    return SearchGroup.of(title_key, *member_keys, aliases=aliases)
 
 
 def combo_option_map(widget) -> dict[str, int]:

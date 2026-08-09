@@ -14,13 +14,23 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QFontMetrics, QPainter
 from PySide6.QtWidgets import QLabel, QWidget
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.widgets import (
+    BackgroundLayer,
+    BadgeLayer,
     BaseFlyout,
     Button,
     ButtonRegion,
     ButtonRow,
+    ContentLayer,
+    DividerLayer,
+    Layer,
+    RippleLayer,
+    StrikethroughLayer,
+    UnderlineLayer,
     VerticalSplit,
 )
 
@@ -33,9 +43,109 @@ _WIDTH = 36
 _HEIGHT = 36
 _RADIUS = 6
 
+# Padding around the digit inside the small capsule backdrop (see
+# _ValueOverUnderlineLayer) — deliberately tight, not the full split region.
+_CAPSULE_PAD_X = 5.0
+_CAPSULE_PAD_Y = 3.0
+
+
+class _ValueOverUnderlineLayer(Layer):
+    """Repaints the "value" region's digit on top of UnderlineLayer, behind
+    a small themed capsule sized to the digit (not the whole split region).
+
+    Reuses the toolkit's own BackgroundLayer color resolution (so the
+    capsule fill tracks the button's current state/theme for free) and
+    ContentLayer for the digit itself, but draws the capsule shape by hand
+    since BackgroundLayer only knows how to fill its full region rect.
+    Stateless like the toolkit's own layers — reads the button instance off
+    ``ctx.widget`` rather than holding any state itself, so one instance is
+    shared across all ScrollValueButtons (see _LAYERS).
+    """
+
+    scope = "widget"
+
+    def __init__(self) -> None:
+        self._content_layer = ContentLayer()
+
+    def applies(self, ctx) -> bool:
+        widget = ctx.widget
+        return bool(getattr(widget, "_hovered_split", False)) and not getattr(
+            widget, "_is_scrolling", False
+        )
+
+    def draw(self, ctx, tm) -> None:
+        iter_regions = getattr(ctx.widget, "iter_regions", None)
+        if iter_regions is None:
+            return
+        for scoped_ctx in iter_regions(ctx):
+            if scoped_ctx.region_id == "value":
+                if not ctx.widget._is_at_zero():
+                    self._draw_capsule(scoped_ctx, tm, str(ctx.widget._value))
+                self._content_layer.draw(scoped_ctx, tm)
+                return
+
+    @staticmethod
+    def _draw_capsule(scoped_ctx, tm, text: str) -> None:
+        backgrounds, _border = BackgroundLayer._resolve(scoped_ctx, tm)
+        if not backgrounds:
+            return
+        font = ui_font(pixel_size=12)
+        fm = QFontMetrics(font)
+        width = fm.horizontalAdvance(text) + 2 * _CAPSULE_PAD_X
+        height = fm.height() + 2 * _CAPSULE_PAD_Y
+        center = scoped_ctx.effective_rect.center()
+        rect = QRectF(center.x() - width / 2, center.y() - height / 2, width, height)
+
+        p = scoped_ctx.painter
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(backgrounds[-1])
+        p.drawRoundedRect(rect, height / 2, height / 2)
+        p.restore()
+
+
+# The toolkit's Painter (buttons/painter.py) always runs every region-scoped
+# layer (ContentLayer among them) before any widget-scoped layer
+# (UnderlineLayer is scope="widget"), regardless of where each sits in this
+# list — so simply listing ContentLayer after UnderlineLayer does NOT make
+# the digit paint on top; the underline (esp. the thick end of the
+# thickness ramp below) still ends up covering it. _ValueOverUnderlineLayer
+# below is itself widget-scoped, so its list position *does* control paint
+# order relative to UnderlineLayer: it repaints just the "value" region's
+# content a second time, after the underline, whenever hover-without-scroll
+# should show the digit sitting on top of the line.
+_LAYERS = (
+    BackgroundLayer(),
+    RippleLayer(),
+    ContentLayer(),
+    BadgeLayer(),
+    UnderlineLayer(),
+    _ValueOverUnderlineLayer(),
+    DividerLayer(),
+    StrikethroughLayer(),
+)
+
+# The underline's thickness tracks the button's own value (e.g. divider/line
+# width), so a thicker configured line reads visually as a thicker indicator
+# too: value=1 -> _UNDERLINE_THICKNESS_MIN, value=max_value -> _MAX. value=0
+# is the separate "hidden" state (zero_icon) and isn't part of this ramp.
+_UNDERLINE_THICKNESS_MIN = 1.0
+_UNDERLINE_THICKNESS_MAX = 5.0
+
 
 class _ScrollValueFlyout(BaseFlyout):
     """Transient popup mirroring the current value above the button."""
+
+    # Without an explicit group this falls into flyout_policy.py's
+    # unconfigured "default" bucket, which resolves to the fallback
+    # DISMISS_ALL policy -- every wheel-nudge on a ScrollValueButton was
+    # closing every other visible flyout, including "pinned" ones like the
+    # zoom-percent/info HUD chips (pinned only exempts a flyout from being
+    # dismissed by *its own* passive-dismiss paths -- outside click/wheel/
+    # deactivate -- not from another flyout's GroupShowPolicy dismiss set
+    # naming it, or DISMISS_ALL). Same shape as "slider_hint" below.
+    flyout_group = "scroll_value"
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -104,8 +214,10 @@ class ScrollValueButton(Button):
         self._zero_icon = zero_icon
         self._saved_value: int | None = None
         self._hovered_split = False
+        self._is_scrolling = False
         self._underline_visible = False
         self._underline_qcolor = None
+        self._underline_thickness_value: float | None = None
         self._flyout: _ScrollValueFlyout | None = None
         self._flyout_hide_timer = QTimer()
         self._flyout_hide_timer.setSingleShot(True)
@@ -120,6 +232,7 @@ class ScrollValueButton(Button):
             corner_radius=_RADIUS,
             content_padding=(0.0, 2.0, 0.0, 2.0),
             variant="default",
+            layers=list(_LAYERS),
             parent=parent,
             **kwargs,
         )
@@ -128,6 +241,8 @@ class ScrollValueButton(Button):
         # otherwise be silently lost the first time _sync_regions() reasserts
         # our (still-False) shadow copy on the first hover/scroll.
         self._underline_visible = bool(getattr(self, "_show_underline", False))
+        super().setShowUnderline(self._underline_visible and not self._is_at_zero())
+        self.setUnderlineThickness(self._underline_thickness_for_value(self._value))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         if self._toggle_enabled:
             self.regionClicked.connect(self._on_region_clicked)
@@ -153,6 +268,16 @@ class ScrollValueButton(Button):
     def setUnderlineColor(self, color) -> None:
         self._underline_qcolor = color
         super().setUnderlineColor(color)
+
+    def setUnderlineThickness(self, thickness: float) -> None:
+        self._underline_thickness_value = float(thickness)
+        super().setUnderlineThickness(thickness)
+
+    def _underline_thickness_for_value(self, value: int) -> float:
+        span = max(1, self._max_value - 1)
+        t = (max(1, value) - 1) / span
+        t = max(0.0, min(1.0, t))
+        return _UNDERLINE_THICKNESS_MIN + t * (_UNDERLINE_THICKNESS_MAX - _UNDERLINE_THICKNESS_MIN)
 
     # ---------- checked state (kept in sync with both regions, even when the
     # caller suppresses the toggled signal) ----------
@@ -201,6 +326,7 @@ class ScrollValueButton(Button):
         if clamped == self._value:
             return
         self._value = clamped
+        self.setUnderlineThickness(self._underline_thickness_for_value(clamped))
         self._sync_regions()
         if emit:
             self.valueChanged.emit(clamped)
@@ -270,10 +396,15 @@ class ScrollValueButton(Button):
         # set_regions() rebuilds the button's internal region/paint state from
         # scratch, which drops any previously applied underline visibility/color.
         # Re-assert our last known desired state so hover/scroll/value changes
-        # can't silently erase the divider-color indicator.
-        super().setShowUnderline(self._underline_visible)
+        # can't silently erase the divider-color indicator. At the "hidden"
+        # value (zero_icon shown instead of a width digit), force it off
+        # regardless of the caller's requested state — there's no line to
+        # show a color for once it's hidden.
+        super().setShowUnderline(self._underline_visible and not self._is_at_zero())
         if self._underline_qcolor is not None:
             super().setUnderlineColor(self._underline_qcolor)
+        if self._underline_thickness_value is not None:
+            super().setUnderlineThickness(self._underline_thickness_value)
         # set_regions() rebuilds region runtime state from scratch too (new
         # ButtonRegion objects), so re-assert checked here as well — this is
         # what makes the "value" region already show as checked/darkened the
@@ -354,9 +485,15 @@ class ScrollValueButton(Button):
                 group=self._GROUP,
             )
         else:
+            # While the scroll flyout is showing the value above the button,
+            # the digit inside the button itself is suppressed (blank region)
+            # so the two aren't both flashing the number at once; it reappears
+            # here, drawn over the underline (see _LAYERS ordering above),
+            # once hover lingers past the flyout's hide delay with no scroll.
+            rows = [] if self._is_scrolling else [ButtonRow(text=str(self._value), size=12)]
             value_region = ButtonRegion(
                 id="value",
-                rows=[ButtonRow(text=str(self._value), size=12)],
+                rows=rows,
                 weight=0.9,
                 variant="default",
                 group=self._GROUP,
@@ -382,8 +519,14 @@ class ScrollValueButton(Button):
         else:
             self._flyout.show_value(str(self._value), anchor=self)
         self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
+        if not self._is_scrolling:
+            self._is_scrolling = True
+            self._sync_regions()
 
     def _hide_flyout(self) -> None:
         self._flyout_hide_timer.stop()
         if self._flyout is not None:
             self._flyout.hide()
+        if self._is_scrolling:
+            self._is_scrolling = False
+            self._sync_regions()

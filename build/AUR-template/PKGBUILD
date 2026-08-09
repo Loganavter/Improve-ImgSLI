@@ -17,7 +17,7 @@ depends=(
   'python-pillow'
   'pyside6'
   'python-scikit-image'
-  'python-sli-ui-toolkit'
+  'python-sli-ui-toolkit>=3.1.11'
 )
 optdepends=(
   'python-imagecodecs: JXL image format support'

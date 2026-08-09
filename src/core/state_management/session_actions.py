@@ -17,54 +17,6 @@ class SetImageSessionImageAction(Action):
         return {"slot": self.slot, "image": self.image}
 
 @dataclass
-class SetDisplayCacheImageAction(Action):
-    slot: int
-    image: Any
-
-    def __init__(self, slot: int, image: Any):
-        super().__init__(type=ActionType.SET_DISPLAY_CACHE_IMAGE)
-        self.slot = slot
-        self.image = image
-
-    def get_payload(self):
-        return {"slot": self.slot, "image": self.image}
-
-@dataclass
-class SetScaledImageForDisplayAction(Action):
-    slot: int
-    image: Any
-
-    def __init__(self, slot: int, image: Any):
-        super().__init__(type=ActionType.SET_SCALED_IMAGE_FOR_DISPLAY)
-        self.slot = slot
-        self.image = image
-
-    def get_payload(self):
-        return {"slot": self.slot, "image": self.image}
-
-@dataclass
-class SetCachedScaledImageDimsAction(Action):
-    dims: Optional[tuple[int, int]]
-
-    def __init__(self, dims: Optional[tuple[int, int]]):
-        super().__init__(type=ActionType.SET_CACHED_SCALED_IMAGE_DIMS)
-        self.dims = dims
-
-    def get_payload(self):
-        return {"dims": self.dims}
-
-@dataclass
-class SetLastDisplayCacheParamsAction(Action):
-    params: Optional[tuple]
-
-    def __init__(self, params: Optional[tuple]):
-        super().__init__(type=ActionType.SET_LAST_DISPLAY_CACHE_PARAMS)
-        self.params = params
-
-    def get_payload(self):
-        return {"params": self.params}
-
-@dataclass
 class SetUnificationInProgressAction(Action):
     enabled: bool
 

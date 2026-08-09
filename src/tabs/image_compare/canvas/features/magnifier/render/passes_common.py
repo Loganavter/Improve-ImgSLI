@@ -10,6 +10,19 @@ import struct
 
 from PySide6.QtGui import QColor
 
+from shared.rendering.uniform_layout import assert_uniform_size
+from tabs.image_compare.canvas.features.magnifier.render.shader_layout import (
+    ARC_UNIFORM_SIZE,
+    BORDER_DISK_UNIFORM_SIZE,
+)
+
+_ARC_UNIFORM_FMT = "<16f 2f 2f 4f 4f"
+_BORDER_DISK_UNIFORM_FMT = "<16f 2f 2f 4f 4f 4f"
+assert_uniform_size(_ARC_UNIFORM_FMT, ARC_UNIFORM_SIZE, label="pack_arc_uniform")
+assert_uniform_size(
+    _BORDER_DISK_UNIFORM_FMT, BORDER_DISK_UNIFORM_SIZE, label="pack_border_disk_uniform"
+)
+
 
 def ensure_qcolor(c) -> QColor:
     if isinstance(c, QColor):
@@ -42,7 +55,7 @@ def pack_arc_uniform(
     color: QColor,
 ) -> bytes:
     return struct.pack(
-        "<16f 2f 2f 4f 4f",
+        _ARC_UNIFORM_FMT,
         *matrix,
         width,
         height,
@@ -70,7 +83,7 @@ def pack_border_disk_uniform(
     color: QColor,
 ) -> bytes:
     return struct.pack(
-        "<16f 2f 2f 4f 4f 4f",
+        _BORDER_DISK_UNIFORM_FMT,
         *matrix,
         width,
         height,

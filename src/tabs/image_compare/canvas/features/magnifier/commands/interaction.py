@@ -9,6 +9,7 @@ from tabs.image_compare.canvas.features.magnifier.input.actions import (
     SetMagnifierPositionAction,
 )
 from tabs.image_compare.canvas.features.magnifier.commands.common import dispatch_viewport_action, emit_interaction_update
+from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
 
 
 def begin_capture_drag(actions) -> None:
@@ -38,6 +39,12 @@ def update_capture_drag(actions, position: Point) -> None:
         float(position.x),
         float(position.y),
     )
+    if tile_dump_enabled():
+        log_tile_event(
+            "magnifier.capture_drag",
+            position_x=clamped.x,
+            position_y=clamped.y,
+        )
     if dispatch_viewport_action(actions, SetMagnifierPositionAction(clamped)):
         emit_interaction_update(actions)
         return

@@ -5,6 +5,7 @@ from __future__ import annotations
 from tabs.multi_compare.models import (
     CompareSlot,
     LeafNode,
+    MultiCompareDividerSettings,
     MultiCompareState,
     SplitNode,
 )
@@ -54,6 +55,65 @@ def test_split_with_two_leaves_maps_to_split_node():
     # canvas should be 400 wide so each 1/2 cell fits 200px image
     assert plan.canvas_w == 400
     assert plan.canvas_h == 200
+
+
+def test_split_gap_defaults_to_divider_thickness():
+    """docs/dev/KNOWN_BUGS.md same-slot-swap SSIM follow-up's divider
+    side-quest: the divider-width toolbar control used to only resize
+    GridDividersPass's own (underlay, and thus mostly-hidden) quad, while
+    the actual layout gap reserved between sibling images stayed pinned to
+    the hardcoded DEFAULT_SPLIT_GAP_PX regardless -- so widening/narrowing
+    the divider setting had no visible effect at all. ``split_gap_px`` must
+    default to ``state.divider_settings.thickness`` so the reserved layout
+    space actually tracks the user's setting."""
+    state = MultiCompareState(
+        root=SplitNode(
+            direction="h",
+            children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
+            weights=[1.0, 1.0],
+        ),
+        slots=[_slot(1, 200, 200), _slot(2, 200, 200)],
+        divider_settings=MultiCompareDividerSettings(thickness=20),
+    )
+    plan = build_composition_plan(state)
+    assert plan is not None
+    assert isinstance(plan.root, CompSplitNode)
+    assert plan.root.gap_px == 20
+
+
+def test_split_gap_collapses_to_zero_when_divider_hidden():
+    """Turning the divider-width toolbar control down to 0 flips
+    ``visible`` off but keeps the last nonzero ``thickness`` (so
+    re-enabling remembers it) -- the reserved layout gap must still
+    collapse to 0 in that case, or images stay pulled apart by the old
+    thickness with nothing drawn in the gap to explain the empty space."""
+    state = MultiCompareState(
+        root=SplitNode(
+            direction="h",
+            children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
+            weights=[1.0, 1.0],
+        ),
+        slots=[_slot(1, 200, 200), _slot(2, 200, 200)],
+        divider_settings=MultiCompareDividerSettings(visible=False, thickness=6),
+    )
+    plan = build_composition_plan(state)
+    assert plan is not None
+    assert plan.root.gap_px == 0
+
+
+def test_split_gap_explicit_override_wins_over_divider_thickness():
+    state = MultiCompareState(
+        root=SplitNode(
+            direction="h",
+            children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
+            weights=[1.0, 1.0],
+        ),
+        slots=[_slot(1, 200, 200), _slot(2, 200, 200)],
+        divider_settings=MultiCompareDividerSettings(thickness=20),
+    )
+    plan = build_composition_plan(state, split_gap_px=7)
+    assert plan is not None
+    assert plan.root.gap_px == 7
 
 
 def test_missing_slot_image_is_skipped():

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from plugins.export.presenter import ExportPresenter
 from plugins.settings.presenter import SettingsPresenter
 from ui.managers.ui_manager import UIManager
 
@@ -12,7 +11,7 @@ class MainWindowFeatureSet:
     ui_manager: UIManager
     image_canvas: Any
     toolbar: Any
-    export: ExportPresenter
+    export: Any
     settings: SettingsPresenter
 
 def build_main_window_features(
@@ -45,7 +44,8 @@ def build_main_window_features(
     )
     if toolbar is None:
         raise RuntimeError("Tab toolbar presenter service is unavailable")
-    export = ExportPresenter(
+    export = registry.create_startup_service(
+        "export_presenter",
         store,
         main_controller,
         ui_manager,
@@ -53,6 +53,8 @@ def build_main_window_features(
         main_window_app.font_path_absolute,
         resource_manager=getattr(main_window_app, "ui_resource_manager", None),
     )
+    if export is None:
+        raise RuntimeError("Tab export presenter service is unavailable")
     settings = SettingsPresenter(
         store,
         main_controller,

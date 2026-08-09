@@ -12,7 +12,7 @@ import pytest
 from PIL import Image
 from PySide6.QtCore import QObject
 
-def _build_preview_coordinator(*, device_pixel_ratio: float = 1.0):
+def _build_preview_coordinator(*, device_pixel_ratio: float = 1.0, emit_fit_content_available=None):
     from tabs.image_compare.plugins.video_editor.presenter_parts.preview import PreviewCoordinator
 
     timer_parent = QObject()
@@ -28,10 +28,66 @@ def _build_preview_coordinator(*, device_pixel_ratio: float = 1.0):
         editor_service=SimpleNamespace(),
         timer_parent=timer_parent,
         emit_preview_ready=lambda: None,
+        emit_fit_content_available=emit_fit_content_available,
     )
     # Keep QObject parent alive with the coordinator (timers bind to it).
     coordinator._test_timer_parent = timer_parent
     return coordinator
+
+
+def test_fit_content_disabled_when_canvas_never_leaves_unit():
+    """No pads, canvas stays 0..1 across all snapshots -> nothing to uncrop."""
+    from tabs.image_compare.plugins.video_editor.services.video_export.models import (
+        GlobalCanvasBounds,
+    )
+
+    events: list[bool] = []
+    coordinator = _build_preview_coordinator(emit_fit_content_available=events.append)
+
+    unit_bounds = GlobalCanvasBounds(
+        pad_left=0, pad_right=0, pad_top=0, pad_bottom=0,
+        base_width=100, base_height=100,
+    )
+    coordinator.on_global_bounds_calculated(unit_bounds)
+
+    assert events == [False]
+    coordinator.on_view_destroyed()
+
+
+def test_fit_content_enabled_when_canvas_extends_beyond_unit():
+    from tabs.image_compare.plugins.video_editor.services.video_export.models import (
+        GlobalCanvasBounds,
+    )
+
+    events: list[bool] = []
+    coordinator = _build_preview_coordinator(emit_fit_content_available=events.append)
+
+    padded_bounds = GlobalCanvasBounds(
+        pad_left=10, pad_right=0, pad_top=0, pad_bottom=0,
+        base_width=100, base_height=100,
+    )
+    coordinator.on_global_bounds_calculated(padded_bounds)
+
+    assert events == [True]
+    # on_global_bounds_calculated() unconditionally arms the real (1ms
+    # singleshot) preview-update timer via schedule_update(). Left running,
+    # it fires later against this torn-down coordinator's incomplete
+    # playback_engine stub, surfacing as an unrelated test's failure via
+    # pytest-qt's Qt-event-loop exception capture. Tear down like real
+    # view-destruction does so any pending fire is a no-op.
+    coordinator.on_view_destroyed()
+
+
+def test_fit_content_stays_available_when_bounds_unknown():
+    """No snapshots / calculation failure -> don't lock the button off."""
+    events: list[bool] = []
+    coordinator = _build_preview_coordinator(emit_fit_content_available=events.append)
+
+    coordinator.on_global_bounds_calculated(None)
+    coordinator.on_bounds_calculation_error(RuntimeError("boom"))
+
+    assert events == [True, True]
+    coordinator.on_view_destroyed()
 
 def test_preview_render_size_uses_device_pixel_ratio():
     coordinator = _build_preview_coordinator(device_pixel_ratio=2.0)
@@ -179,6 +235,9 @@ def test_render_preview_gpu_refits_when_only_display_size_changes(monkeypatch):
 
 
 def test_preview_scene_clips_overlays_only_in_crop_mode(monkeypatch):
+    """``_prepare_preview_frame`` (background-safe) + ``_apply_prepared_preview_scene``
+    (GUI-thread only) replace the old single-shot ``_apply_preview_scene`` — see
+    render_preview_gpu's async prepare path."""
     from tabs.image_compare.plugins.video_editor.presenter_parts import preview as preview_module
 
     coordinator = _build_preview_coordinator()
@@ -193,29 +252,17 @@ def test_preview_scene_clips_overlays_only_in_crop_mode(monkeypatch):
         def prepare_snapshot_canvas_frame(self, snap, out_w, out_h, **kwargs):
             return SimpleNamespace(plan=object(), store=object())
 
-    coordinator.export_controller = SimpleNamespace(video_exporter=FakeExporter())
+    exporter = FakeExporter()
     coordinator.view.preview_label = SimpleNamespace()
 
     coordinator.fit_content_mode = False
-    coordinator._apply_preview_scene(
-        snap=object(),
-        request_key=("req",),
-        global_bounds=None,
-        fill_color_tuple=None,
-        render_w=640,
-        render_h=360,
-    )
+    prepared = coordinator._prepare_preview_frame(exporter, object(), 640, 360, None, None)
+    coordinator._apply_prepared_preview_scene(prepared, ("req",), 640, 360)
     assert captured["clip_overlays_to_image_bounds"] is True
 
     coordinator.fit_content_mode = True
-    coordinator._apply_preview_scene(
-        snap=object(),
-        request_key=("req2",),
-        global_bounds=object(),
-        fill_color_tuple=None,
-        render_w=640,
-        render_h=360,
-    )
+    prepared = coordinator._prepare_preview_frame(exporter, object(), 640, 360, object(), None)
+    coordinator._apply_prepared_preview_scene(prepared, ("req2",), 640, 360)
     assert captured["clip_overlays_to_image_bounds"] is False
 
 
@@ -238,23 +285,21 @@ def test_preview_scene_uses_main_renderer_not_thumbnail(monkeypatch):
             captured["thumbnail"] = kwargs.get("thumbnail")
             return SimpleNamespace(plan=object(), store=object())
 
-    coordinator.export_controller = SimpleNamespace(video_exporter=FakeExporter())
     coordinator.view.preview_label = SimpleNamespace()
 
-    applied = coordinator._apply_preview_scene(
-        snap=object(),
-        request_key=("req",),
-        global_bounds=None,
-        fill_color_tuple=None,
-        render_w=640,
-        render_h=360,
-    )
+    snap = object()
+    prepared = coordinator._prepare_preview_frame(FakeExporter(), snap, 640, 360, None, None)
+    applied = coordinator._apply_prepared_preview_scene(prepared, ("req",), 640, 360)
 
     assert applied is True
     assert captured["applied"] is True
     assert captured["thumbnail"] is False
+    assert captured["snap"] is snap
+    assert (captured["out_w"], captured["out_h"]) == (640, 360)
 
 def test_preview_scene_forces_canvas_read_only(monkeypatch):
+    """set_read_only(True) happens synchronously in render_preview_gpu, before
+    the (background-threaded) prepare is even submitted."""
     from tabs.image_compare.plugins.video_editor.presenter_parts import preview as preview_module
 
     coordinator = _build_preview_coordinator()
@@ -273,16 +318,30 @@ def test_preview_scene_forces_canvas_read_only(monkeypatch):
     coordinator.view.preview_label = SimpleNamespace(
         set_read_only=lambda value: read_only_calls.append(value),
     )
+    monkeypatch.setattr(preview_module, "viewport_fingerprint", lambda _vp: "vp")
+    monkeypatch.setattr(preview_module, "frozen_value", lambda _s: "settings")
 
-    assert coordinator._apply_preview_scene(
-        snap=object(),
-        request_key=("req",),
-        global_bounds=None,
-        fill_color_tuple=None,
-        render_w=640,
-        render_h=360,
-    ) is True
+    # Cache-miss path (no matching prepare_key) submits async and returns
+    # False right away — set_read_only must already have fired by then.
+    assert coordinator.render_preview_gpu(
+        SimpleNamespace(
+            image1_path="p1",
+            image2_path="p2",
+            timestamp=0.0,
+            viewport_state=object(),
+            settings_state=object(),
+        )
+    ) is False
     assert read_only_calls == [True]
+    # The prepare worker is real and asynchronous (see render_preview_gpu's
+    # docstring); its result callback may land well after this test (and its
+    # monkeypatches) has already returned, hitting the real
+    # apply_canvas_render_plan with a fake plan object and blowing up on a
+    # later, unrelated test via pytest-qt's Qt-event-loop exception capture.
+    # Production code already guards late-arriving callbacks with
+    # has_live_view(); invalidate the view the same way real teardown does
+    # so any eventual delivery is a safe no-op regardless of timing.
+    coordinator.on_view_destroyed()
 
 
 def test_preview_scene_enables_plan_fill_clear(monkeypatch):
@@ -316,19 +375,15 @@ def test_preview_scene_enables_plan_fill_clear(monkeypatch):
             )
 
     canvas = SimpleNamespace(set_read_only=lambda _v: None)
-    coordinator.export_controller = SimpleNamespace(video_exporter=FakeExporter())
+    exporter = FakeExporter()
     coordinator.view.preview_label = canvas
 
     for fit in (False, True):
         coordinator.fit_content_mode = fit
-        assert coordinator._apply_preview_scene(
-            snap=object(),
-            request_key=("req", fit),
-            global_bounds=object() if fit else None,
-            fill_color_tuple=(9, 8, 7, 255),
-            render_w=640,
-            render_h=360,
+        prepared = coordinator._prepare_preview_frame(
+            exporter, object(), 640, 360, object() if fit else None, (9, 8, 7, 255)
         )
+        assert coordinator._apply_prepared_preview_scene(prepared, ("req", fit), 640, 360)
         assert canvas._use_plan_fill_clear is False
 
 

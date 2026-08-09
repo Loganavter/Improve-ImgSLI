@@ -98,7 +98,7 @@ class ImageCompareContextMenuProvider:
             ContextMenuAction(
                 "image_compare.carry_image",
                 self._tr("action.context_carry_image", "Move"),
-                icon=Icon.COPY,
+                icon=Icon.MOVE,
                 data=slot,
             ),
             ContextMenuSeparator(),
@@ -145,7 +145,7 @@ class ImageCompareContextMenuProvider:
             ContextMenuAction(
                 "image_compare.carry_list_item",
                 self._tr("action.context_carry_image", "Move"),
-                icon=Icon.COPY,
+                icon=Icon.MOVE,
                 data=ref,
             ),
             ContextMenuSeparator(),

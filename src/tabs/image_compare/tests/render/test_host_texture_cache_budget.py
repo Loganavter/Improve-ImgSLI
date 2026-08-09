@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from PIL import Image
 from PySide6.QtGui import QImage
 
-from tabs.image_compare.canvas.rhi_renderer.resources import (
+from tabs.image_compare.canvas.rhi_renderer.residency import (
     _pil_image_for_texture_key,
 )
 from tabs.image_compare.canvas.texture_parts.upload_queue import (

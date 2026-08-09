@@ -38,6 +38,7 @@ EXPORT_GEOMETRY_POLICY = GeometryApplyPolicy(
     width_bounds=(EXPORT_MIN_DIALOG_WIDTH, EXPORT_MAX_DIALOG_WIDTH),
     center_on_parent=True,
     lock_minimum_to_computed=True,
+    remember_key="export",
 )
 
 # First layout pass after CSD adjustSize: force the computed size even if the
@@ -51,6 +52,7 @@ EXPORT_GEOMETRY_POLICY_INITIAL = GeometryApplyPolicy(
     center_on_parent=True,
     lock_minimum_to_computed=True,
     force_resize=True,
+    remember_key="export",
 )
 
 

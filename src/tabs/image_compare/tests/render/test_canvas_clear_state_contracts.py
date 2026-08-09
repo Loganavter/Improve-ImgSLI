@@ -58,7 +58,6 @@ def test_gl_canvas_clear_resets_runtime_flags(monkeypatch):
         _clip_overlays_to_content_rect=True,
         _content_scissor_depth=2,
         _letterbox_params=[1, 2],
-        _feature_overlay_quad_ndc=(0.0, 0.0, 1.0, 1.0),
         _capture_center=object(),
         _capture_radius=12.0,
         _capture_circles=[1],

@@ -18,11 +18,8 @@ Any platform/plugin code that reads ``session_data.image_state`` /
 from __future__ import annotations
 
 import copy
-from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Optional
-
-from PIL import Image
 
 from core.store_viewport import RenderConfig, SessionData
 
@@ -57,28 +54,20 @@ class ImageSessionState:
 @dataclass
 class RenderCacheState:
 
-    display_cache_image1: Optional[Image.Image] = None
-    display_cache_image2: Optional[Image.Image] = None
-    scaled_image1_for_display: Optional[Image.Image] = None
-    scaled_image2_for_display: Optional[Image.Image] = None
-    cached_scaled_image_dims: Optional[tuple[int, int]] = None
-    last_display_cache_params: Optional[tuple] = None
-
-    unified_image_cache: OrderedDict = field(default_factory=OrderedDict)
     unification_in_progress: bool = False
     pending_unification_paths: Optional[tuple[str, str]] = None
 
-    caches: dict = field(default_factory=dict)
-    feature_caches: dict = field(default_factory=dict)
-    cached_split_base_image: Optional[Any] = None
-    last_split_cached_params: Optional[tuple] = None
     cached_diff_image: Optional[Any] = None
+    # request_key (diff_mode, image_uid(source1), image_uid(source2), size1,
+    # size2) cached_diff_image was computed for -- see diff_cache.py's
+    # request_cached_diff_image_async, which compares this against the
+    # live sources' own key to decide whether a recompute is needed,
+    # instead of gating on cached_diff_image being None. Keeping the stale
+    # image in place (rather than clearing it to None on every image swap)
+    # lets the canvas keep showing the previous diff until the new one is
+    # ready, instead of a diff-vanishes/plain-image/diff-reappears flash
+    # (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM follow-up).
+    cached_diff_source_key: Optional[Any] = None
 
     def clone(self):
-        new_obj = copy.copy(self)
-        new_obj.unified_image_cache = self.unified_image_cache.__class__(
-            self.unified_image_cache
-        )
-        new_obj.caches = dict(self.caches)
-        new_obj.feature_caches = dict(self.feature_caches)
-        return new_obj
+        return copy.copy(self)

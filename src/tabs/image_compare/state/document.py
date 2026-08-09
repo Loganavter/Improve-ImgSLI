@@ -7,7 +7,7 @@ Owns the image-pair document model (``image_list1/2``, ``current_index1/2``,
 Tier contract (see ``docs/dev/rendering/tile-rendering-system.md``):
 
 - ``full_res_image*`` — ``TiledPixelStore`` (memmap full-res tier)
-- ``preview_image*`` — ``PIL.Image`` only (bounded progressive preview, ≤1024 px)
+- ``preview_image*`` — ``QImage`` only (bounded progressive preview, ≤1024 px)
 - ``original_image*`` — ``PIL.Image`` (legacy/small paste paths)
 
 Preview fields must never hold ``TiledPixelStore``; load workers set
@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Optional
 from PIL import Image
 
 if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 
@@ -51,8 +52,8 @@ class DocumentModel:
     full_res_image2: Optional["TiledPixelStore"] = None
     image1_path: Optional[str] = None
     image2_path: Optional[str] = None
-    preview_image1: Optional[Image.Image] = None
-    preview_image2: Optional[Image.Image] = None
+    preview_image1: Optional["QImage"] = None
+    preview_image2: Optional["QImage"] = None
     full_res_ready1: bool = False
     full_res_ready2: bool = False
     preview_ready1: bool = False

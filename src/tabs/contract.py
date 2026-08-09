@@ -269,6 +269,14 @@ class TabContract(ABC):
         """
         return None
 
+    def collect_pixel_cache_sources(
+        self, session_id: str, context: TabContext
+    ) -> dict[str, Any]:
+        """Map absolute source path -> live, open ``TiledPixelStore`` for this
+        session, for tabs that support embedding a decode-skip cache in
+        project saves. Default: no sources (opt-in per tab)."""
+        return {}
+
     def deserialize_session(
         self, session_id: str, data: dict[str, Any], context: TabContext
     ) -> None:

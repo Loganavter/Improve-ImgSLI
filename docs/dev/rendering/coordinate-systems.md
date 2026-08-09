@@ -143,11 +143,11 @@ by combining primitives by hand.**
   - Semantic ``split_position_visual`` stays in content ``[0, 1]``. At
     ``zoom <= 1`` it is not rewritten on pan/zoom; at ``zoom > 1`` it is
     rewritten (still clamped) so the screen spit stays fixed — see
-    [zoom-pan.md](zoom-pan.md) and
-    [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
+    [zoom-pan.md](zoom-pan.md) and the divider-zoom-pan-detach investigation
+    (`src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md`
+    in `improve-imgsli-internal-docs`, private).
 
-  Details and failure modes:
-  [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md).
+  Details and failure modes: same investigation as above.
 
 Violating this rule looks identical in both models: correct-looking code
 that's subtly wrong by an amount proportional to distance from some neutral
@@ -180,8 +180,9 @@ downstream of perfect CPU numbers:
 - **Display lagging the store** — Wayland + Vulkan can show a stale frame
   until a transient restacks; zoom chip already correct.
 
-Catalog: [qrhi-gotchas.md](qrhi-gotchas.md). Short rules:
-[patterns.md](patterns.md).
+Catalog: `docs/dev/rendering/qrhi-gotchas.md`. Short rules:
+`docs/dev/rendering/patterns.md`. Both in `improve-imgsli-internal-docs`
+(private, not in this repo).
 
 ## Target rule of thumb
 
@@ -192,4 +193,5 @@ opaque final answer, not a raw ingredient.
 
 And before “fixing zoom” because the picture jumped: if the zoom chip did
 not move, treat it as a display/compositor catch-up until proven otherwise
-([qrhi-gotchas.md#display-lags-store](qrhi-gotchas.md#display-lags-store)).
+(see "Display lags store" in `docs/dev/rendering/qrhi-gotchas.md`,
+`improve-imgsli-internal-docs`, private).

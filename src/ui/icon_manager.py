@@ -82,4 +82,5 @@ configure_toolkit(
     overlay_resolver=get_overlay_layer,
     rating_gesture_factory=lambda **kwargs: RatingGestureTransaction(**kwargs),
     dragdrop_service_getter=DragAndDropService.get_instance,
+    default_underline_fade=False,
 )

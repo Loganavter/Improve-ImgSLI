@@ -52,12 +52,20 @@ def project_canvas_rect(
     return QRect(x, y, w, h)
 
 
-def composition_gap_canvas_px() -> int:
+def composition_gap_canvas_px(widget) -> int:
+    """Same gap ``build_composition_plan`` actually reserves between
+    siblings for this widget's current state -- must track
+    ``state.divider_settings.thickness`` (its own default, absent an
+    explicit override) or hit-testing disagrees with what got rendered the
+    moment the user changes the divider-width toolbar control."""
     from tabs.multi_compare.services.composition_builder import (
         DEFAULT_SPLIT_GAP_PX,
     )
 
-    return int(DEFAULT_SPLIT_GAP_PX)
+    settings = getattr(widget.state, "divider_settings", None)
+    if settings is None:
+        return int(DEFAULT_SPLIT_GAP_PX)
+    return max(0, int(settings.thickness)) if settings.visible else 0
 
 
 def drop_gaps(widget) -> list[tuple[SplitNode, tuple[int, ...], int, QRect]]:
@@ -75,7 +83,7 @@ def drop_gaps(widget) -> list[tuple[SplitNode, tuple[int, ...], int, QRect]]:
     gaps_canvas = layout_geometry.drop_gaps(
         widget.state.root,
         canvas_rect,
-        gap=composition_gap_canvas_px(),
+        gap=composition_gap_canvas_px(widget),
     )
     return [
         (split, path, idx, project_canvas_rect(rect, sr, ox, oy))
@@ -94,7 +102,7 @@ def leaf_paths_and_rects(
     leaves, _splits = layout_geometry.walk_paths(
         widget.state.root,
         canvas_rect,
-        gap=composition_gap_canvas_px(),
+        gap=composition_gap_canvas_px(widget),
     )
     return [
         (leaf, project_canvas_rect(rect, sr, ox, oy), path)
@@ -116,7 +124,7 @@ def node_rect_at_path(widget, path: tuple[int, ...]) -> QRect | None:
         widget.state.root,
         canvas_rect,
         only_path=path,
-        gap=composition_gap_canvas_px(),
+        gap=composition_gap_canvas_px(widget),
     )
     for _, rect, p in splits:
         if p == path:

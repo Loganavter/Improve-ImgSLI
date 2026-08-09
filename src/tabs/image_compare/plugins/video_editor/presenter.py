@@ -22,6 +22,7 @@ class VideoEditorPresenter(QObject):
     timelinePositionChanged = Signal(int)
     playbackStateChanged = Signal(bool)
     buttonsStateChanged = Signal(bool, bool)
+    fitContentAvailableChanged = Signal(bool)
     thumbnailsUpdated = Signal(dict)
     thumbnailReady = Signal(int, QPixmap)
     exportStarted = Signal()
@@ -39,12 +40,22 @@ class VideoEditorPresenter(QObject):
         self.playback_engine = PlaybackEngine()
         self.playback_engine.set_playback_speed(1.0)
         self.thumbnail_service = ThumbnailService()
-        if self.export_controller is not None and getattr(
-            self.export_controller, "video_exporter", None
-        ):
+        video_exporter = (
+            getattr(self.export_controller, "video_exporter", None)
+            if self.export_controller is not None
+            else None
+        )
+        if video_exporter is not None:
             self.thumbnail_service.set_snapshot_renderer(
-                self.export_controller.video_exporter.render_snapshot_thumbnail_to_pil
+                video_exporter.render_snapshot_thumbnail_to_pil
             )
+            async_renderer = getattr(
+                video_exporter, "render_snapshot_thumbnail_to_pil_async", None
+            )
+            if callable(async_renderer):
+                # Preferred path: keeps the thumbnail worker thread from
+                # blocking on the GPU round-trip (see ThumbnailService docs).
+                self.thumbnail_service.set_async_snapshot_renderer(async_renderer)
 
         self.preview_coordinator = PreviewCoordinator(
             view=view,
@@ -54,6 +65,7 @@ class VideoEditorPresenter(QObject):
             editor_service=self.editor_service,
             timer_parent=self,
             emit_preview_ready=self.previewReady.emit,
+            emit_fit_content_available=self.fitContentAvailableChanged.emit,
         )
         self.output_coordinator = OutputPathCoordinator(
             view=view,
@@ -170,6 +182,9 @@ class VideoEditorPresenter(QObject):
         self.playback_coordinator.update_buttons_state()
         self.thumbnail_coordinator.generate_thumbnails()
         self.preview_coordinator.schedule_update()
+        # Eager, independent of fit_content_mode: lets the UI disable the
+        # fit-content toggle up front when the canvas never leaves 0..1.
+        self.preview_coordinator.recalculate_global_bounds()
 
     def _initialize_output_fields(self):
         self.output_coordinator.initialize_output_fields()

@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from PySide6.QtCore import QEvent, QTimer
+from PySide6.QtCore import QEvent, QSettings, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QLayout,
@@ -28,6 +28,58 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QWidget,
 )
+
+_REMEMBERED_SIZE_SETTINGS_GROUP = "dialog_geometry"
+
+
+def _remembered_size_settings_key(remember_key: str) -> str:
+    return f"{_REMEMBERED_SIZE_SETTINGS_GROUP}/{remember_key}/size"
+
+
+def _load_remembered_size(remember_key: str) -> tuple[int, int] | None:
+    raw = QSettings().value(_remembered_size_settings_key(remember_key), None)
+    if not raw:
+        return None
+    try:
+        width_str, height_str = str(raw).split("x")
+        return max(1, int(width_str)), max(1, int(height_str))
+    except (TypeError, ValueError):
+        return None
+
+
+def _save_remembered_size(remember_key: str, size: QSize) -> None:
+    QSettings().setValue(
+        _remembered_size_settings_key(remember_key),
+        f"{size.width()}x{size.height()}",
+    )
+
+
+def _install_remembered_size_save_hook(dialog: QWidget, remember_key: str) -> None:
+    """Save the dialog's size to ``QSettings`` once, the first time this runs.
+
+    Idempotent per ``remember_key`` — ``apply_dialog_geometry`` re-runs on every
+    theme/font change, and connecting ``finished`` again each time would save
+    (and fire on close) multiple times.
+    """
+    installed_key = getattr(dialog, "_remembered_size_key", None)
+    if installed_key == remember_key:
+        return
+    dialog._remembered_size_key = remember_key
+
+    finished_signal = getattr(dialog, "finished", None)
+    if finished_signal is None:
+        return
+
+    def _on_finished(*_args) -> None:
+        try:
+            if dialog.isMaximized() or dialog.isFullScreen():
+                return
+            _save_remembered_size(remember_key, dialog.size())
+        except RuntimeError:
+            # Underlying C++ object already torn down.
+            pass
+
+    finished_signal.connect(_on_finished)
 
 
 @dataclass(frozen=True)
@@ -61,10 +113,94 @@ class GeometryApplyPolicy:
     # a pixmap sizeHint and a later geometry pass would otherwise only raise
     # the minimum without shrinking back.
     force_resize: bool = False
+    # When set, the dialog's size (not position — it always centers on its
+    # parent, see ``center_on_parent``) is persisted to QSettings under this
+    # key on close and restored (clamped to the computed minimum) on next
+    # open, instead of always reverting to the freshly computed content size.
+    # Leave unset for dialogs that must not remember a size — e.g. fixed-size
+    # alerts (``AppMessageDialog``).
+    remember_key: str | None = None
 
 
 def clamp(value: int, *, minimum: int, maximum: int) -> int:
     return max(minimum, min(value, maximum))
+
+
+def estimate_prelayout_width(
+    widget: QWidget,
+    *,
+    horizontal_chrome: int = 0,
+    floor: int = 0,
+) -> int:
+    """Best-guess content width for ``widget`` before its first layout pass.
+
+    Some widgets need a real width estimate *before* they have ever been
+    shown — e.g. to pick a grid column count synchronously at construction
+    time, so the first paint doesn't need a second pass once the real size
+    is known. At that point ``widget.width()`` is **not** 0 — Qt reports its
+    classic constructor placeholder (100) — so a plain ``width() > 0`` check
+    cannot tell "never laid out" apart from "genuinely 100px wide". The
+    reliable signal is ``Qt.WidgetAttribute.WA_Resized``: Qt sets it the
+    moment a widget is given a real size, either explicitly
+    (``resize()``/``setGeometry()``) or by an activated layout — never for
+    the untouched constructor default. Confirmed empirically: a freshly
+    parented, not-yet-shown widget reports ``width()==100`` with
+    ``WA_Resized`` unset; after the ancestor chain is shown and laid out,
+    ``WA_Resized`` flips and ``width()`` reflects the true size.
+
+    If the app already restores the main window's geometry before building
+    workspace content (the common startup order — see
+    ``ui/main_window/lifecycle.py``'s ``LoadWindowStateStep`` running before
+    ``BootstrapContentStep``), the top-level window already has
+    ``WA_Resized`` set and a real width at this point even though ``widget``
+    itself has never been laid out (``setGeometry()`` applies immediately,
+    regardless of visibility). ``widget.window().width()`` is then a much
+    better estimate than any static floor — pass ``horizontal_chrome`` for
+    whatever fixed width sits between the window and ``widget`` (sidebars,
+    permanent margins; 0 when the widget's ancestor chain has no such
+    chrome).
+
+    One more wrinkle, confirmed from a real run: when the window is
+    restored **maximized**, ``GeometryManager`` first ``setGeometry()``s it
+    to the persisted *normal* (un-maximized) size — which sets
+    ``WA_Resized`` and a real but not-final width — and only then requests
+    ``setWindowState(Maximized)``. The platform applies that maximize
+    asynchronously (a window-manager round trip), and can even deliver it in
+    more than one step (the restore-size geometry briefly for real, *then*
+    the final maximized geometry) — so both ``widget.width()`` and
+    ``widget.window().width()`` can report a real, ``WA_Resized``-flagged,
+    but still not-final size for one or more frames. ``isMaximized()`` /
+    ``isFullScreen()`` do not have this staggered-delivery problem — Qt
+    flips them synchronously on ``setWindowState()``, before the platform
+    geometry catches up — so that check runs *first* and unconditionally
+    wins over any width already recorded on the widget or window: while the
+    window is (going to be) maximized/fullscreen, the screen's available
+    width is always the right answer, no matter which transitional frame
+    this call happens to land on.
+
+    Falls back to ``floor`` when nothing here has a usable size yet (e.g. in
+    tests that construct the widget without a real top-level window and
+    never call ``resize()``/``show()``).
+    """
+    window = widget.window()
+    if window is not None and (window.isMaximized() or window.isFullScreen()):
+        screen = window.screen() if hasattr(window, "screen") else None
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        if screen is not None:
+            screen_width = int(screen.availableGeometry().width())
+            estimated = screen_width - int(horizontal_chrome)
+            if estimated > 0:
+                return estimated
+    if widget.testAttribute(Qt.WidgetAttribute.WA_Resized):
+        width = int(widget.width())
+        if width > 0:
+            return width
+    if window is not None and window.testAttribute(Qt.WidgetAttribute.WA_Resized):
+        estimated = int(window.width()) - int(horizontal_chrome)
+        if estimated > 0:
+            return estimated
+    return max(0, int(floor))
 
 
 def widget_width_hint(widget: QWidget | None, *, default: int = 0) -> int:
@@ -221,6 +357,17 @@ def apply_dialog_geometry(
     floor_w, floor_h = apply_policy.minimum_floor
     min_w = max(final_width, floor_w) if apply_policy.lock_minimum_to_computed else floor_w
     min_h = max(final_height, floor_h) if apply_policy.lock_minimum_to_computed else floor_h
+
+    if apply_policy.remember_key is not None:
+        _install_remembered_size_save_hook(dialog, apply_policy.remember_key)
+        remembered = _load_remembered_size(apply_policy.remember_key)
+        if remembered is not None:
+            remembered_width, remembered_height = remembered
+            final_width = max(min_w, remembered_width)
+            final_height = max(min_h, remembered_height)
+            if apply_policy.width_bounds is not None:
+                bound_min_w, bound_max_w = apply_policy.width_bounds
+                final_width = clamp(final_width, minimum=bound_min_w, maximum=bound_max_w)
 
     if apply_policy.update_minimum:
         dialog.setMinimumSize(min_w, min_h)
