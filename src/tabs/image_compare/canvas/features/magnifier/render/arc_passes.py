@@ -22,6 +22,7 @@ from ui.canvas_infra.scene.pass_contract import (
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.widgets.canvas.render_common import widget_px_to_screen_px
+from shared.rendering.stroke_geometry import shrink_screen_radius_for_stroke
 
 from tabs.image_compare.canvas.features.magnifier.render.passes_common import pack_arc_uniform
 from tabs.image_compare.canvas.features.magnifier.render.shader_layout import SHADER_DIR, ARC_UNIFORM_SIZE
@@ -132,7 +133,9 @@ class OccludedArcPass(_ArcItemsPass):
             if radius is None or radius <= 0 or span_deg is None or span_deg <= 0.25:
                 continue
             cx, cy = widget_px_to_screen_px(widget, center.x(), center.y())
-            scaled_radius = float(radius) * float(ctx.zoom_level)
+            scaled_radius = shrink_screen_radius_for_stroke(
+                float(radius) * float(ctx.zoom_level), line_width_px
+            )
             color = QColor(255, 105, 170, 255 if bool(is_active) else 210)
             self._items.append(
                 pack_arc_uniform(
@@ -210,6 +213,14 @@ class HiddenSelectionPass(_ArcItemsPass):
             if center is None or radius is None or radius <= 0:
                 return
             scaled_radius = float(radius) * float(ctx.zoom_level)
+            if capture:
+                # Only the capture-region selection ring is clamped to touch
+                # the image edge exactly; the magnifier-bubble selection
+                # ring isn't, so it doesn't need the stroke-overshoot
+                # correction.
+                scaled_radius = shrink_screen_radius_for_stroke(
+                    scaled_radius, stroke_px
+                )
             if scaled_radius <= 0:
                 return
             cx, cy = widget_px_to_screen_px(widget, center.x(), center.y())

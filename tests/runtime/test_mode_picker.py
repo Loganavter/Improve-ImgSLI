@@ -120,7 +120,7 @@ def test_mode_picker_opens_left_aligned_under_button(qtbot, monkeypatch):
     assert calls[0]["anchor"] is button
     assert calls[0]["anchor_point"] == "bottom-left"
     assert calls[0]["flyout_point"] == "top-left"
-    assert calls[0]["offset"] == 2
+    assert calls[0]["offset"] == 16
     assert calls[0]["animation"] == "slide"
     assert calls[0]["animation_axis"] == "vertical"
 

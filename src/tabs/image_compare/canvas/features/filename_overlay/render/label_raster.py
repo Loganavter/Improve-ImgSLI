@@ -2,16 +2,28 @@ from __future__ import annotations
 
 import struct
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPen
 
 from ui.canvas_presentation.filename_labels import (
     draw_round_rect,
-    draw_text_bold_supersampled,
+    draw_text_bold,
     fit_text,
 )
 from ui.canvas_presentation.label_style import FilenameOverlayStyle
 from ui.widgets.canvas.render_common import new_overlay_image
+
+# Must match shaders/label_downsample.frag's own `SCALE` constant (kept in
+# sync by comment on both sides, same convention as
+# shared.rendering.glass_panel._TEXT_MASK_SUPERSAMPLE). rasterize_label()
+# rasterizes the *entire* label (background rect + text) at this multiple
+# of its own final device resolution and returns it undownscaled; the GPU
+# downsample pass in render/gpu_resources.py resolves it back down to final
+# size with a Lanczos-2 kernel -- see that pass's own docstring, and
+# docs/dev/rendering/glass-panel-text-vibrancy-plan.md's bug 18 for why this
+# replaced an earlier per-call CPU downscale (PIL LANCZOS when available,
+# Qt's own lower-quality implicit scale otherwise).
+_LABEL_SUPERSAMPLE = 4
 
 
 def build_quad_vertices(ctx, rect: QRectF) -> bytes:
@@ -54,16 +66,24 @@ def rasterize_label(
     style: FilenameOverlayStyle,
     font_weight: int,
     dpr: float,
-) -> QImage:
+) -> tuple[QImage, QSize]:
+    """Rasterizes the entire label (background rect + text) at
+    ``_LABEL_SUPERSAMPLE`` x its own final device resolution and returns it
+    *undownscaled*, alongside that final device-px size -- see this
+    module's ``_LABEL_SUPERSAMPLE`` docstring for why (the caller's GPU
+    downsample pass does the actual downscale)."""
     dpr = max(1.0, float(dpr))
     phys_w = max(1, int(round(rw * dpr)))
     phys_h = max(1, int(round(rh * dpr)))
-    img = new_overlay_image(phys_w, phys_h)
+    total_scale = dpr * _LABEL_SUPERSAMPLE
+    super_w = max(1, int(round(rw * total_scale)))
+    super_h = max(1, int(round(rh * total_scale)))
+    img = new_overlay_image(super_w, super_h)
     painter = QPainter(img)
     try:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        painter.scale(dpr, dpr)
+        painter.scale(total_scale, total_scale)
         painter.setFont(font)
         label_rect = QRectF(0.0, 0.0, float(rw), float(rh))
         if draw_bg:
@@ -76,7 +96,7 @@ def rasterize_label(
         text_inset = float(style.text_inset_px)
         text_str = fit_text(name, metrics, float(rw) - (text_inset * 2.0))
         if font_weight > 0:
-            draw_text_bold_supersampled(
+            draw_text_bold(
                 painter,
                 text_str,
                 font,
@@ -95,4 +115,6 @@ def rasterize_label(
             )
     finally:
         painter.end()
-    return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied)
+    return img.convertToFormat(QImage.Format.Format_RGBA8888_Premultiplied), QSize(
+        phys_w, phys_h
+    )

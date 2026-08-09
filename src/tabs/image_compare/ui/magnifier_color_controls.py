@@ -104,6 +104,7 @@ class ColorSettingsButton(Button):
         super().__init__(
             Icon.DIVIDER_COLOR,
             show_underline=True,
+            underline_thickness=2.0,
             parent=parent,
         )
         self.current_language = current_language
@@ -147,8 +148,9 @@ class ColorSettingsButton(Button):
         enabled_cmd = registry().get_feature_command_by_alias("overlay.enabled")
         use_mag = bool(enabled_cmd(self.store)) if enabled_cmd is not None else False
         if not use_mag:
-            self.setUnderlineColor(QColor(255, 255, 255, 230))
+            self.setShowUnderline(False)
             return
+        self.setShowUnderline(True)
 
         state_cmd = registry().get_feature_command_by_alias("overlay.active_state")
         active_state = state_cmd(self.store) if state_cmd is not None else None

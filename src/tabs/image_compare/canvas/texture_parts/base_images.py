@@ -92,11 +92,12 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
         return img.convert("RGBA")
 
     img = img.convert("RGBA")
+    w, h = _img_dims(img)
     geometry = resolve_canvas_content_geometry(
         widget_width=cw,
         widget_height=ch,
-        image_width=img.width,
-        image_height=img.height,
+        image_width=w,
+        image_height=h,
         virtual_layout=None,
     )
     inner = geometry.inner_rect_px or (0, 0, cw, ch)
@@ -119,10 +120,25 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
     return result
 
 
+def _img_dims(img) -> tuple[int, int]:
+    if img is None: return (0, 0)
+    w, h = 0, 0
+    if hasattr(img, "width") and callable(img.width): w = int(img.width())
+    elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): w = int(img.size[0])
+    elif hasattr(img, "size") and callable(img.size): w = int(img.size().width())
+    else: w = int(img.width)
+    if hasattr(img, "height") and callable(img.height): h = int(img.height())
+    elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): h = int(img.size[1])
+    elif hasattr(img, "size") and callable(img.size): h = int(img.size().height())
+    else: h = int(img.height)
+    return w, h
+
+
 def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: int = -1):
     state = widget.runtime_state
     cw, ch = _canvas_dims(widget)
-    if img is None or cw <= 0 or ch <= 0 or img.width <= 0 or img.height <= 0:
+    w, h = _img_dims(img)
+    if img is None or cw <= 0 or ch <= 0 or w <= 0 or h <= 0:
         if slot_index >= 0:
             state._letterbox_params[slot_index] = (0.0, 0.0, 1.0, 1.0)
             if slot_index == 0:
@@ -134,8 +150,8 @@ def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: in
     geometry = resolve_canvas_content_geometry(
         widget_width=cw,
         widget_height=ch,
-        image_width=img.width,
-        image_height=img.height,
+        image_width=w,
+        image_height=h,
         virtual_layout=None,
     )
     inner = geometry.inner_rect_px
@@ -197,6 +213,14 @@ def upload_pil_images(
         )
     )
     stored_changed = stored_ids != state._stored_image_ids
+    if stored_changed:
+        from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+        if tile_dump_enabled():
+            log_tile_event(
+                "stored_changed",
+                old_ids=str(state._stored_image_ids),
+                new_ids=str(stored_ids),
+            )
     state._stored_pil_images = [pil_image1, pil_image2]
     state._stored_image_ids = stored_ids
     state._shader_letterbox_mode = bool(shader_letterbox)
@@ -335,9 +359,11 @@ def get_letterbox_params(widget, slot: int = 0) -> tuple:
     )
     w, h = _canvas_dims(widget)
     if img and w > 0 and h > 0:
-        ratio = min(w / img.width, h / img.height)
-        nw = max(1, int(img.width * ratio))
-        nh = max(1, int(img.height * ratio))
+        iw, ih = _img_dims(img)
+        if iw > 0 and ih > 0:
+            ratio = min(w / iw, h / ih)
+            nw = max(1, int(iw * ratio))
+            nh = max(1, int(ih * ratio))
         return (
             (w - nw) / (2.0 * w),
             (h - nh) / (2.0 * h),

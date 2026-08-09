@@ -3,6 +3,8 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
+from shared.rendering.uniform_layout import assert_uniform_size
+
 from PySide6.QtGui import QColor, QRhiViewport
 
 from ui.canvas_infra.scene.pass_contract import (
@@ -18,7 +20,9 @@ from tabs.image_compare.canvas.rhi_feature_common import (
 )
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
+_UNIFORM_FMT = "<32f"
 _UNIFORM_SIZE = 128
+assert_uniform_size(_UNIFORM_FMT, _UNIFORM_SIZE, label="GuidesPass uniform")
 
 
 class GuidesPass(CanvasRenderPass):
@@ -91,7 +95,7 @@ class GuidesPass(CanvasRenderPass):
                 )
                 self._items.append(
                     struct.pack(
-                        "<32f",
+                        _UNIFORM_FMT,
                         *matrix,
                         float(ctx.width),
                         float(ctx.height),

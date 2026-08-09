@@ -47,8 +47,19 @@ def _refresh_live_content_rect(canvas, state, plan) -> None:
         if store is None:
             return
         base_image = plan.image1
-        fit_width = getattr(base_image, "width", 0)
-        fit_height = getattr(base_image, "height", 0)
+        def _img_dims(img) -> tuple[int, int]:
+            if img is None: return (0, 0)
+            w, h = 0, 0
+            if hasattr(img, "width") and callable(img.width): w = int(img.width())
+            elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): w = int(img.size[0])
+            elif hasattr(img, "size") and callable(img.size): w = int(img.size().width())
+            else: w = int(getattr(img, "width", 0))
+            if hasattr(img, "height") and callable(img.height): h = int(img.height())
+            elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): h = int(img.size[1])
+            elif hasattr(img, "size") and callable(img.size): h = int(img.size().height())
+            else: h = int(getattr(img, "height", 0))
+            return w, h
+        fit_width, fit_height = _img_dims(base_image)
     else:
         fit_width, fit_height = plan.canvas_w, plan.canvas_h
     if fit_width <= 0 or fit_height <= 0:
@@ -329,7 +340,7 @@ def _textures_are_current(canvas, plan: CanvasRenderPlan) -> bool:
     return bool(stored and stored[0] is not None)
 
 
-def apply_legacy_canvas_render_plan(
+def apply_canvas_render_plan(
     canvas,
     plan: CanvasRenderPlan,
     *,
@@ -362,9 +373,6 @@ def _apply_plan_full(
 ) -> None:
     """Full path: uploads textures, resets view, configures everything."""
     from ui.canvas_infra.viewport.state import (
-        get_pan_offset_x,
-        get_pan_offset_y,
-        get_zoom_level,
         set_pan_offsets,
         set_zoom_level,
     )
@@ -375,19 +383,15 @@ def _apply_plan_full(
         clip_flag = _resolve_clip_flag(store, clip_overlays_to_image_bounds, plan)
         _setup_store_bindings(canvas, plan, store=store, clip_flag=clip_flag)
 
+        # preserve_zoom: leave the viewport completely untouched. The old
+        # reset_view() + restore + zoomChanged re-emit dance produced
+        # transient zoom=1/pan=0 states that listeners observed mid-apply,
+        # visibly throwing the camera on texture swaps (preview→store flip,
+        # docs/dev/rendering/display-image-pipeline.md).
         if plan.preserve_zoom:
-            zoom_level = get_zoom_level(canvas)
-            pan_x = get_pan_offset_x(canvas)
-            pan_y = get_pan_offset_y(canvas)
             letterbox_focus = capture_letterbox_focus(canvas)
-        canvas.reset_view()
-        if plan.preserve_zoom:
-            set_zoom_level(canvas, zoom_level)
-            set_pan_offsets(canvas, pan_x, pan_y)
-            zoom_signal = getattr(canvas, "zoomChanged", None)
-            if zoom_signal is not None and abs(zoom_level - 1.0) > 1e-6:
-                zoom_signal.emit(zoom_level)
         else:
+            canvas.reset_view()
             set_zoom_level(canvas, 1.0)
             set_pan_offsets(canvas, 0.0, 0.0)
 

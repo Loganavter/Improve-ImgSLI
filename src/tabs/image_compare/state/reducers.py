@@ -16,13 +16,10 @@ from core.state_management.actions import (
     Action,
     ClearAllCachesAction,
     ClearImageSlotDataAction,
-    InvalidateGeometryCacheAction,
     InvalidateRenderCacheAction,
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
     SetCachedDiffImageAction,
-    SetCachedScaledImageDimsAction,
-    SetDisplayCacheImageAction,
     SetDisplayResolutionLimitAction,
     SetDrawTextBackgroundAction,
     SetFileNameBgColorAction,
@@ -32,12 +29,10 @@ from core.state_management.actions import (
     SetImageSessionImageAction,
     SetIncludeFileNamesInSavedAction,
     SetInterpolationMethodAction,
-    SetLastDisplayCacheParamsAction,
     SetMaxNameLengthAction,
     SetMovementInterpolationMethodAction,
     SetPendingUnificationPathsAction,
     SetPsnrValueAction,
-    SetScaledImageForDisplayAction,
     SetSsimValueAction,
     SetTextAlphaPercentAction,
     SetTextPlacementModeAction,
@@ -76,22 +71,6 @@ class ImageSessionReducer:
 class RenderCacheReducer:
     @staticmethod
     def reduce(cache_state: RenderCacheState, action: Action) -> RenderCacheState:
-        if isinstance(action, SetDisplayCacheImageAction):
-            field_name = (
-                "display_cache_image1" if action.slot == 1 else "display_cache_image2"
-            )
-            return replace(cache_state, **{field_name: action.image})
-        if isinstance(action, SetScaledImageForDisplayAction):
-            field_name = (
-                "scaled_image1_for_display"
-                if action.slot == 1
-                else "scaled_image2_for_display"
-            )
-            return replace(cache_state, **{field_name: action.image})
-        if isinstance(action, SetCachedScaledImageDimsAction):
-            return replace(cache_state, cached_scaled_image_dims=action.dims)
-        if isinstance(action, SetLastDisplayCacheParamsAction):
-            return replace(cache_state, last_display_cache_params=action.params)
         if isinstance(action, SetCachedDiffImageAction):
             return replace(cache_state, cached_diff_image=action.image)
         if isinstance(action, SetUnificationInProgressAction):
@@ -99,12 +78,6 @@ class RenderCacheReducer:
         if isinstance(action, SetPendingUnificationPathsAction):
             return replace(cache_state, pending_unification_paths=action.paths)
         if isinstance(action, InvalidateRenderCacheAction):
-            cache_state = replace(
-                cache_state,
-                caches={},
-                cached_split_base_image=None,
-                last_split_cached_params=None,
-            )
             for feature in sorted(
                 registry().get_widget_features(),
                 key=lambda item: (item.reducer_order, item.name),
@@ -112,30 +85,7 @@ class RenderCacheReducer:
                 if feature.reduce_cache_state is not None:
                     cache_state = feature.reduce_cache_state(cache_state, action)
             return cache_state
-        if isinstance(action, InvalidateGeometryCacheAction):
-            return replace(
-                cache_state,
-                scaled_image1_for_display=None,
-                scaled_image2_for_display=None,
-                cached_scaled_image_dims=None,
-                display_cache_image1=None,
-                display_cache_image2=None,
-                last_display_cache_params=None,
-            )
         if isinstance(action, ClearAllCachesAction):
-            cache_state = replace(
-                cache_state,
-                unified_image_cache=cache_state.unified_image_cache.__class__(),
-                scaled_image1_for_display=None,
-                scaled_image2_for_display=None,
-                cached_scaled_image_dims=None,
-                display_cache_image1=None,
-                display_cache_image2=None,
-                last_display_cache_params=None,
-                caches={},
-                cached_split_base_image=None,
-                last_split_cached_params=None,
-            )
             for feature in sorted(
                 registry().get_widget_features(),
                 key=lambda item: (item.reducer_order, item.name),
@@ -143,24 +93,6 @@ class RenderCacheReducer:
                 if feature.reduce_cache_state is not None:
                     cache_state = feature.reduce_cache_state(cache_state, action)
             return cache_state
-        if isinstance(action, ClearImageSlotDataAction):
-            # Only invalidate this slot's display/scaled caches. Pair-level
-            # layout params go stale, but wiping the other side's scaled
-            # image forces a blank flash of the live half (e.g. Duplicate
-            # onto an empty side via load_images_from_paths).
-            if action.slot == 1:
-                kwargs = {
-                    "display_cache_image1": None,
-                    "scaled_image1_for_display": None,
-                }
-            else:
-                kwargs = {
-                    "display_cache_image2": None,
-                    "scaled_image2_for_display": None,
-                }
-            kwargs["cached_scaled_image_dims"] = None
-            kwargs["last_display_cache_params"] = None
-            return replace(cache_state, **kwargs)
         return cache_state
 
 

@@ -10,6 +10,7 @@ from sli_ui_toolkit.managers import SettleGate
 
 from core.state_management.interaction_actions import SetResizeInProgressAction
 from plugins.onboarding import host as onboarding_host
+from ui.widgets.flyout_debug import flyout_debug
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -349,7 +350,10 @@ class MainWindowRuntime:
         widget = _active_image_compare_widget(window)
         if widget is not None:
             widget.image_startup_placeholder.sync_geometry()
+            flyout_debug("runtime: _sync_live_chrome -> zoom_indicator.sync_position()")
             widget.zoom_indicator.sync_position()
+            flyout_debug("runtime: _sync_live_chrome -> _sync_info_huds()")
+            widget._sync_info_huds()
         if onboarding_host.is_active(window):
             onboarding_host.sync_geometry(window)
 
@@ -386,7 +390,10 @@ class MainWindowRuntime:
         widget = _active_image_compare_widget(window)
         if widget is not None:
             widget.image_startup_placeholder.sync_geometry()
+            flyout_debug("runtime: handle_move -> zoom_indicator.sync_position()")
             widget.zoom_indicator.sync_position()
+            flyout_debug("runtime: handle_move -> _sync_info_huds()")
+            widget._sync_info_huds()
         if onboarding_host.is_active(window):
             onboarding_host.sync_geometry(window)
         self._hide_unified_flyout()
@@ -399,7 +406,10 @@ class MainWindowRuntime:
         widget = _active_image_compare_widget(window)
         if widget is not None:
             widget.image_startup_placeholder.sync_geometry()
+            flyout_debug("runtime: handle_show -> zoom_indicator.sync_position()")
             widget.zoom_indicator.sync_position()
+            flyout_debug("runtime: handle_show -> _sync_info_huds()")
+            widget._sync_info_huds()
         if onboarding_host.is_active(window) and not window._startup_visual_ready_emitted:
             window.startup_runtime.emit_visual_ready()
         if window._offscreen_prewarm_active:

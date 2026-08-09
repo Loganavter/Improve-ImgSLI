@@ -133,6 +133,40 @@ def main():
         help="Enable the developer UI inspector for this session.",
     )
     parser.add_argument(
+        "--dump-ui-layout",
+        metavar="PATH",
+        default=None,
+        help="Dump the live widget tree (geometry + bound Find Action ids) to "
+        "PATH as JSON after startup, then exit. PATH is any writable file "
+        "path, e.g. /tmp/layout.json (parent dir must exist; overwrites if "
+        "present). Startup lands on the Session Picker, so tab actions "
+        "(image_compare.*, multi_compare.*) are only in the dump unless you "
+        "also pass --open-tab (or a project to open).",
+    )
+    parser.add_argument(
+        "--open-tab",
+        metavar="TAB_KIND",
+        default=None,
+        help="Create and switch to a new tab of this type on startup (before "
+        "--dump-ui-layout runs, if given), e.g. image_compare or "
+        "multi_compare — any kind with a registered 'workspace.new_TAB_KIND' "
+        "action (see docs/dev/ACTIONS.md). Lets you dump a tab's own chrome "
+        "instead of the Session Picker's, without needing an existing "
+        "project file. Unknown kinds are logged and ignored.",
+    )
+    parser.add_argument(
+        "--run-action",
+        metavar="ACTION_ID",
+        action="append",
+        default=[],
+        help="Run this Find Action id (see docs/dev/ACTIONS.md / "
+        "ActionRegistry) on startup, e.g. platform.settings or platform.help "
+        "— opens that dialog so --dump-ui-layout can capture it too (only "
+        "MainWindow is captured otherwise; --dump-ui-layout now walks every "
+        "top-level window). Repeatable; runs in order, after --open-tab. "
+        "Unknown ids are logged and ignored.",
+    )
+    parser.add_argument(
         "--rhi-backend",
         choices=supported_rhi_backend_names(),
         default=None,
@@ -262,11 +296,62 @@ def main():
 
     schedule_rhi_fallback_user_notice(window)
 
+    if args.open_tab:
+        from ui.actions.registry import get_action_registry
+
+        def _open_startup_tab(tab_kind: str = args.open_tab) -> None:
+            action_id = f"workspace.new_{tab_kind}"
+            action = get_action_registry().get(action_id)
+            if action is not None and action.run is not None:
+                action.run()
+            else:
+                logging.getLogger("ImproveImgSLI").warning(
+                    "--open-tab %s: no such action (%s not registered)",
+                    tab_kind,
+                    action_id,
+                )
+
+        QTimer.singleShot(0, _open_startup_tab)
+
+    if args.run_action:
+        from ui.actions.registry import get_action_registry
+
+        def _run_startup_actions(action_ids: list[str] = args.run_action) -> None:
+            registry = get_action_registry()
+            for action_id in action_ids:
+                action = registry.get(action_id)
+                if action is not None and action.run is not None:
+                    action.run()
+                else:
+                    logging.getLogger("ImproveImgSLI").warning(
+                        "--run-action %s: no such action", action_id
+                    )
+
+        # After --open-tab's singleShot(0, ...), same delay: Qt fires
+        # zero-delay timers in registration order.
+        QTimer.singleShot(0, _run_startup_actions)
+
+    if args.dump_ui_layout:
+        dump_path = args.dump_ui_layout
+
+        def _dump_ui_layout_and_quit(path: str = dump_path) -> None:
+            import json
+
+            from devtools.ui_layout_dump import dump_all_windows
+            from ui.actions.registry import get_action_registry
+
+            data = dump_all_windows(get_action_registry())
+            Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            app.quit()
+
+        # Give layouts one settled event-loop turn after show() so geometry
+        # isn't still the pre-resize placeholder; longer when opening a tab
+        # or running actions first so their own layout/animation settles
+        # before we snapshot it.
+        dump_delay_ms = 600 if (args.open_tab or args.run_action) else 300
+        QTimer.singleShot(dump_delay_ms, _dump_ui_layout_and_quit)
+
     if args.project:
-        from pathlib import Path
-
-        from PySide6.QtCore import QTimer
-
         project_path = str(Path(args.project).expanduser().resolve())
 
         def _open_startup_project(path: str = project_path) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from typing import Literal
 
@@ -17,6 +18,12 @@ logger = logging.getLogger("ImproveImgSLI")
 ContextMenuSurface = Literal["in_window", "popup"]
 
 
+def _running_on_wayland() -> bool:
+    session_type = os.getenv("XDG_SESSION_TYPE", "").strip().lower()
+    has_wayland = bool(os.getenv("WAYLAND_DISPLAY"))
+    return session_type == "wayland" or has_wayland
+
+
 def rmb_context_menu_surface() -> ContextMenuSurface:
     """Surface for right-click menus opened via ``ContextMenuManager``.
 
@@ -25,7 +32,18 @@ def rmb_context_menu_surface() -> ContextMenuSurface:
     ``winId`` / ``setTransientParent`` against frameless CSD permanently
     breaks in-window alpha — fall back to in-window until that toolkit fix
     is installed (see ``docs/dev/KNOWN_BUGS.md``).
+
+    On Wayland, a real ``Qt.Popup`` requests a compositor-level
+    ``xdg_popup`` pointer grab. A right-click that lands close enough to the
+    previous popup's grab teardown can be dropped by the compositor before
+    it ever reaches Qt's event queue — confirmed by RMB-open/close debug
+    logging showing a swallowed click with *zero* Qt-side events (no press,
+    no release, no contextMenuEvent) right after a menu auto-dismissed.
+    ``in_window`` menus are plain child widgets with no native grab, so this
+    race does not apply to them.
     """
+    if _running_on_wayland():
+        return "in_window"
     if not sys.platform.startswith("win"):
         return "popup"
     try:

@@ -133,7 +133,15 @@ def compute_zoom_split_position_for_view_transform(
     return max(0.0, min(1.0, new_split))
 
 def compute_zoom_wheel_transform(request: WheelZoomRequest) -> tuple[float, float, float] | None:
-    factor = 1.1 if int(request.angle_delta_y) > 0 else 0.9
+    # Scale by delta magnitude (Qt's 120-units-per-notch convention), not
+    # just its sign. A fixed +-10% per *event* made zoom depend on how many
+    # physical notches the OS/Qt happened to bundle into that one event --
+    # a single mouse click and an OS-coalesced burst of many trackpad ticks
+    # both produced the same tiny step. Compounding 1.1 per 120 units makes
+    # a large coalesced delta produce exactly the same total zoom change as
+    # applying each underlying notch individually would have.
+    notches = float(request.angle_delta_y) / 120.0
+    factor = 1.1**notches
     new_zoom = max(0.1, min(float(request.current_zoom) * factor, 50.0))
     if abs(new_zoom - float(request.current_zoom)) <= 1e-6:
         return None
@@ -163,6 +171,7 @@ def compute_zoom_pan_drag_transform(request: PanDragRequest) -> tuple[float, flo
         float(request.widget_height) * max(float(request.current_zoom), 1e-6)
     )
     return float(request.current_pan_x) + dx, float(request.current_pan_y) + dy
+
 
 VIEWPORT_FEATURE = CanvasViewportFeature(
     name="zoom",

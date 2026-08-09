@@ -51,6 +51,15 @@ multi_compare/
     ui/                  # canvas widget, toolbar, footer, labels, geometry
 ```
 
+## Local Docs
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - current tab architecture and boundaries.
+- **investigations** (private, `improve-imgsli-internal-docs` repo, this
+  same path `src/tabs/multi_compare/docs/investigations/`) — long-form case
+  write-ups for rendering bugs confined to this tab (transient zoom nudge,
+  mip-cascade). Cross-tab investigations live at
+  `docs/dev/rendering/investigations/` in that same private repo.
+
 ## Ownership rules
 
 - UI-visible text lives in `resources/i18n/<lang>/multi_compare.json`.

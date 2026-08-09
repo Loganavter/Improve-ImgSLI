@@ -55,6 +55,16 @@ class PopupClosingController:
         # Font settings / interp / options are FlyoutManager-owned; the tab
         # extension only knows UnifiedFlyout. Keep them on the same outside-click
         # path as the dual list.
+        #
+        # Deliberately not FlyoutManager.close_if_outside(): that calls
+        # close_all(), which (unlike the manager's own app-wide event filter)
+        # does not exempt pinned=True HUDs (ZoomIndicator, InfoHUD — see
+        # FLYOUT_SYSTEM.md "Pinned flyouts", which promises outside clicks
+        # never close them). This call exists because the QRhi canvas can
+        # swallow the mouse press before it reaches the manager's own
+        # eventFilter, so it must apply the same pinned exemption by hand
+        # (_dismiss_passive, the exact routine the manager's eventFilter uses
+        # for outside clicks) instead of delegating to the blunter close_all.
         try:
             from PySide6.QtCore import QPoint
             from sli_ui_toolkit.managers import FlyoutManager
@@ -64,7 +74,9 @@ class PopupClosingController:
                 if hasattr(global_pos, "toPoint")
                 else QPoint(int(global_pos.x()), int(global_pos.y()))
             )
-            FlyoutManager.get_instance().close_if_outside(point)
+            manager = FlyoutManager.get_instance()
+            if not manager._contains_global(point):
+                manager._dismiss_passive()
         except Exception:
             pass
 

@@ -26,9 +26,13 @@ class ThumbnailCoordinator:
         self.emit_thumbnails_updated = emit_thumbnails_updated
 
         # Coalesce resize + scrollbar-range churn while the window is dragged.
+        # Deliberately settles later than PreviewCoordinator's gate (120ms):
+        # both do a blocking main-thread GPU render on settle, and if they
+        # land on the same tick the second one queues up behind the first,
+        # showing up as one long stall instead of two short ones.
         self._visible_refresh = SettleGate(
             on_settle=self._refresh_visible_thumbnails,
-            interval_ms=SettleGate.DEFAULT_INTERVAL_MS,
+            interval_ms=SettleGate.DEFAULT_INTERVAL_MS * 2,
             parent=timer_parent,
         )
 

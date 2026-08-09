@@ -18,6 +18,7 @@ Commands and facilities wired for automated assistants:
 | Contract tests | `./launcher.sh test tests/contracts -q` | Fast AST/architecture dogmas — run before large refactors. See `tests/contracts/_framework.py`. |
 | Runtime tracer | `IMGSLI_TRACE=1` or `./launcher.sh run --debug` | Causal chain across dispatch / EventBus / render. Output: `~/.local/share/ImproveImgSLI/trace.jsonl`. See [docs/dev/TRACING.md](docs/dev/TRACING.md). |
 | UI inspector | `./launcher.sh run --ui-inspector` | In-app widget, palette, theme-token, QSS diagnostics. See [docs/dev/UI_INSPECTOR.md](docs/dev/UI_INSPECTOR.md). |
+| UI layout dump | `./launcher.sh run --open-tab image_compare --dump-ui-layout /path/to/layout.json` | Headless JSON snapshot of the live widget tree (class, geometry, visibility, Find Action ids) — no screenshot needed to check spacing/margins. `--run-action <id>` opens other windows (Settings, Help, …) first. See [docs/dev/UI_LAYOUT_DUMP.md](docs/dev/UI_LAYOUT_DUMP.md). |
 | Startup phases | `IMGSLI_STARTUP_TRACE=1` | Bootstrap timing via `src/core/startup_trace.py`. |
 | Focused tests | `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` | Offscreen Qt for headless runs. |
 
@@ -29,6 +30,7 @@ Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor
 |---|---|
 | Architecture overview | [docs/dev/ARCHITECTURE.md](docs/dev/ARCHITECTURE.md) |
 | Interface / isolation contracts | [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) (three senses) |
+| Code organization patterns (thin owner + `use_cases/`, growing-class splits) | [docs/dev/CODE_PATTERNS.md](docs/dev/CODE_PATTERNS.md) |
 | New canvas feature | [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md) |
 | New workspace tab | [docs/dev/tabs/index.md](docs/dev/tabs/index.md) |
 | Dialog / CSD chrome | [docs/dev/DIALOGS.md](docs/dev/DIALOGS.md) |
@@ -79,10 +81,32 @@ Important:
 
 ### Toolkit widgets and reusable UI
 
+**Before writing or changing any interface code — a new widget, dialog,
+flyout, button, layout, color/font handling — check whether `sli-ui-toolkit`
+already has it.** Do not default to stock Qt (`QVBoxLayout`, `QPushButton`,
+`QDialog`, hand-rolled QSS, `QColorDialog`, …) and only reach for the
+toolkit later; read the toolkit docs first, then build on
+`sli_ui_toolkit.widgets` / the painter pipeline. Stock Qt is the fallback
+for the rare case the toolkit genuinely has no equivalent, not the default
+starting point. Cursor users: the `.cursor/skills/sli-ui-toolkit-docs-first/`
+skill automates this same check.
+
+**Before touching anything toolkit-related — reading it as source of truth,
+editing the sibling checkout, expecting an edit there to take effect — check
+`requirements-gui.txt` for an `-e ../sli-ui-toolkit` line.** That line means
+the toolkit is installed editable from the local sibling checkout, so
+editing `../sli-ui-toolkit` directly is live and reading its local source is
+authoritative. If that line is absent (pinned version/git ref/PyPI instead),
+the sibling checkout — if one even exists on disk — is **not** what's
+actually installed: don't edit it expecting it to take effect, and don't
+trust its source over the pinned version's actual behavior; treat the
+toolkit as a fixed external dependency and go through its released
+docs/API instead.
+
 Read:
 
 1. External toolkit repository: `https://github.com/Loganavter/sli-ui-toolkit`
-2. Local checkout (optional): sibling `../sli-ui-toolkit` or `--toolkit-dir DIR` for `./launcher.sh context --cloc-only`
+2. Local checkout (only live if `requirements-gui.txt` has `-e ../sli-ui-toolkit` — see above): sibling `../sli-ui-toolkit` or `--toolkit-dir DIR` for `./launcher.sh context --cloc-only`
 3. App-side overview: [docs/dev/UI_TOOLKIT_LIBRARY.md](docs/dev/UI_TOOLKIT_LIBRARY.md)
 4. Toolkit `docs/dev/README.md` and `docs/dev/ARCHITECTURE.md` (in the toolkit repo)
 5. Toolkit `docs/user/API_CATALOG.md` and `docs/dev/DESIGN_LANGUAGE.md`
@@ -165,7 +189,7 @@ Tests are grouped by subsystem under `tests/`:
 - `tests/render/` — GL pass behavior with fake `SimpleNamespace` context.
 - `tests/plugins/` — plugin behavior (export, help, settings, toast, clipboard).
 - `tests/video/` — video editor preview/timeline/keyframes contracts.
-- `tests/devtools/` — developer tooling (UI inspector, QSS index).
+- `tests/devtools/` — developer tooling (UI inspector, QSS index, docs link graph).
 
 Common focused test pattern:
 
@@ -184,6 +208,7 @@ When something goes wrong after a click / zoom / state change and the cause is n
 3. See [docs/dev/TRACING.md](docs/dev/TRACING.md) for kind/category reference and filtering tips.
 4. For plain text logs (not causal chains): [docs/dev/LOGGING.md](docs/dev/LOGGING.md) (`~/.local/share/ImproveImgSLI/log.txt`, overwritten each start).
 5. For widget/theme/QSS mismatches: `./launcher.sh run --ui-inspector` — [docs/dev/UI_INSPECTOR.md](docs/dev/UI_INSPECTOR.md).
+6. For layout/spacing/geometry questions (gaps, margins, widget sizes): `./launcher.sh run --open-tab image_compare --dump-ui-layout /path/to/layout.json` and read the JSON — faster and more precise than a screenshot. See [docs/dev/UI_LAYOUT_DUMP.md](docs/dev/UI_LAYOUT_DUMP.md).
 
 The tracer captures Redux dispatches, EventBus publishes, and render frames — much faster than hand-instrumenting with `logger` calls.
 
@@ -204,13 +229,35 @@ Usually this means touching one of:
 - [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md)
 - [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md)
 
+### Doc placement and the doc-link graph
+
+`docs/dev/` (+ `docs/dev/rendering/`) is for host-level and genuinely
+cross-tab material only. A doc about one tab's own behavior — most
+investigations, tab-specific notes — belongs under
+`src/tabs/<tab>/docs/` (mirrors `src/tabs/<tab>/tests/`; see
+[docs/dev/tabs/index.md](docs/dev/tabs/index.md)), e.g.
+`src/tabs/image_compare/docs/investigations/`,
+`src/tabs/multi_compare/docs/investigations/`. Cross-tab rendering
+investigations (bugs spanning both tabs' renderers, or shared widgets like
+`InfoHUD`/`ZoomIndicator`) stay in `docs/dev/rendering/investigations/`.
+
+Cross-doc links are checked, not hand-maintained: after moving, renaming, or
+adding a doc anywhere under `docs/` or `src/tabs/*/docs/`, run
+`python src/devtools/docs_link_graph.py --write-index` to regenerate
+[docs/dev/DOC_INDEX.md](docs/dev/DOC_INDEX.md) (full doc list + auto-computed
+backlinks). `tests/devtools/test_docs_link_graph.py` fails the suite on any
+broken relative doc link or a stale `DOC_INDEX.md` — treat that failure as
+"you moved a doc and didn't update links," not a flaky test.
+
 ## Good Defaults For Agents
 
 - Read [docs/dev/README.md](docs/dev/README.md) for misconceptions before assuming web-app patterns.
+- Interface/UI task? Check `sli-ui-toolkit` docs first (see "Toolkit widgets and reusable UI" above) — don't reach for stock Qt widgets/layouts/QSS as the default.
 - For codebase size / where-the-code-lives questions, run `./launcher.sh context --cloc-only` and read `cloc.txt`. For everything else, search and read docs in the repo directly.
 - Run `./launcher.sh test tests/contracts -q` after refactors that touch imports, canvas features, plugins, or tab layout.
 - Prefer codebase search over guessing file locations.
 - Prefer small, explicit patches.
+- If a controller/widget is mixing orthogonal concerns (loading + export + drag&drop, …) and keeps growing, split by [docs/dev/CODE_PATTERNS.md](docs/dev/CODE_PATTERNS.md)'s "thin owner + `use_cases/` module" pattern rather than adding another method to the same class.
 - Prefer adding a focused regression test when fixing rendering/export/UI wiring bugs.
 - If a bug involves preview vs export mismatch, inspect both code paths before changing anything.
 - If runtime behavior is unclear after reading code, enable the tracer (`--debug`) before adding log statements.

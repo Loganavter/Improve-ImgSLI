@@ -22,12 +22,6 @@ class _RenderCache:
     def __init__(self):
         self.unification_in_progress = False
         self.pending_unification_paths = None
-        self.display_cache_image1 = None
-        self.display_cache_image2 = None
-        self.scaled_image1_for_display = None
-        self.scaled_image2_for_display = None
-        self.unified_image_cache = {}
-        self.last_display_cache_params = None
         self.cached_diff_image = None
 
 

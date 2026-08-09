@@ -44,25 +44,7 @@ class MetricsService:
             self.runtime.thread_pool.start(worker)
 
     def _get_metric_source_images(self):
-        session_data = self.store.viewport.session_data
-        render_cache = session_data.render_cache
-        image_state = session_data.image_state
-
-        cache_img1 = (
-            render_cache.display_cache_image1
-            or render_cache.scaled_image1_for_display
-        )
-        cache_img2 = (
-            render_cache.display_cache_image2
-            or render_cache.scaled_image2_for_display
-        )
-        if (
-            cache_img1 is not None
-            and cache_img2 is not None
-            and getattr(cache_img1, "size", None) == getattr(cache_img2, "size", None)
-        ):
-            return cache_img1, cache_img2
-
+        image_state = self.store.viewport.session_data.image_state
         return image_state.image1, image_state.image2
 
     def metrics_worker_task(
@@ -80,7 +62,7 @@ class MetricsService:
             if lease2 is not None and not lease2.valid:
                 return None
             if isinstance(img1, TiledPixelStore) or isinstance(img2, TiledPixelStore):
-                img1, img2 = downscale_pair_to_limit(img1, img2, 4096)
+                img1, img2 = downscale_pair_to_limit(img1, img2, 4096, allow_materialize=True)
             else:
                 img1 = img1.copy() if img1 is not None else None
                 img2 = img2.copy() if img2 is not None else None

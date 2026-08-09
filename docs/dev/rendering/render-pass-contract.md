@@ -61,9 +61,7 @@ Rules:
   `should_paint()` is even called. A new feature pass is blank-white-safe automatically;
   it does not need its own `blank_white` check in `should_paint()`. Only opt out
   (`requires_content = False`) for passes that must render on an empty canvas — e.g.
-  multi_compare's `DragDropOverlayPass` (drop hint before any slots are loaded). See
-  [investigations/divider-blank-white-and-drag-desync.md](investigations/divider-blank-white-and-drag-desync.md)
-  for why this exists.
+  multi_compare's `DragDropOverlayPass` (drop hint before any slots are loaded).
 
 Scene visibility:
 

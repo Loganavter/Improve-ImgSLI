@@ -60,6 +60,16 @@ class AddSlot(MultiCompareAction):
 
 
 @dataclass(frozen=True)
+class ReplaceSlotImage(MultiCompareAction):
+    """Swap a slot's progressive-preview ``QImage`` for the real full-res
+    ``TiledPixelStore`` once background decoding finishes — see
+    ``MultiCompareController._load_full_resolution_async``."""
+
+    slot_id: int
+    image: "TiledPixelStore"
+
+
+@dataclass(frozen=True)
 class RemoveSlot(MultiCompareAction):
     slot_id: int
 
@@ -166,6 +176,14 @@ class actions:
             target_path=target_path,
             side=side,
             target_root=target_root,
+        )
+
+    @staticmethod
+    def replace_slot_image(slot_id: int, image: "TiledPixelStore") -> ReplaceSlotImage:
+        return ReplaceSlotImage(
+            type="multi_compare/replace_slot_image",
+            slot_id=slot_id,
+            image=image,
         )
 
     @staticmethod
@@ -317,6 +335,19 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
 
             new_root = state.root
         return _replace(state, slots=new_slots, root=new_root)
+
+    if isinstance(action, ReplaceSlotImage):
+        found = False
+        new_slots = []
+        for slot in state.slots:
+            if slot.id == action.slot_id:
+                found = True
+                new_slots.append(dataclasses.replace(slot, image=action.image))
+            else:
+                new_slots.append(slot)
+        if not found:
+            return state
+        return _replace(state, slots=new_slots)
 
     if isinstance(action, RemoveSlot):
         for slot in state.slots:

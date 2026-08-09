@@ -24,6 +24,7 @@ class VideoEditorDialogRuntime:
         d.presenter.timelinePositionChanged.connect(d._on_timeline_position_changed)
         d.presenter.playbackStateChanged.connect(d._on_playback_state_changed)
         d.presenter.buttonsStateChanged.connect(d._on_buttons_state_changed)
+        d.presenter.fitContentAvailableChanged.connect(d._on_fit_content_available_changed)
         d.presenter.thumbnailsUpdated.connect(d._on_thumbnails_updated)
         d.presenter.exportStarted.connect(d._on_export_started)
         d.presenter.exportLog.connect(d._on_export_log)

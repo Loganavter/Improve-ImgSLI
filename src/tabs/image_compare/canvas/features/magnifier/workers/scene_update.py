@@ -1,5 +1,8 @@
 import logging
+import time
 from dataclasses import replace as _dc_replace
+
+from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
 
 _log = logging.getLogger("ImproveImgSLI.magnifier.scene_update")
 
@@ -64,10 +67,19 @@ def rebuild_magnifier_overlay(presenter):
     if not hasattr(image_label, "set_feature_overlay_gpu_params"):
         return
 
+    _debug_timing = tile_dump_enabled()
+    _t_start = time.perf_counter() if _debug_timing else 0.0
+    _checkpoints: list[tuple[str, float]] = []
+
+    def _mark(label: str) -> None:
+        if _debug_timing:
+            _checkpoints.append((label, time.perf_counter() - _t_start))
+
     if hasattr(image_label, "begin_update_batch"):
         image_label.begin_update_batch()
     try:
         _build_and_apply_scene_snapshot(presenter, image_label, geometry)
+        _mark("scene_snapshot")
 
         plan = getattr(image_label, "_active_render_plan", None)
         if plan is None:
@@ -80,6 +92,7 @@ def rebuild_magnifier_overlay(presenter):
         document = presenter.store.get_session_state_slot("document")
         tex_img1 = tex_img1 or document.full_res_image1 or document.original_image1
         tex_img2 = tex_img2 or document.full_res_image2 or document.original_image2
+        _mark("resolve_source_images")
         if not tex_img1 or not tex_img2:
             reset_canvas_overlays(image_label)
             return
@@ -102,6 +115,7 @@ def rebuild_magnifier_overlay(presenter):
             image_label.upload_diff_source_pil_image(cached_diff_image)
         elif diff_mode_str != "ssim":
             image_label.upload_diff_source_pil_image(None)
+        _mark("diff_cache")
 
         effective_interactive = is_effective_magnifier_interactive(vp)
         interpolation_method = _resolve_magnifier_interpolation_method(
@@ -134,6 +148,7 @@ def rebuild_magnifier_overlay(presenter):
             interpolation_method=interpolation_method,
             diff_mode_override=diff_mode_int,
         )
+        _mark("build_layout")
         if layout is None:
             image_label._active_render_plan = _dc_replace(plan, overlay_layout=None)
             reset_canvas_overlays(image_label)
@@ -142,7 +157,16 @@ def rebuild_magnifier_overlay(presenter):
         updated_plan = _dc_replace(plan, overlay_layout=layout)
         image_label._active_render_plan = updated_plan
         apply_magnifier_plan_overlay(image_label, updated_plan)
+        _mark("apply_plan_overlay")
     finally:
+        if _debug_timing:
+            total = time.perf_counter() - _t_start
+            if total > 0.05:
+                log_tile_event(
+                    "magnifier.rebuild_overlay_timing",
+                    total_s=total,
+                    checkpoints={label: round(dt, 4) for label, dt in _checkpoints},
+                )
         if hasattr(image_label, "end_update_batch"):
             image_label.end_update_batch()
         if hasattr(image_label, "_request_update"):

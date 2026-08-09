@@ -54,7 +54,7 @@ class MultiCompareContextMenuProvider:
             ContextMenuAction(
                 "multi_compare.carry_slot",
                 self._tr("context.carry_image", "Move"),
-                icon=Icon.PHOTO,
+                icon=Icon.MOVE,
                 enabled=bool(slot.path),
                 data=slot.id,
             ),

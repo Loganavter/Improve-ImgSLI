@@ -208,7 +208,7 @@ def test_recent_panel_scroll_caps_at_two_grid_rows(qapp, tmp_path, monkeypatch):
 
     # Narrow enough for 3 columns: 7 cards → 3 rows → viewport capped at 2.
     panel = RecentProjectsPanel(tr=_tr)
-    panel.resize(560, 800)
+    panel.resize(592, 800)
     panel.show()
     panel.refresh()
     qapp.processEvents()
@@ -310,7 +310,7 @@ def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch)
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
     panel = RecentProjectsPanel(tr=_tr)
-    panel.resize(560, 800)
+    panel.resize(592, 800)
     panel.show()
     panel.refresh()
     qapp.processEvents()
@@ -558,7 +558,7 @@ def test_recent_panel_relayout_never_leaves_updates_disabled(
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: "grid")
 
     panel = RecentProjectsPanel(tr=_tr)
-    panel.resize(560, 800)
+    panel.resize(592, 800)
     panel.show()
     panel.refresh()
     qapp.processEvents()

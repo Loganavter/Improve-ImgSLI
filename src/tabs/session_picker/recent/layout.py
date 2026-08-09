@@ -7,9 +7,13 @@ PANEL_RADIUS = 12.0
 
 # Breathing room between the scroll host edges and the card grid.
 ITEMS_MARGIN = 8
-# Extra right inset so cards clear the overlay scrollbar inside the scroll area
-# (OverlayScrollArea vertical bar is ~10px; keep a small gap beside it).
-ITEMS_MARGIN_RIGHT = 22
+# Static estimate of the overlay scrollbar's footprint, used only where no
+# live OverlayScrollArea is available to ask directly (grid column count,
+# marquee hit-testing). The actual on-screen list-card right inset is
+# computed at layout time from ``OverlayScrollArea.overlay_scrollbar_inset()``
+# (see ``RecentItemsView._place_live_cards``), so it collapses to 0 when the
+# bar isn't shown instead of always reserving this much space.
+ITEMS_MARGIN_RIGHT = 8
 ITEMS_SPACING = 12
 
 # Empty-state DnD zone height matches one grid-row viewport.

@@ -22,7 +22,9 @@ from typing import Any, Callable
 from core.store import INITIAL_WORKSPACE_SESSION_TYPE
 from services.io.project_package import (
     embed_media,
+    embed_pixel_cache_sources,
     extract_media,
+    extract_pixel_cache,
     is_zip_project,
     iter_session_media_paths,
     project_cache_dir,
@@ -36,9 +38,9 @@ logger = logging.getLogger("ImproveImgSLI")
 PROJECT_FORMAT = "imgsli"
 # Legacy format id from early portable builds / plain-JSON v1.
 _LEGACY_PROJECT_FORMATS = frozenset({PROJECT_FORMAT, "imgsli-project"})
-PROJECT_VERSION = 2
+PROJECT_VERSION = 3
 _KNOWN_PROJECT_KEYS = frozenset(
-    {"format", "version", "active_session_index", "sessions", "media"}
+    {"format", "version", "active_session_index", "sessions", "media", "pixel_cache"}
 )
 PROJECT_FILE_EXTENSION = ".imgsli"
 _LEGACY_FILE_EXTENSIONS = (".imgsli", ".imgsli-project")
@@ -73,7 +75,38 @@ def build_project_data(store: Any, tab_registry: Any) -> dict[str, Any]:
         "active_session_index": active_index,
         "sessions": sessions_data,
         "media": {},
+        "pixel_cache": {},
     }
+
+
+def collect_pixel_cache_sources(store: Any, tab_registry: Any) -> dict[str, tuple[Any, int, int]]:
+    """``{abs source path: (open fd, width, height)}`` for every live, open
+    ``TiledPixelStore`` across all workspace sessions.
+
+    Must run on the UI thread, right after :func:`build_project_data` — opens
+    each store's spill file fd immediately so a later swap/close on the UI
+    thread can't race a worker-thread copy (unlink never invalidates an
+    already-open fd on Linux, so the fd stays a consistent snapshot).
+    """
+    sources: dict[str, tuple[Any, int, int]] = {}
+    opened_paths: set[str] = set()
+    for session in store.list_workspace_sessions():
+        session_sources = tab_registry.collect_pixel_cache_sources(
+            session.session_type, session.id
+        )
+        for path, tiled_store in (session_sources or {}).items():
+            store_path = getattr(tiled_store, "path", None)
+            if not path or not store_path or store_path in opened_paths:
+                continue
+            try:
+                fd = open(store_path, "rb")
+            except OSError:
+                logger.exception("Failed to open pixel cache source %s", store_path)
+                continue
+            opened_paths.add(store_path)
+            width, height = tiled_store.width, tiled_store.height
+            sources[path] = (fd, width, height)
+    return sources
 
 
 def _validate_project_container(project: dict[str, Any]) -> None:
@@ -185,6 +218,7 @@ def save_project_file(
     tab_registry: Any,
     *,
     progress: ProgressCallback | None = None,
+    include_pixel_cache: bool = False,
 ) -> list[str]:
     """Save a portable ZIP project (v2) with embedded media copies.
 
@@ -193,10 +227,20 @@ def save_project_file(
     :func:`package_project_data` on a worker after calling
     :func:`build_project_data` on the UI thread.
 
+    ``include_pixel_cache`` additionally embeds each live session's decoded
+    RGBA8 spill buffer so a future reopen can skip re-decoding; only this
+    module's synchronous convenience path is affected — the real UI save flow
+    (``ui.main_window.project_io``) collects pixel-cache sources separately.
+
     Returns a list of source paths that could not be embedded (missing/unreadable).
     """
     data = build_project_data(store, tab_registry)
-    return package_project_data(data, path, progress=progress)
+    pixel_cache_sources = (
+        collect_pixel_cache_sources(store, tab_registry) if include_pixel_cache else None
+    )
+    return package_project_data(
+        data, path, progress=progress, pixel_cache_sources=pixel_cache_sources
+    )
 
 
 def package_project_data(
@@ -206,12 +250,16 @@ def package_project_data(
     progress: ProgressCallback | None = None,
     preview_png: bytes | None = None,
     preview_jpeg: bytes | None = None,
+    pixel_cache_sources: dict[str, tuple[Any, int, int]] | None = None,
 ) -> list[str]:
     """Embed media and write a ZIP from an already-built project snapshot.
 
     Safe to call off the UI thread: does not touch Qt widgets or the Store.
     Optional ``preview_png`` is written as top-level ``preview.png`` (canvas
-    scene grab). ``preview_jpeg`` is a deprecated alias.
+    scene grab). ``preview_jpeg`` is a deprecated alias. Optional
+    ``pixel_cache_sources`` is ``{abs source path: (open fd, width, height)}``
+    from :func:`collect_pixel_cache_sources` (UI thread) — each fd is closed
+    once written or on failure.
     """
     source_paths = iter_session_media_paths(project_data)
     path_to_member, catalog, missing = embed_media(source_paths, progress=progress)
@@ -219,12 +267,21 @@ def package_project_data(
     rewritten["format"] = PROJECT_FORMAT
     rewritten["version"] = PROJECT_VERSION
     rewritten["media"] = catalog
+    cache_members: dict[str, Any] = {}
+    if pixel_cache_sources:
+        cache_members, cache_catalog = embed_pixel_cache_sources(
+            pixel_cache_sources, path_to_member
+        )
+        rewritten["pixel_cache"] = cache_catalog
+    else:
+        rewritten["pixel_cache"] = {}
     write_project_zip(
         path,
         rewritten,
         path_to_member,
         progress=progress,
         preview_png=preview_png if preview_png is not None else preview_jpeg,
+        cache_members=cache_members,
     )
     if missing:
         logger.warning(
@@ -233,6 +290,41 @@ def package_project_data(
             missing[:8],
         )
     return missing
+
+
+def _register_pixel_cache(
+    data: dict[str, Any],
+    project_path: Path,
+    cache_dir: Path,
+    member_to_abs: dict[str, str],
+    *,
+    progress: ProgressCallback | None = None,
+) -> None:
+    """Extract embedded ``cache/`` buffers (if any) and register them so the
+    ``TiledPixelStore.from_path`` call sites can skip re-decoding."""
+    pixel_cache = data.get("pixel_cache")
+    if not pixel_cache:
+        return
+    media_catalog = data.get("media") or {}
+    try:
+        asset_to_extracted = extract_pixel_cache(project_path, cache_dir, progress=progress)
+    except Exception:
+        logger.exception("Failed to extract embedded pixel cache from %s", project_path)
+        return
+
+    from shared.image_processing import pixel_cache_registry
+
+    for asset_id, entry in pixel_cache.items():
+        extracted_path = asset_to_extracted.get(asset_id)
+        media_entry = media_catalog.get(asset_id)
+        if not extracted_path or not media_entry:
+            continue
+        member = media_entry.get("member")
+        abs_media_path = member_to_abs.get(member) if member else None
+        width, height = entry.get("width"), entry.get("height")
+        if not abs_media_path or not width or not height:
+            continue
+        pixel_cache_registry.register(abs_media_path, extracted_path, int(width), int(height))
 
 
 def prepare_project_file_for_load(
@@ -267,6 +359,7 @@ def prepare_project_file_for_load(
                 f"Missing {len(missing_members)} embedded media member(s) in project."
             )
         data = rewrite_session_paths(data, member_to_abs)
+        _register_pixel_cache(data, project_path, cache_dir, member_to_abs, progress=progress)
         return data, warnings
 
     data = json.loads(project_path.read_text(encoding="utf-8"))

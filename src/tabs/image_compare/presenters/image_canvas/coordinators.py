@@ -1,14 +1,6 @@
 import PIL.Image
 
 from tabs.image_compare.canvas.registry import registry
-from tabs.image_compare.presenters.image_canvas.background_parts.image_cache import (
-    create_preview_cache_async,
-    ensure_images_scaled,
-    ensure_images_unified,
-    on_display_scaling_ready,
-    on_preview_cache_ready,
-    start_scaling_worker,
-)
 from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import (
     schedule_update as schedule_update_impl,
 )
@@ -144,30 +136,12 @@ class CanvasBackgroundCoordinator:
     def get_background_signature(self, s1, s2):
         return get_background_signature(self.presenter, s1, s2)
 
-    def ensure_images_unified(self, source1, source2):
-        return ensure_images_unified(self.presenter, source1, source2)
-
-    def ensure_images_scaled(self, w, h):
-        return ensure_images_scaled(self.presenter, w, h)
-
-    def start_scaling_worker(self, src1, src2, w, h):
-        return start_scaling_worker(self.presenter, src1, src2, w, h)
-
-    def on_display_scaling_ready(self, result):
-        return on_display_scaling_ready(self.presenter, result)
-
     def should_use_dirty_rects_optimization(
         self, render_params_dict: dict, label_dims: tuple = None
     ) -> bool:
         return should_use_dirty_rects_optimization(
             self.presenter, render_params_dict, label_dims
         )
-
-    def create_preview_cache_async(self, img1, img2):
-        return create_preview_cache_async(self.presenter, img1, img2)
-
-    def on_preview_cache_ready(self, result):
-        return on_preview_cache_ready(self.presenter, result)
 
 
 class CanvasOverlayCoordinator:

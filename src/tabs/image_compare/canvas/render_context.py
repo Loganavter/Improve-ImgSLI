@@ -436,6 +436,63 @@ def request_update(widget):
         state._update_pending = True
         return
     widget.update()
+    _schedule_glass_settle_frame(widget)
+
+
+def _schedule_glass_settle_frame(widget):
+    """One extra repaint, one event-loop turn after this real content
+    update -- lets the CPU-readback display path
+    (ui/widgets/glass_panel_display.py's GlassPanelDisplayWidgetCpu, see
+    docs/dev/KNOWN_BUGS.md's "QRhiWidget/QOpenGLWidget can't alpha-blend
+    against sibling widgets" entry) catch up to the composite this frame's
+    own render_backdrops() call just produced.
+
+    shared.rendering.glass_panel's render_backdrops() now runs *after*
+    this frame's own main pass (moved there -- see that module's own
+    "Timing" docstring section for why the earlier "before the main pass,
+    reads the *previous* frame's colorTexture()" version wasn't actually
+    load-bearing), so its composite already reflects this exact frame's
+    content. render_backdrops() also now collects every panel's
+    composite_tex readback *synchronously* (a single `rhi.finish()` right
+    after issuing them, then reading `.data` immediately -- see that
+    module's render_backdrops() docstring) instead of polling it on the
+    next call, so `ready_images` is fully up to date by the time
+    render_backdrops() itself returns -- no more colorTexture-staleness or
+    readback-collection gap to catch up to.
+
+    What this settle frame still covers: GlassPanelDisplayWidgetCpu is a
+    *sibling* widget, not the RHI canvas itself, so it only repaints when
+    something schedules its own `update()` -- render_backdrops() finishing
+    with fresh data doesn't by itself trigger that. This one extra
+    QTimer.singleShot(0, ...) repaint is what makes that catch-up paint
+    happen shortly after a real content update, without stacking one per
+    update() during a fast burst (see the single pending-flag note below).
+
+    Without any settle frame at all, the backdrop is stuck stale as soon
+    as the canvas goes idle: render_backdrops() only runs as part of the
+    canvas's own repaint, and with no continuous render loop (this canvas
+    is purely on-demand -- see
+    docs/dev/rendering/investigations/glass-panel-backdrop-self-reference.md),
+    nothing repaints again after the last real content change on its own.
+
+    A single pending flag (not re-armed on every request_update()) so a
+    burst of updates during active interaction doesn't stack up N settle
+    frames -- just one, shortly after the burst ends. No-op if no glass
+    panel is currently registered (nothing to catch up for).
+    """
+    glass_panels = getattr(widget, "glass_panels", None)
+    if not glass_panels or not glass_panels.items():
+        return
+    state = widget.runtime_state
+    if getattr(state, "_glass_settle_pending", False):
+        return
+    state._glass_settle_pending = True
+
+    def _settle():
+        state._glass_settle_pending = False
+        widget.update()
+
+    QTimer.singleShot(0, _settle)
 
 
 def emit_viewport_state_change(widget):

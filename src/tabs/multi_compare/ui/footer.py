@@ -6,9 +6,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
-from sli_ui_toolkit.widgets import Button, ThemedWidget
+from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, ThemedWidget
 
 from sli_ui_toolkit.i18n import tr
+from tabs.layout_constants import CONTROL_EDGE_PADDING_PX
 from tabs.multi_compare.icons import Icon
 from ui.theming import resolve_theme_color
 
@@ -37,11 +38,18 @@ class MultiCompareFooter(ThemedWidget, QWidget):
         self.setFixedHeight(44)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 4, CONTROL_EDGE_PADDING_PX, 4)
         layout.setSpacing(8)
 
         text = _save_result_tr("save_result", "en")
-        self.btn_save = Button(Icon.SAVE, text=text, variant="surface", parent=self)
+        self.btn_save = Button(
+            Icon.SAVE,
+            text=text,
+            variant="surface",
+            parent=self,
+            # save_clicked -> ExportDialog.exec() (modal).
+            defer_click=DEFER_CLICK_AWAIT_RIPPLE,
+        )
         translatable_text(
             self.btn_save, "save_result", tr_func=_save_result_tr, defer_when_hidden=True
         )

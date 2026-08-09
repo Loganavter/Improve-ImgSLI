@@ -18,23 +18,9 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
 
 from tabs.contract import TabContext, TabContract, TabTransitionHint
+from tabs.image_compare.use_cases import drag_drop, host_callbacks, persistence, registration
 
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".jxl"}
-_STATE_SLOT = "image_compare.state"
 logger = logging.getLogger("ImproveImgSLI")
-
-
-def _resolve_image_compare_sessions(context: TabContext):
-    main_window = context.main_window
-    if main_window is None:
-        return None
-    controller = getattr(main_window, "main_controller", None)
-    if controller is None:
-        presenter = getattr(main_window, "presenter", None)
-        controller = getattr(presenter, "main_controller", None)
-    if controller is None:
-        return None
-    return getattr(controller, "sessions", None)
 
 
 class ImageCompareTab(TabContract):
@@ -118,7 +104,6 @@ class ImageCompareTab(TabContract):
         if self._widget is None:
             return
         self._widget.toggle_edit_layout_visibility(False)
-        self._widget.magnifier_settings_panel.setVisible(False)
         self._widget.apply_icon_sizes()
 
     def apply_host_session_mode(self, ui, session_title: str | None = None) -> bool:
@@ -175,328 +160,38 @@ class ImageCompareTab(TabContract):
             return None
         return getattr(session, "id", None)
 
-    def _canvas_host(self):
-        widget = self._widget
-        if widget is None:
-            return None
-        return getattr(widget, "image_label", None)
-
-    def _read_camera_from_host(self) -> tuple[float, float, float]:
-        from ui.canvas_infra.viewport import get_pan_offset_x, get_pan_offset_y, get_zoom_level
-
-        host = self._canvas_host()
-        if host is None:
-            return 1.0, 0.0, 0.0
-        try:
-            return (
-                float(get_zoom_level(host)),
-                float(get_pan_offset_x(host)),
-                float(get_pan_offset_y(host)),
-            )
-        except Exception:
-            return 1.0, 0.0, 0.0
-
-    def _apply_camera_to_host(self, zoom: float, pan_x: float, pan_y: float) -> None:
-        from ui.canvas_infra.viewport import set_pan_offsets, set_zoom_level
-
-        host = self._canvas_host()
-        if host is None:
-            return
-        try:
-            set_zoom_level(host, zoom)
-            set_pan_offsets(host, pan_x, pan_y)
-        except Exception:
-            logger.exception("Failed to apply camera to image_compare canvas host")
-
     def _snapshot_into(self, context: TabContext, session_id: str | None) -> None:
-        if session_id is None or self._widget is None:
-            return
-        store = getattr(context, "store", None)
-        if store is None or not hasattr(store, "set_session_state_slot"):
-            return
-        from tabs.image_compare.models import ImageCompareState
-
-        widget = self._widget
-        zoom, pan_x, pan_y = self._read_camera_from_host()
-        state = ImageCompareState(
-            show_file_names=bool(getattr(getattr(widget, "btn_file_names", None), "isChecked", lambda: False)()),
-            edit_name_1=getattr(getattr(widget, "edit_name1", None), "text", lambda: "")(),
-            edit_name_2=getattr(getattr(widget, "edit_name2", None), "text", lambda: "")(),
-            zoom=zoom,
-            pan_x=pan_x,
-            pan_y=pan_y,
-        )
-        try:
-            store.set_session_state_slot(
-                _STATE_SLOT, state, session_id=session_id, emit_scope=None,
-            )
-        except Exception:
-            pass
+        persistence.snapshot_into(self, context, session_id)
 
     def _restore_from(self, context: TabContext, session_id: str | None) -> None:
-        if session_id is None or self._widget is None:
-            return
-        store = getattr(context, "store", None)
-        if store is None or not hasattr(store, "ensure_session_state_slot"):
-            return
-        from tabs.image_compare.models import ImageCompareState
-
-        try:
-            state = store.ensure_session_state_slot(
-                _STATE_SLOT, session_id=session_id, factory=ImageCompareState,
-            )
-        except Exception:
-            return
-        if state is None:
-            return
-        widget = self._widget
-        btn = getattr(widget, "btn_file_names", None)
-        if btn is not None and hasattr(btn, "setChecked"):
-            btn.setChecked(bool(state.show_file_names))
-        for attr, value in (("edit_name1", state.edit_name_1), ("edit_name2", state.edit_name_2)):
-            edit = getattr(widget, attr, None)
-            if edit is not None and hasattr(edit, "setText"):
-                edit.setText(value or "")
-        self._apply_camera_to_host(
-            float(getattr(state, "zoom", 1.0) or 1.0),
-            float(getattr(state, "pan_x", 0.0) or 0.0),
-            float(getattr(state, "pan_y", 0.0) or 0.0),
-        )
+        persistence.restore_from(self, context, session_id)
 
     def serialize_session(self, session_id: str, context: TabContext) -> dict | None:
-        store = getattr(context, "store", None)
-        if store is None:
-            return None
-        session = store.get_workspace_session(session_id)
-        if session is None or session.session_type != self.session_type:
-            return None
-        # Sync camera from the live host when serializing the active session.
-        if session_id == self._active_session_id:
-            self._snapshot_into(context, session_id)
-            session = store.get_workspace_session(session_id) or session
+        return persistence.serialize_session(self, session_id, context)
 
-        doc = session.document
-        ui_state = session.state_slots.get(_STATE_SLOT)
-
-        def _items(items):
-            return [
-                {"path": it.path, "display_name": it.display_name, "rating": it.rating}
-                for it in items
-            ]
-
-        from tabs.image_compare.session_persistence import serialize_viewport_block
-
-        camera = {
-            "zoom": float(getattr(ui_state, "zoom", 1.0) or 1.0) if ui_state else 1.0,
-            "pan_x": float(getattr(ui_state, "pan_x", 0.0) or 0.0) if ui_state else 0.0,
-            "pan_y": float(getattr(ui_state, "pan_y", 0.0) or 0.0) if ui_state else 0.0,
-        }
-
-        return {
-            "version": 2,
-            "image_list1": _items(doc.image_list1) if doc else [],
-            "image_list2": _items(doc.image_list2) if doc else [],
-            "current_index1": doc.current_index1 if doc else -1,
-            "current_index2": doc.current_index2 if doc else -1,
-            "image1_path": doc.image1_path if doc else None,
-            "image2_path": doc.image2_path if doc else None,
-            "show_file_names": bool(ui_state.show_file_names) if ui_state else False,
-            "edit_name_1": ui_state.edit_name_1 if ui_state else "",
-            "edit_name_2": ui_state.edit_name_2 if ui_state else "",
-            "camera": camera,
-            "viewport": serialize_viewport_block(getattr(session, "viewport", None)),
-        }
+    def collect_pixel_cache_sources(self, session_id: str, context: TabContext) -> dict:
+        return persistence.collect_pixel_cache_sources(self, session_id, context)
 
     def deserialize_session(self, session_id: str, data: dict, context: TabContext) -> None:
-        store = getattr(context, "store", None)
-        if store is None or not data:
-            return
-        session = store.get_workspace_session(session_id)
-        if session is None:
-            return
-        from tabs.image_compare.state.document import DocumentModel, ImageItem
-        from tabs.image_compare.models import ImageCompareState
-        from tabs.image_compare.session_persistence import restore_viewport_block
-
-        def _items(entries):
-            # `image=None` — pixel data is not persisted, only the source
-            # path; the existing load pipeline decodes it from disk lazily,
-            # the same way `ImageSessionState.loaded_image*_paths` already
-            # tracks history without holding pixels.
-            return [
-                ImageItem(
-                    path=e.get("path", ""),
-                    display_name=e.get("display_name", ""),
-                    rating=e.get("rating", 0),
-                )
-                for e in entries or []
-            ]
-
-        session.document = DocumentModel(
-            image_list1=_items(data.get("image_list1")),
-            image_list2=_items(data.get("image_list2")),
-            current_index1=data.get("current_index1", -1),
-            current_index2=data.get("current_index2", -1),
-            image1_path=data.get("image1_path"),
-            image2_path=data.get("image2_path"),
-        )
-        camera = data.get("camera") or {}
-        store.set_session_state_slot(
-            _STATE_SLOT,
-            ImageCompareState(
-                show_file_names=bool(data.get("show_file_names", False)),
-                edit_name_1=data.get("edit_name_1", ""),
-                edit_name_2=data.get("edit_name_2", ""),
-                zoom=float(camera.get("zoom", 1.0) or 1.0),
-                pan_x=float(camera.get("pan_x", 0.0) or 0.0),
-                pan_y=float(camera.get("pan_y", 0.0) or 0.0),
-            ),
-            session_id=session_id,
-            emit_scope=None,
-        )
-        restore_viewport_block(getattr(session, "viewport", None), data.get("viewport"))
-        # If this session is currently shown, push camera onto the host now.
-        active = None
-        try:
-            getter = getattr(store, "get_active_workspace_session", None)
-            if callable(getter):
-                active = getter()
-        except Exception:
-            active = None
-        if session_id == self._active_session_id or (
-            active is not None and getattr(active, "id", None) == session_id
-        ):
-            self._apply_camera_to_host(
-                float(camera.get("zoom", 1.0) or 1.0),
-                float(camera.get("pan_x", 0.0) or 0.0),
-                float(camera.get("pan_y", 0.0) or 0.0),
-            )
+        persistence.deserialize_session(self, session_id, data, context)
 
     def rehydrate_session(self, session_id: str, context: TabContext) -> None:
-        store = getattr(context, "store", None)
-        if store is None:
-            return
-        session = store.get_workspace_session(session_id)
-        if session is None or session.session_type != self.session_type:
-            return
-        doc = session.document
-        if doc is None:
-            return
-
-        paths1 = [item.path for item in doc.image_list1 if getattr(item, "path", None)]
-        paths2 = [item.path for item in doc.image_list2 if getattr(item, "path", None)]
-        if doc.image1_path and doc.image1_path not in paths1:
-            paths1.append(doc.image1_path)
-        if doc.image2_path and doc.image2_path not in paths2:
-            paths2.append(doc.image2_path)
-        if not paths1 and not paths2:
-            return
-
-        sessions = _resolve_image_compare_sessions(context)
-        if sessions is None:
-            return
-
-        with store.using_workspace_session(session_id):
-            if paths1:
-                sessions.load_images_from_paths(paths1, 1)
-            if paths2:
-                sessions.load_images_from_paths(paths2, 2)
+        persistence.rehydrate_session(self, session_id, context)
 
     def accepts_drop(self, paths: list[Path]) -> bool:
-        return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
+        return drag_drop.accepts_drop(paths)
 
     def handle_drop(self, paths: list[Path], hint: dict | None = None) -> bool:
-        from PySide6.QtCore import QTimer
-
-        widget = self._widget
-        if widget is None:
-            logger.warning("ImageCompareTab.handle_drop: widget is not initialized")
-            return False
-        main_window = getattr(widget._context, "main_window", None) if widget._context else None
-        if main_window is None:
-            logger.warning("ImageCompareTab.handle_drop: main_window is unavailable")
-            return False
-        controller = getattr(main_window, "main_controller", None)
-        if controller is None:
-            presenter = getattr(main_window, "presenter", None)
-            controller = getattr(presenter, "main_controller", None)
-        sessions = getattr(controller, "sessions", None) if controller else None
-        if sessions is None:
-            logger.warning(
-                "ImageCompareTab.handle_drop: sessions controller unavailable "
-                "(main_controller=%r presenter=%r)",
-                getattr(main_window, "main_controller", None),
-                getattr(main_window, "presenter", None),
-            )
-            return False
-        image_paths = [str(p) for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
-        if not image_paths:
-            logger.warning(
-                "ImageCompareTab.handle_drop: no supported image paths in %s",
-                paths,
-            )
-            return False
-        slot = 1
-        if hint is not None:
-            if "slot" in hint:
-                slot = 1 if int(hint.get("slot") or 1) == 1 else 2
-            elif "is_left_area" in hint:
-                slot = 1 if bool(hint.get("is_left_area")) else 2
-        QTimer.singleShot(
-            0, lambda: sessions.load_images_from_paths(image_paths, slot)
-        )
-        return True
+        return drag_drop.handle_drop(self, paths, hint)
 
     def _register_settings(self, registry) -> None:
-        from plugins.settings.pages.analysis import build as build_analysis
-        from plugins.settings.registry import SettingsSection
-        from tabs.image_compare.ui.settings_performance import build_image_perf_extras
-        from tabs.image_compare.icons import Icon, get_icon
-
-        from plugins.settings.pages.analysis import SEARCH as ANALYSIS_SEARCH
-        from tabs.image_compare.ui.settings_performance import SEARCH as PERF_EXTRA_SEARCH
-
-        registry.add(
-            SettingsSection(
-                section_id="image_compare.analysis",
-                title_key="label.details",
-                icon=get_icon(Icon.HIGHLIGHT_DIFFERENCES),
-                build=build_analysis,
-                owner_tab=self.session_type,
-                order=40,
-                action_description_key="action.settings.analysis_desc",
-                search=ANALYSIS_SEARCH,
-            )
-        )
-        registry.add_section_extra(
-            "builtin.performance",
-            build_image_perf_extras,
-            owner_tab=self.session_type,
-            order=10,
-            search=PERF_EXTRA_SEARCH,
-        )
+        registration.register_settings(self, registry)
 
     def _register_actions(self, registry) -> None:
-        if self._widget is None:
-            return
-        from tabs.image_compare.actions import register_image_compare_actions
-
-        register_image_compare_actions(
-            widget=self._widget,
-            presenter=None,
-            registry=registry,
-        )
-        self._resync_action_shortcuts()
+        registration.register_actions(self, registry)
 
     def _resync_action_shortcuts(self) -> None:
-        from PySide6.QtWidgets import QApplication
-
-        from ui.actions.binder import resync_action_shortcuts
-
-        for widget in QApplication.topLevelWidgets():
-            if getattr(widget, "presenter", None) is not None:
-                resync_action_shortcuts(widget, active_tab=self.session_type)
-                return
+        registration.resync_action_shortcuts(self)
 
     def create_main_window_feature(self, feature_id: str, **kwargs):
         if feature_id != "image_canvas":
@@ -527,27 +222,17 @@ class ImageCompareTab(TabContract):
         return ImageCompareCanvasGeometryProvider(self._canvas_label)
 
     def _canvas_label(self):
-        if self._widget is None:
-            return None
-        return self._widget.image_label
+        return host_callbacks.canvas_label(self)
 
     def _clear_transient_text_focus(self, focused_widget) -> bool:
-        if self._widget is None:
-            return False
-        if focused_widget in (self._widget.edit_name1, self._widget.edit_name2):
-            focused_widget.clearFocus()
-            return True
-        return False
+        return host_callbacks.clear_transient_text_focus(self, focused_widget)
 
     def _sync_interpolation_combo_state(
         self, count: int, current_index: int, text: str, items: list[str]
     ) -> bool:
-        if self._widget is None:
-            return False
-        self._widget.combo_interpolation.updateState(
-            count=count, current_index=current_index, text=text, items=items
+        return host_callbacks.sync_interpolation_combo_state(
+            self, count, current_index, text, items
         )
-        return True
 
     def _setup_view_mode_buttons(
         self,
@@ -556,43 +241,12 @@ class ImageCompareTab(TabContract):
         channel_actions: list[tuple[str, str]],
         channel_mode: str,
     ) -> bool:
-        if self._widget is None:
-            return False
-        self._widget.btn_diff_mode_picker.set_actions(diff_actions)
-        self._widget.btn_diff_mode_picker.set_current(diff_mode)
-        self._widget.btn_channel_mode_picker.set_actions(channel_actions)
-        self._widget.btn_channel_mode_picker.set_current(channel_mode)
-        return True
+        return host_callbacks.setup_view_mode_buttons(
+            self, diff_actions, diff_mode, channel_actions, channel_mode
+        )
 
     def _is_canvas_content_ready(self) -> bool:
-        image_label = self._canvas_label()
-        if image_label is None:
-            return False
-
-        source_ready = bool(getattr(image_label, "_source_images_ready", False))
-        if source_ready:
-            return True
-
-        uploaded = getattr(image_label, "_images_uploaded", None)
-        if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
-            return True
-
-        runtime_state = getattr(image_label, "runtime_state", None)
-        if runtime_state is not None:
-            uploaded = getattr(runtime_state, "_images_uploaded", None)
-            if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
-                return True
-            background = getattr(runtime_state, "_background_pixmap", None)
-            if background is not None and not background.isNull():
-                return True
-
-        stored_qimages = getattr(image_label, "_stored_qimages", None)
-        if isinstance(stored_qimages, (list, tuple)):
-            for image in stored_qimages:
-                if image is not None and not image.isNull():
-                    return True
-
-        return False
+        return host_callbacks.is_canvas_content_ready(self)
 
     def register_canvas_features(self) -> None:
         import tabs.image_compare.canvas.features as features_pkg
@@ -609,4 +263,3 @@ class ImageCompareTab(TabContract):
 
     def dispose(self) -> None:
         self._widget = None
-

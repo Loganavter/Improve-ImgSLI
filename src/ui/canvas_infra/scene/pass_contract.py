@@ -81,6 +81,17 @@ class CanvasRenderPass(CanvasRenderPassBase):
     def prepare(self, widget, ctx, resource_updates) -> None:
         """Queue per-frame buffer/texture updates before ``beginPass``."""
 
+    def record_pre_pass(self, command_buffer, widget, ctx) -> None:
+        """Issue any of this pass's own extra beginPass/endPass pairs into
+        *other* render targets, before the main scene's own ``beginPass``
+        opens. Default no-op -- most passes only ever draw into the main
+        target and use ``record()`` for that. QRhi passes can't nest (no
+        ``beginPass`` while another is already open on the same command
+        buffer, see ``rhi_renderer.render()``'s own ``generate_all_dirty_mips``
+        precedent), so any pass that needs a GPU step into a texture of its
+        own -- not just CPU-side buffer/texture updates, which belong in
+        ``prepare()`` instead -- must do it here."""
+
     def record(self, command_buffer, widget, ctx) -> None:
         """Record draw commands inside the active QRhi render pass."""
         raise NotImplementedError(f"{type(self).__name__}.record() is not implemented")

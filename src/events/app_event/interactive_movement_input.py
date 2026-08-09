@@ -74,7 +74,8 @@ def apply_offset_input(current_offset: Point, dirs: MovementDirections, speed_fa
 _SPACING_BASE_SPEED = 0.012
 
 def apply_spacing_input(current_spacing: float, ds_dir: int, speed_factor: float, delta_time_sec: float, *, min_spacing: float, max_spacing: float, hold_time: float = 0.0) -> tuple[float, bool]:
-    accel = 1.0 + min((hold_time / 0.4) ** 2, 49.0)
+    ramp_progress = min(hold_time / 2.8, 1.0)
+    accel = 1.0 + 49.0 * (1.0 - (1.0 - ramp_progress) ** 2)
     del speed_factor
     delta_spacing = ds_dir * _SPACING_BASE_SPEED * delta_time_sec * accel
     new_spacing = current_spacing + delta_spacing

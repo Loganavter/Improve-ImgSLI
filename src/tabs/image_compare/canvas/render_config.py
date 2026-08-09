@@ -34,12 +34,26 @@ def update_display_split_position(
             cx, cy, cw, ch = content_rect_px
             if cw > 0 and ch > 0:
                 content_rect = QuickContentRect(x=cx, y=cy, width=cw, height=ch)
+        def _img_dims(img) -> tuple[int, int]:
+            if img is None: return (0, 0)
+            iw, ih = 0, 0
+            if hasattr(img, "width") and callable(img.width): iw = int(img.width())
+            elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): iw = int(img.size[0])
+            elif hasattr(img, "size") and callable(img.size): iw = int(img.size().width())
+            else: iw = int(img.width)
+            if hasattr(img, "height") and callable(img.height): ih = int(img.height())
+            elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): ih = int(img.size[1])
+            elif hasattr(img, "size") and callable(img.size): ih = int(img.size().height())
+            else: ih = int(img.height)
+            return iw, ih
+            
+        iw, ih = _img_dims(img1)
         result = compute_display_split_position(
             DisplaySplitPositionRequest(
                 widget_width=w,
                 widget_height=h,
-                image_width=img1.width,
-                image_height=img1.height,
+                image_width=iw,
+                image_height=ih,
                 split_visual=scene.split_position_visual,
                 is_horizontal=scene.is_horizontal,
                 zoom_level=zoom_level if anchor_to_viewport else 1.0,

@@ -1,6 +1,10 @@
 {
   "action": {
     "context_copy_path": "Copiar caminho",
+    "context_cut": "Recortar",
+    "context_copy": "Copiar",
+    "context_paste": "Colar",
+    "context_select_all": "Selecionar tudo",
     "context_carry_image": "Mover",
     "context_duplicate": "Duplicar",
     "context_name": "Nome",

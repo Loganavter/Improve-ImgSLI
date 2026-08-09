@@ -227,7 +227,8 @@ def on_theme_changed(self) -> None:
     super().on_theme_changed()  # still calls self.update()
 ```
 
-Full details and confirmed call sites: [KNOWN_BUGS.md](KNOWN_BUGS.md).
+Full details and confirmed call sites: `docs/dev/KNOWN_BUGS.md` in
+`improve-imgsli-internal-docs` (private).
 
 ## Known gotcha: icons must resolve lazily, not eagerly
 
@@ -243,5 +244,5 @@ theme change when the icon must stay an eager `QIcon`.)
 - `src/ui/theming.py` — small facade (`install_application_theme`, `polish_themed_dialog`, `resolve_theme_color`)
 - [PLUGINS.md](PLUGINS.md) — `get_qss_paths()` plugin contribution hook
 - [UI_INSPECTOR.md](UI_INSPECTOR.md) — runtime tool for inspecting which color token a widget resolves to
-- [KNOWN_BUGS.md](KNOWN_BUGS.md) — Qt/platform quirks, including the palette/autoFillBackground issue above
+- `docs/dev/KNOWN_BUGS.md` in `improve-imgsli-internal-docs` (private) — Qt/platform quirks, including the palette/autoFillBackground issue above
 - `sli-ui-toolkit/docs/DESIGN_LANGUAGE.md` — toolkit-side conventions

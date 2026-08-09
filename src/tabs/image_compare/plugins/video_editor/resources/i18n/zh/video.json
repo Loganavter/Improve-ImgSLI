@@ -68,5 +68,8 @@
     "crf_value_hint": "CRF值（0-51，越低越好）",
     "cq_value_hint": "CQ 值（0-51，越低越好）",
     "bitrate_hint": "比特率（例如：5000k, 5M）"
+  },
+  "tooltip": {
+    "use_favorite": "使用收藏"
   }
 }

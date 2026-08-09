@@ -68,5 +68,8 @@
     "crf_value_hint": "Valor CRF (0-51, Menor é melhor)",
     "cq_value_hint": "Valor de CQ (0-51, menor é melhor)",
     "bitrate_hint": "Bitrate (ex: 5000k, 5M)"
+  },
+  "tooltip": {
+    "use_favorite": "Usar Favorito"
   }
 }

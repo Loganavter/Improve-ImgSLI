@@ -13,8 +13,13 @@ from dataclasses import replace
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor
 
+from domain.types import Rect
 from tabs.image_compare.canvas.features.magnifier.constants import (
     MIN_MAGNIFIER_SPACING_RELATIVE_FOR_COMBINE as _COMBINE_THRESHOLD,
+)
+from tabs.image_compare.canvas.features.magnifier.geometry.core import (
+    clamp_capture_overlay_geometry as _clamp_capture_overlay_geometry_rect,
+    clamp_capture_position,
 )
 from tabs.image_compare.canvas.features.magnifier.state.store import (
     DEFAULT_MAGNIFIER_ID,
@@ -35,18 +40,6 @@ from ui.canvas_presentation.plan import (
 from ui.widgets.canvas.render_metrics import resolve_relative_px
 
 
-def clamp_capture_position(
-    rel_x: float, rel_y: float, width: int, height: int, capture_size: float
-):
-    ref_dim = math.sqrt(float(width) * float(height))
-    radius_x = (capture_size * ref_dim / 2.0) / max(1.0, float(width))
-    radius_y = (capture_size * ref_dim / 2.0) / max(1.0, float(height))
-    return (
-        max(radius_x, min(rel_x, 1.0 - radius_x)),
-        max(radius_y, min(rel_y, 1.0 - radius_y)),
-    )
-
-
 def clamp_capture_overlay_geometry(
     *,
     left: float,
@@ -57,24 +50,16 @@ def clamp_capture_overlay_geometry(
     center_y: float,
     radius: float,
 ):
-    if width <= 0 or height <= 0 or radius <= 0:
-        return center_x, center_y, max(0.0, radius)
-
-    right = left + width
-    bottom = top + height
-    max_radius_x = max(0.0, (right - left) / 2.0)
-    max_radius_y = max(0.0, (bottom - top) / 2.0)
-    clamped_radius = min(radius, max_radius_x, max_radius_y)
-
-    clamped_x = min(
-        max(center_x, left + clamped_radius),
-        right - clamped_radius,
+    """Thin adapter to the single shared implementation in ``geometry.core``
+    — every capture-region drawing variant (static ring, drag-time occluded
+    arcs, hidden-selection rings) must clamp through the same formula so
+    they can never disagree on where the edge of the image is."""
+    return _clamp_capture_overlay_geometry_rect(
+        bounds=Rect(x=left, y=top, w=width, h=height),
+        center_x=center_x,
+        center_y=center_y,
+        radius=radius,
     )
-    clamped_y = min(
-        max(center_y, top + clamped_radius),
-        bottom - clamped_radius,
-    )
-    return clamped_x, clamped_y, clamped_radius
 
 
 def build_magnifier_layout(
@@ -152,7 +137,7 @@ def build_magnifier_layout(
             height,
             model.capture_size_relative,
         )
-        capture_ref = math.sqrt(float(width) * float(height))
+        capture_ref = float(min(width, height))
         radius = (model.capture_size_relative * capture_ref) / 2.0
         center_x = float(content_offset_x) + (cap_x * width)
         center_y = float(content_offset_y) + (cap_y * height)

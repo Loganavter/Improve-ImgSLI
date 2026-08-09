@@ -33,7 +33,12 @@ def test_discover_without_tier_is_idempotent():
     types_after_first = set(registry.registered_types)
     registry.discover()
     assert set(registry.registered_types) == types_after_first
-    assert types_after_first == {"image_compare", "session_picker", "multi_compare"}
+    assert types_after_first == {
+        "image_compare",
+        "session_picker",
+        "multi_compare",
+        "image_gallery",
+    }
 
 
 def test_deferred_tier_is_idempotent():

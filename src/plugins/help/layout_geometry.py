@@ -30,6 +30,7 @@ HELP_GEOMETRY_POLICY = GeometryApplyPolicy(
     minimum_floor=(HELP_MIN_WIDTH, HELP_MIN_HEIGHT),
     width_bounds=(HELP_MIN_WIDTH, HELP_MAX_WIDTH),
     center_on_parent=True,
+    remember_key="help",
 )
 
 

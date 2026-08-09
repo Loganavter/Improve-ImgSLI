@@ -9,9 +9,10 @@ will route those primitives behind tab-owned proxies.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QLabel,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -19,6 +20,9 @@ from PySide6.QtWidgets import (
 from sli_ui_toolkit.widgets import ButtonGroup, Label, Slider
 
 from sli_ui_toolkit.i18n import tr
+from tabs.image_compare.icons import Icon, get_icon
+from tabs.layout_constants import CONTROL_EDGE_PADDING_PX
+from ui.widgets.info_hud import InfoHUD
 from ui.widgets.startup_placeholder import StartupPlaceholder
 from ui.widgets.themed_container import ThemedBackgroundContainer
 from ui.widgets.zoom_indicator import ZoomIndicator
@@ -49,10 +53,10 @@ class ImageCompareLayoutBuilder:
         ui.image_container_layout = self._image_container_layout()
         self._slider_panel_layout()
         ui.image_container_widget = self._image_container_widget()
-        ui.image_container_layout.addWidget(ui.magnifier_settings_panel)
         ui.image_container_layout.addWidget(ui.image_label)
         self._create_image_startup_placeholder()
         self._create_zoom_indicator()
+        self._create_info_huds()
 
         from sli_ui_toolkit.ui.widgets.overlays.drag_drop_overlay import DragDropOverlay
 
@@ -64,7 +68,7 @@ class ImageCompareLayoutBuilder:
         ui.save_buttons_widget = self._save_buttons_widget()
 
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, CONTROL_EDGE_PADDING_PX, 0, 0)
         layout.setSpacing(6)
         layout.addWidget(ui.selection_widget)
         layout.addWidget(ui.checkbox_widget)
@@ -78,6 +82,7 @@ class ImageCompareLayoutBuilder:
     def _selection_widget(self, parent: QWidget) -> QWidget:
         widget = ThemedBackgroundContainer(parent)
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 0)
         layout.setSpacing(3)
         layout.addLayout(self._button_row())
         layout.addLayout(self._combobox_row())
@@ -114,42 +119,31 @@ class ImageCompareLayoutBuilder:
         )
         ui.btn_zoom_reset = ui.zoom_indicator.btn_zoom_reset
 
+    def _create_info_huds(self) -> None:
+        ui = self.target
+        ui.image_info_hud1 = InfoHUD(ui.image_container_widget, corner="left")
+        ui.image_info_hud1.add_label(ui.resolution_label1)
+        ui.image_info_hud1.add_label(ui.file_name_label1)
+        ui.image_info_hud1.show_on(ui.image_label)
+
+        ui.image_info_hud2 = InfoHUD(ui.image_container_widget, corner="right")
+        ui.image_info_hud2.add_label(ui.resolution_label2)
+        ui.image_info_hud2.add_label(ui.file_name_label2)
+        ui.image_info_hud2.show_on(ui.image_label)
+
     def _footer_info_widget(self, parent: QWidget) -> QWidget:
         ui = self.target
         ui.psnr_label = Label("PSNR: --", variant="group-title")
         ui.ssim_label = Label("SSIM: --", variant="group-title")
         widget = ThemedBackgroundContainer(parent)
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(0)
-        layout.addLayout(self._resolution_layout())
-        filenames_layout = self._file_names_layout()
-        filenames_layout.setContentsMargins(5, 0, 5, 0)
-        layout.addLayout(filenames_layout)
-        return widget
-
-    def _resolution_layout(self) -> QHBoxLayout:
-        ui = self.target
-        layout = QHBoxLayout()
-        layout.addWidget(ui.resolution_label1, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout = QHBoxLayout(widget)
         layout.addStretch()
         layout.addWidget(ui.psnr_label)
         layout.addSpacing(15)
         layout.addWidget(ui.ssim_label)
         layout.addStretch()
-        layout.addWidget(ui.resolution_label2, alignment=Qt.AlignmentFlag.AlignRight)
-        layout.setContentsMargins(5, 0, 5, 0)
-        return layout
-
-    def _file_names_layout(self) -> QHBoxLayout:
-        ui = self.target
-        layout = QHBoxLayout()
-        ui.file_name_label1.setMinimumHeight(22)
-        ui.file_name_label2.setMinimumHeight(22)
-        layout.addWidget(ui.file_name_label1, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addStretch()
-        layout.addWidget(ui.file_name_label2, alignment=Qt.AlignmentFlag.AlignRight)
-        layout.setContentsMargins(5, 2, 5, 2)
-        return layout
+        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 4, CONTROL_EDGE_PADDING_PX, 4)
+        return widget
 
     def _button_row(self) -> QHBoxLayout:
         ui = self.target
@@ -199,6 +193,7 @@ class ImageCompareLayoutBuilder:
 
     def _checkbox_layout(self) -> QHBoxLayout:
         layout = QHBoxLayout()
+        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 0)
         layout.setSpacing(8)
         layout.addLayout(self._checkbox_groups_layout())
         layout.addStretch(1)
@@ -253,50 +248,60 @@ class ImageCompareLayoutBuilder:
         panel = ui.magnifier_settings_panel
         panel_layout = QVBoxLayout(panel)
         panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        panel_layout.setContentsMargins(0, 0, 0, 0)
+        panel_layout.setContentsMargins(
+            CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 0
+        )
         panel_layout.setSpacing(5)
-        panel_layout.addLayout(self._magnifier_sliders_row())
+        panel_layout.addLayout(self._magnifier_sliders_column())
 
         interpolation_layout = QHBoxLayout()
         interpolation_layout.setSpacing(5)
         ui.combo_interpolation.setMinimumHeight(28)
         ui.combo_interpolation.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
-        interpolation_layout.addWidget(ui.label_interpolation)
+        ui.label_interpolation.hide()
+        interpolation_layout.addStretch(1)
         interpolation_layout.addWidget(ui.combo_interpolation)
-        interpolation_layout.addStretch()
+        interpolation_layout.addStretch(1)
         panel_layout.addLayout(interpolation_layout)
         return panel
 
-    def _magnifier_sliders_row(self) -> QHBoxLayout:
+    def _magnifier_sliders_column(self) -> QVBoxLayout:
         ui = self.target
-        layout = QHBoxLayout()
-        layout.setSpacing(10)
-        self._configure_slider(
-            ui.slider_size,
-            minimum=50,
-            maximum=1000,
-            label=ui.label_magnifier_size,
-            layout=layout,
-            trailing_spacing=15,
+        column = QVBoxLayout()
+        column.setSpacing(6)
+        column.addLayout(
+            self._configure_slider(
+                ui.slider_size,
+                minimum=50,
+                maximum=1000,
+                icon=Icon.MAGNIFIER_SIZE,
+                icon_attr="icon_magnifier_size",
+                label=ui.label_magnifier_size,
+            )
         )
-        self._configure_slider(
-            ui.slider_capture,
-            minimum=1,
-            maximum=1000,
-            label=ui.label_capture_size,
-            layout=layout,
-            trailing_spacing=15,
+        column.addLayout(
+            self._configure_slider(
+                ui.slider_capture,
+                minimum=1,
+                maximum=1000,
+                icon=Icon.CAPTURE_SIZE,
+                icon_attr="icon_capture_size",
+                label=ui.label_capture_size,
+            )
         )
-        self._configure_slider(
-            ui.slider_speed,
-            minimum=1,
-            maximum=500,
-            label=ui.label_movement_speed,
-            layout=layout,
+        column.addLayout(
+            self._configure_slider(
+                ui.slider_speed,
+                minimum=1,
+                maximum=500,
+                icon=Icon.MOVEMENT_SPEED,
+                icon_attr="icon_movement_speed",
+                label=ui.label_movement_speed,
+            )
         )
-        return layout
+        return column
 
     def _configure_slider(
         self,
@@ -304,22 +309,36 @@ class ImageCompareLayoutBuilder:
         *,
         minimum: int,
         maximum: int,
+        icon: Icon,
+        icon_attr: str,
         label: Label,
-        layout: QHBoxLayout,
-        trailing_spacing: int = 0,
-    ) -> None:
+    ) -> QHBoxLayout:
         slider.setMinimum(minimum)
         slider.setMaximum(maximum)
         slider.setMinimumWidth(80)
         slider.setFixedHeight(28)
-        layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(slider, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
-        if trailing_spacing:
-            layout.addSpacing(trailing_spacing)
+        # Text label is kept alive (translations.py still updates it) but not
+        # shown -- the icon is the row's only leading element now, and carries
+        # the same text as a tooltip (see translations.py _bind_slider_labels).
+        label.hide()
+        icon_label = self._slider_icon(icon)
+        setattr(self.target, icon_attr, icon_label)
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(slider, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        return row
+
+    def _slider_icon(self, icon: Icon) -> QLabel:
+        pixmap_label = QLabel()
+        pixmap_label.setPixmap(get_icon(icon).pixmap(QSize(18, 18)))
+        pixmap_label.setFixedSize(18, 18)
+        return pixmap_label
 
     def _edit_layout(self) -> QHBoxLayout:
         ui = self.target
         layout = QHBoxLayout()
+        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 0)
         layout.setSpacing(8)
         ui.edit_name1.setMinimumHeight(30)
         ui.edit_name2.setMinimumHeight(30)
@@ -336,12 +355,15 @@ class ImageCompareLayoutBuilder:
         ui = self.target
         layout = QHBoxLayout()
         layout.setSpacing(0)
-        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setContentsMargins(
+            CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 6
+        )
         ui.btn_save.setMinimumHeight(32)
         ui.btn_save.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         layout.addWidget(ui.btn_save, 1)
         widget = ThemedBackgroundContainer()
+        widget.setFixedHeight(42)
         widget.setLayout(layout)
         return widget

@@ -37,13 +37,24 @@ class InterpolationFlyoutController:
         # Find Action / cold open: combo lives on magnifier_settings_panel,
         # which is hidden until the magnifier is on — same idea as
         # FontSettingsController._ensure_text_settings_chrome.
-        self._ensure_magnifier_panel_chrome()
+        self.ensure_panel_visible()
 
         host = self.manager.host
         if host._interp_flyout is None:
             host._interp_flyout = SimpleOptionsFlyout(host.parent_widget)
             host._interp_flyout.closed.connect(self.on_closed)
             host._interp_flyout.item_chosen.connect(self.apply_choice)
+            # combo_interpolation lives inside magnifier_settings_flyout's
+            # own content -- link them so AnchoredFlyoutAutoHide (see its
+            # MagnifierSettingsHoverController) treats the cursor moving
+            # onto this dropdown as still "inside", not a reason to
+            # auto-hide the settings panel out from under an in-progress
+            # pick. See sli_ui_toolkit's flyout_timer_service.py.
+            settings_flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+            if settings_flyout is not None:
+                from sli_ui_toolkit.managers import FlyoutManager
+
+                FlyoutManager.get_instance().link(settings_flyout, host._interp_flyout)
 
         lang = host.store.settings.current_language
         method_keys = list(AppConstants.INTERPOLATION_METHODS_MAP.keys())
@@ -170,6 +181,7 @@ class InterpolationFlyoutController:
         if combo is not None:
             combo.setFlyoutOpen(False)
         host._interp_popup_open = False
+        self._cancel_settings_auto_hide()
 
     def on_closed(self):
         host = self.manager.host
@@ -177,6 +189,24 @@ class InterpolationFlyoutController:
         if combo is not None:
             combo.setFlyoutOpen(False)
         host._interp_popup_open = False
+        self._cancel_settings_auto_hide()
+
+    def _cancel_settings_auto_hide(self) -> None:
+        """Drop any pending hover-leave auto-hide on magnifier_settings_flyout.
+
+        The dropdown opens well below the settings panel/toolbar, so by the
+        time it closes (e.g. right after picking an item) the cursor is
+        nowhere near either safe zone AnchoredFlyoutAutoHide checks -- its
+        still-pending timer (scheduled by the earlier hover-leave onto the
+        dropdown, deferred only while the dropdown itself stayed visible,
+        see FlyoutManager.link() in show() above) would otherwise fire
+        within its retry window and close the panel right out from under
+        the selection. Cancelling here "pins" it open until the next real
+        hover/click elsewhere re-establishes normal auto-hide.
+        """
+        settings_flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+        if settings_flyout is not None:
+            settings_flyout.cancel_auto_hide()
 
     def has_focus_inside(self, new_widget) -> bool:
         if new_widget is None:
@@ -192,24 +222,21 @@ class InterpolationFlyoutController:
                 parent = parent.parent()
         return False
 
-    def _ensure_magnifier_panel_chrome(self) -> None:
-        """Show magnifier_settings_panel so ``combo_interpolation`` can be anchored."""
+    def ensure_panel_visible(self) -> None:
+        """Show magnifier_settings_panel (sliders + ``combo_interpolation`` row).
+
+        Shared by the interpolation flyout's cold-open path and by the
+        magnifier slider Find Action rows, which anchor to the same panel.
+        """
         widget = self.widget
         panel = getattr(widget, "magnifier_settings_panel", None)
         combo = getattr(widget, "combo_interpolation", None)
         if self._is_alive_and_visible(panel) and self._is_alive_and_visible(combo):
             return
 
-        btn = getattr(widget, "btn_magnifier", None)
-        if btn is not None and hasattr(btn, "isChecked") and not bool(btn.isChecked()):
-            try:
-                btn.setChecked(True)
-            except TypeError:
-                btn.setChecked(True)
-
-        toggle = getattr(widget, "toggle_magnifier_panel_visibility", None)
-        if callable(toggle):
-            toggle(True)
+        opener = getattr(widget, "open_magnifier_settings_flyout", None)
+        if callable(opener):
+            opener()
 
         app = QApplication.instance()
         if app is not None:

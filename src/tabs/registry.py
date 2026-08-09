@@ -574,6 +574,20 @@ class TabRegistry:
             logger.exception("Tab serialize_session failed for %s", session_type)
             return None
 
+    def collect_pixel_cache_sources(
+        self, session_type: str, session_id: str
+    ) -> dict[str, Any]:
+        """Ask the owning tab for live open ``TiledPixelStore`` sources to
+        embed as a decode-skip cache. Default `{}` (opt-in per tab)."""
+        tab = self._tabs.get(session_type)
+        if tab is None or self._context is None:
+            return {}
+        try:
+            return tab.collect_pixel_cache_sources(session_id, self._context)
+        except Exception:
+            logger.exception("Tab collect_pixel_cache_sources failed for %s", session_type)
+            return {}
+
     def deserialize_session(
         self, session_type: str, session_id: str, data: dict[str, Any]
     ) -> None:

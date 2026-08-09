@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QGuiApplication
 from PySide6.QtWidgets import QApplication, QWidget
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -28,6 +28,10 @@ class UiInspectorController(QObject):
         self._committed_widget: QWidget | None = None
         self._hover_widget: QWidget | None = None
         self._shift_held = False
+        # Last top-level window that wasn't inspector chrome — the panel is
+        # itself a separate always-on-top window, so QApplication.activeWindow()
+        # at "Dump layout" click time would just be the panel.
+        self._last_focused_window: QWidget | None = window
         self._hover_timer = QTimer(self)
         self._hover_timer.setInterval(30)
         self._hover_timer.timeout.connect(self._poll_hover)
@@ -36,6 +40,7 @@ class UiInspectorController(QObject):
         )
         self._panel.force_repaint_requested.connect(self._force_repaint)
         self._panel.force_update_requested.connect(self._force_update)
+        self._panel.dump_layout_requested.connect(self._dump_layout)
         self._app.installEventFilter(self)
 
     def shutdown(self) -> None:
@@ -69,6 +74,14 @@ class UiInspectorController(QObject):
             return False
         if event_type == QEvent.Type.Resize and isinstance(obj, QWidget):
             self._sync_overlay_for(obj)
+            return False
+        if (
+            event_type == QEvent.Type.WindowActivate
+            and isinstance(obj, QWidget)
+            and obj.isWindow()
+            and not bool(obj.property("_ui_inspector_owned"))
+        ):
+            self._last_focused_window = obj
             return False
         if not self._enabled:
             return False
@@ -191,6 +204,37 @@ class UiInspectorController(QObject):
             return
         widget.update()
         self._resnapshot_committed()
+
+    def _dump_layout(self) -> None:
+        target = self._last_focused_window or self._window
+        try:
+            import json
+            import tempfile
+            from datetime import datetime
+            from pathlib import Path
+
+            from devtools.ui_layout_dump import dump_ui_layout
+            from ui.actions.registry import get_action_registry
+
+            data = dump_ui_layout(target, get_action_registry())
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            out_path = Path(tempfile.gettempdir()) / (
+                f"imgsli_ui_dump_{type(target).__name__}_{stamp}.json"
+            )
+            out_path.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        except Exception:
+            logger.exception("UI Inspector: layout dump failed")
+            self._panel.show_dump_result(None)
+            return
+        QGuiApplication.clipboard().setText(str(out_path))
+        logger.info(
+            "UI Inspector: dumped %s layout to %s (path copied to clipboard)",
+            type(target).__name__,
+            out_path,
+        )
+        self._panel.show_dump_result(str(out_path))
 
     def _resnapshot_committed(self) -> None:
         widget = self._committed_widget

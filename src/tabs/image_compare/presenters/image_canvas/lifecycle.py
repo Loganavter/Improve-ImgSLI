@@ -7,7 +7,7 @@ from PySide6.QtGui import QPixmap
 
 from events.image_label_event_handler import ImageLabelEventHandler
 from events.window_event_handler import WindowEventHandler
-from tabs.image_compare.canvas.helpers import clear_canvas_diff_source, get_canvas
+from tabs.image_compare.canvas.helpers import get_canvas
 
 _last_debug_log_time = 0
 _debug_log_interval = 1.0
@@ -26,8 +26,6 @@ def initialize_canvas_presenter(presenter) -> None:
 
     presenter.current_displayed_pixmap: QPixmap | None = None
     presenter.current_rendering_task_id = 0
-    presenter.current_scaling_task_id = 0
-    presenter._display_cache_request_key = None
     presenter._last_displayed_task_id = 0
     presenter._cached_base_pixmap: QPixmap | None = None
     presenter._last_bg_signature = None
@@ -106,10 +104,16 @@ def invalidate_render_state(presenter):
         except Exception:
             pass
     presenter._active_diff_toast_id = None
-
-    image_label = get_canvas(getattr(presenter, "widget", None))
-    if image_label is not None:
-        clear_canvas_diff_source(image_label)
+    # Deliberately not clear_canvas_diff_source(image_label) here anymore:
+    # this runs on every image swap (loading.py's post-load
+    # _invalidate_image_canvas_render_state calls), and unconditionally
+    # wiping the GPU-side diff texture reference the instant a swap starts
+    # defeated the whole point of keeping the stale diff visible until the
+    # new one is ready (cached_diff_source_key-based staleness, see
+    # diff_cache.py) -- sync_diff_texture already re-uploads reactively
+    # whenever cached_diff_image actually changes, and already clears the
+    # texture itself when diff_mode leaves "ssim", so nothing here needs to
+    # force it (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM follow-up).
 
 
 def start_interactive_movement(presenter):

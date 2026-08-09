@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ImproveImgSLI")
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 _STATE_SLOT = "multi_compare.state"
@@ -529,6 +529,28 @@ class MultiCompareTab(TabContract):
             "divider_settings": _divider_to_dict(state.divider_settings),
         }
 
+    def collect_pixel_cache_sources(self, session_id: str, context: TabContext) -> dict:
+        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+        store = getattr(context, "store", None)
+        if store is None:
+            return {}
+        session = store.get_workspace_session(session_id)
+        if session is None or session.session_type != self.session_type:
+            return {}
+        state = session.state_slots.get(_STATE_SLOT)
+        if state is None:
+            return {}
+        sources: dict = {}
+        for slot in state.slots:
+            if (
+                slot.path is not None
+                and isinstance(slot.image, TiledPixelStore)
+                and slot.image.is_open
+            ):
+                sources[str(slot.path)] = slot.image
+        return sources
+
     def deserialize_session(self, session_id: str, data: dict, context: TabContext) -> None:
         store = getattr(context, "store", None)
         if store is None or not data:
@@ -680,6 +702,10 @@ class MultiCompareTab(TabContract):
                 return False
             self._widget.begin_pending_paste(image_paths)
             return True
+        if service_id == "toast_anchor_widget":
+            if self._widget is None:
+                return None
+            return self._widget.canvas
         return None
 
     def accepts_drop(self, paths: list[Path]) -> bool:

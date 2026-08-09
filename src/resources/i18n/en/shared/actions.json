@@ -2,6 +2,10 @@
   "action": {
     "export_video": "Export Video",
     "context_copy_path": "Copy path",
+    "context_cut": "Cut",
+    "context_copy": "Copy",
+    "context_paste": "Paste",
+    "context_select_all": "Select all",
     "context_carry_image": "Move",
     "context_duplicate": "Duplicate",
     "context_name": "Name",

@@ -14,5 +14,8 @@
     "lock_aspect_ratio": "Lock aspect ratio",
     "select_background_color": "Select Background Color",
     "select_output_directory": "Select Output Directory"
+  },
+  "tooltip": {
+    "use_favorite": "Use Favorite"
   }
 }

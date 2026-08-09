@@ -14,6 +14,8 @@
     "highlight_diff_in_progress": "Подсветка различий...",
     "invalid_data": "Неверные данные",
     "invalid_item_type_or_empty_path": "Неверный тип элемента или пустой путь",
+    "loading_full_image_done": "Полная версия загружена",
+    "loading_full_image_in_progress": "Загрузка полной версии изображения...",
     "loading_images_from_clipboard": "Загрузка изображений из буфера обмена...",
     "no_image_in_clipboard": "В буфере обмена нет изображения",
     "saved": "Сохранено",

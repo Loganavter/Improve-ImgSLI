@@ -113,6 +113,27 @@ widget and immediately re-snapshot it:
 These are diagnostic-only controls; they mutate live widget attributes for
 the current session and are not persisted.
 
+## Dump layout button
+
+The panel's **Dump layout** button (top row, next to the Copy buttons) wraps
+[UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md) for interactive use: no selection
+needed, no CLI restart. It writes the recursive widget tree (geometry + bound
+Find Action ids) of the **last non-inspector top-level window that had
+focus** — main window, or whatever dialog (Settings, Help, Video Editor, …)
+you had open/focused before clicking into the inspector panel — to a JSON
+file under the OS temp dir (`imgsli_ui_dump_<ClassName>_<timestamp>.json`),
+copies that path to the clipboard, and shows it in the panel.
+
+Tracked via `QEvent.WindowActivate` on the app-wide event filter
+(`UiInspectorController._last_focused_window`, `controller.py`), filtered to
+exclude the inspector's own panel (`_ui_inspector_owned` property) — the
+panel is itself a separate always-on-top window, so
+`QApplication.activeWindow()` at click time would just be the panel, not the
+window you meant to dump. This only fires for real window-manager focus
+activation; the offscreen QPA plugin used in CI/headless testing does not
+dispatch it, so this path is exercised there by injecting a synthetic
+`WindowActivate` event rather than relying on `activateWindow()`.
+
 ## Initial Feature Set
 
 1. Add `RuntimeFlags(debug, ui_inspector)`.

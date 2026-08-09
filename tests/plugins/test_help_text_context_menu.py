@@ -88,6 +88,10 @@ def test_help_select_all_includes_headings_and_paragraphs(qtbot):
 def test_rmb_surface_uses_popup_when_toolkit_is_new_enough(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Wayland dev machines set these; force them off so the win32 branch
+    # under test actually runs instead of short-circuiting on _running_on_wayland().
+    monkeypatch.delenv("XDG_SESSION_TYPE", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr("sli_ui_toolkit.__version__", "3.1.4")
     assert rmb_context_menu_surface() == "popup"

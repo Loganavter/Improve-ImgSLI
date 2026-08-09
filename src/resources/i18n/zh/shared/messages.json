@@ -14,6 +14,8 @@
     "highlight_diff_in_progress": "高亮差异中...",
     "invalid_data": "无效数据",
     "invalid_item_type_or_empty_path": "无效的项目类型或空路径",
+    "loading_full_image_done": "完整版本已加载",
+    "loading_full_image_in_progress": "正在加载完整版本图像...",
     "loading_images_from_clipboard": "从剪贴板加载图像...",
     "no_image_in_clipboard": "剪贴板中没有图像",
     "saved": "已保存",

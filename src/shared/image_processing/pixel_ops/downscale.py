@@ -29,6 +29,13 @@ def downscale_source_to_pil(
             return rgba.copy()
         return source.resize(target_size, resample).convert("RGBA")
 
+    # Support QImage gracefully
+    from PySide6.QtGui import QImage
+    if isinstance(source, QImage):
+        qimg = source.convertToFormat(QImage.Format.Format_RGBA8888)
+        pil_img = Image.frombytes("RGBA", (qimg.width(), qimg.height()), bytes(qimg.constBits()))
+        return downscale_source_to_pil(pil_img, target_size, resample=resample)
+
     if not isinstance(source, TiledPixelStore):
         raise TypeError(f"Unsupported pixel source type: {type(source)!r}")
 
@@ -65,20 +72,59 @@ def downscale_pair_to_limit(
     limit: int,
     *,
     resample: Image.Resampling = Image.Resampling.LANCZOS,
+    allow_materialize: bool = False,
 ) -> tuple[Image.Image, Image.Image]:
-    """Downscale a pair to fit within ``limit`` on the longest edge."""
-    w, h = img1.size
-    if limit <= 0 or max(w, h) <= limit:
-        pil1 = (
-            img1
-            if isinstance(img1, Image.Image)
-            else downscale_source_to_pil(img1, img1.size, resample=resample)
-        )
-        pil2 = (
-            img2
-            if isinstance(img2, Image.Image)
-            else downscale_source_to_pil(img2, img2.size, resample=resample)
-        )
+    """Downscale a pair to fit within ``limit`` on the longest edge.
+
+    When both sources are already ``PIL.Image`` and fit within *limit*, they
+    are returned as-is (no copy). When a source is a ``TiledPixelStore`` and
+    fits within *limit* (or limit <= 0), materialising to PIL spikes RAM to
+    full-res×4 bytes.
+
+    By default (*allow_materialize=False*) a ``ValueError`` is raised in that
+    case so the caller can fall back to a cheaper path (e.g. preview tier).
+    Pass ``allow_materialize=True`` only when full materialisation is
+    intentional (e.g. SSIM analysis, metrics, export).
+    """
+    def _size(src) -> tuple[int, int]:
+        if hasattr(src, "width") and hasattr(src, "height"):
+            w = src.width() if callable(src.width) else src.width
+            h = src.height() if callable(src.height) else src.height
+            return (int(w), int(h))
+        if hasattr(src, "size"):
+            s = src.size() if callable(src.size) else src.size
+            if hasattr(s, "width") and hasattr(s, "height"):
+                return (int(s.width()), int(s.height()))
+            if isinstance(s, (tuple, list)):
+                return (int(s[0]), int(s[1]))
+        return (0, 0)
+
+    w, h = _size(img1)
+    needs_downscale = limit > 0 and max(w, h) > limit
+
+    if not needs_downscale:
+        # Images fit within the limit (or limit is disabled).
+        pil1 = img1 if isinstance(img1, Image.Image) else None
+        pil2 = img2 if isinstance(img2, Image.Image) else None
+        if pil1 is None or pil2 is None:
+            if not allow_materialize:
+                # Materialising a TiledPixelStore without downscaling spikes RAM;
+                # the caller should use the preview tier or pass allow_materialize=True.
+                raise ValueError(
+                    "downscale_pair_to_limit: source is a TiledPixelStore and fits "
+                    "within limit — materialising would spike RAM. Pass an explicit "
+                    "downscale target, use allow_materialize=True for analysis paths, "
+                    "or use the preview tier for display."
+                )
+            # allow_materialize=True: explicit opt-in for analysis paths (SSIM, metrics).
+            pil1 = (
+                img1 if isinstance(img1, Image.Image)
+                else downscale_source_to_pil(img1, _size(img1), resample=resample)
+            )
+            pil2 = (
+                img2 if isinstance(img2, Image.Image)
+                else downscale_source_to_pil(img2, _size(img2), resample=resample)
+            )
         if pil1.mode != "RGBA":
             pil1 = pil1.convert("RGBA")
         if pil2.mode != "RGBA":

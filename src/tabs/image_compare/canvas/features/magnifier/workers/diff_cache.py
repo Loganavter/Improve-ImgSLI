@@ -3,6 +3,7 @@ import logging
 from sli_ui_toolkit.workers import GenericWorker
 
 from shared.image_processing.store_lease import StoreLease
+from shared.rendering.image_identity import image_uid
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -46,11 +47,25 @@ def request_cached_diff_image_async(presenter, source1, source2, diff_mode):
 
     request_key = (
         diff_mode,
-        id(source1),
-        id(source2) if source2 is not None else 0,
+        # image_uid, not id(): id() is a memory address CPython can reuse
+        # once the old source is garbage collected -- exactly what tends to
+        # happen right after a swap discards it -- so a request for the new
+        # pair could collide with a stale cached request_key from before
+        # the swap and get skipped as "already pending/served" (see the
+        # sibling fix in rhi_renderer/__init__.py's source_ids).
+        image_uid(source1),
+        image_uid(source2),
         getattr(source1, "size", None),
         getattr(source2, "size", None),
     )
+    render_cache = presenter.store.viewport.session_data.render_cache
+    # Already have a diff for this exact source pair -- render_flow.py calls
+    # this unconditionally every frame diff_mode=="ssim" (not just when
+    # cached_diff_image is None, so the stale previous-pair diff stays
+    # visible across a swap instead of vanishing); this is what stops that
+    # from recomputing SSIM every single frame once it's already served.
+    if getattr(render_cache, "cached_diff_source_key", None) == request_key:
+        return
     pending_key = getattr(presenter, "_pending_cached_diff_request_key", None)
     if pending_key == request_key:
         return
@@ -63,8 +78,13 @@ def request_cached_diff_image_async(presenter, source1, source2, diff_mode):
         if diff_image is None:
             dismiss_active_diff_toast(presenter)
             return
+        # Both fields are updated together so a future request_key
+        # comparison never sees a served key without its matching image.
         presenter.store.viewport.session_data.render_cache.cached_diff_image = (
             diff_image
+        )
+        presenter.store.viewport.session_data.render_cache.cached_diff_source_key = (
+            request_key
         )
         complete_diff_toast(presenter, request_key)
         presenter._last_mag_signature = None

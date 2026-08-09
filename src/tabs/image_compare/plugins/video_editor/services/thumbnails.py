@@ -14,6 +14,33 @@ _thlog = logging.getLogger("ImproveImgSLI.video_thumbnails")
 
 DEFAULT_THUMBNAIL_RENDER_SCALE = 2.0
 
+def _thumbnail_render_target_size(
+    thumbnail_size: Tuple[int, int], render_scale: float
+) -> Tuple[int, int]:
+    out_w, out_h = thumbnail_size
+    render_scale = max(1.0, float(render_scale))
+    return (
+        max(1, int(round(out_w * render_scale))),
+        max(1, int(round(out_h * render_scale))),
+    )
+
+
+def _finish_thumbnail_image(
+    rendered: Optional[Image.Image], thumbnail_size: Tuple[int, int]
+) -> Optional[Image.Image]:
+    if rendered is None:
+        return None
+    out_w, out_h = thumbnail_size
+    rendered = rendered.convert("RGBA")
+    if rendered.height == out_h:
+        return rendered
+    if rendered.height <= 0:
+        return None
+    fit_scale = float(out_h) / float(rendered.height)
+    final_w = max(1, int(round(rendered.width * fit_scale)))
+    return rendered.resize((final_w, out_h), Image.Resampling.LANCZOS)
+
+
 def _render_thumbnail_using_renderer(
     snap,
     thumbnail_size: Tuple[int, int],
@@ -22,26 +49,14 @@ def _render_thumbnail_using_renderer(
     render_snapshot: Callable[..., Optional[Image.Image]],
 ) -> Optional[Image.Image]:
     try:
-        out_w, out_h = thumbnail_size
-        render_scale = max(1.0, float(render_scale))
-        target_w = max(1, int(round(out_w * render_scale)))
-        target_h = max(1, int(round(out_h * render_scale)))
+        target_w, target_h = _thumbnail_render_target_size(thumbnail_size, render_scale)
         rendered = render_snapshot(
             snap,
             target_w,
             target_h,
             auto_crop=auto_crop,
         )
-        if rendered is None:
-            return None
-        rendered = rendered.convert("RGBA")
-        if rendered.height == out_h:
-            return rendered
-        if rendered.height <= 0:
-            return None
-        fit_scale = float(out_h) / float(rendered.height)
-        final_w = max(1, int(round(rendered.width * fit_scale)))
-        return rendered.resize((final_w, out_h), Image.Resampling.LANCZOS)
+        return _finish_thumbnail_image(rendered, thumbnail_size)
     except Exception as e:
         logger.error(f"Error rendering thumbnail using shared renderer: {e}", exc_info=True)
         return None
@@ -63,6 +78,7 @@ class ThumbnailService(QObject):
         self._thumbnail_size = (160, 90)
         self._thumbnail_render_scale = DEFAULT_THUMBNAIL_RENDER_SCALE
         self._render_snapshot: Optional[Callable[..., Optional[Image.Image]]] = None
+        self._render_snapshot_async: Optional[Callable[..., None]] = None
         self._auto_crop = False
         self._active_workers = 0
         self._generation_cancelled = False
@@ -229,6 +245,16 @@ class ThumbnailService(QObject):
     ):
         self._render_snapshot = renderer
 
+    def set_async_snapshot_renderer(self, renderer: Optional[Callable[..., None]]):
+        """Preferred over :meth:`set_snapshot_renderer` when available.
+
+        ``renderer(snap, out_w, out_h, callback, auto_crop=...)`` must call
+        ``callback(pil_image_or_None)`` later instead of returning — lets the
+        worker thread submit the GPU render and move on to the next
+        thumbnail's CPU prep instead of blocking on the round-trip.
+        """
+        self._render_snapshot_async = renderer
+
     def _build_initial_indices(
         self,
         *,
@@ -264,6 +290,26 @@ class ThumbnailService(QObject):
         if index in self._pending_indices:
             return
         self._pending_indices.add(index)
+
+        if self._render_snapshot_async is not None:
+            # Async path: the worker submits the GPU render and returns
+            # right away, freeing the (single) pool thread to start the
+            # next thumbnail's CPU prep instead of sitting blocked on the
+            # GPU round-trip. Completion bookkeeping (_on_thumbnail_generated
+            # / _on_worker_finished) happens from the callback once the
+            # render actually finishes, not when this worker returns.
+            worker = GenericWorker(
+                self._start_single_thumbnail_async,
+                index,
+                self._thumbnail_size,
+                self._auto_crop,
+                self._thumbnail_render_scale,
+                self._fps,
+                track_finish,
+            )
+            self._thread_pool.start(worker, priority=priority)
+            return
+
         worker = GenericWorker(
             self._generate_single_thumbnail,
             index,
@@ -279,6 +325,50 @@ class ThumbnailService(QObject):
         if track_finish:
             worker.signals.finished.connect(self._on_worker_finished)
         self._thread_pool.start(worker, priority=priority)
+
+    def _start_single_thumbnail_async(
+        self,
+        index: int,
+        thumbnail_size: Tuple[int, int],
+        auto_crop: bool,
+        render_scale: float,
+        fps: int,
+        track_finish: bool,
+    ) -> None:
+        """Runs on the background pool thread; must not block on the GPU."""
+        try:
+            _thlog.debug(
+                "thumbnail_worker_start index=%s fps=%s async=True", index, fps
+            )
+            snap = self._recording.evaluate_at(float(index) / float(max(1, fps)))
+            if self._render_snapshot_async is None:
+                raise RuntimeError("Async thumbnail GPU renderer is not configured")
+            target_w, target_h = _thumbnail_render_target_size(
+                thumbnail_size, render_scale
+            )
+
+            def _on_rendered(rendered_pil: Optional[Image.Image]) -> None:
+                result = _finish_thumbnail_image(rendered_pil, thumbnail_size)
+                _thlog.debug(
+                    "thumbnail_worker_end index=%s ok=%s size=%s async=True",
+                    index,
+                    result is not None,
+                    getattr(result, "size", None),
+                )
+                self._on_thumbnail_generated(index, result)
+                if track_finish:
+                    self._on_worker_finished()
+
+            self._render_snapshot_async(
+                snap, target_w, target_h, _on_rendered, auto_crop=auto_crop
+            )
+        except Exception as e:
+            logger.error(
+                f"Error starting async thumbnail at index {index}: {e}", exc_info=True
+            )
+            self._on_thumbnail_generated(index, None)
+            if track_finish:
+                self._on_worker_finished()
 
     def _on_thumbnail_generated(self, index: int, pil_image):
         self._pending_indices.discard(index)

@@ -134,7 +134,14 @@ class FontSettingsFlyout(BaseFlyout):
             flyout_point="bottom-right",
             offset=10,
             animation="slide",
-            animation_axis="vertical",
+            # "diagonal" (not "auto"): "auto" splits one fixed distance
+            # across the anchor->flyout unit vector, so with a narrow icon
+            # button as the anchor and this much wider panel, the vertical
+            # component of that vector dominates and the horizontal slide
+            # shrinks to a few barely-visible pixels -- looks like it's
+            # sliding straight up out of the button's top-center, not left.
+            # "diagonal" gives each axis the full distance independently.
+            animation_axis="diagonal",
         )
 
     def has_active_dialog(self) -> bool:

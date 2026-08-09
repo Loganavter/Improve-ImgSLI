@@ -14,5 +14,8 @@
     "lock_aspect_ratio": "Заблокировать соотношение сторон",
     "select_background_color": "Выбрать цвет фона",
     "select_output_directory": "Выбрать выходную директорию"
+  },
+  "tooltip": {
+    "use_favorite": "Использовать избранное"
   }
 }

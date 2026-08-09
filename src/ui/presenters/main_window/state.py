@@ -129,6 +129,9 @@ def apply_initial_settings_to_ui(presenter):
 
 
 def on_store_state_changed(presenter, domain: str):
+    from ui.widgets.flyout_debug import flyout_debug
+
+    flyout_debug("on_store_state_changed(domain=%r)", domain)
     is_viewport_domain = domain == "viewport" or domain.startswith("viewport.")
 
     if domain == "workspace":
@@ -148,9 +151,9 @@ def on_store_state_changed(presenter, domain: str):
                 "file_names",
                 "resolution",
                 "combobox",
-                "slider_tooltips",
                 "ratings",
                 "window_schedule",
+                "zoom_indicator",
             ]
         )
         return
@@ -179,9 +182,9 @@ def on_store_state_changed(presenter, domain: str):
             "file_names",
             "resolution",
             "combobox",
-            "slider_tooltips",
             "ratings",
             "window_schedule",
+            "zoom_indicator",
         ]
     )
 
@@ -190,7 +193,9 @@ def do_update_resolution_labels(presenter):
     document = _document(presenter)
     if document is None:
         return
-    has_both_images = bool(document.image1_path and document.image2_path)
+    has_image1 = bool(document.image1_path)
+    has_image2 = bool(document.image2_path)
+    has_both_images = has_image1 and has_image2
 
     res1_text = ""
     res2_text = ""
@@ -199,7 +204,14 @@ def do_update_resolution_labels(presenter):
             res1_text = f"{dim[0]}x{dim[1]}"
         if dim := get_image_dimensions(presenter, 2):
             res2_text = f"{dim[0]}x{dim[1]}"
-    presenter.widget.update_resolution_labels(res1_text, res1_text, res2_text, res2_text)
+    presenter.widget.update_resolution_labels(
+        res1_text,
+        res1_text,
+        res2_text,
+        res2_text,
+        has_image1=has_image1,
+        has_image2=has_image2,
+    )
 
     psnr_visible = presenter.store.viewport.session_data.image_state.auto_calculate_psnr
     presenter.widget.psnr_label.setVisible(psnr_visible)
@@ -230,6 +242,39 @@ def do_update_resolution_labels(presenter):
                 f"{tr('ui.ssim', presenter.store.settings.current_language)}: --"
             )
 
+    # Resolution/filename used to live in this same footer row; now that
+    # they're in the floating InfoHUD (see update_resolution_labels above),
+    # this row holds only PSNR/SSIM and must collapse to zero height when
+    # both are off, instead of leaving a permanent empty gap between the
+    # canvas and the name-edit/save-button rows below it.
+    presenter.widget.footer_info_widget.setVisible(psnr_visible or ssim_visible)
+
+
+def do_sync_zoom_indicator(presenter) -> None:
+    """Re-applies the current zoom to `ZoomIndicator` so its translated
+    prefix text (`tr("label.zoom", lang)`, baked into the label by
+    `update_zoom()`) and geometry refresh on a language switch too --
+    unlike `InfoHUD` (kept in sync via `_sync_info_huds()`, called from
+    this same batch on every `file_names`/`resolution` update),
+    `ZoomIndicator` previously had *no* language-change hook at all: its
+    label text/geometry only ever refreshed on the next real
+    `zoomChanged` tick, confirmed live via `IMGSLI_FLYOUT_DEBUG=1` trace
+    (no `_reflow_container()`/`_position()` call for `zoom_indicator`
+    during a settings-dialog/language-switch window that *did* produce
+    `InfoHUD` ones) -- see
+    docs/dev/rendering/glass-panel-text-vibrancy-plan.md Phase 3, bug 5.
+    Guarded on the indicator already being visible: re-showing it from
+    hidden on a language switch alone (independent of any real zoom
+    change) isn't this hook's job."""
+    widget = presenter.widget
+    zoom_indicator = getattr(widget, "zoom_indicator", None)
+    image_label = getattr(widget, "image_label", None)
+    if zoom_indicator is None or image_label is None or not zoom_indicator.isVisible():
+        return
+    from ui.canvas_infra.viewport.state import get_zoom_level
+
+    widget.update_zoom_indicator(get_zoom_level(image_label))
+
 
 def do_update_file_names_display(presenter):
     document = _document(presenter)
@@ -248,6 +293,8 @@ def do_update_file_names_display(presenter):
         is_horizontal=presenter.store.viewport.view_state.is_horizontal,
         current_language=lang,
         show_labels=show_labels,
+        has_image1=bool(document.image1_path),
+        has_image2=bool(document.image2_path),
     )
 
     if not presenter.widget.edit_name1.hasFocus():
@@ -296,25 +343,6 @@ def do_update_combobox_displays(presenter):
         and presenter.ui_manager.transient.unified_flyout.isVisible()
     ):
         presenter.ui_manager.transient.unified_flyout.sync_from_store()
-
-
-def do_update_slider_tooltips(presenter):
-    magnifier_size = 0.2
-    capture_size = 0.1
-    session_type = _session_type(presenter.store)
-    build_payload = get_canvas_registry(session_type).get_feature_command_by_alias(
-        "overlay.canvas_payload"
-    )
-    if build_payload is not None:
-        payload = build_payload(presenter.store)
-        magnifier_size = float(payload.get("size", 0.2))
-        capture_size = float(payload.get("capture_size", 0.1))
-    presenter.widget.update_slider_tooltips(
-        presenter.store.viewport.view_state.movement_speed_per_sec,
-        magnifier_size,
-        capture_size,
-        presenter.store.settings.current_language,
-    )
 
 
 def do_update_rating_displays(presenter):
@@ -390,7 +418,6 @@ def _refresh_visible_workspace_language(presenter, lang_code: str) -> None:
     from domain.qt_adapters import color_to_qcolor
 
     do_update_combobox_displays(presenter)
-    do_update_slider_tooltips(presenter)
     do_update_rating_displays(presenter)
     do_update_file_names_display(presenter)
     if presenter.font_settings_flyout is not None:
@@ -456,8 +483,17 @@ def get_image_dimensions(presenter, image_number: int) -> tuple[int, int] | None
         if not document.image2_path:
             return None
         img = document.full_res_image2 or document.preview_image2
-    if img and hasattr(img, "size"):
-        return img.size
+    if img:
+        if hasattr(img, "width") and hasattr(img, "height"):
+            w = img.width() if callable(img.width) else img.width
+            h = img.height() if callable(img.height) else img.height
+            return (int(w), int(h))
+        if hasattr(img, "size"):
+            s = img.size() if callable(img.size) else img.size
+            if hasattr(s, "width") and hasattr(s, "height"):
+                return (int(s.width()), int(s.height()))
+            if isinstance(s, (tuple, list)):
+                return (int(s[0]), int(s[1]))
     return None
 
 

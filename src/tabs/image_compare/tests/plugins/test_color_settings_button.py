@@ -13,9 +13,13 @@ from tabs.image_compare.ui import magnifier_color_controls as color_settings_but
 class _ButtonProbe:
     def __init__(self):
         self.value = None
+        self.show_underline = None
 
     def setUnderlineColor(self, value):
         self.value = value
+
+    def setShowUnderline(self, value):
+        self.show_underline = value
 
 def test_color_button_keeps_laser_segment_when_guides_hidden(monkeypatch):
     overlay_enabled = lambda _store: True
@@ -61,9 +65,36 @@ def test_color_button_keeps_laser_segment_when_guides_hidden(monkeypatch):
     )
     probe = _ButtonProbe()
     button.setUnderlineColor = probe.setUnderlineColor
+    button.setShowUnderline = probe.setShowUnderline
 
     color_settings_button_module.ColorSettingsButton._update_underline_colors(button)
 
     assert isinstance(probe.value, list)
     assert len(probe.value) == 4
     assert probe.value[1] == QColor(40, 50, 60, 230)
+    assert probe.show_underline is True
+
+
+def test_color_button_hides_underline_when_magnifier_disabled(monkeypatch):
+    monkeypatch.setattr(
+        color_settings_button_module,
+        "registry",
+        lambda: SimpleNamespace(
+            get_feature_command_by_alias=lambda alias: {
+                "overlay.enabled": lambda _store: False,
+            }.get(alias)
+        ),
+    )
+
+    button = color_settings_button_module.ColorSettingsButton.__new__(
+        color_settings_button_module.ColorSettingsButton
+    )
+    button.store = SimpleNamespace(viewport=SimpleNamespace(view_state=object()))
+    probe = _ButtonProbe()
+    button.setUnderlineColor = probe.setUnderlineColor
+    button.setShowUnderline = probe.setShowUnderline
+
+    color_settings_button_module.ColorSettingsButton._update_underline_colors(button)
+
+    assert probe.show_underline is False
+    assert probe.value is None

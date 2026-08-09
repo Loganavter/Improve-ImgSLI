@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer
-from PySide6.QtGui import QColor, QMouseEvent
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QGridLayout,
     QSizePolicy,
@@ -47,11 +47,9 @@ from tabs.session_picker.recent.layout import (
     scroll_viewport_height,
     visible_row_window,
 )
+from tabs.session_picker.recent import marquee
 from tabs.session_picker.recent.selection import (
     apply_card_selected,
-    ctrl_held,
-    paths_intersecting_rect,
-    preview_selection,
     selection_accent_color,
 )
 from tabs.session_picker.recent.shelf_chrome import OpaqueFillHost, ShelfChrome
@@ -197,6 +195,17 @@ class RecentItemsView(QWidget):
     def apply_opaque_fill(self, color: QColor) -> None:
         self.apply_surface_colors(content_bg=color, shelf_bg=color)
 
+    def resync_corner_cover(self) -> None:
+        """Re-align the viewport corner cover after the host layout settles.
+
+        Belt-and-suspenders alongside the scroll/viewport event filter in
+        ``ViewportCornerCoverSync`` — called from ``RecentProjectsPanel.
+        resizeEvent`` once Qt has finished laying out this frame, so a
+        reflow that doesn't cleanly round-trip through the filtered Resize
+        events still leaves the cover correctly positioned.
+        """
+        self._corner_sync.sync()
+
     def set_visible_for_content(self, has_items: bool) -> None:
         self.items_host.setVisible(has_items)
         self.scroll.setVisible(has_items)
@@ -206,73 +215,9 @@ class RecentItemsView(QWidget):
         return grid_columns_for_width(max(0, int(self._content_width_provider())))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if watched is self.items_host:
-            if event.type() == QEvent.Type.MouseButtonPress and isinstance(
-                event, QMouseEvent
-            ):
-                return self._host_mouse_press(event)
+        if marquee.event_filter(self, watched, event):
+            return True
         return super().eventFilter(watched, event)
-
-    def _ensure_marquee_gesture(self) -> MarqueeBandGesture:
-        if self._marquee_gesture is None:
-            self._marquee_gesture = MarqueeBandGesture(
-                self.items_host,
-                parent=self,
-                clip_widget=self.scroll.viewport(),
-                on_update=self._on_marquee_rect_update,
-                on_finish=self._on_marquee_rect_finish,
-            )
-        else:
-            self._marquee_gesture.set_clip_widget(self.scroll.viewport())
-        self._marquee_gesture.set_accent(self._selection_accent)
-        return self._marquee_gesture
-
-    def _paths_for_marquee_rect(self, rect: QRect) -> set[str]:
-        if rect.isEmpty():
-            return set()
-        host_w = max(self.items_host.width(), self._content_width_provider())
-        return paths_intersecting_rect(
-            self._records,
-            rect,
-            view_mode=self._view_mode,
-            columns=self._grid_columns,
-            host_width=host_w,
-        )
-
-    def _on_marquee_rect_update(self, rect: QRect) -> None:
-        paths = self._paths_for_marquee_rect(rect)
-        if self._on_marquee_preview is not None:
-            self._on_marquee_preview(paths, self._marquee_additive)
-        else:
-            preview = preview_selection(
-                self._marquee_base, paths, additive=self._marquee_additive
-            )
-            self.apply_selection(preview)
-
-    def _on_marquee_rect_finish(self, rect: QRect) -> None:
-        if rect.isEmpty():
-            if self._on_marquee_commit is not None and not self._marquee_additive:
-                self._on_marquee_commit(set(), False)
-            return
-        paths = self._paths_for_marquee_rect(rect)
-        if self._on_marquee_commit is not None:
-            self._on_marquee_commit(paths, self._marquee_additive)
-
-    def _host_mouse_press(self, event: QMouseEvent) -> bool:
-        if event.button() != Qt.MouseButton.LeftButton:
-            return False
-        child = self.items_host.childAt(event.position().toPoint())
-        if child is not None:
-            return False
-        self._marquee_additive = ctrl_held(event.modifiers())
-        self._marquee_base = set(self._selection_paths())
-        gesture = self._ensure_marquee_gesture()
-        if not gesture.start(event.position().toPoint()):
-            return False
-        # Live clear (non-additive) so the band starts empty immediately.
-        if self._on_marquee_preview is not None:
-            self._on_marquee_preview(set(), self._marquee_additive)
-        return True
 
     def rebuild(
         self,
@@ -354,6 +299,19 @@ class RecentItemsView(QWidget):
         try:
             self._updates_owner = updates_owner
             self._grid_columns = columns
+            self.sync_scroll_viewport_height()
+            self._refresh_visible_window(force=True)
+            return True
+        finally:
+            _restore_updates(updates_owner, was_updating)
+
+    def relayout_list_if_needed(self, *, updates_owner: QWidget) -> bool:
+        if self._view_mode != VIEW_LIST or not self._records:
+            return False
+        was_updating = updates_owner.updatesEnabled()
+        updates_owner.setUpdatesEnabled(False)
+        try:
+            self._updates_owner = updates_owner
             self.sync_scroll_viewport_height()
             self._refresh_visible_window(force=True)
             return True
@@ -459,7 +417,8 @@ class RecentItemsView(QWidget):
         stride = row_stride(card_h)
         columns = max(1, self._grid_columns)
         host_w = max(self.items_host.width(), self._content_width_provider())
-        list_w = max(1, int(host_w) - ITEMS_MARGIN - ITEMS_MARGIN_RIGHT)
+        list_right_inset = ITEMS_MARGIN + self.scroll.overlay_scrollbar_inset()
+        list_w = max(1, int(host_w) - ITEMS_MARGIN - list_right_inset)
 
         for index, record in enumerate(self._records):
             card = self._cards_by_path.get(record.path)

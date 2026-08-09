@@ -28,6 +28,7 @@ from ui.canvas_infra.viewport.state import (
     set_pan_offsets,
     set_zoom_level,
 )
+from .rhi_renderer._debug import rhi_render_debug
 
 
 def _float_attr(obj, attr: str, default: float) -> float:
@@ -192,6 +193,20 @@ def update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y):
         new_pan_y=float(new_pan_y),
         content_rect=content_rect,
     )
+    rhi_render_debug(
+        "update_split_for_zoom is_horizontal=%s split_visual=%.4f->%s "
+        "zoom=%.3f->%.3f pan=(%.3f,%.3f)->(%.3f,%.3f) content_rect=%s",
+        is_horizontal,
+        split_visual,
+        f"{new_split:.4f}" if new_split is not None else None,
+        get_zoom_level(widget),
+        float(new_zoom),
+        get_pan_offset_x(widget),
+        get_pan_offset_y(widget),
+        float(new_pan_x),
+        float(new_pan_y),
+        content_rect_px,
+    )
     if new_split is not None:
         synced = False
         if sync_callback is not None:
@@ -308,7 +323,6 @@ def set_overlay_coords(
         state._occluded_capture_arcs = []
         for i in range(len(overlay._quads)):
             overlay._quads[i] = None
-        state._feature_overlay_quad_ndc = None
     widget._request_update()
 
 
@@ -364,25 +378,56 @@ def handle_wheel_event(widget, event):
     modifiers = event.modifiers()
 
     if modifiers & Qt.KeyboardModifier.ControlModifier:
+        # Every wheel tick is applied immediately and unconditionally --
+        # no "render still pending, drop this tick" throttle. That throttle
+        # used to exist to protect a slow render from a buffered OS burst of
+        # wheel deltas, but it only moved the problem: dropped ticks lost
+        # their direction and magnitude, which is what caused zoom to
+        # visibly reverse or stall on bursts (see
+        # docs/dev/rendering/tile-array-atlas-plan.md Findings). State
+        # updates here are cheap float math; Qt's own widget.update()
+        # already coalesces into a single repaint no matter how many times
+        # it's called before the next frame, so there is nothing left for a
+        # custom throttle to protect.
+        angle_delta_y = int(event.angleDelta().y())
+        cur_zoom = get_zoom_level(widget)
+        cur_pan_x = get_pan_offset_x(widget)
+        cur_pan_y = get_pan_offset_y(widget)
         result = compute_wheel_zoom_transform(
             WheelZoomRequest(
                 widget_width=widget.width(),
                 widget_height=widget.height(),
                 mouse_x=float(event.position().x()),
                 mouse_y=float(event.position().y()),
-                current_zoom=get_zoom_level(widget),
-                current_pan_x=get_pan_offset_x(widget),
-                current_pan_y=get_pan_offset_y(widget),
-                angle_delta_y=int(event.angleDelta().y()),
+                current_zoom=cur_zoom,
+                current_pan_x=cur_pan_x,
+                current_pan_y=cur_pan_y,
+                angle_delta_y=angle_delta_y,
             )
         )
         if result is not None:
             new_zoom, new_pan_x, new_pan_y = result
+            rhi_render_debug(
+                "wheel_zoom APPLIED angle_delta_y=%d zoom=%.3f->%.3f pan=(%.3f,%.3f)->(%.3f,%.3f)",
+                angle_delta_y,
+                cur_zoom,
+                new_zoom,
+                cur_pan_x,
+                cur_pan_y,
+                new_pan_x,
+                new_pan_y,
+            )
             update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y)
             set_pan_offsets(widget, new_pan_x, new_pan_y)
             set_zoom_level(widget, new_zoom)
             widget.zoomChanged.emit(get_zoom_level(widget))
             widget.update()
+        else:
+            rhi_render_debug(
+                "wheel_zoom REJECTED (transform returned None) angle_delta_y=%d cur_zoom=%.3f",
+                angle_delta_y,
+                cur_zoom,
+            )
 
         event.accept()
         return

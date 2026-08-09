@@ -13,6 +13,10 @@ from sli_ui_toolkit.managers import FlyoutManager, GroupShowPolicy
 # Mutual-exclusion set: opening any of these dismisses the others.
 # Context menus are intentionally excluded — they stack above other flyouts and
 # close themselves on outside click / action, not when a list animates/refreshes.
+# ``info_hud`` (the corner resolution/filename chips) and ``zoom_indicator``
+# (the corner zoom-percent chip) are also intentionally excluded: they must
+# never be a dismiss target of anything, see ``_configure_pinned_hud_rules``
+# below.
 _EXCLUSIVE_GROUPS = (
     "unified_list",
     "options",
@@ -45,12 +49,56 @@ def install_flyout_show_policy() -> GroupShowPolicy:
             dismisses=_EXCLUSIVE_GROUPS,
             claim_active=True,
         )
+    _configure_pinned_hud_rules(policy)
+    # Hosts combo_interpolation, whose dropdown is an "options" flyout —
+    # letting that (or any other exclusive group) dismiss this one on open
+    # would close the sliders panel mid-pick. Closing is hover/timer-driven
+    # instead, see MagnifierSettingsHoverController.
+    policy.configure_group("magnifier_settings", dismisses=(), claim_active=False)
+    # SliderHintFlyout (the small "what does this slider do" popup) is
+    # unconfigured -> falls into the "default" group, whose fallback is
+    # exclusive (dismiss every other open flyout). Since it's shown from
+    # hover *while* the magnifier-settings panel above it is already open,
+    # that fallback was closing the parent panel every time a slider hint
+    # appeared. dismisses=() makes opening the hint a no-op for every other
+    # flyout, matching its own hover/timer-driven lifecycle (see
+    # SliderHintController).
+    policy.configure_group("slider_hint", dismisses=(), claim_active=False)
+    # _ScrollValueFlyout (ScrollValueButton's own wheel-nudge value popup,
+    # e.g. divider/magnifier width buttons) — same "default"-fallback
+    # DISMISS_ALL problem as slider_hint above, except worse: it was killing
+    # every flyout on screen, including the pinned zoom/info HUD chips
+    # (pinned only exempts a flyout from *its own* passive-dismiss paths,
+    # not from being named/DISMISS_ALL-targeted by another flyout opening).
+    policy.configure_group("scroll_value", dismisses=(), claim_active=False)
+
     manager = FlyoutManager.get_instance()
     manager.set_show_policy(policy)
     _install_context_menu_topmost_stacking(manager)
     _install_title_bar_resize_keeps_context_menus()
     _install_button_suppress_clears_context_menu_flag()
     return policy
+
+
+def _configure_pinned_hud_rules(policy: GroupShowPolicy) -> None:
+    """The corner HUD chips (``InfoHUD``/``ZoomIndicator``, ``flyout_group``
+    ``"info_hud"``/``"zoom_indicator"``) must never be dismissed by another
+    flyout opening.
+
+    They are already ``pinned=True`` (see ``ui/widgets/info_hud.py`` and
+    ``ui/widgets/zoom_indicator.py``), which covers outside click / wheel /
+    window-deactivate / anchor-move — but pinned only protects a flyout from
+    *those* passive paths; a host ``GroupShowPolicy`` can still dismiss a
+    pinned flyout when another group opens (see sli-ui-toolkit's
+    FLYOUT_SYSTEM.md, "Pinned flyouts"). Every ``_EXCLUSIVE_GROUPS`` member's
+    dismiss set is scoped to that literal tuple, so simply not including
+    these groups in it is enough to make every *other* group leave them
+    alone. This call is the explicit, readable half: it stops either HUD
+    from ever dismissing anything if that assumption changes (e.g.
+    ``pinned`` is ever dropped from one of them).
+    """
+    policy.configure_group("info_hud", dismisses=(), claim_active=False)
+    policy.configure_group("zoom_indicator", dismisses=(), claim_active=False)
 
 
 def _title_bar_resize_needs_context_menu_patch() -> bool:
@@ -90,6 +138,8 @@ def _install_title_bar_resize_keeps_context_menus() -> None:
                     if not flyout.isVisible():
                         continue
                     if getattr(flyout, "flyout_group", None) == "context_menu":
+                        continue
+                    if getattr(flyout, "pinned", False):
                         continue
                     flyout.hide()
                 except RuntimeError:

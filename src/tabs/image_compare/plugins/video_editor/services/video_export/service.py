@@ -78,6 +78,18 @@ class VideoExporterService:
         self._process_manager = FFmpegProcessManager(self._active_processes)
         self._render_loop = VideoRenderLoop(self)
 
+    def warm_up_gpu_widgets(self) -> None:
+        """Pre-create the offscreen GPU render widgets used for preview and
+        thumbnails, well ahead of the video editor dialog being opened."""
+        if self.gpu_export_service is not None and hasattr(
+            self.gpu_export_service, "warm_up"
+        ):
+            self.gpu_export_service.warm_up()
+        if self._thumbnail_gpu_export_service is not None and hasattr(
+            self._thumbnail_gpu_export_service, "warm_up"
+        ):
+            self._thumbnail_gpu_export_service.warm_up()
+
     def _drain_last_render_debug(self) -> dict:
         return self._frame_renderer.drain_last_debug()
 
@@ -266,6 +278,53 @@ class VideoExporterService:
             snap,
             request,
         )
+
+    def render_snapshot_thumbnail_to_pil_async(
+        self,
+        snap,
+        out_w,
+        out_h,
+        callback,
+        font_path=None,
+        auto_crop=False,
+        fit_content=False,
+        global_bounds=None,
+        fill_color=(0, 0, 0, 0),
+    ) -> None:
+        """Non-blocking counterpart to :meth:`render_snapshot_thumbnail_to_pil`.
+
+        ``callback(pil_image_or_None)`` fires later, on the main thread.
+        Used by ThumbnailService so its background worker never blocks on
+        the GPU round-trip.
+        """
+        request = self._build_render_request(
+            out_w,
+            out_h,
+            font_path,
+            auto_crop,
+            fit_content,
+            self._coerce_global_bounds(global_bounds),
+            fill_color,
+        )
+        _vrlog.debug(
+            "render_begin renderer=thumbnail out=%sx%s fit_content=%s ts=%s async=True",
+            request.target_surface.width,
+            request.target_surface.height,
+            request.fit_content,
+            getattr(snap, "timestamp", None),
+        )
+
+        def _on_result(result) -> None:
+            _vrlog.debug(
+                "render_done renderer=thumbnail out=%sx%s backend=%s async=True",
+                request.target_surface.width,
+                request.target_surface.height,
+                result.backend,
+            )
+            self._last_render_backend = result.backend
+            callback(result.image)
+
+        self._thumbnail_frame_renderer.render_async(snap, request, _on_result)
 
     def _build_export_job(self, recording, resolution, fps, export_options):
         out_w, out_h = resolution

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtGui import QColor, QRhiViewport
 
+from shared.rendering.uniform_layout import assert_uniform_size
 from ui.canvas_infra.scene.pass_contract import (
     CanvasRenderPass,
     SceneVisibility,
@@ -12,13 +13,16 @@ from ui.canvas_infra.scene.pass_contract import (
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
 from ui.widgets.canvas.render_common import widget_px_to_screen_px
+from shared.rendering.stroke_geometry import shrink_screen_radius_for_stroke
 from tabs.image_compare.canvas.rhi_feature_common import (
     FullscreenUniformPassResources,
     resolve_rhi_scissor,
 )
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
+_UNIFORM_FMT = "<28f"
 _UNIFORM_SIZE = 112
+assert_uniform_size(_UNIFORM_FMT, _UNIFORM_SIZE, label="CaptureRingPass uniform")
 
 
 class CaptureRingPass(CanvasRenderPass):
@@ -75,15 +79,18 @@ class CaptureRingPass(CanvasRenderPass):
             )
             draw_color = QColor(color)
             draw_color.setAlpha(255)
+            screen_radius = shrink_screen_radius_for_stroke(
+                float(radius) * float(ctx.zoom_level), line_width
+            )
             self._items.append(
                 struct.pack(
-                    "<28f",
+                    _UNIFORM_FMT,
                     *matrix,
                     float(ctx.width),
                     float(ctx.height),
                     float(center_x),
                     float(center_y),
-                    float(radius) * float(ctx.zoom_level),
+                    screen_radius,
                     line_width,
                     0.0,
                     0.0,
@@ -113,14 +120,18 @@ class CaptureRingPass(CanvasRenderPass):
                 float(target_size.height()),
             )
         )
+        # The capture ring marks the sampled source region and must never
+        # visually poke past the image edge (its centered stroke otherwise
+        # overshoots the clamped fill radius by half the line width) —
+        # unlike other overlays, this clip is unconditional, independent of
+        # the shared content-rect clip flag used for split/padded-composite
+        # isolation elsewhere.
         command_buffer.setScissor(
             resolve_rhi_scissor(
                 widget,
                 self.resources.rhi,
                 ctx,
-                clip_to_content=bool(
-                    widget.runtime_state._clip_overlays_to_content_rect
-                ),
+                clip_to_content=True,
             )
         )
         command_buffer.setVertexInput(0, [(self.resources.vertex_buffer, 0)])

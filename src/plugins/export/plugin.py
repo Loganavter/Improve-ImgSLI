@@ -3,8 +3,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from PySide6.QtCore import QTimer
+
 logger = logging.getLogger("ImproveImgSLI")
 
+_GPU_WARM_UP_DELAY_MS = 3000
+
+from core.events import WorkspaceSessionActivatedEvent
 from plugins.export.events import (
     ExportOpenVideoEditorEvent,
     ExportPasteImageFromClipboardEvent,
@@ -78,6 +83,26 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
         if presenter and self.controller:
             self.controller.presenter = presenter
 
+        warm_up = getattr(self.video_exporter, "warm_up_gpu_widgets", None)
+        if callable(warm_up):
+            # Off the startup critical path, well before the video editor
+            # dialog is likely to be opened, so the GPU offscreen widgets'
+            # cold-start cost (window/QRhi surface creation) isn't paid
+            # inline with the user's first thumbnail/preview request. Not
+            # every tab can actually provide a canvas widget class (see
+            # tab_canvas_services.get_canvas_widget_class), so this fixed
+            # delay only succeeds if a tab that can already happens to be
+            # the active session by the time it fires — the
+            # WorkspaceSessionActivatedEvent subscription below catches the
+            # case where the active session changes into (or starts as) a
+            # canvas-providing tab at some other point.
+            QTimer.singleShot(_GPU_WARM_UP_DELAY_MS, warm_up)
+
+        if self.event_bus:
+            self.event_bus.subscribe(
+                WorkspaceSessionActivatedEvent, self._on_session_activated
+            )
+
         if self.event_bus and self.controller:
 
             self.event_bus.subscribe(
@@ -94,6 +119,19 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
                 ExportPasteImageFromClipboardEvent,
                 self.controller.on_paste_image_from_clipboard,
             )
+
+    def _on_session_activated(self, event: WorkspaceSessionActivatedEvent) -> None:
+        # Deliberately not filtered by session_type — this file is platform
+        # code and must stay tab-agnostic (see
+        # tests/contracts/test_platform_isolation.py). warm_up() already
+        # best-effort no-ops when the newly active tab doesn't provide a
+        # canvas widget class, and _ensure_widget() (called under the hood)
+        # is idempotent past its first success, so firing this on every
+        # session activation is harmless and catches whichever one actually
+        # can provide it, whenever that happens.
+        warm_up = getattr(self.video_exporter, "warm_up_gpu_widgets", None)
+        if callable(warm_up):
+            warm_up()
 
     def _emit(self, event: str, payload: Any) -> None:
         if self.event_bus:

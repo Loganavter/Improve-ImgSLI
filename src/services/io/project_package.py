@@ -27,6 +27,7 @@ logger = logging.getLogger("ImproveImgSLI")
 
 PROJECT_JSON_NAME = "project.json"
 MEDIA_PREFIX = "media/"
+CACHE_PREFIX = "cache/"
 ASSET_ID_LEN = 16
 
 # Path-bearing keys inside tab session blobs (IC + MC).
@@ -60,6 +61,50 @@ def asset_id_from_digest(digest: str) -> str:
 def media_member_path(asset_id: str, basename: str) -> str:
     safe_name = Path(basename).name or "asset"
     return f"{MEDIA_PREFIX}{asset_id}/{safe_name}"
+
+
+def cache_member_path(asset_id: str) -> str:
+    return f"{CACHE_PREFIX}{asset_id}/pixels.raw"
+
+
+def embed_pixel_cache_sources(
+    sources_by_path: dict[str, tuple[Any, int, int]],
+    path_to_member: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """Remap ``{abs_path: (open fd, width, height)}`` through ``path_to_member``.
+
+    ``path_to_member`` only has entries for paths that were actually embedded
+    as media (``embed_media`` skips missing/unreadable files), so a source
+    whose path isn't in it is not embeddable — its fd is closed and it is
+    dropped. Returns ``({cache_member: open fd}, {asset_id: catalog entry})``.
+    """
+    from core.constants import AppConstants
+
+    cache_members: dict[str, Any] = {}
+    catalog: dict[str, dict[str, Any]] = {}
+    for path, (fd, width, height) in sources_by_path.items():
+        member = path_to_member.get(path)
+        if member is None or not member.startswith(MEDIA_PREFIX):
+            try:
+                fd.close()
+            except Exception:
+                pass
+            continue
+        asset_id = member[len(MEDIA_PREFIX):].split("/", 1)[0]
+        cache_member = cache_member_path(asset_id)
+        cache_members[cache_member] = fd
+        try:
+            size = os.fstat(fd.fileno()).st_size
+        except OSError:
+            size = int(width) * int(height) * 4
+        catalog[asset_id] = {
+            "member": cache_member,
+            "width": int(width),
+            "height": int(height),
+            "tile_size": int(AppConstants.PIXEL_TILE_SIZE),
+            "bytes": size,
+        }
+    return cache_members, catalog
 
 
 def project_cache_dir(project_path: Path) -> Path:
@@ -234,12 +279,17 @@ def write_project_zip(
     progress: Callable[[int, int, str], None] | None = None,
     preview_png: bytes | None = None,
     preview_jpeg: bytes | None = None,
+    cache_members: dict[str, Any] | None = None,
 ) -> None:
     """Atomically write a ZIP project containing ``project.json`` + media.
 
     Optional ``preview_png`` is stored as top-level ``preview.png`` (active
     workspace canvas grab; see ``project_preview.capture_project_preview_png``).
     ``preview_jpeg`` is accepted as a deprecated alias for the same bytes.
+    ``cache_members`` is ``{cache/<asset_id>/pixels.raw: open fd}`` — raw
+    RGBA8 buffers, streamed via ``copyfileobj`` (sources are open fds, not
+    filesystem paths) and stored uncompressed since RGBA noise doesn't
+    compress. Every fd is closed once written, even on failure.
     """
     dest = Path(path)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -250,9 +300,11 @@ def write_project_zip(
         member_to_source.setdefault(member, Path(abs_path))
 
     members = sorted(member_to_source.keys())
+    cache_members = cache_members or {}
+    cache_member_names = sorted(cache_members.keys())
     preview_bytes = preview_png if preview_png is not None else preview_jpeg
     has_preview = bool(preview_bytes)
-    total = len(members) + 1 + (1 if has_preview else 0)
+    total = len(members) + len(cache_member_names) + 1 + (1 if has_preview else 0)
 
     fd, tmp_name = tempfile.mkstemp(
         prefix=f".{dest.stem}.",
@@ -282,10 +334,30 @@ def write_project_zip(
                 if progress is not None:
                     progress(index - 1, total, str(source))
                 zf.write(source, arcname=member)
+            done += len(members)
+            for index, member in enumerate(cache_member_names, start=done + 1):
+                source_fd = cache_members[member]
+                if progress is not None:
+                    progress(index - 1, total, member)
+                zinfo = zipfile.ZipInfo(member)
+                zinfo.compress_type = zipfile.ZIP_STORED
+                try:
+                    with zf.open(zinfo, "w") as dest_stream:
+                        shutil.copyfileobj(source_fd, dest_stream)
+                finally:
+                    try:
+                        source_fd.close()
+                    except Exception:
+                        pass
             if progress is not None:
                 progress(total, total, "")
         os.replace(tmp_path, dest)
     except Exception:
+        for source_fd in cache_members.values():
+            try:
+                source_fd.close()
+            except Exception:
+                pass
         try:
             tmp_path.unlink(missing_ok=True)
         except OSError:
@@ -335,6 +407,48 @@ def extract_media(
             with zf.open(member) as src, target.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
             mapping[member] = str(target)
+        if progress is not None and total:
+            progress(total, total, "")
+    return mapping
+
+
+def extract_pixel_cache(
+    path: str | Path,
+    cache_dir: Path,
+    *,
+    progress: Callable[[int, int, str], None] | None = None,
+) -> dict[str, str]:
+    """Extract ``cache/`` members (embedded pixel-cache buffers) to ``cache_dir``.
+
+    Returns ``{asset_id: absolute_cache_path}``. Reuses existing files when
+    present and non-empty, same as :func:`extract_media`.
+    """
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    mapping: dict[str, str] = {}
+
+    with zipfile.ZipFile(path, "r") as zf:
+        members = [
+            name
+            for name in zf.namelist()
+            if name.startswith(CACHE_PREFIX) and not name.endswith("/")
+        ]
+        total = len(members)
+        for index, member in enumerate(members):
+            if progress is not None:
+                progress(index, total, member)
+            # Guard against zip-slip
+            target = (cache_dir / member).resolve()
+            if not str(target).startswith(str(cache_dir.resolve())):
+                raise ValueError(f"Unsafe zip member path: {member}")
+            asset_id = member[len(CACHE_PREFIX):].split("/", 1)[0]
+            if target.is_file() and target.stat().st_size > 0:
+                mapping[asset_id] = str(target)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, target.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
+            mapping[asset_id] = str(target)
         if progress is not None and total:
             progress(total, total, "")
     return mapping

@@ -48,6 +48,23 @@ show_help() {
     echo "                       --theme <dark|light>  Force a specific theme."
     echo "                       --debug, -d          Enable debug logging for this session only."
     echo "                       --ui-inspector       Enable the developer UI inspector."
+    echo "                       --dump-ui-layout <path>  Dump widget tree + geometry + bound"
+    echo "                                            Find Action ids to <path> as JSON, then exit."
+    echo "                                            <path> is any writable file path, e.g. /tmp/layout.json"
+    echo "                                            (parent dir must exist; existing file is overwritten)."
+    echo "                                            Example: $0 run --dump-ui-layout /tmp/layout.json"
+    echo "                       --open-tab <tab_kind>  Create and switch to that tab kind on startup"
+    echo "                                            before dumping (startup otherwise lands on the"
+    echo "                                            Session Picker, so tab actions are missing from the"
+    echo "                                            dump). Any kind with a registered"
+    echo "                                            'workspace.new_<tab_kind>' action, e.g. image_compare"
+    echo "                                            or multi_compare. Example:"
+    echo "                                            $0 run --open-tab image_compare --dump-ui-layout /tmp/layout.json"
+    echo "                       --run-action <id>    Run this Find Action id on startup (repeatable, after"
+    echo "                                            --open-tab) so --dump-ui-layout also captures that"
+    echo "                                            window (Settings, Help, ...) — dump now walks every"
+    echo "                                            top-level window, not just the main one. Example:"
+    echo "                                            $0 run --run-action platform.settings --dump-ui-layout /tmp/layout.json"
     echo "  test [args...]     Run the test suite (pytest). Extra args pass through,"
     echo "                     e.g. '$0 test tests/runtime -k gesture'."
     echo "  context [args...]  cloc report for app + sli-ui-toolkit (see --help on script)."
@@ -381,7 +398,7 @@ run_action() {
     exit 1
 }
 
-if [[ "${1:-}" == "--debug" || "${1:-}" == "-d" || "${1:-}" == "--theme" || "${1:-}" == "--ui-inspector" ]]; then
+if [[ "${1:-}" == "--debug" || "${1:-}" == "-d" || "${1:-}" == "--theme" || "${1:-}" == "--ui-inspector" || "${1:-}" == "--dump-ui-layout" || "${1:-}" == "--open-tab" || "${1:-}" == "--run-action" ]]; then
     set -- run "$@"
 fi
 

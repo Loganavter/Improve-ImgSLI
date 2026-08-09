@@ -1,6 +1,10 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage, QPalette
 
+from shared.rendering.screen_projection import (
+    ndc_rect_from_screen_disk as ndc_rect_from_screen_disk,
+)
+from shared.rendering.screen_projection import project_px_to_screen
 from ui.canvas_infra.viewport.state import (
     get_pan_offset_x,
     get_pan_offset_y,
@@ -17,7 +21,12 @@ def widget_px_to_screen_px(
     canvas_offset_x=0.0,
     canvas_offset_y=0.0,
 ):
-    """Map a point in logical-canvas pixel space to render-target pixel space.
+    """Accessor for ``project_px_to_screen``: pulls this widget's zoom/pan
+    from ``ui.canvas_infra.viewport.state`` (one pair per widget) instead
+    of taking them as arguments. A caller with a differently-shaped
+    zoom/pan model (e.g. one pair per slot instead of per widget) should
+    call ``shared.rendering.screen_projection.project_px_to_screen``
+    directly with its own values rather than adapting to this signature.
 
     ``canvas_width``/``canvas_height`` default to the actual widget size (the
     live/interactive case, where canvas == render target). Tiled export
@@ -27,15 +36,17 @@ def widget_px_to_screen_px(
     """
     w = canvas_width if canvas_width is not None else widget.width()
     h = canvas_height if canvas_height is not None else widget.height()
-    if w <= 0 or h <= 0:
-        return px_x, px_y
-    zoom = get_zoom_level(widget)
-    pan_x = get_pan_offset_x(widget)
-    pan_y = get_pan_offset_y(widget)
-
-    sx = ((px_x / w) - 0.5 + pan_x) * zoom + 0.5
-    sy = ((px_y / h) - 0.5 + pan_y) * zoom + 0.5
-    return sx * w - canvas_offset_x, sy * h - canvas_offset_y
+    return project_px_to_screen(
+        px_x,
+        px_y,
+        w,
+        h,
+        get_zoom_level(widget),
+        get_pan_offset_x(widget),
+        get_pan_offset_y(widget),
+        canvas_offset_x=canvas_offset_x,
+        canvas_offset_y=canvas_offset_y,
+    )
 
 
 def resolve_widget_background(widget) -> QColor:

@@ -2,6 +2,10 @@
   "action": {
     "export_video": "Экспортировать видео",
     "context_copy_path": "Копировать путь",
+    "context_cut": "Вырезать",
+    "context_copy": "Копировать",
+    "context_paste": "Вставить",
+    "context_select_all": "Выделить всё",
     "context_carry_image": "Переместить",
     "context_duplicate": "Дублировать",
     "context_name": "Имя",

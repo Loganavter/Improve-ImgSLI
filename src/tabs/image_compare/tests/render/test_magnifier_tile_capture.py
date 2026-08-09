@@ -70,7 +70,15 @@ def test_tile_uv_slices_non_tiled_source_is_passthrough():
         apron_px=1, apron_rect_fn=_apron_rect, visible_tiles_fn=None,
     )
     assert slices == [
-        {"tile_key": "img", "uv_rect": (0.1, 0.2, 0.3, 0.4), "tc_x": (0.0, 1.0), "tc_y": (0.0, 1.0)}
+        {
+            "tile_key": "img",
+            "tile_index": (0, 0),
+            "uv_rect": (0.1, 0.2, 0.3, 0.4),
+            "tc_x": (0.0, 1.0),
+            "tc_y": (0.0, 1.0),
+            "core_tc_x": (0.0, 1.0),
+            "core_tc_y": (0.0, 1.0),
+        }
     ]
 
 
@@ -93,6 +101,12 @@ def test_tile_uv_slices_capture_spanning_two_tiles():
     assert ranges[0][0] == pytest.approx(0.0)
     assert ranges[-1][1] == pytest.approx(1.0)
     assert ranges[0][1] >= ranges[1][0]
+    # core_tc (scissor-only, apron-free) must NOT overlap -- otherwise the
+    # magnifier draws both tiles' scissors over the same screen pixels,
+    # visible as tile-riding/ghosting under magnifier zoom (unlike the main
+    # canvas, whose per-tile geometry footprint is already non-overlapping).
+    core_ranges = sorted(s["core_tc_x"] for s in slices)
+    assert core_ranges[0][1] <= core_ranges[1][0] + 1e-9
 
 
 def test_tile_uv_slices_single_tile_capture_stays_one_slice():
@@ -173,10 +187,10 @@ def test_tc_rect_to_widget_px_full_range_matches_quad_bounds():
     assert rect == pytest.approx((50.0, 150.0, 100.0, 100.0))
 
 
-def test_tc_rect_to_widget_px_y_is_flipped_relative_to_tc():
-    # per mag.vert: tc.y=1 -> screen top (smaller pixel y), tc.y=0 -> screen bottom
-    top_half = tc_rect_to_widget_px(100.0, 200.0, 50.0, (0.0, 1.0), (0.5, 1.0))
-    bottom_half = tc_rect_to_widget_px(100.0, 200.0, 50.0, (0.0, 1.0), (0.0, 0.5))
+def test_tc_rect_to_widget_px_y_matches_tc_direction():
+    # per mag.vert: tc.y=0 -> screen top (smaller pixel y), tc.y=1 -> screen bottom
+    top_half = tc_rect_to_widget_px(100.0, 200.0, 50.0, (0.0, 1.0), (0.0, 0.5))
+    bottom_half = tc_rect_to_widget_px(100.0, 200.0, 50.0, (0.0, 1.0), (0.5, 1.0))
     assert top_half[1] < bottom_half[1]
 
 
@@ -208,9 +222,9 @@ def test_build_tile_records_single_source_non_tiled_is_one_full_record():
     assert len(records) == 1
     rec = records[0]
     assert is_full_tc(rec["tc_x"], rec["tc_y"])
-    assert rec["tex1_key"] == "img"
-    assert rec["tex2_key"] is None
-    assert rec["texd_key"] is None
+    assert rec["tex1"]["key"] == "img"
+    assert rec["tex2"]["key"] is None
+    assert rec["texd"] is None
     assert rec["uv_rect1"] == pytest.approx((0.1, 0.1, 0.3, 0.3))
 
 
@@ -232,7 +246,7 @@ def test_build_tile_records_single_source_tiled_spans_two_tiles():
         comb_horizontal=False,
     )
     assert len(records) == 2
-    assert all(r["tex1_key"] is not None and r["tex2_key"] is None for r in records)
+    assert all(r["tex1"]["key"] is not None and r["tex2"]["key"] is None for r in records)
     assert all(r["uv_rect2"] == pytest.approx((0.0, 0.0, 1.0, 1.0)) for r in records)
 
 
@@ -257,8 +271,8 @@ def test_build_tile_records_combined_mode_splits_into_two_source_halves():
     assert len(records) == 1
     rec = records[0]
     assert is_full_tc(rec["tc_x"], rec["tc_y"])
-    assert rec["tex1_key"] == "img1"
-    assert rec["tex2_key"] == "img2"
+    assert rec["tex1"]["key"] == "img1"
+    assert rec["tex2"]["key"] == "img2"
     assert rec["uv_rect1"] == pytest.approx(capture)
     assert rec["uv_rect2"] == pytest.approx(capture)
 
@@ -296,8 +310,8 @@ def test_build_tile_records_combined_tiled_uses_half_scissors():
     )
     assert len(records) >= 2
     assert all(not is_full_tc(r["tc_x"], r["tc_y"]) for r in records)
-    assert any(r["tex1_key"] is not None for r in records)
-    assert any(r["tex2_key"] is not None for r in records)
+    assert any(r["tex1"]["key"] is not None for r in records)
+    assert any(r["tex2"]["key"] is not None for r in records)
 
 
 def test_build_tile_records_dual_source_diff_mode_cross_joins_tiles():
@@ -331,8 +345,8 @@ def test_build_tile_records_dual_source_diff_mode_cross_joins_tiles():
         comb_horizontal=False,
     )
     assert len(records) == 4  # 2 tiles on each side, cross-joined
-    assert all(r["tex1_key"] is not None and r["tex2_key"] is not None for r in records)
-    assert all(r["texd_key"] is None for r in records)
+    assert all(r["tex1"]["key"] is not None and r["tex2"]["key"] is not None for r in records)
+    assert all(r["texd"] is None for r in records)
 
 
 def test_build_tile_records_diff_edges_mode_uses_only_source_one():
@@ -353,4 +367,7 @@ def test_build_tile_records_diff_edges_mode_uses_only_source_one():
         comb_horizontal=False,
     )
     assert len(records) == 2
-    assert all(r["tex1_key"] is not None and r["tex2_key"] is None and r["texd_key"] is None for r in records)
+    assert all(
+        r["tex1"]["key"] is not None and r["tex2"]["key"] is None and r["texd"] is None
+        for r in records
+    )

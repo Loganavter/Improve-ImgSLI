@@ -83,11 +83,17 @@ class ViewportCornerCoverSync(QObject):
 
     def eventFilter(self, obj, event):  # noqa: N802
         et = event.type()
-        if et in (
-            QEvent.Type.Resize,
-            QEvent.Type.Show,
-            QEvent.Type.LayoutRequest,
-            QEvent.Type.Move,
-        ):
+        if et == QEvent.Type.Resize:
+            # The scroll area's own Resize event fires *before*
+            # QAbstractScrollArea finishes relaying out its viewport, so
+            # syncing on it reads stale (pre-resize) viewport geometry —
+            # visible as a see-through flash during live window resize.
+            # Only the viewport's own Resize event is guaranteed to carry
+            # its already-updated geometry.
+            viewport = getattr(self._scroll, "viewport", None)
+            if callable(viewport) and obj is viewport():
+                self.sync()
+            return super().eventFilter(obj, event)
+        if et in (QEvent.Type.Show, QEvent.Type.LayoutRequest, QEvent.Type.Move):
             self.sync()
         return super().eventFilter(obj, event)

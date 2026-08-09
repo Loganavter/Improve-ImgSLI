@@ -1,8 +1,9 @@
 # Pre-merge checklist
 
 Tick list only. For the prose rules (patterns / anti-patterns) see
-[patterns.md](patterns.md). For QRhi / Wayland / scissor case narratives see
-[qrhi-gotchas.md](qrhi-gotchas.md).
+`docs/dev/rendering/patterns.md`, and for QRhi / Wayland / scissor case
+narratives see `docs/dev/rendering/qrhi-gotchas.md` — both in the private
+`improve-imgsli-internal-docs` repo (not in this repo).
 
 Before merging a new canvas feature:
 
@@ -29,7 +30,8 @@ Before merging a new canvas feature:
 - [ ] Semantic spit / camera-locked overlays stay in content space; paint
       that must follow the zoomed image uses
       `map_content_rect_through_view` (or equivalent), not fit-zoom scissor
-      alone — see [investigations/divider-zoom-pan-detach.md](investigations/divider-zoom-pan-detach.md)
+      alone — see `src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md`
+      in `improve-imgsli-internal-docs` (private, not in this repo)
 - [ ] Overlay-style geometry stays in canvas-px end to end; base-image-
       anchored geometry stays in its declared space end to end — not mixed
 - [ ] Blend pipeline sets `TargetBlend` alpha factors explicitly
@@ -40,6 +42,8 @@ Before merging a new canvas feature:
       live under the feature's own folder
 - [ ] No file over ~400 lines without a `File-Size-Exempt:` justification
 - [ ] Scissors go through `resolve_rhi_scissor` (offscreen Y-flip included) —
-      [qrhi-gotchas.md#offscreen-scissor-y-flip](qrhi-gotchas.md#offscreen-scissor-y-flip)
+      see "Offscreen scissor Y-flip" in `docs/dev/rendering/qrhi-gotchas.md`
+      (`improve-imgsli-internal-docs`, private)
 - [ ] No QWidget autofill on `QRhiWidget`
-      ([qrhi-gotchas.md#qrhiwidget-autofill](qrhi-gotchas.md#qrhiwidget-autofill))
+      (see "QRhiWidget autofill" in `docs/dev/rendering/qrhi-gotchas.md`,
+      `improve-imgsli-internal-docs`, private)

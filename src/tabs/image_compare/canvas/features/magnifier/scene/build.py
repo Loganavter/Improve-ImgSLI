@@ -81,9 +81,7 @@ def build_magnifier_object(
         pix_h,
         model.capture_size_relative,
     )
-    capture_size_px = model.capture_size_relative * math.sqrt(
-        float(pix_w) * float(pix_h)
-    )
+    capture_size_px = model.capture_size_relative * float(min(pix_w, pix_h))
     capture_radius = capture_size_px / 2.0
 
     center_x = bounds.x + (rel_x * pix_w)

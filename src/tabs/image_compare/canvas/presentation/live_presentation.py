@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-from shared.rendering.display_image_picker import pick_first_real
+from shared.rendering.display_image_picker import pick_display_image, pick_first_real
 from shared.rendering.image_identity import image_uid
 from ui.canvas_presentation.models import PresentationImageSet, SnapshotStorePresentation
 
 def build_live_store_presentation(store) -> SnapshotStorePresentation:
-    cache = store.viewport.session_data.render_cache
     document = store.get_session_state_slot("document")
-    display_image1 = pick_first_real(
-        cache.display_cache_image1,
-        cache.scaled_image1_for_display,
+    display_image1 = pick_display_image(
         store.viewport.session_data.image_state.image1,
         document.preview_image1,
     )
-    display_image2 = pick_first_real(
-        cache.display_cache_image2,
-        cache.scaled_image2_for_display,
+    display_image2 = pick_display_image(
         store.viewport.session_data.image_state.image2,
         document.preview_image2,
     )

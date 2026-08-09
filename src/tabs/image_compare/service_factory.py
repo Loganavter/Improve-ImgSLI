@@ -71,26 +71,10 @@ def create_service(
         )
 
         return build_live_frame_snapshot(*args, **kwargs)
-    if service_id == "export_save_context_builder":
-        from tabs.image_compare.services.export_context_builder import (
-            ExportContextBuilder,
-        )
+    if service_id == "export_presenter":
+        from tabs.image_compare.presenters.export_presenter import ExportPresenter
 
-        return ExportContextBuilder(*args, **kwargs)
-    if service_id == "export_state_coordinator":
-        from tabs.image_compare.services.export_state import ExportStateCoordinator
-
-        return ExportStateCoordinator(*args, **kwargs)
-    if service_id == "export_save_flow":
-        from tabs.image_compare.services.export_save_flow import (
-            ExportSaveFlowCoordinator,
-        )
-
-        return ExportSaveFlowCoordinator(*args, **kwargs)
-    if service_id == "image_export_service":
-        from tabs.image_compare.services.image_export import ExportService
-
-        return ExportService(*args, **kwargs)
+        return ExportPresenter(*args, **kwargs)
     if service_id == "clipboard_paste_service":
         from tabs.image_compare.services.clipboard import ClipboardService
 
@@ -254,11 +238,11 @@ def create_service(
         return sync_geometry_state(*args, **kwargs)
     if service_id == "canvas_legacy_render_plan":
         from tabs.image_compare.canvas.presentation.plan_applicator import (
-            apply_legacy_canvas_render_plan,
+            apply_canvas_render_plan,
         )
 
         canvas, plan = args
-        return apply_legacy_canvas_render_plan(canvas, plan, **kwargs)
+        return apply_canvas_render_plan(canvas, plan, **kwargs)
     if service_id == "unified_flyout_controller":
         from tabs.image_compare.ui.transient_flyouts import FlyoutController
 
@@ -304,4 +288,8 @@ def create_service(
         return tab._setup_view_mode_buttons(*args, **kwargs)
     if service_id == "is_canvas_content_ready":
         return tab._is_canvas_content_ready()
+    if service_id == "toast_anchor_widget":
+        if tab._widget is None:
+            return None
+        return tab._widget.image_label
     return None

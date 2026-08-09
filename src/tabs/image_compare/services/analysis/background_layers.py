@@ -89,7 +89,7 @@ def build_cached_diff_image_from_sources(
             w, h = image1.size
             if max(w, h) > limit or (w * h) > INTERACTIVE_SSIM_MAX_PIXELS:
                 ssim_image1, ssim_image2 = downscale_pair_to_limit(
-                    image1, image2, limit
+                    image1, image2, limit, allow_materialize=True
                 )
                 ssim_lease1 = None
                 ssim_lease2 = None

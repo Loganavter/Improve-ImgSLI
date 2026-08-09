@@ -4,22 +4,29 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.widgets import Button, Label, OverlayScrollArea
+from sli_ui_toolkit.widgets import (
+    Button,
+    ContextMenuAction,
+    ContextMenuSeparator,
+    HelpDocumentView,
+    OverlayScrollArea,
+)
 
 from plugins.image_properties.layout_geometry import apply_image_properties_dialog_geometry
+from plugins.image_properties.render import build_property_blocks
 from resources.translations import get_current_language
 from resources.translations import tr as app_tr
 from shared_toolkit.ui.layout_sizing import handle_application_font_change
+from ui.context_menu.manager import open_context_menu_entries
+from ui.icon_manager import AppIcon, get_app_icon
 from utils.resource_loader import resource_path
 
-from .service import ImageProperties, ImagePropertyRow, ImagePropertySection
+from .service import ImageProperties
 
 
 class ImagePropertiesDialog(ThemedDialog):
@@ -46,7 +53,6 @@ class ImagePropertiesDialog(ThemedDialog):
             | Qt.WindowType.WindowCloseButtonHint
         )
         self.setSizeGripEnabled(True)
-        self.properties_section_frames: list[QFrame] = []
 
         self._init_ui()
         self.install_dialog_geometry(self._apply_dialog_geometry)
@@ -56,7 +62,7 @@ class ImagePropertiesDialog(ThemedDialog):
 
         decorate_dialog(self, title=self._tr("image_properties.title", "Properties"))
         # CSD adjustSize + deferred geometry can land after first map; re-apply
-        # once so section frames stretch across the scroll content.
+        # once so the document canvas stretches across the scroll content.
         QTimer.singleShot(0, self._finalize_layout_and_size)
 
     def _apply_dialog_geometry(self) -> None:
@@ -87,6 +93,7 @@ class ImagePropertiesDialog(ThemedDialog):
             self._tr("image_properties.copy_all", "Copy all")
         )
         self.close_button.setText(self._tr("image_properties.close", "Close"))
+        self._render_content()
         self._apply_dialog_geometry()
 
     def _init_ui(self) -> None:
@@ -98,20 +105,14 @@ class ImagePropertiesDialog(ThemedDialog):
         scroll.set_reserve_scrollbar_space(False)
         scroll.set_corner_radius(0)
 
-        content = QWidget(scroll)
-        self.properties_scroll_content = content
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(10)
+        self.properties_document = HelpDocumentView(parent=scroll, show_toc=False)
+        self.properties_scroll_content = self.properties_document
+        self.properties_document.textContextMenuRequested.connect(
+            self._on_text_context_menu
+        )
+        self._render_content()
 
-        for section in self.properties.sections:
-            if section.rows:
-                frame = self._build_section(section)
-                self.properties_section_frames.append(frame)
-                content_layout.addWidget(frame)
-        content_layout.addStretch()
-
-        scroll.setWidget(content)
+        scroll.setWidget(self.properties_document)
         root.addWidget(scroll, 1)
 
         actions = QWidget(self)
@@ -140,67 +141,51 @@ class ImagePropertiesDialog(ThemedDialog):
         action_layout.addWidget(self.close_button, 0, 2)
         root.addWidget(actions)
 
-    def _build_section(self, section: ImagePropertySection) -> QFrame:
-        frame = QFrame(self)
-        frame.setObjectName("ImagePropertiesSection")
-        frame.setFrameShape(QFrame.Shape.StyledPanel)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(10, 8, 10, 10)
-        layout.setSpacing(6)
-
-        header = Label(
-            self._tr(section.title_key, section.fallback_title),
-            variant="group-title",
-            parent=frame,
+    def _render_content(self) -> None:
+        self.properties_document.set_blocks(
+            build_property_blocks(self.properties, self._tr)
         )
-        layout.addWidget(header)
-
-        grid_host = QWidget(frame)
-        grid = QGridLayout(grid_host)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(5)
-        grid.setColumnMinimumWidth(0, 130)
-        grid.setColumnStretch(1, 1)
-
-        for row_index, row in enumerate(section.rows):
-            key_label = Label(
-                self._tr(row.label_key, row.fallback_label),
-                variant="caption",
-                parent=grid_host,
-            )
-            key_label.setAlignment(
-                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
-            )
-            value_label = Label(
-                self._row_value(row),
-                variant="body",
-                parent=grid_host,
-            )
-            value_label.setWordWrap(True)
-            value_label.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-            )
-            value_label.setCursor(Qt.CursorShape.ArrowCursor)
-            value_label.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Preferred,
-            )
-            grid.addWidget(key_label, row_index, 0)
-            grid.addWidget(value_label, row_index, 1)
-
-        layout.addWidget(grid_host)
-        return frame
 
     def _copy_all(self) -> None:
         QGuiApplication.clipboard().setText(
             self.properties.as_plain_text(lambda key: self._tr(key, key))
         )
 
-    def _row_value(self, row: ImagePropertyRow) -> str:
-        if row.value_key:
-            return self._tr(row.value_key, row.fallback_value or row.value)
-        return row.value or "-"
+    def _on_text_context_menu(self, global_pos) -> None:
+        document = self.properties_document
+        has_selection = bool(document.selected_plain_text().strip())
+        entries: list[ContextMenuAction | ContextMenuSeparator] = [
+            ContextMenuAction(
+                "image_properties.text.copy",
+                self._tr("action.context_copy", "Copy"),
+                icon=get_app_icon("copy.svg"),
+                shortcut="Ctrl+C",
+                enabled=has_selection,
+            ),
+            ContextMenuSeparator(),
+            ContextMenuAction(
+                "image_properties.text.select_all",
+                self._tr("action.context_select_all", "Select all"),
+                icon=AppIcon.TEXT_MANIPULATOR,
+                shortcut="Ctrl+A",
+            ),
+        ]
+
+        def on_triggered(action_id: str, _data: object) -> None:
+            if action_id == "image_properties.text.copy":
+                text = document.selected_plain_text()
+                if text:
+                    QGuiApplication.clipboard().setText(text)
+            elif action_id == "image_properties.text.select_all":
+                document.select_all_text()
+
+        open_context_menu_entries(
+            source_widget=self,
+            global_pos=global_pos,
+            entries=tuple(entries),
+            key=("image_properties_text", id(document)),
+            on_triggered=on_triggered,
+        )
 
     def _tr(self, key: str, default: str) -> str:
         text = self.tr(key, self.current_language)

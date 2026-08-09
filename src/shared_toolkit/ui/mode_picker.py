@@ -133,7 +133,7 @@ class ModePicker(QObject):
             self._button,
             anchor_point="bottom-left",
             flyout_point="top-left",
-            offset=2,
+            offset=16,
             animation="slide",
             animation_axis="vertical",
         )

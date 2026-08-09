@@ -16,7 +16,6 @@ from tabs.image_compare.canvas.features.magnifier.render.overlay import apply_ma
 from tabs.image_compare.canvas.features.magnifier.render.plan_overlay import apply_magnifier_plan_overlay
 from tabs.image_compare.canvas.features.magnifier.properties import build_magnifier_properties
 from tabs.image_compare.canvas.features.magnifier.reducers import (
-    reduce_magnifier_cache_state,
     reduce_magnifier_geometry_state,
     reduce_magnifier_interaction_state,
     reduce_magnifier_render_config,
@@ -377,7 +376,6 @@ def build_widget_feature() -> CanvasWidgetFeature:
         reduce_render_config=reduce_magnifier_render_config,
         reduce_interaction_state=reduce_magnifier_interaction_state,
         reduce_geometry_state=reduce_magnifier_geometry_state,
-        reduce_cache_state=reduce_magnifier_cache_state,
         build_properties=build_magnifier_properties,
         build_toolbar_bindings=build_magnifier_toolbar_bindings,
         build_commands=build_magnifier_commands,

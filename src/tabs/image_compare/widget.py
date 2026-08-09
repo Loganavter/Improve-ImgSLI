@@ -32,6 +32,8 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         super().__init__(parent)
         self._context = context
         self._assembled = False
+        self._slot_has_image1 = False
+        self._slot_has_image2 = False
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -50,6 +52,29 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         ImageCompareLayoutBuilder(self, ui).build_into(self)
         self._assembled = True
         self._wire_transition_mask_release()
+        self._install_magnifier_settings_flyout()
+
+    def _install_magnifier_settings_flyout(self) -> None:
+        from tabs.image_compare.ui.magnifier_settings_flyout import (
+            MagnifierSettingsFlyout,
+        )
+        from tabs.image_compare.ui.transient_magnifier_settings import (
+            MagnifierSettingsHoverController,
+        )
+
+        self.magnifier_settings_flyout = MagnifierSettingsFlyout(
+            self, self.magnifier_settings_panel
+        )
+        self._magnifier_settings_hover = MagnifierSettingsHoverController(self)
+        self._install_slider_hint_flyout()
+
+    def _install_slider_hint_flyout(self) -> None:
+        from tabs.image_compare.ui.slider_hint_flyout import SliderHintController
+
+        self._slider_hint = SliderHintController(
+            self,
+            [self.slider_size, self.slider_capture, self.slider_speed],
+        )
 
     def _wire_transition_mask_release(self) -> None:
         canvas = getattr(self, "image_label", None)
@@ -78,6 +103,37 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             from PySide6.QtCore import QTimer
 
             QTimer.singleShot(0, self._release_transition_mask)
+        self._resync_pinned_huds_on_show()
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        super().hideEvent(event)
+        self._hide_pinned_huds_on_tab_switch()
+
+    def _hide_pinned_huds_on_tab_switch(self) -> None:
+        """Hide this tab's corner HUDs (info + zoom) when the tab itself is hidden.
+
+        ``InfoHUD``/``ZoomIndicator`` are ``pinned`` flyouts reparented onto
+        the app-wide ``OverlayLayer`` host (see ``ui/flyout_policy.py``), not
+        children of this page widget -- Qt's own ``hideEvent`` on this page
+        does not cascade to them, so without this they kept rendering above
+        whichever tab/session became active next. ``showEvent`` above
+        resyncs them from current state when this tab is shown again.
+        """
+        for hud in (
+            getattr(self, "image_info_hud1", None),
+            getattr(self, "image_info_hud2", None),
+            getattr(self, "zoom_indicator", None),
+        ):
+            if hud is not None:
+                hud.hide()
+
+    def _resync_pinned_huds_on_show(self) -> None:
+        if not getattr(self, "_assembled", False):
+            return
+        self._sync_info_huds()
+        from ui.canvas_infra.viewport.state import get_zoom_level
+
+        self.update_zoom_indicator(get_zoom_level(self.image_label))
 
     def _on_first_visual_frame(self) -> None:
         logger.debug("[workspace-transition] IC firstVisualFrameReady")
@@ -131,18 +187,12 @@ class ImageCompareWidget(ThemedWidget, QWidget):
     def toggle_edit_layout_visibility(self, checked: bool):
         self.edit_layout_widget.setVisible(bool(checked))
 
-    def toggle_magnifier_panel_visibility(self, visible: bool):
-        self.magnifier_settings_panel.setVisible(visible)
-        try:
-            self.magnifier_settings_panel.updateGeometry()
-            parent = self.magnifier_settings_panel.parentWidget()
-            if parent and parent.layout():
-                parent.layout().activate()
-        except Exception:
-            pass
-        main_window = getattr(self._context, "main_window", None)
-        if main_window is not None and hasattr(main_window, "schedule_update"):
-            QTimer.singleShot(0, main_window.schedule_update)
+    def open_magnifier_settings_flyout(self) -> None:
+        flyout = getattr(self, "magnifier_settings_flyout", None)
+        group = getattr(self, "magnifier_group_container", None)
+        if flyout is None or group is None:
+            return
+        flyout.show_for_group(group)
 
     def is_drag_overlay_visible(self) -> bool:
         return self.image_label.is_drag_overlay_visible()
@@ -169,10 +219,20 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         )
 
     def update_resolution_labels(
-        self, res1_text: str, tooltip1: str, res2_text: str, tooltip2: str
+        self,
+        res1_text: str,
+        tooltip1: str,
+        res2_text: str,
+        tooltip2: str,
+        *,
+        has_image1: bool,
+        has_image2: bool,
     ):
         self.resolution_label1.setText(res1_text)
         self.resolution_label2.setText(res2_text)
+        self._slot_has_image1 = has_image1
+        self._slot_has_image2 = has_image2
+        self._sync_info_huds()
 
     def update_file_names_display(
         self,
@@ -181,9 +241,15 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         is_horizontal: bool,
         current_language: str,
         show_labels: bool,
+        *,
+        has_image1: bool,
+        has_image2: bool,
     ):
+        self._slot_has_image1 = has_image1
+        self._slot_has_image2 = has_image2
         if not show_labels:
             self._hide_file_name_labels()
+            self._sync_info_huds()
             return
         self._show_file_name_labels()
         prefix1, prefix2 = self._get_file_name_prefixes(is_horizontal, current_language)
@@ -199,6 +265,35 @@ class ImageCompareWidget(ThemedWidget, QWidget):
                 f"{prefix2}: {name2_text}", font_metrics, max_text_width
             )
         )
+        self._sync_info_huds()
+
+    def _sync_info_huds(self):
+        from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
+
+        if flyout_debug_enabled():
+            import traceback
+
+            caller = traceback.extract_stack()[-3]
+            flyout_debug(
+                "_sync_info_huds() called from %s:%d in %s",
+                caller.filename,
+                caller.lineno,
+                caller.name,
+            )
+        self._apply_info_hud_visibility(self.image_info_hud1, self._slot_has_image1)
+        self._apply_info_hud_visibility(self.image_info_hud2, self._slot_has_image2)
+
+    def _apply_info_hud_visibility(self, hud, has_image: bool) -> None:
+        """Show/reposition the corner info chip, or hide it when its slot is
+        empty — the only condition allowed to close an ``InfoHUD`` (it is
+        otherwise pinned + always-on-top, see ``ui/flyout_policy.py``)."""
+        if not has_image:
+            hud.hide()
+            return
+        if hud.isVisible():
+            hud.reposition()
+        else:
+            hud.show_on(self.image_label)
 
     def update_name_length_warning(
         self, warning_text: str, tooltip_text: str, visible: bool
@@ -238,35 +333,6 @@ class ImageCompareWidget(ThemedWidget, QWidget):
                     else document.image_list2
                 )
             ],
-        )
-
-    def update_slider_tooltips(
-        self,
-        speed_value: float,
-        magnifier_size: float,
-        capture_size: float,
-        current_language: str,
-    ):
-        self.slider_size.setToolTip(
-            tr(
-                "tooltip.magnifier_size_slider",
-                current_language,
-                value=int(round(float(magnifier_size) * 100)),
-            )
-        )
-        self.slider_capture.setToolTip(
-            tr(
-                "tooltip.capture_size_slider",
-                current_language,
-                value=int(round(float(capture_size) * 100)),
-            )
-        )
-        self.slider_speed.setToolTip(
-            tr(
-                "tooltip.magnifier_speed_slider",
-                current_language,
-                value=int(round(float(speed_value) * 100)),
-            )
         )
 
     def update_zoom_indicator(self, zoom: float):
@@ -354,9 +420,8 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         )
 
     def _get_max_file_name_width(self) -> int:
-        main_window = getattr(self._context, "main_window", None)
-        window_width = main_window.width() if main_window else 800
-        return window_width // 2 - 20
+        canvas_width = self.image_label.width() if self.image_label.width() > 0 else 800
+        return max(canvas_width // 2 - 40, 80)
 
     def _elide_file_name_text(
         self, text: str, font_metrics: QFontMetrics, max_text_width: int

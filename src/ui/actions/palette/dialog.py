@@ -375,11 +375,22 @@ class FindActionDialog(ThemedDialog):
         if action is None or action.run is None:
             return
         run = action.run
-        self.accept()
-        # Defer until the modal palette has closed — otherwise combo/menu
-        # overlays opened by ``run`` are killed by the dialog's Hide/Close
-        # events (ComboBox installs an app-wide filter while expanded).
-        QTimer.singleShot(0, run)
+
+        def _accept_and_run() -> None:
+            self.accept()
+            # Defer until the modal palette has closed — otherwise combo/menu
+            # overlays opened by ``run`` are killed by the dialog's Hide/Close
+            # events (ComboBox installs an app-wide filter while expanded).
+            QTimer.singleShot(0, run)
+
+        # Wait for the row's own click ripple to finish before accept()
+        # closes (and destroys) this modal dialog -- otherwise the ripple
+        # never gets to play at all, same rationale as
+        # Button(defer_click=DEFER_CLICK_AWAIT_RIPPLE) /
+        # ContextMenuAction.defer_trigger.
+        from sli_ui_toolkit.ui.widgets.buttons.feedback import get_ripple_duration_ms
+
+        QTimer.singleShot(get_ripple_duration_ms(), _accept_and_run)
 
     def _reveal_selected(self) -> None:
         if self._current_index < 0 or self._current_index >= len(self._actions):

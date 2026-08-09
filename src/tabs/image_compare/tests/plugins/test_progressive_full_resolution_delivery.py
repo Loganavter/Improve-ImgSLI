@@ -33,16 +33,9 @@ def test_full_resolution_result_adapter_rejects_invalid_payload():
 def test_successful_unification_clears_pending_paths():
     image1 = object()
     image2 = object()
-    cache = {}
     render_cache = SimpleNamespace(
         unification_in_progress=True,
         pending_unification_paths=("left.png", "right.png"),
-        scaled_image1_for_display=None,
-        scaled_image2_for_display=None,
-        display_cache_image1=None,
-        display_cache_image2=None,
-        last_display_cache_params=None,
-        unified_image_cache=cache,
         cached_diff_image=None,
     )
     document = SimpleNamespace(
@@ -62,6 +55,7 @@ def test_successful_unification_clears_pending_paths():
     )
     controller = SimpleNamespace(
         _unification_task_id=3,
+        _start_pyramid_builds=lambda *stores: None,
         store=store,
         diff_service=None,
         metrics_service=SimpleNamespace(on_metrics_calculated=lambda value: None),

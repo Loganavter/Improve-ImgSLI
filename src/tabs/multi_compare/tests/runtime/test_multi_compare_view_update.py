@@ -27,12 +27,19 @@ def test_set_state_schedules_deferred_view_update(qapp, monkeypatch):
 
     canvas.set_state(MultiCompareState())
     assert updates[0] == "update"
-    assert canvas._view_update_pending is True
+    # set_state defers the expensive sync/rebuild to one coalesced flush per
+    # tick; request_view_update() (and its own deferred repaint) only fires
+    # once that flush actually runs.
+    assert canvas._composition_flush.pending is True
     assert len(deferred) == 1
 
-    before = len(updates)
     canvas.setVisible(True)
     deferred[0]()
+    assert canvas._view_update_pending is True
+    assert len(deferred) == 2
+
+    before = len(updates)
+    deferred[1]()
     assert canvas._view_update_pending is False
     assert len(updates) > before
     canvas.deleteLater()

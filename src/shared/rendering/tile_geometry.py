@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-# 1px of real neighboring source pixels duplicated on every tile edge so
-# bilinear filtering at a tile boundary samples true neighbor data instead
-# of ClampToEdge-repeating its own edge texel (which would show as a seam).
-# Any canvas that composites multiple GPU tiles into one continuous image
-# (the compare tabs, ...) needs this same apron, so it lives here rather
-# than under one tab.
-_TILE_APRON_PX = 1
-# Extra ring of tiles kept GPU-resident beyond what's strictly visible this
-# frame, so a one-tile pan/zoom nudge doesn't immediately re-crop/re-upload
-# from the CPU-side cached image next frame.
-_TILE_RESIDENCY_MARGIN = 1
+from .tile_constants import TILE_APRON_PX, TILE_RESIDENCY_MARGIN
+
+_TILE_APRON_PX = TILE_APRON_PX
+_TILE_RESIDENCY_MARGIN = TILE_RESIDENCY_MARGIN
 
 
 def _apron_rect(
@@ -50,9 +43,30 @@ def viewport_zoom_offset_for_tile(
 
 
 def crop_apron_tile(pixel_store, left: int, top: int, right: int, bottom: int, apron: int = _TILE_APRON_PX):
-    """Crop a tile region with apron from TiledPixelStore or PIL-like source."""
-    if hasattr(pixel_store, "crop_apron_rect"):
-        return pixel_store.crop_apron_rect(left, top, right, bottom, apron=apron)
+    """Crop a tile region with apron from a TiledPixelStore, QImage, or PIL-like source.
+
+    TiledPixelStore and QImage go through ``qimage_from_pixel_source``'s
+    type-specific fast paths (numpy memmap view / ``QImage.copy``) and
+    return a ``QImage`` directly -- this is a per-frame hot path (one call
+    per visible tile), so every canvas tab shares this single
+    implementation instead of keeping its own inline copy. Anything else
+    (plain PIL-like sources) falls back to generic ``.size``/``.crop()``.
+    """
+    from PySide6.QtGui import QImage
+
+    from shared.image_processing.tiled_pixel_store import (
+        TiledPixelStore,
+        pixel_source_size,
+        qimage_from_pixel_source,
+    )
+
+    if isinstance(pixel_store, (TiledPixelStore, QImage)):
+        w, h = pixel_source_size(pixel_store)
+        al = max(0, left - apron)
+        at = max(0, top - apron)
+        ar = min(w, right + apron)
+        ab = min(h, bottom + apron)
+        return qimage_from_pixel_source(pixel_store, (al, at, ar, ab))
     w, h = pixel_store.size
     al = max(0, left - apron)
     at = max(0, top - apron)

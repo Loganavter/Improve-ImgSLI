@@ -28,10 +28,13 @@ logger = logging.getLogger("ImproveImgSLI")
 _spill_dir_cache: str | None = None
 _AUTO_CROP_PROBE_MAX = 1024
 
+# PID sentinel file written into the spill dir so purge skips *this* process.
+_pid_sentinel_path: str | None = None
+
 
 def resolve_pixel_spill_dir() -> str | None:
     """Disk-backed directory for memmap spill files (not tmpfs)."""
-    global _spill_dir_cache
+    global _spill_dir_cache, _pid_sentinel_path
     if _spill_dir_cache is not None:
         return _spill_dir_cache
     try:
@@ -44,10 +47,110 @@ def resolve_pixel_spill_dir() -> str | None:
             spill_dir = os.path.join(cache_dir, "pixel_tile_store")
             os.makedirs(spill_dir, exist_ok=True)
             _spill_dir_cache = spill_dir
+
+            # Write a zero-byte sentinel so concurrent purge calls skip us.
+            sentinel = os.path.join(spill_dir, f"pid_{os.getpid()}.lock")
+            try:
+                with open(sentinel, "w"):
+                    pass
+                _pid_sentinel_path = sentinel
+                import atexit
+                atexit.register(_remove_pid_sentinel)
+            except OSError:
+                pass
+
             return spill_dir
     except Exception as exc:
         logger.debug("Failed to resolve Qt cache location for spill dir: %s", exc)
     return None
+
+
+def _remove_pid_sentinel() -> None:
+    global _pid_sentinel_path
+    path = _pid_sentinel_path
+    _pid_sentinel_path = None
+    if path:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def purge_stale_spill_files() -> int:
+    """Delete leftover ``imgsli_tps_*.raw`` files from crashed/killed sessions.
+
+    Safe to call at startup before any :class:`TiledPixelStore` is allocated
+    for this process (the PID sentinel is written in :func:`resolve_pixel_spill_dir`
+    which must have been called first).
+
+    Returns the number of bytes reclaimed.
+    """
+    spill_dir = resolve_pixel_spill_dir()
+    if not spill_dir:
+        return 0
+
+    # Collect live PIDs so we can skip files that belong to a running process.
+    try:
+        live_pids: set[int] | None = {
+            int(p) for p in os.listdir("/proc") if p.isdigit()
+        }
+    except OSError:
+        # Cannot tell who is alive; treat every sentinel as live (no purge).
+        live_pids = None
+
+    # PID sentinels written by live ImgSLI processes. Sentinels from dead
+    # PIDs (crashed/killed sessions) are removed here — a stale lock must
+    # not block purging forever.
+    sentinel_pids: set[int] = set()
+    try:
+        for name in os.listdir(spill_dir):
+            if name.startswith("pid_") and name.endswith(".lock"):
+                try:
+                    pid = int(name[4:-5])
+                except ValueError:
+                    continue
+                if live_pids is not None and pid not in live_pids:
+                    try:
+                        os.remove(os.path.join(spill_dir, name))
+                    except OSError:
+                        sentinel_pids.add(pid)
+                    continue
+                sentinel_pids.add(pid)
+    except OSError:
+        return 0
+
+    reclaimed = 0
+    try:
+        for name in os.listdir(spill_dir):
+            if not (name.startswith("imgsli_tps_") and name.endswith(".raw")):
+                continue
+            full = os.path.join(spill_dir, name)
+            try:
+                size = os.path.getsize(full)
+            except OSError:
+                continue
+            # Skip if any live ImgSLI process has a sentinel in this dir —
+            # we cannot tell which files belong to which process, so be
+            # conservative: only purge when NO other ImgSLI process is live.
+            if sentinel_pids - {os.getpid()}:
+                # Another live ImgSLI instance — bail entirely.
+                logger.debug(
+                    "[SpillPurge] Other live ImgSLI process detected (pids %s), skipping purge.",
+                    sentinel_pids - {os.getpid()},
+                )
+                return reclaimed
+            try:
+                os.remove(full)
+                reclaimed += size
+                logger.debug("[SpillPurge] Removed stale spill file %s (%d bytes)", name, size)
+            except OSError as exc:
+                logger.debug("[SpillPurge] Could not remove %s: %s", name, exc)
+    except OSError:
+        pass
+
+    if reclaimed:
+        logger.info("[SpillPurge] Reclaimed %.1f MiB from stale pixel spill files.", reclaimed / 1024 / 1024)
+    return reclaimed
 
 
 def _spill_dir(tmp_dir: str | None) -> str | None:
@@ -59,19 +162,35 @@ def _allocate_spill_memmap(
 ) -> tuple[np.memmap, str]:
     """Create an empty RGBA8 spill file and return a writable memmap + path."""
     width, height = max(1, int(width)), max(1, int(height))
+    expected_size = width * height * 4
     fd, path = tempfile.mkstemp(
         prefix="imgsli_tps_",
         suffix=".raw",
         dir=_spill_dir(tmp_dir),
     )
+    
     try:
+        try:
+            if hasattr(os, 'posix_fallocate'):
+                try:
+                    os.posix_fallocate(fd, 0, expected_size)
+                except OSError as exc:
+                    raise OSError(f"No space to allocate {expected_size} bytes for pixel store: {exc}") from exc
+            else:
+                os.ftruncate(fd, expected_size)
+        finally:
+            os.close(fd)
+            
         memmap = np.memmap(path, dtype=np.uint8, mode="r+", shape=(height, width, 4))
         memmap[:] = 0
         memmap.flush()
-    finally:
-        os.close(fd)
-    memmap = np.memmap(path, dtype=np.uint8, mode="r+", shape=(height, width, 4))
-    return memmap, path
+        return memmap, path
+    except Exception:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        raise
 
 
 def _reopen_readonly(path: str, height: int, width: int) -> np.memmap:
@@ -111,6 +230,7 @@ def _write_rgba_strips(
             raise ValueError(
                 f"src_box {(right - left)}x{(bottom - top)} != memmap {out_w}x{out_h}"
             )
+        import time
         y = 0
         while y < out_h:
             chunk = min(strip_h, out_h - y)
@@ -125,6 +245,7 @@ def _write_rgba_strips(
             else:
                 memmap[y : y + chunk, :, :] = np.asarray(band, dtype=np.uint8)
             y += chunk
+            time.sleep(0.001)
         memmap.flush()
         return
 
@@ -138,6 +259,7 @@ def _write_rgba_strips(
         raise ValueError(
             f"src_box {(right - left)}x{(bottom - top)} != memmap {out_w}x{out_h}"
         )
+    import time
     y = 0
     while y < out_h:
         chunk = min(strip_h, out_h - y)
@@ -148,7 +270,41 @@ def _write_rgba_strips(
             chunk, out_w, 4
         )
         y += chunk
+        time.sleep(0.001)
     memmap.flush()
+
+
+def _find_trim_box_vips(
+    rgb: np.ndarray, *, threshold: int = 15
+) -> tuple[int, int, int, int] | None:
+    """BBox of non-black content via vips ``find_trim`` — no PIL passes.
+
+    ``rgb`` must already be the (possibly downscaled) probe buffer; this
+    only wraps it into a vips image (single memcpy, no per-pixel Python).
+    Returns ``None`` on failure so callers can fall back to the PIL path.
+    """
+    from shared.image_processing.progressive_loader import PYVIPS_SUPPORTED
+
+    if not PYVIPS_SUPPORTED:
+        return None
+    try:
+        import pyvips
+
+        a = np.ascontiguousarray(rgb[:, :, :3], dtype=np.uint8)
+        h, w = a.shape[0], a.shape[1]
+        vimg = pyvips.Image.new_from_memory(a.tobytes(), w, h, 3, "uchar")
+        left, top, width, height = vimg.find_trim(
+            threshold=threshold, background=[0, 0, 0]
+        )
+        if width <= 0 or height <= 0:
+            return None
+        right, bottom = left + width, top + height
+        if (left, top, right, bottom) == (0, 0, w, h):
+            return None
+        return (left, top, right, bottom)
+    except Exception as e:
+        logger.debug("vips find_trim probe failed: %s", e)
+        return None
 
 
 def _auto_crop_box_scaled(
@@ -160,17 +316,29 @@ def _auto_crop_box_scaled(
     w, h = rgba.size
     longest = max(w, h)
     if longest <= _AUTO_CROP_PROBE_MAX:
+        vips_box = _find_trim_box_vips(np.asarray(rgba), threshold=threshold)
+        if vips_box is not None:
+            return vips_box
         return get_auto_crop_box(rgba, threshold)
 
     scale = _AUTO_CROP_PROBE_MAX / float(longest)
     probe_w = max(1, int(round(w * scale)))
     probe_h = max(1, int(round(h * scale)))
-    probe = rgba.resize((probe_w, probe_h), Image.Resampling.BILINEAR)
-    box = get_auto_crop_box(probe, threshold)
-    if box is None:
-        return None
-    pl, pt, pr, pb = box
+    # NEAREST: BILINEAR on RGBA makes PIL premultiply-convert the whole
+    # full-res image (RGBA->RGBa), a multi-GB copy for 20k+ sources. For a
+    # bbox probe nearest sampling is sufficient.
+    probe = rgba.resize((probe_w, probe_h), Image.Resampling.NEAREST)
     inv = 1.0 / scale
+
+    vips_box = _find_trim_box_vips(np.asarray(probe), threshold=threshold)
+    if vips_box is not None:
+        pl, pt, pr, pb = vips_box
+    else:
+        box = get_auto_crop_box(probe, threshold)
+        if box is None:
+            return None
+        pl, pt, pr, pb = box
+
     left = max(0, int(pl * inv))
     top = max(0, int(pt * inv))
     right = min(w, max(left + 1, int(round(pr * inv))))
@@ -187,6 +355,9 @@ def _auto_crop_box_from_ndarray(
     src_h, src_w = int(arr.shape[0]), int(arr.shape[1])
     longest = max(src_w, src_h)
     if longest <= _AUTO_CROP_PROBE_MAX:
+        vips_box = _find_trim_box_vips(arr, threshold=threshold)
+        if vips_box is not None:
+            return vips_box
         channels = arr[:, :, :3] if arr.shape[2] >= 3 else arr
         rgb = Image.fromarray(np.asarray(channels, dtype=np.uint8), mode="RGB")
         return _auto_crop_box_scaled(rgb.convert("RGBA"), threshold=threshold)
@@ -194,14 +365,18 @@ def _auto_crop_box_from_ndarray(
     scale = _AUTO_CROP_PROBE_MAX / float(longest)
     step = max(1, int(1.0 / scale))
     small = np.asarray(arr[::step, ::step, :3], dtype=np.uint8)
-    probe = Image.fromarray(small, mode="RGB").convert("RGBA")
-    # Map probe coords: probe pixel ≈ step source pixels.
-    from shared.image_processing.resize import get_auto_crop_box
 
-    box = get_auto_crop_box(probe, threshold)
-    if box is None:
-        return None
-    pl, pt, pr, pb = box
+    vips_box = _find_trim_box_vips(small, threshold=threshold)
+    if vips_box is None:
+        probe = Image.fromarray(small, mode="RGB").convert("RGBA")
+        from shared.image_processing.resize import get_auto_crop_box
+
+        box = get_auto_crop_box(probe, threshold)
+        if box is None:
+            return None
+        vips_box = box
+
+    pl, pt, pr, pb = vips_box
     left = max(0, int(pl * step))
     top = max(0, int(pt * step))
     right = min(src_w, max(left + 1, int(pr * step)))
@@ -239,6 +414,84 @@ def _decode_path_to_rgba(path: str | Path) -> Image.Image | np.ndarray:
         return rgba
     finally:
         img.close()
+
+
+def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool = False) -> tuple[np.memmap, str, int, int]:
+    import pyvips
+
+    img = pyvips.Image.new_from_file(path_str, access="sequential")
+    if not img.hasalpha():
+        img = img.bandjoin(255)
+    if img.format != "uchar":
+        img = img.cast("uchar")
+
+    src_w = img.width
+    src_h = img.height
+
+    src_box = None
+    if auto_crop:
+        try:
+            probe_img = pyvips.Image.thumbnail(path_str, _AUTO_CROP_PROBE_MAX)
+            probe_rgb = probe_img[:3] if probe_img.bands >= 3 else probe_img
+            left, top, width, height = probe_rgb.find_trim(
+                threshold=15, background=[0, 0, 0]
+            )
+            if width > 0 and height > 0 and not (
+                left == 0 and top == 0
+                and width == probe_img.width and height == probe_img.height
+            ):
+                right, bottom = left + width, top + height
+                scale_w = src_w / probe_img.width
+                scale_h = src_h / probe_img.height
+                l2 = max(0, int(left * scale_w))
+                t2 = max(0, int(top * scale_h))
+                r2 = min(src_w, max(l2 + 1, int(round(right * scale_w))))
+                b2 = min(src_h, max(t2 + 1, int(round(bottom * scale_h))))
+                if (l2, t2, r2, b2) != (0, 0, src_w, src_h):
+                    src_box = (l2, t2, r2, b2)
+        except Exception as e:
+            logger.debug("pyvips auto-crop probe failed: %s", e)
+
+    out_w = src_w
+    out_h = src_h
+    if src_box is not None:
+        left, top, right, bottom = src_box
+        out_w = right - left
+        out_h = bottom - top
+        logger.info("Auto-crop applied via pyvips: %s (Orig: %dx%d)", src_box, src_w, src_h)
+
+    memmap, spill_path = _allocate_spill_memmap(out_w, out_h, tmp_dir)
+
+    try:
+        import time
+        strip_h = _strip_height()
+        if src_box is not None:
+            left, top, right, bottom = src_box
+            img = img.crop(left, top, out_w, out_h)
+
+        # Region.fetch (not repeated top-level crop().write_to_memory() calls)
+        # is required here: each independent sink evaluation on a
+        # sequential-access source restarts the reader's line cursor, so a
+        # second strip pull past what the first already consumed raises
+        # "out of order read". Region.fetch shares one cursor across calls.
+        region = pyvips.Region.new(img)
+        y = 0
+        while y < out_h:
+            chunk = min(strip_h, out_h - y)
+            strip_bytes = region.fetch(0, y, out_w, chunk)
+            arr = np.ndarray(buffer=strip_bytes, dtype=np.uint8, shape=(chunk, out_w, 4))
+            memmap[y:y+chunk, :, :] = arr
+            y += chunk
+            time.sleep(0.001)
+        memmap.flush()
+    except Exception:
+        try:
+            os.remove(spill_path)
+        except OSError:
+            pass
+        raise
+
+    return memmap, spill_path, out_w, out_h
 
 
 class TiledPixelStore:
@@ -291,6 +544,7 @@ class TiledPixelStore:
         strip_h = _strip_height()
         out_h = bottom - top
         out_w = right - left
+        import time
         y = 0
         while y < out_h:
             chunk = min(strip_h, out_h - y)
@@ -299,7 +553,23 @@ class TiledPixelStore:
                 band, dtype=np.uint8
             ).reshape(chunk, out_w, 4)
             y += chunk
+            time.sleep(0.001)
         memmap.flush()
+
+    def write_array(self, box: tuple[int, int, int, int], arr: np.ndarray) -> None:
+        """Write an (H, W, 4) uint8 array into ``box`` without a PIL round-trip."""
+        left, top, right, bottom = box
+        memmap = self._ensure_open()
+        memmap[top:bottom, left:right, :] = arr
+
+    def read_array(self, box: tuple[int, int, int, int]) -> np.ndarray:
+        """Read ``box`` as an (H, W, 4) uint8 array without a PIL round-trip."""
+        left, top, right, bottom = box
+        memmap = self._ensure_open()
+        return np.asarray(memmap[top:bottom, left:right, :], dtype=np.uint8)
+
+    def flush(self) -> None:
+        self._ensure_open().flush()
 
     @classmethod
     def from_pil(cls, pil_image: Image.Image, tmp_dir: str | None = None) -> "TiledPixelStore":
@@ -327,8 +597,22 @@ class TiledPixelStore:
         *,
         auto_crop: bool = False,
     ) -> "TiledPixelStore":
+        import time
         from core.constants import AppConstants
-        from shared.image_processing.progressive_loader import ImageSizeLimitError
+        from shared.image_processing.progressive_loader import ImageSizeLimitError, PYVIPS_SUPPORTED
+
+        t0 = time.perf_counter()
+        path_str = os.fspath(path)
+        logger.info(f"[TileStore] from_path starting for {path_str} (auto_crop={auto_crop})")
+        if PYVIPS_SUPPORTED and not path_str.lower().endswith(".jxl"):
+            try:
+                memmap, spill_path, out_w, out_h = _stream_pyvips_to_memmap(path_str, tmp_dir, auto_crop=auto_crop)
+                memmap = _reopen_readonly(spill_path, out_h, out_w)
+                elapsed = time.perf_counter() - t0
+                logger.info(f"[TileStore] pyvips streamed {path_str} ({out_w}x{out_h}) in {elapsed:.3f}s")
+                return cls(memmap, spill_path, tile_size=AppConstants.PIXEL_TILE_SIZE)
+            except Exception as e:
+                logger.warning("pyvips stream decode failed for %s, falling back to PIL/imagecodecs: %s", path_str, e)
 
         try:
             decoded = _decode_path_to_rgba(path)
@@ -385,6 +669,18 @@ class TiledPixelStore:
         memmap = _reopen_readonly(spill_path, out_h, out_w)
         return cls(memmap, spill_path, tile_size=AppConstants.PIXEL_TILE_SIZE)
 
+    @classmethod
+    def from_embedded_cache(cls, cache_path: str, width: int, height: int) -> "TiledPixelStore":
+        """Wrap an already-decoded RGBA8 raw buffer extracted from a project cache.
+
+        The buffer's dimensions already reflect whatever crop was applied
+        when it was captured at save time — no auto-crop pass here.
+        """
+        from core.constants import AppConstants
+
+        memmap = _reopen_readonly(cache_path, height, width)
+        return cls(memmap, cache_path, tile_size=AppConstants.PIXEL_TILE_SIZE)
+
     @property
     def tile_size(self) -> int:
         return self._tile_size
@@ -396,6 +692,10 @@ class TiledPixelStore:
     @property
     def tile_cols(self) -> int:
         return self._tile_cols
+
+    @property
+    def path(self) -> str | None:
+        return self._path
 
     @property
     def size(self) -> tuple[int, int]:
@@ -434,17 +734,6 @@ class TiledPixelStore:
         region = np.array(memmap[top:bottom, left:right, :], copy=True)
         return Image.fromarray(region, mode="RGBA")
 
-    def crop_apron_rect(
-        self, left: int, top: int, right: int, bottom: int, apron: int = 1
-    ) -> Image.Image:
-        """Crop ``(left, top, right, bottom)`` expanded by ``apron`` pixels."""
-        w, h = self.size
-        al = max(0, left - apron)
-        at = max(0, top - apron)
-        ar = min(w, right + apron)
-        ab = min(h, bottom + apron)
-        return self.crop((al, at, ar, ab))
-
     def materialize_full(self) -> Image.Image:
         """Return a full in-memory RGBA copy.
 
@@ -482,12 +771,40 @@ class TiledPixelStore:
 
 
 def qimage_from_pixel_source(source, box: tuple[int, int, int, int] | None = None) -> "QImage":
-    """Convert PIL or TiledPixelStore region to QImage."""
+    """Convert PIL, TiledPixelStore, or QImage region to QImage.
+
+    QImage sources show up here for progressive-preview slots (multi_compare
+    keeps the decoded preview as a QImage, not PIL -- see
+    ``slot_pixel_sources``); QImage has neither PIL's ``.crop()``/``.mode``
+    nor TiledPixelStore's ``.size`` tuple, so it needs its own branch instead
+    of falling into the PIL-shaped ``else`` below.
+    """
     from PySide6.QtGui import QImage
+
+    if isinstance(source, QImage):
+        if box is not None:
+            left, top, right, bottom = box
+            return source.copy(left, top, right - left, bottom - top)
+        return source
 
     if isinstance(source, TiledPixelStore):
         if box is not None:
-            pil = source.crop(box)
+            # Bypass the PIL round-trip (fromarray -> convert -> tobytes),
+            # which is 2-3 redundant full-tile copies on top of the memmap
+            # read: read_array is a numpy *view* (no copy), so the only real
+            # copy left is the contiguity fix-up below, plus QImage's own
+            # detach copy. Hot path for realize_tile_plan's per-frame
+            # hi-res tile crops (multi-GB/frame on a 20000px source).
+            left, top, right, bottom = box
+            arr = np.ascontiguousarray(source.read_array(box))
+            width, height = right - left, bottom - top
+            return QImage(
+                arr.data,
+                width,
+                height,
+                width * 4,
+                QImage.Format.Format_RGBA8888,
+            ).copy()
         else:
             width, height = source.size
             pil = Image.new("RGBA", (width, height))
@@ -508,6 +825,18 @@ def qimage_from_pixel_source(source, box: tuple[int, int, int, int] | None = Non
         pil.width * 4,
         QImage.Format.Format_RGBA8888,
     ).copy()
+
+
+def pixel_source_size(source) -> tuple[int, int]:
+    """``(width, height)`` for any renderer pixel source: ``TiledPixelStore``
+    exposes it as a tuple property, ``QImage`` as a method pair — callers that
+    accept either (e.g. progressive-preview upload paths) go through this
+    instead of hardcoding one shape."""
+    from PySide6.QtGui import QImage
+
+    if isinstance(source, QImage):
+        return source.width(), source.height()
+    return source.size
 
 
 def maybe_wrap_pixel_store(pil_image: Image.Image | None):

@@ -406,6 +406,14 @@ class VideoEditorDialog(ThemedDialog):
         self.btn_undo.setProperty("opacity", undo_opacity)
         self.btn_redo.setProperty("opacity", redo_opacity)
 
+    def _on_fit_content_available_changed(self, available: bool):
+        # Nothing to uncrop when the canvas never leaves normalized 0..1
+        # (no snapshot ever padded/overflowed the frame) — toggling would be
+        # a visual no-op. Same dim-when-disabled treatment as undo/redo.
+        if hasattr(self, "btn_fit_content"):
+            self.btn_fit_content.setEnabled(available)
+            self.btn_fit_content.setProperty("opacity", "1.0" if available else "0.4")
+
     def _on_thumbnails_updated(self, thumbnails: dict):
         self.timeline.set_thumbnails(thumbnails)
 

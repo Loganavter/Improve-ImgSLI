@@ -20,7 +20,10 @@ from tabs.image_compare.services.video_snapshot_rendering.prepare import (
     prepare_canvas_frame as _prepare_canvas_frame,
     prepare_canvas_frame_from_images as _prepare_canvas_frame_from_images,
 )
-from tabs.image_compare.services.video_snapshot_rendering.render import render_prepared
+from tabs.image_compare.services.video_snapshot_rendering.render import (
+    render_prepared,
+    render_prepared_async,
+)
 
 
 class SnapshotFrameRenderer:
@@ -63,6 +66,26 @@ class SnapshotFrameRenderer:
         self._last_backend = result.backend
         self._last_debug = result.debug
         return result
+
+    def render_async(self, snap, request: VideoRenderRequest, callback) -> None:
+        """Non-blocking counterpart to :meth:`render`.
+
+        The CPU-side prepare step (image load/decode, caching) still runs
+        synchronously on the calling thread — only the GPU step is deferred,
+        so callers keep image decoding off the GUI thread while not blocking
+        their own thread on the GPU round-trip. See ``render_plan_async``.
+        """
+        if self._gpu_export_service is None:
+            raise RuntimeError("GPU export service is not configured")
+
+        prepared = self.prepare_canvas_frame(snap, request)
+
+        def _on_result(result) -> None:
+            self._last_backend = result.backend
+            self._last_debug = result.debug
+            callback(result)
+
+        render_prepared_async(self._gpu_export_service, prepared, request, _on_result)
 
     def prepare_canvas_frame(self, snap, request: VideoRenderRequest) -> PreparedCanvasFrame:
         return _prepare_canvas_frame(

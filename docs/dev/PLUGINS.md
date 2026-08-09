@@ -4,7 +4,7 @@ A **plugin** is any module with `@plugin(...)` on a `Plugin` subclass. Discovery
 
 **Tab-owned sub-plugins convention:** a plugin with no consumer outside a single tab lives under `src/tabs/<tab_name>/plugins/<plugin_name>/`, mirroring `src/plugins/<name>/` at the tab's own scope, instead of sitting as a bare sibling of the tab's other subpackages (`canvas/`, `ui/`, `services/`, ...). Every `src/tabs/<tab_name>/` gets a `plugins/` package once it has at least one such plugin — do not leave an empty placeholder `plugins/` package for a tab that has none.
 
-This document covers wiring and the live inventory. For canvas-tool plugins (sliders, magnifier, overlays) see [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — a parallel system layered on top. Tab session/UI contracts are in [tabs/index.md](tabs/index.md).
+This document covers wiring and the live inventory. For canvas-tool plugins (sliders, magnifier, overlays) see [rendering/index.md](rendering/index.md) — a parallel system layered on top. Tab session/UI contracts are in [tabs/index.md](tabs/index.md).
 
 ## Files
 
@@ -218,5 +218,5 @@ Patterns:
 
 - [STORE.md](STORE.md) — how plugins read/write app state
 - [EVENT_BUS.md](EVENT_BUS.md) — cross-plugin async comms
-- [QRHI_CANVAS_FEATURES.md](QRHI_CANVAS_FEATURES.md) — the orthogonal plugin system for canvas-tools
+- [rendering/index.md](rendering/index.md) — the orthogonal plugin system for canvas-tools
 - [tabs/index.md](tabs/index.md) — workspace tab/session interface

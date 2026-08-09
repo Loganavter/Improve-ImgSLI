@@ -27,6 +27,7 @@ from tabs.image_compare.canvas.render_config import (
     get_view_transformed_content_rect_widget_px,
 )
 from tabs.image_compare.canvas.rhi_feature_common import scissor_from_widget_rect
+from shared.rendering.uniform_layout import assert_uniform_size
 
 _SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 _VERTICES = struct.pack(
@@ -50,7 +51,9 @@ _VERTICES = struct.pack(
 )
 # std140: mat4(64) + vec2(8) + 2 floats(8) + vec4 color(16) + vec4 clip(16)
 # + int(4) + pad(12) = 128
+_UNIFORM_FMT = "<24f4fi3f"
 _UNIFORM_SIZE = 128
+assert_uniform_size(_UNIFORM_FMT, _UNIFORM_SIZE, label="DividerPass uniform")
 
 
 def _load_shader(name: str) -> QShader:
@@ -93,7 +96,7 @@ class DividerPass(CanvasRenderPass):
         spit = _content_split_visual(ctx)
 
         # Position + clip from the letterbox *after* the same zoom/pan as
-        # base.frag. See docs/dev/rendering/investigations/divider-zoom-pan-detach.md.
+        # base.frag. See src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md.
         clip = get_view_transformed_content_rect_widget_px(widget)
         if clip is None:
             clip = (0.0, 0.0, float(ctx.canvas_width), float(ctx.canvas_height))
@@ -189,7 +192,7 @@ class DividerPass(CanvasRenderPass):
         matrix = tuple(float(value) for value in self.rhi.clipSpaceCorrMatrix().data())
         cx, cy, cw, ch = clip
         block = struct.pack(
-            "<24f4fi3f",
+            _UNIFORM_FMT,
             *matrix,
             float(ctx.width),
             float(ctx.height),
@@ -220,7 +223,7 @@ class DividerPass(CanvasRenderPass):
             )
         )
         # Full-target scissor only — content clip lives in the fragment shader
-        # (docs/dev/rendering/investigations/divider-zoom-pan-detach.md).
+        # (src/tabs/image_compare/docs/investigations/divider-zoom-pan-detach.md).
         command_buffer.setScissor(
             scissor_from_widget_rect(
                 widget, self.rhi, ctx, 0.0, 0.0, float(ctx.width), float(ctx.height)

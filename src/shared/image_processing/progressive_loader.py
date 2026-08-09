@@ -20,10 +20,25 @@ except Exception as e:
     JXL_SUPPORTED = False
     logger.error(f"JXL Support: Error during initialization: {e}")
 
+try:
+    import pyvips
+
+    PYVIPS_SUPPORTED = True
+    logger.info("pyvips detected. True ROI streaming enabled.")
+except ImportError:
+    PYVIPS_SUPPORTED = False
+    logger.debug("pyvips NOT detected. True ROI streaming disabled.")
+except Exception as e:
+    PYVIPS_SUPPORTED = False
+    logger.error(f"pyvips Support: Error during initialization: {e}")
+
 class ImageSizeLimitError(ValueError):
     pass
 
-def _ensure_supported_dimensions(width: int, height: int, image_path: str) -> None:
+
+def _ensure_supported_dimensions(width: int, height: int, image_path: str, ignore_limit: bool = False) -> None:
+    if ignore_limit:
+        return
     max_dim = int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 65536))
     if max(int(width), int(height)) > max_dim:
         raise ImageSizeLimitError(
@@ -56,7 +71,7 @@ def should_use_progressive_load(
 
         with Image.open(file_path) as img:
             width, height = img.size
-            _ensure_supported_dimensions(width, height, file_path)
+            _ensure_supported_dimensions(width, height, file_path, ignore_limit=PYVIPS_SUPPORTED)
             FULL_HD_PIXELS = 1920 * 1080
             return (width * height) >= FULL_HD_PIXELS
     except ImageSizeLimitError:
@@ -67,14 +82,16 @@ def should_use_progressive_load(
             logger.debug(f"Failed to check image dimensions: {e}")
         return False
 
-def load_preview_image(image_path: str, auto_crop: bool = False) -> Image.Image | None:
+def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | None":
     """Load a bounded progressive preview for display-tier use only.
 
-    Returns ``PIL.Image`` RGBA capped at 1024 px on the long edge. Callers
+    Returns ``QImage`` RGBA8888 capped at 1024 px on the long edge. Callers
     store the result in ``document.preview_image*`` — never wrap with
     ``TiledPixelStore`` (full-res tier owns memmap storage).
     """
     try:
+        from PySide6.QtGui import QImage, QImageReader
+        from PySide6.QtCore import QSize
 
         if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
             logger.info(f"Loading JXL preview for: {image_path}")
@@ -82,7 +99,7 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> Image.Image 
             img = Image.fromarray(decoded)
 
             original_width, original_height = img.size
-            _ensure_supported_dimensions(original_width, original_height, image_path)
+            _ensure_supported_dimensions(original_width, original_height, image_path, ignore_limit=PYVIPS_SUPPORTED)
             max_preview_size = 1024
             scale = min(
                 max_preview_size / original_width, max_preview_size / original_height
@@ -96,30 +113,65 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> Image.Image 
             preview = img.convert("RGBA")
             if auto_crop:
                 preview = crop_black_borders(preview)
-            preview.load()
-            return preview
+            
+            from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+            return qimage_from_pixel_source(preview)
 
-        with Image.open(image_path) as img:
-            original_width, original_height = img.size
-            _ensure_supported_dimensions(original_width, original_height, image_path)
+        reader = QImageReader(image_path)
+        reader.setAllocationLimit(16384)
+        if reader.format().isEmpty():
+            logger.warning(f"QImageReader unsupported format for {image_path}, falling back to PIL")
+            with Image.open(image_path) as img:
+                original_width, original_height = img.size
+                _ensure_supported_dimensions(original_width, original_height, image_path, ignore_limit=PYVIPS_SUPPORTED)
+                max_preview_size = 1024
+                scale = min(
+                    max_preview_size / original_width, max_preview_size / original_height
+                )
+
+                if scale >= 1.0:
+                    preview = img.copy().convert("RGBA")
+                else:
+                    new_width = int(original_width * scale)
+                    new_height = int(original_height * scale)
+                    preview = img.copy()
+                    preview.thumbnail((new_width, new_height), Image.Resampling.BILINEAR)
+                    preview = preview.convert("RGBA")
+
+                if auto_crop:
+                    preview = crop_black_borders(preview)
+                from shared.image_processing.tiled_pixel_store import qimage_from_pixel_source
+                return qimage_from_pixel_source(preview)
+
+        size = reader.size()
+        if size.isValid():
+            original_width, original_height = size.width(), size.height()
+            _ensure_supported_dimensions(original_width, original_height, image_path, ignore_limit=PYVIPS_SUPPORTED)
             max_preview_size = 1024
-            scale = min(
-                max_preview_size / original_width, max_preview_size / original_height
-            )
-
-            if scale >= 1.0:
-                preview = img.copy().convert("RGBA")
-            else:
-                new_width = int(original_width * scale)
-                new_height = int(original_height * scale)
-                preview = img.copy()
-                preview.thumbnail((new_width, new_height), Image.Resampling.BILINEAR)
-                preview = preview.convert("RGBA")
-
+            scale = min(max_preview_size / original_width, max_preview_size / original_height)
+            
+            if scale < 1.0:
+                new_width = max(1, int(original_width * scale))
+                new_height = max(1, int(original_height * scale))
+                reader.setScaledSize(QSize(new_width, new_height))
+            
+            qimg = reader.read()
+            if qimg.isNull():
+                logger.error(f"QImageReader returned null image for {image_path}")
+                return None
+            
+            qimg = qimg.convertToFormat(QImage.Format.Format_RGBA8888)
+            
             if auto_crop:
-                preview = crop_black_borders(preview)
-            preview.load()
-            return preview
+                pil_probe = Image.frombytes("RGBA", (qimg.width(), qimg.height()), qimg.bits())
+                from shared.image_processing.resize import get_auto_crop_box
+                bbox = get_auto_crop_box(pil_probe, 15)
+                if bbox is not None:
+                    qimg = qimg.copy(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1])
+            
+            return qimg
+        else:
+            return None
     except ImageSizeLimitError:
         raise
     except Exception as e:
@@ -151,7 +203,7 @@ def get_image_dimensions(image_path: str) -> tuple[int, int] | None:
     try:
         with Image.open(image_path) as img:
             width, height = img.size
-            _ensure_supported_dimensions(width, height, image_path)
+            _ensure_supported_dimensions(width, height, image_path, ignore_limit=PYVIPS_SUPPORTED)
             return (width, height)
     except ImageSizeLimitError:
         raise
@@ -160,7 +212,7 @@ def get_image_dimensions(image_path: str) -> tuple[int, int] | None:
             try:
                 decoded = imagecodecs.imread(image_path)
                 height, width = decoded.shape[:2]
-                _ensure_supported_dimensions(width, height, image_path)
+                _ensure_supported_dimensions(width, height, image_path, ignore_limit=PYVIPS_SUPPORTED)
                 return (width, height)
             except Exception as e:
                 logger.error(f"Failed to read JXL dimensions {image_path}: {e}")
@@ -182,12 +234,15 @@ def get_image_format_info(image_path: str) -> tuple[str, bool, bool]:
 
 class ProgressiveImageLoader:
     def __init__(self):
-        self._preview_cache: dict[str, Image.Image] = {}
+        from typing import TYPE_CHECKING
+        if TYPE_CHECKING:
+            from PySide6.QtGui import QImage
+        self._preview_cache: dict[str, "QImage"] = {}
         self._full_cache: dict[str, object] = {}
 
     def get_preview(
         self, image_path: str, force_reload: bool = False
-    ) -> Image.Image | None:
+    ) -> "QImage | None":
         if not force_reload and image_path in self._preview_cache:
             return self._preview_cache[image_path]
         preview = load_preview_image(image_path)

@@ -1,0 +1,292 @@
+"""Session snapshot/restore, camera sync, serialize/deserialize/rehydrate
+for ``ImageCompareTab`` -- split out to keep that class down to the
+``TabContract`` surface itself, mirroring the ``use_cases`` split applied to
+``_session_controller.py``. Every function here takes the tab as its first
+argument. ``serialize_session``/``deserialize_session``/``rehydrate_session``
+are required ``TabContract`` method names, so ``tab.py`` keeps thin
+delegators of those exact names; everything else here is private and only
+ever called from those delegators.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from tabs.contract import TabContext
+
+logger = logging.getLogger("ImproveImgSLI")
+
+_STATE_SLOT = "image_compare.state"
+
+
+def _resolve_image_compare_sessions(context: TabContext):
+    main_window = context.main_window
+    if main_window is None:
+        return None
+    controller = getattr(main_window, "main_controller", None)
+    if controller is None:
+        presenter = getattr(main_window, "presenter", None)
+        controller = getattr(presenter, "main_controller", None)
+    if controller is None:
+        return None
+    return getattr(controller, "sessions", None)
+
+
+def canvas_host(tab):
+    widget = tab._widget
+    if widget is None:
+        return None
+    return getattr(widget, "image_label", None)
+
+
+def read_camera_from_host(tab) -> tuple[float, float, float]:
+    from ui.canvas_infra.viewport import get_pan_offset_x, get_pan_offset_y, get_zoom_level
+
+    host = canvas_host(tab)
+    if host is None:
+        return 1.0, 0.0, 0.0
+    try:
+        return (
+            float(get_zoom_level(host)),
+            float(get_pan_offset_x(host)),
+            float(get_pan_offset_y(host)),
+        )
+    except Exception:
+        return 1.0, 0.0, 0.0
+
+
+def apply_camera_to_host(tab, zoom: float, pan_x: float, pan_y: float) -> None:
+    from ui.canvas_infra.viewport import set_pan_offsets, set_zoom_level
+
+    host = canvas_host(tab)
+    if host is None:
+        return
+    try:
+        set_zoom_level(host, zoom)
+        set_pan_offsets(host, pan_x, pan_y)
+    except Exception:
+        logger.exception("Failed to apply camera to image_compare canvas host")
+
+
+def snapshot_into(tab, context: TabContext, session_id: str | None) -> None:
+    if session_id is None or tab._widget is None:
+        return
+    store = getattr(context, "store", None)
+    if store is None or not hasattr(store, "set_session_state_slot"):
+        return
+    from tabs.image_compare.models import ImageCompareState
+
+    widget = tab._widget
+    zoom, pan_x, pan_y = read_camera_from_host(tab)
+    state = ImageCompareState(
+        show_file_names=bool(getattr(getattr(widget, "btn_file_names", None), "isChecked", lambda: False)()),
+        edit_name_1=getattr(getattr(widget, "edit_name1", None), "text", lambda: "")(),
+        edit_name_2=getattr(getattr(widget, "edit_name2", None), "text", lambda: "")(),
+        zoom=zoom,
+        pan_x=pan_x,
+        pan_y=pan_y,
+    )
+    try:
+        store.set_session_state_slot(
+            _STATE_SLOT, state, session_id=session_id, emit_scope=None,
+        )
+    except Exception:
+        pass
+
+
+def restore_from(tab, context: TabContext, session_id: str | None) -> None:
+    if session_id is None or tab._widget is None:
+        return
+    store = getattr(context, "store", None)
+    if store is None or not hasattr(store, "ensure_session_state_slot"):
+        return
+    from tabs.image_compare.models import ImageCompareState
+
+    try:
+        state = store.ensure_session_state_slot(
+            _STATE_SLOT, session_id=session_id, factory=ImageCompareState,
+        )
+    except Exception:
+        return
+    if state is None:
+        return
+    widget = tab._widget
+    btn = getattr(widget, "btn_file_names", None)
+    if btn is not None and hasattr(btn, "setChecked"):
+        btn.setChecked(bool(state.show_file_names))
+    for attr, value in (("edit_name1", state.edit_name_1), ("edit_name2", state.edit_name_2)):
+        edit = getattr(widget, attr, None)
+        if edit is not None and hasattr(edit, "setText"):
+            edit.setText(value or "")
+    apply_camera_to_host(
+        tab,
+        float(getattr(state, "zoom", 1.0) or 1.0),
+        float(getattr(state, "pan_x", 0.0) or 0.0),
+        float(getattr(state, "pan_y", 0.0) or 0.0),
+    )
+
+
+def serialize_session(tab, session_id: str, context: TabContext) -> dict | None:
+    store = getattr(context, "store", None)
+    if store is None:
+        return None
+    session = store.get_workspace_session(session_id)
+    if session is None or session.session_type != tab.session_type:
+        return None
+    # Sync camera from the live host when serializing the active session.
+    if session_id == tab._active_session_id:
+        snapshot_into(tab, context, session_id)
+        session = store.get_workspace_session(session_id) or session
+
+    doc = session.document
+    ui_state = session.state_slots.get(_STATE_SLOT)
+
+    def _items(items):
+        return [
+            {"path": it.path, "display_name": it.display_name, "rating": it.rating}
+            for it in items
+        ]
+
+    from tabs.image_compare.session_persistence import serialize_viewport_block
+
+    camera = {
+        "zoom": float(getattr(ui_state, "zoom", 1.0) or 1.0) if ui_state else 1.0,
+        "pan_x": float(getattr(ui_state, "pan_x", 0.0) or 0.0) if ui_state else 0.0,
+        "pan_y": float(getattr(ui_state, "pan_y", 0.0) or 0.0) if ui_state else 0.0,
+    }
+
+    return {
+        "version": 2,
+        "image_list1": _items(doc.image_list1) if doc else [],
+        "image_list2": _items(doc.image_list2) if doc else [],
+        "current_index1": doc.current_index1 if doc else -1,
+        "current_index2": doc.current_index2 if doc else -1,
+        "image1_path": doc.image1_path if doc else None,
+        "image2_path": doc.image2_path if doc else None,
+        "show_file_names": bool(ui_state.show_file_names) if ui_state else False,
+        "edit_name_1": ui_state.edit_name_1 if ui_state else "",
+        "edit_name_2": ui_state.edit_name_2 if ui_state else "",
+        "camera": camera,
+        "viewport": serialize_viewport_block(getattr(session, "viewport", None)),
+    }
+
+
+def collect_pixel_cache_sources(tab, session_id: str, context: TabContext) -> dict:
+    from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+    store = getattr(context, "store", None)
+    if store is None:
+        return {}
+    session = store.get_workspace_session(session_id)
+    if session is None or session.session_type != tab.session_type:
+        return {}
+    doc = session.document
+    if doc is None:
+        return {}
+
+    sources: dict = {}
+    for path, image in (
+        (doc.image1_path, doc.full_res_image1),
+        (doc.image2_path, doc.full_res_image2),
+    ):
+        if path and isinstance(image, TiledPixelStore) and image.is_open:
+            sources[path] = image
+    return sources
+
+
+def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -> None:
+    store = getattr(context, "store", None)
+    if store is None or not data:
+        return
+    session = store.get_workspace_session(session_id)
+    if session is None:
+        return
+    from tabs.image_compare.state.document import DocumentModel, ImageItem
+    from tabs.image_compare.models import ImageCompareState
+    from tabs.image_compare.session_persistence import restore_viewport_block
+
+    def _items(entries):
+        # `image=None` — pixel data is not persisted, only the source
+        # path; the existing load pipeline decodes it from disk lazily,
+        # the same way `ImageSessionState.loaded_image*_paths` already
+        # tracks history without holding pixels.
+        return [
+            ImageItem(
+                path=e.get("path", ""),
+                display_name=e.get("display_name", ""),
+                rating=e.get("rating", 0),
+            )
+            for e in entries or []
+        ]
+
+    session.document = DocumentModel(
+        image_list1=_items(data.get("image_list1")),
+        image_list2=_items(data.get("image_list2")),
+        current_index1=data.get("current_index1", -1),
+        current_index2=data.get("current_index2", -1),
+        image1_path=data.get("image1_path"),
+        image2_path=data.get("image2_path"),
+    )
+    camera = data.get("camera") or {}
+    store.set_session_state_slot(
+        _STATE_SLOT,
+        ImageCompareState(
+            show_file_names=bool(data.get("show_file_names", False)),
+            edit_name_1=data.get("edit_name_1", ""),
+            edit_name_2=data.get("edit_name_2", ""),
+            zoom=float(camera.get("zoom", 1.0) or 1.0),
+            pan_x=float(camera.get("pan_x", 0.0) or 0.0),
+            pan_y=float(camera.get("pan_y", 0.0) or 0.0),
+        ),
+        session_id=session_id,
+        emit_scope=None,
+    )
+    restore_viewport_block(getattr(session, "viewport", None), data.get("viewport"))
+    # If this session is currently shown, push camera onto the host now.
+    active = None
+    try:
+        getter = getattr(store, "get_active_workspace_session", None)
+        if callable(getter):
+            active = getter()
+    except Exception:
+        active = None
+    if session_id == tab._active_session_id or (
+        active is not None and getattr(active, "id", None) == session_id
+    ):
+        apply_camera_to_host(
+            tab,
+            float(camera.get("zoom", 1.0) or 1.0),
+            float(camera.get("pan_x", 0.0) or 0.0),
+            float(camera.get("pan_y", 0.0) or 0.0),
+        )
+
+
+def rehydrate_session(tab, session_id: str, context: TabContext) -> None:
+    store = getattr(context, "store", None)
+    if store is None:
+        return
+    session = store.get_workspace_session(session_id)
+    if session is None or session.session_type != tab.session_type:
+        return
+    doc = session.document
+    if doc is None:
+        return
+
+    paths1 = [item.path for item in doc.image_list1 if getattr(item, "path", None)]
+    paths2 = [item.path for item in doc.image_list2 if getattr(item, "path", None)]
+    if doc.image1_path and doc.image1_path not in paths1:
+        paths1.append(doc.image1_path)
+    if doc.image2_path and doc.image2_path not in paths2:
+        paths2.append(doc.image2_path)
+    if not paths1 and not paths2:
+        return
+
+    sessions = _resolve_image_compare_sessions(context)
+    if sessions is None:
+        return
+
+    with store.using_workspace_session(session_id):
+        if paths1:
+            sessions.load_images_from_paths(paths1, 1)
+        if paths2:
+            sessions.load_images_from_paths(paths2, 2)

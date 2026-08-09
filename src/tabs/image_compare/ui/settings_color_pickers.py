@@ -4,11 +4,11 @@ from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QColorDialog, QWidget
+from PySide6.QtWidgets import QWidget
 
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
 from ui.canvas_infra.scene.property_access import read_canvas_feature_color_by_setting_key
-from ui.theming import polish_themed_dialog
+from ui.widgets.color_picker_dialog import ColorPickerDialog
 
 
 class SettingsColorPickerCoordinator:
@@ -17,7 +17,7 @@ class SettingsColorPickerCoordinator:
         self.main_controller = main_controller
         self.main_window_app = main_window_app
         self.tr = tr_func
-        self._dialogs: dict[str, QColorDialog | None] = {}
+        self._dialogs: dict[str, ColorPickerDialog | None] = {}
 
     def show_canvas_feature_color_picker(
         self,
@@ -118,7 +118,7 @@ class SettingsColorPickerCoordinator:
             existing.activateWindow()
             return
 
-        dialog = QColorDialog(
+        dialog = ColorPickerDialog(
             color_to_qcolor(
                 read_canvas_feature_color_by_setting_key(
                     "image_compare",
@@ -127,10 +127,9 @@ class SettingsColorPickerCoordinator:
                 )
             ),
             self.main_window_app,
+            title=self.tr("ui.choose_magnifier_base_color"),
         )
         dialog.setModal(False)
-        dialog.setWindowTitle(self.tr("ui.choose_magnifier_base_color"))
-        polish_themed_dialog(self.main_window_app.theme_manager, dialog)
 
         def on_color_selected(color):
             if not color.isValid():
@@ -172,7 +171,7 @@ class SettingsColorPickerCoordinator:
         title_key: str,
         on_selected: Callable,
         post_apply: Callable | None = None,
-        show_alpha: bool = False,
+        show_alpha: bool = True,
         parent_window: QWidget | None = None,
     ):
         dialog = self._dialogs.get(key)
@@ -182,16 +181,16 @@ class SettingsColorPickerCoordinator:
             return
 
         host = parent_window if parent_window is not None else self.main_window_app
-        dialog = QColorDialog(color_to_qcolor(current_color), host)
-        if show_alpha:
-            dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
-        dialog.setWindowFlags(dialog.windowFlags() | 0x00000000)
+        dialog = ColorPickerDialog(
+            color_to_qcolor(current_color),
+            host,
+            title=self.tr(title_key),
+            show_alpha=show_alpha,
+        )
         if parent_window is not None:
             dialog.setWindowModality(Qt.WindowModality.WindowModal)
         else:
             dialog.setModal(False)
-        dialog.setWindowTitle(self.tr(title_key))
-        polish_themed_dialog(self.main_window_app.theme_manager, dialog)
 
         def handle_selected(color):
             if not color.isValid():

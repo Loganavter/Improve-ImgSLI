@@ -445,6 +445,9 @@ def register_image_compare_actions(
     _contribute_interpolation_options(reg)
     _contribute_name_edit_actions(widget, reg)
     _contribute_font_settings_flyout(reg)
+    _contribute_magnifier_sliders(widget, reg)
+    _contribute_magnifier_visibility_flyout(reg)
+    _contribute_magnifier_color_options(widget, reg)
 
 
 _DIFF_OPTION_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
@@ -653,6 +656,301 @@ def _contribute_name_edit_actions(widget, reg: ActionRegistry) -> None:
                 help_page=help_page,
                 search_terms=terms,
                 sort_key=(35, order),
+                run=_run,
+                target=ActionTarget(
+                    ensure_visible=_ensure,
+                    resolve_widget=_resolve,
+                ),
+            )
+        )
+
+
+def _focus_slider(slider) -> None:
+    if slider is None:
+        return
+    focus = getattr(slider, "setFocus", None)
+    if callable(focus):
+        focus()
+
+
+_MAGNIFIER_SLIDER_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    (
+        "image_compare.magnifier.slider_size",
+        "slider_size",
+        "label.magnifier_size",
+        ("magnifier size", "zoom"),
+    ),
+    (
+        "image_compare.magnifier.slider_capture",
+        "slider_capture",
+        "label.capture_size",
+        ("capture size",),
+    ),
+    (
+        "image_compare.magnifier.slider_speed",
+        "slider_speed",
+        "magnifier.move_speed",
+        ("movement speed", "speed"),
+    ),
+)
+
+
+def _contribute_magnifier_sliders(widget, reg: ActionRegistry) -> None:
+    """Size/capture/speed sliders have no button to click — Find Action can
+    still reveal the panel (same chrome as the interpolation flyout) and
+    focus the slider so arrow keys adjust it.
+    """
+    magnifier_bc = (_BC_TOOLBAR, _BC_MAGNIFIER)
+    help_page = _help_for("magnifier")
+    controller = _host_interpolation_controller()
+    ensure = controller.ensure_panel_visible if controller is not None else None
+
+    for order, (action_id, attr, label_key, terms) in enumerate(
+        _MAGNIFIER_SLIDER_SPECS
+    ):
+        slider = getattr(widget, attr, None)
+        if slider is None:
+            continue
+
+        def _run(*, ensure_fn=ensure, target=slider) -> None:
+            if callable(ensure_fn):
+                ensure_fn()
+            _focus_slider(target)
+
+        def _resolve(*, target=slider):
+            return target
+
+        reg.register(
+            ActionDescriptor(
+                action_id=action_id,
+                label_key=label_key,
+                breadcrumb=magnifier_bc,
+                owner_tab=OWNER,
+                topic="magnifier",
+                help_page=help_page,
+                search_terms=terms,
+                sort_key=(42, order),
+                run=_run,
+                target=ActionTarget(
+                    ensure_visible=ensure,
+                    resolve_widget=_resolve,
+                ),
+            )
+        )
+
+
+def _host_magnifier_visibility_controller():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return None
+    for top in app.topLevelWidgets():
+        presenter = getattr(top, "presenter", None)
+        ui = getattr(presenter, "ui_manager", None) if presenter else None
+        transient = getattr(ui, "transient", None) if ui else None
+        controller = getattr(transient, "magnifier", None) if transient else None
+        if controller is not None:
+            return controller
+    return None
+
+
+def _host_magnifier_visibility_flyout():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return None
+    for top in app.topLevelWidgets():
+        presenter = getattr(top, "presenter", None)
+        ui = getattr(presenter, "ui_manager", None) if presenter else None
+        flyout = getattr(ui, "magnifier_visibility_flyout", None) if ui else None
+        if flyout is not None:
+            return flyout
+    return None
+
+
+_MAGNIFIER_VISIBILITY_SLOTS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    ("left", "btn_left", "image_compare.action.magnifier_visibility_left", ("left",)),
+    (
+        "center",
+        "btn_center",
+        "image_compare.action.magnifier_visibility_center",
+        ("center", "combined"),
+    ),
+    (
+        "right",
+        "btn_right",
+        "image_compare.action.magnifier_visibility_right",
+        ("right",),
+    ),
+)
+
+
+def _contribute_magnifier_visibility_flyout(reg: ActionRegistry) -> None:
+    """Per-instance show/hide popup (left/center/right) — previously only
+    reachable by hovering the mouse over ``btn_magnifier``, with no catalog
+    entry at all. Exposed the same way the color-settings flyout is, plus one
+    row per toggle button so a specific instance can be hidden directly.
+    """
+    controller = _host_magnifier_visibility_controller()
+    flyout = _host_magnifier_visibility_flyout()
+    if controller is None or flyout is None:
+        return
+
+    magnifier_bc = (_BC_TOOLBAR, _BC_MAGNIFIER)
+    help_page = _help_for("magnifier")
+
+    def _ensure() -> None:
+        controller.show(reason="find_action")
+
+    reg.register(
+        ActionDescriptor(
+            action_id="image_compare.magnifier.visibility",
+            label_key="image_compare.action.magnifier_visibility",
+            description_key="tooltip.magnifier_visibility",
+            breadcrumb=magnifier_bc,
+            owner_tab=OWNER,
+            topic="magnifier",
+            help_page=help_page,
+            search_terms=("visibility", "show", "hide", "left", "center", "right"),
+            sort_key=(43, 0),
+            run=_ensure,
+            target=ActionTarget(
+                ensure_visible=_ensure,
+                resolve_widget=_host_magnifier_visibility_flyout,
+            ),
+        )
+    )
+
+    group_bc = magnifier_bc + ("image_compare.action.magnifier_visibility",)
+    for order, (slot_id, attr, label_key, terms) in enumerate(
+        _MAGNIFIER_VISIBILITY_SLOTS
+    ):
+        button = getattr(flyout, attr, None)
+        if button is None:
+            continue
+
+        def _run(*, ensure_fn=_ensure, target=button) -> None:
+            ensure_fn()
+            _toggle_button(target)
+
+        def _resolve(*, target=button):
+            return target
+
+        reg.register(
+            ActionDescriptor(
+                action_id=f"image_compare.magnifier.visibility.{slot_id}",
+                label_key=label_key,
+                breadcrumb=group_bc,
+                owner_tab=OWNER,
+                topic="magnifier",
+                help_page=help_page,
+                search_terms=terms,
+                sort_key=(43, 1, order),
+                run=_run,
+                target=ActionTarget(
+                    ensure_visible=_ensure,
+                    resolve_widget=_resolve,
+                ),
+            )
+        )
+
+
+_MAGNIFIER_COLOR_OPTION_SPECS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("capture", "magnifier.capture_ring", ("capture", "capture ring")),
+    ("laser", "label.guides", ("laser", "guides")),
+    ("border", "label.border", ("border",)),
+    (
+        "divider",
+        "ui.choose_magnifier_divider_line_color",
+        ("divider", "split line"),
+    ),
+)
+
+_MAGNIFIER_COLOR_BUTTON_ATTRS: tuple[str, ...] = (
+    "btn_magnifier_color_settings",
+    "btn_magnifier_color_settings_beginner",
+)
+
+
+def _active_color_settings_button(widget):
+    """Beginner/advanced toolbars each keep their own ``ColorSettingsButton``;
+    only one is visible at a time. Resolve dynamically (not at contribute
+    time) so this tracks live mode switches instead of registering one row
+    per variant, which duplicated every entry in Find Action.
+    """
+    candidates = [
+        getattr(widget, attr, None) for attr in _MAGNIFIER_COLOR_BUTTON_ATTRS
+    ]
+    candidates = [
+        b for b in candidates if b is not None and getattr(b, "flyout", None) is not None
+    ]
+    for button in candidates:
+        is_hidden = getattr(button, "isHidden", None)
+        if not callable(is_hidden) or not bool(is_hidden()):
+            return button
+    return candidates[0] if candidates else None
+
+
+def _ensure_color_flyout(widget) -> None:
+    """Open the active button's flyout the same way
+    ``ColorSettingsButton.enterEvent`` does — clicking the button itself only
+    triggers smart-color, it does not open the picker swatches.
+    """
+    button = _active_color_settings_button(widget)
+    flyout = getattr(button, "flyout", None) if button is not None else None
+    if flyout is None:
+        return
+    update = getattr(flyout, "update_state", None)
+    if callable(update):
+        update()
+    show = getattr(flyout, "show_aligned", None)
+    if callable(show):
+        show(button, "top-center", "bottom-center", toggle=False)
+
+
+def _contribute_magnifier_color_options(widget, reg: ActionRegistry) -> None:
+    """Border/divider/capture/laser color swatches inside the color-settings
+    flyout — previously only reachable by hovering ``btn_magnifier_color_settings``
+    then clicking a swatch, with no catalog entry for the individual pickers.
+    """
+    if _active_color_settings_button(widget) is None:
+        return
+
+    magnifier_bc = (_BC_TOOLBAR, _BC_MAGNIFIER)
+    help_page = _help_for("magnifier")
+    group_bc = magnifier_bc + ("image_compare.action.magnifier_colors",)
+
+    def _ensure() -> None:
+        _ensure_color_flyout(widget)
+
+    def _resolve_option(option_id: str):
+        button = _active_color_settings_button(widget)
+        flyout = getattr(button, "flyout", None) if button is not None else None
+        return flyout.action_button(option_id) if flyout is not None else None
+
+    for order, (option_id, label_key, terms) in enumerate(
+        _MAGNIFIER_COLOR_OPTION_SPECS
+    ):
+
+        def _run(*, ensure_fn=_ensure, oid=option_id) -> None:
+            ensure_fn()
+            _click_button(_resolve_option(oid))
+
+        def _resolve(*, oid=option_id):
+            return _resolve_option(oid)
+
+        reg.register(
+            ActionDescriptor(
+                action_id=f"image_compare.magnifier.color_settings.{option_id}",
+                label_key=label_key,
+                breadcrumb=group_bc,
+                owner_tab=OWNER,
+                topic="magnifier",
+                help_page=help_page,
+                search_terms=terms,
+                sort_key=(44, order),
                 run=_run,
                 target=ActionTarget(
                     ensure_visible=_ensure,

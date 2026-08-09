@@ -1,74 +1,105 @@
 from __future__ import annotations
 
 import struct
+import time
 from pathlib import Path
 
-from PySide6.QtCore import QRect, QSize
+from PySide6.QtCore import QSize
 from PySide6.QtGui import (
     QImage,
     QRhiBuffer,
-    QRhiGraphicsPipeline,
     QRhiSampler,
-    QRhiShaderResourceBinding,
-    QRhiShaderStage,
     QRhiTexture,
-    QRhiVertexInputAttribute,
-    QRhiVertexInputBinding,
-    QRhiVertexInputLayout,
     QShader,
 )
 
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.rendering.tile_texture_service import TileTextureService
+from shared.rendering.mip_cascade import MipCascadeGenerator
+from shared.rendering.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE, TileTextureService
+from shared.rendering.uniform_layout import assert_uniform_size
 
-from ..texture_parts.tile_geometry import (
-    _apron_rect,
-    _TILE_APRON_PX,
-    _TILE_RESIDENCY_MARGIN,
-    _visible_side_image_rect,
-)
+from ..texture_parts.tile_geometry import _TILE_APRON_PX
 from ..texture_parts.upload_queue import (
-    cache_texture_upload,
-    evict_texture_upload_cache_over_budget,
-    qimage_from_pil,
     queue_texture_upload,
     touch_texture_upload_cache,
 )
 from ._debug import rhi_render_debug
-from .uniforms import _UNIFORM_BLOCK_SIZE
+from .array_resources import ArrayResources
+from .residency import _TILE_CACHE_BUDGET_BYTES, TileResidencyRealizer
 
 _SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders"
-# docs/dev/TILED_RENDERING_DESIGN.md Phase 2 "Open questions: Tile size" —
-# fixed constant rather than backend-derived, so tile count (and therefore
-# eviction/residency behavior) is deterministic across machines. Clamped to
-# the backend's real max at construction time (see initialize()) as a
-# defensive floor only; every real backend supports far more than 2048px.
-_LIVE_TILE_EXTENT = 8192
-# docs/dev/TILED_RENDERING_DESIGN.md Phase 2 "Open questions: Cache budget"
-# -- byte budget over resident-tile pixel bytes (RGBA8, post-apron), not a
-# tile count: matches how production tile caches (image editors, tiled map
-# renderers) bound GPU memory, since per-tile byte cost varies at grid
-# edges. Global across all resident tiles (image1/image2/diff sides
-# combined) since GPU memory is one shared resource, not three independent
-# ones. 512MiB fits roughly 32 fully-apron'd 2048x2048 RGBA8 tiles resident
-# at once -- enough slack beyond the visible+margin ring that ordinary
-# pan/zoom doesn't thrash the cache, while still bounding memory during a
-# "pan all over a huge image" session.
-_TILE_CACHE_BUDGET_BYTES = 512 * 1024 * 1024
-# docs/dev/rendering/tile-rendering-system.md Phase 2 -- byte budget over the
-# *full-resolution* host-side QImage residents in
-# ``widget.runtime_state._texture_upload_cache`` (stored_0/1, source_0/1,
-# diff), as opposed to _TILE_CACHE_BUDGET_BYTES above which bounds cropped
-# GPU tiles. Sized to comfortably hold the entries actually needed to
-# render *this* frame (both stored sides + an active diff -- up to ~3x one
-# full image) without forcing eviction of something still on screen; only
-# the currently-unused role (typically the hi-res source_N pair, resident
-# only for the magnifier) gets evicted once it's the oldest-touched entry
-# over budget. Evicted entries are lazily rebuilt from the still-retained
-# PIL image on next use (see the cache-miss fallback in
-# ``realize_tile_plan`` below), so eviction here is a memory/recompute
-# tradeoff, never a correctness one.
-_HOST_TEXTURE_CACHE_BUDGET_BYTES = 3 * 1024 * 1024 * 1024
+# Clamped to the backend's real max at construction time (see initialize())
+# as a defensive floor only; every real backend supports far more than 2048px.
+from shared.rendering.tile_constants import LIVE_TILE_EXTENT as _LIVE_TILE_EXTENT
+# docs/dev/rendering/tile-array-atlas-plan.md Phase 2 -- every layer of the
+# texture array must share one pixel size (a hard cross-backend constraint,
+# not addressed by the plan's original per-tile-heterogeneous-size design),
+# so tile content (at most LIVE_TILE_EXTENT + 2*apron px, the same bound
+# `_apron_rect` already enforces for individual tile textures) is uploaded
+# 1:1, unresampled, into the top-left corner of a layer this size; unused
+# padding is never sampled because the shader always scales UV by each
+# tile's own content-scale (contentPx / this size) before sampling.
+_ARRAY_LAYER_PX = _LIVE_TILE_EXTENT + 2 * _TILE_APRON_PX
+_ARRAY_LAYER_BYTES = _ARRAY_LAYER_PX * _ARRAY_LAYER_PX * 4
+# A flat floor here (an earlier version of this constant used a bare "12")
+# can't actually guarantee anything: the real requirement scales with how
+# many LIVE_TILE_EXTENT tiles can be visible on screen at once, which
+# depends on canvas size, not a guess. Derive it instead (bug found via a
+# user report of tiles vanishing/returning above ~765% zoom, then landing
+# on visibly wrong/neighboring tile content ("разные грани") once a first
+# fix merely raised the floor without fixing the underlying math -- see
+# docs/dev/rendering/tile-array-atlas-plan.md Phase 2 Findings):
+# `select_level` (lod.py) always picks the pyramid level whose *effective*
+# dest_scale (dest_scale * 2**level) is in [0.5, 1.0) -- i.e. one tile
+# never spans less than half of `_LIVE_TILE_EXTENT` screen pixels. So the
+# number of tiles visible along one axis is bounded by
+# `ceil(2 * canvas_px / LIVE_TILE_EXTENT) + 1` (the "+1" covers
+# straddling a tile boundary). `_MAX_EXPECTED_CANVAS_PX` bounds canvas_px
+# to a single 4K-ish monitor -- an ultra-wide/multi-monitor-spanning
+# canvas beyond that is a known follow-up, not covered here. The result
+# is squared (both axes) and multiplied by 3 -- image1 + image2 + diff,
+# since diff mode registers its own independent grid/residency and can
+# need a tile at every position image1/image2 do (`base_array.frag`
+# always samples image1/image2 even in diff-only draw modes).
+_MAX_EXPECTED_CANVAS_PX = 4096
+_MAX_TILES_PER_AXIS = -(-(2 * _MAX_EXPECTED_CANVAS_PX) // _LIVE_TILE_EXTENT) + 1
+# Capped at DEFAULT_MAX_ARRAY_SIZE (the measured cross-backend
+# TextureArraySizeMax -- see tile-array-atlas-plan.md Phase 0/1, and
+# TileTextureService's _TileSlotAllocator, which is what actually decides
+# when to open a new array): a single QRhiTextureArray can't exceed the
+# backend's real layer limit regardless of how big the byte budget or
+# canvas-size bound below computes to, and _TileSlotAllocator already opens
+# additional arrays past this cap instead of overflowing one array, so
+# growing past it here would only reserve GPU memory for layers this array
+# could never actually use.
+_ARRAY_CAPACITY = min(
+    DEFAULT_MAX_ARRAY_SIZE,
+    max(
+        3 * _MAX_TILES_PER_AXIS * _MAX_TILES_PER_AXIS,
+        _TILE_CACHE_BUDGET_BYTES // _ARRAY_LAYER_BYTES,
+    ),
+)
+# Per-instance vertex layout for the array pipeline (base_array.vert):
+# iRect1(vec4,16) + iRect2(vec4,16) + iContentScale(vec4,16) +
+# iContentScaleDiff(vec2,8) + iLayers(ivec3,12) + iBBox(vec4,16) +
+# iRectDiff(vec4,16) = 100 bytes. Plain vertex attribute packing -- no
+# std140 alignment rules apply here (that's a uniform-buffer-only
+# constraint), just consistency between this stride and
+# _pack_array_instance's struct.pack format below. iBBox is the
+# content-space rect (docs/dev/rendering/tile-array-atlas-plan.md Phase 10)
+# each instance's geometry is clipped to, instead of every instance emitting
+# a shared fullscreen quad and relying entirely on the fragment shader's
+# per-pixel tileUV1/tileUV2 discard to "clip" it down. iRectDiff is that
+# same idea for a multi-tile diff/SSIM source: the assigned diff tile's own
+# content-space rect, subtracted from sampleUV in the fragment shader before
+# addressing that tile's array layer (identity (0,0,1,1) when diff isn't
+# split -- see docs/dev/rendering/qrhi-gotchas.md
+# #ssim-diff-blocky-mosaic-at-coarse-lod).
+_ARRAY_INSTANCE_STRIDE = 100
+_ARRAY_INSTANCE_FMT = "<4f4f4f2f3i4f4f"
+assert_uniform_size(
+    _ARRAY_INSTANCE_FMT, _ARRAY_INSTANCE_STRIDE, label="_pack_array_instance"
+)
 _VERTICES = struct.pack(
     "<16f",
     -1.0,
@@ -90,21 +121,33 @@ _VERTICES = struct.pack(
 )
 
 
-def _pil_image_for_texture_key(widget, key):
-    """Maps a texture key back to the PIL image it was decoded from, for
-    ``realize_tile_plan``'s cache-miss fallback. These PIL images (``state.
-    _stored_pil_images``/``_source_pil_images``/``_diff_source_pil_image``)
-    are retained for the widget's whole lifetime independent of
-    ``_texture_upload_cache``, so this never misses for a key that was
-    ever legitimately uploaded."""
-    state = widget.runtime_state
-    if key in widget.texture_ids:
-        return state._stored_pil_images[widget.texture_ids.index(key)]
-    if key in widget._source_texture_ids:
-        return state._source_pil_images[widget._source_texture_ids.index(key)]
-    if key == widget._diff_source_texture_id:
-        return state._diff_source_pil_image
-    return None
+def pack_array_instance(
+    *,
+    rect1: tuple[float, float, float, float],
+    rect2: tuple[float, float, float, float],
+    content_scale: tuple[float, float, float, float],
+    content_scale_diff: tuple[float, float],
+    layer1: int,
+    layer2: int,
+    layer_diff: int,
+    bbox: tuple[float, float, float, float],
+    rect_diff: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0),
+) -> bytes:
+    """One instance's worth of ``base_array.vert``'s per-instance vertex
+    attributes -- byte-for-byte matching ``_ARRAY_INSTANCE_STRIDE``/the
+    pipeline's ``QRhiVertexInputAttribute`` offsets in ``ensure_array_pipeline``."""
+    return struct.pack(
+        _ARRAY_INSTANCE_FMT,
+        *rect1,
+        *rect2,
+        *content_scale,
+        *content_scale_diff,
+        layer1,
+        layer2,
+        layer_diff,
+        *bbox,
+        *rect_diff,
+    )
 
 
 def _load_shader(name: str) -> QShader:
@@ -115,24 +158,57 @@ def _load_shader(name: str) -> QShader:
 
 
 class RhiResources:
-    """Owns every ``rhi.new*()`` / ``.create()`` / ``.destroy()`` call for
-    the base-image renderer: vertex buffer, uniform buffer, samplers, the
-    resident textures, the pipeline, and shader resource bindings. Tile
-    *residency decisions* belong to ``TileTextureService``; this class only
-    executes them against real QRhi resources -- see ``realize_tile_plan``.
+    """Owns vertex buffer/samplers/placeholder texture setup and the
+    whole-image (non-array/non-tiled) upload path for the base-image
+    renderer. The texture-array tile-residency path lives in
+    ``self.array_resources`` (``ArrayResources``), viewport-driven partial
+    tile residency (crop+upload decisions) lives in ``self.residency``
+    (``TileResidencyRealizer``), and per-layer mip generation lives in
+    ``self._mip_cascade`` (``MipCascadeGenerator``).
     """
 
     def __init__(self) -> None:
         self.rhi = None
         self.vertex_buffer = None
-        self.uniform_buffer = None
         self.samplers: dict[str, object] = {}
         self.textures: dict[object, object] = {}
         self.texture_sizes: dict[object, QSize] = {}
-        self.srb = None
-        self.pipeline = None
-        self._srb_signature = None
-        self._render_pass_descriptor = None
+
+        # Texture-array instanced-draw path (docs/dev/rendering/
+        # tile-array-atlas-plan.md) -- every grid, including a 1x1 one,
+        # renders through this. One array per `TileSlot.array_index` (in
+        # practice always just index 0 -- see _ARRAY_CAPACITY).
+        self.array_resources = ArrayResources(
+            rhi_getter=lambda: self.rhi,
+            sampler_getter=lambda name: self.samplers[name],
+            load_shader=_load_shader,
+            layer_px=_ARRAY_LAYER_PX,
+            array_capacity=_ARRAY_CAPACITY,
+            name_prefix="canvas",
+        )
+
+        # Per-layer mip generation (docs/dev/rendering/tile-array-atlas-plan.md
+        # Phase 9) -- replaces the whole-array `updates.generateMips` call for
+        # tile_arrays with a manual cascade of single-layer downsample passes.
+        # Shared with multi_compare's BaseImagesPass (identical logic, only
+        # _ARRAY_LAYER_PX/sampler differ per tab; the mip_downsample shader
+        # itself is loaded by MipCascadeGenerator from a shared shader dir).
+        self._mip_cascade = MipCascadeGenerator(
+            rhi_getter=lambda: self.rhi,
+            tile_arrays=self.array_resources.tile_arrays,
+            ensure_tile_array=self.array_resources._ensure_tile_array,
+            sampler_getter=lambda: self.samplers["linear"],
+            layer_px=_ARRAY_LAYER_PX,
+            name_prefix="canvas",
+        )
+
+        # Viewport-driven partial tile residency (docs/dev/TILED_RENDERING_DESIGN.md
+        # Phase 2) -- decides which tiles should be resident, crops/uploads
+        # them into self.array_resources, and evicts the rest.
+        self.residency = TileResidencyRealizer(
+            array_resources=self.array_resources,
+            evict_stale_tiles=self._evict_stale_tiles,
+        )
 
     def initialize(self, rhi, widget, command_buffer) -> None:
         self.rhi = rhi
@@ -146,23 +222,21 @@ class RhiResources:
         if not self.vertex_buffer.create():
             raise RuntimeError("Failed to create canvas vertex buffer")
 
-        self.uniform_buffer = self.rhi.newBuffer(
-            QRhiBuffer.Type.Dynamic,
-            QRhiBuffer.UsageFlag.UniformBuffer,
-            _UNIFORM_BLOCK_SIZE,
-        )
-        self.uniform_buffer.setName(b"canvas-uniforms")
-        if not self.uniform_buffer.create():
-            raise RuntimeError("Failed to create canvas uniform buffer")
-
-        for name, filter_mode in (
-            ("nearest", QRhiSampler.Filter.Nearest),
-            ("linear", QRhiSampler.Filter.Linear),
+        for name, filter_mode, mipmap_mode in (
+            # "nearest" stays mip-less: it exists for pixel-perfect zoom-in
+            # (magnification), where there is no minification to alias.
+            ("nearest", QRhiSampler.Filter.Nearest, QRhiSampler.Filter.None_),
+            # "linear" is also used far below 1:1 (e.g. the pyramid's
+            # coarsest level, 1024px cap, still shown smaller on a small
+            # zoomed-out canvas) where a mip-less bilinear sample aliases
+            # badly on high-frequency content -- trilinear via mipmaps fixes
+            # the residual minification the pyramid doesn't cover.
+            ("linear", QRhiSampler.Filter.Linear, QRhiSampler.Filter.Linear),
         ):
             sampler = self.rhi.newSampler(
                 filter_mode,
                 filter_mode,
-                QRhiSampler.Filter.None_,
+                mipmap_mode,
                 QRhiSampler.AddressMode.ClampToEdge,
                 QRhiSampler.AddressMode.ClampToEdge,
             )
@@ -177,15 +251,13 @@ class RhiResources:
         updates.uploadStaticBuffer(self.vertex_buffer, _VERTICES)
         self._replace_texture("placeholder", placeholder, updates)
         command_buffer.resourceUpdate(updates)
-        self.ensure_pipeline(widget)
 
     def release(self) -> None:
+        self._mip_cascade.release()
+        self.array_resources.release()
         resources = [
-            self.pipeline,
-            self.srb,
             *self.textures.values(),
             *self.samplers.values(),
-            self.uniform_buffer,
             self.vertex_buffer,
         ]
         for resource in resources:
@@ -197,10 +269,6 @@ class RhiResources:
         self.__init__()
 
     def _replace_texture(self, key, image: QImage, updates) -> None:
-        if self.srb is not None:
-            self.srb.destroy()
-            self.srb = None
-            self._srb_signature = None
         old_texture = self.textures.pop(key, None)
         if old_texture is not None:
             old_texture.destroy()
@@ -208,6 +276,8 @@ class RhiResources:
         texture = self.rhi.newTexture(
             QRhiTexture.Format.RGBA8,
             image.size(),
+            1,
+            QRhiTexture.Flag.MipMapped | QRhiTexture.Flag.UsedWithGenerateMips,
         )
         texture.setName(f"canvas-{key}".encode())
         if not texture.create():
@@ -215,6 +285,7 @@ class RhiResources:
         self.textures[key] = texture
         self.texture_sizes[key] = image.size()
         updates.uploadTexture(texture, image)
+        updates.generateMips(texture)
 
     def upload_whole(self, key, image: QImage, updates) -> None:
         size_changed = self.texture_sizes.get(key) != image.size()
@@ -222,6 +293,7 @@ class RhiResources:
             self._replace_texture(key, image, updates)
         else:
             updates.uploadTexture(self.textures[key], image)
+            updates.generateMips(self.textures[key])
 
     def _evict_stale_tiles(self, source_key, live_keys: set[object]) -> None:
         stale = [
@@ -253,7 +325,24 @@ class RhiResources:
         (called from ``render()`` every frame) lazily crops+uploads only
         whatever tiles the current viewport actually needs, from the full
         QImage already retained in
-        ``widget.runtime_state._texture_upload_cache``."""
+        ``widget.runtime_state._texture_upload_cache``.
+
+        This is the *eager* upload path -- reached whenever a caller
+        queues a whole new image for a role that reuses a stable slot key
+        (`"stored_0"`, `"diff"`, ...) across content swaps, e.g. a fresh
+        SSIM diff map replacing the previous pair's diff. Every call here
+        means that role's content genuinely changed (callers only queue
+        when their own before/after identity check says so -- see
+        ``upload_diff_source_pil_image``'s ``image_id`` guard), so
+        ``key``'s previous content (if a multi-tile grid had any tiles
+        already resident) is always rekeyed to a fallback key first,
+        exactly like ``realize_tile_plan``'s lazy re-register branch --
+        without this, a diff/base role whose grid is multi-tile would have
+        every resident tile dropped the instant a new image lands, then
+        refill tile-by-tile from blank over several frames instead of the
+        old diff staying visible until the new one is ready (docs/dev/
+        rendering/qrhi-gotchas.md same-slot-swap SSIM follow-up)."""
+        self.residency.rekey_stale_content(tile_service, key)
         grid = tile_service.register_source(key, (image.width(), image.height()))
         rhi_render_debug(
             "upload_source key=%s image=%dx%d -> grid=%dx%d (tile_total=%dx%d)",
@@ -316,262 +405,12 @@ class RhiResources:
             len(state._pending_texture_uploads),
         )
 
-    def realize_tile_plan(
+    def generate_all_dirty_mips(
         self,
-        tile_service: TileTextureService,
-        widget,
-        texture_keys: tuple[object, object],
-        base_image,
-        updates,
-        *,
-        diff_key: object | None = None,
-        viewport_zoom: tuple[float, float] | None = None,
-        viewport_offset: tuple[float, float] | None = None,
-    ) -> None:
-        """Viewport-driven partial residency (docs/dev/
-        TILED_RENDERING_DESIGN.md Phase 2): for each side whose grid is
-        multi-tile, crops+uploads whichever tiles ``tile_service`` decides
-        should be resident (visible rect plus a ``_TILE_RESIDENCY_MARGIN``
-        ring) and aren't already, and destroys the GPU textures for
-        whatever ``tile_service.evict_over_budget()`` decides to evict.
-        Tiles are cropped from the full-resolution QImage cached at
-        ``widget.runtime_state._texture_upload_cache`` (the same cache
-        ``restore_texture_uploads`` uses to survive context loss). That
-        cache is bounded (docs/dev/rendering/tile-rendering-system.md Phase 2)
-        and can evict an unused side/diff entry between frames; if this
-        side's entry was evicted, it's transparently re-decoded here from
-        the still-retained PIL source before cropping -- see
-        ``_pil_image_for_texture_key``. This method reads residency
-        decisions from ``tile_service`` and performs them -- it never
-        decides on its own which indices should be resident.
-
-        ``diff_key`` (Phase 4): the diff overlay is treated as a third
-        "side" positioned like image1 (same letterbox), since diff is
-        always computed at image1's aspect/content window regardless of
-        which pixel resolution either happens to be at right now."""
-        letterboxes = (tuple(base_image.letterbox1), tuple(base_image.letterbox2))
-        pairs = list(zip(texture_keys, letterboxes))
-        if diff_key is not None:
-            pairs.append((diff_key, letterboxes[0]))
-        protected_by_key: dict[object, set[tuple[int, int]]] = {}
-        for key, letterbox in pairs:
-            pil_source = _pil_image_for_texture_key(widget, key)
-            is_tiled_store = isinstance(pil_source, TiledPixelStore)
-            grid = tile_service.grid_for(key)
-            # Lazy TiledPixelStore sources skip upload_source(), so the only
-            # place their grid is created is here. If a stale 1×1 grid from a
-            # previous smaller image remains, zoom>1 (use_hires) crops only
-            # that top-left window and stretches it as the full image —
-            # looks like ~1000% zoom into one tile. Always re-register when
-            # the live source size disagrees with the cached grid.
-            if is_tiled_store and pil_source is not None:
-                src_w, src_h = pil_source.size
-                if (
-                    grid is None
-                    or int(grid.total_width) != int(src_w)
-                    or int(grid.total_height) != int(src_h)
-                ):
-                    if grid is not None:
-                        self._evict_stale_tiles(key, set())
-                    grid = tile_service.register_source(key, (src_w, src_h))
-            elif grid is None:
-                continue
-            if grid.rows == 1 and grid.columns == 1:
-                if is_tiled_store and pil_source is not None:
-                    index = (0, 0)
-                    if tile_service.is_resident(key, index):
-                        tile_service.touch(key, index)
-                    else:
-                        region = next(
-                            (
-                                region
-                                for row, col, region in grid.iter_regions()
-                                if (row, col) == index
-                            ),
-                            None,
-                        )
-                        if region is not None:
-                            left, top, right, bottom = _apron_rect(
-                                grid.total_width,
-                                grid.total_height,
-                                region,
-                                _TILE_APRON_PX,
-                            )
-                            tile_key = tile_service.tile_key(key, *index)
-                            cropped_pil = pil_source.crop((left, top, right, bottom))
-                            tile_image = qimage_from_pil(cropped_pil)
-                            self.upload_whole(tile_key, tile_image, updates)
-                            tile_service.mark_resident(
-                                key, index, (right - left) * (bottom - top) * 4
-                            )
-                    protected_by_key[key] = {index}
-                continue
-            full_image = None
-            if not is_tiled_store:
-                full_image = touch_texture_upload_cache(widget, key)
-                if full_image is None:
-                    if pil_source is None:
-                        continue
-                    full_image = qimage_from_pil(pil_source)
-                    cache_texture_upload(widget, key, full_image)
-            visible_rect = _visible_side_image_rect(
-                base_image,
-                letterbox,
-                grid,
-                viewport_zoom=viewport_zoom,
-                viewport_offset=viewport_offset,
-            )
-            target = tile_service.resolve_visible_tiles(
-                key, visible_rect, _TILE_RESIDENCY_MARGIN
-            )
-            rhi_render_debug(
-                "realize_tile_plan key=%s grid=%dx%d(%dx%d) visible_rect=%s target=%s",
-                key,
-                grid.rows,
-                grid.columns,
-                grid.total_width,
-                grid.total_height,
-                visible_rect,
-                target,
-            )
-            protected_by_key[key] = target
-            regions = {(row, col): region for row, col, region in grid.iter_regions()}
-            for index in target:
-                if tile_service.is_resident(key, index):
-                    tile_service.touch(key, index)
-                    continue
-                region = regions.get(index)
-                if region is None:
-                    continue
-                left, top, right, bottom = _apron_rect(
-                    grid.total_width, grid.total_height, region, _TILE_APRON_PX
-                )
-                tile_key = tile_service.tile_key(key, *index)
-                if is_tiled_store:
-                    cropped_pil = pil_source.crop((left, top, right, bottom))
-                    tile_image = qimage_from_pil(cropped_pil)
-                else:
-                    tile_image = full_image.copy(
-                        QRect(left, top, right - left, bottom - top)
-                    )
-                self.upload_whole(tile_key, tile_image, updates)
-                tile_service.mark_resident(
-                    key, index, (right - left) * (bottom - top) * 4
-                )
-        evicted = tile_service.evict_over_budget(
-            protected_by_key, _TILE_CACHE_BUDGET_BYTES
+        command_buffer,
+        dirty_layers: dict[int, set[int]],
+        time_budget_ms: float | None = None,
+    ) -> dict[int, set[int]]:
+        return self._mip_cascade.generate_all_dirty_mips(
+            command_buffer, self.vertex_buffer, dirty_layers, time_budget_ms
         )
-        for source_key, index in evicted:
-            tile_key = tile_service.tile_key(source_key, *index)
-            texture = self.textures.pop(tile_key, None)
-            if texture is not None:
-                texture.destroy()
-            self.texture_sizes.pop(tile_key, None)
-        evict_texture_upload_cache_over_budget(
-            widget, {key for key, _ in pairs}, _HOST_TEXTURE_CACHE_BUDGET_BYTES
-        )
-
-    def ensure_srb_for(self, texture_keys: tuple[object, object, object], sampler_name: str):
-        """Returns a ready-to-bind QRhiShaderResourceBindings for this exact
-        (texture_keys, sampler_name) signature. Must not be called between
-        beginPass and endPass -- see docs/dev/QRHI_CANVAS_FEATURES.md's
-        CanvasRenderPass contract (initialize/prepare create resources,
-        record() only draws)."""
-        signature = (*texture_keys, sampler_name)
-        if self.srb is not None and signature == self._srb_signature:
-            return self.srb
-
-        if self.srb is not None:
-            self.srb.destroy()
-        sampler = self.samplers[sampler_name]
-        placeholder = self.textures["placeholder"]
-        textures = [self.textures.get(key, placeholder) for key in texture_keys]
-        rhi_render_debug(
-            "ensure_srb keys=%s missing=%s resident_texture_keys=%d",
-            texture_keys,
-            [key for key in texture_keys if key not in self.textures],
-            len(self.textures),
-        )
-        fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
-        stages = (
-            QRhiShaderResourceBinding.StageFlag.VertexStage
-            | QRhiShaderResourceBinding.StageFlag.FragmentStage
-        )
-        self.srb = self.rhi.newShaderResourceBindings()
-        self.srb.setBindings(
-            [
-                QRhiShaderResourceBinding.uniformBuffer(0, stages, self.uniform_buffer),
-                QRhiShaderResourceBinding.sampledTexture(
-                    1, fragment, textures[0], sampler
-                ),
-                QRhiShaderResourceBinding.sampledTexture(
-                    2, fragment, textures[1], sampler
-                ),
-                QRhiShaderResourceBinding.sampledTexture(
-                    3, fragment, textures[2], sampler
-                ),
-            ]
-        )
-        if not self.srb.create():
-            raise RuntimeError("Failed to create canvas shader resource bindings")
-        self._srb_signature = signature
-        return self.srb
-
-    def ensure_pipeline(self, widget) -> None:
-        target = widget.renderTarget()
-        if target is None:
-            return
-        descriptor = target.renderPassDescriptor()
-        if self.pipeline is not None and descriptor is self._render_pass_descriptor:
-            return
-        if self.pipeline is not None:
-            self.pipeline.destroy()
-
-        self.ensure_srb_for(("placeholder", "placeholder", "placeholder"), "linear")
-        pipeline = self.rhi.newGraphicsPipeline()
-        pipeline.setName(b"canvas-base-pipeline")
-        pipeline.setShaderStages(
-            [
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Vertex, _load_shader("base.vert.qsb")
-                ),
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Fragment, _load_shader("base.frag.qsb")
-                ),
-            ]
-        )
-        pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
-        pipeline.setSampleCount(target.sampleCount())
-        pipeline.setShaderResourceBindings(self.srb)
-        pipeline.setRenderPassDescriptor(descriptor)
-
-        input_layout = QRhiVertexInputLayout()
-        input_layout.setBindings([QRhiVertexInputBinding(16)])
-        input_layout.setAttributes(
-            [
-                QRhiVertexInputAttribute(
-                    0, 0, QRhiVertexInputAttribute.Format.Float2, 0
-                ),
-                QRhiVertexInputAttribute(
-                    0, 1, QRhiVertexInputAttribute.Format.Float2, 8
-                ),
-            ]
-        )
-        pipeline.setVertexInputLayout(input_layout)
-
-        blend = QRhiGraphicsPipeline.TargetBlend()
-        blend.enable = True
-        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha
-        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        pipeline.setTargetBlends([blend])
-
-        if not pipeline.create():
-            raise RuntimeError(
-                "Failed to create canvas graphics pipeline "
-                "(often OpenGL < 3.3 / GLSL 120–130 with .qsb baked for 330+; "
-                "on Windows use Settings → Render Backend → Direct3D 11)"
-            )
-        self.pipeline = pipeline
-        self._render_pass_descriptor = descriptor

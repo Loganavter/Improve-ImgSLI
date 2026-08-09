@@ -1,0 +1,9 @@
+{
+  "tooltip": {
+    "divider_color": "Цвет разделителя",
+    "quick_save_image": "Быстро сохранить изображение",
+    "reset_zoom": "Сбросить масштаб",
+    "save_result": "Сохранить результат",
+    "toggle_divider_visibility": "Переключить видимость разделителя"
+  }
+}

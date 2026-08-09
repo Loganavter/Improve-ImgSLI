@@ -3,7 +3,9 @@
 Host-owned discovery surface for the command palette.
 
 Related: [TODO.md](./TODO.md) (P2 Action palette),
-[tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md).
+[tabs/capability-mechanisms.md](./tabs/capability-mechanisms.md),
+[UI_LAYOUT_DUMP.md](./UI_LAYOUT_DUMP.md) (this catalog cross-referenced onto
+widget geometry — a machine-readable "where is everything" view).
 
 ## Ownership
 

@@ -7,21 +7,36 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
+
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
 
 
 @dataclass
 class CompareSlot:
-    """One image slot referenced by a Leaf in the layout tree."""
+    """One image slot referenced by a Leaf in the layout tree.
+
+    ``image`` starts life as a bounded ``QImage`` preview (progressive load,
+    see ``shared.image_processing.progressive_loader``) for large sources and
+    is later replaced in-place by a ``TiledPixelStore`` once the full-res
+    decode finishes (``scene.store.ReplaceSlotImage``). Small/fast sources
+    skip the preview tier and go straight to ``TiledPixelStore``.
+    """
 
     id: int
     path: Path | None = None
     label: str = ""
-    image: "TiledPixelStore | None" = None
+    image: "TiledPixelStore | QImage | None" = None
 
     @property
     def is_loaded(self) -> bool:
         return self.image is not None
+
+    @property
+    def is_preview_only(self) -> bool:
+        from PySide6.QtGui import QImage
+
+        return isinstance(self.image, QImage)
 
 
 @dataclass

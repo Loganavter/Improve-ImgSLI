@@ -46,6 +46,8 @@ class MainWindowProjectIo:
         self._tr = tr
         self.current_project_path: str | None = None
         self._project_worker = None
+        # Landing spot for a future "save with pixel cache" UI checkbox.
+        self.include_pixel_cache: bool = False
 
     def _presenter(self):
         return getattr(self._window, "presenter", None)
@@ -558,6 +560,18 @@ class MainWindowProjectIo:
         except Exception:
             logger.debug("Project preview capture skipped", exc_info=True)
 
+        pixel_cache_sources = None
+        if self.include_pixel_cache:
+            try:
+                from services.io.project_io import collect_pixel_cache_sources
+
+                pixel_cache_sources = collect_pixel_cache_sources(
+                    window.store, TabRegistry()
+                )
+            except Exception:
+                logger.exception("Failed to collect pixel cache sources")
+                pixel_cache_sources = None
+
         media_count = len(set(iter_session_media_paths(project_data)))
         logger.info(
             "Saving project to %s (%d unique media path(s))", path, media_count
@@ -609,7 +623,11 @@ class MainWindowProjectIo:
                 progress_callback.emit(int(100 * done / max(total, 1)))
 
             return package_project_data(
-                project_data, path, progress=_progress, preview_png=preview_png
+                project_data,
+                path,
+                progress=_progress,
+                preview_png=preview_png,
+                pixel_cache_sources=pixel_cache_sources,
             )
 
         if pool is None:
@@ -618,7 +636,10 @@ class MainWindowProjectIo:
 
                 _on_done(
                     package_project_data(
-                        project_data, path, preview_png=preview_png
+                        project_data,
+                        path,
+                        preview_png=preview_png,
+                        pixel_cache_sources=pixel_cache_sources,
                     )
                 )
             except Exception as exc:
