@@ -34,7 +34,7 @@ def sidebar_header_host(widget: QWidget, *, pad: int | None = None) -> QWidget:
     inset = control_edge_padding() if pad is None else pad
     host = QWidget()
     layout = QVBoxLayout(host)
-    layout.setContentsMargins(inset, 0, inset, 0)
+    layout.setContentsMargins(inset, inset, inset, 0)
     layout.setSpacing(0)
     layout.addWidget(widget)
     return host
