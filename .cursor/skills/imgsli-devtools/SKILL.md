@@ -42,7 +42,7 @@ Tracer output: `~/.local/share/ImproveImgSLI/trace.jsonl`. Plain logs: `~/.local
 
 | Script | Role |
 |---|---|
-| `context_cloc.sh` | cloc tables for app + optional sibling toolkit |
+| `context_cloc.py` | cloc tables for app + optional sibling toolkit |
 | `check_translations.py` | locale gap report (`--root`, `--reference en`, `--strict`) |
 | `check_help_figures.py` | Help figure ready/stub/missing report (`--json`, `--strict`) |
 | `compile_shaders.py` | GLSL → `.qsb` (`--check`, `--clean`) |
