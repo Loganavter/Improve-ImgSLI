@@ -44,7 +44,7 @@ from tabs.multi_compare.scene.tile_geometry import _visible_slot_image_rect
 def _host_key_repr(key: object) -> str:
     if isinstance(key, LevelKey):
         return f"{int(key.base)}_lvl{int(key.level)}"
-    return str(int(key))
+    return str(int(key))  # type: ignore[call-overload]  # key is a native-resolution int or LevelKey
 
 
 def _slot_host_key(key: object) -> str:
@@ -61,7 +61,7 @@ def _sid_from_key(key: object) -> int:
     ``LevelKey(sid, level)``'s ``.base``. Used by ``_SlotUploadRealizer``
     to rebuild the debug-dump/host-cache naming the old inline loop had
     ``sid`` for directly, now that ``_upload_tile`` only receives ``key``."""
-    return int(key.base) if isinstance(key, LevelKey) else int(key)
+    return int(key.base) if isinstance(key, LevelKey) else int(key)  # type: ignore[call-overload]
 
 
 def lod_key_and_source(

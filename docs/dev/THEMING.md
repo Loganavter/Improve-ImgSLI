@@ -75,6 +75,8 @@ Loaded once at module import by `core/theme.py:load_themes()` and exposed as `LI
 
 QSS files are concatenated in registration order with a separator (`/* --- NEW FILE --- */`) into `_qss_template`. On `apply_theme_to_app`, the template is rendered against the current palette: tokens like `palette(button.background)` (or whatever placeholder convention the toolkit uses — check `theme_manager._render_template`) are substituted.
 
+**UI scale pass.** After color substitution, `apply_theme_to_app` multiplies every `Npx` QSS literal (N ≥ 2) by the `UiScale` factor (`theme_manager._scale_qss_px`). `1px` borders stay untouched. Re-applying the theme after a factor change (settings → Interface Scale, via `ui.theming.reapply_application_theme`) rescales QSS live; `FontManager.apply_from_state` is re-run right after (the stylesheet push resets `WA_SetFont`-pinned fonts — see `src/core/bootstrap.py`).
+
 Registered at bootstrap in `src/core/bootstrap.py:_configure_theme_manager`:
 - `shared_toolkit/ui/resources/styles/base.qss`
 - `shared_toolkit/ui/resources/styles/widgets.qss`
@@ -173,7 +175,7 @@ Theme repaint for app chrome and dialogs goes through `ThemedWidget`
 `sli_ui_toolkit.widgets`). It subscribes to `theme_changed` in `__init__`
 and calls `on_theme_changed()` (override this instead of connecting your
 own signal; default implementation just calls `self.update()`).
-`src/ui/widgets/themed_container.py::ThemedBackgroundContainer` pairs the
+`src/ui/widgets/themed_surface.py::ThemedBackgroundContainer` pairs the
 mixin with a plain `QWidget` for chrome bars/containers that need to paint
 their own background from a theme token, instead of relying on inheriting
 a painted background from an ancestor.

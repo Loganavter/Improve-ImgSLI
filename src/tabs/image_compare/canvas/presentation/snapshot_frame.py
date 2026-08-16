@@ -60,4 +60,3 @@ def build_render_frame_presentation(
         scaled_image2=scaled_image2,
         virtual_layout=presentation.virtual_layout,
     )
-

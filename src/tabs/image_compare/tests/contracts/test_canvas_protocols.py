@@ -1,7 +1,7 @@
 """Canvas widget protocol conformance.
 
 The render pipeline talks to canvases through the duck-typed protocols in
-``ui/widgets/canvas/contracts.py``. Each concrete canvas must expose every
+``ui/canvas_infra/rhi/contracts.py``. Each concrete canvas must expose every
 protocol method with a compatible signature, otherwise an export/preview path
 breaks only at runtime with an ``AttributeError`` or ``TypeError``.
 

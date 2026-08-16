@@ -22,7 +22,7 @@ def refresh_open_dialog_find_actions() -> int:
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()
-    if app is None:
+    if not isinstance(app, QApplication):
         return 0
     refreshed = 0
     for widget in app.topLevelWidgets():
@@ -124,7 +124,7 @@ def install_dialog_find_action_shortcut(
     shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
     shortcut.setAutoRepeat(False)
     shortcut.activated.connect(_open)
-    dialog._find_action_shortcut = shortcut
+    dialog._find_action_shortcut = shortcut  # type: ignore[attr-defined]  # dynamic attr
     return shortcut
 
 

@@ -130,7 +130,7 @@ class ExportPresenter(QObject):
         if not snapshots or export_controller is None or video_editor_plugin is None:
             self.ui_manager.messages.show_non_modal_message(
                 kind=MessageKind.WARNING,
-                title=self._tr("common.warning"),
+                title=self._tr("image_compare.common.warning"),
                 text="Video editor is unavailable.",
             )
             return

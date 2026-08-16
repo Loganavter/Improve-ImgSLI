@@ -39,6 +39,8 @@ class AppIcon(Enum):
     SYNC = "sync.svg"
     LINK = "link.svg"
     UNLINK = "unlink.svg"
+    UNDO = "undo.svg"
+    REDO = "redo.svg"
 
 def get_app_icon(icon: AppIcon | str) -> QIcon:
     if isinstance(icon, Enum):
@@ -78,9 +80,18 @@ configure_toolkit(
         transient_auto_hide_delay_ms=300,
         flyout_animation_duration_ms=80,
         text_settings_flyout_animation_duration_ms=80,
+        # Pure "fade" (no movement): a slide-by-default would fight flyouts
+        # that apply a post-show_aligned move() for pixel-perfect anchoring
+        # (e.g. MagnifierSettingsFlyout.show_for_group). Fade only changes
+        # opacity, so it can never move a flyout off its anchor.
+        default_flyout_animation="fade",
     ),
     overlay_resolver=get_overlay_layer,
     rating_gesture_factory=lambda **kwargs: RatingGestureTransaction(**kwargs),
     dragdrop_service_getter=DragAndDropService.get_instance,
     default_underline_fade=False,
+    # Right-click menus are real Qt.Popup top-levels (native behavior, stacks
+    # above UnifiedFlyout), not in-window children. CSD File/Help dropdowns are
+    # separate: the app opens them as in-window SimpleOptionsFlyouts.
+    context_menu_surface="popup",
 )

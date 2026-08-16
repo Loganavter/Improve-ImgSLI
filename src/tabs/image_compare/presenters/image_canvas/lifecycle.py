@@ -24,16 +24,16 @@ def initialize_canvas_presenter(presenter) -> None:
         presenter.main_window_app,
     )
 
-    presenter.current_displayed_pixmap: QPixmap | None = None
+    presenter.current_displayed_pixmap = None
     presenter.current_rendering_task_id = 0
     presenter._last_displayed_task_id = 0
-    presenter._cached_base_pixmap: QPixmap | None = None
+    presenter._cached_base_pixmap = None
     presenter._last_bg_signature = None
     presenter._last_mag_signature = None
     presenter._cached_split_pos = -1.0
     presenter._cached_render_params = None
-    presenter._last_magnifier_pos: QPoint | None = None
-    presenter._last_capture_pos: QPoint | None = None
+    presenter._last_magnifier_pos = None
+    presenter._last_capture_pos = None
     presenter._last_label_dims = None
     presenter._pending_interactive_mode = None
     presenter._is_magnifier_worker_running = False

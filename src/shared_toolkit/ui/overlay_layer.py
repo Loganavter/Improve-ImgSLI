@@ -9,6 +9,7 @@ from shared_toolkit.ui.in_window_surface import (
     create_shadow_surface,
     paint_shadowed_surface,
 )
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.managers.ui_font import apply_text_color, apply_ui_font
 
@@ -39,7 +40,7 @@ class _PopupBubble(QWidget):
         self.label = QLabel(self.container)
         self.label.setObjectName("ValuePopupLabel")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label.setContentsMargins(4, 4, 4, 4)
+        self.label.setContentsMargins(scaled_px(4), scaled_px(4), scaled_px(4), scaled_px(4))
         self._apply_label_typography()
         self.content_layout.addWidget(self.label)
         self.hide()
@@ -138,7 +139,16 @@ class OverlayLayer(QObject):
             widget.hide()
 
     def anchor_rect(self, anchor_widget: QWidget) -> QRect:
-        top_left = anchor_widget.mapTo(self._host, QPoint(0, 0))
+        # Global-difference mapping, NOT anchor_widget.mapTo(self._host):
+        # when the anchor lives in a top-level child window whose QObject
+        # parent is the host (e.g. the Settings dialog parented to the main
+        # window), Qt's mapTo() treats the host as sitting at (0, 0) and
+        # returns the anchor's *global* position instead of host-local
+        # coordinates. Every in-window flyout anchored to such a dialog then
+        # lands far off the anchor and gets clamped into the host's
+        # bottom-right corner. mapToGlobal() - mapToGlobal() is correct for
+        # any host (top-level or not).
+        top_left = anchor_widget.mapToGlobal(QPoint(0, 0)) - self._host.mapToGlobal(QPoint(0, 0))
         return QRect(top_left, anchor_widget.size())
 
     def anchor_global_rect(self, anchor_widget: QWidget) -> QRect:

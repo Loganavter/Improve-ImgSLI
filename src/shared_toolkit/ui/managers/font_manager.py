@@ -4,6 +4,7 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
@@ -12,7 +13,7 @@ _logger = logging.getLogger("ImproveImgSLI")
 
 def _caller_str(depth: int = 6) -> str:
     """Short `file:line:func` chain -- who actually called `set_font()`.
-    Local copy of `ui.widgets.glass_hud._caller_str` (not imported: this
+    Local copy of `ui.widgets.glass_hud.hud.caller_str` (not imported: this
     module lives in `shared_toolkit`, app-agnostic, shouldn't depend on
     app-specific `ui.widgets` code)."""
     frames = traceback.extract_stack()[:-2]
@@ -115,7 +116,7 @@ class FontManager(QObject):
         self._current_family = family or ""
 
         app = QApplication.instance()
-        if not app:
+        if not isinstance(app, QApplication):
             return
 
         try:

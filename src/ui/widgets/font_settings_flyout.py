@@ -1,13 +1,42 @@
 from __future__ import annotations
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget
 
 from resources.translations import tr
-from sli_ui_toolkit.widgets import BaseFlyout, Slider, Switch
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.widgets import BaseFlyout, Switch
 
-from ui.widgets.color_swatch import ColorSwatch
+from ui.widgets.color import ColorSwatch
+from ui.widgets.slider_hint import ValueSlider
 
 
 class FontSettingsFlyout(BaseFlyout):
@@ -24,8 +53,8 @@ class FontSettingsFlyout(BaseFlyout):
         self.current_language = "en"
         self._active_dialog = False
 
-        self.content_layout.setContentsMargins(10, 10, 10, 10)
-        self.content_layout.setSpacing(8)
+        self.content_layout.setContentsMargins(scaled_px(10), scaled_px(10), scaled_px(10), scaled_px(10))
+        self.content_layout.setSpacing(scaled_px(8))
 
         self.size_slider = self._slider(50, 400, 100)
         self.weight_slider = self._slider(0, 100, 50)
@@ -66,11 +95,15 @@ class FontSettingsFlyout(BaseFlyout):
         tag_font_settings_flyout(self, include_placement=True)
 
     @staticmethod
-    def _slider(minimum: int, maximum: int, value: int) -> Slider:
-        slider = Slider(Qt.Orientation.Horizontal)
+    def _slider(minimum: int, maximum: int, value: int) -> ValueSlider:
+        slider = ValueSlider(
+            Qt.Orientation.Horizontal,
+            # Raw value (font size / weight / opacity), not percent-of-span.
+            hint_formatter=lambda s: str(s.value()),
+        )
         slider.setRange(minimum, maximum)
         slider.setValue(value)
-        slider.setMinimumWidth(160)
+        slider.setMinimumWidth(scaled_px(160))
         return slider
 
     def _tr(self, key: str) -> str:
@@ -133,7 +166,7 @@ class FontSettingsFlyout(BaseFlyout):
             anchor_point="top-left",
             flyout_point="bottom-right",
             offset=10,
-            animation="slide",
+            animation="slide-fade",
             # "diagonal" (not "auto"): "auto" splits one fixed distance
             # across the anchor->flyout unit vector, so with a narrow icon
             # button as the anchor and this much wider panel, the vertical
@@ -172,3 +205,33 @@ class FontSettingsFlyout(BaseFlyout):
             self._placement(),
             self.opacity_slider.value(),
         )
+
+
+FontSettingsFlyout.inspect_spec = InspectSpec(
+    family="FontSettingsFlyout",
+    state=(
+        SpecField("font_size", lambda w: w.size_slider.value()),
+        SpecField("font_weight", lambda w: w.weight_slider.value()),
+        SpecField("opacity", lambda w: w.opacity_slider.value()),
+        SpecField("draw_background", lambda w: w.draw_bg_switch.isChecked()),
+        SpecField("placement", "_placement", private=True),
+        SpecField("foreground", lambda w: w.color_swatch.color()),
+        SpecField("background", lambda w: w.bg_color_swatch.color()),
+    ),
+    docs="docs/dev/APP_WIDGETS.md",
+)
+
+
+FontSettingsFlyout.inspect_spec = InspectSpec(
+    family="FontSettingsFlyout",
+    state=(
+        SpecField("font_size", lambda w: w.size_slider.value()),
+        SpecField("font_weight", lambda w: w.weight_slider.value()),
+        SpecField("opacity", lambda w: w.opacity_slider.value()),
+        SpecField("draw_background", lambda w: w.draw_bg_switch.isChecked()),
+        SpecField("placement", "_placement", private=True),
+        SpecField("foreground", lambda w: w.color_swatch.color()),
+        SpecField("background", lambda w: w.bg_color_swatch.color()),
+    ),
+    docs="docs/dev/widgets/font_settings_flyout.md",
+)

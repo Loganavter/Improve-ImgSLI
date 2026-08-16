@@ -53,6 +53,7 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         self._assembled = True
         self._wire_transition_mask_release()
         self._install_magnifier_settings_flyout()
+        self._install_chrome_sync()
 
     def _install_magnifier_settings_flyout(self) -> None:
         from tabs.image_compare.ui.magnifier_settings_flyout import (
@@ -66,15 +67,19 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             self, self.magnifier_settings_panel
         )
         self._magnifier_settings_hover = MagnifierSettingsHoverController(self)
-        self._install_slider_hint_flyout()
 
-    def _install_slider_hint_flyout(self) -> None:
-        from tabs.image_compare.ui.slider_hint_flyout import SliderHintController
+    def _install_chrome_sync(self) -> None:
+        store = getattr(getattr(self, "_context", None), "store", None)
+        if store is None:
+            return
+        from tabs.image_compare.use_cases.chrome_sync import ImageCompareChromeSync
 
-        self._slider_hint = SliderHintController(
-            self,
-            [self.slider_size, self.slider_capture, self.slider_speed],
-        )
+        window = getattr(self._context, "main_window", None)
+
+        def _resolve_window_presenter():
+            return getattr(window, "presenter", None) if window is not None else None
+
+        self.chrome_sync = ImageCompareChromeSync(self, store, _resolve_window_presenter)
 
     def _wire_transition_mask_release(self) -> None:
         canvas = getattr(self, "image_label", None)
@@ -88,6 +93,13 @@ class ImageCompareWidget(ThemedWidget, QWidget):
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
+        # Re-size/raise the startup placeholder before the canvas's first paint
+        # (unified with multi_compare): at construction it tracked a tiny
+        # default-geometry container, and without a resync the canvas would
+        # expose its unrendered (transparent) surface on the first frames.
+        placeholder = getattr(self, "image_startup_placeholder", None)
+        if placeholder is not None:
+            placeholder.sync_geometry()
         # firstVisualFrameReady is one-shot; on later tab switches release as
         # soon as this page is shown again if the canvas already painted.
         canvas = getattr(self, "image_label", None)
@@ -202,8 +214,8 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             self.drag_overlay.hide()
             return
         lang = self._context.settings.current_language if self._context else "en"
-        text1 = tr("ui.drop_images_1_here", lang)
-        text2 = tr("ui.drop_images_2_here", lang)
+        text1 = tr("image_compare.ui.drop_images_1_here", lang)
+        text2 = tr("image_compare.ui.drop_images_2_here", lang)
         self.image_label.set_drag_overlay_state(
             visible=False,
             horizontal=horizontal,
@@ -302,7 +314,7 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         self.length_warning_label.setVisible(visible)
 
     def update_color_button_tooltip(self, color_name: str, current_language: str):
-        tooltip = tr("tooltip.magnifier_colors", current_language)
+        tooltip = tr("image_compare.tooltip.magnifier_colors", current_language)
         for attr in (
             "btn_magnifier_color_settings",
             "btn_magnifier_color_settings_beginner",
@@ -320,7 +332,10 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         full_path: str,
     ):
         combobox = self.combo_image1 if image_number == 1 else self.combo_image2
-        document = self._context.store.get_session_state_slot("document")
+        assert self._context is not None
+        store = self._context.store
+        assert store is not None
+        document = store.get_session_state_slot("document")
         combobox.updateState(
             count,
             current_index,
@@ -383,7 +398,9 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         return controller.sessions
 
     def _get_current_rating_index(self, image_number: int) -> int:
+        assert self._context is not None
         state = self._context.store
+        assert state is not None
         return (
             state.document.current_index1
             if image_number == 1
@@ -415,8 +432,8 @@ class ImageCompareWidget(ThemedWidget, QWidget):
                 tr("common.position.right", current_language),
             )
         return (
-            tr("common.position.top", current_language),
-            tr("common.position.bottom", current_language),
+            tr("image_compare.common.position.top", current_language),
+            tr("image_compare.common.position.bottom", current_language),
         )
 
     def _get_max_file_name_width(self) -> int:

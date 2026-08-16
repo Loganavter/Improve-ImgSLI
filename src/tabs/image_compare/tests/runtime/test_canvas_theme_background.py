@@ -24,7 +24,8 @@ _APP: QApplication | None = None
 
 def _app() -> QApplication:
     global _APP
-    _APP = QApplication.instance() or _APP or QApplication([])
+    _APP = QApplication.instance() or _APP or QApplication([])  # type: ignore[assignment]  # instance() returns QCoreApplication
+    assert _APP is not None
     return _APP
 
 

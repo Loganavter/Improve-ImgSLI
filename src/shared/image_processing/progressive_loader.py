@@ -1,10 +1,14 @@
 import logging
 import os
+from typing import TYPE_CHECKING
 
 from PIL import Image
 
 from shared.image_processing.resize import crop_black_borders
 from core.constants import AppConstants
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -21,7 +25,7 @@ except Exception as e:
     logger.error(f"JXL Support: Error during initialization: {e}")
 
 try:
-    import pyvips
+    import pyvips  # type: ignore[import-untyped]  # pyvips has no stubs
 
     PYVIPS_SUPPORTED = True
     logger.info("pyvips detected. True ROI streaming enabled.")
@@ -42,9 +46,49 @@ def _ensure_supported_dimensions(width: int, height: int, image_path: str, ignor
     max_dim = int(getattr(AppConstants, "MAX_SUPPORTED_IMAGE_DIMENSION", 65536))
     if max(int(width), int(height)) > max_dim:
         raise ImageSizeLimitError(
-            f"Image exceeds the current software limit of {max_dim}px on either side: "
-            f"{width}x{height}."
+            f"Image is too large for the installed decoder: {width}x{height} "
+            f"exceeds the {max_dim}px-per-side limit. Streaming decode "
+            f"(libvips) is unavailable for this file."
         )
+
+
+_vips_suffixes_cache: frozenset[str] | None = None
+
+
+def _vips_suffixes() -> frozenset[str]:
+    """Lowercased ``pyvips.get_suffixes()`` (e.g. ``.jxl``, ``.jpg``), cached.
+
+    ``get_suffixes()`` reflects the *installed* libvips build's loaders —
+    JXL/HEIF/AVIF are optional codecs that some builds lack, so capability
+    must be probed per format, not assumed from ``PYVIPS_SUPPORTED`` alone.
+    """
+    global _vips_suffixes_cache
+    if _vips_suffixes_cache is None:
+        try:
+            import pyvips
+
+            _vips_suffixes_cache = frozenset(
+                s.lower() for s in pyvips.get_suffixes()
+            )
+        except Exception:
+            _vips_suffixes_cache = frozenset()
+    return _vips_suffixes_cache
+
+
+def pyvips_can_stream(path: str | os.PathLike) -> bool:
+    """Whether pyvips can stream-decode ``path``'s format with this libvips.
+
+    Unlike the module-wide ``PYVIPS_SUPPORTED`` flag, this checks the
+    *file's own* extension against what the installed libvips build actually
+    has loaders for. The streaming path bypasses
+    ``MAX_SUPPORTED_IMAGE_DIMENSION``, so probes must only skip the bound
+    for files that will actually stream — not for files that will fall back
+    to the PIL/imagecodecs full-frame backend (which must keep enforcing it).
+    """
+    if not PYVIPS_SUPPORTED:
+        return False
+    ext = os.path.splitext(os.fspath(path))[1].lower()
+    return bool(ext) and ext in _vips_suffixes()
 
 def should_use_progressive_load(
     file_path: str, file_size_bytes: int | None = None
@@ -71,7 +115,7 @@ def should_use_progressive_load(
 
         with Image.open(file_path) as img:
             width, height = img.size
-            _ensure_supported_dimensions(width, height, file_path, ignore_limit=PYVIPS_SUPPORTED)
+            _ensure_supported_dimensions(width, height, file_path, ignore_limit=pyvips_can_stream(file_path))
             FULL_HD_PIXELS = 1920 * 1080
             return (width * height) >= FULL_HD_PIXELS
     except ImageSizeLimitError:
@@ -88,10 +132,19 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
     Returns ``QImage`` RGBA8888 capped at 1024 px on the long edge. Callers
     store the result in ``document.preview_image*`` — never wrap with
     ``TiledPixelStore`` (full-res tier owns memmap storage).
+
+    When the installed libvips can stream the file's format, the preview is
+    produced by ``pyvips.thumbnail`` — a real streaming thumbnail (no
+    full-frame decode). This matters for large JXL/HEIF/AVIF sources, where
+    the imagecodecs/QImageReader fallbacks below would otherwise materialize
+    the entire frame just to build a 1024px preview.
     """
     try:
         from PySide6.QtGui import QImage, QImageReader
         from PySide6.QtCore import QSize
+
+        if pyvips_can_stream(image_path):
+            return _load_preview_vips(image_path, auto_crop=auto_crop)
 
         if JXL_SUPPORTED and image_path.lower().endswith(".jxl"):
             logger.info(f"Loading JXL preview for: {image_path}")
@@ -99,7 +152,7 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
             img = Image.fromarray(decoded)
 
             original_width, original_height = img.size
-            _ensure_supported_dimensions(original_width, original_height, image_path, ignore_limit=PYVIPS_SUPPORTED)
+            _ensure_supported_dimensions(original_width, original_height, image_path)
             max_preview_size = 1024
             scale = min(
                 max_preview_size / original_width, max_preview_size / original_height
@@ -123,7 +176,7 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
             logger.warning(f"QImageReader unsupported format for {image_path}, falling back to PIL")
             with Image.open(image_path) as img:
                 original_width, original_height = img.size
-                _ensure_supported_dimensions(original_width, original_height, image_path, ignore_limit=PYVIPS_SUPPORTED)
+                _ensure_supported_dimensions(original_width, original_height, image_path)
                 max_preview_size = 1024
                 scale = min(
                     max_preview_size / original_width, max_preview_size / original_height
@@ -146,7 +199,7 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
         size = reader.size()
         if size.isValid():
             original_width, original_height = size.width(), size.height()
-            _ensure_supported_dimensions(original_width, original_height, image_path, ignore_limit=PYVIPS_SUPPORTED)
+            _ensure_supported_dimensions(original_width, original_height, image_path)
             max_preview_size = 1024
             scale = min(max_preview_size / original_width, max_preview_size / original_height)
             
@@ -178,32 +231,51 @@ def load_preview_image(image_path: str, auto_crop: bool = False) -> "QImage | No
         logger.error(f"Failed to load preview image {image_path}: {e}")
         return None
 
-def load_full_image(image_path: str, auto_crop: bool = False) -> Image.Image | None:
-    """Load full-res as an in-memory PIL image (escape hatch).
 
-    Prefer ``TiledPixelStore.from_path`` for canvas/export paths. This helper
-    strip-spills via ``from_path`` then materializes — useful only where a
-    real ``PIL.Image`` is required.
-    """
+def _load_preview_vips(image_path: str, auto_crop: bool = False) -> "QImage | None":
+    """Streaming preview via ``pyvips.thumbnail`` (no full-frame decode)."""
     try:
-        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+        import numpy as np
+        import pyvips
+        from PySide6.QtGui import QImage
+        from shared.image_processing.tiled_pixel_store import (
+            _auto_crop_box_from_ndarray,
+            qimage_from_pixel_source,
+        )
 
-        store = TiledPixelStore.from_path(image_path, auto_crop=auto_crop)
-        try:
-            return store.materialize_full()
-        finally:
-            store.close()
+        thumb = pyvips.Image.thumbnail(image_path, 1024, height=1024)
+        if not thumb.hasalpha():
+            thumb = thumb.bandjoin(255)
+        if thumb.format != "uchar":
+            thumb = thumb.cast("uchar")
+        arr = np.ndarray(
+            buffer=thumb.write_to_memory(),
+            dtype=np.uint8,
+            shape=(thumb.height, thumb.width, thumb.bands),
+        )
+        if arr.shape[2] != 4:
+            rgb = arr[:, :, :3] if arr.shape[2] >= 3 else arr
+            arr = np.empty((thumb.height, thumb.width, 4), dtype=np.uint8)
+            arr[:, :, :3] = rgb
+            arr[:, :, 3] = 255
+        if auto_crop:
+            box = _auto_crop_box_from_ndarray(arr)
+            if box is not None:
+                left, top, right, bottom = box
+                arr = arr[top:bottom, left:right]
+        return qimage_from_pixel_source(arr)
     except ImageSizeLimitError:
         raise
     except Exception as e:
-        logger.error(f"Failed to load full image {image_path}: {e}")
+        logger.error(f"Failed to load pyvips preview for {image_path}: {e}")
         return None
+
 
 def get_image_dimensions(image_path: str) -> tuple[int, int] | None:
     try:
         with Image.open(image_path) as img:
             width, height = img.size
-            _ensure_supported_dimensions(width, height, image_path, ignore_limit=PYVIPS_SUPPORTED)
+            _ensure_supported_dimensions(width, height, image_path, ignore_limit=pyvips_can_stream(image_path))
             return (width, height)
     except ImageSizeLimitError:
         raise
@@ -212,7 +284,7 @@ def get_image_dimensions(image_path: str) -> tuple[int, int] | None:
             try:
                 decoded = imagecodecs.imread(image_path)
                 height, width = decoded.shape[:2]
-                _ensure_supported_dimensions(width, height, image_path, ignore_limit=PYVIPS_SUPPORTED)
+                _ensure_supported_dimensions(width, height, image_path, ignore_limit=pyvips_can_stream(image_path))
                 return (width, height)
             except Exception as e:
                 logger.error(f"Failed to read JXL dimensions {image_path}: {e}")

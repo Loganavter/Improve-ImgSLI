@@ -8,6 +8,7 @@ from PySide6.QtCore import QLineF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
+from sli_ui_toolkit.managers import UiScale, scaled_px
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
 from sli_ui_toolkit.widgets import (
     Button,
@@ -84,8 +85,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._cards_by_type: dict[str, Button] = {}
         self.setObjectName("SessionPickerPage")
         self.setMinimumSize(
-            SESSION_PICKER_PAGE_MIN_WIDTH,
-            SESSION_PICKER_PAGE_MIN_HEIGHT,
+            scaled_px(SESSION_PICKER_PAGE_MIN_WIDTH),
+            scaled_px(SESSION_PICKER_PAGE_MIN_HEIGHT),
         )
         # CSD translucent windows punch through clear children — keep this page
         # an opaque surface for the whole stack (scroll → content → recent).
@@ -94,7 +95,14 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._build()
 
     def window_minimum_size(self) -> tuple[int, int]:
-        """Main-window floor while this page is the active workspace content."""
+        """Main-window floor while this page is the active workspace content.
+
+        Deliberately **not** scaled: this floor is the main window's minimum
+        size (``apply_main_window_minimum`` → ``setMinimumSize``), and a
+        scaled floor (e.g. 840 px at 1.5x instead of 560) can exceed the
+        user's saved window height and force the window taller — a short
+        window is fine, the page scrolls its content.
+        """
         return (
             SESSION_PICKER_WINDOW_MIN_WIDTH,
             SESSION_PICKER_WINDOW_MIN_HEIGHT,
@@ -172,8 +180,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._page_content = content
 
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(48, 40, 48, 40)
-        layout.setSpacing(20)
+        layout.setContentsMargins(
+            scaled_px(48), scaled_px(40), scaled_px(48), scaled_px(40)
+        )
+        layout.setSpacing(scaled_px(20))
 
         self._title_label = Label(
             self._context.tr("title", "Create a workspace"),
@@ -190,7 +200,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._cards_container = _OpaqueFillWidget()
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        self._cards_layout.setSpacing(10)
+        self._cards_layout.setSpacing(scaled_px(10))
         layout.addWidget(self._cards_container)
 
         self._recent_panel = RecentProjectsPanel(
@@ -213,6 +223,33 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
         )
+        UiScale.get_instance().scale_changed.connect(self._on_ui_scale_changed)
+
+    def _on_ui_scale_changed(self, _factor: float) -> None:
+        """Re-apply scale-dependent page geometry after a live UiScale change.
+
+        The page layout margins/spacing, the create-cards spacing, and the
+        minimum size are plain px captured at build time; without this pass
+        they keep the old factor until the next app start (the create-cards
+        and other toolkit children resize themselves via their own
+        ``scale_changed`` handlers).
+        """
+        self.setMinimumSize(
+            scaled_px(SESSION_PICKER_PAGE_MIN_WIDTH),
+            scaled_px(SESSION_PICKER_PAGE_MIN_HEIGHT),
+        )
+        content = getattr(self, "_page_content", None)
+        layout = content.layout() if content is not None else None
+        if layout is not None:
+            layout.setContentsMargins(
+                scaled_px(48), scaled_px(40), scaled_px(48), scaled_px(40)
+            )
+            layout.setSpacing(scaled_px(20))
+        if self._cards_layout is not None:
+            self._cards_layout.setSpacing(scaled_px(10))
+        if self._recent_panel is not None:
+            self._recent_panel.recover_opaque_surface()
+        self.update()
 
     def set_open_project_handler(self, handler: Callable[[str], None] | None) -> None:
         if self._recent_panel is not None:
@@ -319,7 +356,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._cards_by_type.clear()
         while self._cards_layout.count():
             item = self._cards_layout.takeAt(0)
-            widget = item.widget()
+            widget = item.widget()  # type: ignore[union-attr]  # takeAt result is a layout item
             if widget is not None:
                 widget.hide()
                 widget.setParent(None)
@@ -434,6 +471,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
     def _create(self, session_type: str) -> None:
         picker_session = self._context.get_active_session()
-        self._context.call_service("create_workspace_session", session_type, True)
-        if picker_session is not None:
-            self._context.call_service("close_workspace_session", picker_session.id)
+        # One atomic store change (create + close the picker session), so the
+        # tab strip never holds both tabs for an intermediate frame — the
+        # picker tab is replaced in place, like a browser tab navigates.
+        self._context.call_service(
+            "replace_workspace_session",
+            session_type,
+            closing_session_id=picker_session.id if picker_session is not None else None,
+        )

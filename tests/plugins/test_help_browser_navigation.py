@@ -69,7 +69,13 @@ def test_help_dialog_sidebar_splitter(qtbot):
     assert dialog._splitter.sizes()[0] >= HELP_SIDEBAR_MIN_WIDTH
     dialog._go_back()
     assert not dialog.nav_widget.isVisible()
+    # Hubs collapse the whole sidebar column — nav list *and* the search
+    # header — so the root/main section owns the full width.
+    assert not dialog._search_field.isVisible()
     assert dialog._splitter.sizes()[0] == 0
+    dialog._open_node("workspace")
+    assert dialog._search_field.isVisible()
+    assert dialog._splitter.sizes()[0] >= HELP_SIDEBAR_DEFAULT_WIDTH - 40
 
 
 def test_help_dialog_drill_and_back(qtbot):

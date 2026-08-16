@@ -23,3 +23,15 @@ def resolve_theme_color(theme_manager, color_key: str) -> QColor:
 def refresh_application_styles(app: QApplication) -> None:
     """Re-polish application QSS after runtime style-affecting settings change."""
     app.setStyleSheet(app.styleSheet())
+
+
+def reapply_application_theme(app: QApplication) -> None:
+    """Re-run the full theme apply (colors + QSS px scaling) through UI infra.
+
+    Used after runtime settings that change rendered chrome — e.g. the UI
+    scale factor, whose Npx QSS scaling pass runs inside
+    ``ThemeManager.apply_theme_to_app``.
+    """
+    from sli_ui_toolkit.managers import ThemeManager
+
+    ThemeManager.get_instance().apply_theme_to_app(app)

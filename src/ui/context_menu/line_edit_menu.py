@@ -8,7 +8,7 @@ instead of Qt's native undo/cut/copy/paste menu.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QMouseEvent
 from PySide6.QtWidgets import QApplication, QLineEdit
 
 from resources.translations import tr
@@ -38,6 +38,7 @@ class _LineEditContextMenuFilter(QObject):
         if (
             event.type() == QEvent.Type.MouseButtonPress
             and isinstance(watched, QLineEdit)
+            and isinstance(event, QMouseEvent)
             and event.button() == Qt.MouseButton.RightButton
         ):
             if watched.hasSelectedText():
@@ -50,7 +51,7 @@ class _LineEditContextMenuFilter(QObject):
                 self._pending_selection = None
             return super().eventFilter(watched, event)
         if event.type() == QEvent.Type.ContextMenu and isinstance(watched, QLineEdit):
-            self._open_menu(watched, event.globalPos())
+            self._open_menu(watched, event.globalPos())  # type: ignore[attr-defined]  # QContextMenuEvent globalPos
             return True
         return super().eventFilter(watched, event)
 
@@ -131,5 +132,5 @@ def install_line_edit_context_menu_policy(app: QApplication) -> None:
         return
     event_filter = _LineEditContextMenuFilter(app)
     app.installEventFilter(event_filter)
-    app._line_edit_context_menu_filter = event_filter
+    app._line_edit_context_menu_filter = event_filter  # type: ignore[attr-defined]  # dynamic attribute
     _installed = True

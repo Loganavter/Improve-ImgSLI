@@ -63,6 +63,42 @@ class WorkspaceSessionActions:
             self._emit_activated(active.id, active.session_type, previous_id)
         return True
 
+    def replace_workspace_session(
+        self,
+        session_type: str,
+        *,
+        closing_session_id: str | None = None,
+        activate: bool = True,
+        title: str | None = None,
+        metadata: dict | None = None,
+    ):
+        """Create a new session and close ``closing_session_id`` as one
+        atomic store change.
+
+        Used by the session-picker replace flow (picker card click creates a
+        new session and closes the picker) and by the close-last-tab fallback
+        (create the picker, close the only tab). Emitting the two store
+        changes separately would make the workspace UI sync to the
+        intermediate session list — the tab strip would hold both tabs for a
+        frame. ``Store.batch_changes`` defers the emissions, so listeners
+        only see the post-replacement session list.
+        """
+        if not self.controller.session_manager:
+            raise RuntimeError("SessionManager is not available")
+        store = getattr(self.controller.session_manager, "store", None)
+        if store is None:
+            raise RuntimeError("SessionManager has no store")
+        with store.batch_changes():
+            session = self.create_workspace_session(
+                session_type,
+                activate=activate,
+                title=title,
+                metadata=metadata,
+            )
+            if closing_session_id is not None:
+                self.close_workspace_session(closing_session_id)
+        return session
+
     def close_workspace_session(self, session_id: str) -> bool:
         if not self.controller.session_manager:
             return False

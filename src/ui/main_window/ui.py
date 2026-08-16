@@ -45,11 +45,14 @@ class Ui_ImageComparisonApp:
         self.btn_new_session = self.workspace_tabs.add_button
         self.workspace_stack = QStackedWidget(main_window)
         self._tab_registry = None
-        self.legacy_tab_widgets = {}
+        self.legacy_tab_widgets: dict = {}
 
     def _current_language(self) -> str:
         try:
-            return self.main_window.store.settings.current_language
+            store = getattr(self.main_window, "store", None)
+            if store is None:
+                return "en"
+            return store.settings.current_language
         except AttributeError:
             return "en"
 
@@ -141,4 +144,3 @@ class Ui_ImageComparisonApp:
                 "sync_session_mode(%r): no tab claimed apply_host_session_mode",
                 session_type,
             )
-

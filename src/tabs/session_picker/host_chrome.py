@@ -35,12 +35,12 @@ class SessionPickerHostChromeAdapter:
         self._page = page
 
     def refresh_recent(self) -> None:
-        self._page.refresh_recent()
+        self._page.refresh_recent()  # type: ignore[attr-defined]  # page is duck-typed
 
     def set_open_project_handler(
         self, handler: Callable[[str], None] | None
     ) -> None:
-        self._page.set_open_project_handler(handler)
+        self._page.set_open_project_handler(handler)  # type: ignore[attr-defined]
 
     def card_for(self, session_type: str) -> QWidget | None:
-        return self._page.card_for(session_type)
+        return self._page.card_for(session_type)  # type: ignore[attr-defined]

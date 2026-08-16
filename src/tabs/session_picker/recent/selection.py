@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button
 
 from services.io.recent_projects import VIEW_LIST, RecentProjectRecord
@@ -12,6 +13,7 @@ from tabs.session_picker.recent.layout import (
     GRID_CARD_W,
     ITEMS_MARGIN,
     ITEMS_MARGIN_RIGHT,
+    ITEMS_MARGIN_TOP,
     ITEMS_SPACING,
     LIST_CARD_H,
     row_stride,
@@ -29,7 +31,7 @@ def _theme_manager_or_none(theme_manager=None):
     if theme_manager is not None:
         return theme_manager
     try:
-        from sli_ui_toolkit.ui.theme_manager import ThemeManager
+        from sli_ui_toolkit.ui.theme_manager import ThemeManager  # type: ignore[import-untyped]  # toolkit lacks py.typed
 
         return ThemeManager.get_instance()
     except Exception:
@@ -131,20 +133,24 @@ def card_rect_for_index(
     columns: int,
     host_width: int,
 ) -> QRect:
-    """Content-host geometry for the card at ``index`` (absolute layout)."""
+    """Real-px content-host geometry for the card at ``index`` (absolute layout).
+
+    All sizes are scaled so the rects line up with live host coordinates
+    (mouse events, marquee band) at every UI scale factor.
+    """
     card_h = LIST_CARD_H if view_mode == VIEW_LIST else GRID_CARD_H
     stride = row_stride(card_h)
     cols = max(1, int(columns))
     if view_mode == VIEW_LIST:
         row = index
-        x = ITEMS_MARGIN
-        w = max(1, int(host_width) - ITEMS_MARGIN - ITEMS_MARGIN_RIGHT)
+        x = scaled_px(ITEMS_MARGIN)
+        w = max(1, int(host_width) - scaled_px(ITEMS_MARGIN) - scaled_px(ITEMS_MARGIN_RIGHT))
     else:
         row, col = divmod(index, cols)
-        x = ITEMS_MARGIN + col * (GRID_CARD_W + ITEMS_SPACING)
-        w = GRID_CARD_W
-    y = ITEMS_MARGIN + row * stride
-    return QRect(x, y, w, card_h)
+        x = scaled_px(ITEMS_MARGIN + col * (GRID_CARD_W + ITEMS_SPACING))
+        w = scaled_px(GRID_CARD_W)
+    y = scaled_px(ITEMS_MARGIN_TOP) + row * stride
+    return QRect(x, y, w, scaled_px(card_h))
 
 
 def paths_intersecting_rect(

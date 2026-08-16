@@ -13,7 +13,7 @@ def safe_point(x, y) -> QPoint:
 
 def resource_path(relative_path: str) -> str:
     try:
-        base_path = Path(sys._MEIPASS)
+        base_path = Path(sys._MEIPASS)  # type: ignore[attr-defined]  # PyInstaller-only
     except Exception:
 
         current_file = Path(__file__).resolve()

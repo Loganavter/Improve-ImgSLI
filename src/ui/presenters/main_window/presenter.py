@@ -22,14 +22,6 @@ from ui.presenters.main_window.connections import (
 from ui.presenters.main_window.features import MainWindowFeatureSet
 from ui.presenters.main_window.state import (
     apply_initial_settings_to_ui,
-    do_sync_zoom_indicator,
-    do_update_combobox_displays,
-    do_update_file_names_display,
-    do_update_rating_displays,
-    do_update_resolution_labels,
-    get_current_display_name,
-    get_current_score,
-    get_image_dimensions,
     on_language_changed,
 )
 from ui.presenters.main_window.workspace import (
@@ -51,7 +43,6 @@ class MainWindowPresenter(QObject):
         store: Store,
         main_controller: MainController,
         features: MainWindowFeatureSet,
-        widget,
         plugin_ui_registry: PluginUIRegistry | None = None,
     ):
         super().__init__(main_window_app)
@@ -68,12 +59,6 @@ class MainWindowPresenter(QObject):
         self.features = features
         self.ui_manager = features.ui_manager
         self.ui_batcher = UIUpdateBatcher(self)
-        if widget is None:
-            raise RuntimeError(
-                "MainWindowPresenter requires the bootstrap-default tab's "
-                "widget to be assembled and passed in explicitly by the composer"
-            )
-        self.widget = widget
 
         from ui.widgets.font_settings_flyout import FontSettingsFlyout
 
@@ -101,7 +86,6 @@ class MainWindowPresenter(QObject):
             self._configure_workspace_actions()
             self.sync_workspace_tabs()
             self.sync_session_mode()
-            self.widget.reapply_button_styles()
             self.repopulate_flyouts()
         except Exception:
             logger.exception(
@@ -127,9 +111,6 @@ class MainWindowPresenter(QObject):
 
     def shutdown(self):
         self.features.export.shutdown()
-
-    def set_magnifier_orientation_checked(self, is_checked: bool) -> None:
-        self.widget.btn_magnifier_orientation.setChecked(is_checked, emit_signal=False)
 
     def _connect_signals(self):
         return connect_signals_impl(self)
@@ -165,16 +146,22 @@ class MainWindowPresenter(QObject):
         self.ui_batcher.schedule_update("resolution")
 
     def _do_update_resolution_labels(self):
-        return do_update_resolution_labels(self)
+        chrome = self._chrome_sync()
+        if chrome is not None:
+            chrome.do_update_resolution_labels(self)
 
     def update_file_names_display(self):
         self.ui_batcher.schedule_update("file_names")
 
     def _do_update_file_names_display(self):
-        return do_update_file_names_display(self)
+        chrome = self._chrome_sync()
+        if chrome is not None:
+            chrome.do_update_file_names_display(self)
 
     def _do_sync_zoom_indicator(self):
-        return do_sync_zoom_indicator(self)
+        chrome = self._chrome_sync()
+        if chrome is not None:
+            chrome.do_sync_zoom_indicator(self)
 
     def check_name_lengths(self):
         self.features.toolbar.check_name_lengths()
@@ -183,13 +170,23 @@ class MainWindowPresenter(QObject):
         self.ui_batcher.schedule_update("combobox")
 
     def _do_update_combobox_displays(self):
-        return do_update_combobox_displays(self)
+        chrome = self._chrome_sync()
+        if chrome is not None:
+            chrome.do_update_combobox_displays(self)
 
     def update_rating_displays(self):
         self.ui_batcher.schedule_update("ratings")
 
     def _do_update_rating_displays(self):
-        return do_update_rating_displays(self)
+        chrome = self._chrome_sync()
+        if chrome is not None:
+            chrome.do_update_rating_displays(self)
+
+    def _chrome_sync(self):
+        toolbar = getattr(self.features, "toolbar", None)
+        if toolbar is None:
+            return None
+        return getattr(toolbar, "chrome_sync", None)
 
     def on_language_changed(self):
         return on_language_changed(self)
@@ -211,17 +208,5 @@ class MainWindowPresenter(QObject):
     def update_minimum_window_size(self):
         self.features.image_canvas.update_minimum_window_size()
 
-    def update_magnifier_orientation_button_state(self):
-        self.features.toolbar.update_magnifier_orientation_button_state()
-
     def _update_interpolation_combo_box_ui(self):
         self.features.settings.update_interpolation_combo_box_ui()
-
-    def _get_current_display_name(self, image_number: int) -> str:
-        return get_current_display_name(self, image_number)
-
-    def _get_current_score(self, image_number: int) -> int | None:
-        return get_current_score(self, image_number)
-
-    def _get_image_dimensions(self, image_number: int) -> tuple[int, int] | None:
-        return get_image_dimensions(self, image_number)

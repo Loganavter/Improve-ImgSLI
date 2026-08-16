@@ -3,6 +3,8 @@
     "appearance": "Внешний вид",
     "general": "Общие",
     "auto": "Авто",
+    "search_placeholder": "Поиск по настройкам…",
+    "search_no_results": "Ничего не найдено",
     "autocalculate_psnr": "Авто-расчет PSNR",
     "autocalculate_ssim": "Авто-расчет SSIM",
     "autocrop_black_borders_on_load": "Автоматически обрезать черные рамки при загрузке",
@@ -20,7 +22,6 @@
     "optimize_laser_smoothing": "Сглаживание лазеров",
     "optimize_magnifier_movement": "Перемещение лупы",
     "original": "Оригинал",
-    "recording_fps": "FPS записи",
     "render_backend": "Бэкенд рендеринга",
     "render_backend_label": "Бэкенд",
     "render_backend_default": "Авто (по умолчанию)",
@@ -50,11 +51,12 @@
     "system_default": "Системный",
     "system_notifications": "Системные уведомления",
     "ui_font": "Шрифт интерфейса",
+    "ui_scale": "Масштаб интерфейса",
+    "ui_scale_tooltip": "Масштабирует интерфейс (элементы управления, шрифты, иконки, отступы) независимо от системного масштаба дисплея. Применяется мгновенно.",
     "ui_mode": "Режим интерфейса",
     "ui_mode_advanced": "Продвинутый",
     "ui_mode_beginner": "Начинающий",
     "ui_mode_expert": "Эксперт",
-    "video_recording": "Запись видео",
     "zoom_interpolation": "Интерполяция зума",
     "language_en": "English",
     "language_ru": "Русский",
@@ -67,6 +69,8 @@
     "keyboard_reset_all": "Сбросить все",
     "keyboard_group_platform": "Платформа",
     "keyboard_group_image_compare": "Сравнение изображений",
-    "keyboard_group_multi_compare": "Мультисравнение"
+    "keyboard_group_multi_compare": "Мультисравнение",
+    "recording_fps": "FPS записи",
+    "video_recording": "Запись видео"
   }
 }

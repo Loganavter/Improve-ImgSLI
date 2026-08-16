@@ -6,7 +6,7 @@ from sli_ui_toolkit.managers import FlyoutManager, GroupShowPolicy
 
 from ui.flyout_policy import install_flyout_show_policy
 from ui.widgets.font_settings_flyout import FontSettingsFlyout
-from ui.widgets.info_hud import InfoHUD
+from ui.widgets.glass_hud import InfoHUD
 
 
 def test_install_flyout_show_policy_configures_context_menu_coexistence():

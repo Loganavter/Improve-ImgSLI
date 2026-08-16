@@ -27,9 +27,11 @@ import struct
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import (
+    QRhi,
     QRhiBuffer,
     QRhiCommandBuffer,
     QRhiSampler,
+    QRhiShaderResourceBindings,
     QRhiShaderResourceBinding,
     QRhiTexture,
     QRhiViewport,
@@ -59,7 +61,7 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.widgets.canvas.render_common import (
+from ui.canvas_infra.rhi.render_common import (
     ndc_rect_from_screen_disk,
     widget_px_to_screen_px,
 )
@@ -164,19 +166,19 @@ class MagnifierPass(CanvasRenderPass):
     visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
-        self.rhi = None
+        self.rhi: QRhi | None = None
         self.border = FullscreenUniformPassResources(BORDER_DISK_UNIFORM_SIZE)
         self._border_items: list[bytes] = []
-        self.mag_vertex_buffer = None
-        self.mag_uniform_buffer = None
+        self.mag_vertex_buffer: QRhiBuffer | None = None
+        self.mag_uniform_buffer: QRhiBuffer | None = None
         self.mag_uniform_stride = 0
         self.mag_uniform_capacity = 0
-        self.mag_srb = None
-        self.mag_pipeline = None
-        self.sampler_linear = None
-        self.sampler_nearest = None
-        self.placeholder_texture = None
-        self.placeholder_texture_array = None
+        self.mag_srb: QRhiShaderResourceBindings | None = None
+        self.mag_pipeline: QRhiGraphicsPipeline | None = None
+        self.sampler_linear: QRhiSampler | None = None
+        self.sampler_nearest: QRhiSampler | None = None
+        self.placeholder_texture: QRhiTexture | None = None
+        self.placeholder_texture_array: QRhiTexture | None = None
         self._mag_items: list[dict] = []
         self._target = None
         self._prepare_call_seq = 0
@@ -246,6 +248,7 @@ class MagnifierPass(CanvasRenderPass):
         recreating it just because the record count went up) sidesteps
         that regardless of whether it's the actual cause here."""
         rhi = self.rhi
+        assert rhi is not None
         stride = rhi.ubufAligned(MAG_UNIFORM_SIZE)
         self.mag_uniform_stride = stride
         slot_count = max(1, slot_count)
@@ -325,6 +328,7 @@ class MagnifierPass(CanvasRenderPass):
             return
         self._prepare_call_seq += 1
         prepare_call_seq = self._prepare_call_seq
+        assert self.rhi is not None
         matrix = tuple(float(v) for v in self.rhi.clipSpaceCorrMatrix().data())
         w, h = float(ctx.width), float(ctx.height)
         zoom = float(ctx.zoom_level or 1.0)
@@ -688,9 +692,11 @@ class MagnifierPass(CanvasRenderPass):
                 command_buffer.draw(4)
 
         if self._mag_items:
+            assert self.mag_pipeline is not None
             command_buffer.setGraphicsPipeline(self.mag_pipeline)
             command_buffer.setViewport(viewport)
             command_buffer.setScissor(scissor)
+            assert self.mag_vertex_buffer is not None
             command_buffer.setVertexInput(0, [(self.mag_vertex_buffer, 0)])
             stride = self.mag_uniform_stride
             for index, item in enumerate(self._mag_items):

@@ -37,7 +37,7 @@ from ui.canvas_presentation.plan import (
     OverlayLayout,
     OverlaySlot,
 )
-from ui.widgets.canvas.render_metrics import resolve_relative_px
+from ui.canvas_infra.rhi.render_metrics import resolve_relative_px
 
 
 def clamp_capture_overlay_geometry(

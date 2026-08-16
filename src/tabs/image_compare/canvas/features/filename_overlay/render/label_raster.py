@@ -11,7 +11,7 @@ from ui.canvas_presentation.filename_labels import (
     fit_text,
 )
 from ui.canvas_presentation.label_style import FilenameOverlayStyle
-from ui.widgets.canvas.render_common import new_overlay_image
+from ui.canvas_infra.rhi.render_common import new_overlay_image
 
 # Must match shaders/label_downsample.frag's own `SCALE` constant (kept in
 # sync by comment on both sides, same convention as

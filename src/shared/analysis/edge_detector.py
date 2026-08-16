@@ -6,6 +6,7 @@ from typing import Optional
 
 import numpy as np
 from PIL import Image
+from shared.analysis.output import finalize_diff_output
 from skimage.feature import canny
 from skimage.util import img_as_ubyte
 from shared.regions import build_uniform_tile_grid
@@ -166,7 +167,7 @@ def create_edge_map(
                     )
                     _emit_edge_progress(progress_callback, completed_tiles, total_tiles)
 
-        return Image.fromarray(result, mode="L").convert("RGBA")
+        return finalize_diff_output(result, channels=1)
     except Exception as e:
         logger.error(f"Error creating edge map: {e}", exc_info=True)
         return None

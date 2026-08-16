@@ -13,7 +13,7 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.widgets.canvas.render_common import widget_px_to_screen_px
+from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
 from tabs.image_compare.canvas.rhi_feature_common import (
     FullscreenUniformPassResources,
     resolve_rhi_scissor,

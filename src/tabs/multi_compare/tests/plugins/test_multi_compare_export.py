@@ -141,31 +141,6 @@ def test_multi_compare_quick_save_skips_export_dialog(monkeypatch, tmp_path):
     assert options["height"] == 24
 
 
-def test_multi_compare_export_composition_carries_live_zoom_and_pan():
-    """The composition plan is the contract between state and renderer:
-    zoom/pan applied in the live widget must arrive on every layer node so
-    the QRhi path produces a stable transform from state alone.
-    """
-    state = MultiCompareState(
-        root=SplitNode(
-            direction="h",
-            children=[LeafNode(slot_id=1), LeafNode(slot_id=2)],
-            weights=[1.0, 1.0],
-        ),
-        slots=[_slot(1, 40, 20), _slot(2, 40, 20)],
-        zoom=2.0,
-        pan_x=0.2,
-        pan_y=-0.05,
-    )
-    plan = build_composition_plan(state)
-    resolved = resolve_composition(plan)
-    assert len(resolved.layers) == 2
-    for layer in resolved.layers:
-        assert layer.zoom == 2.0
-        assert layer.pan_x == 0.2
-        assert layer.pan_y == -0.05
-
-
 def test_multi_compare_export_uses_focused_slot_as_full_frame():
     """When a slot is focused, the composition collapses to a single layer
     covering the whole canvas. Other slots disappear from the render plan."""

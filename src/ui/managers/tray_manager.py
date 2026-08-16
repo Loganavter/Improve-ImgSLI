@@ -28,10 +28,10 @@ class TrayManager(QObject):
         self.app_name = app_name
         self.current_language = current_language
         self.resource_manager = resource_manager
-        self.tray_icon: QSystemTrayIcon = None
+        self.tray_icon: QSystemTrayIcon | None = None
         self.tray_menu: QMenu | None = None
         self._last_saved_path: str = ""
-        self._actions = {}
+        self._actions: dict[str, QAction] = {}
 
         self._create_tray_icon()
 

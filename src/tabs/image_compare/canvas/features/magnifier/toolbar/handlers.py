@@ -73,6 +73,7 @@ def toggle_magnifier_divider_visibility(actions, visible: bool) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
+    assert store is not None
     from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id, update_magnifier_model
 
     state = get_magnifier_widget_state(viewport.view_state)
@@ -101,6 +102,7 @@ def set_magnifier_divider_thickness(actions, thickness: int) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
+    assert store is not None
     from tabs.image_compare.canvas.features.magnifier.state.store import active_magnifier_id, update_magnifier_model
 
     state = get_magnifier_widget_state(viewport.view_state)

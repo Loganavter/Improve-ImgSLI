@@ -57,4 +57,3 @@ class SetChannelViewModeAction(Action):
     def __init__(self, mode: str):
         super().__init__(type=ActionType.SET_CHANNEL_VIEW_MODE); self.mode = mode
     def get_payload(self): return {"mode": self.mode}
-

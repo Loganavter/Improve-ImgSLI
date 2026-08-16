@@ -4,8 +4,10 @@ Reuses the shared filename label rasterization primitives so labels look
 identical to the ones in main compare: pixel-snapped rounded background,
 supersampled bold text, ellipsis on overflow.
 
-The label is positioned at the bottom-left of its layer in framebuffer pixels, so
-its visual size is stable regardless of composition canvas scale.
+The label is positioned at the bottom-left of its layer's *displayed image* in
+framebuffer pixels (not the raw slot rect), so it hugs the image edge even when
+the image is letterboxed/pillarboxed within its slot. Its visual size is stable
+regardless of composition canvas scale.
 """
 
 from __future__ import annotations
@@ -70,6 +72,7 @@ def _label_rect_for_cell(
     cell_rect_fb: tuple[float, float, float, float],
     text: str,
     style: LayerLabelStyle,
+    image_bottom_fb: float | None = None,
 ) -> QRectF | None:
     if not text:
         return None
@@ -91,8 +94,12 @@ def _label_rect_for_cell(
     label_w = max(1.0, min(max_w, text_w_pref))
     label_h = float(fm.height()) + style.padding_y_fb * 2.0
 
+    # Anchor to the bottom edge of the displayed image, not the slot rect —
+    # the image is letterboxed/pillarboxed (aspect-fit centered) within its
+    # slot, so the slot's bottom edge can sit well below the actual pixels.
+    bottom = cy + ch if image_bottom_fb is None else image_bottom_fb
     left = cx + style.safe_gap_fb
-    top = cy + ch - style.safe_gap_fb - label_h
+    top = bottom - style.safe_gap_fb - label_h
     return snap_rect_to_pixels(QRectF(left, top, label_w, label_h))
 
 
@@ -102,12 +109,19 @@ def paint_layer_label(
     cell_rect_fb: tuple[float, float, float, float],
     text: str,
     style: LayerLabelStyle,
+    image_bottom_fb: float | None = None,
 ) -> None:
-    """Draw ``text`` at the bottom-left of ``cell_rect_fb`` (fb-px)."""
+    """Draw ``text`` at the bottom-left of the displayed image within ``cell_rect_fb`` (fb-px).
+
+    ``image_bottom_fb``, when given, is the fb-px y-coordinate of the bottom
+    edge of the actual displayed (letterboxed) image; defaults to the bottom
+    of ``cell_rect_fb`` itself.
+    """
     rect = _label_rect_for_cell(
         cell_rect_fb=cell_rect_fb,
         text=text,
         style=style,
+        image_bottom_fb=image_bottom_fb,
     )
     if rect is None:
         return
@@ -158,12 +172,14 @@ def layer_label_rect(
     cell_rect_fb: tuple[float, float, float, float],
     text: str,
     style: LayerLabelStyle,
+    image_bottom_fb: float | None = None,
 ) -> QRectF | None:
     """Return the label rect inside ``cell_rect_fb`` in framebuffer pixels."""
     return _label_rect_for_cell(
         cell_rect_fb=cell_rect_fb,
         text=text,
         style=style,
+        image_bottom_fb=image_bottom_fb,
     )
 
 

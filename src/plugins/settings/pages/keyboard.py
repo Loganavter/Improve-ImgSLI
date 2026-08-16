@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -14,7 +13,7 @@ from PySide6.QtWidgets import (
 
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
-from sli_ui_toolkit.widgets import Button, CustomGroupWidget, CustomLineEdit
+from sli_ui_toolkit.widgets import Button, CustomGroupWidget, CustomLineEdit, Label
 from ui.actions.keymap import (
     KeymapDefaultsRegistry,
     effective_shortcut_for_id,
@@ -231,7 +230,7 @@ def build(dialog, p):
             row_layout.setSpacing(8)
 
             label_text = _tr(dialog, entry.label_key, entry.label_key)
-            name = QLabel(label_text)
+            name = Label(label_text)
             name.setWordWrap(True)
             row_layout.addWidget(name, 1)
             dialog._keyboard_action_labels.append((name, entry.label_key))
@@ -316,14 +315,14 @@ def build(dialog, p):
         }
         for row, group, entry in row_widgets:
             current = effective_shortcut_for_id(
-                entry.action_id,
-                default=entry.default_shortcut,
+                entry.action_id,  # type: ignore[attr-defined]  # dynamic keymap row object
+                default=entry.default_shortcut,  # type: ignore[attr-defined]
                 overrides=dialog._keyboard_overrides,
             )
             extras = (
                 group_titles.get(group, ""),
                 current or "",
-                entry.owner_tab or "platform",
+                entry.owner_tab or "platform",  # type: ignore[attr-defined]  # dynamic keymap row object
             )
             show = keymap_entry_rank(
                 entry, needle, extra_search_terms=extras
@@ -334,7 +333,7 @@ def build(dialog, p):
             else:
                 visible_groups.setdefault(group, False)
         for group, any_visible in visible_groups.items():
-            group.setVisible(bool(any_visible))
+            group.setVisible(bool(any_visible))  # type: ignore[attr-defined]  # group objects are dynamic
 
     search.textChanged.connect(_filter)
     layout.addStretch(1)

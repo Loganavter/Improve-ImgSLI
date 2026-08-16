@@ -10,128 +10,144 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/
 
 - **[Development History](../DEVELOPMENT_HISTORY.md)** — `docs/DEVELOPMENT_HISTORY.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md)
 - **[Install Improve-ImgSLI](../INSTALL.md)** — `docs/INSTALL.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md)
 - **[Launcher Guide (`launcher.sh`)](../LAUNCHER.md)** — `docs/LAUNCHER.md`
-  Referenced by: [docs/INSTALL.md](../INSTALL.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md)
+  Referenced by: [docs/INSTALL.md](../INSTALL.md)
 
 ## docs/dev/
 
 - **[Action catalog (Find Action)](ACTIONS.md)** — `docs/dev/ACTIONS.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/TODO.md](TODO.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md)
+  Referenced by: [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/TODO.md](TODO.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md)
 - **[ImgSLI Architecture](ARCHITECTURE.md)** — `docs/dev/ARCHITECTURE.md`
-  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Capability aliases](CAPABILITY_ALIASES.md)** — `docs/dev/CAPABILITY_ALIASES.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/rendering/contracts.md](rendering/contracts.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/rendering/contracts.md](rendering/contracts.md)
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/legacy/README.md](../legacy/README.md), [docs/legacy/container-format.md](../legacy/container-format.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/legacy/README.md](../legacy/README.md), [docs/legacy/container-format.md](../legacy/container-format.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
-  Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[App Dialogs / Windows](DIALOGS.md)** — `docs/dev/DIALOGS.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)
 - **[Doc Index](DOC_INDEX.md)** — `docs/dev/DOC_INDEX.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[EventBus](EVENT_BUS.md)** — `docs/dev/EVENT_BUS.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/HELP_WIDGET.md](HELP_WIDGET.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
-- **[Help Widget (toolkit helpers)](HELP_WIDGET.md)** — `docs/dev/HELP_WIDGET.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md)
 - **[Development Documentation](README.md)** — `docs/dev/README.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md)
 - **[Resources & i18n](RESOURCES_I18N.md)** — `docs/dev/RESOURCES_I18N.md`
-  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
+  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
+- **[Settings persistence](SETTINGS_PERSISTENCE.md)** — `docs/dev/SETTINGS_PERSISTENCE.md`
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md)
 - **[Store / Redux](STORE.md)** — `docs/dev/STORE.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Tab Contract](TAB_CONTRACT.md)** — `docs/dev/TAB_CONTRACT.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md)
 - **[Testing](TESTING.md)** — `docs/dev/TESTING.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/tabs/isolation.md](tabs/isolation.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/tabs/isolation.md](tabs/isolation.md)
 - **[Theming & QSS](THEMING.md)** — `docs/dev/THEMING.md`
-  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
+  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
 - **[Development TODO](TODO.md)** — `docs/dev/TODO.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/README.md](README.md)
 - **[Runtime Tracer](TRACING.md)** — `docs/dev/TRACING.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
+  Referenced by: [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[UI Inspector](UI_INSPECTOR.md)** — `docs/dev/UI_INSPECTOR.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/TODO.md](TODO.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md)
 - **[UI layout dump](UI_LAYOUT_DUMP.md)** — `docs/dev/UI_LAYOUT_DUMP.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/UI_INSPECTOR.md](UI_INSPECTOR.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/README.md](README.md)
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
-  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md)
 
 ## docs/dev/rendering/
 
 - **[Pre-merge checklist](rendering/checklist.md)** — `docs/dev/rendering/checklist.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/rendering/index.md](rendering/index.md)
+  Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Contracts](rendering/contracts.md)** — `docs/dev/rendering/contracts.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/rendering/coordinate-systems.md](rendering/coordinate-systems.md), [docs/dev/rendering/index.md](rendering/index.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/rendering/coordinate-systems.md](rendering/coordinate-systems.md), [docs/dev/rendering/index.md](rendering/index.md)
 - **[Coordinate Systems](rendering/coordinate-systems.md)** — `docs/dev/rendering/coordinate-systems.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/TODO.md](TODO.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
+  Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[Display image pipeline: preview tier → unify → pyramid → tiled render](rendering/display-image-pipeline.md)** — `docs/dev/rendering/display-image-pipeline.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
 - **[Feature Decomposition Playbook](rendering/feature-decomposition-playbook.md)** — `docs/dev/rendering/feature-decomposition-playbook.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/rendering/index.md](rendering/index.md)
+  Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Canvas & Rendering Documentation](rendering/index.md)** — `docs/dev/rendering/index.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md)
 - **[Overview](rendering/overview.md)** — `docs/dev/rendering/overview.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/rendering/index.md](rendering/index.md)
+  Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Package Structure](rendering/package-structure.md)** — `docs/dev/rendering/package-structure.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/rendering/feature-decomposition-playbook.md](rendering/feature-decomposition-playbook.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md)
+  Referenced by: [docs/dev/rendering/feature-decomposition-playbook.md](rendering/feature-decomposition-playbook.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md)
 - **[Render Pass Contract](rendering/render-pass-contract.md)** — `docs/dev/rendering/render-pass-contract.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/package-structure.md](rendering/package-structure.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
 - **[Rendering Model](rendering/rendering-model.md)** — `docs/dev/rendering/rendering-model.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
+  Referenced by: [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/tile-rendering-system.md](rendering/tile-rendering-system.md)
 - **[Tiled rendering system](rendering/tile-rendering-system.md)** — `docs/dev/rendering/tile-rendering-system.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/README.md](README.md), [docs/dev/TODO.md](TODO.md), [docs/dev/rendering/display-image-pipeline.md](rendering/display-image-pipeline.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/rendering/display-image-pipeline.md](rendering/display-image-pipeline.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/rendering-model.md](rendering/rendering-model.md)
 - **[Zoom, Pan & Interaction](rendering/zoom-pan.md)** — `docs/dev/rendering/zoom-pan.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/coordinate-systems.md](rendering/coordinate-systems.md), [docs/dev/rendering/index.md](rendering/index.md)
+  Referenced by: [docs/dev/rendering/checklist.md](rendering/checklist.md), [docs/dev/rendering/coordinate-systems.md](rendering/coordinate-systems.md), [docs/dev/rendering/index.md](rendering/index.md)
 
 ## docs/dev/tabs/
 
 - **[Capability mechanisms](tabs/capability-mechanisms.md)** — `docs/dev/tabs/capability-mechanisms.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md)
 - **[Isolation & dependency wiring](tabs/isolation.md)** — `docs/dev/tabs/isolation.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
+  Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Overview](tabs/overview.md)** — `docs/dev/tabs/overview.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[Tab package structure](tabs/package-structure.md)** — `docs/dev/tabs/package-structure.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
+  Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[TabRegistry](tabs/registry.md)** — `docs/dev/tabs/registry.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[Workspace session lifecycle](tabs/session-lifecycle.md)** — `docs/dev/tabs/session-lifecycle.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/index.md](tabs/index.md)
+
+## docs/dev/widgets/
+
+- **[ColorPickerDialog](widgets/color_picker_dialog.md)** — `docs/dev/widgets/color_picker_dialog.md`
+- **[ColorSwatch](widgets/color_swatch.md)** — `docs/dev/widgets/color_swatch.md`
+- **[DragGhostWidget](widgets/drag_ghost_widget.md)** — `docs/dev/widgets/drag_ghost_widget.md`
+- **[FontSettingsFlyout](widgets/font_settings_flyout.md)** — `docs/dev/widgets/font_settings_flyout.md`
+- **[Form controls (DialogActionBar, OutputPathSection)](widgets/form_controls.md)** — `docs/dev/widgets/form_controls.md`
+- **[GlassHUD / InfoHUD / ZoomIndicator](widgets/glass_hud.md)** — `docs/dev/widgets/glass_hud.md`
+- **[GlassPanelDisplayWidget](widgets/glass_panel_display.md)** — `docs/dev/widgets/glass_panel_display.md`
+- **[RatingListItem](widgets/rating_item.md)** — `docs/dev/widgets/rating_item.md`
+- **[RecentColorsRow](widgets/recent_colors_row.md)** — `docs/dev/widgets/recent_colors_row.md`
+- **[ScrollValueButton](widgets/scroll_value_button.md)** — `docs/dev/widgets/scroll_value_button.md`
+- **[SettingsDialog](widgets/settings_dialog.md)** — `docs/dev/widgets/settings_dialog.md`
+- **[ShelfWidget](widgets/shelf.md)** — `docs/dev/widgets/shelf.md`
+- **[StartupPlaceholder](widgets/startup_placeholder.md)** — `docs/dev/widgets/startup_placeholder.md`
+- **[ThemedSurface / ThemedBackgroundContainer](widgets/themed_surface.md)** — `docs/dev/widgets/themed_surface.md`
+- **[UnifiedListPicker](widgets/unified_list_picker.md)** — `docs/dev/widgets/unified_list_picker.md`
+- **[ValueSlider / ValueSliderRow](widgets/value_slider.md)** — `docs/dev/widgets/value_slider.md`
+- **[WorkspaceTabStrip](widgets/workspace_tab_strip.md)** — `docs/dev/widgets/workspace_tab_strip.md`
 
 ## docs/legacy/
 
 - **[Legacy Docs](../legacy/README.md)** — `docs/legacy/README.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md)
 - **[`.imgsli` Container Format — Legacy Versions](../legacy/container-format.md)** — `docs/legacy/container-format.md`
-  Referenced by: [docs/dev/CONTAINER_FORMAT.md](CONTAINER_FORMAT.md), [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [docs/legacy/README.md](../legacy/README.md)
+  Referenced by: [docs/dev/CONTAINER_FORMAT.md](CONTAINER_FORMAT.md), [docs/legacy/README.md](../legacy/README.md)
 
 ## src/tabs/image_compare/docs/
 
 - **[Image Compare Architecture](../../src/tabs/image_compare/docs/ARCHITECTURE.md)** — `src/tabs/image_compare/docs/ARCHITECTURE.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [src/tabs/image_compare/docs/README.md](../../src/tabs/image_compare/docs/README.md)
+  Referenced by: [src/tabs/image_compare/docs/README.md](../../src/tabs/image_compare/docs/README.md)
 - **[Image Compare](../../src/tabs/image_compare/docs/README.md)** — `src/tabs/image_compare/docs/README.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md)
 
 ## src/tabs/multi_compare/docs/
 
 - **[Multi Compare Architecture](../../src/tabs/multi_compare/docs/ARCHITECTURE.md)** — `src/tabs/multi_compare/docs/ARCHITECTURE.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md), [src/tabs/multi_compare/docs/README.md](../../src/tabs/multi_compare/docs/README.md)
+  Referenced by: [src/tabs/multi_compare/docs/README.md](../../src/tabs/multi_compare/docs/README.md)
 - **[Multi Compare](../../src/tabs/multi_compare/docs/README.md)** — `src/tabs/multi_compare/docs/README.md`
-  Referenced by: [docs/dev/DOC_INDEX.md](DOC_INDEX.md)

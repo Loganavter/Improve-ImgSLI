@@ -2,130 +2,68 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-from PySide6.QtGui import QColor
-
-from tabs.multi_compare.models import DEFAULT_DIVIDER_COLOR_RGBA
-from tabs.multi_compare.tab import _STATE_SLOT, MultiCompareTab
-from tabs.multi_compare.widget import MultiCompareWidget
-
-
-class _FakeWorkspaceStore:
-    def __init__(self):
-        self.sessions = {
-            "a": SimpleNamespace(
-                id="a",
-                session_type="multi_compare",
-                state_slots={},
-            ),
-            "b": SimpleNamespace(
-                id="b",
-                session_type="multi_compare",
-                state_slots={},
-            ),
-        }
-        self.active_session_id = "a"
-        self.workspace = SimpleNamespace(active_session_id="a")
-
-    def list_workspace_sessions(self):
-        return tuple(self.sessions.values())
-
-    def get_active_workspace_session(self):
-        return self.sessions[self.active_session_id]
-
-    def get_workspace_session(self, session_id: str):
-        return self.sessions.get(session_id)
-
-    def ensure_session_state_slot(
-        self,
-        slot_name,
-        *,
-        session_id=None,
-        factory=None,
-        default=None,
-        emit_change=False,
-    ):
-        from tabs.multi_compare.tab import _fresh_default_state
-
-        session = self.sessions[session_id or self.active_session_id]
-        if slot_name not in session.state_slots:
-            session.state_slots[slot_name] = (
-                factory() if factory else (_fresh_default_state() if default is None else default)
-            )
-        return session.state_slots[slot_name]
-
-    def set_session_state_slot(
-        self,
-        slot_name,
-        value,
-        *,
-        session_id=None,
-        emit_scope=None,
-    ):
-        session = self.sessions[session_id or self.active_session_id]
-        session.state_slots[slot_name] = value
-        return value
-
-    def get_session_state_slot(self, slot_name, *, session_id=None, default=None):
-        session = self.sessions[session_id or self.active_session_id]
-        return session.state_slots.get(slot_name, default)
+from tabs.multi_compare.models import (
+    DEFAULT_DIVIDER_COLOR_RGBA,
+    MultiCompareDividerSettings,
+)
+from tabs.multi_compare.scene.store import MultiCompareStore, actions
+from tabs.multi_compare.tab import _STATE_SLOT
+from tabs.multi_compare.tests.runtime._session_harness import FakeCoreStore
 
 
 def test_switch_same_type_snapshots_do_not_cross_contaminate(qapp):
-    """Switch A→B→A→B: each session slot keeps its own divider color."""
-    widget = MultiCompareWidget()
-    tab = MultiCompareTab()
-    store = _FakeWorkspaceStore()
-    context = SimpleNamespace(store=store)
+    """Switch A→B→A→B: each session slot keeps its own divider color.
 
-    tab._widget = widget
-    tab._store_context = store
-    widget.store.subscribe(tab._on_widget_state_changed)
+    With the bound facade, the session slot is the single source of truth: a
+    dispatch writes the active session's slot (via the core Dispatcher), and
+    ``state`` reads whichever session is active.
+    """
+    core = FakeCoreStore(["a", "b"])
+    core.ensure_slot("a")
+    core.ensure_slot("b")
+    store = MultiCompareStore(core_store=core)
 
-    tab.on_active_session_changed("a", context)
-    widget.apply_divider_color(QColor(10, 20, 30, 40))
-    assert store.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+    core.switch_active("a")
+    store.dispatch(
+        actions.set_divider_settings(
+            MultiCompareDividerSettings(visible=True, thickness=4, color_rgba=(10, 20, 30, 40))
+        )
+    )
+    assert core.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
         10,
         20,
         30,
         40,
     )
 
-    store.active_session_id = "b"
-    store.workspace.active_session_id = "b"
-    tab.on_active_session_changed("b", context)
-    assert (
-        store.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba
-        == DEFAULT_DIVIDER_COLOR_RGBA
-    )
-    assert store.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+    core.switch_active("b")
+    assert store.state.divider_settings.color_rgba == DEFAULT_DIVIDER_COLOR_RGBA
+    assert core.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
         10,
         20,
         30,
         40,
     )
 
-    widget.apply_divider_color(QColor(1, 2, 3, 4))
-    assert store.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+    store.dispatch(
+        actions.set_divider_settings(
+            MultiCompareDividerSettings(visible=True, thickness=4, color_rgba=(1, 2, 3, 4))
+        )
+    )
+    assert core.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
         1,
         2,
         3,
         4,
     )
-    assert store.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+    assert core.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
         10,
         20,
         30,
         40,
     )
 
-    store.active_session_id = "a"
-    store.workspace.active_session_id = "a"
-    tab.on_active_session_changed("a", context)
-    assert widget.state.divider_settings.color_rgba == (10, 20, 30, 40)
-
-    store.active_session_id = "b"
-    store.workspace.active_session_id = "b"
-    tab.on_active_session_changed("b", context)
-    assert widget.state.divider_settings.color_rgba == (1, 2, 3, 4)
+    core.switch_active("a")
+    assert store.state.divider_settings.color_rgba == (10, 20, 30, 40)
+    core.switch_active("b")
+    assert store.state.divider_settings.color_rgba == (1, 2, 3, 4)

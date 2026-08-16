@@ -1,24 +1,11 @@
 {
   "action": {
-    "context_copy_path": "复制路径",
     "context_cut": "剪切",
     "context_copy": "复制",
     "context_paste": "粘贴",
     "context_select_all": "全选",
-    "context_carry_image": "移动",
-    "context_duplicate": "复制",
-    "context_name": "名称",
-    "context_path": "路径",
-    "context_properties": "属性",
-    "context_remove": "删除",
-    "context_rename": "重命名",
-    "context_size": "大小",
-    "export_video": "导出视频",
-    "open_application_settings": "打开应用程序设置",
     "open_last_file": "打开最后一个文件",
     "open_save_folder": "打开保存文件夹",
-    "open_video_editor_exporter": "打开视频编辑器和导出器",
-    "quit": "退出",
-    "show_help": "显示帮助"
+    "quit": "退出"
   }
 }

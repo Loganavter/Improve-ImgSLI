@@ -6,6 +6,8 @@ path — see docs/dev/KNOWN_BUGS.md and ThemedBackgroundContainer.
 
 from __future__ import annotations
 
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPalette
 from PySide6.QtWidgets import QRhiWidget, QWidget
@@ -42,6 +44,22 @@ class ThemedSurface(ThemedWidget, QWidget):
         super().on_theme_changed()
 
 
+class ThemedBackgroundContainer(ThemedSurface):
+    """ThemedSurface defaulting to the ``Window`` token — app chrome bars.
+
+    Kept as a thin alias of ThemedSurface (they were duplicate classes) so
+    existing chrome call sites keep their intent spelled out.
+    """
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        color_token: str = "Window",
+    ):
+        super().__init__(parent, color_token=color_token, opaque=False)
+
+
 def apply_qrhi_theme_background(
     widget: QWidget | None,
     theme_manager,
@@ -63,5 +81,19 @@ def apply_qrhi_theme_background(
         # Opaque clear into a translucent CSD shell — see rhi_render.resolve_clear_color.
         opaque = QColor(bg)
         opaque.setAlpha(255)
-        widget._theme_background_color = opaque
+        widget._theme_background_color = opaque  # type: ignore[attr-defined]  # dynamic attr
     widget.update()
+
+
+
+ThemedSurface.inspect_spec = InspectSpec(
+    family="ThemedSurface",
+    state=(SpecField("color_token", "_color_token", private=True),),
+    docs="docs/dev/widgets/themed_surface.md",
+)
+
+ThemedBackgroundContainer.inspect_spec = InspectSpec(
+    family="ThemedBackgroundContainer",
+    state=(SpecField("color_token", "_color_token", private=True),),
+    docs="docs/dev/widgets/themed_surface.md",
+)

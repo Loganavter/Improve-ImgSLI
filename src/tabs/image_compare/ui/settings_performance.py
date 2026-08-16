@@ -8,8 +8,9 @@ sense for the image-compare tab; render-backend is platform-owned and lives in
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy
-from sli_ui_toolkit.widgets import CheckBox, ComboBox, SpinBox
+from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.widgets import CheckBox, ComboBox, Label, SpinBox
 
 from core.constants import AppConstants
 from plugins.settings.search import SearchIndex, group
@@ -30,7 +31,7 @@ INTERACTIVE = group(
     "settings.magnifier_intersection_highlight",
     "settings.magnifier_auto_color_new_instances",
 )
-VIDEO = group("settings.video_recording", "settings.recording_fps")
+VIDEO = group("image_compare.settings.video_recording", "image_compare.settings.recording_fps")
 SEARCH = SearchIndex.of(RESOLUTION, INTERACTIVE, VIDEO)
 
 
@@ -46,7 +47,7 @@ def build_image_perf_extras(dialog, p) -> None:
 def _build_resolution_group(dialog, layout, p):
     dialog.res_group = RESOLUTION.widget(dialog)
     res_layout = QHBoxLayout()
-    res_layout.setContentsMargins(5, 5, 5, 5)
+    res_layout.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
     dialog.combo_resolution = ComboBox()
     RESOLUTION.tag_combo(dialog.combo_resolution)
     dialog.combo_resolution.setSizePolicy(
@@ -79,14 +80,14 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.interactive_opt_group = INTERACTIVE.widget(dialog)
 
     row_zoom = QHBoxLayout()
-    row_zoom.setContentsMargins(0, 5, 0, 5)
-    dialog.lbl_zoom_interp = QLabel(
+    row_zoom.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
+    dialog.lbl_zoom_interp = Label(
         INTERACTIVE.text(dialog, "settings.zoom_interpolation")
     )
     INTERACTIVE.tag_member(dialog.lbl_zoom_interp, "settings.zoom_interpolation")
     dialog.combo_zoom_interp = ComboBox()
     INTERACTIVE.tag_combo(dialog.combo_zoom_interp, "settings.zoom_interpolation")
-    dialog.combo_zoom_interp.setMinimumWidth(140)
+    dialog.combo_zoom_interp.setMinimumWidth(scaled_px(140))
     dialog.combo_zoom_interp.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
     )
@@ -95,7 +96,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.interactive_opt_group.add_layout(row_zoom)
 
     row_mag = QHBoxLayout()
-    row_mag.setContentsMargins(0, 5, 0, 5)
+    row_mag.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
     dialog.optimize_movement_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.optimize_magnifier_movement")
     )
@@ -104,7 +105,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
         dialog.optimize_movement_checkbox, "settings.optimize_magnifier_movement"
     )
     dialog.combo_mag_interp = ComboBox()
-    dialog.combo_mag_interp.setMinimumWidth(140)
+    dialog.combo_mag_interp.setMinimumWidth(scaled_px(140))
     dialog.combo_mag_interp.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
     )
@@ -114,7 +115,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.interactive_opt_group.add_layout(row_mag)
 
     row_laser = QHBoxLayout()
-    row_laser.setContentsMargins(0, 5, 0, 5)
+    row_laser.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
     dialog.laser_smoothing_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.optimize_laser_smoothing")
     )
@@ -123,7 +124,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
         dialog.laser_smoothing_checkbox, "settings.optimize_laser_smoothing"
     )
     dialog.combo_laser_interp = ComboBox()
-    dialog.combo_laser_interp.setMinimumWidth(140)
+    dialog.combo_laser_interp.setMinimumWidth(scaled_px(140))
     dialog.combo_laser_interp.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
     )
@@ -215,13 +216,13 @@ def _populate_interpolation_combos(dialog, p):
 def _build_video_group(dialog, layout, p):
     dialog.video_group = VIDEO.widget(dialog)
     video_layout = QHBoxLayout()
-    video_layout.setContentsMargins(5, 5, 5, 5)
-    dialog.lbl_fps = QLabel(VIDEO.text(dialog, "settings.recording_fps") + ":")
+    video_layout.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
+    dialog.lbl_fps = Label(VIDEO.text(dialog, "image_compare.settings.recording_fps") + ":")
     dialog.spin_fps = SpinBox(default_value=60)
-    VIDEO.tag_member(dialog.spin_fps, "settings.recording_fps")
+    VIDEO.tag_member(dialog.spin_fps, "image_compare.settings.recording_fps")
     dialog.spin_fps.setRange(10, 144)
     dialog.spin_fps.setValue(p.current_video_fps)
-    dialog.spin_fps.setFixedWidth(100)
+    dialog.spin_fps.setFixedWidth(scaled_px(100))
     dialog.spin_fps.setAlignment(Qt.AlignmentFlag.AlignCenter)
     video_layout.addWidget(dialog.lbl_fps)
     video_layout.addWidget(dialog.spin_fps)

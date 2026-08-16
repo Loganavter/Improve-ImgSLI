@@ -249,37 +249,39 @@ def test_multi_compare_mode_apply_resyncs_divider_underlines(qapp):
 
 
 def test_multi_compare_state_is_saved_per_workspace_session(qapp):
-    widget = MultiCompareWidget()
-    tab = MultiCompareTab()
-    store = _FakeWorkspaceStore()
-    context = SimpleNamespace(store=store)
+    from tabs.multi_compare.tab import MultiCompareTab
+    from tabs.multi_compare.tests.runtime._session_harness import FakeCoreStore
 
+    core = FakeCoreStore(["a", "b"])
+    core.ensure_slot("a")
+    core.ensure_slot("b")
+    widget = MultiCompareWidget(context=SimpleNamespace(store=core))
+    tab = MultiCompareTab()
     tab._widget = widget
-    tab._store_context = store
-    widget.store.subscribe(tab._on_widget_state_changed)
+    context = SimpleNamespace(store=core)
 
     tab.on_activated(context)
     widget.apply_divider_color(QColor(10, 20, 30, 40))
-    assert store.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+    assert core.sessions["a"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
         10,
         20,
         30,
         40,
     )
 
-    store.active_session_id = "b"
+    core.switch_active("b")
     tab.on_active_session_changed("b", context)
     assert widget.state.divider_settings.color_rgba == (255, 255, 255, 255)
 
     widget.apply_divider_color(QColor(1, 2, 3, 4))
-    assert store.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
+    assert core.sessions["b"].state_slots[_STATE_SLOT].divider_settings.color_rgba == (
         1,
         2,
         3,
         4,
     )
 
-    store.active_session_id = "a"
+    core.switch_active("a")
     tab.on_active_session_changed("a", context)
     assert widget.state.divider_settings.color_rgba == (10, 20, 30, 40)
 
@@ -633,4 +635,3 @@ def test_replace_state_does_not_clobber_qsettings_last_prefs(qapp, monkeypatch):
 
     widget.apply_divider_color(QColor(2, 3, 4, 5))
     assert saved == [(2, 3, 4, 5)]
-

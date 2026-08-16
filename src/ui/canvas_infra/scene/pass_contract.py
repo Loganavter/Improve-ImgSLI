@@ -41,7 +41,7 @@ class CanvasRenderPassBase:
     stack_role = None
     visibility: SceneVisibility = SceneVisibility.ALL
     # False opts a pass out of the blank_white gate in ``iter_active_render_passes``
-    # (ui/widgets/canvas/render_executor.py) -- for passes that must still draw
+    # (ui/canvas_infra/rhi/render_executor.py) -- for passes that must still draw
     # while no image pair is loaded/decoding (e.g. a drop-hint overlay).
     requires_content: bool = True
 
@@ -75,7 +75,7 @@ class CanvasRenderPassBase:
 class CanvasRenderPass(CanvasRenderPassBase):
     """Feature-owned QRhi pass recorded into the canvas command buffer."""
 
-    def initialize(self, rhi, target) -> None:
+    def initialize(self, rhi, target) -> None:  # type: ignore[override]  # RHI passes use dynamic params
         """Create persistent QRhi resources for this render target."""
 
     def prepare(self, widget, ctx, resource_updates) -> None:

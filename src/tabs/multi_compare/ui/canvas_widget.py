@@ -8,17 +8,22 @@ under ``canvas/features/*/input/``.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QContextMenuEvent, QMouseEvent, QPalette, QWheelEvent
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
-from ui.widgets.canvas.rhi_backend import configure_rhi_widget
+from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
 from shared.rendering.coalesced_flush import CoalescedFlush
 from shared.rendering.glass_panel import GlassPanelRegistry
 
 from tabs.multi_compare.canvas import interaction as canvas_interaction
+from tabs.multi_compare.first_frame_debug import (
+    mc_first_frame_debug,
+    mc_first_frame_debug_enabled,
+    mc_first_frame_readiness_repr,
+)
 from tabs.multi_compare.models import (
     CompareSlot,
     LeafNode,
@@ -46,6 +51,14 @@ __all__ = [
     "_layout_is_symmetric",
 ]
 
+# How many completed presents get a compositor settle kick. Shared with
+# image_compare so both canvas tabs wait for the first frame that actually
+# reaches the display (see shared/rendering/first_frame_gate.py).
+from shared.rendering.first_frame_gate import (
+    FIRST_PRESENT_SETTLE_COUNT as _FIRST_PRESENT_SETTLE_COUNT,
+    first_visual_present_count as _first_visual_present_count,
+)
+
 
 class MultiCompareCanvasWidget(QRhiWidget):
     """QRhi canvas host for multi-compare rendering and input dispatch."""
@@ -72,14 +85,14 @@ class MultiCompareCanvasWidget(QRhiWidget):
 
         self.state = MultiCompareState()
 
-        self._dispatch: callable | None = None
+        self._dispatch: Callable | None = None
 
         self._active_composition = None
         self._export_canvas_viewport: tuple[int, int, int, int] | None = None
 
         self._renderer = MultiCompareRhiRenderer(self)
         # Registered/unregistered by GlassHUD instances anchored to this
-        # canvas (see ui/widgets/glass_hud.py) -- consumed by
+        # canvas (see ui/widgets/glass_hud/hud.py) -- consumed by
         # MultiCompareRhiRenderer.render(), which populates
         # self._glass_panel_sprites/_glass_panel_images for each GlassHUD's
         # own GlassPanelDisplayWidget to read. Mirrors image_compare's
@@ -91,6 +104,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
         # reset button -- reported live as "рендерится только кнопка".
         self.glass_panels = GlassPanelRegistry()
         self._first_frame_emitted = False
+        self._rhi_presents_completed = 0
         self._composition_flush = CoalescedFlush(self._flush_composition)
 
         self._panning = False
@@ -110,6 +124,8 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
+        mc_first_frame_debug(self, "canvas constructed")
+
     def set_state(self, state: MultiCompareState) -> None:
         """Assign new state immediately (cheap); defer the expensive
         texture-sync/composition-rebuild to a single coalesced flush per
@@ -117,6 +133,10 @@ class MultiCompareCanvasWidget(QRhiWidget):
         arriving before the next tick cost one rebuild, not N.
         """
         self.state = state
+        mc_first_frame_debug(
+            self, "set_state slots=%s composition=%s", len(state.slots),
+            self._active_composition is not None,
+        )
         self._composition_flush.request()
         self.update()
 
@@ -178,10 +198,60 @@ class MultiCompareCanvasWidget(QRhiWidget):
         if self.isVisible():
             self.update()
 
-    def render(self, command_buffer) -> None:
+    def render(self, command_buffer) -> None:  # type: ignore[override]  # RHI entrypoint, shadows QWidget.render
+        # Match image_compare's CanvasWidget: only a completed beginPass/
+        # endPass counts as a real present, and the *first* presented buffer
+        # on D3D is often still an alpha hole through the translucent CSD
+        # shell -- wait for a settle present + compositor flush before
+        # trusting it enough to emit firstFrameRendered.
+        #
+        # Multi Compare additionally emits *after* the settle flush, not on
+        # the present itself: on Wayland/Vulkan the first beginPass/endPass
+        # is recorded while the compositor still shows the untouched
+        # (transparent) subsurface, and only flush_qrhi_compositor()'s
+        # requestUpdate/restack makes that frame visible. Emitting on
+        # present #1 hides the startup placeholder a frame too early — the
+        # user sees the transparent subsurface until the flush lands.
         painted = self._renderer.render(command_buffer)
-        if painted and not self._first_frame_emitted:
+        if not painted:
+            mc_first_frame_debug(
+                self, "render() returned NOT-painted (engine not ready yet)"
+            )
+            return
+
+        self._rhi_presents_completed += 1
+        mc_first_frame_debug(
+            self, "render() painted present #%s [%s]",
+            self._rhi_presents_completed, mc_first_frame_readiness_repr(self),
+        )
+        if self._rhi_presents_completed <= _FIRST_PRESENT_SETTLE_COUNT:
+            self._settle_first_presents()
+
+    def _settle_first_presents(self) -> None:
+        """Second present + window restack so D3D does not show a see-through hole."""
+
+        def _flush() -> None:
+            try:
+                from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
+
+                flush_qrhi_compositor(self, reason="mc-first-present")
+                mc_first_frame_debug(self, "compositor settle flush ran")
+            except Exception:
+                self.update()
+            self._emit_first_frame_if_ready()
+
+        QTimer.singleShot(0, _flush)
+
+    def _emit_first_frame_if_ready(self) -> None:
+        """Emit firstFrameRendered only once the frame is compositor-visible."""
+        if self._rhi_presents_completed < _first_visual_present_count():
+            return
+        if not self._first_frame_emitted:
             self._first_frame_emitted = True
+            mc_first_frame_debug(
+                self, "EMIT firstFrameRendered (presents=%s) [%s]",
+                self._rhi_presents_completed, mc_first_frame_readiness_repr(self),
+            )
             self.firstFrameRendered.emit()
 
     def setAutoFillBackground(self, enabled) -> None:  # noqa: N802 — Qt API
@@ -196,7 +266,131 @@ class MultiCompareCanvasWidget(QRhiWidget):
             return
         if self._color_buffer_frozen or self.is_color_buffer_frozen():
             return
+        mc_first_frame_debug(self, "resizeEvent -> %s", event.size())
         self.request_view_update()
+
+    def showEvent(self, event) -> None:  # noqa: N802 — Qt signature
+        super().showEvent(event)
+        mc_first_frame_debug(self, "showEvent (canvas visible)")
+        self._start_first_frame_sampler()
+        # Mirrors image_compare's CanvasWidget.showEvent: hidden stack pages
+        # never present, so on the first show force a repaint immediately and
+        # schedule the compositor settle flush before the first present. The
+        # flush is what makes the frame compositor-visible on Wayland/Vulkan,
+        # and firstFrameRendered is only emitted after it runs (see render()),
+        # so kicking it from showEvent as well keeps the startup placeholder
+        # up until the first genuinely visible frame.
+        self.request_view_update()
+        if self._rhi_presents_completed < _FIRST_PRESENT_SETTLE_COUNT:
+            QTimer.singleShot(0, self._settle_first_presents)
+
+    def _start_first_frame_sampler(self) -> None:
+        """Periodically log what the canvas region actually shows on screen.
+
+        Catches the "transparent first frame" that the present timeline can't:
+        the compositor may keep showing the untouched (transparent) subsurface
+        even while RHI presents are being recorded. Samples every ~50 ms for
+        the first ~1.5 s after show, reporting Qt-side visibility/exposure and
+        the opaque fraction of a corner grab.
+        """
+        if not mc_first_frame_debug_enabled():
+            return
+        if getattr(self, "_ffd_sampler_started", False):
+            return
+        self._ffd_sampler_started = True
+        self._ffd_sampler_ticks = 0
+        from tabs.multi_compare.first_frame_debug import (
+            mc_first_frame_surface_repr,
+        )
+
+        def _probe_top_level_rhi_windows():
+            """List every top-level QRhiWidget window + their translucency.
+
+            "Прозрачное qrhi окно" that appears independently of the present
+            gate is a separate top-level widget (e.g. an offscreen export
+            canvas whose WA_DontShowOnScreen isn't honored by the compositor),
+            not the live canvas — this pinpoints which one it is.
+            """
+            try:
+                from PySide6.QtWidgets import QApplication, QRhiWidget
+
+                app = QApplication.instance()
+                if app is None:
+                    return
+                for top in app.topLevelWidgets():
+                    if not isinstance(top, QRhiWidget):
+                        continue
+                    mc_first_frame_debug(
+                        self,
+                        "top-level QRhiWidget name=%r visible=%s translucent=%s "
+                        "dont_show=%s geom=%s",
+                        getattr(top, "objectName", lambda: "")() or "<anon>",
+                        top.isVisible(),
+                        bool(
+                            top.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+                        ),
+                        bool(top.testAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)),
+                        top.geometry(),
+                    )
+            except Exception:
+                pass
+
+        def _probe_placeholder():
+            """Whether the startup placeholder fully covers the canvas and is
+            actually opaque — if it's transparent or smaller than the canvas,
+            the user sees the unrendered (transparent) surface through it."""
+            try:
+                owner = None
+                node = self
+                for _ in range(6):
+                    node = node.parentWidget()
+                    if node is None:
+                        break
+                    if hasattr(node, "_startup_placeholder"):
+                        owner = node
+                        break
+                if owner is None:
+                    mc_first_frame_debug(self, "placeholder probe: owner not found")
+                    return
+                placeholder = owner._startup_placeholder
+                bg = getattr(placeholder, "_bg_color", None)
+                bg_desc = (
+                    f"{bg.name()} a={bg.alpha()}"
+                    if bg is not None and bg.isValid()
+                    else "invalid"
+                )
+                covers = (
+                    placeholder.isVisible()
+                    and placeholder.geometry().contains(self.geometry())
+                )
+                mc_first_frame_debug(
+                    self,
+                    "placeholder probe vis=%s covers_full=%s bg=%s "
+                    "placeholder_geom=%s canvas_geom=%s",
+                    placeholder.isVisible(),
+                    covers,
+                    bg_desc,
+                    placeholder.geometry(),
+                    self.geometry(),
+                )
+            except Exception:
+                pass
+
+        _probe_top_level_rhi_windows()
+        _probe_placeholder()
+
+        def _tick():
+            self._ffd_sampler_ticks += 1
+            mc_first_frame_debug(
+                self,
+                "sampler presents=%s [%s]",
+                self._rhi_presents_completed,
+                mc_first_frame_surface_repr(self),
+            )
+            if self._ffd_sampler_ticks < 30:
+                QTimer.singleShot(50, _tick)
+
+        QTimer.singleShot(50, _tick)
 
     def set_dispatch(self, dispatch) -> None:
         """Install the redux dispatch callable used for interaction-driven changes."""
@@ -306,7 +500,9 @@ class MultiCompareCanvasWidget(QRhiWidget):
             self.remove_texture(sid)
 
     def initialize(self, command_buffer) -> None:
+        mc_first_frame_debug(self, "initialize() renderer init starts")
         self._renderer.initialize(command_buffer)
+        mc_first_frame_debug(self, "initialize() renderer ready")
 
     def releaseResources(self) -> None:
         self._renderer.release()

@@ -105,7 +105,7 @@ class FlyoutController:
 
     def show_flyout(self, image_number: int):
         self._sync_flyout_anchors()
-        from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
+        from ui.widgets.unified_list_picker import FlyoutMode
 
         host = self.manager.host
         if host.unified_flyout:
@@ -149,7 +149,7 @@ class FlyoutController:
         QTimer.singleShot(0, self.sync_flyout_combo_status)
 
     def sync_flyout_combo_status(self):
-        from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
+        from ui.widgets.unified_list_picker import FlyoutMode
 
         host = self.manager.host
         if host.unified_flyout.mode == FlyoutMode.DOUBLE:
@@ -157,7 +157,7 @@ class FlyoutController:
             self.widget.combo_image2.setFlyoutOpen(True)
 
     def repopulate_flyouts(self):
-        from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
+        from ui.widgets.unified_list_picker import FlyoutMode
 
         host = self.manager.host
         if host.unified_flyout and host.unified_flyout.isVisible():
@@ -175,7 +175,7 @@ class FlyoutController:
         button.setFlyoutOpen(False)
 
     def on_unified_flyout_closed(self):
-        from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
+        from ui.widgets.unified_list_picker import FlyoutMode
 
         host = self.manager.host
         if host.unified_flyout is not None:

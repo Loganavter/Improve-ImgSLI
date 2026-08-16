@@ -296,6 +296,17 @@ def _setup_store_bindings(canvas, plan, *, store, clip_flag: bool) -> None:
     canvas._active_render_plan = plan
     canvas._clip_overlays_to_content_rect = clip_flag
     canvas.set_render_scene(plan.render_scene)
+    try:
+        from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+
+        ic_first_frame_debug(
+            canvas,
+            "active_render_plan SET scene=%s store=%s",
+            type(plan.render_scene).__name__ if plan.render_scene is not None else None,
+            store is not None,
+        )
+    except Exception:
+        pass
 
     if store is not None:
         canvas.set_split_position_sync(

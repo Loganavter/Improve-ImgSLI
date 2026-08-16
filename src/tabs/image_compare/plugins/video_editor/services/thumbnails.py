@@ -90,7 +90,7 @@ class ThumbnailService(QObject):
         target_count: int = 50,
         thumbnail_size: Tuple[int, int] = (160, 90),
         auto_crop: bool = False,
-        priority_indices: List[int] = None,
+        priority_indices: List[int] | None = None,
         fps: int = 60,
     ) -> int:
         """

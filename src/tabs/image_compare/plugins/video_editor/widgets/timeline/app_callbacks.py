@@ -11,15 +11,15 @@ _PROMINENT_TRACK_IDS = {
 }
 
 _TOKEN_KEYS = {
-    "ON": "common.switch.switch_on",
-    "OFF": "common.switch.switch_off",
+    "ON": "image_compare.common.switch.switch_on",
+    "OFF": "image_compare.common.switch.switch_off",
     "NEAREST": "magnifier.nearest_neighbor",
     "BILINEAR": "magnifier.bilinear",
     "BICUBIC": "magnifier.bicubic",
     "LANCZOS": "magnifier.lanczos",
     "EWA_LANCZOS": "magnifier.ewa_lanczos",
     "LEFT": "common.position.left",
-    "CENTER": "common.position.center",
+    "CENTER": "image_compare.common.position.center",
     "RIGHT": "common.position.right",
     "RGB": "video.rgb",
     "R": "video.red",

@@ -20,32 +20,32 @@ def create_service(
     **kwargs: Any,
 ) -> Any:
     if service_id == "contribute_settings":
-        registry = args[0] if args else kwargs.get("registry")
-        if registry is None:
+        settings_registry = args[0] if args else kwargs.get("registry")
+        if settings_registry is None:
             return None
-        tab._register_settings(registry)
+        tab._register_settings(settings_registry)
         return True
     if service_id == "contribute_actions":
-        registry = args[0] if args else kwargs.get("registry")
-        if registry is None:
+        settings_registry = args[0] if args else kwargs.get("registry")
+        if settings_registry is None:
             return None
-        tab._register_actions(registry)
+        tab._register_actions(settings_registry)
         return True
     if service_id == "contribute_keymap_defaults":
-        registry = args[0] if args else kwargs.get("registry")
-        if registry is None:
+        settings_registry = args[0] if args else kwargs.get("registry")
+        if settings_registry is None:
             return None
         from tabs.image_compare.actions import contribute_keymap_defaults
 
-        contribute_keymap_defaults(registry)
+        contribute_keymap_defaults(settings_registry)
         return True
     if service_id == "contribute_help":
-        registry = args[0] if args else kwargs.get("registry")
-        if registry is None:
+        settings_registry = args[0] if args else kwargs.get("registry")
+        if settings_registry is None:
             return None
         from tabs.image_compare.help import contribute_help
 
-        contribute_help(registry)
+        contribute_help(settings_registry)
         return True
     if service_id == "snapshot_frame_renderer":
         from tabs.image_compare.services.video_snapshot_rendering import (
@@ -118,6 +118,8 @@ def create_service(
         return query_image_compare_metrics_settings(*args, **kwargs)
     if service_id == "session_has_content":
         store = args[0] if args else kwargs.get("store")
+        if store is None:
+            return False
         image_state = store.viewport.session_data.image_state
         return image_state is not None and bool(image_state.image1)
     if service_id == "settings_canvas_feature_load":
@@ -159,7 +161,17 @@ def create_service(
             ToolbarPresenter,
         )
 
-        return ToolbarPresenter(*args, widget=tab._widget, **kwargs)
+        presenter = ToolbarPresenter(*args, widget=tab._widget, **kwargs)
+        if tab._widget is not None and getattr(presenter, "store", None) is not None:
+            from tabs.image_compare.use_cases.chrome_sync import ImageCompareChromeSync
+
+            window = getattr(getattr(tab._widget, "_context", None), "main_window", None)
+            presenter.chrome_sync = ImageCompareChromeSync(
+                tab._widget,
+                presenter.store,
+                lambda: getattr(window, "presenter", None) if window is not None else None,
+            )
+        return presenter
     if service_id == "install_translations":
         if tab._widget is None:
             return False

@@ -115,6 +115,8 @@ def register_platform_actions(controller) -> None:
         open_project=controller._open_project,
         save_project=controller._save_project,
         save_project_as=controller._save_project_as,
+        undo=controller._undo,
+        redo=controller._redo,
         file_menu_button=file_btn,
         help_menu_button=help_btn,
         open_session_picker_target=open_picker_target,
@@ -140,6 +142,29 @@ def resync_action_shortcuts(controller) -> None:
     from ui.actions.binder import resync_action_shortcuts as _resync
 
     _resync(controller._window)
+    _install_redo_alt_shortcut(controller._window, controller._redo)
+
+
+def _install_redo_alt_shortcut(window, redo_runner) -> None:
+    """Idempotently bind Ctrl+Y as an alternate redo chord (in addition to the
+    registry action's Ctrl+Shift+Z). The action binder installs one shortcut
+    per registry action, so the alias lives here."""
+    from PySide6.QtGui import QKeySequence, QShortcut
+    from PySide6.QtCore import Qt
+
+    existing = getattr(window, "_imgsli_redo_alt_shortcut", None)
+    if existing is not None:
+        return
+    shortcut = QShortcut(QKeySequence("Ctrl+Y"), window)
+    shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+    shortcut.setAutoRepeat(False)
+    if redo_runner is not None:
+        from ui.actions.binder import ActionShortcutBinder
+
+        shortcut.activated.connect(
+            lambda checked=False: ActionShortcutBinder._invoke(redo_runner, "platform.redo")
+        )
+    window._imgsli_redo_alt_shortcut = shortcut
 
 
 def quit_app(_controller) -> None:

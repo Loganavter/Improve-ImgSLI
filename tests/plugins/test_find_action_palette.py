@@ -386,10 +386,10 @@ def test_find_action_auto_pulse_on_preselect(qtbot, monkeypatch):
 
 def test_reveal_menu_target_opens_strip_and_pulses_row(qtbot, monkeypatch):
     from core.actions.types import ActionTarget
-    from sli_ui_toolkit import TitleBarMenu, TitleBarMenuStrip
     from sli_ui_toolkit.widgets import ContextMenuAction
     from ui.actions import widget_pulse
     from ui.actions.reveal import reveal_action_target
+    from ui.main_window.csd_menu_strip import CsdMenuSpec, CsdMenuStrip
 
     pulsed: list[object] = []
     monkeypatch.setattr(
@@ -398,9 +398,9 @@ def test_reveal_menu_target_opens_strip_and_pulses_row(qtbot, monkeypatch):
         lambda w, **kwargs: pulsed.append(w),
     )
 
-    strip = TitleBarMenuStrip(
+    strip = CsdMenuStrip(
         [
-            TitleBarMenu(
+            CsdMenuSpec(
                 label="File",
                 entries=[
                     ContextMenuAction("file.settings", "Settings"),
@@ -421,11 +421,12 @@ def test_reveal_menu_target_opens_strip_and_pulses_row(qtbot, monkeypatch):
     )
     qtbot.wait(30)
 
-    menu = strip._context_menus.get(id(file_btn))
-    assert menu is not None
-    assert menu.isVisible()
-    row = menu.row_for_action("file.settings")
+    flyout = strip._flyouts.get(id(file_btn))
+    assert flyout is not None
+    assert flyout.isVisible()
+    row = flyout.row_widget(0)
     assert row is not None
+    assert getattr(row, "action_id", None) == "file.settings"
     assert pulsed == [row]
 
 

@@ -237,4 +237,3 @@ def build_snapshot_store_presentation(
         fill_rgba=fill_color or (0, 0, 0, 0),
         virtual_layout=(global_bounds.to_virtual_layout() if global_bounds is not None else None),
     )
-

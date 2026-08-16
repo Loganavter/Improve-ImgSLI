@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QGridLayout,
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sli_ui_toolkit.managers import UiScale, scaled_px
 from sli_ui_toolkit.widgets import Button, MarqueeBandGesture, OverlayScrollArea
 
 from services.io.recent_projects import (
@@ -35,7 +36,9 @@ from tabs.session_picker.recent.layout import (
     GRID_CARD_H,
     GRID_CARD_W,
     ITEMS_MARGIN,
+    ITEMS_MARGIN_BOTTOM,
     ITEMS_MARGIN_RIGHT,
+    ITEMS_MARGIN_TOP,
     ITEMS_SPACING,
     LIST_CARD_H,
     PANEL_RADIUS,
@@ -52,7 +55,7 @@ from tabs.session_picker.recent.selection import (
     apply_card_selected,
     selection_accent_color,
 )
-from tabs.session_picker.recent.shelf_chrome import OpaqueFillHost, ShelfChrome
+from ui.widgets.shelf import OpaqueFillHost, ShelfWidget
 
 
 def _restore_updates(owner: QWidget, was_updating: bool) -> None:
@@ -85,6 +88,7 @@ class RecentItemsView(QWidget):
         self._on_activate: Callable[..., None] | None = None
         self._on_context_menu: Callable[[RecentProjectRecord], None] | None = None
         self._content_width_provider: Callable[[], int] = lambda: 0
+        self._max_viewport_height_provider: Callable[[], int] = lambda: 0
         self._on_viewport_height_changed: Callable[[], None] | None = None
         self._updates_owner: QWidget | None = None
         self._selection_paths: Callable[[], set[str]] = lambda: set()
@@ -109,7 +113,7 @@ class RecentItemsView(QWidget):
         scroll.setAcceptDrops(True)
         scroll.setVisible(False)
         root.addWidget(scroll)
-        self.scroll = scroll
+        self.scroll_area = scroll
 
         self.items_host = OpaqueFillHost()
         self.items_host.setAcceptDrops(True)
@@ -118,10 +122,13 @@ class RecentItemsView(QWidget):
         scroll.setWidget(self.items_host)
         self.items_layout = QGridLayout()
         self.items_layout.setContentsMargins(
-            ITEMS_MARGIN, ITEMS_MARGIN, ITEMS_MARGIN_RIGHT, ITEMS_MARGIN
+            scaled_px(ITEMS_MARGIN),
+            scaled_px(ITEMS_MARGIN_TOP),
+            scaled_px(ITEMS_MARGIN_RIGHT),
+            scaled_px(ITEMS_MARGIN_BOTTOM),
         )
-        self.items_layout.setHorizontalSpacing(ITEMS_SPACING)
-        self.items_layout.setVerticalSpacing(ITEMS_SPACING)
+        self.items_layout.setHorizontalSpacing(scaled_px(ITEMS_SPACING))
+        self.items_layout.setVerticalSpacing(scaled_px(ITEMS_SPACING))
         self.items_layout.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
@@ -140,6 +147,7 @@ class RecentItemsView(QWidget):
         on_activate: Callable[..., None],
         on_context_menu: Callable[[RecentProjectRecord], None],
         content_width_provider: Callable[[], int],
+        max_viewport_height_provider: Callable[[], int] | None = None,
         on_viewport_height_changed: Callable[[], None] | None = None,
         selection_paths: Callable[[], set[str]] | None = None,
         on_marquee_commit: Callable[[set[str], bool], None] | None = None,
@@ -150,6 +158,8 @@ class RecentItemsView(QWidget):
         self._on_activate = on_activate
         self._on_context_menu = on_context_menu
         self._content_width_provider = content_width_provider
+        if max_viewport_height_provider is not None:
+            self._max_viewport_height_provider = max_viewport_height_provider
         self._on_viewport_height_changed = on_viewport_height_changed
         if selection_paths is not None:
             self._selection_paths = selection_paths
@@ -186,9 +196,9 @@ class RecentItemsView(QWidget):
         self.apply_selection()
 
     def apply_surface_colors(self, *, content_bg: QColor, shelf_bg: QColor) -> None:
-        ShelfChrome.apply_opaque_widget_fill(self.items_host, content_bg)
-        ShelfChrome.apply_opaque_widget_fill(self.scroll.viewport(), content_bg)
-        ShelfChrome.apply_opaque_widget_fill(self.scroll, content_bg)
+        ShelfWidget.apply_opaque_widget_fill(self.items_host, content_bg)
+        ShelfWidget.apply_opaque_widget_fill(self.scroll_area.viewport(), content_bg)
+        ShelfWidget.apply_opaque_widget_fill(self.scroll_area, content_bg)
         self.corner_cover.set_color(shelf_bg)
         self._corner_sync.sync()
 
@@ -208,11 +218,23 @@ class RecentItemsView(QWidget):
 
     def set_visible_for_content(self, has_items: bool) -> None:
         self.items_host.setVisible(has_items)
-        self.scroll.setVisible(has_items)
+        self.scroll_area.setVisible(has_items)
         self.setVisible(has_items)
 
     def resolve_grid_columns(self) -> int:
-        return grid_columns_for_width(max(0, int(self._content_width_provider())))
+        width = max(0, int(self._content_width_provider()))
+        factor = UiScale.get_instance().factor()
+        if factor != 1.0:
+            width = int(width / factor)
+        return grid_columns_for_width(width)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        """Report the scroll's height so the parent layout never sizes this
+        view shorter than the scroll (the scroll's own sizeHint is invalid).
+        Without this, a stale hint lets the panel layout hand the slack to the
+        header bar, which then feeds back into the viewport height calc."""
+        base = super().sizeHint()
+        return QSize(base.width(), self.scroll_area.height())
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if marquee.event_filter(self, watched, event):
@@ -292,15 +314,17 @@ class RecentItemsView(QWidget):
         if self._view_mode != VIEW_GRID or not self._records:
             return False
         columns = self.resolve_grid_columns()
-        if columns == self._grid_columns:
-            return False
+        columns_changed = columns != self._grid_columns
         was_updating = updates_owner.updatesEnabled()
         updates_owner.setUpdatesEnabled(False)
         try:
             self._updates_owner = updates_owner
-            self._grid_columns = columns
+            if columns_changed:
+                self._grid_columns = columns
+            # Re-sync the viewport height even when the column count is stable:
+            # it depends on the available window space, which changes on resize.
             self.sync_scroll_viewport_height()
-            self._refresh_visible_window(force=True)
+            self._refresh_visible_window(force=columns_changed)
             return True
         finally:
             _restore_updates(updates_owner, was_updating)
@@ -318,10 +342,40 @@ class RecentItemsView(QWidget):
         finally:
             _restore_updates(updates_owner, was_updating)
 
+    def reapply_scaled_geometry(self, *, updates_owner: QWidget) -> None:
+        """Re-apply scale-dependent geometry after a live UiScale change.
+
+        Layout margins/spacings and the scroll/card sizes are captured at
+        build time through ``scaled_px``; when the factor changes at runtime
+        those plain px go stale (the cards themselves resize via ``Button.
+        on_scale_changed``, but the grid columns, scroll height, and host
+        size would stay frozen at the old factor until the next app start).
+        No updates toggling here: the scale fan-out already suspends
+        top-level paints, and toggling would re-enable this subtree
+        mid-freeze (see ``_restore_updates``).
+        """
+        self.items_layout.setContentsMargins(
+            scaled_px(ITEMS_MARGIN),
+            scaled_px(ITEMS_MARGIN_TOP),
+            scaled_px(ITEMS_MARGIN_RIGHT),
+            scaled_px(ITEMS_MARGIN_BOTTOM),
+        )
+        self.items_layout.setHorizontalSpacing(scaled_px(ITEMS_SPACING))
+        self.items_layout.setVerticalSpacing(scaled_px(ITEMS_SPACING))
+        self._updates_owner = updates_owner
+        if not self._records:
+            return
+        if self._view_mode == VIEW_LIST:
+            self._grid_columns = 1
+        else:
+            self._grid_columns = self.resolve_grid_columns()
+        self.sync_scroll_viewport_height()
+        self._refresh_visible_window(force=True)
+
     def sync_scroll_viewport_height(self) -> None:
         count = len(self._records)
         if count <= 0:
-            self.scroll.setVisible(False)
+            self.scroll_area.setVisible(False)
             self.items_host.setMinimumHeight(0)
             self.items_host.resize(self.items_host.width(), 0)
             return
@@ -333,12 +387,16 @@ class RecentItemsView(QWidget):
             rows = grid_row_count(count, columns)
             card_h = GRID_CARD_H
         needed = content_height_for_rows(rows, card_h=card_h)
-        viewport = scroll_viewport_height(content_rows=rows, card_h=card_h)
-        width = max(self.scroll.viewport().width(), self._content_width_provider())
+        viewport = scroll_viewport_height(
+            content_rows=rows,
+            card_h=card_h,
+            max_height=self._max_viewport_height_provider(),
+        )
+        width = max(self.scroll_area.viewport().width(), self._content_width_provider())
         self.items_host.setMinimumSize(max(1, int(width)), needed)
         self.items_host.resize(max(1, int(width)), needed)
-        prev_h = self.scroll.height()
-        self.scroll.setFixedHeight(viewport)
+        prev_h = self.scroll_area.height()
+        self.scroll_area.setFixedHeight(viewport)
         if prev_h != viewport and self._on_viewport_height_changed is not None:
             self._on_viewport_height_changed()
 
@@ -358,8 +416,8 @@ class RecentItemsView(QWidget):
 
     def _compute_window(self) -> tuple[int, int]:
         return visible_row_window(
-            self.scroll.verticalScrollBar().value(),
-            self.scroll.viewport().height(),
+            self.scroll_area.verticalScrollBar().value(),
+            self.scroll_area.viewport().height(),
             row_stride_px=row_stride(self._card_h()),
             total_rows=self._total_rows(),
             buffer=VIRTUAL_ROW_BUFFER,
@@ -417,8 +475,8 @@ class RecentItemsView(QWidget):
         stride = row_stride(card_h)
         columns = max(1, self._grid_columns)
         host_w = max(self.items_host.width(), self._content_width_provider())
-        list_right_inset = ITEMS_MARGIN + self.scroll.overlay_scrollbar_inset()
-        list_w = max(1, int(host_w) - ITEMS_MARGIN - list_right_inset)
+        list_right_inset = scaled_px(ITEMS_MARGIN) + self.scroll_area.overlay_scrollbar_inset()
+        list_w = max(1, int(host_w) - scaled_px(ITEMS_MARGIN) - list_right_inset)
 
         for index, record in enumerate(self._records):
             card = self._cards_by_path.get(record.path)
@@ -426,18 +484,18 @@ class RecentItemsView(QWidget):
                 continue
             if self._view_mode == VIEW_LIST:
                 row = index
-                x = ITEMS_MARGIN
+                x = scaled_px(ITEMS_MARGIN)
                 w = list_w
                 apply_list_card_size(card, LIST_CARD_H)
             else:
                 row, col = divmod(index, columns)
-                x = ITEMS_MARGIN + col * (GRID_CARD_W + ITEMS_SPACING)
-                w = GRID_CARD_W
+                x = scaled_px(ITEMS_MARGIN + col * (GRID_CARD_W + ITEMS_SPACING))
+                w = scaled_px(GRID_CARD_W)
                 apply_fixed_card_size(card, GRID_CARD_W, GRID_CARD_H)
             if row < first_row or row > last_row:
                 continue
-            y = ITEMS_MARGIN + row * stride
-            card.setGeometry(x, y, w, card_h)
+            y = scaled_px(ITEMS_MARGIN_TOP) + row * stride
+            card.setGeometry(x, y, w, scaled_px(card_h))
             card.raise_()
 
     def _card_kwargs(self) -> dict:
@@ -508,6 +566,17 @@ def request_window_chrome_refresh(widget: QWidget) -> None:
     apply_mask = getattr(win, "_apply_rounded_mask", None)
 
     def _refresh() -> None:
+        # The singleShot is not parented: the window may be destroyed before
+        # it fires (teardown after a shelf-height change), and touching a
+        # deleted C++ object raises inside the event loop — poisoning every
+        # later test's loop. Guard the window explicitly.
+        try:
+            import shiboken6
+
+            if not shiboken6.Shiboken.isValid(win):
+                return
+        except Exception:
+            pass
         if callable(apply_mask):
             try:
                 apply_mask()

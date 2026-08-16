@@ -11,12 +11,15 @@ controls across multi_compare and image_compare toolbars.
 """
 
 from __future__ import annotations
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 
 import logging
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics, QPainter
 from PySide6.QtWidgets import QLabel, QWidget
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers.ui_font import apply_ui_font
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.widgets import (
     BackgroundLayer,
@@ -85,16 +88,30 @@ class _ValueOverUnderlineLayer(Layer):
                 return
 
     @staticmethod
+    def _clamp_capsule(capsule: QRectF, region_rect: QRectF) -> QRectF:
+        """Keep the capsule inside the value region (never over the icon)."""
+        return capsule.intersected(region_rect)
+
+    @staticmethod
     def _draw_capsule(scoped_ctx, tm, text: str) -> None:
         backgrounds, _border = BackgroundLayer._resolve(scoped_ctx, tm)
         if not backgrounds:
             return
         font = ui_font(pixel_size=12)
         fm = QFontMetrics(font)
-        width = fm.horizontalAdvance(text) + 2 * _CAPSULE_PAD_X
-        height = fm.height() + 2 * _CAPSULE_PAD_Y
+        pad_x = scaled_px(_CAPSULE_PAD_X)
+        pad_y = scaled_px(_CAPSULE_PAD_Y)
+        width = fm.horizontalAdvance(text) + 2 * pad_x
+        height = fm.height() + 2 * pad_y
         center = scoped_ctx.effective_rect.center()
         rect = QRectF(center.x() - width / 2, center.y() - height / 2, width, height)
+        # The value split region is narrower/shorter than the digit +
+        # padding for multi-digit values; clamp the capsule to the region
+        # so it never bleeds into the icon region (ContentLayer clips the
+        # digit itself to the same rect — clip_content=True).
+        rect = _ValueOverUnderlineLayer._clamp_capsule(
+            rect, QRectF(scoped_ctx.effective_rect)
+        )
 
         p = scoped_ctx.painter
         p.save()
@@ -150,13 +167,23 @@ class _ScrollValueFlyout(BaseFlyout):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self._label = QLabel(self)
+        # apply_ui_font (not a bare setFont) so the digit follows font and
+        # UiScale changes live — see SliderHintFlyout for the same pattern.
+        apply_ui_font(self._label)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._label.setFixedSize(22, 20)
+        # Minimum, NOT fixed size: the flyout is cached per button and lives
+        # across UiScale changes — a fixed design size computed once at
+        # construction stays stale when the factor rises (digit re-resolves
+        # its scaled font live, so the text overflows and clips against the
+        # panel's rounded corners). A minimum keeps the compact pill for a
+        # single digit while letting the sizeHint (scaled text) grow it on
+        # every show (show_aligned -> adjustSize), same as SliderHintFlyout.
+        self._label.setMinimumSize(scaled_px(22), scaled_px(20))
         self.add_widget(self._label)
 
     def show_value(self, text: str, icon=None, anchor: QWidget | None = None) -> None:
         if icon is not None:
-            self._label.setPixmap(icon.pixmap(16, 16))
+            self._label.setPixmap(icon.pixmap(scaled_px(16), scaled_px(16)))
             self._label.setText("")
         else:
             self._label.clear()
@@ -230,7 +257,7 @@ class ScrollValueButton(Button):
             toggle=self._toggle_enabled,
             size=(_WIDTH, _HEIGHT),
             corner_radius=_RADIUS,
-            content_padding=(0.0, 2.0, 0.0, 2.0),
+            content_padding=(0.0, float(scaled_px(2)), 0.0, float(scaled_px(2))),
             variant="default",
             layers=list(_LAYERS),
             parent=parent,
@@ -457,6 +484,9 @@ class ScrollValueButton(Button):
                     variant="default",
                     group=self._GROUP,
                     toggle=self._toggle_enabled,
+                    # group= disables the toolkit's default content clipping;
+                    # re-enable so the icon stays inside its own region.
+                    clip_content=True,
                 ),
             ]
             return regions, VerticalSplit()
@@ -474,6 +504,7 @@ class ScrollValueButton(Button):
             variant="default",
             group=self._GROUP,
             toggle=self._toggle_enabled,
+            clip_content=True,
         )
         if self._is_at_zero():
             value_region = ButtonRegion(
@@ -483,6 +514,7 @@ class ScrollValueButton(Button):
                 weight=0.9,
                 variant="default",
                 group=self._GROUP,
+                clip_content=True,
             )
         else:
             # While the scroll flyout is showing the value above the button,
@@ -497,6 +529,7 @@ class ScrollValueButton(Button):
                 weight=0.9,
                 variant="default",
                 group=self._GROUP,
+                clip_content=True,
             )
         # Bottom breathing room from the underline is reserved via the
         # button-level bottom-only content_padding (see __init__) rather
@@ -507,7 +540,7 @@ class ScrollValueButton(Button):
 
     def _show_flyout(self) -> None:
         try:
-            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+            from ui.canvas_infra.rhi.rhi_focus import park_keyboard_focus_off_qrhi
 
             park_keyboard_focus_off_qrhi()
         except Exception:
@@ -530,3 +563,16 @@ class ScrollValueButton(Button):
         if self._is_scrolling:
             self._is_scrolling = False
             self._sync_regions()
+
+ScrollValueButton.inspect_spec = InspectSpec(
+    family="ScrollValueButton",
+    state=(
+        SpecField("value", "get_value"),
+        SpecField("min_value", "_min_value", private=True),
+        SpecField("max_value", "_max_value", private=True),
+        SpecField("saved_value", "get_saved_value"),
+        SpecField("checked", "isChecked"),
+    ),
+    regions=True,
+    docs="docs/dev/widgets/scroll_value_button.md",
+)

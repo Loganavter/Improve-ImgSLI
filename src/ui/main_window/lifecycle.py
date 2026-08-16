@@ -40,6 +40,23 @@ class ApplyThemeStep(WindowStartupStep):
         )
         window.apply_application_theme(final_theme_setting)
 
+class ApplyUiScaleStep(WindowStartupStep):
+    name = "apply_ui_scale"
+
+    def run(self, window) -> None:
+        # Re-assert the persisted factor (already applied at bootstrap) so
+        # ApplyThemeStep's QSS push and BootstrapContentStep's widget
+        # construction scale correctly even on code paths that skipped the
+        # ApplicationContext bootstrap. No-op when unchanged.
+        try:
+            from sli_ui_toolkit.managers import UiScale
+
+            UiScale.get_instance().set_factor(
+                getattr(window.store.settings, "ui_scale_factor", 1.0) or 1.0
+            )
+        except Exception:
+            pass
+
 class ApplyFontSettingsStep(WindowStartupStep):
     name = "apply_fonts"
 
@@ -58,6 +75,7 @@ class ApplyFontSettingsStep(WindowStartupStep):
                 remasure()
             except Exception:
                 pass
+
 
 class BootstrapContentStep(WindowStartupStep):
     name = "bootstrap_content"
@@ -115,7 +133,7 @@ class CloseDerivedWindowsStep(WindowShutdownStep):
 
     def run(self, window) -> None:
         app = QApplication.instance()
-        if app is None:
+        if not isinstance(app, QApplication):
             return
 
         for widget in list(app.topLevelWidgets()):
@@ -173,6 +191,7 @@ class ShutdownAppContextStep(WindowShutdownStep):
 class MainWindowStartupPipeline:
     steps: tuple[WindowStartupStep, ...] = (
         LoadWindowStateStep(),
+        ApplyUiScaleStep(),
         ApplyThemeStep(),
         ApplyFontSettingsStep(),
         BootstrapContentStep(),
@@ -232,6 +251,49 @@ class MainWindowStartupController:
         app = QApplication.instance()
         if app is not None:
             app.processEvents()
+        # The window may have been shown before its layout ever ran: the
+        # root layout sizes the title bar only on the first real pass, and
+        # the bar's own layout can stay at its construction-time activation
+        # (zones squeezed to a few px — clipped File/Help buttons, elided
+        # title) for the first visible frame. Force both layouts now, before
+        # the compositor paints the first buffer.
+        try:
+            root_layout = window.layout()
+            if root_layout is not None:
+                root_layout.invalidate()
+                root_layout.activate()
+            bar = getattr(window, "_custom_title_bar", None)
+            if bar is not None:
+                sync = getattr(bar, "_sync_balance_spacer", None)
+                if callable(sync):
+                    sync()
+                update = getattr(bar, "update", None)
+                if callable(update):
+                    update()
+        except Exception:
+            pass
+        # Widgets that size against the first real layout defer their reflow
+        # to 0-timers (e.g. the Session Picker recent shelf: deferred
+        # relayout -> height settle -> chrome refresh). Those timers would
+        # otherwise fire only after the deferred plugin loading that blocks
+        # the loop right after show(), leaving the first visible frames at
+        # the pre-layout arrangement for a full second. Drain the pending
+        # timer turns here, while the event loop is still free, so the first
+        # presented frame is already settled.
+        if app is not None:
+            for _ in range(4):
+                app.processEvents()
+                logger.debug(
+                    "Main window startup drain pass %d: window=%s maximized=%s",
+                    _ + 1,
+                    window.size().toTuple(),
+                    window.isMaximized(),
+                )
+        logger.debug(
+            "Main window startup drain done: window=%s maximized=%s",
+            window.size().toTuple(),
+            window.isMaximized(),
+        )
         # Onboarding is built during prepare() before the window has a real
         # layout; re-apply geometry/scale after the first show pass.
         from plugins.onboarding import host as onboarding_host

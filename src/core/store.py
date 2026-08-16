@@ -1,4 +1,5 @@
 import logging
+from contextlib import contextmanager
 from typing import Any, Callable, List, Optional
 
 from domain.workspace import WorkspaceState
@@ -41,6 +42,8 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         self.runtime_cache = ViewportRuntimeCache()
         self.recorder = None
         self._dispatcher = None
+        self._change_batch_depth = 0
+        self._change_batch_scopes: list[str] = []
         self.create_workspace_session(
             session_type=INITIAL_WORKSPACE_SESSION_TYPE,
             activate=True,
@@ -89,8 +92,39 @@ class Store(WorkspaceStoreMixin, StoreOperationsMixin):
         self.recorder = recorder
 
     def emit_state_change(self, scope: str = "viewport"):
+        if self._change_batch_depth > 0:
+            if scope not in self._change_batch_scopes:
+                self._change_batch_scopes.append(scope)
+            return
         for cb in self._change_callbacks:
             cb(scope)
+
+    @contextmanager
+    def batch_changes(self):
+        """Coalesce change emissions inside the block into a single flush at exit.
+
+        Several operations are semantically one user-visible transition but
+        internally mutate the store in steps (e.g. ``create_workspace_session``
+        + ``close_workspace_session`` when the session picker is replaced by a
+        new session). Emitting per step makes the workspace UI sync to each
+        intermediate state — and the adaptive tab strip legitimately holds
+        *two* tabs between those steps, so an intermediate frame shows two tabs
+        before the replacement lands. Batching defers every emission until the
+        block ends, so listeners only ever see the coherent final state.
+        Reads inside the block still see the mutated store immediately; only
+        the change notifications are deferred. Scopes are flushed once each, in
+        first-emitted order.
+        """
+        self._change_batch_depth += 1
+        try:
+            yield
+        finally:
+            self._change_batch_depth -= 1
+            if self._change_batch_depth == 0:
+                scopes = list(self._change_batch_scopes)
+                self._change_batch_scopes = []
+                for scope in scopes:
+                    self.emit_state_change(scope)
 
     def emit_viewport_change(self, subdomain: str | None = None) -> None:
         scope = "viewport"

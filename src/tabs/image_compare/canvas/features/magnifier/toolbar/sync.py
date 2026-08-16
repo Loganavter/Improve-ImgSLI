@@ -34,8 +34,9 @@ def sync_magnifier_toolbar_state(presenter) -> None:
         getattr(ui, "btn_magnifier_divider_width", None),
         divider_thickness,
     )
-    if hasattr(ui, "btn_magnifier_orientation"):
-        ui.btn_magnifier_orientation.setUnderlineColor(ensure_visible_qcolor(divider_color))
+    orientation_btn = getattr(ui, "btn_magnifier_orientation", None)
+    if orientation_btn is not None:
+        orientation_btn.setUnderlineColor(ensure_visible_qcolor(divider_color))
 
 
 def sync_magnifier_enabled_state(presenter) -> None:
@@ -62,7 +63,8 @@ def sync_magnifier_enabled_state(presenter) -> None:
 
     if hasattr(ui, "btn_magnifier_orientation"):
         viewport = presenter.store.viewport
-        ui.btn_magnifier_orientation.setUnderlineColor(
+        ui.btn_magnifier_orientation.setUnderlineColor(  # type: ignore[union-attr]  # dynamic widget
+
             ensure_visible_qcolor(
                 active_magnifier.divider_color
                 if active_magnifier is not None

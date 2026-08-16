@@ -79,11 +79,13 @@ QWidget#FlyoutWidget[surfaceRole="transparent"] {
     background: transparent;
     border: none;
 }
-QWidget#FlyoutContainer {
-    background-color: @flyout.background;
-    border: 1px solid @flyout.border;
-    border-radius: 8px;
-}
+/* NOTE: no QWidget#FlyoutContainer rule on purpose. BaseFlyout paints its
+   own background/border (paintEvent) and clips content with RoundedClipEffect
+   at the raw CONTENT_RADIUS; a QSS rule here double-painted a border AND got
+   its border-radius scaled by the QSS px-scaling pass (8px -> 16px at UI
+   scale 2.0) while the clip stayed at 8px — the outline and the content
+   clip visibly diverged at scale > 100%. The container is drawn entirely by
+   BaseFlyout. */
 QWidget#FlyoutWidget QScrollArea, QWidget#FlyoutWidget QScrollArea > QWidget > QWidget {
     background-color: transparent; border: none;
 }

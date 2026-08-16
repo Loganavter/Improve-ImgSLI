@@ -13,6 +13,7 @@ import os
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import (
+    QRhi,
     QImage,
     QRhiDepthStencilClearValue,
     QRhiSampler,
@@ -24,11 +25,12 @@ from shared.rendering.glass_panel import GlassPanelRenderer
 from shared.rendering.tile_constants import MIPS_CASCADE_TIME_BUDGET_MS
 from shared.rendering.tile_texture_service import TileTextureService
 from tabs.multi_compare.canvas.registry import registry
+from tabs.multi_compare.first_frame_debug import mc_first_frame_debug
 from tabs.multi_compare.scene.passes import BaseImagesPass
 from tabs.multi_compare.scene.projection import build_render_context
 from tabs.multi_compare.scene.resources import SLOT_LIVE_TILE_EXTENT
-from ui.widgets.canvas.render_executor import iter_active_render_passes
-from ui.widgets.canvas.rhi_backend import log_initialized_rhi_widget, query_max_texture_size
+from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
+from ui.canvas_infra.rhi.rhi_backend import log_initialized_rhi_widget, query_max_texture_size
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -61,10 +63,10 @@ class MultiCompareRhiRenderer:
 
     def __init__(self, host) -> None:
         self.host = host
-        self.rhi = None
+        self.rhi: QRhi | None = None
         self.target = None
-        self.sampler = None
-        self.placeholder = None
+        self.sampler: QRhiSampler | None = None
+        self.placeholder: QRhiTexture | None = None
         self.tile_service = TileTextureService()
         self.image_pass = BaseImagesPass()
         # Mirrors image_compare's RhiCanvasRenderer.glass_panel_renderer --
@@ -107,6 +109,11 @@ class MultiCompareRhiRenderer:
         new_rhi = self.host.rhi()
         target = self.host.renderTarget()
         if new_rhi is None or target is None:
+            mc_first_frame_debug(
+                self.host,
+                "renderer.initialize ABORT: rhi=%s renderTarget=%s",
+                new_rhi is not None, target is not None,
+            )
             logger.warning(
                 "[mc-renderer] initialize() aborted: rhi or renderTarget is None "
                 "(widget not properly realized yet)"
@@ -197,12 +204,18 @@ class MultiCompareRhiRenderer:
                 except RuntimeError:
                     pass
         host = self.host
-        self.__init__(host)
+        self.__init__(host)  # type: ignore[misc]  # resource-reset reinit
 
     def render(self, command_buffer) -> bool:
         if not self.initialized or self.rhi is None:
             if not getattr(self, "_logged_not_initialized", False):
                 self._logged_not_initialized = True
+                mc_first_frame_debug(
+                    self.host,
+                    "renderer.render SKIPPED: not initialized yet "
+                    "(initialized=%s rhi=%s)",
+                    self.initialized, self.rhi is not None,
+                )
                 logger.warning(
                     "[mc-renderer] render() called before initialize() completed "
                     "(initialized=%s rhi=%s)",
@@ -214,6 +227,9 @@ class MultiCompareRhiRenderer:
         if target is None:
             if not getattr(self, "_logged_no_target", False):
                 self._logged_no_target = True
+                mc_first_frame_debug(
+                    self.host, "renderer.render SKIPPED: renderTarget() is None"
+                )
                 logger.warning("[mc-renderer] render() aborted: renderTarget() is None")
             return False
         target_size = target.pixelSize()

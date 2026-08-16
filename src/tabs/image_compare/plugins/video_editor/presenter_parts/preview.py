@@ -484,7 +484,7 @@ class PreviewCoordinator:
             preview_h,
         )
         canvas = getattr(self.view, "preview_label", None)
-        if hasattr(canvas, "set_read_only"):
+        if canvas is not None and hasattr(canvas, "set_read_only"):
             canvas.set_read_only(True)
 
         worker = GenericWorker(

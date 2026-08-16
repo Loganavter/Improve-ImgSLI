@@ -123,6 +123,22 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
         # same-size content swap (grid dimensions unchanged) can still be
         # detected -- see the content_changed comment in realize_tile_plan.
         self._pil_source_uid_by_key: dict[object, int] = {}
+        # Per-key memo of {content_uid: stash_key} for content this key has
+        # already shown before. A role that keeps toggling between a small
+        # fixed set of distinct contents under the *same* slot key -- e.g.
+        # "stored_0"/"stored_1" alternating between the normal comparison
+        # pair and a single-image-mode preview on rapid Space+click -- would
+        # otherwise re-register (register_source resets residency) and
+        # fully re-crop+re-upload every tile on every single toggle, even
+        # though the content it's toggling back to was fully resident a
+        # moment ago. `realize_tile_plan`'s re-register branch checks this
+        # memo before registering a blank grid: if the incoming content was
+        # stashed here, `rekey_source` swaps it straight back onto `key`
+        # with zero GPU work instead. Entries live only as long as
+        # `tile_service` still has them resident (budget eviction can still
+        # reclaim a stashed entry between toggles -- then it's just a normal
+        # cache miss, not a correctness issue).
+        self._content_stash: dict[object, dict[int, object]] = {}
 
     def _upload_tile(self, tile_service, key, index, tile_image, updates, dirty_layers, region) -> None:
         self._array_resources.upload_tile_to_array(
@@ -157,6 +173,60 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             )
         tile_service.rekey_source(key, prev_key)
         self.last_rekeyed_keys[key] = prev_key
+
+    def _rekey_or_restore(
+        self,
+        tile_service: TileTextureService,
+        key: object,
+        prev_uid: int | None,
+        src_uid: int,
+        src_w: int,
+        src_h: int,
+    ):
+        """Same-slot content swap for ``key`` (``prev_uid``'s content ->
+        ``src_uid``'s). If ``src_uid`` was stashed here from an earlier
+        swap *and* is still resident, restores it onto ``key`` via
+        ``rekey_source`` with zero GPU work instead of registering a blank
+        grid and re-cropping+re-uploading every tile -- the toggle-between-
+        a-few-known-contents case (see ``self._content_stash``'s docstring).
+        Otherwise behaves like the old unconditional ``rekey_stale_content``
+        + ``register_source``, except the outgoing content is stashed under
+        a key stable per ``(key, prev_uid)`` rather than a disposable
+        one-shot key, so a later swap back to it can be recognized."""
+        if prev_uid is not None and prev_uid == src_uid:
+            # Same object, different size -- a mutated/resized source, not
+            # a swap between two known contents. Nothing to stash or
+            # restore; drop straight through to a fresh register below.
+            return tile_service.register_source(key, (src_w, src_h))
+
+        stash = self._content_stash.setdefault(key, {})
+        if prev_uid is not None and tile_service.resident_tiles(key):
+            stash_key = ("_content_stash", key, prev_uid)
+            tile_service.rekey_source(key, stash_key)
+            stash[prev_uid] = stash_key
+            self.last_rekeyed_keys[key] = stash_key
+            if tile_dump_enabled():
+                log_tile_event(
+                    "rekey_stale_content",
+                    key=str(key),
+                    prev_key=str(stash_key),
+                    resident_tile_count=len(tile_service.resident_tiles(stash_key)),
+                )
+
+        restore_key = stash.get(src_uid)
+        if restore_key is not None and tile_service.resident_tiles(restore_key):
+            tile_service.rekey_source(restore_key, key)
+            del stash[src_uid]
+            if tile_dump_enabled():
+                log_tile_event(
+                    "restore_stashed_content",
+                    key=str(key),
+                    restore_key=str(restore_key),
+                    resident_tile_count=len(tile_service.resident_tiles(key)),
+                )
+            return tile_service.grid_for(key)
+
+        return tile_service.register_source(key, (src_w, src_h))
 
     def realize_tile_plan(
         self,
@@ -262,6 +332,15 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             pil_source = _pil_image_for_texture_key(widget, key)
             is_tiled_store = isinstance(pil_source, TiledPixelStore)
             grid = tile_service.grid_for(key)
+            from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+            ic_first_frame_debug(
+                widget,
+                "realize_tile_plan key=%s pil_source=%s tiled=%s grid=%s",
+                key,
+                "None" if pil_source is None else type(pil_source).__name__,
+                is_tiled_store,
+                "None" if grid is None else f"{grid.total_width}x{grid.total_height}",
+            )
             # Lazy TiledPixelStore sources skip upload_source(), so the only
             # place their grid is created is here. If a stale 1×1 grid from a
             # previous smaller image remains, zoom>1 (use_hires) crops only
@@ -310,17 +389,25 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
                     )
                     if grid is not None:
                         self._evict_stale_tiles(key, set())
-                        # Same slot key, different underlying content (an
-                        # image swap into an already-loaded side) -- move
-                        # the old content to a fresh key instead of letting
-                        # register_source's reset_source drop it from
-                        # residency outright (docs/dev/rendering/
-                        # qrhi-gotchas.md same-slot-swap finding).
-                        self.rekey_stale_content(tile_service, key)
-                    grid = tile_service.register_source(key, (src_w, src_h))
+                        grid = self._rekey_or_restore(
+                            tile_service, key, prev_uid, src_uid, src_w, src_h
+                        )
+                    else:
+                        grid = tile_service.register_source(key, (src_w, src_h))
             elif grid is None:
                 continue
             contexts.append((key, letterbox, pil_source, is_tiled_store, grid))
+
+        from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+        ic_first_frame_debug(
+            widget,
+            "realize_tile_plan grids=%d resident=%s",
+            len(contexts),
+            {
+                str(k): len(tile_service.resident_tiles(k) or ())
+                for k in texture_keys
+            },
+        )
 
         # docs/dev/rendering/tile-array-atlas-plan.md: every grid, including
         # a still-1x1 side, renders through the shared texture-array pipeline

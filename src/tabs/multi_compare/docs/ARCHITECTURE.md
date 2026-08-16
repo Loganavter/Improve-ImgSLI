@@ -2,20 +2,34 @@
 
 ## State
 
-The tab owns a local Redux-style store:
+The tab's session state lives in `state_slots["multi_compare.state"]` — the
+**single source of truth**, reduced by the core `RootReducer` exactly like
+image_compare's `document` slot (registered in
+`tabs/multi_compare/bootstrap_reducers.py`). MC actions dispatch through the
+core `Dispatcher` (`scope="multi_compare"`), which writes the slot back to
+the active session and records reference-snapshots for **undo/redo**
+(`Dispatcher._UNDOABLE_TYPES`).
 
-- `MultiCompareState` is the immutable snapshot used by the UI and renderer.
-- Actions live in `tabs.multi_compare.scene.store.actions`.
-- Reducer logic lives in `tabs.multi_compare.scene.store.reduce`.
-- Pure tree operations live in `tabs.multi_compare.scene.tree_ops`.
-- Semantic divider constraints live in
-  `tabs.multi_compare.scene.layout_constraints`.
+`MultiCompareStore` (`scene/store.py`) is a thin **facade** over the core
+Dispatcher + active session slot:
 
-The tab instance snapshots state per workspace session onto the active
-session's `state_slots["multi_compare.state"]` (`store.set_session_state_slot`
-/ `store.ensure_session_state_slot`, see `MultiCompareTab._snapshot_into`/
-`_restore_from` in `tab.py`). This is visible to other systems and is dropped
-automatically when the owning session is closed.
+- `state` reads the active session's slot;
+- `dispatch(action)` forwards to the core Dispatcher;
+- `subscribe(cb)` hooks core store changes (filtered to the
+  `"multi_compare"` scope);
+- `replace_state(state)` writes the slot directly (session restore — not a
+  user action, bypasses undo).
+
+Actions live in `tabs.multi_compare.scene.store.actions`; the pure `reduce`
+in `scene/store.py` is used both by the core slot reducer and by the
+standalone store mode (tests). Tree operations live in
+`scene/tree_ops`; divider constraints in `scene/layout_constraints`.
+
+`RemoveSlot`/`Clear` defer closing the removed slots' `TiledPixelStore`s to
+GC/session teardown (so undo of a removal restores a still-open store).
+
+The `_session_harness.py` test helper fakes the narrow core slice the facade
+depends on.
 
 ## Layout Model
 

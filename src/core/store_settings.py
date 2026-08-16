@@ -15,6 +15,7 @@ class SettingsState:
     theme: str = "auto"
     ui_font_mode: str = "builtin"
     ui_font_family: str = ""
+    ui_scale_factor: float = 1.0
     ui_mode: str = "beginner"
     debug_mode_enabled: bool = False
     system_notifications_enabled: bool = True

@@ -2,7 +2,7 @@
 rendered directly into the canvas's own render pipeline instead of sampled
 cross-widget from a separate ``QRhiWidget`` (the old
 ``sli_ui_toolkit`` ``LiquidGlassFillWidget`` architecture -- see
-``ui/widgets/glass_hud.py`` for why that was replaced: sampling a *foreign*
+``ui/widgets/glass_hud/hud.py`` for why that was replaced: sampling a *foreign*
 shown ``QRhiWidget``'s ``colorTexture()`` bypasses that widget's own
 on-screen compositing blit, which is what normally absorbs a backend's Y-flip
 convention for free, so the direct sample got the raw, uncorrected row order
@@ -66,7 +66,7 @@ Self-reference: even with the Y-flip fixed, a live user re-test found a
 *second*, structural bug: every glass panel's own composited sprite used to
 get blitted directly into the canvas's own ``colorTexture()`` (via a
 ``glass_panel`` feature pass, since removed -- see
-``ui/widgets/glass_panel_display.py`` for what replaced it). Since a panel's
+``ui/widgets/glass_hud/panel_display.py`` for what replaced it). Since a panel's
 crop rect is *exactly* its own on-screen footprint, next frame's crop for
 that same panel necessarily read back its own previous rendering -- the
 panel's backdrop converged to "blurred view of itself" within a couple of
@@ -109,13 +109,17 @@ from PySide6.QtGui import (
     QRhiColorAttachment,
     QRhiDepthStencilClearValue,
     QRhiGraphicsPipeline,
+    QRhi,
     QRhiReadbackDescription,
     QRhiReadbackResult,
+    QRhiRenderPassDescriptor,
     QRhiSampler,
+    QRhiShaderResourceBindings,
     QRhiShaderResourceBinding,
     QRhiShaderStage,
     QRhiTexture,
     QRhiTextureCopyDescription,
+    QRhiTextureRenderTarget,
     QRhiTextureRenderTargetDescription,
     QRhiViewport,
     QShader,
@@ -153,7 +157,7 @@ _BLUR_UBUF_SIZE = 16  # std140: vec2 direction + float radiusPx + pad
 # + vec4 debugTint
 _COMPOSITE_UBUF_SIZE = 80
 
-# Must match `ui.widgets.glass_hud_parts.text_mask._TEXT_MASK_SUPERSAMPLE` (and
+# Must match `ui.widgets.glass_hud.text_mask._TEXT_MASK_SUPERSAMPLE` (and
 # `shaders/glass_panel/glass_text_downsample.frag`'s own `SCALE` constant) --
 # that module rasterizes each panel's text mask oversized by this factor and
 # uploads it *undownscaled*; this module creates `text_mask_tex` at that same
@@ -169,7 +173,7 @@ _COMPOSITE_UBUF_SIZE = 80
 # custom Lanczos-2 pass rather than QRhi's hardware `generateMips()` (tried
 # and dropped too, see that doc's bug 17) is because box-filtered mips read
 # visibly softer ("trilinear, not Lanczos") on the sharp alpha edges a
-# glyph mask is made of. Not imported from `glass_hud.py` to avoid a
+# glyph mask is made of. Not imported from `glass_hud/text_mask.py` to avoid a
 # `shared.rendering` -> `ui.widgets` layering violation (wrong direction);
 # duplicated here deliberately, kept in sync by this comment on both sides.
 _TEXT_MASK_SUPERSAMPLE = 4
@@ -241,7 +245,7 @@ class GlassPanelSpec:
     tint: QColor
     blur_radius_px: float
     # Panel-local alpha mask of this HUD's registered text widgets'
-    # glyphs, built by ``ui/widgets/glass_hud.py``'s
+    # glyphs, built by ``ui/widgets/glass_hud/text_mask.py``'s
     # ``_rebuild_text_mask()`` -- ``_TEXT_MASK_SUPERSAMPLE`` x the panel's
     # own device px (see ``device_rects`` in ``render_backdrops``), *not*
     # 1:1 with it: this module uploads it undownscaled into a mipmapped
@@ -293,39 +297,39 @@ class _PanelGpu:
 
     def __init__(self) -> None:
         self.size: tuple[int, int] | None = None
-        self.crop_tex = None
-        self.blur_tex = None
-        self.blur_target = None
-        self.blur_rpdesc = None
-        self.blur_pipeline = None
-        self.composite_tex = None
-        self.composite_target = None
-        self.composite_rpdesc = None
-        self.composite_pipeline = None
-        self.blur_ubuf = None
-        self.composite_ubuf = None
-        self.srb_blur = None
-        self.srb_composite = None
+        self.crop_tex: QRhiTexture | None = None
+        self.blur_tex: QRhiTexture | None = None
+        self.blur_target: QRhiTextureRenderTarget | None = None
+        self.blur_rpdesc: QRhiRenderPassDescriptor | None = None
+        self.blur_pipeline: QRhiGraphicsPipeline | None = None
+        self.composite_tex: QRhiTexture | None = None
+        self.composite_target: QRhiTextureRenderTarget | None = None
+        self.composite_rpdesc: QRhiRenderPassDescriptor | None = None
+        self.composite_pipeline: QRhiGraphicsPipeline | None = None
+        self.blur_ubuf: QRhiBuffer | None = None
+        self.composite_ubuf: QRhiBuffer | None = None
+        self.srb_blur: QRhiShaderResourceBindings | None = None
+        self.srb_composite: QRhiShaderResourceBindings | None = None
         # Alpha mask of this panel's HUD text glyphs -- see
         # GlassPanelSpec.text_mask_image / render_backdrops. Not a render
         # target: content only ever arrives via uploadTexture() from a
         # CPU-side QImage, never rendered into by a pipeline of its own.
-        self.text_mask_tex = None
+        self.text_mask_tex: QRhiTexture | None = None
         # Lanczos-2-downsampled copy of text_mask_tex at this panel's own
         # device resolution -- see glass_text_downsample.frag and
         # GlassPanelRenderer._ensure_panel. Regenerated only when
         # text_mask_image_id changes (same gate as the upload itself), not
         # every render_backdrops() call.
-        self.text_mask_downsampled_tex = None
-        self.text_mask_downsample_target = None
-        self.text_mask_downsample_rpdesc = None
-        self.text_mask_downsample_pipeline = None
-        self.srb_text_mask_downsample = None
+        self.text_mask_downsampled_tex: QRhiTexture | None = None
+        self.text_mask_downsample_target: QRhiTextureRenderTarget | None = None
+        self.text_mask_downsample_rpdesc: QRhiRenderPassDescriptor | None = None
+        self.text_mask_downsample_pipeline: QRhiGraphicsPipeline | None = None
+        self.srb_text_mask_downsample: QRhiShaderResourceBindings | None = None
         # id() of the last QImage actually uploaded into text_mask_tex (or
         # the sentinel 0 for "uploaded the blank fallback", see
         # render_backdrops), so render_backdrops (called every frame) can
         # skip re-uploading identical content -- the mask itself only
-        # changes a few times a second at most (see glass_hud.py's
+        # changes a few times a second at most (see glass_hud/text_mask.py's
         # _TEXT_MASK_UPDATE_INTERVAL_S). Starts at None (never a real id()
         # or the 0 sentinel) so the very first frame after this texture is
         # (re)created always uploads *something* -- sampling it
@@ -359,7 +363,7 @@ class _PanelGpu:
                     res.destroy()
                 except RuntimeError:
                     pass
-        self.__init__()
+        self.__init__()  # type: ignore[misc]  # resource-reset reinit
 
 
 class GlassPanelRenderer:
@@ -369,12 +373,12 @@ class GlassPanelRenderer:
 
     def __init__(self, name_prefix: str = "canvas") -> None:
         self._name_prefix = name_prefix
-        self.rhi = None
-        self._sampler = None
+        self.rhi: QRhi | None = None
+        self._sampler: QRhiSampler | None = None
         self._panels: dict[int, _PanelGpu] = {}
         self.ready_sprites: dict[int, tuple[object, QRect]] = {}
         # CPU-side copy of each panel's composite_tex, for the CPU/QPainter
-        # display path (see ui/widgets/glass_panel_display.py) -- a plain
+        # display path (see ui/widgets/glass_hud/panel_display.py) -- a plain
         # QWidget honors real per-pixel alpha against its siblings the way a
         # QRhiWidget-hosted display does not (QOpenGLWidget/QRhiWidget-class
         # widgets are always composited as their own base layer, never
@@ -407,12 +411,12 @@ class GlassPanelRenderer:
         # outline in red (used only for the full-canvas dump, so every live
         # panel's *intended* crop rect is visible directly on the same
         # image the crop was sourced from), or None.
-        self._debug_dump_pending: list[tuple[object, str, list | None]] = []
+        self._debug_dump_pending: list[tuple[QRhiReadbackResult, str, list | None]] = []
 
     def _flush_debug_dumps(self) -> None:
-        if not self._debug_dump_pending:
+        if not self._debug_dump_pending or _DEBUG_DUMP_DIR is None:
             return
-        still_pending: list[tuple[object, str, list | None]] = []
+        still_pending: list[tuple[QRhiReadbackResult, str, list | None]] = []
         for result, label, annotate_rects in self._debug_dump_pending:
             data = result.data
             if not data:
@@ -432,7 +436,10 @@ class GlassPanelRenderer:
             # reintroduce this without re-confirming against the real
             # on-screen image first.
             image = QImage(
-                bytes(data), size.width(), size.height(), QImage.Format.Format_RGBA8888
+                bytes(data),  # type: ignore[call-overload]  # QByteArray supports buffer protocol
+                size.width(),
+                size.height(),
+                QImage.Format.Format_RGBA8888,
             )
             if annotate_rects:
                 image = image.convertToFormat(QImage.Format.Format_RGB32)
@@ -444,7 +451,7 @@ class GlassPanelRenderer:
             try:
                 os.makedirs(_DEBUG_DUMP_DIR, exist_ok=True)
                 path = os.path.join(_DEBUG_DUMP_DIR, f"{label}.png")
-                image.save(path, "PNG")
+                image.save(path, "PNG")  # type: ignore[call-overload]  # PySide6 runtime wants str format
                 _debug("debug-dump saved %s (%dx%d)", path, size.width(), size.height())
             except OSError:
                 _logger.exception(
@@ -484,6 +491,7 @@ class GlassPanelRenderer:
             QRhiSampler.AddressMode.ClampToEdge,
             QRhiSampler.AddressMode.ClampToEdge,
         )
+        assert self._sampler is not None
         if not self._sampler.create():
             raise RuntimeError(f"Failed to create {self._name_prefix} glass-panel sampler")
 
@@ -503,6 +511,7 @@ class GlassPanelRenderer:
         self.rhi = None
 
     def _ensure_panel(self, key: int, size: QSize) -> _PanelGpu:
+        assert self._sampler is not None
         """(Re)builds one panel's *entire* GPU resource set -- textures,
         render targets, render-pass descriptors, pipelines, uniform buffers,
         SRBs -- fully independent of every other panel's. See
@@ -529,6 +538,7 @@ class GlassPanelRenderer:
         else:
             panel.release()
         rhi = self.rhi
+        assert rhi is not None
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
         _debug(
             "_ensure_panel key=%#x %s size=%dx%d (previous_size=%s) panel_id=%#x "
@@ -628,7 +638,7 @@ class GlassPanelRenderer:
 
         # --- text mask: CPU-uploaded only (see _PanelGpu docstring), sized
         # _TEXT_MASK_SUPERSAMPLE x the other scratch textures -- ui.widgets.
-        # glass_hud.py rasterizes it oversized and uploads it undownscaled.
+        # glass_hud/text_mask.py rasterizes it oversized and uploads it undownscaled.
         # Plain (non-mipmapped) texture: the downscale to device resolution
         # is done by the dedicated Lanczos-2 pass below into
         # text_mask_downsampled_tex, not by sampling this texture's own mip
@@ -771,6 +781,7 @@ class GlassPanelRenderer:
         color_texture,
         specs_by_key: dict[int, GlassPanelSpec],
     ) -> None:
+        assert self._sampler is not None
         """Regenerates every registered panel's backdrop sprite from
         ``color_texture`` (the canvas's own ``colorTexture()`` for the
         *current* frame -- see module docstring's "Timing" section). Called
@@ -793,6 +804,7 @@ class GlassPanelRenderer:
         if not specs_by_key:
             return
         rhi = self.rhi
+        assert rhi is not None
 
         # Every live panel's own device-px rect: crop copies from
         # colorTexture() at this rect, and sizes *our own* scratch textures
@@ -875,12 +887,14 @@ class GlassPanelRenderer:
             copy_desc = QRhiTextureCopyDescription()
             copy_desc.setSourceTopLeft(device_top_left)
             copy_desc.setPixelSize(device_size)
+            assert panel.crop_tex is not None
             copy_updates.copyTexture(panel.crop_tex, color_texture, copy_desc)
             command_buffer.resourceUpdate(copy_updates)
             if should_dump:
                 self._request_dump(rhi, command_buffer, panel.crop_tex, f"key{key:x}_1crop")
 
             blur_updates = rhi.nextResourceUpdateBatch()
+            assert panel.blur_ubuf is not None
             blur_updates.updateDynamicBuffer(
                 panel.blur_ubuf,
                 0,
@@ -903,7 +917,7 @@ class GlassPanelRenderer:
                 self._request_dump(rhi, command_buffer, panel.blur_tex, f"key{key:x}_2blur")
 
             # Text mask upload -- only when the image identity actually
-            # changed since last frame (glass_hud.py rebuilds it at most a
+            # changed since last frame (glass_hud/text_mask.py rebuilds it at most a
             # few times/sec, not every frame; see text_mask_image_id's
             # docstring on _PanelGpu for why a freshly-(re)created texture
             # always uploads at least once even with no spec image). The
@@ -925,7 +939,7 @@ class GlassPanelRenderer:
                     )
                     mask_image.fill(0)
                 elif spec.text_mask_image.size() != text_mask_size:
-                    # Defensive only -- glass_hud.py's _rebuild_text_mask()
+                    # Defensive only -- glass_hud/text_mask.py's _rebuild_text_mask()
                     # and this method compute device_size from the same
                     # container.size()/devicePixelRatioF() formula, so this
                     # should be rare (a resize landing between the mask's
@@ -955,6 +969,7 @@ class GlassPanelRenderer:
                 else:
                     mask_image = spec.text_mask_image
                 mask_updates = rhi.nextResourceUpdateBatch()
+                assert panel.text_mask_tex is not None
                 mask_updates.uploadTexture(panel.text_mask_tex, mask_image)
                 command_buffer.resourceUpdate(mask_updates)
                 panel.text_mask_image_id = mask_target_id
@@ -983,6 +998,7 @@ class GlassPanelRenderer:
             b = spec.border_color
             debug_tint = self._debug_tint_for(key)
             composite_updates = rhi.nextResourceUpdateBatch()
+            assert panel.composite_ubuf is not None
             composite_updates.updateDynamicBuffer(
                 panel.composite_ubuf,
                 0,
@@ -1046,6 +1062,7 @@ class GlassPanelRenderer:
             # docstring and pending_readbacks above.
             image_result = QRhiReadbackResult()
             image_updates = rhi.nextResourceUpdateBatch()
+            assert panel.composite_tex is not None
             image_updates.readBackTexture(
                 QRhiReadbackDescription(panel.composite_tex), image_result
             )
@@ -1084,7 +1101,7 @@ class GlassPanelRenderer:
             t_start = time.perf_counter() if _GLASS_PANEL_DEBUG else 0.0
             size = image_result.pixelSize
             image = QImage(
-                bytes(data),
+                bytes(data),  # type: ignore[call-overload]  # QByteArray supports buffer protocol
                 size.width(),
                 size.height(),
                 QImage.Format.Format_RGBA8888_Premultiplied,

@@ -35,7 +35,7 @@ layout(std140, binding = 0) uniform UBuf
 
 layout(binding = 1) uniform sampler2D scratchTex;
 // Alpha mask of this panel's HUD text glyphs, panel-local, same size/space
-// as scratchTex -- see GlassPanelSpec.text_mask_image / glass_hud.py's
+// as scratchTex -- see GlassPanelSpec.text_mask_image / glass_hud/text_mask.py's
 // _rebuild_text_mask(). Only .a is ever read; rgb is whatever plain white
 // paint premultiplied to, unused.
 layout(binding = 2) uniform sampler2D textMaskTex;
@@ -180,7 +180,7 @@ void main()
     // narrower than ~1px can't represent a smooth gradient at all and just
     // aliases instead, exactly the mechanism the original comment already
     // warned about for borderWidthPx itself). Keep this at 1.0/0.5 and tune
-    // *only* borderWidthPx (in glass_hud.py) if the ring still reads too
+    // *only* borderWidthPx (in glass_hud/text_mask.py) if the ring still reads too
     // heavy -- don't shrink the feather below ~1px/0.5px again.
     float aaBorder = 1.0;
     float aaBorderInner = 0.5;
@@ -199,7 +199,7 @@ void main()
     //
     // textMaskTex here is already this panel's own device resolution --
     // glass_panel.py's render_backdrops() rasterizes the mask supersampled
-    // (see glass_hud.py's _rebuild_text_mask()/_TEXT_MASK_SUPERSAMPLE),
+    // (see glass_hud/text_mask.py's _rebuild_text_mask()/_TEXT_MASK_SUPERSAMPLE),
     // uploads it undownscaled, then a dedicated Lanczos-2 downsample pass
     // (glass_text_downsample.frag) resolves it down to device resolution
     // once per mask change -- so a plain texture() read at LOD 0 here is

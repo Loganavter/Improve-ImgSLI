@@ -36,7 +36,9 @@ class VideoEditorService:
     def _ensure_materialized_snapshots(self) -> list[FrameSnapshot]:
         if self._current_snapshots is None:
             if self._source_recording is not None:
-                self._current_snapshots = self._source_recording.materialize_snapshots()
+                self._current_snapshots = list(
+                    self._source_recording.materialize_snapshots()  # type: ignore[attr-defined]  # recording is duck-typed
+                )
             else:
                 self._current_snapshots = []
         return self._current_snapshots

@@ -13,12 +13,16 @@ from __future__ import annotations
 
 from pathlib import Path
 import logging
+from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
 
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.image_compare.use_cases import drag_drop, host_callbacks, persistence, registration
+
+if TYPE_CHECKING:
+    from tabs.image_compare.widget import ImageCompareWidget
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -36,7 +40,11 @@ class ImageCompareTab(TabContract):
 
     @property
     def is_bootstrap_default(self) -> bool:
-        return True
+        # Not the bootstrap default — that role is reserved exclusively for
+        # session_picker (core.store.INITIAL_WORKSPACE_SESSION_TYPE).
+        # Legacy main-window shell services route by capability (the tab that
+        # implements them answers), so image_compare needs no declared role.
+        return False
 
     def create_default_session_data(self):
         from core.store_viewport import SessionData
@@ -74,8 +82,14 @@ class ImageCompareTab(TabContract):
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         from tabs.image_compare.widget import ImageCompareWidget
+        from tabs.image_compare.first_frame_debug import ic_first_frame_debug_enabled
 
         self._widget = ImageCompareWidget(parent, context=context)
+        if ic_first_frame_debug_enabled():
+            logger.info(
+                "[ic-page] create_page widget=%s",
+                str(hex(id(self._widget)))[-6:],
+            )
         return self._widget
 
     @property
@@ -90,10 +104,23 @@ class ImageCompareTab(TabContract):
             widgets = {}
             ui.legacy_tab_widgets = widgets
         widgets[self.session_type] = self._widget
+        from tabs.image_compare.first_frame_debug import ic_first_frame_debug_enabled
         from tabs.image_compare.ui.primitives import ImageComparePrimitivesFactory
 
+        if ic_first_frame_debug_enabled():
+            logger.info(
+                "[ic-page] assemble_host_page widget=%s",
+                str(hex(id(self._widget)))[-6:],
+            )
         parent = getattr(ui, "main_window", None) or self._widget
         ImageComparePrimitivesFactory(self._widget, ui).build(parent)
+        self._widget.image_label._ffd_primary = True
+        if ic_first_frame_debug_enabled():
+            logger.info(
+                "[ic-page] canvas built widget=%s canvas=%s",
+                str(hex(id(self._widget)))[-6:],
+                str(hex(id(self._widget.image_label)))[-6:],
+            )
         self._widget.assemble(ui)
         self._widget.image_label.set_drag_overlay_state(False)
         self._widget.drag_overlay.hide()
@@ -115,10 +142,15 @@ class ImageCompareTab(TabContract):
         return True
 
     def transition_hint(self) -> TabTransitionHint:
-        # QRhi warm-up can be long; widen the mask window vs the default 300 ms.
-        return TabTransitionHint(
-            cover_on_enter=True, min_duration_ms=50, max_duration_ms=400
-        )
+        # No cover mask: unified with multi_compare, both tabs rely on the
+        # canvas's own startup placeholder for first-frame coverage. The mask
+        # was dropped because on Wayland it blocks the QRhiWidget's first
+        # expose/initialize while covering the stack (measured on multi_compare:
+        # initialize delayed ~400ms until the mask force-released). First-frame
+        # readiness is instead gated on the genuinely compositor-visible
+        # present (see shared/rendering/first_frame_gate.py), and the
+        # placeholder hides only after that frame is on screen.
+        return TabTransitionHint(cover_on_enter=False)
 
     def on_activated(self, context: TabContext) -> None:
         session_id = self._resolve_active_session_id(context)

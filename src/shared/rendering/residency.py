@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from shared.image_processing.regions import UniformTileGrid
 from shared.rendering.render_debug import rhi_render_debug
 from shared.rendering.tile_constants import TILE_UPLOAD_BUDGET_PER_CALL
 from shared.rendering.tile_geometry import _TILE_APRON_PX, _TILE_RESIDENCY_MARGIN, crop_apron_tile
@@ -59,7 +60,7 @@ class ResidencySpec:
     tab-specific subclass before handing off to ``realize_specs``."""
 
     key: object
-    grid: object
+    grid: UniformTileGrid
     visible_rect: object
     crop_source: object
 

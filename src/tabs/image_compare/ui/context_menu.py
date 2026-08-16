@@ -79,32 +79,32 @@ class ImageCompareContextMenuProvider:
         return (
             ContextMenuAction(
                 "image_compare.copy_path",
-                self._tr("action.context_copy_path", "Copy path"),
+                self._tr("image_compare.action.context_copy_path", "Copy path"),
                 icon=Icon.COPY,
                 data=slot,
             ),
             ContextMenuAction(
                 "image_compare.duplicate_image",
-                self._tr("action.context_duplicate", "Duplicate"),
+                self._tr("image_compare.action.context_duplicate", "Duplicate"),
                 icon=Icon.ADD,
                 data=slot,
             ),
             ContextMenuAction(
                 "image_compare.show_properties",
-                self._tr("action.context_properties", "Properties"),
+                self._tr("image_compare.action.context_properties", "Properties"),
                 icon=Icon.PHOTO,
                 data=slot,
             ),
             ContextMenuAction(
                 "image_compare.carry_image",
-                self._tr("action.context_carry_image", "Move"),
+                self._tr("image_compare.action.context_carry_image", "Move"),
                 icon=Icon.MOVE,
                 data=slot,
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "image_compare.remove_image",
-                self._tr("action.context_remove", "Remove"),
+                self._tr("image_compare.action.context_remove", "Remove"),
                 icon=Icon.DELETE,
                 danger=True,
                 data=slot,
@@ -125,33 +125,33 @@ class ImageCompareContextMenuProvider:
         return (
             ContextMenuAction(
                 "image_compare.rename_list_item",
-                self._tr("action.context_rename", "Rename"),
+                self._tr("image_compare.action.context_rename", "Rename"),
                 icon=Icon.TEXT_MANIPULATOR,
                 data=ref,
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "image_compare.copy_path",
-                self._tr("action.context_copy_path", "Copy path"),
+                self._tr("image_compare.action.context_copy_path", "Copy path"),
                 icon=Icon.COPY,
                 data=ref,
             ),
             ContextMenuAction(
                 "image_compare.show_properties",
-                self._tr("action.context_properties", "Properties"),
+                self._tr("image_compare.action.context_properties", "Properties"),
                 icon=Icon.PHOTO,
                 data=ref,
             ),
             ContextMenuAction(
                 "image_compare.carry_list_item",
-                self._tr("action.context_carry_image", "Move"),
+                self._tr("image_compare.action.context_carry_image", "Move"),
                 icon=Icon.MOVE,
                 data=ref,
             ),
             ContextMenuSeparator(),
             ContextMenuAction(
                 "image_compare.remove_list_item",
-                self._tr("action.context_remove", "Remove"),
+                self._tr("image_compare.action.context_remove", "Remove"),
                 icon=Icon.DELETE,
                 danger=True,
                 data=ref,
@@ -192,8 +192,8 @@ class ImageCompareContextMenuProvider:
             parent = self.canvas.window()
         text, ok = self._run_modal_text_prompt(
             parent,
-            self._tr("action.context_rename", "Rename"),
-            self._tr("action.context_name", "Name"),
+            self._tr("image_compare.action.context_rename", "Rename"),
+            self._tr("image_compare.action.context_name", "Name"),
             current,
         )
         if not ok:
@@ -261,7 +261,7 @@ class ImageCompareContextMenuProvider:
     ) -> int | None:
         raw = value if value is not None else request.target.id
         try:
-            slot = int(raw)
+            slot = int(raw)  # type: ignore[arg-type]  # raw is duck-typed
         except (TypeError, ValueError):
             return None
         return slot if slot in (1, 2) else None
@@ -280,8 +280,8 @@ class ImageCompareContextMenuProvider:
             return None, None
         payload = request.target.payload or {}
         try:
-            list_num = int(payload.get("list_num"))
-            index = int(payload.get("index"))
+            list_num = int(payload.get("list_num"))  # type: ignore[arg-type]  # payload values are dynamic
+            index = int(payload.get("index"))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return None, None
         if list_num in (1, 2) and index >= 0:

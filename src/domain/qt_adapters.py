@@ -44,6 +44,8 @@ def ensure_visible_color(
     value cannot make a control look "unset" or hide a canvas line.
     """
     if hasattr(value, "r") and hasattr(value, "g") and hasattr(value, "b"):
+        if value is None:
+            return fallback
         a = getattr(value, "a", 255)
         if int(a) <= 0:
             return fallback

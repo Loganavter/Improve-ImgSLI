@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QRhiWidget
 from sli_ui_toolkit.managers import SettleGate
@@ -415,12 +415,13 @@ class MainWindowRuntime:
         if window._offscreen_prewarm_active:
             return
         if not window._is_ui_stable:
-            QTimer.singleShot(
-                50,
-                lambda: setattr(window, "_is_ui_stable", True)
-                or window.schedule_update()
-                or self._apply_window_minimum(window),
-            )
+            QTimer.singleShot(50, self._mark_ui_stable_and_finish)
+
+    def _mark_ui_stable_and_finish(self) -> None:
+        window = self.window
+        setattr(window, "_is_ui_stable", True)
+        window.schedule_update()
+        self._apply_window_minimum(window)
 
     def _apply_window_minimum(self, window) -> None:
         from ui.layout_geometry import apply_main_window_minimum

@@ -11,7 +11,8 @@ from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, ThemedWidge
 from ui.widgets.scroll_value_button import ScrollValueButton
 
 from sli_ui_toolkit.i18n import tr
-from tabs.layout_constants import CONTROL_EDGE_PADDING_PX
+from sli_ui_toolkit.managers import scaled_px
+from ui.layout_spacing import control_edge_padding
 from tabs.multi_compare.ui.layout_manager import MultiCompareLayoutManager
 from tabs.multi_compare.icons import Icon
 from ui.theming import resolve_theme_color
@@ -45,11 +46,11 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         text: str = "Add images",
     ):
         super().__init__(parent)
-        self.setFixedHeight(44)
+        self.setFixedHeight(scaled_px(44))
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 4, CONTROL_EDGE_PADDING_PX, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(control_edge_padding(), scaled_px(4), control_edge_padding(), scaled_px(4))
+        layout.setSpacing(scaled_px(8))
         self._layout = layout
         self._ui_mode = "beginner"
 
@@ -76,8 +77,8 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
             Icon.DIVIDER_COLOR,
             show_underline=True,
             parent=self,
-            # divider_color_clicked -> controller opens QColorDialog.getColor
-            # (native, modal) -- ripple must finish first.
+            # divider_color_clicked -> controller opens the themed
+            # ColorPickerDialog (non-modal) -- ripple must finish first.
             defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         self.btn_divider_color.setObjectName("mc_btn_divider_color")
@@ -207,7 +208,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         container = QWidget(self)
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(scaled_px(8))
         for button in buttons:
             layout.addWidget(button)
         return container

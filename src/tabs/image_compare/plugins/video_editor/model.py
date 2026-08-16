@@ -178,8 +178,11 @@ class VideoSessionModel:
         if start is None and end is None:
             selection = VideoSelectionState()
         else:
-            normalized_start = max(0, int(start if start is not None else end))
-            normalized_end = max(0, int(end if end is not None else start))
+            raw_start = start if start is not None else end
+            raw_end = end if end is not None else start
+            assert raw_start is not None and raw_end is not None
+            normalized_start = max(0, int(raw_start))
+            normalized_end = max(0, int(raw_end))
             selection = VideoSelectionState(
                 start=min(normalized_start, normalized_end),
                 end=max(normalized_start, normalized_end),

@@ -1,6 +1,8 @@
 import logging
+import os
+import shutil
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QTimer
 from PySide6.QtGui import QColor
 
 from core.constants import AppConstants
@@ -18,7 +20,87 @@ logger = logging.getLogger("ImproveImgSLI")
 
 class SettingsManager:
     def __init__(self, organization_name, application_name):
+        self._organization_name = organization_name
+        self._application_name = application_name
         self.settings = QSettings(organization_name, application_name)
+        self._backup_path = self.settings.fileName() + ".backup"
+        logger.debug(
+            "[settings] SettingsManager init file=%s backup=%s",
+            self.settings.fileName(),
+            self._backup_path,
+        )
+        if self._restore_backup_if_corrupt():
+            # The QSettings instance cached the corrupt state; re-read the
+            # restored file with a fresh instance.
+            self.settings = QSettings(organization_name, application_name)
+            self._backup_path = self.settings.fileName() + ".backup"
+
+    def _caller_summary(self) -> str:
+        """Last 3 non-manager call frames, for load/save origin tracing.
+
+        Settings resets are reported as "random" — the value of this log is
+        catching *which* code path triggered a load/save, not just that one
+        happened.
+        """
+        try:
+            import traceback
+
+            here = os.path.abspath(__file__)
+            # extract_stack is ordered outermost-first; keep the nearest 3
+            # non-manager frames and print nearest-first so the log reads
+            # "who called us" -> "who called them".
+            frames = [
+                frame
+                for frame in traceback.extract_stack()[:-1]
+                if os.path.abspath(frame.filename) != here
+            ][-3:]
+            return " <- ".join(
+                f"{os.path.basename(frame.filename)}:{frame.lineno}:{frame.name}"
+                for frame in reversed(frames)
+            )
+        except Exception:
+            return "unknown"
+
+    def _restore_backup_if_corrupt(self) -> bool:
+        """Heal a truncated/corrupt settings file from the last-good backup.
+
+        QSettings writes its INI in place (open-truncate-write-close), so a
+        kill/crash mid-save leaves a truncated file. The next startup then
+        loads defaults and a clean exit re-writes them — permanently wiping
+        the user's settings (observed: language and UI prefs reset to
+        defaults after dev iterations that kill the app). A startup that
+        finds the file present but missing the critical keys restores the
+        ``.backup`` copy instead.
+        """
+        path = self.settings.fileName()
+        if not os.path.exists(path):
+            return False
+        keys = len(self.settings.allKeys())
+        logger.debug(
+            "[settings] health check: file=%s keys=%d backup=%s",
+            path,
+            keys,
+            os.path.exists(self._backup_path),
+        )
+        if self.settings.contains("language") or self.settings.contains("theme"):
+            return False
+        if not os.path.exists(self._backup_path):
+            logger.warning(
+                "Settings file looks empty/corrupt but no .backup exists to "
+                "restore from: %s",
+                path,
+            )
+            return False
+        try:
+            shutil.copy2(self._backup_path, path)
+            logger.warning(
+                "Settings file was corrupt/truncated; restored from backup: %s",
+                path,
+            )
+            return True
+        except Exception:
+            logger.exception("Failed to restore settings from backup %s", self._backup_path)
+            return False
 
     def _get_setting(self, key, default, target_type):
         if not self.settings.contains(key):
@@ -39,6 +121,12 @@ class SettingsManager:
         v, s = store.viewport, store.settings
         render = v.render_config
         view = v.view_state
+        logger.debug(
+            "[settings] load_all_settings START caller=%s file=%s keys_in_file=%d",
+            self._caller_summary(),
+            self.settings.fileName(),
+            len(self.settings.allKeys()),
+        )
 
         render.max_name_length = self._get_setting("max_name_length", 50, int)
         render.display_resolution_limit = self._get_setting(
@@ -52,6 +140,9 @@ class SettingsManager:
         s.theme = self._get_setting("theme", "auto", str)
         s.current_language = self._get_setting("language", "en", str)
         s.ui_mode = self._get_setting("ui_mode", "beginner", str)
+        s.ui_scale_factor = self._get_setting("ui_scale_factor", 1.0, float)
+        s.ui_font_mode = self._get_setting("ui_font_mode", "builtin", str)
+        s.ui_font_family = self._get_setting("ui_font_family", "", str)
         s.debug_mode_enabled = self._get_setting("debug_mode_enabled", False, bool)
         s.system_notifications_enabled = self._get_setting(
             "system_notifications_enabled", True, bool
@@ -150,11 +241,61 @@ class SettingsManager:
             "-c:v libx264 -crf 23 -pix_fmt yuv420p",
             str,
         )
+        logger.debug(
+            "[settings] load_all_settings DONE theme=%s language=%s ui_mode=%s "
+            "ui_scale=%s window=%dx%d keys_in_file=%d",
+            s.theme,
+            s.current_language,
+            s.ui_mode,
+            s.ui_scale_factor,
+            s.window_width,
+            s.window_height,
+            len(self.settings.allKeys()),
+        )
+
+    def schedule_persist(self, store: Store) -> None:
+        """Debounced full-snapshot save — the single writer for dialog-apply
+        state (coalesced: repeated calls within the debounce window save once).
+
+        The settings file must only ever be written as a coherent snapshot of
+        the authoritative Store. Writing individual keys from UI state (the
+        previous ``apply()`` behavior) allowed a stale dialog widget to
+        silently overwrite good values with its defaults — the observed
+        "random settings reset" (ui_mode/scale/rhi reverted). Callers that
+        mutate the Store (dispatches) call this; the snapshot then reflects
+        whatever the Store holds.
+        """
+        if getattr(self, "_persist_pending", False):
+            return
+        self._persist_pending = True
+
+        def _run() -> None:
+            self._persist_pending = False
+            try:
+                self.save_all_settings(store)
+            except Exception:
+                logger.exception("[settings] scheduled full persist failed")
+
+        QTimer.singleShot(150, _run)
 
     def save_all_settings(self, store: Store):
         v, s = store.viewport, store.settings
         render = v.render_config
         view = v.view_state
+        logger.debug(
+            "[settings] save_all_settings START caller=%s file=%s "
+            "store_digest=theme=%s language=%s ui_mode=%s ui_scale=%s "
+            "window=%dx%d rhi_backend=%s",
+            self._caller_summary(),
+            self.settings.fileName(),
+            s.theme,
+            s.current_language,
+            s.ui_mode,
+            s.ui_scale_factor,
+            s.window_width,
+            s.window_height,
+            s.rhi_backend,
+        )
         self._save_setting("max_name_length", render.max_name_length)
         self._save_setting("display_resolution_limit", render.display_resolution_limit)
 
@@ -165,6 +306,10 @@ class SettingsManager:
         self._save_setting("theme", s.theme)
         self._save_setting("language", s.current_language)
         self._save_setting("ui_mode", s.ui_mode)
+        self._save_setting("ui_scale_factor", s.ui_scale_factor)
+        self._save_setting("ui_font_mode", s.ui_font_mode)
+        self._save_setting("ui_font_family", s.ui_font_family)
+        self._save_setting("debug_mode_enabled", s.debug_mode_enabled)
         self._save_setting(
             "system_notifications_enabled", s.system_notifications_enabled
         )
@@ -228,6 +373,27 @@ class SettingsManager:
         self._save_setting("export_video_manual_args", s.export_video_manual_args)
 
         self.settings.sync()
+        self._refresh_backup()
+        logger.debug(
+            "[settings] save_all_settings DONE keys_in_file=%d backup=%s",
+            len(self.settings.allKeys()),
+            self._backup_path,
+        )
+
+    def _refresh_backup(self) -> None:
+        """Keep a last-good copy of the settings file next to it.
+
+        Refreshed after every successful save so the startup self-heal
+        (``_restore_backup_if_corrupt``) restores recent settings rather
+        than stale ones.
+        """
+        try:
+            path = self.settings.fileName()
+            if os.path.exists(path):
+                shutil.copy2(path, self._backup_path)
+                logger.debug("[settings] backup refreshed: %s", self._backup_path)
+        except Exception:
+            logger.debug("Settings backup refresh failed", exc_info=True)
 
     def _iter_all_canvas_feature_properties(self):
         from tabs.registry import TabRegistry
@@ -302,6 +468,11 @@ class SettingsManager:
 
     def _save_setting(self, key, value):
         if value is None:
+            logger.debug(
+                "[settings] skip saving %s (None) caller=%s",
+                key,
+                self._caller_summary(),
+            )
             return
         self.settings.setValue(key, value)
 
@@ -320,3 +491,16 @@ class SettingsManager:
 
     def set_first_run_completed(self):
         self._save_setting("is_first_run", False)
+
+    def last_seen_app_version(self) -> str:
+        """Version string recorded the last time this profile ran, or ""
+        if never recorded. Existing installs from before this tracking
+        existed also read back "" here -- see
+        ``core.bootstrap.ApplicationContext._maybe_flag_cache_purge_notice``,
+        which uses that (combined with ``is_first_run()`` being False) to
+        tell "genuinely fresh install" apart from "upgraded from an
+        untracked version"."""
+        return self._get_setting("last_seen_app_version", "", str)
+
+    def set_last_seen_app_version(self, version: str) -> None:
+        self._save_setting("last_seen_app_version", version)

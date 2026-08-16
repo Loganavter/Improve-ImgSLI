@@ -29,11 +29,12 @@ shared by multiple tabs.
 ## Local Docs
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - current tab architecture and boundaries.
-- **investigations** (private, `improve-imgsli-internal-docs` repo, this
-  same path `src/tabs/image_compare/docs/investigations/`) — long-form case
-  write-ups for rendering bugs confined to this tab (divider, magnifier).
-  Cross-tab investigations live at `docs/dev/rendering/investigations/` in
-  that same private repo.
+- [investigations/](investigations/) — case write-ups for bugs confined to
+  this tab (divider, magnifier).
+  This folder mirrors a private `improve-imgsli-internal-docs` repo
+  (same relative path) for long-form write-ups that stay out of the public
+  history; cross-tab investigations live at
+  `docs/dev/rendering/investigations/` in that same private repo.
 
 ## Rules
 

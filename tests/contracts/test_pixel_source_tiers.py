@@ -1,4 +1,14 @@
-"""AST contract: materialize_full / to_real_pil_copy stay in allowlisted modules."""
+"""AST contract: materialize_full / to_real_pil_copy / to_pil stay in allowlisted modules.
+
+``to_pil`` was a full-frame store escape hatch (alias of
+``materialize_full``); it used to leak into ``base_images.letterbox_pil``
+(see pyvips-streaming-plan Phase 3) where a cache miss momentarily left a
+full-res ``TiledPixelStore`` in the "stored" role and letterboxing
+materialized the whole frame just to downscale it. The alias itself has
+been deleted (no call sites left in ``src/``); the name stays in the
+scanner so a reintroduced ``to_pil``/``materialize_full``/``to_real_pil_copy``
+call outside the allowlist fails the suite.
+"""
 
 from __future__ import annotations
 
@@ -8,12 +18,11 @@ from tests.contracts._framework import ROOT, iter_py, rel
 
 ALLOWLIST = {
     "src/shared/image_processing/tiled_pixel_store.py",
+    # memmap-failure fallback in the unify large path (`to_real_pil_copy`).
     "src/shared/image_processing/pixel_ops/unify.py",
-    # Escape hatch: ``load_full_image`` spills via ``from_path`` then materializes.
-    "src/shared/image_processing/progressive_loader.py",
-    "src/tabs/image_compare/services/image_export/context_builder.py",
-    "src/tabs/image_compare/services/image_export/service.py",
 }
+
+_FULL_FRAME_CALLS = {"materialize_full", "to_real_pil_copy", "to_pil"}
 
 
 def _calls_materialize_or_to_real(path) -> list[tuple[str, int]]:
@@ -31,7 +40,7 @@ def _calls_materialize_or_to_real(path) -> list[tuple[str, int]]:
             name = node.func.attr
         elif isinstance(node.func, ast.Name):
             name = node.func.id
-        if name in {"materialize_full", "to_real_pil_copy"}:
+        if name in _FULL_FRAME_CALLS:
             hits.append((name, node.lineno))
     return hits
 
@@ -76,7 +85,7 @@ def test_materialize_full_confined_to_allowlist():
         hits = _calls_materialize_or_to_real(path)
         if hits:
             offenders.append(f"{rel_path}: {hits}")
-    assert not offenders, "Unexpected materialize/to_real_pil_copy calls:\n" + "\n".join(
+    assert not offenders, "Unexpected materialize/to_real_pil_copy/to_pil calls:\n" + "\n".join(
         offenders
     )
 

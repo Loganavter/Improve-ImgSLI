@@ -25,10 +25,10 @@ def apply_translations(dialog, lang: str) -> None:
 def _apply_labels(dialog, lang: str) -> None:
     labels = (
         (dialog.lbl_resolution, "label.resolution"),
-        (dialog.lbl_fps, "label.fps"),
+        (dialog.lbl_fps, "image_compare.label.fps"),
         (dialog.lbl_preview_quality, "video.preview_quality"),
-        (dialog.lbl_container, "label.container"),
-        (dialog.lbl_video_codec, "label.video_codec"),
+        (dialog.lbl_container, "image_compare.label.container"),
+        (dialog.lbl_video_codec, "image_compare.label.video_codec"),
         (dialog.lbl_pix_fmt, "video.pixel_format"),
         (dialog.lbl_quality_control, "video.quality_control"),
         (dialog.lbl_quality_value, "video.crf_value_hint"),
@@ -41,24 +41,24 @@ def _apply_labels(dialog, lang: str) -> None:
 
 
 def _apply_buttons(dialog, lang: str) -> None:
-    dialog.btn_export.setText(tr("action.export_video", lang))
-    dialog.btn_stop_export.setToolTip(tr("button.stop", lang))
+    dialog.btn_export.setText(tr("image_compare.action.export_video", lang))
+    dialog.btn_stop_export.setToolTip(tr("image_compare.button.stop", lang))
     dialog.btn_lock_ratio.setToolTip(tr("video.lock_aspect_ratio", lang))
-    dialog.btn_fit_content.setToolTip(tr("magnifier.fit_mode_toggle", lang))
+    dialog.btn_fit_content.setToolTip(tr("image_compare.magnifier.fit_mode_toggle", lang))
     dialog.btn_fit_fill_color.setToolTip(tr("export.select_background_color", lang))
     dialog.btn_play.setToolTip(
         f"{tr('button.play', lang)} / {tr('button.pause', lang)}"
     )
-    dialog.btn_undo.setToolTip(tr("button.undo_ctrlz", lang))
-    dialog.btn_redo.setToolTip(tr("button.redo", lang))
-    dialog.btn_trim.setToolTip(tr("button.trim_to_selection", lang))
+    dialog.btn_undo.setToolTip(tr("image_compare.button.undo_ctrlz", lang))
+    dialog.btn_redo.setToolTip(tr("image_compare.button.redo", lang))
+    dialog.btn_trim.setToolTip(tr("image_compare.button.trim_to_selection", lang))
 
 
 def _apply_tabs(dialog, lang: str) -> None:
     tab_specs = (
         (dialog.tab_standard, "video.standard"),
         (dialog.tab_manual, "video.manual_cli"),
-        (dialog.tab_output, "label.output"),
+        (dialog.tab_output, "image_compare.label.output"),
         (dialog.tab_log, "video.export_log"),
     )
 

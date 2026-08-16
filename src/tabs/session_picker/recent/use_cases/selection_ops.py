@@ -10,7 +10,7 @@ rationale -- keeps behavior identical if a caller monkeypatches an instance
 method. ``remove_recent_project`` is likewise re-read from the ``panel``
 module (imported lazily to dodge the circular import) rather than imported
 straight from ``services.io.recent_projects``, since
-``tests/runtime/test_recent_projects_panel.py`` monkeypatches
+``src/tabs/session_picker/tests/runtime/test_recent_projects_panel.py`` monkeypatches
 ``"tabs.session_picker.recent.panel.remove_recent_project"``.
 """
 

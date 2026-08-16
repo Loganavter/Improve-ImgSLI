@@ -65,7 +65,7 @@ class SettingsPresenter(QObject):
         title_key: str,
         on_selected,
         post_apply=None,
-        show_alpha: bool = False,
+        show_alpha: bool = True,
         parent_window=None,
     ):
         self.color_pickers.show_color_picker(

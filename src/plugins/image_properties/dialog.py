@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import (
     Button,
     ContextMenuAction,
@@ -79,8 +80,12 @@ class ImagePropertiesDialog(ThemedDialog):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        # First paint can race deferred geometry; activate stretch on show.
-        QTimer.singleShot(0, self._finalize_layout_and_size)
+        # Apply the computed geometry before the first paint — showEvent runs
+        # before the dialog's first frame is drawn, so the deferred 0-timer
+        # (scheduled in __init__) would otherwise land after a visible frame
+        # at the CSD-adjustSize size. The __init__ timer stays as the
+        # pre-show (already-sized) fallback.
+        self._finalize_layout_and_size()
 
     def changeEvent(self, event):
         handle_application_font_change(self, event)
@@ -127,13 +132,13 @@ class ImagePropertiesDialog(ThemedDialog):
             variant="surface",
             parent=actions,
         )
-        self.copy_all_button.setMinimumSize(110, 36)
+        self.copy_all_button.setMinimumSize(scaled_px(110), scaled_px(36))
         self.close_button = Button(
             text=self._tr("image_properties.close", "Close"),
             variant="surface",
             parent=actions,
         )
-        self.close_button.setMinimumSize(100, 36)
+        self.close_button.setMinimumSize(scaled_px(100), scaled_px(36))
         self.copy_all_button.clicked.connect(self._copy_all)
         self.close_button.clicked.connect(self.accept)
 

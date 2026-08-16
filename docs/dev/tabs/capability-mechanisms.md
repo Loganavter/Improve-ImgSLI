@@ -173,21 +173,33 @@ mechanism exists because canvas geometry specifically is hot-path and
 cohesive. Anything else that looks reusable is `create_service` by default;
 only promote to a typed protocol with an explicit decision, not by default.
 
-## Bootstrap seam: `is_bootstrap_default`
+## Bootstrap seam: `is_bootstrap_default` (reserved for `session_picker`)
 
-The main-window shell is built once at startup, before any workspace session
-exists for `sync_session_mode()` to `activate()`. During that narrow window
-`_active_session_type` is `None`, and every `create_service`/
-`create_main_window_feature` call would return `None` — which breaks the
-`"image_canvas"` feature the app unconditionally builds on startup.
-Rather than hardcoding a tab name in generic startup code, `TabContract` has
-an `is_bootstrap_default: bool` property (default `False`); exactly one tab
-sets it `True`. `TabRegistry.activate_default()` finds that tab (logs an
-error and no-ops if zero or more than one tab claims it) and activates it.
-`ui/main_window/layouts.py` calls `activate_default()` without naming any
-tab. `image_compare` currently sets `is_bootstrap_default = True` because it
-is the only tab implementing `"image_canvas"`. **This is a stopgap**, not a
-structural fix — see `create_main_window_feature` above for the real fix.
+`TabContract.is_bootstrap_default: bool` (default `False`) names the tab that
+owns the app's *initial workspace session* — the tab behind
+`core.store.INITIAL_WORKSPACE_SESSION_TYPE`, i.e. **`session_picker`**. The
+role is reserved exclusively for that tab: `TabRegistry._bootstrap_default_tab()`
+raises if any other tab claims it, and `TabRegistry.activate_default()` seeds
+`_active_session_type` from it for the narrow window before the first real
+`sync_session_mode()` call reconciles it. `ui/main_window/layouts.py` calls
+`activate_default()` without naming any tab, and `bootstrap_default_tab()`
+resolves to it.
+
+**This flag does NOT route legacy main-window shell construction.** Legacy
+shell wiring is routed by capability — see below.
+
+## Legacy shell: routing by capability (no privileged tab)
+
+The one-time legacy main-window shell (the `"image_canvas"` feature and the
+toolbar/export/layout/magnifier startup services) is resolved by
+`TabRegistry.create_startup_service`/`create_main_window_feature` **by
+capability**: each registered tab is asked in registration order (bootstrap
+before deferred), and the first one whose `create_service` /
+`create_main_window_feature` returns a non-`None` answer provides the
+service/feature. There is no flag or hardcoded session type a tab can use to
+"claim" shell-hosting, and no tab has a privileged role. `image_compare`
+happens to answer all of today's legacy shell capabilities purely because it
+is the tab that implements them.
 
 ## Policy — when a `create_service`/`create_startup_service` ID is legitimate
 

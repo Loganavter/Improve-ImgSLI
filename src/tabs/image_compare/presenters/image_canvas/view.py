@@ -150,6 +150,17 @@ def display_single_image_on_label(presenter, pil_image: PIL.Image.Image | None):
                 image_uid(pil_image),
                 img_size,
             )
+            from shared.rendering.tile_debug import log_tile_event, tile_dump_enabled
+
+            if tile_dump_enabled():
+                log_tile_event(
+                    "single_image_mode_switch",
+                    mode=presenter.store.viewport.view_state.showing_single_image_mode,
+                    single_key=str(single_key),
+                    image1_path=document.image1_path,
+                    image2_path=document.image2_path,
+                    img_size=img_size,
+                )
             apply_store_to_canvas(
                 image_label,
                 presenter.store,

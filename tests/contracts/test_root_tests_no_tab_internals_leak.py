@@ -71,6 +71,11 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "rehydrate-hook contract tested across both ImageCompareTab and "
         "MultiCompareTab, not one tab's own behavior"
     ),
+    "tests/runtime/test_shared_presentation_isolation.py": (
+        "Phase-5 shared-presentation contract (no direct feature lookups "
+        "outside canvas_features); alias-resolution check registers the "
+        "image_compare feature package only as the registry fixture"
+    ),
     "tests/contracts/test_tile_constants.py": (
         "cross-cutting tile-constant consistency contract spanning host, "
         "image_compare, and multi_compare"

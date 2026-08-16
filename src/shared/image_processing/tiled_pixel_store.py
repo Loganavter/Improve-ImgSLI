@@ -28,13 +28,32 @@ logger = logging.getLogger("ImproveImgSLI")
 _spill_dir_cache: str | None = None
 _AUTO_CROP_PROBE_MAX = 1024
 
-# PID sentinel file written into the spill dir so purge skips *this* process.
-_pid_sentinel_path: str | None = None
+# Held for the process's whole lifetime once acquired (module-level so it
+# isn't garbage-collected, which would release the OS lock early). Whether
+# *this* process is the sole live holder of the spill dir -- see
+# resolve_pixel_spill_dir's docstring for why this replaced a hand-rolled
+# PID-sentinel-plus-/proc scheme.
+_instance_lock = None
+_have_exclusive_lock = False
 
 
 def resolve_pixel_spill_dir() -> str | None:
-    """Disk-backed directory for memmap spill files (not tmpfs)."""
-    global _spill_dir_cache, _pid_sentinel_path
+    """Disk-backed directory for memmap spill files (not tmpfs).
+
+    Also acquires an exclusive, cross-platform ``QLockFile`` on the
+    directory for the rest of this process's life, recording the result in
+    ``_have_exclusive_lock`` for :func:`purge_stale_spill_files` to read.
+
+    This used to be a hand-written PID-sentinel file checked against
+    ``/proc`` to decide whether a leftover lock belonged to a dead process
+    -- ``/proc`` only exists on Linux, so the same scheme ported naively to
+    the Windows/macOS builds this project also ships would need a second,
+    platform-specific liveness check. ``QLockFile`` already solves exactly
+    this (stale-lock detection via PID+hostname, or a time-based fallback
+    when that isn't possible) with one implementation Qt maintains per
+    platform, so there is nothing OS-specific left here at all.
+    """
+    global _spill_dir_cache
     if _spill_dir_cache is not None:
         return _spill_dir_cache
     try:
@@ -47,76 +66,55 @@ def resolve_pixel_spill_dir() -> str | None:
             spill_dir = os.path.join(cache_dir, "pixel_tile_store")
             os.makedirs(spill_dir, exist_ok=True)
             _spill_dir_cache = spill_dir
-
-            # Write a zero-byte sentinel so concurrent purge calls skip us.
-            sentinel = os.path.join(spill_dir, f"pid_{os.getpid()}.lock")
-            try:
-                with open(sentinel, "w"):
-                    pass
-                _pid_sentinel_path = sentinel
-                import atexit
-                atexit.register(_remove_pid_sentinel)
-            except OSError:
-                pass
-
+            _acquire_instance_lock(spill_dir)
             return spill_dir
     except Exception as exc:
         logger.debug("Failed to resolve Qt cache location for spill dir: %s", exc)
     return None
 
 
-def _remove_pid_sentinel() -> None:
-    global _pid_sentinel_path
-    path = _pid_sentinel_path
-    _pid_sentinel_path = None
-    if path:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+def _acquire_instance_lock(spill_dir: str) -> None:
+    """Split out of :func:`resolve_pixel_spill_dir` so tests can drive the
+    lock-acquisition step directly against a temp directory without also
+    needing to fake ``QStandardPaths``'s real cache location.
+
+    Non-blocking: a live sibling instance must not stall our startup.
+    ``QLockFile.tryLock`` itself detects and removes a stale lock left by a
+    dead process (crash, force-kill) before granting it to us, so a
+    leftover lock file is never a permanent blocker the way the old
+    PID-sentinel scheme could become if its dead-PID sweep never got to run
+    (see ``bootstrap.py``'s ``_purge_stale_pixel_spill`` docstring for that
+    race)."""
+    global _instance_lock, _have_exclusive_lock
+    from PySide6.QtCore import QLockFile
+
+    lock = QLockFile(os.path.join(spill_dir, ".instance.lock"))
+    _have_exclusive_lock = lock.tryLock(0)
+    _instance_lock = lock  # keep alive regardless of outcome
 
 
 def purge_stale_spill_files() -> int:
     """Delete leftover ``imgsli_tps_*.raw`` files from crashed/killed sessions.
 
     Safe to call at startup before any :class:`TiledPixelStore` is allocated
-    for this process (the PID sentinel is written in :func:`resolve_pixel_spill_dir`
-    which must have been called first).
+    for this process (:func:`resolve_pixel_spill_dir` must have been called
+    first -- it decides, via the exclusive lock, whether purging is safe).
 
-    Returns the number of bytes reclaimed.
+    Only purges when this process holds the exclusive spill-dir lock, i.e.
+    no other ImgSLI instance is currently live: with the lock held, every
+    ``imgsli_tps_*.raw`` file found is guaranteed to be either ours (none
+    yet, since this runs before any store is allocated) or an orphan from a
+    session that's provably no longer running. Returns the number of bytes
+    reclaimed.
     """
     spill_dir = resolve_pixel_spill_dir()
     if not spill_dir:
         return 0
 
-    # Collect live PIDs so we can skip files that belong to a running process.
-    try:
-        live_pids: set[int] | None = {
-            int(p) for p in os.listdir("/proc") if p.isdigit()
-        }
-    except OSError:
-        # Cannot tell who is alive; treat every sentinel as live (no purge).
-        live_pids = None
-
-    # PID sentinels written by live ImgSLI processes. Sentinels from dead
-    # PIDs (crashed/killed sessions) are removed here — a stale lock must
-    # not block purging forever.
-    sentinel_pids: set[int] = set()
-    try:
-        for name in os.listdir(spill_dir):
-            if name.startswith("pid_") and name.endswith(".lock"):
-                try:
-                    pid = int(name[4:-5])
-                except ValueError:
-                    continue
-                if live_pids is not None and pid not in live_pids:
-                    try:
-                        os.remove(os.path.join(spill_dir, name))
-                    except OSError:
-                        sentinel_pids.add(pid)
-                    continue
-                sentinel_pids.add(pid)
-    except OSError:
+    if not _have_exclusive_lock:
+        logger.debug(
+            "[SpillPurge] Another live ImgSLI instance holds the spill dir lock, skipping purge."
+        )
         return 0
 
     reclaimed = 0
@@ -127,19 +125,6 @@ def purge_stale_spill_files() -> int:
             full = os.path.join(spill_dir, name)
             try:
                 size = os.path.getsize(full)
-            except OSError:
-                continue
-            # Skip if any live ImgSLI process has a sentinel in this dir —
-            # we cannot tell which files belong to which process, so be
-            # conservative: only purge when NO other ImgSLI process is live.
-            if sentinel_pids - {os.getpid()}:
-                # Another live ImgSLI instance — bail entirely.
-                logger.debug(
-                    "[SpillPurge] Other live ImgSLI process detected (pids %s), skipping purge.",
-                    sentinel_pids - {os.getpid()},
-                )
-                return reclaimed
-            try:
                 os.remove(full)
                 reclaimed += size
                 logger.debug("[SpillPurge] Removed stale spill file %s (%d bytes)", name, size)
@@ -288,7 +273,7 @@ def _find_trim_box_vips(
     if not PYVIPS_SUPPORTED:
         return None
     try:
-        import pyvips
+        import pyvips  # type: ignore[import-untyped]  # pyvips has no stubs
 
         a = np.ascontiguousarray(rgb[:, :, :3], dtype=np.uint8)
         h, w = a.shape[0], a.shape[1]
@@ -507,8 +492,8 @@ class TiledPixelStore:
         tile_size: int,
         generation: int = 0,
     ):
-        self._memmap = memmap
-        self._path = path
+        self._memmap: np.memmap | None = memmap
+        self._path: str | None = path
         self._tile_size = max(1, int(tile_size))
         self._generation = int(generation)
         self.info: dict = {}
@@ -599,12 +584,15 @@ class TiledPixelStore:
     ) -> "TiledPixelStore":
         import time
         from core.constants import AppConstants
-        from shared.image_processing.progressive_loader import ImageSizeLimitError, PYVIPS_SUPPORTED
+        from shared.image_processing.progressive_loader import (
+            ImageSizeLimitError,
+            pyvips_can_stream,
+        )
 
         t0 = time.perf_counter()
         path_str = os.fspath(path)
         logger.info(f"[TileStore] from_path starting for {path_str} (auto_crop={auto_crop})")
-        if PYVIPS_SUPPORTED and not path_str.lower().endswith(".jxl"):
+        if pyvips_can_stream(path_str):
             try:
                 memmap, spill_path, out_w, out_h = _stream_pyvips_to_memmap(path_str, tmp_dir, auto_crop=auto_crop)
                 memmap = _reopen_readonly(spill_path, out_h, out_w)
@@ -699,16 +687,16 @@ class TiledPixelStore:
 
     @property
     def size(self) -> tuple[int, int]:
-        height, width, _ = self._memmap.shape
+        height, width, _ = self._ensure_open().shape
         return (width, height)
 
     @property
     def width(self) -> int:
-        return self._memmap.shape[1]
+        return self._ensure_open().shape[1]
 
     @property
     def height(self) -> int:
-        return self._memmap.shape[0]
+        return self._ensure_open().shape[0]
 
     def _ensure_open(self) -> np.memmap:
         if self._memmap is None:
@@ -744,9 +732,6 @@ class TiledPixelStore:
         """
         memmap = self._ensure_open()
         return Image.fromarray(np.array(memmap), mode="RGBA")
-
-    def to_pil(self) -> Image.Image:
-        return self.materialize_full()
 
     def close(self) -> None:
         path = self._path
@@ -786,6 +771,25 @@ def qimage_from_pixel_source(source, box: tuple[int, int, int, int] | None = Non
             left, top, right, bottom = box
             return source.copy(left, top, right - left, bottom - top)
         return source
+
+    if isinstance(source, np.ndarray):
+        arr = np.ascontiguousarray(source)
+        if arr.ndim != 3 or arr.shape[2] < 4:
+            rgba = np.empty((arr.shape[0], arr.shape[1], 4), dtype=np.uint8)
+            rgba[:, :, :3] = arr[:, :, :3] if arr.ndim == 3 and arr.shape[2] >= 3 else arr
+            rgba[:, :, 3] = 255
+            arr = rgba
+        if box is not None:
+            left, top, right, bottom = box
+            arr = np.ascontiguousarray(arr[top:bottom, left:right])
+        height, width, _ = arr.shape
+        return QImage(
+            arr.data,
+            width,
+            height,
+            width * 4,
+            QImage.Format.Format_RGBA8888,
+        ).copy()
 
     if isinstance(source, TiledPixelStore):
         if box is not None:
@@ -829,13 +833,16 @@ def qimage_from_pixel_source(source, box: tuple[int, int, int, int] | None = Non
 
 def pixel_source_size(source) -> tuple[int, int]:
     """``(width, height)`` for any renderer pixel source: ``TiledPixelStore``
-    exposes it as a tuple property, ``QImage`` as a method pair — callers that
-    accept either (e.g. progressive-preview upload paths) go through this
-    instead of hardcoding one shape."""
+    exposes it as a tuple property, ``QImage`` as a method pair, numpy arrays
+    as ``(H, W, C)`` shape — callers that accept any of these (e.g.
+    progressive-preview upload paths) go through this instead of hardcoding
+    one shape."""
     from PySide6.QtGui import QImage
 
     if isinstance(source, QImage):
         return source.width(), source.height()
+    if isinstance(source, np.ndarray):
+        return int(source.shape[1]), int(source.shape[0])
     return source.size
 
 

@@ -4,13 +4,18 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import (
+    QImage,
+    QRhi,
     QRhiBuffer,
     QRhiColorAttachment,
     QRhiGraphicsPipeline,
     QRhiSampler,
     QRhiShaderResourceBinding,
+    QRhiRenderPassDescriptor,
+    QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiTexture,
+    QRhiTextureRenderTarget,
     QRhiTextureRenderTargetDescription,
     QRhiVertexInputAttribute,
     QRhiVertexInputBinding,
@@ -27,17 +32,17 @@ _VERTEX_BUFFER_SIZE = _VERTEX_STRIDE * 4
 
 class LabelSlot:
     def __init__(self) -> None:
-        self.vertex_buffer = None
+        self.vertex_buffer: QRhiBuffer | None = None
         # Final, device-resolution texture -- what filename_overlay.frag
         # actually samples for the on-screen quad. Filled by the downsample
         # pass below, not uploaded directly (see raw_texture).
-        self.texture = None
+        self.texture: QRhiTexture | None = None
         self.texture_size: QSize | None = None
-        self.srb_nearest = None
-        self.srb_linear = None
+        self.srb_nearest: QRhiShaderResourceBindings | None = None
+        self.srb_linear: QRhiShaderResourceBindings | None = None
         # CPU-uploaded source: the label rasterized supersampled (see
         # render/label_raster.py's _LABEL_SUPERSAMPLE), undownscaled.
-        self.raw_texture = None
+        self.raw_texture: QRhiTexture | None = None
         self.raw_texture_size: QSize | None = None
         # Set by prepare() when the label was just re-rasterized, consumed
         # (uploaded, then cleared) by record_pre_pass() -- NOT queued into
@@ -48,21 +53,21 @@ class LabelSlot:
         # own resourceUpdate(), submitted right before that read, same
         # ordering shared.rendering.glass_panel.render_backdrops() already
         # uses for its own upload-then-downsample-same-call sequence.
-        self.pending_upload_image = None
+        self.pending_upload_image: QImage | None = None
         # Lanczos-2 downsample stage: raw_texture -> texture, one dedicated
         # pipeline/target per slot (not shared across slots -- mirrors
         # shared.rendering.glass_panel._PanelGpu's own "every panel gets its
         # own pipeline+rpdesc" precedent, after a confirmed cross-target
         # leak/ghosting bug from sharing one there).
-        self.downsample_target = None
-        self.downsample_rpdesc = None
-        self.downsample_pipeline = None
-        self.srb_downsample = None
+        self.downsample_target: QRhiTextureRenderTarget | None = None
+        self.downsample_rpdesc: QRhiRenderPassDescriptor | None = None
+        self.downsample_pipeline: QRhiGraphicsPipeline | None = None
+        self.srb_downsample: QRhiShaderResourceBindings | None = None
         # True from the frame a new raw_texture upload is pending until
         # record_pre_pass() has actually uploaded it and run the downsample
         # pass once for it.
         self.needs_downsample: bool = False
-        self.content_key: object = None
+        self.content_key: object | None = None
         self.active: bool = False
         self.smooth: bool = False
         self.vertices: bytes | None = None
@@ -112,11 +117,11 @@ class FilenameOverlayGpuResources:
     """
 
     def __init__(self) -> None:
-        self.rhi = None
-        self.uniform_buffer = None
-        self.sampler_nearest = None
-        self.sampler_linear = None
-        self.pipeline = None
+        self.rhi: QRhi | None = None
+        self.uniform_buffer: QRhiBuffer | None = None
+        self.sampler_nearest: QRhiSampler | None = None
+        self.sampler_linear: QRhiSampler | None = None
+        self.pipeline: QRhiGraphicsPipeline | None = None
         self.slots: list[LabelSlot] = [LabelSlot(), LabelSlot()]
 
     def initialize(self, rhi, target) -> None:
@@ -176,15 +181,17 @@ class FilenameOverlayGpuResources:
         )
         self.pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
         self.pipeline.setSampleCount(target.sampleCount())
-        self.pipeline.setShaderResourceBindings(self.slots[0].srb_linear)
+        srb_linear = self.slots[0].srb_linear
+        assert srb_linear is not None
+        self.pipeline.setShaderResourceBindings(srb_linear)
         self.pipeline.setRenderPassDescriptor(target.renderPassDescriptor())
 
         blend = QRhiGraphicsPipeline.TargetBlend()
         blend.enable = True
-        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.One  # type: ignore[assignment]  # PySide6 stub types BlendFactor fields as int
+        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
+        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One  # type: ignore[assignment]
+        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
         self.pipeline.setTargetBlends([blend])
 
         layout = QRhiVertexInputLayout()
@@ -223,6 +230,7 @@ class FilenameOverlayGpuResources:
     def ensure_slot_textures(
         self, slot: LabelSlot, raw_size: QSize, final_size: QSize
     ) -> None:
+        assert self.rhi is not None
         """(Re)builds ``slot``'s raw (CPU-uploaded, supersampled) and final
         (device-res, GPU-downsampled-into) textures, plus everything that
         depends on either -- the downsample pass's SRB/target/rpdesc/
@@ -281,7 +289,7 @@ class FilenameOverlayGpuResources:
         slot.srb_downsample.setBindings(
             [
                 QRhiShaderResourceBinding.sampledTexture(
-                    0, fragment, slot.raw_texture, self.sampler_linear
+                    0, fragment, slot.raw_texture, self.sampler_linear  # type: ignore[arg-type]  # set right above; typed Optional for lifecycle
                 ),
             ]
         )
@@ -298,6 +306,7 @@ class FilenameOverlayGpuResources:
                     res.destroy()
                 except RuntimeError:
                     pass
+        assert slot.texture is not None
         slot.downsample_target = self.rhi.newTextureRenderTarget(
             QRhiTextureRenderTargetDescription(QRhiColorAttachment(slot.texture))
         )

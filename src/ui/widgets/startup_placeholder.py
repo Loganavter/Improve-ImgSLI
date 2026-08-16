@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
@@ -17,6 +19,10 @@ class StartupPlaceholder(ThemedSurface):
     def __init__(self, parent: QWidget, target_widget: QWidget | None = None):
         super().__init__(parent)
         self._target_widget = target_widget
+        # Once the placeholder is dismissed (first real frame rendered) it
+        # must stay hidden: geometry resyncs after that point would otherwise
+        # re-show it over the live canvas.
+        self._dismissed = False
 
         self.setObjectName("ImageStartupPlaceholder")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -44,12 +50,26 @@ class StartupPlaceholder(ThemedSurface):
     def set_target(self, target: QWidget):
         self._target_widget = target
 
+    def hide(self) -> None:  # noqa: D401 — Qt override
+        self._dismissed = True
+        super().hide()
+
     def sync_geometry(self):
         if self._target_widget is None:
             return
         self.setGeometry(self._target_widget.geometry())
-        self.raise_()
+        if not self._dismissed:
+            self.show()
+            self.raise_()
 
     def set_background_color(self, color):
         """Backward-compatible no-op: background tracks theme via ThemedSurface."""
         self.update()
+
+StartupPlaceholder.inspect_spec = InspectSpec(
+    family="StartupPlaceholder",
+    docs="docs/dev/widgets/startup_placeholder.md",
+    state=(SpecField("background_color", "background_color"),),
+    token_family=("surface",),
+    layers=True,
+)

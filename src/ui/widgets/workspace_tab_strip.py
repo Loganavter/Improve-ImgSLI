@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
+
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QTabBar
 
@@ -60,3 +62,14 @@ class WorkspaceTabStrip(AdaptiveTabStrip):
                     event.accept()
                     return True
         return super().eventFilter(watched, event)
+
+
+
+WorkspaceTabStrip.inspect_spec = InspectSpec(
+    family="WorkspaceTabStrip",
+    state=(
+        SpecField("tab_count", lambda w: w.count()),
+        SpecField("current_index", lambda w: w.currentIndex()),
+    ),
+    docs="docs/dev/widgets/workspace_tab_strip.md",
+)

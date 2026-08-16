@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
 
@@ -15,6 +16,9 @@ from plugins.settings.events import (
 )
 from plugins.settings.mutations import SettingsMutationService
 from plugins.settings.notifier import SettingsUpdateNotifier
+
+if TYPE_CHECKING:
+    from domain.types import Color
 
 logger = logging.getLogger("ImproveImgSLI")
 

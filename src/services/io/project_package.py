@@ -325,7 +325,8 @@ def write_project_zip(
             if has_preview:
                 from services.io.project_preview import PREVIEW_MEMBER
 
-                zf.writestr(PREVIEW_MEMBER, preview_bytes)
+                if preview_bytes is not None:
+                    zf.writestr(PREVIEW_MEMBER, preview_bytes)
                 done += 1
                 if progress is not None:
                     progress(done, total, PREVIEW_MEMBER)

@@ -9,6 +9,7 @@ the unrelated ``MagnifierPass`` (see ``magnifier_pass.py``).
 
 from __future__ import annotations
 
+from PySide6.QtCore import QPointF
 from PySide6.QtGui import QColor, QRhiCommandBuffer, QRhiViewport
 
 from tabs.image_compare.canvas.rhi_feature_common import (
@@ -21,7 +22,7 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.widgets.canvas.render_common import widget_px_to_screen_px
+from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
 from shared.rendering.stroke_geometry import shrink_screen_radius_for_stroke
 
 from tabs.image_compare.canvas.features.magnifier.render.passes_common import pack_arc_uniform
@@ -99,19 +100,21 @@ class OccludedArcPass(_ArcItemsPass):
     use_scissor = True
 
     @staticmethod
-    def _resolve_occluded_capture_arcs(ctx) -> tuple[object, ...]:
+    def _resolve_occluded_capture_arcs(
+        ctx,
+    ) -> tuple[tuple[QPointF, float, float, float, bool], ...]:
         overlay = getattr(ctx, "feature_overlay", None)
         arcs = tuple(getattr(overlay, "occluded_capture_arcs", ()) or ())
         if arcs:
-            return arcs
+            return tuple(arcs)
         payloads = (
             ctx.scene_frame.feature_payloads
             if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
             else {}
         )
-        arcs = payloads.get("occluded_capture_arcs")
-        if arcs:
-            return tuple(arcs)
+        payload_arcs = payloads.get("occluded_capture_arcs")
+        if payload_arcs:
+            return tuple(payload_arcs)
         overlay = getattr(ctx, "feature_overlay", None)
         return tuple(getattr(overlay, "occluded_capture_arcs", ()) or ())
 
@@ -161,7 +164,9 @@ class HiddenSelectionPass(_ArcItemsPass):
     visibility = SceneVisibility.INTERACTIVE
 
     @staticmethod
-    def _resolve_hidden_capture_circles(ctx) -> tuple[object, ...]:
+    def _resolve_hidden_capture_circles(
+        ctx,
+    ) -> tuple[tuple[QPointF, float, bool], ...]:
         overlay = getattr(ctx, "feature_overlay", None)
         circles = tuple(getattr(overlay, "hidden_capture_circles", ()) or ())
         if circles:
@@ -171,14 +176,16 @@ class HiddenSelectionPass(_ArcItemsPass):
             if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
             else {}
         )
-        circles = payloads.get("hidden_capture_circles")
-        if circles:
-            return tuple(circles)
+        payload_circles = payloads.get("hidden_capture_circles")
+        if payload_circles:
+            return tuple(payload_circles)
         overlay = getattr(ctx, "feature_overlay", None)
         return tuple(getattr(overlay, "hidden_capture_circles", ()) or ())
 
     @staticmethod
-    def _resolve_hidden_overlay_circles(ctx) -> tuple[object, ...]:
+    def _resolve_hidden_overlay_circles(
+        ctx,
+    ) -> tuple[tuple[QPointF, float, bool], ...]:
         overlay = getattr(ctx, "feature_overlay", None)
         circles = tuple(getattr(overlay, "hidden_overlay_circles", ()) or ())
         if circles:
@@ -188,9 +195,9 @@ class HiddenSelectionPass(_ArcItemsPass):
             if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
             else {}
         )
-        circles = payloads.get("hidden_magnifier_circles")
-        if circles:
-            return tuple(circles)
+        payload_circles = payloads.get("hidden_magnifier_circles")
+        if payload_circles:
+            return tuple(payload_circles)
         overlay = getattr(ctx, "feature_overlay", None)
         return tuple(getattr(overlay, "hidden_overlay_circles", ()) or ())
 

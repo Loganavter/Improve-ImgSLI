@@ -17,6 +17,7 @@ class SettingsDialogContext:
     tr_func: Callable
     current_ui_font_mode: str = "builtin"
     current_ui_font_family: str = ""
+    current_ui_scale_factor: float = 1.0
     current_ui_mode: str = "beginner"
     optimize_magnifier_movement: bool = True
     movement_interpolation_method: str = "BILINEAR"

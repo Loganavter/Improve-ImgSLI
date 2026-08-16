@@ -20,31 +20,31 @@ def dismiss_active_diff_toast(presenter):
 def get_diff_toast_message(presenter, diff_mode: str) -> str:
     current_language = getattr(presenter.store.settings, "current_language", "en")
     if diff_mode == "highlight":
-        message = tr("msg.highlight_diff_in_progress", current_language)
+        message = tr("image_compare.msg.highlight_diff_in_progress", current_language)
         return (
             "Highlight diff..."
-            if message == "msg.highlight_diff_in_progress"
+            if message == "image_compare.msg.highlight_diff_in_progress"
             else message
         )
     if diff_mode == "grayscale":
-        message = tr("msg.grayscale_diff_in_progress", current_language)
+        message = tr("image_compare.msg.grayscale_diff_in_progress", current_language)
         return (
             "Grayscale diff..."
-            if message == "msg.grayscale_diff_in_progress"
+            if message == "image_compare.msg.grayscale_diff_in_progress"
             else message
         )
     if diff_mode == "edges":
-        message = tr("msg.edge_comparison_in_progress", current_language)
+        message = tr("image_compare.msg.edge_comparison_in_progress", current_language)
         return (
             "Edge comparison..."
-            if message == "msg.edge_comparison_in_progress"
+            if message == "image_compare.msg.edge_comparison_in_progress"
             else message
         )
 
-    message = tr("msg.ssim_calculation_in_progress", current_language)
+    message = tr("image_compare.msg.ssim_calculation_in_progress", current_language)
     return (
         "SSIM calculation..."
-        if message == "msg.ssim_calculation_in_progress"
+        if message == "image_compare.msg.ssim_calculation_in_progress"
         else message
     )
 
@@ -125,20 +125,20 @@ def complete_diff_toast(presenter, request_key):
     diff_mode = getattr(presenter.store.viewport.view_state, "diff_mode", "off")
     current_language = getattr(presenter.store.settings, "current_language", "en")
     if diff_mode == "highlight":
-        done_message = tr("msg.highlight_diff_done", current_language)
-        if done_message == "msg.highlight_diff_done":
+        done_message = tr("image_compare.msg.highlight_diff_done", current_language)
+        if done_message == "image_compare.msg.highlight_diff_done":
             done_message = "Highlight diff done"
     elif diff_mode == "grayscale":
-        done_message = tr("msg.grayscale_diff_done", current_language)
-        if done_message == "msg.grayscale_diff_done":
+        done_message = tr("image_compare.msg.grayscale_diff_done", current_language)
+        if done_message == "image_compare.msg.grayscale_diff_done":
             done_message = "Grayscale diff done"
     elif diff_mode == "edges":
-        done_message = tr("msg.edge_comparison_done", current_language)
-        if done_message == "msg.edge_comparison_done":
+        done_message = tr("image_compare.msg.edge_comparison_done", current_language)
+        if done_message == "image_compare.msg.edge_comparison_done":
             done_message = "Edge comparison done"
     else:
-        done_message = tr("msg.ssim_calculation_done", current_language)
-        if done_message == "msg.ssim_calculation_done":
+        done_message = tr("image_compare.msg.ssim_calculation_done", current_language)
+        if done_message == "image_compare.msg.ssim_calculation_done":
             done_message = "SSIM done"
 
     try:

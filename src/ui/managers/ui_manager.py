@@ -36,7 +36,7 @@ class UIManager(QObject):
         self._settings_application_service = None
         self._unified_flyout_ref = None
 
-        self._active_message_boxes = []
+        self._active_message_boxes: list = []
         initialize_ui_manager_pre_transient(self)
         self.transient = TransientUIManager(self)
         initialize_ui_manager_post_transient(self)
@@ -164,7 +164,7 @@ class UIManager(QObject):
                 return
             gui = QGuiApplication.instance()
             app_active = (
-                gui is not None
+                isinstance(gui, QGuiApplication)
                 and gui.applicationState() == Qt.ApplicationState.ApplicationActive
             )
             win_active = bool(self.parent_widget.isActiveWindow())

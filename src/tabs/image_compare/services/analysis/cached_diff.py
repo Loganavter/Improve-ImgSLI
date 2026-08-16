@@ -16,7 +16,7 @@ class CachedDiffService:
     def __init__(self, store: Any, runtime: AnalysisRuntime):
         self.store = store
         self.runtime = runtime
-        self._pending_request_key = None
+        self._pending_request_key: tuple | None = None
 
     def invalidate(self) -> None:
         render_cache = self.store.viewport.session_data.render_cache
@@ -47,11 +47,11 @@ class CachedDiffService:
             return
 
         # Identity must be tagged on the original (possibly lazy) object,
-        # before any conversion below -- .to_pil() returns a fresh PIL
-        # Image each call with an empty .info dict, so tagging after
-        # conversion would mint a new uid on every request and defeat
-        # request_key-based dedup.
-        request_key = (
+        # before any conversion below -- materializing a TiledPixelStore
+        # returns a fresh PIL Image each call with an empty .info dict, so
+        # tagging after conversion would mint a new uid on every request and
+        # defeat request_key-based dedup.
+        request_key: tuple = (
             diff_mode,
             channel_mode,
             image_uid(image1),

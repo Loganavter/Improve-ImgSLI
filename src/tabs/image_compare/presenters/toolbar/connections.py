@@ -78,6 +78,11 @@ def connect_signals(presenter):
     _connect_ui_manager_controls(presenter)
     _connect_topic_palette_entry_points(presenter)
     _connect_session_comboboxes(presenter)
+    _connect_image_load_buttons(presenter)
+    _connect_text_settings_button(presenter)
+    _connect_save_buttons(presenter)
+    _connect_font_flyout(presenter)
+    _connect_magnifier_color_controls(presenter)
 
 def _connect_session_actions(presenter):
     controller = presenter.main_controller
@@ -477,4 +482,133 @@ def _connect_session_comboboxes(presenter):
     )
     ui.btn_video_editor.clicked.connect(
         lambda: event_bus.emit(ExportOpenVideoEditorEvent())
+    )
+
+def _connect_image_load_buttons(presenter):
+    from tabs.image_compare.presenters.toolbar.actions import open_image_dialog
+    presenter.widget.btn_image1.clicked.connect(lambda: open_image_dialog(presenter, 1))
+    presenter.widget.btn_image2.clicked.connect(lambda: open_image_dialog(presenter, 2))
+
+def _connect_text_settings_button(presenter):
+    presenter.widget.btn_text_settings.clicked.connect(
+        lambda: presenter.ui_manager.transient.toggle_font_settings_flyout(
+            anchor_widget=presenter.widget.btn_text_settings
+        )
+    )
+
+def _connect_save_buttons(presenter):
+    from tabs.image_compare.presenters.toolbar.state import _get_window_presenter
+
+    def _export_presenter():
+        window_presenter = _get_window_presenter(presenter)
+        if window_presenter is not None and hasattr(window_presenter, "get_feature"):
+            return window_presenter.get_feature("export")
+        return None
+
+    def _on_quick_save():
+        export_presenter = _export_presenter()
+        if export_presenter is None:
+            return
+        window_presenter = _get_window_presenter(presenter)
+        plugin_ui_registry = (
+            getattr(window_presenter, "plugin_ui_registry", None)
+            if window_presenter is not None
+            else None
+        )
+        handler = None
+        if plugin_ui_registry is not None:
+            handler = plugin_ui_registry.get_action("quick_save")
+        (handler or export_presenter.quick_save)()
+
+    def _on_save():
+        export_presenter = _export_presenter()
+        if export_presenter is not None:
+            export_presenter.save_result()
+
+    presenter.widget.btn_quick_save.clicked.connect(_on_quick_save)
+    presenter.widget.btn_save.clicked.connect(_on_save)
+
+def _connect_font_flyout(presenter):
+    from domain.qt_adapters import qcolor_to_color
+    from plugins.settings.events import SettingsApplyFontSettingsEvent
+    transient = getattr(presenter.ui_manager, "transient", None) if presenter.ui_manager else None
+    flyout = getattr(transient, "font_settings_flyout", None)
+    if flyout is None:
+        return
+    flyout.closed.connect(lambda: _on_font_flyout_closed(presenter))
+    flyout.interaction_started.connect(
+        lambda slider_name: _on_font_flyout_interaction_started(presenter, slider_name)
+    )
+    flyout.interaction_finished.connect(
+        lambda slider_name: _on_font_flyout_interaction_finished(presenter, slider_name)
+    )
+
+    def _emit_font_settings(size, weight, color, bg_color, draw_bg, placement, alpha):
+        args = (
+            size, weight,
+            qcolor_to_color(color), qcolor_to_color(bg_color),
+            draw_bg, placement, alpha,
+        )
+        if presenter.event_bus:
+            presenter.event_bus.emit(SettingsApplyFontSettingsEvent(*args))
+        elif presenter.main_controller is not None:
+            presenter.main_controller.apply_font_settings(*args)
+
+    flyout.settings_changed.connect(_emit_font_settings)
+
+def _on_font_flyout_closed(presenter):
+    presenter.ui_manager.transient.mark_font_popup_closed()
+    presenter.widget.btn_text_settings.setFlyoutOpen(False)
+
+def _on_font_flyout_interaction_started(presenter, slider_name):
+    viewport_ctrl = getattr(getattr(presenter, "main_controller", None), "viewport_plugin", None)
+    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_pressed"):
+        viewport_ctrl.on_slider_pressed(slider_name)
+
+def _on_font_flyout_interaction_finished(presenter, slider_name):
+    viewport_ctrl = getattr(getattr(presenter, "main_controller", None), "viewport_plugin", None)
+    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_released"):
+        viewport_ctrl.on_slider_released(slider_name)
+
+def _connect_magnifier_color_controls(presenter):
+    from tabs.image_compare.presenters.toolbar.actions import (
+        on_color_option_clicked,
+        on_magnifier_element_hover_ended,
+        on_magnifier_element_hovered,
+        on_magnifier_guides_thickness_changed,
+        on_magnifier_guides_toggled,
+    )
+    from tabs.image_compare.presenters.toolbar.state import _get_settings_presenter_from_window
+    widget = presenter.widget
+
+    def _wire(button):
+        if button is None:
+            return
+        if hasattr(button, "set_store"):
+            button.set_store(presenter.store)
+
+        def _apply_smart_colors():
+            settings_presenter = _get_settings_presenter_from_window(presenter)
+            if settings_presenter is not None:
+                settings_presenter.apply_smart_magnifier_colors()
+
+        button.smartColorSetRequested.connect(_apply_smart_colors)
+        button.colorOptionClicked.connect(
+            lambda option: on_color_option_clicked(presenter, option)
+        )
+        button.elementHovered.connect(
+            lambda element_name: on_magnifier_element_hovered(presenter, element_name)
+        )
+        button.elementHoverEnded.connect(
+            lambda: on_magnifier_element_hover_ended(presenter)
+        )
+
+    _wire(getattr(widget, "btn_magnifier_color_settings", None))
+    _wire(getattr(widget, "btn_magnifier_color_settings_beginner", None))
+
+    widget.btn_magnifier_guides.toggled.connect(
+        lambda checked: on_magnifier_guides_toggled(presenter, not checked)
+    )
+    widget.btn_magnifier_guides.valueChanged.connect(
+        lambda value: on_magnifier_guides_thickness_changed(presenter, value)
     )

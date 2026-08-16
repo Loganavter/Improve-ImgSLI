@@ -16,9 +16,9 @@ from sli_ui_toolkit.widgets import (
     InstancesCounterButton,
     Label,
     ScrollableComboBox,
-    Slider,
 )
 from ui.widgets.scroll_value_button import ScrollValueButton
+from ui.widgets.slider_hint import ValueSlider
 
 from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.canvas.widget import CanvasWidget
@@ -91,7 +91,7 @@ class ImageComparePrimitivesFactory:
         language = self.host._current_language()
         target.btn_image1 = Button(
             Icon.PHOTO,
-            text=tr("button.add_images_1", language),
+            text=tr("image_compare.button.add_images_1", language),
             variant="surface",
             parent=parent,
             # Opens the native QFileDialog (modal, blocks the event loop
@@ -101,7 +101,7 @@ class ImageComparePrimitivesFactory:
         )
         target.btn_image2 = Button(
             Icon.PHOTO,
-            text=tr("button.add_images_2", language),
+            text=tr("image_compare.button.add_images_2", language),
             variant="surface",
             parent=parent,
             defer_click=DEFER_CLICK_AWAIT_RIPPLE,
@@ -172,7 +172,7 @@ class ImageComparePrimitivesFactory:
         )
         target.btn_save = Button(
             Icon.SAVE,
-            text=tr("button.save_result", language),
+            text=tr("image_compare.button.save_result", language),
             variant="surface",
             parent=parent,
             # save_result() opens the modal ExportDialog -- ripple must
@@ -298,9 +298,11 @@ class ImageComparePrimitivesFactory:
 
     def _create_slider_controls(self, parent: QWidget) -> None:
         target = self.target
-        target.slider_size = Slider(Qt.Orientation.Horizontal, parent)
-        target.slider_capture = Slider(Qt.Orientation.Horizontal, parent)
-        target.slider_speed = Slider(Qt.Orientation.Horizontal, parent)
+        # ValueSlider: toolkit slider + hover value flyout above the thumb
+        # (was wired externally via SliderHintController in widget.py).
+        target.slider_size = ValueSlider(Qt.Orientation.Horizontal, parent)
+        target.slider_capture = ValueSlider(Qt.Orientation.Horizontal, parent)
+        target.slider_speed = ValueSlider(Qt.Orientation.Horizontal, parent)
 
     def _create_text_and_status_widgets(self, parent: QWidget) -> None:
         target = self.target

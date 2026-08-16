@@ -1,6 +1,6 @@
 """Platform isolation dogma.
 
-The platform (``src/core/``, ``src/ui/`` except ``src/ui/widgets/canvas``
+The platform (``src/core/``, ``src/ui/`` except ``src/ui/canvas_infra/rhi``
 which is the shared QRhi backend, ``src/services/``, ``src/plugins/``,
 ``src/shared/``, ``src/events/``) MUST NOT mention specific tab names like
 ``image_compare`` or ``image_session``. Tabs live under ``src/tabs/`` and the
@@ -30,7 +30,6 @@ PLATFORM_ROOTS = (
     SRC / "ui" / "presenters" / "image_canvas",
     SRC / "ui" / "canvas_features",
     SRC / "ui" / "canvas_infra",
-    SRC / "ui" / "widgets" / "canvas",
     SRC / "ui" / "context_menu",
     SRC / "services",
     SRC / "shared",
@@ -187,17 +186,32 @@ def _iter_all_src_py_files() -> list[Path]:
     )
 
 
+def _iter_document_mirror_check_files() -> list[Path]:
+    """``_iter_all_src_py_files()`` minus the files the mirror-attribute
+    check below doesn't apply to. Filtering here (at parametrize
+    collection time) instead of ``pytest.skip``-ing inside the test body
+    means a violation still points at the exact offending file, but the
+    ~450 files that structurally can't violate this (image_compare owns
+    the slot; the impl files define the mirror itself) don't each produce
+    a SKIPPED row in the run output."""
+    files = []
+    for p in _iter_all_src_py_files():
+        rel = p.relative_to(ROOT).as_posix()
+        if rel in _DOCUMENT_MIRROR_IMPL_FILES:
+            continue
+        if rel.startswith("src/tabs/image_compare/"):
+            continue
+        files.append(p)
+    return files
+
+
 @pytest.mark.parametrize(
     "py_file",
-    _iter_all_src_py_files(),
+    _iter_document_mirror_check_files(),
     ids=lambda p: p.relative_to(ROOT).as_posix(),
 )
 def test_document_mirror_attribute_not_used_outside_owner(py_file: Path):
     rel = py_file.relative_to(ROOT).as_posix()
-    if rel in _DOCUMENT_MIRROR_IMPL_FILES:
-        pytest.skip("implements the store.document mirror attribute itself")
-    if rel.startswith("src/tabs/image_compare/"):
-        pytest.skip("image_compare owns the document slot")
     text = py_file.read_text(encoding="utf-8")
     hits = []
     for match in _DOCUMENT_MIRROR_RE.finditer(text):

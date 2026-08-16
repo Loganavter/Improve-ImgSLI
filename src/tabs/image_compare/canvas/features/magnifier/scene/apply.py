@@ -28,11 +28,11 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
         obj for obj in all_magnifiers if getattr(obj, "visible", False)
     ]
     has_hidden_magnifiers = len(visible_magnifiers) < len(all_magnifiers)
+    viewport = getattr(store, "viewport", None)
+    interaction_state = getattr(viewport, "interaction_state", None)
     dragging_capture = bool(
-        getattr(getattr(store, "viewport", None), "interaction_state", None)
-        and getattr(
-            store.viewport.interaction_state, "is_dragging_overlay_handle", False
-        )
+        interaction_state
+        and getattr(interaction_state, "is_dragging_overlay_handle", False)
     )
     capture_circles = []
     hidden_capture_circles = []

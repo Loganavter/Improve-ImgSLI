@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import fields, is_dataclass
+from collections.abc import Hashable
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 from core.store_viewport import ViewportState
 from domain.types import Color, Point
@@ -377,13 +378,13 @@ def viewport_fingerprint(state: ViewportState) -> Any:
     )
 
 @lru_cache(maxsize=64)
-def dataclass_field_names(cls: type) -> tuple[str, ...]:
-    return tuple(field.name for field in fields(cls))
+def dataclass_field_names(cls: Hashable) -> tuple[str, ...]:
+    return tuple(field.name for field in fields(cast(type, cls)))
 
 def clone_dataclass_value(value: Any) -> Any:
     payload = {
         name: clone_value(getattr(value, name))
-        for name in dataclass_field_names(type(value))
+        for name in dataclass_field_names(cast(Hashable, type(value)))
     }
     return type(value)(**payload)
 
@@ -406,7 +407,7 @@ def frozen_value(value: Any) -> Any:
             type(value).__name__,
             tuple(
                 (name, frozen_value(getattr(value, name)))
-                for name in dataclass_field_names(type(value))
+                for name in dataclass_field_names(cast(Hashable, type(value)))
             ),
         )
     return value
@@ -446,7 +447,7 @@ def interpolate_value(start: Any, end: Any, factor: float) -> Any:
                 getattr(end, field.name),
                 factor,
             )
-        return type(start)(**values)
+        return type(start)(**values)  # type: ignore[misc]  # start narrowed to a dataclass instance
     return clone_value(start)
 
 def interpolate_viewport_state(start: ViewportState, end: ViewportState, factor: float) -> ViewportState:

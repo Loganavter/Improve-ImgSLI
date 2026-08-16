@@ -42,6 +42,8 @@ class ApplicationContext:
         self.plugin_coordinator: Optional[PluginCoordinator] = None
         self.session_manager: Optional[SessionManager] = None
         self.ui_resource_manager: Optional[UIResourceManager] = None
+        self._cache_purge_reclaimed_bytes = 0
+        self.cache_purge_notice_bytes: Optional[int] = None
         self._initialized = False
         self._deferred_plugins_loaded = False
         self._is_shutting_down = False
@@ -59,7 +61,15 @@ class ApplicationContext:
         self._build_core_services()
         startup_mark("ctx.core_services")
         self._purge_stale_pixel_spill()
+        # Logging is configured BEFORE the persistent state is loaded so
+        # SettingsManager's load diagnostics are actually emitted — the
+        # previous order (logging last) silently dropped every load-time
+        # line, including the settings load/save debug. The saved
+        # ``debug_mode_enabled`` flag is only known after the load, so the
+        # configuration is applied again below to honor it.
+        self._configure_logging()
         self._load_persistent_state()
+        self._maybe_flag_cache_purge_notice()
         self._configure_logging()
         self._configure_theme_manager()
         self._configure_flyout_manager()
@@ -90,28 +100,72 @@ class ApplicationContext:
     def _purge_stale_pixel_spill(self) -> None:
         """Purge leftover TiledPixelStore spill files from crashed sessions.
 
-        Runs in a daemon thread so startup is not blocked. The purge logic
-        writes a PID sentinel first so it safely skips files owned by *this*
-        process and bails out when another live ImgSLI instance is detected.
+        Runs synchronously: it's just a directory listing plus a handful of
+        unlinks (milliseconds even with hundreds of leftover files), and a
+        background daemon thread previously used for this raced the app's
+        own shutdown -- daemon threads get no guaranteed scheduling before
+        the interpreter exits, so a session that closed quickly (a crash,
+        or a force-kill during dev iteration -- both common enough that
+        stale sentinels/.raw files were observed accumulating across many
+        sessions in practice) could exit before the thread ever ran even
+        once. The purge logic acquires a cross-platform ``QLockFile`` on
+        the spill dir first (see tiled_pixel_store.resolve_pixel_spill_dir)
+        and only purges leftover files when that succeeds, i.e. no other
+        ImgSLI instance is currently live.
         """
-        import threading
+        self._cache_purge_reclaimed_bytes = 0
+        try:
+            from shared.image_processing.tiled_pixel_store import (
+                purge_stale_spill_files,
+                resolve_pixel_spill_dir,
+            )
+            # Acquires the exclusive spill-dir lock for this process.
+            resolve_pixel_spill_dir()
+            self._cache_purge_reclaimed_bytes = purge_stale_spill_files()
+        except Exception as exc:
+            logger.debug("Stale spill purge failed: %s", exc)
 
-        def _purge():
-            try:
-                from shared.image_processing.tiled_pixel_store import (
-                    purge_stale_spill_files,
-                    resolve_pixel_spill_dir,
-                )
-                # resolve_pixel_spill_dir writes the PID sentinel for this process.
-                resolve_pixel_spill_dir()
-                purge_stale_spill_files()
-            except Exception as exc:
-                logger.debug("Stale spill purge failed: %s", exc)
+    # Reclaimed bytes below this are not worth a popup -- routine day-to-day
+    # leftovers (a handful of tiles from one crashed session) rather than
+    # the "years of accumulated cache" scenario the notice exists for.
+    _CACHE_PURGE_NOTICE_MIN_BYTES = 100 * 1024 * 1024
 
-        t = threading.Thread(target=_purge, daemon=True, name="SpillPurge")
-        t.start()
+    def _maybe_flag_cache_purge_notice(self) -> None:
+        """Decide, once per install, whether to surface the startup spill
+        purge as a user-visible notice.
+
+        Must run after ``_load_persistent_state`` (needs ``settings_manager``)
+        and after ``_purge_stale_pixel_spill`` (needs
+        ``_cache_purge_reclaimed_bytes``). Distinguishes "genuinely fresh
+        install" from "upgraded from a version that predates
+        last_seen_app_version tracking" via ``is_first_run()``: a fresh
+        install has never completed onboarding either, so it can't be the
+        stale-cache case even though both read back "" for the version.
+        Sets ``self.cache_purge_notice_bytes`` (None = don't show) for
+        ``__main__.py`` to act on once the main window exists; always
+        records the current version so this fires at most once per install.
+        """
+        self.cache_purge_notice_bytes = None
+        try:
+            from core.constants import AppConstants
+
+            sm = self.settings_manager
+            assert sm is not None
+            is_upgrade_from_untracked = (
+                not sm.is_first_run() and not sm.last_seen_app_version()
+            )
+            if (
+                is_upgrade_from_untracked
+                and self._cache_purge_reclaimed_bytes
+                >= self._CACHE_PURGE_NOTICE_MIN_BYTES
+            ):
+                self.cache_purge_notice_bytes = self._cache_purge_reclaimed_bytes
+            sm.set_last_seen_app_version(AppConstants.APP_VERSION)
+        except Exception as exc:
+            logger.debug("Cache purge notice flag failed: %s", exc)
 
     def _load_canvas_feature_settings(self):
+        assert self.settings_manager is not None and self.store is not None
         self.settings_manager._load_canvas_feature_settings(self.store.viewport)
 
     def _build_core_services(self):
@@ -134,6 +188,19 @@ class ApplicationContext:
     def _load_persistent_state(self):
         self.settings_manager = SettingsManager("improve-imgsli", "improve-imgsli")
         self.settings_manager.load_all_settings(self.store)
+        # Apply the persisted chrome scale before any widget is constructed:
+        # scaled_px()/UiScale read sites bake the factor in at build time
+        # (shell, dialogs, QSS first paint), so waiting for the lifecycle
+        # pipeline would leave the first frame at 1.0. Mirrors how the saved
+        # theme is applied early in _configure_theme_manager.
+        try:
+            from sli_ui_toolkit.managers import UiScale
+
+            UiScale.get_instance().set_factor(
+                getattr(self.store.settings, "ui_scale_factor", 1.0) or 1.0
+            )
+        except Exception:
+            pass
         if self.notification_service is not None:
             self.notification_service.set_enabled(
                 getattr(self.store.settings, "system_notifications_enabled", True)
@@ -210,6 +277,9 @@ class ApplicationContext:
         if self._deferred_plugins_loaded:
             return ()
 
+        assert self.plugin_registry is not None
+        assert self.plugin_definition_registry is not None
+        assert self.plugin_coordinator is not None
         discovered = list(self.plugin_registry.discover_plugins(tier="deferred"))
         if not discovered:
             self._deferred_plugins_loaded = True
@@ -220,11 +290,13 @@ class ApplicationContext:
         deferred_qss = False
         for plugin in discovered:
             paths = tuple(plugin.get_qss_paths())
+            assert self.theme_manager is not None
             for qss_path in paths:
                 self.theme_manager.register_qss_path(qss_path)
             if paths:
                 deferred_qss = True
 
+        assert self.theme_manager is not None
         started = self.plugin_coordinator.register_and_start(discovered, self)
         self._deferred_plugins_loaded = True
 
@@ -234,7 +306,7 @@ class ApplicationContext:
             from PySide6.QtWidgets import QApplication
 
             app = QApplication.instance()
-            if app is not None and bool(app.styleSheet()):
+            if app is not None and isinstance(app, QApplication) and bool(app.styleSheet()):
                 self.theme_manager.apply_theme_to_app(app)
                 # `apply_theme_to_app` re-applies the *global* app
                 # stylesheet (`app.setStyleSheet(...)`) -- confirmed live
@@ -277,6 +349,7 @@ class ApplicationContext:
         return components
 
     def apply_theme_to_app(self, app: QApplication):
+        assert self.theme_manager is not None
         install_application_tooltips(app)
         from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
         install_application_dialog_decorations(app)

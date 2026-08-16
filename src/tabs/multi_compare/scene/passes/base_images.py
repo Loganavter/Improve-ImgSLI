@@ -197,10 +197,10 @@ def _pack_slot_uniforms(
     )
 
 
-def _host_key_repr(key: object) -> str:
+def _host_key_repr(key: LevelKey | object) -> str:
     if isinstance(key, LevelKey):
         return f"{int(key.base)}_lvl{int(key.level)}"
-    return str(int(key))
+    return str(key)
 
 
 def _slot_host_key(key: object) -> str:
@@ -324,20 +324,25 @@ class BaseImagesPass(CanvasRenderPass):
         code path instead of duplicating construction."""
         if self.array_resources is not None:
             return
+        assert renderer.rhi is not None and renderer.sampler is not None
         self._renderer = renderer
         self.array_resources = ArrayResources(
-            rhi_getter=lambda: self._renderer.rhi,
-            sampler_getter=lambda name: self._renderer.sampler,
+            rhi_getter=lambda: self._renderer.rhi if self._renderer else None,
+            sampler_getter=lambda name: (
+                self._renderer.sampler if self._renderer else None
+            ),
             load_shader=load_shader,
             layer_px=_ARRAY_LAYER_PX,
             array_capacity=_ARRAY_CAPACITY,
             name_prefix="multi-compare",
         )
         self._mip_cascade = MipCascadeGenerator(
-            rhi_getter=lambda: self._renderer.rhi,
+            rhi_getter=lambda: self._renderer.rhi if self._renderer else None,
             tile_arrays=self.array_resources.tile_arrays,
             ensure_tile_array=lambda index: self.array_resources._ensure_tile_array(index),
-            sampler_getter=lambda: self._renderer.sampler,
+            sampler_getter=lambda: (
+                self._renderer.sampler if self._renderer else None
+            ),
             layer_px=_ARRAY_LAYER_PX,
             name_prefix="multi-compare",
         )
@@ -353,7 +358,7 @@ class BaseImagesPass(CanvasRenderPass):
         self.slot_resources.release()
         if self.array_resources is not None:
             self.array_resources.release()
-        self.__init__()
+        self.__init__()  # type: ignore[misc]  # resource-reset reinit
 
     def apply_pending_texture_ops(self, renderer, updates) -> None:
         tile_service = renderer.tile_service
@@ -660,6 +665,7 @@ class BaseImagesPass(CanvasRenderPass):
         )
         if not instances:
             return
+        assert self.array_resources is not None
         self.array_resources.ensure_array_pipeline(renderer.host.renderTarget())
         self.array_resources.ensure_array_instance_capacity(len(instances))
         updates.updateDynamicBuffer(
@@ -676,6 +682,7 @@ class BaseImagesPass(CanvasRenderPass):
             return
         fb_w, fb_h = ctx.framebuffer_size
         if self._use_array_this_frame:
+            assert self.array_resources is not None
             if (
                 self.array_draw_instance_count <= 0
                 or self.array_resources.array_pipeline is None
@@ -837,6 +844,7 @@ class BaseImagesPass(CanvasRenderPass):
     ) -> dict[int, set[int]]:
         if not dirty_layers or not self.slot_resources.slot_vertex_buffers:
             return {}
+        assert self._mip_cascade is not None
         return self._mip_cascade.generate_all_dirty_mips(
             command_buffer,
             self.slot_resources.slot_vertex_buffers[0],

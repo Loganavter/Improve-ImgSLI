@@ -44,12 +44,12 @@ def _clickable(parent: QWidget, *, checkable: bool = False) -> QWidget:
 def _tag_video_dialog(dialog: QWidget) -> ComboBox:
     layout = QVBoxLayout(dialog)
     play = _clickable(dialog, checkable=True)
-    TOOLBAR.tag_member(play, "button.play")
+    TOOLBAR.tag_member(play, "image_compare.button.play")
     layout.addWidget(play)
     for key in (
-        "button.undo_ctrlz",
-        "button.redo",
-        "button.trim_to_selection",
+        "image_compare.button.undo_ctrlz",
+        "image_compare.button.redo",
+        "image_compare.button.trim_to_selection",
     ):
         btn = _clickable(dialog)
         TOOLBAR.tag_member(btn, key)
@@ -57,7 +57,7 @@ def _tag_video_dialog(dialog: QWidget) -> ComboBox:
 
     for key in (
         "video.lock_aspect_ratio",
-        "magnifier.fit_mode_toggle",
+        "image_compare.magnifier.fit_mode_toggle",
         "export.select_background_color",
     ):
         btn = _clickable(dialog, checkable=key != "export.select_background_color")
@@ -81,7 +81,7 @@ def _tag_video_dialog(dialog: QWidget) -> ComboBox:
     for key in (
         "video.standard",
         "video.manual_cli",
-        "label.output",
+        "image_compare.label.output",
         "video.export_log",
     ):
         page = QWidget(dialog)
@@ -89,8 +89,8 @@ def _tag_video_dialog(dialog: QWidget) -> ComboBox:
         layout.addWidget(page)
 
     for key in (
-        "action.export_video",
-        "button.stop",
+        "image_compare.action.export_video",
+        "image_compare.button.stop",
         "button.browse",
         "misc.set_as_favorite",
         "tooltip.use_favorite",
@@ -111,8 +111,12 @@ def test_video_editor_actions_register_and_withdraw(qtbot):
 
     contribute_video_editor_actions(dialog, registry=registry)
     ids = {a.action_id for a in registry.list_for(active_tab="image_compare")}
-    assert f"{VIDEO_PREFIX}group.video.toolbar.button.play" in ids
-    assert f"{VIDEO_PREFIX}group.video.export_actions.action.export_video" in ids
+    # Action ids embed the (tab-namespaced) search-index member keys.
+    assert f"{VIDEO_PREFIX}group.video.toolbar.image_compare.button.play" in ids
+    assert (
+        f"{VIDEO_PREFIX}group.video.export_actions.image_compare.action.export_video"
+        in ids
+    )
     assert f"{VIDEO_PREFIX}group.video.export_tabs.video.standard" in ids
     assert (
         f"{VIDEO_PREFIX}group.video.preview_quality.video.preview_quality_full" in ids

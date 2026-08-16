@@ -13,21 +13,22 @@ from shared_toolkit.ui.layout_sizing import (
     widget_height_hint,
     widget_width_hint,
 )
+from sli_ui_toolkit.managers import scaled_px
 
-EXPORT_PREVIEW_MIN_WIDTH = 500
+EXPORT_PREVIEW_MIN_WIDTH = scaled_px(500)
 # Soft floor: when height is tight, preview shrinks before form controls.
-EXPORT_PREVIEW_MIN_HEIGHT = 160
-EXPORT_FORM_MIN_WIDTH = 420
-EXPORT_MIN_DIALOG_WIDTH = 640
-EXPORT_MAX_DIALOG_WIDTH = 1400
-EXPORT_MIN_DIALOG_HEIGHT = 520
-EXPORT_MAIN_MARGIN_PX = 24
-EXPORT_MAIN_SPACING_PX = 12
-EXPORT_FRAME_PADDING_PX = 16
-EXPORT_FORM_ROW_SPACING_PX = 10
+EXPORT_PREVIEW_MIN_HEIGHT = scaled_px(160)
+EXPORT_FORM_MIN_WIDTH = scaled_px(420)
+EXPORT_MIN_DIALOG_WIDTH = scaled_px(640)
+EXPORT_MAX_DIALOG_WIDTH = scaled_px(1400)
+EXPORT_MIN_DIALOG_HEIGHT = scaled_px(520)
+EXPORT_MAIN_MARGIN_PX = scaled_px(24)
+EXPORT_MAIN_SPACING_PX = scaled_px(12)
+EXPORT_FRAME_PADDING_PX = scaled_px(16)
+EXPORT_FORM_ROW_SPACING_PX = scaled_px(10)
 # Minimum Y gap between filename block and format controls (still expands).
-EXPORT_FILENAME_FORMAT_MIN_GAP_PX = 20
-EXPORT_HEIGHT_SCREEN_MARGIN_PX = 100
+EXPORT_FILENAME_FORMAT_MIN_GAP_PX = scaled_px(20)
+EXPORT_HEIGHT_SCREEN_MARGIN_PX = scaled_px(100)
 
 # Non-scroll dialog: lock minimum to computed content so controls cannot be
 # crushed (settings keeps a low floor because pages scroll).

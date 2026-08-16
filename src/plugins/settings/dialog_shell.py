@@ -6,10 +6,12 @@ from plugins.settings.layout_geometry import apply_settings_dialog_geometry
 from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
 from sli_ui_toolkit.widgets import (
     DEFER_CLICK_AWAIT_RIPPLE,
+    CustomLineEdit,
     ScrollableDialogPage,
     SidebarDialogShell,
 )
 from ui.icon_manager import AppIcon
+from ui.layout_spacing import control_edge_padding
 from ui.theming import polish_themed_dialog
 from ui.widgets.form_controls import DialogActionBar
 
@@ -17,7 +19,23 @@ def setup_dialog_shell(dialog):
     dialog.main_layout.setContentsMargins(0, 0, 0, 0)
     dialog.main_layout.setSpacing(0)
 
-    dialog.shell = SidebarDialogShell()
+    dialog.search_field = CustomLineEdit()
+    dialog.search_field.setPlaceholderText(
+        dialog.tr("settings.search_placeholder", dialog.current_language)
+    )
+    dialog.search_field.setClearButtonEnabled(True)
+    dialog.search_field.setObjectName("SettingsSearchField")
+
+    dialog.shell = SidebarDialogShell(
+        sidebar_header=dialog.search_field,
+        resizable_sidebar=True,
+        content_margins=(
+            control_edge_padding(),
+            control_edge_padding(),
+            control_edge_padding(),
+            control_edge_padding(),
+        ),
+    )
     dialog.main_layout.addWidget(dialog.shell)
 
     dialog.sidebar = dialog.shell.sidebar

@@ -129,7 +129,7 @@ class MultiCompareController:
 
     def _apply_ui_mode(self, mode: str, *, source: str) -> None:
         toolbar = getattr(self.widget, "toolbar", None)
-        if not hasattr(toolbar, "apply_ui_mode"):
+        if toolbar is None or not hasattr(toolbar, "apply_ui_mode"):
             return
         toolbar.apply_ui_mode(mode)
         self.widget.sync_divider_toolbar()
@@ -150,17 +150,34 @@ class MultiCompareController:
             )
 
     def _on_divider_color_picker_requested(self) -> None:
-        from PySide6.QtWidgets import QColorDialog
+        existing = getattr(self, "_divider_color_dialog", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+
+        from ui.widgets.color import ColorPickerDialog
 
         current = QColor(*self.widget.state.divider_settings.color_rgba)
-        chosen = QColorDialog.getColor(
+        dialog = ColorPickerDialog(
             current,
-            None,
-            self.translate("ui.choose_divider_line_color", "Choose divider color"),
-            QColorDialog.ColorDialogOption.ShowAlphaChannel,
+            self.widget.window(),
+            title=self.translate("ui.choose_divider_line_color", "Choose divider color"),
+            show_alpha=True,
         )
-        if chosen.isValid():
-            self.widget.apply_divider_color(chosen)
+        dialog.setModal(False)
+
+        def on_color_selected(color):
+            if color.isValid():
+                self.widget.apply_divider_color(color)
+
+        def on_finished(_result):
+            self._divider_color_dialog = None
+
+        dialog.colorSelected.connect(on_color_selected)
+        dialog.finished.connect(on_finished)
+        self._divider_color_dialog = dialog
+        dialog.show()
 
     def _on_help_requested(self) -> None:
         self._call_service("show_help_dialog")

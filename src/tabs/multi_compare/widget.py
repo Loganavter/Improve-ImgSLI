@@ -12,6 +12,7 @@ from PySide6.QtGui import (
     QDragLeaveEvent,
     QDragMoveEvent,
     QDropEvent,
+    QPainter,
 )
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
@@ -33,10 +34,36 @@ from tabs.multi_compare.icons import Icon
 from ui.context_menu.manager import install_context_menu_provider
 from ui.widgets.font_settings_flyout import FontSettingsFlyout
 from ui.widgets.startup_placeholder import StartupPlaceholder
-from ui.widgets.zoom_indicator import ZoomIndicator
+from ui.widgets.glass_hud import ZoomIndicator
 
 if TYPE_CHECKING:
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
+
+FOCUS_DIM_COLOR = QColor(0, 0, 0, 235)
+
+
+class _FocusDimOverlay(QWidget):
+    """Translucent-black chrome dimmer shown while a slot is focused.
+
+    Paints directly (no ``setStyleSheet`` -- disallowed outside theme infra,
+    see ``tests/contracts/test_no_manual_theming.py``) so it stays a plain
+    always-on-top rect regardless of the active theme/palette. Swallows any
+    click landing on it and reports it via ``on_click`` (used to exit focus),
+    rather than passing through to the toolbar/footer widgets underneath.
+    """
+
+    def __init__(self, parent: QWidget, *, on_click) -> None:
+        super().__init__(parent)
+        self._on_click = on_click
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), FOCUS_DIM_COLOR)
+        painter.end()
+
+    def mousePressEvent(self, event) -> None:
+        self._on_click()
+        event.accept()
 
 
 class MultiCompareFontSettingsFlyout(FontSettingsFlyout):
@@ -75,9 +102,15 @@ class MultiCompareWidget(QWidget):
         *,
         translate=None,
         lang_provider=None,
+        context=None,
     ):
         super().__init__(parent)
-        self.store = MultiCompareStore()
+        # Bound facade over the core Dispatcher + active session slot; the
+        # session slot is the single source of truth (state-unification-plan, private
+        # improve-imgsli-internal-docs repo).
+        core_store = getattr(context, "store", None) if context is not None else None
+        self.store = MultiCompareStore(core_store=core_store)
+        self._context = context
 
         self.setAcceptDrops(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -93,8 +126,20 @@ class MultiCompareWidget(QWidget):
         canvas_container_layout.setContentsMargins(0, 0, 0, 0)
         canvas_container_layout.setSpacing(0)
         self.canvas = MultiCompareCanvasWidget(self._canvas_container, translate=translate)
+        self.canvas._ffd_primary = True
         canvas_container_layout.addWidget(self.canvas)
         self.footer = MultiCompareFooter(self)
+
+        # Dims everything outside the canvas (toolbar/footer) while a slot is
+        # focused (single-click on a leaf, see drag_drop_overlay's
+        # end_slot_press) -- the canvas itself already shows just that one
+        # image full-size via composition_builder's focused_slot_id handling,
+        # so only the surrounding chrome needs the translucent-black cue.
+        self._focus_dim_toolbar = _FocusDimOverlay(self, on_click=self._exit_focus)
+        self._focus_dim_footer = _FocusDimOverlay(self, on_click=self._exit_focus)
+        self._focus_dim_toolbar.hide()
+        self._focus_dim_footer.hide()
+
         self._translate = translate or (lambda _key, default=None: default or _key)
         self._pending_duplicate_source: int | None = None
         self._pending_paste_paths: list[Path] | None = None
@@ -116,7 +161,6 @@ class MultiCompareWidget(QWidget):
         self.canvas.set_dispatch(self.store.dispatch)
         self.canvas.set_state(self.store.state)
         self.store.subscribe(self._on_store_change)
-
         self.toolbar.add_clicked.connect(self.add_requested)
         self.toolbar.text_settings_clicked.connect(self._toggle_font_settings_flyout)
         self.toolbar.quick_save_clicked.connect(self.quick_save_requested)
@@ -136,6 +180,10 @@ class MultiCompareWidget(QWidget):
         )
         self._startup_placeholder.raise_()
         self.canvas.firstFrameRendered.connect(self._on_first_frame)
+
+        from tabs.multi_compare.first_frame_debug import mc_first_frame_debug
+
+        mc_first_frame_debug(self.canvas, "startup placeholder raised")
 
         self.zoom_indicator = ZoomIndicator(
             self._canvas_container,
@@ -177,17 +225,73 @@ class MultiCompareWidget(QWidget):
         )
 
     def _on_first_frame(self) -> None:
-        if self._startup_placeholder is not None:
-            self._startup_placeholder.hide()
+        from tabs.multi_compare.first_frame_debug import mc_first_frame_debug
+
+        placeholder = self._startup_placeholder
+        mc_first_frame_debug(
+            self.canvas,
+            "first frame -> placeholder hidden (was_visible=%s was_covering=%s)",
+            bool(placeholder is not None and placeholder.isVisible()),
+            bool(
+                placeholder is not None
+                and placeholder.isVisible()
+                and placeholder.geometry().intersects(self.canvas.geometry())
+            ),
+        )
+        if placeholder is not None:
+            placeholder.hide()
+        self._release_transition_mask()
+
+    def _release_transition_mask(self) -> None:
+        """Drop the workspace transition cover once an opaque frame is up.
+
+        Mirrors image_compare's widget: without this the cover would stay for
+        its whole ``max_duration`` (400 ms) on every tab enter, because the
+        mask force-releases only on its deadline unless told otherwise.
+        """
+        context = self._context
+        services = getattr(context, "services", None) if context else None
+        if not services:
+            return
+        mask = services.get("workspace.transition_mask")
+        if mask is None:
+            return
+        try:
+            mask.release()
+        except Exception:
+            import logging
+
+            logging.getLogger("ImproveImgSLI").exception(
+                "[workspace-transition] MC mask.release failed"
+            )
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         placeholder = getattr(self, "_startup_placeholder", None)
-        if placeholder is not None and placeholder.isVisible():
+        if placeholder is not None:
+            # Always sync — during the first show/layout the placeholder is
+            # still at its construction-time default size (100x30) and is not
+            # "visible" yet, so an isVisible() guard would skip the resize and
+            # leave the canvas uncovered (transparent) for its first frames.
             placeholder.sync_geometry()
         indicator = getattr(self, "zoom_indicator", None)
         if indicator is not None and indicator.isVisible():
             indicator.sync_position()
+        self._sync_focus_dim_overlays()
+
+    def _exit_focus(self) -> None:
+        if self.state.is_focused:
+            self.store.dispatch(actions.set_focus(None))
+
+    def _sync_focus_dim_overlays(self) -> None:
+        dim_toolbar = getattr(self, "_focus_dim_toolbar", None)
+        dim_footer = getattr(self, "_focus_dim_footer", None)
+        if dim_toolbar is None or dim_footer is None:
+            return
+        dim_toolbar.setGeometry(self.toolbar.geometry())
+        dim_footer.setGeometry(self.footer.geometry())
+        dim_toolbar.raise_()
+        dim_footer.raise_()
 
     def hideEvent(self, event):
         super().hideEvent(event)
@@ -204,14 +308,39 @@ class MultiCompareWidget(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        placeholder = getattr(self, "_startup_placeholder", None)
+        if placeholder is not None:
+            # Re-size/raise before the canvas's first paint: at construction
+            # the placeholder tracked a 100x30 container, and leaving it there
+            # exposes the unrendered (transparent) QRhi surface on the first
+            # frames (see the placeholder probe in canvas_widget.py).
+            placeholder.sync_geometry()
         self._sync_zoom_indicator()
 
     @property
     def state(self) -> MultiCompareState:
         return self.store.state
 
+    def refresh_from_session(self) -> None:
+        """Re-read the active session's slot and push it to the canvas.
+
+        Called on session switch / restore: with the slot authoritative, no
+        ``replace_state`` round-trip is needed — just re-render from the
+        bound session's current state.
+        """
+        self._on_store_change(None, self.store.state)
+
     def _on_store_change(self, _action, new_state: MultiCompareState) -> None:
         self.canvas.set_state(new_state)
+        dim_toolbar = getattr(self, "_focus_dim_toolbar", None)
+        dim_footer = getattr(self, "_focus_dim_footer", None)
+        if dim_toolbar is not None and dim_footer is not None:
+            focused = bool(new_state.is_focused)
+            if focused != dim_toolbar.isVisible():
+                if focused:
+                    self._sync_focus_dim_overlays()
+                dim_toolbar.setVisible(focused)
+                dim_footer.setVisible(focused)
         # Indicator show/hide sits above the QRhi canvas; sync after set_state,
         # then poke another view update so reset-from-overlay cannot leave a
         # stale backing frame (see MultiCompareCanvasWidget.request_view_update).
@@ -222,7 +351,7 @@ class MultiCompareWidget(QWidget):
             "multi_compare/set_pan",
             "multi_compare/reset_view",
         }:
-            from ui.widgets.canvas.rhi_present_sync import schedule_compositor_sync
+            from ui.canvas_infra.rhi.rhi_present_sync import schedule_compositor_sync
 
             self.canvas.request_view_update()
             # Flush the Wayland/Vulkan catch-up on gesture settle — otherwise
@@ -339,7 +468,7 @@ class MultiCompareWidget(QWidget):
             anchor_point="bottom-right",
             flyout_point="top-left",
             offset=10,
-            animation="slide",
+            animation="slide-fade",
         )
         if hasattr(self.toolbar.btn_text_settings, "setFlyoutOpen"):
             self.toolbar.btn_text_settings.setFlyoutOpen(True)

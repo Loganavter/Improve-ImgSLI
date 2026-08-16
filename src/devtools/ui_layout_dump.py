@@ -74,7 +74,7 @@ def _range_of(widget: QWidget) -> dict[str, int] | None:
     if not all(callable(g) for g in getters):
         return None
     try:
-        value, minimum, maximum = (g() for g in getters)
+        value, minimum, maximum = (g() for g in getters)  # type: ignore[misc]  # guarded by all(callable) above
     except Exception:
         return None
     return {"value": value, "min": minimum, "max": maximum}
@@ -133,5 +133,5 @@ def dump_all_windows(registry: ActionRegistry) -> dict[str, Any]:
     """
     action_map = _widget_action_map(registry)
     app = QApplication.instance()
-    windows = list(app.topLevelWidgets()) if app is not None else []
+    windows = list(app.topLevelWidgets()) if isinstance(app, QApplication) else []
     return {"windows": [_node(w, action_map) for w in windows]}

@@ -103,6 +103,7 @@ Curated starting points below; for the complete list use DOC_INDEX.md.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers and bootstrap
 - [CONTRACTS.md](CONTRACTS.md) — interface contracts, host call sequences, architectural dogmas
+- [SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md) — settings load/save, single-writer funnel, reset troubleshooting
 - [CODE_PATTERNS.md](CODE_PATTERNS.md) — code organization patterns (thin owner + `use_cases/` split) and anti-patterns
 - [STORE.md](STORE.md) — actions / reducers / store
 - [EVENT_BUS.md](EVENT_BUS.md) — pub/sub for facts, not state
@@ -119,7 +120,7 @@ Curated starting points below; for the complete list use DOC_INDEX.md.
 - [THEMING.md](THEMING.md) — palette / QSS registration
 - [RESOURCES_I18N.md](RESOURCES_I18N.md) — translations and resources
 - [ACTIONS.md](ACTIONS.md) — Find Action catalog
-- [HELP_SYSTEM.md](HELP_SYSTEM.md) · [HELP_WIDGET.md](HELP_WIDGET.md)
+- [HELP_SYSTEM.md](HELP_SYSTEM.md)
 
 ### Rendering and canvas
 
@@ -133,7 +134,7 @@ Curated starting points below; for the complete list use DOC_INDEX.md.
 
 - [TESTING.md](TESTING.md) — suite layout and conventions
 - [TRACING.md](TRACING.md) — Redux / EventBus / frame tracer
-- [UI_INSPECTOR.md](UI_INSPECTOR.md) — theme / QSS inspector
+- [UI_INSPECTOR.md](UI_INSPECTOR.md) — in-app DevTools inspector (config/state/regions/layers/theme/QSS/code/docs)
 - [UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md) — headless JSON widget-tree + action dump for machine reading
 - [LOGGING.md](LOGGING.md) — logging
 - `docs/dev/KNOWN_BUGS.md` in `improve-imgsli-internal-docs` (private) — diagnosed platform quirks

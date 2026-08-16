@@ -57,17 +57,18 @@ class MainWindowComposer:
                 resource_manager=ui_resource_manager,
             )
             tray_manager.toggle_visibility_requested.connect(
-                window.actions.toggle_main_window_visibility
+                window.action_registry.toggle_main_window_visibility
             )
             tray_manager.open_last_file_requested.connect(
-                window.actions.open_last_saved_file
+                window.action_registry.open_last_saved_file
             )
             tray_manager.open_last_folder_requested.connect(
-                window.actions.open_last_saved_folder
+                window.action_registry.open_last_saved_folder
             )
-            tray_manager.quit_requested.connect(QApplication.instance().quit)
+            app = QApplication.instance()
+            if app is not None:
+                tray_manager.quit_requested.connect(app.quit)
 
-        image_compare_widget = window.image_compare_widget
         main_controller = MainController(self.context)
         event_handler = EventHandler(self.context.store, None)
         image_canvas = self._create_tab_owned_feature(
@@ -93,7 +94,6 @@ class MainWindowComposer:
             main_controller,
             features=features,
             plugin_ui_registry=self.context.plugin_ui_registry,
-            widget=image_compare_widget,
         )
         event_handler.presenter = presenter
         main_controller.attach_window_shell(presenter)

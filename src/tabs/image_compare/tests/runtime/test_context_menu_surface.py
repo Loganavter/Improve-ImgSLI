@@ -1,10 +1,10 @@
-"""RMB context menu surface selection (native popup vs in-window widget).
+"""RMB context menu surface selection.
 
-On Wayland, a real Qt.Popup requests a compositor-level xdg_popup pointer
-grab. A fast right-click landing near the previous popup's grab teardown can
-be dropped by the compositor before it ever reaches Qt's event queue (no
-mousePressEvent, no contextMenuEvent -- confirmed via RMB debug logging).
-in_window menus have no native grab, so they don't hit this race.
+Every context menu in the app is a real ``Qt.Popup`` top-level (``"popup"``)
+so it stacks above ``UnifiedFlyout`` and behaves like a native menu. The
+historical platform fallbacks (in-window on Wayland / pre-3.1.4 Windows) were
+removed by request; the multi-compare ``IMGSLI_MC_RMB_SURFACE`` env override
+still allows forcing ``in_window`` for A/B debugging.
 """
 
 from __future__ import annotations
@@ -12,25 +12,14 @@ from __future__ import annotations
 from ui.context_menu import manager as context_menu_manager
 
 
-def test_wayland_session_forces_in_window_surface(monkeypatch):
-    monkeypatch.setattr(context_menu_manager.sys, "platform", "linux")
+def test_rmb_surface_is_always_popup(monkeypatch):
+    # Wayland / Windows env must not change the result anymore.
     monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
-    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-
-    assert context_menu_manager.rmb_context_menu_surface() == "in_window"
-
-
-def test_wayland_display_env_forces_in_window_surface(monkeypatch):
-    monkeypatch.setattr(context_menu_manager.sys, "platform", "linux")
-    monkeypatch.delenv("XDG_SESSION_TYPE", raising=False)
     monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    assert context_menu_manager.rmb_context_menu_surface() == "popup"
 
-    assert context_menu_manager.rmb_context_menu_surface() == "in_window"
 
-
-def test_x11_session_keeps_popup_surface(monkeypatch):
-    monkeypatch.setattr(context_menu_manager.sys, "platform", "linux")
+def test_rmb_surface_popup_on_x11(monkeypatch):
     monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-
     assert context_menu_manager.rmb_context_menu_surface() == "popup"

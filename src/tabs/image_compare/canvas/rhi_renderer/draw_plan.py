@@ -92,7 +92,7 @@ def resolve_lod_texture_keys(
             pyramid.level_count - 1,
         )
         resolved.append(key if level == 0 else LevelKey(key, level))
-    return tuple(resolved)
+    return tuple(resolved)  # type: ignore[return-value]  # tuple of key|LevelKey
 
 
 def _best_diff_tile_index(

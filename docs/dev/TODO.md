@@ -28,100 +28,78 @@ Related: [tabs/session-lifecycle.md](./tabs/session-lifecycle.md),
 
 Infrastructure for sessions, `state_slots`, activation events, project
 serialize/deserialize hooks, and duplicate-as-new-session is in place.
+
+Done (2026-08-10): **undo/redo** — reference-snapshot stacks per session in
+`state_slots["undo_stack"]`/`["redo_stack"]`, `Dispatcher.undo()/redo()`,
+Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, palette entries `platform.undo`/`platform.redo`
+(image_compare scope, loading-blocked, coalesces continuous gestures).
+
+Done (2026-08-10): **MultiCompare bound to `state_slots["multi_compare.state"]`**
+— MC actions flow through the core `Dispatcher` (slot reducer in
+`multi_compare/bootstrap_reducers.py`), `MultiCompareStore` is a facade over
+the core Dispatcher + active session slot, the tab's snapshot/restore mirroring
+is removed, and undo/redo (Ctrl+Z / CSD buttons) now covers Multi Compare too
+(`RemoveSlot`/`Clear` defer closing removed stores so undo restores a live
+store). See `src/tabs/multi_compare/docs/state-unification-plan.md`.
+
 Still open:
 
-- Inverse undo/redo reducers and hotkeys (`Dispatcher.bind_history_for_session`
-  stores append-only history in `state_slots["action_history"]` only).
-- `session_picker` has nothing to serialize (inherits no-op default).
-- Longer-term: bind `MultiCompareWidget` purely to the active session's
-  `state_slots["multi_compare.state"]` so undo, serialization, and observers
-  share one path (today the widget embeds a `MultiCompareStore` swapped via
-  `replace_state`).
+- Nothing in this area — see the resolved entries below.
 
-## P2 - Preview-at-load via QImage (skip transient PIL buffer)
+Resolved (2026-08-13): **undo of image browsing** — the combobox index
+change now dispatches `SET_CURRENT_INDEX` (previously a direct document
+mutation), and the tab re-syncs the displayed image on the "document" scope
+emit that undo/redo produces (`resync_current_image_slots`, path+reload —
+the restored snapshot's pixels can reference the closed `TiledPixelStore`).
+Undo of image *load/replace* stays deliberately excluded: loading closes the
+replaced store, so a reference snapshot would hold a closed store (recorded
+in `dispatcher.py` `_UNDOABLE_TYPES`).
 
-Status: `Design needed`
-
-Area: `shared/image_processing/progressive_loader.py`, image load workers
-
-Optional: decode preview with `QImageReader` + `setScaledSize` (or
-equivalent) and keep preview as `QImage` until the canvas path consumes it,
-avoiding an intermediate PIL RGBA buffer on the hot load→first-paint path.
-Not required for correctness — current PIL-preview design is intentional and
-documented in
-[tile-rendering-system.md § Preview-at-load tier](rendering/tile-rendering-system.md#preview-at-load-tier).
-
-**Before coding:** audit format coverage (JXL, clipboard paste, auto-crop),
-where preview is converted back to PIL for unify/display-cache, and whether
-`pick_first_real` needs a third tier or a small adapter.
-
-Related: preview tier contract tests in
-`tests/contracts/test_preview_tier_contract.py`.
-
-## P2 - Reduce PIL from universal currency to one decode backend among several
-
-Status: `Open`
-
-Area: `shared/image_processing/` (`pixel_source.py`, `tiled_pixel_store.py`,
-`progressive_loader.py`, `pixel_ops/`), `shared/analysis/`, and effectively
-every consumer of `PIL.Image` across the pixel pipeline (~80 files import
-`PIL` directly today).
-
-`pyvips`/`imagecodecs`-based true streaming decode already exists (see
-[tile-rendering-system.md § Strip spill on load](rendering/tile-rendering-system.md#host-side-memory-bounding)),
-but only as an opportunistic fallback gated on `pyvips` happening to be
-installed — and currently, `pyvips` isn't actually declared as a
-dependency in any packaging target (AUR `depends`, Flatpak
-`python3-modules.json`, or documented as an `optdepends`/optional feature
-anywhere), so the streaming path is effectively dead in every shipped
-build today; every real user still hits the PIL/imagecodecs full-frame-materialize
-path and the `65536px` sanity bound it implies (see AGENTS.md "Known
-Constraints").
-
-Longer-term idea (not urgent, no current user complaint): make
-pyvips/imagecodecs-based streaming decode the primary path instead of an
-optional bonus, with `PIL.Image` demoted to one interchangeable decode
-backend rather than the pipeline's universal in-memory currency type. This
-would let the `65536px` limit become a soft/removable bound structurally,
-not just something bypassed when a specific optional dependency happens to
-be present. Numpy stays regardless — it's load-bearing for
-`TiledPixelStore`'s memmap storage and is a transitive dependency of
-scikit-image/scipy either way, so there's no equivalent win from touching it.
-
-**Before coding:** decide whether `pyvips` becomes a hard dependency
-(declared everywhere, closing the current packaging gap) or stays optional
-with a clearly documented feature-flag story; this is a large-surface-area
-rewrite (every `PixelSource`/export/analysis call site), so it needs its own
-design pass, not an incidental patch.
+Resolved (2026-08-13): **grouping non-continuous rapid same-type actions** —
+`Dispatcher` merges same-type undo entries dispatched within
+`_RAPID_ACTION_GROUP_MS` (400 ms, platform double-click convention) into one
+step (the snapshot `after` moves forward, `before` stays — the pre-burst
+state). Continuous gestures keep their unlimited-time coalescing
+(`_COALESCE_TYPES`).
 
 ## P2 - UI scale factor (interface scaling)
 
-Status: `Design needed`
+Status: `Done` (`UiScale` in sli-ui-toolkit, settings page "Interface Scale"
+0.5–2.5, live apply, full px sweep + QSS pass)
 
 Area: `shared_toolkit/`, external `sli-ui-toolkit` (theming/layout), settings UI
 
 Planned: a user-facing interface scale setting (independent of the OS/Qt
 display scale factor), so the app chrome — toolbar/panel sizes, fonts, icons,
 spacing — can be scaled up/down without relying on system DPI settings.
-No design doc yet: needs a pass on where scale is read (`ThemeManager`?
-`shared_toolkit` layout constants? per-widget?), whether it interacts with
-existing HiDPI/`devicePixelRatio` handling, and how canvas-px (see
-[rendering/coordinate-systems.md](rendering/coordinate-systems.md)) stays
-independent of chrome scale.
+
+Shipped: settings page "Interface Scale" (slider 50–250 → factor 0.5–2.5,
+applies live) driven by the toolkit `UiScale` singleton (`scale_changed`
+fan-out, `scaled_px`); one atomic live pass freezes top-level paints,
+re-pushes QSS with every `Npx` literal scaled (`ThemeManager._scale_qss_px`)
+and re-syncs fonts (`UiFont.sync_from_application`); the factor is applied
+at startup before any widget is built. Canvas-px stays independent of the
+chrome scale: no `UiScale` use in canvas/rendering paths, the scale is
+absorbed by `sr` (see
+[rendering/coordinate-systems.md](rendering/coordinate-systems.md)).
+Design notes: `improve-imgsli-internal-docs/docs/legacy/plan_ui_unification.md`
+(locked decisions, HiDPI/DPR orthogonality, canvas independence) and toolkit
+`docs/dev/DESIGN_LANGUAGE.md` (design px at factor 1.0, `UiScale` contract).
 
 ## P2 - UI inspector: major update
 
-Status: `Open`
+Status: `Done` (2026-08-13).
 
-Area: `src/devtools/ui_inspector/`, [UI_INSPECTOR.md](./UI_INSPECTOR.md)
-
-Planned larger pass on the UI inspector beyond the current QWidget
-palette/theme-token/QSS-candidate feature set — see
-[UI_INSPECTOR.md § Future Canvas Inspector](./UI_INSPECTOR.md#future-canvas-inspector)
-for the previously-scoped direction (canvas/render-pass diagnostics: QRhi
-passes, feature payloads, store-backed colors around the cursor, not just
-QWidget tree). Scope of the update itself not yet broken down — needs a
-design pass before implementation.
+The inspector is now toolkit-level (`sli_ui_toolkit/ui/inspector/`):
+widgets self-describe via co-located `inspect_spec` class attributes
+(config auto-derived from `__init__`, curated state with labels), the
+DevTools-style `InspectorWindow` (Object/Config/State/Regions/Layers/Theme/
+Layout/Constructor/Code/Docs pages, per-region overlay, live token capture
+through the `get_color` funnel, dead-QSS-selector analysis in the Code
+page) lives in the toolkit, and
+the app keeps a thin wiring layer (installer, Native diagnostics, Dump
+layout, app-family specs). Canvas/render-pass diagnostics remain a separate
+future concern (see UI_INSPECTOR.md).
 
 ## P2 - Action palette / Help follow-ups
 
@@ -134,9 +112,14 @@ Still open:
 
 - embedded `video_url` / `learn_more_url` on actions;
 - F1 → topic page without opening the palette;
-- optional Help menu demotion vs Find Action;
-- real Help screenshots;
 - optional `:::tip` / richer definition-list blocks in the toolkit subset.
+
+Resolved / decided:
+- real Help screenshots — done (all figures real: `check_help_figures.py`
+  reports 19 ready / 0 stub);
+- optional Help menu demotion vs Find Action — decided against: current
+  title-bar Help menu is fine, Find Action can reach help pages already, so
+  nothing is duplicated.
 
 Primary UX remains **action discovery** (Find Action / command palette). Full
 manual reading is secondary; no PDF / CMS / in-app browser.

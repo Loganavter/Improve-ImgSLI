@@ -12,7 +12,9 @@ from PySide6.QtWidgets import (
 )
 
 from sli_ui_toolkit.widgets import ComboBox, RadioButton, SpinBox
+from sli_ui_toolkit.managers import scaled_px
 from ui.icon_manager import AppIcon
+from ui.widgets.slider_hint import ValueSlider, ValueSliderRow
 
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
@@ -29,15 +31,16 @@ UI_FONT = group(
     "settings.system_default",
     "settings.custom",
 )
+UI_SCALE = group("settings.ui_scale")
 MAX_NAME = group("settings.maximum_name_length_ui")
-SEARCH = SearchIndex.of(UI_MODE, UI_FONT, MAX_NAME)
+SEARCH = SearchIndex.of(UI_MODE, UI_FONT, UI_SCALE, MAX_NAME)
 
 
 def build(dialog, p):
     dialog.page_interface, layout = dialog._create_scrollable_page()
     dialog.ui_mode_group = UI_MODE.widget(dialog)
     row = QHBoxLayout()
-    row.setContentsMargins(5, 5, 5, 5)
+    row.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
     dialog.radio_ui_mode_beginner = RadioButton(
         UI_MODE.text(dialog, "settings.ui_mode_beginner")
     )
@@ -62,7 +65,7 @@ def build(dialog, p):
 
     dialog.font_group = UI_FONT.widget(dialog)
     font_radio_layout = QVBoxLayout()
-    font_radio_layout.setContentsMargins(5, 5, 5, 5)
+    font_radio_layout.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
     dialog.radio_font_builtin = RadioButton(
         UI_FONT.text(dialog, "settings.builtin_font")
     )
@@ -81,7 +84,7 @@ def build(dialog, p):
 
     dialog.combo_font_family = ComboBox()
     UI_FONT.tag_combo(dialog.combo_font_family, "settings.custom")
-    dialog.combo_font_family.setFixedWidth(320)
+    dialog.combo_font_family.setFixedWidth(scaled_px(320))
     dialog.combo_font_family.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     from PySide6.QtGui import QFontDatabase
 
@@ -89,7 +92,7 @@ def build(dialog, p):
         dialog.combo_font_family.addItem(fam, fam)
     font_combo_container = QWidget()
     fc_layout = QHBoxLayout(font_combo_container)
-    fc_layout.setContentsMargins(5, 0, 5, 5)
+    fc_layout.setContentsMargins(scaled_px(5), 0, scaled_px(5), scaled_px(5))
     fc_layout.addWidget(dialog.combo_font_family)
     fc_layout.addStretch()
     dialog.font_group.add_widget(font_combo_container)
@@ -126,18 +129,42 @@ def build(dialog, p):
 
     dialog.other_ui_group = MAX_NAME.widget(dialog)
     len_layout = QHBoxLayout()
-    len_layout.setContentsMargins(12, 5, 12, 5)
+    len_layout.setContentsMargins(scaled_px(12), scaled_px(5), scaled_px(12), scaled_px(5))
     value = max(p.min_limit, min(p.max_limit, p.current_max_length))
     dialog.spin_max_length = SpinBox(default_value=value)
     MAX_NAME.tag_member(dialog.spin_max_length, "settings.maximum_name_length_ui")
     dialog.spin_max_length.setRange(p.min_limit, p.max_limit)
     dialog.spin_max_length.setValue(value)
-    dialog.spin_max_length.setFixedWidth(100)
+    dialog.spin_max_length.setFixedWidth(scaled_px(100))
     dialog.spin_max_length.setAlignment(Qt.AlignmentFlag.AlignCenter)
     len_layout.addWidget(dialog.spin_max_length)
     len_layout.addStretch()
     dialog.other_ui_group.add_layout(len_layout)
     layout.addWidget(dialog.other_ui_group)
+
+    dialog.ui_scale_group = UI_SCALE.widget(dialog)
+    scale_layout = QHBoxLayout()
+    scale_layout.setContentsMargins(scaled_px(12), scaled_px(5), scaled_px(12), scaled_px(5))
+    # Free (continuous) slider: value = factor * 100 (range 50..250 →
+    # 0.50..2.50, matching UiScale's clamp; any step of 0.01 is available).
+    dialog.slider_ui_scale = ValueSlider(
+        # Show the actual factor ("1.25"), not the raw 50..250 step index.
+        hint_formatter=lambda s: f"{s.value() / 100:.2f}",
+    )
+    UI_SCALE.tag_member(dialog.slider_ui_scale, "settings.ui_scale")
+    dialog.slider_ui_scale.setToolTip(UI_SCALE.text(dialog, "settings.ui_scale_tooltip"))
+    dialog.slider_ui_scale.setRange(50, 250)
+    dialog.slider_ui_scale.setValue(int(round(float(p.current_ui_scale_factor) * 100)))
+    dialog.slider_ui_scale.setSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+    )
+    # Persistent value readout on the right of the track, flanked by equal
+    # fixed-width pads so hiding it during the hover hint flyout never
+    # shifts the slider's geometry (see ValueSliderRow).
+    dialog.slider_ui_scale_row = ValueSliderRow(dialog.slider_ui_scale)
+    scale_layout.addWidget(dialog.slider_ui_scale_row, 1)
+    dialog.ui_scale_group.add_layout(scale_layout)
+    layout.addWidget(dialog.ui_scale_group)
     dialog.pages_stack.addWidget(dialog.page_interface)
 
 

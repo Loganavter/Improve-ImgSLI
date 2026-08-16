@@ -413,13 +413,13 @@ def register_image_compare_actions(
         picker_attr = _PICKER_CYCLE.get(spec.attr)
         picker = getattr(widget, picker_attr, None) if picker_attr else None
         if picker is not None and hasattr(picker, "cycle_next"):
-            run: Callable[[], None] = lambda p=picker: p.cycle_next()
+            run: Callable[[], None] = lambda p=picker: p.cycle_next()  # type: ignore[misc]  # picker is dynamic
         elif spec.kind == "toggle":
-            run = lambda b=button: _toggle_button(b)
+            run = lambda b=button: _toggle_button(b)  # type: ignore[misc]  # button is dynamic
         elif spec.kind == "short_click":
-            run = lambda b=button: _short_click_button(b)
+            run = lambda b=button: _short_click_button(b)  # type: ignore[misc]
         else:
-            run = lambda b=button: _click_button(b)
+            run = lambda b=button: _click_button(b)  # type: ignore[misc]
 
         specs.append(
             ActionDescriptor(
@@ -615,13 +615,13 @@ _NAME_EDIT_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
     (
         "image_compare.rename_image1",
         "edit_name1",
-        "ui.edit_current_image_1_name",
+        "image_compare.ui.edit_current_image_1_name",
         ("rename", "name1", "image1"),
     ),
     (
         "image_compare.rename_image2",
         "edit_name2",
-        "ui.edit_current_image_2_name",
+        "image_compare.ui.edit_current_image_2_name",
         ("rename", "name2", "image2"),
     ),
 )
@@ -677,13 +677,13 @@ _MAGNIFIER_SLIDER_SPECS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
     (
         "image_compare.magnifier.slider_size",
         "slider_size",
-        "label.magnifier_size",
+        "image_compare.label.magnifier_size",
         ("magnifier size", "zoom"),
     ),
     (
         "image_compare.magnifier.slider_capture",
         "slider_capture",
-        "label.capture_size",
+        "image_compare.label.capture_size",
         ("capture size",),
     ),
     (
@@ -858,12 +858,12 @@ def _contribute_magnifier_visibility_flyout(reg: ActionRegistry) -> None:
 
 
 _MAGNIFIER_COLOR_OPTION_SPECS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("capture", "magnifier.capture_ring", ("capture", "capture ring")),
-    ("laser", "label.guides", ("laser", "guides")),
-    ("border", "label.border", ("border",)),
+    ("capture", "image_compare.magnifier.capture_ring", ("capture", "capture ring")),
+    ("laser", "image_compare.label.guides", ("laser", "guides")),
+    ("border", "image_compare.label.border", ("border",)),
     (
         "divider",
-        "ui.choose_magnifier_divider_line_color",
+        "image_compare.ui.choose_magnifier_divider_line_color",
         ("divider", "split line"),
     ),
 )
@@ -978,7 +978,7 @@ def _show_host_font_settings_flyout() -> None:
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()
-    if app is None:
+    if not isinstance(app, QApplication):
         return
     for top in app.topLevelWidgets():
         presenter = getattr(top, "presenter", None)

@@ -13,6 +13,7 @@ from ui.canvas_infra.viewport.state import (
     get_zoom_level,
 )
 from ui.canvas_presentation.render_arch import (
+    RenderIntent,
     build_render_intent,
 )
 from tabs.image_compare.canvas.render_arch import (
@@ -26,7 +27,7 @@ from tabs.image_compare.canvas.render_arch import (
 )
 
 from .render_config import update_display_split_position
-from ui.widgets.canvas.render_metrics import RenderMetrics
+from ui.canvas_infra.rhi.render_metrics import RenderMetrics
 from .texture_parts.base_images import (
     update_common_letterbox_geometry,
     upload_pil_images,
@@ -442,7 +443,7 @@ def request_update(widget):
 def _schedule_glass_settle_frame(widget):
     """One extra repaint, one event-loop turn after this real content
     update -- lets the CPU-readback display path
-    (ui/widgets/glass_panel_display.py's GlassPanelDisplayWidgetCpu, see
+    (ui/widgets/glass_hud/panel_display.py's GlassPanelDisplayWidgetCpu, see
     docs/dev/KNOWN_BUGS.md's "QRhiWidget/QOpenGLWidget can't alpha-blend
     against sibling widgets" entry) catch up to the composite this frame's
     own render_backdrops() call just produced.

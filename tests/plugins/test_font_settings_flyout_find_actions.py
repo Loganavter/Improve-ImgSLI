@@ -125,12 +125,11 @@ def test_pulse_widget_parents_overlay_to_flyout(qtbot):
 
     try:
         widget_pulse.pulse_widget(flyout.size_slider)
-        overlay = widget_pulse._ACTIVE
+        overlay = widget_pulse._ACTIVE[-1]
         assert overlay is not None
         assert overlay.parentWidget() is flyout
         assert overlay.isVisible()
         assert overlay._target_rect.height() >= widget_pulse._MIN_PULSE_HEIGHT
     finally:
-        widget_pulse._dispose_overlay(widget_pulse._ACTIVE)
-
+        widget_pulse._dispose_overlay(widget_pulse._ACTIVE[-1] if widget_pulse._ACTIVE else None)
 

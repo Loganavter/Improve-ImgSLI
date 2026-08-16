@@ -114,8 +114,10 @@ def test_settings_sidebar_items_do_not_duplicate_labels_as_tooltips():
         active_tab="image_compare",
     )
 
-    assert [row.button.toolTip() for row in dialog.sidebar._rows] == [""] * 5
+    # 6 rows: 4 platform sections + both ambient per-tab sections
+    # (image_compare, image_gallery) — visible from any session context.
+    assert [row.button.toolTip() for row in dialog.sidebar._rows] == [""] * 6
 
     dialog.update_language("ru")
 
-    assert [row.button.toolTip() for row in dialog.sidebar._rows] == [""] * 5
+    assert [row.button.toolTip() for row in dialog.sidebar._rows] == [""] * 6

@@ -96,7 +96,7 @@ def test_list_item_remove_calls_specific_index(qapp):
 
 
 def test_unified_flyout_right_click_emits_context_menu_signal(qapp):
-    from sli_ui_toolkit.ui.widgets.composite.unified_flyout import UnifiedFlyout
+    from ui.widgets.unified_list_picker import UnifiedListPicker as UnifiedFlyout
 
     host = QWidget()
     left = QWidget(host)

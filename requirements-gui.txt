@@ -6,4 +6,4 @@ shiboken6==6.11.1
 -e ../sli-ui-toolkit
 scikit-image==0.26.0
 imagecodecs>=2024.1.1
-pyvips>=2.2.3
+pyvips[binary]>=3.1

@@ -12,7 +12,7 @@ from ui.canvas_infra.scene.pass_contract import (
     is_single_image_preview_scene,
 )
 from ui.canvas_infra.scene.stacking_policy import CanvasStackRole
-from ui.widgets.canvas.render_common import widget_px_to_screen_px
+from ui.canvas_infra.rhi.render_common import widget_px_to_screen_px
 from shared.rendering.stroke_geometry import shrink_screen_radius_for_stroke
 from tabs.image_compare.canvas.rhi_feature_common import (
     FullscreenUniformPassResources,
@@ -46,9 +46,9 @@ class CaptureRingPass(CanvasRenderPass):
             if isinstance(getattr(ctx.scene_frame, "feature_payloads", None), dict)
             else {}
         )
-        circles = payloads.get("capture_circles")
-        if circles:
-            return tuple(circles)
+        payload_circles = payloads.get("capture_circles")
+        if payload_circles:
+            return tuple(payload_circles)
         return tuple(getattr(widget.runtime_state, "_capture_circles", ()))
 
     def initialize(self, rhi, target) -> None:

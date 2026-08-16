@@ -125,8 +125,8 @@ class MetricsService:
             return
 
         current_language = getattr(self.store.settings, "current_language", "en")
-        message = tr("msg.ssim_calculation_in_progress", current_language)
-        if message == "msg.ssim_calculation_in_progress":
+        message = tr("image_compare.msg.ssim_calculation_in_progress", current_language)
+        if message == "image_compare.msg.ssim_calculation_in_progress":
             message = "SSIM calculation..."
 
         if self._active_ssim_toast_id is not None:
@@ -162,12 +162,12 @@ class MetricsService:
 
         current_language = getattr(self.store.settings, "current_language", "en")
         if success:
-            message = tr("msg.ssim_calculation_done", current_language)
-            if message == "msg.ssim_calculation_done":
+            message = tr("image_compare.msg.ssim_calculation_done", current_language)
+            if message == "image_compare.msg.ssim_calculation_done":
                 message = "SSIM done"
         else:
-            message = tr("msg.ssim_calculation_failed", current_language)
-            if message == "msg.ssim_calculation_failed":
+            message = tr("image_compare.msg.ssim_calculation_failed", current_language)
+            if message == "image_compare.msg.ssim_calculation_failed":
                 message = "SSIM failed"
 
         try:

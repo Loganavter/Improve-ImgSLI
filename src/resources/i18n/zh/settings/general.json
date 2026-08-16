@@ -20,7 +20,6 @@
     "optimize_laser_smoothing": "激光平滑",
     "optimize_magnifier_movement": "放大镜移动",
     "original": "原始",
-    "recording_fps": "录制帧率",
     "render_backend": "渲染后端",
     "render_backend_label": "后端",
     "render_backend_default": "自动（平台默认）",
@@ -50,11 +49,12 @@
     "system_default": "系统默认",
     "system_notifications": "系统通知",
     "ui_font": "UI字体",
+    "ui_scale": "界面缩放",
+    "ui_scale_tooltip": "独立于系统显示缩放，缩放界面（控件、字体、图标、间距）。即时生效。",
     "ui_mode": "UI模式",
     "ui_mode_advanced": "高级",
     "ui_mode_beginner": "初学者",
     "ui_mode_expert": "专家",
-    "video_recording": "视频录制",
     "zoom_interpolation": "缩放插值",
     "language_en": "English",
     "language_ru": "Русский",
@@ -67,6 +67,8 @@
     "keyboard_reset_all": "重置全部",
     "keyboard_group_platform": "平台",
     "keyboard_group_image_compare": "Image Compare",
-    "keyboard_group_multi_compare": "Multi Compare"
+    "keyboard_group_multi_compare": "Multi Compare",
+    "recording_fps": "录制帧率",
+    "video_recording": "视频录制"
   }
 }

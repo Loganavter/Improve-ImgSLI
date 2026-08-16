@@ -8,14 +8,14 @@ takes the panel as its first argument and reads/writes its instance state
 Cross-calls go through ``panel.<method>()`` (not the sibling module function
 directly) even within this module -- tests monkeypatch instance methods
 like ``panel._rebuild_items`` directly (see
-``tests/runtime/test_recent_projects_panel.py``), which only takes effect
+``src/tabs/session_picker/tests/runtime/test_recent_projects_panel.py``), which only takes effect
 if callers look the method up on the instance each time.
 
 The ``services.io.recent_projects`` reads/writes below go through the
 ``tabs.session_picker.recent.panel`` module (imported lazily inside each
 function to dodge the circular import -- ``panel.py`` imports this module),
 not straight from ``services.io.recent_projects``, because
-``tests/runtime/test_recent_projects_panel.py``/``test_recent_selection.py``
+``src/tabs/session_picker/tests/runtime/test_recent_projects_panel.py``/``test_recent_selection.py``
 monkeypatch e.g. ``"tabs.session_picker.recent.panel.list_recent_projects"``
 -- a direct import here would bind before the patch and never see it.
 """

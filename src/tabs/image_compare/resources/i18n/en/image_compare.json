@@ -80,7 +80,112 @@
         "divider": "Divider",
         "analysis": "Analysis",
         "video": "Video"
+      },
+      "context_carry_image": "Move",
+      "context_copy_path": "Copy path",
+      "context_duplicate": "Duplicate",
+      "context_name": "Name",
+      "context_properties": "Properties",
+      "context_remove": "Remove",
+      "context_rename": "Rename",
+      "export_video": "Export Video",
+      "settings": {
+        "analysis_desc": "Open Settings → Analysis details"
       }
+    },
+    "button": {
+      "add_images_1": "Add Img(s) 1",
+      "add_images_2": "Add Img(s) 2",
+      "save_result": "Save Result",
+      "hold_clear_entire_list": "Hold: Clear entire list",
+      "pause": "Pause",
+      "play": "Play",
+      "record": "Record",
+      "redo": "Redo",
+      "select_images": "Select Image(s)",
+      "stop": "Stop",
+      "trim_to_selection": "Trim to Selection",
+      "undo_ctrlz": "Undo (Ctrl+Z)"
+    },
+    "common": {
+      "position": {
+        "bottom": "Bottom",
+        "top": "Top"
+      },
+      "file_type": {
+        "all_files": "All Files",
+        "image_files": "Image Files"
+      },
+      "warning": "Warning"
+    },
+    "tooltip": {
+      "magnifier_colors": "Magnifier Colors"
+    },
+    "ui": {
+      "drop_images_1_here": "Drop Image(s) 1 Here",
+      "drop_images_2_here": "Drop Image(s) 2 Here",
+      "choose_capture_ring_color": "Choose Capture Ring Color",
+      "choose_magnifier_base_color": "Choose Base Color for Magnifier Elements",
+      "choose_magnifier_border_color": "Choose Magnifier Border Color",
+      "choose_magnifier_divider_line_color": "Choose Magnifier Divider Line Color",
+      "choose_magnifier_guides_color": "Choose Magnifier Guides Color",
+      "edit_current_image_1_name": "Edit Current Image 1 Name",
+      "edit_current_image_2_name": "Edit Current Image 2 Name",
+      "include_file_names_in_saved_image": "Include file names in saved image",
+      "psnr": "PSNR",
+      "ssim": "SSIM"
+    },
+    "label": {
+      "border": "Border",
+      "capture_size": "Capture Size (%)",
+      "container": "Container",
+      "fps": "FPS",
+      "guides": "Guides",
+      "line": "Line",
+      "magnifier": "Magnifier",
+      "magnifier_size": "Magnifier Size (%)",
+      "name_1": "Name 1",
+      "name_2": "Name 2",
+      "output": "Output",
+      "video_codec": "Video Codec"
+    },
+    "misc": {
+      "name_length_limit_exceeded": "Name length limit ({limit}) exceeded!",
+      "select_an_image": "Select an image"
+    },
+    "msg": {
+      "edge_comparison_done": "Edge comparison done",
+      "edge_comparison_in_progress": "Edge comparison...",
+      "error_normalizing_path": "Error normalizing path",
+      "error_processing_path": "Error processing path",
+      "failed_to_load_image": "Failed to load image",
+      "failed_to_quick_save_image": "Failed to quick save image",
+      "failed_to_save_image": "Failed to save image",
+      "grayscale_diff_done": "Grayscale diff done",
+      "grayscale_diff_in_progress": "Grayscale diff...",
+      "highlight_diff_done": "Highlight diff done",
+      "highlight_diff_in_progress": "Highlight diff...",
+      "invalid_data": "Invalid Data",
+      "invalid_item_type_or_empty_path": "Invalid item type or empty path",
+      "select_both_images_first": "Please load and select images in both slots first.",
+      "some_images_could_not_be_loaded": "Some images could not be loaded",
+      "specify_output_directory_and_file_name": "Please specify output directory and file name.",
+      "ssim_calculation_done": "SSIM done",
+      "ssim_calculation_in_progress": "SSIM calculation...",
+      "ssim_calculation_failed": "SSIM calculation failed"
+    },
+    "settings": {
+      "recording_fps": "Recording FPS",
+      "video_recording": "Video Recording"
+    },
+    "workspace": {
+      "session_types": {
+        "image_compare": "Image Compare"
+      }
+    },
+    "magnifier": {
+      "capture_ring": "Capture Ring",
+      "fit_mode_toggle": "Toggle Fit Mode"
     }
   }
 }

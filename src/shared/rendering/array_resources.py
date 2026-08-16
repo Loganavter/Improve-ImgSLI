@@ -21,10 +21,14 @@ from PySide6.QtGui import (
     QRhiBuffer,
     QRhiGraphicsPipeline,
     QRhiShaderResourceBinding,
+    QRhi,
+    QRhiSampler,
+    QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiTexture,
     QRhiTextureSubresourceUploadDescription,
     QRhiTextureUploadDescription,
+    QShader,
     QRhiTextureUploadEntry,
     QRhiVertexInputAttribute,
     QRhiVertexInputBinding,
@@ -43,9 +47,9 @@ class TileArrayResourcesBase:
     def __init__(
         self,
         *,
-        rhi_getter: Callable[[], object],
-        sampler_getter: Callable[[str], object],
-        load_shader: Callable[[str], object],
+        rhi_getter: Callable[[], QRhi | None],
+        sampler_getter: Callable[[str], QRhiSampler | None],
+        load_shader: Callable[[str], QShader],
         layer_px: int,
         array_capacity: int,
         name_prefix: str,
@@ -71,19 +75,21 @@ class TileArrayResourcesBase:
         self._default_sampler_name = default_sampler_name
         self._vertex_stride = vertex_stride
 
-        self.tile_arrays: list[object] = []
-        self.array_pipeline = None
-        self.array_srb = None
-        self._array_srb_cache: dict[str, object] = {}
-        self.array_uniform_buffer = None
-        self.array_instance_buffer = None
+        self.tile_arrays: list[QRhiTexture] = []
+        self.array_pipeline: QRhiGraphicsPipeline | None = None
+        self.array_srb: QRhiShaderResourceBindings | None = None
+        self._array_srb_cache: dict[str, QRhiShaderResourceBindings] = {}
+        self.array_uniform_buffer: QRhiBuffer | None = None
+        self.array_instance_buffer: QRhiBuffer | None = None
         self._array_instance_capacity = 0
         self._array_render_pass_descriptor = None
         self._array_pipeline_sample_count: int | None = None
 
     @property
-    def rhi(self):
-        return self._rhi_getter()
+    def rhi(self) -> QRhi:
+        rhi = self._rhi_getter()
+        assert rhi is not None
+        return rhi
 
     def release(self) -> None:
         resources = [
@@ -243,6 +249,8 @@ class TileArrayResourcesBase:
             | QRhiShaderResourceBinding.StageFlag.FragmentStage
         )
         sampler = self._sampler_getter(sampler_name)
+        assert sampler is not None
+        assert self.array_uniform_buffer is not None
         srb = self.rhi.newShaderResourceBindings()
         srb.setBindings(
             [
@@ -297,6 +305,7 @@ class TileArrayResourcesBase:
         )
         pipeline.setTopology(QRhiGraphicsPipeline.Topology.TriangleStrip)
         pipeline.setSampleCount(sample_count)
+        assert self.array_srb is not None
         pipeline.setShaderResourceBindings(self.array_srb)
         pipeline.setRenderPassDescriptor(descriptor)
 
@@ -325,10 +334,10 @@ class TileArrayResourcesBase:
 
         blend = QRhiGraphicsPipeline.TargetBlend()
         blend.enable = True
-        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha
-        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha  # type: ignore[assignment]  # PySide6 stub types BlendFactor fields as int
+        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
+        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One  # type: ignore[assignment]
+        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
         pipeline.setTargetBlends([blend])
 
         if not pipeline.create():

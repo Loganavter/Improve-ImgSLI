@@ -25,31 +25,31 @@ def install_image_compare_translations(ui) -> None:
 
 def _bind_labels(ui) -> None:
     translatable_text(
-        ui.label_edit_name1, "label.name_1", suffix=":", defer_when_hidden=_DEFER
+        ui.label_edit_name1, "image_compare.label.name_1", suffix=":", defer_when_hidden=_DEFER
     )
     translatable_text(
-        ui.label_edit_name2, "label.name_2", suffix=":", defer_when_hidden=_DEFER
+        ui.label_edit_name2, "image_compare.label.name_2", suffix=":", defer_when_hidden=_DEFER
     )
 
 
 def _bind_placeholders(ui) -> None:
     translatable_placeholder(
-        ui.edit_name1, "ui.edit_current_image_1_name", defer_when_hidden=_DEFER
+        ui.edit_name1, "image_compare.ui.edit_current_image_1_name", defer_when_hidden=_DEFER
     )
     translatable_placeholder(
-        ui.edit_name2, "ui.edit_current_image_2_name", defer_when_hidden=_DEFER
+        ui.edit_name2, "image_compare.ui.edit_current_image_2_name", defer_when_hidden=_DEFER
     )
 
 
 def _bind_button_texts(ui) -> None:
     translatable_text(
-        ui.btn_image1, "button.add_images_1", defer_when_hidden=_DEFER
+        ui.btn_image1, "image_compare.button.add_images_1", defer_when_hidden=_DEFER
     )
     translatable_text(
-        ui.btn_image2, "button.add_images_2", defer_when_hidden=_DEFER
+        ui.btn_image2, "image_compare.button.add_images_2", defer_when_hidden=_DEFER
     )
     translatable_text(
-        ui.btn_save, "button.save_result", defer_when_hidden=_DEFER
+        ui.btn_save, "image_compare.button.save_result", defer_when_hidden=_DEFER
     )
 
 
@@ -123,10 +123,10 @@ def _bind_tooltips(ui) -> None:
 
 def _bind_group_titles(ui) -> None:
     groups = (
-        ("line_group_container", "label.line"),
-        ("magnifier_group_container", "label.magnifier"),
+        ("line_group_container", "image_compare.label.line"),
+        ("magnifier_group_container", "image_compare.label.magnifier"),
         ("view_group_container", "label.view"),
-        ("record_group_container", "button.record"),
+        ("record_group_container", "image_compare.button.record"),
     )
     for attr_name, key in groups:
         container = getattr(ui, attr_name)
@@ -140,13 +140,13 @@ def _bind_group_titles(ui) -> None:
 def _bind_slider_labels(ui) -> None:
     translatable_text(
         ui.label_magnifier_size,
-        "label.magnifier_size",
+        "image_compare.label.magnifier_size",
         suffix=":",
         defer_when_hidden=_DEFER,
     )
     translatable_text(
         ui.label_capture_size,
-        "label.capture_size",
+        "image_compare.label.capture_size",
         suffix=":",
         defer_when_hidden=_DEFER,
     )
@@ -164,12 +164,12 @@ def _bind_slider_labels(ui) -> None:
     )
     translatable_tooltip(
         ui.icon_magnifier_size,
-        "label.magnifier_size",
+        "image_compare.label.magnifier_size",
         defer_when_hidden=_DEFER,
     )
     translatable_tooltip(
         ui.icon_capture_size,
-        "label.capture_size",
+        "image_compare.label.capture_size",
         defer_when_hidden=_DEFER,
     )
     translatable_tooltip(

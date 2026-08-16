@@ -5,11 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QSizePolicy, QWidget
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow, VerticalSplit
-from sli_ui_toolkit.widgets import Button, ButtonRegion
+from sli_ui_toolkit.widgets import Button, ButtonRegion, DrawContext
 
 from services.io.project_preview import peek_project_preview
 from services.io.recent_projects import RecentProjectRecord
@@ -35,6 +37,68 @@ def _opaque(color: QColor) -> QColor:
     out = QColor(color)
     out.setAlpha(255)
     return out
+
+
+# Translucent monochrome wash painted OVER the whole card on hover — the
+# "overlay" half of the hover effect (the stock ``BackgroundLayer`` hover is
+# an opaque repaint under the content, invisible over the cover preview).
+_WASH_LIGHT = QColor(0, 0, 0, 26)
+_WASH_DARK = QColor(255, 255, 255, 38)
+
+
+def _rounded_rect_path(rect: QRectF, radii: tuple[float, float, float, float]) -> QPainterPath:
+    """Rounded-rect path with per-corner radii (tl, tr, br, bl)."""
+    max_r = min(rect.width(), rect.height()) / 2.0
+    tl, tr, br, bl = (max(0.0, min(float(r), max_r)) for r in radii)
+    path = QPainterPath()
+    path.moveTo(rect.left() + tl, rect.top())
+    path.lineTo(rect.right() - tr, rect.top())
+    if tr > 0:
+        path.arcTo(
+            rect.right() - 2 * tr, rect.top(), 2 * tr, 2 * tr, 90.0, -90.0
+        )
+    path.lineTo(rect.right(), rect.bottom() - br)
+    if br > 0:
+        path.arcTo(
+            rect.right() - 2 * br, rect.bottom() - 2 * br, 2 * br, 2 * br, 0.0, -90.0
+        )
+    path.lineTo(rect.left() + bl, rect.bottom())
+    if bl > 0:
+        path.arcTo(
+            rect.left(), rect.bottom() - 2 * bl, 2 * bl, 2 * bl, 270.0, -90.0
+        )
+    path.lineTo(rect.left(), rect.top() + tl)
+    if tl > 0:
+        path.arcTo(
+            rect.left(), rect.top(), 2 * tl, 2 * tl, 180.0, -90.0
+        )
+    path.closeSubpath()
+    return path
+
+
+def _card_hover_wash(painter: QPainter, ctx: DrawContext, tm: ThemeManager) -> None:
+    """``overlay_painter=`` callback: translucent wash over the whole card.
+
+    Runs in the widget-scoped pass, after every region layer, so the wash
+    sits over the preview pixmap and the text rows instead of being hidden
+    behind them. Regions keep a transparent ``hover_color`` so the stock
+    ``BackgroundLayer`` hover (an opaque repaint under the content) stays
+    off — this wash is the only hover effect.
+    """
+    if ctx.effective_bg_locked or ctx.hovered_region_id is None:
+        return
+    try:
+        is_dark = tm.is_dark()
+    except Exception:
+        is_dark = False
+    color = _WASH_DARK if is_dark else _WASH_LIGHT
+    radii = ctx.corner_radii or (0, 0, 0, 0)
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(color))
+    painter.drawPath(_rounded_rect_path(ctx.rect, radii))
+    painter.restore()
 
 
 def icon_for_record(record: RecentProjectRecord, context=None):
@@ -87,6 +151,9 @@ def _cover_region(
     weight: float,
     icon_size_px: int,
 ) -> ButtonRegion:
+    # Hover is the widget-scoped wash layer, not the opaque BackgroundLayer
+    # repaint — transparent hover_color keeps the preview image from being
+    # double-shaded under the wash.
     if missing:
         return ButtonRegion(
             id="cover",
@@ -107,6 +174,7 @@ def _cover_region(
             weight=weight,
             group="card",
             corner_radii=corner_radii,
+            hover_color=QColor(0, 0, 0, 0),
         )
     return ButtonRegion(
         id="cover",
@@ -115,6 +183,7 @@ def _cover_region(
         weight=weight,
         group="card",
         corner_radii=corner_radii,
+        hover_color=QColor(0, 0, 0, 0),
     )
 
 
@@ -227,14 +296,14 @@ def list_meta_rows(
 
 
 def apply_fixed_card_size(card: Button, width: int, height: int) -> None:
-    card.setFixedSize(width, height)
+    card.setFixedSize(scaled_px(width), scaled_px(height))
     card.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
 
 def apply_list_card_size(card: Button, height: int) -> None:
     """Fixed height, horizontal stretch to the scroll host width."""
     card.setMinimumWidth(0)
-    card.setFixedHeight(height)
+    card.setFixedHeight(scaled_px(height))
     card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
 
@@ -254,7 +323,7 @@ def bind_card(
         from tabs.session_picker.recent.selection import ctrl_held
 
         modifiers = QApplication.keyboardModifiers()
-        on_activate(c._recent_record, c._recent_missing, modifiers)
+        on_activate(c._recent_record, c._recent_missing, modifiers)  # type: ignore[call-arg]  # panel may accept +modifiers
 
     # Keep signature flexible: panel may accept (record, missing) or +modifiers.
     card.regionClicked.connect(_on_region)
@@ -332,6 +401,7 @@ def build_grid_card(
                 weight=GRID_TEXT_WEIGHT,
                 group="card",
                 corner_radii=(0, 0, 10, 10),
+                hover_color=QColor(0, 0, 0, 0),
             ),
         ],
         split=VerticalSplit(),
@@ -339,6 +409,7 @@ def build_grid_card(
         size=(GRID_CARD_W, GRID_CARD_H),
         content_padding=GRID_CONTENT_PADDING,
         corner_radius=10,
+        overlay_painter=_card_hover_wash,
         parent=parent,
     )
     # Stack title/subtitle by font metrics + gap (ratio mode collides in a
@@ -369,6 +440,7 @@ def build_list_card(
                 weight=8.0,
                 group="card",
                 corner_radii=(8, 0, 0, 8),
+                hover_color=QColor(0, 0, 0, 0),
             ),
             ButtonRegion(
                 id="meta",
@@ -376,12 +448,14 @@ def build_list_card(
                 weight=2.0,
                 group="card",
                 corner_radii=(0, 8, 8, 0),
+                hover_color=QColor(0, 0, 0, 0),
             ),
         ],
         variant="default",
         size=(0, LIST_CARD_H),
         content_padding=LIST_CONTENT_PADDING,
         corner_radius=8,
+        overlay_painter=_card_hover_wash,
         parent=parent,
     )
     card._rows_compact = True

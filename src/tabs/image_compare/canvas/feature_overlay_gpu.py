@@ -187,7 +187,7 @@ def upload_feature_overlay_crop(
     border_color: QColor | None = None,
     border_width: float = 2.0,
     index: int = 0,
-    canvas_filter: int = None,
+    canvas_filter: int | None = None,
 ):
     state = widget.runtime_state
     overlay = state._feature_overlay_gpu

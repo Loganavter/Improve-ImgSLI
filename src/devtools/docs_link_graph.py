@@ -129,7 +129,18 @@ def analyze_docs(*, repo_root: Path | None = None) -> DocsLinkReport:
                     )
                     continue
                 target_rel = _rel(resolved, repo_root=root)
-                if target_rel in doc_rels and target_rel != source_rel:
+                # DOC_INDEX.md is generated and links every doc by
+                # construction, so its own links would add meaningless
+                # self-referential backlinks to every entry — and make the
+                # generated index a moving target (a one-pass --write-index
+                # can never include its own backlinks, so the file would
+                # always be "stale" against a re-analysis). Exclude it from
+                # contributing backlinks so the output is a fixed point.
+                if (
+                    target_rel in doc_rels
+                    and target_rel != source_rel
+                    and source_rel != _INDEX_REL_PATH
+                ):
                     backlinks[target_rel].add(source_rel)
 
     return DocsLinkReport(

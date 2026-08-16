@@ -64,6 +64,8 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
         def _run_canvas_feature_command(
             feature_name: str, command_id: str, *args
         ):
+            if self.controller is None:
+                return
             self.controller.execute_canvas_feature_command(
                 feature_name,
                 command_id,

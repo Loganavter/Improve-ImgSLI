@@ -23,15 +23,12 @@ from shared.analysis.edge_detector import (
     _emit_edge_progress,
     _resolve_edge_workers,
 )
+from shared.analysis.output import finalize_diff_output
 from shared.image_processing.store_lease import StoreLease
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from shared.regions import build_uniform_tile_grid
 
 logger = logging.getLogger("ImproveImgSLI")
-
-DIFF_SPILL_MAX_DIMENSION = 4096
-DIFF_SPILL_MAX_PIXELS = 16_000_000
-_BLOCK = 512
 
 
 def _crop_source(source, box: tuple[int, int, int, int]) -> Image.Image:
@@ -61,45 +58,6 @@ def _align_source2(source1, source2):
 
         return downscale_source_to_pil(source2, source1.size)
     return source2.resize(source1.size, Image.Resampling.LANCZOS)
-
-
-def finalize_diff_output(
-    arr: np.ndarray,
-    *,
-    channels: int = 1,
-) -> Image.Image | TiledPixelStore:
-    """Return compact PIL for bounded results, else spill to ``TiledPixelStore``."""
-    height, width = arr.shape[:2]
-    if (
-        width * height <= DIFF_SPILL_MAX_PIXELS
-        and max(width, height) <= DIFF_SPILL_MAX_DIMENSION
-    ):
-        if channels == 1:
-            return Image.fromarray(arr, mode="L").convert("RGBA")
-        return Image.fromarray(arr, mode="RGB").convert("RGBA")
-
-    store = TiledPixelStore.allocate(width, height)
-    try:
-        if channels == 1:
-            rgba_mode = "L"
-        else:
-            rgba_mode = "RGB"
-        for oy in range(0, height, _BLOCK):
-            oy1 = min(oy + _BLOCK, height)
-            for ox in range(0, width, _BLOCK):
-                ox1 = min(ox + _BLOCK, width)
-                patch = arr[oy:oy1, ox:ox1]
-                if channels == 1:
-                    pil = Image.fromarray(patch, mode="L").convert("RGBA")
-                else:
-                    pil = Image.fromarray(patch, mode="RGB").convert("RGBA")
-                store.write_pil((ox, oy, ox1, oy1), pil)
-        return store
-    except OSError as exc:
-        logger.warning("Diff spill to TiledPixelStore failed, keeping PIL: %s", exc)
-        if channels == 1:
-            return Image.fromarray(arr, mode="L").convert("RGBA")
-        return Image.fromarray(arr, mode="RGB").convert("RGBA")
 
 
 def create_highlight_diff_from_sources(

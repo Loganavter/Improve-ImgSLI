@@ -74,16 +74,19 @@ class TabContract(ABC):
 
     @property
     def is_bootstrap_default(self) -> bool:
-        """True if this tab should be the registry's active tab before any
-        workspace session exists to activate one via `sync_session_mode()`.
+        """True only for the tab that owns the pre-session workspace window.
 
-        `TabRegistry.create_service`/`create_main_window_feature` resolve
-        strictly against the active tab (see docs/dev/tabs/capability-mechanisms.md)
-        — during the narrow bootstrap window before the first session is
-        created, something still needs to answer main-window-shell feature
-        requests. Exactly one registered tab should return True here; the
-        host (`TabRegistry.activate_default`) picks whichever one does
-        without needing to name it.
+        This role is **reserved exclusively for ``session_picker``** — the
+        tab whose session ``core.store.INITIAL_WORKSPACE_SESSION_TYPE`` names
+        as the app's initial workspace session. ``TabRegistry.activate_default``
+        seeds ``_active_session_type`` from it for the narrow window before
+        the first real ``sync_session_mode()`` reconciles it, and
+        ``bootstrap_default_tab()`` resolves to it.
+
+        No other tab may claim it: ``TabRegistry._bootstrap_default_tab()``
+        raises if a non-``session_picker`` tab returns True here. Legacy
+        main-window shell construction is *not* routed through this flag —
+        it goes to the shell-host session type hardcoded in ``TabRegistry``.
         """
         return False
 

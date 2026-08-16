@@ -52,6 +52,8 @@ def register_platform_actions(
     open_project: Callable[[], None] | None = None,
     save_project: Callable[[], None] | None = None,
     save_project_as: Callable[[], None] | None = None,
+    undo: Callable[[], None] | None = None,
+    redo: Callable[[], None] | None = None,
     file_menu_button: object | None = None,
     help_menu_button: object | None = None,
     open_session_picker_target: ActionTarget | None = None,
@@ -74,7 +76,7 @@ def register_platform_actions(
 
         app = QApplication.instance()
         event_bus = None
-        if app is not None:
+        if isinstance(app, QApplication):
             for widget in app.topLevelWidgets():
                 presenter = getattr(widget, "presenter", None)
                 event_bus = getattr(presenter, "event_bus", None) if presenter else None
@@ -182,6 +184,34 @@ def register_platform_actions(
             target=file_quit,
         ),
     ]
+    if undo is not None:
+        specs.append(
+            ActionDescriptor(
+                action_id="platform.undo",
+                label_key="action.platform.undo",
+                description_key="action.platform.undo_desc",
+                breadcrumb=("menu.edit",),
+                owner_tab=None,
+                topic="session",
+                shortcut="Ctrl+Z",
+                run=undo,
+                target=None,
+            )
+        )
+    if redo is not None:
+        specs.append(
+            ActionDescriptor(
+                action_id="platform.redo",
+                label_key="action.platform.redo",
+                description_key="action.platform.redo_desc",
+                breadcrumb=("menu.edit",),
+                owner_tab=None,
+                topic="session",
+                shortcut="Ctrl+Shift+Z",
+                run=redo,
+                target=None,
+            )
+        )
     if open_project is not None:
         specs.insert(
             3,
@@ -277,6 +307,36 @@ def register_platform_actions(
                 target=new_multi_compare_target,
             )
         )
+    if undo is not None:
+        specs.append(
+            ActionDescriptor(
+                action_id="platform.undo",
+                label_key="action.platform.undo",
+                description_key="action.platform.undo_desc",
+                breadcrumb=("menu.file",),
+                owner_tab=None,
+                topic="session",
+                shortcut="Ctrl+Z",
+                help_page="file_management",
+                run=undo,
+                target=None,
+            ),
+        )
+    if redo is not None:
+        specs.append(
+            ActionDescriptor(
+                action_id="platform.redo",
+                label_key="action.platform.redo",
+                description_key="action.platform.redo_desc",
+                breadcrumb=("menu.file",),
+                owner_tab=None,
+                topic="session",
+                shortcut="Ctrl+Shift+Z",
+                help_page="file_management",
+                run=redo,
+                target=None,
+            ),
+        )
     for action in specs:
         reg.register(action)
 
@@ -366,6 +426,22 @@ def contribute_platform_keymap_defaults(registry) -> None:
             None,
             ("menu.file",),
             description_key="action.platform.paste_clipboard_image_desc",
+        ),
+        KeymapDefaultEntry(
+            "platform.undo",
+            "action.platform.undo",
+            "Ctrl+Z",
+            None,
+            ("menu.edit",),
+            description_key="action.platform.undo_desc",
+        ),
+        KeymapDefaultEntry(
+            "platform.redo",
+            "action.platform.redo",
+            "Ctrl+Shift+Z",
+            None,
+            ("menu.edit",),
+            description_key="action.platform.redo_desc",
         ),
         KeymapDefaultEntry(
             "platform.quit",

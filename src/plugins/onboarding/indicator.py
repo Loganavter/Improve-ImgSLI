@@ -5,6 +5,7 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.managers import scaled_px
 from ui.theming import resolve_theme_color
 
 
@@ -15,7 +16,7 @@ class DotIndicator(QWidget):
         self._current = 0
         self._animated_position = 0.0
         self._previous_position = 0.0
-        self.setMinimumSize(60, 15)
+        self.setMinimumSize(scaled_px(60), scaled_px(15))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.theme_manager = ThemeManager.get_instance()
 

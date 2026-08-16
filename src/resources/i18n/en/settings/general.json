@@ -3,6 +3,8 @@
     "appearance": "Appearance",
     "general": "General",
     "auto": "Auto",
+    "search_placeholder": "Search settings…",
+    "search_no_results": "No matching settings",
     "autocalculate_psnr": "Auto-calculate PSNR",
     "autocalculate_ssim": "Auto-calculate SSIM",
     "autocrop_black_borders_on_load": "Auto-crop black borders on load",
@@ -20,7 +22,6 @@
     "optimize_laser_smoothing": "Laser smoothing",
     "optimize_magnifier_movement": "Magnifier movement",
     "original": "Original",
-    "recording_fps": "Recording FPS",
     "render_backend": "Render Backend",
     "render_backend_label": "Backend",
     "render_backend_default": "Auto (platform default)",
@@ -50,11 +51,12 @@
     "system_default": "System default",
     "system_notifications": "System notifications",
     "ui_font": "UI Font",
+    "ui_scale": "Interface Scale",
+    "ui_scale_tooltip": "Scales the interface (controls, fonts, icons, spacing) independently of the system display scale. Applies live.",
     "ui_mode": "UI Mode",
     "ui_mode_advanced": "Advanced",
     "ui_mode_beginner": "Beginner",
     "ui_mode_expert": "Expert",
-    "video_recording": "Video Recording",
     "zoom_interpolation": "Zoom Interpolation",
     "language_en": "English",
     "language_ru": "Русский",
@@ -67,6 +69,8 @@
     "keyboard_reset_all": "Reset all shortcuts",
     "keyboard_group_platform": "Platform",
     "keyboard_group_image_compare": "Image Compare",
-    "keyboard_group_multi_compare": "Multi Compare"
+    "keyboard_group_multi_compare": "Multi Compare",
+    "recording_fps": "Recording FPS",
+    "video_recording": "Video Recording"
   }
 }
