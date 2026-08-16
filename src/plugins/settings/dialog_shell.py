@@ -11,7 +11,7 @@ from sli_ui_toolkit.widgets import (
     SidebarDialogShell,
 )
 from ui.icon_manager import AppIcon
-from ui.layout_spacing import control_edge_padding
+from ui.layout_spacing import control_edge_padding, sidebar_header_host
 from ui.theming import polish_themed_dialog
 from ui.widgets.form_controls import DialogActionBar
 
@@ -27,7 +27,7 @@ def setup_dialog_shell(dialog):
     dialog.search_field.setObjectName("SettingsSearchField")
 
     dialog.shell = SidebarDialogShell(
-        sidebar_header=dialog.search_field,
+        sidebar_header=sidebar_header_host(dialog.search_field),
         resizable_sidebar=True,
         content_margins=(
             control_edge_padding(),

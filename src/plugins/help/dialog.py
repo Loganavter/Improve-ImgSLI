@@ -56,6 +56,7 @@ from sli_ui_toolkit.widgets import (
     SidebarDialogShell,
 )
 from ui.icon_manager import AppIcon, get_app_icon
+from ui.layout_spacing import sidebar_header_host
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -571,12 +572,15 @@ class HelpDialog(ThemedDialog):
             tr("help.search_placeholder", language=self.current_language)
         )
         self._search_field.setClearButtonEnabled(True)
+        # The sidebar can shrink to HELP_SIDEBAR_MIN_WIDTH — keep the field's
+        # own minimum well below that so it never blocks the drag.
+        self._search_field.setMinimumWidth(scaled_px(160))
 
         self.shell = SidebarDialogShell(
             sidebar_width=HELP_SIDEBAR_DEFAULT_WIDTH,
             content_margins=(0, 0, 0, 0),
             content_spacing=0,
-            sidebar_header=self._search_field,
+            sidebar_header=sidebar_header_host(self._search_field),
         )
         self.nav_widget = self.shell.sidebar
         self.nav_widget.enable_minimal_scrollbar()

@@ -36,13 +36,7 @@ SETTINGS_GEOMETRY_POLICY = GeometryApplyPolicy(
 def compute_settings_dialog_size(dialog) -> tuple[int, int]:
     dialog.ensurePolished()
     sidebar_width = dialog.sidebar.width()
-    shell = getattr(dialog, "shell", None)
-    if shell is not None:
-        # The shell reserves the edge area on its own main_layout (both
-        # columns); content_layout itself is unpadded.
-        content_margins = shell.main_layout.contentsMargins()
-    else:
-        content_margins = dialog.content_layout.contentsMargins()
+    content_margins = dialog.content_layout.contentsMargins()
     total_width_margins = (
         content_margins.left()
         + content_margins.right()
