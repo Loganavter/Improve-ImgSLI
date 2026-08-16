@@ -29,7 +29,7 @@ shared by multiple tabs.
 ## Local Docs
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - current tab architecture and boundaries.
-- [investigations/](investigations/) — case write-ups for bugs confined to
+- `investigations/` — case write-ups for bugs confined to
   this tab (divider, magnifier).
   This folder mirrors a private `improve-imgsli-internal-docs` repo
   (same relative path) for long-form write-ups that stay out of the public
