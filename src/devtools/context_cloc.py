@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import locale
 import os
 import re
 import shutil
@@ -25,6 +26,14 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+try:
+    locale.setlocale(locale.LC_COLLATE, "")
+except locale.Error:
+    pass
+
+def _collate(text: str) -> str:
+    return locale.strxfrm(text)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
@@ -177,8 +186,7 @@ def add_file(
             f"({lines - max_lines} lines omitted; raise --max-lines to include more) ---"
         )
     else:
-        content = text if text.endswith("\n") else text + "\n"
-        writer.append_text(content)
+        writer.append_text(text)
 
 
 def git(cwd: Path, *args: str) -> str | None:
@@ -222,7 +230,7 @@ def _walk_entries(repo_dir: Path) -> list[str]:
     entries: list[str] = ["."]
     for root, dirs, files in os.walk(repo_dir):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIR_NAMES]
-        for name in sorted(dirs + files):
+        for name in sorted(dirs + files, key=_collate):
             rel = (Path(root) / name).relative_to(repo_dir).as_posix()
             entries.append(rel)
     return entries
@@ -242,7 +250,7 @@ def write_full_tree(writer: ContextWriter, repo_dir: Path) -> None:
         )
         writer.append_text(proc.stdout if proc.returncode == 0 else "")
     else:
-        lines = ["./" + entry for entry in sorted(_walk_entries(repo_dir))]
+        lines = ["./" + entry for entry in sorted(_walk_entries(repo_dir), key=_collate)]
         writer.append_text("\n".join(lines) + "\n")
 
 
@@ -260,7 +268,7 @@ def _english_help_files(repo_dir: Path) -> list[Path]:
                 continue
             if fname == "tree.json" or fname.endswith((".md", ".txt")):
                 matches.append(file)
-    return sorted(matches, key=lambda p: p.as_posix())
+    return sorted(matches, key=lambda p: _collate(p.as_posix()))
 
 
 def collect_english_help(
@@ -299,7 +307,7 @@ def collect_english_help(
             writer.write_line(
                 f"--- FILE: {repo_label}/{rel} (lines={text.count(chr(10))} chars={chars}) ---"
             )
-            writer.append_text(text if text.endswith("\n") else text + "\n")
+            writer.append_text(text)
         else:
             add_file(writer, seen, repo_dir, file, output, max_lines, max_chars)
 
@@ -318,7 +326,7 @@ def collect_text_docs(
         for fname in fnames:
             if fname.endswith((".md", ".txt")):
                 files.append(Path(root) / fname)
-    for file in sorted(files, key=lambda p: p.as_posix()):
+    for file in sorted(files, key=lambda p: _collate(p.as_posix())):
         add_file(writer, seen, repo_dir, file, output, max_lines, max_chars)
 
 
@@ -372,7 +380,7 @@ def _top_level_dirs(directory: Path) -> list[Path]:
                 continue
             if entry.is_dir(follow_symlinks=False):
                 out.append(Path(entry.path))
-    return sorted(out)
+    return sorted(out, key=lambda p: _collate(p.name))
 
 
 def _table_row(path: str, files: int, blank: int, comment: int, code: int) -> str:
