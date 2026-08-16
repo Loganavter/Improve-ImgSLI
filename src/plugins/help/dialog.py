@@ -574,7 +574,7 @@ class HelpDialog(ThemedDialog):
         self._search_field.setClearButtonEnabled(True)
         # The sidebar can shrink to HELP_SIDEBAR_MIN_WIDTH — keep the field's
         # own minimum well below that so it never blocks the drag.
-        self._search_field.setMinimumWidth(scaled_px(160))
+        self._search_field.setMinimumWidth(scaled_px(1))
 
         self.shell = SidebarDialogShell(
             sidebar_width=HELP_SIDEBAR_DEFAULT_WIDTH,
@@ -586,6 +586,13 @@ class HelpDialog(ThemedDialog):
         self.nav_widget.enable_minimal_scrollbar()
         self.nav_widget.setMinimumWidth(scaled_px(HELP_SIDEBAR_MIN_WIDTH))
         self.nav_widget.setMaximumWidth(scaled_px(HELP_SIDEBAR_MAX_WIDTH))
+        if self.shell.sidebar_column is not None:
+            # The shell pins the whole column to sidebar_width (280); lower
+            # it to the same minimum as the nav list so the splitter can
+            # actually shrink the sidebar (the field's own minimum is ~0).
+            self.shell.sidebar_column.setMinimumWidth(
+                scaled_px(HELP_SIDEBAR_MIN_WIDTH)
+            )
         self.nav_widget.currentRowChanged.connect(self._on_sidebar_row)
         self._install_sidebar_splitter()
 
