@@ -120,8 +120,10 @@ def unify_pair(
             if not write_resampled_to_store(
                 out2, source2, target_w, target_h, resample, should_abort=should_abort
             ):
+                assert out2 is not None
                 out2.close()
                 if out1 is not source1:
+                    assert out1 is not None
                     out1.close()
                 return None, None
         except OSError as exc:

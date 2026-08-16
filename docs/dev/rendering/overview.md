@@ -58,7 +58,7 @@ Not a feature home. Used for live store snapshots, render/export-facing
 store transformation, canvas surface integration. Feature-specific helpers
 should not live here.
 
-### 4. QRhi canvas renderer (`src/tabs/image_compare/canvas/`, backend bits under `src/ui/widgets/canvas/`)
+### 4. QRhi canvas renderer (`src/tabs/image_compare/canvas/`, backend bits under `src/ui/canvas_infra/rhi/`)
 
 Renderer backend, not a feature home. Owns QRhi resource setup, buffer/texture
 upload/readback, renderer-facing consumption of the render scene/runtime

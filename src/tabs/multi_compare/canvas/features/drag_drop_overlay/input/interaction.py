@@ -11,6 +11,8 @@ from __future__ import annotations
 from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QApplication
 
+from tabs.multi_compare.scene import actions
+
 
 def _pick_leaf(handler, local_pos: QPointF):
     return handler._leaf_at(local_pos.toPoint(), handler._leaf_rects())
@@ -38,5 +40,14 @@ def maybe_start_slot_drag(handler, local_pos: QPointF) -> None:
 
 
 def end_slot_press(handler) -> None:
+    """Release the pending press; a click that never crossed the drag
+    threshold (``_lmb_press_slot_id`` still set) toggles focus on that slot,
+    filling the split view with just that image (see ``composition_builder``'s
+    ``focused_slot_id`` handling)."""
+    slot_id = handler._lmb_press_slot_id
     handler._lmb_press_pos = None
     handler._lmb_press_slot_id = None
+    if slot_id is None:
+        return
+    new_focus = None if handler.state.is_focused else slot_id
+    handler._do_dispatch(actions.set_focus(new_focus))

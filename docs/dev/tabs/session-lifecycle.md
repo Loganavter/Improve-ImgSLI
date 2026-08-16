@@ -25,9 +25,25 @@ Per-session arbitrary state lives on `WorkspaceSession.state_slots` (see
 defaults; use `store.ensure_session_state_slot` / `set_session_state_slot` with
 an explicit `session_id=` when snapshotting from tab hooks.
 
-`state_slots["action_history"]` holds the per-session undo list (append-only
-skeleton today — no undo/redo UI yet). `Dispatcher.bind_history_for_session`
-swaps the active list on `WorkspaceSessionActivatedEvent`.
+`state_slots["action_history"]` holds the per-session dispatched-action log.
+`state_slots["undo_stack"]` / `["redo_stack"]` hold reference-snapshots for
+**undo/redo** (`Dispatcher.undo()/redo()`, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y,
+palette entries `platform.undo`/`platform.redo`, and CSD title-bar buttons in
+the leading zone after the menu strip — `MenuController._install_undo_redo_buttons`,
+styled like File/Help triggers, disabled at 0.4 opacity, enabled-state
+refreshed from `can_undo()/can_redo()` on store change).
+`Dispatcher.bind_history_for_session`
+swaps all three on `WorkspaceSessionActivatedEvent`.
+
+Undo records only "user-meaningful" actions (`Dispatcher._UNDOABLE_TYPES`):
+viewport/appearance/feature settings and `SET_CURRENT_INDEX` for image
+compare, plus the multi_compare session actions. Global settings, transient
+interaction/visual state, caches/metrics, and pixel-bearing document actions
+(which close the replaced `TiledPixelStore`) are excluded. Continuous
+gestures coalesce to one undo step (`_COALESCE_TYPES`). Undo is blocked while
+`render_cache.unification_in_progress` is set (image loading). Redo clears on
+the next dispatch. Both image_compare and multi_compare flow through the same
+core `Dispatcher`, so undo/redo (and the CSD buttons) cover both.
 
 ## Project I/O
 
@@ -101,3 +117,15 @@ Multi Compare: every new `multi_compare` session seeds divider/label chrome
 from QSettings last-used prefs (`_settings_from_qsettings`), falling back to
 another live MC session's slot when QSettings is empty. Live slots stay
 isolated after seed — editing one tab does not mutate another's slot.
+
+Multi Compare's session state is `state_slots["multi_compare.state"]`,
+reduced by the core `RootReducer` (registered in
+`tabs/multi_compare/bootstrap_reducers.py`) and written back by the core
+Dispatcher, so **undo/redo, serialization, and observers all go through the
+same path** as image_compare. `MultiCompareStore` is a facade over the core
+Dispatcher + active session slot (see
+`src/tabs/multi_compare/docs/ARCHITECTURE.md` / `state-unification-plan.md`).
+MC action types are in `Dispatcher._UNDOABLE_TYPES`, so Ctrl+Z /
+Ctrl+Shift+Z / Ctrl+Y and the CSD undo/redo buttons work in Multi Compare
+too. `RemoveSlot`/`Clear` defer closing removed `TiledPixelStore`s so an undo
+of a removal restores a still-open store.

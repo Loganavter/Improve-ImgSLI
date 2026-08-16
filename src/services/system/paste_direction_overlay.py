@@ -3,6 +3,7 @@ from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
 
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.theme import ThemeManager
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.ui.widgets.overlays.in_window_overlay import (
     TopLevelInWindowOverlay,
 )
@@ -187,9 +188,7 @@ class PasteDirectionOverlay(TopLevelInWindowOverlay):
             painter.drawRoundedRect(rect, 10, 10)
 
             painter.setPen(text_color)
-            font = painter.font()
-            font.setPointSize(14 if is_hovered else 12)
-            font.setBold(is_hovered)
+            font = ui_font(point_size=14 if is_hovered else 12, bold=is_hovered)
             painter.setFont(font)
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
 

@@ -82,6 +82,10 @@ lives*, not about renaming the public surface.
 | Image loading, pyramid build, loading toast (multi-compare) | `tabs/multi_compare/controller.py` | `tabs/multi_compare/use_cases/loading.py` |
 | Quick-save / export-dialog orchestration | `tabs/multi_compare/controller.py` | `tabs/multi_compare/use_cases/export.py` |
 | Drag & drop / pending-placement state machine | `tabs/multi_compare/widget.py` | `tabs/multi_compare/ui/drag_drop.py` |
+| Inspector Code section: preview panel | `sli-ui-toolkit` `ui/inspector/code.py` (`CodeSectionEditor` owner) | `ui/inspector/code_preview.py` (functions taking the editor) |
+| Inspector Apply: class patch + config apply | same owner | `ui/inspector/code_apply.py`, shared snippet parsing in `code_config.py` |
+| Inspector Code section: preview panel | `sli-ui-toolkit` `ui/inspector/code/editor.py` (`CodeSectionEditor` owner) | `ui/inspector/code/preview.py` (functions taking the editor) |
+| Inspector Apply: class patch + config apply | same owner | `ui/inspector/code/apply.py`, shared snippet parsing in `code/config.py` |
 
 ### When *not* to split
 

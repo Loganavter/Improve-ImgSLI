@@ -13,7 +13,7 @@ _HELP_ROOT = Path(__file__).resolve().parent / "resources" / "help"
 _NODES = {
     "workspace.image_compare": {
         "kind": "hub",
-        "title_key": "workspace.session_types.image_compare",
+        "title_key": "image_compare.workspace.session_types.image_compare",
         "description_key": "image_compare.help.hub.desc",
         "title": "Image Compare",
         "description": "Two-image compare, magnifier, export",

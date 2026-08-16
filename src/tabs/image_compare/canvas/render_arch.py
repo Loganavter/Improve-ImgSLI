@@ -7,7 +7,7 @@ from tabs.image_compare.canvas.style_tokens import (
     DEFAULT_CANVAS_STYLE_TOKENS,
 )
 from ui.canvas_presentation.label_style import FilenameOverlayStyle
-from ui.widgets.canvas.render_metrics import resolve_font_px, resolve_view_px
+from ui.canvas_infra.rhi.render_metrics import resolve_font_px, resolve_view_px
 
 
 @dataclass(frozen=True, slots=True)

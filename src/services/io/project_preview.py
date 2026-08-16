@@ -80,11 +80,11 @@ def qimage_to_png_bytes(
     ba = QByteArray()
     buf = QBuffer(ba)
     buf.open(QIODevice.OpenModeFlag.WriteOnly)
-    ok = image.save(buf, "PNG", int(compress))
+    ok = image.save(buf, "PNG", int(compress))  # type: ignore[call-overload]  # PySide6 runtime wants str format for QIODevice
     buf.close()
     if not ok or ba.isEmpty():
         return None
-    return bytes(ba)
+    return bytes(ba)  # type: ignore[call-overload]  # QByteArray supports buffer protocol
 
 
 def qimage_to_jpeg_bytes(image: QImage, *, quality: int = PREVIEW_JPEG_QUALITY) -> bytes | None:

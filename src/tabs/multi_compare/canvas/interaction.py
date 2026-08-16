@@ -6,7 +6,7 @@ Feature-specific gestures (dividers, slot drag) stay in
 
 from __future__ import annotations
 
-from PySide6.QtCore import QMimeData, QPoint, Qt
+from PySide6.QtCore import QMimeData, QPoint, QRect, Qt
 from PySide6.QtGui import QContextMenuEvent, QDrag, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
@@ -32,7 +32,7 @@ def clamp_pan_values(
     return pan_x, pan_y
 
 
-def fit_scale_for(slot: CompareSlot, rect) -> tuple[float, float]:
+def fit_scale_for(slot: CompareSlot, rect: QRect) -> tuple[float, float]:
     if slot.image is None or rect.width() <= 0 or rect.height() <= 0:
         return 1.0, 1.0
     from shared.image_processing.tiled_pixel_store import pixel_source_size
@@ -47,15 +47,46 @@ def fit_scale_for(slot: CompareSlot, rect) -> tuple[float, float]:
     return img_ar / cell_ar, 1.0
 
 
-def leaf_at(pos: QPoint, leaf_rects) -> tuple[LeafNode, object] | None:
+def leaf_at(pos: QPoint, leaf_rects) -> tuple[LeafNode, QRect] | None:
     for leaf, rect in leaf_rects:
         if rect.contains(pos):
             return leaf, rect
     return None
 
 
+def _focused_image_rect(widget) -> QRect | None:
+    """Widget-px rect of the actually displayed image while focused.
+
+    Mirrors ``canvas/features/focus_dim/passes.py``'s letterbox math (same
+    ``_canvas_layout()`` the renderer's own hit-testing uses) so clicks
+    outside it are recognized as landing on the dimmed chrome, not the image.
+    """
+    layout = widget._canvas_layout()
+    if layout is None:
+        return None
+    canvas_w, canvas_h, sr, ox, oy = layout
+    return QRect(
+        int(round(ox)),
+        int(round(oy)),
+        max(1, int(round(canvas_w * sr))),
+        max(1, int(round(canvas_h * sr))),
+    )
+
+
+def _swallow_focus_dim_click(widget, pos: QPoint) -> bool:
+    """If focused and ``pos`` lands outside the image (on the dimmed
+    letterbox chrome), exit focus and report the click as consumed."""
+    if not widget.state.is_focused:
+        return False
+    rect = _focused_image_rect(widget)
+    if rect is not None and rect.contains(pos):
+        return False
+    widget._do_dispatch(actions.set_focus(None))
+    return True
+
+
 def handle_wheel_event(widget, event: QWheelEvent) -> None:
-    from ui.widgets.canvas.rhi_present_sync import ensure_window_active_for_qrhi
+    from ui.canvas_infra.rhi.rhi_present_sync import ensure_window_active_for_qrhi
 
     # Wayland+Vulkan often marks the app Inactive while the user still
     # scrolls the MC canvas; keep the window active so presents stay visible.
@@ -72,6 +103,7 @@ def handle_wheel_event(widget, event: QWheelEvent) -> None:
     if leaf is None:
         event.ignore()
         return
+    assert rect is not None
 
     slot = next((s for s in widget.state.slots if s.id == leaf.slot_id), None)
     if slot is None:
@@ -138,6 +170,9 @@ def handle_context_menu_event(widget, event: QContextMenuEvent) -> None:
     Optional A/B: ``IMGSLI_MC_RMB_SURFACE=in_window|popup``.
     """
     pos = event.pos()
+    if _swallow_focus_dim_click(widget, pos):
+        event.accept()
+        return
     picked = leaf_at(pos, widget._leaf_rects())
     if picked is None:
         event.ignore()
@@ -145,7 +180,7 @@ def handle_context_menu_event(widget, event: QContextMenuEvent) -> None:
     leaf, rect = picked
     slot = next((s for s in widget.state.slots if s.id == leaf.slot_id), None)
 
-    from ui.widgets.canvas.rhi_present_sync import ensure_window_active_for_qrhi
+    from ui.canvas_infra.rhi.rhi_present_sync import ensure_window_active_for_qrhi
 
     ensure_window_active_for_qrhi(widget)
 
@@ -176,6 +211,10 @@ def handle_context_menu_event(widget, event: QContextMenuEvent) -> None:
 
 def handle_mouse_press_event(widget, event: QMouseEvent) -> None:
     pos = event.position().toPoint()
+
+    if _swallow_focus_dim_click(widget, pos):
+        event.accept()
+        return
 
     if event.button() == Qt.MouseButton.LeftButton:
         ctx = GesturePressContext(
@@ -280,6 +319,9 @@ def handle_mouse_release_event(widget, event: QMouseEvent) -> None:
 def handle_mouse_double_click_event(widget, event: QMouseEvent) -> None:
     if event.button() == Qt.MouseButton.LeftButton:
         pos = event.position().toPoint()
+        if _swallow_focus_dim_click(widget, pos):
+            event.accept()
+            return
         div = divider_at(widget, event.position())
         if div is not None:
             split_path, _idx, _drect, _direction, weights = div
@@ -287,14 +329,6 @@ def handle_mouse_double_click_event(widget, event: QMouseEvent) -> None:
             if n > 0:
                 widget._do_dispatch(actions.set_split_weights(split_path, [1.0] * n))
             event.accept()
-            return
-        leaf_rects = widget._leaf_rects()
-        picked = leaf_at(pos, leaf_rects)
-        if picked is not None:
-            leaf, _ = picked
-            new_focus = None if widget.state.is_focused else leaf.slot_id
-            widget._do_dispatch(actions.set_focus(new_focus))
-        event.accept()
 
 
 def handle_key_press_event(widget, event) -> None:

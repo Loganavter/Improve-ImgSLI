@@ -7,8 +7,9 @@ This is an app-level recipe ported from sli-ui-toolkit 0.2.16 demo.
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.ui.widgets.buttons.capabilities import ButtonCapability
 from sli_ui_toolkit.ui.widgets.buttons.layers._base import Layer
 from sli_ui_toolkit.ui.widgets.style_bridge import read_widget_style
@@ -59,9 +60,7 @@ class ValueBelowIconLayer(Layer):
     def draw(self, ctx, tm) -> None:
         rect = ctx.effective_rect.toAlignedRect()
         style = read_widget_style(ctx.widget)
-        font = QFont()
-        font.setPixelSize(9)
-        font.setBold(True)
+        font = ui_font(pixel_size=9, bold=True)
         ctx.painter.setFont(font)
         ctx.painter.setPen(style.foreground_color or QColor(resolve_theme_color(tm, "dialog.text")))
         value_h = 12

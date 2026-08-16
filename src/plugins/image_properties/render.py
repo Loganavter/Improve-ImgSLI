@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from sli_ui_toolkit.ui.widgets.composite.help_document.blocks import (
+from sli_ui_toolkit.ui.widgets.composite.text_view.markdown import (
     HeadingBlock,
     HelpBlock,
     InlineKind,

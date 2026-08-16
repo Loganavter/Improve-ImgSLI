@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -20,12 +21,65 @@ from PySide6.QtWidgets import (
 from sli_ui_toolkit.widgets import ButtonGroup, Label, Slider
 
 from sli_ui_toolkit.i18n import tr
+from sli_ui_toolkit.managers import UiScale, scaled_px
 from tabs.image_compare.icons import Icon, get_icon
-from tabs.layout_constants import CONTROL_EDGE_PADDING_PX
-from ui.widgets.info_hud import InfoHUD
+from ui.layout_spacing import control_edge_padding
+from ui.widgets.glass_hud import InfoHUD
+from ui.widgets.slider_hint import ValueSliderRow
 from ui.widgets.startup_placeholder import StartupPlaceholder
-from ui.widgets.themed_container import ThemedBackgroundContainer
-from ui.widgets.zoom_indicator import ZoomIndicator
+from ui.widgets.themed_surface import ThemedBackgroundContainer
+from ui.widgets.glass_hud import ZoomIndicator
+
+
+class ScaledIconLabel(QLabel):
+    """Icon ``QLabel`` that re-renders its pixmap when the UI scale changes.
+
+    Toolkit widgets subscribe to ``UiScale.scale_changed`` themselves; a
+    plain ``QLabel`` with a one-shot pixmap (the magnifier-settings flyout's
+    slider-row icons) would stay at its build-time size after a live scale
+    change while everything around it resized.
+    """
+
+    def __init__(
+        self, icon: Icon, pixel_size: int, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._icon = icon
+        self._pixel_size = pixel_size
+        self._apply_scale()
+        UiScale.get_instance().scale_changed.connect(self._apply_scale)
+
+    def _apply_scale(self, _factor: float | None = None) -> None:
+        size = scaled_px(self._pixel_size)
+        self.setPixmap(get_icon(self._icon).pixmap(QSize(size, size)))
+        self.setFixedSize(size, size)
+
+
+# Vertical gap between the magnifier flyout's slider rows (design px —
+# scaled via _keep_spacing_scaled so it follows live UiScale changes).
+_SLIDER_GAP_DESIGN_PX = 10
+
+
+def _keep_spacing_scaled(layout: QBoxLayout, design_px: int) -> None:
+    """Keep ``layout``'s spacing at ``scaled_px(design_px)`` live with UiScale.
+
+    QLayout spacing is a plain int captured at build time; re-applying it on
+    ``scale_changed`` is what lets the magnifier flyout's slider gaps grow
+    with the interface size instead of freezing at their first-build px.
+    """
+
+    def _apply(_factor: float | None = None) -> None:
+        try:
+            import shiboken6
+
+            if not shiboken6.Shiboken.isValid(layout):
+                return
+        except Exception:
+            return
+        layout.setSpacing(scaled_px(design_px))
+
+    _apply()
+    UiScale.get_instance().scale_changed.connect(_apply)
 
 
 class ImageCompareLayoutBuilder:
@@ -68,7 +122,7 @@ class ImageCompareLayoutBuilder:
         ui.save_buttons_widget = self._save_buttons_widget()
 
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, CONTROL_EDGE_PADDING_PX, 0, 0)
+        layout.setContentsMargins(0, control_edge_padding(), 0, 0)
         layout.setSpacing(6)
         layout.addWidget(ui.selection_widget)
         layout.addWidget(ui.checkbox_widget)
@@ -82,7 +136,7 @@ class ImageCompareLayoutBuilder:
     def _selection_widget(self, parent: QWidget) -> QWidget:
         widget = ThemedBackgroundContainer(parent)
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 0)
+        layout.setContentsMargins(control_edge_padding(), 0, control_edge_padding(), 0)
         layout.setSpacing(3)
         layout.addLayout(self._button_row())
         layout.addLayout(self._combobox_row())
@@ -109,6 +163,9 @@ class ImageCompareLayoutBuilder:
         ui.image_startup_placeholder = StartupPlaceholder(
             ui.image_container_widget, target_widget=ui.image_label
         )
+        from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+
+        ic_first_frame_debug(ui.image_label, "startup placeholder raised")
 
     def _create_zoom_indicator(self) -> None:
         ui = self.target
@@ -142,7 +199,7 @@ class ImageCompareLayoutBuilder:
         layout.addSpacing(15)
         layout.addWidget(ui.ssim_label)
         layout.addStretch()
-        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 4, CONTROL_EDGE_PADDING_PX, 4)
+        layout.setContentsMargins(control_edge_padding(), scaled_px(4), control_edge_padding(), scaled_px(4))
         return widget
 
     def _button_row(self) -> QHBoxLayout:
@@ -178,14 +235,14 @@ class ImageCompareLayoutBuilder:
 
     def _rated_combo_layout(self, rating_label, combo) -> QHBoxLayout:
         layout = QHBoxLayout()
-        layout.setSpacing(4)
-        rating_label.setFixedWidth(30)
+        layout.setSpacing(scaled_px(4))
+        rating_label.setFixedWidth(scaled_px(30))
         rating_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if hasattr(rating_label, "setBold"):
             rating_label.setBold(True)
         if hasattr(rating_label, "setPixelSize"):
             rating_label.setPixelSize(14)
-        combo.setMinimumHeight(28)
+        combo.setMinimumHeight(scaled_px(28))
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(rating_label)
         layout.addWidget(combo, 1)
@@ -193,7 +250,7 @@ class ImageCompareLayoutBuilder:
 
     def _checkbox_layout(self) -> QHBoxLayout:
         layout = QHBoxLayout()
-        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 0)
+        layout.setContentsMargins(control_edge_padding(), 0, control_edge_padding(), 0)
         layout.setSpacing(8)
         layout.addLayout(self._checkbox_groups_layout())
         layout.addStretch(1)
@@ -205,7 +262,7 @@ class ImageCompareLayoutBuilder:
         groups_layout = QHBoxLayout()
         groups_layout.setSpacing(16)
         groups_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        ui.line_group_container = self._button_group([ui.btn_orientation], "label.line")
+        ui.line_group_container = self._button_group([ui.btn_orientation], "image_compare.label.line")
         ui.view_group_container = self._button_group(
             [ui.btn_diff_mode, ui.btn_channel_mode, ui.btn_file_names], "label.view"
         )
@@ -218,10 +275,10 @@ class ImageCompareLayoutBuilder:
                 ui.btn_magnifier_color_settings,
                 ui.btn_magnifier_guides,
             ],
-            "label.magnifier",
+            "image_compare.label.magnifier",
         )
         ui.record_group_container = self._button_group(
-            [ui.btn_record, ui.btn_pause, ui.btn_video_editor], "button.record"
+            [ui.btn_record, ui.btn_pause, ui.btn_video_editor], "image_compare.button.record"
         )
         for container in (
             ui.line_group_container,
@@ -249,14 +306,14 @@ class ImageCompareLayoutBuilder:
         panel_layout = QVBoxLayout(panel)
         panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         panel_layout.setContentsMargins(
-            CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 0
+            control_edge_padding(), 0, control_edge_padding(), 0
         )
-        panel_layout.setSpacing(5)
+        _keep_spacing_scaled(panel_layout, 5)
         panel_layout.addLayout(self._magnifier_sliders_column())
 
         interpolation_layout = QHBoxLayout()
-        interpolation_layout.setSpacing(5)
-        ui.combo_interpolation.setMinimumHeight(28)
+        interpolation_layout.setSpacing(scaled_px(5))
+        ui.combo_interpolation.setMinimumHeight(scaled_px(28))
         ui.combo_interpolation.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
@@ -270,7 +327,7 @@ class ImageCompareLayoutBuilder:
     def _magnifier_sliders_column(self) -> QVBoxLayout:
         ui = self.target
         column = QVBoxLayout()
-        column.setSpacing(6)
+        _keep_spacing_scaled(column, _SLIDER_GAP_DESIGN_PX)
         column.addLayout(
             self._configure_slider(
                 ui.slider_size,
@@ -315,33 +372,37 @@ class ImageCompareLayoutBuilder:
     ) -> QHBoxLayout:
         slider.setMinimum(minimum)
         slider.setMaximum(maximum)
-        slider.setMinimumWidth(80)
-        slider.setFixedHeight(28)
+        slider.setMinimumWidth(scaled_px(80))
+        slider.setFixedHeight(scaled_px(28))
         # Text label is kept alive (translations.py still updates it) but not
         # shown -- the icon is the row's only leading element now, and carries
         # the same text as a tooltip (see translations.py _bind_slider_labels).
+        # The live value readout lives on the right of the track instead,
+        # inside ValueSliderRow.
         label.hide()
         icon_label = self._slider_icon(icon)
         setattr(self.target, icon_attr, icon_label)
         row = QHBoxLayout()
         row.setSpacing(8)
         row.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignVCenter)
-        row.addWidget(slider, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # Equal fixed-width pads flank the track; the right one hosts the
+        # persistent value label, and both absorb its show/hide so the
+        # slider's geometry never shifts (see ValueSliderRow).
+        row.addWidget(
+            ValueSliderRow(slider), 1, alignment=Qt.AlignmentFlag.AlignVCenter
+        )
         return row
 
     def _slider_icon(self, icon: Icon) -> QLabel:
-        pixmap_label = QLabel()
-        pixmap_label.setPixmap(get_icon(icon).pixmap(QSize(18, 18)))
-        pixmap_label.setFixedSize(18, 18)
-        return pixmap_label
+        return ScaledIconLabel(icon, 18)
 
     def _edit_layout(self) -> QHBoxLayout:
         ui = self.target
         layout = QHBoxLayout()
-        layout.setContentsMargins(CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 0)
+        layout.setContentsMargins(control_edge_padding(), 0, control_edge_padding(), 0)
         layout.setSpacing(8)
-        ui.edit_name1.setMinimumHeight(30)
-        ui.edit_name2.setMinimumHeight(30)
+        ui.edit_name1.setMinimumHeight(scaled_px(30))
+        ui.edit_name2.setMinimumHeight(scaled_px(30))
         layout.addWidget(ui.label_edit_name1)
         layout.addWidget(ui.edit_name1, 1)
         layout.addSpacing(5)
@@ -356,14 +417,14 @@ class ImageCompareLayoutBuilder:
         layout = QHBoxLayout()
         layout.setSpacing(0)
         layout.setContentsMargins(
-            CONTROL_EDGE_PADDING_PX, 0, CONTROL_EDGE_PADDING_PX, 6
+            control_edge_padding(), 0, control_edge_padding(), scaled_px(6)
         )
-        ui.btn_save.setMinimumHeight(32)
+        ui.btn_save.setMinimumHeight(scaled_px(32))
         ui.btn_save.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         layout.addWidget(ui.btn_save, 1)
         widget = ThemedBackgroundContainer()
-        widget.setFixedHeight(42)
+        widget.setFixedHeight(scaled_px(42))
         widget.setLayout(layout)
         return widget

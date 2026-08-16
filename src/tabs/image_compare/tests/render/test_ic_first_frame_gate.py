@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor
 
 
 def test_render_clear_frame_propagates_renderer_bool(monkeypatch):
-    from ui.widgets.canvas import rhi_render
+    from ui.canvas_infra.rhi import rhi_render
 
     monkeypatch.setattr(rhi_render, "resolve_clear_color", lambda _w: object())
 
@@ -22,7 +22,7 @@ def test_render_clear_frame_propagates_renderer_bool(monkeypatch):
 
 
 def test_resolve_clear_color_forces_opaque_for_live_canvas():
-    from ui.widgets.canvas.rhi_render import resolve_clear_color
+    from ui.canvas_infra.rhi.rhi_render import resolve_clear_color
 
     widget = SimpleNamespace(
         _use_plan_fill_clear=False,
@@ -32,6 +32,34 @@ def test_resolve_clear_color_forces_opaque_for_live_canvas():
     color = resolve_clear_color(widget)
     assert color.alpha() == 255
     assert (color.red(), color.green(), color.blue()) == (10, 20, 30)
+
+
+def test_resolve_clear_color_opaque_for_export_warmup_without_plan():
+    """GPU-export warm-up canvas (no plan yet) must not clear transparently —
+    a shown offscreen widget would read as a see-through hole."""
+    from ui.canvas_infra.rhi.rhi_render import resolve_clear_color
+
+    widget = SimpleNamespace(
+        _use_plan_fill_clear=True,
+        _active_render_plan=None,
+        _theme_background_color=QColor(10, 20, 30, 0),
+    )
+    color = resolve_clear_color(widget)
+    assert color.alpha() == 255
+    assert (color.red(), color.green(), color.blue()) == (10, 20, 30)
+
+
+def test_resolve_clear_color_stays_transparent_for_export_plan_without_fill():
+    """A real export plan without fill keeps transparent pad pixels."""
+    from ui.canvas_infra.rhi.rhi_render import resolve_clear_color
+
+    widget = SimpleNamespace(
+        _use_plan_fill_clear=True,
+        _active_render_plan=SimpleNamespace(fill_rgba=None),
+        _theme_background_color=QColor(10, 20, 30, 0),
+    )
+    color = resolve_clear_color(widget)
+    assert color.alpha() == 0
 
 
 def test_ic_render_skips_signals_when_pass_not_recorded(monkeypatch):
@@ -55,7 +83,11 @@ def test_ic_render_skips_signals_when_pass_not_recorded(monkeypatch):
     assert widget._first_frame_rendered_emitted is False
 
 
-def test_ic_render_emits_after_required_presents_on_linux(monkeypatch):
+def test_ic_render_emits_after_settle_flush(monkeypatch):
+    """firstFrameRendered is emitted only after the settle flush makes the
+    frame compositor-visible — mirroring multi_compare (on Wayland/Vulkan the
+    present is recorded while the compositor still shows the untouched
+    transparent subsurface, and only flush_qrhi_compositor restacks it)."""
     from tabs.image_compare.canvas import widget as widget_mod
 
     scheduled: list[object] = []
@@ -66,6 +98,10 @@ def test_ic_render_emits_after_required_presents_on_linux(monkeypatch):
         lambda _ms, cb: scheduled.append(cb),
     )
     monkeypatch.setattr(widget_mod, "render_clear_frame", lambda _w, _cb: True)
+    monkeypatch.setattr(
+        "ui.canvas_infra.rhi.rhi_present_sync.flush_qrhi_compositor",
+        lambda *_a, **_k: None,
+    )
 
     emitted: list[str] = []
     widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
@@ -79,17 +115,29 @@ def test_ic_render_emits_after_required_presents_on_linux(monkeypatch):
 
     widget_mod.CanvasWidget.render(widget, object())
 
-    assert emitted == ["frame", "visual"]
+    assert emitted == []  # deferred until the settle flush runs
     assert widget._rhi_presents_completed == 1
     assert scheduled  # settle flush scheduled
 
+    scheduled.pop()()  # run the settle flush -> emit
+    assert emitted == ["frame", "visual"]
 
-def test_ic_render_waits_second_present_on_windows(monkeypatch):
+
+def test_ic_render_waits_required_presents_before_flush_emit(monkeypatch):
     from tabs.image_compare.canvas import widget as widget_mod
 
+    scheduled: list[object] = []
     monkeypatch.setattr(widget_mod, "_first_visual_present_count", lambda: 2)
-    monkeypatch.setattr(widget_mod.QTimer, "singleShot", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        widget_mod.QTimer,
+        "singleShot",
+        lambda _ms, cb: scheduled.append(cb),
+    )
     monkeypatch.setattr(widget_mod, "render_clear_frame", lambda _w, _cb: True)
+    monkeypatch.setattr(
+        "ui.canvas_infra.rhi.rhi_present_sync.flush_qrhi_compositor",
+        lambda *_a, **_k: None,
+    )
 
     emitted: list[str] = []
     widget = widget_mod.CanvasWidget.__new__(widget_mod.CanvasWidget)
@@ -101,10 +149,14 @@ def test_ic_render_waits_second_present_on_windows(monkeypatch):
     )
     widget._request_update = lambda: None
 
+    # Present #1 -> flush runs, but the required-present gate still holds.
     widget_mod.CanvasWidget.render(widget, object())
-    assert emitted == []
     assert widget._rhi_presents_completed == 1
+    scheduled.pop()()
+    assert emitted == []
 
+    # Present #2 -> flush runs -> gate passes -> emit.
     widget_mod.CanvasWidget.render(widget, object())
-    assert emitted == ["frame", "visual"]
     assert widget._rhi_presents_completed == 2
+    scheduled.pop()()
+    assert emitted == ["frame", "visual"]

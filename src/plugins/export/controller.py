@@ -50,10 +50,10 @@ class ExportController(QObject):
     def _tr(self, key: str) -> str:
         return tr(key, self.store.settings.current_language)
 
-    def toggle_recording(self, checked: bool = None):
+    def toggle_recording(self, checked: bool | None = None):
         self.recording_flow.toggle_recording(checked)
 
-    def toggle_pause_recording(self, checked: bool = None):
+    def toggle_pause_recording(self, checked: bool | None = None):
         self.recording_flow.toggle_pause_recording(checked)
 
     def open_video_editor(self, checked: bool = False):

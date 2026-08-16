@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import logging
 import os
@@ -76,16 +77,16 @@ class ExportSaveFlowCoordinator:
             return True
         self.ui_manager.messages.show_non_modal_message(
             kind=MessageKind.WARNING,
-            title=self.tr("msg.invalid_data"),
-            text=self.tr("msg.specify_output_directory_and_file_name"),
+            title=self.tr("image_compare.msg.invalid_data"),
+            text=self.tr("image_compare.msg.specify_output_directory_and_file_name"),
         )
         return False
 
     def show_missing_images_warning(self) -> None:
         self.ui_manager.messages.show_non_modal_message(
             kind=MessageKind.WARNING,
-            title=self.tr("common.warning"),
-            text=self.tr("msg.select_both_images_first"),
+            title=self.tr("image_compare.common.warning"),
+            text=self.tr("image_compare.msg.select_both_images_first"),
         )
 
     def start_save_worker(
@@ -218,7 +219,7 @@ class ExportSaveFlowCoordinator:
         toast_path_line = self._build_toast_path_line(final_path_for_display)
         toast_message = f"{self.tr('msg.saving')}\n{toast_path_line}..."
         cancel_event = threading.Event()
-        cancel_ctx = {"event": cancel_event}
+        cancel_ctx: dict[str, Any] = {"event": cancel_event}
         toast_manager = self._get_toast_manager()
 
         def on_cancel():

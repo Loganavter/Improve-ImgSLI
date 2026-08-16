@@ -17,7 +17,7 @@ except Exception:
     pass
 
 if getattr(sys, "frozen", False):
-    application_path = sys._MEIPASS
+    application_path = sys._MEIPASS  # type: ignore[attr-defined]  # PyInstaller-only
 else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, application_path)
@@ -34,7 +34,7 @@ from core.runtime_flags import RuntimeFlags
 from plugins.settings.manager import SettingsManager
 from sli_ui_toolkit.widgets import install_application_tooltips
 from ui.main_window import MainWindow
-from ui.widgets.canvas.rhi_backend import (
+from ui.canvas_infra.rhi.rhi_backend import (
     configure_rhi_process_environment,
     configure_vulkan_layer_environment,
     persist_rhi_backend_setting,
@@ -268,7 +268,9 @@ def main():
 
     app.setApplicationName("Improve ImgSLI")
     app.setApplicationDisplayName("Improve ImgSLI")
-    app.setApplicationVersion("1.0.0")
+    from core.constants import AppConstants
+
+    app.setApplicationVersion(AppConstants.APP_VERSION)
     app.setOrganizationName("improve-imgsli")
     app.setOrganizationDomain("improve-imgsli.local")
     app.setDesktopFileName("improve-imgsli")
@@ -292,9 +294,15 @@ def main():
     )
     window = MainWindow(runtime_flags=runtime_flags)
     window.start()
-    from ui.widgets.canvas.rhi_fallback_notice import schedule_rhi_fallback_user_notice
+    from ui.canvas_infra.rhi.rhi_fallback_notice import schedule_rhi_fallback_user_notice
 
     schedule_rhi_fallback_user_notice(window)
+
+    from ui.main_window.cache_purge_notice import schedule_cache_purge_notice
+
+    schedule_cache_purge_notice(
+        window, getattr(window.app_context, "cache_purge_notice_bytes", None)
+    )
 
     if args.open_tab:
         from ui.actions.registry import get_action_registry

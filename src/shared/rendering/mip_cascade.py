@@ -22,16 +22,21 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import (
     QColor,
     QImage,
+    QRhi,
     QRhiBuffer,
     QRhiColorAttachment,
     QRhiDepthStencilClearValue,
     QRhiGraphicsPipeline,
     QRhiReadbackDescription,
     QRhiReadbackResult,
+    QRhiSampler,
     QRhiShaderResourceBinding,
+    QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiTexture,
     QRhiTextureCopyDescription,
+    QRhiRenderPassDescriptor,
+    QRhiTextureRenderTarget,
     QRhiTextureRenderTargetDescription,
     QRhiVertexInputAttribute,
     QRhiVertexInputBinding,
@@ -63,10 +68,10 @@ class MipCascadeGenerator:
     def __init__(
         self,
         *,
-        rhi_getter: Callable[[], object],
+        rhi_getter: Callable[[], QRhi | None],
         tile_arrays: list,
         ensure_tile_array: Callable[[int], None],
-        sampler_getter: Callable[[], object],
+        sampler_getter: Callable[[], QRhiSampler | None],
         layer_px: int,
         name_prefix: str = "canvas",
     ) -> None:
@@ -77,12 +82,12 @@ class MipCascadeGenerator:
         self._layer_px = layer_px
         self._name_prefix = name_prefix
 
-        self._downsample_pipeline = None
-        self._downsample_render_pass_descriptor = None
-        self._downsample_uniform_buffer = None
+        self._downsample_pipeline: QRhiGraphicsPipeline | None = None
+        self._downsample_render_pass_descriptor: QRhiRenderPassDescriptor | None = None
+        self._downsample_uniform_buffer: QRhiBuffer | None = None
         self._downsample_slot_stride = 16
         self._downsample_slot_capacity = 0
-        self._downsample_srb_cache: dict[int, object] = {}
+        self._downsample_srb_cache: dict[int, QRhiShaderResourceBindings] = {}
         # Frame-invariant (depends only on the QRhi backend, not on any
         # per-draw state): written once, on first use, then never rewritten.
         self._downsample_corr_buffer = None
@@ -91,17 +96,19 @@ class MipCascadeGenerator:
         # cascade renders each level into, then copies from -- see
         # generate_all_dirty_mips for why this can't render straight into
         # tile_arrays.
-        self._downsample_scratch_textures: dict[tuple[int, int], object] = {}
-        self._downsample_scratch_targets: dict[tuple[int, int], object] = {}
+        self._downsample_scratch_textures: dict[tuple[int, int], QRhiTexture] = {}
+        self._downsample_scratch_targets: dict[tuple[int, int], QRhiTextureRenderTarget] = {}
         # IMGSLI_TILE_DUMP-only (see _flush_debug_readbacks): QRhi's Python
         # bindings don't expose QRhiReadbackResult.completed, so instead of a
         # completion callback this polls result.data() on the next call --
         # by then the GPU has virtually always finished the prior frame.
-        self._debug_pending_readbacks: list[tuple[object, int, int, int, int]] = []
+        self._debug_pending_readbacks: list[tuple[QRhiReadbackResult, int, int, int, int]] = []
 
     @property
-    def _rhi(self):
-        return self._rhi_getter()
+    def _rhi(self) -> QRhi:
+        rhi = self._rhi_getter()
+        assert rhi is not None
+        return rhi
 
     def release(self) -> None:
         resources = [
@@ -290,6 +297,9 @@ class MipCascadeGenerator:
         fragment = QRhiShaderResourceBinding.StageFlag.FragmentStage
         vertex = QRhiShaderResourceBinding.StageFlag.VertexStage
         srb = self._rhi.newShaderResourceBindings()
+        sampler = self._sampler_getter()
+        assert sampler is not None
+        assert self._downsample_uniform_buffer is not None
         srb.setBindings(
             [
                 QRhiShaderResourceBinding.uniformBufferWithDynamicOffset(
@@ -299,7 +309,7 @@ class MipCascadeGenerator:
                     1,
                     fragment,
                     self._tile_arrays[array_index],
-                    self._sampler_getter(),
+                    sampler,
                 ),
                 QRhiShaderResourceBinding.uniformBuffer(
                     2, vertex, self._ensure_downsample_corr_buffer()
@@ -348,6 +358,7 @@ class MipCascadeGenerator:
         target = rhi.newTextureRenderTarget(
             QRhiTextureRenderTargetDescription(attachment)
         )
+        assert self._downsample_render_pass_descriptor is not None
         target.setRenderPassDescriptor(self._downsample_render_pass_descriptor)
         if not target.create():
             texture.destroy()
@@ -375,7 +386,10 @@ class MipCascadeGenerator:
                 continue
             size = result.pixelSize
             image = QImage(
-                bytes(data), size.width(), size.height(), QImage.Format.Format_RGBA8888
+                bytes(data),  # type: ignore[call-overload]  # QByteArray supports buffer protocol
+                size.width(),
+                size.height(),
+                QImage.Format.Format_RGBA8888,
             ).copy()
             name = (
                 f"mip_readback_{self._name_prefix}_a{array_index}_l{layer}"
@@ -465,6 +479,7 @@ class MipCascadeGenerator:
                 0.0, 0.0, 1.0, 0.0,
                 0.0, 0.0, 0.0, 1.0,
             )
+            assert self._downsample_corr_buffer is not None
             slot_updates.updateDynamicBuffer(
                 self._downsample_corr_buffer,
                 0,
@@ -473,6 +488,7 @@ class MipCascadeGenerator:
             self._downsample_corr_written = True
         for slot_index, (array_index, layer, level) in enumerate(draws):
             src_level = level - 1
+            assert self._downsample_uniform_buffer is not None
             slot_updates.updateDynamicBuffer(
                 self._downsample_uniform_buffer,
                 slot_index * stride,

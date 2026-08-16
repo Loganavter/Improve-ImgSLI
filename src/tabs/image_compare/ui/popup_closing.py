@@ -45,7 +45,7 @@ class ImageComparePopupClosing:
         # Rename / properties open a modal dialog; focus leaves the flyout but
         # the list must stay up for the duration of that prompt.
         app = QApplication.instance()
-        if app is not None and app.activeModalWidget() is not None:
+        if isinstance(app, QApplication) and app.activeModalWidget() is not None:
             return True
         if new_widget is not None and sip.isValid(new_widget):
             try:

@@ -36,7 +36,7 @@ IMAGE_COMPARE_TIMELINE_SEMANTICS = VideoTimelineSemantics(
         "LANCZOS": "magnifier.lanczos",
         "EWA_LANCZOS": "magnifier.ewa_lanczos",
         "LEFT": "common.position.left",
-        "CENTER": "common.position.center",
+        "CENTER": "image_compare.common.position.center",
         "RIGHT": "common.position.right",
         "RGB": "video.rgb",
         "R": "video.red",

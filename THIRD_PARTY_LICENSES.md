@@ -65,7 +65,8 @@ PyPI and the respective project repositories.
 | NumPy | BSD-3-Clause | Numerical arrays |
 | scikit-image | BSD-3-Clause | SSIM and image metrics |
 | SciPy | BSD-3-Clause | `scikit-image` runtime dependency (not build-only) |
-| imagecodecs | BSD-3-Clause | Optional JXL and codec support |
+| imagecodecs | BSD-3-Clause | JXL and codec support |
+| pyvips | MIT | libvips binding; streaming decode backend. The bundled `pyvips-binary` wheel (Flatpak/Windows) ships libvips itself, which is LGPL-2.1-or-later and links codecs including libjxl (BSD-3-Clause) — see the libvips attribution below |
 | Markdown | BSD-3-Clause | In-app help rendering |
 | PyOpenGL | BSD-3-Clause | Legacy OpenGL helpers (where used) |
 | pybind11 | BSD-3-Clause | Build dependency of NumPy/SciPy/scikit-image; installed into the Flatpak sandbox prefix |
@@ -168,6 +169,20 @@ Not applicable to the AUR build (uses the system `python-numpy` package,
 which pulls its own BLAS backend via Arch's own packaging) or the Windows
 build (uses prebuilt NumPy/scikit-image wheels, which already bundle their
 own BLAS attribution).
+
+---
+
+## libvips (LGPL-2.1-or-later, bundled in the Flatpak/Windows builds)
+
+The `pyvips-binary` wheel used by the Flatpak and Windows builds bundles
+**libvips** (LGPL-2.1-or-later), which itself links optional codec
+libraries (notably **libjxl**, BSD-3-Clause, for JPEG XL, and libheif for
+HEIC/AVIF). LGPL-2.1-or-later permits dynamic-linking distribution provided
+the license text and source offer accompany the binary; the libvips source
+and license are available from https://libvips.github.io/libvips/ and the
+LGPL-2.1 text from https://www.gnu.org/licenses/lgpl-2.1.html. The AUR build
+uses the distro's own `libvips`/`python-pyvips` packages instead and inherits
+their license handling.
 
 ---
 

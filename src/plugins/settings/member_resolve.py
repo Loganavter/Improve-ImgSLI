@@ -26,7 +26,7 @@ def scroll_widget_into_view(widget: QWidget) -> None:
 def _prepare_combo_option(combo: QWidget, member_key: str, index: int) -> QWidget:
     """Open the dropdown focused on the option without changing the field value."""
     _ = member_key
-    return prepare_combo_option(combo, index, apply=False)  # type: ignore[return-value]
+    return prepare_combo_option(combo, index, apply=False)
 
 
 def activate_member_control(widget, combo_index: int | None = None) -> bool:

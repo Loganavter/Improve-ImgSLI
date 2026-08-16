@@ -76,7 +76,7 @@ def test_font_settings_controller_opens_edit_chrome_when_hidden(qtbot):
     flyout = FontSettingsFlyout(host_widget)
     flyout.hide()
     shown_anchors: list[object] = []
-    flyout.show_top_left_of = lambda anchor: shown_anchors.append(anchor)  # type: ignore[method-assign]
+    flyout.show_top_left_of = lambda anchor: shown_anchors.append(anchor)
 
     manager_host = SimpleNamespace(
         font_settings_flyout=flyout,

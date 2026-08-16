@@ -64,7 +64,7 @@ def _install_remembered_size_save_hook(dialog: QWidget, remember_key: str) -> No
     installed_key = getattr(dialog, "_remembered_size_key", None)
     if installed_key == remember_key:
         return
-    dialog._remembered_size_key = remember_key
+    dialog._remembered_size_key = remember_key  # type: ignore[attr-defined]  # dynamic attr
 
     finished_signal = getattr(dialog, "finished", None)
     if finished_signal is None:
@@ -304,7 +304,7 @@ def measure_scroll_pages_stack(
         content_widget.adjustSize()
 
         if group_widget_cls is not None:
-            groups = content_widget.findChildren(group_widget_cls)
+            groups: list = content_widget.findChildren(group_widget_cls)
             if groups:
                 for group in groups:
                     max_content_width = max(
@@ -330,8 +330,23 @@ def clamp_to_screen(
     height: int,
     *,
     margin: int = 100,
+    widget: QWidget | None = None,
 ) -> tuple[int, int]:
-    screen = QApplication.primaryScreen()
+    """Cap ``height`` against the screen the dialog will appear on.
+
+    ``widget`` resolves the screen from the dialog's own top-level window
+    (``window().screen()``), falling back to the primary screen — a dialog
+    parented to a window on a secondary monitor must be clamped against that
+    monitor's height, not the primary one's.
+    """
+    screen = None
+    if widget is not None:
+        win = getattr(widget, "window", None)
+        win = win() if callable(win) else None
+        if win is not None:
+            screen = win.screen() if hasattr(win, "screen") else None
+    if screen is None:
+        screen = QApplication.primaryScreen()
     if screen is None:
         return width, height
     available = screen.availableGeometry()
@@ -383,7 +398,7 @@ def apply_dialog_geometry(
             parent = dialog.parent() if hasattr(dialog, "parent") else None
             if parent is not None:
                 geo = dialog.geometry()
-                geo.moveCenter(parent.geometry().center())
+                geo.moveCenter(parent.geometry().center())  # type: ignore[attr-defined]  # parent() is duck-typed QWidget
                 dialog.move(geo.topLeft())
     elif dialog.width() < min_w or dialog.height() < min_h:
         # setMinimumSize alone can grow the shell without a clean Resize path

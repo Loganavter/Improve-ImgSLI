@@ -58,7 +58,7 @@ class GpuExportProxy(QObject):
 
     def _build_exporter(self, widget, plan, diff_image):
         from ui.canvas_presentation.plan_applicator import apply_render_plan_to_canvas
-        from ui.widgets.canvas.rhi_backend import query_max_texture_size
+        from ui.canvas_infra.rhi.rhi_backend import query_max_texture_size
 
         def set_export_viewport(viewport):
             widget.runtime_state._export_canvas_viewport = viewport
@@ -75,7 +75,7 @@ class GpuExportProxy(QObject):
         )
 
     def _render_plan_frame(self, widget, plan, diff_image, debug_timings, store=None):
-        from ui.widgets.canvas.rhi_backend import query_max_texture_size
+        from ui.canvas_infra.rhi.rhi_backend import query_max_texture_size
 
         canvas_w, canvas_h = int(plan.canvas_w), int(plan.canvas_h)
         tile_extent = min(

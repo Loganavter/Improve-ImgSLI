@@ -44,7 +44,7 @@ def check_name_lengths(presenter):
         len1 > limit or len2 > limit
     ) and presenter.store.viewport.render_config.include_file_names_in_saved:
         warning = tr(
-            "misc.name_length_limit_exceeded",
+            "image_compare.misc.name_length_limit_exceeded",
             presenter.store.settings.current_language,
             limit=limit,
         )
@@ -81,7 +81,7 @@ def update_toolbar_states(presenter):
     presenter.widget.btn_file_names.setToolTip(
         tr("tooltip.file_names_hidden_on_zoom", lang)
         if file_names_temporarily_hidden
-        else tr("ui.include_file_names_in_saved_image", lang)
+        else tr("image_compare.ui.include_file_names_in_saved_image", lang)
     )
     _update_canvas_feature_control_availability(presenter)
     _set_slider_value_quietly(
@@ -107,8 +107,11 @@ def on_color_option_clicked(presenter, option: str):
     elif option == "laser":
         settings_presenter.show_laser_color_picker()
 
+def _get_window_presenter(presenter):
+    return getattr(presenter.main_window_app, "presenter", None)
+
 def _get_settings_presenter_from_window(presenter):
-    window_presenter = getattr(presenter.main_window_app, "presenter", None)
+    window_presenter = _get_window_presenter(presenter)
     if window_presenter is not None and hasattr(window_presenter, "get_feature"):
         return window_presenter.get_feature("settings")
     return None

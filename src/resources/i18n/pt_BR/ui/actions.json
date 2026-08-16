@@ -3,9 +3,7 @@
     "palette": {
       "search_placeholder": "Pesquisar ações…",
       "empty": "Nenhuma ação correspondente",
-      "learn_more": "Saiba mais",
-      "run": "Executar",
-      "cancel": "Cancelar"
+      "learn_more": "Saiba mais"
     },
     "settings": {
       "page_desc": "Abrir esta página de configurações",
@@ -14,8 +12,7 @@
       "general_desc": "Abrir Configurações → Geral",
       "appearance_desc": "Abrir Configurações → Aparência",
       "optimization_desc": "Abrir Configurações → Otimização",
-      "keyboard_desc": "Abrir Configurações → Teclado",
-      "analysis_desc": "Abrir Configurações → Detalhes da análise"
+      "keyboard_desc": "Abrir Configurações → Teclado"
     },
     "breadcrumb": {
       "workspace": "Espaço de trabalho"
@@ -32,7 +29,11 @@
       "find_action_context": "Localizar ação (contexto)",
       "find_action_context_desc": "Abrir a paleta filtrada pelo controle em foco",
       "paste_clipboard_image": "Colar imagem da área de transferência",
-      "paste_clipboard_image_desc": "Colar uma imagem da área de transferência na sessão ativa"
+      "paste_clipboard_image_desc": "Colar uma imagem da área de transferência na sessão ativa",
+      "undo": "Desfazer",
+      "undo_desc": "Reverter a última alteração da sessão ativa",
+      "redo": "Refazer",
+      "redo_desc": "Reaplicar a última alteração desfeita"
     },
     "workspace": {
       "open_session_picker": "Abrir seletor de sessão",

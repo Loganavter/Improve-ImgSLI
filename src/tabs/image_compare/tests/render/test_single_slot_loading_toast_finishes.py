@@ -71,7 +71,7 @@ class _FakeController:
             "M", (), {"on_metrics_calculated": lambda self, _v: None}
         )()
         self._unification_task_id = 0
-        self.finished_toasts = []
+        self.finished_toasts: list = []
 
     def _cancel_pending_unification(self, *_args, **_kwargs):
         pass

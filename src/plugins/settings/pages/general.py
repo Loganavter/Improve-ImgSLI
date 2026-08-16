@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QButtonGroup, QHBoxLayout
 
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import CheckBox, ComboBox, RadioButton
 from ui.icon_manager import AppIcon
 
@@ -52,7 +53,7 @@ def build(dialog, p):
 
     dialog.lang_group = LANGUAGE.widget(dialog)
     lang_layout = QHBoxLayout()
-    lang_layout.setContentsMargins(5, 5, 5, 5)
+    lang_layout.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
     dialog.radio_en = RadioButton(LANGUAGE.text(dialog, "settings.language_en"))
     dialog.radio_ru = RadioButton(LANGUAGE.text(dialog, "settings.language_ru"))
     dialog.radio_zh = RadioButton(LANGUAGE.text(dialog, "settings.language_zh"))
@@ -73,11 +74,10 @@ def build(dialog, p):
 
     dialog.sys_group = APPEARANCE.widget(dialog)
     theme_row = QHBoxLayout()
-    theme_row.setContentsMargins(5, 5, 5, 5)
-    dialog.theme_label = QLabel(APPEARANCE.text(dialog, "label.theme") + ":")
+    theme_row.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
     dialog.combo_theme = ComboBox()
     APPEARANCE.tag_combo(dialog.combo_theme, "label.theme")
-    dialog.combo_theme.setFixedWidth(140)
+    dialog.combo_theme.setFixedWidth(scaled_px(140))
     for key in ("auto", "light", "dark"):
         dialog.combo_theme.addItem(
             APPEARANCE.text(dialog, f"settings.{key}"), key
@@ -86,7 +86,6 @@ def build(dialog, p):
     idx = dialog.combo_theme.findData(p.current_theme)
     if idx != -1:
         dialog.combo_theme.setCurrentIndex(idx)
-    theme_row.addWidget(dialog.theme_label)
     theme_row.addWidget(dialog.combo_theme)
     theme_row.addStretch()
     dialog.sys_group.add_layout(theme_row)

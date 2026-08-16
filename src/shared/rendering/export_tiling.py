@@ -96,7 +96,7 @@ class TiledFramebufferExporter:
         self._prepare_frame()
         render_widget_frame(self._widget)
         render_widget_frame(self._widget)
-        qimg = self._widget.grabFramebuffer()
+        qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
         image = qimage_to_pil_rgba(qimg)
         if image.size != target:
             image = image.resize(target, Image.Resampling.BILINEAR)
@@ -120,7 +120,7 @@ class TiledFramebufferExporter:
         self._prepare_frame()
         render_widget_frame(self._widget)
         render_widget_frame(self._widget)
-        qimg = self._widget.grabFramebuffer()
+        qimg = self._widget.grabFramebuffer()  # type: ignore[attr-defined]  # duck-typed GL surface
         tile_image = qimage_to_pil_rgba(qimg)
         if tile_image.size != target:
             tile_image = tile_image.resize(target, Image.Resampling.BILINEAR)

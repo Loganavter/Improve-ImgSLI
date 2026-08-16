@@ -60,7 +60,7 @@ def pil_to_qimage_zero_copy(pil_image: Image.Image) -> Optional[QImage]:
                 data_bytes, width, height, bytes_per_line, QImage.Format.Format_RGBA8888
             )
 
-        qimage._pil_array_ref = img_array
+        qimage._pil_array_ref = img_array  # type: ignore[attr-defined]  # dynamic back-ref
 
         return qimage
 

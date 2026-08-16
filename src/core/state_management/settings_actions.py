@@ -45,6 +45,14 @@ class SetUIFontFamilyAction(Action):
     def get_payload(self): return {"family": self.family}
 
 @dataclass
+class SetUIScaleFactorAction(Action):
+    factor: float
+    def __init__(self, factor: float):
+        super().__init__(type=ActionType.SET_UI_SCALE_FACTOR)
+        self.factor = float(factor)
+    def get_payload(self): return {"factor": self.factor}
+
+@dataclass
 class SetDebugModeEnabledAction(Action):
     enabled: bool
     def __init__(self, enabled: bool):

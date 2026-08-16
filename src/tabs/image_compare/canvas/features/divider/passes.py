@@ -7,8 +7,10 @@ from PySide6.QtGui import (
     QColor,
     QRhiBuffer,
     QRhiCommandBuffer,
+    QRhi,
     QRhiGraphicsPipeline,
     QRhiShaderResourceBinding,
+    QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiVertexInputAttribute,
     QRhiVertexInputBinding,
@@ -66,8 +68,9 @@ def _load_shader(name: str) -> QShader:
 def _content_split_visual(ctx) -> float:
     scene = getattr(ctx, "scene_frame", None)
     raw = getattr(scene, "split_position_visual", 0.5)
-    if getattr(scene, "split_override", None) is not None:
-        raw = scene.split_override
+    split_override = getattr(scene, "split_override", None)
+    if split_override is not None:
+        raw = split_override
     return max(0.0, min(1.0, float(raw if raw is not None else 0.5)))
 
 
@@ -76,11 +79,11 @@ class DividerPass(CanvasRenderPass):
     visibility = SceneVisibility.ALL
 
     def __init__(self) -> None:
-        self.rhi = None
-        self.vertex_buffer = None
-        self.uniform_buffer = None
-        self.srb = None
-        self.pipeline = None
+        self.rhi: QRhi | None = None
+        self.vertex_buffer: QRhiBuffer | None = None
+        self.uniform_buffer: QRhiBuffer | None = None
+        self.srb: QRhiShaderResourceBindings | None = None
+        self.pipeline: QRhiGraphicsPipeline | None = None
 
     @staticmethod
     def _resolve_divider_state(widget, ctx):
@@ -189,6 +192,7 @@ class DividerPass(CanvasRenderPass):
         _show, position, thickness, horizontal, color, clip = self._resolve_divider_state(
             widget, ctx
         )
+        assert self.rhi is not None
         matrix = tuple(float(value) for value in self.rhi.clipSpaceCorrMatrix().data())
         cx, cy, cw, ch = clip
         block = struct.pack(
@@ -215,7 +219,9 @@ class DividerPass(CanvasRenderPass):
         resource_updates.updateDynamicBuffer(self.uniform_buffer, 0, block)
 
     def record(self, command_buffer: QRhiCommandBuffer, widget, ctx) -> None:
+        assert self.rhi is not None
         target_size = widget.renderTarget().pixelSize()
+        assert self.pipeline is not None
         command_buffer.setGraphicsPipeline(self.pipeline)
         command_buffer.setViewport(
             QRhiViewport(
@@ -229,7 +235,9 @@ class DividerPass(CanvasRenderPass):
                 widget, self.rhi, ctx, 0.0, 0.0, float(ctx.width), float(ctx.height)
             )
         )
+        assert self.srb is not None
         command_buffer.setShaderResources(self.srb)
+        assert self.vertex_buffer is not None
         command_buffer.setVertexInput(0, [(self.vertex_buffer, 0)])
         command_buffer.draw(4)
 

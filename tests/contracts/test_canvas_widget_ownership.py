@@ -8,7 +8,7 @@ from ._framework import SRC, iter_py, read, rel
 
 
 def test_pair_canvas_modules_live_under_image_compare_tab():
-    shared_canvas = SRC / "ui" / "widgets" / "canvas"
+    shared_canvas = SRC / "ui" / "canvas_infra" / "rhi"
     forbidden = (
         "__init__.py",
         "contracts.py",
@@ -55,7 +55,7 @@ def test_pair_canvas_modules_live_under_image_compare_tab():
 def test_no_public_pair_canvas_imports_from_shared_facade():
     offenders: list[str] = []
     for path in iter_py(SRC):
-        if path == SRC / "ui" / "widgets" / "canvas" / "__init__.py":
+        if path == SRC / "ui" / "canvas_infra" / "rhi" / "__init__.py":
             continue
         try:
             tree = ast.parse(read(path))
@@ -64,7 +64,7 @@ def test_no_public_pair_canvas_imports_from_shared_facade():
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom):
                 continue
-            if node.module != "ui.widgets.canvas":
+            if node.module != "ui.canvas_infra.rhi":
                 continue
             names = {alias.name for alias in node.names}
             leaked = names & {"CanvasWidget"}

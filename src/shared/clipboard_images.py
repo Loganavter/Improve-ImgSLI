@@ -54,7 +54,7 @@ def collect_clipboard_image_items() -> list[str]:
                 tempfile.gettempdir(),
                 f"clip_{int(time.time() * 1000)}.png",
             )
-            qimage.save(temp_path, "PNG")
+            qimage.save(temp_path, "PNG")  # type: ignore[call-overload]  # PySide6 runtime wants str format
             items.append(temp_path)
 
     # File managers often put the same path in both text and urls.

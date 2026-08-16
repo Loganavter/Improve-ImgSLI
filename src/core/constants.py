@@ -1,6 +1,14 @@
 from enum import StrEnum
 
 class AppConstants:
+    # Kept in sync by hand with the packaging templates under build/ (AUR
+    # PKGBUILD's pkgver, the Flatpak metainfo <release> entries, and Inno
+    # Setup's MyAppVersion) -- this is the one copy the app itself reads at
+    # runtime, e.g. for QApplication.setApplicationVersion and for the
+    # last-seen-version check in core.bootstrap that offers a one-time
+    # stale-cache purge notice after upgrading from an untracked version.
+    APP_VERSION = "11.0.0"
+
     DISPLAY_RESOLUTION_OPTIONS = {
         "Original": 0,
         "8K (4320p)": 4320,
@@ -54,9 +62,12 @@ class AppConstants:
 
     PROGRESSIVE_LOAD_THRESHOLD_BYTES = 2 * 1024 * 1024
     PROGRESSIVE_LOAD_THRESHOLD_PIXELS = 1920 * 1080
-    # Sanity bound against pathological/corrupt files. Codecs still decompress
-    # a full frame once; spill into TiledPixelStore is strip-written (no second
-    # full HxWx4 copy). Raise further only with real streaming/region decode.
+    # Decode-backend safety bound against pathological/corrupt files, applied
+    # by the PIL/imagecodecs full-frame decode path only. When pyvips
+    # streaming decode is available for a file (see
+    # shared/image_processing/progressive_loader.py::pyvips_can_stream) the
+    # bound does not apply — libvips streams strips straight to the memmap
+    # without a full-frame decode buffer.
     MAX_SUPPORTED_IMAGE_DIMENSION = 65536
     # Soft ceiling for still-image export. Above this we warn that the path is
     # untested; we do not block or silently clamp output / native canvas size.

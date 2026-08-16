@@ -21,9 +21,16 @@ answers "what does the interface look like" and "what does each piece do"
 together — intended for external/agent consumption, not for humans clicking
 through a panel.
 
-`UI Inspector`'s **Dump layout** button (see
-[UI_INSPECTOR.md](UI_INSPECTOR.md#dump-layout-button)) wraps the same
-`dump_ui_layout()` for interactive one-window dumps without a CLI restart.
+`UI Inspector` has two buttons wrapping the same `dump_ui_layout()` (see
+[UI_INSPECTOR.md](UI_INSPECTOR.md#architecture)), for interactive dumps
+without a CLI restart:
+
+- **Dump widget** — dumps **only the selected widget's subtree** (with a
+  `path` field listing the ancestor chain down to it, instead of the whole
+  window): a focused view of one widget's layout. Falls back to the whole
+  last-focused window if nothing is selected.
+- **Dump window** — dumps the whole last-focused window tree (the original
+  one-window behavior), regardless of selection.
 
 ## Usage
 
@@ -132,7 +139,7 @@ otherwise ignored.
 | Tree walk + action cross-reference | `src/devtools/ui_layout_dump.py` (`dump_all_windows`, `dump_ui_layout`) |
 | CLI flags | `src/__main__.py` (`--dump-ui-layout`, `--open-tab`, `--run-action`) |
 | Launcher pass-through | `launcher.sh` (`run --dump-ui-layout <path> [--open-tab <kind>] [--run-action <id>]`) |
-| Interactive trigger | `src/devtools/ui_inspector/panel.py` (Dump layout button), `controller.py` (`_dump_layout`, focus tracking) |
+| Interactive trigger | `src/devtools/ui_inspector/app_window.py` (Dump widget / Dump window buttons), `app_controller.py` (`_dump_layout`, `_dump_window_layout`, focus tracking) |
 
 No new widget introspection beyond `ActionRegistry.all_actions()` and plain
 `QWidget` geometry/layout — deliberately lighter than `UI Inspector`'s

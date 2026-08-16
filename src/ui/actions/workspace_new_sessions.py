@@ -41,7 +41,7 @@ def _target_for(
     return ActionTarget(
         ensure_visible=ensure_visible,
         resolve_widget=(
-            (lambda st=session_type: resolve_card(st) if resolve_card else None)
+            (lambda st=session_type: resolve_card(st) if resolve_card is not None else None)
             if resolve_card is not None
             else None
         ),

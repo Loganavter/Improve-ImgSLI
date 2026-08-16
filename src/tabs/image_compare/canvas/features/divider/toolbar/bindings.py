@@ -130,6 +130,9 @@ def sync_toolbar_state(presenter) -> None:
     viewport = presenter.store.viewport
     divider_state = get_divider_widget_state(viewport.view_state)
     divider_thickness = 0 if not divider_state.visible else divider_state.thickness
+    current_mode = getattr(presenter.store.settings, "ui_mode", "beginner")
+    if hasattr(ui.btn_orientation, "set_show_underline"):
+        ui.btn_orientation.set_show_underline(current_mode == "expert")
     ui.btn_orientation.setChecked(
         viewport.view_state.is_horizontal,
         emit_signal=False,

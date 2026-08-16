@@ -15,6 +15,36 @@ pytest -k divider                        # all tests whose name contains divider
 pytest tests/runtime/test_event_bus_depth.py::TestEventBusDepth
 ```
 
+## Static type checking (mypy)
+
+`mypy` is wired in as a dev dependency (`requirements-dev.txt`) with
+`mypy.ini` at the repository root. The codebase is expected to be clean:
+
+```bash
+mypy                      # checks src/ (config: files = src, mypy_path = src)
+```
+
+It runs in CI (Windows build workflow, "Run Mypy" step) alongside pytest.
+Notes for contributors:
+
+- Packages are rooted at `src/` (app runs with `PYTHONPATH=src`), so
+  `mypy.ini` sets `mypy_path = src` and `files = src`.
+- `follow_imports = skip` keeps the error surface to each module itself;
+  third-party stub packages (PySide6, shiboken6, PIL, numpy, pyvips) are
+  overridden to `follow_imports = normal` so their real stubs stay live.
+- Qt dynamic attributes (e.g. `dialog._csd_decorating`, `widget.runtime_state`)
+  and test monkeypatches use targeted `# type: ignore[...]` with a comment;
+  `warn_unused_ignores = True` keeps those honest.
+- `# type: ignore[call-overload]` on `bytes(QByteArray)` /
+  `QImage.save(..., "PNG")` mark PySide6 stub quirks (runtime accepts `str`
+  formats, stubs type them as `bytes`); keep the runtime call unchanged.
+- Platform quirks: `winreg`/`ctypes.WinDLL` on Linux are silenced per-module
+  (`disable_error_code = attr-defined` for
+  `services/system/windows_file_association.py`), `sys._MEIPASS` gets an
+  inline ignore (PyInstaller-only).
+- Running `mypy <single file>` is misleading for cross-module errors —
+  always confirm with a full `mypy` run.
+
 For top-level `tests/`, `sys.path` for `src/` is added automatically via
 `tests/conftest.py`. Tab tests under `src/tabs/<tab>/tests/` do not need that:
 from `src/` down to the test file is an unbroken chain of packages with
@@ -177,6 +207,53 @@ not *how* — without a Qt window or real QRhi rendering.
 4. **`SimpleNamespace` over `MagicMock`.** Mocks only fail when invoked; namespaces fail at `AttributeError`. Tests should fail on missing contract fields, not pass silently.
 5. **Document the dogma in the docstring.** First line — link to a section in `docs/dev/`, so when a rule changes it is clear which doc to update with the test.
 6. **Do not mock Store.** To test a reducer — dispatch a real action into a real store; for a pass — build `scene_frame` by hand.
+
+## Hermeticity (tests must never touch real user data)
+
+Every test must run without reading or writing the developer's / CI runner's
+real profile. The CI job `tests-hermetic` enforces this mechanically (isolated
+`HOME`/`XDG_*`, then asserts the real app dirs are empty). Observed incidents
+that shaped these rules:
+
+- `QSettings("org", "app")` resolves with **`NativeFormat`** on Linux, and the
+  2-arg constructor ignores `setDefaultFormat`. Redirecting only the
+  `IniFormat` path silently does nothing, and full-snapshot saves landed in
+  the real `~/.config/improve-imgsli/improve-imgsli.conf`, wiping user
+  settings on every test run. **Any redirect fixture must set
+  `setPath(NativeFormat, …)` AND `setPath(IniFormat, …)`** (pattern:
+  `tests/runtime/test_settings_full_pass.py::_redirect_qsettings`).
+- `TiledPixelStore` / `PyramidPixelStore` without `tmp_dir` create real
+  spill/memmap dirs under the cache location. The shared fixture in
+  `tests/conftest.py` / `src/tabs/conftest.py`
+  (`_redirect_tps_spill_to_tmp`) covers this for the whole suite; a test
+  passing an explicit `tmp_dir` wins over it.
+- Unparented `QTimer.singleShot(0, …)` callbacks must guard the captured
+  object with a shiboken `isValid` check — firing against a destroyed widget
+  raises inside the event loop and poisons unrelated later tests
+  (pattern: `session_picker/recent/items_view.py::request_window_chrome_refresh`).
+
+Rule of thumb: anything disk-based goes through `tmp_path`/`tmp_path_factory`;
+any singleton mutation is restored in a fixture `finally`; no test may write
+to `Path.home()`, `QStandardPaths`, or a bare `QSettings(org, app)` without a
+redirect fixture active.
+
+## One owner per invariant
+
+An invariant (a roundtrip fixpoint, a layout contract, a stack role…) has
+exactly **one** owning test. If a generic sweep covers a value, specific
+tests must not re-assert the same value on the same inputs — the pair
+diverges when the contract changes and the sweep is edited without touching
+the copy. When adding a test, check whether a sweep already covers the case
+(`settings_full_pass`, parity matrices, feature-property sweeps) and either
+extend the sweep or leave the case to it.
+
+## Dead tests
+
+A test that cannot fail is worse than a missing test (false confidence).
+Before adding a test, make sure it contains at least one assertion that can
+actually fail; an AST scan for assert-less `test_*` functions is part of the
+suite revision. If a specific test's assertions are fully subsumed by a
+stronger sibling, delete the weaker one — do not keep it "for documentation".
 
 ## When tests break
 

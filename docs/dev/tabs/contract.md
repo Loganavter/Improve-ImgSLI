@@ -32,7 +32,8 @@ class MyTab(TabContract):
 
     @property
     def is_bootstrap_default(self) -> bool:
-        """True for exactly one tab — see capability-mechanisms.md §Bootstrap seam. Default False."""
+        """True only for session_picker — reserved for the initial workspace session tab.
+        See capability-mechanisms.md §Bootstrap seam. Default False."""
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
         """

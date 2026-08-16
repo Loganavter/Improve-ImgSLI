@@ -114,6 +114,9 @@ class DialogManager:
             current_ui_font_family=getattr(
                 self.host.store.settings, "ui_font_family", ""
             ),
+            current_ui_scale_factor=getattr(
+                self.host.store.settings, "ui_scale_factor", 1.0
+            ),
             current_ui_mode=getattr(self.host.store.settings, "ui_mode", "beginner"),
             optimize_magnifier_movement=self.host.store.viewport.view_state.optimize_interactive_movement,
             movement_interpolation_method=self.host.store.viewport.render_config.interactive_movement_interpolation_method,
@@ -166,6 +169,9 @@ class DialogManager:
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+        # The dialog itself requests Wayland activation + search-field focus
+        # in showEvent (deferred until the native window is mapped) — see
+        # SettingsDialog.showEvent / focus_initial_widget.
         if section_id:
             dialog.select_section(section_id)
 
@@ -186,6 +192,15 @@ class DialogManager:
         was_visible = dialog.isVisible()
         if section_id:
             dialog.select_section(section_id)
+        # Re-seed the dialog from the store before mutating the target
+        # member: this path applies ``get_settings()`` of the *whole*,
+        # possibly hidden, long-lived dialog, and stale widgets would
+        # silently overwrite good store values with their widget defaults
+        # (observed reset family: ui_mode -> beginner, ui_scale -> widget
+        # default, rhi_backend -> default; see SettingsDialog.sync_from_store).
+        sync = getattr(dialog, "sync_from_store", None)
+        if callable(sync):
+            sync()
         activated = activate_member_in_dialog(dialog, group_key, member_key)
         service = self.host._settings_application_service
         if activated and service is not None:

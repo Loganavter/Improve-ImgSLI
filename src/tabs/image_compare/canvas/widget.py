@@ -3,6 +3,11 @@ from PySide6.QtCore import QPoint, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPixmap
 from PySide6.QtWidgets import QRhiWidget
 
+from tabs.image_compare.first_frame_debug import (
+    ic_first_frame_debug,
+    ic_first_frame_debug_enabled,
+    ic_first_frame_readiness_repr,
+)
 from ui.context_menu.manager import open_context_menu
 from ui.context_menu.models import ContextMenuRequest, ContextMenuTarget
 
@@ -41,13 +46,13 @@ from .render_context import (
     resize_canvas,
     schedule_source_preload,
 )
-from ui.widgets.canvas.rhi_backend import configure_rhi_widget, log_initialized_rhi_widget
-from ui.widgets.canvas.rhi_render import render_clear_frame
+from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget, log_initialized_rhi_widget
+from ui.canvas_infra.rhi.rhi_render import render_clear_frame
 from shared.rendering.coalesced_flush import CoalescedFlush
 from shared.rendering.glass_panel import GlassPanelRegistry
 from .rhi_renderer import RhiCanvasRenderer
 from .scene import build_render_scene
-from .state import init_widget_state
+from .state import CanvasRuntimeState, init_widget_state
 from .texture_parts.base_images import (
     configure_offscreen_render,
     get_letterbox_params,
@@ -65,15 +70,13 @@ from .texture_parts.layers import (
     set_pixmap,
 )
 
-# How many completed presents get a compositor settle kick (Win D3D hole).
-_FIRST_PRESENT_SETTLE_COUNT = 2
-
-
-def _first_visual_present_count() -> int:
-    """Presents required before first-frame signals (Windows D3D needs two)."""
-    import sys
-
-    return 2 if sys.platform.startswith("win") else 1
+# How many completed presents get a compositor settle kick. Shared with
+# multi_compare so both canvas tabs wait for the first frame that actually
+# reaches the display (see shared/rendering/first_frame_gate.py).
+from shared.rendering.first_frame_gate import (
+    FIRST_PRESENT_SETTLE_COUNT as _FIRST_PRESENT_SETTLE_COUNT,
+    first_visual_present_count as _first_visual_present_count,
+)
 
 
 class CanvasWidget(QRhiWidget):
@@ -96,14 +99,16 @@ class CanvasWidget(QRhiWidget):
         self._rhi_presents_completed = 0
         self._rhi_renderer = RhiCanvasRenderer()
         # Registered/unregistered by GlassHUD instances anchored to this
-        # canvas (see ui/widgets/glass_hud.py) -- consumed by
+        # canvas (see ui/widgets/glass_hud/hud.py) -- consumed by
         # RhiCanvasRenderer.render(), which populates
         # self._glass_panel_sprites for each GlassHUD's own
         # GlassPanelDisplayWidget to read.
         self.glass_panels = GlassPanelRegistry()
+        self.runtime_state: CanvasRuntimeState
         self._context_menu_provider = None
         self._render_scene_flush = CoalescedFlush(self._flush_render_scene)
         init_widget_state(self)
+        ic_first_frame_debug(self, "canvas constructed")
 
     def set_store(self, store):
         state = self.runtime_state
@@ -111,6 +116,7 @@ class CanvasWidget(QRhiWidget):
         state._render_scene = build_render_scene(
             store, apply_channel_mode_in_shader=state._apply_channel_mode_in_shader
         )
+        ic_first_frame_debug(self, "set_store plan=%s", state._render_scene is not None)
         if hasattr(store, "on_change"):
             store.on_change(lambda scope: self._refresh_render_scene())
 
@@ -171,11 +177,45 @@ class CanvasWidget(QRhiWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        ic_first_frame_debug(self, "showEvent (canvas visible)")
+        self._start_first_frame_sampler()
         # Hidden stack pages never present; the first show on Windows/D3D often
         # lands on an uninitialized swapchain buffer (see-through CSD shell).
         self._request_update()
         if self._rhi_presents_completed < _FIRST_PRESENT_SETTLE_COUNT:
             QTimer.singleShot(0, self._settle_first_presents)
+
+    def _start_first_frame_sampler(self) -> None:
+        """Periodically log what the canvas region actually shows on screen.
+
+        Catches the "transparent first frame" that the present timeline can't:
+        the compositor may keep showing the untouched (transparent) subsurface
+        even while RHI presents are being recorded. Samples every ~50 ms for
+        the first ~1.5 s after show, reporting Qt-side visibility/exposure and
+        the opaque fraction of a corner grab.
+        """
+        if not ic_first_frame_debug_enabled():
+            return
+        if getattr(self, "_ffd_sampler_started", False):
+            return
+        self._ffd_sampler_started = True
+        self._ffd_sampler_ticks = 0
+        from tabs.image_compare.first_frame_debug import (
+            ic_first_frame_surface_repr,
+        )
+
+        def _tick():
+            self._ffd_sampler_ticks += 1
+            ic_first_frame_debug(
+                self,
+                "sampler presents=%s [%s]",
+                self._rhi_presents_completed,
+                ic_first_frame_surface_repr(self),
+            )
+            if self._ffd_sampler_ticks < 30:
+                QTimer.singleShot(50, _tick)
+
+        QTimer.singleShot(50, _tick)
 
     def resizeEvent(self, event):
         state = self.runtime_state
@@ -183,6 +223,7 @@ class CanvasWidget(QRhiWidget):
         state._drag_overlay_cached_image = None
         super().resizeEvent(event)
         size = event.size()
+        ic_first_frame_debug(self, "resizeEvent -> %s", size)
         resize_canvas(self, size.width(), size.height())
 
     def set_session_controller(self, session_controller) -> None:
@@ -193,7 +234,9 @@ class CanvasWidget(QRhiWidget):
 
     def initialize(self, command_buffer):
         log_initialized_rhi_widget(self)
+        ic_first_frame_debug(self, "initialize() renderer init starts")
         self._rhi_renderer.initialize(self, command_buffer)
+        ic_first_frame_debug(self, "initialize() renderer ready")
 
     def releaseResources(self):
         self._rhi_renderer.release()
@@ -239,33 +282,61 @@ class CanvasWidget(QRhiWidget):
         # store / compositor), patterns (QRhiWidget under translucent CSD).
         # On D3D the *first* presented buffer is often still an alpha hole
         # through the shell; wait for a settle present + compositor flush.
+        # Like Multi Compare, firstFrameRendered is emitted only *after* that
+        # flush (see _emit_first_frame_if_ready): on Wayland/Vulkan the
+        # present is recorded while the compositor still shows the untouched
+        # (transparent) subsurface, and only flush_qrhi_compositor()'s
+        # requestUpdate/restack makes the frame visible. Emitting here would
+        # hide the startup placeholder a frame too early — the user sees the
+        # transparent subsurface until the flush lands.
         painted = render_clear_frame(self, command_buffer)
         if not painted:
+            ic_first_frame_debug(
+                self, "render() returned NOT-painted (engine not ready yet)"
+            )
             return
 
         self._rhi_presents_completed = int(self._rhi_presents_completed) + 1
+        ic_first_frame_debug(
+            self, "render() painted present #%s [%s]",
+            self._rhi_presents_completed, ic_first_frame_readiness_repr(self),
+        )
         if self._rhi_presents_completed <= _FIRST_PRESENT_SETTLE_COUNT:
             self._settle_first_presents()
 
+    def _settle_first_presents(self) -> None:
+        """Settle present + window restack so the compositor shows an opaque
+        frame instead of the untouched transparent subsurface (see render())."""
+
+        def _flush() -> None:
+            try:
+                from ui.canvas_infra.rhi.rhi_present_sync import flush_qrhi_compositor
+
+                flush_qrhi_compositor(self, reason="ic-first-present")
+                ic_first_frame_debug(self, "compositor settle flush ran")
+            except Exception:
+                self._request_update()
+            self._emit_first_frame_if_ready()
+
+        QTimer.singleShot(0, _flush)
+
+    def _emit_first_frame_if_ready(self) -> None:
+        """Emit firstFrameRendered only once the frame is compositor-visible.
+
+        Mirrors multi_compare's canvas_widget: called from the settle flush
+        (after flush_qrhi_compositor restacks an opaque buffer), not from the
+        present itself.
+        """
         if self._rhi_presents_completed < _first_visual_present_count():
             return
         if not self._first_frame_rendered_emitted:
             self._first_frame_rendered_emitted = True
+            ic_first_frame_debug(
+                self, "EMIT firstFrameRendered (presents=%s) [%s]",
+                self._rhi_presents_completed, ic_first_frame_readiness_repr(self),
+            )
             self.firstFrameRendered.emit()
             self.firstVisualFrameReady.emit()
-
-    def _settle_first_presents(self) -> None:
-        """Second present + window restack so D3D does not show a see-through hole."""
-
-        def _flush() -> None:
-            try:
-                from ui.widgets.canvas.rhi_present_sync import flush_qrhi_compositor
-
-                flush_qrhi_compositor(self, reason="ic-first-present")
-            except Exception:
-                self._request_update()
-
-        QTimer.singleShot(0, _flush)
 
     def _request_update(self):
         request_update(self)
@@ -338,7 +409,7 @@ class CanvasWidget(QRhiWidget):
         border_color: QColor | None = None,
         border_width: float = 2.0,
         index: int = 0,
-        canvas_filter: int = None,
+        canvas_filter: int | None = None,
     ):
         return upload_feature_overlay_crop(
             self,

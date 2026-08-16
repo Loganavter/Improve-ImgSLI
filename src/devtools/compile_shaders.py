@@ -34,7 +34,7 @@ SRC_ROOT = REPO_ROOT / "src"
 #
 # Do NOT add GLSL 120/130: sources use #version 440 / UBO layouts that cannot
 # target those profiles. Legacy Windows OpenGL must fall back to D3D11 instead
-# (see ui.widgets.canvas.rhi_backend.resolve_rhi_backend_with_fallback).
+# (see ui.canvas_infra.rhi.rhi_backend.resolve_rhi_backend_with_fallback).
 DEFAULT_TARGETS = [
     "--glsl", "330,300 es",
     "--hlsl", "50",

@@ -91,6 +91,17 @@ class LayoutComposer:
                 activate=activate,
             )
 
+        def replace_workspace_session(
+            session_type: str, *, closing_session_id: str | None = None
+        ):
+            return (
+                _presenter()
+                .main_controller.workspace.replace_workspace_session(
+                    session_type,
+                    closing_session_id=closing_session_id,
+                )
+            )
+
         def close_workspace_session(session_id: str):
             return _presenter().main_controller.workspace.close_workspace_session(
                 session_id
@@ -190,6 +201,7 @@ class LayoutComposer:
             services={
                 "list_session_blueprints": list_session_blueprints,
                 "create_workspace_session": create_workspace_session,
+                "replace_workspace_session": replace_workspace_session,
                 "close_workspace_session": close_workspace_session,
                 "show_help_dialog": show_help_dialog,
                 "show_settings_dialog": show_settings_dialog,
@@ -245,6 +257,8 @@ class LayoutComposer:
                     WorkspaceSessionActivatedEvent,
                     lambda e: dispatcher.bind_history_for_session(e.session_id),
                 )
+                if store is None:
+                    return
                 active = store.get_active_workspace_session()
                 if active is not None:
                     dispatcher.bind_history_for_session(active.id)

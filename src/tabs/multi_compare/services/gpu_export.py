@@ -119,7 +119,7 @@ class MultiCompareGpuExporter:
         fill_background: bool,
     ) -> QImage:
         """Render ``composition`` into a QImage of ``output_w`` × ``output_h``."""
-        from ui.widgets.canvas.rhi_backend import query_max_texture_size
+        from ui.canvas_infra.rhi.rhi_backend import query_max_texture_size
 
         widget = self._ensure_widget()
         output_w = max(1, int(output_w))

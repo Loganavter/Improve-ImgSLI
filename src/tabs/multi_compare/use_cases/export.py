@@ -327,7 +327,7 @@ def on_save_requested(controller) -> None:
     preview = render_export_preview(
         controller,
         *native_size,
-        background_color_from_settings(getattr(controller.store, "settings", None)),
+        background_color_from_settings(getattr(controller.store, "settings", None)),  # type: ignore[call-arg]  # width/height are unpacked from native_size
         bool(
             getattr(
                 getattr(controller.store, "settings", None),

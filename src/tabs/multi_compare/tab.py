@@ -195,11 +195,6 @@ def _fresh_default_state():
     return MultiCompareState()
 
 
-def _default_state():
-    """Blueprint factory: clean defaults only (no in-memory leak)."""
-    return _fresh_default_state()
-
-
 def _multi_compare_session_count(store) -> int:
     return sum(
         1
@@ -215,7 +210,6 @@ class MultiCompareTab(TabContract):
         self._controller = None
         self._widget = None
         self._active_session_id: str | None = None
-        self._store_context = None
 
     @property
     def session_type(self) -> str:
@@ -247,7 +241,15 @@ class MultiCompareTab(TabContract):
         return translated if translated != key else self.display_name
 
     def transition_hint(self) -> TabTransitionHint:
-        # No workspace.transition_mask.release() wired yet — avoid contract errors.
+        # No cover mask on enter: the WorkspaceTransitionMask overlay blocks
+        # the QRhiWidget's first expose/initialize while it covers the stack
+        # (measured again 2026-08-09: initialize starts only after the mask
+        # force-releases at max_duration -> 400ms blank cover + transition_hint
+        # contract-violation error, so the mask just trades one blank window
+        # for another). The first-present transparency is instead handled by
+        # the canvas's own startup placeholder, which is gated on the genuinely
+        # compositor-visible present (#2, see canvas_widget._first_visual_present_count)
+        # and hides only after that frame is on screen.
         return TabTransitionHint(cover_on_enter=False)
 
     def create_page(self, parent: QWidget, context: TabContext) -> QWidget:
@@ -269,6 +271,7 @@ class MultiCompareTab(TabContract):
             page,
             translate=context.tr,
             lang_provider=_lang,
+            context=context,
         )
         def open_export_dialog(**kwargs):
             return context.call_service("open_image_export_dialog", **kwargs)
@@ -281,23 +284,15 @@ class MultiCompareTab(TabContract):
             open_export_dialog=open_export_dialog,
             context=context,
         )
-        self._store_context = context.store
         self._widget.store.subscribe(self._on_widget_state_changed)
         layout.addWidget(self._widget)
 
-        # Session may already be active before the deferred page exists. The
-        # earlier ``on_active_session_changed`` then no-oped ``_restore_from``
-        # (widget was None) and would early-return forever for the same id —
-        # leaving the live widget on defaults and wiping QSettings on the next
-        # divider edit. Pull the seeded slot now.
+        # Session may already be active before the deferred page exists. With
+        # the slot authoritative, binding is a re-read, not a replace_state.
         session_id = self._active_session_id or self._resolve_active_session_id(context)
-        logger.debug(
-            "[mc-divider-persist] create_page widget_ready active_session=%s",
-            session_id,
-        )
         if session_id is not None:
             self._active_session_id = session_id
-            self._restore_from(session_id)
+            self._widget.refresh_from_session()
 
         return page
 
@@ -318,72 +313,20 @@ class MultiCompareTab(TabContract):
             return None
         return getattr(session, "id", None)
 
-    def _snapshot_into(self, session_id: str | None) -> None:
-        if session_id is None or self._widget is None:
-            return
-        store = self._store_context
-        if store is None:
-            return
-        store.set_session_state_slot(
-            _STATE_SLOT,
-            self._widget.store.state,
-            session_id=session_id,
-            emit_scope=None,
-        )
-
-    def _restore_from(self, session_id: str | None) -> None:
-        if self._widget is None:
-            logger.debug(
-                "[mc-divider-persist] restore skipped (no widget) session=%s",
-                session_id,
-            )
-            return
-
-        store = self._store_context
-        if session_id is not None and store is not None:
-            state = store.ensure_session_state_slot(
-                _STATE_SLOT,
-                session_id=session_id,
-                factory=_fresh_default_state,
-            )
-        else:
-            state = _fresh_default_state()
-        color = getattr(getattr(state, "divider_settings", None), "color_rgba", None)
-        logger.debug(
-            "[mc-divider-persist] restore → widget session=%s color=%s",
-            session_id,
-            list(color) if color is not None else None,
-        )
-        self._widget.store.replace_state(state)
-
     def _on_widget_state_changed(self, action, state) -> None:
-        # Only persist "last used" prefs on intentional divider/label edits.
-        # ``replace_state`` (session switch/restore) must not overwrite QSettings
-        # with a transient widget default.
+        # Persist "last used" prefs on intentional divider/label edits only.
+        # ``replace_state``/session switches must not overwrite QSettings with a
+        # transient default. The session slot is written by the core Dispatcher
+        # on every MC dispatch — nothing to mirror here.
         action_type = getattr(action, "type", "")
         if action_type in {
             "multi_compare/set_divider_settings",
             "multi_compare/set_label_settings",
         }:
             _save_last_settings(state.divider_settings, state.label_settings)
-        session_id = self._active_session_id
-        store = self._store_context
-        if session_id is None or store is None:
-            return
-        store.set_session_state_slot(
-            _STATE_SLOT,
-            state,
-            session_id=session_id,
-            emit_scope=None,
-        )
 
     def on_activated(self, context: TabContext) -> None:
         session_id = self._resolve_active_session_id(context)
-        logger.debug(
-            "[mc-divider-persist] on_activated session=%s widget=%s",
-            session_id,
-            self._widget is not None,
-        )
         if session_id is not None:
             self.on_active_session_changed(session_id, context)
         if self._widget:
@@ -393,52 +336,16 @@ class MultiCompareTab(TabContract):
         self._register_actions(get_action_registry())
 
     def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
-        # Skip only when this session is already bound to a live widget whose
-        # divider prefs already match the session slot. Workspace activate can
-        # fire *before* ``on_session_created`` seeds QSettings into the slot —
-        # then a blind early-return would leave the widget on defaults forever.
-        if session_id == self._active_session_id and self._widget is not None:
-            if self._widget_matches_session_slot(session_id):
-                logger.debug(
-                    "[mc-divider-persist] active_session skip (already in sync) %s",
-                    session_id,
-                )
-                return
-            logger.debug(
-                "[mc-divider-persist] active_session re-sync after slot change %s",
-                session_id,
-            )
-            self._restore_from(session_id)
-            return
-        if (
-            self._widget is not None
-            and self._active_session_id is not None
-            and self._active_session_id != session_id
-        ):
-            self._snapshot_into(self._active_session_id)
-        self._active_session_id = session_id
-        logger.debug(
-            "[mc-divider-persist] active_session_changed → %s widget=%s",
-            session_id,
-            self._widget is not None,
-        )
-        self._restore_from(session_id)
-
-    def _widget_matches_session_slot(self, session_id: str) -> bool:
-        if self._widget is None or self._store_context is None:
-            return False
-        slot = self._store_context.get_session_state_slot(
-            _STATE_SLOT, session_id=session_id
-        )
-        if slot is None:
-            return False
-        return (
-            self._widget.store.state.divider_settings == slot.divider_settings
-            and self._widget.store.state.label_settings == slot.label_settings
-        )
+        # The session slot is authoritative; the bound facade re-reads it.
+        if self._widget is not None:
+            self._active_session_id = session_id
+            self._widget.refresh_from_session()
+        else:
+            self._active_session_id = session_id
 
     def on_deactivated(self, context: TabContext) -> None:
-        self._snapshot_into(self._active_session_id)
+        # The slot already holds the session state (written on every dispatch).
+        pass
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         store = getattr(context, "store", None)
@@ -479,9 +386,9 @@ class MultiCompareTab(TabContract):
             list(state.divider_settings.color_rgba),
         )
         # ``create_workspace_session`` emits workspace state *before*
-        # WorkspaceSessionCreatedEvent. The presenter can therefore activate the
-        # tab and ``_restore_from`` defaults into the live widget *before* this
-        # seed runs. Push the seeded slot into the widget if it is already bound.
+        # WorkspaceSessionCreatedEvent, so the presenter may have activated the
+        # tab and re-read defaults already. Push the seeded slot into the live
+        # widget if it is already bound.
         if (
             seeded
             and self._widget is not None
@@ -491,7 +398,7 @@ class MultiCompareTab(TabContract):
             )
         ):
             self._active_session_id = session_id
-            self._restore_from(session_id)
+            self._widget.refresh_from_session()
 
     def on_session_closed(self, session_id: str, context: TabContext) -> None:
         if self._active_session_id == session_id:
@@ -600,7 +507,7 @@ class MultiCompareTab(TabContract):
             return
 
         if session_id == self._active_session_id and self._widget is not None:
-            self._widget.store.replace_state(state)
+            self._widget.refresh_from_session()
 
     def register_canvas_features(self) -> None:
         import tabs.multi_compare.canvas.features as features_pkg

@@ -31,25 +31,25 @@ class MagnifierColorOptionsFlyout(IconActionFlyout):
             IconAction(
                 "capture",
                 Icon.CAPTURE_AREA_COLOR,
-                tr("magnifier.capture_ring", self.current_language),
+                tr("image_compare.magnifier.capture_ring", self.current_language),
                 visible=self._is_capture_active(),
             ),
             IconAction(
                 "laser",
                 Icon.MAGNIFIER_GUIDES,
-                tr("label.guides", self.current_language),
+                tr("image_compare.label.guides", self.current_language),
                 visible=self._is_laser_active(),
             ),
             IconAction(
                 "border",
                 Icon.MAGNIFIER_BORDER_COLOR,
-                tr("label.border", self.current_language),
+                tr("image_compare.label.border", self.current_language),
                 visible=self._is_magnifier_active(),
             ),
             IconAction(
                 "divider",
                 Icon.VERTICAL_SPLIT,
-                tr("ui.choose_magnifier_divider_line_color", self.current_language),
+                tr("image_compare.ui.choose_magnifier_divider_line_color", self.current_language),
                 visible=self._is_divider_active(),
             ),
         ]

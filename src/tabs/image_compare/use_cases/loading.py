@@ -411,15 +411,28 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
         maybe_wrap_pixel_store,
     )
 
+    if not isinstance(full_img, TiledPixelStore):
+        full_img = maybe_wrap_pixel_store(full_img)
+    item = target_list[index_in_list]
+    item.image = full_img
+
+    # A superseded worker (user already switched this slot to another
+    # index while this decode was in flight) must not overwrite the live
+    # slot -- only cache the decoded pixels on the list item above. Doing
+    # the overwrite unconditionally races multiple in-flight decodes for
+    # the same slot and corrupts document.full_res_imageN/pathN with
+    # whichever one happens to finish last (rapid Space+click bug).
+    current_app_index = (
+        document.current_index1 if image_number == 1 else document.current_index2
+    )
+    if index_in_list != current_app_index:
+        return
+
     outgoing = getattr(document, f"full_res_image{image_number}", None)
     other = 2 if image_number == 1 else 1
     other_full = getattr(document, f"full_res_image{other}", None)
     if outgoing is not None and outgoing is not other_full:
         close_pixel_store(outgoing)
-    if not isinstance(full_img, TiledPixelStore):
-        full_img = maybe_wrap_pixel_store(full_img)
-    item = target_list[index_in_list]
-    item.image = full_img
     controller._update_image_slot(
         image_number, image=full_img, path=path, is_full_res=True
     )
@@ -434,12 +447,6 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
     # lets the canvas keep showing it until the new one is ready, then
     # swap atomically (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM
     # follow-up).
-
-    current_app_index = (
-        document.current_index1 if image_number == 1 else document.current_index2
-    )
-    if index_in_list != current_app_index:
-        return
 
     def trigger_unification():
         live_document = controller.store.get_session_state_slot("document")
@@ -615,7 +622,7 @@ def duplicate_image_to_slot(controller, source_slot: int, target_slot: int) -> N
 
     if controller.presenter:
         controller.presenter.ui_batcher.schedule_update("combobox")
-        from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
+        from ui.widgets.unified_list_picker import FlyoutMode
 
         QTimer.singleShot(0, controller.presenter.repopulate_flyouts)
         if (
@@ -678,7 +685,7 @@ def _finalize_loaded_paths(
         )
 
         if controller.presenter:
-            from sli_ui_toolkit.ui.widgets.composite.unified_flyout import FlyoutMode
+            from ui.widgets.unified_list_picker import FlyoutMode
 
             QTimer.singleShot(0, controller.presenter.repopulate_flyouts)
             if (
@@ -695,7 +702,7 @@ def _finalize_loaded_paths(
     if load_errors:
         error_message = (
             tr(
-                "msg.some_images_could_not_be_loaded",
+                "image_compare.msg.some_images_could_not_be_loaded",
                 controller.store.settings.current_language,
             )
             + ":\n\n - "
@@ -853,3 +860,47 @@ def on_unified_images_ready(controller, result):
             controller.metrics_service.on_metrics_calculated(None)
         except Exception:
             pass
+
+
+
+def resync_current_image_slots(controller) -> None:
+    """Re-sync the displayed image after undo/redo of browsing.
+
+    Undo/redo restores the document reference snapshot: the index points
+    back at the previous entry, but the slot's pixels may reference the
+    closed ``TiledPixelStore`` of the image that was loaded after the undo
+    entry was recorded (loading closes the replaced store). Reload the
+    current entry from the list (path+reload) when the stored path diverges
+    from the list entry or the full-res store is closed. A healthy slot —
+    normal loads already match — is left untouched.
+    """
+    document = controller.store.get_session_state_slot("document")
+    if document is None:
+        return
+    for image_number, image_list, current_index, image_path, full_res in (
+        (
+            1,
+            document.image_list1,
+            document.current_index1,
+            document.image1_path,
+            document.full_res_image1,
+        ),
+        (
+            2,
+            document.image_list2,
+            document.current_index2,
+            document.image2_path,
+            document.full_res_image2,
+        ),
+    ):
+        if not (0 <= current_index < len(image_list)):
+            continue
+        item = image_list[current_index]
+        stale = image_path != item.path
+        if not stale:
+            is_open = getattr(full_res, "is_open", None)
+            stale = is_open is not None and not is_open
+        if stale:
+            # Through the controller's public seam (which delegates back to
+            # this module) so callers/tests can stub the reload decision.
+            controller.set_current_image(image_number, force_refresh=True)

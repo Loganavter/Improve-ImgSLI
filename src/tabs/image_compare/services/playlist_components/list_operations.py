@@ -130,7 +130,7 @@ class PlaylistListOperations:
     def reorder_items_in_list(
         self, *, list_num: int, indices, dest_index: int
     ) -> None:
-        from sli_ui_toolkit.ui.widgets.composite.unified_flyout.multi_move import (
+        from sli_ui_toolkit.ui.widgets.helpers.multi_move import (
             normalize_indices,
             reorder_many,
         )
@@ -172,7 +172,7 @@ class PlaylistListOperations:
         dest_list_num: int,
         dest_index: int,
     ) -> None:
-        from sli_ui_toolkit.ui.widgets.composite.unified_flyout.multi_move import (
+        from sli_ui_toolkit.ui.widgets.helpers.multi_move import (
             normalize_indices,
         )
 

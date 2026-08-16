@@ -21,7 +21,7 @@ def _modal_dialog_blocks_transient_hide(host, widget=None) -> bool:
     if getattr(host, "_is_modal_active", False):
         return True
     app = QApplication.instance()
-    if app is not None and app.activeModalWidget() is not None:
+    if isinstance(app, QApplication) and app.activeModalWidget() is not None:
         return True
     if widget is not None:
         try:

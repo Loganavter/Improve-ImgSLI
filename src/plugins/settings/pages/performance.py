@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy
-from sli_ui_toolkit.widgets import ComboBox
+from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.widgets import ComboBox, Label
 
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
@@ -46,8 +47,8 @@ def build(dialog, p):
 def _build_render_backend_group(dialog, layout, p):
     dialog.render_backend_group = RENDER_BACKEND.widget(dialog)
     row = QHBoxLayout()
-    row.setContentsMargins(5, 5, 5, 5)
-    dialog.lbl_rhi_backend = QLabel(
+    row.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
+    dialog.lbl_rhi_backend = Label(
         RENDER_BACKEND.text(dialog, "settings.render_backend_label") + ":"
     )
     RENDER_BACKEND.tag_member(
@@ -55,7 +56,7 @@ def _build_render_backend_group(dialog, layout, p):
     )
     dialog.combo_rhi_backend = ComboBox()
     RENDER_BACKEND.tag_combo(dialog.combo_rhi_backend)
-    dialog.combo_rhi_backend.setMinimumWidth(180)
+    dialog.combo_rhi_backend.setMinimumWidth(scaled_px(180))
     dialog.combo_rhi_backend.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
     )
@@ -90,7 +91,7 @@ def _build_render_backend_group(dialog, layout, p):
     row.addWidget(dialog.combo_rhi_backend, 1)
     dialog.render_backend_group.add_layout(row)
 
-    dialog.lbl_rhi_backend_hint = QLabel(
+    dialog.lbl_rhi_backend_hint = Label(
         RENDER_BACKEND.text(dialog, "settings.render_backend_restart_hint")
     )
     RENDER_BACKEND.tag_member(

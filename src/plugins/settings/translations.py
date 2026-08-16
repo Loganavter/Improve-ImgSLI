@@ -103,9 +103,6 @@ def _apply_group_titles(dialog, lang: str) -> None:
 
 
 def _apply_label_with_colon(dialog, lang: str) -> None:
-    theme_label = getattr(dialog, "theme_label", None)
-    if theme_label is not None:
-        theme_label.setText(dialog.tr("label.theme", lang) + ":")
     rhi_label = getattr(dialog, "lbl_rhi_backend", None)
     if rhi_label is not None:
         rhi_label.setText(dialog.tr("settings.render_backend_label", lang) + ":")

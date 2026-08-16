@@ -1,10 +1,10 @@
 {
   "workspace": {
     "session_types": {
-      "image_compare": "Image Compare",
       "video_compare": "Video Compare",
       "multi_compare": "Multi Compare",
-      "session_picker": "New Tab"
+      "session_picker": "New Tab",
+      "image_compare": "Image Compare"
     },
     "tab_menu": {
       "close": "Close Tab",

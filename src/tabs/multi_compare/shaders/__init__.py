@@ -1,6 +1,6 @@
 """GLSL shaders for multi-compare grid rendering."""
 
-from ui.widgets.canvas.runtime import should_prefer_gles
+from ui.canvas_infra.rhi.runtime import should_prefer_gles
 
 
 def _prolog(*, fragment: bool = False) -> str:

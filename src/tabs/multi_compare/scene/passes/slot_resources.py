@@ -14,8 +14,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import (
+    QRhi,
     QRhiBuffer,
     QRhiGraphicsPipeline,
+    QRhiRenderPassDescriptor,
+    QRhiShaderResourceBindings,
     QRhiShaderResourceBinding,
     QRhiShaderStage,
     QRhiTexture,
@@ -43,16 +46,16 @@ class SlotResources:
     and tile SRB cache -- one instance per ``BaseImagesPass``."""
 
     def __init__(self, *, uniform_size: int) -> None:
-        self.pipeline = None
-        self._render_pass_descriptor = None
+        self.pipeline: QRhiGraphicsPipeline | None = None
+        self._render_pass_descriptor: QRhiRenderPassDescriptor | None = None
         self._pipeline_sample_count: int | None = None
-        self.slot_textures: dict[object, object] = {}
+        self.slot_textures: dict[object, QRhiTexture] = {}
         self.slot_texture_sizes: dict[object, tuple[int, int]] = {}
-        self.slot_vertex_buffers: list[object] = []
-        self.slot_uniform_buffers: list[object] = []
+        self.slot_vertex_buffers: list[QRhiBuffer] = []
+        self.slot_uniform_buffers: list[QRhiBuffer] = []
         self._slot_uniform_capacity: list[int] = []
         self._slot_uniform_stride = uniform_size
-        self._tile_srbs: dict[tuple[int, object], tuple[object, object]] = {}
+        self._tile_srbs: dict[tuple[int, object], tuple[QRhiShaderResourceBindings, QRhiTexture]] = {}
 
     def release(self) -> None:
         for res in (
@@ -120,10 +123,10 @@ class SlotResources:
         pipeline.setRenderPassDescriptor(descriptor)
         blend = QRhiGraphicsPipeline.TargetBlend()
         blend.enable = True
-        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha
-        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha  # type: ignore[assignment]  # PySide6 stub types BlendFactor fields as int
+        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
+        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One  # type: ignore[assignment]
+        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
         pipeline.setTargetBlends([blend])
         first_srb = self._build_slot_srb(renderer, renderer.placeholder, None)
         pipeline.setShaderResourceBindings(first_srb)

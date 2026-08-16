@@ -77,8 +77,10 @@ When a subsystem has its own conditionally-enabled debug stream (RHI renderer, r
 This lets you `grep '\[rhi-render-debug\]' log.txt` later instead of trying to remember which file logged what.
 
 Existing examples:
-- `src/ui/widgets/canvas/rhi_renderer.py:_rhi_render_debug` → `IMGSLI_RESIZE_DEBUG`
+- `src/ui/canvas_infra/rhi/rhi_render.py:_rhi_render_debug` → `IMGSLI_RESIZE_DEBUG`
 - `src/ui/main_window/runtime.py:_resize_debug` → `IMGSLI_RESIZE_DEBUG` / `IMGSLI_RESIZE_DEBUG_VISUAL`
+- `src/tabs/multi_compare/first_frame_debug.py` → `IMGSLI_MC_FIRST_FRAME_DEBUG` (first-frame timeline for Multi Compare: canvas construction → show → renderer initialize → painted presents → `firstFrameRendered` → placeholder hide; also samples what the canvas region actually shows via grab + enumerates top-level QRhi windows)
+- `src/tabs/image_compare/first_frame_debug.py` → `IMGSLI_IC_FIRST_FRAME_DEBUG` (the same first-frame timeline for Image Compare)
 
 Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise (the user has hit this; see the AI agent's own working-style memory on noise suppression).
 

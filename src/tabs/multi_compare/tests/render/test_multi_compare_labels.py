@@ -92,6 +92,33 @@ def test_label_does_not_elide_when_cell_has_room_with_fractional_padding(qapp):
     assert fit_text(text, fm, inner_w) == text
 
 
+def test_label_rect_anchors_to_letterboxed_image_bottom_not_cell_bottom(qapp):
+    """When the image is centered/letterboxed within its slot, the label must
+    hug the image's actual bottom edge, not the slot's bottom edge."""
+    style = LayerLabelStyle(
+        font_pixel_size_fb=32,
+        padding_x_fb=14.0,
+        padding_y_fb=7.0,
+        safe_gap_fb=8.0,
+    )
+
+    cell_bottom_rect = layer_label_rect(
+        cell_rect_fb=(100.0, 200.0, 400.0, 300.0),
+        text="example.png",
+        style=style,
+    )
+    image_bottom_rect = layer_label_rect(
+        cell_rect_fb=(100.0, 200.0, 400.0, 300.0),
+        text="example.png",
+        style=style,
+        image_bottom_fb=380.0,
+    )
+
+    assert cell_bottom_rect.bottom() == 492.0
+    assert image_bottom_rect.bottom() == 372.0
+    assert image_bottom_rect.bottom() < cell_bottom_rect.bottom()
+
+
 def test_scaled_label_style_includes_glyph_overscan():
     source = LabelsOverlaySource()
     style = source._resolve_label_style(short_edge_fb=720.0)
@@ -99,3 +126,41 @@ def test_scaled_label_style_includes_glyph_overscan():
     assert style.padding_x_fb == pytest.approx(7.2)
     assert style.glyph_overscan_fb == pytest.approx(1.44)
     assert style.text_inset_fb == pytest.approx(7.2)
+
+
+class _FakeImage:
+    def __init__(self, w: int, h: int) -> None:
+        self.shape = (h, w, 3)
+
+
+def test_image_bottom_fb_matches_letterboxed_cell_center():
+    """A wide (16:9) image in a square cell is letterboxed top/bottom (its
+    width fills the cell, height is scaled down), so the displayed bottom
+    sits above the cell's bottom edge."""
+    layer = type(
+        "L", (), {"image": _FakeImage(160, 90), "zoom": 1.0, "pan_y": 0.0}
+    )()
+
+    bottom = LabelsOverlaySource._image_bottom_fb(
+        layer, cell_y_fb=200.0, cell_h_fb=300.0, lw=300.0, lh=300.0
+    )
+
+    fit_y = (300.0 / 300.0) / (160 / 90)
+    expected = 200.0 + 300.0 * (0.5 + fit_y / 2.0)
+    assert bottom == pytest.approx(expected)
+    assert bottom < 500.0
+
+
+def test_image_bottom_fb_matches_pillarboxed_cell_full_height():
+    """A tall (9:16) image in a square cell is pillarboxed left/right (its
+    height fills the cell), so the displayed bottom matches the cell's
+    bottom edge."""
+    layer = type(
+        "L", (), {"image": _FakeImage(90, 160), "zoom": 1.0, "pan_y": 0.0}
+    )()
+
+    bottom = LabelsOverlaySource._image_bottom_fb(
+        layer, cell_y_fb=0.0, cell_h_fb=400.0, lw=400.0, lh=400.0
+    )
+
+    assert bottom == pytest.approx(400.0)

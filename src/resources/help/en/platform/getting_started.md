@@ -15,4 +15,4 @@ Open {{tr:workspace.session_types.multi_compare}} from the Session Picker, drop 
 
 ### Discover features {#discover}
 
-`Ctrl+Shift+P` searches and runs any action; {{tr:action.palette.learn_more}} opens the matching help topic. F1 on a focused control can jump to its page when the action is tagged. Next stops: [Workspace Tabs](help://session_picker), [Files and Projects](help://file_management), [Comparison](help://comparison), [Export](help://export), [Settings](help://settings).
+`Ctrl+Shift+P` searches and runs any action; {{tr:action.palette.learn_more}} opens the matching help topic. F1 on a focused control can jump to its page when the action is tagged. Inside the Help window, the search field above the topic list jumps straight to matching pages. Next stops: [Workspace Tabs](help://session_picker), [Files and Projects](help://file_management), [Comparison](help://comparison), [Export](help://export), [Settings](help://settings).

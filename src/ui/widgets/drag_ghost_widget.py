@@ -1,10 +1,16 @@
 """In-window drag ghost (host-owned; not part of sli-ui-toolkit)."""
 
 from __future__ import annotations
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
+
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec  # noqa: E402
 
 from PySide6.QtCore import QPoint, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
+
+from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.ui.managers.ui_font import ui_font
 
 
 def make_count_slot_pixmap(template: QWidget, count: int) -> QPixmap:
@@ -12,8 +18,8 @@ def make_count_slot_pixmap(template: QWidget, count: int) -> QPixmap:
     size = template.size()
     if size.width() < 8 or size.height() < 8:
         size = template.sizeHint()
-    width = max(48, int(size.width()))
-    height = max(28, int(size.height()))
+    width = max(scaled_px(48), int(size.width()))
+    height = max(scaled_px(28), int(size.height()))
     pixmap = QPixmap(QSize(width, height))
     pixmap.fill(Qt.GlobalColor.transparent)
 
@@ -44,15 +50,13 @@ def make_count_slot_pixmap(template: QWidget, count: int) -> QPixmap:
 
     pen = painter.pen()
     pen.setColor(accent)
-    pen.setWidth(3)
+    pen.setWidth(scaled_px(3))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     painter.setPen(pen)
-    x = rect.left() + 3
-    painter.drawLine(x, rect.top() + 7, x, rect.bottom() - 7)
+    x = rect.left() + scaled_px(3)
+    painter.drawLine(x, rect.top() + scaled_px(7), x, rect.bottom() - scaled_px(7))
 
-    font = QFont(template.font())
-    font.setBold(True)
-    font.setPixelSize(16)
+    font = ui_font(pixel_size=16, bold=True)
     painter.setFont(font)
     painter.setPen(text)
     painter.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), str(max(1, int(count))))
@@ -100,3 +104,10 @@ class DragGhostWidget(QWidget):
         path.addRoundedRect(rect, 8.0, 8.0)
         painter.setClipPath(path)
         painter.drawPixmap(self.rect(), self._pixmap)
+
+DragGhostWidget.inspect_spec = InspectSpec(
+    family="DragGhostWidget",
+    docs="docs/dev/widgets/drag_ghost_widget.md",
+    regions=True,
+    layers=True,
+)

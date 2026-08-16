@@ -3,12 +3,15 @@ import os
 import threading
 from typing import Any, Optional
 
+import imagecodecs
+import numpy as np
 from PIL import Image
 
 from core.store import Store
 from domain.types import Color
 from tabs.image_compare.plugins.video_editor.services.video_export_models import VideoRenderRequest
 from shared.image_processing.pil_save import write_pil_image_cancelable
+from shared.image_processing.progressive_loader import JXL_SUPPORTED
 from shared.image_processing.resize import resize_images_processor
 from shared.rendering import TargetSurfaceSpec, get_effective_export_interpolation_method
 from tabs.image_compare.services.live_snapshot import build_live_frame_snapshot
@@ -18,16 +21,6 @@ from tabs.image_compare.services.snapshot_render_plan_builder import (
 from tabs.image_compare.services.video_snapshot_rendering import SnapshotFrameRenderer
 
 logger = logging.getLogger("ImproveImgSLI")
-
-try:
-    import imagecodecs
-    import numpy as np
-
-    JXL_SUPPORTED = True
-    logger.info("JXL export support: imagecodecs imported successfully")
-except ImportError as e:
-    JXL_SUPPORTED = False
-    logger.warning(f"JXL export support: imagecodecs import failed - {e}")
 
 
 class ExportService:

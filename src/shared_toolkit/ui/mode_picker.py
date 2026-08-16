@@ -127,15 +127,14 @@ class ModePicker(QObject):
             current_index = -1
         flyout.populate(labels, current_index)
         # Left-align under the trigger (toolbar icons are narrow; show_below
-        # centers and looks wrong on RGB / Diff mode buttons). Vertical slide
-        # matches the magnifier interpolation dropdown drop.
+        # centers and looks wrong on RGB / Diff mode buttons). No explicit
+        # animation= here: the process-wide default_flyout_animation (the app's
+        # "fade") applies, matching every other dropdown.
         flyout.show_aligned(
             self._button,
             anchor_point="bottom-left",
             flyout_point="top-left",
             offset=16,
-            animation="slide",
-            animation_axis="vertical",
         )
 
     def _on_clicked(self) -> None:

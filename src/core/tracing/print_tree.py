@@ -158,10 +158,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.top:
-        items = [(tid, trace_total_ms(recs)) for tid, recs in groups.items()]
-        items.sort(key=lambda x: -x[1])
-        items = items[: args.top]
-        for tid, _ in items:
+        top_items = [(tid, trace_total_ms(recs)) for tid, recs in groups.items()]
+        top_items.sort(key=lambda x: -x[1])
+        top_items = top_items[: args.top]
+        for tid, _ in top_items:
             print(render_trace(groups[tid], tid, min_ms=args.min_ms))
             print()
         return 0

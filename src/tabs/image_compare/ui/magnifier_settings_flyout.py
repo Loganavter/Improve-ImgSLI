@@ -4,7 +4,8 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QBrush, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QGraphicsEffect, QWidget
 
-from sli_ui_toolkit.managers import AnchoredFlyoutAutoHide
+from sli_ui_toolkit.managers import AnchoredFlyoutAutoHide, UiScale, scaled_px
+from sli_ui_toolkit.ui.in_window_surface import surface_anchor_rect
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
 from sli_ui_toolkit.ui.widgets.buttons.layers.background import rounded_rect_path
 from sli_ui_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
@@ -23,7 +24,7 @@ _GROUP_BORDER_MARGIN_V = 3
 # Empirical fine-tune on top of the computed gap above -- the label-height
 # math gets close but not pixel-exact (font hinting/leading rounds
 # differently than QFontMetrics.height() alone accounts for).
-_EXTRA_LIFT_PX = 5
+_EXTRA_LIFT_PX = 6
 
 # Caption capsule (mirrors the anchor group's own label, see paintEvent /
 # _paint_caption): background/border box extends this far below the actual
@@ -39,7 +40,7 @@ _CAPTION_BOTTOM_MARGIN_PX = 3
 
 
 def _caption_capsule_height() -> int:
-    return QFontMetrics(_caption_font()).height() + 2 * _CAPTION_PAD_Y
+    return QFontMetrics(_caption_font()).height() + 2 * scaled_px(_CAPTION_PAD_Y)
 
 
 def _caption_overlap_px(capsule_h: int) -> int:
@@ -58,9 +59,8 @@ def _caption_font():
     """Same font ButtonGroup.paintEvent uses for its own bottom caption --
     shared here so this flyout's mirrored caption (see paintEvent) matches
     it exactly, not just approximately."""
-    font = ui_font()
-    font.setPointSize(max(8, font.pointSize() - 2))
-    return font
+    factor = UiScale.get_instance().factor()
+    return ui_font(point_size=max(8, ui_font().pointSizeF() / factor - 2))
 
 
 def _group_border_geometry(group: QWidget) -> tuple[int, int]:
@@ -75,10 +75,14 @@ def _group_border_geometry(group: QWidget) -> tuple[int, int]:
     left edge half a pixel off the group's. Using the plain symmetric width
     here is what actually lines the two left edges up.
     """
-    width = max(0, group.width() - _GROUP_BORDER_MARGIN_H * 2)
+    width = max(0, group.width() - scaled_px(_GROUP_BORDER_MARGIN_H) * 2)
     label = group.label() if hasattr(group, "label") else ""
     label_height = QFontMetrics(_caption_font()).height() if label else 0
-    gap = label_height // 2 + _GROUP_BORDER_MARGIN_V + _EXTRA_LIFT_PX
+    gap = (
+        label_height // 2
+        + scaled_px(_GROUP_BORDER_MARGIN_V)
+        + scaled_px(_EXTRA_LIFT_PX)
+    )
     return width, gap
 
 
@@ -166,10 +170,10 @@ class MagnifierSettingsFlyout(BaseFlyout):
         # with nowhere for the capsule to sit below the border line.
         capsule_h = _caption_capsule_height()
         caption_reserve = (
-            _CAPTION_BOX_EXTRA_PX
+            scaled_px(_CAPTION_BOX_EXTRA_PX)
             + capsule_h
             - _caption_overlap_px(capsule_h)
-            + _CAPTION_BOTTOM_MARGIN_PX
+            + scaled_px(_CAPTION_BOTTOM_MARGIN_PX)
         )
         self._main_layout.setContentsMargins(0, 0, 0, caption_reserve)
         # widgets.qss has a global `QWidget#FlyoutContainer { border-radius:
@@ -185,7 +189,7 @@ class MagnifierSettingsFlyout(BaseFlyout):
         self.container.setObjectName("")
         # Replace the base class's uniform-radius clip with one matching the
         # square-top/round-bottom shape paintEvent draws below.
-        self._container_clip = _MonolithClipEffect(self.CONTENT_RADIUS, self.container)
+        self._container_clip = _MonolithClipEffect(scaled_px(self.CONTENT_RADIUS), self.container)
         self.container.setGraphicsEffect(self._container_clip)
         self._auto_hide = AnchoredFlyoutAutoHide(
             flyout=self,
@@ -203,13 +207,13 @@ class MagnifierSettingsFlyout(BaseFlyout):
         # that line, in the margin reserved in __init__, instead of at the
         # widget's true edge.
         box_bottom = (
-            self.container.geometry().height() + _CAPTION_BOX_EXTRA_PX
+            self.container.geometry().height() + scaled_px(_CAPTION_BOX_EXTRA_PX)
             if self._label
             else full_rect.height()
         )
         rect = QRectF(0, 0, full_rect.width(), box_bottom)
         stroke_rect = rect.adjusted(0.5, 0.5, -0.5, -0.5)
-        r = self.CONTENT_RADIUS
+        r = scaled_px(self.CONTENT_RADIUS)
         path = rounded_rect_path(stroke_rect, (0, 0, r, r))
         # Same tokens ButtonGroup itself paints with (dialog.border / Window)
         # by default -- overridable per anchor via set_background_brush, see
@@ -248,8 +252,8 @@ class MagnifierSettingsFlyout(BaseFlyout):
         label_h = fm.height()
         center_x = stroke_rect.center().x()
 
-        capsule_w = label_w + 2 * _CAPTION_PAD_X
-        capsule_h = label_h + 2 * _CAPTION_PAD_Y
+        capsule_w = label_w + 2 * scaled_px(_CAPTION_PAD_X)
+        capsule_h = label_h + 2 * scaled_px(_CAPTION_PAD_Y)
         capsule_rect = QRectF(
             center_x - capsule_w / 2,
             stroke_rect.bottom() - _caption_overlap_px(capsule_h),
@@ -270,10 +274,10 @@ class MagnifierSettingsFlyout(BaseFlyout):
         painter.save()
         painter.setClipRect(
             QRectF(
-                capsule_rect.left() - 2,
+                capsule_rect.left() - scaled_px(2),
                 capsule_rect.center().y(),
-                capsule_rect.width() + 4,
-                capsule_rect.height() / 2 + 2,
+                capsule_rect.width() + scaled_px(4),
+                capsule_rect.height() / 2 + scaled_px(2),
             )
         )
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -330,10 +334,26 @@ class MagnifierSettingsFlyout(BaseFlyout):
         # edge; show_aligned clamps offset at a minimum of 0 (it only
         # guarantees clearance, never overlap), so the label-padding gap
         # above has to be closed with an explicit move() afterwards instead
-        # of a negative offset.
-        self.show_aligned(anchor_group, "bottom-center", "top-center", offset=0)
-        if gap > 0:
-            self.move(self.x(), self.y() - gap)
+        # of a negative offset. animation="none" is deliberate: this panel is
+        # a seamless flush continuation of the button group (no shadow, square
+        # top), its own paintEvent doesn't composite the toolkit's fade
+        # opacity, and the slide would fight the move() below and snap the
+        # panel back down by `gap` px on every fresh open. Opting out of the
+        # app-wide default fade keeps show/hide instant and the position exact.
+        self.show_aligned(anchor_group, "bottom-center", "top-center", offset=0, animation="none")
+        # show_aligned centers this flyout's box on the group *widget*
+        # center, which only puts the box's left edge exactly on the
+        # group's painted border-box left edge (scaled_px(MARGIN_H)) when
+        # the two centering halves round the same way. With an odd group
+        # width and an odd scaled margin (150% UI scale: m=scaled_px(6)=9,
+        # W odd) the halves round in opposite directions (banker's
+        # rounding) and the whole panel lands 1px left of the group
+        # border. Snap x to the border-box left edge explicitly, the same
+        # way the label-padding gap on y is closed just below.
+        anchor_left = surface_anchor_rect(self, anchor_group, self.overlay_layer).x()
+        target_x = anchor_left + scaled_px(_GROUP_BORDER_MARGIN_H)
+        if gap > 0 or self.x() != target_x:
+            self.move(target_x, self.y() - gap)
 
     def _flatten_anchor_group(self, anchor_group: QWidget) -> None:
         """Square off the group's own bottom corners via ButtonGroup's

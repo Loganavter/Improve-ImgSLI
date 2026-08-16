@@ -1,4 +1,9 @@
-"""Header bar for the Session Picker Recent shelf (title + sort/view)."""
+"""Control buttons for the Session Picker Recent shelf header (sort/view).
+
+The shelf title lives in the shared ``ShelfWidget`` (``ui.widgets.shelf``);
+this widget is the "control buttons on top" cluster the shelf host adds via
+``add_header_widget``. Emits prefs changes; does not own MRU data.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +15,6 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 from sli_ui_toolkit.widgets import (
     Button,
     ContextMenuAction,
-    Label,
     popup_context_menu_for_anchor,
 )
 
@@ -32,7 +36,7 @@ from tabs.session_picker.icons import get_icon as get_session_picker_icon
 
 
 class RecentHeaderBar(QWidget):
-    """Title plus sort/view chips. Emits prefs changes; does not own MRU data."""
+    """Sort/view chips for the shelf header. Emits prefs changes; no MRU data."""
 
     prefs_changed = Signal()
 
@@ -47,14 +51,6 @@ class RecentHeaderBar(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-
-        self.title_label = Label(
-            self._tr("recent.title", "Recent"),
-            pixel_size=16,
-            bold=True,
-        )
-        layout.addWidget(self.title_label)
-        layout.addStretch(1)
 
         self.sort_button = Button(
             text=self._sort_label(),
@@ -95,7 +91,6 @@ class RecentHeaderBar(QWidget):
         self._sort_mode = sort_mode
         self._sort_order = sort_order
         self._view_mode = view_mode
-        self.title_label.setText(self._tr("recent.title", "Recent"))
         self.sort_button.setText(self._sort_label())
         # Exact opaque fill — custom_bg is an 18% tint and cannot lighten
         # a shelf (only darken), so override_bg is required here.

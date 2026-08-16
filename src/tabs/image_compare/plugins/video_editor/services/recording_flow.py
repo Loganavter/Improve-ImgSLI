@@ -12,7 +12,7 @@ class RecordingFlow:
     def __init__(self, controller):
         self.controller = controller
 
-    def toggle_recording(self, checked: bool = None):
+    def toggle_recording(self, checked: bool | None = None):
         del checked
         controller = self.controller
         if (
@@ -43,7 +43,7 @@ class RecordingFlow:
             if controller.recorder.is_recording:
                 controller._toggle_recording_in_progress = False
 
-    def toggle_pause_recording(self, checked: bool = None):
+    def toggle_pause_recording(self, checked: bool | None = None):
         del checked
         controller = self.controller
         if not controller.recorder.is_recording:

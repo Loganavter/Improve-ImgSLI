@@ -68,6 +68,22 @@ class SessionController(QObject):
         # Slots with a full-resolution decode in flight; unify against a
         # preview side is deferred while the real pixels are on the way.
         self._pending_full_loads: dict[int, int] = {1: 0, 2: 0}
+        # Undo/redo of browsing (SET_CURRENT_INDEX) restores the index but
+        # the slot's pixels can point at a closed store — re-sync on the
+        # "document" scope. Deferred to the next loop turn: the emit fires
+        # inside Dispatcher.undo() while its lock is held, and the re-sync
+        # dispatches (non-reentrant lock).
+        self.store.on_change(self._on_store_scoped_change)
+
+    def _on_store_scoped_change(self, scope: str) -> None:
+        if scope != "document":
+            return
+        QTimer.singleShot(0, self._resync_current_image_slots_if_needed)
+
+    def _resync_current_image_slots_if_needed(self) -> None:
+        from tabs.image_compare.use_cases.loading import resync_current_image_slots
+
+        resync_current_image_slots(self)
 
     def _update_image_slot(
         self,
@@ -181,15 +197,33 @@ class SessionController(QObject):
             and target_list[index_in_list].path == path
         ):
             item = target_list[index_in_list]
-            self._show_loading_toast(image_number)
+
+            # A superseded worker (the user already switched this slot to a
+            # different index while this decode was in flight) must only
+            # cache the decoded pixels on the list item -- never overwrite
+            # the live document slot. Multiple decodes for the same slot can
+            # be in flight at once under rapid switching, and Qt gives no
+            # ordering guarantee for their completion, so an unconditional
+            # overwrite lets a stale result win and corrupts
+            # document.full_res_imageN/pathN (rapid Space+click bug).
+            current_app_index = (
+                document.current_index1
+                if image_number == 1
+                else document.current_index2
+            )
+            is_current = index_in_list == current_app_index
+
+            if is_current:
+                self._show_loading_toast(image_number)
 
             if is_preview:
-                self._update_image_slot(
-                    image_number,
-                    image=pil_img,
-                    path=path,
-                    is_preview=True,
-                )
+                if is_current:
+                    self._update_image_slot(
+                        image_number,
+                        image=pil_img,
+                        path=path,
+                        is_preview=True,
+                    )
                 self._load_full_resolution_async(path, image_number, index_in_list)
             else:
                 from shared.image_processing.tiled_pixel_store import (
@@ -198,31 +232,27 @@ class SessionController(QObject):
                     maybe_wrap_pixel_store,
                 )
 
-                outgoing = getattr(document, f"full_res_image{image_number}", None)
-                other = 2 if image_number == 1 else 1
-                other_full = getattr(document, f"full_res_image{other}", None)
-                # Never close a store still installed on the other compare slot
-                # (stale path-only selections used to share one store across both).
-                if outgoing is not None and outgoing is not other_full:
-                    close_pixel_store(outgoing)
                 if not isinstance(pil_img, TiledPixelStore):
                     pil_img = maybe_wrap_pixel_store(pil_img)
-                self._update_image_slot(
-                    image_number,
-                    image=pil_img,
-                    path=path,
-                    is_full_res=True,
-                )
-                self._mark_full_res_ready(image_number)
+                if is_current:
+                    outgoing = getattr(document, f"full_res_image{image_number}", None)
+                    other = 2 if image_number == 1 else 1
+                    other_full = getattr(document, f"full_res_image{other}", None)
+                    # Never close a store still installed on the other compare slot
+                    # (stale path-only selections used to share one store across both).
+                    if outgoing is not None and outgoing is not other_full:
+                        close_pixel_store(outgoing)
+                    self._update_image_slot(
+                        image_number,
+                        image=pil_img,
+                        path=path,
+                        is_full_res=True,
+                    )
+                    self._mark_full_res_ready(image_number)
 
             item.image = pil_img
 
-            current_app_index = (
-                document.current_index1
-                if image_number == 1
-                else document.current_index2
-            )
-            if index_in_list == current_app_index:
+            if is_current:
                 if not is_preview:
                     QTimer.singleShot(
                         0,

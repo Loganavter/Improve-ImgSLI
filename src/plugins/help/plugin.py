@@ -64,6 +64,10 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
         if self._dialog.current_language != language:
             self._dialog.update_language(language)
 
+        # Wayland activation for this independent modeless top-level is
+        # handled by ThemedDialog (suppress the stale show-time request +
+        # retry until the compositor grants focus) — see the module docstring
+        # in shared_toolkit/ui/themed_dialog.py.
         self._dialog.show()
         self._dialog.raise_()
         self._dialog.activateWindow()

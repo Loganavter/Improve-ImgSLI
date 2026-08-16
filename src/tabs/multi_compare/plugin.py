@@ -20,6 +20,11 @@ class MultiComparePlugin(Plugin, ISessionPlugin):
         super().initialize(context)
         self.store = getattr(context, "store", None)
         self.event_bus = getattr(context, "event_bus", None)
+        from tabs.multi_compare.bootstrap_reducers import (
+            register_multi_compare_reducers,
+        )
+
+        register_multi_compare_reducers()
 
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
         from tabs.multi_compare.tab import _fresh_default_state

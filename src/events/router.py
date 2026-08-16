@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent, QMouseEvent
 
 from tabs.registry import get_shared_tab_registry
 
@@ -24,14 +25,18 @@ def route_drag_and_drop_override(event_handler, event: QEvent, dnd_service) -> b
         if event_type == QEvent.Type.MouseMove:
             carry.update_position(event)
             return True
-        if event_type == QEvent.Type.MouseButtonRelease:
+        if event_type == QEvent.Type.MouseButtonRelease and isinstance(event, QMouseEvent):
             if event.button() == Qt.MouseButton.LeftButton:
                 carry.finish(event)
                 return True
             if event.button() == Qt.MouseButton.RightButton:
                 carry.cancel()
                 return True
-        if event_type == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+        if (
+            event_type == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and event.key() == Qt.Key.Key_Escape
+        ):
             carry.cancel()
             return True
         if event_type in (
@@ -49,7 +54,11 @@ def route_drag_and_drop_override(event_handler, event: QEvent, dnd_service) -> b
     if event_type == QEvent.Type.MouseButtonRelease:
         dnd_service.finish_drag(event)
         return True
-    if event_type == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+    if (
+        event_type == QEvent.Type.KeyPress
+        and isinstance(event, QKeyEvent)
+        and event.key() == Qt.Key.Key_Escape
+    ):
         dnd_service.cancel_drag()
         return True
     if event_type in (

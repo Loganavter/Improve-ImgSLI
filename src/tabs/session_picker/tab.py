@@ -14,6 +14,14 @@ class SessionPickerTab(TabContract):
     startup_tier = "bootstrap"
 
     @property
+    def is_bootstrap_default(self) -> bool:
+        # session_picker backs the app's initial workspace session
+        # (`core.store.INITIAL_WORKSPACE_SESSION_TYPE`), so it is the sole
+        # holder of the bootstrap-default role. TabRegistry enforces that no
+        # other tab may claim it.
+        return True
+
+    @property
     def session_type(self) -> str:
         return "session_picker"
 

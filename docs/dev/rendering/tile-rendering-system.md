@@ -301,14 +301,18 @@ Two explicit tiers — cross-tier work goes through `shared/image_processing/pix
 
 ### Preview-at-load tier
 
-Progressive load (`load_preview_image`, ≤1024 px long edge) writes
-`document.preview_image*` as **`PIL.Image` only**. Workers pass
-`is_preview=True` and must not call `maybe_wrap_pixel_store` on that path;
-full-res decode is a separate async step into `full_res_image*`
-(`TiledPixelStore`). Contract: `tests/contracts/test_preview_tier_contract.py`.
+Progressive load (`load_preview_image`, ≤1024 px long edge) decodes straight
+to **`QImage`** (`QImageReader` + `setScaledSize` for the bounded preview,
+`Format_RGBA8888`; PIL is only a fallback for formats `QImageReader` can't
+decode — JXL via imagecodecs, unknown formats) and writes
+`document.preview_image*` as `QImage`. Workers pass `is_preview=True` and
+must not call `maybe_wrap_pixel_store` on that path; full-res decode is a
+separate async step into `full_res_image*` (`TiledPixelStore`). Contract:
+`src/tabs/image_compare/tests/contracts/test_preview_tier_contract.py`.
 
-Replacing PIL preview with `QImage` decode is tracked in
-[TODO.md](../TODO.md) (P2, design needed) — not required for tier correctness.
+Auto-crop on the QImage path probes the crop box via a temporary PIL
+in-memory view (`get_auto_crop_box`) without materializing a full-res PIL
+image.
 
 ### Host vs GPU tile granularity
 
@@ -372,8 +376,9 @@ one-off fix:
 
 - **`TiledPixelStore`** — see [GEGL-style pixel storage](#gegl-style-pixel-storage).
   `.crop(box)` / `read_tile(row, col)` return small materialized regions for
-  GPU residency; `.materialize_full()` / `.to_pil()` are explicit escape
-  hatches for SSIM diff and export/save. `close_pixel_store()` closes stores.
+  GPU residency; `.materialize_full()` (the sole full-frame escape hatch,
+  confined by `tests/contracts/test_pixel_source_tiers.py`) serves SSIM
+  diff and export/save. `close_pixel_store()` closes stores.
   Tests: `tests/render/test_tiled_pixel_store.py`.
 
 The one remaining permanent resident this doesn't (and can't cheaply) bound
@@ -392,18 +397,19 @@ optional `auto_crop` via a bounded downscale probe). This is **not** codec
 ROI streaming — JPEG/PNG/WebP still decompress the whole frame once; only the
 second contiguous copy is avoided.
 
-**True ROI streaming (plan B, 2026-07):** implemented via optional `pyvips`.
-When `pyvips` is importable, `TiledPixelStore.from_path` decodes with
-`access="sequential"` directly to disk, bypassing `MAX_SUPPORTED_IMAGE_DIMENSION`
-(65536) entirely — no full-frame decode buffer at all. The PIL/imagecodecs
-path above stays as the fallback and keeps the `65536px` bound. **Caveat
-(2026-08):** `pyvips` isn't currently declared as a dependency in any
-packaging target (AUR `depends`, Flatpak `python3-modules.json`) or
-documented as an optional install anywhere, so in every build shipped today
-every real user still hits the PIL/imagecodecs fallback and its `65536px`
-limit — the streaming path only activates for a dev environment that happens
-to have `pyvips` installed. See [TODO.md](../TODO.md) (P2 - Reduce PIL from
-universal currency) for the follow-up.
+**True ROI streaming (plan B, 2026-07):** implemented via `pyvips`, which is
+a **hard dependency** in every packaging target (`pyvips[binary]` in
+`requirements-gui.txt` / the Windows build, `python-pyvips` in the AUR
+`PKGBUILD`, a `python3-pyvips` Flatpak module). When the installed
+libvips can stream a file's format (`pyvips_can_stream` in
+`progressive_loader.py`), `TiledPixelStore.from_path` decodes with
+`access="sequential"` directly to disk, bypassing
+`MAX_SUPPORTED_IMAGE_DIMENSION` (65536) entirely — no full-frame decode
+buffer at all. The PIL/imagecodecs path stays as the fallback and keeps the
+`65536px` bound. **Format caveat (2026-08):** the bundled `pyvips-binary`
+libvips (Flatpak/Windows) has **no libjxl**, so `.jxl` keeps the bounded
+imagecodecs path there; distro libvips (AUR/dev) includes libjxl and streams
+JXL. HEIF/AVIF/WebP/JPEG/PNG/TIFF/GIF stream via pyvips everywhere.
 
 ## Budgeted progressive tile upload (GIMP-style)
 

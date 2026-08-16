@@ -99,23 +99,61 @@ class TestFeatureStateAPI:
         assert "nonexistent_command" in caplog.text
 
 class TestFeatureStateAPIErrorHandling:
-    """Test error handling in feature state API."""
+    """Error handling in feature state API: handler exceptions are swallowed
+    (logged, never propagated) and the API returns None for failed queries."""
 
-    def test_query_handler_exception(self, caplog):
-        """If query handler raises, exception should be logged and None returned."""
+    def test_query_handler_exception(self, caplog, monkeypatch):
+        """If a registered query handler raises, the exception is logged and
+        None returned — the API must not propagate handler errors."""
+        from ui.canvas_infra.scene.widget_contract import CanvasFeatureStateQuery
 
-        def failing_query(store):
+        registry = get_canvas_registry("image_compare")
+
+        def failing_handler(store):
             raise ValueError("Query failed")
+
+        monkeypatch.setattr(
+            registry,
+            "get_feature_state_queries",
+            lambda: {
+                "magnifier": (
+                    CanvasFeatureStateQuery(
+                        query_id="active_state", handler=failing_handler
+                    ),
+                )
+            },
+        )
 
         result = query_feature_state(_image_compare_store(), "magnifier", "active_state")
 
-    def test_command_handler_exception(self, caplog):
-        """If command handler raises, exception should be logged."""
+        assert result is None
+        assert "Query failed" in caplog.text
 
-        def failing_command(store):
+    def test_command_handler_exception(self, caplog, monkeypatch):
+        """If a registered command handler raises, the exception is logged and
+        execution swallowed — the API must not propagate handler errors."""
+        from ui.canvas_infra.scene.widget_contract import CanvasFeatureStateCommand
+
+        registry = get_canvas_registry("image_compare")
+
+        def failing_handler(store):
             raise ValueError("Command failed")
 
+        monkeypatch.setattr(
+            registry,
+            "get_feature_state_commands",
+            lambda: {
+                "magnifier": (
+                    CanvasFeatureStateCommand(
+                        command_id="toggle_enabled", handler=failing_handler
+                    ),
+                )
+            },
+        )
+
         execute_feature_command(_image_compare_store(), "magnifier", "toggle_enabled")
+
+        assert "Command failed" in caplog.text
 
 def test_multi_instance_feature_command_writes_canvas_widget_state():
     """QRHI_CANVAS_FEATURES.md: multi-instance feature state lives under canvas_widget_state."""

@@ -26,6 +26,7 @@ def startup_mark(phase: str) -> None:
         _last = now
         logger.info("startup +%6.0fms  %s", 0.0, phase)
         return
+    assert _last is not None and _origin is not None
     delta_ms = (now - _last) * 1000.0
     total_ms = (now - _origin) * 1000.0
     _last = now

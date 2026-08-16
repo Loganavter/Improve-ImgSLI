@@ -67,6 +67,7 @@ from core.state_management.settings_actions import (
     SetThemeAction,
     SetUIFontFamilyAction,
     SetUIFontModeAction,
+    SetUIScaleFactorAction,
     SetUIModeAction,
     SetVideoRecordingFpsAction,
     SetWindowGeometryAction,

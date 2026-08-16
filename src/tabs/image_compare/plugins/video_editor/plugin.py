@@ -127,7 +127,7 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
     @staticmethod
     def _can_activate_deferred_dialog(dialog) -> bool:
         app = QApplication.instance()
-        if app is None:
+        if not isinstance(app, QApplication):
             return False
         if app.applicationState() != Qt.ApplicationState.ApplicationActive:
             return False

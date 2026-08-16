@@ -2,6 +2,8 @@
   "help": {
     "help": "Ajuda",
     "open_topic": "Abrir tópico",
+    "search_placeholder": "Pesquisar na ajuda…",
+    "search_no_results": "Nenhum tópico correspondente",
     "context": {
       "copy": "Copiar",
       "select_all": "Selecionar tudo",

@@ -3,9 +3,7 @@
     "palette": {
       "search_placeholder": "Search actions…",
       "empty": "No matching actions",
-      "learn_more": "Learn more",
-      "run": "Run",
-      "cancel": "Cancel"
+      "learn_more": "Learn more"
     },
     "settings": {
       "page_desc": "Open this settings page",
@@ -14,8 +12,7 @@
       "general_desc": "Open Settings → General",
       "appearance_desc": "Open Settings → Appearance",
       "optimization_desc": "Open Settings → Optimization",
-      "keyboard_desc": "Open Settings → Keyboard",
-      "analysis_desc": "Open Settings → Analysis details"
+      "keyboard_desc": "Open Settings → Keyboard"
     },
     "breadcrumb": {
       "workspace": "Workspace"
@@ -32,7 +29,11 @@
       "find_action_context": "Find Action (context)",
       "find_action_context_desc": "Open Find Action filtered to the focused control",
       "paste_clipboard_image": "Paste image from clipboard",
-      "paste_clipboard_image_desc": "Paste an image from the system clipboard into the active session"
+      "paste_clipboard_image_desc": "Paste an image from the system clipboard into the active session",
+      "undo": "Undo",
+      "undo_desc": "Revert the last change to the active session",
+      "redo": "Redo",
+      "redo_desc": "Reapply the last undone change"
     },
     "workspace": {
       "open_session_picker": "Open Session Picker",

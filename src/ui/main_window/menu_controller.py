@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING
 from PySide6.QtWidgets import QWidget
 
 from resources.translations import tr, translation_events
-from sli_ui_toolkit import TitleBarMenu, TitleBarMenuStrip, TitleBarPresets, WindowControlsConfig
+from sli_ui_toolkit import TitleBarPresets, WindowControlsConfig
 from sli_ui_toolkit.widgets import (
     ContextMenuAction,
     ContextMenuSeparator,
     DEFER_CLICK_AWAIT_RIPPLE,
 )
+from ui.main_window.csd_menu_strip import CsdMenuSpec, CsdMenuStrip, csd_debug
 from ui.main_window.project_io import MainWindowProjectIo
 from ui.main_window.use_cases import platform_actions, settings_navigation
 
@@ -31,7 +32,7 @@ class MainWindowMenuController:
 
     def __init__(self, window: MainWindow) -> None:
         self._window = window
-        self._menu_strip: TitleBarMenuStrip | None = None
+        self._menu_strip: CsdMenuStrip | None = None
         self._find_action_shortcut = None
         self._contextual_palette_shortcut = None
         self.project_io = MainWindowProjectIo(window, tr=self._tr)
@@ -69,7 +70,6 @@ class MainWindowMenuController:
         bar = TitleBarPresets.app_shell(
             title=window.windowTitle() or "Improve ImgSLI",
             parent=shell_parent,
-            menus=strip,
             controls=WindowControlsConfig(
                 minimize_icon=AppIcon.MINIMIZE,
                 maximize_icon=AppIcon.MAXIMIZE,
@@ -80,10 +80,110 @@ class MainWindowMenuController:
                 defer_close_click=DEFER_CLICK_AWAIT_RIPPLE,
             ),
         )
+        # The title bar is a generic shell; the app injects its own CSD menu
+        # strip (trigger buttons + app-decided popup/in-window surface).
+        bar.set_leading(strip)
         bar.attach_window(window)
+        self._install_undo_redo_buttons(bar)
+        self._wire_undo_redo_refresh()
         self._register_platform_actions()
         self._resync_action_shortcuts()
         return bar
+
+    def _install_undo_redo_buttons(self, bar) -> None:
+        """CSD undo/redo controls after the menu strip (leading zone).
+
+        Styled like the File/Help menu triggers (ghost, radius 6, trigger
+        height, titlebar.text foreground); disabled buttons render at reduced
+        opacity via a QGraphicsOpacityEffect.
+
+        May be called more than once: ``set_leading`` (menu strip rebuild on
+        language change) clears the whole leading zone, so the buttons are
+        reinstalled after it.
+        """
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
+        from sli_ui_toolkit.ui.widgets.buttons import Button
+        from sli_ui_toolkit.ui.windows.custom_title_bar import (
+            CustomTitleBar,
+            resolve_titlebar_color,
+        )
+
+        from ui.icon_manager import AppIcon
+
+        trigger_h = max(20, CustomTitleBar.HEIGHT - 2 * 4)
+
+        def _mk(icon, role: str, tooltip_key: str, tooltip_fallback: str, run, *, pad_left: int = 0):
+            btn = Button(
+                icon,
+                variant="ghost",
+                size=(40, trigger_h),
+                icon_size=16,
+                corner_radius=6,
+                content_padding=(pad_left, 0, 0, 0),
+                parent=bar,
+            )
+            btn.setObjectName("CustomTitleBarButton")
+            btn.setProperty("titlebarRole", role)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.setCursor(Qt.CursorShape.ArrowCursor)
+            btn.setForegroundColor(
+                resolve_titlebar_color("titlebar.text", fallback="WindowText")
+            )
+            btn.setToolTip(self._tr(tooltip_key, tooltip_fallback))
+            btn.clicked.connect(run)
+            btn.setEnabled(False)
+            effect = QGraphicsOpacityEffect(btn)
+            effect.setOpacity(0.4)
+            btn.setGraphicsEffect(effect)
+            return btn, effect
+
+        self._undo_button, self._undo_effect = _mk(
+            AppIcon.UNDO, "undo", "action.platform.undo", "Undo", self._undo, pad_left=10
+        )
+        self._redo_button, self._redo_effect = _mk(
+            AppIcon.REDO, "redo", "action.platform.redo", "Redo", self._redo
+        )
+        bar.add_buttons([self._undo_button, self._redo_button], zone="leading")
+
+    def _wire_undo_redo_refresh(self) -> None:
+        """Connect store changes to the CSD undo/redo enabled state.
+
+        Called once (``build_title_bar``): re-installing the buttons after a
+        menu-strip rebuild must not re-subscribe the store handler.
+        """
+        from PySide6.QtCore import QTimer
+
+        store = getattr(self._window, "store", None)
+        if store is not None and hasattr(store, "on_change"):
+            # emit_state_change fires inside the dispatcher lock (undo/redo
+            # read the stacks under the same lock), so defer the refresh.
+            store.on_change(lambda _scope, s=self: QTimer.singleShot(0, s._refresh_undo_redo_enabled))
+        self._refresh_undo_redo_enabled()
+
+    def _refresh_undo_redo_enabled(self, _scope: str = "") -> None:
+        if not hasattr(self, "_undo_button"):
+            return
+        try:
+            from shiboken6 import isValid
+
+            # ``set_leading`` clears the whole leading zone on menu rebuilds;
+            # a stale ref (or a pending refresh tick after a rebuild) must
+            # not hit a deleted C++ button.
+            if not isValid(self._undo_button) or not isValid(self._redo_button):
+                return
+        except ImportError:
+            pass
+        try:
+            dispatcher = getattr(self._window.store, "get_dispatcher", lambda: None)()
+        except Exception:
+            dispatcher = None
+        can_undo = bool(dispatcher is not None and dispatcher.can_undo())
+        can_redo = bool(dispatcher is not None and dispatcher.can_redo())
+        self._undo_button.setEnabled(can_undo)
+        self._redo_button.setEnabled(can_redo)
+        self._undo_effect.setOpacity(1.0 if can_undo else 0.4)
+        self._redo_effect.setOpacity(1.0 if can_redo else 0.4)
 
     def _app_icon(self):
         from PySide6.QtGui import QIcon
@@ -92,18 +192,20 @@ class MainWindowMenuController:
 
         return QIcon(resource_path("resources/icons/icon.png"))
 
-    def build_menus(self) -> TitleBarMenuStrip:
+    def build_menus(self) -> CsdMenuStrip:
         language = self._language()
         parent = self._window if isinstance(self._window, QWidget) else None
-        return TitleBarMenuStrip(
+        csd_debug("build_menus language=%r file=%r help=%r", language,
+                  tr("menu.file", language), tr("menu.help", language))
+        return CsdMenuStrip(
             [
-                TitleBarMenu(
+                CsdMenuSpec(
                     label=tr("menu.file", language),
                     icon=self._app_icon(),
                     entries=self._file_context_entries(),
                     on_triggered=self._on_file_action,
                 ),
-                TitleBarMenu(
+                CsdMenuSpec(
                     label=tr("menu.help", language),
                     entries=self._help_context_entries(),
                     on_triggered=self._on_help_action,
@@ -241,7 +343,11 @@ class MainWindowMenuController:
         try:
             new_strip = self.build_menus()
             self._menu_strip = new_strip
-            title_bar.set_menu_strip(new_strip)
+            title_bar.set_leading(new_strip)
+            # ``set_leading`` clears the whole leading zone — including the
+            # CSD undo/redo buttons added after the strip. Reinstall them so
+            # the next store change cannot hit deleted C++ buttons.
+            self._install_undo_redo_buttons(title_bar)
             self._register_platform_actions()
         except RuntimeError:
             self._menu_strip = None
@@ -269,6 +375,9 @@ class MainWindowMenuController:
     def _new_session(self) -> None:
         from tabs.registry import TabRegistry
 
+        # bootstrap_default_tab() is reserved exclusively for session_picker
+        # (the app's initial workspace session), so File → New Session opens
+        # the session picker — same target as the workspace `+` button.
         tab = TabRegistry().bootstrap_default_tab()
         if tab is None:
             return
@@ -356,3 +465,13 @@ class MainWindowMenuController:
 
     def _quit(self) -> None:
         platform_actions.quit_app(self)
+
+    def _undo(self) -> None:
+        dispatcher = getattr(self._window.store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None and dispatcher.can_undo():
+            dispatcher.undo()
+
+    def _redo(self) -> None:
+        dispatcher = getattr(self._window.store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None and dispatcher.can_redo():
+            dispatcher.redo()

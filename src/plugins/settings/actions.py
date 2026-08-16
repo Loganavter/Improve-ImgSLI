@@ -42,7 +42,11 @@ def contribute_settings_actions(
       the control by its own name instead of surfacing the generic group row
       it lives in (e.g. `vulkan` → "Vulkan", not "Render backend").
       Enter runs the control (apply without showing Settings); reveal opens
-      and pulses. Tab extras keep ``owner_tab``.
+      and pulses.
+
+    Settings chrome is ambient: every row carries ``owner_tab=None``, so
+    tab-owned sections stay discoverable from any session (the sidebar
+    sections themselves are always visible too — see ``SettingsRegistry``).
     """
     ensure_tab_settings_contributions()
     settings_reg = get_settings_registry()
@@ -63,7 +67,6 @@ def contribute_settings_actions(
             _register_group(
                 reg,
                 section=section,
-                owner_tab=section.owner_tab,
                 group=group,
                 group_order=group_order,
                 show_settings_section=show_settings_section,
@@ -72,16 +75,13 @@ def contribute_settings_actions(
                 run_settings_member=run_settings_member,
             )
             group_order += 1
-        for owner_tab, extra_search in settings_reg.iter_extra_searches(
+        for _owner_tab, extra_search in settings_reg.iter_extra_searches(
             section.section_id
         ):
             for group in extra_search.groups:
                 _register_group(
                     reg,
                     section=section,
-                    owner_tab=(
-                        owner_tab if owner_tab is not None else section.owner_tab
-                    ),
                     group=group,
                     group_order=group_order,
                     show_settings_section=show_settings_section,
@@ -113,6 +113,8 @@ def _register_page(
 
     # Page row is navigation only — member chrome lives on group slots so the
     # empty palette shows «Язык» / «Шрифт» without requiring a search query.
+    # Settings chrome is ambient: rows carry no ``owner_tab`` so tab-owned
+    # pages stay discoverable from any session (sections are always visible).
     reg.register(
         ActionDescriptor(
             action_id=f"settings.page.{section_id}",
@@ -121,7 +123,7 @@ def _register_page(
                 section.action_description_key or "action.settings.page_desc"
             ),
             breadcrumb=(_BC_SETTINGS, section.title_key),
-            owner_tab=section.owner_tab,
+            owner_tab=None,
             topic="settings",
             help_page="settings",
             sort_key=(section.order, 0),
@@ -135,7 +137,6 @@ def _register_group(
     reg: ActionRegistry,
     *,
     section: SettingsSection,
-    owner_tab: str | None,
     group: SearchGroup,
     group_order: int,
     show_settings_section: Callable[[str], None],
@@ -165,14 +166,15 @@ def _register_group(
 
     # The group row — browsable in the empty palette, matched only by its own
     # title. A query like "vulkan" should surface the concrete option below,
-    # not this generic "render backend" row.
+    # not this generic "render backend" row. Ambient (no owner_tab): tab-owned
+    # groups stay discoverable from any session.
     reg.register(
         ActionDescriptor(
             action_id=group_action_id,
             label_key=title_key,
             description_key="action.settings.group_desc",
             breadcrumb=breadcrumb,
-            owner_tab=owner_tab,
+            owner_tab=None,
             topic="settings",
             help_page="settings",
             sort_key=(section.order, 1, group_order, 0),
@@ -196,7 +198,7 @@ def _register_group(
 
             resolve_member = _resolve_member
         elif resolve_group is not None:
-            resolve_member = resolve_group
+            resolve_member = resolve_group  # type: ignore[assignment]
 
         if run_settings_member is not None:
             def _run_member(
@@ -208,7 +210,7 @@ def _register_group(
 
             member_run = _run_member
         else:
-            member_run = _ensure
+            member_run = _ensure  # type: ignore[assignment]
 
         member_target = ActionTarget(
             ensure_visible=_ensure,
@@ -220,7 +222,7 @@ def _register_group(
                 label_key=member_key,
                 description_key="action.settings.slot_desc",
                 breadcrumb=breadcrumb,
-                owner_tab=owner_tab,
+                owner_tab=None,
                 topic="settings",
                 help_page="settings",
                 sort_key=(section.order, 1, group_order, 1, member_index),

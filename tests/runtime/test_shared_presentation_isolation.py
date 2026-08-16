@@ -96,8 +96,14 @@ class TestNewAliasesExist:
         ],
     )
     def test_phase5_aliases_resolve(self, alias: str):
+        from tabs.image_compare.tab import ImageCompareTab
         from ui.canvas_infra.scene.registry import get_canvas_registry
 
+        # The canvas-feature registry is populated lazily by the host (the
+        # keyframing tests register it in their fixture); without the
+        # registration the registry is empty and every alias "does not
+        # resolve". Registration is idempotent across repeated calls.
+        ImageCompareTab().register_canvas_features()
         cmd = get_canvas_registry("image_compare").get_feature_command_by_alias(alias)
         assert cmd is not None, f"Alias {alias} did not resolve"
         assert callable(cmd), f"Alias {alias} resolved to non-callable"

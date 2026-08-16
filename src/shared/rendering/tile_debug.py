@@ -71,6 +71,7 @@ def log_tile_event(kind: str, **fields) -> None:
         _ensure_sink()
         _seq += 1
         record = {"seq": _seq, "ts": time.monotonic(), "kind": kind, **fields}
+        assert _file_handle is not None
         _file_handle.write(json.dumps(record, default=str, ensure_ascii=False) + "\n")
         _file_handle.flush()
 
@@ -84,6 +85,7 @@ def dump_tile_image(image, name: str) -> str | None:
         return None
     with _lock:
         _ensure_sink()
+        assert _dump_dir is not None
         path = os.path.join(_dump_dir, f"{name}.png")
     image.save(path, "PNG")
     return path

@@ -61,6 +61,9 @@
         "export": "Export",
         "divider": "Grid"
       }
+    },
+    "tooltip": {
+      "save_grid": "Save Grid"
     }
   }
 }

@@ -7,16 +7,16 @@ from ui.actions.search_index import SearchIndex, group
 # Logical clusters — tagged on widgets in dialog/sections.py at build time.
 TOOLBAR = group(
     "video.toolbar",
-    "button.play",
-    "button.undo_ctrlz",
-    "button.redo",
-    "button.trim_to_selection",
+    "image_compare.button.play",
+    "image_compare.button.undo_ctrlz",
+    "image_compare.button.redo",
+    "image_compare.button.trim_to_selection",
 )
 
 RESOLUTION = group(
     "label.resolution",
     "video.lock_aspect_ratio",
-    "magnifier.fit_mode_toggle",
+    "image_compare.magnifier.fit_mode_toggle",
     "export.select_background_color",
 )
 
@@ -32,14 +32,14 @@ EXPORT_TABS = group(
     "video.export_tabs",
     "video.standard",
     "video.manual_cli",
-    "label.output",
+    "image_compare.label.output",
     "video.export_log",
 )
 
 EXPORT_FOOTER = group(
     "video.export_actions",
-    "action.export_video",
-    "button.stop",
+    "image_compare.action.export_video",
+    "image_compare.button.stop",
     "button.browse",
     "misc.set_as_favorite",
     "tooltip.use_favorite",
@@ -55,8 +55,8 @@ VIDEO_EDITOR_SEARCH = SearchIndex.of(
 
 # Member key → default chord hint (dialog-local; not main-window binder).
 VIDEO_EDITOR_SHORTCUTS: dict[str, str] = {
-    "button.play": "Space",
-    "button.undo_ctrlz": "Ctrl+Z",
-    "button.redo": "Ctrl+Y",
-    "button.trim_to_selection": "Delete",
+    "image_compare.button.play": "Space",
+    "image_compare.button.undo_ctrlz": "Ctrl+Z",
+    "image_compare.button.redo": "Ctrl+Y",
+    "image_compare.button.trim_to_selection": "Delete",
 }

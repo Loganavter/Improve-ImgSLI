@@ -98,7 +98,7 @@ class MultiCompareContextMenuProvider:
     ) -> CompareSlot | None:
         sid = slot_id if slot_id is not None else request.target.id
         try:
-            sid = int(sid)
+            sid = int(sid)  # type: ignore[arg-type]  # sid is duck-typed
         except (TypeError, ValueError):
             return None
         return next((slot for slot in self.widget.state.slots if slot.id == sid), None)

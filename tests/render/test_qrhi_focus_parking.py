@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QRhiWidget, QWidget
 
-from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+from ui.canvas_infra.rhi.rhi_focus import park_keyboard_focus_off_qrhi
 
 
 @pytest.fixture(scope="module")

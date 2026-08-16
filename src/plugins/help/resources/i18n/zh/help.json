@@ -2,6 +2,8 @@
   "help": {
     "help": "帮助",
     "open_topic": "打开主题",
+    "search_placeholder": "搜索帮助…",
+    "search_no_results": "未找到匹配的主题",
     "context": {
       "copy": "复制",
       "select_all": "全选",

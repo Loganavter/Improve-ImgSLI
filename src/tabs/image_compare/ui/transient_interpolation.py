@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
 from core.constants import AppConstants
@@ -13,6 +14,26 @@ _INTERP_LABEL_KEYS: dict[str, str] = {
     "LANCZOS": "magnifier.lanczos",
     "EWA_LANCZOS": "magnifier.ewa_lanczos",
 }
+
+
+def _design_item_metrics(
+    item_height: int, item_font: QFont, factor: float
+) -> tuple[int, QFont]:
+    """Convert live (scale-resolved) combo metrics back to design values.
+
+    ``SimpleOptionsFlyout.set_row_height``/``set_row_font`` take design px /
+    a design font and scale them exactly once; ``getItemHeight``/
+    ``getItemFont`` return the combo's live (already scaled) metrics, so the
+    factor is divided out here to keep the flyout rows ~factor, not
+    ~factor^2.
+    """
+    height = max(1, round(int(item_height) / factor)) if factor else item_height
+    font = QFont(item_font)
+    if font.pixelSize() > 0:
+        font.setPixelSize(max(1, round(font.pixelSize() / factor)))
+    elif font.pointSizeF() > 0:
+        font.setPointSizeF(font.pointSizeF() / factor)
+    return height, font
 
 
 class InterpolationFlyoutController:
@@ -88,15 +109,24 @@ class InterpolationFlyoutController:
             current_index = 0
 
         item_height = 34
-        from sli_ui_toolkit.managers import ui_font
+        from sli_ui_toolkit.managers import UiScale, ui_font
 
         item_font = ui_font()
         combo = getattr(self.widget, "combo_interpolation", None)
         if combo is not None:
+            # getItemHeight/getItemFont return live (already scale-resolved)
+            # metrics, while set_row_height/set_row_font below take design
+            # values and scale them once — divide the factor back out, or the
+            # rows end up ~factor^2 too big (same class of bug as
+            # _SimpleRow._apply_label_style's double rebase).
+            factor = UiScale.get_instance().factor()
             if hasattr(combo, "getItemHeight"):
                 item_height = combo.getItemHeight()
             if hasattr(combo, "getItemFont"):
                 item_font = combo.getItemFont()
+            item_height, item_font = _design_item_metrics(
+                item_height, item_font, factor
+            )
 
         host._interp_flyout.set_row_height(item_height)
         host._interp_flyout.set_row_font(item_font)

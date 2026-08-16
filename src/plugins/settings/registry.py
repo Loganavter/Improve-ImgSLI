@@ -1,14 +1,17 @@
 """Settings dialog section registry.
 
 Lets tabs and built-in modules contribute settings sections (sidebar pages).
-The dialog enumerates the registry on open, filters sections by the active
-tab's session_type, and builds each visible section in order.
+The dialog enumerates the registry on open and builds every registered
+section in order — built-in and tab-owned sections alike. Per-tab sections
+are ambient: they are always visible, regardless of the active session, so
+tab settings have a permanent home (JetBrains-style plugin settings pages).
 
 A section is a triple of (build, sidebar_item, owner_tab). ``build`` is a
 callable ``build(dialog, context) -> None`` that creates a page and adds it
 to ``dialog.pages_stack`` (mirroring the existing ``init_*_page`` signatures).
 ``owner_tab`` is the ``TabContract.session_type`` the section belongs to;
-``None`` means the section is always visible regardless of active tab.
+``None`` means the section is platform-owned. ``owner_tab`` is metadata only
+— it no longer filters visibility.
 """
 
 from __future__ import annotations
@@ -124,12 +127,12 @@ class SettingsRegistry:
         section_id: str,
         active_tab: str | None,
     ) -> list[Callable[[object, object], None]]:
+        # Sections and their extras are ambient — visible regardless of the
+        # active session (per-tab settings have a permanent home). The
+        # ``active_tab`` parameter is kept for signature compatibility only.
+        del active_tab
         extras = self._section_extras.get(section_id, ())
-        visible = [
-            (build, order)
-            for build, owner_tab, order, _search in extras
-            if owner_tab is None or owner_tab == active_tab
-        ]
+        visible = [(build, order) for build, _owner, order, _search in extras]
         return [build for build, _order in sorted(visible, key=lambda item: item[1])]
 
     def iter_extra_searches(
@@ -150,30 +153,35 @@ class SettingsRegistry:
         *,
         active_tab: str | None = None,
     ) -> SearchIndex:
-        """Section search plus extras visible for ``active_tab``.
+        """Section search plus all extras (ambient — no active-tab filtering).
 
-        Tab-owned extras (e.g. tab-specific performance groups) are omitted
-        when the active session cannot show them in Settings.
+        ``active_tab`` is kept for signature compatibility only; tab-owned
+        extras (e.g. tab-specific performance groups) are always included
+        because per-tab settings have a permanent, always-visible home.
         """
+        del active_tab
         index = section.search
-        for _build, owner_tab, _order, extra_search in self._section_extras.get(
+        for _build, _owner_tab, _order, extra_search in self._section_extras.get(
             section.section_id, ()
         ):
-            if owner_tab is not None and owner_tab != active_tab:
-                continue
             index = index.merged(extra_search)
         return index
 
     def sections_for(self, active_tab: str | None) -> list[SettingsSection]:
-        visible = [s for s in self._sections if s.owner_tab is None or s.owner_tab == active_tab]
-        return sorted(visible, key=lambda s: (s.order, s.section_id))
+        """Every registered section — built-in and tab-owned alike.
+
+        Per-tab sections are ambient: they stay in the sidebar regardless of
+        which workspace session is active (JetBrains-style plugin settings).
+        ``active_tab`` is kept for signature compatibility only.
+        """
+        del active_tab
+        return sorted(self._sections, key=lambda s: (s.order, s.section_id))
 
     def all_sections(self) -> list[SettingsSection]:
         return list(self._sections)
 
 
 _REGISTRY: SettingsRegistry | None = None
-_TAB_CONTRIBUTIONS_LOADED = False
 
 
 def get_settings_registry() -> SettingsRegistry:
@@ -185,25 +193,20 @@ def get_settings_registry() -> SettingsRegistry:
 
 
 def ensure_tab_settings_contributions() -> None:
-    global _TAB_CONTRIBUTIONS_LOADED
-    if _TAB_CONTRIBUTIONS_LOADED:
-        return
-    _TAB_CONTRIBUTIONS_LOADED = True
-    registry = get_settings_registry()
-    try:
-        from tabs.registry import TabRegistry, get_shared_tab_registry
+    """Make every registered tab contribute settings sections.
 
-        tabs = get_shared_tab_registry()
-        if not tabs.list_tabs():
-            tabs = TabRegistry()
-            tabs.discover()
-        tabs.notify_all("contribute_settings", registry)
-    except Exception:
-        import logging
+    Contributions are idempotent (``add``/``add_section_extra`` dedupe), so
+    this can safely run more than once and after staged discovery: deferred
+    tabs (e.g. image_gallery) must not be missed just because platform
+    actions or the dialog were first touched during the bootstrap window.
+    """
+    from tabs.registry import TabRegistry
 
-        logging.getLogger("ImproveImgSLI").exception(
-            "Failed to load tab settings contributions"
-        )
+    tabs = TabRegistry()
+    # Idempotent per tier — ensures bootstrap AND deferred tabs are
+    # registered before contributions are collected.
+    tabs.discover()
+    tabs.notify_all("contribute_settings", get_settings_registry())
 
 
 def _register_builtin_sections(registry: SettingsRegistry) -> None:

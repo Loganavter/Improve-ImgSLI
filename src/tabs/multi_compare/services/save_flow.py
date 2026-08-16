@@ -8,6 +8,7 @@ outcome are reported through the same toast-notification mechanism.
 """
 
 from __future__ import annotations
+from typing import Any
 
 import logging
 import os
@@ -182,7 +183,7 @@ class MultiCompareSaveFlowCoordinator:
         toast_path_line = self._build_toast_path_line(final_path_for_display)
         toast_message = f"{self.tr('msg.saving', 'Saving')}\n{toast_path_line}..."
         cancel_event = threading.Event()
-        cancel_ctx = {"event": cancel_event}
+        cancel_ctx: dict[str, Any] = {"event": cancel_event}
         toast_manager = self._get_toast_manager()
 
         def on_cancel():

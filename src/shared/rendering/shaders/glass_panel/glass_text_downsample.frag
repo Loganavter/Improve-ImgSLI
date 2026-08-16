@@ -1,7 +1,7 @@
 #version 440
 
 // Downsamples text_mask_tex (rasterized at SCALE x this panel's own device
-// resolution, see ui/widgets/glass_hud.py's _TEXT_MASK_SUPERSAMPLE) down to
+// resolution, see ui/widgets/glass_hud/text_mask.py's _TEXT_MASK_SUPERSAMPLE) down to
 // device resolution using a properly-scaled Lanczos-2 kernel, in one shader
 // pass -- replaces an earlier version of this pipeline that used GPU
 // hardware mip generation (QRhi's generateMips(), a plain box filter per

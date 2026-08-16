@@ -12,7 +12,7 @@ from PySide6.QtGui import (
 )
 
 from ui.canvas_presentation.label_style import FilenameOverlayStyle
-from ui.widgets.canvas.render_common import new_overlay_image
+from ui.canvas_infra.rhi.render_common import new_overlay_image
 
 
 def qcolor(value, fallback: QColor) -> QColor:

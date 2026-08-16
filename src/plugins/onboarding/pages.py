@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import QColorDialog, QLabel, QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QHBoxLayout, QVBoxLayout, QWidget
 
 from plugins.onboarding.icons import DemoIcon
 from resources.translations import tr
 from sli_ui_toolkit.widgets import Button
-from ui.theming import polish_themed_dialog, resolve_theme_color
+from ui.theming import resolve_theme_color
 from ui.widgets.scroll_value_button import ScrollValueButton
 
 # Larger than live toolbar so the onboarding demos read clearly on slides.
@@ -254,9 +254,15 @@ def _show_color_dialog(overlay, button, current_color, current_lang: str) -> Non
         existing.activateWindow()
         return
 
-    color_dialog = QColorDialog(current_color, overlay)
-    color_dialog.setWindowTitle(tr("ui.select_color", current_lang))
-    polish_themed_dialog(overlay.theme_manager, color_dialog)
+    from ui.widgets.color import ColorPickerDialog
+
+    color_dialog = ColorPickerDialog(
+        QColor(current_color),
+        overlay.window() or overlay,
+        title=tr("ui.select_color", current_lang),
+        show_alpha=True,
+    )
+    color_dialog.setModal(False)
 
     def on_color_selected(color):
         if not color.isValid():

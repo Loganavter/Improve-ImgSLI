@@ -54,7 +54,7 @@ Read:
 1. [docs/dev/QRHI_CANVAS_FEATURES.md](docs/dev/QRHI_CANVAS_FEATURES.md)
 2. [docs/dev/CONTRACTS.md](docs/dev/CONTRACTS.md) — complete contracts reference
 3. [src/ui/canvas_presentation](src/ui/canvas_presentation)
-4. [src/ui/widgets/canvas](src/ui/widgets/canvas)
+4. [src/ui/canvas_infra/rhi](src/ui/canvas_infra/rhi)
 5. [src/tabs/image_compare/canvas](src/tabs/image_compare/canvas)
 
 Important:
@@ -173,7 +173,21 @@ Use this mental model for `src/`:
 
 ## Known Constraints
 
-- Image load rejects sources above `65536 px` on a side (`AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION`). This is a decode/RAM sanity bound (codec still decompresses a full frame once; spill into `TiledPixelStore` is strip-written without a second full `HxWx4` copy), not a GPU-tile ceiling. Still-image export above `16384 px` (`AppConstants.EXPORT_TESTED_MAX_EDGE`) is allowed but warns that the path is untested (Image Compare and Multi Compare).
+- Image load is **decode-backend-scoped**. When libvips streaming decode is
+  available for a file's format (`pyvips_can_stream` in
+  `shared/image_processing/progressive_loader.py`), there is **no size
+  bound** — `TiledPixelStore.from_path` streams strips straight into the
+  memmap without a full-frame decode buffer. Otherwise the PIL/imagecodecs
+  full-frame path applies `AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION`
+  (`65536 px` on a side) as a decode/RAM sanity bound (codec still
+  decompresses a full frame once; spill is strip-written without a second
+  full `HxWx4` copy). `pyvips` is a hard dependency (`pyvips[binary]` in
+  `requirements-gui.txt`, `python-pyvips` in AUR, a `python3-pyvips` Flatpak
+  module) — but the bundled `pyvips-binary` libvips lacks JXL, so JXL keeps
+  the bounded imagecodecs path in Flatpak/Windows while distro libvips
+  streams it. Still-image export above `16384 px`
+  (`AppConstants.EXPORT_TESTED_MAX_EDGE`) is allowed but warns that the
+  path is untested (Image Compare and Multi Compare).
 - Full-resolution pixel data for all canvas tabs lives in `TiledPixelStore` (`shared/image_processing/tiled_pixel_store.py`) — memmap-backed, always tiled. Shared render helpers: `shared/rendering/host_texture_cache.py`, `export_tiling.py`, `tile_geometry.py`.
 - `ssim` has special handling because some paths depend on cached diff images and GPU diff textures.
 - Help pages now support anchors and generated in-page TOC. Keep headings stable.

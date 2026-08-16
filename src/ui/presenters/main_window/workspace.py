@@ -42,7 +42,7 @@ def ensure_session_picker_visible(presenter) -> None:
     if not presenter.main_controller:
         return
     workspace = presenter.main_controller.workspace
-    sessions = ()
+    sessions: tuple | list = ()
     session_manager = getattr(presenter, "session_manager", None)
     if session_manager is not None:
         try:
@@ -311,13 +311,16 @@ def on_workspace_tab_close_requested(presenter, index: int):
         presenter.session_manager
         and len(presenter.session_manager.list_sessions()) == 1
     ):
+        # Replace the only tab with the picker in one atomic store change, so
+        # the tab strip never holds both tabs for an intermediate frame.
         try:
-            presenter.main_controller.workspace.create_workspace_session(
-                INITIAL_WORKSPACE_SESSION_TYPE, activate=True
+            presenter.main_controller.workspace.replace_workspace_session(
+                INITIAL_WORKSPACE_SESSION_TYPE,
+                closing_session_id=session_id,
             )
         except Exception:
             logger.exception(
                 "on_workspace_tab_close_requested: failed to create session_picker"
             )
-            return
+        return
     presenter.main_controller.workspace.close_workspace_session(session_id)

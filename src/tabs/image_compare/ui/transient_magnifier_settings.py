@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtGui import QCursor
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
 
 
+_HOVER_ZONE_PADDING_PX = 10
+
+
 class MagnifierSettingsHoverController(QObject):
-    """Hover over the toolbar -> show the magnifier sliders flyout.
+    """Hover over the magnifier group -> show the magnifier sliders flyout.
 
     Tab-local, self-contained (unlike ``MagnifierVisibilityController``, it
     does not go through ``UIManager``/``TransientUIManager``): the toolbar,
@@ -16,9 +20,11 @@ class MagnifierSettingsHoverController(QObject):
 
     Not gated on ``btn_magnifier.isChecked()`` -- the sliders are still
     useful to preview/adjust before turning the magnifier on. The hover
-    trigger is the whole toolbar row (``checkbox_widget``), not just the
-    magnifier group, but the flyout always anchors to the magnifier group
-    itself for positioning.
+    trigger is a padded zone around the magnifier group
+    (``magnifier_group_container``), not the whole toolbar row: the flyout
+    opens when the cursor is inside the group or within
+    ``_HOVER_ZONE_PADDING_PX`` px around it, and always anchors to the
+    magnifier group itself for positioning.
     """
 
     def __init__(self, widget) -> None:
@@ -37,6 +43,8 @@ class MagnifierSettingsHoverController(QObject):
             return
         toolbar.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         toolbar.installEventFilter(self)
+        group.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        group.installEventFilter(self)
         flyout.installEventFilter(self)
         # The color-options flyouts (btn_magnifier_color_settings[_beginner])
         # already exist at this point (built earlier in the same assemble()
@@ -60,16 +68,16 @@ class MagnifierSettingsHoverController(QObject):
                 color_flyout.actionTriggered.connect(
                     lambda _action_id: self._cancel_settings_auto_hide()
                 )
-        # btn_diff_mode / btn_channel_mode (view_group_container, also part
-        # of this same hover-triggering toolbar row) each open a ModePicker
+        # btn_diff_mode / btn_channel_mode (view_group_container, adjacent
+        # to the magnifier group's hover zone) each open a ModePicker
         # dropdown lazily, on first click -- unlike the color-options
         # flyouts above, there is no flyout instance yet at _wire() time to
-        # link. Opening it while this panel is already showing (hovering
-        # the toolbar to reach the button already triggered it) makes Qt
-        # recompute hover state against the new topmost popup, firing a
-        # Leave on the toolbar that schedules this panel's hide -- with the
-        # dropdown unlinked, the cursor landing on it doesn't count as
-        # "inside" and the panel closes out from under the still-open pick.
+        # link. Opening it while this panel is already showing (the cursor
+        # crossed into the zone to reach the button already triggered it)
+        # makes Qt recompute hover state against the new topmost popup,
+        # firing a Leave on the toolbar that schedules this panel's hide --
+        # with the dropdown unlinked, the cursor landing on it doesn't count
+        # as "inside" and the panel closes out from under the still-open pick.
         # Re-link right after each click (same call stack as ModePicker's
         # own _on_clicked, so the flyout it just created/showed already
         # exists) -- comfortably before schedule_auto_hide's delay elapses.
@@ -101,21 +109,52 @@ class MagnifierSettingsHoverController(QObject):
                 )
 
     def eventFilter(self, watched, event) -> bool:
-        widget = self.widget
-        if watched is getattr(widget, "checkbox_widget", None):
-            self._handle_toolbar_event(event)
+        widget = getattr(self, "widget", None)
+        if widget is None:
+            return False
+        if watched in (
+            getattr(widget, "checkbox_widget", None),
+            getattr(widget, "magnifier_group_container", None),
+        ):
+            self._handle_hover_event(event)
         elif watched is getattr(widget, "magnifier_settings_flyout", None):
             self._handle_flyout_event(event)
         return False
 
-    def _handle_toolbar_event(self, event) -> None:
+    def _handle_hover_event(self, event) -> None:
         et = event.type()
-        if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
-            self._hover_timer.stop()
-            self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+        if et in (
+            QEvent.Type.HoverEnter,
+            QEvent.Type.HoverMove,
+            QEvent.Type.Enter,
+        ):
+            if self._cursor_in_group_zone():
+                self._cancel_hide()
+                flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+                if flyout is None or not flyout.isVisible():
+                    self._hover_timer.stop()
+                    self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+                else:
+                    self._hover_timer.stop()
+            else:
+                self._hover_timer.stop()
+                self._schedule_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
             self._hover_timer.stop()
             self._schedule_hide()
+
+    def _cursor_in_group_zone(self) -> bool:
+        group = getattr(self.widget, "magnifier_group_container", None)
+        if group is None:
+            return False
+        local = group.mapFromGlobal(QCursor.pos())
+        zone = group.rect().adjusted(
+            -_HOVER_ZONE_PADDING_PX,
+            -_HOVER_ZONE_PADDING_PX,
+            _HOVER_ZONE_PADDING_PX,
+            _HOVER_ZONE_PADDING_PX,
+        )
+        return zone.contains(local)
 
     def _handle_flyout_event(self, event) -> None:
         et = event.type()
@@ -140,10 +179,10 @@ class MagnifierSettingsHoverController(QObject):
         ``AnchoredFlyoutAutoHide`` (see this panel's own auto-hide, wired in
         ``magnifier_settings_flyout.py``) treats a linked child's own body as
         "still inside" this panel's safe zone -- without linking, hovering
-        from the toolbar onto e.g. the font-settings flyout (also opened by
-        hovering this same toolbar row, see this class's docstring) reads as
-        "cursor left the panel", and this panel auto-hides right out from
-        under whatever the user is actually doing in that other flyout.
+        from the magnifier group onto e.g. the font-settings flyout (opened
+        by its own button) reads as "cursor left the panel", and this panel
+        auto-hides right out from under whatever the user is actually doing
+        in that other flyout.
         Same fix already applied to ``combo_interpolation``'s dropdown, see
         ``InterpolationFlyoutController.show``. Re-run on every ``_show()``
         (cheap/idempotent, see ``FlyoutManager.link``) rather than once in

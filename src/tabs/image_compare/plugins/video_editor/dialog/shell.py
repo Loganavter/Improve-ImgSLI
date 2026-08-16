@@ -35,6 +35,7 @@ from tabs.image_compare.plugins.video_editor.dialog.persistence import VideoEdit
 from tabs.image_compare.plugins.video_editor.dialog.runtime import VideoEditorDialogRuntime
 from tabs.image_compare.plugins.video_editor.presenter import VideoEditorPresenter
 from sli_ui_toolkit.i18n import tr
+from sli_ui_toolkit.managers import scaled_px
 from shared.rendering.tab_canvas_services import create_canvas_widget
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import CustomLineEdit
@@ -72,7 +73,7 @@ class VideoEditorDialog(ThemedDialog):
             self.current_language = export_controller.store.settings.current_language
 
         self.setWindowTitle(tr("video.video_editor_exporter", self.current_language))
-        self.resize(1200, 850)
+        self.resize(scaled_px(1200), scaled_px(850))
         self.setMinimumHeight(MIN_VIDEO_EDITOR_DIALOG_HEIGHT)
 
         self.setWindowFlags(
@@ -169,12 +170,12 @@ class VideoEditorDialog(ThemedDialog):
 
         self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self.vertical_splitter.setChildrenCollapsible(False)
-        self.vertical_splitter.setHandleWidth(8)
+        self.vertical_splitter.setHandleWidth(scaled_px(8))
         self.main_layout.addWidget(self.vertical_splitter, stretch=1)
 
         self.top_container = QWidget()
         top_layout = QHBoxLayout(self.top_container)
-        top_layout.setContentsMargins(10, 10, 10, 10)
+        top_layout.setContentsMargins(scaled_px(10), scaled_px(10), scaled_px(10), scaled_px(10))
         top_layout.setSpacing(VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX)
 
         self.preview_label = create_canvas_widget()
@@ -207,11 +208,11 @@ class VideoEditorDialog(ThemedDialog):
 
         self.scroll_area = create_timeline_scroll_area(self)
         bottom_layout.addWidget(self.scroll_area, stretch=1)
-        self.bottom_container.setMinimumHeight(250)
+        self.bottom_container.setMinimumHeight(scaled_px(250))
         self.vertical_splitter.addWidget(self.bottom_container)
         self.vertical_splitter.setStretchFactor(0, 1)
         self.vertical_splitter.setStretchFactor(1, 0)
-        self.vertical_splitter.setSizes([560, 260])
+        self.vertical_splitter.setSizes([scaled_px(560), scaled_px(260)])
         self.vertical_splitter.splitterMoved.connect(self._on_splitter_moved)
 
         self._set_focus_policies()

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
-import sys
 from typing import Literal
 
 from sli_ui_toolkit.widgets import (
@@ -18,47 +16,18 @@ logger = logging.getLogger("ImproveImgSLI")
 ContextMenuSurface = Literal["in_window", "popup"]
 
 
-def _running_on_wayland() -> bool:
-    session_type = os.getenv("XDG_SESSION_TYPE", "").strip().lower()
-    has_wayland = bool(os.getenv("WAYLAND_DISPLAY"))
-    return session_type == "wayland" or has_wayland
-
-
 def rmb_context_menu_surface() -> ContextMenuSurface:
     """Surface for right-click menus opened via ``ContextMenuManager``.
 
-    Prefer ``popup`` so RMB stacks above ``UnifiedFlyout``. On Windows with
-    ``sli-ui-toolkit < 3.1.4``, a translucent ``Qt.Popup`` that calls
-    ``winId`` / ``setTransientParent`` against frameless CSD permanently
-    breaks in-window alpha — fall back to in-window until that toolkit fix
-    is installed (see ``docs/dev/KNOWN_BUGS.md``).
-
-    On Wayland, a real ``Qt.Popup`` requests a compositor-level
-    ``xdg_popup`` pointer grab. A right-click that lands close enough to the
-    previous popup's grab teardown can be dropped by the compositor before
-    it ever reaches Qt's event queue — confirmed by RMB-open/close debug
-    logging showing a swallowed click with *zero* Qt-side events (no press,
-    no release, no contextMenuEvent) right after a menu auto-dismissed.
-    ``in_window`` menus are plain child widgets with no native grab, so this
-    race does not apply to them.
+    Always ``"popup"``: RMB menus are real ``Qt.Popup`` top-levels so they
+    stack above ``UnifiedFlyout`` and behave like native menus. Historical
+    platform fallbacks (in-window on Wayland for the xdg_popup grab race, and
+    on Windows with ``sli-ui-toolkit < 3.1.4`` for the frameless-CSD alpha
+    bug) were deliberately removed so every context menu in the app is a
+    popup. The multi-compare ``IMGSLI_MC_RMB_SURFACE`` env override still
+    allows forcing ``in_window`` for A/B debugging.
     """
-    if _running_on_wayland():
-        return "in_window"
-    if not sys.platform.startswith("win"):
-        return "popup"
-    try:
-        from sli_ui_toolkit import __version__ as version
-    except Exception:
-        return "in_window"
-    parts: list[int] = []
-    for piece in str(version).split(".")[:3]:
-        digits = "".join(ch for ch in piece if ch.isdigit())
-        if not digits:
-            break
-        parts.append(int(digits))
-    if tuple(parts) >= (3, 1, 4):
-        return "popup"
-    return "in_window"
+    return "popup"
 
 
 class ContextMenuManager:
@@ -166,7 +135,7 @@ class ContextMenuManager:
         self._active_menu = menu
         menu.aboutToHide.connect(lambda: self._on_menu_hidden(menu))
         try:
-            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+            from ui.canvas_infra.rhi.rhi_focus import park_keyboard_focus_off_qrhi
 
             park_keyboard_focus_off_qrhi()
         except Exception:

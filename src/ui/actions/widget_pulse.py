@@ -47,6 +47,8 @@ class _PulseOverlay(QWidget):
         self.update()
 
     def paintEvent(self, _event) -> None:  # noqa: ARG002 — Qt API
+        import sys as _s, shiboken6 as _sh
+        print("PULSE_PAINT alive:", _sh.isValid(self), "parent:", _sh.isValid(self.parentWidget()) if self.parentWidget() else None, file=_s.stderr)
         if self._target_rect.isNull() or not self._target_rect.isValid():
             return
         try:
@@ -74,7 +76,7 @@ class _PulseOverlay(QWidget):
             painter.end()
 
 
-_ACTIVE: _PulseOverlay | None = None
+_ACTIVE: list[_PulseOverlay] = []
 
 
 def _cpp_alive(obj) -> bool:
@@ -92,8 +94,8 @@ def _dispose_overlay(overlay: _PulseOverlay | None) -> None:
     global _ACTIVE
     if overlay is None:
         return
-    if _ACTIVE is overlay:
-        _ACTIVE = None
+    if overlay in _ACTIVE:
+        _ACTIVE.remove(overlay)
     if not _cpp_alive(overlay):
         return
     try:
@@ -108,7 +110,7 @@ def _dispose_overlay(overlay: _PulseOverlay | None) -> None:
 
 def _flyout_ancestor(widget: QWidget) -> QWidget | None:
     """Nearest BaseFlyout-like ancestor (has ``flyout_group``)."""
-    node = widget
+    node: QWidget | None = widget
     while node is not None:
         if getattr(type(node), "flyout_group", None):
             return node
@@ -142,12 +144,20 @@ def _pulse_rect(target: QWidget, origin: QWidget) -> QRect:
     return rect.adjusted(-grow_x, -grow_y, grow_x, grow_y)
 
 
+# Default pulse duration (ms) and blink count — the single source of truth
+# for how long a reveal ring stays on screen. Hosts that time follow-up UI
+# off the pulse (e.g. the Settings search line clearing after the highlight)
+# read these instead of hardcoding the literals.
+PULSE_DURATION_MS = 1400
+PULSE_COUNT = 3
+
+
 def pulse_widget(
     target: object,
     *,
     host: QWidget | None = None,
-    duration_ms: int = 1400,
-    pulses: int = 3,
+    duration_ms: int = PULSE_DURATION_MS,
+    pulses: int = PULSE_COUNT,
     _retry: int = 0,
 ) -> None:
     """Blink an accent ring around ``target``.
@@ -176,25 +186,24 @@ def pulse_widget(
     if window is None or not _cpp_alive(window):
         return
 
-    if _ACTIVE is not None:
-        _dispose_overlay(_ACTIVE)
-
     overlay = _PulseOverlay(window)
     rect = _pulse_rect(target, window)
     overlay.set_target(rect, alpha=230)
-    _ACTIVE = overlay
+    _ACTIVE.append(overlay)
 
     steps = max(1, pulses * 2)
     interval = max(40, duration_ms // steps)
     state = {"step": 0}
 
     def _tick() -> None:
+        import sys as _s
+        print("PULSE_TICK alive:", _cpp_alive(overlay), "target:", _cpp_alive(target), file=_s.stderr)
         global _ACTIVE
-        if _ACTIVE is not overlay:
+        if overlay not in _ACTIVE:
             return
         if not _cpp_alive(overlay):
-            if _ACTIVE is overlay:
-                _ACTIVE = None
+            if overlay in _ACTIVE:
+                _ACTIVE.remove(overlay)
             return
         state["step"] += 1
         if state["step"] >= steps:
@@ -216,3 +225,25 @@ def pulse_widget(
 
     for i in range(1, steps + 1):
         QTimer.singleShot(interval * i, _tick)
+
+
+def pulse_widgets(
+    targets: list[object],
+    *,
+    host: QWidget | None = None,
+    duration_ms: int = PULSE_DURATION_MS,
+    pulses: int = PULSE_COUNT,
+) -> None:
+    """Blink accent rings around every target simultaneously.
+
+    Several matched controls (e.g. all members on the same search depth in
+    the Settings dialog) pulse in parallel; invisible targets retry until
+    they settle or give up.
+    """
+    for target in targets:
+        pulse_widget(
+            target,
+            host=host,
+            duration_ms=duration_ms,
+            pulses=pulses,
+        )

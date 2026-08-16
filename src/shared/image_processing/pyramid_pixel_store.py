@@ -51,7 +51,7 @@ def _halve_box_filter(arr: np.ndarray) -> np.ndarray:
         arr = np.concatenate([arr, arr[-1:]], axis=0)
     if arr.shape[1] % 2:
         arr = np.concatenate([arr, arr[:, -1:]], axis=1)
-    out = arr[0::2, 0::2].astype(np.uint16)
+    out: np.ndarray = arr[0::2, 0::2].astype(np.uint16)
     out += arr[1::2, 0::2]
     out += arr[0::2, 1::2]
     out += arr[1::2, 1::2]

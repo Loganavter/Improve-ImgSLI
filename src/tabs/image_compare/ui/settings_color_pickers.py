@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QWidget
 
 from domain.qt_adapters import color_to_qcolor, qcolor_to_color
 from ui.canvas_infra.scene.property_access import read_canvas_feature_color_by_setting_key
-from ui.widgets.color_picker_dialog import ColorPickerDialog
+from ui.widgets.color import ColorPickerDialog
 
 
 class SettingsColorPickerCoordinator:
@@ -48,7 +48,7 @@ class SettingsColorPickerCoordinator:
                 self.store.viewport,
                 "magnifier.divider.color",
             ),
-            title_key="ui.choose_magnifier_divider_line_color",
+            title_key="image_compare.ui.choose_magnifier_divider_line_color",
             on_selected=self._apply_magnifier_divider_color,
         )
 
@@ -60,7 +60,7 @@ class SettingsColorPickerCoordinator:
                 self.store.viewport,
                 "magnifier.border.color",
             ),
-            title_key="ui.choose_magnifier_border_color",
+            title_key="image_compare.ui.choose_magnifier_border_color",
             on_selected=self._apply_magnifier_border_color,
         )
 
@@ -72,7 +72,7 @@ class SettingsColorPickerCoordinator:
                 self.store.viewport,
                 "guides.color",
             ),
-            title_key="ui.choose_magnifier_guides_color",
+            title_key="image_compare.ui.choose_magnifier_guides_color",
             on_selected=self._apply_guides_color,
         )
 
@@ -84,7 +84,7 @@ class SettingsColorPickerCoordinator:
                 self.store.viewport,
                 "capture.color",
             ),
-            title_key="ui.choose_capture_ring_color",
+            title_key="image_compare.ui.choose_capture_ring_color",
             on_selected=self._apply_capture_color,
         )
 
@@ -96,7 +96,7 @@ class SettingsColorPickerCoordinator:
         title_key: str,
         on_selected: Callable,
         post_apply: Callable | None = None,
-        show_alpha: bool = False,
+        show_alpha: bool = True,
         parent_window: QWidget | None = None,
     ) -> None:
         """Open a themed picker for an arbitrary color (not store-backed)."""
@@ -127,7 +127,8 @@ class SettingsColorPickerCoordinator:
                 )
             ),
             self.main_window_app,
-            title=self.tr("ui.choose_magnifier_base_color"),
+            title=self.tr("image_compare.ui.choose_magnifier_base_color"),
+            show_alpha=True,
         )
         dialog.setModal(False)
 

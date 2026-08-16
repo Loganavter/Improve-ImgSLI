@@ -314,7 +314,7 @@ class InteractiveMovementController:
 
     def _should_finish_cycle(self, delta_time_sec: float, handler) -> bool:
         interaction_state = getattr(self.store.viewport, "interaction_state", None)
-        pressed_keys_set = (
+        pressed_keys_set: set = (
             getattr(interaction_state, "pressed_keys", set())
             if interaction_state is not None
             else set()

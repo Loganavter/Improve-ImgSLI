@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QPixmap, QPalette
 from PySide6.QtWidgets import QLineEdit
 
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import CustomLineEdit
 from tabs.image_compare.plugins.video_editor.layout_geometry import (
     apply_top_row_geometry,
@@ -36,7 +37,7 @@ class VideoEditorDialogRuntime:
             apply_top_row_geometry(d)
         except Exception as exc:
             logger.warning(f"Error calculating panel width: {exc}")
-            fallback_width = 380
+            fallback_width = scaled_px(380)
             d.settings_panel.setFixedWidth(fallback_width)
             current_min = d.minimumSize()
             d.setMinimumSize(
@@ -78,7 +79,7 @@ class VideoEditorDialogRuntime:
         d = self.dialog
         if not hasattr(d, "btn_export") or not hasattr(d, "btn_stop_export"):
             return
-        x = 12
+        x = scaled_px(12)
         y = max(0, (d.btn_export.height() - d.btn_stop_export.height()) // 2)
         d.btn_stop_export.move(x, y)
         d.btn_stop_export.raise_()
@@ -170,7 +171,7 @@ class VideoEditorDialogRuntime:
         d.export_progress.setValue(0)
         d.btn_export.set_override_bg_color(None)
         d.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
-        d.btn_export.setText(d._tr("action.export_video"))
+        d.btn_export.setText(d._tr("image_compare.action.export_video"))
         if hasattr(d, "btn_stop_export"):
             d.btn_stop_export.hide()
         d._set_export_progress_state("active")

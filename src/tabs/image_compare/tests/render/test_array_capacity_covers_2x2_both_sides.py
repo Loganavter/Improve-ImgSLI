@@ -33,9 +33,3 @@ def test_array_capacity_covers_worst_case_canvas_both_sides_plus_diff():
     tiles_per_axis = math.ceil(2 * _MAX_EXPECTED_CANVAS_PX / _LIVE_TILE_EXTENT) + 1
     needed = 3 * tiles_per_axis * tiles_per_axis  # image1 + image2 + diff
     assert _ARRAY_CAPACITY >= needed
-
-
-def test_array_capacity_covers_2x2_grid_on_both_sides():
-    # image1 + image2 each fully covering a boundary-straddling 2x2 grid
-    # (4 tiles/side) must fit in one array without spilling into a second.
-    assert _ARRAY_CAPACITY >= 8

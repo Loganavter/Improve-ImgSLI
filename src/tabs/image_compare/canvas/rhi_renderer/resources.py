@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import (
+    QRhi,
     QImage,
     QRhiBuffer,
     QRhiSampler,
@@ -168,10 +169,10 @@ class RhiResources:
     """
 
     def __init__(self) -> None:
-        self.rhi = None
-        self.vertex_buffer = None
-        self.samplers: dict[str, object] = {}
-        self.textures: dict[object, object] = {}
+        self.rhi: QRhi | None = None
+        self.vertex_buffer: QRhiBuffer | None = None
+        self.samplers: dict[str, QRhiSampler] = {}
+        self.textures: dict[object, QRhiTexture] = {}
         self.texture_sizes: dict[object, QSize] = {}
 
         # Texture-array instanced-draw path (docs/dev/rendering/
@@ -266,9 +267,10 @@ class RhiResources:
                     resource.destroy()
                 except RuntimeError:
                     pass
-        self.__init__()
+        self.__init__()  # type: ignore[misc]  # resource-reset reinit
 
     def _replace_texture(self, key, image: QImage, updates) -> None:
+        assert self.rhi is not None
         old_texture = self.textures.pop(key, None)
         if old_texture is not None:
             old_texture.destroy()

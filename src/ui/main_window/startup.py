@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import logging
+import os
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 
 from plugins.onboarding import host as onboarding_host
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.widgets.themed_surface import ThemedSurface
+
+
+def _startup_ffd_log(message: str) -> None:
+    """Env-gated (IMGSLI_IC_FIRST_FRAME_DEBUG) startup-cover timeline log."""
+    flag = os.environ.get("IMGSLI_IC_FIRST_FRAME_DEBUG", "").strip().lower()
+    if flag in ("", "0", "false", "no", "off"):
+        return
+    try:
+        logging.getLogger("ImproveImgSLI").info("[ic-first-frame] startup: %s", message)
+    except Exception:
+        pass
 
 
 class MainWindowStartupRuntime:
@@ -64,6 +78,7 @@ class MainWindowStartupRuntime:
         window = self.window
         if getattr(window, "_startup_cover", None) is None:
             return
+        _startup_ffd_log("show_cover")
         self.sync_cover_geometry()
         window._startup_cover.show()
         window._startup_cover.raise_()
@@ -72,6 +87,7 @@ class MainWindowStartupRuntime:
         window = self.window
         if getattr(window, "_startup_cover", None) is None:
             return
+        _startup_ffd_log("hide_cover")
         window._startup_cover.hide()
 
     def should_show_onboarding(self) -> bool:
@@ -107,16 +123,19 @@ class MainWindowStartupRuntime:
         host_mask = getattr(window._app_host, "_workspace_transition_mask", None)
         if host_mask is not None:
             window._workspace_transition_mask = host_mask
-        bootstrap_tab = window.ui._tab_registry.bootstrap_default_tab()
-        if bootstrap_tab is None:
+        # The legacy main-window shell widget comes from the single tab that
+        # registers its assembled page into ``legacy_tab_widgets``. There is
+        # no privileged "shell host" role — the widget is read straight from
+        # that registry.
+        image_compare_widget = next(
+            iter(window.ui.legacy_tab_widgets.values()), None
+        )
+        if image_compare_widget is None:
             raise RuntimeError(
-                "No bootstrap default tab registered — tab discovery likely "
+                "Legacy shell widget not registered — tab discovery likely "
                 "failed (frozen builds need import-based discovery when "
                 "tabs/*/tab.py are not on disk)."
             )
-        image_compare_widget = window.ui.legacy_tab_widgets.get(
-            bootstrap_tab.session_type
-        )
         window.image_compare_widget = image_compare_widget
         image_label = image_compare_widget.image_label
         window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
@@ -256,6 +275,11 @@ class MainWindowStartupRuntime:
             return
         if not self.is_canvas_ready():
             return
+        _startup_ffd_log(
+            "reveal_if_ready canvas_ready=True "
+            f"first_frame={window._startup_canvas_first_frame_rendered} "
+            f"first_visual={window._startup_canvas_first_visual_ready}"
+        )
         if onboarding_host.is_active(window):
             # App is warm under onboarding — load deferred work, but do NOT mark
             # revealed: QStackedLayout only sizes the *current* page, so app_host
@@ -271,7 +295,22 @@ class MainWindowStartupRuntime:
             self._sync_app_host_geometry()
         widget = window.image_compare_widget
         if widget is not None:
-            widget.image_startup_placeholder.hide()
+            # Hide the per-canvas placeholder only once the canvas actually
+            # rendered its first frame. The active-tab gate above is about
+            # the window-level startup cover (session_picker must not hold it
+            # up); the canvas placeholder covers the image_label itself, and
+            # hiding it on the gate bypass exposed the transparent subsurface
+            # for the first frame(s) when the workspace current tab was not
+            # the image pair tab at bootstrap.
+            image_label = getattr(widget, "image_label", None)
+            if image_label is not None and getattr(
+                image_label, "_first_frame_rendered_emitted", False
+            ):
+                _startup_ffd_log(
+                    "reveal_if_ready hiding image_startup_placeholder "
+                    "(first frame emitted)"
+                )
+                widget.image_startup_placeholder.hide()
         self.hide_cover()
         self.emit_visual_ready()
 

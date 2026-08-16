@@ -61,7 +61,7 @@ def test_image_properties_blocks_cover_all_sections_and_rows():
     blocks = build_property_blocks(properties, lambda key, default: default)
 
     # One heading + one table per section; the table carries all its rows.
-    from sli_ui_toolkit.ui.widgets.composite.help_document.blocks import (
+    from sli_ui_toolkit.ui.widgets.composite.text_view.markdown import (
         HeadingBlock,
         TableBlock,
     )
@@ -75,7 +75,7 @@ def test_image_properties_blocks_cover_all_sections_and_rows():
 
 def test_image_properties_row_is_a_bordered_table_row():
     """Label/value land in separate TableBlock cells — real grid, not tabs."""
-    from sli_ui_toolkit.ui.widgets.composite.help_document.blocks import (
+    from sli_ui_toolkit.ui.widgets.composite.text_view.markdown import (
         InlineKind,
         TableBlock,
     )
@@ -106,7 +106,9 @@ def test_image_properties_table_renders_with_border_geometry(qapp):
     for table, section in zip(tables, _sample_properties().sections):
         assert table.rect.width() > 0
         assert table.rect.height() > 0
-        assert table.col_x > 0
+        # Two-column label/value grid: one vertical divider per table.
+        assert len(table.col_xs) == 1
+        assert table.col_xs[0] > 0
         assert len(table.row_ys) == len(section.rows) - 1
 
     dialog.close()

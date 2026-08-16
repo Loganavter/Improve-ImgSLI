@@ -47,6 +47,8 @@ class DragDropOverlaySource:
         painter.drawRoundedRect(target_rect.adjusted(2, 2, -2, -2), 6, 6)
 
         painter.save()
+        # Scale-resolve the drop hint font (painter.font() is the raw
+        # design-sized app font; a fixed point size would ignore UiScale).
         text_font = QFont(painter.font())
         text_font.setPointSize(max(self.DROP_LABEL_FONT_PT + 2, 12))
         text_font.setBold(True)

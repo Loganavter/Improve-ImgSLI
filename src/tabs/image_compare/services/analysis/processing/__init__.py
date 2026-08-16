@@ -1,17 +1,18 @@
-from tabs.image_compare.services.analysis.processing.background_layers import (
-    build_cached_diff_image,
-)
-from tabs.image_compare.services.analysis.processing.channel_analyzer import extract_channel
-from tabs.image_compare.services.analysis.processing.differ import (
+from shared.analysis.channel_analyzer import extract_channel
+from shared.analysis.differ import (
     create_grayscale_diff,
     create_highlight_diff,
     create_ssim_map,
 )
-from tabs.image_compare.services.analysis.processing.edge_detector import create_edge_map
-from tabs.image_compare.services.analysis.processing.metrics_core import (
+from shared.analysis.edge_detector import create_edge_map
+from shared.analysis.metrics import (
     calculate_metrics,
     calculate_psnr,
     calculate_ssim,
+)
+
+from tabs.image_compare.services.analysis.background_layers import (
+    build_cached_diff_image,
 )
 
 __all__ = [

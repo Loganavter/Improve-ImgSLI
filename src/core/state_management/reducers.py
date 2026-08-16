@@ -1,5 +1,5 @@
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from core.store import (
     GeometryState,
@@ -17,6 +17,9 @@ from .extension_reducers import (
     reduce_session_data_extensions,
 )
 from .slot_reducers import iter_state_slot_reducers
+
+if TYPE_CHECKING:
+    from core.store import Store
 
 from .actions import (
     Action,
@@ -50,6 +53,7 @@ from .actions import (
     SetThemeAction,
     SetUIFontFamilyAction,
     SetUIFontModeAction,
+    SetUIScaleFactorAction,
     SetUIModeAction,
     SetUserInteractingAction,
     SetVideoRecordingFpsAction,
@@ -236,6 +240,8 @@ class SettingsReducer:
             return replace(settings, ui_font_mode=action.mode)
         if isinstance(action, SetUIFontFamilyAction):
             return replace(settings, ui_font_family=action.family)
+        if isinstance(action, SetUIScaleFactorAction):
+            return replace(settings, ui_scale_factor=action.factor)
         if isinstance(action, SetDebugModeEnabledAction):
             return replace(settings, debug_mode_enabled=action.enabled)
         if isinstance(action, SetSystemNotificationsEnabledAction):

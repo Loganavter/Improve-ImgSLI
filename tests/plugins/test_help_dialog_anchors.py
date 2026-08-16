@@ -1,7 +1,7 @@
 """Markdown help dialog anchors: strip ``{#id}`` heading suffixes, generate
 missing heading ids, and build an internal-link TOC for h3 sections.
 
-Dogma source: docs/dev/HELP_WIDGET.md.
+Dogma source: docs/dev/HELP_SYSTEM.md (anchor + TOC contract).
 """
 
 from sli_ui_toolkit.ui.widgets.composite.markdown_help_dialog import (

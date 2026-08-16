@@ -195,7 +195,9 @@ class TabRegistry:
         For host-generic code (event routing, window chrome) that needs to
         call a behavioral `TabContract` method directly (`owns_widget`,
         `clear_transient_text_focus`, ...) rather than construct a service.
-        `None` if no session is active yet.
+        `None` if no session is active yet (startup, session switching) —
+        callers already handle `None` (e.g. image-label mouse routing falls
+        back to raw event positions).
         """
         return self._tabs.get(self._active_session_type)
 
@@ -230,7 +232,7 @@ class TabRegistry:
             logger.error(f"contribute_settings failed for {session_type}: {e}")
 
     def create_main_window_feature(self, feature_id: str, **kwargs: Any) -> Any:
-        """Create a legacy main-window-shell feature owned by the bootstrap tab.
+        """Create a legacy main-window-shell feature from the tab that provides it.
 
         Unlike ``create_service``, this is *not* routed by the currently
         active session. Its one caller (``ui/main_window/composer.py``)
@@ -241,23 +243,24 @@ class TabRegistry:
         is — e.g. ``session_picker``), not the tab that hosts this legacy
         feature. Routing this by active session would make the app's
         startup order (session activation happening before or after
-        ``compose()``) silently decide which tab answers here. Instead it
-        always resolves against whichever tab declares
-        ``TabContract.is_bootstrap_default = True`` — the same seam used by
-        ``activate_default()``. See docs/dev/tabs/capability-mechanisms.md.
+        ``compose()``) silently decide which tab answers here.
+
+        Instead it routes **by capability**: each registered tab is asked in
+        registration order (bootstrap before deferred) and the first one
+        whose ``create_main_window_feature`` returns a non-``None`` answer
+        provides the feature. No tab has a privileged role; whichever tab
+        actually implements the feature answers. See
+        docs/dev/tabs/capability-mechanisms.md.
         """
-        tab = self._bootstrap_default_tab()
-        if tab is None:
+        answered = self._first_tab_answering_result(
+            "create_main_window_feature", feature_id, **kwargs
+        )
+        if answered is None:
             return None
-        try:
-            return tab.create_main_window_feature(feature_id, **kwargs)
-        except Exception:
-            logger.exception(
-                "Tab main-window feature hook failed for %s on %s",
-                feature_id,
-                tab.session_type,
-            )
-            raise
+        # Same as create_startup_service: the probe already built the feature,
+        # never call create_main_window_feature a second time.
+        _tab, result = answered
+        return result
 
     def create_service(self, service_id: str, *args: Any, **kwargs: Any) -> Any:
         """Create a service owned by the active tab.
@@ -267,7 +270,10 @@ class TabRegistry:
         tab's answer) if the active tab doesn't implement ``service_id``.
         See docs/dev/tabs/capability-mechanisms.md.
         """
-        tab = self._tabs.get(self._active_session_type)
+        active = self._active_session_type
+        if active is None:
+            return None
+        tab = self._tabs.get(active)
         if tab is None:
             return None
         try:
@@ -305,7 +311,7 @@ class TabRegistry:
             raise
 
     def create_startup_service(self, service_id: str, *args: Any, **kwargs: Any) -> Any:
-        """Create a service owned by the bootstrap-default tab, not the active one.
+        """Create a startup-shell service from the tab that provides it.
 
         ``MainWindowComposer.compose()`` builds the entire legacy shell
         (``UIManager``, ``TransientUIManager``, ``DialogManager``,
@@ -322,20 +328,26 @@ class TabRegistry:
         requested during that one-time startup construction; use
         ``create_service`` for anything requested later, in response to the
         user's actual active tab (settings queries, canvas commands, export,
-        session-content checks, ...). See docs/dev/tabs/capability-mechanisms.md.
+        session-content checks, ...).
+
+        Routes **by capability**: each registered tab is asked in
+        registration order (bootstrap before deferred) and the first one
+        whose ``create_service`` returns a non-``None`` answer provides the
+        service. No tab has a privileged role; whichever tab actually
+        implements the service answers. See
+        docs/dev/tabs/capability-mechanisms.md.
         """
-        tab = self._bootstrap_default_tab()
-        if tab is None:
+        answered = self._first_tab_answering_result(
+            "create_service", service_id, *args, **kwargs
+        )
+        if answered is None:
             return None
-        try:
-            return tab.create_service(service_id, *args, **kwargs)
-        except Exception:
-            logger.exception(
-                "Tab startup service hook failed for %s on %s",
-                service_id,
-                tab.session_type,
-            )
-            raise
+        # The answering tab's ``create_service`` already ran (and created the
+        # service) inside the probe — calling it again would build a *second*
+        # instance and re-run its side effects (e.g. registering a context
+        # menu provider again → duplicated menu sections).
+        tab, result = answered
+        return result
 
     def notify_all(self, hook_id: str, *args: Any, **kwargs: Any) -> None:
         """Call a tab-owned hook on every registered tab, regardless of which
@@ -442,19 +454,25 @@ class TabRegistry:
         """Public accessor for whichever registered tab declares
         `TabContract.is_bootstrap_default = True`.
 
-        For host bootstrap code that needs the default tab itself (e.g. to
-        resolve its assembled widget), without naming the tab.
+        The role is reserved exclusively for ``session_picker`` (the tab
+        behind `core.store.INITIAL_WORKSPACE_SESSION_TYPE`); any other tab
+        claiming it is a registration bug and fails loudly. Legacy
+        main-window shell wiring (toolbar, export, ``image_canvas``, …)
+        routes by capability, not this flag.
         """
         return self._bootstrap_default_tab()
 
     def _bootstrap_default_tab(self) -> "TabContract | None":
-        """Return whichever registered tab declares
-        `TabContract.is_bootstrap_default = True`, without naming it.
+        """Return the sole registered tab with `is_bootstrap_default = True`.
 
         `None` if no tab claims the role, or if more than one does (logs an
         error in the latter case — that's a registration bug, not a runtime
-        condition to silently resolve).
+        condition to silently resolve). A non-``session_picker`` claimant is
+        a hard error: the role is reserved exclusively for the tab behind
+        `core.store.INITIAL_WORKSPACE_SESSION_TYPE`.
         """
+        from core.store import INITIAL_WORKSPACE_SESSION_TYPE
+
         candidates = [tab for tab in self._tabs.values() if tab.is_bootstrap_default]
         if not candidates:
             logger.error("TabRegistry: no tab claims is_bootstrap_default")
@@ -465,11 +483,77 @@ class TabRegistry:
                 [t.session_type for t in candidates],
             )
             return None
-        return candidates[0]
+        tab = candidates[0]
+        if tab.session_type != INITIAL_WORKSPACE_SESSION_TYPE:
+            logger.error(
+                "TabRegistry: is_bootstrap_default reserved for '%s' but "
+                "'%s' claimed it — bootstrap default is the initial "
+                "workspace session only",
+                INITIAL_WORKSPACE_SESSION_TYPE,
+                tab.session_type,
+            )
+            raise RuntimeError(
+                f"is_bootstrap_default reserved for '{INITIAL_WORKSPACE_SESSION_TYPE}' "
+                f"but '{tab.session_type}' claimed it"
+            )
+        return tab
+
+    def _first_tab_answering(
+        self, method_name: str, *args: Any, **kwargs: Any
+    ) -> "TabContract | None":
+        """Return the first registered tab (in registration order — bootstrap
+        before deferred) whose ``method_name`` returns a non-``None`` value
+        for the given args.
+
+        Used by ``create_startup_service``/``create_main_window_feature`` to
+        route legacy shell wiring by capability instead of by a privileged
+        tab role: the tab that actually implements the service/feature answers
+        it. ``method_name`` must be a callable attribute on ``TabContract``
+        that returns ``None`` for "not mine" (``create_service`` /
+        ``create_main_window_feature`` both satisfy this). Returns ``None``
+        when no tab answers.
+
+        Note: this probes by *calling* the method, which already runs the
+        tab's implementation (side effects included) — prefer
+        ``_first_tab_answering_result`` so the result is not built twice.
+        """
+        answered = self._first_tab_answering_result(method_name, *args, **kwargs)
+        return answered[0] if answered is not None else None
+
+    def _first_tab_answering_result(
+        self, method_name: str, *args: Any, **kwargs: Any
+    ) -> tuple["TabContract", object] | None:
+        """Probe tabs for the first non-``None`` answer, returning the result.
+
+        The probe *is* the real call (tab implementations create their
+        service/feature during it), so callers must use the returned result
+        instead of invoking ``method_name`` a second time — a second call
+        would build a duplicate instance and re-run its side effects
+        (e.g. re-registering a context menu provider → duplicated menu
+        sections). See docs/dev/tabs/capability-mechanisms.md.
+        """
+        for tab in self._tabs.values():
+            method = getattr(tab, method_name, None)
+            if method is None:
+                continue
+            try:
+                result = method(*args, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Tab %s probe failed for %r on %s",
+                    method_name,
+                    args[0] if args else kwargs,
+                    tab.session_type,
+                )
+                raise
+            if result is not None:
+                return tab, result
+        return None
 
     def activate_default(self) -> None:
         """Activate whichever registered tab declares
-        `TabContract.is_bootstrap_default = True`.
+        `TabContract.is_bootstrap_default = True` (exclusively
+        ``session_picker``).
 
         Used once during startup to seed `_active_session_type` for the
         narrow window before any workspace session exists (see

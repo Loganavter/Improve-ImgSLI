@@ -33,12 +33,12 @@ def ensure_marquee_gesture(view) -> MarqueeBandGesture:
         view._marquee_gesture = MarqueeBandGesture(
             view.items_host,
             parent=view,
-            clip_widget=view.scroll.viewport(),
+            clip_widget=view.scroll_area.viewport(),
             on_update=lambda rect: on_marquee_rect_update(view, rect),
             on_finish=lambda rect: on_marquee_rect_finish(view, rect),
         )
     else:
-        view._marquee_gesture.set_clip_widget(view.scroll.viewport())
+        view._marquee_gesture.set_clip_widget(view.scroll_area.viewport())
     view._marquee_gesture.set_accent(view._selection_accent)
     return view._marquee_gesture
 

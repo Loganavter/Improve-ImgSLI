@@ -29,7 +29,7 @@ from tabs.image_compare.canvas.render_arch import (
     build_scene_frame,
     resolve_canvas_style,
 )
-from ui.widgets.canvas.render_metrics import RenderMetrics
+from ui.canvas_infra.rhi.render_metrics import RenderMetrics
 
 class TestRenderPassResolution:
     """Every CanvasStackRole must resolve to a valid (RenderPhase, int) pair."""
@@ -212,7 +212,7 @@ class TestCanvasRenderPassBase:
 class TestRenderExecutorOrdering:
 
     def test_passes_sorted_by_role(self):
-        from ui.widgets.canvas.render_executor import iter_ordered_render_passes
+        from ui.canvas_infra.rhi.render_executor import iter_ordered_render_passes
 
         roles_in_expected_order = [
             CanvasStackRole.UNDERLAY_SPLIT,
@@ -235,7 +235,7 @@ class TestRenderExecutorOrdering:
         assert ordered_roles == roles_in_expected_order
 
     def test_execute_render_passes_filters_by_scene_visibility(self):
-        from ui.widgets.canvas.render_executor import execute_render_passes
+        from ui.canvas_infra.rhi.render_executor import execute_render_passes
 
         painted: list[str] = []
 
@@ -276,8 +276,8 @@ class TestRenderExecutorOrdering:
             os.pardir,
             os.pardir,
             "ui",
-            "widgets",
-            "canvas",
+            "canvas_infra",
+            "rhi",
             "render_executor.py",
         )
         with open(render_executor_path, encoding="utf-8") as f:

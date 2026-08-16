@@ -1,5 +1,6 @@
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import (
+    QMouseEvent,
     QDragEnterEvent,
     QDragMoveEvent,
     QDropEvent,
@@ -64,21 +65,21 @@ class EventHandler(QObject):
             self._reset_keyboard_state(f"event:{int(event_type)}")
         elif event_type == QEvent.Type.WindowDeactivate:
             app = QApplication.instance()
-            active_window = app.activeWindow() if app is not None else None
+            active_window = app.activeWindow() if isinstance(app, QApplication) else None
             if watched_obj is self.presenter.main_window_app or watched_obj is active_window:
                 self._reset_keyboard_state(f"event:{int(event_type)}")
         elif event_type == QEvent.Type.FocusOut:
             if watched_obj is self.presenter.main_window_app:
                 self._reset_keyboard_state(f"event:{int(event_type)}")
 
-        if event_type == QEvent.Type.MouseButtonPress:
+        if event_type == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
             # Same QMouseEvent is delivered to every installEventFilter target
             # (app + window + image_label). Emit once per physical press.
             press_key = (id(event), event.button(), event.timestamp())
             if press_key != getattr(self, "_last_mouse_press_key", None):
                 self._last_mouse_press_key = press_key
                 self.mouse_press_event_signal.emit(event)
-        elif event_type == QEvent.Type.MouseButtonRelease:
+        elif event_type == QEvent.Type.MouseButtonRelease and isinstance(event, QMouseEvent):
             release_key = (id(event), event.button(), event.timestamp())
             if release_key != getattr(self, "_last_mouse_release_key", None):
                 self._last_mouse_release_key = release_key

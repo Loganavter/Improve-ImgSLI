@@ -8,9 +8,6 @@ from tabs.image_compare.presenters.toolbar.state import (
     check_name_lengths,
     update_toolbar_states,
 )
-from tabs.image_compare.presenters.toolbar.orientation import (
-    update_magnifier_orientation_button_state,
-)
 
 class ToolbarPresenter(QObject):
     def __init__(
@@ -33,12 +30,10 @@ class ToolbarPresenter(QObject):
 
         self._orientation_popup = None
         self._popup_timer = None
+        self.chrome_sync = None
 
     def connect_signals(self):
         return connect_signals_impl(self)
-
-    def update_magnifier_orientation_button_state(self):
-        return update_magnifier_orientation_button_state(self)
 
     def check_name_lengths(self):
         return check_name_lengths(self)

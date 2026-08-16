@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QWidget
 
-from ui.widgets.canvas import rhi_present_sync as sync
+from ui.canvas_infra.rhi import rhi_present_sync as sync
 
 
 @pytest.fixture

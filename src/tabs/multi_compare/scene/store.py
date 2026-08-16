@@ -1,16 +1,18 @@
-"""Local Redux-style store for the multi-compare tab.
+"""Redux-style state management for the multi-compare tab.
 
-The tab keeps its own action/reducer space rather than extending the global
-``ActionType`` enum used by main compare: the multi-compare layout, slots and
-drag state are orthogonal to the rest of the app, and bolting a dozen tab-only
-actions into the global enum bloats it for one consumer.
+The tab keeps its own action namespace (``multi_compare/*``) rather than
+extending the global ``ActionType`` enum used by main compare: the
+multi-compare layout, slots and drag state are orthogonal to the rest of the
+app.
 
-Pattern matches :mod:`core.state_management.dispatcher`: pure ``reduce`` returns
-a new state, subscribers receive the (action, new_state) pair after the swap so
-they can rebuild render plans / refresh widgets.
-
-State is a frozen ``MultiCompareState`` dataclass; the only path to a new
-state is ``dispatch(action)`` which runs the reducer and notifies subscribers.
+Since the state unification (state-unification-plan.md, kept private in the
+improve-imgsli-internal-docs repo), ``MultiCompareStore``
+is a **facade** over the core ``Dispatcher`` and the active session's
+``state_slots["multi_compare.state"]`` slot — the slot is the single source of
+truth, reduced by the core ``RootReducer`` (see ``bootstrap_reducers.py``) and
+covered by the core undo/redo stacks. The standalone mode (no ``core_store``)
+keeps the historical local dispatch loop for tests. The pure ``reduce``
+function remains the reducer for both modes.
 """
 
 from __future__ import annotations
@@ -350,12 +352,12 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, slots=new_slots)
 
     if isinstance(action, RemoveSlot):
-        for slot in state.slots:
-            if slot.id == action.slot_id and slot.image is not None:
-                from shared.image_processing.tiled_pixel_store import TiledPixelStore
-
-                if isinstance(slot.image, TiledPixelStore):
-                    slot.image.close()
+        # Deliberately NOT closing the removed slot's TiledPixelStore: undo
+        # restores the pre-removal state by reference-snapshot, and a closed
+        # store would render as broken after undo. Deferred closing (GC /
+        # session teardown, `TiledPixelStore.__del__`) is bounded by the undo
+        # cap — see state-unification-plan.md Phase 1 (private
+        # improve-imgsli-internal-docs repo).
         new_slots = [s for s in state.slots if s.id != action.slot_id]
         new_root = tree_ops.remove_leaf(state.root, action.slot_id)
         focused = (
@@ -471,11 +473,7 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
         return _replace(state, root=action.root, focused_slot_id=focused)
 
     if isinstance(action, Clear):
-        from shared.image_processing.tiled_pixel_store import TiledPixelStore
-
-        for slot in state.slots:
-            if isinstance(slot.image, TiledPixelStore):
-                slot.image.close()
+        # Store closing deferred to GC/session teardown (see RemoveSlot above).
         return MultiCompareState()
 
     logger.warning("multi_compare reducer: unhandled action %s", type(action).__name__)
@@ -483,21 +481,113 @@ def reduce(state: MultiCompareState, action: MultiCompareAction) -> MultiCompare
 
 
 class MultiCompareStore:
-    """Local dispatch loop for the multi-compare tab.
+    """Redux-style state for the multi-compare tab.
 
-    Subscribers are called *after* the state swap with ``(action, new_state)``.
-    The store does not enforce thread affinity — callers must dispatch on the
-    GUI thread, mirroring the main app store.
+    Two modes (same public API — ``state`` / ``dispatch`` / ``subscribe`` /
+    ``replace_state``):
+
+    - **bound** (production): a thin facade over the core ``Dispatcher`` and
+      the active session's ``state_slots["multi_compare.state"]`` — the slot
+      is the single source of truth. ``dispatch`` forwards to the core
+      Dispatcher (scope ``"multi_compare"``), ``state`` reads the slot,
+      ``subscribe`` hooks core store changes filtered to that scope,
+      ``replace_state`` writes the slot directly (session restore is not a
+      user action, so it bypasses the undo stack). See
+      ``state-unification-plan.md`` (kept private in the
+      improve-imgsli-internal-docs repo, mirrored path).
+    - **standalone** (tests): owns a private ``MultiCompareState`` and runs
+      the pure ``reduce`` locally, notifying subscribers with
+      ``(action, new_state)`` — the historical pre-facade behavior.
+
+    Subscribers are always called *after* a state change with
+    ``(action, new_state)``.
     """
 
-    def __init__(self, initial: MultiCompareState | None = None):
-        self._state: MultiCompareState = initial or MultiCompareState()
+    _SLOT = "multi_compare.state"
+
+    def __init__(
+        self,
+        initial: MultiCompareState | None = None,
+        *,
+        core_store=None,
+    ):
+        self._core_store = core_store
         self._subscribers: list[
             Callable[[MultiCompareAction, MultiCompareState], None]
         ] = []
+        self._last_action: MultiCompareAction = MultiCompareAction(
+            type="multi_compare/replace_state"
+        )
+        self._dispatching = False
+        self._last_notified_slot: MultiCompareState | None = None
+        if core_store is None:
+            self._state: MultiCompareState = initial or MultiCompareState()
+        else:
+            self._state = None  # never holds state in bound mode
+            self._bound_change_cb = self._on_core_change
+            if hasattr(core_store, "on_change"):
+                core_store.on_change(self._bound_change_cb)
+
+    # --- bound-mode plumbing ---------------------------------------------
+
+    def _active_session(self):
+        try:
+            return self._core_store.get_active_workspace_session()
+        except Exception:
+            return None
+
+    def _active_slot_value(self) -> MultiCompareState | None:
+        """The active session's real MC slot object (``None`` when the active
+        session is not a multi_compare session — do not synthesize a default
+        here, identity checks must see the true value)."""
+        session = self._active_session()
+        if session is None:
+            return None
+        value = session.state_slots.get(self._SLOT)
+        if isinstance(value, MultiCompareState):
+            return value
+        return None
+
+    def _read_slot(self) -> MultiCompareState:
+        value = self._active_slot_value()
+        if value is not None:
+            return value
+        return MultiCompareState()
+
+    def _on_core_change(self, scope: str) -> None:
+        # React to MC dispatches ("multi_compare") and to undo/redo, which the
+        # core Dispatcher emits as "viewport" (undo must repaint the canvas
+        # with the restored slot). Guarded by slot-object identity so IC /
+        # unrelated core changes (active session without an MC slot, or an
+        # unchanged slot) never notify.
+        if scope not in ("multi_compare", "viewport"):
+            return
+        if not self._subscribers:
+            return
+        value = self._active_slot_value()
+        if value is None or value is self._last_notified_slot:
+            return
+        self._last_notified_slot = value
+        action = (
+            self._last_action
+            if self._dispatching
+            else MultiCompareAction(type="multi_compare/replace_state")
+        )
+        self._dispatching = False
+        for sub in list(self._subscribers):
+            try:
+                sub(action, value)
+            except Exception:
+                logger.exception(
+                    "multi_compare subscriber raised on core state change",
+                )
+
+    # --- public API ------------------------------------------------------
 
     @property
     def state(self) -> MultiCompareState:
+        if self._core_store is not None:
+            return self._read_slot()
         return self._state
 
     def replace_state(self, state: MultiCompareState) -> None:
@@ -505,10 +595,18 @@ class MultiCompareStore:
 
         Notifies subscribers with a synthetic ``multi_compare/replace_state``
         action so listeners (canvas, etc.) re-sync without going through
-        per-slot reducers.
+        per-slot reducers. In bound mode this writes the session slot directly
+        (a restore is not a user action and must not enter the undo stack).
         """
-        self._state = state
+        if self._core_store is None:
+            self._state = state
+        else:
+            session = self._active_session()
+            if session is not None:
+                session.state_slots[self._SLOT] = state
+            self._last_notified_slot = state
         synthetic = MultiCompareAction(type="multi_compare/replace_state")
+        self._last_action = synthetic
         for sub in list(self._subscribers):
             try:
                 sub(synthetic, state)
@@ -518,25 +616,40 @@ class MultiCompareStore:
                 )
 
     def dispatch(self, action: MultiCompareAction) -> MultiCompareState:
-        try:
-            new_state = reduce(self._state, action)
-        except Exception:
-            logger.exception(
-                "multi_compare dispatch failed: %s", getattr(action, "type", action)
-            )
-            return self._state
-        if new_state is self._state:
-            return self._state
-        self._state = new_state
-        for sub in list(self._subscribers):
+        if self._core_store is None:
             try:
-                sub(action, new_state)
+                new_state = reduce(self._state, action)
             except Exception:
                 logger.exception(
-                    "multi_compare subscriber raised on %s",
-                    getattr(action, "type", action),
+                    "multi_compare dispatch failed: %s", getattr(action, "type", action)
                 )
-        return new_state
+                return self._state
+            if new_state is self._state:
+                return self._state
+            self._state = new_state
+            self._last_action = action
+            for sub in list(self._subscribers):
+                try:
+                    sub(action, new_state)
+                except Exception:
+                    logger.exception(
+                        "multi_compare subscriber raised on %s",
+                        getattr(action, "type", action),
+                    )
+            return new_state
+
+        # bound mode: forward to the core Dispatcher (slot is authoritative).
+        # ``_dispatching`` is observed by ``_on_core_change`` (which runs
+        # synchronously inside the forward) so subscribers receive the real
+        # action rather than a synthetic one; undo/redo never set it, so they
+        # deliver the synthetic ``replace_state`` action (no QSettings save).
+        self._last_action = action
+        self._dispatching = True
+        dispatcher = getattr(self._core_store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None:
+            dispatcher.dispatch(action, scope="multi_compare")
+        self._dispatching = False
+        return self._read_slot()
 
     def subscribe(
         self,

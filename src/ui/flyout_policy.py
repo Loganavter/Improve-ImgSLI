@@ -85,8 +85,8 @@ def _configure_pinned_hud_rules(policy: GroupShowPolicy) -> None:
     ``"info_hud"``/``"zoom_indicator"``) must never be dismissed by another
     flyout opening.
 
-    They are already ``pinned=True`` (see ``ui/widgets/info_hud.py`` and
-    ``ui/widgets/zoom_indicator.py``), which covers outside click / wheel /
+    They are already ``pinned=True`` (see ``ui/widgets/glass_hud/info.py`` and
+    ``ui/widgets/glass_hud/zoom.py``), which covers outside click / wheel /
     window-deactivate / anchor-move — but pinned only protects a flyout from
     *those* passive paths; a host ``GroupShowPolicy`` can still dismiss a
     pinned flyout when another group opens (see sli-ui-toolkit's
@@ -159,7 +159,7 @@ def _install_title_bar_resize_keeps_context_menus() -> None:
         except Exception:
             pass
 
-    CustomTitleBar._hide_active_flyouts = _hide_active_flyouts  # type: ignore[method-assign]
+    CustomTitleBar._hide_active_flyouts = _hide_active_flyouts
     _TITLE_BAR_RESIZE_PATCHED = True
 
 
@@ -182,7 +182,7 @@ def _install_button_suppress_clears_context_menu_flag() -> None:
     sli-ui-toolkit ≤3.1.1 sets both ``_suppress_next_click`` and
     ``_suppress_next_context_menu`` when dismissing a flyout via its anchor.
     Release consumes only the click flag, so the next File/Help click is
-    swallowed by ``TitleBarMenuStrip`` / ``popup_context_menu_for_anchor``.
+    swallowed by ``CsdMenuStrip`` / ``popup_context_menu_for_anchor``.
     """
     global _BUTTON_SUPPRESS_PATCHED
     if _BUTTON_SUPPRESS_PATCHED:
@@ -202,7 +202,7 @@ def _install_button_suppress_clears_context_menu_flag() -> None:
             return
         original(self)
 
-    Button._emit_click_signals = _emit_click_signals  # type: ignore[method-assign]
+    Button._emit_click_signals = _emit_click_signals
     _BUTTON_SUPPRESS_PATCHED = True
 
 
@@ -225,7 +225,7 @@ def _install_context_menu_topmost_stacking(manager: FlyoutManager) -> None:
 
     def request_show(flyout):
         try:
-            from ui.widgets.canvas.rhi_focus import park_keyboard_focus_off_qrhi
+            from ui.canvas_infra.rhi.rhi_focus import park_keyboard_focus_off_qrhi
 
             park_keyboard_focus_off_qrhi()
         except Exception:
@@ -243,4 +243,4 @@ def _install_context_menu_topmost_stacking(manager: FlyoutManager) -> None:
             pass
         return ok
 
-    manager.request_show = request_show  # type: ignore[method-assign]
+    manager.request_show = request_show

@@ -1,4 +1,5 @@
 from core.events import CoreUpdateRequestedEvent
+from core.state_management.actions import SetCurrentIndexAction
 
 
 def activate_single_image_mode(controller, image_number: int):
@@ -47,10 +48,17 @@ def on_combobox_changed(
         new_index = index
 
     if 0 <= new_index < len(target_list):
-        if image_number == 1:
-            doc.current_index1 = new_index
-        else:
-            doc.current_index2 = new_index
+        if new_index != current_idx:
+            # Index changes go through the Dispatcher so browsing is
+            # undoable (SET_CURRENT_INDEX; the reducer replaces the document
+            # so the reference snapshot stays sound). The pixel load for the
+            # new entry follows as separate, deliberately non-undoable
+            # actions (the replaced TiledPixelStore is closed).
+            dispatcher = controller.store.get_dispatcher()
+            if dispatcher is not None:
+                dispatcher.dispatch(
+                    SetCurrentIndexAction(slot=image_number, index=new_index)
+                )
         controller.set_current_image(image_number)
         if controller.event_bus:
             controller.event_bus.emit(CoreUpdateRequestedEvent())
@@ -110,9 +118,9 @@ def on_interpolation_changed(controller, index: int):
             if settings_presenter is not None:
                 settings_presenter.update_interpolation_combo_box_ui()
             ui_manager = getattr(controller.presenter, "ui_manager", None)
-            if getattr(ui_manager.dialogs, "settings_dialog", None):
-                ui_manager.dialogs.settings_dialog.update_main_interpolation(
-                    selected_method_key
-                )
+            dialogs = getattr(ui_manager, "dialogs", None)
+            settings_dialog = getattr(dialogs, "settings_dialog", None)
+            if settings_dialog:
+                settings_dialog.update_main_interpolation(selected_method_key)
     except Exception:
         pass

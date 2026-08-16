@@ -8,9 +8,11 @@ from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 from plugins.help.icons import resolve_help_icon
 from plugins.help.labels import node_description, node_title
 from plugins.help.tree import HelpNode
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
 from sli_ui_toolkit.ui.widgets.helpers import unregister_hover_widget
 from sli_ui_toolkit.widgets import Button, ButtonRegion, HorizontalSplit, Label
+from ui.layout_spacing import control_edge_padding
 
 
 class _SeamlessHorizontalSplit(HorizontalSplit):
@@ -54,8 +56,10 @@ class HelpHubPage(QWidget):
         self._cards_by_id: dict[str, Button] = {}
         self._icon_by_id: dict[str, str | None] = {}
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(16, 12, 16, 16)
-        self._layout.setSpacing(12)
+        self._layout.setContentsMargins(
+            control_edge_padding(), scaled_px(12), control_edge_padding(), scaled_px(16)
+        )
+        self._layout.setSpacing(scaled_px(12))
         self._title = Label("", pixel_size=22, bold=True, parent=self)
         self._subtitle = Label(
             "",
@@ -67,7 +71,7 @@ class HelpHubPage(QWidget):
         self._layout.addWidget(self._title)
         self._layout.addWidget(self._subtitle)
         self._cards = QVBoxLayout()
-        self._cards.setSpacing(10)
+        self._cards.setSpacing(scaled_px(10))
         self._layout.addLayout(self._cards)
         self._layout.addStretch(1)
 
@@ -117,7 +121,7 @@ class HelpHubPage(QWidget):
         self._icon_by_id.clear()
         while self._cards.count():
             item = self._cards.takeAt(0)
-            widget = item.widget()
+            widget = item.widget()  # type: ignore[union-attr]  # takeAt result is a layout item
             if widget is not None:
                 _dispose_hover_widget(widget)
 

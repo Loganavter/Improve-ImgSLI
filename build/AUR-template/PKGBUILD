@@ -2,7 +2,7 @@
 # Co-maintainer: Nebulosa
 
 pkgname=improve-imgsli
-pkgver=10.0.1
+pkgver=11.0.0
 pkgrel=1
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=('x86_64')
@@ -12,15 +12,16 @@ depends=(
   'ffmpeg'
   'hicolor-icon-theme'
   'python'
+  'python-imagecodecs'
   'python-markdown'
   'python-numpy'
   'python-pillow'
+  'python-pyvips'
   'pyside6'
   'python-scikit-image'
   'python-sli-ui-toolkit>=3.1.11'
 )
 optdepends=(
-  'python-imagecodecs: JXL image format support'
   'python-snakeviz: for performance profiling'
 )
 makedepends=(

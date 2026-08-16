@@ -13,8 +13,10 @@ from pathlib import Path
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import (
     QRhiBuffer,
+    QRhi,
     QRhiGraphicsPipeline,
     QRhiShaderResourceBinding,
+    QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiVertexInputAttribute,
     QRhiVertexInputBinding,
@@ -87,13 +89,13 @@ class GridDividersPass(CanvasRenderPass):
     stack_role = CanvasStackRole.UNDERLAY_SPLIT
 
     def __init__(self) -> None:
-        self.rhi = None
-        self.pipeline = None
+        self.rhi: QRhi | None = None
+        self.pipeline: QRhiGraphicsPipeline | None = None
         self._render_pass_descriptor = None
         self._pipeline_sample_count: int | None = None
-        self.vertex_buffer = None
-        self.uniform_buffer = None
-        self.srb = None
+        self.vertex_buffer: QRhiBuffer | None = None
+        self.uniform_buffer: QRhiBuffer | None = None
+        self.srb: QRhiShaderResourceBindings | None = None
         self._source = DividersOverlaySource()
         self._draw_count = 0
 
@@ -135,10 +137,10 @@ class GridDividersPass(CanvasRenderPass):
         pipeline.setRenderPassDescriptor(descriptor)
         blend = QRhiGraphicsPipeline.TargetBlend()
         blend.enable = True
-        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha
-        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
-        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One
-        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha
+        blend.srcColor = QRhiGraphicsPipeline.BlendFactor.SrcAlpha  # type: ignore[assignment]  # PySide6 stub types BlendFactor fields as int
+        blend.dstColor = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
+        blend.srcAlpha = QRhiGraphicsPipeline.BlendFactor.One  # type: ignore[assignment]
+        blend.dstAlpha = QRhiGraphicsPipeline.BlendFactor.OneMinusSrcAlpha  # type: ignore[assignment]
         pipeline.setTargetBlends([blend])
         pipeline.setShaderResourceBindings(self.srb)
         layout = QRhiVertexInputLayout()

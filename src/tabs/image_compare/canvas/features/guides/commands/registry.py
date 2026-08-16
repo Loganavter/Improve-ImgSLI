@@ -60,6 +60,7 @@ def command_toggle_guides(actions, enabled: bool) -> None:
     store = getattr(actions, "store", None)
     dispatcher = getattr(store, "_dispatcher", None) if store is not None else None
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesEnabledAction(enabled), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
         store.emit_state_change()
@@ -67,6 +68,7 @@ def command_toggle_guides(actions, enabled: bool) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
+    assert store is not None
     state = get_guides_widget_state(viewport.view_state)
     state.enabled = enabled
     store.invalidate_render_cache()
@@ -87,6 +89,7 @@ def command_set_guides_thickness(actions, thickness: int) -> None:
         return
     dispatcher = getattr(store, "_dispatcher", None) if store is not None else None
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesThicknessAction(thickness), scope="viewport")
         dispatcher.dispatch(SetGuidesEnabledAction(thickness != 0), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
@@ -95,6 +98,7 @@ def command_set_guides_thickness(actions, thickness: int) -> None:
     viewport = getattr(store, "viewport", None) if store is not None else None
     if viewport is None:
         return
+    assert store is not None
     state = get_guides_widget_state(viewport.view_state)
     state.thickness = thickness
     state.enabled = thickness != 0
@@ -109,6 +113,7 @@ def query_guides_widget_state(view_state):
 def command_viewport_toggle_guides(store, enabled: bool) -> None:
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesEnabledAction(enabled), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
     else:
@@ -120,6 +125,7 @@ def command_viewport_toggle_guides(store, enabled: bool) -> None:
 def command_viewport_set_smoothing_enabled(store, enabled: bool) -> None:
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesSmoothingEnabledAction(enabled), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")
     else:
@@ -131,6 +137,7 @@ def command_viewport_set_smoothing_enabled(store, enabled: bool) -> None:
 def command_viewport_set_smoothing_interpolation_method(store, method: str) -> None:
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(
             SetGuidesSmoothingInterpolationMethodAction(method), scope="viewport"
         )
@@ -145,6 +152,7 @@ def command_viewport_set_guides_thickness(store, thickness: int) -> None:
     _sync_active_laser_enabled(store, thickness != 0)
     dispatcher = getattr(store, "_dispatcher", None)
     if dispatcher is not None:
+        assert store is not None
         dispatcher.dispatch(SetGuidesThicknessAction(thickness), scope="viewport")
         dispatcher.dispatch(SetGuidesEnabledAction(thickness != 0), scope="viewport")
         dispatcher.dispatch(InvalidateRenderCacheAction(), scope="viewport")

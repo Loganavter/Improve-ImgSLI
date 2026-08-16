@@ -66,13 +66,13 @@ def test_pulse_widget_tolerates_deleted_overlay(qtbot):
     qtbot.waitExposed(host)
 
     widget_pulse.pulse_widget(target, duration_ms=200, pulses=2)
-    overlay = widget_pulse._ACTIVE
+    overlay = widget_pulse._ACTIVE[-1]
     assert overlay is not None
     overlay.deleteLater()
     qtbot.wait(50)
     # Stale ticks must not raise RuntimeError.
     qtbot.wait(300)
-    assert widget_pulse._ACTIVE is None
+    assert widget_pulse._ACTIVE == []
 
 
 def test_pulse_covers_full_custom_group(qtbot):
@@ -95,7 +95,7 @@ def test_pulse_covers_full_custom_group(qtbot):
     qtbot.waitUntil(lambda: group.height() > 120, timeout=2000)
 
     widget_pulse.pulse_widget(group, host=host, duration_ms=200, pulses=1)
-    overlay = widget_pulse._ACTIVE
+    overlay = widget_pulse._ACTIVE[-1]
     assert overlay is not None
     pulsed = overlay._target_rect
     # Full group (with outset pad), not a title-only band.

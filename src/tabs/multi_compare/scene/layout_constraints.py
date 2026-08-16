@@ -59,8 +59,8 @@ def natural_split_weights(
     if any(aspect is None or aspect <= 0 for aspect in aspects):
         return None
     if split.direction == "h":
-        return [float(aspect) for aspect in aspects]
-    return [1.0 / float(aspect) for aspect in aspects]
+        return [float(aspect) for aspect in aspects]  # type: ignore[arg-type]  # aspects narrowed above
+    return [1.0 / float(aspect) for aspect in aspects]  # type: ignore[arg-type]
 
 
 def natural_pair_weight_ratio(

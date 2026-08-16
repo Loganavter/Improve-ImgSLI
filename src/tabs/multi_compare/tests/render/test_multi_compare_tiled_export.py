@@ -37,7 +37,7 @@ def test_mc_exporter_delegates_to_shared_tiler(monkeypatch):
 
     monkeypatch.setattr(gpu_export_module, "TiledFramebufferExporter", _FakeExporter)
     monkeypatch.setattr(
-        "ui.widgets.canvas.rhi_backend.query_max_texture_size",
+        "ui.canvas_infra.rhi.rhi_backend.query_max_texture_size",
         lambda _rhi: 4096,
     )
 

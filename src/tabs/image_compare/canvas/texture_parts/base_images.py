@@ -1,6 +1,7 @@
 from PIL import Image as PilImage
 from PySide6.QtGui import QImage
 
+from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
 from shared.rendering.image_identity import image_uid
 from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
@@ -27,9 +28,21 @@ def _canvas_dims(widget) -> tuple[int, int]:
 
 def upload_image(widget, qimage: QImage, slot_index: int):
     state = widget.runtime_state
+    from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+
     if slot_index not in (0, 1) or qimage.isNull():
+        ic_first_frame_debug(
+            widget, "upload_image slot=%s SKIPPED null=%s", slot_index, qimage.isNull()
+        )
         return
 
+    ic_first_frame_debug(
+        widget,
+        "upload_image slot=%s size=%sx%s",
+        slot_index,
+        qimage.width(),
+        qimage.height(),
+    )
     queue_prepared_texture_upload(
         widget, widget.texture_ids[slot_index], qimage, slot_index
     )
@@ -82,16 +95,18 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
     # Rare fallback: the "stored" (display) role normally resolves to the
     # small display-cache image, never the raw unify result -- but a cache
     # invalidation can momentarily leave only the TiledPixelStore behind
-    # (see plan_builder.build_live_store_presentation).
-    if isinstance(img, TiledPixelStore):
-        img = img.to_pil()
+    # (see plan_builder.build_live_store_presentation). Never materialize
+    # the store via to_pil() here (multi-GB on a 20k source); downscale
+    # tile-native to the display size instead.
+    is_store = isinstance(img, TiledPixelStore)
     cw, ch = _canvas_dims(widget)
     if cw <= 0 or ch <= 0:
         if slot_index >= 0:
             state._letterbox_params[slot_index] = (0.0, 0.0, 1.0, 1.0)
+        if is_store:
+            return downscale_source_to_pil(img, img.size).convert("RGBA")
         return img.convert("RGBA")
 
-    img = img.convert("RGBA")
     w, h = _img_dims(img)
     geometry = resolve_canvas_content_geometry(
         widget_width=cw,
@@ -114,7 +129,12 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
             state._content_rect_px = geometry.outer_rect_px or (0, 0, cw, ch)
             state._inner_content_rect_px = inner
             state._clip_overlays_to_content_rect = False
-    scaled = img.resize((nw, nh), PilImage.Resampling.BILINEAR)
+    if is_store:
+        scaled = downscale_source_to_pil(
+            img, (nw, nh), resample=PilImage.Resampling.BILINEAR
+        )
+    else:
+        scaled = img.convert("RGBA").resize((nw, nh), PilImage.Resampling.BILINEAR)
     result = PilImage.new("RGBA", (cw, ch), (0, 0, 0, 0))
     result.paste(scaled, (offset_x, offset_y))
     return result
@@ -221,6 +241,17 @@ def upload_pil_images(
                 old_ids=str(state._stored_image_ids),
                 new_ids=str(stored_ids),
             )
+    from tabs.image_compare.first_frame_debug import ic_first_frame_debug
+    ic_first_frame_debug(
+        widget,
+        "upload_pil_images stored_changed=%s stored=[%s,%s] source=[%s,%s] source_key=%s",
+        stored_changed,
+        pil_image1 is not None,
+        pil_image2 is not None,
+        source_image1 is not None,
+        source_image2 is not None,
+        source_key,
+    )
     state._stored_pil_images = [pil_image1, pil_image2]
     state._stored_image_ids = stored_ids
     state._shader_letterbox_mode = bool(shader_letterbox)

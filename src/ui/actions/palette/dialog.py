@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QScrollArea, QVBoxLayout, QWidget
 
 from core.actions.types import ActionDescriptor
 from shared_toolkit.ui.themed_dialog import ThemedDialog
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import CustomLineEdit, Label, MinimalistScrollBar
 from tabs.registry import get_shared_tab_registry
 from ui.actions.palette.common import (
@@ -58,7 +59,7 @@ def open_help_page(page: str, anchor: str | None = None) -> None:
         from PySide6.QtWidgets import QApplication
 
         app = QApplication.instance()
-        if app is None:
+        if not isinstance(app, QApplication):
             return
         for widget in app.topLevelWidgets():
             presenter = getattr(widget, "presenter", None)
@@ -113,8 +114,10 @@ class FindActionDialog(ThemedDialog):
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
 
         self._build_ui(query)
-        self.setMinimumSize(480, 320)
-        self.resize(_DIALOG_WIDTH, _DIALOG_HEIGHT)
+        self.setMinimumSize(scaled_px(480), scaled_px(320))
+        # Design size scaled like the minimum, so the two never disagree at
+        # scale > 1.0 (an unscaled resize gets clamped to the scaled minimum).
+        self.resize(scaled_px(_DIALOG_WIDTH), scaled_px(_DIALOG_HEIGHT))
         self.mark_theme_ui_ready()
 
         from shared_toolkit.ui.decorate_dialog import decorate_dialog
@@ -237,10 +240,10 @@ class FindActionDialog(ThemedDialog):
         root = QVBoxLayout(self)
         # Top margin must stay 0: decorate_dialog adds CustomTitleBar.HEIGHT to
         # the existing top inset, so any >0 value becomes a gap under chrome.
-        root.setContentsMargins(14, 0, 14, 12)
-        root.setSpacing(10)
+        root.setContentsMargins(scaled_px(14), 0, scaled_px(14), scaled_px(12))
+        root.setSpacing(scaled_px(10))
         # Gap under the custom title bar (top margin stays 0 — see decorate_dialog).
-        root.addSpacing(8)
+        root.addSpacing(scaled_px(8))
 
         self._search = CustomLineEdit(parent=self)
         self._search.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
@@ -263,7 +266,7 @@ class FindActionDialog(ThemedDialog):
         self._list_host = QWidget(self._scroll)
         self._list_layout = QVBoxLayout(self._list_host)
         self._list_layout.setContentsMargins(0, 0, 0, 0)
-        self._list_layout.setSpacing(2)
+        self._list_layout.setSpacing(scaled_px(2))
         self._list_layout.addStretch(1)
         self._scroll.setWidget(self._list_host)
         root.addWidget(self._scroll, 1)
