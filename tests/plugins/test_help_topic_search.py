@@ -51,7 +51,10 @@ def dialog_ru(app):
 
 
 def test_search_field_is_sidebar_header(dialog):
-    assert dialog._search_field is dialog.shell.sidebar_header
+    # The field is wrapped in a margin host so it keeps window-edge insets
+    # inside the flush sidebar column (the shell pins the host, not the
+    # field itself, as sidebar_header).
+    assert dialog._search_field.parent() is dialog.shell.sidebar_header
     assert dialog._search_field.placeholderText() == "Search help…"
 
 
