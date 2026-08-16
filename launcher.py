@@ -42,7 +42,7 @@ APP_MAIN = SCRIPT_DIR / "src" / "__main__.py"
 VENV_DIR = SCRIPT_DIR / "venv"
 REQUIREMENTS = SCRIPT_DIR / "requirements-gui.txt"
 DEV_REQUIREMENTS = SCRIPT_DIR / "requirements-dev.txt"
-CONTEXT_SCRIPT = SCRIPT_DIR / "src" / "devtools" / "context_cloc.sh"
+CONTEXT_SCRIPT = SCRIPT_DIR / "src" / "devtools" / "context_cloc.py"
 DESKTOP_TEMPLATE = SCRIPT_DIR / "improve-imgsli.desktop.in"
 APP_ICON = SCRIPT_DIR / "src" / "resources" / "icons" / "icon.png"
 DESKTOP_MIME_DIR = SCRIPT_DIR / "build" / "linux" / "mime"
@@ -680,7 +680,7 @@ def context_action(args: argparse.Namespace, extras: list[str], ui: UI) -> int:
         return 1
     ui.info("Running context bundle...")
     proc = subprocess.run(
-        [shutil.which("bash") or "bash", str(CONTEXT_SCRIPT), *extras],
+        [sys.executable, str(CONTEXT_SCRIPT), *extras],
         cwd=SCRIPT_DIR,
     )
     return proc.returncode
@@ -834,7 +834,7 @@ cloc report for Improve-ImgSLI and the external sli-ui-toolkit.
 
   ./launcher.sh context --cloc-only   cloc tables only → cloc.txt
 
-See 'src/devtools/context_cloc.sh --help' for the full option set.
+See 'src/devtools/context_cloc.py --help' for the full option set.
 """,
     )
 
