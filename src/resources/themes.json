@@ -37,7 +37,7 @@
     "input.border.thin": "#2D000000",
     "flyout.background": "#ffffff",
     "flyout.border": "#e0e0e0",
-    "list_item.background.normal": "#ffffff",
+    "list_item.background.normal": "#f7f7f7",
     "list_item.background.hover": "#e8e8e8",
     "list_item.text.normal": "#000000",
     "list_item.text.rating": "#7f7f7f",
