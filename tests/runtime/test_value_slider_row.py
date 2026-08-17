@@ -1,11 +1,10 @@
-"""ValueSliderRow: persistent right-hand value label + equal fixed pads.
+"""ValueSliderRow: always-visible right-hand value label, no left pad.
 
-The label reads the slider's live value in the same format as the hover
-hint flyout, hides for the duration the flyout is active (it would
-duplicate the flyout's readout above the thumb), and never shifts the
-slider's geometry when it toggles: the fixed-width pads flanking the track
-stay in the layout regardless of label visibility, so the track's position
-and size are stable.
+The label reads the slider's live value in the same format the hover hint
+flyout used to; the row disables the hint flyout entirely (the persistent
+label replaces it), and a fixed-width right pad keeps the slider's
+geometry stable as the value text changes. There is no left pad — the
+track starts flush at the row's left edge.
 """
 
 from __future__ import annotations
@@ -37,16 +36,6 @@ def _make_dialog(slider) -> QDialog:
     return dialog
 
 
-def _show_hint(slider: ValueSlider) -> None:
-    controller = slider._hint_controller
-    controller._pending_anchor = slider
-    controller._show()
-
-
-def _hide_hint(slider: ValueSlider) -> None:
-    slider._hint_controller._hide()
-
-
 def test_label_tracks_slider_value(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
@@ -62,25 +51,42 @@ def test_label_tracks_slider_value(qtbot):
     assert row._label.text() != "50,0%"
 
 
-def test_label_hides_while_hint_flyout_active(qtbot):
+def test_row_disables_hint_flyout(qtbot):
+    """The row replaces the hover hint flyout with its own readout: the
+    slider must not create a hint controller at all."""
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
     qtbot.waitExposed(dialog)
-    row = dialog.findChild(ValueSliderRow)
 
-    _show_hint(slider)
-    assert slider._hint_controller._flyout.isVisible()
-    assert not row._label.isVisible(), (
-        "the persistent label must drop while the hint flyout reads the value"
+    row = dialog.findChild(ValueSliderRow)
+    assert not row._label.isHidden(), "the label is always visible"
+    assert slider._hint_controller is None, (
+        "the row disables the hint flyout; no controller should be created"
     )
 
-    _hide_hint(slider)
-    assert row._label.isVisible()
-    assert row._label.text() == _percent_text(slider)
+
+def test_hint_enabled_flag_can_be_restored(qtbot):
+    slider = ValueSlider()
+    slider.set_hint_enabled(False)
+    assert not slider._hint_enabled
+
+    slider.set_hint_enabled(True)
+    dialog = QDialog()
+    dialog.resize(300, 80)
+    dialog.layout() or None
+    from PySide6.QtWidgets import QHBoxLayout
+
+    layout = QHBoxLayout(dialog)
+    slider.setRange(1, 100)
+    layout.addWidget(slider, 1)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    assert slider._hint_controller is not None
 
 
-def test_slider_geometry_stable_while_label_hidden(qtbot):
+def test_slider_geometry_stable_across_value_changes(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
@@ -90,29 +96,27 @@ def test_slider_geometry_stable_while_label_hidden(qtbot):
     before = slider.geometry()
     assert before.width() > 0, "slider must have settled geometry before the check"
 
-    _show_hint(slider)
-    assert not row._label.isVisible()
+    slider.setValue(1)
+    slider.setValue(100)
     assert slider.geometry() == before, (
-        "hiding the label must not reflow the row -- the pads absorb it"
+        "changing the value text must not reflow the row -- the fixed-width "
+        "right pad absorbs it"
     )
 
-    _hide_hint(slider)
-    assert slider.geometry() == before
 
-
-def test_pads_flank_track_with_equal_width(qtbot):
+def test_label_sits_right_of_track_without_left_pad(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
     qtbot.waitExposed(dialog)
     row = dialog.findChild(ValueSliderRow)
 
-    left, right = row._left_pad, row._right_pad
-    assert left.minimumWidth() > 0
-    assert left.minimumWidth() == right.minimumWidth()
-
-    assert left.geometry().right() < slider.geometry().left()
-    assert right.geometry().left() > slider.geometry().right()
+    assert not hasattr(row, "_left_pad"), "the left pad was removed"
+    assert row._right_pad.minimumWidth() > 0
+    assert row._right_pad.geometry().left() > slider.geometry().right()
+    # No left pad: the slider starts at the row's own left edge (row-local
+    # pos; row geometry is offset by the dialog's layout margins).
+    assert slider.pos().x() == 0
 
 
 def test_pad_width_fits_widest_value_text(qtbot):
@@ -127,26 +131,25 @@ def test_pad_width_fits_widest_value_text(qtbot):
     assert row._right_pad.minimumWidth() >= fm.horizontalAdvance("100,0%")
 
 
-def test_pad_widths_follow_live_scale(qtbot):
+def test_pad_width_follows_live_scale(qtbot):
     slider = ValueSlider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)
     qtbot.waitExposed(dialog)
     row = dialog.findChild(ValueSliderRow)
 
-    base = row._left_pad.minimumWidth()
+    base = row._right_pad.minimumWidth()
 
     UiScale.get_instance().set_factor(1.5)
-    assert row._left_pad.minimumWidth() == row._right_pad.minimumWidth()
-    assert row._left_pad.minimumWidth() > base
+    assert row._right_pad.minimumWidth() > base
 
     UiScale.get_instance().set_factor(1.0)
-    assert row._left_pad.minimumWidth() == base
+    assert row._right_pad.minimumWidth() == base
 
 
 def test_plain_slider_row_keeps_label_visible(qtbot):
     """A row over a bare toolkit Slider (no hint controller) must still show
-    the value readout and never try to hide it."""
+    the value readout."""
     slider = Slider()
     dialog = _make_dialog(slider)
     qtbot.addWidget(dialog)

@@ -17,16 +17,19 @@ changes (e.g. dragging).
 |---|---|
 | `*args, **kwargs` | toolkit `Slider` parameters |
 | `hint_formatter` | `SliderTextFormatter` for the flyout text (default: percent) |
+| `hint_enabled` | flyout on/off (`set_hint_enabled()` to toggle; off → no flyout) |
 
 The hint controller is created lazily on first show (the flyout needs a
 real window).
 
 ## ValueSliderRow
 
-`ValueSlider` + a persistent right-hand value label, flanked by equal
-fixed-width pads: `[pad] [track] [pad + label]`. Pad widths follow the
-label font through live `UiScale` changes; hiding the label while the hint
-flyout is active never reflows the row.
+`ValueSlider` + an always-visible right-hand value label: `[track] [label]`.
+The hover hint flyout is disabled in favor of this persistent readout; the
+fixed-width right pad (sized to the widest formatted value over the
+slider's range) keeps the slider's geometry stable as the value text
+changes. No left pad — the track starts flush at the row's left edge.
+Pad width follows the label font through live `UiScale` changes.
 
 | Param | Meaning |
 |---|---|
