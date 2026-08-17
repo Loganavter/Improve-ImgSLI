@@ -88,9 +88,6 @@ def get_image_dimensions(store, image_number: int) -> tuple[int, int] | None:
     return None
 
 
-def build_chrome_sync(widget, store, resolve_window_presenter):
-    return ImageCompareChromeSync(widget, store, resolve_window_presenter)
-
 
 class ImageCompareChromeSync(QObject):
     def __init__(self, widget, store, resolve_window_presenter):

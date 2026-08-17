@@ -129,33 +129,8 @@ def get_view_transformed_content_rect_widget_px(
     )
 
 
-def get_local_visible_image_rect(
-    widget,
-    *,
-    img_x: int,
-    img_y: int,
-    img_w: int,
-    img_h: int,
-) -> QRect | None:
-    visible_left = max(0, img_x)
-    visible_top = max(0, img_y)
-    visible_right = min(widget.width(), img_x + img_w)
-    visible_bottom = min(widget.height(), img_y + img_h)
-    if visible_right <= visible_left or visible_bottom <= visible_top:
-        return None
-    return QRect(
-        int(visible_left - img_x),
-        int(visible_top - img_y),
-        int(visible_right - visible_left),
-        int(visible_bottom - visible_top),
-    )
-
 
 def begin_content_scissor(widget, force: bool = False):
     """No-op in the QRhi pipeline (QRhi passes set scissor per-draw)."""
     return False
 
-
-def end_content_scissor(widget, enabled):
-    """No-op counterpart to ``begin_content_scissor``."""
-    return

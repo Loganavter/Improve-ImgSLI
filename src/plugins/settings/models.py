@@ -15,36 +15,6 @@ class SettingsDialogData:
     ui_font_mode: str
     ui_font_family: str
     ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
     optimize_magnifier_movement: bool
     magnifier_interpolation_method: str
     optimize_laser_smoothing: bool
@@ -58,37 +28,6 @@ class SettingsDialogData:
     ui_mode: str
     video_recording_fps: int
     rhi_backend: str = "default"
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
-    ui_scale_factor: float
     keyboard_overrides: dict[str, str] = field(default_factory=dict)
     tab_extras: dict[str, dict[str, Any]] = field(default_factory=dict)
 

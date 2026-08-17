@@ -64,11 +64,6 @@ def _resolve_interpolation_handler(controller):
         return sessions.on_interpolation_changed
     return None
 
-def _invoke_toolbar_binding_if_scrolling(control, control_id: str, hook_name: str, presenter, *args):
-    if not bool(getattr(control, "_is_scrolling", False)):
-        return
-    _invoke_toolbar_binding(control_id, hook_name, presenter, *args)
-
 def connect_signals(presenter):
     _connect_session_actions(presenter)
     _connect_name_editing(presenter)

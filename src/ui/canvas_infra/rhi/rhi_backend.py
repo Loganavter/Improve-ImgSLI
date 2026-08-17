@@ -601,12 +601,6 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
         from ui.canvas_infra.rhi.rhi_focus import install_qrhi_focus_parking
 
         install_qrhi_focus_parking(widget)
-
-
-def log_initialized_rhi_widget(widget: QRhiWidget) -> None:
-    pass
-
-
 def query_max_texture_size(rhi: QRhi | None) -> int:
     """Backend-reported max 2D texture dimension, source of truth for
     tile-size-vs-limit decisions (docs/dev/TILED_RENDERING_DESIGN.md Phase 0).

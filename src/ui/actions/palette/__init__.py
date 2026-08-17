@@ -128,25 +128,4 @@ def install_dialog_find_action_shortcut(
     return shortcut
 
 
-def install_find_action_shortcut(window: QWidget, callback) -> None:
-    """Deprecated: shortcuts come from ActionShortcutBinder. Kept as no-op sync."""
-    del callback
-    from ui.actions.binder import resync_action_shortcuts
 
-    resync_action_shortcuts(window)
-
-
-def install_contextual_palette_shortcut(window: QWidget, callback) -> None:
-    """Deprecated: shortcuts come from ActionShortcutBinder. Kept as no-op sync."""
-    del callback
-    from ui.actions.binder import resync_action_shortcuts
-
-    resync_action_shortcuts(window)
-
-
-def resolve_palette_topic_from_focus(*, active_tab: str | None = None) -> str | None:
-    from PySide6.QtWidgets import QApplication
-    from ui.actions.registry import get_action_registry
-
-    focused = QApplication.focusWidget()
-    return get_action_registry().topic_for_widget(focused, active_tab=active_tab)

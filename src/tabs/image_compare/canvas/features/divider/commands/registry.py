@@ -61,24 +61,6 @@ def command_toggle_divider_visibility(actions, visible: bool) -> None:
         )
 
 
-def command_set_divider_thickness(actions, thickness: int) -> None:
-    thickness = max(0, int(thickness))
-    visible = thickness > 0
-    if actions.controller.event_bus is not None:
-        actions.controller.event_bus.emit(SettingsToggleDividerVisibilityEvent(visible))
-        actions.controller.event_bus.emit(SettingsSetDividerThicknessEvent(thickness))
-        actions.controller.update_requested.emit()
-        return
-    settings = getattr(actions.controller, "settings", None)
-    if settings is not None and hasattr(settings, "execute_canvas_feature_command"):
-        settings.execute_canvas_feature_command(
-            "divider",
-            "settings.set_thickness",
-            thickness,
-        )
-        return
-    actions.controller.update_requested.emit()
-
 
 def command_build_export_overlay(
     store,
