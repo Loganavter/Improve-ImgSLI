@@ -230,6 +230,9 @@ Two shapes satisfy this policy:
 QUERY — "what's true right now":
     create_service("is_canvas_content_ready")
     create_service("session_has_content", store)
+    create_service("requires_first_run_onboarding")
+      -> True for image_compare / multi_compare (first-run onboarding
+         fires over the first such tab opened; see plugins/onboarding.md)
   Returns a primitive; None/False means "not applicable to this tab."
 
 EXTENSION-OBJECT — "give me a small opaque controller once, I'll talk

@@ -117,7 +117,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/dev/tabs/
 
 - **[Capability mechanisms](tabs/capability-mechanisms.md)** — `docs/dev/tabs/capability-mechanisms.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
