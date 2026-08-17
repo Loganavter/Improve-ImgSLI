@@ -749,7 +749,7 @@ Commands:
   Run & develop:
     run                 Run the application (GUI)
     test                Run the test suite (pytest); extra args pass through
-    context             cloc report for app + sli-ui-toolkit
+    context             context bundle (git/docs/cloc) for app + sli-ui-toolkit
   System:
     install-desktop     Install .desktop / .imgsli MIME / thumbnailer (Linux only)
     uninstall-desktop   Remove .desktop / MIME / thumbnailer (Linux only)
@@ -827,12 +827,15 @@ Run the test suite (pytest). Extra args pass through, e.g.:
 
     context = subparsers.add_parser(
         "context",
-        help="cloc report for app + sli-ui-toolkit",
+        help="context bundle (git/docs/cloc) for app + sli-ui-toolkit",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
-cloc report for Improve-ImgSLI and the external sli-ui-toolkit.
+Context bundle for Improve-ImgSLI and the external sli-ui-toolkit:
+git metadata, English help, *.md/*.txt docs, and cloc statistics
+(by default the full tree is replaced by unlimited cloc expansion).
 
-  ./launcher.sh context --cloc-only   cloc tables only → cloc.txt
+  ./launcher.sh context                full bundle → context.txt
+  ./launcher.sh context --cloc-only    cloc tables only → cloc.txt
 
 See 'src/devtools/context_cloc.py --help' for the full option set.
 """,
