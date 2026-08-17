@@ -41,6 +41,52 @@ def _reset_toolkit_config():
     reset_toolkit_config()
 
 
+@pytest.fixture(autouse=True)
+def _reset_theme_manager():
+    """ThemeManager is a process-wide singleton; isolate every test from it.
+
+    Theme-dialog tests (``test_app_message_dialog_theme`` etc.) register
+    palettes + QSS on the singleton and never unregister them. The QSS changes
+    font metrics, so a later test that builds a sizeHint-driven dialog
+    (e.g. ``ColorPickerDialog``) gets a wider minimum size and its geometry
+    assertions break. Snapshot-and-restore the singleton's mutable state
+    around every test, mirroring ``_reset_toolkit_config``.
+
+    The same tests also install the app-wide CSD decoration event filter
+    (``install_application_dialog_decorations``), which auto-decorates every
+    top-level ``QDialog`` at Polish time and stays installed process-wide.
+    Uninstall it too, otherwise later dialog-geometry tests (color picker,
+    …) silently gain a title bar and their sizeHint/right-alignment asserts
+    break.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from sli_ui_toolkit.managers import ThemeManager
+
+    tm = ThemeManager.get_instance()
+    saved = (
+        tm._current_theme,
+        tm._light_palette,
+        tm._dark_palette,
+        tm._qss_template,
+        list(tm._qss_paths),
+    )
+    try:
+        yield
+    finally:
+        tm._current_theme, tm._light_palette, tm._dark_palette, tm._qss_template, qss_paths = saved
+        tm._qss_paths = qss_paths
+        app = QApplication.instance()
+        if app is not None and app.styleSheet():
+            app.setStyleSheet("")
+        if app is not None and getattr(app, "_csd_filter_installed", False):
+            csd_filter = getattr(app, "_csd_filter", None)
+            if csd_filter is not None:
+                app.removeEventFilter(csd_filter)
+            app._csd_filter_installed = False  # type: ignore[attr-defined]
+            app._csd_filter = None  # type: ignore[attr-defined]
+
+
 @pytest.fixture(scope="session")
 def _hermetic_tps_spill_dir(tmp_path_factory) -> str:
     """One session-scoped tmp dir for all TiledPixelStore spill memmaps."""

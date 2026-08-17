@@ -1196,7 +1196,7 @@ def test_scale_above_1_virtualization_keeps_viewport_filled(qapp, tmp_path, monk
 
 
 
-def test_window_will_fill_screen_and_prelayout_width_estimate():
+def test_window_will_fill_screen_and_prelayout_width_estimate(qapp):
     """The shelf's pre-layout width estimate must use the screen width when
     the window is going to be maximized (persisted flag) even if the platform
     has not applied the state yet (Wayland applies it after show) — otherwise
@@ -1219,6 +1219,7 @@ def test_window_will_fill_screen_and_prelayout_width_estimate():
     try:
         win = QMainWindow()
         win.resize(1024, 768)
+        win.screen = lambda: FakeScreen()
         win.store = SimpleNamespace(
             settings=SimpleNamespace(window_was_maximized=True)
         )
@@ -1233,6 +1234,7 @@ def test_window_will_fill_screen_and_prelayout_width_estimate():
         # window's own width — no screen-width guessing for normal windows.
         win2 = QMainWindow()
         win2.resize(1024, 768)
+        win2.screen = lambda: FakeScreen()
         win2.store = SimpleNamespace(
             settings=SimpleNamespace(window_was_maximized=False)
         )
