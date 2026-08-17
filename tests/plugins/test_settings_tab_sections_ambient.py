@@ -82,7 +82,6 @@ def test_dialog_sidebar_shows_tab_sections_from_session_picker(app, registry):
         max_limit=200,
         debug_mode_enabled=False,
         system_notifications_enabled=True,
-        current_resolution_limit=0,
         active_tab="session_picker",
     )
     try:

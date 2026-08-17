@@ -20,7 +20,6 @@ def test_settings_dialog_select_section_by_id():
         max_limit=200,
         debug_mode_enabled=False,
         system_notifications_enabled=True,
-        current_resolution_limit=0,
         active_tab="image_compare",
     )
     assert dialog.sidebar.currentRow() == 0

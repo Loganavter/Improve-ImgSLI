@@ -31,7 +31,6 @@ def _dialog(**overrides) -> SettingsDialog:
         max_limit=200,
         debug_mode_enabled=False,
         system_notifications_enabled=True,
-        current_resolution_limit=0,
         active_tab="image_compare",
     )
     kwargs.update(overrides)
