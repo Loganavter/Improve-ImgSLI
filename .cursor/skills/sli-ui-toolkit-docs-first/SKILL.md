@@ -18,6 +18,16 @@ Toolkit docs usually answer the question. Read them before grepping `sli_ui_tool
    - `docs/dev/DESIGN_LANGUAGE.md` — tokens, variants, visual rules
    - `docs/dev/README.md`, `docs/dev/ARCHITECTURE.md` — package layout when docs are not widget-specific
 
+### Which toolkit copy is authoritative
+
+Before trusting or editing the sibling `../sli-ui-toolkit` checkout, check
+`requirements-gui.txt` for an `-e ../sli-ui-toolkit` line. With that line the
+toolkit is installed **editable** from the sibling — its local source and docs
+are authoritative, and edits there are live. Without it (pinned version / git
+ref / PyPI), the sibling — if present at all — is NOT what the app imports:
+treat the toolkit as a fixed external dependency and use its released
+docs/API only.
+
 If visuals still do not match after reading docs, run `./launcher.sh run --ui-inspector` ([docs/dev/UI_INSPECTOR.md](../../../docs/dev/UI_INSPECTOR.md)).
 
 ## Hard rules

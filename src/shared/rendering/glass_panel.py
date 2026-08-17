@@ -730,9 +730,36 @@ class GlassPanelRenderer:
             # (canvas and crop alike) already comes out top-down. Don't
             # reintroduce a flip here without re-confirming against a
             # non-mirrored reference first.
+            #
+            # UPDATE 2026-08-17: that "confirmed live" held only on the
+            # backend it was tested on. On backends where
+            # ``rhi.isYUpInFramebuffer()`` is true (OpenGL), ``colorTexture()``
+            # genuinely stores rows bottom-up, so an unflipped sourceTopLeft
+            # selects the mirror-image region of the canvas: the backdrop
+            # showed content from the wrong half of the screen and moved
+            # oppositely to the real image on pan ("mirror world"), with a
+            # constant offset when zooming. Flip sourceTopLeft only in that
+            # case (top-down backends keep the original behavior), and tell
+            # glass_blur.frag via its flipY uniform so the blur pass mirrors
+            # its sample V back into the panel's own coordinate space.
+            flip_y = False
+            if hasattr(rhi, "isYUpInFramebuffer"):
+                try:
+                    flip_y = bool(rhi.isYUpInFramebuffer())
+                except RuntimeError:
+                    flip_y = False
             copy_updates = rhi.nextResourceUpdateBatch()
             copy_desc = QRhiTextureCopyDescription()
-            copy_desc.setSourceTopLeft(device_top_left)
+            if flip_y:
+                tex_h = color_texture.pixelSize().height()
+                copy_desc.setSourceTopLeft(
+                    QPoint(
+                        device_top_left.x(),
+                        max(0, tex_h - device_top_left.y() - device_size.height()),
+                    )
+                )
+            else:
+                copy_desc.setSourceTopLeft(device_top_left)
             copy_desc.setPixelSize(device_size)
             assert panel.crop_tex is not None
             copy_updates.copyTexture(panel.crop_tex, color_texture, copy_desc)
@@ -745,7 +772,7 @@ class GlassPanelRenderer:
             blur_updates.updateDynamicBuffer(
                 panel.blur_ubuf,
                 0,
-                struct.pack("<4f", 1.0, 0.0, spec.blur_radius_px, 0.0),
+                struct.pack("<4f", 1.0, 0.0, spec.blur_radius_px, 1.0 if flip_y else 0.0),
             )
             command_buffer.beginPass(
                 panel.blur_target,

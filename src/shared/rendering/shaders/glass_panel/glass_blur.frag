@@ -26,7 +26,7 @@ layout(std140, binding = 0) uniform UBuf
 {
     vec2 direction;
     float radiusPx;
-    float _pad0;
+    float flipY; // 1.0 when colorTexture()'s rows are stored bottom-up (OpenGL)
 };
 
 layout(binding = 1) uniform sampler2D srcTex;
@@ -38,6 +38,17 @@ const int TAPS = 8; // -8..8 inclusive => 17 samples
 
 void main()
 {
+    // When the canvas's colorTexture() is stored bottom-up (backend-native on
+    // OpenGL; rhi.isYUpInFramebuffer() == true), the Python side flips the
+    // crop's sourceTopLeft to select the correct rows, which leaves crop_tex's
+    // row order reversed relative to the panel's own coordinate space. Flip
+    // the sample V here to compensate -- the second half of the pair that was
+    // added-then-reverted as a "false trail" (see glass_panel.py's docstring);
+    // the trail was false because the debug-dump tool was mirroring its ground
+    // truth, not because the flips were wrong. Gate on a uniform (not on the
+    // backend at compile time) so one qsb serves both row orders.
+    vec2 uv = vec2(vUv.x, mix(vUv.y, 1.0 - vUv.y, flipY));
+
     vec2 texel = direction / vec2(textureSize(srcTex, 0));
     float sigma = max(radiusPx / 3.0, 0.6);
 
@@ -47,7 +58,7 @@ void main()
     {
         float fi = float(i);
         float w = exp(-(fi * fi) / (2.0 * sigma * sigma));
-        sum += texture(srcTex, vUv + texel * fi) * w;
+        sum += texture(srcTex, uv + texel * fi) * w;
         weightSum += w;
     }
 
