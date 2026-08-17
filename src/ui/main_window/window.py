@@ -60,7 +60,7 @@ class MainWindow(QWidget):
 
         # Outer resize band: the surface carries transparent margin beyond
         # the visible body so the frameless edge can be grabbed from outside
-        # (the same tdesktop-style band the dialogs get via WindowChrome).
+        # (the same band the dialogs get via WindowChrome).
         apply_frameless(self, outer_band=CUSTOM_DECORATION_RESIZE_MARGIN)
 
         self._is_ui_stable = False
