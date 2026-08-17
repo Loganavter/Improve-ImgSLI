@@ -7,7 +7,6 @@ from PySide6.QtCore import QEvent, QPoint, QRect, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
-from sli_ui_toolkit.ui.managers.ui_font import apply_text_color
 from sli_ui_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
 
 from shared.rendering.glass_panel import GlassPanelSpec
@@ -146,34 +145,6 @@ class GlassHUD(BaseFlyout):
         background/border/shadow on top of the canvas-drawn panel showing
         through this widget's transparent background."""
 
-    def add_text_backing_widget(self, widget: QWidget) -> None:
-        """Marks `widget` (typically a `sli_ui_toolkit` `Label`) as needing
-        its glyphs rendered by the glass shader instead of by the widget
-        itself -- see `_rebuild_text_mask()`. Makes the widget's own text
-        fully transparent (it still owns layout/sizeHint/elide/marquee
-        exactly as before, it just no longer *paints* visible glyphs -- the
-        GPU sprite is what's actually seen). Safe to call more than once per
-        widget.
-
-        Prefers the widget's own ``setTextColor`` (``sli_ui_toolkit``
-        ``Label``'s variant-aware styling pipeline) when present, but falls
-        back to ``apply_text_color`` (palette-based -- works on any
-        ``QLabel``, toolkit ``Label`` or not) instead of silently no-oping.
-        A plain ``QLabel`` (no ``setTextColor``) previously fell through the
-        `getattr(..., None)` check untouched, leaving its own visible
-        glyphs painted underneath the GPU-recolored mask sprite -- a
-        doubled/misaligned "text over text" look (``ZoomIndicator._label``,
-        confirmed from a user report of exactly that symptom -- see
-        ``docs/dev/rendering/glass-panel-text-vibrancy-plan.md`` Phase 3)."""
-        if widget in self._text_backing_widgets:
-            return
-        self._text_backing_widgets.append(widget)
-        set_text_color = getattr(widget, "setTextColor", None)
-        if set_text_color is not None:
-            set_text_color(QColor(0, 0, 0, 0))
-        else:
-            apply_text_color(widget, QColor(0, 0, 0, 0))
-
     def _reflow_container(self) -> None:
         """Recomputes `self.container`'s layout tree bottom-up so its size
         reflects the *current* content -- call before reading
@@ -228,18 +199,6 @@ class GlassHUD(BaseFlyout):
                 self.container.size(),
                 _child_debug_info(self.container),
             )
-
-    def _rebuild_text_mask(self) -> bool:
-        """See ``glass_hud.text_mask.rebuild_text_mask`` -- kept as a
-        same-named instance method (not inlined at call sites) because
-        ``_refresh_backdrop()`` calls it directly and ``_watch_target()``
-        connects ``self._maybe_update_text_mask`` (below) as a Qt signal
-        slot, which needs a real bound method on the instance."""
-        return text_mask.rebuild_text_mask(self)
-
-    def _maybe_update_text_mask(self) -> None:
-        """See ``glass_hud.text_mask.maybe_update_text_mask``."""
-        text_mask.maybe_update_text_mask(self)
 
     def _debug_frame_submitted(self) -> None:
         """See ``glass_hud.target_watch.debug_frame_submitted`` --
@@ -341,13 +300,18 @@ class GlassHUD(BaseFlyout):
         (opaque-ish, adaptive tint) than "Clear" (near-transparent) -- the
         HIG notes Clear "needs a dimming layer for legibility" on its own.
 
-        Legibility for text specifically no longer comes from darkening the
-        fill further, nor from a separate backing chip (tried and dropped --
-        see git history: a near-opaque chip either looked like "the whole
-        panel went solid" or, once thinned out, like a hard-edged sticker
-        that never blended into the surrounding blur convincingly) but from
-        `_update_text_colors()` picking the text's own color per-widget from
-        the glass's actual measured luminance underneath it."""
+        Legibility for the HUD's own labels (which paint their glyphs
+        themselves in their normal theme color, on top of this glass) comes
+        from this strong tint: the fill is close to the theme's flyout
+        background regardless of what the canvas shows underneath, so the
+        theme's own text color always contrasts against it. A separate
+        backing chip (near-opaque rounded rect behind the text) was tried
+        and dropped -- it either read as "the whole panel went solid" or,
+        once thinned out, as a hard-edged sticker that never blended into
+        the surrounding blur convincingly; and dynamic per-pixel text
+        recoloring was tried and removed for reading as "liquid"/fluid (see
+        improve-imgsli-internal-docs/docs/legacy/rendering/
+        glass-panel-soft-threshold-adaptive-tint-plan.md)."""
         base = resolve_theme_color(self.theme_manager, "flyout.background")
         tint = QColor(base)
         tint.setAlpha(70 if self.theme_manager.is_dark() else 80)
@@ -387,8 +351,6 @@ class GlassHUD(BaseFlyout):
         registry = getattr(target, "glass_panels", None)
         if target is None or registry is None or not self.isVisible():
             return
-        if self._text_backing_widgets:
-            self._rebuild_text_mask()
         top_left = target.mapFromGlobal(self.container.mapToGlobal(QPoint(0, 0)))
         rect_logical = QRect(top_left, self.container.size())
         dpr = self.devicePixelRatioF()
@@ -408,7 +370,6 @@ class GlassHUD(BaseFlyout):
                 border_color=self._border_highlight_color(),
                 tint=self._glass_tint(),
                 blur_radius_px=_BLUR_RADIUS_PX,
-                text_mask_image=self._text_mask_image,
             ),
         )
         flyout_debug(

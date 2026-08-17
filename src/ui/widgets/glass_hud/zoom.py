@@ -109,18 +109,6 @@ class ZoomIndicator(GlassHUD):
         # Phase 3 for the full investigation.
         UiFont.get_instance().font_changed.connect(self._on_ui_font_changed)
         layout.addWidget(self._label)
-        # Makes self._label's own glyphs transparent -- see
-        # add_text_backing_widget()'s docstring. Deliberately no
-        # theme_changed-driven color re-application here anymore (the old
-        # _apply_label_color() did that): the GPU shader now picks this
-        # label's visible color per pixel from the glass itself, and
-        # re-applying a real black/white palette color on every theme
-        # change previously fought that, painting the QLabel's own glyphs
-        # visibly again underneath the GPU-recolored mask sprite -- a
-        # doubled/misaligned "text over text" look (reported live; see
-        # docs/dev/rendering/glass-panel-text-vibrancy-plan.md Phase 3).
-        self.add_text_backing_widget(self._label)
-
         self.btn_zoom_reset = Button(reset_icon or AppIcon.SYNC, parent=row)
         self.btn_zoom_reset.setFixedSize(scaled_px(22), scaled_px(22))
         # Hiding this overlay after a reset (zoom back to 1.0) would otherwise

@@ -59,7 +59,6 @@ class InfoHUD(GlassHUD):
 
     def add_label(self, label: QWidget) -> None:
         self.add_widget(label)
-        self.add_text_backing_widget(label)
 
     def show_on(self, target_widget: QWidget) -> None:  # noqa
         flyout_debug("info_hud[%s]: show_on(%r)", self._corner, target_widget)
