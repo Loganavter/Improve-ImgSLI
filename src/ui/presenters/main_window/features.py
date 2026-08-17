@@ -21,14 +21,12 @@ def build_main_window_features(
     ui,
     main_window_app,
     image_canvas,
-    plugin_ui_registry=None,
 ) -> MainWindowFeatureSet:
     ui_manager = UIManager(
         store,
         main_controller,
         ui,
         main_window_app,
-        plugin_ui_registry=plugin_ui_registry,
     )
     from tabs.registry import TabRegistry
 

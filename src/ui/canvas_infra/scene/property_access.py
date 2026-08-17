@@ -11,15 +11,6 @@ from .widget_contract import CanvasFeatureProperty, PropertySnapshot
 
 _log = logging.getLogger("ImproveImgSLI.canvas.properties")
 
-def get_canvas_feature_property_by_id(
-    session_type: str | None, property_id: str
-) -> CanvasFeatureProperty | None:
-    assert session_type is not None
-    for item in get_canvas_registry(session_type).get_feature_properties():
-        if item.id == property_id:
-            return item
-    return None
-
 def get_canvas_feature_property_by_setting_key(
     session_type: str | None, setting_key: str
 ) -> CanvasFeatureProperty | None:

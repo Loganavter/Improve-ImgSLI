@@ -85,7 +85,6 @@ class MainWindowComposer:
             ui=window.ui,
             main_window_app=window,
             image_canvas=image_canvas,
-            plugin_ui_registry=self.context.plugin_ui_registry,
         )
         presenter = MainWindowPresenter(
             window,
@@ -93,7 +92,6 @@ class MainWindowComposer:
             self.context.store,
             main_controller,
             features=features,
-            plugin_ui_registry=self.context.plugin_ui_registry,
         )
         event_handler.presenter = presenter
         main_controller.attach_window_shell(presenter)

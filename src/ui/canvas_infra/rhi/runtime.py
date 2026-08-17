@@ -22,21 +22,3 @@ def should_prefer_gles() -> bool:
     return session_type == "wayland" or has_wayland
 
 
-def build_canvas_surface_format() -> QSurfaceFormat:
-    fmt = QSurfaceFormat()
-    if should_prefer_gles():
-        fmt.setRenderableType(QSurfaceFormat.RenderableType.OpenGLES)
-        fmt.setVersion(3, 0)
-    else:
-        fmt.setRenderableType(QSurfaceFormat.RenderableType.OpenGL)
-        fmt.setVersion(3, 3)
-        fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
-    fmt.setAlphaBufferSize(8)
-    fmt.setDepthBufferSize(24)
-    fmt.setStencilBufferSize(8)
-    fmt.setSamples(0)
-    return fmt
-
-
-def log_canvas_backend_choice(canvas_type: str) -> None:
-    logger.warning("Image canvas backend selected: %s", canvas_type)

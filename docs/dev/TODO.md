@@ -123,9 +123,9 @@ Resolved / decided:
 
 Primary UX remains **action discovery** (Find Action / command palette). Full
 manual reading is secondary; no PDF / CMS / in-app browser.
-## P3 - Code mass reduction (sprint 1 in progress)
+## P3 - Code mass reduction (sprint 1 done)
 
-Status: `In progress`
+Status: `In progress` (sprint 2 next)
 
 Plan and status: [CODE_MASS_REDUCTION.md](./CODE_MASS_REDUCTION.md) —
 grounded in the 2026-08-17 audit (~5k LOC removable quickly, ~8.5–12.5k with
@@ -134,4 +134,30 @@ byte-identical duplicates, dead GLSL containers, orphan modules, compat
 shims) is underway; each deletion is import-grep-verified and followed by
 `./launcher.sh test tests/contracts -q`.
 
-Done: none yet.
+Done (2026-08-17): **Sprint 1 — 41 files removed, ~1 955 LOC deleted.**
+Byte-identical duplicates (`magnifier/commands/registry.py`,
+`palette/host.py`, `base_plugin.py`), dead GLSL containers
+(`magnifier/shaders/`, `canvas/shader_sources/`,
+`multi_compare/shaders/__init__.py`), 14 orphan modules, 12 compat shims
+(test imports rewritten to real modules), `shared/regions.py` merged into
+`shared/image_processing/regions.py`, unused `chevron-down.svg`. Contracts:
+1397 passed / 1 skipped. Doc-link side effect fixed
+(`tile-rendering-system.md` → `tiled_pixel_store.py`).
+
+Done (2026-08-17, same session): **pull-forward from Sprint 2 — ~540 LOC
+more.** Write-only registries deleted (`core/plugin_system/contributions.py`
+120 + `ui_integration.py` 26: `PluginDefinition`, five registration
+dataclasses, `PluginDefinitionRegistry`, `PluginUIRegistry` — zero readers,
+bootstrap only validated-then-discarded; plumbing removed from bootstrap /
+presenter / ui_manager / features / composer / toolbar connections) and the
+dead video-session layer trimmed from `video_editor/model.py` (386 → 112,
+`VideoSessionModel`/`VideoDecoderState`/`VideoSourceState`/
+`VideoSessionSnapshot` + `test_video_session_model.py` deleted). Contracts
+after: 1391 passed / 1 skipped.
+
+Open from Sprint 1 verification (pre-existing on clean HEAD, unrelated to
+this work): `test_recent_projects_panel.py::test_shelf_geometry_settles_by_first_drain`
+(geometry assert), `::test_window_will_fill_screen_and_prelayout_width_estimate`
+(offscreen crash), `tests/runtime/test_list_item_theme_idle.py::test_idle_list_item_matches_panel_background`
+(theme palette mismatch), `tests/runtime/test_color_picker_dialog.py::test_fields_row_gaps_stable_and_right_aligned`
+(flaky). Fix with their owners before claiming a fully green suite.

@@ -509,16 +509,7 @@ def _connect_save_buttons(presenter):
         export_presenter = _export_presenter()
         if export_presenter is None:
             return
-        window_presenter = _get_window_presenter(presenter)
-        plugin_ui_registry = (
-            getattr(window_presenter, "plugin_ui_registry", None)
-            if window_presenter is not None
-            else None
-        )
-        handler = None
-        if plugin_ui_registry is not None:
-            handler = plugin_ui_registry.get_action("quick_save")
-        (handler or export_presenter.quick_save)()
+        export_presenter.quick_save()
 
     def _on_save():
         export_presenter = _export_presenter()

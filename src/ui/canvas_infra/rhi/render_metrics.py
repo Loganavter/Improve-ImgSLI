@@ -41,9 +41,6 @@ def resolve_relative_px(
     )
 
 
-def resolve_image_px(value: float, metrics: RenderMetrics) -> float:
-    return max(0.0, float(value)) * max(0.0, float(metrics.canvas_to_view))
-
 
 def resolve_view_px(value: float, metrics: RenderMetrics) -> float:
     short_edge = min(
@@ -56,9 +53,6 @@ def resolve_view_px(value: float, metrics: RenderMetrics) -> float:
         output_scale=metrics.output_scale,
     )
 
-
-def resolve_screen_px(value: float, metrics: RenderMetrics) -> float:
-    return max(0.0, float(value))
 
 
 def resolve_font_px(base_px: float, metrics: RenderMetrics) -> int:

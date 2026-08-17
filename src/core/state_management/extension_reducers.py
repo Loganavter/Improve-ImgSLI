@@ -50,7 +50,3 @@ def reduce_render_config_extensions(
         reduced = reducer(reduced, action)
     return reduced
 
-
-def clear_extension_reducers() -> None:
-    _session_data_reducers.clear()
-    _render_config_reducers.clear()
