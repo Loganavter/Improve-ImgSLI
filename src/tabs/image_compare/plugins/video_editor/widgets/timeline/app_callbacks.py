@@ -41,15 +41,6 @@ def _channel_has_changes(channel) -> bool:
             return True
     return False
 
-def _find_track_in_model(timeline_model, track_id: str):
-    if timeline_model is None:
-        return None
-    for group in timeline_model.groups.values():
-        track = group.tracks.get(track_id)
-        if track is not None:
-            return track
-    return None
-
 def _evaluate_channel_at_timestamp(channel, timestamp: float):
     keyframes = channel.keyframes
     if not keyframes:

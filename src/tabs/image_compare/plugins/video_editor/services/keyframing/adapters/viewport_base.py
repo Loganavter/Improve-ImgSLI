@@ -17,10 +17,6 @@ from tabs.image_compare.plugins.video_editor.services.keyframing.adapters.static
 from tabs.image_compare.plugins.video_editor.services.keyframing.types import FrameSnapshot
 from tabs.image_compare.canvas.registry import registry
 
-class _ViewportProxy:
-    def __init__(self, viewport: ViewportState):
-        self.viewport = viewport
-
 def _resolve_read(viewport: ViewportState, parts: list[str]) -> Any:
     obj = viewport
     for part in parts:

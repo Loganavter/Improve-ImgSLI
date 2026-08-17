@@ -1,5 +1,3 @@
-from enum import StrEnum
-
 class AppConstants:
     # Kept in sync by hand with the packaging templates under build/ (AUR
     # PKGBUILD's pkgver, the Flatpak metainfo <release> entries, and Inno
@@ -75,35 +73,3 @@ class AppConstants:
     # Host tile size for TiledPixelStore (GEGL-style always-tiled storage).
     # Separate from GPU live tile extent (8192 in rhi_renderer/resources.py).
     PIXEL_TILE_SIZE = 512
-
-class Events(StrEnum):
-
-    CORE_UPDATE_REQUESTED = "core.update_requested"
-    CORE_ERROR_OCCURRED = "core.error_occurred"
-
-    EXPORT_TOGGLE_RECORDING = "export.toggle_recording"
-    EXPORT_TOGGLE_PAUSE_RECORDING = "export.toggle_pause_recording"
-    EXPORT_OPEN_VIDEO_EDITOR = "export.open_video_editor"
-    EXPORT_PASTE_IMAGE_FROM_CLIPBOARD = "export.paste_image_from_clipboard"
-
-    ANALYSIS_SET_CHANNEL_VIEW_MODE = "analysis.set_channel_view_mode"
-    ANALYSIS_TOGGLE_DIFF_MODE = "analysis.toggle_diff_mode"
-    ANALYSIS_SET_DIFF_MODE = "analysis.set_diff_mode"
-    ANALYSIS_METRICS_UPDATED = "analysis.metrics_updated"
-    ANALYSIS_REQUEST_METRICS = "analysis.request_metrics"
-
-    SETTINGS_CHANGE_LANGUAGE = "settings.change_language"
-    SETTINGS_TOGGLE_INCLUDE_FILENAMES_IN_SAVED = (
-        "settings.toggle_include_filenames_in_saved"
-    )
-    SETTINGS_APPLY_FONT_SETTINGS = "settings.apply_font_settings"
-    SETTINGS_TOGGLE_AUTO_CROP_BLACK_BORDERS = "settings.toggle_auto_crop_black_borders"
-    SETTINGS_UI_MODE_CHANGED = "settings.ui_mode_changed"
-
-    COMPARISON_UI_UPDATE = "comparison.ui_update"
-    COMPARISON_ERROR = "comparison.error"
-    COMPARISON_UPDATE_REQUESTED = "comparison.update_requested"
-
-    @staticmethod
-    def plugin_event(plugin_name: str, stage: str) -> str:
-        return f"plugin.{plugin_name}.{stage}"

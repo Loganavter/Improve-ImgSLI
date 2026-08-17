@@ -115,15 +115,6 @@ def on_toolbar_middle_clicked(presenter) -> None:
     set_toolbar_thickness(presenter, 0)
 
 
-def _has_loaded_images(store) -> bool:
-    document = getattr(store, "document", None)
-    if document is None:
-        return False
-    return (
-        getattr(document, "image1_path", None) is not None
-        or getattr(document, "image2_path", None) is not None
-    )
-
 
 def sync_toolbar_state(presenter) -> None:
     ui = presenter.widget

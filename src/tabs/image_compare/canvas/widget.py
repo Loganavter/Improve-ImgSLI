@@ -46,7 +46,7 @@ from .render_context import (
     resize_canvas,
     schedule_source_preload,
 )
-from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget, log_initialized_rhi_widget
+from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
 from ui.canvas_infra.rhi.rhi_render import render_clear_frame
 from shared.rendering.coalesced_flush import CoalescedFlush
 from shared.rendering.glass_panel import GlassPanelRegistry
@@ -233,7 +233,6 @@ class CanvasWidget(QRhiWidget):
             self._pending_session_controller = session_controller
 
     def initialize(self, command_buffer):
-        log_initialized_rhi_widget(self)
         ic_first_frame_debug(self, "initialize() renderer init starts")
         self._rhi_renderer.initialize(self, command_buffer)
         ic_first_frame_debug(self, "initialize() renderer ready")

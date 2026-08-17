@@ -30,7 +30,7 @@ from tabs.multi_compare.scene.passes import BaseImagesPass
 from tabs.multi_compare.scene.projection import build_render_context
 from tabs.multi_compare.scene.resources import SLOT_LIVE_TILE_EXTENT
 from ui.canvas_infra.rhi.render_executor import iter_active_render_passes
-from ui.canvas_infra.rhi.rhi_backend import log_initialized_rhi_widget, query_max_texture_size
+from ui.canvas_infra.rhi.rhi_backend import query_max_texture_size
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -105,7 +105,6 @@ class MultiCompareRhiRenderer:
         self.image_pass.queue_remove(slot_id)
 
     def initialize(self, command_buffer) -> None:
-        log_initialized_rhi_widget(self.host)
         new_rhi = self.host.rhi()
         target = self.host.renderTarget()
         if new_rhi is None or target is None:

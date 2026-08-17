@@ -87,11 +87,6 @@ def qimage_to_png_bytes(
     return bytes(ba)  # type: ignore[call-overload]  # QByteArray supports buffer protocol
 
 
-def qimage_to_jpeg_bytes(image: QImage, *, quality: int = PREVIEW_JPEG_QUALITY) -> bytes | None:
-    """Encode preview bytes (PNG). ``quality`` is ignored; kept for call-site compat."""
-    del quality
-    return qimage_to_png_bytes(image)
-
 
 def _canvas_attr(host) -> Any:
     if host is None:
@@ -200,11 +195,6 @@ def capture_project_preview_png(
     return qimage_to_png_bytes(cover, compress=compress)
 
 
-def capture_project_preview_jpeg(window=None, **kwargs) -> bytes | None:
-    """Deprecated alias — canvas grab as PNG bytes (member name is ``preview.png``)."""
-    kwargs.pop("quality", None)
-    return capture_project_preview_png(window, **kwargs)
-
 
 def zip_has_preview(path: str | Path) -> bool:
     path = Path(path)
@@ -233,10 +223,6 @@ def read_preview_image_bytes(path: str | Path) -> bytes | None:
         return None
     return None
 
-
-def read_preview_jpeg_bytes(path: str | Path) -> bytes | None:
-    """Deprecated alias for :func:`read_preview_image_bytes`."""
-    return read_preview_image_bytes(path)
 
 
 def peek_project_preview(path: str | Path) -> QPixmap | None:

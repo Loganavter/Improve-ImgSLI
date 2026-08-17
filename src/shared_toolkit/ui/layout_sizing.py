@@ -219,26 +219,6 @@ def widget_height_hint(widget: QWidget | None, *, default: int = 0) -> int:
     return max(default, widget.sizeHint().height())
 
 
-def max_widget_width_hint(
-    widgets: Iterable[QWidget | None],
-    *,
-    default: int = 0,
-) -> int:
-    width = default
-    for widget in widgets:
-        width = max(width, widget_width_hint(widget))
-    return width
-
-
-def max_widget_height_hint(
-    widgets: Iterable[QWidget | None],
-    *,
-    default: int = 0,
-) -> int:
-    height = default
-    for widget in widgets:
-        height = max(height, widget_height_hint(widget))
-    return height
 
 
 def tab_widget_intrinsic_width(
@@ -445,18 +425,6 @@ def max_visible_widget_width_hint(
     return width
 
 
-def max_visible_widget_height_hint(
-    widgets: Iterable[QWidget | None],
-    *,
-    default: int = 0,
-) -> int:
-    height = default
-    for widget in widgets:
-        if widget is None or not _widget_contributes_to_size(widget):
-            continue
-        height = max(height, widget_height_hint(widget))
-    return height
-
 
 def sum_visible_widget_height_hint(
     widgets: Iterable[QWidget | None],
@@ -475,25 +443,6 @@ def sum_visible_widget_height_hint(
     gaps = max(0, len(heights) - 1) * max(0, int(spacing))
     return sum(heights) + gaps + default
 
-
-def compute_scroll_footer_size(
-    scroll_content: QWidget | None,
-    footer: QWidget | None,
-    *,
-    outer_margins: int,
-    spacing: int,
-    extra_width_widgets: Iterable[QWidget | None] = (),
-) -> tuple[int, int]:
-    content_width = max(
-        widget_width_hint(scroll_content),
-        max_visible_widget_width_hint(extra_width_widgets),
-    )
-    content_height = widget_height_hint(scroll_content)
-    footer_width = widget_width_hint(footer)
-    footer_height = widget_height_hint(footer)
-    total_width = max(content_width, footer_width) + outer_margins
-    total_height = content_height + spacing + footer_height + outer_margins
-    return total_width, total_height
 
 
 def measure_layout_minimum_with_preferred_canvas(
