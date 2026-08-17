@@ -385,9 +385,9 @@ class ImageCompareLayoutBuilder:
         row = QHBoxLayout()
         row.setSpacing(8)
         row.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignVCenter)
-        # Equal fixed-width pads flank the track; the right one hosts the
-        # persistent value label, and both absorb its show/hide so the
-        # slider's geometry never shifts (see ValueSliderRow).
+        # The persistent value label sits right of the track (ValueSliderRow
+        # replaces the hover hint flyout with it); a fixed-width pad keeps
+        # the slider's geometry stable as the value text changes.
         row.addWidget(
             ValueSliderRow(slider), 1, alignment=Qt.AlignmentFlag.AlignVCenter
         )

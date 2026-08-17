@@ -158,9 +158,9 @@ def build(dialog, p):
     dialog.slider_ui_scale.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
     )
-    # Persistent value readout on the right of the track, flanked by equal
-    # fixed-width pads so hiding it during the hover hint flyout never
-    # shifts the slider's geometry (see ValueSliderRow).
+    # Persistent value readout on the right of the track; ValueSliderRow
+    # disables the hover hint flyout in favor of this always-visible label
+    # (fixed-width pad keeps the slider's geometry stable as text changes).
     dialog.slider_ui_scale_row = ValueSliderRow(dialog.slider_ui_scale)
     scale_layout.addWidget(dialog.slider_ui_scale_row, 1)
     dialog.ui_scale_group.add_layout(scale_layout)

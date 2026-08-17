@@ -114,9 +114,9 @@ class SliderHintController(QObject):
     leaving the slider upward) it should disappear, not linger.
 
     ``hint_active_changed`` fires True while the flyout is shown (hover /
-    drag / wheel) and False after it hides -- a persistent value readout
-    next to the slider (see ``ValueSliderRow``) uses it to drop its own
-    duplicate display for the duration.
+    drag / wheel) and False after it hides. (``ValueSliderRow`` used to
+    subscribe to drop its persistent readout for the duration — it now
+    disables the hint flyout instead and keeps its label always visible.)
     """
 
     hint_active_changed = Signal(bool)
@@ -308,6 +308,10 @@ class ValueSlider(Slider):
 
     ``hint_active_changed`` (re-emitted from the hint controller) fires
     True while the value flyout is up and False when it hides.
+
+    Pass ``hint_enabled=False`` (or call :meth:`set_hint_enabled`) to turn
+    the flyout off — used by ``ValueSliderRow``, whose persistent
+    right-hand value label replaces the hover flyout.
     """
 
     hint_active_changed = Signal(bool)
@@ -316,13 +320,32 @@ class ValueSlider(Slider):
         self,
         *args,
         hint_formatter: SliderTextFormatter | None = None,
+        hint_enabled: bool = True,
         **kwargs,
     ) -> None:
         self._hint_formatter = hint_formatter or _percent_text
+        self._hint_enabled = bool(hint_enabled)
         self._hint_controller: SliderHintController | None = None
         super().__init__(*args, **kwargs)
 
+    def set_hint_enabled(self, enabled: bool) -> None:
+        """Turn the hover value flyout on/off.
+
+        Safe to call before the slider is shown (the hint controller is
+        only created lazily on first show); if it already exists, its
+        flyout is hidden immediately.
+        """
+        self._hint_enabled = bool(enabled)
+        controller = self._hint_controller
+        if controller is not None and not self._hint_enabled:
+            try:
+                controller._hide()
+            except RuntimeError:
+                pass
+
     def _ensure_hint_controller(self) -> None:
+        if not self._hint_enabled:
+            return
         if self._hint_controller is None:
             # Created lazily on first show: the controller parents a
             # BaseFlyout to this slider, which needs a real window. Sliders
@@ -341,8 +364,8 @@ class ValueSlider(Slider):
         super().showEvent(event)
 
 
-# Horizontal breathing room inside each pad, on top of the widest label
-# text (design px — scales with UiScale).
+# Horizontal breathing room inside the value pad, on top of the widest
+# label text (design px — scales with UiScale).
 _PAD_PADDING_DESIGN_PX = 4
 
 
@@ -365,16 +388,16 @@ class _FormattedSliderSample:
 
 
 class ValueSliderRow(QWidget):
-    """``ValueSlider`` + a persistent right-hand value label, flanked by
-    equal fixed-width pads: ``[pad] [track] [pad + label]``.
+    """``ValueSlider`` + an always-visible right-hand value label:
+    ``[track] [label]``.
 
-    The right pad hosts the live value readout (same text as the hover
-    hint flyout, via the slider's ``hint_formatter``); the left pad mirrors
-    its width so the track sits centered between the two. Both pads are
-    fixed-width and stay in the layout, so hiding the label while the hint
-    flyout is active (``hint_active_changed``) never reflows the row or
-    shifts the slider's geometry. Pad widths follow the label font through
-    live ``UiScale`` changes.
+    The row replaces the hover hint flyout entirely: the slider's hint is
+    disabled (``set_hint_enabled(False)``) and the right pad hosts the live
+    value readout in the same format (via the slider's ``hint_formatter``)
+    at all times. The pad is fixed-width — sized to the widest formatted
+    value over the slider's range — so the label text never reflows the
+    row or shifts the slider's geometry as the value changes. Pad width
+    follows the label font through live ``UiScale`` changes.
     """
 
     def __init__(
@@ -398,17 +421,21 @@ class ValueSliderRow(QWidget):
         self._label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self._left_pad = QWidget(self)
         self._right_pad = QWidget(self)
         right_layout = QHBoxLayout(self._right_pad)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
         right_layout.addWidget(self._label)
 
+        # The hover hint flyout is redundant next to this always-visible
+        # readout — turn it off so the value shows in exactly one place.
+        disable_hint = getattr(slider, "set_hint_enabled", None)
+        if callable(disable_hint):
+            disable_hint(False)
+
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
-        row.addWidget(self._left_pad)
         row.addWidget(slider, 1)
         row.addWidget(self._right_pad)
         self.setSizePolicy(
@@ -416,9 +443,6 @@ class ValueSliderRow(QWidget):
         )
 
         slider.valueChanged.connect(self._on_value_changed)
-        hint_signal = getattr(slider, "hint_active_changed", None)
-        if hint_signal is not None:
-            hint_signal.connect(self._on_hint_active_changed)
         self._apply_label()
         self._apply_pad_width()
         UiScale.get_instance().scale_changed.connect(self._on_scale_changed)
@@ -441,26 +465,15 @@ class ValueSliderRow(QWidget):
     def _on_value_changed(self, _value: int) -> None:
         self._apply_label()
 
-    def _on_hint_active_changed(self, active: bool) -> None:
-        if active:
-            # The hover flyout above the thumb already reads the value —
-            # drop the duplicate readout for its duration.
-            self._label.hide()
-        else:
-            self._apply_label()
-            self._label.show()
-
     def _apply_pad_width(self, _factor: float | None = None) -> None:
         try:
             import shiboken6
 
-            if not shiboken6.Shiboken.isValid(self._left_pad):
+            if not shiboken6.Shiboken.isValid(self._right_pad):
                 return
         except Exception:
             return
-        width = self._pad_width()
-        self._left_pad.setFixedWidth(width)
-        self._right_pad.setFixedWidth(width)
+        self._right_pad.setFixedWidth(self._pad_width())
 
     def _pad_width(self) -> int:
         try:
