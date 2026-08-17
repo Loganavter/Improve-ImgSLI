@@ -3,8 +3,8 @@ from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E40
 
 import time
 
-from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt
-from PySide6.QtGui import QColor, QImage
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from sli_ui_toolkit.ui.managers.ui_font import apply_text_color
@@ -14,7 +14,7 @@ from shared.rendering.glass_panel import GlassPanelSpec
 from ui.theming import resolve_theme_color
 from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
 from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
-from ui.widgets.glass_hud import target_watch, text_mask
+from ui.widgets.glass_hud import target_watch
 from ui.widgets.glass_hud.panel_display import create_glass_panel_display_widget
 
 _BLUR_RADIUS_PX = 16.0
@@ -108,26 +108,8 @@ class GlassHUD(BaseFlyout):
         # without touching their placement math.)
         self._main_layout.setContentsMargins(0, 0, 0, 0)
         self._target_widget: QWidget | None = None
-        # Widgets (usually sli_ui_toolkit Labels) whose own glyphs get
-        # rasterized into a shared alpha mask instead of painted directly --
-        # see add_text_backing_widget() / _rebuild_text_mask(). Registered
-        # explicitly, not auto-derived from every child, since buttons/icons
-        # don't want this.
-        self._text_backing_widgets: list[QWidget] = []
-        self._last_text_mask_update = 0.0
-        self._text_mask_cache_key: tuple | None = None
-        self._text_mask_image: QImage | None = None
-        # Size the currently-cached `_text_mask_image` was rasterized at --
-        # lets rebuild_text_mask() tell "still within the throttle window,
-        # nothing to do" apart from "within the throttle window but the
-        # panel resized/reflowed since, so the cached mask no longer even
-        # matches this geometry" (see that function).
-        self._text_mask_device_size: QSize | None = None
         # IMGSLI_FLYOUT_DEBUG=1 only: call-rate reporting in
-        # _rebuild_text_mask(), see there.
-        self._text_mask_call_count = 0
-        self._text_mask_rebuild_count = 0
-        self._text_mask_call_window_start = time.monotonic()
+        # _refresh_backdrop() / _position(), see there.
         self._debug_frame_count = 0
         self._debug_frame_window_start = time.monotonic()
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)

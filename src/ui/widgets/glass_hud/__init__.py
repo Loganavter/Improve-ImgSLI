@@ -1,9 +1,9 @@
 """App-level glass HUD suite — pinned corner chips over the canvas.
 
 Shared frosted-glass flyout base (``GlassHUD``), its composited sprite
-blitter (``panel_display``), the two concrete HUD chips (``InfoHUD``,
-``ZoomIndicator``), and the internal text-mask / target-watch helpers.
-External consumers import from this package's public names.
+blitter (``panel_display``), and the two concrete HUD chips (``InfoHUD``,
+``ZoomIndicator``). External consumers import from this package's public
+names.
 """
 
 from __future__ import annotations
