@@ -30,7 +30,10 @@ class MainWindowStartupRuntime:
         window = self.window
 
         window._root_layout = QVBoxLayout(window)
-        window._root_layout.setContentsMargins(0, 0, 0, 0)
+        # The outer resize band insets the whole content by 8px on every
+        # side (the surface carries the transparent band beyond the visible
+        # body — same contract the dialogs get from WindowChrome).
+        window._root_layout.setContentsMargins(8, 8, 8, 8)
         window._root_layout.setSpacing(0)
 
         window._custom_title_bar = self._build_custom_title_bar()
@@ -66,10 +69,11 @@ class MainWindowStartupRuntime:
         window = self.window
         if getattr(window, "_startup_cover", None) is None:
             return
-        rect = window.rect()
+        # Keep the cover inside the outer resize band (transparent margin).
+        rect = window.rect().adjusted(8, 8, -8, -8)
         title_bar = getattr(window, "_custom_title_bar", None)
         if title_bar is not None and title_bar.isVisible():
-            top = title_bar.height()
+            top = 8 + title_bar.height()
             rect.setTop(top)
         window._startup_cover.setGeometry(rect)
         window._startup_cover.raise_()
