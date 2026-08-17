@@ -67,7 +67,11 @@ _TILE_CACHE_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
 # PIL image on next use (see the cache-miss fallback in
 # ``realize_tile_plan`` below), so eviction here is a memory/recompute
 # tradeoff, never a correctness one.
-_HOST_TEXTURE_CACHE_BUDGET_BYTES = 3 * 1024 * 1024 * 1024
+# Budget shared with ``shared/rendering/host_texture_cache.py`` (one
+# canonical 3 GiB value; keep them in sync via the shared constant).
+from shared.rendering.host_texture_cache import (
+    DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES as _HOST_TEXTURE_CACHE_BUDGET_BYTES,
+)
 
 
 def _pil_image_for_texture_key(widget, key):

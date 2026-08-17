@@ -12,14 +12,6 @@ _INTERPOLATION_KEY_MAP = {
 
 _THEME_KEYS = ("auto", "light", "dark")
 
-_RESOLUTION_KEY_MAP = {
-    "Original": "settings.original",
-    "8K (4320p)": "settings.resolution_8k",
-    "4K (2160p)": "settings.resolution_4k",
-    "2K (1440p)": "settings.resolution_2k",
-    "Full HD (1080p)": "settings.resolution_full_hd",
-}
-
 
 def apply_translations(dialog, lang: str) -> None:
     title = dialog.tr("misc.settings", lang)
@@ -34,7 +26,6 @@ def apply_translations(dialog, lang: str) -> None:
     _apply_label_with_colon(dialog, lang)
     _rebuild_theme_combo(dialog, lang)
     _rebuild_font_family_combo(dialog, lang)
-    _rebuild_resolution_combo(dialog, lang)
     _rebuild_interpolation_combos(dialog, lang)
     _rebuild_rhi_backend_combo(dialog, lang)
 
@@ -89,7 +80,6 @@ def _apply_group_titles(dialog, lang: str) -> None:
         ("ui_mode_group", "settings.ui_mode"),
         ("font_group", "settings.ui_font"),
         ("other_ui_group", "settings.maximum_name_length_ui"),
-        ("res_group", "settings.display_cache_resolution"),
         ("interactive_opt_group", "settings.interactive_optimization"),
         ("render_backend_group", "settings.render_backend"),
         ("auto_group", "settings.auto"),
@@ -160,20 +150,6 @@ def _rebuild_font_family_combo(dialog, lang: str) -> None:
     for fam in QFontDatabase.families():
         combo.addItem(fam, fam)
     idx = combo.findData(current or "")
-    if idx != -1:
-        combo.setCurrentIndex(idx)
-
-
-def _rebuild_resolution_combo(dialog, lang: str) -> None:
-    combo = getattr(dialog, "combo_resolution", None)
-    if combo is None:
-        return
-    current = combo.currentData()
-    combo.clear()
-    for name_key, limit in AppConstants.DISPLAY_RESOLUTION_OPTIONS.items():
-        translated = dialog.tr(_RESOLUTION_KEY_MAP.get(name_key, name_key), lang)
-        combo.addItem(translated, userData=limit)
-    idx = combo.findData(current)
     if idx != -1:
         combo.setCurrentIndex(idx)
 

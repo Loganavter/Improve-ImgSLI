@@ -84,13 +84,26 @@ Executing the safe round-2 findings; each step verified with import sweep
   `AnalysisRequestMetrics` + the `ComparisonUIUpdateEvent` alias), dead
   plugin chains `analysis`/`viewport` (main_controller properties + font
   flyout interaction handlers + keyboard-movement guards).
-- **Deferred (product decision)**: `display_resolution_limit` dead setting
-  — UI + persistence exist, zero render/load consumers; removing it
-  touches 13 files (Redux action `SetDisplayResolutionLimitAction` +
-  reducer case, dialog threading, tab settings page); either wire a real
-  resolution cap in the render pipeline or remove the UI. Verify with
-  tracing before touching (the audit's own caution for this one setting).
-- **Batch 4 — Done (working tree)**: semantic consolidation —
+- **Deferred (product decision)**: *resolved 2026-08-17 — the setting is
+  dead, not a product question.* `display_resolution_limit` ("Display cache
+  resolution") was a relic of the pre-GEGL full-frame display cache — the
+  old full-image PIL downscale documented as gone in
+  `docs/dev/rendering/display-image-pipeline.md` ("The old full-image
+  display cache … is gone; its role is served by the mipmap pyramid over
+  the tiled store"). Removed entirely (14 files, ~120 LOC): constants
+  `DISPLAY_RESOLUTION_OPTIONS`/`DEFAULT_DISPLAY_RESOLUTION_LIMIT`,
+  `RenderConfig.display_resolution_limit` + serialization/validation,
+  `SetDisplayResolutionLimitAction` + `ActionType` member + dispatcher
+  string + reducer case, settings load/save, dialog threading
+  (`current_resolution_limit`), the tab performance-page group
+  (`combo_resolution`), `_rebuild_resolution_combo` + `_RESOLUTION_KEY_MAP`
+  + translations line, session-persistence restore, three test fixtures.
+  Also removed: duplicate `_HOST_TEXTURE_CACHE_BUDGET_BYTES` (3 GiB) in
+  IC residency — now aliases the shared
+  `DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES` constant. `display_cache_key`
+  in the render plan was investigated and is **live** (read by
+  `plan_applicator` for display-plan cache invalidation) — not removed.
+- **Batch 4 — Done (committed `7a3cde2a`)**: semantic consolidation —
   `first_frame_debug.py` IC↔MC (195-line mirrors) merged into one
   parameterized `shared/rendering/first_frame_debug.py` + two thin
   per-tab wrappers keeping the public names (no call-site changes); shared
@@ -99,11 +112,17 @@ Executing the safe round-2 findings; each step verified with import sweep
   `ExportSaveFlowCoordinator` + `MultiCompareSaveFlowCoordinator`.
   Contracts 1389 passed / 1 skipped (one platform-isolation failure fixed:
   shared module must not mention `image_compare` in docstrings).
-- **Pending**: batch 5 (shared accessors `_size`/`_img_dims` →
-  `pixel_source_size`, filename helpers, resample-map, ~70–100 LOC, low
-  risk); the `downscale_pair_to_limit` name-collision mine (two different
-  functions under one name — rename or unify, check all callers) is
-  flagged as the next item to do first.
+- **Batch 5 — Partial (working tree)**: `downscale_pair_to_limit` name
+  collision defused — the dead PIL-only copy in
+  `shared/image_processing/resize.py` (0 importers) removed, the name now
+  unambiguously means the tile-native `pixel_ops/downscale.py` version;
+  `pixel_source_size` extended (QSize/callable-width/None) and the three
+  per-module `_size`/`_img_dims` duck-typing accessors in
+  `pixel_ops/{downscale,resample,unify}.py` replaced by the canonical
+  helper. Left as optional low-value: filename helpers for video-export
+  (#6), shared `_RESAMPLE` map (#7), tab-side `_img_dims` in
+  `canvas/{render_config,texture_parts/base_images,presentation/plan_applicator}`
+  (hot pixel paths — not worth the churn).
   toolkit work is blocked on the second host (Tkonverter not on disk).
 
 ## Principles

@@ -7,15 +7,6 @@ class AppConstants:
     # stale-cache purge notice after upgrading from an untracked version.
     APP_VERSION = "11.0.0"
 
-    DISPLAY_RESOLUTION_OPTIONS = {
-        "Original": 0,
-        "8K (4320p)": 4320,
-        "4K (2160p)": 2160,
-        "2K (1440p)": 1440,
-        "Full HD (1080p)": 1080,
-    }
-    DEFAULT_DISPLAY_RESOLUTION_LIMIT = 2160
-
     MIN_NAME_LENGTH_LIMIT = 10
     MAX_NAME_LENGTH_LIMIT = 150
     DEFAULT_JPEG_QUALITY = 93

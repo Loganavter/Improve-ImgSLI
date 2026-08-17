@@ -20,7 +20,6 @@ from core.state_management.actions import (
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
     SetCachedDiffImageAction,
-    SetDisplayResolutionLimitAction,
     SetDrawTextBackgroundAction,
     SetFileNameBgColorAction,
     SetFileNameColorAction,
@@ -152,6 +151,4 @@ class ImageRenderConfigReducer:
             return replace(config, text_placement_mode=action.mode)
         if isinstance(action, SetMaxNameLengthAction):
             return replace(config, max_name_length=action.length)
-        if isinstance(action, SetDisplayResolutionLimitAction):
-            return replace(config, display_resolution_limit=action.limit)
         return config

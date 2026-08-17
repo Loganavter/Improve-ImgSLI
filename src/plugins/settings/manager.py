@@ -129,9 +129,6 @@ class SettingsManager:
         )
 
         render.max_name_length = self._get_setting("max_name_length", 50, int)
-        render.display_resolution_limit = self._get_setting(
-            "display_resolution_limit", 2160, int
-        )
 
         view.movement_speed_per_sec = self._get_setting(
             "movement_speed_per_sec", 2.0, float
@@ -297,7 +294,6 @@ class SettingsManager:
             s.rhi_backend,
         )
         self._save_setting("max_name_length", render.max_name_length)
-        self._save_setting("display_resolution_limit", render.display_resolution_limit)
 
         self._save_tab_canvas_feature_settings(store)
 

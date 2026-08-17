@@ -49,7 +49,6 @@ class SettingsDialog(ThemedDialog):
         max_limit,
         debug_mode_enabled,
         system_notifications_enabled,
-        current_resolution_limit,
         parent=None,
         tr_func=None,
         current_ui_font_mode: str = "builtin",
@@ -85,7 +84,6 @@ class SettingsDialog(ThemedDialog):
             max_limit=max_limit,
             debug_mode_enabled=debug_mode_enabled,
             system_notifications_enabled=system_notifications_enabled,
-            current_resolution_limit=current_resolution_limit,
             tr_func=self.tr,
             current_ui_font_mode=current_ui_font_mode,
             current_ui_font_family=current_ui_font_family,
@@ -394,7 +392,6 @@ class SettingsDialog(ThemedDialog):
             max_name_length=self.spin_max_length.value(),
             debug_enabled=self.debug_checkbox.isChecked(),
             system_notifications_enabled=self.system_notifications_checkbox.isChecked(),
-            resolution_limit=_val("combo_resolution", ctx.current_resolution_limit),
             ui_font_mode=ui_font_mode,
             ui_font_family=self.combo_font_family.currentData() or "",
             ui_scale_factor=(
