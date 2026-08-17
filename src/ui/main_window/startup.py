@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 
 from plugins.onboarding import host as onboarding_host
+from shared_toolkit.ui.decorate_dialog import resolve_csd_band
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.widgets.themed_surface import ThemedSurface
 
@@ -30,10 +31,13 @@ class MainWindowStartupRuntime:
         window = self.window
 
         window._root_layout = QVBoxLayout(window)
-        # The outer resize band insets the whole content by 8px on every
+        # The outer resize band insets the whole content by the band on every
         # side (the surface carries the transparent band beyond the visible
-        # body — same contract the dialogs get from WindowChrome).
-        window._root_layout.setContentsMargins(8, 8, 8, 8)
+        # body — same contract the dialogs get from WindowChrome). The band
+        # collapses to 0 in maximized/fullscreen, re-synced by
+        # ``MainWindow._sync_csd_content_band`` on WindowStateChange.
+        band = resolve_csd_band(window)
+        window._root_layout.setContentsMargins(band, band, band, band)
         window._root_layout.setSpacing(0)
 
         window._custom_title_bar = self._build_custom_title_bar()
@@ -69,11 +73,13 @@ class MainWindowStartupRuntime:
         window = self.window
         if getattr(window, "_startup_cover", None) is None:
             return
-        # Keep the cover inside the outer resize band (transparent margin).
-        rect = window.rect().adjusted(8, 8, -8, -8)
+        # Keep the cover inside the outer resize band (transparent margin);
+        # the band collapses to 0 in maximized/fullscreen.
+        band = resolve_csd_band(window)
+        rect = window.rect().adjusted(band, band, -band, -band)
         title_bar = getattr(window, "_custom_title_bar", None)
         if title_bar is not None and title_bar.isVisible():
-            top = 8 + title_bar.height()
+            top = band + title_bar.height()
             rect.setTop(top)
         window._startup_cover.setGeometry(rect)
         window._startup_cover.raise_()

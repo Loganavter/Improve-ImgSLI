@@ -21,6 +21,25 @@ from ui.theming import polish_themed_dialog, resolve_theme_color
 CUSTOM_DECORATION_RESIZE_MARGIN = 8
 
 
+def resolve_csd_band(window) -> int:
+    """Effective CSD outer-band inset for ``window``.
+
+    The frameless surface carries a transparent outer band (resize-grab
+    margin) beyond the visible body. Maximized/fullscreen windows cannot be
+    edge-resized, so the band (and everything inset by it — the painted
+    body, the root-layout content) must collapse to 0 there; otherwise an
+    invisible strip remains around the window that window-capture tools
+    include (painted with the window background once the body fills the
+    surface).
+    """
+    if window.isMaximized() or window.isFullScreen():
+        return 0
+    try:
+        return int(window.property("_csd_outer_band") or 0)
+    except Exception:
+        return 0
+
+
 _MSGBOX_TITLE_BY_ICON = {
     QMessageBox.Icon.Critical: "Error",
     QMessageBox.Icon.Warning: "Warning",
