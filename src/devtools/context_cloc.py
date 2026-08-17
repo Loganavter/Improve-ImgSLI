@@ -2,9 +2,13 @@
 """Dev context bundle + cloc report generator (Python port of context_cloc.sh).
 
 Builds a context bundle for Improve-ImgSLI and the optional sibling
-sli-ui-toolkit checkout: git metadata, repo trees, English help files,
-other ``*.md``/``*.txt`` docs, and cloc statistics tables. The external
+sli-ui-toolkit checkout: git metadata, English help files, other
+``*.md``/``*.txt`` docs, and cloc statistics tables. The external
 ``cloc`` binary is still required for the statistics part.
+
+By default the full repo tree is replaced by cloc statistics with
+unlimited directory expansion; pass ``--stats-threshold N`` to keep
+the full tree and a thresholded cloc report (the old behavior).
 
 Usage:
     python src/devtools/context_cloc.py --cloc-only
@@ -41,7 +45,6 @@ REPO_ROOT = SCRIPT_DIR.parent.parent
 DEFAULT_OUTPUT = "context.txt"
 DEFAULT_MAX_FILE_LINES = 800
 DEFAULT_MAX_TOTAL_CHARS = 260000
-DEFAULT_STATS_THRESHOLD = 8000
 NO_LIMIT_CHARS = 999999999999
 SHADER_EXTS = "vert,frag,comp,geom,tesc,tese,glsl,hlsl,msl,wgsl,qsb"
 
@@ -514,11 +517,13 @@ def process_repo(
     output: Path,
     max_lines: int,
     max_chars: int,
+    include_tree: bool,
 ) -> None:
     label = repo_dir.name
     log_step(f"Processing {label}")
     write_git_metadata(writer, repo_dir)
-    write_full_tree(writer, repo_dir)
+    if include_tree:
+        write_full_tree(writer, repo_dir)
     writer.write_line("")
     writer.write_line(f"## {label} English help (priority)")
     collect_english_help(writer, seen, repo_dir, output, max_lines, max_chars)
@@ -572,9 +577,11 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Recommended (cloc tables only, full directory expansion, no size cap):\n"
             "  python src/devtools/context_cloc.py --cloc-only\n\n"
-            "Full context bundle (git metadata, repo trees, English help,\n"
-            "*.md/*.txt docs + cloc):\n"
-            "  python src/devtools/context_cloc.py"
+            "Full context bundle (git metadata, English help, *.md/*.txt docs;\n"
+            "the full tree is replaced by unlimited cloc expansion):\n"
+            "  python src/devtools/context_cloc.py\n\n"
+            "Old bundle layout (full tree + thresholded cloc):\n"
+            "  python src/devtools/context_cloc.py --stats-threshold 8000"
         ),
     )
     parser.add_argument(
@@ -595,8 +602,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Stop bundle before output grows beyond N chars (default: 260000)",
     )
     parser.add_argument(
-        "--stats-threshold", type=int, default=DEFAULT_STATS_THRESHOLD, metavar="N",
-        help="Expand cloc subdirs above N code lines (default: 8000; 0 = all)",
+        "--stats-threshold", type=int, default=None, metavar="N",
+        help=(
+            "Expand cloc subdirs above N code lines and keep the full tree "
+            "(default: unlimited expansion, full tree replaced by cloc)"
+        ),
     )
     parser.add_argument(
         "--toolkit-dir", metavar="DIR",
@@ -647,6 +657,7 @@ def run_bundle(
     max_chars: int,
     stats_threshold: int,
     include_stats: bool,
+    include_tree: bool,
 ) -> int:
     seen: set[str] = set()
     log_step(f"Building context bundle -> {output}")
@@ -658,16 +669,25 @@ def run_bundle(
     writer.write_line("Collected file contents: English help first, then other *.md/*.txt")
     writer.write_line(f"Max file lines: {max_lines}")
     writer.write_line(f"Max total chars: {max_chars}")
+    if include_tree:
+        writer.write_line(
+            f"Full tree + cloc statistics (directory expansion threshold: "
+            f"{stats_threshold} code lines)"
+        )
+    else:
+        writer.write_line(
+            "Full tree replaced by cloc statistics with unlimited directory expansion"
+        )
 
     process_repo(
         writer, seen, REPO_ROOT, stats_threshold, include_stats,
-        cloc_bin, output, max_lines, max_chars,
+        cloc_bin, output, max_lines, max_chars, include_tree,
     )
 
     if toolkit_dir is not None:
         process_repo(
             writer, seen, toolkit_dir, 0, True,
-            cloc_bin, output, max_lines, max_chars,
+            cloc_bin, output, max_lines, max_chars, include_tree,
         )
     else:
         writer.write_line("")
@@ -704,16 +724,22 @@ def main(argv: list[str] | None = None) -> int:
     output_file = Path(args.output) if args.output is not None else Path(DEFAULT_OUTPUT)
     max_lines = args.max_lines
     max_chars = args.max_chars
-    stats_threshold = args.stats_threshold
     include_stats = not args.no_stats
     cloc_only = args.cloc_only
 
     if cloc_only:
         include_stats = True
+        include_tree = False
         stats_threshold = 0
         max_chars = NO_LIMIT_CHARS
         if not output_explicit and output_file.name == DEFAULT_OUTPUT:
             output_file = Path("cloc.txt")
+    else:
+        # Default: unlimited cloc expansion, full tree replaced by cloc.
+        # An explicit --stats-threshold keeps the old behavior (tree + thresholded cloc).
+        # With --no-stats nothing replaces the tree, so keep it.
+        include_tree = args.stats_threshold is not None or not include_stats
+        stats_threshold = args.stats_threshold if args.stats_threshold is not None else 0
 
     toolkit_dir = resolve_toolkit_dir(args.toolkit_dir or os.environ.get("SLI_TOOLKIT_DIR"))
     cloc_bin = os.environ.get("CLOC_BIN", "cloc")
@@ -722,7 +748,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_cloc_only(output_file, toolkit_dir, cloc_bin)
     return run_bundle(
         output_file, toolkit_dir, cloc_bin,
-        max_lines, max_chars, stats_threshold, include_stats,
+        max_lines, max_chars, stats_threshold, include_stats, include_tree,
     )
 
 
