@@ -34,11 +34,6 @@ layout(std140, binding = 0) uniform UBuf
 };
 
 layout(binding = 1) uniform sampler2D scratchTex;
-// Alpha mask of this panel's HUD text glyphs, panel-local, same size/space
-// as scratchTex -- see GlassPanelSpec.text_mask_image / glass_hud/text_mask.py's
-// _rebuild_text_mask(). Only .a is ever read; rgb is whatever plain white
-// paint premultiplied to, unused.
-layout(binding = 2) uniform sampler2D textMaskTex;
 
 layout(location = 0) in vec2 vUv;
 layout(location = 0) out vec4 fragColor;
@@ -135,21 +130,7 @@ void main()
     );
     vec3 backdrop = mix(blurred.rgb, chroma, edgeProximity * 0.25);
 
-    // Backdrop-adaptive tint (Apple's "dynamic range shift", WWDC25
-    // "Meet Liquid Glass"): tint strength follows the backdrop's own
-    // luminance so the glass stays on the same luminance side as the text
-    // decision -- dark backdrop (white text) reduces the tint toward
-    // transparent so the glass stays dark and the white stays crisp;
-    // bright backdrop (black text) keeps the full theme tint so the glass
-    // stays bright. Mild range on purpose: the material still reads as
-    // "tinted", just context-aware. The text decision reads pre-tint
-    // `backdrop` below, so this is display-only and cannot feed back into
-    // the black/white choice. See
-    // improve-imgsli-internal-docs/docs/legacy/rendering/
-    // glass-panel-soft-threshold-adaptive-tint-plan.md Phase 2.
-    float tintLum = dot(backdrop, vec3(0.299, 0.587, 0.114));
-    float tintStrength = tint.a * mix(0.65, 1.0, smoothstep(0.0, 1.0, tintLum));
-    vec3 tintedGlass = mix(backdrop, tint.rgb, tintStrength);
+    vec3 tintedGlass = mix(backdrop, tint.rgb, tint.a);
 
     // Directional rim/specular: the HIG calls for "reflective rim
     // lighting" whose intensity follows the surface normal relative to a
@@ -195,7 +176,7 @@ void main()
     // narrower than ~1px can't represent a smooth gradient at all and just
     // aliases instead, exactly the mechanism the original comment already
     // warned about for borderWidthPx itself). Keep this at 1.0/0.5 and tune
-    // *only* borderWidthPx (in glass_hud/text_mask.py) if the ring still reads too
+    // *only* borderWidthPx (in glass_hud/hud.py's _refresh_backdrop) if the ring still reads too
     // heavy -- don't shrink the feather below ~1px/0.5px again.
     float aaBorder = 1.0;
     float aaBorderInner = 0.5;
@@ -205,69 +186,6 @@ void main()
     float band = insideBorder * (1.0 - outsideBorder);
 
     vec3 color = clamp(mix(glass, borderColor.rgb, band * borderColor.a), 0.0, 1.0);
-
-    // Per-pixel text vibrancy: where the mask has a glyph, recolor *this
-    // exact fragment* from its own already-composited glass color -- not
-    // one flat average over a whole label (see
-    // docs/dev/rendering/glass-panel-text-vibrancy-plan.md for the
-    // per-label-average approaches this replaced).
-    //
-    // textMaskTex here is already this panel's own device resolution --
-    // glass_panel.py's render_backdrops() rasterizes the mask supersampled
-    // (see glass_hud/text_mask.py's _rebuild_text_mask()/_TEXT_MASK_SUPERSAMPLE),
-    // uploads it undownscaled, then a dedicated Lanczos-2 downsample pass
-    // (glass_text_downsample.frag) resolves it down to device resolution
-    // once per mask change -- so a plain texture() read at LOD 0 here is
-    // already the final, correctly-filtered result (no per-fragment LOD
-    // selection needed, unlike the GPU-hardware-mip version this replaced,
-    // which needed an explicit textureLod() to land on the matching mip
-    // level -- see docs/dev/rendering/glass-panel-text-vibrancy-plan.md's
-    // bug 17 for why that version's box-filtered mips read as "trilinear,
-    // not Lanczos"). Earlier still, before any GPU downscale existed at
-    // all, a plain 1x QPainter render sampled directly left even a glyph
-    // stroke's own true center around ~0.33-0.40 raw alpha, back-solved
-    // from a reported backdrop/text color pair, `#484b26` under a glyph
-    // reading back as `#82837a` -- see that same doc's Phase 3.
-    float maskAlpha = smoothstep(0.05, 0.8, texture(textMaskTex, vUv).a);
-    if (maskAlpha > 0.01)
-    {
-        // Decide black-vs-white from `backdrop` (pre-tint, pre-glow/
-        // specular/border -- see above) rather than the final `color`.
-        // `dot(mix(backdrop, tint, a), w) == mix(dot(backdrop, w), dot(tint,
-        // w), a)` (dot is linear, mix is linear) -- so computing this from
-        // the *tinted* color is an affine function of the raw backdrop's own
-        // luminance, compressed by a factor of `(1 - tint.a)` and recentered
-        // on the tint's own luminance. That compression is what actually
-        // broke this: two backdrops the eye reads as "similarly dark"
-        // (e.g. `#3a3d22` and `#494c2e`, differing by ~15/255 per channel)
-        // can land, post-tint, within a couple hundredths of `midpoint` on
-        // *opposite* sides of it -- nowhere near enough for even a fairly
-        // steep sigmoid to saturate, so one came out confidently white
-        // (correct) and the other a flat, low-contrast mid-gray (wrong) --
-        // see docs/dev/rendering/glass-panel-text-vibrancy-plan.md's bug 19
-        // for the back-solved numbers. Using `backdrop` directly restores
-        // the sigmoid's full input range (no tint-alpha-dependent
-        // compression at all, so this also stops needing separate tuning
-        // per theme's differing tint alpha) -- tinting is monotonic (does
-        // not reorder relative brightness), so the black/white choice this
-        // makes still contrasts correctly against the *displayed* (tinted)
-        // glass, just decided from the fuller-range signal.
-        float luminance = dot(backdrop, vec3(0.299, 0.587, 0.114));
-        float midpoint = 128.0 / 255.0;
-        // Soft threshold, not a hard step: a narrow band (see this plan's
-        // Phase 1) around the midpoint so the black/white flip is a
-        // 2-4px-wide continuous transition -- sub-stroke-width on these
-        // HUD chips, so it reads as antialiased ink, not the flat
-        // mid-gray glyph the wide sigmoid bands of bugs 19-21 produced
-        // (those failed on *post-tint compressed* luminance and wide
-        // bands; `backdrop` is pre-tint and already Gaussian-blurred, so
-        // this narrow band cannot cover a whole glyph). `maskAlpha` still
-        // does the per-glyph-edge AA.
-        float band = 0.04;
-        float sig = smoothstep(midpoint - band, midpoint + band, luminance);
-        vec3 textGray = vec3(1.0 - sig);
-        color = mix(color, textGray, maskAlpha);
-    }
 
     fragColor = vec4(color * alpha, alpha);
 }

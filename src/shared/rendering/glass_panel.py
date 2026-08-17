@@ -99,7 +99,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt
+from PySide6.QtCore import QPoint, QRect, QSize
 from PySide6.QtGui import (
     QColor,
     QImage,
@@ -156,27 +156,6 @@ _BLUR_UBUF_SIZE = 16  # std140: vec2 direction + float radiusPx + pad
 # + vec2 panelSizePx + float borderWidthPx + float pad + vec4 borderColor
 # + vec4 debugTint
 _COMPOSITE_UBUF_SIZE = 80
-
-# Must match `ui.widgets.glass_hud.text_mask._TEXT_MASK_SUPERSAMPLE` (and
-# `shaders/glass_panel/glass_text_downsample.frag`'s own `SCALE` constant) --
-# that module rasterizes each panel's text mask oversized by this factor and
-# uploads it *undownscaled*; this module creates `text_mask_tex` at that same
-# oversized resolution and a dedicated Lanczos-2 shader pass
-# (`_ensure_panel`'s `text_mask_downsample_pipeline`, run from
-# `render_backdrops()` right after each upload) resolves it down to
-# `text_mask_downsampled_tex` at the panel's own device resolution, which is
-# what `glass_composite.frag` actually samples. Downscaling on the GPU at
-# all (rather than a CPU round-trip -- Qt SmoothTransformation, then a PIL
-# LANCZOS pass, both tried and dropped, see
-# docs/dev/rendering/glass-panel-text-vibrancy-plan.md Phase 3) is for being
-# real, measurable per-call cost on a path that runs several times/sec; a
-# custom Lanczos-2 pass rather than QRhi's hardware `generateMips()` (tried
-# and dropped too, see that doc's bug 17) is because box-filtered mips read
-# visibly softer ("trilinear, not Lanczos") on the sharp alpha edges a
-# glyph mask is made of. Not imported from `glass_hud/text_mask.py` to avoid a
-# `shared.rendering` -> `ui.widgets` layering violation (wrong direction);
-# duplicated here deliberately, kept in sync by this comment on both sides.
-_TEXT_MASK_SUPERSAMPLE = 4
 
 # IMGSLI_GLASS_PANEL_DEBUG_TINT=1: replaces each panel's composite output
 # with one of these flat, maximally-distinct colors (assigned by first-seen
@@ -244,17 +223,6 @@ class GlassPanelSpec:
     border_color: QColor
     tint: QColor
     blur_radius_px: float
-    # Panel-local alpha mask of this HUD's registered text widgets'
-    # glyphs, built by ``ui/widgets/glass_hud/text_mask.py``'s
-    # ``_rebuild_text_mask()`` -- ``_TEXT_MASK_SUPERSAMPLE`` x the panel's
-    # own device px (see ``device_rects`` in ``render_backdrops``), *not*
-    # 1:1 with it: this module uploads it undownscaled into a mipmapped
-    # texture and lets the GPU generate the downscaled levels
-    # (``glass_composite.frag`` reads it back via ``textureLod()`` at the
-    # mip level matching device px exactly). ``None`` disables per-pixel
-    # text recoloring for this panel entirely (no registered text
-    # widgets). See ``docs/dev/rendering/glass-panel-text-vibrancy-plan.md``.
-    text_mask_image: QImage | None = None
 
 
 class GlassPanelRegistry:
@@ -310,37 +278,11 @@ class _PanelGpu:
         self.composite_ubuf: QRhiBuffer | None = None
         self.srb_blur: QRhiShaderResourceBindings | None = None
         self.srb_composite: QRhiShaderResourceBindings | None = None
-        # Alpha mask of this panel's HUD text glyphs -- see
-        # GlassPanelSpec.text_mask_image / render_backdrops. Not a render
-        # target: content only ever arrives via uploadTexture() from a
-        # CPU-side QImage, never rendered into by a pipeline of its own.
-        self.text_mask_tex: QRhiTexture | None = None
-        # Lanczos-2-downsampled copy of text_mask_tex at this panel's own
-        # device resolution -- see glass_text_downsample.frag and
-        # GlassPanelRenderer._ensure_panel. Regenerated only when
-        # text_mask_image_id changes (same gate as the upload itself), not
-        # every render_backdrops() call.
-        self.text_mask_downsampled_tex: QRhiTexture | None = None
-        self.text_mask_downsample_target: QRhiTextureRenderTarget | None = None
-        self.text_mask_downsample_rpdesc: QRhiRenderPassDescriptor | None = None
-        self.text_mask_downsample_pipeline: QRhiGraphicsPipeline | None = None
-        self.srb_text_mask_downsample: QRhiShaderResourceBindings | None = None
-        # id() of the last QImage actually uploaded into text_mask_tex (or
-        # the sentinel 0 for "uploaded the blank fallback", see
-        # render_backdrops), so render_backdrops (called every frame) can
-        # skip re-uploading identical content -- the mask itself only
-        # changes a few times a second at most (see glass_hud/text_mask.py's
-        # _TEXT_MASK_UPDATE_INTERVAL_S). Starts at None (never a real id()
-        # or the 0 sentinel) so the very first frame after this texture is
-        # (re)created always uploads *something* -- sampling it
-        # uninitialized otherwise.
-        self.text_mask_image_id: int | None = None
 
     def release(self) -> None:
         for res in (
             self.srb_blur,
             self.srb_composite,
-            self.srb_text_mask_downsample,
             self.blur_ubuf,
             self.composite_ubuf,
             self.crop_tex,
@@ -352,11 +294,6 @@ class _PanelGpu:
             self.composite_rpdesc,
             self.composite_target,
             self.composite_tex,
-            self.text_mask_downsample_pipeline,
-            self.text_mask_downsample_rpdesc,
-            self.text_mask_downsample_target,
-            self.text_mask_downsampled_tex,
-            self.text_mask_tex,
         ):
             if res is not None:
                 try:
@@ -636,102 +573,12 @@ class GlassPanelRenderer:
         if not panel.composite_ubuf.create():
             raise RuntimeError(f"Failed to create {self._name_prefix} glass-panel composite ubuf")
 
-        # --- text mask: CPU-uploaded only (see _PanelGpu docstring), sized
-        # _TEXT_MASK_SUPERSAMPLE x the other scratch textures -- ui.widgets.
-        # glass_hud/text_mask.py rasterizes it oversized and uploads it undownscaled.
-        # Plain (non-mipmapped) texture: the downscale to device resolution
-        # is done by the dedicated Lanczos-2 pass below into
-        # text_mask_downsampled_tex, not by sampling this texture's own mip
-        # chain (see this module's `_TEXT_MASK_SUPERSAMPLE` docstring for why
-        # -- GPU hardware `generateMips()` box-filtering read visibly softer
-        # than Lanczos here). text_mask_image_id reset to None here (via
-        # __init__ inside release(), and it's already None on first
-        # creation) forces render_backdrops's very first upload (and
-        # downsample) for this (re)created texture even if the spec's image
-        # is unchanged.
-        text_mask_size = QSize(
-            size.width() * _TEXT_MASK_SUPERSAMPLE, size.height() * _TEXT_MASK_SUPERSAMPLE
-        )
-        panel.text_mask_tex = rhi.newTexture(QRhiTexture.Format.RGBA8, text_mask_size)
-        if not panel.text_mask_tex.create():
-            raise RuntimeError(
-                f"Failed to create {self._name_prefix} glass-panel text mask texture"
-            )
-
-        # --- text mask downsample stage: one Lanczos-2 fragment pass,
-        # text_mask_tex (supersampled) -> text_mask_downsampled_tex (this
-        # panel's own device resolution, what glass_composite.frag actually
-        # samples). Re-run only when text_mask_image_id changes (see
-        # render_backdrops), not every frame.
-        panel.text_mask_downsampled_tex = rhi.newTexture(
-            QRhiTexture.Format.RGBA8, size, 1, QRhiTexture.Flag.RenderTarget
-        )
-        if not panel.text_mask_downsampled_tex.create():
-            raise RuntimeError(
-                f"Failed to create {self._name_prefix} glass-panel text mask downsample texture"
-            )
-        panel.text_mask_downsample_target = rhi.newTextureRenderTarget(
-            QRhiTextureRenderTargetDescription(
-                QRhiColorAttachment(panel.text_mask_downsampled_tex)
-            )
-        )
-        panel.text_mask_downsample_rpdesc = (
-            panel.text_mask_downsample_target.newCompatibleRenderPassDescriptor()
-        )
-        panel.text_mask_downsample_target.setRenderPassDescriptor(
-            panel.text_mask_downsample_rpdesc
-        )
-        if not panel.text_mask_downsample_target.create():
-            raise RuntimeError(
-                f"Failed to create {self._name_prefix} glass-panel text mask downsample target"
-            )
-        panel.srb_text_mask_downsample = rhi.newShaderResourceBindings()
-        panel.srb_text_mask_downsample.setBindings(
-            [
-                QRhiShaderResourceBinding.sampledTexture(
-                    0, fragment, panel.text_mask_tex, self._sampler
-                ),
-            ]
-        )
-        if not panel.srb_text_mask_downsample.create():
-            raise RuntimeError(
-                f"Failed to create {self._name_prefix} glass-panel text mask downsample SRB"
-            )
-        panel.text_mask_downsample_pipeline = rhi.newGraphicsPipeline()
-        panel.text_mask_downsample_pipeline.setShaderStages(
-            [
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Vertex, _load_shader("glass_panel_pass.vert.qsb")
-                ),
-                QRhiShaderStage(
-                    QRhiShaderStage.Type.Fragment,
-                    _load_shader("glass_text_downsample.frag.qsb"),
-                ),
-            ]
-        )
-        panel.text_mask_downsample_pipeline.setTopology(
-            QRhiGraphicsPipeline.Topology.Triangles
-        )
-        panel.text_mask_downsample_pipeline.setRenderPassDescriptor(
-            panel.text_mask_downsample_rpdesc
-        )
-        panel.text_mask_downsample_pipeline.setShaderResourceBindings(
-            panel.srb_text_mask_downsample
-        )
-        if not panel.text_mask_downsample_pipeline.create():
-            raise RuntimeError(
-                f"Failed to create {self._name_prefix} glass-panel text mask downsample pipeline"
-            )
-
         panel.srb_composite = rhi.newShaderResourceBindings()
         panel.srb_composite.setBindings(
             [
                 QRhiShaderResourceBinding.uniformBuffer(0, fragment, panel.composite_ubuf),
                 QRhiShaderResourceBinding.sampledTexture(
                     1, fragment, panel.blur_tex, self._sampler
-                ),
-                QRhiShaderResourceBinding.sampledTexture(
-                    2, fragment, panel.text_mask_downsampled_tex, self._sampler
                 ),
             ]
         )
@@ -915,84 +762,6 @@ class GlassPanelRenderer:
             command_buffer.endPass()
             if should_dump:
                 self._request_dump(rhi, command_buffer, panel.blur_tex, f"key{key:x}_2blur")
-
-            # Text mask upload -- only when the image identity actually
-            # changed since last frame (glass_hud/text_mask.py rebuilds it at most a
-            # few times/sec, not every frame; see text_mask_image_id's
-            # docstring on _PanelGpu for why a freshly-(re)created texture
-            # always uploads at least once even with no spec image). The
-            # no-mask case uses the sentinel id 0 (never a real object's
-            # id() in CPython) rather than building + re-uploading a fresh
-            # blank QImage every single frame for panels with no registered
-            # text. text_mask_tex is _TEXT_MASK_SUPERSAMPLE x device_size
-            # (see _ensure_panel) -- the blank fallback and the size-mismatch
-            # guard both target that same oversized size, not device_size.
-            text_mask_size = QSize(
-                device_size.width() * _TEXT_MASK_SUPERSAMPLE,
-                device_size.height() * _TEXT_MASK_SUPERSAMPLE,
-            )
-            mask_target_id = 0 if spec.text_mask_image is None else id(spec.text_mask_image)
-            if panel.text_mask_image_id != mask_target_id:
-                if spec.text_mask_image is None:
-                    mask_image = QImage(
-                        text_mask_size, QImage.Format.Format_RGBA8888_Premultiplied
-                    )
-                    mask_image.fill(0)
-                elif spec.text_mask_image.size() != text_mask_size:
-                    # Defensive only -- glass_hud/text_mask.py's _rebuild_text_mask()
-                    # and this method compute device_size from the same
-                    # container.size()/devicePixelRatioF() formula, so this
-                    # should be rare (a resize landing between the mask's
-                    # own rebuild and this frame's render_backdrops() call).
-                    # `.scaled()` with NO explicit TransformationMode
-                    # defaults to FastTransformation (nearest-neighbor) --
-                    # confirmed live as the source of a text mask reading
-                    # as "интерлейсинг" (interlaced-looking noise) on any
-                    # frame this branch fired: nearest-neighbor resampling
-                    # a thin-stroke text mask produces exactly that kind of
-                    # aliased garbage. Match the real rebuild path's own
-                    # quality intent explicitly instead of relying on Qt's
-                    # low-quality default.
-                    _debug(
-                        "text mask SIZE MISMATCH key=%#x image_size=%s "
-                        "expected=%s -- falling back to a resample this "
-                        "frame",
-                        key,
-                        spec.text_mask_image.size(),
-                        text_mask_size,
-                    )
-                    mask_image = spec.text_mask_image.scaled(
-                        text_mask_size,
-                        Qt.AspectRatioMode.IgnoreAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-                else:
-                    mask_image = spec.text_mask_image
-                mask_updates = rhi.nextResourceUpdateBatch()
-                assert panel.text_mask_tex is not None
-                mask_updates.uploadTexture(panel.text_mask_tex, mask_image)
-                command_buffer.resourceUpdate(mask_updates)
-                panel.text_mask_image_id = mask_target_id
-
-                # Lanczos-2 downsample: text_mask_tex (supersampled) ->
-                # text_mask_downsampled_tex (device res) -- see
-                # _ensure_panel and glass_text_downsample.frag. Only run
-                # when the mask content just changed, same gate as the
-                # upload above.
-                command_buffer.beginPass(
-                    panel.text_mask_downsample_target,
-                    QColor(0, 0, 0, 0),
-                    QRhiDepthStencilClearValue(1.0, 0),
-                )
-                command_buffer.setGraphicsPipeline(panel.text_mask_downsample_pipeline)
-                command_buffer.setViewport(
-                    QRhiViewport(
-                        0.0, 0.0, float(device_size.width()), float(device_size.height())
-                    )
-                )
-                command_buffer.setShaderResources(panel.srb_text_mask_downsample)
-                command_buffer.draw(3)
-                command_buffer.endPass()
 
             t = spec.tint
             b = spec.border_color
