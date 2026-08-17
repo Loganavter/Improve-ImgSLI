@@ -56,7 +56,12 @@ class MainWindow(QWidget):
         self.setAutoFillBackground(False)
         from sli_ui_toolkit import apply_frameless
 
-        apply_frameless(self)
+        from shared_toolkit.ui.decorate_dialog import CUSTOM_DECORATION_RESIZE_MARGIN
+
+        # Outer resize band: the surface carries transparent margin beyond
+        # the visible body so the frameless edge can be grabbed from outside
+        # (the same tdesktop-style band the dialogs get via WindowChrome).
+        apply_frameless(self, outer_band=CUSTOM_DECORATION_RESIZE_MARGIN)
 
         self._is_ui_stable = False
         self._application_initialized = False
@@ -150,9 +155,14 @@ class MainWindow(QWidget):
         painter = QPainter(self)
         try:
             squared = self.isMaximized() or self.isFullScreen()
+            band = 0
+            try:
+                band = int(self.property("_csd_outer_band") or 0)
+            except Exception:
+                band = 0
             paint_rounded_window_background(
                 painter,
-                QRectF(self.rect()),
+                QRectF(self.rect()).adjusted(band, band, -band, -band),
                 color=self._window_bg_color,
                 radius=float(self.CORNER_RADIUS),
                 squared=squared,
