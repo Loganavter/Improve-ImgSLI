@@ -12,7 +12,7 @@ from PIL import Image
 
 from shared.image_processing.store_lease import StoreLease
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.regions import build_uniform_tile_grid
+from shared.image_processing.regions import build_uniform_tile_grid
 from shared.analysis.differ import (
     SSIM_TILE_MAX_EXTENT,
     _prepare_ssim_tile_for_output,

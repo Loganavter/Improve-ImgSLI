@@ -17,7 +17,7 @@ from tabs.image_compare.services.analysis.runtime import (
     CoreUpdateDispatcher,
     UIUpdateDispatcher,
 )
-from tabs.image_compare.services.export_save_flow import ExportSaveFlowCoordinator
+from tabs.image_compare.services.image_export.save_flow import ExportSaveFlowCoordinator
 from sli_ui_toolkit.ui.widgets.composite.toast import ToastNotification
 
 APP = QApplication.instance() or QApplication([])

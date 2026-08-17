@@ -373,7 +373,7 @@ def test_settings_manager_does_not_own_image_compare_feature_bootstrap():
 
 def test_video_export_bounds_does_not_call_canvas_feature_registry_directly():
     """Video export bounds asks tabs for layout instead of querying features."""
-    path = PLUGINS_ROOT / "video_editor" / "services" / "video_export_bounds.py"
+    path = PLUGINS_ROOT / "video_editor" / "services" / "video_export" / "bounds.py"
     leaks: list[str] = []
     for lineno, line in enumerate(read(path).splitlines(), 1):
         if "get_canvas_feature_command" in line:

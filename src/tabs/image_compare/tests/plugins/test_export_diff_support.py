@@ -451,7 +451,7 @@ def test_image_export_save_context_uses_video_style_fit_content_bounds():
     from domain.types import Point
     from tabs.image_compare.canvas.features.magnifier.state.models import MagnifierModel
     from tabs.image_compare.canvas.features.magnifier.state.feature_state import get_magnifier_widget_state
-    from tabs.image_compare.services.export_context_builder import ExportContextBuilder
+    from tabs.image_compare.services.image_export.context_builder import ExportContextBuilder
     from tabs.image_compare.state.document import DocumentModel
     from tabs.image_compare.state.models import ImageSessionState, RenderCacheState
 

@@ -642,7 +642,7 @@ def test_recent_panel_retranslate_keeps_opaque_shelf(qapp, tmp_path, monkeypatch
     from PySide6.QtCore import Qt
 
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.shelf_chrome import OpaqueFillHost
+    from ui.widgets.shelf import OpaqueFillHost
 
     path = tmp_path / "lang.imgsli"
     path.write_text("{}")
@@ -827,7 +827,7 @@ def test_recent_panel_keeps_scroll_host_opaque(qapp, monkeypatch):
     from PySide6.QtCore import Qt
 
     from tabs.session_picker.recent.layout import PANEL_RADIUS
-    from tabs.session_picker.recent.shelf_chrome import OpaqueFillHost
+    from ui.widgets.shelf import OpaqueFillHost
 
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
     panel = RecentProjectsPanel(tr=_tr)

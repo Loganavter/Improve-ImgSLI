@@ -40,6 +40,7 @@ Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor
 | “Weird after click/zoom” | [docs/dev/TRACING.md](docs/dev/TRACING.md) |
 | Known Qt quirks | [docs/dev/KNOWN_BUGS.md](docs/dev/KNOWN_BUGS.md) |
 | Open engineering debt | [docs/dev/TODO.md](docs/dev/TODO.md) |
+| Code mass / where the code is heavy, reduction plan | [docs/dev/CODE_MASS_REDUCTION.md](docs/dev/CODE_MASS_REDUCTION.md) |
 
 ---
 

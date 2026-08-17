@@ -26,7 +26,7 @@ from shared.analysis.edge_detector import (
 from shared.analysis.output import finalize_diff_output
 from shared.image_processing.store_lease import StoreLease
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-from shared.regions import build_uniform_tile_grid
+from shared.image_processing.regions import build_uniform_tile_grid
 
 logger = logging.getLogger("ImproveImgSLI")
 

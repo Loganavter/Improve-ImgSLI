@@ -24,12 +24,14 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Capability aliases](CAPABILITY_ALIASES.md)** — `docs/dev/CAPABILITY_ALIASES.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/rendering/contracts.md](rendering/contracts.md)
+- **[Code Mass Reduction](CODE_MASS_REDUCTION.md)** — `docs/dev/CODE_MASS_REDUCTION.md`
+  Referenced by: [docs/dev/TODO.md](TODO.md)
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
-  Referenced by: [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/legacy/README.md](../legacy/README.md), [docs/legacy/container-format.md](../legacy/container-format.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
-  Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[App Dialogs / Windows](DIALOGS.md)** — `docs/dev/DIALOGS.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/UI_TOOLKIT_LIBRARY.md](UI_TOOLKIT_LIBRARY.md)
 - **[Doc Index](DOC_INDEX.md)** — `docs/dev/DOC_INDEX.md`
@@ -58,7 +60,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Theming & QSS](THEMING.md)** — `docs/dev/THEMING.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
 - **[Development TODO](TODO.md)** — `docs/dev/TODO.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md)
 - **[Runtime Tracer](TRACING.md)** — `docs/dev/TRACING.md`
   Referenced by: [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[UI Inspector](UI_INSPECTOR.md)** — `docs/dev/UI_INSPECTOR.md`
