@@ -123,16 +123,14 @@ Resolved / decided:
 
 Primary UX remains **action discovery** (Find Action / command palette). Full
 manual reading is secondary; no PDF / CMS / in-app browser.
-## P3 - Code mass reduction (sprint 1 done)
+## P3 - Code mass reduction (all sprints resolved)
 
-Status: `In progress` (sprint 2 next)
+Status: `Done` (2026-08-17; deferred items tracked in the plan doc)
 
 Plan and status: [CODE_MASS_REDUCTION.md](./CODE_MASS_REDUCTION.md) —
-grounded in the 2026-08-17 audit (~5k LOC removable quickly, ~8.5–12.5k with
-medium-risk refactors, toolkit +3–7k). Sprint 1 (zero-risk deletions:
-byte-identical duplicates, dead GLSL containers, orphan modules, compat
-shims) is underway; each deletion is import-grep-verified and followed by
-`./launcher.sh test tests/contracts -q`.
+grounded in the 2026-08-17 audit. All sprints executed and resolved: total
+**~2 700 LOC deleted** (net ≈ −2 400 with the plan doc and test rewrites),
+contract suite 1391–1397 passed / 1 skipped throughout.
 
 Done (2026-08-17): **Sprint 1 — 41 files removed, ~1 955 LOC deleted.**
 Byte-identical duplicates (`magnifier/commands/registry.py`,
