@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 from PySide6.QtGui import QColor
 
-from tabs.image_compare.plugins.video_editor.dialog_persistence import VideoEditorDialogPersistence
+from tabs.image_compare.plugins.video_editor.dialog.persistence import VideoEditorDialogPersistence
 
 REPO = Path(__file__).resolve().parents[5]
 VIDEO_I18N_ROOT = REPO / "src" / "tabs" / "image_compare" / "plugins" / "video_editor" / "resources" / "i18n"

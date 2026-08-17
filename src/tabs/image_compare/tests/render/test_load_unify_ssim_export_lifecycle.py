@@ -11,7 +11,7 @@ from shared.image_processing.tiled_pixel_store import (
     TiledPixelStore,
     qimage_from_pixel_source,
 )
-from tabs.image_compare.services.export_context_builder import ExportContextBuilder
+from tabs.image_compare.services.image_export.context_builder import ExportContextBuilder
 
 
 def test_pipeline_survives_store_replacement():

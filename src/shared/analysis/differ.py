@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 from PIL import Image
 from shared.analysis.output import finalize_diff_output
-from shared.regions import build_uniform_tile_grid
+from shared.image_processing.regions import build_uniform_tile_grid
 
 logger = logging.getLogger("ImproveImgSLI")
 

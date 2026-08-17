@@ -123,3 +123,15 @@ Resolved / decided:
 
 Primary UX remains **action discovery** (Find Action / command palette). Full
 manual reading is secondary; no PDF / CMS / in-app browser.
+## P3 - Code mass reduction (sprint 1 in progress)
+
+Status: `In progress`
+
+Plan and status: [CODE_MASS_REDUCTION.md](./CODE_MASS_REDUCTION.md) —
+grounded in the 2026-08-17 audit (~5k LOC removable quickly, ~8.5–12.5k with
+medium-risk refactors, toolkit +3–7k). Sprint 1 (zero-risk deletions:
+byte-identical duplicates, dead GLSL containers, orphan modules, compat
+shims) is underway; each deletion is import-grep-verified and followed by
+`./launcher.sh test tests/contracts -q`.
+
+Done: none yet.

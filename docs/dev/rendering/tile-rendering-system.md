@@ -343,7 +343,7 @@ not import `shared.rendering`) and is pinned equal to
 which also asserts `LIVE_TILE_EXTENT % PIXEL_TILE_SIZE == 0`.
 
 
-- **`PixelSource`** protocol: [`pixel_source.py`](../../../src/shared/image_processing/pixel_source.py)
+- **Pixel sources**: `TiledPixelStore` and QImage-backed sources are normalized through [`tiled_pixel_store.py`](../../../src/shared/image_processing/tiled_pixel_store.py) (`qimage_from_pixel_source`, `pixel_source_size`)
 - **`StoreLease`**: [`store_lease.py`](../../../src/shared/image_processing/store_lease.py) — workers capture `(store, generation)` and bail if the store was closed
 - **Tile-native ops**: `pixel_ops/downscale.py` (`downscale_pair_to_limit` for metrics/export sizing), `pixel_ops/unify.py` (load unify), `shared/analysis/ssim_source.py` and `shared/analysis/diff_source.py` (SSIM/highlight/grayscale/edges without full RGB materialize)
 - **`materialize_full()` / `to_real_pil_copy()`** — escape hatches only; AST contract [`tests/contracts/test_pixel_source_tiers.py`](../../../tests/contracts/test_pixel_source_tiers.py) keeps call sites confined

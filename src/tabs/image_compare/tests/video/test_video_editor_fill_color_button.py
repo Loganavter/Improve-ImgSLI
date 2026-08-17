@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 
 
 def test_update_fit_fill_color_button_sets_underline_color():
-    from tabs.image_compare.plugins.video_editor.dialog_export import VideoEditorDialogExport
+    from tabs.image_compare.plugins.video_editor.dialog.export import VideoEditorDialogExport
 
     captured: dict[str, QColor] = {}
     dialog = SimpleNamespace(
@@ -27,7 +27,7 @@ def test_update_fit_fill_color_button_sets_underline_color():
 
 
 def test_apply_fit_fill_color_updates_state():
-    from tabs.image_compare.plugins.video_editor.dialog_export import VideoEditorDialogExport
+    from tabs.image_compare.plugins.video_editor.dialog.export import VideoEditorDialogExport
 
     updates: list[str] = []
     dialog = SimpleNamespace(
@@ -48,7 +48,7 @@ def test_apply_fit_fill_color_updates_state():
 
 
 def test_on_fit_fill_color_clicked_uses_settings_color_picker():
-    from tabs.image_compare.plugins.video_editor.dialog_export import VideoEditorDialogExport
+    from tabs.image_compare.plugins.video_editor.dialog.export import VideoEditorDialogExport
 
     calls: list[dict[str, object]] = []
     settings_presenter = SimpleNamespace(
