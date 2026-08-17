@@ -29,6 +29,8 @@ shared by multiple tabs.
 ## Local Docs
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - current tab architecture and boundaries.
+- [plugins/](plugins/) - tab-owned plugins: [comparison](plugins/comparison.md),
+  [video_editor](plugins/video_editor.md).
 - `investigations/` — case write-ups for bugs confined to
   this tab (divider, magnifier).
   This folder mirrors a private `improve-imgsli-internal-docs` repo

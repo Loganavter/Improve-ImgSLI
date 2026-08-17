@@ -19,7 +19,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/dev/
 
 - **[Action catalog (Find Action)](ACTIONS.md)** — `docs/dev/ACTIONS.md`
-  Referenced by: [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/TODO.md](TODO.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md)
+  Referenced by: [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/TODO.md](TODO.md), [docs/dev/UI_LAYOUT_DUMP.md](UI_LAYOUT_DUMP.md), [docs/dev/plugins/index.md](plugins/index.md)
 - **[ImgSLI Architecture](ARCHITECTURE.md)** — `docs/dev/ARCHITECTURE.md`
   Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Capability aliases](CAPABILITY_ALIASES.md)** — `docs/dev/CAPABILITY_ALIASES.md`
@@ -39,18 +39,18 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[EventBus](EVENT_BUS.md)** — `docs/dev/EVENT_BUS.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
   Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Development Documentation](README.md)** — `docs/dev/README.md`
 - **[Resources & i18n](RESOURCES_I18N.md)** — `docs/dev/RESOURCES_I18N.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/README.md](README.md), [docs/dev/tabs/package-structure.md](tabs/package-structure.md)
 - **[Settings persistence](SETTINGS_PERSISTENCE.md)** — `docs/dev/SETTINGS_PERSISTENCE.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Store / Redux](STORE.md)** — `docs/dev/STORE.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
 - **[Tab Contract](TAB_CONTRACT.md)** — `docs/dev/TAB_CONTRACT.md`
@@ -70,6 +70,23 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md)
 
+## docs/dev/plugins/
+
+- **[Export plugin](plugins/export.md)** — `docs/dev/plugins/export.md`
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
+- **[Help plugin](plugins/help.md)** — `docs/dev/plugins/help.md`
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
+- **[Image Properties plugin](plugins/image_properties.md)** — `docs/dev/plugins/image_properties.md`
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
+- **[App-wide plugins (`src/plugins/`)](plugins/index.md)** — `docs/dev/plugins/index.md`
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md)
+- **[Layout plugin](plugins/layout.md)** — `docs/dev/plugins/layout.md`
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
+- **[Onboarding plugin](plugins/onboarding.md)** — `docs/dev/plugins/onboarding.md`
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
+- **[Settings plugin](plugins/settings.md)** — `docs/dev/plugins/settings.md`
+  Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/plugins/index.md](plugins/index.md)
+
 ## docs/dev/rendering/
 
 - **[Pre-merge checklist](rendering/checklist.md)** — `docs/dev/rendering/checklist.md`
@@ -83,7 +100,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Feature Decomposition Playbook](rendering/feature-decomposition-playbook.md)** — `docs/dev/rendering/feature-decomposition-playbook.md`
   Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Canvas & Rendering Documentation](rendering/index.md)** — `docs/dev/rendering/index.md`
-  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/plugins/export.md](plugins/export.md)
 - **[Overview](rendering/overview.md)** — `docs/dev/rendering/overview.md`
   Referenced by: [docs/dev/rendering/index.md](rendering/index.md)
 - **[Package Structure](rendering/package-structure.md)** — `docs/dev/rendering/package-structure.md`
@@ -104,7 +121,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
-  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md)
+  Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/layout.md](plugins/layout.md)
 - **[Isolation & dependency wiring](tabs/isolation.md)** — `docs/dev/tabs/isolation.md`
   Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Overview](tabs/overview.md)** — `docs/dev/tabs/overview.md`
@@ -145,11 +162,42 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## src/tabs/image_compare/docs/
 
 - **[Image Compare Architecture](../../src/tabs/image_compare/docs/ARCHITECTURE.md)** — `src/tabs/image_compare/docs/ARCHITECTURE.md`
-  Referenced by: [src/tabs/image_compare/docs/README.md](../../src/tabs/image_compare/docs/README.md)
+  Referenced by: [src/tabs/image_compare/docs/README.md](../../src/tabs/image_compare/docs/README.md), [src/tabs/image_compare/docs/plugins/comparison.md](../../src/tabs/image_compare/docs/plugins/comparison.md), [src/tabs/image_compare/docs/plugins/video_editor.md](../../src/tabs/image_compare/docs/plugins/video_editor.md)
 - **[Image Compare](../../src/tabs/image_compare/docs/README.md)** — `src/tabs/image_compare/docs/README.md`
+
+## src/tabs/image_compare/docs/plugins/
+
+- **[Comparison plugin](../../src/tabs/image_compare/docs/plugins/comparison.md)** — `src/tabs/image_compare/docs/plugins/comparison.md`
+  Referenced by: [src/tabs/image_compare/docs/README.md](../../src/tabs/image_compare/docs/README.md)
+- **[Video Editor (tab-owned plugin)](../../src/tabs/image_compare/docs/plugins/video_editor.md)** — `src/tabs/image_compare/docs/plugins/video_editor.md`
+  Referenced by: [src/tabs/image_compare/docs/README.md](../../src/tabs/image_compare/docs/README.md)
+
+## src/tabs/image_gallery/docs/
+
+- **[Image Gallery](../../src/tabs/image_gallery/docs/README.md)** — `src/tabs/image_gallery/docs/README.md`
+  Referenced by: [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
+
+## src/tabs/image_gallery/docs/plugins/
+
+- **[Image Gallery plugin](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)** — `src/tabs/image_gallery/docs/plugins/image_gallery.md`
 
 ## src/tabs/multi_compare/docs/
 
 - **[Multi Compare Architecture](../../src/tabs/multi_compare/docs/ARCHITECTURE.md)** — `src/tabs/multi_compare/docs/ARCHITECTURE.md`
-  Referenced by: [src/tabs/multi_compare/docs/README.md](../../src/tabs/multi_compare/docs/README.md)
+  Referenced by: [src/tabs/multi_compare/docs/README.md](../../src/tabs/multi_compare/docs/README.md), [src/tabs/multi_compare/docs/plugins/multi_compare.md](../../src/tabs/multi_compare/docs/plugins/multi_compare.md)
 - **[Multi Compare](../../src/tabs/multi_compare/docs/README.md)** — `src/tabs/multi_compare/docs/README.md`
+  Referenced by: [src/tabs/multi_compare/docs/plugins/multi_compare.md](../../src/tabs/multi_compare/docs/plugins/multi_compare.md)
+
+## src/tabs/multi_compare/docs/plugins/
+
+- **[Multi Compare plugin](../../src/tabs/multi_compare/docs/plugins/multi_compare.md)** — `src/tabs/multi_compare/docs/plugins/multi_compare.md`
+  Referenced by: [src/tabs/multi_compare/docs/README.md](../../src/tabs/multi_compare/docs/README.md)
+
+## src/tabs/session_picker/docs/
+
+- **[Session Picker](../../src/tabs/session_picker/docs/README.md)** — `src/tabs/session_picker/docs/README.md`
+  Referenced by: [src/tabs/session_picker/docs/plugins/session_picker.md](../../src/tabs/session_picker/docs/plugins/session_picker.md)
+
+## src/tabs/session_picker/docs/plugins/
+
+- **[Session Picker plugin](../../src/tabs/session_picker/docs/plugins/session_picker.md)** — `src/tabs/session_picker/docs/plugins/session_picker.md`
