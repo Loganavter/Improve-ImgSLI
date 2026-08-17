@@ -100,26 +100,17 @@ class MainWindowStartupRuntime:
         _startup_ffd_log("hide_cover")
         window._startup_cover.hide()
 
-    def should_show_onboarding(self) -> bool:
-        return onboarding_host.should_present(self.window)
-
     def bootstrap_content(self) -> None:
-        # Always build the real app first so «Приступить» is only a stack
-        # switch in the same window (not a second boot that looks like a new window).
-        will_onboard = self.should_show_onboarding()
-        self.bootstrap_main_app(hold_for_onboarding=will_onboard)
-        if will_onboard:
-            onboarding_host.maybe_present(
-                self.window, on_completed=self.on_onboarding_completed
-            )
+        # Always build the real app first so opening a tab is only a stack
+        # switch in the same window. Onboarding is no longer shown here — it
+        # now triggers when the first onboarding-capable compare tab is
+        # opened, via the onboarding plugin's
+        # WorkspaceSessionActivatedEvent subscription.
+        self.bootstrap_main_app()
 
-    def bootstrap_main_app(self, *, hold_for_onboarding: bool = False) -> None:
+    def bootstrap_main_app(self) -> None:
         window = self.window
         if window._main_app_bootstrapped:
-            if hold_for_onboarding:
-                self.show_cover()
-                self.sync_cover_geometry()
-                return
             window._startup_stack.setCurrentWidget(window._app_host)
             self.reveal_if_ready()
             return
@@ -197,12 +188,6 @@ class MainWindowStartupRuntime:
                 from devtools.ui_inspector.installer import install_ui_inspector
 
                 install_ui_inspector(app, window, window.theme_manager)
-        if hold_for_onboarding:
-            # Keep cover up; do not switch the stack to app_host yet — that
-            # would flash session_picker before onboarding is inserted.
-            self.show_cover()
-            self.sync_cover_geometry()
-            return
         window._startup_stack.setCurrentWidget(window._app_host)
         self.sync_cover_geometry()
         self.reveal_if_ready()

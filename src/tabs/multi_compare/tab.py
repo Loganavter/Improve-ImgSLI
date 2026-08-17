@@ -598,6 +598,8 @@ class MultiCompareTab(TabContract):
             from tabs.multi_compare.services.clipboard import ClipboardService
 
             return ClipboardService(*args, controller=self._controller, **kwargs)
+        if service_id == "requires_first_run_onboarding":
+            return True
         if service_id == "begin_pending_image_insert":
             paths = args[0] if args else kwargs.get("paths")
             if paths is None or self._widget is None:
