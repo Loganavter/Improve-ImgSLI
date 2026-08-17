@@ -20,14 +20,11 @@ from core.plugin_system import Plugin, plugin
 from core.plugin_system.interfaces import (
     IControllablePlugin,
     IServicePlugin,
-    IVideoTrackProvider,
 )
 from plugins.export.controller import ExportController
 
 @plugin(name="export", version="1.0", startup_tier="deferred", startup_order=10)
 class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
-    capabilities = ("export", "recording")
-
     def __init__(self):
         super().__init__()
         self.controller: ExportController | None = None
@@ -62,11 +59,9 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     ) -> None:
         if self.controller:
             return
-        extra_adapters = self._collect_video_keyframe_adapters()
         self.recorder, self.video_exporter = self._create_recording_services(
             main_controller=main_controller,
             presenter=presenter,
-            extra_adapters=extra_adapters,
         )
         self.clipboard_service = self._create_clipboard_service(main_controller)
         self.controller = ExportController(
@@ -136,10 +131,6 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
     def _emit(self, event: str, payload: Any) -> None:
         if self.event_bus:
             self.event_bus.emit(event, payload)
-
-    def get_ui_components(self) -> dict[str, Any]:
-        return {}
-
     def get_controller(self) -> ExportController | None:
         return self.controller
 
@@ -157,18 +148,6 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
 
     def get_service(self) -> Any:
         return self.recorder
-
-    def _collect_video_keyframe_adapters(self) -> tuple[Any, ...]:
-        if not self.plugin_coordinator:
-            return ()
-
-        adapters: list[Any] = []
-        for plugin in self.plugin_coordinator.iter_plugins():
-            if plugin is self:
-                continue
-            if isinstance(plugin, IVideoTrackProvider):
-                adapters.extend(plugin.get_video_keyframe_adapters())
-        return tuple(adapters)
 
     def _create_recording_services(
         self,
@@ -212,10 +191,6 @@ class ExportPlugin(Plugin, IControllablePlugin, IServicePlugin):
                 "must be supplied by a tab owner."
             )
         return service
-
-    def provides_capability(self, capability: str) -> bool:
-        return capability in self.capabilities
-
     def shutdown(self) -> None:
         super().shutdown()
 

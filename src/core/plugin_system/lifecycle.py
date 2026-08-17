@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Iterable
 
-from core.events import PluginEvent
 from core.plugin_system.event_bus import EventBus
 from core.plugin_system.plugin import Plugin, PluginState
 
@@ -92,23 +91,10 @@ class PluginLifecycleManager:
                 "Plugin %s failed during %s: %s", plugin_name, method_name, err
             )
             plugin._set_state(PluginState.ERROR)
-            self._emit_event("error", plugin_name, err)
-        else:
-            if plugin.get_state() == expected_state:
-                self._emit_event(method_name, plugin_name)
 
     def _plugin_name(self, plugin: Plugin) -> str:
         meta = getattr(plugin, "_plugin_meta", {})
         return meta.get("name", plugin.__class__.__name__)
-
-    def _emit_event(
-        self, stage: str, plugin_name: str, payload: Any | None = None
-    ) -> None:
-        if not self._event_bus:
-            return
-
-        event = PluginEvent(plugin_name=plugin_name, stage=stage)
-        self._event_bus.emit(event)
 
     def plugin_name(self, plugin: Plugin) -> str:
         return self._plugin_name(plugin)

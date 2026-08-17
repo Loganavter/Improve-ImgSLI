@@ -150,9 +150,5 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
     def _on_language_changed(self, event: SettingsChangeLanguageEvent) -> None:
         if self._editor_dialog is not None:
             self._editor_dialog.update_language(event.lang_code)
-
-    def get_ui_components(self) -> dict[str, Any]:
-        return {}
-
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
         return ()

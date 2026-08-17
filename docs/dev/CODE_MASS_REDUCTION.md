@@ -54,6 +54,56 @@ All sprints executed and resolved. Committed in `36cc4d7e` (Sprint 1) and
   packaging lever (not repo LOC), `core/tracing` is a live runtime
   dependency (audit corrected), manager merges cost more churn than the
   ~200 LOC saved, multi_compare consolidation is a long-term design item,
+
+## Round 2 implementation (2026-08-17, in progress)
+
+Executing the safe round-2 findings; each step verified with import sweep
+(864/864) + `tests/contracts` (1385 passed, 1 skipped) + touched tests
+(124 passed for batch 3). Status:
+
+- **Batch 1 — Done**: 3 new orphans (`settings_payload.py` 184,
+  `rhi/runtime.py` 24, `rhi/render_passes.py` 14) + 18 dead top-level names
+  in 10 live modules (~141 LOC) removed per-node via AST (the
+  range-slicing bug that once ate `resolve_view_px` is avoided by
+  per-node removal).
+- **Batch 2 — Done**: dead shaders `base`/`step1` (191 LOC + 4 `.qsb`)
+  released by rewriting `tests/runtime/test_windows_shader_bundle.py`
+  examples to the live `base_array` stems; `compile_shaders.py --check`
+  still 33/33.
+- **Batch 3 — Mostly done** (~325 LOC): `Events` StrEnum (31), duplicate
+  `ui_scale_factor` (61), `log_initialized_rhi_widget` stub, capabilities
+  mechanism (`_capability_map`/`get_plugin_by_capability`/`broadcast_event`/
+  `_gather_capabilities` + `provides_capability` ×4 + `capabilities=` attrs),
+  `IUIPlugin` marker interface (empty after hook removal) + `get_ui_components`
+  ×5 + `Plugin` hooks (`get_toolbar_actions`/`get_menu_items`/
+  `get_render_entities`/`get_definition`), `IVideoTrackProvider` +
+  `_collect_video_keyframe_adapters`, duplicate `platform.undo/redo`
+  registration (kept the `menu.file` pair), dead EventBus events
+  (`PluginEvent`, `ComparisonError/UpdateRequested`,
+  `SettingsToggleAutoCropBlackBorders`, `AnalysisToggleDiffMode`,
+  `AnalysisRequestMetrics` + the `ComparisonUIUpdateEvent` alias), dead
+  plugin chains `analysis`/`viewport` (main_controller properties + font
+  flyout interaction handlers + keyboard-movement guards).
+- **Deferred (product decision)**: `display_resolution_limit` dead setting
+  — UI + persistence exist, zero render/load consumers; removing it
+  touches 13 files (Redux action `SetDisplayResolutionLimitAction` +
+  reducer case, dialog threading, tab settings page); either wire a real
+  resolution cap in the render pipeline or remove the UI. Verify with
+  tracing before touching (the audit's own caution for this one setting).
+- **Batch 4 — Done (working tree)**: semantic consolidation —
+  `first_frame_debug.py` IC↔MC (195-line mirrors) merged into one
+  parameterized `shared/rendering/first_frame_debug.py` + two thin
+  per-tab wrappers keeping the public names (no call-site changes); shared
+  `SaveToastMixin` (`src/tabs/save_toast.py`) replacing the byte-identical
+  `_get_toast_manager`/`_update_toast_safe`/`_build_toast_path_line` in
+  `ExportSaveFlowCoordinator` + `MultiCompareSaveFlowCoordinator`.
+  Contracts 1389 passed / 1 skipped (one platform-isolation failure fixed:
+  shared module must not mention `image_compare` in docstrings).
+- **Pending**: batch 5 (shared accessors `_size`/`_img_dims` →
+  `pixel_source_size`, filename helpers, resample-map, ~70–100 LOC, low
+  risk); the `downscale_pair_to_limit` name-collision mine (two different
+  functions under one name — rename or unify, check all callers) is
+  flagged as the next item to do first.
   toolkit work is blocked on the second host (Tkonverter not on disk).
 
 ## Principles

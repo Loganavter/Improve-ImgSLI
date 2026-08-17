@@ -5,18 +5,15 @@ from typing import Any
 from plugins.settings.events import (
     SettingsApplyFontSettingsEvent,
     SettingsChangeLanguageEvent,
-    SettingsToggleAutoCropBlackBordersEvent,
 )
 from core.plugin_system import Plugin, plugin
-from core.plugin_system.interfaces import IServicePlugin, IUIPlugin
+from core.plugin_system.interfaces import IServicePlugin
 from plugins.settings.controller import SettingsController
 from plugins.settings.manager import SettingsManager
 from ui.canvas_infra.scene.registry import get_canvas_registry
 
 @plugin(name="settings", version="1.0", startup_tier="bootstrap")
-class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
-    capabilities = ("settings_management",)
-
+class SettingsPlugin(Plugin, IServicePlugin):
     def __init__(self):
         super().__init__()
         self.controller: SettingsController | None = None
@@ -40,10 +37,6 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
             )
             self.event_bus.subscribe(
                 SettingsApplyFontSettingsEvent, self.controller.on_apply_font_settings
-            )
-            self.event_bus.subscribe(
-                SettingsToggleAutoCropBlackBordersEvent,
-                self.controller.on_toggle_auto_crop_black_borders,
             )
             from tabs.registry import TabRegistry
 
@@ -99,10 +92,6 @@ class SettingsPlugin(Plugin, IUIPlugin, IServicePlugin):
 
     def get_service(self) -> SettingsManager | None:
         return self.settings_manager
-
-    def provides_capability(self, capability: str) -> bool:
-        return capability == "settings_management"
-
     def bind_window_shell(self, window_shell: Any) -> None:
         if self.controller:
             if hasattr(window_shell, "get_feature"):

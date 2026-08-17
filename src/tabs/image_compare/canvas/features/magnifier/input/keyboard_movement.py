@@ -37,7 +37,6 @@ from events.app_event.common import (
     clear_presenter_render_snapshots,
     emit_update_request,
     get_event_bus,
-    get_main_controller,
 )
 from tabs.image_compare.events.canvas_helpers import (
     get_image_canvas_presenter,
@@ -129,14 +128,6 @@ class InteractiveMovementController:
             self._dispatch_viewport_action(SetSplitPositionVisualAction(split_visual))
 
     def start(self) -> None:
-        viewport_ctrl = getattr(
-            get_main_controller(self.presenter), "viewport_plugin", None
-        )
-        if viewport_ctrl is not None and hasattr(
-            viewport_ctrl, "begin_user_interaction"
-        ):
-            viewport_ctrl.begin_user_interaction()
-
         handler = _get_movement_handler(self.store)
         if handler is not None:
             offset = handler.get_offset()
@@ -166,12 +157,6 @@ class InteractiveMovementController:
             self._last_input_dirs = (0, 0, 0)
 
     def stop(self) -> None:
-        viewport_ctrl = getattr(
-            get_main_controller(self.presenter), "viewport_plugin", None
-        )
-        if viewport_ctrl is not None and hasattr(viewport_ctrl, "end_user_interaction"):
-            viewport_ctrl.end_user_interaction()
-
         if self.store.viewport.interaction_state.is_interactive_mode:
             self._set_interactive_mode(False)
             self.store.emit_viewport_change("interaction")

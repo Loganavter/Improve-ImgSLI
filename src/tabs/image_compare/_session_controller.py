@@ -15,10 +15,8 @@ from core.state_management.actions import (
     SetUnificationInProgressAction,
 )
 from tabs.image_compare.events import (
-    AnalysisRequestMetricsEvent,
     AnalysisSetChannelViewModeEvent,
     AnalysisSetDiffModeEvent,
-    AnalysisToggleDiffModeEvent,
 )
 from tabs.image_compare.services.analysis.cached_diff import CachedDiffService
 from tabs.image_compare.use_cases import list_ops, loading, navigation
@@ -506,13 +504,10 @@ class SessionController(QObject):
     def on_set_channel_view_mode(self, event: AnalysisSetChannelViewModeEvent):
         self.set_channel_view_mode(event.mode)
 
-    def on_toggle_diff_mode(self, event: AnalysisToggleDiffModeEvent):
-        self.toggle_diff_mode(True)
-
     def on_set_diff_mode(self, event: AnalysisSetDiffModeEvent):
         self.set_diff_mode(event.mode)
 
-    def on_metrics_requested_event(self, event: AnalysisRequestMetricsEvent) -> None:
+    def on_metrics_requested_event(self, event: Any) -> None:
         payload = event.payload or {}
         calc_psnr = payload.get("psnr", True)
         calc_ssim = payload.get("ssim", True)

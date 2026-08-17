@@ -184,34 +184,6 @@ def register_platform_actions(
             target=file_quit,
         ),
     ]
-    if undo is not None:
-        specs.append(
-            ActionDescriptor(
-                action_id="platform.undo",
-                label_key="action.platform.undo",
-                description_key="action.platform.undo_desc",
-                breadcrumb=("menu.edit",),
-                owner_tab=None,
-                topic="session",
-                shortcut="Ctrl+Z",
-                run=undo,
-                target=None,
-            )
-        )
-    if redo is not None:
-        specs.append(
-            ActionDescriptor(
-                action_id="platform.redo",
-                label_key="action.platform.redo",
-                description_key="action.platform.redo_desc",
-                breadcrumb=("menu.edit",),
-                owner_tab=None,
-                topic="session",
-                shortcut="Ctrl+Shift+Z",
-                run=redo,
-                target=None,
-            )
-        )
     if open_project is not None:
         specs.insert(
             3,

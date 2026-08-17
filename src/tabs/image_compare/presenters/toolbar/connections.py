@@ -522,12 +522,6 @@ def _connect_font_flyout(presenter):
     if flyout is None:
         return
     flyout.closed.connect(lambda: _on_font_flyout_closed(presenter))
-    flyout.interaction_started.connect(
-        lambda slider_name: _on_font_flyout_interaction_started(presenter, slider_name)
-    )
-    flyout.interaction_finished.connect(
-        lambda slider_name: _on_font_flyout_interaction_finished(presenter, slider_name)
-    )
 
     def _emit_font_settings(size, weight, color, bg_color, draw_bg, placement, alpha):
         args = (
@@ -545,16 +539,6 @@ def _connect_font_flyout(presenter):
 def _on_font_flyout_closed(presenter):
     presenter.ui_manager.transient.mark_font_popup_closed()
     presenter.widget.btn_text_settings.setFlyoutOpen(False)
-
-def _on_font_flyout_interaction_started(presenter, slider_name):
-    viewport_ctrl = getattr(getattr(presenter, "main_controller", None), "viewport_plugin", None)
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_pressed"):
-        viewport_ctrl.on_slider_pressed(slider_name)
-
-def _on_font_flyout_interaction_finished(presenter, slider_name):
-    viewport_ctrl = getattr(getattr(presenter, "main_controller", None), "viewport_plugin", None)
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_released"):
-        viewport_ctrl.on_slider_released(slider_name)
 
 def _connect_magnifier_color_controls(presenter):
     from tabs.image_compare.presenters.toolbar.actions import (

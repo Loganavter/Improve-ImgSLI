@@ -42,6 +42,3 @@ class MultiComparePlugin(Plugin, ISessionPlugin):
                 ),
             ),
         )
-
-    def get_ui_components(self) -> dict[str, Any]:
-        return {}

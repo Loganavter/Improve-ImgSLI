@@ -9,11 +9,12 @@ from tabs.host_helpers import MessageKind
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_compare.services import document_store_ops
+from tabs.save_toast import SaveToastMixin
 
 logger = logging.getLogger("ImproveImgSLI")
 
 
-class ExportSaveFlowCoordinator:
+class ExportSaveFlowCoordinator(SaveToastMixin):
     def __init__(
         self,
         store,
@@ -32,43 +33,10 @@ class ExportSaveFlowCoordinator:
         self._save_cancellation = {}
         self._save_workers = {}
 
-    def _get_toast_manager(self):
-        return getattr(self.main_window_app, "toast_manager", None)
-
     def _next_save_task_id(self) -> int:
         current = int(getattr(self.main_window_app, "save_task_counter", 0) or 0) + 1
         setattr(self.main_window_app, "save_task_counter", current)
         return current
-
-    def _update_toast_safe(
-        self,
-        save_task_id: int | None,
-        message: str,
-        *,
-        success: bool,
-        duration: int = 0,
-        progress: int | None = None,
-        actions=None,
-    ) -> None:
-        toast_manager = self._get_toast_manager()
-        if toast_manager is None or save_task_id is None:
-            return
-
-        try:
-            kwargs = {
-                "success": success,
-                "duration": duration,
-                "progress": progress,
-            }
-            if actions is not None:
-                kwargs["actions"] = actions
-            toast_manager.update_toast(
-                save_task_id,
-                message,
-                **kwargs,
-            )
-        except Exception as exc:
-            logger.error("Toast update failed for %s: %s", save_task_id, exc)
 
     def validate_export_options(self, export_opts: dict) -> bool:
         out_dir = export_opts.get("output_dir")
@@ -198,19 +166,6 @@ class ExportSaveFlowCoordinator:
             export_opts["output_dir"],
             f"{export_opts['file_name']}{ext_disp}",
         )
-
-    def _build_toast_path_line(self, final_path_for_display: str) -> str:
-        directory, file_name = os.path.split(final_path_for_display)
-        if not directory:
-            return file_name
-
-        normalized_dir = os.path.normpath(directory)
-        dir_parts = [part for part in normalized_dir.split(os.sep) if part]
-        if len(dir_parts) <= 2:
-            compact_dir = normalized_dir
-        else:
-            compact_dir = os.path.join("...", dir_parts[-2], dir_parts[-1])
-        return os.path.join(compact_dir, file_name)
 
     def _create_save_toast(
         self,
