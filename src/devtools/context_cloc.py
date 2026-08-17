@@ -344,12 +344,15 @@ def cloc_summary_for_path(
     target: Path,
     include_ext: str = "",
     exclude_file_re: str = "",
+    match_d: str = "",
 ) -> tuple[int, int, int, int] | None:
     cmd = [cloc_bin, "--quiet", "--json", f"--exclude-dir={CLOC_EXCLUDE_DIRS}"]
     if include_ext:
         cmd.append(f"--include-ext={include_ext}")
     if exclude_file_re:
         cmd.append(f"--not-match-f={exclude_file_re}")
+    if match_d:
+        cmd.append(f"--match-d={match_d}")
     cmd.append(str(target))
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -399,8 +402,9 @@ def print_cloc_dir_stats(
     threshold: int,
     include_ext: str,
     exclude_file_re: str,
+    match_d: str = "",
 ) -> None:
-    summary = cloc_summary_for_path(cloc_bin, dir_path, include_ext, exclude_file_re)
+    summary = cloc_summary_for_path(cloc_bin, dir_path, include_ext, exclude_file_re, match_d)
     if summary is None:
         return
     files, blank, comment, code = summary
@@ -417,7 +421,7 @@ def print_cloc_dir_stats(
         for subdir in _top_level_dirs(dir_path):
             print_cloc_dir_stats(
                 writer, cloc_bin, subdir, repo_dir, indent + 1,
-                threshold, include_ext, exclude_file_re,
+                threshold, include_ext, exclude_file_re, match_d,
             )
 
 
@@ -429,6 +433,7 @@ def _cloc_table(
     output: Path,
     title: str,
     include_ext: str,
+    match_d: str = "",
 ) -> None:
     label = repo_dir.name
     exclude_file_re = cloc_target_exclude_re(output)
@@ -442,7 +447,7 @@ def _cloc_table(
     writer.append_text(_table_row("Path", "Files", "Blank", "Comment", "Code"))
     writer.append_text(TABLE_RULE + "\n")
 
-    total = cloc_summary_for_path(cloc_bin, repo_dir, include_ext, exclude_file_re)
+    total = cloc_summary_for_path(cloc_bin, repo_dir, include_ext, exclude_file_re, match_d)
     if total is None:
         total = (0, 0, 0, 0)
     t_files, t_blank, t_comment, t_code = total
@@ -452,7 +457,7 @@ def _cloc_table(
     for top_dir in _top_level_dirs(repo_dir):
         print_cloc_dir_stats(
             writer, cloc_bin, top_dir, repo_dir, 0, threshold,
-            include_ext, exclude_file_re,
+            include_ext, exclude_file_re, match_d,
         )
 
     writer.append_text(TABLE_RULE + "\n")
@@ -495,6 +500,28 @@ def write_cloc_shader_stats(
     _cloc_table(writer, repo_dir, threshold, cloc_bin, output, "shader cloc statistics", SHADER_EXTS)
 
 
+def write_cloc_test_stats(
+    writer: ContextWriter,
+    repo_dir: Path,
+    threshold: int,
+    cloc_bin: str,
+    output: Path,
+) -> None:
+    """Test-code statistics as a separate category (mirrors the shader
+    section): every directory named ``tests`` (repo-root ``tests/`` and the
+    in-``src`` ``src/tabs/*/tests`` trees) is counted with ``--match-d=tests``
+    so test mass is visible without being conflated with production code."""
+    label = repo_dir.name
+    if not ensure_cloc(cloc_bin):
+        return
+    log_step(f"Counting {label} cloc statistics for test sources")
+    exclude_file_re = cloc_target_exclude_re(output)
+    total = cloc_summary_for_path(cloc_bin, repo_dir, "", exclude_file_re, match_d="tests")
+    if total is None or (total[3] == 0 and total[0] == 0):
+        return
+    _cloc_table(writer, repo_dir, threshold, cloc_bin, output, "tests cloc statistics", "", match_d="tests")
+
+
 def process_repo_cloc(
     writer: ContextWriter,
     repo_dir: Path,
@@ -505,6 +532,7 @@ def process_repo_cloc(
     log_step(f"cloc: {repo_dir.name}")
     write_cloc_stats(writer, repo_dir, stats_threshold, cloc_bin, output)
     write_cloc_shader_stats(writer, repo_dir, stats_threshold, cloc_bin, output)
+    write_cloc_test_stats(writer, repo_dir, stats_threshold, cloc_bin, output)
 
 
 def process_repo(
@@ -533,6 +561,7 @@ def process_repo(
     if include_stats:
         write_cloc_stats(writer, repo_dir, stats_threshold, cloc_bin, output)
         write_cloc_shader_stats(writer, repo_dir, stats_threshold, cloc_bin, output)
+        write_cloc_test_stats(writer, repo_dir, stats_threshold, cloc_bin, output)
 
 
 def resolve_toolkit_dir(toolkit_dir: str | None) -> Path | None:
