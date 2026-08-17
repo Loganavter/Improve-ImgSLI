@@ -19,6 +19,10 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from core.bootstrap import ApplicationContext
 from core.runtime_flags import RuntimeFlags
+from shared_toolkit.ui.decorate_dialog import (
+    CUSTOM_DECORATION_RESIZE_MARGIN,
+    resolve_csd_band,
+)
 from shared_toolkit.ui.overlay_layer import OverlayLayer
 from ui.main_window.actions import MainWindowActions
 from ui.main_window.appearance import MainWindowAppearance
@@ -55,8 +59,6 @@ class MainWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
         from sli_ui_toolkit import apply_frameless
-
-        from shared_toolkit.ui.decorate_dialog import CUSTOM_DECORATION_RESIZE_MARGIN
 
         # Outer resize band: the surface carries transparent margin beyond
         # the visible body so the frameless edge can be grabbed from outside
@@ -155,11 +157,7 @@ class MainWindow(QWidget):
         painter = QPainter(self)
         try:
             squared = self.isMaximized() or self.isFullScreen()
-            band = 0
-            try:
-                band = int(self.property("_csd_outer_band") or 0)
-            except Exception:
-                band = 0
+            band = resolve_csd_band(self)
             paint_rounded_window_background(
                 painter,
                 QRectF(self.rect()).adjusted(band, band, -band, -band),
@@ -169,6 +167,29 @@ class MainWindow(QWidget):
             )
         finally:
             painter.end()
+
+    def _sync_csd_content_band(self) -> None:
+        """Zero the root-layout band inset in maximized/fullscreen.
+
+        The root layout insets all content by the outer resize band (so the
+        visible body sits inside the transparent grab margin). In
+        maximized/fullscreen the band is gone (see ``resolve_csd_band``) —
+        keeping the inset would leave a strip of window background around
+        the content. Re-insets when the window returns to windowed mode.
+        """
+        layout = getattr(self, "_root_layout", None)
+        if layout is None:
+            return
+        band = resolve_csd_band(self)
+        layout.setContentsMargins(band, band, band, band)
+        layout.invalidate()
+        layout.activate()
+        startup_runtime = getattr(self, "startup_runtime", None)
+        if startup_runtime is not None:
+            try:
+                startup_runtime.sync_cover_geometry()
+            except Exception:
+                pass
 
     def _apply_rounded_mask(self) -> None:
         from sli_ui_toolkit.ui.windows.rounded_body import (
@@ -247,6 +268,7 @@ class MainWindow(QWidget):
             defer_dialog_geometry(self, lambda: apply_main_window_minimum(self))
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange:
+            self._sync_csd_content_band()
             self._apply_rounded_mask()
             self.update()
             QTimer.singleShot(0, self.schedule_update)
