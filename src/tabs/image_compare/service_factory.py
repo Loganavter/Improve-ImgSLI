@@ -283,6 +283,8 @@ def create_service(
         return has_initial_canvas_content(*args, **kwargs)
     if service_id == "requires_first_frame_startup_gate":
         return True
+    if service_id == "requires_first_run_onboarding":
+        return True
     if service_id == "refresh_startup_button_visuals":
         if tab._widget is None:
             return False
