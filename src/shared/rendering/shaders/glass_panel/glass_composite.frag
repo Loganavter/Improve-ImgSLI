@@ -134,7 +134,22 @@ void main()
         texture(scratchTex, sampleUv - bendUv * 0.6).b
     );
     vec3 backdrop = mix(blurred.rgb, chroma, edgeProximity * 0.25);
-    vec3 tintedGlass = mix(backdrop, tint.rgb, tint.a);
+
+    // Backdrop-adaptive tint (Apple's "dynamic range shift", WWDC25
+    // "Meet Liquid Glass"): tint strength follows the backdrop's own
+    // luminance so the glass stays on the same luminance side as the text
+    // decision -- dark backdrop (white text) reduces the tint toward
+    // transparent so the glass stays dark and the white stays crisp;
+    // bright backdrop (black text) keeps the full theme tint so the glass
+    // stays bright. Mild range on purpose: the material still reads as
+    // "tinted", just context-aware. The text decision reads pre-tint
+    // `backdrop` below, so this is display-only and cannot feed back into
+    // the black/white choice. See
+    // improve-imgsli-internal-docs/docs/legacy/rendering/
+    // glass-panel-soft-threshold-adaptive-tint-plan.md Phase 2.
+    float tintLum = dot(backdrop, vec3(0.299, 0.587, 0.114));
+    float tintStrength = tint.a * mix(0.65, 1.0, smoothstep(0.0, 1.0, tintLum));
+    vec3 tintedGlass = mix(backdrop, tint.rgb, tintStrength);
 
     // Directional rim/specular: the HIG calls for "reflective rim
     // lighting" whose intensity follows the surface normal relative to a
@@ -239,22 +254,19 @@ void main()
         // glass, just decided from the fuller-range signal.
         float luminance = dot(backdrop, vec3(0.299, 0.587, 0.114));
         float midpoint = 128.0 / 255.0;
-        // Hard binary step, not a sigmoid -- bug 19/20/21's whole family of
-        // failures was a low-contrast *mid-gray* landing in the output
-        // whenever `luminance` sat close to `midpoint` (a sigmoid, however
-        // steep, still has *some* transition band by construction, and
-        // real content keeps landing in it). Mid-gray text is unreadable
-        // against *any* backdrop -- there's no case where it's the right
-        // answer, so remove it from the output range entirely instead of
-        // continuing to chase a steepness/compensation value that avoids
-        // it. The tradeoff: a backdrop whose luminance varies right across
-        // `midpoint` *within* one letter's own footprint (rare -- panels
-        // are usually a fairly uniform blurred patch) now gets a hard
-        // flip there instead of a smooth gradient -- confirmed an
-        // acceptable trade: a sharp flip between two fully-readable colors
-        // beats a smooth gradient through an unreadable one.
-        float textGray = 1.0 - step(midpoint, luminance);
-        color = mix(color, vec3(textGray), maskAlpha);
+        // Soft threshold, not a hard step: a narrow band (see this plan's
+        // Phase 1) around the midpoint so the black/white flip is a
+        // 2-4px-wide continuous transition -- sub-stroke-width on these
+        // HUD chips, so it reads as antialiased ink, not the flat
+        // mid-gray glyph the wide sigmoid bands of bugs 19-21 produced
+        // (those failed on *post-tint compressed* luminance and wide
+        // bands; `backdrop` is pre-tint and already Gaussian-blurred, so
+        // this narrow band cannot cover a whole glyph). `maskAlpha` still
+        // does the per-glyph-edge AA.
+        float band = 0.04;
+        float sig = smoothstep(midpoint - band, midpoint + band, luminance);
+        vec3 textGray = vec3(1.0 - sig);
+        color = mix(color, textGray, maskAlpha);
     }
 
     fragColor = vec4(color * alpha, alpha);
