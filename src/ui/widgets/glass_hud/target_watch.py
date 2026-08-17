@@ -1,9 +1,8 @@
 """Target-canvas watching/wiring for ``GlassHUD`` -- split out per
 docs/dev/CODE_PATTERNS.md's "thin owner + use_cases module" pattern (own
 orthogonal concern: tracking the target canvas's geometry/frame signal and
-(un)registering this HUD's backdrop from/to it, independent of the text-mask
-rasterization concern in ``text_mask.py`` or the backdrop-style/registration
-concern that stays on ``GlassHUD`` itself).
+(un)registering this HUD's backdrop from/to it; the backdrop-style/
+registration concern stays on ``GlassHUD`` itself).
 
 Functions here take the owning ``GlassHUD`` instance as their first
 argument and read/write its instance state directly -- same shape as
@@ -56,10 +55,6 @@ def watch_target(hud, target_widget) -> None:
             except (RuntimeError, TypeError):
                 pass
             try:
-                previous.frameSubmitted.disconnect(hud._maybe_update_text_mask)
-            except (RuntimeError, TypeError):
-                pass
-            try:
                 previous.frameSubmitted.disconnect(hud._debug_frame_submitted)
             except (RuntimeError, TypeError):
                 pass
@@ -67,7 +62,6 @@ def watch_target(hud, target_widget) -> None:
         target_widget.installEventFilter(hud)
         if hasattr(target_widget, "frameSubmitted"):
             target_widget.frameSubmitted.connect(hud._display.update)
-            target_widget.frameSubmitted.connect(hud._maybe_update_text_mask)
             if flyout_debug_enabled():
                 target_widget.frameSubmitted.connect(hud._debug_frame_submitted)
     hud._display.set_source(target_widget, id(hud))
@@ -76,9 +70,9 @@ def watch_target(hud, target_widget) -> None:
 def debug_frame_submitted(hud) -> None:
     """IMGSLI_FLYOUT_DEBUG=1 only: reports how often the target canvas's
     own ``frameSubmitted`` fires -- answers "is the canvas rendering
-    continuously even at idle, or is this HUD's own work
-    (``maybe_update_text_mask`` etc.) the thing spinning". See
-    docs/dev/rendering/glass-panel-text-vibrancy-plan.md Phase 3."""
+    continuously even at idle, or is this HUD's own work the thing
+    spinning". See docs/dev/rendering/glass-panel-text-vibrancy-plan.md
+    Phase 3."""
     hud._debug_frame_count += 1
     now = time.monotonic()
     if now - hud._debug_frame_window_start >= 1.0:

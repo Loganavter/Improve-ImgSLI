@@ -33,10 +33,6 @@ _PAINT_FONT_HELPERS = ("paint_font", "rebase_font")
 # scale-resolved (HUD labels pinned via apply_ui_font) or sized in
 # framebuffer-px for the canvas scene (not UI space).
 _TEXT_WITHOUT_SET_FONT: dict[tuple[str, str], str] = {
-    ("ui/widgets/glass_hud/text_mask.py", "rebuild_text_mask"): (
-        "paints each HUD label with its own widget.font() — HUD labels are "
-        "scale-resolved via apply_ui_font"
-    ),
     ("tabs/multi_compare/ui/layer_labels.py", "paint_layer_label"): (
         "canvas scene text: label rasterized in framebuffer px (fb-space), "
         "sized by the scene style, not the UI scale"

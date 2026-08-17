@@ -2,11 +2,14 @@
 
 Pinned frosted-glass corner chips over the canvas. `GlassHUD` is the shared
 `BaseFlyout` base (registers a `GlassPanelSpec` with the canvas's
-`GlassPanelRegistry`, owns the text-mask alpha rasterization and the glass
-sprite display); `InfoHUD` and `ZoomIndicator` are the two concrete chips.
+`GlassPanelRegistry` and owns the glass sprite display); `InfoHUD` and
+`ZoomIndicator` are the two concrete chips. Their labels paint their own
+glyphs in the normal theme color on top of the glass — there is no
+GPU-recolored text mask (the dynamic text-vibrancy feature was removed; see
+the private plan `glass-panel-soft-threshold-adaptive-tint-plan.md`).
 
 Sources: `src/ui/widgets/glass_hud/{hud,info,zoom}.py`,
-`src/ui/widgets/glass_hud/{target_watch,text_mask}.py`,
+`src/ui/widgets/glass_hud/target_watch.py`,
 `src/ui/widgets/glass_hud/shaders/`
 
 ## GlassHUD
@@ -16,8 +19,8 @@ Sources: `src/ui/widgets/glass_hud/{hud,info,zoom}.py`,
 | `parent` / `anchor` | flyout host / anchored widget |
 | `flyout_group` | `info_hud` or `zoom_indicator` (see `ui/flyout_policy.py`) |
 
-`target_watch` / `text_mask` (use_cases modules per CODE_PATTERNS) own the
-anchor-tracking and glyph-mask rasterization (supersampled, throttled).
+`target_watch` (a use_cases module per CODE_PATTERNS) owns the
+anchor-tracking and backdrop re-registration.
 
 ## InfoHUD
 
