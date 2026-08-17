@@ -42,8 +42,8 @@ class WorkspaceStoreMixin:
         new_viewport = ViewportState(session_data=create_session_data(session_type))
 
         # Settings load into the viewport of whichever session is active at
-        # startup; carry them over so a fresh RenderConfig
-        # (display_resolution_limit=0 etc.) never shadows user settings.
+        # startup; carry them over so a fresh RenderConfig never shadows
+        # user settings.
         current_render = getattr(getattr(self, "viewport", None), "render_config", None)
         if current_render is not None:
             new_viewport.render_config = copy.deepcopy(current_render)

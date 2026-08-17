@@ -49,7 +49,7 @@ def test_successful_unification_clears_pending_paths():
                 render_cache=render_cache,
                 image_state=SimpleNamespace(image1=None, image2=None),
             ),
-            render_config=SimpleNamespace(display_resolution_limit=0),
+            render_config=SimpleNamespace(),
         ),
         invalidate_render_cache=lambda: None,
     )

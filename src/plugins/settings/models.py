@@ -11,7 +11,6 @@ class SettingsDialogData:
     max_name_length: int
     debug_enabled: bool
     system_notifications_enabled: bool
-    resolution_limit: int
     ui_font_mode: str
     ui_font_family: str
     ui_scale_factor: float

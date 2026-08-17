@@ -49,7 +49,6 @@ from core.state_management.interaction_actions import (
 from core.state_management.session_actions import (
     SetAutoCalculatePsnrAction,
     SetAutoCalculateSsimAction,
-    SetDisplayResolutionLimitAction,
     SetImageSessionImageAction,
     SetPendingUnificationPathsAction,
     SetPsnrValueAction,

@@ -105,7 +105,6 @@ class DialogManager:
             system_notifications_enabled=getattr(
                 self.host.store.settings, "system_notifications_enabled", True
             ),
-            current_resolution_limit=self.host.store.viewport.render_config.display_resolution_limit,
             parent=self.host.parent_widget,
             tr_func=tr,
             current_ui_font_mode=getattr(

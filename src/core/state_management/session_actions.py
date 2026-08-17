@@ -39,17 +39,6 @@ class SetPendingUnificationPathsAction(Action):
         return {"paths": self.paths}
 
 @dataclass
-class SetDisplayResolutionLimitAction(Action):
-    limit: int
-
-    def __init__(self, limit: int):
-        super().__init__(type=ActionType.SET_DISPLAY_RESOLUTION_LIMIT)
-        self.limit = limit
-
-    def get_payload(self):
-        return {"limit": self.limit}
-
-@dataclass
 class SetZoomInterpolationMethodAction(Action):
     method: str
 

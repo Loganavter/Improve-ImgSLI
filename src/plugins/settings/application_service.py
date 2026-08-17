@@ -11,7 +11,6 @@ from plugins.settings.events import (
 from core.state_management.actions import (
     SetAutoCropBlackBordersAction,
     SetDebugModeEnabledAction,
-    SetDisplayResolutionLimitAction,
     SetKeyboardOverridesAction,
     SetMaxNameLengthAction,
     SetSystemNotificationsEnabledAction,
@@ -101,14 +100,6 @@ class SettingsApplicationService(QObject):
             )
             if window_shell is not None:
                 window_shell.main_window_app.apply_application_theme(data.theme)
-
-        if data.resolution_limit != self.store.viewport.render_config.display_resolution_limit:
-            dispatcher.dispatch(
-                SetDisplayResolutionLimitAction(data.resolution_limit),
-                scope="viewport",
-            )
-            self.store.invalidate_geometry_cache()
-            render_update_needed = True
 
         if data.max_name_length != self.store.viewport.render_config.max_name_length:
             dispatcher.dispatch(

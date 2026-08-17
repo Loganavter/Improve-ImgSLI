@@ -15,14 +15,6 @@ from sli_ui_toolkit.widgets import CheckBox, ComboBox, Label, SpinBox
 from core.constants import AppConstants
 from plugins.settings.search import SearchIndex, group
 
-RESOLUTION = group(
-    "settings.display_cache_resolution",
-    "settings.original",
-    "settings.resolution_8k",
-    "settings.resolution_4k",
-    "settings.resolution_2k",
-    "settings.resolution_full_hd",
-)
 INTERACTIVE = group(
     "settings.interactive_optimization",
     "settings.zoom_interpolation",
@@ -32,48 +24,15 @@ INTERACTIVE = group(
     "settings.magnifier_auto_color_new_instances",
 )
 VIDEO = group("image_compare.settings.video_recording", "image_compare.settings.recording_fps")
-SEARCH = SearchIndex.of(RESOLUTION, INTERACTIVE, VIDEO)
+SEARCH = SearchIndex.of(INTERACTIVE, VIDEO)
 
 
 def build_image_perf_extras(dialog, p) -> None:
     layout = getattr(dialog, "_perf_layout", None)
     if layout is None:
         return
-    _build_resolution_group(dialog, layout, p)
     _build_interactive_optimization_group(dialog, layout, p)
     _build_video_group(dialog, layout, p)
-
-
-def _build_resolution_group(dialog, layout, p):
-    dialog.res_group = RESOLUTION.widget(dialog)
-    res_layout = QHBoxLayout()
-    res_layout.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
-    dialog.combo_resolution = ComboBox()
-    RESOLUTION.tag_combo(dialog.combo_resolution)
-    dialog.combo_resolution.setSizePolicy(
-        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-    )
-    mapping = {
-        "Original": "settings.original",
-        "8K (4320p)": "settings.resolution_8k",
-        "4K (2160p)": "settings.resolution_4k",
-        "2K (1440p)": "settings.resolution_2k",
-        "Full HD (1080p)": "settings.resolution_full_hd",
-    }
-    for name_key, limit in AppConstants.DISPLAY_RESOLUTION_OPTIONS.items():
-        key = mapping.get(name_key, name_key)
-        dialog.combo_resolution.addItem(
-            RESOLUTION.text(dialog, key) if key.startswith("settings.") else key,
-            userData=limit,
-        )
-        if key.startswith("settings."):
-            RESOLUTION.note_combo_option(dialog.combo_resolution, key)
-    idx_res = dialog.combo_resolution.findData(p.current_resolution_limit)
-    if idx_res != -1:
-        dialog.combo_resolution.setCurrentIndex(idx_res)
-    res_layout.addWidget(dialog.combo_resolution)
-    dialog.res_group.add_layout(res_layout)
-    layout.addWidget(dialog.res_group)
 
 
 def _build_interactive_optimization_group(dialog, layout, p):

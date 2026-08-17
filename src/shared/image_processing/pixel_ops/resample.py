@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from shared.image_processing.tiled_pixel_store import TiledPixelStore, pixel_source_size
 
 _BLOCK = 512
 
@@ -32,21 +32,8 @@ def resample_output_region(
 ) -> Image.Image:
     """Map an output pixel rectangle back to source space and resample."""
     ox0, oy0, ox1, oy1 = out_box
-    
-    def _img_dims(img) -> tuple[int, int]:
-        if img is None: return (0, 0)
-        iw, ih = 0, 0
-        if hasattr(img, "width") and callable(img.width): iw = int(img.width())
-        elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): iw = int(img.size[0])
-        elif hasattr(img, "size") and callable(img.size): iw = int(img.size().width())
-        else: iw = int(getattr(img, "width", 0))
-        if hasattr(img, "height") and callable(img.height): ih = int(img.height())
-        elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): ih = int(img.size[1])
-        elif hasattr(img, "size") and callable(img.size): ih = int(img.size().height())
-        else: ih = int(getattr(img, "height", 0))
-        return iw, ih
-        
-    sw, sh = _img_dims(source)
+
+    sw, sh = pixel_source_size(source)
     scale_x = sw / float(target_w)
     scale_y = sh / float(target_h)
     sx0 = int(ox0 * scale_x)

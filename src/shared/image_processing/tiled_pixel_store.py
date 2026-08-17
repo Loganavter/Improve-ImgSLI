@@ -834,16 +834,33 @@ def qimage_from_pixel_source(source, box: tuple[int, int, int, int] | None = Non
 def pixel_source_size(source) -> tuple[int, int]:
     """``(width, height)`` for any renderer pixel source: ``TiledPixelStore``
     exposes it as a tuple property, ``QImage`` as a method pair, numpy arrays
-    as ``(H, W, C)`` shape — callers that accept any of these (e.g.
+    as ``(H, W, C)`` shape, and PIL images / Qt ``QSize``-returning objects
+    through their ``size`` — callers that accept any of these (e.g.
     progressive-preview upload paths) go through this instead of hardcoding
     one shape."""
+    from PySide6.QtCore import QSize
     from PySide6.QtGui import QImage
 
+    if source is None:
+        return (0, 0)
     if isinstance(source, QImage):
         return source.width(), source.height()
     if isinstance(source, np.ndarray):
         return int(source.shape[1]), int(source.shape[0])
-    return source.size
+    width = getattr(source, "width", None)
+    height = getattr(source, "height", None)
+    if width is not None and height is not None:
+        w = width() if callable(width) else width
+        h = height() if callable(height) else height
+        return int(w), int(h)
+    size = source.size
+    if callable(size):
+        size = size()
+    if isinstance(size, QSize):
+        return int(size.width()), int(size.height())
+    if size is None:
+        return (0, 0)
+    return (int(size[0]), int(size[1]))
 
 
 def maybe_wrap_pixel_store(pil_image: Image.Image | None):

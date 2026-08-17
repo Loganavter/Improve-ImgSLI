@@ -10,6 +10,7 @@ from shared.image_processing.pixel_ops.resample import write_resampled_to_store
 from shared.image_processing.tiled_pixel_store import (
     TiledPixelStore,
     maybe_wrap_pixel_store,
+    pixel_source_size,
     to_real_pil_copy,
 )
 from shared.image_processing.store_lease import StoreLease
@@ -53,23 +54,8 @@ def unify_pair(
 
     resample = _RESAMPLE.get(method_name.upper(), Image.Resampling.LANCZOS)
 
-    def _size(source):
-        if source is None:
-            return (0, 0)
-        if hasattr(source, "width") and hasattr(source, "height"):
-            w = source.width() if callable(source.width) else source.width
-            h = source.height() if callable(source.height) else source.height
-            return (int(w), int(h))
-        if hasattr(source, "size"):
-            s = source.size() if callable(source.size) else source.size
-            if hasattr(s, "width") and hasattr(s, "height"):
-                return (int(s.width()), int(s.height()))
-            if isinstance(s, (tuple, list)):
-                return (int(s[0]), int(s[1]))
-        return (0, 0)
-
-    w1, h1 = _size(source1)
-    w2, h2 = _size(source2)
+    w1, h1 = pixel_source_size(source1)
+    w2, h2 = pixel_source_size(source2)
     target_w = max(w1, w2)
     target_h = max(h1, h2)
     if target_w <= 0 or target_h <= 0:

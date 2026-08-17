@@ -145,12 +145,6 @@ def restore_viewport_block(
     restore_view_state(viewport.view_state, data.get("view_state"))
     if data.get("render_config"):
         restored = RenderConfig.from_dict(data.get("render_config"))
-        # display_resolution_limit is a machine-level performance setting
-        # (QSettings), not project state: a stale serialized value (e.g. 0)
-        # must not shadow the current global setting.
-        restored.display_resolution_limit = (
-            viewport.render_config.display_resolution_limit
-        )
         viewport.render_config = restored
     # Magnifier models first so feature property writes can target active state.
     _restore_magnifier(viewport.view_state, data.get("magnifier"))

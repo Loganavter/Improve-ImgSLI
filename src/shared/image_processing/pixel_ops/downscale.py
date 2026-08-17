@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from shared.image_processing.tiled_pixel_store import TiledPixelStore
+from shared.image_processing.tiled_pixel_store import TiledPixelStore, pixel_source_size
 
 _BLOCK = 512
 
@@ -86,20 +86,7 @@ def downscale_pair_to_limit(
     Pass ``allow_materialize=True`` only when full materialisation is
     intentional (e.g. SSIM analysis, metrics, export).
     """
-    def _size(src) -> tuple[int, int]:
-        if hasattr(src, "width") and hasattr(src, "height"):
-            w = src.width() if callable(src.width) else src.width
-            h = src.height() if callable(src.height) else src.height
-            return (int(w), int(h))
-        if hasattr(src, "size"):
-            s = src.size() if callable(src.size) else src.size
-            if hasattr(s, "width") and hasattr(s, "height"):
-                return (int(s.width()), int(s.height()))
-            if isinstance(s, (tuple, list)):
-                return (int(s[0]), int(s[1]))
-        return (0, 0)
-
-    w, h = _size(img1)
+    w, h = pixel_source_size(img1)
     needs_downscale = limit > 0 and max(w, h) > limit
 
     if not needs_downscale:
@@ -119,11 +106,11 @@ def downscale_pair_to_limit(
             # allow_materialize=True: explicit opt-in for analysis paths (SSIM, metrics).
             pil1 = (
                 img1 if isinstance(img1, Image.Image)
-                else downscale_source_to_pil(img1, _size(img1), resample=resample)
+                else downscale_source_to_pil(img1, pixel_source_size(img1), resample=resample)
             )
             pil2 = (
                 img2 if isinstance(img2, Image.Image)
-                else downscale_source_to_pil(img2, _size(img2), resample=resample)
+                else downscale_source_to_pil(img2, pixel_source_size(img2), resample=resample)
             )
         if pil1.mode != "RGBA":
             pil1 = pil1.convert("RGBA")

@@ -168,7 +168,7 @@ def test_render_flow_keeps_live_side_when_other_slot_empty():
                     pixmap_height=0,
                     image_display_rect_on_label=None,
                 ),
-                render_config=SimpleNamespace(display_resolution_limit=0),
+                render_config=SimpleNamespace(),
             ),
             get_session_state_slot=lambda _n: SimpleNamespace(
                 full_res_image1=live,

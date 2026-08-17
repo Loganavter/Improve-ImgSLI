@@ -50,7 +50,7 @@ class _SessionData:
 class _Viewport:
     def __init__(self):
         self.session_data = _SessionData()
-        self.render_config = type("Cfg", (), {"display_resolution_limit": 0})()
+        self.render_config = type("Cfg", (), {})()
 
 
 class _Store:
