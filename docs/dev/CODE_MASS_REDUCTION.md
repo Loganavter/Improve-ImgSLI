@@ -32,6 +32,30 @@ and per-axis reduction potential is:
 Net without double counting: **≈ 4 500–5 500 LOC quickly and safely;
 ≈ 8 500–12 500 with medium-risk refactors; toolkit another 3–7k.**
 
+## Outcome (2026-08-17)
+
+All sprints executed and resolved. Committed in `36cc4d7e` (Sprint 1) and
+`40d4d06e` (Sprint 2 + pull-forwards):
+
+- **Sprint 1 — Done**: 41 files, ~1 955 LOC (duplicates, dead GLSL
+  containers, orphans, shims, regions merge) + pulled-forward registries
+  (`contributions.py`, `ui_integration.py`) and the dead video-session layer
+  (`model.py` 386→112) ≈ 540 LOC more.
+- **Sprint 2 — Done**: 20 dead public functions (~205 LOC).
+- **Total: ~2 700 LOC deleted** (net ≈ −2 400 accounting for the plan doc
+  and test rewrites), every change followed by
+  `./launcher.sh test tests/contracts -q` (1391–1397 passed, 1 skipped
+  throughout) and a full import sweep.
+- **Sprint 3 — Verified, deferred**: the audit's 1 300–1 800 LOC
+  "mechanical test dedup" does not hold up — the named duplicates test
+  different production code or have different signatures (details in the
+  sprint section).
+- **Sprint 4 — Evaluated, deferred/blocked**: devtools relocation is a
+  packaging lever (not repo LOC), `core/tracing` is a live runtime
+  dependency (audit corrected), manager merges cost more churn than the
+  ~200 LOC saved, multi_compare consolidation is a long-term design item,
+  toolkit work is blocked on the second host (Tkonverter not on disk).
+
 ## Principles
 
 1. **Ship nothing that a contract test guards without changing the test
@@ -182,10 +206,23 @@ Rewrite those imports to `shared.image_processing.regions`, delete
 
 ---
 
-## Sprint 2 — Dead symbols inside live modules (`Open`)
+## Sprint 2 — Dead symbols inside live modules (`Done`, 2026-08-17)
 
 Verified-unused public functions/classes; remove one file at a time with a
 grep before each removal.
+
+**Result: 20 dead public functions removed from 15 modules (~205 LOC),
+committed in `40d4d06e`.** Each candidate was grep-verified (0 callers in
+`src/`+`tests/`, including attribute access) and removed with an AST-based
+per-node edit; a full import sweep of all 867 `src/` modules passed with 0
+failures (the first AST pass had a range-slicing bug that ate a live
+neighbor function — `resolve_view_px` — caught by `test_tile_constants.py`,
+all 15 files restored and re-done per-node). Contract suite: 1391 passed /
+1 skipped. Two render-discovery failures
+(`test_divider_is_discovered_as_qrhi_render_pass`,
+`test_guides_and_capture_are_discovered_as_qrhi_passes`) verified as
+pre-existing on the baseline commit (order/environment-dependent discovery),
+not caused by this sprint.
 
 Pulled forward and done in the Sprint 1 session: the dead video-session layer
 in `video_editor/model.py` (`VideoSessionModel` + `VideoDecoderState` +
@@ -216,39 +253,81 @@ Still open:
 
 ---
 
-## Sprint 3 — Test mass (`1 300–1 800 LOC`, `Open`)
+## Sprint 3 — Test mass (`Verified`, 2026-08-17 — deferred)
 
-Mechanical dedup without losing coverage:
+Audit estimate 1 300–1 800 LOC of "mechanical dedup" did **not survive
+verification**; the concrete claims were name-level similarities, not code
+identity:
 
-- Shared fixtures/factories for the 73 `class _Fake*` across 30 files and 13
-  copies of the `_record` closure (~700–900 LOC)
-- Merge mirrored budget tests (`test_realize_tile_plan_budget.py` vs
-  `test_realize_tile_residency_budget.py`) and the duplicated
-  `test_rmb_surface_is_always_popup`
-- Compress settings-persistence (~757 LOC / 7 files) and Find Action
-  (~1 639 LOC / 6 files) clusters using the project's "sweep instead of
-  per-property" strategy
+- **Mirrored budget tests**: `image_compare/tests/render/test_realize_tile_plan_budget.py`
+  and `multi_compare/tests/render/test_realize_tile_residency_budget.py`
+  (note: under `tests/render/`, not `tests/runtime/` as the audit stated) test
+  **different production code** (`resources.residency.realize_tile_plan` vs
+  `render_pass._realize_tile_residency`) against the same behavior spec —
+  intentional parallel coverage, merging would blur two units under test.
+- **`test_rmb_surface_is_always_popup` ×2**: same production function
+  (`ui/context_menu/manager.rmb_context_menu_surface`) but distinct env
+  scenarios (wayland vs win32/version) — ~15 lines, not worth the churn.
+- **`_record` closures**: the 3 inspected copies have different signatures
+  (`_record(tmp_path, name)`, `_records(tmp_path, n)`, `_record(i)`) — not
+  copy-paste.
+- **`register_platform_actions` "10 blocks"**: only one contract file
+  (`test_action_registry.py`) uses it; not 10 duplicated blocks.
+- **`test_settings_in_dialog_search.py` (audit: "empty")**: file does not
+  exist.
+
+What remains is real but medium-risk: consolidating the 73 per-file
+`_Fake*` families (they are per-subsystem fakes with genuinely different
+implementations — each needs identity verification before sharing) and
+compressing the settings/find-action clusters by *reducing test
+granularity* ("sweep instead of per-property"), which trades failure
+isolation for LOC. Decision: **deferred** — test LOC is not shipped, the
+coverage these tests provide is the safety net for the whole reduction
+program, and the audit's own estimate was inaccurate. Revisit per-subsystem
+if a fake family is proven identical.
 
 Sacred: `tests/contracts` AST checks, render family, runtime sessions/project
 I/O, devtools tests.
 
 ---
 
-## Sprint 4 — Structural consolidation (`Open`, design needed)
+## Sprint 4 — Structural consolidation (`Evaluated`, 2026-08-17 — deferred/blocked)
 
-Higher risk; each item needs its own design note before code.
+Each item was checked against the code before deciding:
 
-- Move `src/devtools/` (1 753) + `core/tracing` (840) out of shipped `src/`
-  (Flatpak `cp -a src/*`) into a dev-only package/script entry — no LOC
-  reduction in repo, but ~3.9% smaller shipped tree.
-- Merge thin delegates `SessionManager` (74) + `PluginLifecycleManager` (114)
-  into `PluginCoordinator`; replace `ExportController` pass-throughs.
-- `multi_compare/scene`+`canvas` (5 407) as a parallel reimplementation of
-  `image_compare` canvas — long-term, re-use `ui/canvas_infra`.
-- Toolkit: lazy facade imports (`widgets.py`, `composite/__init__.py`) to cut
-  process import load 97% → ~50–60%; remove dead 1.4k; decide fate of
-  demo-only widgets (calendar 1 474, sidebar 959, sunburst 358, …) with the
-  second host (Tkonverter — not on disk, must verify before deletion).
+- **`src/devtools/` relocation (1 753) — deferred (packaging lever).** Only
+  one production importer exists (`src/__main__.py` under a flag:
+  `from devtools.ui_layout_dump import …`) plus `tests/devtools/`; the module
+  path `devtools.*` must stay resolvable via `src/` on `sys.path`. The real
+  lever is the Flatpak/Windows packaging step (exclude `src/devtools` from
+  the copy), not a code move — and it cannot be verified in this repo's
+  test scope. No repo-LOC change either way.
+- **`core/tracing` (840) — audit correction: do NOT move.** `Tracer` is a
+  live runtime dependency: `core/bootstrap.py` installs tracing under env
+  flags and three production modules import it
+  (`video_editor/presenter_parts/preview.py`,
+  `video_editor/services/video_snapshot_rendering.py`,
+  `image_compare/services/video_snapshot_rendering/renderer.py`). Only
+  `core/tracing/print_tree.py` is a dev-only CLI (`python3 -m
+  core.tracing.print_tree`, documented in TRACING.md).
+- **Merge thin delegates — deferred.** `SessionManager` has 27 call sites
+  across production and is a facade over `Store` + `PluginCoordinator` with
+  real metadata logic (`create_session`); `PluginLifecycleManager` is a real
+  state machine (initialize/activate/deactivate/shutdown + error capture +
+  events), not a pass-through; `ExportController`'s delegating methods are
+  the public face used by UI buttons and event handlers and it owns
+  recording flags. ~200 LOC of savings do not justify the churn/regression
+  surface; the audit overestimated "thinness".
+- **`multi_compare/scene`+`canvas` consolidation (5 407) — long-term design
+  item.** Parallel reimplementation of the IC canvas; merging render paths
+  is the highest-risk item (QRhi fragility). Needs a dedicated design note
+  and render-contract test changes before any code.
+- **Toolkit (lazy facade imports, dead 1.4k, demo-only widgets) — blocked /
+  separate track.** `sli-ui-toolkit` is a separate repo (editable install);
+  removing demo-only widgets (calendar, sidebar, sunburst, …) requires the
+  second host Tkonverter, which is not on disk — cannot be verified.
+  Lazy facade imports are a toolkit-repo change with its own test suite;
+  plan as a toolkit project, not an app-repo change.
 
 ## Explicitly out of scope (do not touch)
 
