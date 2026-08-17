@@ -100,25 +100,27 @@ class Plugin(ABC):
 
 Live `@plugin` entry points (2026-07-18). Source of truth: filesystem scan of every `plugin.py` under `src/plugins/` and `src/tabs/` (incl. nested `tabs/*/plugins/*/`).
 
+Per-plugin docs: app-wide plugins → [plugins/](plugins/index.md); tab-owned plugins → `src/tabs/<tab>/docs/plugins/`.
+
 ### App-wide (`src/plugins/`)
 
-| Name | Path | Tier | Order | Interfaces | Role |
-|---|---|---|:-:|---|---|
-| `settings` | `plugins/settings/` | bootstrap | — | `IUIPlugin`, `IServicePlugin` | Settings dialog, `SettingsManager` disk persistence, canvas-feature setting bindings |
-| `layout` | `plugins/layout/` | bootstrap | — | — | UI-mode subscriber; obtains `layout_manager` via tab `create_startup_service` (not a local manager module) |
-| `onboarding` | `plugins/onboarding/` | bootstrap | — | — | First-run UI-mode picker on the startup stack; reads `SettingsManager.is_first_run` |
-| `export` | `plugins/export/` | deferred | 10 | `IControllablePlugin`, `IServicePlugin` | Still/video export dialog, recording/clipboard commands, export QSS |
-| `help` | `plugins/help/` | deferred | — | `IUIPlugin`, `IControllablePlugin` | In-app help dialog (hub/tree); see [HELP_SYSTEM.md](HELP_SYSTEM.md) |
-| `image_properties` | `plugins/image_properties/` | deferred | — | `IControllablePlugin` | Image metadata dialog + `service.build_image_properties` |
+| Name | Path | Tier | Order | Interfaces | Role | Doc |
+|---|---|:-:|---|---|---|
+| `settings` | `plugins/settings/` | bootstrap | — | `IUIPlugin`, `IServicePlugin` | Settings dialog, `SettingsManager` disk persistence, canvas-feature setting bindings | [plugins/settings.md](plugins/settings.md) |
+| `layout` | `plugins/layout/` | bootstrap | — | — | UI-mode subscriber; obtains `layout_manager` via tab `create_startup_service` (not a local manager module) | [plugins/layout.md](plugins/layout.md) |
+| `onboarding` | `plugins/onboarding/` | bootstrap | — | — | First-run UI-mode picker on the startup stack; reads `SettingsManager.is_first_run` | [plugins/onboarding.md](plugins/onboarding.md) |
+| `export` | `plugins/export/` | deferred | 10 | `IControllablePlugin`, `IServicePlugin` | Still/video export dialog, recording/clipboard commands, export QSS | [plugins/export.md](plugins/export.md) |
+| `help` | `plugins/help/` | deferred | — | `IUIPlugin`, `IControllablePlugin` | In-app help dialog (hub/tree); see [HELP_SYSTEM.md](HELP_SYSTEM.md) | [plugins/help.md](plugins/help.md) |
+| `image_properties` | `plugins/image_properties/` | deferred | — | `IControllablePlugin` | Image metadata dialog + `service.build_image_properties` | [plugins/image_properties.md](plugins/image_properties.md) |
 
 ### Tab / session plugins (`src/tabs/`)
 
-| Name | Path | Tier | Order | Interfaces | Role |
-|---|---|---|:-:|---|---|
-| `comparison` | `tabs/image_compare/` | bootstrap | — | `ISessionPlugin` | Primary two-image compare tab; owns analysis services (`services/analysis/`), session controller, canvas |
-| `session_picker` | `tabs/session_picker/` | bootstrap | — | `ISessionPlugin` | Transient "New Tab" session browser / switcher |
-| `multi_compare` | `tabs/multi_compare/` | deferred | — | `ISessionPlugin` | Grid multi-image compare tab + `multi_compare.state` slot |
-| `video_editor` | `tabs/image_compare/plugins/video_editor/` | deferred | 0 | `ISessionPlugin` | Tab-owned video editor (dialogs, timeline, recorder/export flows); loads before `export` |
+| Name | Path | Tier | Order | Interfaces | Role | Doc |
+|---|---|:-:|---|---|---|
+| `comparison` | `tabs/image_compare/` | bootstrap | — | `ISessionPlugin` | Primary two-image compare tab; owns analysis services (`services/analysis/`), session controller, canvas | `tabs/image_compare/docs/plugins/comparison.md` |
+| `session_picker` | `tabs/session_picker/` | bootstrap | — | `ISessionPlugin` | Transient "New Tab" session browser / switcher | `tabs/session_picker/docs/plugins/session_picker.md` |
+| `multi_compare` | `tabs/multi_compare/` | deferred | — | `ISessionPlugin` | Grid multi-image compare tab + `multi_compare.state` slot | `tabs/multi_compare/docs/plugins/multi_compare.md` |
+| `video_editor` | `tabs/image_compare/plugins/video_editor/` | deferred | 0 | `ISessionPlugin` | Tab-owned video editor (dialogs, timeline, recorder/export flows); loads before `export` | `tabs/image_compare/docs/plugins/video_editor.md` |
 
 There is no `@plugin(name="analysis")`. Diff/metrics/SSIM live under
 `tabs/image_compare/services/analysis/` and `shared/analysis/`, constructed by

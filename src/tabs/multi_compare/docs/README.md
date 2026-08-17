@@ -54,6 +54,8 @@ multi_compare/
 ## Local Docs
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - current tab architecture and boundaries.
+- [plugins/multi_compare.md](plugins/multi_compare.md) - the tab's `@plugin`
+  (session blueprint + state slot).
 - **investigations** (private, `improve-imgsli-internal-docs` repo, this
   same path `src/tabs/multi_compare/docs/investigations/`) — long-form case
   write-ups for rendering bugs confined to this tab (transient zoom nudge,
