@@ -24,7 +24,3 @@ def first_visual_present_count() -> int:
     """Presents required before first-frame signals are emitted."""
     return FIRST_PRESENT_SETTLE_COUNT
 
-
-def first_present_settle_count() -> int:
-    """Presents that get a compositor settle kick after recording."""
-    return FIRST_PRESENT_SETTLE_COUNT

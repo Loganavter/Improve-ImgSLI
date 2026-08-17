@@ -56,10 +56,44 @@ Net without double counting: **≈ 4 500–5 500 LOC quickly and safely;
 
 ---
 
-## Sprint 1 — Zero-risk deletions (`In progress`)
+## Sprint 1 — Zero-risk deletions (`Done`, 2026-08-17)
 
 Pure removals with **zero importers** (src + tests verified by grep), plus
 test-import rewrites. No API changes.
+
+**Result: 41 files deleted / merged, ~1 955 LOC removed, plus the
+write-only plugin registries and the dead video-session layer pulled in from
+Sprint 2 (~540 LOC more, see below).** Contract suite green (`1397 passed, 1
+skipped` at 16:00 commit; `1391 passed, 1 skipped` after the registry/model
+removals — the delta is parametrized contract cases over removed shims);
+touched families green (`tests/plugins` 279, `image_compare
+{contracts,video,runtime,plugins}` 198, `multi_compare`, `session_picker`
+except two pre-existing failures — see below). Side effect found by the
+doc-link test: `docs/dev/rendering/tile-rendering-system.md` linked to
+deleted `pixel_source.py` — reference rewritten to `tiled_pixel_store.py`.
+
+**Pulled forward from Sprint 2 (same session):**
+- Write-only registries: `core/plugin_system/contributions.py` (120) and
+  `core/plugin_system/ui_integration.py` (26) deleted — `PluginDefinition` +
+  all five registration dataclasses + `PluginDefinitionRegistry` had zero
+  readers (bootstrap only validated-then-discarded), and `PluginUIRegistry`
+  was never populated (`register_action`/`unregister_plugin`/`get_plugin_name`
+  uncalled; `get_action` always returned None at its three call sites —
+  presenter, ui_manager, toolbar quick-save — now simplified to direct
+  fallbacks). Plumbing removed from `bootstrap.py`, `presenter.py`,
+  `ui_manager.py`, `features.py`, `composer.py`, `toolbar/connections.py`.
+- Dead video-session layer: `video_editor/model.py` trimmed 386 → 112
+  (`VideoSessionModel` + `VideoDecoderState` + `VideoSourceState` +
+  `VideoSessionSnapshot`, 274 lines, sole user was `test_video_session_model.py`
+  — deleted with it). `VideoProjectModel`/`VideoSelectionState`/
+  `VideoTimelineState` stay (used by `presenter.py`, `plugin.py`).
+
+Pre-existing failures, NOT caused by this sprint (verified on clean HEAD):
+`test_recent_projects_panel.py::test_shelf_geometry_settles_by_first_drain`
+(geometry assert) and `::test_window_will_fill_screen_and_prelayout_width_estimate`
+(crash under offscreen); `test_list_item_theme_idle.py::test_idle_list_item_matches_panel_background`
+(theme palette mismatch); `test_color_picker_dialog.py::test_fields_row_gaps_stable_and_right_aligned`
+(flaky). Tracked in `docs/dev/TODO.md` for their owners.
 
 ### 1.1 Byte-identical duplicates (~450 LOC)
 
@@ -138,28 +172,29 @@ import `build_uniform_tile_grid` from `shared.regions`:
 Rewrite those imports to `shared.image_processing.regions`, delete
 `shared/regions.py`, run analysis tests.
 
-### Sprint 1 exit criteria
+### Sprint 1 exit criteria (met)
 
-- `./launcher.sh test tests/contracts -q` green
-- Offscreen run of touched test families:
-  `tests/analysis` (if exists), `tests/render`, `tests/plugins`,
-  `src/tabs/image_compare/tests/{runtime,plugins,video}`,
-  `src/tabs/session_picker/tests/runtime`
-- `python src/devtools/compile_shaders.py --check` unaffected (only `.qsb`
-  loading paths matter)
-- `git status` shows deletions only + the test import rewrites
+- `./launcher.sh test tests/contracts -q` green — 1397 passed, 1 skipped
+- Offscreen run of touched test families green (see result note above)
+- `python src/devtools/docs_link_graph.py` — DOC_INDEX regenerated, 0 broken
+  links; `tests/devtools/test_docs_link_graph.py` green
+- `git status`: deletions + test import rewrites only
 
 ---
 
-## Sprint 2 — Dead symbols inside live modules (~500 LOC, `Open`)
+## Sprint 2 — Dead symbols inside live modules (`Open`)
 
 Verified-unused public functions/classes; remove one file at a time with a
 grep before each removal.
 
-- `video_editor/model.py`: drop `VideoSessionModel` + `VideoDecoder` +
-  `VideoSourceState` (~311 LOC, only `test_video_session_model.py` imports
-  them) — keep `VideoProjectModel`/`VideoSelectionState`/`VideoTimelineState`
-  (used by `presenter.py`, `plugin.py`); delete the test file with it.
+Pulled forward and done in the Sprint 1 session: the dead video-session layer
+in `video_editor/model.py` (`VideoSessionModel` + `VideoDecoderState` +
+`VideoSourceState` + `VideoSessionSnapshot`, 274 lines, + test file) and the
+write-only registries (`contributions.py`, `ui_integration.py`) — see the
+Sprint 1 result note.
+
+Still open:
+
 - 16 dead public functions (~205 LOC) from `audit-dead-code.md` §2.3:
   `pil_save.attach_comment_metadata`/`flatten_rgba_over_background`/
   `format_needs_alpha_flatten`, `frame_geometry.resolve_*` ×2,
@@ -173,10 +208,7 @@ grep before each removal.
   `extension_reducers.clear_extension_reducers`,
   `slot_reducers.get_state_slot_reducer`,
   `first_frame_gate.first_present_settle_count`,
-  `help.interpolate.help_figures_path`, `ui_integration.get_plugin_name`
-- Write-only registries: `PluginDefinitionRegistry` (0 readers of
-  `get/iter_*`), `PluginUIRegistry.register_action` (never called) — remove
-  with their call sites, keep public names contract tests reference.
+  `help.interpolate.help_figures_path`
 
 ### Exit criteria
 

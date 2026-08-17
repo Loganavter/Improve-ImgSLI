@@ -4,7 +4,6 @@ from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QWidget
 
 from core.main_controller import MainController
-from core.plugin_system.ui_integration import PluginUIRegistry
 from core.store import Store
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.presenters.main_window.actions import (
@@ -43,7 +42,6 @@ class MainWindowPresenter(QObject):
         store: Store,
         main_controller: MainController,
         features: MainWindowFeatureSet,
-        plugin_ui_registry: PluginUIRegistry | None = None,
     ):
         super().__init__(main_window_app)
         self.main_window_app = main_window_app
@@ -53,7 +51,6 @@ class MainWindowPresenter(QObject):
         self.session_manager = (
             main_controller.session_manager if main_controller else None
         )
-        self.plugin_ui_registry = plugin_ui_registry
         self.event_bus = main_controller.event_bus if main_controller else None
 
         self.features = features
@@ -116,13 +113,7 @@ class MainWindowPresenter(QObject):
         return connect_signals_impl(self)
 
     def _connect_button_action(self, button, action_id, fallback):
-        handler = None
-        if self.plugin_ui_registry:
-            handler = self.plugin_ui_registry.get_action(action_id)
-        if handler:
-            button.clicked.connect(handler)
-        else:
-            button.clicked.connect(fallback)
+        button.clicked.connect(fallback)
 
     def connect_event_handler_signals(self, event_handler):
         return connect_event_handler_signals_impl(self, event_handler)

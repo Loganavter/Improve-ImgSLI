@@ -1,11 +1,9 @@
 import logging
-from typing import Any, Callable
 
 from PySide6.QtCore import QEvent, QObject, QPointF, Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
-from core.plugin_system.ui_integration import PluginUIRegistry
 from ui.managers.dialog_manager import DialogManager
 from ui.managers.message_manager import MessageManager
 from ui.managers.transient_ui_manager import TransientUIManager
@@ -23,7 +21,6 @@ class UIManager(QObject):
         main_controller,
         ui,
         parent_widget,
-        plugin_ui_registry: PluginUIRegistry | None = None,
     ):
         super().__init__(parent_widget)
         self.store = store
@@ -31,7 +28,6 @@ class UIManager(QObject):
         self.ui = ui
         self.parent_widget = parent_widget
         self.app_ref = parent_widget
-        self.plugin_ui_registry = plugin_ui_registry
         self.event_bus = main_controller.event_bus if main_controller else None
         self._settings_application_service = None
         self._unified_flyout_ref = None
@@ -42,11 +38,6 @@ class UIManager(QObject):
         initialize_ui_manager_post_transient(self)
         self.dialogs = DialogManager(self)
         self.messages = MessageManager(self)
-
-    def get_plugin_action(self, action_id: str) -> Callable[..., Any] | None:
-        if self.plugin_ui_registry:
-            return self.plugin_ui_registry.get_action(action_id)
-        return None
 
     @property
     def unified_flyout(self):

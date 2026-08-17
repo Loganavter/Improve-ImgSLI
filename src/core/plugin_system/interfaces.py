@@ -41,15 +41,6 @@ class IVideoTrackProvider(ABC):
     def get_video_keyframe_adapters(self) -> tuple[Any, ...]:
         raise NotImplementedError
 
-class IRenderPlugin(ABC):
-
-    @abstractmethod
-    def get_render_entities(self) -> list[Any]:
-        raise NotImplementedError
-
-    def render_layer(self, renderer: Any) -> None:
-        return None
-
 class ISessionPlugin(ABC):
 
     @abstractmethod

@@ -60,58 +60,7 @@ def next_available_path(path: Path, *, style: str = "paren") -> Path:
         index += 1
 
 
-def flatten_rgba_over_background(
-    pil_img: Image.Image,
-    background_color,
-    *,
-    convert_to: str = "RGB",
-) -> Image.Image:
-    """Composite ``pil_img`` over ``background_color`` and return ``convert_to`` mode."""
-    background_color = tuple(background_color) if background_color else (255, 255, 255, 255)
-    if len(background_color) == 3:
-        background_color = (*background_color, 255)
-    flat = Image.new("RGBA", pil_img.size, background_color)
-    if pil_img.mode == "RGBA":
-        flat.alpha_composite(pil_img)
-    else:
-        flat.paste(pil_img)
-    return flat.convert(convert_to) if convert_to != "RGBA" else flat
 
-
-def format_needs_alpha_flatten(pil_format: str, pil_mode: str) -> bool:
-    """True if ``pil_format`` can't carry alpha and ``pil_img`` has RGBA."""
-    return pil_format.upper() not in _FORMATS_WITH_ALPHA and pil_mode == "RGBA"
-
-
-def attach_comment_metadata(
-    pil_img: Image.Image,
-    save_kwargs: dict,
-    pil_format: str,
-    comment_text: str,
-) -> None:
-    """Attach ``comment_text`` to ``save_kwargs`` for supported PIL formats.
-
-    Mutates ``save_kwargs`` in place. Silently ignores unsupported formats and
-    errors — export shouldn't fail because a metadata attach failed.
-    """
-    try:
-        if pil_format == "PNG":
-            import PIL.PngImagePlugin as PngImagePlugin
-
-            meta = PngImagePlugin.PngInfo()
-            meta.add_text("Comment", comment_text)
-            save_kwargs["pnginfo"] = meta
-            return
-
-        exif = pil_img.getexif()
-        exif[0x9286] = comment_text
-        save_kwargs["exif"] = exif.tobytes()
-    except Exception:
-        logger.debug(
-            "Failed to attach export comment metadata for format=%s",
-            pil_format,
-            exc_info=True,
-        )
 
 
 def estimate_encoded_size(

@@ -126,9 +126,3 @@ class TiledFramebufferExporter:
             tile_image = tile_image.resize(target, Image.Resampling.BILINEAR)
         return tile_image
 
-
-def create_offscreen_export_widget(factory: Callable[[], QWidget]) -> QWidget:
-    widget = factory()
-    configure_offscreen_widget(widget)
-    show_offscreen_widget(widget)
-    return widget

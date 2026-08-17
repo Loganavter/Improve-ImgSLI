@@ -150,11 +150,6 @@ def side_subrect(rect: QRect, side: str | None) -> QRect | None:
     return None
 
 
-def nearest_rect_distance_sq(pos: QPoint, rect: QRect) -> int:
-    dx = max(rect.x() - pos.x(), 0, pos.x() - (rect.x() + rect.width() - 1))
-    dy = max(rect.y() - pos.y(), 0, pos.y() - (rect.y() + rect.height() - 1))
-    return dx * dx + dy * dy
-
 
 def _weighted_sizes(inner: int, weights: list[float] | tuple[float, ...]) -> list[int]:
     sizes = [int(inner * weight) for weight in weights]

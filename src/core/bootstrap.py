@@ -8,8 +8,7 @@ from PySide6.QtWidgets import QApplication
 from core.plugin_coordinator import PluginCoordinator
 from core.runtime_flags import RuntimeFlags
 from core.session_manager import SessionManager
-from core.plugin_system import EventBus, PluginDefinitionRegistry, PluginRegistry
-from core.plugin_system.ui_integration import PluginUIRegistry
+from core.plugin_system import EventBus, PluginRegistry
 from core.store import Store
 from core.theme import DARK_THEME_PALETTE, LIGHT_THEME_PALETTE
 from plugins.settings.manager import SettingsManager
@@ -37,8 +36,6 @@ class ApplicationContext:
         self.thread_pool: Optional[QThreadPool] = None
         self.event_bus: Optional[EventBus] = None
         self.plugin_registry: Optional[PluginRegistry] = None
-        self.plugin_definition_registry: Optional[PluginDefinitionRegistry] = None
-        self.plugin_ui_registry: Optional[PluginUIRegistry] = None
         self.plugin_coordinator: Optional[PluginCoordinator] = None
         self.session_manager: Optional[SessionManager] = None
         self.ui_resource_manager: Optional[UIResourceManager] = None
@@ -180,7 +177,6 @@ class ApplicationContext:
 
         self.bridge = QtStoreBridge(self.store)
         self.event_bus = EventBus()
-        self.plugin_ui_registry = PluginUIRegistry()
         self.notification_service = NotificationService()
         self.thread_pool = QThreadPool()
         self.thread_pool.setMaxThreadCount(4)
@@ -248,13 +244,11 @@ class ApplicationContext:
 
     def _build_runtime_services(self):
         self.plugin_registry = PluginRegistry(self)
-        self.plugin_definition_registry = PluginDefinitionRegistry()
 
     def _initialize_plugins(self):
         discovered_plugins = list(
             self.plugin_registry.discover_plugins(tier="bootstrap")
         )
-        self.plugin_definition_registry.register_plugins(discovered_plugins)
         for plugin in discovered_plugins:
             for qss_path in plugin.get_qss_paths():
                 self.theme_manager.register_qss_path(qss_path)
@@ -278,7 +272,6 @@ class ApplicationContext:
             return ()
 
         assert self.plugin_registry is not None
-        assert self.plugin_definition_registry is not None
         assert self.plugin_coordinator is not None
         discovered = list(self.plugin_registry.discover_plugins(tier="deferred"))
         if not discovered:
@@ -286,7 +279,6 @@ class ApplicationContext:
             startup_mark("ctx.plugins.deferred")
             return ()
 
-        self.plugin_definition_registry.register_plugins(discovered)
         deferred_qss = False
         for plugin in discovered:
             paths = tuple(plugin.get_qss_paths())

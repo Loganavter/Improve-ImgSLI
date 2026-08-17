@@ -179,23 +179,6 @@ def _action_label(action) -> str:
     return _display_text(action.label_key)
 
 
-def build_results(dialog, query: str) -> list[SectionSearchResult]:
-    """Ranked section rows for ``query`` (Find Action semantics).
-
-    Uses the same scoring the nav list applies in ``set_search_text``; kept
-    as a pure function so tests can assert on ranking without a widget.
-    """
-    norm_query = normalize_for_search(query)
-    if not norm_query:
-        return []
-    scored: list[tuple[int, SectionSearchResult]] = []
-    for section_result in section_catalog(dialog):
-        score = _best_text_score(norm_query, section_result.search_texts)
-        if score is not None:
-            scored.append((score, section_result))
-    scored.sort(key=lambda item: (item[0], item[1].section_id))
-    return [result for _score, result in scored]
-
 
 def _best_text_score(norm_query: str, texts: tuple[str, ...]) -> int | None:
     best: int | None = None

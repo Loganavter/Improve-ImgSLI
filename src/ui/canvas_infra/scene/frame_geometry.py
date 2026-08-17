@@ -96,65 +96,6 @@ def resolve_canvas_content_geometry(
     )
 
 
-def resolve_canvas_content_geometry_for_store(
-    store,
-    *,
-    widget_width: int,
-    widget_height: int,
-    image_width: int,
-    image_height: int,
-) -> ContentGeometry:
-    """Convenience wrapper for callers that only have a ``store`` — resolves
-    the ``VirtualCanvasLayout`` via ``resolve_feature_virtual_layout`` (the
-    single owner of the feature-requirement union) and forwards to
-    ``resolve_canvas_content_geometry``."""
-    virtual_layout = resolve_feature_virtual_layout(
-        store,
-        drawing_width=image_width,
-        drawing_height=image_height,
-    )
-    return resolve_canvas_content_geometry(
-        widget_width=widget_width,
-        widget_height=widget_height,
-        image_width=image_width,
-        image_height=image_height,
-        virtual_layout=virtual_layout,
-    )
-
-
-def resolve_image_space_visible_rect(
-    geometry: ContentGeometry,
-    *,
-    widget_rect_px: tuple[float, float, float, float],
-    image_width: int,
-    image_height: int,
-) -> tuple[float, float, float, float] | None:
-    """Invert a widget-space rect (e.g. the visible viewport, or the
-    magnifier capture rect) back to source-image pixel space, the coordinate
-    system ``TileGrid``/``TileTextureService.visible_tiles`` operate in
-    (docs/dev/TILED_RENDERING_DESIGN.md, "Coordinate mapping"). This is the
-    one place that walks the widget->canvas->image chain backward; it stays
-    next to ``resolve_canvas_content_geometry`` (the forward direction) so
-    geometry math has a single owner in both directions. Not yet called from
-    the live render loop — Phase 0's base quad draw always requests every
-    tile in the grid; viewport-driven ``visible_tiles`` calls land in Phase 2.
-    """
-    inner = geometry.inner_rect
-    if inner is None or inner.width <= 0 or inner.height <= 0:
-        return None
-    scale_x = image_width / inner.width
-    scale_y = image_height / inner.height
-    left, top, right, bottom = widget_rect_px
-    image_left = (left - inner.x) * scale_x
-    image_top = (top - inner.y) * scale_y
-    image_right = (right - inner.x) * scale_x
-    image_bottom = (bottom - inner.y) * scale_y
-    return (
-        max(0.0, min(image_left, float(image_width))),
-        max(0.0, min(image_top, float(image_height))),
-        max(0.0, min(image_right, float(image_width))),
-        max(0.0, min(image_bottom, float(image_height))),
-    )
 
 
 def resolve_canvas_clip_rect_px(
