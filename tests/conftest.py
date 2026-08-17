@@ -42,6 +42,32 @@ def _reset_toolkit_config():
 
 
 @pytest.fixture(autouse=True)
+def _reset_translation_language():
+    """Global current language is process-wide; isolate every test from it.
+
+    Tests that switch the live language (``emit_language_changed("ru")``)
+    restore it in their own ``finally``, but tests under ``src/tabs/`` (which
+    use a different conftest) don't always, and a ``tr(...)`` fallback
+    assertion (``ColorPickerDialog`` OK button == "OK", multi-compare footer
+    tooltip containing "grid") breaks when the previous test left the
+    language at non-English. Force English both before and after every test.
+    """
+    import resources.translations as _translations
+
+    _force_language(_translations, "en")
+    try:
+        yield
+    finally:
+        _force_language(_translations, "en")
+
+
+def _force_language(translations, lang: str) -> None:
+    """Set the manager's live language + loaded pack without emitting."""
+    translations._manager._current_lang = lang
+    translations._manager._translations = translations._manager.ensure_loaded(lang)
+
+
+@pytest.fixture(autouse=True)
 def _reset_theme_manager():
     """ThemeManager is a process-wide singleton; isolate every test from it.
 

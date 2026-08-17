@@ -45,3 +45,26 @@ def _redirect_tps_spill_to_tmp(_hermetic_tps_spill_dir, monkeypatch):
     from shared.image_processing import tiled_pixel_store as _tps
 
     monkeypatch.setattr(_tps, "_spill_dir_cache", _hermetic_tps_spill_dir)
+
+
+@pytest.fixture(autouse=True)
+def _reset_translation_language():
+    """Global current language is process-wide; isolate every test from it.
+
+    Some tab tests switch the live language (``emit_language_changed("ru")``)
+    without restoring it, which leaks into later tests whose
+    ``tr(...)``-fallback assertions assume English (multi-compare footer
+    tooltip containing "grid", color-picker OK == "OK"). Force English both
+    before and after every test. Mirrors the same fixture in
+    ``tests/conftest.py`` (tab suites run under this conftest, not that one).
+    """
+    import resources.translations as _translations
+
+    _manager = _translations._manager
+    _manager._current_lang = "en"
+    _manager._translations = _manager.ensure_loaded("en")
+    try:
+        yield
+    finally:
+        _manager._current_lang = "en"
+        _manager._translations = _manager.ensure_loaded("en")
