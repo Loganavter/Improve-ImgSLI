@@ -88,9 +88,9 @@ def test_dialog_sidebar_shows_tab_sections_from_session_picker(app, registry):
         titles = [title for title, _icon in dialog._sidebar_items_data]
         assert "Image Compare" in titles
         assert "Image Gallery" in titles
-        # The tab page hosts the perf groups; the platform page does not.
+        # The tab page hosts the tab-owned perf extras (interactive
+        # optimization); the platform page hosts the render-backend group.
         dialog.select_section("image_compare.analysis")
-        assert hasattr(dialog, "combo_resolution")
         assert hasattr(dialog, "interactive_opt_group")
 
         def _under(widget, page):
@@ -101,8 +101,8 @@ def test_dialog_sidebar_shows_tab_sections_from_session_picker(app, registry):
                 parent = parent.parentWidget()
             return False
 
-        assert _under(dialog.res_group, dialog.page_analysis)
-        assert not _under(dialog.res_group, dialog.page_perf)
+        assert _under(dialog.interactive_opt_group, dialog.page_analysis)
+        assert not _under(dialog.interactive_opt_group, dialog.page_perf)
         assert not _under(dialog.combo_rhi_backend, dialog.page_analysis)
         assert _under(dialog.combo_rhi_backend, dialog.page_perf)
     finally:

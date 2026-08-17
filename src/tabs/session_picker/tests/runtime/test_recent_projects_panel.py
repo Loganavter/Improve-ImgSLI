@@ -1307,14 +1307,20 @@ def test_shelf_geometry_settles_by_first_drain(qapp, tmp_path, monkeypatch, fact
 
         panel = page._recent_panel
         items = panel._items
+        from tabs.session_picker.recent.layout import (
+            content_height_for_rows,
+            GRID_CARD_H,
+        )
+
+        one_row = content_height_for_rows(1, card_h=GRID_CARD_H)
         snapshot = (
             items.scroll_area.height(),
             panel.height(),
             items.grid_columns,
         )
-        assert snapshot[0] == int(round((128 + 12) * factor)) + 2 * int(
-            round(16 * factor)
-        ), "out-of-view shelf must clamp to one scaled row, not the two-row fallback"
+        assert snapshot[0] == one_row, (
+            "out-of-view shelf must clamp to one scaled row, not the two-row fallback"
+        )
         for _ in range(4):
             qapp.processEvents()
         after = (
