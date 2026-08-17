@@ -18,11 +18,12 @@ from PIL import Image
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.multi_compare.services.image_export import save_composite
+from tabs.save_toast import SaveToastMixin
 
 logger = logging.getLogger("ImproveImgSLI")
 
 
-class MultiCompareSaveFlowCoordinator:
+class MultiCompareSaveFlowCoordinator(SaveToastMixin):
     def __init__(self, main_window_app, tr_func, thread_pool=None):
         self.main_window_app = main_window_app
         self.tr = tr_func
@@ -31,44 +32,12 @@ class MultiCompareSaveFlowCoordinator:
         self._save_workers: dict[int, GenericWorker] = {}
         self._save_task_counter = 0
 
-    def _get_toast_manager(self):
-        return getattr(self.main_window_app, "toast_manager", None)
-
     def _get_thread_pool(self):
         return self._thread_pool or getattr(self.main_window_app, "thread_pool", None)
 
     def _next_save_task_id(self) -> int:
         self._save_task_counter += 1
         return self._save_task_counter
-
-    def _update_toast_safe(
-        self,
-        save_task_id: int | None,
-        message: str,
-        *,
-        success: bool,
-        duration: int = 0,
-        progress: int | None = None,
-        actions=None,
-    ) -> None:
-        toast_manager = self._get_toast_manager()
-        if toast_manager is None or save_task_id is None:
-            return
-        try:
-            kwargs = {
-                "success": success,
-                "duration": duration,
-                "progress": progress,
-            }
-            if actions is not None:
-                kwargs["actions"] = actions
-            toast_manager.update_toast(
-                save_task_id,
-                message,
-                **kwargs,
-            )
-        except Exception as exc:
-            logger.error("Toast update failed for %s: %s", save_task_id, exc)
 
     def start_save_worker(self, pil_image: Image.Image, options: dict) -> None:
         """``pil_image`` must already be a plain ``PIL.Image`` (converted on the
@@ -163,18 +132,6 @@ class MultiCompareSaveFlowCoordinator:
             options["output_dir"],
             f"{options['file_name']}{ext_disp}",
         )
-
-    def _build_toast_path_line(self, final_path_for_display: str) -> str:
-        directory, file_name = os.path.split(final_path_for_display)
-        if not directory:
-            return file_name
-        normalized_dir = os.path.normpath(directory)
-        dir_parts = [part for part in normalized_dir.split(os.sep) if part]
-        if len(dir_parts) <= 2:
-            compact_dir = normalized_dir
-        else:
-            compact_dir = os.path.join("...", dir_parts[-2], dir_parts[-1])
-        return os.path.join(compact_dir, file_name)
 
     def _create_save_toast(
         self,

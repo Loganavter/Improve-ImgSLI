@@ -43,25 +43,8 @@ class Plugin(ABC):
 
     def _set_state(self, state: PluginState) -> None:
         self._state = state
-
-    def get_ui_components(self) -> dict[str, Any]:
-        return {}
-
-    def get_toolbar_actions(self) -> list[Any]:
-        return []
-
-    def get_menu_items(self) -> list[Any]:
-        return []
-
-    def get_render_entities(self) -> list[Any]:
-        return []
-
     def get_qss_paths(self) -> tuple[str, ...]:
         return ()
-
-    def get_definition(self) -> Any | None:
-        return None
-
     def plugin_resource_path(self, *parts: str) -> str:
         module_file = inspect.getfile(self.__class__)
         plugin_root = os.path.dirname(module_file)

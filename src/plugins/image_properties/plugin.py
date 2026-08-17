@@ -14,8 +14,6 @@ from .service import build_image_properties
 
 @plugin(name="image_properties", version="1.0", startup_tier="deferred")
 class ImagePropertiesPlugin(Plugin, IControllablePlugin):
-    capabilities = ("image_properties",)
-
     def initialize(self, context: Any) -> None:
         super().initialize(context)
 
@@ -27,10 +25,6 @@ class ImagePropertiesPlugin(Plugin, IControllablePlugin):
         if callable(target):
             return target(*args, **kwargs)
         raise AttributeError(f"Image properties plugin has no command '{command}'")
-
-    def provides_capability(self, capability: str) -> bool:
-        return capability == "image_properties"
-
     def open_dialog(
         self,
         *,

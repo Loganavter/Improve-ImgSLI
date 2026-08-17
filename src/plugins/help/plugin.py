@@ -4,13 +4,11 @@ from typing import Any
 
 from plugins.settings.events import SettingsChangeLanguageEvent
 from core.plugin_system import Plugin, plugin
-from core.plugin_system.interfaces import IControllablePlugin, IUIPlugin
+from core.plugin_system.interfaces import IControllablePlugin
 from plugins.help.dialog import HelpDialog
 
 @plugin(name="help", version="1.0", startup_tier="deferred")
-class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
-    capabilities = ("help_dialog",)
-
+class HelpPlugin(Plugin, IControllablePlugin):
     def __init__(self):
         super().__init__()
         self._dialog: HelpDialog | None = None
@@ -36,10 +34,6 @@ class HelpPlugin(Plugin, IUIPlugin, IControllablePlugin):
         if callable(target):
             return target(*args, **kwargs)
         raise AttributeError(f"Help plugin has no command '{command}'")
-
-    def provides_capability(self, capability: str) -> bool:
-        return capability == "help_dialog"
-
     def show_dialog(
         self,
         *,
