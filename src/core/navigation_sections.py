@@ -13,7 +13,12 @@ from PySide6.QtWidgets import QWidget
 
 
 class SessionPickerSection:
-    """Arrow-key navigation for the session picker create-cards list."""
+    """Arrow-key navigation for the session picker create-cards list.
+
+    Down past the last card hands off to the recent panel (if visible).
+    Up past the first card hands off to the tab strip.
+    Left/Right are consumed (single-column list).
+    """
 
     def __init__(self, page: QWidget) -> None:
         self._page = page
@@ -33,7 +38,12 @@ class SessionPickerSection:
             elif card_idx < len(cards) - 1:
                 cards[card_idx + 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
-            # Past last card — yield to next section.
+            # Past last card — try to hand off to recent panel.
+            recent = getattr(self._page, "_recent_panel", None)
+            if recent is not None and recent.isVisible():
+                recent.setFocus(Qt.FocusReason.OtherFocusReason)
+                return True
+            # No recent panel — yield to next section.
             return False
 
         if key == Qt.Key.Key_Up:
