@@ -548,6 +548,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 return True
             recent = getattr(self, "_recent_panel", None)
             if recent is not None and recent.isVisible():
+                if recent.focus_header_control(True):
+                    return True
                 if recent.focus_recent_item(True):
                     return True
             return False
