@@ -478,8 +478,8 @@ class RecentProjectsPanel(ShelfWidget):
                 event.accept()
                 logger.debug("[shelf-nav] keyPressEvent Escape -> clear selection")
                 return
-        # Arrow keys are handled by SessionPickerWidget's _PageKeyboardFilter
-        # which catches events on _page_content before they reach here.
+        # Arrow keys are handled by SessionPickerWidget's focusNextPrevChild()
+        # via Qt's standard focus traversal mechanism.
         super().keyPressEvent(event)
 
     def _on_marquee_preview(self, paths: set[str], additive: bool) -> None:
