@@ -79,8 +79,10 @@ class TabStripSection:
 
     def navigate(self, key: int, widget: QWidget) -> bool:
         # Left/Right are handled by QTabBar itself — don't consume them here.
-        # Down/Right past the last tab → yield to next section.
-        # Up/Left past the first tab → yield to previous section.
+        # Down yields to the session picker below.
+        # Up — consume: no section above the tab strip.
+        if key == Qt.Key.Key_Up:
+            return True
         return False
 
     def focus_first(self) -> bool:

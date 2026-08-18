@@ -141,12 +141,24 @@ class TestNavigationManager:
         assert focus_calls == ["first"]
 
     @patch("core.navigation.QApplication")
-    def test_event_filter_no_neighbor_on_boundary(self, mock_qapp):
+    def test_event_filter_consumes_when_no_neighbor(self, mock_qapp):
+        """Section declines and no neighbor exists — event is consumed."""
         widget = _fake_widget("target")
         section = _make_section(
             owns_fn=lambda w: w is widget,
             navigate_fn=lambda k, w: False,
         )
+        self.manager.register(section)
+        event = _FakeKeyEvent(Qt.Key.Key_Down)
+        mock_qapp.focusWidget.return_value = widget
+        result = self.manager.eventFilter(None, event)
+        assert result is True
+
+    @patch("core.navigation.QApplication")
+    def test_event_filter_passes_through_when_no_section_owns(self, mock_qapp):
+        """No section claims the widget — event passes through."""
+        widget = _fake_widget("unowned")
+        section = _make_section(owns_fn=lambda w: False)
         self.manager.register(section)
         event = _FakeKeyEvent(Qt.Key.Key_Down)
         mock_qapp.focusWidget.return_value = widget
@@ -209,7 +221,8 @@ class TestCrossSectionRouting:
         assert focus_calls == ["top_last"]
 
     @patch("core.navigation.QApplication")
-    def test_left_right_between_tabs_not_consumed(self, mock_qapp):
+    def test_left_right_pass_through_when_section_yields(self, mock_qapp):
+        """Left/Right from a yielding section are consumed (no neighbor)."""
         widget = _fake_widget("target")
         section = _make_section(
             owns_fn=lambda w: w is widget,
@@ -220,7 +233,8 @@ class TestCrossSectionRouting:
             event = _FakeKeyEvent(key)
             mock_qapp.focusWidget.return_value = widget
             result = self.manager.eventFilter(None, event)
-            assert result is False
+            # No neighbor → consumed (prevents re-delivery loop)
+            assert result is True
 
 
 # ---------------------------------------------------------------------------
@@ -358,10 +372,21 @@ class TestTabStripSection:
         strip.isAncestorOf = MagicMock(return_value=False)
         assert section.owns(MagicMock()) is False
 
-    def test_navigate_always_yields(self):
+    def test_navigate_up_consumed_no_section_above(self):
+        """Up on tab strip is consumed — no section above."""
         section, _ = self._make_strip()
-        for key in (Qt.Key.Key_Down, Qt.Key.Key_Up, Qt.Key.Key_Left, Qt.Key.Key_Right):
-            assert section.navigate(key, MagicMock()) is False
+        assert section.navigate(Qt.Key.Key_Up, MagicMock()) is True
+
+    def test_navigate_down_yields_to_session_picker(self):
+        """Down on tab strip yields — session picker is below."""
+        section, _ = self._make_strip()
+        assert section.navigate(Qt.Key.Key_Down, MagicMock()) is False
+
+    def test_navigate_left_right_yield(self):
+        """Left/Right yield — not handled by NavigationManager."""
+        section, _ = self._make_strip()
+        assert section.navigate(Qt.Key.Key_Left, MagicMock()) is False
+        assert section.navigate(Qt.Key.Key_Right, MagicMock()) is False
 
     def test_focus_first(self):
         section, strip = self._make_strip()
