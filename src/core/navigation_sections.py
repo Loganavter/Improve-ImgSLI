@@ -25,7 +25,7 @@ class SessionPickerSection:
         cards = self._page._card_entries()
         card_idx = next((i for i, (_, c) in enumerate(cards) if c is widget), None)
 
-        if key in (Qt.Key.Key_Down, Qt.Key.Key_Right):
+        if key == Qt.Key.Key_Down:
             if card_idx is None:
                 if cards:
                     cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
@@ -33,11 +33,10 @@ class SessionPickerSection:
             elif card_idx < len(cards) - 1:
                 cards[card_idx + 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
-            # Past last card — yield to next section (e.g. recent panel or
-            # whatever sits below).
+            # Past last card — yield to next section.
             return False
 
-        if key in (Qt.Key.Key_Up, Qt.Key.Key_Left):
+        if key == Qt.Key.Key_Up:
             if card_idx is None:
                 return False
             if card_idx > 0:
@@ -47,7 +46,8 @@ class SessionPickerSection:
             # the tab strip (the section above).
             return False
 
-        return False
+        # Left/Right: single-column list, nothing horizontal to navigate.
+        return True
 
     def focus_first(self) -> bool:
         cards = self._page._card_entries()

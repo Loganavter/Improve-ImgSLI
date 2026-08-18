@@ -291,17 +291,25 @@ class TestSessionPickerSection:
         result = section.navigate(Qt.Key.Key_Down, buttons[2][1])
         assert result is False
 
-    def test_right_from_nothing_focuses_first_card(self):
-        section, _, buttons = self._make_page(["a", "b", "c"])
+    def test_right_from_nothing_consumed(self):
+        section, _, _ = self._make_page(["a", "b", "c"])
         result = section.navigate(Qt.Key.Key_Right, MagicMock())
         assert result is True
-        buttons[0][1].setFocus.assert_called_once()
 
-    def test_right_moves_to_next_card(self):
+    def test_right_on_card_consumed(self):
         section, _, buttons = self._make_page(["a", "b", "c"])
-        result = section.navigate(Qt.Key.Key_Right, buttons[0][1])
+        result = section.navigate(Qt.Key.Key_Right, buttons[1][1])
         assert result is True
-        buttons[1][1].setFocus.assert_called_once()
+
+    def test_left_from_nothing_consumed(self):
+        section, _, _ = self._make_page(["a", "b"])
+        result = section.navigate(Qt.Key.Key_Left, MagicMock())
+        assert result is True
+
+    def test_left_on_card_consumed(self):
+        section, _, buttons = self._make_page(["a", "b"])
+        result = section.navigate(Qt.Key.Key_Left, buttons[0][1])
+        assert result is True
 
     def test_up_moves_to_prev_card(self):
         section, _, buttons = self._make_page(["a", "b", "c"])
@@ -319,10 +327,10 @@ class TestSessionPickerSection:
         result = section.navigate(Qt.Key.Key_Up, MagicMock())
         assert result is False
 
-    def test_left_from_non_card_yields(self):
+    def test_left_from_non_card_consumed(self):
         section, _, _ = self._make_page(["a", "b"])
         result = section.navigate(Qt.Key.Key_Left, MagicMock())
-        assert result is False
+        assert result is True
 
     def test_focus_first(self):
         section, _, buttons = self._make_page(["a", "b", "c"])
