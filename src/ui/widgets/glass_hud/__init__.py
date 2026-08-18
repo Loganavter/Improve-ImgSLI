@@ -12,8 +12,6 @@ from ui.widgets.glass_hud.hud import GlassHUD
 from ui.widgets.glass_hud.info import InfoHUD
 from ui.widgets.glass_hud.panel_display import (
     GlassPanelDisplayWidget,
-    GlassPanelDisplayWidgetCpu,
-    GlassPanelDisplayWidgetRhi,
     create_glass_panel_display_widget,
 )
 from ui.widgets.glass_hud.zoom import ZoomIndicator
@@ -21,8 +19,6 @@ from ui.widgets.glass_hud.zoom import ZoomIndicator
 __all__ = [
     "GlassHUD",
     "GlassPanelDisplayWidget",
-    "GlassPanelDisplayWidgetCpu",
-    "GlassPanelDisplayWidgetRhi",
     "InfoHUD",
     "ZoomIndicator",
     "create_glass_panel_display_widget",

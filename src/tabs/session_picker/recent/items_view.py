@@ -55,7 +55,7 @@ from ui.widgets.shelf.selection import (
     apply_card_selected,
     selection_accent_color,
 )
-from ui.widgets.shelf import OpaqueFillHost, ShelfWidget
+from ui.widgets.shelf import OpaqueFillHost, apply_opaque_widget_fill
 
 
 def _restore_updates(owner: QWidget, was_updating: bool) -> None:
@@ -267,9 +267,9 @@ class RecentItemsView(QWidget):
         self.apply_selection()
 
     def apply_surface_colors(self, *, content_bg: QColor, shelf_bg: QColor) -> None:
-        ShelfWidget.apply_opaque_widget_fill(self.items_host, content_bg)
-        ShelfWidget.apply_opaque_widget_fill(self.scroll_area.viewport(), content_bg)
-        ShelfWidget.apply_opaque_widget_fill(self.scroll_area, content_bg)
+        apply_opaque_widget_fill(self.items_host, content_bg)
+        apply_opaque_widget_fill(self.scroll_area.viewport(), content_bg)
+        apply_opaque_widget_fill(self.scroll_area, content_bg)
         self.corner_cover.set_color(shelf_bg)
         self._corner_sync.sync()
 

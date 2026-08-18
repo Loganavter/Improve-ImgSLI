@@ -44,8 +44,8 @@ def test_recent_panel_empty_and_populated(qapp, tmp_path, monkeypatch):
     assert panel._empty_zone is not None
     assert not panel._empty_zone.isHidden()
     assert panel._empty_zone._title == "Load your first project"
-    assert panel._sort_button is not None
-    assert panel._sort_button.isHidden()
+    assert panel._header.sort_button is not None
+    assert panel._header.sort_button.isHidden()
 
     proj = tmp_path / "demo.imgsli"
     proj.write_text("{}")
@@ -65,8 +65,8 @@ def test_recent_panel_empty_and_populated(qapp, tmp_path, monkeypatch):
     set_recent_sort_mode(SORT_NAME, settings=settings)
     panel.refresh()
     assert panel._empty_zone.isHidden()
-    assert panel._sort_button is not None
-    assert not panel._sort_button.isHidden()
+    assert panel._header.sort_button is not None
+    assert not panel._header.sort_button.isHidden()
     assert panel._items.live_card_count == 1
 
     card = panel._items.card_for(record.path)
@@ -106,7 +106,7 @@ def test_recent_panel_accepts_project_drop(qapp, tmp_path, monkeypatch):
     )
     panel.dragEnterEvent(enter)
     assert enter.isAccepted()
-    assert panel._drag_active is True
+    assert panel._drop.drag_active is True
 
     drop = QDropEvent(
         QPointF(10, 10),
@@ -129,22 +129,22 @@ def test_recent_panel_accepts_project_drop(qapp, tmp_path, monkeypatch):
 def test_recent_panel_header_uses_default_icon_controls(qapp, monkeypatch):
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
     panel = RecentProjectsPanel(tr=_tr)
-    assert panel._sort_button is not None
-    assert panel._sort_order_button is not None
-    assert panel._view_button is not None
-    assert panel._sort_button.property("variant") == "default"
-    assert panel._sort_order_button.property("variant") == "default"
-    assert panel._view_button.property("variant") == "default"
-    assert not (panel._view_button._text or "")
-    assert not (panel._sort_order_button._text or "")
+    assert panel._header.sort_button is not None
+    assert panel._header.sort_order_button is not None
+    assert panel._header.view_button is not None
+    assert panel._header.sort_button.property("variant") == "default"
+    assert panel._header.sort_order_button.property("variant") == "default"
+    assert panel._header.view_button.property("variant") == "default"
+    assert not (panel._header.view_button._text or "")
+    assert not (panel._header.sort_order_button._text or "")
     chip = panel._header_button_bg()
-    assert panel._sort_button._override_bg_color == chip
-    assert panel._view_button._override_bg_color == chip
+    assert panel._header.sort_button._override_bg_color == chip
+    assert panel._header.view_button._override_bg_color == chip
     panel._view_mode = "list"
     panel._sort_order = "asc"
     panel._sync_header_controls()
-    assert panel._view_button.toolTip() == "List"
-    assert panel._sort_order_button.toolTip() == "Ascending"
+    assert panel._header.view_button.toolTip() == "List"
+    assert panel._header.sort_order_button.toolTip() == "Ascending"
     panel.deleteLater()
 
 
@@ -152,8 +152,8 @@ def test_recent_panel_scroll_disables_viewport_mask(qapp, monkeypatch):
     """Nested OverlayScrollArea must not 1-bit-mask corners over CSD chrome."""
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
     panel = RecentProjectsPanel(tr=_tr)
-    assert panel._scroll is not None
-    assert panel._scroll._corner_radius == 0
+    assert panel._items.scroll_area is not None
+    assert panel._items.scroll_area._corner_radius == 0
     panel.deleteLater()
 
 
@@ -214,21 +214,21 @@ def test_recent_panel_bare_panel_falls_back_to_two_rows(qapp, tmp_path, monkeypa
     panel.refresh()
     qapp.processEvents()
 
-    assert panel._scroll is not None
-    assert panel._grid_columns == 3
+    assert panel._items.scroll_area is not None
+    assert panel._items.grid_columns == 3
     assert panel._recent_viewport_max_height() == 0  # no page context
-    assert panel._scroll.height() == content_height_for_rows(
+    assert panel._items.scroll_area.height() == content_height_for_rows(
         VISIBLE_ROWS_MAX, card_h=GRID_CARD_H
     )
-    assert panel._scroll.verticalScrollBar().maximum() > 0
+    assert panel._items.scroll_area.verticalScrollBar().maximum() > 0
 
     panel._records = records[:3]  # one grid row at 3 columns
     panel._rebuild_items()
     qapp.processEvents()
-    assert panel._scroll.height() == content_height_for_rows(
+    assert panel._items.scroll_area.height() == content_height_for_rows(
         1, card_h=GRID_CARD_H
     )
-    assert panel._scroll.verticalScrollBar().maximum() == 0
+    assert panel._items.scroll_area.verticalScrollBar().maximum() == 0
     panel.deleteLater()
 
 
@@ -289,16 +289,16 @@ def test_recent_panel_viewport_uses_available_window_space(qapp, tmp_path, monke
     # 1080px window leaves room for more than the old fixed two grid rows.
     assert max_h > 2 * (GRID_CARD_H + 12)
     # 9 cards at 4 columns = 3 rows; the grown viewport fits them all.
-    assert panel._scroll.height() > 2 * (GRID_CARD_H + 12)
-    assert panel._scroll.verticalScrollBar().maximum() == 0
+    assert panel._items.scroll_area.height() > 2 * (GRID_CARD_H + 12)
+    assert panel._items.scroll_area.verticalScrollBar().maximum() == 0
 
     # Many more records overflow the available space -> scrollbar appears.
     panel._records = [_record(i) for i in range(30)]
     panel._rebuild_items()
     for _ in range(5):
         qapp.processEvents()
-    assert panel._scroll.height() == max_h
-    assert panel._scroll.verticalScrollBar().maximum() > 0
+    assert panel._items.scroll_area.height() == max_h
+    assert panel._items.scroll_area.verticalScrollBar().maximum() > 0
 
     panel.deleteLater()
     win.deleteLater()
@@ -335,17 +335,17 @@ def test_recent_panel_grid_uses_available_width(qapp, tmp_path, monkeypatch):
     panel.refresh()
     qapp.processEvents()
 
-    assert panel._scroll is not None
+    assert panel._items.scroll_area is not None
     expected = grid_columns_for_width(panel._grid_content_width())
     assert expected >= 4
-    assert panel._grid_columns == expected
+    assert panel._items.grid_columns == expected
     # 8 cards in ≥4 columns → at most 2 rows, no scroll.
-    assert panel._scroll.verticalScrollBar().maximum() == 0
+    assert panel._items.scroll_area.verticalScrollBar().maximum() == 0
 
     panel.resize(400, 800)
     qapp.processEvents()
-    assert panel._grid_columns == grid_columns_for_width(panel._grid_content_width())
-    assert panel._grid_columns <= 2
+    assert panel._items.grid_columns == grid_columns_for_width(panel._grid_content_width())
+    assert panel._items.grid_columns <= 2
     panel.deleteLater()
 
 
@@ -379,7 +379,7 @@ def test_recent_panel_grid_shrinks_after_fullscreen_exit(qapp, tmp_path, monkeyp
     panel.show()
     panel.refresh()
     qapp.processEvents()
-    wide_columns = panel._grid_columns
+    wide_columns = panel._items.grid_columns
     assert wide_columns >= 4
 
     # Transitional frame: geometry already restored to the windowed size, but
@@ -391,9 +391,9 @@ def test_recent_panel_grid_shrinks_after_fullscreen_exit(qapp, tmp_path, monkeyp
     # The panel's live content width (which applies the shelf width floor)
     # drives the column count — not the raw resized width.
     live_columns = grid_columns_for_width(panel._grid_content_width())
-    assert panel._grid_columns == live_columns
+    assert panel._items.grid_columns == live_columns
     assert live_columns < wide_columns
-    assert panel._grid_columns <= 2
+    assert panel._items.grid_columns <= 2
     panel.deleteLater()
 
 
@@ -434,9 +434,9 @@ def test_recent_panel_shelf_height_settles_atomically(qapp, tmp_path, monkeypatc
     panel.refresh()
     qapp.processEvents()
 
-    one_row_scroll = panel._scroll.height()
+    one_row_scroll = panel._items.scroll_area.height()
     one_row_panel_h = panel.height()
-    assert panel._scroll.height() <= panel.height()
+    assert panel._items.scroll_area.height() <= panel.height()
 
     def pump():
         # The resize-driven relayout and its height settle run in two nested
@@ -447,18 +447,18 @@ def test_recent_panel_shelf_height_settles_atomically(qapp, tmp_path, monkeypatc
     # Narrow across the 4->3 column boundary: 4 cards flip to two grid rows.
     window.resize(760, 800)
     pump()
-    assert panel._grid_columns == 3
-    assert panel._scroll.height() > one_row_scroll
-    assert panel._scroll.height() <= panel.height()  # scroll must fit the panel
+    assert panel._items.grid_columns == 3
+    assert panel._items.scroll_area.height() > one_row_scroll
+    assert panel._items.scroll_area.height() <= panel.height()  # scroll must fit the panel
     assert panel.height() > one_row_panel_h  # panel grew to fit the taller shelf
     assert panel.updatesEnabled() is True
 
     # And back up: 3->4 columns flips back to a single row, panel shrinks.
     window.resize(900, 800)
     pump()
-    assert panel._grid_columns == 4
-    assert panel._scroll.height() == one_row_scroll
-    assert panel._scroll.height() <= panel.height()
+    assert panel._items.grid_columns == 4
+    assert panel._items.scroll_area.height() == one_row_scroll
+    assert panel._items.scroll_area.height() <= panel.height()
     # Panel height is deterministic (header + spacing + scroll + root margins)
     # and returns to the same value after the round-trip — no hysteresis.
     root = panel.layout()
@@ -466,7 +466,7 @@ def test_recent_panel_shelf_height_settles_atomically(qapp, tmp_path, monkeypatc
     expected = (
         panel._header.height()
         + root.spacing()
-        + panel._scroll.height()
+        + panel._items.scroll_area.height()
         + margins[1]
         + margins[3]
     )
@@ -508,7 +508,7 @@ def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch)
     panel.show()
     panel.refresh()
     qapp.processEvents()
-    assert panel._grid_columns == 3
+    assert panel._items.grid_columns == 3
     before = [panel._items.card_for(records[i].path) for i in range(6)]
     assert all(w is not None for w in before)
 
@@ -516,7 +516,7 @@ def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch)
     qapp.processEvents()
     expected = grid_columns_for_width(panel._grid_content_width())
     assert expected > 3
-    assert panel._grid_columns == expected
+    assert panel._items.grid_columns == expected
     after = [panel._items.card_for(records[i].path) for i in range(6)]
     assert after == before
     panel.deleteLater()
@@ -587,7 +587,7 @@ def test_recent_panel_clears_orphaned_card_widgets(qapp, tmp_path, monkeypatch):
     panel = RecentProjectsPanel(tr=_tr)
     panel.resize(560, 800)
     panel.refresh()
-    host = panel._items_host
+    host = panel._items.items_host
     assert host is not None
     assert len([w for w in host.findChildren(Button) if w.parent() is host]) == 2
 
@@ -674,9 +674,9 @@ def test_recent_panel_retranslate_keeps_opaque_shelf(qapp, tmp_path, monkeypatch
     assert panel.isVisible() is True
     assert panel._items.live_card_count == 1
     assert panel._items.card_for(record.path) is card
-    assert panel._scroll.isVisible() is True
+    assert panel._items.scroll_area.isVisible() is True
     assert panel.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) is False
-    host = panel._items_host
+    host = panel._items.items_host
     assert isinstance(host, OpaqueFillHost)
     # Explicit paint — not palette autofill (KNOWN_BUGS CSD punch-through).
     assert host.autoFillBackground() is False
@@ -756,11 +756,11 @@ def test_recent_panel_relayout_never_leaves_updates_disabled(
     panel.show()
     panel.refresh()
     qapp.processEvents()
-    assert panel._grid_columns == 3
+    assert panel._items.grid_columns == 3
 
     panel.resize(980, 800)
     qapp.processEvents()
-    assert panel._grid_columns == grid_columns_for_width(panel._grid_content_width())
+    assert panel._items.grid_columns == grid_columns_for_width(panel._grid_content_width())
     assert panel.updatesEnabled() is True
     panel.deleteLater()
 
@@ -831,25 +831,25 @@ def test_recent_panel_keeps_scroll_host_opaque(qapp, monkeypatch):
 
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
     panel = RecentProjectsPanel(tr=_tr)
-    host = panel._items_host
+    host = panel._items.items_host
     assert host is not None
     assert isinstance(host, OpaqueFillHost)
     # Explicit paint well — not palette autofill (CSD punch-through).
     assert host.autoFillBackground() is False
     assert host.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) is False
     assert host.testAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent) is False
-    assert panel._panel_bg.alpha() == 255
+    assert panel.panel_bg().alpha() == 255
     assert panel.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) is False
     # Gaps under cards use the page Window color, not the tinted shelf.
-    content = panel._chrome.content_bg
+    content = panel.content_bg()
     assert content.alpha() == 255
     assert host._fill == content
     # AA corner cover (no binary mask) rounds that fill against the shelf.
     cover = panel._items.corner_cover
     assert cover is not None
     assert cover._radius == PANEL_RADIUS
-    assert cover._color == panel._chrome.panel_bg
-    assert panel._scroll._corner_radius == 0
+    assert cover._color == panel.panel_bg()
+    assert panel._items.scroll_area._corner_radius == 0
     panel.deleteLater()
 
 
@@ -1012,7 +1012,7 @@ def test_recent_panel_virtualizes_large_list(qapp, tmp_path, monkeypatch):
     assert panel._items.card_for(records[0].path) is not None
     assert panel._items.card_for(records[-1].path) is None
 
-    bar = panel._scroll.verticalScrollBar()
+    bar = panel._items.scroll_area.verticalScrollBar()
     assert bar.maximum() > 0
     top_paths = set(panel._items._cards_by_path)
     bar.setValue(bar.maximum())
@@ -1109,9 +1109,9 @@ def test_scale_above_1_bare_panel_cap_is_scaled(qapp, tmp_path, monkeypatch):
         qapp.processEvents()
 
         expected = content_height_for_rows(VISIBLE_ROWS_MAX, card_h=GRID_CARD_H)
-        assert panel._scroll.height() == expected
+        assert panel._items.scroll_area.height() == expected
         # The old unscaled fallback (300) was shorter than a single scaled row.
-        assert panel._scroll.height() >= scaled_px(GRID_CARD_H)
+        assert panel._items.scroll_area.height() >= scaled_px(GRID_CARD_H)
         panel.deleteLater()
     finally:
         UiScale.get_instance().set_factor(1.0)
@@ -1161,7 +1161,7 @@ def test_scale_above_1_virtualization_keeps_viewport_filled(qapp, tmp_path, monk
         qapp.processEvents()
 
         items = panel._items
-        scroll = panel._scroll
+        scroll = panel._items.scroll_area
         bar = scroll.verticalScrollBar()
         assert bar.maximum() > 0
         stride = row_stride(GRID_CARD_H)
@@ -1389,7 +1389,7 @@ def test_live_ui_scale_change_resizes_shelf_in_place(qapp, tmp_path, monkeypatch
         panel.refresh()
         qapp.processEvents()
         items = panel._items
-        scroll = panel._scroll
+        scroll = panel._items.scroll_area
 
         def _snapshot():
             cards = list(items._cards_by_path.values())

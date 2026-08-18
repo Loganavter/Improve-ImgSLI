@@ -73,20 +73,6 @@ def _prelayout_height_buffer() -> int:
     return scaled_px(_PRELAYOUT_HEIGHT_BUFFER_PX)
 
 
-class _ShelfChromeCompat:
-    """Legacy view over the shared shelf chrome for ``panel._chrome`` reads."""
-
-    def __init__(self, shelf: ShelfWidget) -> None:
-        self._shelf = shelf
-
-    @property
-    def content_bg(self) -> QColor:
-        return self._shelf.content_bg()
-
-    @property
-    def panel_bg(self) -> QColor:
-        return self._shelf.panel_bg()
-
 # get_recent_sort_mode/get_recent_view_mode/list_recent_projects/
 # record_recent_project/remove_recent_project/sort_recent_projects are not
 # called directly in this file -- use_cases/refresh.py and
@@ -222,67 +208,6 @@ class RecentProjectsPanel(ShelfWidget):
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
         )
         UiScale.get_instance().scale_changed.connect(self._on_ui_scale_changed)
-
-    # --- test / legacy aliases (owned by composed children) -----------------
-
-    @property
-    def _panel_bg(self):
-        return self.panel_bg()
-
-    @_panel_bg.setter
-    def _panel_bg(self, value) -> None:
-        self._shelf_panel = QColor(value)
-        self.update()
-
-    @property
-    def _chrome(self):
-        """Legacy test accessor: ``panel._chrome.content_bg`` (shelf chrome)."""
-        return _ShelfChromeCompat(self)
-
-    @property
-    def _drag_active(self) -> bool:
-        return self._drop.drag_active
-
-    @_drag_active.setter
-    def _drag_active(self, value: bool) -> None:
-        self._drop.drag_active = bool(value)
-
-    @property
-    def _grid_columns(self) -> int:
-        return self._items.grid_columns
-
-    @_grid_columns.setter
-    def _grid_columns(self, value: int) -> None:
-        self._items._grid_columns = max(1, int(value))
-
-    @property
-    def _scroll(self):
-        return self._items.scroll_area
-
-    @property
-    def _items_host(self):
-        return self._items.items_host
-
-    @property
-    def _items_layout(self):
-        return self._items.items_layout
-
-    @property
-    def _sort_button(self):
-        return self._header.sort_button
-
-    @property
-    def _sort_order_button(self):
-        return self._header.sort_order_button
-
-    @property
-    def _view_button(self):
-        return self._header.view_button
-
-    @property
-    def _title_label(self):
-        # Title now lives on the shared shelf.
-        return self.title_label()
 
     def set_open_project_handler(self, handler: Callable[[str], None] | None) -> None:
         self._on_open = handler
