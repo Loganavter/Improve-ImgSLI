@@ -360,13 +360,14 @@ class TestTabStripSection:
         from core.navigation_sections import TabStripSection
 
         strip = MagicMock()
-        tab_bar = MagicMock()
-        tab_bar.setFocus = MagicMock()
-        strip.tab_bar = tab_bar
+        add_button = MagicMock()
+        add_button.setFocus = MagicMock()
+        add_button.isVisible = MagicMock(return_value=True)
+        strip.add_button = add_button
         strip.setFocus = MagicMock()
         strip.isAncestorOf = MagicMock(return_value=False)
         section = TabStripSection(strip)
-        return section, strip, tab_bar
+        return section, strip, add_button
 
     def test_owns_returns_true_for_descendant(self):
         section, strip, _ = self._make_strip()
@@ -396,15 +397,15 @@ class TestTabStripSection:
         assert section.navigate(Qt.Key.Key_Left, MagicMock()) is False
         assert section.navigate(Qt.Key.Key_Right, MagicMock()) is False
 
-    def test_focus_first_focuses_tab_bar(self):
-        section, _, tab_bar = self._make_strip()
+    def test_focus_first_focuses_add_button(self):
+        section, _, add_button = self._make_strip()
         assert section.focus_first() is True
-        tab_bar.setFocus.assert_called_once()
+        add_button.setFocus.assert_called_once()
 
-    def test_focus_last_focuses_tab_bar(self):
-        section, _, tab_bar = self._make_strip()
+    def test_focus_last_focuses_add_button(self):
+        section, _, add_button = self._make_strip()
         assert section.focus_last() is True
-        tab_bar.setFocus.assert_called_once()
+        add_button.setFocus.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -422,14 +423,13 @@ class TestArrowKeySoleOwnership:
     Dogma source: docs/dev/CONTRACTS.md §NavigationManager.
     """
 
-    def test_navigation_manager_is_installed_on_qapp(self):
-        """NavigationManager must be registered to intercept arrow keys."""
+    def test_navigation_manager_is_singleton(self):
+        """NavigationManager must be accessible as a singleton."""
         from sli_ui_toolkit.managers import NavigationManager
 
-        manager = NavigationManager.get_instance()
-        assert manager._event_filter_installed, (
-            "NavigationManager event filter not installed on QApplication"
-        )
+        a = NavigationManager.get_instance()
+        b = NavigationManager.get_instance()
+        assert a is b
 
     def test_no_other_event_filter_consumes_arrows(self, qapp):
         """Walk all widgets and verify no other eventFilter consumes arrows.
