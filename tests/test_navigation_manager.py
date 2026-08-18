@@ -51,12 +51,12 @@ def _make_section(*, owns_fn=None, navigate_fn=None, focus_first_fn=None, focus_
 
 class TestNavigationManager:
     def setup_method(self):
-        from core.navigation import NavigationManager
+        from sli_ui_toolkit.managers import NavigationManager
         NavigationManager._instance = None
         self.manager = NavigationManager()
 
     def test_singleton(self):
-        from core.navigation import NavigationManager
+        from sli_ui_toolkit.managers import NavigationManager
         a = NavigationManager.get_instance()
         b = NavigationManager.get_instance()
         assert a is b
@@ -172,7 +172,7 @@ class TestNavigationManager:
 
 class TestCrossSectionRouting:
     def setup_method(self):
-        from core.navigation import NavigationManager
+        from sli_ui_toolkit.managers import NavigationManager
         NavigationManager._instance = None
         self.manager = NavigationManager()
 
