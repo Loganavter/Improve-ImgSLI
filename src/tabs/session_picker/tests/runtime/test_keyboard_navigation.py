@@ -109,11 +109,11 @@ def test_create_card_arrows_move_focus_via_real_key_events(qapp, monkeypatch):
     try:
         entries[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
         QTest.qWait(20)
-        QTest.keyClick(entries[0][1], Qt.Key.Key_Right)
+        QTest.keyClick(entries[0][1], Qt.Key.Key_Down)
         QTest.qWait(20)
         assert QApplication.focusWidget() is entries[1][1]
 
-        QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Left)
+        QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Up)
         QTest.qWait(20)
         assert QApplication.focusWidget() is entries[0][1]
     finally:

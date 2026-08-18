@@ -150,12 +150,23 @@ class NavigationManager(QObject):
 
             if _debug:
                 logger.debug(
-                    "[nav] key=%s focused=%s section=%s",
-                    key, type(focused).__name__, type(section).__name__,
+                    "[nav] key=%s focused=%s(%s) section=%s",
+                    type(key).__name__.split(".")[-1],
+                    type(focused).__name__,
+                    getattr(focused, "objectName", lambda: "")() or "",
+                    type(section).__name__,
                 )
             if section.navigate(key, focused):
                 if _debug:
-                    logger.debug("[nav] handled by %s", type(section).__name__)
+                    new_focus = QApplication.focusWidget()
+                    if new_focus is not focused:
+                        logger.debug(
+                            "[nav] → %s(%s)",
+                            type(new_focus).__name__,
+                            getattr(new_focus, "objectName", lambda: "")() or "",
+                        )
+                    else:
+                        logger.debug("[nav] consumed (no movement)")
                 return True
 
             # Section declined — try adjacent section on boundary keys.
@@ -163,8 +174,11 @@ class NavigationManager(QObject):
                 neighbor = self._neighbor(section, +1)
                 if neighbor is not None and neighbor.focus_first():
                     if _debug:
+                        new_focus = QApplication.focusWidget()
                         logger.debug(
-                            "[nav] handed off DOWN to %s",
+                            "[nav] → %s(%s) via %s",
+                            type(new_focus).__name__,
+                            getattr(new_focus, "objectName", lambda: "")() or "",
                             type(neighbor).__name__,
                         )
                     return True
@@ -172,8 +186,11 @@ class NavigationManager(QObject):
                 neighbor = self._neighbor(section, -1)
                 if neighbor is not None and neighbor.focus_last():
                     if _debug:
+                        new_focus = QApplication.focusWidget()
                         logger.debug(
-                            "[nav] handed off UP to %s",
+                            "[nav] → %s(%s) via %s",
+                            type(new_focus).__name__,
+                            getattr(new_focus, "objectName", lambda: "")() or "",
                             type(neighbor).__name__,
                         )
                     return True
