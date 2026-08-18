@@ -38,6 +38,24 @@ logger = logging.getLogger("ImproveImgSLI")
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
 
 
+class _ArrowKeyFilter(QObject):
+    """Catch arrow keys for all children and delegate to the page's
+    focusNextPrevChild() — the standard Qt focus traversal mechanism."""
+
+    _ARROWS = {Qt.Key.Key_Down, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Left}
+
+    def __init__(self, page):
+        super().__init__(page)
+        self._page = page
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.KeyPress and event.key() in self._ARROWS:
+            forward = event.key() in (Qt.Key.Key_Down, Qt.Key.Key_Right)
+            if self._page.focusNextPrevChild(forward):
+                return True
+        return False
+
+
 class _OpaqueFillWidget(QWidget):
     """Plain container that paints its background explicitly.
 
@@ -236,6 +254,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 lambda: self._recent_panel.focus_header_control(False)
             )
 
+        # Install arrow key filter on the page itself so arrow keys work
+        # regardless of which child widget has focus.
+        self._arrow_filter = _ArrowKeyFilter(self)
+        self.installEventFilter(self._arrow_filter)
+
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
         )
@@ -285,6 +308,9 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if self._recent_panel is not None:
             self._recent_panel.on_page_shown()
             self._recent_panel.recover_opaque_surface()
+        # Rebuild focus chain after recent panel populates (header buttons
+        # become visible only after records are loaded).
+        self._setup_focus_chain()
         self.update()
 
     def refresh(self) -> None:
@@ -379,21 +405,22 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             QWidget.setTabOrder(chain[i], chain[i + 1])
 
         logger.debug(
-            "[picker-nav] _setup_focus_chain: %d cards + %d header + %d recent",
-            len(cards), len(header_buttons), len(recent_cards),
+            "[picker-nav] _setup_focus_chain: %d cards [%s] + %d header [%s] + %d recent [%s]",
+            len(cards), [type(c).__name__ for c in cards],
+            len(header_buttons), [type(b).__name__ for b in header_buttons],
+            len(recent_cards), [type(c).__name__ for c in recent_cards],
         )
 
-    def focusNextPrevChild(self, next: bool) -> bool:  # noqa: N802
+    def focusNextPrevChild(self, forward: bool) -> bool:  # noqa: N802
         """Customize focus traversal within the session picker page.
 
-        Down/Right from last recent item → True (leaves page, Qt focuses
-        next widget outside). Up/Left from first card → True (leaves page).
+        Forward (Down/Right): card → card → ... → header → recent → exit
+        Backward (Up/Left): exit ← card ← header ← recent
         """
         focused = QApplication.focusWidget()
         if focused is None:
             return False
 
-        # Find the focused widget in our chain
         cards = [card for _st, card in self._card_entries()]
         header_buttons = []
         recent_cards = []
@@ -414,7 +441,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         chain = cards + header_buttons + recent_cards
         idx = next((i for i, w in enumerate(chain) if w is focused), None)
 
-        if next:  # Down/Right
+        if forward:  # Down/Right
             if idx is None:
                 # Not in chain → focus first card
                 if chain:
@@ -423,16 +450,39 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             elif idx < len(chain) - 1:
                 chain[idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
-            # Past last → return True to let Qt find next widget
-            return True
+            # Past last → return False so Qt uses default traversal
+            return False
         else:  # Up/Left
             if idx is None:
-                return True
+                return False
             if idx > 0:
                 chain[idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
-            # Past first → return True to let Qt find previous widget
-            return True
+            # At first card → find and focus the tab strip
+            tab_strip = self._find_tab_strip()
+            if tab_strip is not None:
+                tab_strip.setFocus(Qt.FocusReason.OtherFocusReason)
+                return True
+            return False
+
+    def _find_tab_strip(self):
+        """Find WorkspaceTabsBar by walking the widget tree."""
+        window = self.window()
+        if window is None:
+            return None
+        queue = [window]
+        while queue:
+            w = queue.pop(0)
+            if w.objectName() == "WorkspaceTabsBar":
+                return w
+            layout = w.layout()
+            if layout is not None:
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    child = item.widget() if item is not None else None
+                    if child is not None:
+                        queue.append(child)
+        return None
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
@@ -446,10 +496,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             if self.focusNextPrevChild(next_nav):
                 event.accept()
                 return
-        logger.debug(
-            "[picker-nav] keyPressEvent key=%s -> unhandled, propagating",
-            hex(event.key()),
-        )
         super().keyPressEvent(event)
 
     def _retranslate_cards(self) -> None:
