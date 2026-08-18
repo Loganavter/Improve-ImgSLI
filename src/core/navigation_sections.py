@@ -85,17 +85,18 @@ class TabStripSection:
             return True
         return False
 
-    def _focus_tab_bar(self) -> bool:
-        """Focus the inner QTabBar so the focus ring is visible."""
-        tab_bar = getattr(self._tab_strip, "tab_bar", None)
-        if tab_bar is not None:
-            tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+    def _focus_add_button(self) -> bool:
+        """Focus the add button — the only focusable widget in the strip
+        that accepts programmatic focus (tab_bar has ClickFocus)."""
+        add_btn = getattr(self._tab_strip, "add_button", None)
+        if add_btn is not None and add_btn.isVisible():
+            add_btn.setFocus(Qt.FocusReason.OtherFocusReason)
             return True
         self._tab_strip.setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
     def focus_first(self) -> bool:
-        return self._focus_tab_bar()
+        return self._focus_add_button()
 
     def focus_last(self) -> bool:
-        return self._focus_tab_bar()
+        return self._focus_add_button()
