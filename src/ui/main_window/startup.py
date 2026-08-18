@@ -11,6 +11,8 @@ from shared_toolkit.ui.decorate_dialog import resolve_csd_band
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.widgets.themed_surface import ThemedSurface
 
+logger = logging.getLogger("ImproveImgSLI")
+
 
 def _startup_ffd_log(message: str) -> None:
     """Env-gated (IMGSLI_IC_FIRST_FRAME_DEBUG) startup-cover timeline log."""
