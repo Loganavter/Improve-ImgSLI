@@ -950,6 +950,8 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
         refresh_use_cases.rebuild_items(self)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
+        import logging
+        _log = logging.getLogger(__name__)
         key = event.key()
         if key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             if self._selected_paths:
@@ -967,6 +969,21 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
             Qt.Key.Key_Up,
             Qt.Key.Key_Down,
         ):
+            from PySide6.QtWidgets import QApplication
+
+            focused = QApplication.focusWidget()
+            is_recent_card = (
+                focused is not None
+                and self._items is not None
+                and any(
+                    card is focused
+                    for _, card in self._items._ordered_live_cards()
+                )
+            )
+            if not is_recent_card:
+                _log.debug("PANEL: key=%d not recent → propagating", key)
+                super().keyPressEvent(event)
+                return
             columns = max(1, getattr(self._items, "grid_columns", 1) or 1)
             if key == Qt.Key.Key_Left:
                 step = -1
