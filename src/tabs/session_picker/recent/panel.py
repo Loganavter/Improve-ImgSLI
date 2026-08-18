@@ -479,6 +479,20 @@ class RecentProjectsPanel(ShelfWidget):
                 logger.debug("[shelf-nav] keyPressEvent Escape -> clear selection")
                 return
         if key in (Qt.Key.Key_Up, Qt.Key.Key_Left):
+            # If focus is on a header button, let the event propagate up to
+            # SessionPickerWidget → tab strip instead of sending back to cards.
+            focused = QApplication.focusWidget()
+            header = getattr(self, "_header", None)
+            if header is not None and focused is not None:
+                buttons = [
+                    b for b in (header.sort_button, header.sort_order_button, header.view_button)
+                    if b.isVisible()
+                ]
+                if focused in buttons:
+                    # Up from first header button → exit the shelf entirely
+                    event.ignore()
+                    super().keyPressEvent(event)
+                    return
             page = self.parentWidget()
             while page is not None and not hasattr(page, "_focus_create_card"):
                 page = page.parentWidget()

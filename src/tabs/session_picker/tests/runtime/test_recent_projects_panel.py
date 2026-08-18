@@ -1208,7 +1208,7 @@ def test_window_will_fill_screen_and_prelayout_width_estimate(qapp):
     from PySide6.QtWidgets import QApplication, QMainWindow
 
     from tabs.session_picker.geometry import SESSION_PICKER_PAGE_HORIZONTAL_MARGINS
-    from tabs.session_picker.recent.panel import _window_will_fill_screen
+    from tabs.session_picker.recent.use_cases.sizing import window_will_fill_screen as _window_will_fill_screen
 
     class FakeScreen:
         def availableGeometry(self):
