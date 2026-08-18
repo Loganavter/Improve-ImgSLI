@@ -142,19 +142,38 @@ class NavigationManager(QObject):
         if focused is None:
             return False
 
+        _debug = logger.isEnabledFor(logging.DEBUG)
+
         for section in self._sections:
             if section.owns(focused):
+                if _debug:
+                    logger.debug(
+                        "[nav] key=%s focused=%s section=%s",
+                        key, type(focused).__name__, type(section).__name__,
+                    )
                 if section.navigate(key, focused):
+                    if _debug:
+                        logger.debug("[nav] handled by %s", type(section).__name__)
                     return True
 
                 # Section declined — try adjacent section on boundary keys.
                 if key in _EXIT_DOWN:
                     neighbor = self._neighbor(section, +1)
                     if neighbor is not None and neighbor.focus_first():
+                        if _debug:
+                            logger.debug(
+                                "[nav] handed off DOWN to %s",
+                                type(neighbor).__name__,
+                            )
                         return True
                 elif key in _EXIT_UP:
                     neighbor = self._neighbor(section, -1)
                     if neighbor is not None and neighbor.focus_last():
+                        if _debug:
+                            logger.debug(
+                                "[nav] handed off UP to %s",
+                                type(neighbor).__name__,
+                            )
                         return True
 
                 break
