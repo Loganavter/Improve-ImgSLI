@@ -100,7 +100,22 @@ class KeyboardStateService:
         return KeyboardStateResult(True, "reset")
 
     def _log_state(self, action: str, key_code: int | None) -> None:
-        pass
+        key_name = None
+        if key_code is not None:
+            key_names = {
+                Qt.Key.Key_Space: "Space",
+                Qt.Key.Key_W: "W", Qt.Key.Key_A: "A",
+                Qt.Key.Key_S: "S", Qt.Key.Key_D: "D",
+                Qt.Key.Key_Q: "Q", Qt.Key.Key_E: "E",
+            }
+            key_name = key_names.get(key_code, f"0x{key_code:X}")
+        logger.debug(
+            "[kbd-state] %s key=%s pressed_keys=%s space=%s",
+            action,
+            key_name,
+            {hex(k) for k in self.interaction.pressed_keys} or "{}",
+            self.interaction.space_bar_pressed,
+        )
 
     def _update_axis_priority_on_press(self, key_code: int) -> None:
         interaction = self.interaction

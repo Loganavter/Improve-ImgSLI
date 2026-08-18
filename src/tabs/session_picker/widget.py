@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 from PySide6.QtCore import QEvent, QLineF, QObject, QRectF, Qt, QTimer
@@ -31,6 +32,8 @@ from tabs.session_picker.geometry import (
 from tabs.session_picker.icons import Icon as SessionPickerIcon, get_icon as get_session_picker_icon
 from tabs.session_picker.recent.panel import RecentProjectsPanel
 from ui.theming import resolve_theme_color
+
+logger = logging.getLogger("ImproveImgSLI")
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
 
@@ -396,21 +399,48 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if current is None:
             target = 0 if offset > 0 else len(entries) - 1
             entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            logger.debug(
+                "[picker-nav] focus_create_card offset=%d -> first card (no prior focus)",
+                offset,
+            )
             return True
         target = current + offset
         if 0 <= target < len(entries):
             entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            logger.debug(
+                "[picker-nav] focus_create_card offset=%d card=%d/%d -> %s",
+                offset,
+                current,
+                len(entries),
+                entries[target][0],
+            )
             return True
         # Past the edge of the create-cards: continue into the shelf
         # header controls first, then the recent items (first item going
         # down, last item going up).
         if self._recent_panel is not None:
             if self._recent_panel.focus_header_control(offset > 0):
+                logger.debug(
+                    "[picker-nav] focus_create_card offset=%d past cards -> header (first=%s)",
+                    offset,
+                    offset > 0,
+                )
                 return True
             if self._recent_panel.focus_recent_item(offset > 0):
+                logger.debug(
+                    "[picker-nav] focus_create_card offset=%d past cards -> recent item (first=%s)",
+                    offset,
+                    offset > 0,
+                )
                 return True
         target %= len(entries)
         entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
+        logger.debug(
+            "[picker-nav] focus_create_card offset=%d wrap -> card %d/%d",
+            offset,
+            target,
+            len(entries),
+        )
         return True
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802
@@ -433,6 +463,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             if self._focus_create_card(offset):
                 event.accept()
                 return
+        logger.debug(
+            "[picker-nav] keyPressEvent key=%s -> unhandled, propagating",
+            hex(event.key()),
+        )
         super().keyPressEvent(event)
 
     def _create_card_has_focus(self) -> bool:
