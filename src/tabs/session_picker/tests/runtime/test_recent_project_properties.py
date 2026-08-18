@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from plugins.image_properties.service import build_image_properties
 from services.io.recent_projects import RecentProjectRecord
-from tabs.session_picker.recent.relative_time import format_absolute_timestamp
+from ui.widgets.shelf.relative_time import format_absolute_timestamp
 
 
 def _tr(key: str, default: str | None = None) -> str:

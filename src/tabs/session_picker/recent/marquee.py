@@ -12,7 +12,7 @@ from PySide6.QtCore import QEvent, QObject, QRect, Qt
 from PySide6.QtGui import QMouseEvent
 from sli_ui_toolkit.widgets import MarqueeBandGesture
 
-from tabs.session_picker.recent.selection import (
+from ui.widgets.shelf.selection import (
     ctrl_held,
     paths_intersecting_rect,
     preview_selection,

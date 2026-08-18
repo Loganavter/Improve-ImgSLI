@@ -17,7 +17,7 @@ from services.io.recent_projects import (
     set_recent_sort_mode,
     set_recent_view_mode,
 )
-from tabs.session_picker.recent.layout import (
+from ui.widgets.shelf.layout import (
     GRID_CARD_H,
     GRID_CARD_W,
     LIST_CARD_H,
@@ -158,7 +158,7 @@ def test_recent_panel_scroll_disables_viewport_mask(qapp, monkeypatch):
 
 
 def test_grid_columns_for_width_scales_with_space():
-    from tabs.session_picker.recent.layout import (
+    from ui.widgets.shelf.layout import (
         GRID_CARD_W,
         ITEMS_MARGIN,
         ITEMS_MARGIN_RIGHT,
@@ -182,7 +182,7 @@ def test_recent_panel_bare_panel_falls_back_to_two_rows(qapp, tmp_path, monkeypa
     """A bare panel with no real page/window context has no available-space
     signal, so the viewport falls back to the fixed two-grid-row cap."""
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.layout import (
+    from ui.widgets.shelf.layout import (
         VISIBLE_ROWS_MAX,
         content_height_for_rows,
     )
@@ -239,7 +239,7 @@ def test_recent_panel_viewport_uses_available_window_space(qapp, tmp_path, monke
     from services.io.recent_projects import RecentProjectRecord
     from sli_ui_toolkit.widgets import OverlayScrollArea
     from PySide6.QtWidgets import QVBoxLayout, QWidget
-    from tabs.session_picker.recent.layout import GRID_CARD_H
+    from ui.widgets.shelf.layout import GRID_CARD_H
 
     def _record(i: int) -> RecentProjectRecord:
         path = tmp_path / f"fit{i}.imgsli"
@@ -306,7 +306,7 @@ def test_recent_panel_viewport_uses_available_window_space(qapp, tmp_path, monke
 
 def test_recent_panel_grid_uses_available_width(qapp, tmp_path, monkeypatch):
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.layout import grid_columns_for_width
+    from ui.widgets.shelf.layout import grid_columns_for_width
 
     def _record(i: int) -> RecentProjectRecord:
         path = tmp_path / f"wide{i}.imgsli"
@@ -354,7 +354,7 @@ def test_recent_panel_grid_shrinks_after_fullscreen_exit(qapp, tmp_path, monkeyp
     isFullScreen() still reports True. The grid must then use the live panel
     width, not the stale screen-width estimate, or it never shrinks back."""
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.layout import grid_columns_for_width
+    from ui.widgets.shelf.layout import grid_columns_for_width
 
     def _record(i: int) -> RecentProjectRecord:
         path = tmp_path / f"fs{i}.imgsli"
@@ -480,7 +480,7 @@ def test_recent_panel_shelf_height_settles_atomically(qapp, tmp_path, monkeypatc
 def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch):
     """Column-count changes must re-slot cards, not recreate them."""
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.layout import grid_columns_for_width
+    from ui.widgets.shelf.layout import grid_columns_for_width
 
     def _record(i: int) -> RecentProjectRecord:
         path = tmp_path / f"keep{i}.imgsli"
@@ -728,7 +728,7 @@ def test_recent_panel_relayout_never_leaves_updates_disabled(
     qapp, tmp_path, monkeypatch
 ):
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.layout import grid_columns_for_width
+    from ui.widgets.shelf.layout import grid_columns_for_width
 
     def _record(i: int) -> RecentProjectRecord:
         path = tmp_path / f"upd{i}.imgsli"
@@ -826,7 +826,7 @@ def test_recent_missing_list_card_uses_pastel_red(qapp, tmp_path, monkeypatch):
 def test_recent_panel_keeps_scroll_host_opaque(qapp, monkeypatch):
     from PySide6.QtCore import Qt
 
-    from tabs.session_picker.recent.layout import PANEL_RADIUS
+    from ui.widgets.shelf.layout import PANEL_RADIUS
     from ui.widgets.shelf import OpaqueFillHost
 
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: [])
@@ -944,7 +944,7 @@ def test_recent_missing_click_does_not_remove(qapp, tmp_path, monkeypatch):
 
 
 def test_visible_row_window_includes_buffer():
-    from tabs.session_picker.recent.layout import (
+    from ui.widgets.shelf.layout import (
         ITEMS_MARGIN_TOP,
         VIRTUAL_ROW_BUFFER,
         row_stride,
@@ -1037,7 +1037,7 @@ def test_scale_above_1_geometry_stays_consistent():
     scaled card height + spacing exactly (no double-scaling)."""
     from sli_ui_toolkit.managers import UiScale
 
-    from tabs.session_picker.recent.layout import (
+    from ui.widgets.shelf.layout import (
         ITEMS_MARGIN_BOTTOM,
         ITEMS_MARGIN_TOP,
         ITEMS_SPACING,
@@ -1076,7 +1076,7 @@ def test_scale_above_1_bare_panel_cap_is_scaled(qapp, tmp_path, monkeypatch):
     from sli_ui_toolkit.managers import UiScale
 
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.layout import (
+    from ui.widgets.shelf.layout import (
         VISIBLE_ROWS_MAX,
         content_height_for_rows,
         scaled_px,
@@ -1125,7 +1125,7 @@ def test_scale_above_1_virtualization_keeps_viewport_filled(qapp, tmp_path, monk
     from sli_ui_toolkit.managers import UiScale
 
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.layout import (
+    from ui.widgets.shelf.layout import (
         GRID_CARD_W,
         ITEMS_MARGIN,
         ITEMS_MARGIN_TOP,
@@ -1309,7 +1309,7 @@ def test_shelf_geometry_settles_by_first_drain(qapp, tmp_path, monkeypatch, fact
 
         panel = page._recent_panel
         items = panel._items
-        from tabs.session_picker.recent.layout import (
+        from ui.widgets.shelf.layout import (
             content_height_for_rows,
             GRID_CARD_H,
         )
@@ -1351,7 +1351,7 @@ def test_live_ui_scale_change_resizes_shelf_in_place(qapp, tmp_path, monkeypatch
     from sli_ui_toolkit.managers import UiScale, scaled_px
 
     from services.io.recent_projects import RecentProjectRecord
-    from tabs.session_picker.recent.layout import (
+    from ui.widgets.shelf.layout import (
         GRID_CARD_H,
         GRID_CARD_W,
         ITEMS_MARGIN,

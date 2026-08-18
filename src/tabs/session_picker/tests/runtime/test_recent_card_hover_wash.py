@@ -16,7 +16,7 @@ from PySide6.QtGui import QColor, QPixmap
 
 from services.io.recent_projects import RecentProjectRecord
 from tabs.session_picker.recent.cards import _card_hover_wash, build_grid_card
-from tabs.session_picker.recent.selection import apply_card_selected
+from ui.widgets.shelf.selection import apply_card_selected
 
 
 def _record(tmp_path, name: str = "proj.imgsli") -> RecentProjectRecord:

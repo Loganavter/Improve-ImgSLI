@@ -8,7 +8,7 @@ from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import Button
 
 from services.io.recent_projects import VIEW_LIST, RecentProjectRecord
-from tabs.session_picker.recent.layout import (
+from ui.widgets.shelf.layout import (
     GRID_CARD_H,
     GRID_CARD_W,
     ITEMS_MARGIN,
