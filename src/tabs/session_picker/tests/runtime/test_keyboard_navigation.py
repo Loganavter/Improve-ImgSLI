@@ -94,22 +94,32 @@ def _open_calls(widget):
 
 
 def test_create_card_arrows_move_focus_via_real_key_events(qapp, monkeypatch):
+    from core.navigation import NavigationManager
+    from core.navigation_sections import SessionPickerSection
+
     widget = SessionPickerWidget(context=_Context())
     widget.show()
     QTest.qWait(50)
     entries = widget._card_entries()
     assert len(entries) >= 2
 
-    entries[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
-    QTest.qWait(20)
-    QTest.keyClick(entries[0][1], Qt.Key.Key_Right)
-    QTest.qWait(20)
-    assert QApplication.focusWidget() is entries[1][1]
+    manager = NavigationManager.get_instance()
+    section = SessionPickerSection(widget)
+    manager.register(section)
+    try:
+        entries[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
+        QTest.qWait(20)
+        QTest.keyClick(entries[0][1], Qt.Key.Key_Right)
+        QTest.qWait(20)
+        assert QApplication.focusWidget() is entries[1][1]
 
-    QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Left)
-    QTest.qWait(20)
-    assert QApplication.focusWidget() is entries[0][1]
-    widget.deleteLater()
+        QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Left)
+        QTest.qWait(20)
+        assert QApplication.focusWidget() is entries[0][1]
+    finally:
+        manager.unregister(section)
+        NavigationManager._instance = None
+        widget.deleteLater()
 
 
 def test_create_card_enter_creates_via_real_key_event(qapp, monkeypatch):
