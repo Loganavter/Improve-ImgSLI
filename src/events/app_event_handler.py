@@ -1,4 +1,4 @@
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import (
     QMouseEvent,
     QDragEnterEvent,
@@ -30,9 +30,11 @@ def _wname(w) -> str:
 
 
 _KEY_NAMES = {
-    16777237: "Down", 16777235: "Left", 16777236: "Up", 16777234: "Right",
-    16777238: "Enter", 16777239: "Return", 16777219: "Space",
-    16777224: "Esc", 16777223: "Tab",
+    Qt.Key.Key_Down: "Down", Qt.Key.Key_Left: "Left",
+    Qt.Key.Key_Up: "Up", Qt.Key.Key_Right: "Right",
+    Qt.Key.Key_Return: "Return", Qt.Key.Key_Enter: "Enter",
+    Qt.Key.Key_Space: "Space", Qt.Key.Key_Escape: "Esc",
+    Qt.Key.Key_Tab: "Tab",
 }
 
 
@@ -98,39 +100,15 @@ class EventHandler(QObject):
             logger.debug("  FOCUS ← %s", _wname(watched_obj))
         elif event_type == QEvent.Type.KeyPress:
             w = QApplication.focusWidget()
+            k = event.key()
             path = _widget_path(w) if w else "?"
             logger.debug(
-                "  KEY %s → %s  path=%s",
-                _key_name(event.key()),
+                "  KEY %s(0x%X) → %s  path=%s",
+                _key_name(k), k,
                 _wname(w),
                 path,
             )
         # --- end debug ---
-
-        # Systemic escape: if Up doesn't move focus at all, escape
-        # to the tab bar.  Uses QTimer(0) to run after the event fully
-        # propagates (including any synchronous setFocus calls).
-        # Only Up — Left/Right are horizontal navigation within sections.
-        if event_type == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Up:
-            w_before = QApplication.focusWidget()
-
-            def _check_escaped(wb=w_before):
-                w_after = QApplication.focusWidget()
-                if w_after is wb and wb is not None:
-                    tab_bar = self._get_tab_bar()
-                    if tab_bar is not None:
-                        logger.debug(
-                            "  ESCAPE: %s stuck → tab_bar",
-                            _wname(wb),
-                        )
-                        tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
-                else:
-                    logger.debug(
-                        "  NAV OK: %s → %s",
-                        _wname(wb),
-                        _wname(w_after),
-                    )
-            QTimer.singleShot(0, _check_escaped)
 
         dnd_service = DragAndDropService.get_instance()
         if route_drag_and_drop_override(self, event, dnd_service):
@@ -183,29 +161,6 @@ class EventHandler(QObject):
 
     def stop_interactive_movement(self):
         self.interactive_movement.stop()
-
-    def _in_content_area(self, widget) -> bool:
-        """Check if widget is inside the workspace_stack (content area)."""
-        stack = getattr(getattr(self, "presenter", None), "ui", None)
-        if stack is None:
-            return False
-        stack = getattr(stack, "workspace_stack", None)
-        if stack is None:
-            return False
-        p = widget
-        while p is not None:
-            if p is stack:
-                return True
-            p = p.parentWidget()
-        return False
-
-    def _get_tab_bar(self):
-        """Get the tab bar widget from the UI."""
-        ui = getattr(getattr(self, "presenter", None), "ui", None)
-        if ui is None:
-            return None
-        tabs = getattr(ui, "workspace_tabs", None)
-        return getattr(tabs, "tab_bar", None) if tabs is not None else None
 
     def handle_key_press(self, event: QKeyEvent):
         self.keyboard_handler.handle_key_press(event)
