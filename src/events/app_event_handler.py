@@ -57,27 +57,6 @@ class EventHandler(QObject):
     def eventFilter(self, watched_obj, event: QEvent) -> bool:
         event_type = event.type()
 
-        # --- debug: trace focus and key events ---
-        if event_type == QEvent.Type.FocusIn:
-            w = QApplication.focusWidget()
-            logger.debug(
-                "[FOCUS] FocusIn obj=%s widget=%s reason=%s",
-                type(watched_obj).__name__,
-                type(w).__name__ if w else None,
-                event.reason().name if hasattr(event, "reason") else "?",
-            )
-        elif event_type == QEvent.Type.FocusOut:
-            logger.debug("[FOCUS] FocusOut obj=%s", type(watched_obj).__name__)
-        elif event_type == QEvent.Type.KeyPress:
-            w = QApplication.focusWidget()
-            logger.debug(
-                "[KEY] KeyPress key=%s obj=%s widget=%s",
-                event.key(),
-                type(watched_obj).__name__,
-                type(w).__name__ if w else None,
-            )
-        # --- end debug ---
-
         dnd_service = DragAndDropService.get_instance()
         if route_drag_and_drop_override(self, event, dnd_service):
             return True
@@ -129,6 +108,29 @@ class EventHandler(QObject):
 
     def stop_interactive_movement(self):
         self.interactive_movement.stop()
+
+    def _in_content_area(self, widget) -> bool:
+        """Check if widget is inside the workspace_stack (content area)."""
+        stack = getattr(getattr(self, "presenter", None), "ui", None)
+        if stack is None:
+            return False
+        stack = getattr(stack, "workspace_stack", None)
+        if stack is None:
+            return False
+        p = widget
+        while p is not None:
+            if p is stack:
+                return True
+            p = p.parentWidget()
+        return False
+
+    def _get_tab_bar(self):
+        """Get the tab bar widget from the UI."""
+        ui = getattr(getattr(self, "presenter", None), "ui", None)
+        if ui is None:
+            return None
+        tabs = getattr(ui, "workspace_tabs", None)
+        return getattr(tabs, "tab_bar", None) if tabs is not None else None
 
     def handle_key_press(self, event: QKeyEvent):
         self.keyboard_handler.handle_key_press(event)
