@@ -157,7 +157,7 @@ class NavigationManager(QObject):
             if _debug:
                 logger.debug(
                     "[nav] key=%s focused=%s(%s) section=%s",
-                    type(key).__name__.split(".")[-1],
+                    _key_name(key),
                     type(focused).__name__,
                     getattr(focused, "objectName", lambda: "")() or "",
                     type(section).__name__,
