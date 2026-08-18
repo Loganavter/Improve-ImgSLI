@@ -341,7 +341,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             target = 0 if offset > 0 else len(entries) - 1
         else:
             target = (current + offset) % len(entries)
-        entries[target][1].setFocus(Qt.FocusReason.KeyboardFocusReason)
+        entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
     def keyPressEvent(self, event) -> None:  # noqa: N802

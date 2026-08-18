@@ -228,7 +228,7 @@ class RecentItemsView(QWidget):
         card = self._cards_by_path.get(record.path)
         if card is None:
             return False
-        card.setFocus(Qt.FocusReason.KeyboardFocusReason)
+        card.setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
     def activate_focused_card(self) -> bool:
