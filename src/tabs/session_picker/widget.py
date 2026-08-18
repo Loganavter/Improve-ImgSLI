@@ -259,11 +259,13 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 lambda: self._focus_create_card(-1)
             )
 
-        # See _CreateCardKeyboardFilter: create-cards live inside a
-        # QAbstractScrollArea, so arrow keys must be caught at the page level
-        # (via a dedicated filter object) before the scroll area swallows them.
+        # See _CreateCardKeyboardFilter: the create-cards live inside a
+        # QAbstractScrollArea, whose viewport event filter swallows arrow keys
+        # (scrolling) before they reach the page. Install the filter on the
+        # cards container — below the viewport in the event-filter walk
+        # (receiver → parents), so it runs before the scroll area's own filter.
         self._create_card_keyboard_filter = _CreateCardKeyboardFilter(self)
-        self.installEventFilter(self._create_card_keyboard_filter)
+        self._cards_container.installEventFilter(self._create_card_keyboard_filter)
 
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
