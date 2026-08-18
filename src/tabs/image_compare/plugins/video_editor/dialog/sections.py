@@ -558,7 +558,7 @@ def create_output_tab(dialog):
     layout.setContentsMargins(scaled_px(16), scaled_px(16), scaled_px(16), scaled_px(16))
     layout.setSpacing(scaled_px(8))
 
-    dialog.output_section = OutputPathSection(
+    section = OutputPathSection(
         directory_label_text=dialog._tr("export.select_output_directory") + ":",
         browse_text=dialog._tr("button.browse"),
         set_favorite_text=dialog._tr("misc.set_as_favorite"),
@@ -571,20 +571,18 @@ def create_output_tab(dialog):
         filename_editor_factory=CustomLineEdit,
     )
     _harden_text_buttons(
-        dialog.output_section.btn_browse_dir,
-        dialog.output_section.btn_set_favorite,
-        dialog.output_section.btn_use_favorite,
+        section.btn_browse_dir,
+        section.btn_set_favorite,
+        section.btn_use_favorite,
     )
-    dialog.dir_picker_row = dialog.output_section.dir_picker_row
-    dialog.edit_output_dir = dialog.output_section.edit_dir
-    dialog.btn_browse_output = dialog.output_section.btn_browse_dir
-    dialog.favorite_actions = dialog.output_section.favorite_actions
-    dialog.btn_set_favorite = dialog.output_section.btn_set_favorite
-    dialog.btn_use_favorite = dialog.output_section.btn_use_favorite
+    section.apply_to(dialog)
+    # Video-editor-specific aliases (different names from the standardized ones).
+    dialog.edit_output_dir = dialog.edit_dir
+    dialog.btn_browse_output = dialog.btn_browse_dir
+    dialog.edit_filename = dialog.edit_name
     EXPORT_FOOTER.tag_member(dialog.btn_browse_output, "button.browse")
     EXPORT_FOOTER.tag_member(dialog.btn_set_favorite, "misc.set_as_favorite")
     EXPORT_FOOTER.tag_member(dialog.btn_use_favorite, "tooltip.use_favorite")
-    dialog.edit_filename = dialog.output_section.filename_edit
     layout.addWidget(dialog.output_section)
 
     layout.addStretch(1)

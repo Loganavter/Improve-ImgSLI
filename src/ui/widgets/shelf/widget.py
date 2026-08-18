@@ -293,20 +293,8 @@ __all__ = [
     "SHELF_MARGIN_TOP",
     "SHELF_SPACING",
     "ShelfWidget",
+    "apply_opaque_widget_fill",
 ]
-
-ShelfWidget.inspect_spec = InspectSpec(
-    family="ShelfWidget",
-    state=(
-        SpecField(
-            "title",
-            lambda w: w.title_label().text() if w.title_label() else "",
-        ),
-        SpecField("content_well", "_content_well", private=True),
-        SpecField("surface_token", "_surface_token", private=True),
-    ),
-    docs="docs/dev/APP_WIDGETS.md",
-)
 
 ShelfWidget.inspect_spec = InspectSpec(
     family="ShelfWidget",

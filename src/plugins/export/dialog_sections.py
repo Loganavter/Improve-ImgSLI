@@ -81,7 +81,7 @@ def build_preview_pane(dialog) -> QFrame:
 
 
 def build_output_path_section(dialog) -> None:
-    dialog.output_section = OutputPathSection(
+    section = OutputPathSection(
         directory_label_text=dialog._tr("label.output_directory", "Output directory")
         + ":",
         browse_text=dialog._tr("button.browse", "Browse..."),
@@ -94,14 +94,7 @@ def build_output_path_section(dialog) -> None:
         use_custom_line_edit=True,
         filename_editor_factory=CustomLineEdit,
     )
-    dialog.dir_picker_row = dialog.output_section.dir_picker_row
-    dialog.edit_dir = dialog.output_section.edit_dir
-    dialog.btn_browse_dir = dialog.output_section.btn_browse_dir
-    dialog.favorite_actions = dialog.output_section.favorite_actions
-    dialog.btn_set_favorite = dialog.output_section.btn_set_favorite
-    dialog.btn_use_favorite = dialog.output_section.btn_use_favorite
-    dialog.name_label = dialog.output_section.filename_label
-    dialog.edit_name = dialog.output_section.filename_edit
+    section.apply_to(dialog)
     OUTPUT.tag_member(dialog.btn_browse_dir, "button.browse")
     OUTPUT.tag_member(dialog.btn_set_favorite, "misc.set_as_favorite")
     OUTPUT.tag_member(dialog.btn_use_favorite, "tooltip.use_favorite")
@@ -110,7 +103,6 @@ def build_output_path_section(dialog) -> None:
         dialog.btn_set_favorite,
         dialog.btn_use_favorite,
     )
-    dialog.output_section.lock_content_minimum_height()
 
 
 def build_format_row(dialog) -> None:
