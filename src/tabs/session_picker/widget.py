@@ -548,8 +548,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 return True
             recent = getattr(self, "_recent_panel", None)
             if recent is not None and recent.isVisible():
-                recent.setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
+                if recent.focus_recent_item(True):
+                    return True
             return False
 
         if key == Qt.Key.Key_Up:
