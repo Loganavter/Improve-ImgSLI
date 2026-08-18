@@ -221,19 +221,18 @@ class TestCrossSectionRouting:
         assert focus_calls == ["top_last"]
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_left_right_pass_through_when_section_yields(self, mock_qapp):
-        """Left/Right from a yielding section pass through to native handlers."""
+    def test_left_right_pass_through_immediately(self, mock_qapp):
+        """Left/Right pass through without any section routing."""
         widget = _fake_widget("target")
         section = _make_section(
             owns_fn=lambda w: w is widget,
-            navigate_fn=lambda k, w: False,
+            navigate_fn=lambda k, w: True,
         )
         self.manager.register(section)
         for key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             event = _FakeKeyEvent(key)
             mock_qapp.focusWidget.return_value = widget
             result = self.manager.eventFilter(None, event)
-            # No neighbor → pass through (let native widget handle it)
             assert result is False
 
 
@@ -255,6 +254,7 @@ class TestSessionPickerSection:
         page = MagicMock()
         page._card_entries = MagicMock(return_value=buttons)
         page.isAncestorOf = MagicMock(return_value=False)
+        page._recent_panel = None
 
         section = SessionPickerSection(page)
         return section, page, buttons
@@ -286,10 +286,21 @@ class TestSessionPickerSection:
         assert result is True
         buttons[2][1].setFocus.assert_called_once()
 
-    def test_down_at_last_card_yields(self):
-        section, _, buttons = self._make_page(["a", "b", "c"])
+    def test_down_at_last_card_yields_when_no_recent_panel(self):
+        section, page, buttons = self._make_page(["a", "b", "c"])
+        page._recent_panel = None
         result = section.navigate(Qt.Key.Key_Down, buttons[2][1])
         assert result is False
+
+    def test_down_at_last_card_focuses_recent_panel(self):
+        section, page, buttons = self._make_page(["a", "b", "c"])
+        recent = MagicMock()
+        recent.isVisible = MagicMock(return_value=True)
+        recent.setFocus = MagicMock()
+        page._recent_panel = recent
+        result = section.navigate(Qt.Key.Key_Down, buttons[2][1])
+        assert result is True
+        recent.setFocus.assert_called_once()
 
     def test_right_from_nothing_consumed(self):
         section, _, _ = self._make_page(["a", "b", "c"])
