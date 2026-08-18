@@ -541,25 +541,46 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if key == Qt.Key.Key_Down:
             if card_idx is None:
                 if cards:
+                    logger.debug(
+                        "[nav-picker] Down from non-card → first card (%s)",
+                        type(cards[0][1]).__name__,
+                    )
                     cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
                     return True
             elif card_idx < len(cards) - 1:
+                logger.debug(
+                    "[nav-picker] Down card[%d] → card[%d]", card_idx, card_idx + 1
+                )
                 cards[card_idx + 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
             recent = getattr(self, "_recent_panel", None)
             if recent is not None and recent.isVisible():
                 if recent.focus_header_control(True):
+                    logger.debug("[nav-picker] Down past last card → shelf header")
                     return True
                 if recent.focus_recent_item(True):
+                    logger.debug("[nav-picker] Down past last card → first recent item")
                     return True
+            logger.debug("[nav-picker] Down past last card → yield (no shelf)")
             return False
 
         if key == Qt.Key.Key_Up:
             if card_idx is None:
+                recent = getattr(self, "_recent_panel", None)
+                if recent is not None and recent.isVisible():
+                    logger.debug(
+                        "[nav-picker] Up from shelf widget → last create-card"
+                    )
+                    return self._nav_focus_last()
+                logger.debug("[nav-picker] Up from non-card → yield")
                 return False
             if card_idx > 0:
+                logger.debug(
+                    "[nav-picker] Up card[%d] → card[%d]", card_idx, card_idx - 1
+                )
                 cards[card_idx - 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
+            logger.debug("[nav-picker] Up from first card → yield to tab strip")
             return False
 
         return True
