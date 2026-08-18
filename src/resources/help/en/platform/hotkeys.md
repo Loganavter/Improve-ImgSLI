@@ -11,6 +11,7 @@ Press `Ctrl+Shift+P` and type a name before memorizing a list. Run the action fr
 - `Ctrl+,` — Settings
 - `Ctrl+F1` — Help
 - `Ctrl+N` — Session picker / new session
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — Next / previous workspace session
 - `Ctrl+Shift+P` — {{tr:menu.find_action}}
 - `Ctrl+V` — Paste image
 - `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Open / save / save project as (`.imgsli`)

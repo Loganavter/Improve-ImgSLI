@@ -11,6 +11,7 @@
 - `Ctrl+,` — Настройки
 - `Ctrl+F1` — Справка
 - `Ctrl+N` — Выбор сессии / новая сессия
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — Следующая / предыдущая сессия
 - `Ctrl+Shift+P` — {{tr:menu.find_action}}
 - `Ctrl+V` — Вставка изображения
 - `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Открыть / сохранить / сохранить проект как (`.imgsli`)

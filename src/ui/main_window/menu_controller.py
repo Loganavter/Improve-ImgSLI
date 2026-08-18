@@ -395,6 +395,33 @@ class MainWindowMenuController:
                 session_type,
             )
 
+    def _switch_workspace_session(self, direction: int) -> None:
+        """Cycle to the next/previous open workspace session (Ctrl+Tab)."""
+        presenter = self._presenter()
+        manager = getattr(presenter, "session_manager", None) if presenter else None
+        workspace = self._workspace()
+        if manager is None or workspace is None:
+            return
+        try:
+            sessions = list(manager.list_sessions())
+        except Exception:
+            logger.exception("_switch_workspace_session: list_sessions failed")
+            return
+        if len(sessions) < 2:
+            return
+        from ui.main_window.use_cases.platform_actions import cycle_session_id
+
+        active = manager.get_active_session()
+        target_id = cycle_session_id(
+            sessions, getattr(active, "id", None), direction
+        )
+        if target_id is None:
+            return
+        try:
+            workspace.switch_workspace_session(target_id)
+        except Exception:
+            logger.exception("_switch_workspace_session: switch failed")
+
     def _open_project(self) -> None:
         self.project_io.open_project()
 
