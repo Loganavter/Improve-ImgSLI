@@ -6,7 +6,7 @@ from typing import Callable
 
 from PySide6.QtCore import QEvent, QLineF, QObject, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
 from sli_ui_toolkit.managers import UiScale, scaled_px
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
@@ -118,6 +118,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self._populated = False
         self._cards_by_type: dict[str, Button] = {}
         self.setObjectName("SessionPickerPage")
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setMinimumSize(
             scaled_px(SESSION_PICKER_PAGE_MIN_WIDTH),
             scaled_px(SESSION_PICKER_PAGE_MIN_HEIGHT),
@@ -208,6 +209,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         scroll.set_reserve_scrollbar_space(False)
         outer.addWidget(scroll)
         self._page_scroll = scroll
+
+        # Give the page focus when the user clicks on the scroll-area background
+        # (empty space around/above/below the cards) so that arrow-key navigation
+        # works immediately after a click.
+        scroll.viewport().installEventFilter(self)
 
         content = _OpaqueFillWidget()
         scroll.setWidget(content)
@@ -379,7 +385,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         entries = self._card_entries()
         if not entries:
             return False
-        from PySide6.QtWidgets import QApplication
 
         focused = QApplication.focusWidget()
         current = next(
@@ -404,6 +409,14 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and obj is self._page_scroll.viewport()
+        ):
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
+        return super().eventFilter(obj, event)
+
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
         if key in (
@@ -419,8 +432,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         super().keyPressEvent(event)
 
     def _create_card_has_focus(self) -> bool:
-        from PySide6.QtWidgets import QApplication
-
         focused = QApplication.focusWidget()
         return focused is not None and any(
             card is focused for _st, card in self._card_entries()
