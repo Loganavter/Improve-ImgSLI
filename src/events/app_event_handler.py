@@ -121,13 +121,6 @@ class EventHandler(QObject):
         if route_drag_and_drop_override(self, event, dnd_service):
             return True
 
-        # Global arrow-key navigation across UI sections.
-        if event_type == QEvent.Type.KeyPress and event.key() in (
-            Qt.Key.Key_Down, Qt.Key.Key_Up, Qt.Key.Key_Left, Qt.Key.Key_Right,
-        ):
-            if self._handle_global_arrow(event):
-                return True
-
         # Close visible in-window ContextMenus on Escape before the global
         # keyboard handler consumes it.
         if event_type == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
@@ -182,86 +175,7 @@ class EventHandler(QObject):
     def handle_key_release(self, event: QKeyEvent):
         self.keyboard_handler.handle_key_release(event)
 
-    def _handle_global_arrow(self, event: QEvent) -> bool:
-        """Global arrow-key navigation between UI sections.
-
-        Returns True if the event was handled (consumed).
-        """
-        from PySide6.QtWidgets import QAbstractScrollArea, QApplication
-
-        focused = QApplication.focusWidget()
-        if focused is None:
-            return False
-
-        key = event.key()
-        is_down = key in (Qt.Key.Key_Down, Qt.Key.Key_Right)
-        is_up = key in (Qt.Key.Key_Up, Qt.Key.Key_Left)
-
-        # --- Session Picker page: chain-based navigation ---
-        page = self._find_session_picker_page(focused)
-        if page is not None:
-            return page._handle_arrow_key(event)
-
-        # --- CSD title bar: Down → first focusable in content area ---
-        if is_down and self._is_in_title_bar(focused):
-            target = self._first_focusable_in_content()
-            if target is not None:
-                target.setFocus(Qt.FocusReason.OtherFocusReason)
-                logger.debug("[global-nav] CSD Down -> %s", type(target).__name__)
-                return True
-
-        return False
-
-    def _find_session_picker_page(self, widget) -> object | None:
-        """Walk up the parent chain to find a SessionPickerWidget."""
-        from tabs.session_picker.widget import SessionPickerWidget
-
-        w = widget
-        while w is not None:
-            if isinstance(w, SessionPickerWidget):
-                return w
-            w = w.parentWidget()
-        return None
-
-    def _is_in_title_bar(self, widget) -> bool:
-        """Check if widget is inside the CSD title bar."""
-        w = widget
-        while w is not None:
-            name = w.objectName() or ""
-            if "TitleBar" in name or "CsdMenuStrip" in name:
-                return True
-            cls = type(w).__name__
-            if "TitleBar" in cls or "CsdMenu" in cls:
-                return True
-            w = w.parentWidget()
-        return False
-
-    def _first_focusable_in_content(self):
-        """Find the first focusable widget in the main content area."""
-        from PySide6.QtWidgets import QAbstractScrollArea, QApplication
-
-        window = QApplication.activeWindow()
-        if window is None:
-            return None
-        # Walk the widget tree to find the first StrongFocus/TabFocus leaf
-        queue = [window]
-        while queue:
-            w = queue.pop(0)
-            if isinstance(w, QAbstractScrollArea):
-                continue
-            policy = w.focusPolicy()
-            if policy & (Qt.FocusPolicy.StrongFocus | Qt.FocusPolicy.TabFocus):
-                # Check it's not a title bar widget
-                if not self._is_in_title_bar(w):
-                    return w
-            layout = w.layout()
-            if layout is not None:
-                for i in range(layout.count()):
-                    item = layout.itemAt(i)
-                    child = item.widget() if item is not None else None
-                    if child is not None:
-                        queue.append(child)
-        return None
+    def _reset_keyboard_state(self, reason: str) -> None:
         result = self.keyboard_state.reset()
         session_reset = False
         image_label_handler = getattr(self.presenter, "image_label_handler", None)
