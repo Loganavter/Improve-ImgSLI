@@ -32,15 +32,7 @@ def reveal_action_target(target: ActionTarget | None, *, delay_ms: int = 80) -> 
         ensured = True
 
     def _pulse_now() -> None:
-        widget = None
-        resolve = getattr(target, "resolve_widget", None)
-        if callable(resolve):
-            try:
-                widget = resolve()
-            except Exception:
-                widget = None
-        if widget is None:
-            widget = getattr(target, "widget", None)
+        widget = target.resolve_widget_instance()
         if widget is None:
             return
 
