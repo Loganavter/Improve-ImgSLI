@@ -81,7 +81,7 @@ class WorkspaceTabStrip(AdaptiveTabStrip):
 
     def _nav_navigate(self, key: int, widget) -> bool:
         if key == Qt.Key.Key_Up:
-            return True
+            return False
         return False
 
     def _nav_focus_first(self) -> bool:

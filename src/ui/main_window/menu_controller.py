@@ -125,7 +125,6 @@ class MainWindowMenuController:
             )
             btn.setObjectName("CustomTitleBarButton")
             btn.setProperty("titlebarRole", role)
-            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.setCursor(Qt.CursorShape.ArrowCursor)
             btn.setForegroundColor(
                 resolve_titlebar_color("titlebar.text", fallback="WindowText")

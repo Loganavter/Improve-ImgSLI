@@ -313,7 +313,6 @@ class CsdMenuStrip(QWidget):
             parent=self,
         )
         button.setObjectName("CsdMenuTrigger")
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setCursor(Qt.CursorShape.ArrowCursor)
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._apply_trigger_style(button)
