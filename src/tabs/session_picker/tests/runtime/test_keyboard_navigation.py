@@ -1,7 +1,11 @@
 """Keyboard navigation in the session picker (Phase 3 of the keyboard plan).
 
-Covers arrow-key focus movement across the create-session cards and the
-recent-projects shelf, plus Enter activation for both.
+Two layers:
+- direct unit checks of the navigation helpers, and
+- end-to-end checks that push *real* Qt key events through the widget tree
+  (focused card → event filters → handlers), because the cards live inside a
+  QAbstractScrollArea whose viewport event filter would otherwise swallow
+  arrow keys before the page/panel handlers ever run.
 """
 
 from __future__ import annotations
@@ -64,99 +68,92 @@ def _records(tmp_path, n: int = 4) -> list[RecentProjectRecord]:
     return out
 
 
-def _focused_card():
-    return QApplication.focusWidget()
-
-
-def _refresh_recent_panel(panel):
-    panel.show()
-    panel.refresh()
-    QApplication.processEvents()
-    panel._items._grid_columns = 2
-
-
-def test_create_card_arrow_focus_moves_and_wraps(qapp, monkeypatch):
-    ctx = _Context()
-    widget = SessionPickerWidget(context=ctx)
-    widget.show()
-    qapp.processEvents()
-    entries = widget._card_entries()
-    assert len(entries) >= 2
-
-    # No focus yet -> first card.
-    assert widget._focus_create_card(1)
-    qapp.processEvents()
-    assert _focused_card() is entries[0][1]
-
-    widget._focus_create_card(1)
-    qapp.processEvents()
-    assert _focused_card() is entries[1][1]
-
-    widget._focus_create_card(-1)
-    qapp.processEvents()
-    assert _focused_card() is entries[0][1]
-
-    # Wrap backward from the first card.
-    widget._focus_create_card(-1)
-    qapp.processEvents()
-    assert _focused_card() is entries[-1][1]
-    widget.deleteLater()
-
-
-def test_create_card_enter_triggers_create(qapp, monkeypatch):
-    ctx = _Context()
-    widget = SessionPickerWidget(context=ctx)
-    widget.show()
-    qapp.processEvents()
-    entries = widget._card_entries()
-    assert entries
-
-    widget._focus_create_card(1)
-    qapp.processEvents()
-    entries[1][1].click()
-    # Create cards use DEFER_CLICK_AWAIT_RIPPLE (~280 ms) before `clicked`.
-    QTest.qWait(340)
-
-    replace_calls = [
-        c for c in ctx.calls if c[0] == "replace_workspace_session"
-    ]
-    assert replace_calls
-    assert replace_calls[0][1][0] == entries[1][0]
-    widget.deleteLater()
-
-
-def test_recent_arrow_focus_moves_across_live_cards(
-    qapp, tmp_path, monkeypatch
-):
-    records = _records(tmp_path, 4)
+def _build_page_with_recent(qapp, tmp_path, monkeypatch, n=4):
+    """SessionPickerWidget whose recent shelf is populated with ``n`` records."""
+    records = _records(tmp_path, n)
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: list(records))
     monkeypatch.setattr(
         f"{_PANEL}.sort_recent_projects",
         lambda recs, **kwargs: list(recs),
     )
     monkeypatch.setattr(f"{_PANEL}.get_recent_view_mode", lambda **kwargs: VIEW_GRID)
+    widget = SessionPickerWidget(context=_Context())
+    widget.show()
+    QTest.qWait(60)
+    widget._recent_panel._items._grid_columns = 2
+    return widget, records
 
-    panel = RecentProjectsPanel(tr=_tr)
-    panel.resize(700, 800)
-    _refresh_recent_panel(panel)
-    assert panel._items.live_card_count >= 2
 
-    # No focus yet -> first card.
-    assert panel._items.navigate_focus(1)
-    qapp.processEvents()
-    assert _focused_card() is panel._items._cards_by_path.get(records[0].path)
+def _open_calls(widget):
+    return [
+        c for c in widget._context.calls if c[0] == "replace_workspace_session"
+    ]
+
+
+# --- create-cards: real key events --------------------------------------
+
+
+def test_create_card_arrows_move_focus_via_real_key_events(qapp, monkeypatch):
+    widget = SessionPickerWidget(context=_Context())
+    widget.show()
+    QTest.qWait(50)
+    entries = widget._card_entries()
+    assert len(entries) >= 2
+
+    entries[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
+    QTest.qWait(20)
+    QTest.keyClick(entries[0][1], Qt.Key.Key_Right)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is entries[1][1]
+
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Left)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is entries[0][1]
+    widget.deleteLater()
+
+
+def test_create_card_enter_creates_via_real_key_event(qapp, monkeypatch):
+    widget = SessionPickerWidget(context=_Context())
+    widget.show()
+    QTest.qWait(50)
+    entries = widget._card_entries()
+    assert entries
+
+    widget._focus_create_card(1)
+    QTest.qWait(20)
+    QTest.keyClick(entries[1][1], Qt.Key.Key_Return)
+    # Create cards use DEFER_CLICK_AWAIT_RIPPLE (~280 ms) before `clicked`.
+    QTest.qWait(400)
+
+    replace = _open_calls(widget)
+    assert replace
+    assert replace[0][1][0] == entries[1][0]
+    widget.deleteLater()
+
+
+# --- recent shelf: real key events --------------------------------------
+
+
+def test_recent_arrows_move_focus_via_real_key_events(
+    qapp, tmp_path, monkeypatch
+):
+    widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
+    panel = widget._recent_panel
+    first = panel._items._cards_by_path.get(records[0].path)
+    second = panel._items._cards_by_path.get(records[1].path)
+    assert first is not None and second is not None
 
     panel._items.navigate_focus(1)
-    qapp.processEvents()
-    assert _focused_card() is panel._items._cards_by_path.get(records[1].path)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is first
 
-    panel._items.navigate_focus(-1)
-    qapp.processEvents()
-    assert _focused_card() is panel._items._cards_by_path.get(records[0].path)
-    panel.deleteLater()
+    QTest.keyClick(first, Qt.Key.Key_Right)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is second
+    widget.deleteLater()
 
 
-def test_recent_enter_activates_focused_card(qapp, tmp_path, monkeypatch):
+def test_recent_enter_opens_focused_card(qapp, tmp_path, monkeypatch):
     records = _records(tmp_path, 3)
     monkeypatch.setattr(f"{_PANEL}.list_recent_projects", lambda **kwargs: list(records))
     monkeypatch.setattr(
@@ -169,30 +166,56 @@ def test_recent_enter_activates_focused_card(qapp, tmp_path, monkeypatch):
     panel = RecentProjectsPanel(tr=_tr)
     panel.set_open_project_handler(lambda path: opened.append(path))
     panel.resize(700, 800)
-    _refresh_recent_panel(panel)
+    panel.show()
+    panel.refresh()
+    QTest.qWait(60)
+    panel._items._grid_columns = 2
 
     panel._items.navigate_focus(1)
-    qapp.processEvents()
+    QTest.qWait(20)
     panel._items.navigate_focus(1)
-    qapp.processEvents()
-    assert _focused_card() is panel._items._cards_by_path.get(records[1].path)
+    QTest.qWait(20)
+    card = panel._items._cards_by_path.get(records[1].path)
+    assert card is not None and QApplication.focusWidget() is card
 
-    panel.keyPressEvent(_KeyEvent(Qt.Key.Key_Return))
-    qapp.processEvents()
+    QTest.keyClick(card, Qt.Key.Key_Return)
+    QTest.qWait(100)
     assert opened == [records[1].path]
     panel.deleteLater()
 
 
-class _KeyEvent:
-    def __init__(self, key):
-        self._key = key
-        self.accepted = False
+# --- boundary handoff between create-cards and recent shelf -------------
 
-    def key(self):
-        return self._key
 
-    def isAutoRepeat(self):
-        return False
+def test_down_from_last_create_card_enters_recent_shelf(
+    qapp, tmp_path, monkeypatch
+):
+    widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
+    entries = widget._card_entries()
+    first_recent = widget._recent_panel._items._cards_by_path.get(records[0].path)
+    assert first_recent is not None
 
-    def accept(self):
-        self.accepted = True
+    entries[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+    QTest.qWait(20)
+    QTest.keyClick(entries[-1][1], Qt.Key.Key_Down)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is first_recent
+    widget.deleteLater()
+
+
+def test_up_from_first_recent_item_returns_to_last_create_card(
+    qapp, tmp_path, monkeypatch
+):
+    widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
+    entries = widget._card_entries()
+    first_recent = widget._recent_panel._items._cards_by_path.get(records[0].path)
+    assert first_recent is not None
+
+    widget._recent_panel._items.navigate_focus(1)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is first_recent
+
+    QTest.keyClick(first_recent, Qt.Key.Key_Up)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is entries[-1][1]
+    widget.deleteLater()
