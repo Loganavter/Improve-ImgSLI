@@ -314,3 +314,18 @@ RecentColorsRow.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/recent_colors_row.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+RecentColorsRow.widget_descriptor = WidgetDescriptor(
+    family=RecentColorsRow.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(RecentColorsRow.inspect_spec, 'config', ()),
+        state=RecentColorsRow.inspect_spec.state,
+        token_family=getattr(RecentColorsRow.inspect_spec, 'token_family', ()),
+        regions=getattr(RecentColorsRow.inspect_spec, 'regions', False),
+        layers=getattr(RecentColorsRow.inspect_spec, 'layers', False),
+        docs=getattr(RecentColorsRow.inspect_spec, 'docs', ''),
+        preview_seed=getattr(RecentColorsRow.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(RecentColorsRow.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

@@ -611,3 +611,18 @@ SettingsDialog.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/settings_dialog.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+SettingsDialog.widget_descriptor = WidgetDescriptor(
+    family=SettingsDialog.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(SettingsDialog.inspect_spec, 'config', ()),
+        state=SettingsDialog.inspect_spec.state,
+        token_family=getattr(SettingsDialog.inspect_spec, 'token_family', ()),
+        regions=getattr(SettingsDialog.inspect_spec, 'regions', False),
+        layers=getattr(SettingsDialog.inspect_spec, 'layers', False),
+        docs=getattr(SettingsDialog.inspect_spec, 'docs', ''),
+        preview_seed=getattr(SettingsDialog.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(SettingsDialog.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

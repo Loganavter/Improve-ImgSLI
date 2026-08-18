@@ -97,3 +97,32 @@ ThemedBackgroundContainer.inspect_spec = InspectSpec(
     state=(SpecField("color_token", "_color_token", private=True),),
     docs="docs/dev/widgets/themed_surface.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+ThemedSurface.widget_descriptor = WidgetDescriptor(
+    family=ThemedSurface.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ThemedSurface.inspect_spec, 'config', ()),
+        state=ThemedSurface.inspect_spec.state,
+        token_family=getattr(ThemedSurface.inspect_spec, 'token_family', ()),
+        regions=getattr(ThemedSurface.inspect_spec, 'regions', False),
+        layers=getattr(ThemedSurface.inspect_spec, 'layers', False),
+        docs=getattr(ThemedSurface.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ThemedSurface.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ThemedSurface.inspect_spec, 'apply_config_refresh', None),
+    ),
+)
+
+ThemedBackgroundContainer.widget_descriptor = WidgetDescriptor(
+    family=ThemedBackgroundContainer.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ThemedBackgroundContainer.inspect_spec, 'config', ()),
+        state=ThemedBackgroundContainer.inspect_spec.state,
+        token_family=getattr(ThemedBackgroundContainer.inspect_spec, 'token_family', ()),
+        regions=getattr(ThemedBackgroundContainer.inspect_spec, 'regions', False),
+        layers=getattr(ThemedBackgroundContainer.inspect_spec, 'layers', False),
+        docs=getattr(ThemedBackgroundContainer.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ThemedBackgroundContainer.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ThemedBackgroundContainer.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

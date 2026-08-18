@@ -111,3 +111,18 @@ DragGhostWidget.inspect_spec = InspectSpec(
     regions=True,
     layers=True,
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+DragGhostWidget.widget_descriptor = WidgetDescriptor(
+    family=DragGhostWidget.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(DragGhostWidget.inspect_spec, 'config', ()),
+        state=DragGhostWidget.inspect_spec.state,
+        token_family=getattr(DragGhostWidget.inspect_spec, 'token_family', ()),
+        regions=getattr(DragGhostWidget.inspect_spec, 'regions', False),
+        layers=getattr(DragGhostWidget.inspect_spec, 'layers', False),
+        docs=getattr(DragGhostWidget.inspect_spec, 'docs', ''),
+        preview_seed=getattr(DragGhostWidget.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(DragGhostWidget.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

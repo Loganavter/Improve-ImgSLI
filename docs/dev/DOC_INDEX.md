@@ -70,6 +70,12 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md)
 
+## docs/dev/investigations/
+
+- **[Investigation: NavigationManager for cross-section keyboard navigation](investigations/navigation-manager-plan.md)** — `docs/dev/investigations/navigation-manager-plan.md`
+- **[Critical Analysis: Session Picker Navigation](investigations/session-picker-navigation-analysis.md)** — `docs/dev/investigations/session-picker-navigation-analysis.md`
+- **[Investigation: widget weight reduction](investigations/widget-weight-reduction.md)** — `docs/dev/investigations/widget-weight-reduction.md`
+
 ## docs/dev/plugins/
 
 - **[Export plugin](plugins/export.md)** — `docs/dev/plugins/export.md`

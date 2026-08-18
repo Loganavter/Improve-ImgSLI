@@ -520,3 +520,32 @@ ValueSliderRow.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/value_slider.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+ValueSlider.widget_descriptor = WidgetDescriptor(
+    family=ValueSlider.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ValueSlider.inspect_spec, 'config', ()),
+        state=ValueSlider.inspect_spec.state,
+        token_family=getattr(ValueSlider.inspect_spec, 'token_family', ()),
+        regions=getattr(ValueSlider.inspect_spec, 'regions', False),
+        layers=getattr(ValueSlider.inspect_spec, 'layers', False),
+        docs=getattr(ValueSlider.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ValueSlider.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ValueSlider.inspect_spec, 'apply_config_refresh', None),
+    ),
+)
+
+ValueSliderRow.widget_descriptor = WidgetDescriptor(
+    family=ValueSliderRow.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ValueSliderRow.inspect_spec, 'config', ()),
+        state=ValueSliderRow.inspect_spec.state,
+        token_family=getattr(ValueSliderRow.inspect_spec, 'token_family', ()),
+        regions=getattr(ValueSliderRow.inspect_spec, 'regions', False),
+        layers=getattr(ValueSliderRow.inspect_spec, 'layers', False),
+        docs=getattr(ValueSliderRow.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ValueSliderRow.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ValueSliderRow.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

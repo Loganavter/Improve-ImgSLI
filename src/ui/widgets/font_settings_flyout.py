@@ -221,6 +221,21 @@ FontSettingsFlyout.inspect_spec = InspectSpec(
     docs="docs/dev/APP_WIDGETS.md",
 )
 
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+FontSettingsFlyout.widget_descriptor = WidgetDescriptor(
+    family=FontSettingsFlyout.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(FontSettingsFlyout.inspect_spec, 'config', ()),
+        state=FontSettingsFlyout.inspect_spec.state,
+        token_family=getattr(FontSettingsFlyout.inspect_spec, 'token_family', ()),
+        regions=getattr(FontSettingsFlyout.inspect_spec, 'regions', False),
+        layers=getattr(FontSettingsFlyout.inspect_spec, 'layers', False),
+        docs=getattr(FontSettingsFlyout.inspect_spec, 'docs', ''),
+        preview_seed=getattr(FontSettingsFlyout.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(FontSettingsFlyout.inspect_spec, 'apply_config_refresh', None),
+    ),
+)
+
 
 FontSettingsFlyout.inspect_spec = InspectSpec(
     family="FontSettingsFlyout",
@@ -234,4 +249,18 @@ FontSettingsFlyout.inspect_spec = InspectSpec(
         SpecField("background", lambda w: w.bg_color_swatch.color()),
     ),
     docs="docs/dev/widgets/font_settings_flyout.md",
+)
+
+FontSettingsFlyout.widget_descriptor = WidgetDescriptor(
+    family=FontSettingsFlyout.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(FontSettingsFlyout.inspect_spec, 'config', ()),
+        state=FontSettingsFlyout.inspect_spec.state,
+        token_family=getattr(FontSettingsFlyout.inspect_spec, 'token_family', ()),
+        regions=getattr(FontSettingsFlyout.inspect_spec, 'regions', False),
+        layers=getattr(FontSettingsFlyout.inspect_spec, 'layers', False),
+        docs=getattr(FontSettingsFlyout.inspect_spec, 'docs', ''),
+        preview_seed=getattr(FontSettingsFlyout.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(FontSettingsFlyout.inspect_spec, 'apply_config_refresh', None),
+    ),
 )
