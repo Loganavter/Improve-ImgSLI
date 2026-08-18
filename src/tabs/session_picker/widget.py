@@ -38,6 +38,15 @@ logger = logging.getLogger("ImproveImgSLI")
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
 
 
+def _key_name(key: int) -> str:
+    names = {
+        Qt.Key.Key_Down: "Down", Qt.Key.Key_Up: "Up",
+        Qt.Key.Key_Left: "Left", Qt.Key.Key_Right: "Right",
+        Qt.Key.Key_Return: "Return", Qt.Key.Key_Escape: "Esc",
+    }
+    return names.get(key, hex(key))
+
+
 class _CreateCardKeyboardFilter(QObject):
     """Arrow-key navigation over the create-cards.
 
@@ -346,6 +355,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 self._build_card(session_type, blueprints.get(session_type))
             )
         self._populated = True
+        self._setup_focus_chain()
 
     def sync_icons(self) -> None:
         """Refresh card icons in place after deferred tabs register / theme change."""
@@ -418,7 +428,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         # Past the edge of the create-cards: continue into the shelf
         # header controls first, then the recent items.
         # Down past cards → first header button → recent items
-        # Up past cards → last header button → propagate up (tab strip)
+        # Up past cards → propagate up (tab strip), no shelf traversal
         if self._recent_panel is not None:
             if offset > 0:
                 # Down past cards → first header button (nearest to cards)
@@ -436,14 +446,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                     )
                     return True
             else:
-                # Up past cards → last header button (nearest to cards)
-                if self._recent_panel.focus_header_control(False):
-                    logger.debug(
-                        "[picker-nav] focus_create_card offset=%d past cards -> header (first=False)",
-                        offset,
-                    )
-                    return True
-                # No more shelf content → propagate to tab strip
+                # Up past cards → nothing below, propagate to tab strip
+                logger.debug(
+                    "[picker-nav] focus_create_card offset=%d past cards -> propagate up (tab strip)",
+                    offset,
+                )
                 return False
         target %= len(entries)
         entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
@@ -463,6 +470,48 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             self.setFocus(Qt.FocusReason.MouseFocusReason)
         return False
 
+    def _setup_focus_chain(self) -> None:
+        """Walk the widget tree in visual (top→bottom) order and chain every
+        focusable widget via setTabOrder — no hardcoded widget lists."""
+        focusable = self._collect_focusable_in_visual_order()
+        for i in range(len(focusable) - 1):
+            QWidget.setTabOrder(focusable[i], focusable[i + 1])
+        logger.debug(
+            "[picker-nav] _setup_focus_chain: %d focusable widgets",
+            len(focusable),
+        )
+
+    def _collect_focusable_in_visual_order(self) -> list[QWidget]:
+        """Breadth-first walk of the content area, collecting focusable
+        widgets in their natural visual order (top→bottom, left→right).
+        Skips scroll areas, containers, and intermediate layout widgets —
+        only leaf interactive widgets (buttons, inputs) end up in the chain."""
+        from PySide6.QtWidgets import QAbstractScrollArea
+
+        result: list[QWidget] = []
+        content = getattr(self, "_page_content", None)
+        if content is None:
+            return result
+        queue = [content]
+        while queue:
+            widget = queue.pop(0)
+            if isinstance(widget, QAbstractScrollArea):
+                continue
+            policy = widget.focusPolicy()
+            is_strong = policy & (Qt.FocusPolicy.TabFocus | Qt.FocusPolicy.StrongFocus)
+            if is_strong:
+                result.append(widget)
+            # Always recurse into children to find leaf focusable widgets,
+            # even for containers that themselves aren't focus targets.
+            layout = widget.layout()
+            if layout is not None:
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    child = item.widget() if item is not None else None
+                    if child is not None and child not in result:
+                        queue.append(child)
+        return result
+
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
         if key in (
@@ -471,15 +520,48 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             Qt.Key.Key_Up,
             Qt.Key.Key_Left,
         ):
-            offset = 1 if key in (Qt.Key.Key_Down, Qt.Key.Key_Right) else -1
-            # Up/Left from the shelf (header/recent items) should propagate
-            # to the parent (tab strip), not loop back into cards.
-            if offset < 0 and self._focus_is_in_shelf():
+            chain = self._collect_focusable_in_visual_order()
+            if not chain:
                 event.ignore()
                 super().keyPressEvent(event)
                 return
-            if self._focus_create_card(offset):
-                event.accept()
+
+            focused = QApplication.focusWidget()
+            idx = next((i for i, w in enumerate(chain) if w is focused), None)
+
+            if key in (Qt.Key.Key_Down, Qt.Key.Key_Right):
+                if idx is None:
+                    # SessionPickerWidget itself has focus → focus first item
+                    chain[0].setFocus(Qt.FocusReason.OtherFocusReason)
+                    logger.debug("[picker-nav] Down/Right -> first in chain: %s", type(chain[0]).__name__)
+                    event.accept()
+                    return
+                if idx < len(chain) - 1:
+                    chain[idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
+                    logger.debug("[picker-nav] Down/Right -> %s", type(chain[idx + 1]).__name__)
+                    event.accept()
+                    return
+                # Past last → propagate to parent (tab strip)
+                logger.debug("[picker-nav] Down/Right -> past chain, propagating")
+                event.ignore()
+                super().keyPressEvent(event)
+                return
+            else:
+                if idx is None:
+                    # SessionPickerWidget itself has focus → propagate to tab strip
+                    logger.debug("[picker-nav] Up/Left -> SessionPickerWidget, propagating")
+                    event.ignore()
+                    super().keyPressEvent(event)
+                    return
+                if idx > 0:
+                    chain[idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
+                    logger.debug("[picker-nav] Up/Left -> %s", type(chain[idx - 1]).__name__)
+                    event.accept()
+                    return
+                # Past first → propagate to parent (tab strip)
+                logger.debug("[picker-nav] Up/Left -> past chain, propagating")
+                event.ignore()
+                super().keyPressEvent(event)
                 return
         logger.debug(
             "[picker-nav] keyPressEvent key=%s -> unhandled, propagating",
