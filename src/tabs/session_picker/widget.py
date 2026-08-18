@@ -38,9 +38,12 @@ logger = logging.getLogger("ImproveImgSLI")
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
 
 
-class _ArrowKeyFilter(QObject):
-    """Catch arrow keys for all children and delegate to the page's
-    focusNextPrevChild() — the standard Qt focus traversal mechanism."""
+class _NavigationFilter(QObject):
+    """Catch arrow keys for navigation within the session picker page.
+
+    Following KDevelop's pattern: explicit focus placement on state
+    transitions, not chain-based traversal.
+    """
 
     _ARROWS = {Qt.Key.Key_Down, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Left}
 
@@ -50,14 +53,7 @@ class _ArrowKeyFilter(QObject):
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.KeyPress and event.key() in self._ARROWS:
-            forward = event.key() in (Qt.Key.Key_Down, Qt.Key.Key_Right)
-            logger.debug(
-                "[picker-nav] _ArrowKeyFilter: key=%s forward=%s watched=%s",
-                type(watched).__name__, forward, type(watched).__name__,
-            )
-            result = self._page.focusNextPrevChild(forward)
-            logger.debug("[picker-nav] _ArrowKeyFilter: focusNextPrevChild returned %s", result)
-            return result
+            return self._page._navigate(event.key())
         return False
 
 
@@ -259,11 +255,9 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 lambda: self._recent_panel.focus_header_control(False)
             )
 
-        # Install arrow key filter on the scroll area so arrow keys work
-        # regardless of which child widget has focus. OverlayScrollArea
-        # eats arrow keys for scrolling, so we must intercept before it.
-        self._arrow_filter = _ArrowKeyFilter(self)
-        self._page_scroll.installEventFilter(self._arrow_filter)
+        # Arrow key navigation filter on scroll area
+        self._nav_filter = _NavigationFilter(self)
+        self._page_scroll.installEventFilter(self._nav_filter)
 
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
@@ -314,9 +308,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if self._recent_panel is not None:
             self._recent_panel.on_page_shown()
             self._recent_panel.recover_opaque_surface()
-        # Rebuild focus chain after recent panel populates (header buttons
-        # become visible only after records are loaded).
-        self._setup_focus_chain()
         self.update()
 
     def refresh(self) -> None:
@@ -336,7 +327,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 self._build_card(session_type, blueprints.get(session_type))
             )
         self._populated = True
-        self._setup_focus_chain()
 
     def sync_icons(self) -> None:
         """Refresh card icons in place after deferred tabs register / theme change."""
@@ -382,137 +372,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         ):
             self.setFocus(Qt.FocusReason.MouseFocusReason)
         return False
-
-    def _setup_focus_chain(self) -> None:
-        """Set up Qt tab order matching the visual layout:
-        cards → header → recent items. Called after cards are built."""
-        cards = [card for _st, card in self._card_entries()]
-        if not cards or self._recent_panel is None:
-            return
-
-        header = getattr(self._recent_panel, "_header", None)
-        header_buttons = []
-        if header is not None:
-            header_buttons = [
-                b for b in (header.sort_button, header.sort_order_button, header.view_button)
-                if b.isVisible()
-            ]
-
-        items_view = getattr(self._recent_panel, "_items", None)
-        recent_cards = []
-        if items_view is not None:
-            recent_cards = [
-                c for c in items_view._cards_by_path.values()
-                if c.isVisible()
-            ]
-
-        chain = cards + header_buttons + recent_cards
-        for i in range(len(chain) - 1):
-            QWidget.setTabOrder(chain[i], chain[i + 1])
-
-        # Debug: check state
-        records = getattr(self._recent_panel, "_records", [])
-        layout_ready = getattr(self._recent_panel, "_layout_ready", False)
-        logger.debug(
-            "[picker-nav] _setup_focus_chain: %d cards + %d header + %d recent "
-            "(records=%d layout_ready=%s header_visible=%s)",
-            len(cards), len(header_buttons), len(recent_cards),
-            len(records), layout_ready,
-            header.sort_button.isVisible() if header else "no_header",
-        )
-
-    def focusNextPrevChild(self, forward: bool) -> bool:  # noqa: N802
-        focused = QApplication.focusWidget()
-        if focused is None:
-            return False
-
-        cards = [card for _st, card in self._card_entries()]
-        header_buttons = []
-        recent_cards = []
-        if self._recent_panel is not None:
-            header = getattr(self._recent_panel, "_header", None)
-            if header is not None:
-                header_buttons = [
-                    b for b in (header.sort_button, header.sort_order_button, header.view_button)
-                    if b.isVisible()
-                ]
-            items_view = getattr(self._recent_panel, "_items", None)
-            if items_view is not None:
-                recent_cards = [
-                    c for c in items_view._cards_by_path.values()
-                    if c.isVisible()
-                ]
-
-        chain = cards + header_buttons + recent_cards
-        idx = next((i for i, w in enumerate(chain) if w is focused), None)
-
-        logger.debug(
-            "[picker-nav] focusNextPrevChild(forward=%s) focused=%s idx=%s "
-            "chain: %d cards + %d header + %d recent",
-            forward, type(focused).__name__, idx,
-            len(cards), len(header_buttons), len(recent_cards),
-        )
-
-        if forward:
-            if idx is None:
-                if chain:
-                    chain[0].setFocus(Qt.FocusReason.OtherFocusReason)
-                    return True
-            elif idx < len(chain) - 1:
-                chain[idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            # Past last card → try header, then recent, then exit
-            if header_buttons:
-                header_buttons[0].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            if recent_cards:
-                recent_cards[0].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            return False
-        else:
-            if idx is None:
-                return False
-            if idx > 0:
-                chain[idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            tab_strip = self._find_tab_strip()
-            if tab_strip is not None:
-                tab_strip.setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            return False
-
-    def _find_tab_strip(self):
-        """Find WorkspaceTabsBar by walking the widget tree."""
-        window = self.window()
-        if window is None:
-            return None
-        queue = [window]
-        while queue:
-            w = queue.pop(0)
-            if w.objectName() == "WorkspaceTabsBar":
-                return w
-            layout = w.layout()
-            if layout is not None:
-                for i in range(layout.count()):
-                    item = layout.itemAt(i)
-                    child = item.widget() if item is not None else None
-                    if child is not None:
-                        queue.append(child)
-        return None
-
-    def keyPressEvent(self, event) -> None:  # noqa: N802
-        key = event.key()
-        if key in (
-            Qt.Key.Key_Down,
-            Qt.Key.Key_Right,
-            Qt.Key.Key_Up,
-            Qt.Key.Key_Left,
-        ):
-            next_nav = key in (Qt.Key.Key_Down, Qt.Key.Key_Right)
-            if self.focusNextPrevChild(next_nav):
-                event.accept()
-                return
-        super().keyPressEvent(event)
 
     def _retranslate_cards(self) -> None:
         blueprints = {
