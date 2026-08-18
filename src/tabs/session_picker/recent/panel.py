@@ -322,20 +322,6 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
             )
             self._sync_shelf_panel_height()
             self._schedule_deferred_relayout()
-        # When the header bar buttons have keyboard focus, handle arrow / Enter
-        # navigation between header controls and hand off to create-cards /
-        # recent items at the boundaries.
-        if (
-            event.type() == QEvent.Type.KeyPress
-            and watched is self._header
-        ):
-            result = self._handle_header_key_press(event)
-            import logging
-            logging.getLogger(__name__).debug(
-                "PANEL-FILTER: header key=%s result=%s accepted=%s",
-                event.key(), result, event.isAccepted(),
-            )
-            return result
         return super().eventFilter(watched, event)
 
     def _sync_shelf_panel_height(self) -> None:
@@ -956,8 +942,6 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
         refresh_use_cases.rebuild_items(self)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
-        import logging
-        _log = logging.getLogger(__name__)
         key = event.key()
         if key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             if self._selected_paths:
@@ -969,43 +953,8 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
                 self._clear_selection()
                 event.accept()
                 return
-        if key in (
-            Qt.Key.Key_Left,
-            Qt.Key.Key_Right,
-            Qt.Key.Key_Up,
-            Qt.Key.Key_Down,
-        ):
-            from PySide6.QtWidgets import QApplication
-
-            focused = QApplication.focusWidget()
-            is_recent_card = (
-                focused is not None
-                and self._items is not None
-                and any(
-                    card is focused
-                    for _, card in self._items._ordered_live_cards()
-                )
-            )
-            if not is_recent_card:
-                _log.debug("PANEL: key=%d not recent → propagating", key)
-                super().keyPressEvent(event)
-                return
-            columns = max(1, getattr(self._items, "grid_columns", 1) or 1)
-            if key == Qt.Key.Key_Left:
-                step = -1
-            elif key == Qt.Key.Key_Right:
-                step = 1
-            elif key == Qt.Key.Key_Up:
-                step = -columns
-            else:
-                step = columns
-            if self._items.navigate_focus(step):
-                event.accept()
-                return
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if self._items.activate_focused_card():
-                event.accept()
-                return
+        # Arrow/Enter navigation is handled by RecentHeaderBar.keyPressEvent
+        # and RecentItemsView.eventFilter — no panel-level interception needed.
         super().keyPressEvent(event)
 
     def _on_marquee_preview(self, paths: set[str], additive: bool) -> None:
@@ -1054,49 +1003,6 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
             return False
         buttons[0 if first else -1].setFocus(Qt.FocusReason.OtherFocusReason)
         return True
-
-    def _handle_header_key_press(self, event) -> bool:
-        """Arrow / Enter navigation among the shelf header control buttons."""
-        header = self._header
-        buttons = [
-            b
-            for b in (header.sort_button, header.sort_order_button, header.view_button)
-            if b.isVisible()
-        ]
-        if not buttons:
-            return False
-        focused = QApplication.focusWidget()
-        idx = next((i for i, b in enumerate(buttons) if b is focused), None)
-        key = event.key()
-        if key in (Qt.Key.Key_Left, Qt.Key.Key_Up):
-            if idx is not None and idx > 0:
-                buttons[idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
-            else:
-                # Past the first header control → hand off to create-cards.
-                return False
-            event.accept()
-            return True
-        if key in (Qt.Key.Key_Right, Qt.Key.Key_Down):
-            if idx is not None and idx < len(buttons) - 1:
-                buttons[idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
-            else:
-                # Past the last header control → enter recent items.
-                if self.focus_recent_item(True):
-                    event.accept()
-                    return True
-                return False
-            event.accept()
-            return True
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if idx is not None:
-                # Defer the click to avoid re-entrant menu open (the
-                # synchronous emit opens a context menu that the
-                # subsequent event-propagation would try to re-open).
-                btn = buttons[idx]
-                QTimer.singleShot(0, btn.clicked.emit)
-                event.accept()
-                return True
-        return False
 
     def set_keyboard_handoff(self, callback) -> None:
         """Set a callback invoked when keyboard navigation would leave the
