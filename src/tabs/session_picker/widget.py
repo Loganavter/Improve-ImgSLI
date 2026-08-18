@@ -259,11 +259,12 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if self._recent_panel is not None:
             self._recent_panel.refresh()
             self._recent_panel.recover_opaque_surface()
-            # Up/Left past the first recent item hands focus back through
-            # the shelf header controls, then to the last create-card.
+            # Up/Left past the first recent item → header controls.
+            # Up/Left past the first header control → create cards (not back
+            # to header — that would cycle). Return False to let the event
+            # propagate up to create cards.
             self._recent_panel.set_keyboard_handoff(
                 lambda: self._recent_panel.focus_header_control(False)
-                or self._focus_create_card(-1)
             )
 
         # See _CreateCardKeyboardFilter: the create-cards live inside a
