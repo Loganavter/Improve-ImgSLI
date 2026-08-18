@@ -6,7 +6,7 @@ from PySide6.QtCore import QEvent, QObject, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath
 from PySide6.QtWidgets import QWidget
 
-from tabs.session_picker.recent.layout import PANEL_RADIUS
+from ui.widgets.shelf.layout import PANEL_RADIUS
 
 
 class ViewportCornerCover(QWidget):

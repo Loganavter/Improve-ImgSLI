@@ -17,7 +17,7 @@ from services.io.project_preview import peek_project_preview
 from services.io.recent_projects import RecentProjectRecord
 from tabs.session_picker.icons import Icon as SessionPickerIcon
 from tabs.session_picker.icons import get_icon as get_session_picker_icon
-from tabs.session_picker.recent.layout import (
+from ui.widgets.shelf.layout import (
     GRID_CARD_H,
     GRID_CARD_W,
     GRID_CONTENT_PADDING,
@@ -26,7 +26,7 @@ from tabs.session_picker.recent.layout import (
     LIST_CARD_H,
     LIST_CONTENT_PADDING,
 )
-from tabs.session_picker.recent.relative_time import format_relative_opened
+from ui.widgets.shelf.relative_time import format_relative_opened
 
 # Pastel red for list cards whose project file is missing.
 _MISSING_LIST_BG = QColor(242, 190, 190)
@@ -320,7 +320,7 @@ def bind_card(
     def _on_region(_region_id, c=card) -> None:
         from PySide6.QtWidgets import QApplication
 
-        from tabs.session_picker.recent.selection import ctrl_held
+        from ui.widgets.shelf.selection import ctrl_held
 
         modifiers = QApplication.keyboardModifiers()
         on_activate(c._recent_record, c._recent_missing, modifiers)  # type: ignore[call-arg]  # panel may accept +modifiers

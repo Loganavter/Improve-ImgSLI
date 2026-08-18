@@ -24,7 +24,7 @@ from services.io.recent_projects import RecentProjectRecord
 
 
 def on_marquee_preview(panel, paths: set[str], additive: bool) -> None:
-    from tabs.session_picker.recent.selection import preview_selection
+    from ui.widgets.shelf.selection import preview_selection
 
     # Non-additive: band-only preview (clears prior highlight while dragging).
     base = panel._selected_paths if additive else set()
@@ -55,7 +55,7 @@ def on_card_activate(
     missing: bool,
     modifiers=Qt.KeyboardModifier.NoModifier,
 ) -> None:
-    from tabs.session_picker.recent.selection import ctrl_held
+    from ui.widgets.shelf.selection import ctrl_held
 
     if ctrl_held(modifiers):
         path = record.path

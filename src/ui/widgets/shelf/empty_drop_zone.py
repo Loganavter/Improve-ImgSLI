@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
-from tabs.session_picker.recent.layout import EMPTY_DROP_ZONE_H, PANEL_RADIUS
+from ui.widgets.shelf.layout import EMPTY_DROP_ZONE_H, PANEL_RADIUS
 
 
 class EmptyDropZone(QWidget):

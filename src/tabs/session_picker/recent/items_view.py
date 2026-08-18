@@ -28,11 +28,11 @@ from tabs.session_picker.recent.cards import (
     update_grid_card,
     update_list_card,
 )
-from tabs.session_picker.recent.corner_cover import (
+from ui.widgets.shelf.corner_cover import (
     ViewportCornerCover,
     ViewportCornerCoverSync,
 )
-from tabs.session_picker.recent.layout import (
+from ui.widgets.shelf.layout import (
     GRID_CARD_H,
     GRID_CARD_W,
     ITEMS_MARGIN,
@@ -51,7 +51,7 @@ from tabs.session_picker.recent.layout import (
     visible_row_window,
 )
 from tabs.session_picker.recent import marquee
-from tabs.session_picker.recent.selection import (
+from ui.widgets.shelf.selection import (
     apply_card_selected,
     selection_accent_color,
 )

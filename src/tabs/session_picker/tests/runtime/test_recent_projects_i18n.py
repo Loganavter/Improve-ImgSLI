@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from tabs.session_picker.recent.cards import format_session_types, localize_session_type
-from tabs.session_picker.recent.relative_time import format_relative_opened
+from ui.widgets.shelf.relative_time import format_relative_opened
 
 
 def _tr(key: str, default: str = "", *args, **kwargs) -> str:

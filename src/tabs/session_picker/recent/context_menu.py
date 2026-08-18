@@ -14,7 +14,7 @@ from sli_ui_toolkit.i18n import get_current_language
 from sli_ui_toolkit.i18n import tr as app_tr
 from services.io.recent_projects import RecentProjectRecord, _snapshot_file_times
 from tabs.session_picker.recent.cards import format_session_types
-from tabs.session_picker.recent.relative_time import format_absolute_timestamp
+from ui.widgets.shelf.relative_time import format_absolute_timestamp
 from ui.context_menu.manager import open_context_menu_entries
 
 

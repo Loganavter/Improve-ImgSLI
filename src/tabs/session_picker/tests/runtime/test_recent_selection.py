@@ -10,14 +10,14 @@ from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QMouseEvent
 
 from services.io.recent_projects import RecentProjectRecord, VIEW_GRID, VIEW_LIST
-from tabs.session_picker.recent.layout import (
+from ui.widgets.shelf.layout import (
     GRID_CARD_H,
     GRID_CARD_W,
     ITEMS_MARGIN,
     ITEMS_MARGIN_TOP,
 )
 from tabs.session_picker.recent.panel import RecentProjectsPanel
-from tabs.session_picker.recent.selection import (
+from ui.widgets.shelf.selection import (
     card_rect_for_index,
     paths_intersecting_rect,
 )

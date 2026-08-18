@@ -109,7 +109,7 @@ from tabs.session_picker.geometry import (
     SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR,
 )
 from tabs.session_picker.recent.drop_controller import RecentDropController
-from tabs.session_picker.recent.empty_drop_zone import EmptyDropZone
+from ui.widgets.shelf.empty_drop_zone import EmptyDropZone
 from tabs.session_picker.recent.header_bar import RecentHeaderBar
 from tabs.session_picker.recent.items_view import (
     RecentItemsView,
@@ -501,16 +501,35 @@ class RecentProjectsPanel(ShelfWidget):
         self._sync_header_controls()
 
     def _on_ui_scale_changed(self, _factor: float) -> None:
-        """Panel-specific scale handling: items geometry + height settle.
-
-        Root margins/spacing are handled by ShelfWidget._on_ui_scale_changed.
-        """
-        super()._on_ui_scale_changed(_factor)
-        items = getattr(self, "_items", None)
-        if items is not None and self._layout_ready and self._records:
-            items.reapply_scaled_geometry(updates_owner=self)
-        if getattr(self, "_empty_zone", None) is not None:
+        """Re-apply scale-dependent shelf geometry after a live UiScale change."""
+        _shelf_resize_debug("ui scale changed -> factor=%s", _factor)
+        root = self.layout()
+        if root is not None:
+            root.setContentsMargins(
+                scaled_px(SHELF_MARGIN_LEFT),
+                scaled_px(SHELF_MARGIN_TOP),
+                scaled_px(SHELF_MARGIN_RIGHT),
+                scaled_px(SHELF_MARGIN_BOTTOM),
+            )
+            root.setSpacing(scaled_px(SHELF_SPACING))
+        if self._empty_zone is not None:
             self._empty_zone.reapply_scaled_height()
+        if not self._layout_ready or not self._records:
+            self._sync_shelf_panel_height()
+            self.update()
+            return
+        if self._sync_settle_in_progress:
+            return
+        self._sync_settle_in_progress = True
+        try:
+            self._items.reapply_scaled_geometry(updates_owner=self)
+            self._sync_shelf_panel_height()
+            if self._shelf_height_settle_pending:
+                self._shelf_height_settle_pending = False
+                self._settle_shelf_height()
+        finally:
+            self._sync_settle_in_progress = False
+        self.update()
 
     def _on_header_prefs_changed(self) -> None:
         # Header already persisted prefs; re-read and refresh cards.
