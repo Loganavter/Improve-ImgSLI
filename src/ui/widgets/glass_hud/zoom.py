@@ -290,3 +290,18 @@ ZoomIndicator.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/glass_hud.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+ZoomIndicator.widget_descriptor = WidgetDescriptor(
+    family=ZoomIndicator.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ZoomIndicator.inspect_spec, 'config', ()),
+        state=ZoomIndicator.inspect_spec.state,
+        token_family=getattr(ZoomIndicator.inspect_spec, 'token_family', ()),
+        regions=getattr(ZoomIndicator.inspect_spec, 'regions', False),
+        layers=getattr(ZoomIndicator.inspect_spec, 'layers', False),
+        docs=getattr(ZoomIndicator.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ZoomIndicator.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ZoomIndicator.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

@@ -600,3 +600,18 @@ ColorPickerDialog.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/color_picker_dialog.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+ColorPickerDialog.widget_descriptor = WidgetDescriptor(
+    family=ColorPickerDialog.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ColorPickerDialog.inspect_spec, 'config', ()),
+        state=ColorPickerDialog.inspect_spec.state,
+        token_family=getattr(ColorPickerDialog.inspect_spec, 'token_family', ()),
+        regions=getattr(ColorPickerDialog.inspect_spec, 'regions', False),
+        layers=getattr(ColorPickerDialog.inspect_spec, 'layers', False),
+        docs=getattr(ColorPickerDialog.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ColorPickerDialog.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ColorPickerDialog.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

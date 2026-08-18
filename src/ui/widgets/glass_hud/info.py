@@ -125,3 +125,18 @@ InfoHUD.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/glass_hud.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+InfoHUD.widget_descriptor = WidgetDescriptor(
+    family=InfoHUD.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(InfoHUD.inspect_spec, 'config', ()),
+        state=InfoHUD.inspect_spec.state,
+        token_family=getattr(InfoHUD.inspect_spec, 'token_family', ()),
+        regions=getattr(InfoHUD.inspect_spec, 'regions', False),
+        layers=getattr(InfoHUD.inspect_spec, 'layers', False),
+        docs=getattr(InfoHUD.inspect_spec, 'docs', ''),
+        preview_seed=getattr(InfoHUD.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(InfoHUD.inspect_spec, 'apply_config_refresh', None),
+    ),
+)
