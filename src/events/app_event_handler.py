@@ -61,6 +61,16 @@ class EventHandler(QObject):
         if route_drag_and_drop_override(self, event, dnd_service):
             return True
 
+        # Close visible in-window ContextMenus on Escape before the global
+        # keyboard handler consumes it.
+        if event_type == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            from sli_ui_toolkit.ui.widgets.composite.context_menu.menu import (
+                ContextMenu,
+            )
+            if ContextMenu.close_visible():
+                event.accept()
+                return True
+
         if event_type == QEvent.Type.ApplicationDeactivate:
             self._reset_keyboard_state(f"event:{int(event_type)}")
         elif event_type == QEvent.Type.WindowDeactivate:
