@@ -443,7 +443,7 @@ def request_update(widget):
 def _schedule_glass_settle_frame(widget):
     """One extra repaint, one event-loop turn after this real content
     update -- lets the CPU-readback display path
-    (ui/widgets/glass_hud/panel_display.py's GlassPanelDisplayWidgetCpu, see
+    (ui/widgets/glass_hud/panel_display.py's GlassPanelDisplayWidget, see
     docs/dev/KNOWN_BUGS.md's "QRhiWidget/QOpenGLWidget can't alpha-blend
     against sibling widgets" entry) catch up to the composite this frame's
     own render_backdrops() call just produced.
@@ -461,7 +461,7 @@ def _schedule_glass_settle_frame(widget):
     render_backdrops() itself returns -- no more colorTexture-staleness or
     readback-collection gap to catch up to.
 
-    What this settle frame still covers: GlassPanelDisplayWidgetCpu is a
+    What this settle frame still covers: GlassPanelDisplayWidget is a
     *sibling* widget, not the RHI canvas itself, so it only repaints when
     something schedules its own `update()` -- render_backdrops() finishing
     with fresh data doesn't by itself trigger that. This one extra

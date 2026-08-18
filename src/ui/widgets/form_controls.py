@@ -203,20 +203,23 @@ class OutputPathSection(QWidget):
         if hint_h > 0:
             self.setMinimumHeight(max(self.minimumHeight(), hint_h))
 
+    def apply_to(self, dialog: QWidget) -> None:
+        """Wire sub-widgets onto ``dialog`` for backward compatibility.
 
-DialogActionBar.inspect_spec = InspectSpec(
-    family="DialogActionBar",
-    docs="docs/dev/APP_WIDGETS.md",
-)
-
-OutputPathSection.inspect_spec = InspectSpec(
-    family="OutputPathSection",
-    state=(
-        SpecField("directory", lambda w: w.edit_dir.text()),
-        SpecField("filename", lambda w: w.filename_edit.text()),
-    ),
-    docs="docs/dev/APP_WIDGETS.md",
-)
+        Sets ``dialog.output_section`` and aliases each sub-widget so
+        existing dialog code that reads ``dialog.edit_dir`` etc. keeps
+        working without per-site boilerplate.
+        """
+        dialog.output_section = self
+        dialog.dir_picker_row = self.dir_picker_row
+        dialog.edit_dir = self.edit_dir
+        dialog.btn_browse_dir = self.btn_browse_dir
+        dialog.favorite_actions = self.favorite_actions
+        dialog.btn_set_favorite = self.btn_set_favorite
+        dialog.btn_use_favorite = self.btn_use_favorite
+        dialog.name_label = self.filename_label
+        dialog.edit_name = self.filename_edit
+        self.lock_content_minimum_height()
 
 
 DialogActionBar.inspect_spec = InspectSpec(
