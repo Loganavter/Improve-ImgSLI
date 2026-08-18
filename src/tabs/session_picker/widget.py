@@ -97,6 +97,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._build()
+        self._setup_navigation()
 
     def window_minimum_size(self) -> tuple[int, int]:
         """Main-window floor while this page is the active workspace content.
@@ -511,3 +512,70 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             session_type,
             closing_session_id=picker_session.id if picker_session is not None else None,
         )
+
+    # ------------------------------------------------------------------
+    # Navigation (WidgetDescriptor)
+    # ------------------------------------------------------------------
+
+    def _setup_navigation(self) -> None:
+        from sli_ui_toolkit.ui.widget_descriptor import (
+            NavigationSection,
+            WidgetDescriptor,
+        )
+
+        self.widget_descriptor = WidgetDescriptor(
+            family="SessionPickerWidget",
+            navigation=NavigationSection(
+                navigate=self._nav_navigate,
+                focus_first=self._nav_focus_first,
+                focus_last=self._nav_focus_last,
+            ),
+        )
+
+    def _nav_navigate(self, key: int, widget) -> bool:
+        from PySide6.QtCore import Qt
+
+        cards = self._card_entries()
+        card_idx = next((i for i, (_, c) in enumerate(cards) if c is widget), None)
+
+        if key == Qt.Key.Key_Down:
+            if card_idx is None:
+                if cards:
+                    cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
+                    return True
+            elif card_idx < len(cards) - 1:
+                cards[card_idx + 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+                return True
+            recent = getattr(self, "_recent_panel", None)
+            if recent is not None and recent.isVisible():
+                recent.setFocus(Qt.FocusReason.OtherFocusReason)
+                return True
+            return False
+
+        if key == Qt.Key.Key_Up:
+            if card_idx is None:
+                return False
+            if card_idx > 0:
+                cards[card_idx - 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+                return True
+            return False
+
+        return True
+
+    def _nav_focus_first(self) -> bool:
+        from PySide6.QtCore import Qt
+
+        cards = self._card_entries()
+        if cards:
+            cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
+        return False
+
+    def _nav_focus_last(self) -> bool:
+        from PySide6.QtCore import Qt
+
+        cards = self._card_entries()
+        if cards:
+            cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
+        return False

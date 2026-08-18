@@ -169,14 +169,10 @@ class MainWindowStartupRuntime:
 
         # NavigationManager must be installed AFTER EventHandler on QApplication
         # so its event filter runs first (Qt LIFO order).
-        from core.navigation import NavigationManager
-        from core.navigation_sections import SessionPickerSection, TabStripSection
+        from sli_ui_toolkit.managers import NavigationManager
 
-        session_picker_page = window.ui._tab_registry.get_page("session_picker")
-        if session_picker_page is not None:
-            nav_manager = NavigationManager.get_instance()
-            nav_manager.register(TabStripSection(window.ui.workspace_tabs))
-            nav_manager.register(SessionPickerSection(session_picker_page))
+        nav_manager = NavigationManager.get_instance()
+        nav_manager.auto_register_from_descriptors()
 
         window.appearance.update_image_label_background()
         if window.main_controller and window.main_controller.sessions:

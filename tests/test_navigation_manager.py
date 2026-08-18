@@ -64,13 +64,13 @@ class TestNavigationManager:
     def test_register_adds_section(self):
         section = _make_section()
         self.manager.register(section)
-        assert section in self.manager._sections
+        assert any(s is section for _, s in self.manager._sections)
 
     def test_register_idempotent(self):
         section = _make_section()
         self.manager.register(section)
         self.manager.register(section)
-        assert self.manager._sections.count(section) == 1
+        assert sum(1 for _, s in self.manager._sections if s is section) == 1
 
     def test_unregister_removes_section(self):
         section = _make_section()
