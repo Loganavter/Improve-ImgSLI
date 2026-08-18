@@ -18,11 +18,9 @@ from ui.presenters.main_window.workspace_tab_menu import (
 
 
 def _focus_content(presenter, direction: int) -> None:
-    """Focus the first interactive widget in the content area.
-
-    Skips container widgets (scroll areas, stacked widgets) and finds
-    the first actual button/input that the user can interact with.
-    """
+    """Focus the first interactive widget in the content area."""
+    import logging
+    _log = logging.getLogger(__name__)
     from PySide6.QtWidgets import QAbstractScrollArea, QStackedWidget
 
     stack = getattr(presenter.ui, "workspace_stack", None)
@@ -39,30 +37,13 @@ def _focus_content(presenter, direction: int) -> None:
             Qt.FocusPolicy.ClickFocus,
             Qt.FocusPolicy.WheelFocus,
         ):
+            _log.debug(
+                "[NAV] _focus_content: focusing %s", type(child).__name__
+            )
             child.setFocus(Qt.FocusReason.OtherFocusReason)
             return
+    _log.debug("[NAV] _focus_content: no focusable widget found")
 
-
-def _connect_session_picker_escape(presenter) -> None:
-    """Connect session picker's escapeUp signal to focus the tab bar."""
-    from tabs.session_picker.widget import SessionPickerWidget
-
-    stack = getattr(presenter.ui, "workspace_stack", None)
-    if stack is None:
-        return
-    page = stack.currentWidget()
-    if page is None:
-        return
-    if isinstance(page, SessionPickerWidget):
-        tab_bar = getattr(presenter.ui.workspace_tabs, "tab_bar", None)
-        if tab_bar is not None:
-            try:
-                page.escapeUp.disconnect()
-            except RuntimeError:
-                pass
-            page.escapeUp.connect(
-                lambda: tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
-            )
 
 def connect_signals(presenter):
     image_canvas = presenter.get_feature("image_canvas")
@@ -104,11 +85,6 @@ def connect_signals(presenter):
         lambda index, global_pos: on_workspace_tab_context_menu_requested(
             presenter, index, global_pos
         )
-    )
-
-    # Connect session picker's escapeUp to focus the tab bar.
-    presenter.ui.workspace_tabs.currentChanged.connect(
-        lambda _: _connect_session_picker_escape(presenter)
     )
 
     toolbar_presenter.connect_signals()
