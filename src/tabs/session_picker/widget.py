@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QLineF, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QLineF, QObject, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
@@ -33,6 +33,40 @@ from tabs.session_picker.recent.panel import RecentProjectsPanel
 from ui.theming import resolve_theme_color
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
+
+
+class _CreateCardKeyboardFilter(QObject):
+    """Arrow-key navigation over the create-cards.
+
+    The create-cards live inside a QAbstractScrollArea, which swallows arrow
+    keys (viewport scrolling) before they reach the page's keyPressEvent. A
+    dedicated filter object on the page sees events for the whole subtree and
+    reroutes arrows to the page's focus navigation. A separate QObject (not
+    the page filtering itself) avoids the PySide6 self-event-filter recursion.
+    """
+
+    _ARROWS = {
+        Qt.Key.Key_Down,
+        Qt.Key.Key_Right,
+        Qt.Key.Key_Up,
+        Qt.Key.Key_Left,
+    }
+
+    def __init__(self, page):
+        super().__init__(page)
+        self._page = page
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.KeyPress and event.key() in self._ARROWS:
+            if self._page._create_card_has_focus():
+                offset = (
+                    1
+                    if event.key() in (Qt.Key.Key_Down, Qt.Key.Key_Right)
+                    else -1
+                )
+                self._page._focus_create_card(offset)
+                return True
+        return False
 
 
 class _OpaqueFillWidget(QWidget):
@@ -219,6 +253,17 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if self._recent_panel is not None:
             self._recent_panel.refresh()
             self._recent_panel.recover_opaque_surface()
+            # Up/Left past the first recent item hands focus back to the last
+            # create-card (mirror of the downward card→shelf handoff).
+            self._recent_panel.set_keyboard_handoff(
+                lambda: self._focus_create_card(-1)
+            )
+
+        # See _CreateCardKeyboardFilter: create-cards live inside a
+        # QAbstractScrollArea, so arrow keys must be caught at the page level
+        # (via a dedicated filter object) before the scroll area swallows them.
+        self._create_card_keyboard_filter = _CreateCardKeyboardFilter(self)
+        self.installEventFilter(self._create_card_keyboard_filter)
 
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
@@ -327,6 +372,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         return list(self._cards_by_type.items())
 
     def _focus_create_card(self, offset: int) -> bool:
+        """Move keyboard focus ``offset`` create-cards (or hand off to the
+        recent shelf when the move crosses the end of the card list)."""
         entries = self._card_entries()
         if not entries:
             return False
@@ -339,8 +386,19 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         )
         if current is None:
             target = 0 if offset > 0 else len(entries) - 1
-        else:
-            target = (current + offset) % len(entries)
+            entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
+        target = current + offset
+        if 0 <= target < len(entries):
+            entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
+        # Past the edge of the create-cards: continue into the recent shelf
+        # (first item going down, last item going up) when it has items.
+        if self._recent_panel is not None and self._recent_panel.focus_recent_item(
+            offset > 0
+        ):
+            return True
+        target %= len(entries)
         entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
@@ -357,6 +415,14 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 event.accept()
                 return
         super().keyPressEvent(event)
+
+    def _create_card_has_focus(self) -> bool:
+        from PySide6.QtWidgets import QApplication
+
+        focused = QApplication.focusWidget()
+        return focused is not None and any(
+            card is focused for _st, card in self._card_entries()
+        )
 
     def _retranslate_cards(self) -> None:
         blueprints = {
