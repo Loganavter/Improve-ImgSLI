@@ -104,3 +104,18 @@ ColorSwatch.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/color_swatch.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+ColorSwatch.widget_descriptor = WidgetDescriptor(
+    family=ColorSwatch.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ColorSwatch.inspect_spec, 'config', ()),
+        state=ColorSwatch.inspect_spec.state,
+        token_family=getattr(ColorSwatch.inspect_spec, 'token_family', ()),
+        regions=getattr(ColorSwatch.inspect_spec, 'regions', False),
+        layers=getattr(ColorSwatch.inspect_spec, 'layers', False),
+        docs=getattr(ColorSwatch.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ColorSwatch.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ColorSwatch.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

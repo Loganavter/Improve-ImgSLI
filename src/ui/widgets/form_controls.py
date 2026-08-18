@@ -235,3 +235,32 @@ OutputPathSection.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/form_controls.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+DialogActionBar.widget_descriptor = WidgetDescriptor(
+    family=DialogActionBar.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(DialogActionBar.inspect_spec, 'config', ()),
+        state=DialogActionBar.inspect_spec.state,
+        token_family=getattr(DialogActionBar.inspect_spec, 'token_family', ()),
+        regions=getattr(DialogActionBar.inspect_spec, 'regions', False),
+        layers=getattr(DialogActionBar.inspect_spec, 'layers', False),
+        docs=getattr(DialogActionBar.inspect_spec, 'docs', ''),
+        preview_seed=getattr(DialogActionBar.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(DialogActionBar.inspect_spec, 'apply_config_refresh', None),
+    ),
+)
+
+OutputPathSection.widget_descriptor = WidgetDescriptor(
+    family=OutputPathSection.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(OutputPathSection.inspect_spec, 'config', ()),
+        state=OutputPathSection.inspect_spec.state,
+        token_family=getattr(OutputPathSection.inspect_spec, 'token_family', ()),
+        regions=getattr(OutputPathSection.inspect_spec, 'regions', False),
+        layers=getattr(OutputPathSection.inspect_spec, 'layers', False),
+        docs=getattr(OutputPathSection.inspect_spec, 'docs', ''),
+        preview_seed=getattr(OutputPathSection.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(OutputPathSection.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

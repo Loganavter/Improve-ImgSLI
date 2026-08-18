@@ -691,3 +691,18 @@ RatingListItem.inspect_spec = InspectSpec(
     layers=True,
     docs="docs/dev/widgets/rating_item.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+RatingListItem.widget_descriptor = WidgetDescriptor(
+    family=RatingListItem.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(RatingListItem.inspect_spec, 'config', ()),
+        state=RatingListItem.inspect_spec.state,
+        token_family=getattr(RatingListItem.inspect_spec, 'token_family', ()),
+        regions=getattr(RatingListItem.inspect_spec, 'regions', False),
+        layers=getattr(RatingListItem.inspect_spec, 'layers', False),
+        docs=getattr(RatingListItem.inspect_spec, 'docs', ''),
+        preview_seed=getattr(RatingListItem.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(RatingListItem.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

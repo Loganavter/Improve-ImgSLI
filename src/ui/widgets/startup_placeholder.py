@@ -73,3 +73,18 @@ StartupPlaceholder.inspect_spec = InspectSpec(
     token_family=("surface",),
     layers=True,
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+StartupPlaceholder.widget_descriptor = WidgetDescriptor(
+    family=StartupPlaceholder.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(StartupPlaceholder.inspect_spec, 'config', ()),
+        state=StartupPlaceholder.inspect_spec.state,
+        token_family=getattr(StartupPlaceholder.inspect_spec, 'token_family', ()),
+        regions=getattr(StartupPlaceholder.inspect_spec, 'regions', False),
+        layers=getattr(StartupPlaceholder.inspect_spec, 'layers', False),
+        docs=getattr(StartupPlaceholder.inspect_spec, 'docs', ''),
+        preview_seed=getattr(StartupPlaceholder.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(StartupPlaceholder.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

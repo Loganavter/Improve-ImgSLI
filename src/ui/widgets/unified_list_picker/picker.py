@@ -141,3 +141,18 @@ UnifiedListPicker.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/unified_list_picker.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+UnifiedListPicker.widget_descriptor = WidgetDescriptor(
+    family=UnifiedListPicker.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(UnifiedListPicker.inspect_spec, 'config', ()),
+        state=UnifiedListPicker.inspect_spec.state,
+        token_family=getattr(UnifiedListPicker.inspect_spec, 'token_family', ()),
+        regions=getattr(UnifiedListPicker.inspect_spec, 'regions', False),
+        layers=getattr(UnifiedListPicker.inspect_spec, 'layers', False),
+        docs=getattr(UnifiedListPicker.inspect_spec, 'docs', ''),
+        preview_seed=getattr(UnifiedListPicker.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(UnifiedListPicker.inspect_spec, 'apply_config_refresh', None),
+    ),
+)
