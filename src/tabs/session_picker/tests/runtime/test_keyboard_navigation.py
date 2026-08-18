@@ -192,14 +192,17 @@ def test_down_from_last_create_card_enters_recent_shelf(
 ):
     widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
     entries = widget._card_entries()
-    first_recent = widget._recent_panel._items._cards_by_path.get(records[0].path)
-    assert first_recent is not None
+    header = widget._recent_panel._header
+    first_header_btn = next(
+        b for b in (header.sort_button, header.sort_order_button, header.view_button)
+        if b.isVisible()
+    )
 
     entries[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
     QTest.qWait(20)
     QTest.keyClick(entries[-1][1], Qt.Key.Key_Down)
     QTest.qWait(20)
-    assert QApplication.focusWidget() is first_recent
+    assert QApplication.focusWidget() is first_header_btn
     widget.deleteLater()
 
 
@@ -217,5 +220,52 @@ def test_up_from_first_recent_item_returns_to_last_create_card(
 
     QTest.keyClick(first_recent, Qt.Key.Key_Up)
     QTest.qWait(20)
-    assert QApplication.focusWidget() is entries[-1][1]
+    header = widget._recent_panel._header
+    last_visible_btn = next(
+        b for b in reversed(
+            (header.sort_button, header.sort_order_button, header.view_button)
+        )
+        if b.isVisible()
+    )
+    assert QApplication.focusWidget() is last_visible_btn
+    widget.deleteLater()
+
+
+def test_header_arrows_navigate_between_controls(qapp, tmp_path, monkeypatch):
+    widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
+    header = widget._recent_panel._header
+    btns = [
+        b for b in (header.sort_button, header.sort_order_button, header.view_button)
+        if b.isVisible()
+    ]
+    assert len(btns) >= 2
+
+    btns[0].setFocus(Qt.FocusReason.OtherFocusReason)
+    QTest.qWait(20)
+    QTest.keyClick(btns[0], Qt.Key.Key_Right)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is btns[1]
+
+    QTest.keyClick(btns[1], Qt.Key.Key_Left)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is btns[0]
+    widget.deleteLater()
+
+
+def test_down_from_last_header_enters_recent_items(qapp, tmp_path, monkeypatch):
+    widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
+    header = widget._recent_panel._header
+    btns = [
+        b for b in (header.sort_button, header.sort_order_button, header.view_button)
+        if b.isVisible()
+    ]
+    first_recent = widget._recent_panel._items._cards_by_path.get(records[0].path)
+    assert first_recent is not None
+    assert btns
+
+    btns[-1].setFocus(Qt.FocusReason.OtherFocusReason)
+    QTest.qWait(20)
+    QTest.keyClick(btns[-1], Qt.Key.Key_Down)
+    QTest.qWait(20)
+    assert QApplication.focusWidget() is first_recent
     widget.deleteLater()

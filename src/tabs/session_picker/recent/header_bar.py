@@ -17,6 +17,7 @@ from sli_ui_toolkit.widgets import (
     ContextMenuAction,
     popup_context_menu_for_anchor,
 )
+from sli_ui_toolkit.ui.widgets.composite.context_menu.menu import ContextMenu
 
 from services.io.recent_projects import (
     SORT_ASC,
@@ -180,11 +181,30 @@ class RecentHeaderBar(QWidget):
             set_recent_sort_mode(self._sort_mode)
             self.prefs_changed.emit()
 
-        popup_context_menu_for_anchor(
+        # Toggle: hide the old menu if still visible.
+        existing = getattr(self.sort_button, "_anchor_context_menu", None)
+        if existing is not None:
+            try:
+                if existing.isVisible():
+                    existing.hide()
+                    return
+            except RuntimeError:
+                pass
+            self.sort_button._anchor_context_menu = None  # type: ignore[attr-defined]
+
+        menu = ContextMenu(
             parent,
-            self.sort_button,
-            entries,
+            entries=entries,
             on_triggered=on_triggered,
+            surface="in_window",
+        )
+        self.sort_button._anchor_context_menu = menu  # type: ignore[attr-defined]
+        menu.show_aligned(
+            self.sort_button,
+            anchor_point="bottom-left",
+            flyout_point="top-left",
+            offset=2,
+            animation_axis="vertical",
         )
 
     def _toggle_sort_order(self) -> None:

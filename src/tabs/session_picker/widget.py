@@ -259,10 +259,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if self._recent_panel is not None:
             self._recent_panel.refresh()
             self._recent_panel.recover_opaque_surface()
-            # Up/Left past the first recent item hands focus back to the last
-            # create-card (mirror of the downward card→shelf handoff).
+            # Up/Left past the first recent item hands focus back through
+            # the shelf header controls, then to the last create-card.
             self._recent_panel.set_keyboard_handoff(
-                lambda: self._focus_create_card(-1)
+                lambda: self._recent_panel.focus_header_control(False)
+                or self._focus_create_card(-1)
             )
 
         # See _CreateCardKeyboardFilter: the create-cards live inside a
@@ -399,12 +400,14 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if 0 <= target < len(entries):
             entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
             return True
-        # Past the edge of the create-cards: continue into the recent shelf
-        # (first item going down, last item going up) when it has items.
-        if self._recent_panel is not None and self._recent_panel.focus_recent_item(
-            offset > 0
-        ):
-            return True
+        # Past the edge of the create-cards: continue into the shelf
+        # header controls first, then the recent items (first item going
+        # down, last item going up).
+        if self._recent_panel is not None:
+            if self._recent_panel.focus_header_control(offset > 0):
+                return True
+            if self._recent_panel.focus_recent_item(offset > 0):
+                return True
         target %= len(entries)
         entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
         return True
