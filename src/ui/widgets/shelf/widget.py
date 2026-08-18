@@ -14,9 +14,9 @@ Chrome (moved here from ``tabs.session_picker.recent.shelf_chrome``):
 - a rounded shelf panel derived from that surface by the same lighten/darken
   ratios the Session Picker shelf uses.
 
-Both layers repaint on theme changes; ``panel_bg()`` / ``content_bg()`` /
-``header_button_bg()`` expose the derived colors to consumers that fill
-content hosts opaquely (translucent CSD windows must never show through).
+Both layers repaint on theme changes; ``colors()`` exposes all derived
+colors in one dict so consumers that fill content hosts opaquely (translucent
+CSD windows must never show through) don't need to learn multiple accessors.
 """
 
 from __future__ import annotations
@@ -155,7 +155,7 @@ class ShelfWidget(QWidget):
         self._content_layout.setSpacing(0)
         self._root.addWidget(self._content_host)
 
-        self.update_shelf_chrome()
+        self._update_shelf_chrome()
         self._apply_content_well_fill()
 
     # ----- structure -------------------------------------------------------
@@ -187,17 +187,8 @@ class ShelfWidget(QWidget):
         """Append a card/button (or content block) to the shelf content."""
         self._content_layout.addWidget(widget)
 
-    def content_layout(self) -> QVBoxLayout:
-        return self._content_layout
-
-    def header_host(self) -> QWidget:
-        return self._header_host
-
     def content_host(self) -> QWidget:
         return self._content_host
-
-    def root_layout(self) -> QVBoxLayout:
-        return self._root
 
     # ----- chrome ----------------------------------------------------------
 
@@ -208,7 +199,7 @@ class ShelfWidget(QWidget):
         color.setAlpha(255)
         return color
 
-    def update_shelf_chrome(self) -> None:
+    def _update_shelf_chrome(self) -> None:
         """Re-derive the two backing layers from the current theme surface."""
         surface = self._surface_color()
         self._shelf_surface = QColor(surface)
@@ -221,28 +212,28 @@ class ShelfWidget(QWidget):
         panel.setAlpha(255)
         self._shelf_panel = panel
 
-    def panel_bg(self) -> QColor:
-        """Opaque rounded-panel fill (the layer painted on top of the surface)."""
-        return QColor(self._shelf_panel)
+    def colors(self) -> dict[str, object]:
+        """All shelf-derived colors in one dict.
 
-    def content_bg(self) -> QColor:
-        """Opaque host-surface fill (the layer under the panel)."""
-        return QColor(self._shelf_surface)
+        Keys:
 
-    def header_button_bg(self) -> QColor:
-        """Opaque chip fill that reads against the rounded shelf in both themes."""
+        - ``panel`` — opaque rounded-panel fill (QColor)
+        - ``content`` — opaque host-surface fill (QColor)
+        - ``header_button`` — opaque chip fill for header buttons (QColor)
+        - ``empty_zone`` — dict with ``border``, ``title``, ``hint``, ``fill``
+          (QColor each) for an empty-shelf drop zone
+        """
         panel = QColor(self._shelf_panel)
-        panel.setAlpha(255)
+        content = QColor(self._shelf_surface)
+
+        header_button = QColor(panel)
+        header_button.setAlpha(255)
         if panel.lightness() > 140:
-            color = panel.lighter(108)
+            header_button = header_button.lighter(108)
         else:
-            color = panel.darker(118)
-        color.setAlpha(255)
-        return color
+            header_button = header_button.darker(118)
+        header_button.setAlpha(255)
 
-    def empty_zone_colors(self) -> dict[str, QColor]:
-        """Surface/border/title/hint palette for an empty-shelf drop zone."""
-        panel = QColor(self._shelf_panel)
         title = QColor(resolve_theme_color(self._theme_manager, "WindowText"))
         hint = QColor(title)
         hint.setAlpha(170)
@@ -253,23 +244,45 @@ class ShelfWidget(QWidget):
             border = panel.lighter(150)
             fill = panel.lighter(108)
         fill.setAlpha(255)
-        return {"border": border, "title": title, "hint": hint, "fill": fill}
 
-    @staticmethod
-    def apply_opaque_widget_fill(widget: QWidget | None, color: QColor) -> None:
-        """Opaque fill on a widget, preferring explicit paint hosts.
+        return {
+            "panel": panel,
+            "content": content,
+            "header_button": header_button,
+            "empty_zone": {"border": border, "title": title, "hint": hint, "fill": fill},
+        }
 
-        .. deprecated:: Use the module-level ``apply_opaque_widget_fill()`` instead.
-        """
-        apply_opaque_widget_fill(widget, color)
+    # ----- backward-compatible accessors (delegate to colors()) -------------
+
+    def panel_bg(self) -> QColor:
+        """Opaque rounded-panel fill. Prefer ``colors()["panel"]``."""
+        return QColor(self._shelf_panel)
+
+    def content_bg(self) -> QColor:
+        """Opaque host-surface fill. Prefer ``colors()["content"]``."""
+        return QColor(self._shelf_surface)
+
+    def header_button_bg(self) -> QColor:
+        """Opaque chip fill for header buttons. Prefer ``colors()["header_button"]``."""
+        c = self.colors()
+        return QColor(c["header_button"])
+
+    def empty_zone_colors(self) -> dict[str, QColor]:
+        """Empty-zone palette. Prefer ``colors()["empty_zone"]``."""
+        return dict(self.colors()["empty_zone"])
+
+    def update_shelf_chrome(self) -> None:
+        """Re-derive chrome from theme. Prefer letting the shelf handle this
+        automatically on theme changes."""
+        self._update_shelf_chrome()
 
     def _apply_content_well_fill(self) -> None:
         """Opaque surface fill under the content (the "well" backing)."""
         if self._content_well:
-            self.apply_opaque_widget_fill(self._content_host, self.content_bg())
+            apply_opaque_widget_fill(self._content_host, self.content_bg())
 
     def _on_shelf_theme_changed(self) -> None:
-        self.update_shelf_chrome()
+        self._update_shelf_chrome()
         self._apply_content_well_fill()
         self.update()
 
