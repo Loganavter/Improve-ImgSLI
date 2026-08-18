@@ -180,6 +180,68 @@ class RecentItemsView(QWidget):
     def card_for(self, path: str) -> Button | None:
         return self._cards_by_path.get(path)
 
+    def _ordered_live_cards(self) -> list[tuple[int, Button]]:
+        """Live cards in record order (grid position = index → row/col)."""
+        return [
+            (index, card)
+            for index, record in enumerate(self._records)
+            if (card := self._cards_by_path.get(record.path)) is not None
+        ]
+
+    def _ensure_index_visible(self, index: int) -> None:
+        """Scroll so the row containing ``index`` is inside the viewport.
+        The scrollbar's valueChanged handler materializes the card window
+        synchronously, so the target card becomes live before we focus it."""
+        if not self._records or index < 0 or index >= len(self._records):
+            return
+        columns = max(1, self._grid_columns)
+        row = index // columns
+        stride = row_stride(self._card_h())
+        top = max(0, row * stride)
+        scroll = self.scroll_area.verticalScrollBar()
+        current = scroll.value()
+        viewport_h = max(1, self.scroll_area.viewport().height())
+        if top < current:
+            scroll.setValue(top)
+        elif top + stride > current + viewport_h:
+            scroll.setValue(max(0, top + stride - viewport_h))
+
+    def navigate_focus(self, step: int) -> bool:
+        """Move keyboard focus ``step`` cards forward (or backward if negative),
+        wrapping, materializing the target row if it is off-screen."""
+        cards = self._ordered_live_cards()
+        if not cards or len(self._records) < 1:
+            return False
+        from PySide6.QtWidgets import QApplication
+
+        focused = QApplication.focusWidget()
+        current = next(
+            (index for index, card in cards if card is focused),
+            None,
+        )
+        if current is None:
+            target = 0 if step > 0 else len(self._records) - 1
+        else:
+            target = (current + step) % len(self._records)
+        self._ensure_index_visible(target)
+        record = self._records[target]
+        card = self._cards_by_path.get(record.path)
+        if card is None:
+            return False
+        card.setFocus(Qt.FocusReason.KeyboardFocusReason)
+        return True
+
+    def activate_focused_card(self) -> bool:
+        """Open the currently focused recent card (keyboard Enter)."""
+        from PySide6.QtWidgets import QApplication
+
+        focused = QApplication.focusWidget()
+        for card in self._cards_by_path.values():
+            if card is focused and self._on_activate is not None:
+                self._on_activate(card._recent_record, card._recent_missing)
+                return True
+        return False
+
     def apply_selection(self, selected: set[str] | None = None) -> None:
         """Sync accent fill on live cards to ``selected`` (or provider)."""
         paths = self._selection_paths() if selected is None else selected

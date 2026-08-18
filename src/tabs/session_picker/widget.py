@@ -322,6 +322,42 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             self.refresh()
         return self._cards_by_type.get(session_type)
 
+    def _card_entries(self) -> list[tuple[str, Button]]:
+        # dict preserves insertion order = create-cards' visual (layout) order.
+        return list(self._cards_by_type.items())
+
+    def _focus_create_card(self, offset: int) -> bool:
+        entries = self._card_entries()
+        if not entries:
+            return False
+        from PySide6.QtWidgets import QApplication
+
+        focused = QApplication.focusWidget()
+        current = next(
+            (i for i, (_st, card) in enumerate(entries) if card is focused),
+            None,
+        )
+        if current is None:
+            target = 0 if offset > 0 else len(entries) - 1
+        else:
+            target = (current + offset) % len(entries)
+        entries[target][1].setFocus(Qt.FocusReason.KeyboardFocusReason)
+        return True
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        key = event.key()
+        if key in (
+            Qt.Key.Key_Down,
+            Qt.Key.Key_Right,
+            Qt.Key.Key_Up,
+            Qt.Key.Key_Left,
+        ):
+            offset = 1 if key in (Qt.Key.Key_Down, Qt.Key.Key_Right) else -1
+            if self._focus_create_card(offset):
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
     def _retranslate_cards(self) -> None:
         blueprints = {
             bp.session_type: bp for bp in self._registered_blueprints()
@@ -425,6 +461,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             parent=self._cards_container,
         )
         card.regionClicked.connect(lambda _id, st=session_type: self._create(st))
+        # Keyboard Enter/Space on a focused card activates via the main
+        # ``clicked`` signal (multi-region cards only emit ``regionClicked``
+        # on mouse clicks) — without this the card is unfocusable-by-keyboard.
+        card.clicked.connect(lambda _st=session_type: self._create(_st))
         self._cards_by_type[session_type] = card
         return card
 

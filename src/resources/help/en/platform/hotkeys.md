@@ -1,6 +1,6 @@
 ## Hotkeys
 
-Default chords below. Remap most action shortcuts under {{tr:menu.settings}} → {{tr:settings.keyboard}}. Canvas `WASD` and `Space` movement stay fixed and are not remappable.
+Default chords below. Remap most action shortcuts under {{tr:menu.settings}} → {{tr:settings.keyboard}}. Canvas `WASD`, arrow, `Space` movement and `+`/`-` zoom stay fixed and are not remappable.
 
 ### Discover first {#discover}
 
@@ -28,6 +28,7 @@ Exact labels follow your language pack; remap under Settings → Keyboard → pl
 - `R` / `Ctrl+E` — Record / Video Editor
 - `Ctrl+S` — Quick save
 - `WASD` / `QE` / `Space` — Magnifier move / spacing / side preview (fixed)
+- `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
 
 Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video Editor](help://video).
 
@@ -37,6 +38,7 @@ Details: [Comparison](help://comparison), [Magnifier](help://magnifier), [Video 
 - `D` — Grid visibility
 - `Ctrl+S` — Quick save
 - `Esc` — Exit slot focus
+- `←↑↓→` / `+` / `-` — Pan / zoom (fixed)
 
 See [{{tr:workspace.session_types.multi_compare}}](help://multi_compare).
 

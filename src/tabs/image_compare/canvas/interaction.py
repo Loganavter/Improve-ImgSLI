@@ -496,7 +496,79 @@ def handle_mouse_move_event(widget, event):
     widget.mouseMoved.emit(event)
 
 
+_KEY_PAN = {
+    Qt.Key.Key_Left,
+    Qt.Key.Key_Right,
+    Qt.Key.Key_Up,
+    Qt.Key.Key_Down,
+}
+_KEY_ZOOM_IN = {
+    Qt.Key.Key_Plus,
+    Qt.Key.Key_Equal,
+}
+_KEY_ZOOM_OUT = {
+    Qt.Key.Key_Minus,
+}
+# Pan nudge as a fraction of the widget width/height per arrow press; scaled
+# by zoom so a nudge stays a fixed *screen* distance (same convention as
+# compute_zoom_pan_drag_transform, which divides by ``widget_size * zoom``).
+_KEY_PAN_NUDGE = 0.05
+
+
+def _apply_keyboard_pan(widget, key) -> None:
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        return
+    zoom = get_zoom_level(widget)
+    dx = -1 if key == Qt.Key.Key_Left else (1 if key == Qt.Key.Key_Right else 0)
+    dy = -1 if key == Qt.Key.Key_Up else (1 if key == Qt.Key.Key_Down else 0)
+    dpan_x = dx * _KEY_PAN_NUDGE / max(zoom, 1e-6)
+    dpan_y = dy * _KEY_PAN_NUDGE / max(zoom, 1e-6)
+    set_pan(
+        widget,
+        get_pan_offset_x(widget) + dpan_x,
+        get_pan_offset_y(widget) + dpan_y,
+    )
+
+
+def _apply_keyboard_zoom(widget, key) -> None:
+    if bool(getattr(widget.runtime_state, "_read_only", False)):
+        return
+    angle_delta_y = 120 if key in _KEY_ZOOM_IN else -120
+    result = compute_wheel_zoom_transform(
+        WheelZoomRequest(
+            widget_width=widget.width(),
+            widget_height=widget.height(),
+            # Keyboard zoom anchors at the viewport center (mouse at center),
+            # which leaves pan unchanged — same result as the wheel around the
+            # middle of the widget.
+            mouse_x=float(widget.width()) / 2.0,
+            mouse_y=float(widget.height()) / 2.0,
+            current_zoom=get_zoom_level(widget),
+            current_pan_x=get_pan_offset_x(widget),
+            current_pan_y=get_pan_offset_y(widget),
+            angle_delta_y=angle_delta_y,
+        )
+    )
+    if result is None:
+        return
+    new_zoom, new_pan_x, new_pan_y = result
+    update_split_for_zoom(widget, new_zoom, new_pan_x, new_pan_y)
+    set_pan_offsets(widget, new_pan_x, new_pan_y)
+    set_zoom_level(widget, new_zoom)
+    widget.zoomChanged.emit(get_zoom_level(widget))
+    widget.update()
+
+
 def handle_key_press_event(widget, event):
+    key = event.key()
+    if key in _KEY_PAN:
+        _apply_keyboard_pan(widget, key)
+        event.accept()
+        return
+    if key in _KEY_ZOOM_IN or key in _KEY_ZOOM_OUT:
+        _apply_keyboard_zoom(widget, key)
+        event.accept()
+        return
     widget.keyPressed.emit(event)
 
 
