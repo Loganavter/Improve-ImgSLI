@@ -85,10 +85,17 @@ class TabStripSection:
             return True
         return False
 
-    def focus_first(self) -> bool:
+    def _focus_tab_bar(self) -> bool:
+        """Focus the inner QTabBar so the focus ring is visible."""
+        tab_bar = getattr(self._tab_strip, "tab_bar", None)
+        if tab_bar is not None:
+            tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
         self._tab_strip.setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
+    def focus_first(self) -> bool:
+        return self._focus_tab_bar()
+
     def focus_last(self) -> bool:
-        self._tab_strip.setFocus(Qt.FocusReason.OtherFocusReason)
-        return True
+        return self._focus_tab_bar()
