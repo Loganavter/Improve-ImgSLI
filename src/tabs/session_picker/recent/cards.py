@@ -327,6 +327,15 @@ def bind_card(
 
     # Keep signature flexible: panel may accept (record, missing) or +modifiers.
     card.regionClicked.connect(_on_region)
+    if hasattr(card, "clicked"):
+        # Keyboard Enter/Space on a focused card activates via the main
+        # ``clicked`` signal — multi-region cards only emit ``regionClicked``
+        # on mouse clicks, so this is what makes them keyboard-activatable.
+        card.clicked.connect(
+            lambda c=card: on_activate(
+                c._recent_record, c._recent_missing
+            )
+        )
     if hasattr(card, "rightClicked"):
         card.rightClicked.connect(
             lambda c=card: on_context_menu(c._recent_record)

@@ -1,6 +1,6 @@
 ## 快捷键
 
-以下为默认快捷键。大多数操作快捷键可在 {{tr:menu.settings}} → {{tr:settings.keyboard}} 中重新绑定。画布上的 `WASD` 与 `Space` 移动操作固定不变，无法重新绑定。
+以下为默认快捷键。大多数操作快捷键可在 {{tr:menu.settings}} → {{tr:settings.keyboard}} 中重新绑定。画布上的 `WASD`、方向键、`Space` 移动与 `+`/`-` 缩放操作固定不变，无法重新绑定。
 
 ### 先搜索，再记忆 {#discover}
 
@@ -28,6 +28,7 @@
 - `R` / `Ctrl+E` — 录制 / 视频编辑器
 - `Ctrl+S` — 快速保存
 - `WASD` / `QE` / `Space` — 放大镜移动 / 间距 / 单侧预览（固定不变）
+- `←↑↓→` / `+` / `-` — 平移 / 缩放（固定不变）
 
 详情见[对比](help://comparison)、[放大镜](help://magnifier)、[视频编辑器](help://video)。
 
@@ -37,6 +38,7 @@
 - `D` — 网格可见性
 - `Ctrl+S` — 快速保存
 - `Esc` — 退出槽位焦点
+- `←↑↓→` / `+` / `-` — 平移 / 缩放（固定不变）
 
 见 [{{tr:workspace.session_types.multi_compare}}](help://multi_compare)。
 

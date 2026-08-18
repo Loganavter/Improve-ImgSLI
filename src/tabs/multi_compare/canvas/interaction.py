@@ -331,6 +331,74 @@ def handle_mouse_double_click_event(widget, event: QMouseEvent) -> None:
             event.accept()
 
 
+_KEY_PAN = {
+    Qt.Key.Key_Left,
+    Qt.Key.Key_Right,
+    Qt.Key.Key_Up,
+    Qt.Key.Key_Down,
+}
+_KEY_ZOOM_IN = {
+    Qt.Key.Key_Plus,
+    Qt.Key.Key_Equal,
+}
+_KEY_ZOOM_OUT = {
+    Qt.Key.Key_Minus,
+}
+# Pan nudge as a fraction of the reference cell width/height per arrow press,
+# divided by ``fit * zoom`` so a nudge stays a fixed *screen* distance
+# (mirrors the middle-button pan formula ``dpan = delta_px / ref_width /
+# (fit * zoom)`` with ``delta_px = nudge_fraction * ref_width``).
+_KEY_PAN_NUDGE = 0.05
+
+
+def _keyboard_pan_reference(widget) -> tuple[QRect, tuple[float, float]]:
+    """Reference rect + fit used to convert a screen nudge into pan units.
+
+    Mirrors the middle-button pan reference: the focused slot's leaf when a
+    slot is focused, otherwise the whole widget rect with fit ``(1, 1)``.
+    """
+    if widget.state.is_focused:
+        for leaf, rect in widget._leaf_rects():
+            slot = next(
+                (s for s in widget.state.slots if s.id == leaf.slot_id), None
+            )
+            if slot is not None:
+                return rect, fit_scale_for(slot, rect)
+    return widget.rect(), (1.0, 1.0)
+
+
+def _apply_keyboard_pan(widget, key) -> None:
+    _rect, (fit_x, fit_y) = _keyboard_pan_reference(widget)
+    z = max(widget.state.zoom, 1e-6)
+    dx = -1 if key == Qt.Key.Key_Left else (1 if key == Qt.Key.Key_Right else 0)
+    dy = -1 if key == Qt.Key.Key_Up else (1 if key == Qt.Key.Key_Down else 0)
+    dpan_x = dx * _KEY_PAN_NUDGE / (max(fit_x, 1e-6) * z)
+    dpan_y = dy * _KEY_PAN_NUDGE / (max(fit_y, 1e-6) * z)
+    new_x, new_y = clamp_pan_values(
+        widget.state.pan_x + dpan_x,
+        widget.state.pan_y + dpan_y,
+        z,
+    )
+    if new_x != widget.state.pan_x or new_y != widget.state.pan_y:
+        widget._do_dispatch(actions.set_pan(new_x, new_y))
+
+
+def _apply_keyboard_zoom(widget, key) -> None:
+    factor = widget.ZOOM_STEP if key in _KEY_ZOOM_IN else 1.0 / widget.ZOOM_STEP
+    z1 = widget.state.zoom
+    z2 = max(widget.ZOOM_MIN, min(widget.ZOOM_MAX, z1 * factor))
+    if z2 == z1:
+        return
+    if z2 <= widget.ZOOM_MIN:
+        new_pan_x, new_pan_y = 0.0, 0.0
+    else:
+        # Anchor at the reference cell's center (cell_u == cell_v == 0.5), so
+        # the center stays fixed and pan is unchanged — same result as wheel
+        # zoom over the middle of the cell.
+        new_pan_x, new_pan_y = widget.state.pan_x, widget.state.pan_y
+    widget._do_dispatch(actions.set_zoom(z2, new_pan_x, new_pan_y))
+
+
 def handle_key_press_event(widget, event) -> None:
     key = event.key()
     if key == Qt.Key.Key_Escape and widget.state.is_focused:
@@ -338,6 +406,12 @@ def handle_key_press_event(widget, event) -> None:
         event.accept()
     elif key == Qt.Key.Key_0:
         widget._do_dispatch(actions.reset_view())
+        event.accept()
+    elif key in _KEY_PAN:
+        _apply_keyboard_pan(widget, key)
+        event.accept()
+    elif key in _KEY_ZOOM_IN or key in _KEY_ZOOM_OUT:
+        _apply_keyboard_zoom(widget, key)
         event.accept()
     else:
         QWidget.keyPressEvent(widget, event)

@@ -952,6 +952,28 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
                 self._clear_selection()
                 event.accept()
                 return
+        if key in (
+            Qt.Key.Key_Left,
+            Qt.Key.Key_Right,
+            Qt.Key.Key_Up,
+            Qt.Key.Key_Down,
+        ):
+            columns = max(1, getattr(self._items, "grid_columns", 1) or 1)
+            if key == Qt.Key.Key_Left:
+                step = -1
+            elif key == Qt.Key.Key_Right:
+                step = 1
+            elif key == Qt.Key.Key_Up:
+                step = -columns
+            else:
+                step = columns
+            if self._items.navigate_focus(step):
+                event.accept()
+                return
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._items.activate_focused_card():
+                event.accept()
+                return
         super().keyPressEvent(event)
 
     def _on_marquee_preview(self, paths: set[str], additive: bool) -> None:
