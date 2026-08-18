@@ -46,7 +46,28 @@ class TitleBarNavigationSection:
         self._title_bar = title_bar
 
     def owns(self, widget: QWidget) -> bool:
-        return self._title_bar.isAncestorOf(widget) or widget is self._title_bar
+        if widget is self._title_bar:
+            return True
+        # Walk the parent chain — isAncestorOf can fail for widgets added
+        # to layouts that reparent through zone hosts.
+        w = widget
+        chain = []
+        while w is not None:
+            chain.append(type(w).__name__)
+            if w is self._title_bar:
+                logger.debug(
+                    "[nav-titlebar] owns(%s) → True  chain=%s",
+                    type(widget).__name__,
+                    " → ".join(chain),
+                )
+                return True
+            w = w.parentWidget()
+        logger.debug(
+            "[nav-titlebar] owns(%s) → False chain=%s",
+            type(widget).__name__,
+            " → ".join(chain),
+        )
+        return False
 
     def navigate(self, key: int, widget: QWidget) -> bool:
         if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
@@ -103,15 +124,25 @@ class TitleBarNavigationSection:
             btn = buttons[-1]
             logger.debug(
                 "[nav-titlebar] focus_last pre-setFocus: btn=%s policy=%s "
-                "visible=%s geom=%s parent=%s",
+                "visible=%s acceptsFocus=%s geom=%s parent=%s",
                 type(btn).__name__,
                 btn.focusPolicy().name,
                 btn.isVisible(),
+                btn.acceptsFocus(),
                 btn.geometry().getRect(),
                 type(btn.parentWidget()).__name__,
             )
             btn.setFocus(Qt.FocusReason.OtherFocusReason)
             actual = QApplication.focusWidget()
+            if actual is not btn:
+                # setFocus redirected — try focusing the title bar itself
+                logger.debug(
+                    "[nav-titlebar] focus_last: setFocus redirected to %s, "
+                    "trying title bar directly",
+                    type(actual).__name__ if actual else None,
+                )
+                self._title_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+                actual = QApplication.focusWidget()
             logger.debug(
                 "[nav-titlebar] focus_last post-setFocus: actual=%s hasFocus=%s "
                 "owner_check=%s",
