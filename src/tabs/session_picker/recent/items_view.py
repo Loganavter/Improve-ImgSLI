@@ -98,6 +98,7 @@ class RecentItemsView(QWidget):
         self._marquee_additive = False
         self._marquee_base: set[str] = set()
         self._selection_accent = selection_accent_color()
+        self._keyboard_handoff = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -208,7 +209,12 @@ class RecentItemsView(QWidget):
 
     def navigate_focus(self, step: int) -> bool:
         """Move keyboard focus ``step`` cards forward (or backward if negative),
-        wrapping, materializing the target row if it is off-screen."""
+        wrapping, materializing the target row if it is off-screen.
+
+        Moving upward/leftward past the first item invokes
+        ``_keyboard_handoff`` (set by the session picker to hand focus back
+        to the create-cards) instead of wrapping.
+        """
         cards = self._ordered_live_cards()
         if not cards or len(self._records) < 1:
             return False
@@ -222,7 +228,10 @@ class RecentItemsView(QWidget):
         if current is None:
             target = 0 if step > 0 else len(self._records) - 1
         else:
-            target = (current + step) % len(self._records)
+            target = current + step
+            if target < 0 and self._keyboard_handoff is not None:
+                return self._keyboard_handoff()
+            target %= len(self._records)
         self._ensure_index_visible(target)
         record = self._records[target]
         card = self._cards_by_path.get(record.path)
@@ -301,7 +310,33 @@ class RecentItemsView(QWidget):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if marquee.event_filter(self, watched, event):
             return True
+        # The cards live inside a QAbstractScrollArea; without this filter
+        # the scroll area swallows arrow keys before the panel sees them.
+        if event.type() == QEvent.Type.KeyPress and self._handle_key_press(event):
+            return True
         return super().eventFilter(watched, event)
+
+    def _handle_key_press(self, event) -> bool:
+        key = event.key()
+        if key in (
+            Qt.Key.Key_Left,
+            Qt.Key.Key_Right,
+            Qt.Key.Key_Up,
+            Qt.Key.Key_Down,
+        ):
+            columns = max(1, self._grid_columns)
+            if key == Qt.Key.Key_Left:
+                step = -1
+            elif key == Qt.Key.Key_Right:
+                step = 1
+            elif key == Qt.Key.Key_Up:
+                step = -columns
+            else:
+                step = columns
+            return self.navigate_focus(step)
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            return self.activate_focused_card()
+        return False
 
     def rebuild(
         self,

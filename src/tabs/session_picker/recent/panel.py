@@ -993,6 +993,25 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
     ) -> None:
         selection_ops.on_card_activate(self, record, missing, modifiers)
 
+    def focus_recent_item(self, first: bool) -> bool:
+        """Focus the first (``first=True``) or last recent item card.
+
+        Returns False when the shelf is empty or has no live cards — the
+        caller (SessionPickerWidget) then falls back to wrapping within the
+        create-cards.
+        """
+        items = getattr(self, "_items", None)
+        if items is None or not getattr(items, "_records", None):
+            return False
+        return items.navigate_focus(1 if first else -1)
+
+    def set_keyboard_handoff(self, callback) -> None:
+        """Set a callback invoked when keyboard navigation would leave the
+        shelf going upward/leftward past the first item (hands focus back to
+        the create-cards)."""
+        if getattr(self, "_items", None) is not None:
+            self._items._keyboard_handoff = callback
+
     def _activate(self, record: RecentProjectRecord, missing: bool) -> None:
         selection_ops.activate(self, record, missing)
 
