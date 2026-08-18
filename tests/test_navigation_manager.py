@@ -360,48 +360,48 @@ class TestTabStripSection:
         from core.navigation_sections import TabStripSection
 
         strip = MagicMock()
+        tab_bar = MagicMock()
+        tab_bar.setFocus = MagicMock()
+        strip.tab_bar = tab_bar
         strip.setFocus = MagicMock()
         strip.isAncestorOf = MagicMock(return_value=False)
         section = TabStripSection(strip)
-        return section, strip
+        return section, strip, tab_bar
 
     def test_owns_returns_true_for_descendant(self):
-        section, strip = self._make_strip()
+        section, strip, _ = self._make_strip()
         child = MagicMock()
         strip.isAncestorOf = MagicMock(return_value=True)
         assert section.owns(child) is True
 
     def test_owns_returns_true_for_strip_itself(self):
-        section, strip = self._make_strip()
+        section, strip, _ = self._make_strip()
         assert section.owns(strip) is True
 
     def test_owns_returns_false_for_unrelated(self):
-        section, strip = self._make_strip()
+        section, strip, _ = self._make_strip()
         strip.isAncestorOf = MagicMock(return_value=False)
         assert section.owns(MagicMock()) is False
 
     def test_navigate_up_consumed_no_section_above(self):
-        """Up on tab strip is consumed — no section above."""
-        section, _ = self._make_strip()
+        section, _, _ = self._make_strip()
         assert section.navigate(Qt.Key.Key_Up, MagicMock()) is True
 
     def test_navigate_down_yields_to_session_picker(self):
-        """Down on tab strip yields — session picker is below."""
-        section, _ = self._make_strip()
+        section, _, _ = self._make_strip()
         assert section.navigate(Qt.Key.Key_Down, MagicMock()) is False
 
     def test_navigate_left_right_yield(self):
-        """Left/Right yield — not handled by NavigationManager."""
-        section, _ = self._make_strip()
+        section, _, _ = self._make_strip()
         assert section.navigate(Qt.Key.Key_Left, MagicMock()) is False
         assert section.navigate(Qt.Key.Key_Right, MagicMock()) is False
 
-    def test_focus_first(self):
-        section, strip = self._make_strip()
+    def test_focus_first_focuses_tab_bar(self):
+        section, _, tab_bar = self._make_strip()
         assert section.focus_first() is True
-        strip.setFocus.assert_called_once()
+        tab_bar.setFocus.assert_called_once()
 
-    def test_focus_last(self):
-        section, strip = self._make_strip()
+    def test_focus_last_focuses_tab_bar(self):
+        section, _, tab_bar = self._make_strip()
         assert section.focus_last() is True
-        strip.setFocus.assert_called_once()
+        tab_bar.setFocus.assert_called_once()
