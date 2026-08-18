@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 from sli_ui_toolkit.widgets import (
@@ -79,6 +79,50 @@ class RecentHeaderBar(QWidget):
         )
         self.view_button.clicked.connect(self._toggle_view)
         layout.addWidget(self.view_button)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        from PySide6.QtWidgets import QApplication
+
+        key = event.key()
+        buttons = [
+            b for b in (self.sort_button, self.sort_order_button, self.view_button)
+            if b.isVisible()
+        ]
+        if not buttons:
+            super().keyPressEvent(event)
+            return
+        focused = QApplication.focusWidget()
+        idx = next((i for i, b in enumerate(buttons) if b is focused), None)
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+            if idx is not None and idx > 0:
+                buttons[idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
+                event.accept()
+                return
+            # Past first → propagate to parent (session picker create-cards).
+            event.ignore()
+            super().keyPressEvent(event)
+            return
+        if key in (Qt.Key.Key_Right, Qt.Key.Key_Down):
+            if idx is not None and idx < len(buttons) - 1:
+                buttons[idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
+                event.accept()
+                return
+            # Past last → hand off to recent items via panel.
+            panel = self.parentWidget()
+            while panel is not None and not hasattr(panel, "focus_recent_item"):
+                panel = panel.parentWidget()
+            if panel is not None and panel.focus_recent_item(True):
+                event.accept()
+                return
+            event.ignore()
+            super().keyPressEvent(event)
+            return
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if idx is not None:
+                buttons[idx].clicked.emit()
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
     def sync(
         self,
