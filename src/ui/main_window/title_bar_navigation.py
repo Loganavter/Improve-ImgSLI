@@ -11,12 +11,8 @@ cross-section transitions:
 
 from __future__ import annotations
 
-import logging
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
-
-logger = logging.getLogger("ImproveImgSLI")
 
 
 class TitleBarNavigationSection:
@@ -43,21 +39,17 @@ class TitleBarNavigationSection:
         if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             return True
         if key == Qt.Key.Key_Down:
-            logger.debug("[nav-titlebar] Down → yield to tab strip")
             return False
         if key == Qt.Key.Key_Up:
-            logger.debug("[nav-titlebar] Up — consumed (topmost section)")
             return True
         return True
 
     def focus_first(self) -> bool:
         self._title_bar.setFocus(Qt.FocusReason.OtherFocusReason)
-        result = self._title_bar.focus_first_button()
-        logger.debug("[nav-titlebar] focus_first → %s", result)
+        self._title_bar.focus_first_button()
         return True
 
     def focus_last(self) -> bool:
         self._title_bar.setFocus(Qt.FocusReason.OtherFocusReason)
-        result = self._title_bar.focus_last_button()
-        logger.debug("[nav-titlebar] focus_last → %s", result)
+        self._title_bar.focus_last_button()
         return True
