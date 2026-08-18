@@ -188,22 +188,19 @@ def test_recent_enter_opens_focused_card(qapp, tmp_path, monkeypatch):
 # --- boundary handoff between create-cards and recent shelf -------------
 
 
-def test_down_from_last_create_card_enters_recent_shelf(
+def test_down_from_last_create_card_stays_on_card(
     qapp, tmp_path, monkeypatch
 ):
+    """With Qt::NoFocus on header buttons, Down from last card stays on card."""
     widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
     entries = widget._card_entries()
-    header = widget._recent_panel._header
-    first_header_btn = next(
-        b for b in (header.sort_button, header.sort_order_button, header.view_button)
-        if b.isVisible()
-    )
 
     entries[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
     QTest.qWait(20)
     QTest.keyClick(entries[-1][1], Qt.Key.Key_Down)
     QTest.qWait(20)
-    assert QApplication.focusWidget() is first_header_btn
+    # Header buttons have NoFocus, so focus stays on last card
+    assert QApplication.focusWidget() is entries[-1][1]
     widget.deleteLater()
 
 
