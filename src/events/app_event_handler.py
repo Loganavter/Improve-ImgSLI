@@ -57,6 +57,27 @@ class EventHandler(QObject):
     def eventFilter(self, watched_obj, event: QEvent) -> bool:
         event_type = event.type()
 
+        # --- debug: trace focus and key events ---
+        if event_type == QEvent.Type.FocusIn:
+            w = QApplication.focusWidget()
+            logger.debug(
+                "[FOCUS] FocusIn obj=%s widget=%s reason=%s",
+                type(watched_obj).__name__,
+                type(w).__name__ if w else None,
+                event.reason().name if hasattr(event, "reason") else "?",
+            )
+        elif event_type == QEvent.Type.FocusOut:
+            logger.debug("[FOCUS] FocusOut obj=%s", type(watched_obj).__name__)
+        elif event_type == QEvent.Type.KeyPress:
+            w = QApplication.focusWidget()
+            logger.debug(
+                "[KEY] KeyPress key=%s obj=%s widget=%s",
+                event.key(),
+                type(watched_obj).__name__,
+                type(w).__name__ if w else None,
+            )
+        # --- end debug ---
+
         dnd_service = DragAndDropService.get_instance()
         if route_drag_and_drop_override(self, event, dnd_service):
             return True
