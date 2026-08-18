@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from PySide6.QtCore import QEvent, Qt
+from PySide6.QtWidgets import QApplication
 
 
 # ---------------------------------------------------------------------------
