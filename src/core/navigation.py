@@ -22,6 +22,12 @@ _ARROWS = frozenset({Qt.Key.Key_Down, Qt.Key.Key_Up, Qt.Key.Key_Left, Qt.Key.Key
 _EXIT_DOWN = frozenset({Qt.Key.Key_Down, Qt.Key.Key_Right})
 _EXIT_UP = frozenset({Qt.Key.Key_Up, Qt.Key.Key_Left})
 
+_KEY_NAMES = {v: k.split(".")[-1] for k, v in Qt.Key.__members__.items()}
+
+
+def _key_name(key: int) -> str:
+    return _KEY_NAMES.get(key, f"0x{key:X}")
+
 
 @runtime_checkable
 class NavigationSection(Protocol):
