@@ -20,7 +20,11 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
 from sli_ui_toolkit.managers import UiScale, scaled_px
-from sli_ui_toolkit.widgets import ThemedWidget
+from sli_ui_toolkit.widgets import (
+    Button,
+    ContextMenuAction,
+    popup_context_menu_for_anchor,
+)
 
 from ui.theming import resolve_theme_color
 from ui.widgets.shelf import (
@@ -161,7 +165,7 @@ def _prelayout_screen(window):
     return screen
 
 
-class RecentProjectsPanel(ThemedWidget, ShelfWidget):
+class RecentProjectsPanel(ShelfWidget):
     """Shelf host: chrome + title from ``ShelfWidget``; composes header
     controls, items view, empty zone, and drops.
 
@@ -325,162 +329,34 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
         return super().eventFilter(watched, event)
 
     def _sync_shelf_panel_height(self) -> None:
-        """Make the panel's height equal header + spacing + content + margins *now*.
+        from tabs.session_picker.recent.use_cases import layout
 
-        The default layout sizeHint lags the scroll's just-changed fixed height
-        by one layout pass, so the first frame would show a short panel with
-        the scroll overflowing its rounded bottom ("jumps one part first").
-        setFixedHeight sidesteps that: the layout gives the panel exactly this
-        height synchronously, so the panel and scroll never disagree. The
-        layout spacing is part of the vertical footprint: omitting it makes
-        the panel 10px short, the items view gets compressed and the scroll
-        (with its bottom corner rounding) is clipped by it."""
-        header = getattr(self, "_header_host", None)
-        header_h = (
-            header.sizeHint().height()
-            if header is not None and header.sizeHint().isValid()
-            else 0
-        )
-        root = self.layout()
-        margins = (
-            cast(tuple[int, int, int, int], root.getContentsMargins())
-            if root is not None
-            else (0, 0, 0, 0)
-        )
-        spacing = root.spacing() if root is not None else 0
-        scroll = getattr(self, "_items", None)
-        scroll_h = scroll.scroll_area.height() if scroll is not None else 0
-        new_h = max(
-            1, header_h + spacing + scroll_h + margins[1] + margins[3]
-        )
-        _shelf_resize_debug(
-            "_sync_shelf_panel_height header=%d scroll=%d spacing=%d margins=%d -> panel_h=%d (was %d)",
-            header_h,
-            scroll_h,
-            spacing,
-            margins[1] + margins[3],
-            new_h,
-            self.height(),
-        )
-        self.setFixedHeight(new_h)
+        layout.sync_shelf_panel_height(self)
 
     def _schedule_deferred_relayout(self) -> None:
-        if not self._painted_once:
-            # Pre-first-paint: run the relayout + height settle synchronously
-            # so the very first presented frame already shows the final
-            # geometry. Layout Resize events are posted, not sent mid-pass,
-            # so re-activating the parent layout here is effective (the
-            # "no-op" concern predates that). 0-timer deferral is fine after
-            # the first paint — the event loop turns before the user can
-            # perceive the change.
-            if self._sync_settle_in_progress:
-                return
-            self._sync_settle_in_progress = True
-            try:
-                self._deferred_relayout()
-                if self._shelf_height_settle_pending:
-                    self._shelf_height_settle_pending = False
-                    self._settle_shelf_height()
-            finally:
-                self._sync_settle_in_progress = False
-            return
-        if self._relayout_timer is None:
-            self._relayout_timer = QTimer(self)
-            self._relayout_timer.setSingleShot(True)
-            self._relayout_timer.setInterval(0)
-            self._relayout_timer.timeout.connect(self._deferred_relayout)
-        _shelf_resize_debug(
-            "schedule deferred_relayout (active=%s) scroll=%d panel=%d visible=%s",
-            self._relayout_timer.isActive(),
-            getattr(self._items.scroll_area, "height", lambda: -1)(),
-            self.height(),
-            self.isVisible(),
-        )
-        self._relayout_timer.start()
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.schedule_deferred_relayout(self)
 
     def _deferred_relayout(self) -> None:
-        _shelf_resize_debug(
-            "deferred_relayout scroll=%d panel=%d",
-            getattr(self._items.scroll_area, "height", lambda: -1)(),
-            self.height(),
-        )
-        if not self._layout_ready or not self._records:
-            return
-        # ``_on_shelf_height_changed`` re-sets this when the relayout below
-        # actually changes the scroll viewport height.
-        self._shelf_height_settle_pending = False
-        if self._view_mode == VIEW_LIST:
-            self._items.relayout_list_if_needed(updates_owner=self)
-        else:
-            relayouted = self._items.relayout_grid_if_needed(updates_owner=self)
-            if not relayouted:
-                # Layout/record drift — fall back to a full rebuild.
-                if self._items.resolve_grid_columns() != self._items.grid_columns:
-                    self._rebuild_items()
-        if self._shelf_height_settle_pending:
-            # The scroll viewport height changed; the panel's own height only
-            # catches up on a later layout pass, which the separate settle
-            # timer re-runs. We must NOT disable updates here: the window is
-            # still being resized, and its layout resizes this panel (width
-            # and height) while any ``setUpdatesEnabled(False)`` is active —
-            # the freshly exposed panel area then never repaints and punches
-            # see-through holes through the translucent CSD window. Let the
-            # panel repaint normally; the settle runs on the next event-loop
-            # turn.
-            self._schedule_height_settle()
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.deferred_relayout(self)
 
     def _schedule_height_settle(self) -> None:
-        if self._settle_timer is None:
-            self._settle_timer = QTimer(self)
-            self._settle_timer.setSingleShot(True)
-            self._settle_timer.setInterval(0)
-            self._settle_timer.timeout.connect(self._settle_shelf_height)
-        _shelf_resize_debug(
-            "schedule height_settle (active=%s) scroll=%d panel=%d",
-            self._settle_timer.isActive(),
-            getattr(self._items.scroll_area, "height", lambda: -1)(),
-            self.height(),
-        )
-        self._settle_timer.start()
+        from tabs.session_picker.recent.use_cases import layout
+
+        layout.schedule_height_settle(self)
 
     def _on_shelf_height_changed(self) -> None:
-        """Called when the scroll viewport height changed during a relayout.
+        from tabs.session_picker.recent.use_cases import layout
 
-        The panel's own height is assigned by the parent page layout for the
-        current frame — it only catches up with the new scroll height once that
-        layout re-runs, which ``_settle_shelf_height`` does on a later turn.
-        Flag it here and refresh the CSD chrome.
-        """
-        self._shelf_height_settle_pending = True
-        _shelf_resize_debug(
-            "on_shelf_height_changed scroll=%d panel=%d",
-            getattr(self._items.scroll_area, "height", lambda: -1)(),
-            self.height(),
-        )
-        self._sync_shelf_panel_height()
-        request_window_chrome_refresh(self)
+        layout.on_shelf_height_changed(self)
 
     def _settle_shelf_height(self) -> None:
-        _shelf_resize_debug(
-            "settle_shelf_height scroll=%d panel=%d",
-            getattr(self._items.scroll_area, "height", lambda: -1)(),
-            self.height(),
-        )
-        """Re-run the parent layout so the panel height catches the scroll.
+        from tabs.session_picker.recent.use_cases import layout
 
-        Runs in a separate timer turn, after the relayout's layout-invalidation
-        has propagated (inside ``resizeEvent``/the relayout turn,
-        ``QLayout.activate`` finds a stale size hint and is a no-op). Updates
-        stay enabled throughout — the panel is resized here (~140px at a 1<->2
-        row flip) and must repaint its exposed area opaquely, otherwise the
-        translucent CSD window shows through it.
-        """
-        self.updateGeometry()
-        parent = self.parentWidget()
-        layout = parent.layout() if parent is not None else None
-        if layout is not None:
-            layout.activate()
-        self.update()
+        layout.settle_shelf_height(self)
 
     def paintEvent(self, event) -> None:  # noqa: N802
         self._painted_once = True
@@ -514,8 +390,8 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
             painter.drawPath(path)
             painter.end()
 
-    def on_theme_changed(self) -> None:
-        # ThemedWidget calls this from __init__ before children exist.
+    def _on_shelf_theme_changed(self) -> None:
+        # ShelfWidget calls this; children may not exist yet during __init__.
         if getattr(self, "_header", None) is not None:
             self._sync_header_controls()
         self._sync_opaque_fills()
@@ -523,8 +399,7 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
         items = getattr(self, "_items", None)
         if items is not None:
             items.refresh_selection_accent()
-        self.update()
-        super().on_theme_changed()
+        super()._on_shelf_theme_changed()
 
     def _header_button_bg(self):
         return self.header_button_bg()
@@ -626,44 +501,16 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
         self._sync_header_controls()
 
     def _on_ui_scale_changed(self, _factor: float) -> None:
-        """Re-apply scale-dependent shelf geometry after a live UiScale change.
+        """Panel-specific scale handling: items geometry + height settle.
 
-        Cards resize themselves (``Button.on_scale_changed``), but every
-        other shelf metric is plain px captured at build time (root margins,
-        scroll height, grid columns, fixed heights); without this pass the
-        shelf keeps the old factor's geometry until the next app start.
-        Runs synchronously inside the scale fan-out — the caller already
-        suspends top-level paints, so the first painted frame after the
-        change is already final.
+        Root margins/spacing are handled by ShelfWidget._on_ui_scale_changed.
         """
-        _shelf_resize_debug("ui scale changed -> factor=%s", _factor)
-        root = self.layout()
-        if root is not None:
-            root.setContentsMargins(
-                scaled_px(SHELF_MARGIN_LEFT),
-                scaled_px(SHELF_MARGIN_TOP),
-                scaled_px(SHELF_MARGIN_RIGHT),
-                scaled_px(SHELF_MARGIN_BOTTOM),
-            )
-            root.setSpacing(scaled_px(SHELF_SPACING))
-        if self._empty_zone is not None:
+        super()._on_ui_scale_changed(_factor)
+        items = getattr(self, "_items", None)
+        if items is not None and self._layout_ready and self._records:
+            items.reapply_scaled_geometry(updates_owner=self)
+        if getattr(self, "_empty_zone", None) is not None:
             self._empty_zone.reapply_scaled_height()
-        if not self._layout_ready or not self._records:
-            self._sync_shelf_panel_height()
-            self.update()
-            return
-        if self._sync_settle_in_progress:
-            return
-        self._sync_settle_in_progress = True
-        try:
-            self._items.reapply_scaled_geometry(updates_owner=self)
-            self._sync_shelf_panel_height()
-            if self._shelf_height_settle_pending:
-                self._shelf_height_settle_pending = False
-                self._settle_shelf_height()
-        finally:
-            self._sync_settle_in_progress = False
-        self.update()
 
     def _on_header_prefs_changed(self) -> None:
         # Header already persisted prefs; re-read and refresh cards.

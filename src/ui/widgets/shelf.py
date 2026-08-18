@@ -265,6 +265,22 @@ class ShelfWidget(QWidget):
         self._apply_content_well_fill()
         self.update()
 
+    def _on_ui_scale_changed(self, _factor: float) -> None:
+        """Re-apply scale-dependent shelf geometry (root margins/spacing).
+
+        Cards resize themselves via their own ``scale_changed`` handlers;
+        this pass updates the shelf frame that was captured at build time.
+        """
+        root = self._root
+        root.setContentsMargins(
+            scaled_px(SHELF_MARGIN_LEFT),
+            scaled_px(SHELF_MARGIN_TOP),
+            scaled_px(SHELF_MARGIN_RIGHT),
+            scaled_px(SHELF_MARGIN_BOTTOM),
+        )
+        root.setSpacing(scaled_px(SHELF_SPACING))
+        self.update()
+
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
