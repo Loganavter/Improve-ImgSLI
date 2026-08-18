@@ -57,30 +57,48 @@ class TitleBarNavigationSection:
             if 0 <= target < len(buttons):
                 buttons[target].setFocus(Qt.FocusReason.OtherFocusReason)
                 logger.debug(
-                    "[nav-titlebar] %s btn[%d] → btn[%d]",
+                    "[nav-titlebar] %s btn[%d] → btn[%d] (%s)",
                     "Right" if step > 0 else "Left",
                     idx,
                     target,
+                    type(buttons[target]).__name__,
                 )
                 return True
+            logger.debug(
+                "[nav-titlebar] %s at boundary btn[%d/%d] — consumed",
+                "Right" if step > 0 else "Left",
+                idx,
+                len(buttons),
+            )
             return True
         if key == Qt.Key.Key_Down:
             logger.debug("[nav-titlebar] Down → yield to tab strip")
             return False
         if key == Qt.Key.Key_Up:
+            logger.debug("[nav-titlebar] Up — consumed (topmost section)")
             return True
         return True
 
     def focus_first(self) -> bool:
         buttons = _title_bar_focusable_buttons(self._title_bar)
         if buttons:
+            logger.debug(
+                "[nav-titlebar] focus_first → %s",
+                type(buttons[0]).__name__,
+            )
             buttons[0].setFocus(Qt.FocusReason.OtherFocusReason)
             return True
+        logger.debug("[nav-titlebar] focus_first → False (no buttons)")
         return False
 
     def focus_last(self) -> bool:
         buttons = _title_bar_focusable_buttons(self._title_bar)
         if buttons:
+            logger.debug(
+                "[nav-titlebar] focus_last → %s",
+                type(buttons[-1]).__name__,
+            )
             buttons[-1].setFocus(Qt.FocusReason.OtherFocusReason)
             return True
+        logger.debug("[nav-titlebar] focus_last → False (no buttons)")
         return False

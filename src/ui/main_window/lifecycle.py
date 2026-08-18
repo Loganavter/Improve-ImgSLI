@@ -4,6 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass, field
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from shared_toolkit.ui.managers.font_manager import FontManager
@@ -294,6 +295,15 @@ class MainWindowStartupController:
             window.size().toTuple(),
             window.isMaximized(),
         )
+        # Ensure initial focus lands on the tab strip add button, not on a
+        # CSD menu trigger (which is now StrongFocus after keyboard nav was
+        # added to the title bar).
+        ui = getattr(window, "ui", None)
+        tab_strip = getattr(ui, "workspace_tabs", None) if ui is not None else None
+        if tab_strip is not None:
+            add_btn = getattr(tab_strip, "add_button", None)
+            target = add_btn if add_btn is not None and add_btn.isVisible() else tab_strip
+            target.setFocus(Qt.FocusReason.OtherFocusReason)
         self._log_layout_summary(window)
         # Onboarding is built during prepare() before the window has a real
         # layout; re-apply geometry/scale after the first show pass.
