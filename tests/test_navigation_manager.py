@@ -293,14 +293,27 @@ class TestSessionPickerSection:
         result = section.navigate(Qt.Key.Key_Down, buttons[2][1])
         assert result is False
 
-    def test_down_at_last_card_focuses_recent_item(self):
+    def test_down_at_last_card_focuses_header_then_recent(self):
         section, page, buttons = self._make_page(["a", "b", "c"])
         recent = MagicMock()
         recent.isVisible = MagicMock(return_value=True)
+        recent.focus_header_control = MagicMock(return_value=True)
+        page._recent_panel = recent
+        result = section.navigate(Qt.Key.Key_Down, buttons[2][1])
+        assert result is True
+        recent.focus_header_control.assert_called_once_with(True)
+        recent.focus_recent_item.assert_not_called()
+
+    def test_down_at_last_card_falls_back_to_recent_when_no_header(self):
+        section, page, buttons = self._make_page(["a", "b", "c"])
+        recent = MagicMock()
+        recent.isVisible = MagicMock(return_value=True)
+        recent.focus_header_control = MagicMock(return_value=False)
         recent.focus_recent_item = MagicMock(return_value=True)
         page._recent_panel = recent
         result = section.navigate(Qt.Key.Key_Down, buttons[2][1])
         assert result is True
+        recent.focus_header_control.assert_called_once_with(True)
         recent.focus_recent_item.assert_called_once_with(True)
 
     def test_right_from_nothing_consumed(self):

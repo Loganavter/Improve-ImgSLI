@@ -38,9 +38,11 @@ class SessionPickerSection:
             elif card_idx < len(cards) - 1:
                 cards[card_idx + 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
-            # Past last card — try to hand off to first recent item.
+            # Past last card — try to hand off to recent shelf.
             recent = getattr(self._page, "_recent_panel", None)
             if recent is not None and recent.isVisible():
+                if recent.focus_header_control(True):
+                    return True
                 if recent.focus_recent_item(True):
                     return True
             # No recent panel — yield to next section.
