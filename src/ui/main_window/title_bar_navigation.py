@@ -45,11 +45,9 @@ class TitleBarNavigationSection:
         return True
 
     def focus_first(self) -> bool:
-        self._title_bar.setFocus(Qt.FocusReason.OtherFocusReason)
         self._title_bar.focus_first_button()
         return True
 
     def focus_last(self) -> bool:
-        self._title_bar.setFocus(Qt.FocusReason.OtherFocusReason)
         self._title_bar.focus_last_button()
         return True
