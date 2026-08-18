@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QLineF, QObject, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QLineF, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
 from sli_ui_toolkit.managers import UiScale, scaled_px
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow
@@ -36,25 +36,6 @@ from ui.theming import resolve_theme_color
 logger = logging.getLogger("ImproveImgSLI")
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
-
-
-class _NavigationFilter(QObject):
-    """Catch arrow keys for navigation within the session picker page.
-
-    Following KDevelop's pattern: explicit focus placement on state
-    transitions, not chain-based traversal.
-    """
-
-    _ARROWS = {Qt.Key.Key_Down, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Left}
-
-    def __init__(self, page):
-        super().__init__(page)
-        self._page = page
-
-    def eventFilter(self, watched, event) -> bool:  # noqa: N802
-        if event.type() == QEvent.Type.KeyPress and event.key() in self._ARROWS:
-            return self._page._navigate(event.key())
-        return False
 
 
 class _OpaqueFillWidget(QWidget):
@@ -255,11 +236,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 lambda: self._recent_panel.focus_header_control(False)
             )
 
-        # Arrow key navigation filter on scroll area and page itself
-        self._nav_filter = _NavigationFilter(self)
-        self._page_scroll.installEventFilter(self._nav_filter)
-        self.installEventFilter(self._nav_filter)
-
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
         )
@@ -365,69 +341,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
     def _card_entries(self) -> list[tuple[str, Button]]:
         # dict preserves insertion order = create-cards' visual (layout) order.
         return list(self._cards_by_type.items())
-
-    def _navigate(self, key: int) -> bool:
-        """Handle arrow key navigation within the session picker.
-
-        Following KDevelop's pattern: explicit focus placement, not chain traversal.
-        """
-        focused = QApplication.focusWidget()
-        cards = [card for _st, card in self._card_entries()]
-
-        # Find current position in cards
-        card_idx = next((i for i, c in enumerate(cards) if c is focused), None)
-
-        is_down = key in (Qt.Key.Key_Down, Qt.Key.Key_Right)
-        is_up = key in (Qt.Key.Key_Up, Qt.Key.Key_Left)
-
-        if is_down:
-            if card_idx is None:
-                # Not on a card → focus first card
-                if cards:
-                    cards[0].setFocus(Qt.FocusReason.OtherFocusReason)
-                    return True
-            elif card_idx < len(cards) - 1:
-                # Move to next card
-                cards[card_idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            # Past last card → let default handler (scroll, etc.)
-            return False
-
-        if is_up:
-            if card_idx is None:
-                # Not on a card → let default handler
-                return False
-            if card_idx > 0:
-                # Move to previous card
-                cards[card_idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            # At first card → find tab strip and focus it
-            tab_strip = self._find_tab_strip()
-            if tab_strip is not None:
-                tab_strip.setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            return False
-
-        return False
-
-    def _find_tab_strip(self):
-        """Find WorkspaceTabsBar by walking the widget tree."""
-        window = self.window()
-        if window is None:
-            return None
-        queue = [window]
-        while queue:
-            w = queue.pop(0)
-            if w.objectName() == "WorkspaceTabsBar":
-                return w
-            layout = w.layout()
-            if layout is not None:
-                for i in range(layout.count()):
-                    item = layout.itemAt(i)
-                    child = item.widget() if item is not None else None
-                    if child is not None:
-                        queue.append(child)
-        return None
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802
         if (

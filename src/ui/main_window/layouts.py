@@ -43,12 +43,24 @@ class LayoutComposer:
         if active is not None:
             ui.sync_session_mode(active.session_type)
         self._configure_workspace_tabs()
+        self._configure_navigation()
 
     def _configure_workspace_tabs(self) -> None:
         ui = self.ui
         tabs = ui.workspace_tabs
         tabs.setObjectName("WorkspaceTabsBar")
         tabs.tab_bar.setObjectName("WorkspaceTabs")
+
+    def _configure_navigation(self) -> None:
+        from core.navigation import NavigationManager
+        from core.navigation_sections import SessionPickerSection, TabStripSection
+
+        ui = self.ui
+        session_picker_page = ui._tab_registry.get_page("session_picker")
+        if session_picker_page is not None:
+            manager = NavigationManager.get_instance()
+            manager.register(TabStripSection(ui.workspace_tabs))
+            manager.register(SessionPickerSection(session_picker_page))
 
     def _workspace_bar_widget(self, main_window: QWidget) -> QWidget:
         ui = self.ui
