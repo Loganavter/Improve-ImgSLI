@@ -17,13 +17,18 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def _title_bar_focusable_buttons(title_bar: QWidget) -> list[QWidget]:
-    """Collect visible, StrongFocus children of the title bar in layout order."""
+    """Collect visible, StrongFocus children of the title bar in layout order.
+
+    Only includes widgets whose parent chain goes through *title_bar*
+    (``findChildren`` is recursive but we double-check to avoid false matches
+    from reparented or overlay widgets).
+    """
     buttons: list[QWidget] = []
     for child in title_bar.findChildren(QWidget):
         if (
             child.isVisible()
             and child.focusPolicy() == Qt.FocusPolicy.StrongFocus
-            and child.parentWidget() is not None
+            and title_bar.isAncestorOf(child)
         ):
             buttons.append(child)
     return buttons
@@ -83,8 +88,9 @@ class TitleBarNavigationSection:
         buttons = _title_bar_focusable_buttons(self._title_bar)
         if buttons:
             logger.debug(
-                "[nav-titlebar] focus_first → %s",
+                "[nav-titlebar] focus_first → %s (of %d)",
                 type(buttons[0]).__name__,
+                len(buttons),
             )
             buttons[0].setFocus(Qt.FocusReason.OtherFocusReason)
             return True
@@ -94,11 +100,25 @@ class TitleBarNavigationSection:
     def focus_last(self) -> bool:
         buttons = _title_bar_focusable_buttons(self._title_bar)
         if buttons:
+            btn = buttons[-1]
             logger.debug(
-                "[nav-titlebar] focus_last → %s",
-                type(buttons[-1]).__name__,
+                "[nav-titlebar] focus_last pre-setFocus: btn=%s policy=%s "
+                "visible=%s geom=%s parent=%s",
+                type(btn).__name__,
+                btn.focusPolicy().name,
+                btn.isVisible(),
+                btn.geometry().getRect(),
+                type(btn.parentWidget()).__name__,
             )
-            buttons[-1].setFocus(Qt.FocusReason.OtherFocusReason)
+            btn.setFocus(Qt.FocusReason.OtherFocusReason)
+            actual = QApplication.focusWidget()
+            logger.debug(
+                "[nav-titlebar] focus_last post-setFocus: actual=%s hasFocus=%s "
+                "owner_check=%s",
+                type(actual).__name__ if actual else None,
+                btn.hasFocus(),
+                self.owns(actual) if actual else None,
+            )
             return True
         logger.debug("[nav-titlebar] focus_last → False (no buttons)")
         return False
