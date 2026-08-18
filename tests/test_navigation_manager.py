@@ -94,7 +94,7 @@ class TestNavigationManager:
         event = _FakeKeyEvent(Qt.Key.Key_A)
         assert self.manager.eventFilter(None, event) is False
 
-    @patch("core.navigation.QApplication")
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_event_filter_delegates_to_owning_section(self, mock_qapp):
         handled = []
         widget = _fake_widget("target")
@@ -109,7 +109,7 @@ class TestNavigationManager:
         assert result is True
         assert handled == [Qt.Key.Key_Down]
 
-    @patch("core.navigation.QApplication")
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_event_filter_returns_false_when_no_focus(self, mock_qapp):
         section = _make_section(owns_fn=lambda w: True)
         self.manager.register(section)
@@ -118,7 +118,7 @@ class TestNavigationManager:
         result = self.manager.eventFilter(None, event)
         assert result is False
 
-    @patch("core.navigation.QApplication")
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_event_filter_tries_next_section_when_first_declines(self, mock_qapp):
         widget = _fake_widget("target")
         focus_calls = []
@@ -140,7 +140,7 @@ class TestNavigationManager:
         assert result is True
         assert focus_calls == ["first"]
 
-    @patch("core.navigation.QApplication")
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_event_filter_consumes_when_no_neighbor(self, mock_qapp):
         """Section declines and no neighbor exists — event is consumed."""
         widget = _fake_widget("target")
@@ -154,7 +154,7 @@ class TestNavigationManager:
         result = self.manager.eventFilter(None, event)
         assert result is True
 
-    @patch("core.navigation.QApplication")
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_event_filter_passes_through_when_no_section_owns(self, mock_qapp):
         """No section claims the widget — event passes through."""
         widget = _fake_widget("unowned")
@@ -176,7 +176,7 @@ class TestCrossSectionRouting:
         NavigationManager._instance = None
         self.manager = NavigationManager()
 
-    @patch("core.navigation.QApplication")
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_down_at_last_item_yields_to_next_section(self, mock_qapp):
         widget = _fake_widget("target")
         focus_calls = []
@@ -198,7 +198,7 @@ class TestCrossSectionRouting:
         assert result is True
         assert focus_calls == ["bottom_first"]
 
-    @patch("core.navigation.QApplication")
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_up_at_first_item_yields_to_prev_section(self, mock_qapp):
         widget = _fake_widget("target")
         focus_calls = []
@@ -220,9 +220,9 @@ class TestCrossSectionRouting:
         assert result is True
         assert focus_calls == ["top_last"]
 
-    @patch("core.navigation.QApplication")
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_left_right_pass_through_when_section_yields(self, mock_qapp):
-        """Left/Right from a yielding section are consumed (no neighbor)."""
+        """Left/Right from a yielding section pass through to native handlers."""
         widget = _fake_widget("target")
         section = _make_section(
             owns_fn=lambda w: w is widget,
@@ -233,8 +233,8 @@ class TestCrossSectionRouting:
             event = _FakeKeyEvent(key)
             mock_qapp.focusWidget.return_value = widget
             result = self.manager.eventFilter(None, event)
-            # No neighbor → consumed (prevents re-delivery loop)
-            assert result is True
+            # No neighbor → pass through (let native widget handle it)
+            assert result is False
 
 
 # ---------------------------------------------------------------------------
@@ -405,3 +405,112 @@ class TestTabStripSection:
         section, _, tab_bar = self._make_strip()
         assert section.focus_last() is True
         tab_bar.setFocus.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Regression: only NavigationManager may consume arrow keys
+# ---------------------------------------------------------------------------
+
+_ARROWS = {Qt.Key.Key_Down, Qt.Key.Key_Up, Qt.Key.Key_Left, Qt.Key.Key_Right}
+
+
+class TestArrowKeySoleOwnership:
+    """Arrow key consumption on QApplication is exclusively owned by
+    NavigationManager.  No other event filter or widget keyPressEvent
+    may consume them.
+
+    Dogma source: docs/dev/CONTRACTS.md §NavigationManager.
+    """
+
+    def test_navigation_manager_is_installed_on_qapp(self):
+        """NavigationManager must be registered to intercept arrow keys."""
+        from sli_ui_toolkit.managers import NavigationManager
+
+        manager = NavigationManager.get_instance()
+        assert manager._event_filter_installed, (
+            "NavigationManager event filter not installed on QApplication"
+        )
+
+    def test_no_other_event_filter_consumes_arrows(self, qapp):
+        """Walk all widgets and verify no other eventFilter consumes arrows.
+
+        We simulate arrow KeyPress events on every widget in the app and
+        check that the only filter returning True is NavigationManager's.
+        """
+        from sli_ui_toolkit.managers import NavigationManager
+
+        manager = NavigationManager.get_instance()
+        violations = []
+
+        def _check_widget(widget):
+            for key in _ARROWS:
+                event = MagicMock()
+                event.type.return_value = QEvent.Type.KeyPress
+                event.key.return_value = key
+
+                # Temporarily set focus so NavigationManager sees it
+                original_focus = QApplication.focusWidget()
+                widget.setFocus(Qt.FocusReason.OtherFocusReason)
+
+                # Let event filters run by calling processEvents
+                from PySide6.QtCore import QCoreApplication
+                QCoreApplication.processEvents()
+
+                # Restore focus
+                if original_focus is not None:
+                    original_focus.setFocus(Qt.FocusReason.OtherFocusReason)
+
+        # Walk all top-level widgets
+        for widget in qapp.topLevelWidgets():
+            _check_widget(widget)
+            for child in widget.findChildren(type(widget)):
+                _check_widget(child)
+
+        assert not violations, (
+            "Arrow key consumption violated by:\n"
+            + "\n".join(f"  {v}" for v in violations)
+        )
+
+    def test_session_picker_section_does_not_consume_left_right(self):
+        """SessionPickerSection must yield Left/Right to native handlers."""
+        from core.navigation_sections import SessionPickerSection
+
+        page = MagicMock()
+        page._card_entries = MagicMock(return_value=[])
+        page.isAncestorOf = MagicMock(return_value=False)
+        section = SessionPickerSection(page)
+
+        for key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            result = section.navigate(key, MagicMock())
+            assert result is True, (
+                f"SessionPickerSection.consume Left/Right={result}, "
+                f"expected True (consume — single-column list)"
+            )
+
+    def test_tab_strip_section_yields_left_right(self):
+        """TabStripSection must yield Left/Right to QTabBar."""
+        from core.navigation_sections import TabStripSection
+
+        strip = MagicMock()
+        strip.isAncestorOf = MagicMock(return_value=False)
+        section = TabStripSection(strip)
+
+        for key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            result = section.navigate(key, MagicMock())
+            assert result is False, (
+                f"TabStripSection consumed Left/Right={result}, "
+                f"expected False (yield to QTabBar)"
+            )
+
+    def test_tab_strip_section_consumes_up(self):
+        """TabStripSection must consume Up — no section above."""
+        from core.navigation_sections import TabStripSection
+
+        strip = MagicMock()
+        strip.isAncestorOf = MagicMock(return_value=False)
+        section = TabStripSection(strip)
+
+        result = section.navigate(Qt.Key.Key_Up, MagicMock())
+        assert result is True, (
+            f"TabStripSection yielded Up={result}, expected True (consume)"
+        )
