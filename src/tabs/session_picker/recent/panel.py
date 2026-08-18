@@ -482,33 +482,6 @@ class RecentProjectsPanel(ShelfWidget):
         # via Qt's standard focus traversal mechanism.
         super().keyPressEvent(event)
 
-    def navigate(self, key: int, widget: QWidget) -> bool:
-        """Handle arrow-key navigation within the shelf.
-
-        Down from header → first shelf item.
-        Down from shelf items → consumed (no further down).
-        Up from shelf items → shelf header.
-        Up from header → False (yield to session picker → create-cards).
-        """
-        header = getattr(self, "_header", None)
-        is_header = header is not None and header.isAncestorOf(widget)
-
-        if key == Qt.Key.Key_Down:
-            if is_header:
-                if self.focus_recent_item(True):
-                    return True
-                return False
-            return True  # shelf items: consumed (bottom of section)
-
-        if key == Qt.Key.Key_Up:
-            if is_header:
-                return False  # yield to session picker → create-cards
-            if self.focus_header_control(False):
-                return True
-            return False
-
-        return True
-
     def _on_marquee_preview(self, paths: set[str], additive: bool) -> None:
         selection_ops.on_marquee_preview(self, paths, additive)
 
