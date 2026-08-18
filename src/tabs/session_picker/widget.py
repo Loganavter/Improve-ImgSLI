@@ -259,10 +259,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                 lambda: self._recent_panel.focus_header_control(False)
             )
 
-        # Install arrow key filter on the page itself so arrow keys work
-        # regardless of which child widget has focus.
+        # Install arrow key filter on the scroll area so arrow keys work
+        # regardless of which child widget has focus. OverlayScrollArea
+        # eats arrow keys for scrolling, so we must intercept before it.
         self._arrow_filter = _ArrowKeyFilter(self)
-        self.installEventFilter(self._arrow_filter)
+        self._page_scroll.installEventFilter(self._arrow_filter)
 
         translatable_callback(
             self, lambda _lang: self._retranslate(), defer_when_hidden=True
