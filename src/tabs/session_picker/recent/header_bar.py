@@ -15,7 +15,6 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 from sli_ui_toolkit.widgets import (
     Button,
     ContextMenuAction,
-    popup_context_menu_for_anchor,
 )
 from sli_ui_toolkit.ui.widgets.composite.context_menu.menu import ContextMenu
 
@@ -48,6 +47,7 @@ class RecentHeaderBar(QWidget):
         self._sort_order = SORT_DESC
         self._view_mode = "grid"
         self.setObjectName("RecentHeaderBar")
+        self._sort_menu: ContextMenu | None = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -198,11 +198,12 @@ class RecentHeaderBar(QWidget):
             on_triggered=on_triggered,
             surface="in_window",
         )
+        self._sort_menu = menu
         self.sort_button._anchor_context_menu = menu  # type: ignore[attr-defined]
         menu.show_aligned(
             self.sort_button,
-            anchor_point="bottom-left",
-            flyout_point="top-left",
+            anchor_point="bottom-center",
+            flyout_point="top-center",
             offset=2,
             animation_axis="vertical",
         )
