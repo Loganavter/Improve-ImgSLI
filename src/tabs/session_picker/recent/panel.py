@@ -322,6 +322,14 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
             )
             self._sync_shelf_panel_height()
             self._schedule_deferred_relayout()
+        # When the header bar buttons have keyboard focus, forward arrow /
+        # Enter key presses to the panel so shelf navigation still works.
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and watched is self._header
+        ):
+            self.keyPressEvent(event)
+            return event.isAccepted()
         return super().eventFilter(watched, event)
 
     def _sync_shelf_panel_height(self) -> None:
@@ -588,6 +596,7 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
         self._header = RecentHeaderBar(self, tr=self._tr)
         self._header.prefs_changed.connect(self._on_header_prefs_changed)
         self.add_header_widget(self._header)
+        self._header.installEventFilter(self)
 
         self._items = RecentItemsView(self)
         self._items.configure(
