@@ -416,23 +416,35 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             )
             return True
         # Past the edge of the create-cards: continue into the shelf
-        # header controls first, then the recent items (first item going
-        # down, last item going up).
+        # header controls first, then the recent items.
+        # Down past cards → first header button → recent items
+        # Up past cards → last header button → propagate up (tab strip)
         if self._recent_panel is not None:
-            if self._recent_panel.focus_header_control(offset > 0):
-                logger.debug(
-                    "[picker-nav] focus_create_card offset=%d past cards -> header (first=%s)",
-                    offset,
-                    offset > 0,
-                )
-                return True
-            if self._recent_panel.focus_recent_item(offset > 0):
-                logger.debug(
-                    "[picker-nav] focus_create_card offset=%d past cards -> recent item (first=%s)",
-                    offset,
-                    offset > 0,
-                )
-                return True
+            if offset > 0:
+                # Down past cards → first header button (nearest to cards)
+                if self._recent_panel.focus_header_control(True):
+                    logger.debug(
+                        "[picker-nav] focus_create_card offset=%d past cards -> header (first=True)",
+                        offset,
+                    )
+                    return True
+                # Then recent items (first)
+                if self._recent_panel.focus_recent_item(True):
+                    logger.debug(
+                        "[picker-nav] focus_create_card offset=%d past cards -> recent item (first=True)",
+                        offset,
+                    )
+                    return True
+            else:
+                # Up past cards → last header button (nearest to cards)
+                if self._recent_panel.focus_header_control(False):
+                    logger.debug(
+                        "[picker-nav] focus_create_card offset=%d past cards -> header (first=False)",
+                        offset,
+                    )
+                    return True
+                # No more shelf content → propagate to tab strip
+                return False
         target %= len(entries)
         entries[target][1].setFocus(Qt.FocusReason.OtherFocusReason)
         logger.debug(
@@ -460,6 +472,12 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             Qt.Key.Key_Left,
         ):
             offset = 1 if key in (Qt.Key.Key_Down, Qt.Key.Key_Right) else -1
+            # Up/Left from the shelf (header/recent items) should propagate
+            # to the parent (tab strip), not loop back into cards.
+            if offset < 0 and self._focus_is_in_shelf():
+                event.ignore()
+                super().keyPressEvent(event)
+                return
             if self._focus_create_card(offset):
                 event.accept()
                 return
@@ -468,6 +486,35 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             hex(event.key()),
         )
         super().keyPressEvent(event)
+
+    def _focus_is_in_shelf(self) -> bool:
+        """True when focus is on a header button or recent item (not a card)."""
+        focused = QApplication.focusWidget()
+        if focused is None:
+            return False
+        # Check if focused in any card
+        for _st, card in self._card_entries():
+            if card is focused:
+                return False
+        # Check if focused in the shelf (header or recent items)
+        panel = self._recent_panel
+        if panel is None:
+            return False
+        header = getattr(panel, "_header", None)
+        if header is not None:
+            buttons = [
+                b for b in (header.sort_button, header.sort_order_button, header.view_button)
+                if b.isVisible()
+            ]
+            if focused in buttons:
+                return True
+        # Check if focused in items view (recent cards)
+        items = getattr(panel, "_items", None)
+        if items is not None:
+            cards_host = getattr(items, "items_host", None)
+            if cards_host is not None and cards_host.isAncestorOf(focused):
+                return True
+        return False
 
     def _create_card_has_focus(self) -> bool:
         focused = QApplication.focusWidget()
