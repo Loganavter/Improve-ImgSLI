@@ -110,9 +110,9 @@ class RecentHeaderBar(QWidget):
                 "[shelf-nav] header left/up idx=%s -> create-cards (past first)", idx
             )
             picker = self.parentWidget()
-            while picker is not None and not hasattr(picker, "_nav_focus_last"):
+            while picker is not None and not hasattr(picker, "focus_last_create_card"):
                 picker = picker.parentWidget()
-            if picker is not None and picker._nav_focus_last():
+            if picker is not None and picker.focus_last_create_card():
                 event.accept()
                 return
             event.ignore()

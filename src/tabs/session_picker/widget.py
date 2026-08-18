@@ -564,6 +564,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
         return True
 
+    def focus_last_create_card(self) -> bool:
+        """Focus the last create-card.  Called by child widgets (e.g. the
+        recent shelf header bar) for internal section handoff."""
+        return self._nav_focus_last()
+
     def _nav_focus_first(self) -> bool:
         from PySide6.QtCore import Qt
 

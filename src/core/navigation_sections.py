@@ -8,8 +8,12 @@ keys because the tab bar consumes them first).
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 class SessionPickerSection:
@@ -33,29 +37,44 @@ class SessionPickerSection:
         if key == Qt.Key.Key_Down:
             if card_idx is None:
                 if cards:
+                    logger.debug(
+                        "[nav-card] Down from non-card → first card (%s)",
+                        type(cards[0][1]).__name__,
+                    )
                     cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
                     return True
             elif card_idx < len(cards) - 1:
+                logger.debug(
+                    "[nav-card] Down card[%d] → card[%d]", card_idx, card_idx + 1
+                )
                 cards[card_idx + 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
             # Past last card — try to hand off to recent shelf.
             recent = getattr(self._page, "_recent_panel", None)
             if recent is not None and recent.isVisible():
                 if recent.focus_header_control(True):
+                    logger.debug("[nav-card] Down past last card → shelf header")
                     return True
                 if recent.focus_recent_item(True):
+                    logger.debug("[nav-card] Down past last card → first recent item")
                     return True
             # No recent panel — yield to next section.
+            logger.debug("[nav-card] Down past last card → yield (no shelf)")
             return False
 
         if key == Qt.Key.Key_Up:
             if card_idx is None:
+                logger.debug("[nav-card] Up from non-card → yield")
                 return False
             if card_idx > 0:
+                logger.debug(
+                    "[nav-card] Up card[%d] → card[%d]", card_idx, card_idx - 1
+                )
                 cards[card_idx - 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
                 return True
             # At first card — yield so NavigationManager can hand off to
             # the tab strip (the section above).
+            logger.debug("[nav-card] Up from first card → yield to tab strip")
             return False
 
         # Left/Right: single-column list, nothing horizontal to navigate.
@@ -80,7 +99,8 @@ class TabStripSection:
     """Arrow-key navigation for the workspace tab strip.
 
     Left/Right between tabs is handled natively by QTabBar (the event
-    filter never sees those keys).  Down yields to the session picker.
+    filter never sees those keys because the tab bar consumes them first).
+    Down yields to the session picker.
     """
 
     def __init__(self, tab_strip: QWidget) -> None:
