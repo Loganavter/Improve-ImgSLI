@@ -190,6 +190,57 @@ class ShelfWidget(QWidget):
     def content_host(self) -> QWidget:
         return self._content_host
 
+    def header_host(self) -> QWidget:
+        return self._header_host
+
+    # ----- keyboard navigation ---------------------------------------------
+
+    def navigate(self, key: int, widget: QWidget) -> bool:
+        """Generic arrow-key navigation between shelf header and content.
+
+        Down from header → first focusable child of content host.
+        Up from content → header host.
+        Up from header → ``False`` (yield to parent section).
+        Down from content → ``True`` (consumed, bottom of shelf).
+        """
+        from PySide6.QtCore import Qt
+
+        is_header = self._header_host.isAncestorOf(widget)
+
+        if key == Qt.Key.Key_Down:
+            if is_header:
+                target = self._first_focusable(self._content_host)
+                if target is not None:
+                    target.setFocus(Qt.FocusReason.OtherFocusReason)
+                    return True
+                return False
+            return True
+
+        if key == Qt.Key.Key_Up:
+            if is_header:
+                return False
+            target = self._first_focusable(self._header_host)
+            if target is not None:
+                target.setFocus(Qt.FocusReason.OtherFocusReason)
+                return True
+            return False
+
+        return True
+
+    @staticmethod
+    def _first_focusable(container: QWidget):
+        """Return the first visible, enabled, StrongFocus descendant."""
+        from PySide6.QtWidgets import QApplication
+
+        for child in container.findChildren(QWidget):
+            if (
+                child.isVisible()
+                and child.isEnabled()
+                and child.focusPolicy() == Qt.FocusPolicy.StrongFocus
+            ):
+                return child
+        return None
+
     # ----- chrome ----------------------------------------------------------
 
     def _surface_color(self) -> QColor:
