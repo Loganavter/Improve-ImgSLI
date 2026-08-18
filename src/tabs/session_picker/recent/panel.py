@@ -329,7 +329,13 @@ class RecentProjectsPanel(ThemedWidget, ShelfWidget):
             event.type() == QEvent.Type.KeyPress
             and watched is self._header
         ):
-            return self._handle_header_key_press(event)
+            result = self._handle_header_key_press(event)
+            import logging
+            logging.getLogger(__name__).debug(
+                "PANEL-FILTER: header key=%s result=%s accepted=%s",
+                event.key(), result, event.isAccepted(),
+            )
+            return result
         return super().eventFilter(watched, event)
 
     def _sync_shelf_panel_height(self) -> None:

@@ -384,14 +384,21 @@ class SessionPickerWidget(ThemedWidget, QWidget):
     def _focus_create_card(self, offset: int) -> bool:
         """Move keyboard focus ``offset`` create-cards (or hand off to the
         recent shelf when the move crosses the end of the card list)."""
+        import logging
+        _log = logging.getLogger(__name__)
         entries = self._card_entries()
         if not entries:
+            _log.debug("FOCUS-CARD: no entries, returning False")
             return False
 
         focused = QApplication.focusWidget()
         current = next(
             (i for i, (_st, card) in enumerate(entries) if card is focused),
             None,
+        )
+        _log.debug(
+            "FOCUS-CARD: offset=%d focused=%s current=%s entries=%d",
+            offset, type(focused).__name__ if focused else None, current, len(entries),
         )
         if current is None:
             target = 0 if offset > 0 else len(entries) - 1
@@ -422,6 +429,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         return False
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
+        import logging
+        _log = logging.getLogger(__name__)
         key = event.key()
         if key in (
             Qt.Key.Key_Down,
@@ -430,7 +439,9 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             Qt.Key.Key_Left,
         ):
             offset = 1 if key in (Qt.Key.Key_Down, Qt.Key.Key_Right) else -1
-            if self._focus_create_card(offset):
+            handled = self._focus_create_card(offset)
+            _log.debug("PICKER: key=%s handled=%s entries=%d", key, handled, len(self._card_entries()))
+            if handled:
                 event.accept()
                 return
         super().keyPressEvent(event)
