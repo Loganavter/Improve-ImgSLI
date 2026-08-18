@@ -27,6 +27,8 @@ from sli_ui_toolkit.widgets import (
 )
 
 from ui.theming import resolve_theme_color
+
+logger = logging.getLogger("ImproveImgSLI")
 from ui.widgets.shelf import (
     PANEL_RADIUS,
     SHELF_MARGIN_BOTTOM,
@@ -821,8 +823,15 @@ class RecentProjectsPanel(ShelfWidget):
                 event.accept()
                 logger.debug("[shelf-nav] keyPressEvent Escape -> clear selection")
                 return
-        # Arrow/Enter navigation is handled by RecentHeaderBar.keyPressEvent
-        # and RecentItemsView.eventFilter — no panel-level interception needed.
+        if key in (Qt.Key.Key_Up, Qt.Key.Key_Left):
+            page = self.parentWidget()
+            while page is not None and not hasattr(page, "_focus_create_card"):
+                page = page.parentWidget()
+            if page is not None:
+                if page._focus_create_card(-1):
+                    event.accept()
+                    logger.debug("[shelf-nav] Up/Left -> handoff to page create-cards")
+                    return
         super().keyPressEvent(event)
 
     def _on_marquee_preview(self, paths: set[str], additive: bool) -> None:
