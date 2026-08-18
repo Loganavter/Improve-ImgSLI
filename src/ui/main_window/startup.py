@@ -174,6 +174,14 @@ class MainWindowStartupRuntime:
         nav_manager = NavigationManager.get_instance()
         nav_manager.auto_register_from_descriptors()
 
+        # CSD title bar is a toolkit widget without widget_descriptor;
+        # register its navigation section manually (must be first = topmost).
+        title_bar = getattr(window, "_custom_title_bar", None)
+        if title_bar is not None:
+            from ui.main_window.title_bar_navigation import TitleBarNavigationSection
+
+            nav_manager.register(title_bar, TitleBarNavigationSection(title_bar))
+
         window.appearance.update_image_label_background()
         if window.main_controller and window.main_controller.sessions:
             window.main_controller.sessions.initialize_app_display()
