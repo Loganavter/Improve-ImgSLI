@@ -540,6 +540,13 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
         if key == Qt.Key.Key_Down:
             if card_idx is None:
+                recent = getattr(self, "_recent_panel", None)
+                if (
+                    recent is not None
+                    and recent.isVisible()
+                    and recent.isAncestorOf(widget)
+                ):
+                    return recent.navigate(key, widget)
                 if cards:
                     logger.debug(
                         "[nav-picker] Down from non-card → first card (%s)",
@@ -567,11 +574,12 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         if key == Qt.Key.Key_Up:
             if card_idx is None:
                 recent = getattr(self, "_recent_panel", None)
-                if recent is not None and recent.isVisible():
-                    logger.debug(
-                        "[nav-picker] Up from shelf widget → last create-card"
-                    )
-                    return self._nav_focus_last()
+                if (
+                    recent is not None
+                    and recent.isVisible()
+                    and recent.isAncestorOf(widget)
+                ):
+                    return recent.navigate(key, widget)
                 logger.debug("[nav-picker] Up from non-card → yield")
                 return False
             if card_idx > 0:
