@@ -2,8 +2,8 @@
 
 ``SessionPickerSection`` navigates the create-cards list in the session
 picker page.  ``TabStripSection`` owns the workspace tab bar and delegates
-Left/Right to QTabBar's native handling (our event filter never sees those
-keys because the tab bar consumes them first).
+Left/Right to ``_AdaptiveTabBar``'s native handling (our event filter never
+sees those keys because the tab bar consumes them first).
 """
 
 from __future__ import annotations
@@ -98,9 +98,9 @@ class SessionPickerSection:
 class TabStripSection:
     """Arrow-key navigation for the workspace tab strip.
 
-    Left/Right between tabs is handled natively by QTabBar (the event
-    filter never sees those keys because the tab bar consumes them first).
-    Down yields to the session picker.
+    Left/Right between tabs is handled natively by ``_AdaptiveTabBar``
+    (the event filter never sees those keys because the tab bar consumes
+    them first).  Down yields to the session picker.
     """
 
     def __init__(self, tab_strip: QWidget) -> None:
@@ -110,9 +110,9 @@ class TabStripSection:
         return self._tab_strip.isAncestorOf(widget) or widget is self._tab_strip
 
     def navigate(self, key: int, widget: QWidget) -> bool:
-        # Left/Right are handled by QTabBar itself — don't consume them here.
-        # Down yields to the session picker below.
-        # Up — consume: no section above the tab strip.
+        # Left/Right are handled by _AdaptiveTabBar itself — don't consume
+        # them here.  Down yields to the session picker below.
+        # Up — yield so NavigationManager can hand off to the title bar.
         if key == Qt.Key.Key_Up:
             return True
         return False

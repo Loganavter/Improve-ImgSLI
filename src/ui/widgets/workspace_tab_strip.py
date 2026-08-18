@@ -16,11 +16,12 @@ from sli_ui_toolkit.ui.widgets.composite.adaptive_tab_strip import (
 class WorkspaceTabStrip(AdaptiveTabStrip):
     """Adaptive tabs with browser-like close interactions.
 
-    Eats mouse presses that land on a tab's close-button slot so QTabBar does
-    not activate the tab on press while the close button is being clicked.
-    Without this, clicking the X on an inactive tab briefly switches to that
-    tab (currentChanged on press) before the close is processed on release,
-    flashing the closed tab's page for one frame.
+    Eats mouse presses that land on a tab's close-button slot so
+    ``_AdaptiveTabBar`` does not activate the tab on press while the close
+    button is being clicked.  Without this, clicking the X on an inactive
+    tab briefly switches to that tab (currentChanged on press) before the
+    close is processed on release, flashing the closed tab's page for one
+    frame.
     """
 
     def __init__(self, *args, **kwargs):
@@ -56,10 +57,10 @@ class WorkspaceTabStrip(AdaptiveTabStrip):
             ):
                 _slot, idx = self._close_slot_at(event.pos())
                 if idx >= 0:
-                    # Eat the press so QTabBar doesn't activate the tab on
-                    # mousePress while the X-button is still being clicked.
-                    # The inner close button's own ``clicked`` signal handles
-                    # the close on mouseRelease.
+                    # Eat the press so _AdaptiveTabBar doesn't activate the
+                    # tab on mousePress while the X-button is still being
+                    # clicked.  The inner close button's own ``clicked``
+                    # signal handles the close on mouseRelease.
                     event.accept()
                     return True
         return super().eventFilter(watched, event)
