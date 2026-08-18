@@ -1,4 +1,4 @@
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QMouseEvent,
     QDragEnterEvent,
@@ -56,6 +56,57 @@ class EventHandler(QObject):
 
     def eventFilter(self, watched_obj, event: QEvent) -> bool:
         event_type = event.type()
+
+        # --- debug: trace focus and key events ---
+        if event_type == QEvent.Type.FocusIn:
+            w = QApplication.focusWidget()
+            logger.debug(
+                "[FOCUS] FocusIn obj=%s widget=%s reason=%s",
+                type(watched_obj).__name__,
+                type(w).__name__ if w else None,
+                event.reason().name if hasattr(event, "reason") else "?",
+            )
+        elif event_type == QEvent.Type.FocusOut:
+            logger.debug("[FOCUS] FocusOut obj=%s", type(watched_obj).__name__)
+        elif event_type == QEvent.Type.KeyPress:
+            w = QApplication.focusWidget()
+            logger.debug(
+                "[KEY] KeyPress key=%s obj=%s widget=%s content=%s",
+                event.key(),
+                type(watched_obj).__name__,
+                type(w).__name__ if w else None,
+                self._in_content_area(w) if w else "?",
+            )
+        # --- end debug ---
+
+        # Systemic escape: if Up/Left doesn't move focus out of the content
+        # area, escape to the tab bar.
+        if event_type == QEvent.Type.KeyPress and event.key() in (
+            Qt.Key.Key_Up,
+            Qt.Key.Key_Left,
+        ):
+            w_before = QApplication.focusWidget()
+            # Capture AFTER propagation: QTimer(0) fires after the event
+            # and any synchronous setFocus() calls finish.
+            def _check_escaped(wb=w_before):
+                w_after = QApplication.focusWidget()
+                still_in = w_after is not None and self._in_content_area(w_after)
+                was_in = wb is not None and self._in_content_area(wb)
+                logger.debug(
+                    "[NAV] escape check: before=%s after=%s was_in=%s still_in=%s",
+                    type(wb).__name__ if wb else None,
+                    type(w_after).__name__ if w_after else None,
+                    was_in, still_in,
+                )
+                if was_in and still_in:
+                    tab_bar = self._get_tab_bar()
+                    if tab_bar is not None:
+                        logger.debug(
+                            "[NAV] escape: %s stuck in content → tab_bar",
+                            type(wb).__name__,
+                        )
+                        tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+            QTimer.singleShot(0, _check_escaped)
 
         dnd_service = DragAndDropService.get_instance()
         if route_drag_and_drop_override(self, event, dnd_service):
