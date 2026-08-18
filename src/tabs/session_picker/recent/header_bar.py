@@ -105,10 +105,16 @@ class RecentHeaderBar(QWidget):
                     idx, idx - 1, len(buttons),
                 )
                 return
-            # Past first → propagate to parent (session picker create-cards).
+            # Past first → hand off to last create-card in the session picker.
             logger.debug(
-                "[shelf-nav] header left/up idx=%s -> propagate (past first)", idx
+                "[shelf-nav] header left/up idx=%s -> create-cards (past first)", idx
             )
+            picker = self.parentWidget()
+            while picker is not None and not hasattr(picker, "_nav_focus_last"):
+                picker = picker.parentWidget()
+            if picker is not None and picker._nav_focus_last():
+                event.accept()
+                return
             event.ignore()
             super().keyPressEvent(event)
             return
