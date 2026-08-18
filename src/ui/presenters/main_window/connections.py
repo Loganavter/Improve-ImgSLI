@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from ui.presenters.main_window.actions import (
     on_error_occurred,
@@ -15,6 +15,54 @@ from ui.presenters.main_window.workspace import (
 from ui.presenters.main_window.workspace_tab_menu import (
     on_workspace_tab_context_menu_requested,
 )
+
+
+def _focus_content(presenter, direction: int) -> None:
+    """Focus the first interactive widget in the content area.
+
+    Skips container widgets (scroll areas, stacked widgets) and finds
+    the first actual button/input that the user can interact with.
+    """
+    from PySide6.QtWidgets import QAbstractScrollArea, QStackedWidget
+
+    stack = getattr(presenter.ui, "workspace_stack", None)
+    if stack is None:
+        return
+    page = stack.currentWidget()
+    if page is None:
+        return
+    for child in page.findChildren(QWidget):
+        if isinstance(child, (QAbstractScrollArea, QStackedWidget)):
+            continue
+        if child.focusPolicy() in (
+            Qt.FocusPolicy.StrongFocus,
+            Qt.FocusPolicy.ClickFocus,
+            Qt.FocusPolicy.WheelFocus,
+        ):
+            child.setFocus(Qt.FocusReason.OtherFocusReason)
+            return
+
+
+def _connect_session_picker_escape(presenter) -> None:
+    """Connect session picker's escapeUp signal to focus the tab bar."""
+    from tabs.session_picker.widget import SessionPickerWidget
+
+    stack = getattr(presenter.ui, "workspace_stack", None)
+    if stack is None:
+        return
+    page = stack.currentWidget()
+    if page is None:
+        return
+    if isinstance(page, SessionPickerWidget):
+        tab_bar = getattr(presenter.ui.workspace_tabs, "tab_bar", None)
+        if tab_bar is not None:
+            try:
+                page.escapeUp.disconnect()
+            except RuntimeError:
+                pass
+            page.escapeUp.connect(
+                lambda: tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+            )
 
 def connect_signals(presenter):
     image_canvas = presenter.get_feature("image_canvas")
@@ -49,10 +97,18 @@ def connect_signals(presenter):
     presenter.ui.workspace_tabs.addRequested.connect(
         lambda: on_new_workspace_tab_requested(presenter)
     )
+    presenter.ui.workspace_tabs.navigateOutRequested.connect(
+        lambda direction: _focus_content(presenter, direction)
+    )
     presenter.ui.workspace_tabs.tabContextMenuRequested.connect(
         lambda index, global_pos: on_workspace_tab_context_menu_requested(
             presenter, index, global_pos
         )
+    )
+
+    # Connect session picker's escapeUp to focus the tab bar.
+    presenter.ui.workspace_tabs.currentChanged.connect(
+        lambda _: _connect_session_picker_escape(presenter)
     )
 
     toolbar_presenter.connect_signals()
@@ -63,7 +119,6 @@ def _refresh_active_tab_actions() -> None:
     from tabs.registry import get_shared_tab_registry
     from ui.actions.binder import resync_action_shortcuts
     from ui.actions.registry import get_action_registry
-    from PySide6.QtWidgets import QApplication
 
     get_shared_tab_registry().create_service(
         "contribute_actions",

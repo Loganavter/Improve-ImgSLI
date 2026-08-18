@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QLineF, QObject, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QLineF, QObject, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from sli_ui_toolkit.i18n import translatable_callback
@@ -105,6 +105,7 @@ class _SeamlessHorizontalSplit(HorizontalSplit):
 
 
 class SessionPickerWidget(ThemedWidget, QWidget):
+    escapeUp = Signal()
     def __init__(self, parent=None, *, context):
         super().__init__(parent)
         self._context = context
@@ -430,6 +431,11 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         ):
             offset = 1 if key in (Qt.Key.Key_Down, Qt.Key.Key_Right) else -1
             if self._focus_create_card(offset):
+                event.accept()
+                return
+            # Past all create cards going up — escape to the tab strip.
+            if offset < 0:
+                self.escapeUp.emit()
                 event.accept()
                 return
         super().keyPressEvent(event)
