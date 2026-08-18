@@ -119,7 +119,8 @@ def test_create_card_enter_creates_via_real_key_event(qapp, monkeypatch):
     entries = widget._card_entries()
     assert entries
 
-    widget._focus_create_card(1)
+    # Focus the second card directly
+    entries[1][1].setFocus(Qt.FocusReason.OtherFocusReason)
     QTest.qWait(20)
     QTest.keyClick(entries[1][1], Qt.Key.Key_Return)
     # Create cards use DEFER_CLICK_AWAIT_RIPPLE (~280 ms) before `clicked`.
