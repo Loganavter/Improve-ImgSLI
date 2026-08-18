@@ -37,6 +37,7 @@ from ui.widgets.shelf import (
     SHELF_MARGIN_TOP,
     SHELF_SPACING,
     ShelfWidget,
+    apply_opaque_widget_fill,
 )
 
 
@@ -52,13 +53,6 @@ def _shelf_resize_debug(message: str, *args) -> None:
         pass
 
 
-# Safety margin (px) for the pre-layout height estimate: sizeHint() reports a
-# widget a few px taller than its final laid-out height, and a single grid row
-# is ~140 px. Keep the estimate slightly *under* the real available space so
-# the first frame never overestimates (a grow is less jarring than a shrink).
-# Computed lazily so a live UI-scale change is always picked up.
-_PRELAYOUT_HEIGHT_BUFFER_PX = 32
-
 # Root layout margins/spacing (design px) for the shelf content — re-applied
 # on live UiScale changes (see ``_on_ui_scale_changed``); build and handler
 # share these so they can never drift apart.
@@ -67,10 +61,6 @@ _PANEL_MARGIN_TOP = 14
 _PANEL_MARGIN_RIGHT = 16
 _PANEL_MARGIN_BOTTOM = 14
 _PANEL_SPACING = 10
-
-
-def _prelayout_height_buffer() -> int:
-    return scaled_px(_PRELAYOUT_HEIGHT_BUFFER_PX)
 
 
 # get_recent_sort_mode/get_recent_view_mode/list_recent_projects/
@@ -105,52 +95,29 @@ from tabs.session_picker.recent.items_view import (
 )
 from tabs.session_picker.recent.use_cases import refresh as refresh_use_cases
 from tabs.session_picker.recent.use_cases import selection_ops
+from tabs.session_picker.recent.use_cases import sizing
 
 
-def _window_will_fill_screen(window) -> bool:
-    """Whether the top-level window will end up maximized/fullscreen.
-
-    ``isMaximized()``/``isFullScreen()`` cover the already-applied state; the
-    persisted ``window_was_maximized`` flag covers platforms that apply
-    window states asynchronously (Wayland only configures the surface after
-    show), where the state is still ``False`` during the pre-layout content
-    build even though the window will fill the screen on the first frame.
-    The two always agree at startup: the geometry manager sets/clears the
-    maximized state from exactly this flag before content builds.
-    """
-    if window is None:
-        _shelf_resize_debug("_window_will_fill_screen: window is None")
-        return False
-    if window.isMaximized() or window.isFullScreen():
-        _shelf_resize_debug(
-            "_window_will_fill_screen: state already applied (maximized=%s fullscreen=%s)",
-            window.isMaximized(),
-            window.isFullScreen(),
+def _shelf_resize_debug(message: str, *args) -> None:
+    flag = os.environ.get("IMGSLI_SHELF_RESIZE_DEBUG", "").strip().lower()
+    if flag in ("", "0", "false", "no", "off"):
+        return
+    try:
+        logging.getLogger("ImproveImgSLI").info(
+            "[shelf-resize] " + (message % args if args else message)
         )
-        return True
-    store = getattr(window, "store", None)
-    settings = getattr(store, "settings", None)
-    flag = bool(getattr(settings, "window_was_maximized", False))
-    _shelf_resize_debug(
-        "_window_will_fill_screen: store=%s settings=%s was_maximized=%s -> %s",
-        store is not None,
-        settings is not None,
-        flag,
-        flag,
-    )
-    return flag
+    except Exception:
+        pass
 
 
-def _prelayout_screen(window):
-    """Best-guess screen for a not-yet-shown window (its ``screen()`` is
-    usually ``None`` before the first map); falls back to the primary screen."""
-    screen = getattr(window, "screen", None)
-    screen = screen() if callable(screen) else None
-    if screen is None:
-        from PySide6.QtWidgets import QApplication
-
-        screen = QApplication.primaryScreen()
-    return screen
+# Root layout margins/spacing (design px) for the shelf content — re-applied
+# on live UiScale changes (see ``_on_ui_scale_changed``); build and handler
+# share these so they can never drift apart.
+_PANEL_MARGIN_LEFT = 16
+_PANEL_MARGIN_TOP = 14
+_PANEL_MARGIN_RIGHT = 16
+_PANEL_MARGIN_BOTTOM = 14
+_PANEL_SPACING = 10
 
 
 class RecentProjectsPanel(ShelfWidget):
@@ -332,7 +299,7 @@ class RecentProjectsPanel(ShelfWidget):
         return self.header_button_bg()
 
     def _apply_opaque_widget_fill(self, widget: QWidget | None, color) -> None:
-        ShelfWidget.apply_opaque_widget_fill(widget, color)
+        apply_opaque_widget_fill(widget, color)
 
     def _sync_opaque_fills(self) -> None:
         if getattr(self, "_items", None) is None:
@@ -382,9 +349,6 @@ class RecentProjectsPanel(ShelfWidget):
         refresh_use_cases.soft_refresh(self)
 
     def _build(self) -> None:
-        # Shelf root margins/spacing come from ShelfWidget defaults (scaled).
-        root = self.root_layout()
-
         self.set_title(self._tr("recent.title", "Recent"))
 
         self._header = RecentHeaderBar(self, tr=self._tr)
@@ -429,34 +393,7 @@ class RecentProjectsPanel(ShelfWidget):
 
     def _on_ui_scale_changed(self, _factor: float) -> None:
         """Re-apply scale-dependent shelf geometry after a live UiScale change."""
-        _shelf_resize_debug("ui scale changed -> factor=%s", _factor)
-        root = self.layout()
-        if root is not None:
-            root.setContentsMargins(
-                scaled_px(SHELF_MARGIN_LEFT),
-                scaled_px(SHELF_MARGIN_TOP),
-                scaled_px(SHELF_MARGIN_RIGHT),
-                scaled_px(SHELF_MARGIN_BOTTOM),
-            )
-            root.setSpacing(scaled_px(SHELF_SPACING))
-        if self._empty_zone is not None:
-            self._empty_zone.reapply_scaled_height()
-        if not self._layout_ready or not self._records:
-            self._sync_shelf_panel_height()
-            self.update()
-            return
-        if self._sync_settle_in_progress:
-            return
-        self._sync_settle_in_progress = True
-        try:
-            self._items.reapply_scaled_geometry(updates_owner=self)
-            self._sync_shelf_panel_height()
-            if self._shelf_height_settle_pending:
-                self._shelf_height_settle_pending = False
-                self._settle_shelf_height()
-        finally:
-            self._sync_settle_in_progress = False
-        self.update()
+        sizing.on_ui_scale_changed(self, _factor)
 
     def _on_header_prefs_changed(self) -> None:
         # Header already persisted prefs; re-read and refresh cards.
@@ -516,220 +453,13 @@ class RecentProjectsPanel(ShelfWidget):
         )
 
     def _recent_viewport_max_height(self) -> int:
-        """Max vertical space for the recent items viewport.
-
-        The shelf should show as many rows as fit in the window below the
-        create-cards instead of a hardcoded two rows. Computes how much of the
-        page-scroll viewport is left below this panel's top edge (minus the
-        page's bottom margin and the panel's own header + margins). Returns 0
-        before the page is laid out, so the items view falls back to its fixed
-        two-row cap.
-        """
-        # Live geometry after the first layout pass is ground truth.
-        if self.testAttribute(Qt.WidgetAttribute.WA_Resized):
-            try:
-                page = self.parentWidget()
-                if page is not None:
-                    scroll_viewport = page.parentWidget()
-                    if scroll_viewport is not None and scroll_viewport.height() > 0:
-                        viewport_h = scroll_viewport.height()
-                        y = self.mapTo(page, QPoint(0, 0)).y()
-                        header = getattr(self, "_header", None)
-                        header_h = (
-                            header.sizeHint().height()
-                            if header is not None and header.sizeHint().isValid()
-                            else 0
-                        )
-                        root = self.layout()
-                        margins = (
-                            cast(tuple[int, int, int, int], root.getContentsMargins())
-                            if root is not None
-                            else (0, 0, 0, 0)
-                        )
-                        spacing = root.spacing() if root is not None else 0
-                        top_margin = margins[1]
-                        bottom_margin = margins[3]
-                        # Session picker page content layout bottom margin (48,40,48,40).
-                        page_bottom_margin = scaled_px(40)
-                        available = (
-                            viewport_h
-                            - y
-                            - page_bottom_margin
-                            - header_h
-                            - spacing
-                            - top_margin
-                            - bottom_margin
-                        )
-                        _shelf_resize_debug(
-                            "_recent_viewport_max_height (live) viewport_h=%d panel_y=%d "
-                            "header=%d page_bottom=%d -> available=%d (panel_h=%d)",
-                            viewport_h,
-                            y,
-                            header_h,
-                            page_bottom_margin,
-                            available,
-                            self.height(),
-                        )
-                        # Keep the sign: a *negative* available means the host
-                        # measured the space and there is no room even for one
-                        # row — ``scroll_viewport_height`` caps at one scaled
-                        # row then, instead of misreading 0 as "no signal"
-                        # and keeping the fixed two-row fallback.
-                        return int(available)
-            except Exception:
-                pass
-        # Pre-layout estimate from the already-restored window geometry (the
-        # main window is sized by LoadWindowStateStep before content builds,
-        # mirroring estimate_prelayout_width) so the first frame does not
-        # flash the fixed two-row cap and then jump when the real height is
-        # known.
-        return self._estimate_prelayout_viewport_height()
+        return sizing.recent_viewport_max_height(self)
 
     def _estimate_prelayout_viewport_height(self) -> int:
-        """Best-guess available viewport height before the first layout pass.
-
-        Mirrors ``estimate_prelayout_width``: the main window geometry is
-        restored (LoadWindowStateStep) before content builds, so the viewport
-        height is real even though this panel has never been laid out. The
-        chrome above the shelf is read from the page layout itself (sum of the
-        sibling widgets' ``sizeHint`` heights + the layout's own spacings and
-        margins) rather than hardcoded pixels, so it stays correct when the
-        create-cards/title change.
-        """
-        try:
-            window = self.window()
-            if window is None:
-                return 0
-            if _window_will_fill_screen(window):
-                screen = _prelayout_screen(window)
-                window_h = (
-                    int(screen.availableGeometry().height())
-                    if screen is not None
-                    else 0
-                )
-                _shelf_resize_debug(
-                    "_estimate_prelayout_viewport_height: fill-screen height=%d "
-                    "(screen=%s)",
-                    window_h,
-                    type(screen).__name__ if screen is not None else None,
-                )
-            else:
-                window_h = int(window.height())
-                _shelf_resize_debug(
-                    "_estimate_prelayout_viewport_height: window height=%d",
-                    window_h,
-                )
-            if window_h <= 0:
-                return 0
-            title_bar = getattr(window, "_custom_title_bar", None)
-            title_h = title_bar.height() if title_bar is not None else 0
-            viewport_h = max(0, window_h - title_h)
-
-            # Chrome above the shelf viewport = page layout (top margin +
-            # every sibling before this panel + inter-item spacing + bottom
-            # margin) + the panel's own header + root margins.
-            chrome = 0
-            parent = self.parentWidget()
-            layout = parent.layout() if parent is not None else None
-            if layout is None:
-                # Not inside a real page (bare panel in tests) — no way to
-                # estimate; the items view falls back to its fixed cap.
-                return 0
-            margins = cast(tuple[int, int, int, int], layout.getContentsMargins())
-            spacing = layout.spacing()
-            above = 0
-            seen = 0
-            for i in range(layout.count()):
-                item = layout.itemAt(i)
-                widget = item.widget() if item is not None else None
-                if widget is self:
-                    break
-                if widget is not None:
-                    above += max(0, widget.sizeHint().height())
-                    seen += 1
-            chrome = margins[1] + above + max(0, seen - 1) * spacing + margins[3]
-            header = getattr(self, "_header", None)
-            header_h = header.sizeHint().height() if header is not None else 0
-            root = self.layout()
-            root_margins = (
-                cast(tuple[int, int, int, int], root.getContentsMargins())
-                if root is not None
-                else (0, 0, 0, 0)
-            )
-            root_spacing = root.spacing() if root is not None else 0
-            chrome += (
-                header_h + root_spacing + root_margins[1] + root_margins[3]
-            )
-            # sizeHint() overreports a pre-layout widget's final height by a
-            # small, theme/font-dependent amount; leave a buffer under a grid
-            # row so the first frame never overestimates the available space
-            # (a one-row grow on the next pass is less jarring than a shrink).
-            chrome += _prelayout_height_buffer()
-            return max(0, viewport_h - chrome)
-        except Exception:
-            return 0
+        return sizing.estimate_prelayout_viewport_height(self)
 
     def _grid_content_width(self) -> int:
-        # Scroll fills the panel horizontally; width can be 0 before the first
-        # layout pass (the synchronous refresh() in SessionPickerWidget._build()
-        # runs before this page is ever shown). estimate_prelayout_width falls
-        # back to the already-known main-window width in that case (see its
-        # docstring) instead of guessing via a static floor — this makes the
-        # very first grid build pick the right column/row count instead of
-        # under-guessing and visibly re-flowing on the first real resize.
-        layout = self.layout()
-        margins = layout.contentsMargins() if layout is not None else None
-        horizontal_margins = (
-            margins.left() + margins.right() if margins is not None else 0
-        )
-        if self.testAttribute(Qt.WidgetAttribute.WA_Resized):
-            # Once this panel has actually been laid out, its own width is the
-            # ground truth — do NOT let estimate_prelayout_width override it.
-            # That helper's isMaximized/isFullScreen branch exists for the
-            # pre-layout build, but during the fullscreen→windowed transition
-            # Qt can deliver the restored-size resize while isFullScreen() is
-            # still reporting True; the estimate would then keep returning the
-            # fullscreen width and the grid would never shrink back. The live
-            # geometry here is correct in both directions of travel.
-            width = max(0, int(self.width()))
-        else:
-            estimate = estimate_prelayout_width(
-                self,
-                # The page content margins are scaled_px(48) per side, so the
-                # real-px chrome between the window and this panel grows with
-                # the UI scale factor.
-                horizontal_chrome=scaled_px(SESSION_PICKER_PAGE_HORIZONTAL_MARGINS),
-                floor=scaled_px(SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR)
-                + horizontal_margins,
-            )
-            width = estimate
-            # Wayland applies the maximized state only after show, so the
-            # helper's isMaximized() branch misses it during the pre-layout
-            # build; the persisted flag says the window will fill the screen,
-            # and building the grid for the transitional (normal) width then
-            # reflowing to the screen width is exactly the visible second
-            # frame this estimate exists to prevent.
-            window = self.window()
-            fill = _window_will_fill_screen(window)
-            screen = _prelayout_screen(window) if fill else None
-            screen_w = -1
-            if screen is not None:
-                screen_w = (
-                    int(screen.availableGeometry().width())
-                    - scaled_px(SESSION_PICKER_PAGE_HORIZONTAL_MARGINS)
-                )
-                width = max(width, screen_w)
-            _shelf_resize_debug(
-                "_grid_content_width prelayout: estimate=%d fill_screen=%s "
-                "screen=%s screen_w=%d -> %d (window_w=%d)",
-                estimate,
-                fill,
-                type(screen).__name__ if screen is not None else None,
-                screen_w,
-                width,
-                int(window.width()) if window is not None else -1,
-            )
-        return max(width - horizontal_margins, SESSION_PICKER_RECENT_CONTENT_WIDTH_FLOOR)
+        return sizing.grid_content_width(self)
 
     def _rebuild_items(self) -> None:
         refresh_use_cases.rebuild_items(self)
