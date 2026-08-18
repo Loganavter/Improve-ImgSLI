@@ -20,6 +20,7 @@ from ui.widgets.shelf.widget import (  # noqa: F401
     SHELF_MARGIN_TOP,
     SHELF_SPACING,
     ShelfWidget,
+    apply_opaque_widget_fill,
 )
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "SHELF_MARGIN_TOP",
     "SHELF_SPACING",
     "ShelfWidget",
+    "apply_opaque_widget_fill",
 ]

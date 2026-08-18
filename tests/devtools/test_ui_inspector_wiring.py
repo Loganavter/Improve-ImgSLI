@@ -113,7 +113,7 @@ _APP_FAMILIES = (
     ("ui.widgets.glass_hud", "GlassHUD", "docs/dev/widgets/glass_hud.md"),
     ("ui.widgets.glass_hud", "InfoHUD", "docs/dev/widgets/glass_hud.md"),
     ("ui.widgets.glass_hud", "ZoomIndicator", "docs/dev/widgets/glass_hud.md"),
-    ("ui.widgets.glass_hud", "GlassPanelDisplayWidgetCpu", "docs/dev/widgets/glass_panel_display.md"),
+    ("ui.widgets.glass_hud", "GlassPanelDisplayWidget", "docs/dev/widgets/glass_panel_display.md"),
     ("ui.widgets.rating_item", "RatingListItem", "docs/dev/widgets/rating_item.md"),
     ("ui.widgets.scroll_value_button", "ScrollValueButton", "docs/dev/widgets/scroll_value_button.md"),
     ("ui.widgets.shelf", "ShelfWidget", "docs/dev/widgets/shelf.md"),

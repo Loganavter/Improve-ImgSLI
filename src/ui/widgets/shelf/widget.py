@@ -80,6 +80,23 @@ class OpaqueFillHost(QWidget):
         painter.end()
 
 
+def apply_opaque_widget_fill(widget: QWidget | None, color: QColor) -> None:
+    """Opaque fill on a widget, preferring explicit paint hosts."""
+    if widget is None:
+        return
+    fill = QColor(color)
+    fill.setAlpha(255)
+    set_fill = getattr(widget, "set_fill_color", None)
+    if callable(set_fill):
+        set_fill(fill)
+        return
+    widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+    widget.setAutoFillBackground(True)
+    palette = widget.palette()
+    palette.setColor(widget.backgroundRole(), fill)
+    widget.setPalette(palette)
+
+
 class ShelfWidget(QWidget):
     """Shelf chrome + header/content hosts; consumers assemble the contents.
 
@@ -240,20 +257,11 @@ class ShelfWidget(QWidget):
 
     @staticmethod
     def apply_opaque_widget_fill(widget: QWidget | None, color: QColor) -> None:
-        """Opaque fill on a widget, preferring explicit paint hosts."""
-        if widget is None:
-            return
-        fill = QColor(color)
-        fill.setAlpha(255)
-        set_fill = getattr(widget, "set_fill_color", None)
-        if callable(set_fill):
-            set_fill(fill)
-            return
-        widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        widget.setAutoFillBackground(True)
-        palette = widget.palette()
-        palette.setColor(widget.backgroundRole(), fill)
-        widget.setPalette(palette)
+        """Opaque fill on a widget, preferring explicit paint hosts.
+
+        .. deprecated:: Use the module-level ``apply_opaque_widget_fill()`` instead.
+        """
+        apply_opaque_widget_fill(widget, color)
 
     def _apply_content_well_fill(self) -> None:
         """Opaque surface fill under the content (the "well" backing)."""

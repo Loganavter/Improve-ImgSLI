@@ -5,13 +5,12 @@ import time
 
 from PySide6.QtCore import QEvent, QPoint, QRect, Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QRhiWidget, QWidget
+from PySide6.QtWidgets import QWidget
 
 from sli_ui_toolkit.ui.widgets.composite.base_flyout import BaseFlyout
 
 from shared.rendering.glass_panel import GlassPanelSpec
 from ui.theming import resolve_theme_color
-from ui.canvas_infra.rhi.rhi_backend import configure_rhi_widget
 from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
 from ui.widgets.glass_hud import target_watch
 from ui.widgets.glass_hud.panel_display import create_glass_panel_display_widget
@@ -126,12 +125,8 @@ class GlassHUD(BaseFlyout):
         # top; sized to match container exactly, same as the old
         # cross-widget backdrop widget this replaces. Plain-QWidget by
         # default (see ui/widgets/glass_hud/panel_display.py's
-        # GlassPanelDisplayWidgetCpu docstring for why); configure_rhi_widget
-        # is only relevant for the QRhiWidget fallback path
-        # (IMGSLI_GLASS_PANEL_DISPLAY_BACKEND=rhi).
+        # GlassPanelDisplayWidget docstring for why).
         self._display = create_glass_panel_display_widget(self)
-        if isinstance(self._display, QRhiWidget):
-            configure_rhi_widget(self._display)
         self._display.stackUnder(self.container)
         self._display.setGeometry(self.container.geometry())
 
