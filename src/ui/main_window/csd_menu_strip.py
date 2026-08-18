@@ -416,6 +416,7 @@ class CsdMenuStrip(QWidget):
 
         if not force_open and flyout is not None and flyout.isVisible():
             flyout.hide()
+            csd_debug("[csd-menu] %s flyout -> hide (toggle)", spec.label)
             return flyout
 
         parent = anchor.window()
@@ -434,6 +435,13 @@ class CsdMenuStrip(QWidget):
         rows, action_ids = self._build_rows(spec)
         self._row_actions[key] = action_ids
         flyout.set_rows(rows)
+        csd_debug(
+            "[csd-menu] %s flyout -> show rows=%d actions=%s force_open=%s",
+            spec.label,
+            len(rows),
+            [a for a in action_ids if a is not None],
+            force_open,
+        )
         try:
             flyout.show_aligned(
                 anchor,
@@ -468,6 +476,7 @@ class CsdMenuStrip(QWidget):
         action_id = action_ids[index]
         if action_id is None:
             return
+        csd_debug("[csd-menu] %s dispatch action_id=%s", spec.label, action_id)
         # Let the flyout hide (and its row ripple settle) first — handlers can
         # open modal dialogs (Find Action, file pickers).
         QTimer.singleShot(0, lambda a=action_id: spec.on_triggered(a, None))

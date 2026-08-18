@@ -813,11 +813,13 @@ class RecentProjectsPanel(ShelfWidget):
             if self._selected_paths:
                 self._remove_selected_paths()
                 event.accept()
+                logger.debug("[shelf-nav] keyPressEvent Del/Bs -> remove %d selected", len(self._selected_paths))
                 return
         if key == Qt.Key.Key_Escape:
             if self._selected_paths:
                 self._clear_selection()
                 event.accept()
+                logger.debug("[shelf-nav] keyPressEvent Escape -> clear selection")
                 return
         # Arrow/Enter navigation is handled by RecentHeaderBar.keyPressEvent
         # and RecentItemsView.eventFilter — no panel-level interception needed.
@@ -849,8 +851,15 @@ class RecentProjectsPanel(ShelfWidget):
         """
         items = getattr(self, "_items", None)
         if items is None or not getattr(items, "_records", None):
+            logger.debug(
+                "[shelf-nav] focus_recent_item first=%s -> False (empty shelf)", first
+            )
             return False
-        return items.navigate_focus(1 if first else -1)
+        result = items.navigate_focus(1 if first else -1)
+        logger.debug(
+            "[shelf-nav] focus_recent_item first=%s -> %s", first, result
+        )
+        return result
 
     def focus_header_control(self, first: bool) -> bool:
         """Focus the first or last visible header-bar control button.
@@ -859,6 +868,9 @@ class RecentProjectsPanel(ShelfWidget):
         """
         header = getattr(self, "_header", None)
         if header is None:
+            logger.debug(
+                "[shelf-nav] focus_header_control first=%s -> False (no header)", first
+            )
             return False
         buttons = [
             b
@@ -866,8 +878,16 @@ class RecentProjectsPanel(ShelfWidget):
             if b.isVisible()
         ]
         if not buttons:
+            logger.debug(
+                "[shelf-nav] focus_header_control first=%s -> False (no visible buttons)", first
+            )
             return False
         buttons[0 if first else -1].setFocus(Qt.FocusReason.OtherFocusReason)
+        logger.debug(
+            "[shelf-nav] focus_header_control first=%s -> True (button=%s)",
+            first,
+            type(buttons[0 if first else -1]).__name__,
+        )
         return True
 
     def set_keyboard_handoff(self, callback) -> None:

@@ -294,11 +294,39 @@ class MainWindowStartupController:
             window.size().toTuple(),
             window.isMaximized(),
         )
+        self._log_layout_summary(window)
         # Onboarding is built during prepare() before the window has a real
         # layout; re-apply geometry/scale after the first show pass.
         from plugins.onboarding import host as onboarding_host
 
         onboarding_host.prepare_after_show(window)
+
+        self._log_layout_summary(window)
+
+    def _log_layout_summary(self, window) -> None:
+        """Log a compact summary of the main window widget tree for debug."""
+        from PySide6.QtWidgets import QWidget
+        from PySide6.QtCore import Qt
+
+        def _tree(w, depth=0, max_depth=3):
+            if depth > max_depth:
+                return
+            cls = type(w).__name__
+            name = w.objectName() or ""
+            geo = w.geometry()
+            vis = "v" if w.isVisible() else "h"
+            parts = [f"{'  ' * depth}{cls}({name}) [{geo.width()}x{geo.y()}+{geo.x()},{geo.y()}] {vis}"]
+            if depth < max_depth:
+                for child in w.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly):
+                    parts.extend(_tree(child, depth + 1, max_depth))
+            return parts
+
+        lines = _tree(window)
+        if lines:
+            logger.debug(
+                "[layout-tree] main window tree:\n  %s",
+                "\n  ".join(lines),
+            )
 
     def start(self, window) -> None:
         self.show(window)

@@ -89,24 +89,31 @@ class EventHandler(QObject):
         event_type = event.type()
 
         # --- debug: structured key/focus trace ---
+        watched_name = type(watched_obj).__name__ if watched_obj is not None else "None"
         if event_type == QEvent.Type.FocusIn:
             w = QApplication.focusWidget()
             logger.debug(
-                "  FOCUS → %s (reason=%s)",
+                "  FOCUS → %s (reason=%s) [via=%s]",
                 _wname(w),
                 event.reason().name if hasattr(event, "reason") else "?",
+                watched_name,
             )
         elif event_type == QEvent.Type.FocusOut:
-            logger.debug("  FOCUS ← %s", _wname(watched_obj))
+            logger.debug(
+                "  FOCUS ← %s [via=%s]",
+                _wname(watched_obj),
+                watched_name,
+            )
         elif event_type == QEvent.Type.KeyPress:
             w = QApplication.focusWidget()
             k = event.key()
             path = _widget_path(w) if w else "?"
             logger.debug(
-                "  KEY %s(0x%X) → %s  path=%s",
+                "  KEY %s(0x%X) → %s  path=%s [via=%s]",
                 _key_name(k), k,
                 _wname(w),
                 path,
+                watched_name,
             )
         # --- end debug ---
 
@@ -179,6 +186,12 @@ class EventHandler(QObject):
                 pass
         if not result.applied and not session_reset:
             return
+        logger.debug(
+            "[kbd-reset] reason=%s keyboard_reset=%s session_reset=%s",
+            reason,
+            result.applied,
+            session_reset,
+        )
         self.store.emit_viewport_change("interaction")
         if not session_reset:
             try:

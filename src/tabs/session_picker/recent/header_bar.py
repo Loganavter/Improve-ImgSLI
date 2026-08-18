@@ -7,6 +7,7 @@ this widget is the "control buttons on top" cluster the shelf host adds via
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 from PySide6.QtCore import QEvent, Qt, Signal
@@ -33,6 +34,8 @@ from services.io.recent_projects import (
 )
 from tabs.session_picker.icons import Icon as SessionPickerIcon
 from tabs.session_picker.icons import get_icon as get_session_picker_icon
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 class RecentHeaderBar(QWidget):
@@ -97,8 +100,15 @@ class RecentHeaderBar(QWidget):
             if idx is not None and idx > 0:
                 buttons[idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
                 event.accept()
+                logger.debug(
+                    "[shelf-nav] header left/up idx=%d -> button %d/%d",
+                    idx, idx - 1, len(buttons),
+                )
                 return
             # Past first → propagate to parent (session picker create-cards).
+            logger.debug(
+                "[shelf-nav] header left/up idx=%s -> propagate (past first)", idx
+            )
             event.ignore()
             super().keyPressEvent(event)
             return
@@ -106,8 +116,15 @@ class RecentHeaderBar(QWidget):
             if idx is not None and idx < len(buttons) - 1:
                 buttons[idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
                 event.accept()
+                logger.debug(
+                    "[shelf-nav] header right/down idx=%d -> button %d/%d",
+                    idx, idx + 1, len(buttons),
+                )
                 return
             # Past last → hand off to recent items via panel.
+            logger.debug(
+                "[shelf-nav] header right/down idx=%s -> hand off to recent items", idx
+            )
             panel = self.parentWidget()
             while panel is not None and not hasattr(panel, "focus_recent_item"):
                 panel = panel.parentWidget()
