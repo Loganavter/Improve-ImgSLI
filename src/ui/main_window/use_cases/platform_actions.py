@@ -14,6 +14,26 @@ from PySide6.QtWidgets import QApplication
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def cycle_session_id(
+    sessions: list, active_id: str | None, direction: int
+) -> str | None:
+    """Return the id of the session reached by cycling ``direction`` from the
+    active one (wrapping). ``None`` when there are fewer than two sessions or
+    the list is empty. Pure helper shared by the Ctrl+Tab action runner and
+    its tests."""
+    if not sessions:
+        return None
+    current = next(
+        (
+            i
+            for i, session in enumerate(sessions)
+            if getattr(session, "id", None) == active_id
+        ),
+        0,
+    )
+    return sessions[(current + direction) % len(sessions)].id
+
+
 def open_session_picker(controller) -> None:
     presenter = controller._presenter()
     if presenter is None:
@@ -112,6 +132,8 @@ def register_platform_actions(controller) -> None:
         open_session_picker=controller._open_session_picker,
         new_image_compare=image_compare_runner(controller._create_workspace_session),
         new_multi_compare=multi_compare_runner(controller._create_workspace_session),
+        next_session=lambda: controller._switch_workspace_session(1),
+        prev_session=lambda: controller._switch_workspace_session(-1),
         open_project=controller._open_project,
         save_project=controller._save_project,
         save_project_as=controller._save_project_as,

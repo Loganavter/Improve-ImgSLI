@@ -11,6 +11,7 @@
 - `Ctrl+,` — 设置
 - `Ctrl+F1` — 帮助
 - `Ctrl+N` — 会话选择器 / 新建会话
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — 下一个 / 上一个工作区会话
 - `Ctrl+Shift+P` — {{tr:menu.find_action}}
 - `Ctrl+V` — 粘贴图像
 - `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — 打开 / 保存 / 项目另存为（`.imgsli`）

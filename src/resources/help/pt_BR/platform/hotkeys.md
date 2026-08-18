@@ -11,6 +11,7 @@ Pressione `Ctrl+Shift+P` e digite um nome antes de memorizar uma lista. Execute 
 - `Ctrl+,` — Configurações
 - `Ctrl+F1` — Ajuda
 - `Ctrl+N` — Seletor de sessão / nova sessão
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — Próxima / sessão anterior do workspace
 - `Ctrl+Shift+P` — {{tr:menu.find_action}}
 - `Ctrl+V` — Colar imagem
 - `Ctrl+Shift+O` / `Shift+S` / `Ctrl+Shift+S` — Abrir / salvar / salvar projeto como (`.imgsli`)

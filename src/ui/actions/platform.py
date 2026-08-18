@@ -48,6 +48,8 @@ def register_platform_actions(
     open_session_picker: Callable[[], None] | None = None,
     new_image_compare: Callable[[], None] | None = None,
     new_multi_compare: Callable[[], None] | None = None,
+    next_session: Callable[[], None] | None = None,
+    prev_session: Callable[[], None] | None = None,
     paste_clipboard_image: Callable[[], None] | None = None,
     open_project: Callable[[], None] | None = None,
     save_project: Callable[[], None] | None = None,
@@ -279,6 +281,36 @@ def register_platform_actions(
                 target=new_multi_compare_target,
             )
         )
+    if next_session is not None:
+        specs.append(
+            ActionDescriptor(
+                action_id="workspace.next_tab",
+                label_key="action.workspace.next_tab",
+                description_key="action.workspace.next_tab_desc",
+                breadcrumb=(_BC_WORKSPACE,),
+                owner_tab=None,
+                topic="workspace",
+                shortcut="Ctrl+Tab",
+                help_page="hotkeys",
+                run=next_session,
+                target=None,
+            )
+        )
+    if prev_session is not None:
+        specs.append(
+            ActionDescriptor(
+                action_id="workspace.prev_tab",
+                label_key="action.workspace.prev_tab",
+                description_key="action.workspace.prev_tab_desc",
+                breadcrumb=(_BC_WORKSPACE,),
+                owner_tab=None,
+                topic="workspace",
+                shortcut="Ctrl+Shift+Tab",
+                help_page="hotkeys",
+                run=prev_session,
+                target=None,
+            )
+        )
     if undo is not None:
         specs.append(
             ActionDescriptor(
@@ -446,6 +478,22 @@ def contribute_platform_keymap_defaults(registry) -> None:
             None,
             ("action.breadcrumb.workspace",),
             description_key="action.workspace.new_multi_compare_desc",
+        ),
+        KeymapDefaultEntry(
+            "workspace.next_tab",
+            "action.workspace.next_tab",
+            "Ctrl+Tab",
+            None,
+            ("action.breadcrumb.workspace",),
+            description_key="action.workspace.next_tab_desc",
+        ),
+        KeymapDefaultEntry(
+            "workspace.prev_tab",
+            "action.workspace.prev_tab",
+            "Ctrl+Shift+Tab",
+            None,
+            ("action.breadcrumb.workspace",),
+            description_key="action.workspace.prev_tab_desc",
         ),
     )
     for entry in entries:

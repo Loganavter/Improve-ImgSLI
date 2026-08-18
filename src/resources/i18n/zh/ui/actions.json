@@ -41,7 +41,11 @@
       "new_image_compare": "新建图像对比会话",
       "new_image_compare_desc": "创建并打开图像对比工作区会话",
       "new_multi_compare": "新建多图对比会话",
-      "new_multi_compare_desc": "创建并打开多图对比工作区会话"
+      "new_multi_compare_desc": "创建并打开多图对比工作区会话",
+      "next_tab": "下一个工作区会话",
+      "next_tab_desc": "切换到下一个打开的工作区会话",
+      "prev_tab": "上一个工作区会话",
+      "prev_tab_desc": "切换到上一个打开的工作区会话"
     }
   }
 }
