@@ -384,3 +384,18 @@ GlassHUD.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/glass_hud.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+GlassHUD.widget_descriptor = WidgetDescriptor(
+    family=GlassHUD.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(GlassHUD.inspect_spec, 'config', ()),
+        state=GlassHUD.inspect_spec.state,
+        token_family=getattr(GlassHUD.inspect_spec, 'token_family', ()),
+        regions=getattr(GlassHUD.inspect_spec, 'regions', False),
+        layers=getattr(GlassHUD.inspect_spec, 'layers', False),
+        docs=getattr(GlassHUD.inspect_spec, 'docs', ''),
+        preview_seed=getattr(GlassHUD.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(GlassHUD.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

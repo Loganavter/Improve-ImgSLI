@@ -75,3 +75,18 @@ GlassPanelDisplayWidget.inspect_spec = InspectSpec(
     regions=True,
     layers=True,
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+GlassPanelDisplayWidget.widget_descriptor = WidgetDescriptor(
+    family=GlassPanelDisplayWidget.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(GlassPanelDisplayWidget.inspect_spec, 'config', ()),
+        state=GlassPanelDisplayWidget.inspect_spec.state,
+        token_family=getattr(GlassPanelDisplayWidget.inspect_spec, 'token_family', ()),
+        regions=getattr(GlassPanelDisplayWidget.inspect_spec, 'regions', False),
+        layers=getattr(GlassPanelDisplayWidget.inspect_spec, 'layers', False),
+        docs=getattr(GlassPanelDisplayWidget.inspect_spec, 'docs', ''),
+        preview_seed=getattr(GlassPanelDisplayWidget.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(GlassPanelDisplayWidget.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

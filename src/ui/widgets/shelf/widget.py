@@ -321,3 +321,18 @@ ShelfWidget.inspect_spec = InspectSpec(
     ),
     docs="docs/dev/widgets/shelf.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+ShelfWidget.widget_descriptor = WidgetDescriptor(
+    family=ShelfWidget.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ShelfWidget.inspect_spec, 'config', ()),
+        state=ShelfWidget.inspect_spec.state,
+        token_family=getattr(ShelfWidget.inspect_spec, 'token_family', ()),
+        regions=getattr(ShelfWidget.inspect_spec, 'regions', False),
+        layers=getattr(ShelfWidget.inspect_spec, 'layers', False),
+        docs=getattr(ShelfWidget.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ShelfWidget.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ShelfWidget.inspect_spec, 'apply_config_refresh', None),
+    ),
+)

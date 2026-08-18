@@ -576,3 +576,18 @@ ScrollValueButton.inspect_spec = InspectSpec(
     regions=True,
     docs="docs/dev/widgets/scroll_value_button.md",
 )
+
+from sli_ui_toolkit.ui.widget_descriptor import InspectSection, WidgetDescriptor
+ScrollValueButton.widget_descriptor = WidgetDescriptor(
+    family=ScrollValueButton.inspect_spec.family,
+    inspect=InspectSection(
+        config=getattr(ScrollValueButton.inspect_spec, 'config', ()),
+        state=ScrollValueButton.inspect_spec.state,
+        token_family=getattr(ScrollValueButton.inspect_spec, 'token_family', ()),
+        regions=getattr(ScrollValueButton.inspect_spec, 'regions', False),
+        layers=getattr(ScrollValueButton.inspect_spec, 'layers', False),
+        docs=getattr(ScrollValueButton.inspect_spec, 'docs', ''),
+        preview_seed=getattr(ScrollValueButton.inspect_spec, 'preview_seed', None),
+        apply_config_refresh=getattr(ScrollValueButton.inspect_spec, 'apply_config_refresh', None),
+    ),
+)
