@@ -33,6 +33,15 @@ def build_main_window_features(
     )
     # toolbar and export are tab-specific services — created lazily when
     # the owning tab's page is materialized, not at startup.
+    #
+    # `on_resolved` wires up the toolbar's own signal connections exactly
+    # once, right after it's first built. Nothing else in the codebase ever
+    # calls `ToolbarPresenter.connect_signals()` -- when toolbar_presenter
+    # became lazy, the one-time "construct, then connect" pairing that used
+    # to happen together at eager-construction time silently lost its
+    # second half, leaving every toolbar button's click/toggle wiring dead
+    # (`_connect_text_settings_button`, `_connect_session_actions`, etc. in
+    # `presenters/toolbar/connections.py` never ran).
     toolbar = LazyTabService(
         "toolbar_presenter",
         store,
@@ -40,6 +49,7 @@ def build_main_window_features(
         ui,
         main_window_app,
         ui_manager,
+        on_resolved=lambda presenter: presenter.connect_signals(),
     )
     export = LazyTabService(
         "export_presenter",

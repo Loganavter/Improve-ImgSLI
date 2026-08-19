@@ -97,25 +97,26 @@ class ImageCompareLayoutBuilder:
         self.host = host
 
     def build_into(self, page: QWidget) -> QVBoxLayout:
-        """Build all containers and assemble them into ``page``, incrementally.
+        """Build all containers and assemble them into ``page``.
 
-        ``page``'s own layout is installed *first*, and every container is
-        added to it as soon as it exists -- deliberately mirroring
-        `multi_compare`'s `MultiCompareWidget.__init__` (layout-then-content
-        at every level, never a widget built first and given a parent/layout
-        only later). `image_compare` used to build every container fully
-        detached and only wire them all into `page`'s layout at the very
-        end; that made `ui.image_label` (a QRhiWidget, holding a native
-        surface) go through a batched "everything realizes at once" exposure
-        instead of incremental exposure, which on at least one real Wayland
-        setup either broke QRhi initialization outright ("No QRhi") or
-        forced the top-level window to tear down and recreate its native
-        surface (visible as a spurious close+reopen) depending on exactly
-        how `image_container_widget` was parented. See
+        ``page``'s own layout is installed *first*, before any container
+        exists -- deliberately mirroring `multi_compare`'s
+        `MultiCompareWidget.__init__` (layout-then-content at every level,
+        never a widget built first and given a parent/layout only later).
+        `image_compare` used to install `page`'s layout only at the very
+        end, after every container (including `ui.image_label`, a QRhiWidget
+        holding a native surface) was already fully built; that made the
+        canvas go through a batched "everything realizes at once" exposure,
+        which on at least one real Wayland setup forced the top-level window
+        to tear down and recreate its native surface (visible as a spurious
+        close+reopen). Containers are still added to the layout in one batch
+        at the end (not incrementally per-container) -- doing that instead
+        traded the close+reopen for a *worse* symptom: enough extra
+        resize/relayout passes on the canvas during construction that QRhi
+        initialization itself started intermittently failing ("No QRhi"),
+        leaving an unpainted gap in the canvas. See
         docs/dev/investigations/lazy-legacy-shell-plan.md for the
-        investigation that found this (surfaced by making `image_compare`'s
-        page construction lazy -- it used to happen while the window was
-        still hidden behind the startup cover, so this was never visible).
+        investigation that found both of these.
 
         Returns the top-level layout installed on ``page``.
         """
@@ -125,15 +126,10 @@ class ImageCompareLayoutBuilder:
         layout.setSpacing(6)
 
         ui.selection_widget = self._selection_widget(page)
-        layout.addWidget(ui.selection_widget)
-
         ui.checkbox_widget = self._checkbox_widget(page)
-        layout.addWidget(ui.checkbox_widget)
-
         ui.image_container_layout = self._image_container_layout()
         self._slider_panel_layout()
         ui.image_container_widget = self._image_container_widget(page)
-        layout.addWidget(ui.image_container_widget, 1)
         ui.image_container_layout.addWidget(ui.image_label)
         self._create_image_startup_placeholder()
         self._create_zoom_indicator()
@@ -142,20 +138,19 @@ class ImageCompareLayoutBuilder:
         from sli_ui_toolkit.ui.widgets.overlays.drag_drop_overlay import DragDropOverlay
 
         ui.drag_overlay = DragDropOverlay(ui.image_container_widget)
-
         ui.footer_info_widget = self._footer_info_widget(page)
-        layout.addWidget(ui.footer_info_widget)
-
-        layout.addWidget(ui.length_warning_label)
-
         ui.edit_layout_widget = ThemedBackgroundContainer(page)
         ui.edit_layout = self._edit_layout()
         ui.edit_layout_widget.setLayout(ui.edit_layout)
-        layout.addWidget(ui.edit_layout_widget)
-
         ui.save_buttons_widget = self._save_buttons_widget(page)
-        layout.addWidget(ui.save_buttons_widget)
 
+        layout.addWidget(ui.selection_widget)
+        layout.addWidget(ui.checkbox_widget)
+        layout.addWidget(ui.image_container_widget, 1)
+        layout.addWidget(ui.footer_info_widget)
+        layout.addWidget(ui.length_warning_label)
+        layout.addWidget(ui.edit_layout_widget)
+        layout.addWidget(ui.save_buttons_widget)
         return layout
 
     def _selection_widget(self, parent: QWidget) -> QWidget:
