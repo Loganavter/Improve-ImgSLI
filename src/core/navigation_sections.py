@@ -3,15 +3,16 @@
 ``SessionPickerSection`` navigates the create-cards list in the session
 picker page.  ``TabStripSection`` owns the workspace tab bar and delegates
 Left/Right to ``_AdaptiveTabBar``'s native handling (our event filter never
-sees those keys because the tab bar consumes them first).  ``ToolbarRowsSection``
-is a generic Up/Down-between-rows section reused by workspace tabs whose
-content is one or more horizontal toolbar strips (image_compare, multi_compare).
+sees those keys because the tab bar consumes them first).
+
+The generic row-navigation section used by image_compare/multi_compare
+(``ToolbarRowsSection``) has no app-specific logic and lives in
+sli-ui-toolkit instead — import it from ``sli_ui_toolkit.managers``.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
@@ -170,125 +171,3 @@ class TabStripSection:
         return self._focus_add_button()
 
 
-class ToolbarRowsSection:
-    """Up/Down between toolbar rows, Left/Right between buttons in a row.
-
-    ``NavigationManager`` leaves Left/Right to native widget handling by
-    default (QTabBar, QSpinBox, ...) — this section opts back in via
-    ``extra_keys`` so arrow navigation is symmetric: Down/Up cross rows,
-    Left/Right move within the current row's focusable buttons, skipping
-    disabled/hidden ones by construction (``_focusable`` already filters
-    them out, so stepping to index ± 1 in that list can never land on one).
-
-    A tab's canvas/sliders are deliberately never covered by ``rows_provider``
-    — those already bind arrows to pan/value-adjustment when focused, and
-    claiming them here would steal that behavior (see image_compare's
-    ``canvas/interaction.py`` and slider Find Action wiring).
-    """
-
-    def __init__(
-        self,
-        rows_provider: Callable[[], list[QWidget | None]],
-        *,
-        tag: str = "toolbar-rows",
-    ) -> None:
-        self._rows_provider = rows_provider
-        self._tag = tag
-
-    def _rows(self) -> list[QWidget]:
-        return [r for r in self._rows_provider() if r is not None and r.isVisible()]
-
-    def _row_of(self, widget: QWidget) -> QWidget | None:
-        for row in self._rows():
-            if row is widget or row.isAncestorOf(widget):
-                return row
-        return None
-
-    def owns(self, widget: QWidget) -> bool:
-        return self._row_of(widget) is not None
-
-    @staticmethod
-    def _focusable(row: QWidget) -> list[QWidget]:
-        return [
-            c for c in row.findChildren(QWidget)
-            if (
-                c.focusPolicy() == Qt.FocusPolicy.StrongFocus
-                and c.isVisible() and c.isEnabled()
-            )
-        ]
-
-    def _focus_first_in(self, row: QWidget) -> bool:
-        items = self._focusable(row)
-        if not items:
-            return False
-        items[0].setFocus(Qt.FocusReason.OtherFocusReason)
-        return True
-
-    def _focus_near_in(self, row: QWidget, reference: QWidget) -> bool:
-        """Like ``_focus_first_in``, but land on the item horizontally
-        closest to ``reference`` on screen, instead of always the first.
-
-        This is the standard 2D directional-navigation rule (tvOS Focus
-        Engine, Windows XYFocus, W3C CSS Spatial Navigation, Netflix's TV
-        UI): moving Down/Up focuses the nearest candidate in that
-        direction rather than a fixed index, so focus lands roughly
-        under/above where the user actually was.
-        """
-        items = self._focusable(row)
-        if not items:
-            return False
-        ref_x = reference.mapToGlobal(reference.rect().center()).x()
-        target = min(
-            items,
-            key=lambda w: abs(w.mapToGlobal(w.rect().center()).x() - ref_x),
-        )
-        target.setFocus(Qt.FocusReason.OtherFocusReason)
-        return True
-
-    def navigate(self, key: int, widget: QWidget) -> bool:
-        rows = self._rows()
-        row = self._row_of(widget)
-        if row is None or row not in rows:
-            return False
-        idx = rows.index(row)
-        logger.debug(
-            "[nav-%s] navigate key=%s widget=%s row_idx=%d/%d",
-            self._tag, key, type(widget).__name__, idx, len(rows),
-        )
-        if key == Qt.Key.Key_Down:
-            if idx < len(rows) - 1:
-                return self._focus_near_in(rows[idx + 1], widget)
-            # Last row — yield (e.g. canvas/no further row below).
-            return False
-        if key == Qt.Key.Key_Up:
-            if idx > 0:
-                return self._focus_near_in(rows[idx - 1], widget)
-            # First row — yield so NavigationManager can hand off upward
-            # (title bar / tab strip).
-            return False
-        if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
-            items = self._focusable(row)
-            if widget not in items:
-                return False
-            cur = items.index(widget)
-            step = 1 if key == Qt.Key.Key_Right else -1
-            target = cur + step
-            if 0 <= target < len(items):
-                items[target].setFocus(Qt.FocusReason.OtherFocusReason)
-            # Row edge: consume anyway (don't fall through to native
-            # handling, which does nothing for a plain Button) rather than
-            # wrap into an adjacent row — Up/Down already own row transitions.
-            return True
-        return False
-
-    def focus_first(self) -> bool:
-        rows = self._rows()
-        return bool(rows) and self._focus_first_in(rows[0])
-
-    def focus_last(self) -> bool:
-        rows = self._rows()
-        return bool(rows) and self._focus_first_in(rows[-1])
-
-    @property
-    def extra_keys(self) -> frozenset[int]:
-        return frozenset({Qt.Key.Key_Left, Qt.Key.Key_Right})

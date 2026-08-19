@@ -194,6 +194,12 @@ class _ScrollValueFlyout(BaseFlyout):
                 anchor_point="top-center",
                 flyout_point="bottom-center",
                 offset=6,
+                # This is a read-only value preview, not an interactive
+                # panel -- it must not steal keyboard focus from the button
+                # (the flyout's own _grab_focus() fallback would otherwise
+                # land on itself, since a QLabel isn't focusable, breaking
+                # further keyboard-driven Up/Down stepping on the button).
+                grab_focus=False,
             )
         else:
             self.show()
@@ -402,7 +408,7 @@ class ScrollValueButton(Button):
         self._hovered_split = active
         self._sync_regions()
 
-    # ---------- wheel-driven value stepping ----------
+    # ---------- wheel/key-driven value stepping ----------
 
     def wheelEvent(self, event) -> None:  # noqa: N802
         delta = event.angleDelta().y()
@@ -410,7 +416,23 @@ class ScrollValueButton(Button):
             super().wheelEvent(event)
             return
         event.accept()
-        step = 1 if delta > 0 else -1
+        self._step_value(1 if delta > 0 else -1)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        # Mirrors wheelEvent's step direction (scroll up == Key_Up == +1) so
+        # a control that got keyboard focus via arrow-key ring navigation
+        # can still be adjusted without a mouse -- otherwise Up/Down while
+        # focused here does nothing (NavigationManager's ToolbarRowsSection
+        # claims Up/Down for row-to-row navigation everywhere else, but
+        # trial-dispatches to this handler first and respects accept()).
+        key = event.key()
+        if key in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+            self._step_value(1 if key == Qt.Key.Key_Up else -1)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _step_value(self, step: int) -> None:
         new_value = max(self._min_value, min(self._max_value, self._value + step))
         self.set_value(new_value)
         self._show_flyout()

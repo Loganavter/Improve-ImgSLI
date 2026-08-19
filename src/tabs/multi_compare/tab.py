@@ -347,7 +347,7 @@ class MultiCompareTab(TabContract):
         if self._widget is None:
             return
         from core.navigation import NavigationManager
-        from core.navigation_sections import ToolbarRowsSection
+        from sli_ui_toolkit.managers import ToolbarRowsSection
 
         if self._nav_section is None:
             self._nav_section = ToolbarRowsSection(
