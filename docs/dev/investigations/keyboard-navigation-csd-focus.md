@@ -93,70 +93,67 @@ Enter/Escape don't work.
 
 1. **`WA_ShowWithoutActivating`** on ContextMenu prevents window activation,
    blocking keyboard events.
-2. **`_grab_focus()` restores window StrongFocus immediately** — the window
-   steals focus back before the flyout can process keyPressEvent.
-3. **`_FlyoutNavigationSection.navigate()` returns `True` for all keys** —
-   the NavigationManager consumes the event, preventing the flyout's own
-   `keyPressEvent` from firing.
-4. **ContextMenu `keyPressEvent` only handles Escape with open submenu** —
-   Enter, general Escape, and arrow navigation between rows not implemented.
+2. **`NavigationManager.eventFilter()` only intercepted Up/Down arrows** —
+   Enter and Escape were never routed to `_FlyoutNavigationSection.navigate()`,
+   falling through to `controller.py` (selection clear) or being swallowed by
+   `WA_ShowWithoutActivating`.
+3. **`_FlyoutNavigationSection.navigate()` consumed arrows without delivering
+   them** — returned `True` for Up/Down but didn't call `_navigate_rows()`,
+   so "consumed (no movement)" happened.
 
 ### What was done
 
 1. Flyouts register as `NavigationSection` via `_register_nav_section()` in
    `BaseFlyout.show()`, unregister in `hide()`.
 2. `_FlyoutNavigationSection.owns()` claim-its the flyout and descendants.
-3. `_FlyoutNavigationSection.navigate()` returns `True` for arrows, `False`
-   for Enter/Escape (yield to flyout's own keyPressEvent).
-4. `_grab_focus()` weakens StrongFocus ancestors, stores them in
+3. `_FlyoutNavigationSection.navigate()` creates a synthetic `QKeyEvent` and
+   delivers it directly to the flyout's `keyPressEvent()`.  This bypasses
+   `WA_ShowWithoutActivating` which prevents Qt from routing keyboard events
+   to the widget normally.  All handled keys (arrows, Enter, Escape) are
+   consumed by the section so NavigationManager doesn't try cross-section
+   navigation.
+4. `NavigationManager.eventFilter()` expanded to intercept Enter/Escape in
+   addition to Up/Down arrows.  Enter/Escape are only consumed if a section's
+   `navigate()` returns `True` — no fallback consume (unlike arrows).
+5. `_grab_focus()` weakens StrongFocus ancestors, stores them in
    `self._weakened_focus_ancestors`. No timers. Restoration happens in
    `_restore_focus_policies()`, called from `_finish_hide()` — ancestors
    keep `NoFocus` until the flyout is actually hidden.
-5. Added `keyPressEvent` to ContextMenu: Enter (activate row), Escape (close),
+6. Added `keyPressEvent` to ContextMenu: Enter (activate row), Escape (close),
    Up/Down (navigate rows).
-6. Added `_navigate_rows()` to ContextMenu.
+7. Added `_navigate_rows()` to ContextMenu.
 
 ### What still doesn't work
 
 | Issue | Status |
 |-------|--------|
 | Focus ring on flyout items | **No ring** — ContextMenu is not a Button subclass, has no `FocusLayer` |
-| Enter selects item | **Not working** — `keyPressEvent` not invoked despite focus being on ContextMenu |
-| Escape closes flyout | **Intercepted** by `controller.py` (selection clear), not by ContextMenu |
-| `WA_ShowWithoutActivating` blocks keyboard | **Suspected root cause** — removing breaks Wayland/QRhi |
+| `WA_ShowWithoutActivating` blocks normal Qt event routing | **Worked around** — synthetic key delivery via navigation section |
 
 ### Analysis
 
-The core issue remains: `WA_ShowWithoutActivating` prevents window activation.
-Even though `setFocus()` grants focus to the ContextMenu, keyboard events
-don't reach its `keyPressEvent` because the window is not activated.
+Two independent problems blocked flyout keyboard navigation:
 
-**Timer-based `_grab_focus` was removed.** The old approach (weaken ancestors,
-defer restore via `QTimer.singleShot(50)`) did not work because Qt's event
-processing order meant the timer fired before any KeyPress arrived:
+1. **`NavigationManager` only intercepted Up/Down arrows** — Enter and Escape
+   were never routed to `_FlyoutNavigationSection.navigate()`.  They went
+   through normal Qt routing where `WA_ShowWithoutActivating` blocked them,
+   so Escape fell through to `controller.py` (selection clear).
 
-1. `setFocus()` → focus granted to flyout
-2. Timer fires → window StrongFocus restored
-3. KeyPress arrives → window has StrongFocus → focus stolen back
+2. **`_FlyoutNavigationSection.navigate()` consumed arrows without delivering
+   them** — returned `True` for Up/Down but didn't call `_navigate_rows()`,
+   so "consumed (no movement)" happened.
 
-The new approach stores weakened ancestors on the flyout instance and restores
-them in `_finish_hide()`. This guarantees the window stays weakened for the
-entire lifetime of the flyout. However, the fundamental problem remains:
-`WA_ShowWithoutActivating` blocks keyboard events from reaching the flyout's
-`keyPressEvent` regardless of focus policy state.
+**Fix:**
+- `NavigationManager.eventFilter()` expanded to intercept Enter/Escape via
+  `_FLYOUT_KEYS`.  Enter/Escape are only consumed if a section's `navigate()`
+  returns `True` — no fallback consume (unlike arrows).
+- `_FlyoutNavigationSection.navigate()` creates a synthetic `QKeyEvent` and
+  calls `self._flyout.keyPressEvent(event)` directly, bypassing
+  `WA_ShowWithoutActivating` entirely.
 
 ### What remains
 
-1. **Remove `WA_ShowWithoutActivating`** and accept that flyouts activate
-   the window. The original comment says this is for Wayland/QRhi stability,
-   but the actual issue is that keyboard navigation doesn't work at all
-   without activation.
-
-2. **Make flyouts top-level popup windows** instead of in-window overlays.
-   Popups get their own activation context and keyboard events naturally.
-   This is a larger architectural change.
-
-3. **Focus ring for ContextMenu** — needs `FocusLayer` integration or a
+1. **Focus ring for ContextMenu** — needs `FocusLayer` integration or a
    custom painted focus indicator on the menu rows.
 
 ---
@@ -200,7 +197,7 @@ for shelf widgets, keeping shelf-internal navigation in the shelf.
 | File | Changes |
 |------|---------|
 | `ui/windows/custom_title_bar/widget.py` | `StrongFocus`, event filter, `_focusable_buttons()`, `_set_child_focus()` |
-| `ui/managers/navigation_manager.py` | Removed parent-chain fallback in `owns()` |
+| `ui/managers/navigation_manager.py` | Removed parent-chain fallback in `owns()`, expanded key filter to intercept Enter/Escape for flyout sections |
 | `ui/widgets/composite/base_flyout/lifecycle.py` | `_grab_focus()` no timers, `_restore_focus_policies()`, `_register_nav_section()`, `_FlyoutNavigationSection` |
 | `ui/widgets/composite/context_menu/menu.py` | `StrongFocus`, `keyPressEvent` (Enter/Escape/Up/Down), `_navigate_rows()` |
 
@@ -212,10 +209,10 @@ for shelf widgets, keeping shelf-internal navigation in the shelf.
    navigates between them, `setFocusProxy` + event filter handles focus.
 2. **Shelf navigation is clean** — header ↔ content routing in base
    `ShelfWidget`, delegation from session picker.
-3. **Flyout focus routing is partially working** — section registration and
-   `owns()` work, ancestor weakening is clean (no timers, restore on hide),
-   but keyboard events don't reach `keyPressEvent` due to
-   `WA_ShowWithoutActivating` / window activation issues.
+3. **Flyout keyboard navigation works** — section registration, `owns()`,
+   and synthetic key delivery via `navigate()` → `keyPressEvent()` bypass
+   `WA_ShowWithoutActivating`.  Up/Down navigates rows, Enter activates,
+   Escape closes.
 4. **`NavigationManager` parent-chain fallback removed** — it incorrectly
    claimed overlay widgets. Flyouts now register their own sections.
 5. **`QTimer.singleShot` hack removed** — weakened ancestors are stored on
