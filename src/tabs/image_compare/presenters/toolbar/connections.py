@@ -485,20 +485,11 @@ def _connect_image_load_buttons(presenter):
     presenter.widget.btn_image2.clicked.connect(lambda: open_image_dialog(presenter, 2))
 
 def _connect_text_settings_button(presenter):
-    btn = presenter.widget.btn_text_settings
-    logger.debug(
-        "[panel-debug] _connect_text_settings_button connecting btn=%s "
-        "visible=%s enabled=%s",
-        btn, btn.isVisible(), btn.isEnabled(),
-    )
-
-    def _on_text_settings_clicked():
-        logger.debug("[panel-debug] btn_text_settings CLICKED")
-        presenter.ui_manager.transient.toggle_font_settings_flyout(
+    presenter.widget.btn_text_settings.clicked.connect(
+        lambda: presenter.ui_manager.transient.toggle_font_settings_flyout(
             anchor_widget=presenter.widget.btn_text_settings
         )
-
-    btn.clicked.connect(_on_text_settings_clicked)
+    )
 
 def _connect_save_buttons(presenter):
     from tabs.image_compare.presenters.toolbar.state import _get_window_presenter

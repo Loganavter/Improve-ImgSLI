@@ -645,6 +645,45 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
         from ui.canvas_infra.rhi.rhi_focus import install_qrhi_focus_parking
 
         install_qrhi_focus_parking(widget)
+
+
+def ensure_window_rhi(window) -> None:
+    """Force ``window``'s top-level backingstore to promote to an RHI-capable
+    surface once, early -- before any real ``QRhiWidget`` content exists.
+
+    ``QRhiWidget::ensureRhi()`` (Qt's C++ implementation) pulls its QRhi from
+    the *top-level window's own backingstore*, which Qt only promotes from
+    the default `QSurface.SurfaceType.RasterSurface` to an RHI-capable type
+    lazily, on that backingstore's first real use by a QRhiWidget descendant.
+    On at least one real Wayland setup that lazy promotion loses a race
+    against the first QRhiWidget's own first paint/resize attempts --
+    `QRhiWidget::paintEvent()` warns `"QRhiWidget: No QRhi"` and emits
+    `renderFailed()`, repeatedly, and the widget's rendered content can get
+    stuck at a stale size across resizes (confirmed via the UI inspector:
+    the widget's own `geometry()` is correct, only the *painted* content
+    lags) until/unless promotion eventually completes.
+
+    Mirrors the fix used by Telegram Desktop's `lib_ui` toolkit
+    (`GL::EnsureWindowRhi`, `ui/rhi/rhi_surface.cpp`): create a throwaway,
+    1x1, hidden `QRhiWidget` child of the top-level window as early as
+    possible (before any real content, ideally before the platform window
+    helper sets up CSD/native-window state), so the promotion happens once,
+    synchronously enough in practice, off the interaction path -- instead of
+    racing against the real canvas's first show. See
+    docs/dev/investigations/lazy-legacy-shell-plan.md for the investigation.
+    """
+    try:
+        from PySide6.QtCore import Qt
+
+        primer = QRhiWidget(window)
+        primer.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        configure_rhi_widget(primer)
+        primer.setGeometry(0, 0, 1, 1)
+        primer.hide()
+    except Exception:
+        logger.exception("ensure_window_rhi: failed to create RHI primer widget")
+
+
 def query_max_texture_size(rhi: QRhi | None) -> int:
     """Backend-reported max 2D texture dimension, source of truth for
     tile-size-vs-limit decisions (docs/dev/TILED_RENDERING_DESIGN.md Phase 0).
