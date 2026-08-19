@@ -343,8 +343,7 @@ class TabRegistry:
         their service factories may depend on UI widgets that don't exist.
         """
         answered = self._first_tab_answering_result(
-            "create_service", service_id, *args, **kwargs,
-            pages_only=True,
+            "create_service", service_id, *args, **kwargs
         )
         if answered is None:
             return None
@@ -581,7 +580,7 @@ class TabRegistry:
         return answered[0] if answered is not None else None
 
     def _first_tab_answering_result(
-        self, method_name: str, *args: Any, pages_only: bool = False, **kwargs: Any
+        self, method_name: str, *args: Any, **kwargs: Any
     ) -> tuple["TabContract", object] | None:
         """Probe tabs for the first non-``None`` answer, returning the result.
 
@@ -591,15 +590,8 @@ class TabRegistry:
         would build a duplicate instance and re-run its side effects
         (e.g. re-registering a context menu provider → duplicated menu
         sections). See docs/dev/tabs/capability-mechanisms.md.
-
-        When *pages_only* is ``True``, only tabs whose page has been
-        materialized (exists in ``self._pages``) are probed.  This prevents
-        ``create_startup_service`` from creating services for tabs whose UI
-        widgets don't exist yet (lazy initialization).
         """
-        for session_type, tab in self._tabs.items():
-            if pages_only and session_type not in self._pages:
-                continue
+        for tab in self._tabs.values():
             method = getattr(tab, method_name, None)
             if method is None:
                 continue
