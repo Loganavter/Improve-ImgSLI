@@ -97,7 +97,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._build()
-        self._register_nav_section()
 
     def window_minimum_size(self) -> tuple[int, int]:
         """Main-window floor while this page is the active workspace content.
@@ -516,14 +515,6 @@ class SessionPickerWidget(ThemedWidget, QWidget):
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
-
-    def _register_nav_section(self) -> None:
-        from core.navigation_sections import SessionPickerSection
-        from sli_ui_toolkit.managers import NavigationManager
-
-        manager = NavigationManager.get_instance()
-        section = SessionPickerSection(self)
-        manager.register(self, section)
 
     def focus_last_create_card(self) -> bool:
         """Focus the last create-card.  Called by child widgets (e.g. the
