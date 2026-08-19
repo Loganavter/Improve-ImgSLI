@@ -65,6 +65,10 @@ class MainWindow(QWidget):
         # (the same band the dialogs get via WindowChrome).
         apply_frameless(self, outer_band=CUSTOM_DECORATION_RESIZE_MARGIN)
 
+        from ui.canvas_infra.rhi.rhi_backend import ensure_window_rhi
+
+        ensure_window_rhi(self)
+
         self._is_ui_stable = False
         self._application_initialized = False
         self._main_app_bootstrapped = False
