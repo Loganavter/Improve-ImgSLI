@@ -149,6 +149,15 @@ class TabContract(ABC):
     def on_window_shutdown(self, host_window) -> None:
         """Tear down tab-owned timers / threads when the host window closes."""
 
+    def on_resize_settled(self, viewport_state) -> None:
+        """Called after the window resize settles.  Tabs can update
+        overlays, placeholders, etc. here instead of the host reaching
+        into tab-specific widgets."""
+
+    def on_host_revealed(self) -> None:
+        """Called when the host window becomes visible after startup.
+        Tabs can refresh opaque fills, sync recent panels, etc."""
+
     def on_session_created(self, session_id: str, context: TabContext) -> None:
         """Called when a new session of this tab's type is created."""
 

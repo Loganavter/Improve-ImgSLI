@@ -138,12 +138,6 @@ def create_service(
 
         save_image_compare_feature_settings(*args, **kwargs)
         return True
-    if service_id == "magnifier_visibility_flyout":
-        from tabs.image_compare.ui.magnifier_visibility_flyout import (
-            MagnifierVisibilityFlyout,
-        )
-
-        return MagnifierVisibilityFlyout(*args, **kwargs)
     if service_id == "magnifier_visibility_controller":
         if tab._widget is None:
             return None

@@ -57,3 +57,11 @@ class ImageCanvasPresenter(QObject):
 
     def update_capture_area_display(self):
         return self.overlay.update_capture_area_display()
+
+    def get_canvas(self):
+        """Return the canvas widget for minimum-size measurement.
+
+        Called by the host (``layout_geometry``) instead of reaching into
+        ``tabs.image_compare.canvas.helpers.get_canvas``.
+        """
+        return getattr(self.widget, "image_label", None)

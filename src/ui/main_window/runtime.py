@@ -293,10 +293,6 @@ def _clear_rhi_resize_shields(window) -> None:
             _resize_debug("shield clear failed %s", _rhi_debug_id(rhi), exc_info=True)
 
 
-def _active_image_compare_widget(window):
-    return getattr(window, "image_compare_widget", None)
-
-
 class MainWindowRuntime:
     def __init__(self, window):
         self.window = window
@@ -306,6 +302,28 @@ class MainWindowRuntime:
             interval_ms=_MAIN_WINDOW_RESIZE_SETTLE_MS,
             parent=window,
         )
+
+    def _notify_active_tab_resize_settled(self) -> None:
+        """Notify the active tab that resize settled — generic hook."""
+        window = self.window
+        ui = getattr(window, "ui", None)
+        tab_registry = getattr(ui, "_tab_registry", None) if ui is not None else None
+        stack = getattr(ui, "workspace_stack", None) if ui is not None else None
+        if tab_registry is None or stack is None:
+            return
+        current = stack.currentWidget()
+        for session_type in tab_registry.registered_types:
+            if tab_registry.get_page(session_type) is not current:
+                continue
+            tab = tab_registry.get_tab(session_type)
+            if tab is not None:
+                try:
+                    tab.on_resize_settled(
+                        window.store.viewport.view_state
+                    )
+                except Exception:
+                    pass
+            break
 
     def notify_resize(self) -> None:
         self._resize_settle.ping()
@@ -336,12 +354,7 @@ class MainWindowRuntime:
 
         if onboarding_host.is_active(window):
             onboarding_host.sync_geometry(window)
-        widget = _active_image_compare_widget(window)
-        if widget is not None:
-            widget.update_drag_overlays(
-                window.store.viewport.view_state.is_horizontal,
-                widget.is_drag_overlay_visible(),
-            )
+        self._notify_active_tab_resize_settled()
 
     def _sync_live_chrome(self) -> None:
         """Geometry that must track the window every pixel — never wait for settle."""

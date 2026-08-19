@@ -59,12 +59,9 @@ def _init_popup_state(manager) -> None:
     manager._magn_instances_popup_open = False
 
 def _init_magnifier_flyout_widget(manager) -> None:
-    from tabs.registry import TabRegistry
+    from ui.widgets.magnifier_visibility_flyout import MagnifierVisibilityFlyout
 
-    registry = TabRegistry()
-    registry.discover()
-    manager.magnifier_visibility_flyout = registry.create_startup_service(
-        "magnifier_visibility_flyout",
+    manager.magnifier_visibility_flyout = MagnifierVisibilityFlyout(
         manager.parent_widget,
     )
     if manager.magnifier_visibility_flyout is None:

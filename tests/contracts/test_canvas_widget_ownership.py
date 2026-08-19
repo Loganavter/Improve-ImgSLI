@@ -101,11 +101,12 @@ def test_magnifier_feature_widgets_live_under_image_compare_tab():
         "managers/transient_ui_parts/magnifier.py",
         "managers/transient_ui_parts/magnifier_instances.py",
         "widgets/magnifier_color_controls.py",
-        "widgets/magnifier_visibility_flyout.py",
     ):
         path = SRC / "ui" / relative
         if path.exists():
             offenders.append(rel(path))
+    # magnifier_visibility_flyout.py is host-owned (created by bootstrap.py),
+    # NOT tab-owned — it lives in ui/widgets/ by design.
     assert not offenders, (
         "magnifier feature UI belongs under tabs.image_compare.ui: "
         + ", ".join(offenders)
