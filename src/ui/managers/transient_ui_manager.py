@@ -128,10 +128,10 @@ class TransientUIManager:
             flyouts.on_unified_flyout_closed()
 
     def event_filter(self, watched, event):
-        magnifier = self.magnifier
+        magnifier = self._services.get("magnifier")
         if magnifier is not None and magnifier.event_filter(watched, event):
             return True
-        magnifier_instances = self.magnifier_instances
+        magnifier_instances = self._services.get("magnifier_instances")
         if magnifier_instances is not None:
             return magnifier_instances.event_filter(watched, event)
         return False
