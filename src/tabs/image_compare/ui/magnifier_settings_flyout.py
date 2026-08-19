@@ -300,6 +300,20 @@ class MagnifierSettingsFlyout(BaseFlyout):
         # trigger, dismiss" (FlyoutManager.eventFilter's click heuristic).
         return ()
 
+    def keyPressEvent(self, event) -> None:
+        # This panel + the magnifier button group above it are meant to
+        # read as one continuous unit (the panel is a seamless flush
+        # continuation of the group's own border, see paintEvent) rather
+        # than an isolated popover -- so unlike every other flyout, Escape
+        # does not dismiss it. It only closes when keyboard focus actually
+        # leaves the group+panel for some other toolbar control (handled by
+        # MagnifierSettingsHoverController._handle_button_focus_event's
+        # FocusOut -> _schedule_hide, mirroring the mouse-hover-leave path).
+        if event.key() == Qt.Key.Key_Escape:
+            event.ignore()
+            return
+        super().keyPressEvent(event)
+
     def reposition(self) -> None:
         # BaseFlyout.reposition() (now also called by FlyoutManager itself
         # for pinned=True flyouts like this one on anchor move/resize, see
@@ -320,7 +334,9 @@ class MagnifierSettingsFlyout(BaseFlyout):
             return
         self.show_for_group(anchor_group)
 
-    def show_for_group(self, anchor_group: QWidget) -> None:
+    def show_for_group(
+        self, anchor_group: QWidget, *, focus_reason: Qt.FocusReason | None = None
+    ) -> None:
         self._anchor_group = anchor_group
         self._label = anchor_group.label() if hasattr(anchor_group, "label") else ""
         width, gap = _group_border_geometry(anchor_group)
@@ -340,7 +356,14 @@ class MagnifierSettingsFlyout(BaseFlyout):
         # opacity, and the slide would fight the move() below and snap the
         # panel back down by `gap` px on every fresh open. Opting out of the
         # app-wide default fade keeps show/hide instant and the position exact.
-        self.show_aligned(anchor_group, "bottom-center", "top-center", offset=0, animation="none")
+        self.show_aligned(
+            anchor_group,
+            "bottom-center",
+            "top-center",
+            offset=0,
+            animation="none",
+            focus_reason=focus_reason,
+        )
         # show_aligned centers this flyout's box on the group *widget*
         # center, which only puts the box's left edge exactly on the
         # group's painted border-box left edge (scaled_px(MARGIN_H)) when
