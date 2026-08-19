@@ -334,9 +334,7 @@ class MagnifierSettingsFlyout(BaseFlyout):
             return
         self.show_for_group(anchor_group)
 
-    def show_for_group(
-        self, anchor_group: QWidget, *, focus_reason: Qt.FocusReason | None = None
-    ) -> None:
+    def show_for_group(self, anchor_group: QWidget) -> None:
         self._anchor_group = anchor_group
         self._label = anchor_group.label() if hasattr(anchor_group, "label") else ""
         width, gap = _group_border_geometry(anchor_group)
@@ -356,13 +354,28 @@ class MagnifierSettingsFlyout(BaseFlyout):
         # opacity, and the slide would fight the move() below and snap the
         # panel back down by `gap` px on every fresh open. Opting out of the
         # app-wide default fade keeps show/hide instant and the position exact.
+        # grab_focus=False: this panel is a continuation of the magnifier
+        # button group, not an isolated popover (see keyPressEvent) -- the
+        # user must be free to keep arrow-key/Tab-navigating every button in
+        # the group while it's open, so opening it must not steal focus onto
+        # the panel's own first slider the instant it appears.
+        # register_nav_section=True: without this, the panel would be
+        # entirely invisible to arrow-key navigation -- Down from a group
+        # button would skip straight over it to whatever's next in the
+        # app's unrelated tab order instead of entering the panel. With it
+        # registered (but not focused), the toolbar row's section keeps
+        # routing Left/Right across the whole group as normal, and Down/Up
+        # now hand off into and back out of this panel's own controls at
+        # its boundary (see _FlyoutNavigationSection.navigate() in the
+        # toolkit).
         self.show_aligned(
             anchor_group,
             "bottom-center",
             "top-center",
             offset=0,
             animation="none",
-            focus_reason=focus_reason,
+            grab_focus=False,
+            register_nav_section=True,
         )
         # show_aligned centers this flyout's box on the group *widget*
         # center, which only puts the box's left edge exactly on the
