@@ -319,7 +319,8 @@ def main():
                     action_id,
                 )
 
-        QTimer.singleShot(0, _open_startup_tab)
+        _open_tab_delay_ms = int(os.environ.get("IMGSLI_DEBUG_OPEN_TAB_DELAY_MS", "0"))
+        QTimer.singleShot(_open_tab_delay_ms, _open_startup_tab)
 
     if args.run_action:
         from ui.actions.registry import get_action_registry
