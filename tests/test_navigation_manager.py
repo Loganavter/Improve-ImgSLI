@@ -279,8 +279,16 @@ class TestSessionPickerSection:
     def test_owns_returns_true_for_descendant(self):
         section, page, _ = self._make_page()
         child = MagicMock()
-        page.isAncestorOf = MagicMock(return_value=True)
+        child.parentWidget.return_value = page
         assert section.owns(child) is True
+
+    def test_owns_returns_true_for_deep_descendant(self):
+        section, page, _ = self._make_page()
+        grandchild = MagicMock()
+        child = MagicMock()
+        child.parentWidget.return_value = page
+        grandchild.parentWidget.return_value = child
+        assert section.owns(grandchild) is True
 
     def test_owns_returns_true_for_page_itself(self):
         section, page, _ = self._make_page()
@@ -413,8 +421,16 @@ class TestTabStripSection:
     def test_owns_returns_true_for_descendant(self):
         section, strip, _ = self._make_strip()
         child = MagicMock()
-        strip.isAncestorOf = MagicMock(return_value=True)
+        child.parentWidget.return_value = strip
         assert section.owns(child) is True
+
+    def test_owns_returns_true_for_deep_descendant(self):
+        section, strip, _ = self._make_strip()
+        grandchild = MagicMock()
+        child = MagicMock()
+        child.parentWidget.return_value = strip
+        grandchild.parentWidget.return_value = child
+        assert section.owns(grandchild) is True
 
     def test_owns_returns_true_for_strip_itself(self):
         section, strip, _ = self._make_strip()
@@ -425,9 +441,9 @@ class TestTabStripSection:
         strip.isAncestorOf = MagicMock(return_value=False)
         assert section.owns(MagicMock()) is False
 
-    def test_navigate_up_consumed_no_section_above(self):
+    def test_navigate_up_yields_to_title_bar(self):
         section, _, _ = self._make_strip()
-        assert section.navigate(Qt.Key.Key_Up, MagicMock()) is True
+        assert section.navigate(Qt.Key.Key_Up, MagicMock()) is False
 
     def test_navigate_down_yields_to_session_picker(self):
         section, _, _ = self._make_strip()
@@ -543,8 +559,8 @@ class TestArrowKeySoleOwnership:
                 f"expected False (yield to QTabBar)"
             )
 
-    def test_tab_strip_section_consumes_up(self):
-        """TabStripSection must consume Up — no section above."""
+    def test_tab_strip_section_yields_up(self):
+        """TabStripSection yields Up — NavigationManager routes to title bar."""
         from core.navigation_sections import TabStripSection
 
         strip = MagicMock()
@@ -552,6 +568,6 @@ class TestArrowKeySoleOwnership:
         section = TabStripSection(strip)
 
         result = section.navigate(Qt.Key.Key_Up, MagicMock())
-        assert result is True, (
-            f"TabStripSection yielded Up={result}, expected True (consume)"
+        assert result is False, (
+            f"TabStripSection consumed Up={result}, expected False (yield)"
         )

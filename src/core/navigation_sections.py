@@ -30,6 +30,10 @@ class SessionPickerSection:
     def owns(self, widget: QWidget) -> bool:
         if widget is self._page:
             return True
+        # Shelf (RecentProjectsPanel) has its own event filter for internal
+        # navigation — don't claim shelf widgets so their events pass through.
+        if self._is_in_recent(widget):
+            return False
         # Walk the parent chain — isAncestorOf misses intermediate
         # QWidget wrappers.
         p = widget
@@ -50,25 +54,9 @@ class SessionPickerSection:
         card_idx = next((i for i, (_, c) in enumerate(cards) if c is widget), None)
 
         logger.debug(
-            "[nav-card] navigate key=%s widget=%s card_idx=%s cards=%d in_recent=%s",
+            "[nav-card] navigate key=%s widget=%s card_idx=%s cards=%d",
             key, type(widget).__name__, card_idx, len(cards),
-            self._is_in_recent(widget),
         )
-
-        # If the focused widget is inside the recent panel, delegate to it.
-        if card_idx is None and self._is_in_recent(widget):
-            recent = self._page._recent_panel
-            if recent.navigate(key, widget):
-                return True
-            # Recent panel yielded on Up — hand off to last create card
-            # instead of yielding to the tab strip.
-            if key == Qt.Key.Key_Up and cards:
-                logger.debug(
-                    "[nav-card] Up from shelf header → last card"
-                )
-                cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            return False
 
         if key == Qt.Key.Key_Down:
             if card_idx is None:
@@ -159,9 +147,7 @@ class TabStripSection:
         )
         # Left/Right are handled by _AdaptiveTabBar itself — don't consume
         # them here.  Down yields to the session picker below.
-        # Up — yield so NavigationManager can hand off to the title bar.
-        if key == Qt.Key.Key_Up:
-            return True
+        # Up yields so NavigationManager can hand off to the title bar.
         return False
 
     def _focus_add_button(self) -> bool:
