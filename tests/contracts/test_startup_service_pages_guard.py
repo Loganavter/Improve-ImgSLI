@@ -72,6 +72,36 @@ def test_service_factories_guard_tab_widget():
     )
 
 
+def test_create_startup_service_uses_pages_only_guard():
+    """Tab-specific services must NOT be created eagerly at startup.
+
+    ``build_main_window_features`` must use ``_LazyTabService`` (deferred
+    resolution) for tab-specific services like toolbar and export, NOT
+    ``create_startup_service`` which probes all registered tabs at once.
+    Tab services should only be created when their tab's page is materialized.
+    """
+    features_path = SRC / "ui" / "presenters" / "main_window" / "features.py"
+    text = features_path.read_text(encoding="utf-8")
+    assert "_LazyTabService" in text, (
+        "build_main_window_features must use _LazyTabService for deferred "
+        "tab service creation, not create_startup_service"
+    )
+    # Verify toolbar and export are created via _LazyTabService, not directly
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        if node.name != "build_main_window_features":
+            continue
+        func_text = ast.get_source_segment(text, node)
+        assert "create_startup_service" not in func_text, (
+            "build_main_window_features must NOT call create_startup_service "
+            "directly — use _LazyTabService for tab-specific services"
+        )
+        return
+    assert False, "build_main_window_features method not found"
+
+
 def _check_function_for_unguarded_widget(
     func: ast.FunctionDef, rel_path: str, offenders: list[str]
 ) -> None:

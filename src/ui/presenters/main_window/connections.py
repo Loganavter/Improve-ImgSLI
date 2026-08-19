@@ -47,7 +47,6 @@ def _focus_content(presenter, direction: int) -> None:
 
 def connect_signals(presenter):
     image_canvas = presenter.get_feature("image_canvas")
-    toolbar_presenter = presenter.get_feature("toolbar")
 
     presenter.store.state_changed.connect(
         lambda domain: on_store_state_changed(presenter, domain)
@@ -87,8 +86,6 @@ def connect_signals(presenter):
         )
     )
 
-    if toolbar_presenter is not None:
-        toolbar_presenter.connect_signals()
     _refresh_active_tab_actions()
 
 
