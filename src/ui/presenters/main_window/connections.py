@@ -87,7 +87,8 @@ def connect_signals(presenter):
         )
     )
 
-    toolbar_presenter.connect_signals()
+    if toolbar_presenter is not None:
+        toolbar_presenter.connect_signals()
     _refresh_active_tab_actions()
 
 

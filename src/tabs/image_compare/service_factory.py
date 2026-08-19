@@ -157,6 +157,8 @@ def create_service(
             *args, widget=tab._widget, **kwargs
         )
     if service_id == "toolbar_presenter":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.presenters.toolbar_presenter import (
             ToolbarPresenter,
         )

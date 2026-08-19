@@ -40,8 +40,9 @@ def build_main_window_features(
         main_window_app,
         ui_manager,
     )
-    if toolbar is None:
-        raise RuntimeError("Tab toolbar presenter service is unavailable")
+    # toolbar may be None with lazy tab initialization — the tab whose
+    # page provides it hasn't been materialized yet.  It will be created
+    # when that tab is first shown (see assemble_host_page / _ensure_page).
     export = registry.create_startup_service(
         "export_presenter",
         store,
