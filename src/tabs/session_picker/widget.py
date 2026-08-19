@@ -579,7 +579,16 @@ class SessionPickerWidget(ThemedWidget, QWidget):
                     and recent.isVisible()
                     and recent.isAncestorOf(widget)
                 ):
-                    return recent.navigate(key, widget)
+                    if recent.navigate(key, widget):
+                        return True
+                    # Shelf header yielded — focus last create card
+                    # instead of yielding to the tab strip.
+                    if cards:
+                        logger.debug(
+                            "[nav-picker] Up from shelf header → last card"
+                        )
+                        cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+                        return True
                 logger.debug("[nav-picker] Up from non-card → yield")
                 return False
             if card_idx > 0:
