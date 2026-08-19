@@ -749,7 +749,7 @@ def _host_magnifier_visibility_controller():
         presenter = getattr(top, "presenter", None)
         ui = getattr(presenter, "ui_manager", None) if presenter else None
         transient = getattr(ui, "transient", None) if ui else None
-        controller = getattr(transient, "magnifier", None) if transient else None
+        controller = getattr(transient, "panel_visibility", None) if transient else None
         if controller is not None:
             return controller
     return None

@@ -73,7 +73,7 @@ class MagnifierVisibilityController:
         if not use_magnifier:
             return
         try:
-            self.manager.magnifier_instances.hide()
+            self.manager.panel_instances.hide()
         except Exception:
             pass
         self.update_states()

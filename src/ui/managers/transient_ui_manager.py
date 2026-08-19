@@ -13,8 +13,8 @@ class TransientUIManager:
             "flyouts": "unified_flyout_controller",
             "interpolation": "interpolation_flyout_controller",
             "font_settings": "font_settings_flyout_controller",
-            "magnifier": "magnifier_visibility_controller",
-            "magnifier_instances": "magnifier_instances_popup_controller",
+            "panel_visibility": "panel_visibility_controller",
+            "panel_instances": "panel_instances_controller",
         }
         self.closing = PopupClosingController(self)
 
@@ -128,12 +128,12 @@ class TransientUIManager:
             flyouts.on_unified_flyout_closed()
 
     def event_filter(self, watched, event):
-        magnifier = self._services.get("magnifier")
-        if magnifier is not None and magnifier.event_filter(watched, event):
+        panel_visibility = self._services.get("panel_visibility")
+        if panel_visibility is not None and panel_visibility.event_filter(watched, event):
             return True
-        magnifier_instances = self._services.get("magnifier_instances")
-        if magnifier_instances is not None:
-            return magnifier_instances.event_filter(watched, event)
+        panel_instances = self._services.get("panel_instances")
+        if panel_instances is not None:
+            return panel_instances.event_filter(watched, event)
         return False
 
     def close_all_flyouts_if_needed(self, global_pos: QPointF):

@@ -1,8 +1,8 @@
-"""Host-owned magnifier visibility flyout.
+"""Host-owned panel-visibility flyout.
 
-Generic ``IndexedToggleFlyout`` with 3 slots (left/center/right).
-The icon is passed by the caller — this widget has NO dependency on
-any tab package.
+Generic ``IndexedToggleFlyout`` with 3 slots (left/center/right). The icon
+is required from the caller — this widget has NO dependency on any tab
+package or knowledge of which feature it's toggling.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from PySide6.QtWidgets import QWidget
 from sli_ui_toolkit.widgets import IndexedToggleFlyout
 
 
-class MagnifierVisibilityFlyout(IndexedToggleFlyout):
-    def __init__(self, parent_widget: QWidget, *, slot_icon: str = "magnifier.svg"):
+class PanelVisibilityFlyout(IndexedToggleFlyout):
+    def __init__(self, parent_widget: QWidget, *, slot_icon: str):
         super().__init__(parent_widget, slot_count=3, slot_icon=slot_icon)
         self.btn_left = self.buttons[0]
         self.btn_center = self.buttons[1]
