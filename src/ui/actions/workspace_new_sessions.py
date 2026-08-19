@@ -1,9 +1,7 @@
 """Bind ``workspace.new_*`` actions to session types.
 
-Session-type literals live here (and in tab packages), not under
-``ui/main_window`` — platform isolation forbids ``image_compare`` /
-``multi_compare`` word matches in the main-window tree. Runners resolve
-``TabRegistry.get_tab`` at click time so deferred tabs still work.
+Runners resolve ``TabRegistry.get_tab`` at click time so deferred tabs
+still work.  The public API is generic — no tab-specific names.
 """
 
 from __future__ import annotations
@@ -12,14 +10,12 @@ from collections.abc import Callable
 
 from core.actions.types import ActionTarget
 
-_IMAGE_COMPARE_SESSION = "image_compare"
-_MULTI_COMPARE_SESSION = "multi_compare"
 
-
-def _runner_for(
+def runner_for(
     session_type: str,
     create_session: Callable[[str], None],
 ) -> Callable[[], None]:
+    """Return a click handler that creates a session of *session_type*."""
     def _run() -> None:
         from tabs.registry import TabRegistry
 
@@ -30,12 +26,13 @@ def _runner_for(
     return _run
 
 
-def _target_for(
+def target_for(
     session_type: str,
     *,
-    ensure_visible: Callable[[], None] | None,
-    resolve_card: Callable[[str], object | None] | None,
+    ensure_visible: Callable[[], None] | None = None,
+    resolve_card: Callable[[str], object | None] | None = None,
 ) -> ActionTarget | None:
+    """Return an ``ActionTarget`` for a tab's new-session action."""
     if ensure_visible is None and resolve_card is None:
         return None
     return ActionTarget(
@@ -48,16 +45,17 @@ def _target_for(
     )
 
 
+# Backward-compatible aliases (deprecated — prefer runner_for / target_for)
 def image_compare_runner(
     create_session: Callable[[str], None],
 ) -> Callable[[], None]:
-    return _runner_for(_IMAGE_COMPARE_SESSION, create_session)
+    return runner_for("image_compare", create_session)
 
 
 def multi_compare_runner(
     create_session: Callable[[str], None],
 ) -> Callable[[], None]:
-    return _runner_for(_MULTI_COMPARE_SESSION, create_session)
+    return runner_for("multi_compare", create_session)
 
 
 def image_compare_target(
@@ -65,8 +63,8 @@ def image_compare_target(
     ensure_visible: Callable[[], None] | None = None,
     resolve_card: Callable[[str], object | None] | None = None,
 ) -> ActionTarget | None:
-    return _target_for(
-        _IMAGE_COMPARE_SESSION,
+    return target_for(
+        "image_compare",
         ensure_visible=ensure_visible,
         resolve_card=resolve_card,
     )
@@ -77,8 +75,8 @@ def multi_compare_target(
     ensure_visible: Callable[[], None] | None = None,
     resolve_card: Callable[[str], object | None] | None = None,
 ) -> ActionTarget | None:
-    return _target_for(
-        _MULTI_COMPARE_SESSION,
+    return target_for(
+        "multi_compare",
         ensure_visible=ensure_visible,
         resolve_card=resolve_card,
     )

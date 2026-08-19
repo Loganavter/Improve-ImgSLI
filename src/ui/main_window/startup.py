@@ -227,35 +227,27 @@ class MainWindowStartupRuntime:
             apply_mask()
         host.update()
         window.update()
-        self._refresh_session_picker_surface()
+        self._notify_active_tab_host_revealed()
 
-    def _refresh_session_picker_surface(self) -> None:
-        """Force Session Picker opaque fills after the host becomes visible."""
+    def _notify_active_tab_host_revealed(self) -> None:
+        """Notify the active tab that the host is visible — generic hook."""
         window = self.window
         ui = getattr(window, "ui", None)
         registry = getattr(ui, "_tab_registry", None) if ui is not None else None
-        if registry is None:
+        stack = getattr(ui, "workspace_stack", None) if ui is not None else None
+        if registry is None or stack is None:
             return
-        picker = registry.get_page("session_picker")
-        if picker is None:
-            return
-        recover = getattr(picker, "_sync_opaque_page_fills", None)
-        if callable(recover):
-            recover()
-        # Ensure create-cards + recent are present before the cover lifts
-        # (idempotent if _build already populated them).
-        show_hook = getattr(picker, "refresh", None)
-        if callable(show_hook):
-            show_hook()
-        recent = getattr(picker, "_recent_panel", None)
-        if recent is not None:
-            on_shown = getattr(recent, "on_page_shown", None)
-            if callable(on_shown):
-                on_shown()
-            recover_recent = getattr(recent, "recover_opaque_surface", None)
-            if callable(recover_recent):
-                recover_recent()
-        picker.update()
+        current = stack.currentWidget()
+        for session_type in registry.registered_types:
+            if registry.get_page(session_type) is not current:
+                continue
+            tab = registry.get_tab(session_type)
+            if tab is not None:
+                try:
+                    tab.on_host_revealed()
+                except Exception:
+                    pass
+            break
 
     def emit_visual_ready(self) -> None:
         window = self.window
@@ -319,7 +311,7 @@ class MainWindowStartupRuntime:
             )
             if tab_reg is not None:
                 settings_plugin.register_canvas_feature_bindings(
-                    tab_reg, tab_types=("multi_compare",)
+                    tab_reg
                 )
 
         if ctx.settings_manager is not None and ctx.store is not None:
