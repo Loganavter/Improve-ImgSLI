@@ -57,17 +57,48 @@ def test_service_factories_guard_tab_widget():
 def _check_function_for_unguarded_widget(
     func: ast.FunctionDef, rel_path: str, offenders: list[str]
 ) -> None:
-    """Check that every use of tab._widget in *func* is guarded by a None check."""
-    # Collect lines that are inside an `if tab._widget is None: return None` guard.
+    """Check that every use of tab._widget in *func* is guarded by a None check.
+
+    Two patterns are recognized as guards:
+    1. ``if tab._widget is None: return None`` — lines INSIDE the if-body
+       are guarded (they only run when widget IS None, e.g. for early return).
+    2. Lines AFTER an ``if tab._widget is None: return None`` block are
+       guarded because the early return prevents execution when widget IS None.
+    """
     guard_lines: set[int] = set()
-    for node in ast.walk(func):
-        if isinstance(node, ast.If):
-            if _is_widget_none_guard(node):
-                # Only the if-body is guarded — walk body nodes only.
-                for stmt in node.body:
-                    for child in ast.walk(stmt):
+
+    # First pass: find early-return guards and mark lines after them.
+    if_nodes = [
+        node for node in ast.walk(func)
+        if isinstance(node, ast.If) and _is_widget_none_guard(node)
+    ]
+    for node in if_nodes:
+        # Check if the if-body contains a return (early return pattern).
+        has_return = any(
+            isinstance(stmt, ast.Return)
+            for stmt in node.body
+        )
+        if has_return:
+            # Lines at the same level AFTER this if-block are guarded.
+            for parent in ast.walk(func):
+                body = getattr(parent, "body", None)
+                if not isinstance(body, list):
+                    continue
+                try:
+                    idx = body.index(node)
+                except ValueError:
+                    continue
+                for sibling in body[idx + 1:]:
+                    for child in ast.walk(sibling):
                         if hasattr(child, "lineno"):
                             guard_lines.add(child.lineno)
+
+    # Also mark lines INSIDE the if-body as guarded (for completeness).
+    for node in if_nodes:
+        for stmt in node.body:
+            for child in ast.walk(stmt):
+                if hasattr(child, "lineno"):
+                    guard_lines.add(child.lineno)
 
     # Find all attribute accesses on tab._widget
     for node in ast.walk(func):
