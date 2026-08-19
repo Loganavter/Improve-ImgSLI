@@ -149,7 +149,16 @@ class MainWindowStartupRuntime:
             nav_manager.register(title_bar, TitleBarNavigationSection(title_bar))
             logger.debug("[nav-titlebar] registered title bar section")
 
-        nav_manager.auto_register_from_descriptors()
+        # Workspace tab strip — explicit registration (top-to-bottom order).
+        tab_strip = getattr(window.ui, "workspace_tabs", None)
+        if tab_strip is not None:
+            from core.navigation_sections import TabStripSection
+
+            nav_manager.register(tab_strip, TabStripSection(tab_strip))
+            logger.debug("[nav-tabstrip] registered tab strip section")
+
+        # Session picker registers itself in __init__ (created lazily by
+        # TabRegistry, so we cannot register it here).
 
         window.appearance.update_image_label_background()
         if window.main_controller and window.main_controller.sessions:

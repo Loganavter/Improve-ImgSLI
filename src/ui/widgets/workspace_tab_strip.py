@@ -28,7 +28,6 @@ class WorkspaceTabStrip(AdaptiveTabStrip):
         kwargs.setdefault("close_policy", CloseButtonPolicy.ALL)
         super().__init__(*args, **kwargs)
         self.tab_bar.installEventFilter(self)
-        self._setup_navigation()
 
     def _close_slot_at(self, pos):
         index = self.tab_bar.tabAt(pos)
@@ -64,38 +63,6 @@ class WorkspaceTabStrip(AdaptiveTabStrip):
                     event.accept()
                     return True
         return super().eventFilter(watched, event)
-
-    def _setup_navigation(self) -> None:
-        from sli_ui_toolkit.ui.widget_descriptor import (
-            NavigationSection,
-            WidgetDescriptor,
-        )
-
-        self.widget_descriptor = WidgetDescriptor(
-            family="WorkspaceTabStrip",
-            navigation=NavigationSection(
-                navigate=self._nav_navigate,
-                focus_first=self._nav_focus_first,
-                focus_last=self._nav_focus_last,
-            ),
-        )
-
-    def _nav_navigate(self, key: int, widget) -> bool:
-        if key == Qt.Key.Key_Up:
-            return False
-        return False
-
-    def _nav_focus_first(self) -> bool:
-        add_btn = getattr(self, "add_button", None)
-        if add_btn is not None and add_btn.isVisible():
-            add_btn.setFocus(Qt.FocusReason.OtherFocusReason)
-            return True
-        self.setFocus(Qt.FocusReason.OtherFocusReason)
-        return True
-
-    def _nav_focus_last(self) -> bool:
-        return self._nav_focus_first()
-
 
 
 WorkspaceTabStrip.inspect_spec = InspectSpec(

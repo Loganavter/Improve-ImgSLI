@@ -63,35 +63,40 @@ class TestNavigationManager:
         assert a is b
 
     def test_register_adds_section(self):
+        owner = _fake_widget("owner")
         section = _make_section()
-        self.manager.register(section)
+        self.manager.register(owner, section)
         assert any(s is section for _, s in self.manager._sections)
 
     def test_register_idempotent(self):
+        owner = _fake_widget("owner")
         section = _make_section()
-        self.manager.register(section)
-        self.manager.register(section)
+        self.manager.register(owner, section)
+        self.manager.register(owner, section)
         assert sum(1 for _, s in self.manager._sections if s is section) == 1
 
     def test_unregister_removes_section(self):
+        owner = _fake_widget("owner")
         section = _make_section()
-        self.manager.register(section)
-        self.manager.unregister(section)
-        assert section not in self.manager._sections
+        self.manager.register(owner, section)
+        self.manager.unregister(owner)
+        assert section not in [s for _, s in self.manager._sections]
 
     def test_unregister_unknown_section_is_noop(self):
-        section = _make_section()
-        self.manager.unregister(section)
+        owner = _fake_widget("owner")
+        self.manager.unregister(owner)
 
     def test_event_filter_ignores_non_keypress(self):
+        owner = _fake_widget("owner")
         section = _make_section(owns_fn=lambda w: True, navigate_fn=lambda k, w: True)
-        self.manager.register(section)
+        self.manager.register(owner, section)
         event = SimpleNamespace(type=lambda: QEvent.Type.MouseButtonPress)
         assert self.manager.eventFilter(None, event) is False
 
     def test_event_filter_ignores_non_arrow_keys(self):
+        owner = _fake_widget("owner")
         section = _make_section(owns_fn=lambda w: True, navigate_fn=lambda k, w: True)
-        self.manager.register(section)
+        self.manager.register(owner, section)
         event = _FakeKeyEvent(Qt.Key.Key_A)
         assert self.manager.eventFilter(None, event) is False
 
@@ -99,11 +104,12 @@ class TestNavigationManager:
     def test_event_filter_delegates_to_owning_section(self, mock_qapp):
         handled = []
         widget = _fake_widget("target")
+        owner = _fake_widget("owner")
         section = _make_section(
             owns_fn=lambda w: w is widget,
             navigate_fn=lambda k, w: (handled.append(k) or True),
         )
-        self.manager.register(section)
+        self.manager.register(owner, section)
         event = _FakeKeyEvent(Qt.Key.Key_Down)
         mock_qapp.focusWidget.return_value = widget
         result = self.manager.eventFilter(None, event)
@@ -112,8 +118,9 @@ class TestNavigationManager:
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_event_filter_returns_false_when_no_focus(self, mock_qapp):
+        owner = _fake_widget("owner")
         section = _make_section(owns_fn=lambda w: True)
-        self.manager.register(section)
+        self.manager.register(owner, section)
         event = _FakeKeyEvent(Qt.Key.Key_Down)
         mock_qapp.focusWidget.return_value = None
         result = self.manager.eventFilter(None, event)
@@ -122,6 +129,8 @@ class TestNavigationManager:
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_event_filter_tries_next_section_when_first_declines(self, mock_qapp):
         widget = _fake_widget("target")
+        owner1 = _fake_widget("owner1")
+        owner2 = _fake_widget("owner2")
         focus_calls = []
 
         second = _make_section(
@@ -132,8 +141,8 @@ class TestNavigationManager:
             owns_fn=lambda w: w is widget,
             navigate_fn=lambda k, w: False,
         )
-        self.manager.register(first)
-        self.manager.register(second)
+        self.manager.register(owner1, first)
+        self.manager.register(owner2, second)
 
         event = _FakeKeyEvent(Qt.Key.Key_Down)
         mock_qapp.focusWidget.return_value = widget
@@ -145,11 +154,12 @@ class TestNavigationManager:
     def test_event_filter_consumes_when_no_neighbor(self, mock_qapp):
         """Section declines and no neighbor exists — event is consumed."""
         widget = _fake_widget("target")
+        owner = _fake_widget("owner")
         section = _make_section(
             owns_fn=lambda w: w is widget,
             navigate_fn=lambda k, w: False,
         )
-        self.manager.register(section)
+        self.manager.register(owner, section)
         event = _FakeKeyEvent(Qt.Key.Key_Down)
         mock_qapp.focusWidget.return_value = widget
         result = self.manager.eventFilter(None, event)
@@ -159,8 +169,9 @@ class TestNavigationManager:
     def test_event_filter_passes_through_when_no_section_owns(self, mock_qapp):
         """No section claims the widget — event passes through."""
         widget = _fake_widget("unowned")
+        owner = _fake_widget("owner")
         section = _make_section(owns_fn=lambda w: False)
-        self.manager.register(section)
+        self.manager.register(owner, section)
         event = _FakeKeyEvent(Qt.Key.Key_Down)
         mock_qapp.focusWidget.return_value = widget
         result = self.manager.eventFilter(None, event)
@@ -180,6 +191,8 @@ class TestCrossSectionRouting:
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_down_at_last_item_yields_to_next_section(self, mock_qapp):
         widget = _fake_widget("target")
+        owner1 = _fake_widget("owner1")
+        owner2 = _fake_widget("owner2")
         focus_calls = []
 
         top = _make_section(
@@ -190,8 +203,8 @@ class TestCrossSectionRouting:
             owns_fn=lambda w: False,
             focus_first_fn=lambda: (focus_calls.append("bottom_first") or True),
         )
-        self.manager.register(top)
-        self.manager.register(bottom)
+        self.manager.register(owner1, top)
+        self.manager.register(owner2, bottom)
 
         event = _FakeKeyEvent(Qt.Key.Key_Down)
         mock_qapp.focusWidget.return_value = widget
@@ -202,6 +215,8 @@ class TestCrossSectionRouting:
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_up_at_first_item_yields_to_prev_section(self, mock_qapp):
         widget = _fake_widget("target")
+        owner1 = _fake_widget("owner1")
+        owner2 = _fake_widget("owner2")
         focus_calls = []
 
         top = _make_section(
@@ -212,8 +227,8 @@ class TestCrossSectionRouting:
             owns_fn=lambda w: w is widget,
             navigate_fn=lambda k, w: False,
         )
-        self.manager.register(top)
-        self.manager.register(bottom)
+        self.manager.register(owner1, top)
+        self.manager.register(owner2, bottom)
 
         event = _FakeKeyEvent(Qt.Key.Key_Up)
         mock_qapp.focusWidget.return_value = widget
@@ -225,11 +240,12 @@ class TestCrossSectionRouting:
     def test_left_right_pass_through_immediately(self, mock_qapp):
         """Left/Right pass through without any section routing."""
         widget = _fake_widget("target")
+        owner = _fake_widget("owner")
         section = _make_section(
             owns_fn=lambda w: w is widget,
             navigate_fn=lambda k, w: True,
         )
-        self.manager.register(section)
+        self.manager.register(owner, section)
         for key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             event = _FakeKeyEvent(key)
             mock_qapp.focusWidget.return_value = widget
