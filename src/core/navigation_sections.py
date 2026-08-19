@@ -28,11 +28,41 @@ class SessionPickerSection:
         self._page = page
 
     def owns(self, widget: QWidget) -> bool:
-        return self._page.isAncestorOf(widget) or widget is self._page
+        if widget is self._page:
+            return True
+        # Walk the parent chain — isAncestorOf misses intermediate
+        # QWidget wrappers.
+        p = widget
+        while p is not None:
+            if p is self._page:
+                return True
+            p = p.parentWidget()
+        return False
+
+    def _is_in_recent(self, widget: QWidget) -> bool:
+        recent = getattr(self._page, "_recent_panel", None)
+        if recent is None or not recent.isVisible():
+            return False
+        return recent.isAncestorOf(widget) or widget is recent
 
     def navigate(self, key: int, widget: QWidget) -> bool:
         cards = self._page._card_entries()
         card_idx = next((i for i, (_, c) in enumerate(cards) if c is widget), None)
+
+        # If the focused widget is inside the recent panel, delegate to it.
+        if card_idx is None and self._is_in_recent(widget):
+            recent = self._page._recent_panel
+            if recent.navigate(key, widget):
+                return True
+            # Recent panel yielded on Up — hand off to last create card
+            # instead of yielding to the tab strip.
+            if key == Qt.Key.Key_Up and cards:
+                logger.debug(
+                    "[nav-card] Up from shelf header → last card"
+                )
+                cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+                return True
+            return False
 
         if key == Qt.Key.Key_Down:
             if card_idx is None:
@@ -107,7 +137,14 @@ class TabStripSection:
         self._tab_strip = tab_strip
 
     def owns(self, widget: QWidget) -> bool:
-        return self._tab_strip.isAncestorOf(widget) or widget is self._tab_strip
+        if widget is self._tab_strip:
+            return True
+        p = widget
+        while p is not None:
+            if p is self._tab_strip:
+                return True
+            p = p.parentWidget()
+        return False
 
     def navigate(self, key: int, widget: QWidget) -> bool:
         # Left/Right are handled by _AdaptiveTabBar itself — don't consume
