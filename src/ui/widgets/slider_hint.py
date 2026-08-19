@@ -76,6 +76,12 @@ class SliderHintFlyout(BaseFlyout):
             flyout_point="bottom-center",
             offset=6,
             animation="none",
+            # Read-only value preview, not interactive -- must not steal
+            # keyboard focus off the slider (QSlider natively steps its
+            # value on Left/Right/Up/Down while focused; the flyout's own
+            # _grab_focus() fallback would otherwise land on itself, since
+            # a QLabel isn't focusable, breaking that native behavior).
+            grab_focus=False,
         )
 
     def update_value(self, text: str) -> None:
