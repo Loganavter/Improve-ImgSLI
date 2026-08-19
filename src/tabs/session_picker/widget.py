@@ -97,7 +97,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._build()
-        self._setup_navigation()
+        self._register_nav_section()
 
     def window_minimum_size(self) -> tuple[int, int]:
         """Main-window floor while this page is the active workspace content.
@@ -514,111 +514,20 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         )
 
     # ------------------------------------------------------------------
-    # Navigation (WidgetDescriptor)
+    # Navigation
     # ------------------------------------------------------------------
 
-    def _setup_navigation(self) -> None:
-        from sli_ui_toolkit.ui.widget_descriptor import (
-            NavigationSection,
-            WidgetDescriptor,
-        )
+    def _register_nav_section(self) -> None:
+        from core.navigation_sections import SessionPickerSection
+        from sli_ui_toolkit.managers import NavigationManager
 
-        self.widget_descriptor = WidgetDescriptor(
-            family="SessionPickerWidget",
-            navigation=NavigationSection(
-                navigate=self._nav_navigate,
-                focus_first=self._nav_focus_first,
-                focus_last=self._nav_focus_last,
-            ),
-        )
-
-    def _nav_navigate(self, key: int, widget) -> bool:
-        from PySide6.QtCore import Qt
-
-        cards = self._card_entries()
-        card_idx = next((i for i, (_, c) in enumerate(cards) if c is widget), None)
-
-        if key == Qt.Key.Key_Down:
-            if card_idx is None:
-                recent = getattr(self, "_recent_panel", None)
-                if (
-                    recent is not None
-                    and recent.isVisible()
-                    and recent.isAncestorOf(widget)
-                ):
-                    return recent.navigate(key, widget)
-                if cards:
-                    logger.debug(
-                        "[nav-picker] Down from non-card → first card (%s)",
-                        type(cards[0][1]).__name__,
-                    )
-                    cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
-                    return True
-            elif card_idx < len(cards) - 1:
-                logger.debug(
-                    "[nav-picker] Down card[%d] → card[%d]", card_idx, card_idx + 1
-                )
-                cards[card_idx + 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            recent = getattr(self, "_recent_panel", None)
-            if recent is not None and recent.isVisible():
-                if recent.focus_header_control(True):
-                    logger.debug("[nav-picker] Down past last card → shelf header")
-                    return True
-                if recent.focus_recent_item(True):
-                    logger.debug("[nav-picker] Down past last card → first recent item")
-                    return True
-            logger.debug("[nav-picker] Down past last card → yield (no shelf)")
-            return False
-
-        if key == Qt.Key.Key_Up:
-            if card_idx is None:
-                recent = getattr(self, "_recent_panel", None)
-                if (
-                    recent is not None
-                    and recent.isVisible()
-                    and recent.isAncestorOf(widget)
-                ):
-                    if recent.navigate(key, widget):
-                        return True
-                    # Shelf header yielded — focus last create card
-                    # instead of yielding to the tab strip.
-                    if cards:
-                        logger.debug(
-                            "[nav-picker] Up from shelf header → last card"
-                        )
-                        cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
-                        return True
-                logger.debug("[nav-picker] Up from non-card → yield")
-                return False
-            if card_idx > 0:
-                logger.debug(
-                    "[nav-picker] Up card[%d] → card[%d]", card_idx, card_idx - 1
-                )
-                cards[card_idx - 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
-                return True
-            logger.debug("[nav-picker] Up from first card → yield to tab strip")
-            return False
-
-        return True
+        manager = NavigationManager.get_instance()
+        section = SessionPickerSection(self)
+        manager.register(self, section)
 
     def focus_last_create_card(self) -> bool:
         """Focus the last create-card.  Called by child widgets (e.g. the
         recent shelf header bar) for internal section handoff."""
-        return self._nav_focus_last()
-
-    def _nav_focus_first(self) -> bool:
-        from PySide6.QtCore import Qt
-
-        cards = self._card_entries()
-        if cards:
-            cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
-            return True
-        return False
-
-    def _nav_focus_last(self) -> bool:
-        from PySide6.QtCore import Qt
-
         cards = self._card_entries()
         if cards:
             cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)

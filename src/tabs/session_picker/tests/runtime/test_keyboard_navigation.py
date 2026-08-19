@@ -105,7 +105,7 @@ def test_create_card_arrows_move_focus_via_real_key_events(qapp, monkeypatch):
 
     manager = NavigationManager.get_instance()
     section = SessionPickerSection(widget)
-    manager.register(section)
+    manager.register(widget, section)
     try:
         entries[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
         QTest.qWait(20)
