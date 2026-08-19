@@ -370,16 +370,9 @@ class MainWindow(QWidget):
         self.runtime.handle_move()
 
     def showEvent(self, event: QShowEvent):
-        import traceback
-        logger.debug("[flicker-debug] MainWindow.showEvent, stack:\n%s", "".join(traceback.format_stack()))
         super().showEvent(event)
         self._apply_rounded_mask()
         self.runtime.handle_show()
-
-    def hideEvent(self, event):
-        import traceback
-        logger.debug("[flicker-debug] MainWindow.hideEvent, stack:\n%s", "".join(traceback.format_stack()))
-        super().hideEvent(event)
 
     def mousePressEvent(self, event):
         focused = self.focusWidget()

@@ -106,7 +106,7 @@ class ImageCompareLayoutBuilder:
         ui.checkbox_widget = self._checkbox_widget(page)
         ui.image_container_layout = self._image_container_layout()
         self._slider_panel_layout()
-        ui.image_container_widget = self._image_container_widget()
+        ui.image_container_widget = self._image_container_widget(page)
         ui.image_container_layout.addWidget(ui.image_label)
         self._create_image_startup_placeholder()
         self._create_zoom_indicator()
@@ -152,8 +152,15 @@ class ImageCompareLayoutBuilder:
         layout.setContentsMargins(0, 0, 0, 0)
         return layout
 
-    def _image_container_widget(self) -> QWidget:
-        widget = QWidget()
+    def _image_container_widget(self, parent: QWidget) -> QWidget:
+        # Parented immediately (not a detached QWidget()) so that when
+        # `ui.image_label` (a QRhiWidget, holding a native surface) is added
+        # to its layout right after, it moves within the same already-
+        # realized top-level tree instead of briefly passing through a
+        # parentless orphan -- which forced Qt/Wayland to tear down and
+        # recreate the top-level window's native surface (visible as a
+        # spurious close+reopen) on image_compare's first activation.
+        widget = QWidget(parent)
         widget.setLayout(self.target.image_container_layout)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         return widget
