@@ -64,6 +64,32 @@ class MagnifierInstancesPopupController:
             if self.manager.host._magn_instances_popup_open:
                 self._bubble.restart_auto_hide()
             return False
+        if et == QEvent.Type.FocusIn:
+            # Mirror the Enter/hover-open path for keyboard/Tab focus. The
+            # reason is read off the event itself rather than the button's
+            # `_keyboard_focus` flag, since this filter runs before
+            # Button.focusInEvent updates that flag for this same event.
+            reason = getattr(event, "reason", lambda: None)()
+            if reason not in (
+                Qt.FocusReason.MouseFocusReason,
+                Qt.FocusReason.MenuBarFocusReason,
+            ):
+                self._requested_open = True
+                try:
+                    self.manager.panel_visibility.hide(reason="magnifier_instances_focus")
+                except Exception:
+                    pass
+                if not self.manager.host._magn_instances_popup_open:
+                    self._hover_timer.stop()
+                    self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+                else:
+                    self._bubble.restart_auto_hide()
+            return False
+        if et == QEvent.Type.FocusOut:
+            self._requested_open = False
+            if self.manager.host._magn_instances_popup_open:
+                self._bubble.restart_auto_hide()
+            return False
         return False
 
     def show(self):
@@ -96,5 +122,14 @@ class MagnifierInstancesPopupController:
         if button.magnifier_count() <= 1:
             self.hide()
             return
-        if self.manager.host._magn_instances_popup_open:
+        # Previously only re-shown if the mouse-hover popup was already
+        # open -- a keyboard-driven count change (arrow-key ring focus +
+        # Up/Down/Enter on InstancesCounterButton) never triggers the Enter/
+        # Leave hover events this popup otherwise relies on, so it silently
+        # never appeared for keyboard users. Show it too when the button
+        # currently holds the keyboard focus ring, mirroring the hover path.
+        keyboard_driven = (
+            bool(getattr(button, "_keyboard_focus", False)) and button.hasFocus()
+        )
+        if self.manager.host._magn_instances_popup_open or keyboard_driven:
             self.show()

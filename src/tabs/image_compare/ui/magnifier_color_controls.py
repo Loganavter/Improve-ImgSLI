@@ -239,3 +239,26 @@ class ColorSettingsButton(Button):
         self.elementHoverEnded.emit()
         self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
         super().leaveEvent(event)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        # This flyout was only ever reachable via mouse hover (enterEvent
+        # above) -- arrow-key ring navigation lands keyboard focus here but
+        # never fired any equivalent, so the flyout silently never opened
+        # for keyboard users. Mirror enterEvent, but only for a genuine
+        # keyboard-driven focus grant: a mouse click also focuses the
+        # button (MouseFocusReason), and enterEvent already handled that
+        # case moments earlier -- gating on _keyboard_focus avoids showing
+        # the flyout twice / fighting its own auto-hide timer.
+        if getattr(self, "_keyboard_focus", False):
+            self.elementHovered.emit("magnifier")
+            self.flyout.update_state()
+            if self.flyout.has_visible_actions():
+                self.flyout.show_aligned(
+                    self, "top-center", "bottom-center", toggle=False
+                )
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.elementHoverEnded.emit()
+        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)

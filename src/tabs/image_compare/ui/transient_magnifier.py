@@ -136,6 +136,27 @@ class MagnifierVisibilityController:
                 AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
             )
             return False
+        if et == QEvent.Type.FocusIn:
+            # Mirror the hover-open path for keyboard/Tab focus. The reason
+            # is read straight off the event rather than the button's
+            # `_keyboard_focus` flag, because our filter runs before
+            # Button.focusInEvent updates that flag for this same event.
+            reason = getattr(event, "reason", lambda: None)()
+            if reason not in (
+                Qt.FocusReason.MouseFocusReason,
+                Qt.FocusReason.MenuBarFocusReason,
+            ):
+                self._hover_timer.stop()
+                use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
+                if use_magnifier:
+                    self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+            return False
+        if et == QEvent.Type.FocusOut:
+            self._hover_timer.stop()
+            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
+                AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
+            )
+            return False
         if et == QEvent.Type.Wheel:
             use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
             if not use_magnifier:
