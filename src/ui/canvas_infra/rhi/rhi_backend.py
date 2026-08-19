@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -578,17 +579,60 @@ def configure_rhi_widget(widget: QRhiWidget) -> None:
         widget.setApi(api)
     fallback = platform_fallback_rhi_backend()
 
+    _render_failed_debug_state = {"count": 0, "last_log": 0.0}
+
     def _on_render_failed() -> None:
         actual = getattr(widget.api(), "name", "platform-default")
+        _render_failed_debug_state["count"] += 1
         logger.error(
-            "%s renderFailed requested=%s actual=%s — try Settings → "
+            "%s renderFailed (#%d) requested=%s actual=%s — try Settings → "
             "Render Backend → %s (or --rhi-backend %s) and restart",
             type(widget).__name__,
+            _render_failed_debug_state["count"],
             name,
             actual,
             fallback,
             fallback,
         )
+        # Throttled -- gathering + logging this on every single failure was
+        # heavy enough (during a live interactive resize, which can fire
+        # renderFailed many times per second) to itself perturb the timing
+        # of the underlying race, making failures worse while this debug
+        # block was active. One snapshot per second is enough to diagnose
+        # the pattern without being part of the problem.
+        now = time.monotonic()
+        if now - _render_failed_debug_state["last_log"] >= 1.0:
+            _render_failed_debug_state["last_log"] = now
+            try:
+                from PySide6.QtCore import Qt
+                from PySide6.QtGui import QGuiApplication
+
+                top = widget.window()
+                wh = top.windowHandle() if top is not None else None
+                logger.error(
+                    "[rhi-debug] widget=%s size=%s visible=%s "
+                    "top=%s top_size=%s top_visible=%s top_exposed=%s "
+                    "top_translucent=%s top_flags=%s platform=%s "
+                    "surface_type=%s backing_store_type=%s",
+                    type(widget).__name__,
+                    widget.size(),
+                    widget.isVisible(),
+                    type(top).__name__ if top is not None else None,
+                    top.size() if top is not None else None,
+                    top.isVisible() if top is not None else None,
+                    wh.isExposed() if wh is not None else None,
+                    top.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+                    if top is not None
+                    else None,
+                    top.windowFlags() if top is not None else None,
+                    QGuiApplication.platformName(),
+                    wh.surfaceType() if wh is not None else None,
+                    getattr(wh, "backingStoreType", lambda: None)()
+                    if wh is not None
+                    else None,
+                )
+            except Exception:
+                logger.exception("[rhi-debug] failed to gather renderFailed diagnostics")
         if (
             name in ("vulkan", "opengl", "d3d11", "d3d12", "metal", "default")
             and fallback != name
