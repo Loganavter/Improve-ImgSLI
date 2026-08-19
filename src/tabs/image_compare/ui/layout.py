@@ -97,16 +97,43 @@ class ImageCompareLayoutBuilder:
         self.host = host
 
     def build_into(self, page: QWidget) -> QVBoxLayout:
-        """Build all containers and assemble them into ``page``.
+        """Build all containers and assemble them into ``page``, incrementally.
+
+        ``page``'s own layout is installed *first*, and every container is
+        added to it as soon as it exists -- deliberately mirroring
+        `multi_compare`'s `MultiCompareWidget.__init__` (layout-then-content
+        at every level, never a widget built first and given a parent/layout
+        only later). `image_compare` used to build every container fully
+        detached and only wire them all into `page`'s layout at the very
+        end; that made `ui.image_label` (a QRhiWidget, holding a native
+        surface) go through a batched "everything realizes at once" exposure
+        instead of incremental exposure, which on at least one real Wayland
+        setup either broke QRhi initialization outright ("No QRhi") or
+        forced the top-level window to tear down and recreate its native
+        surface (visible as a spurious close+reopen) depending on exactly
+        how `image_container_widget` was parented. See
+        docs/dev/investigations/lazy-legacy-shell-plan.md for the
+        investigation that found this (surfaced by making `image_compare`'s
+        page construction lazy -- it used to happen while the window was
+        still hidden behind the startup cover, so this was never visible).
 
         Returns the top-level layout installed on ``page``.
         """
         ui = self.target
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, control_edge_padding(), 0, 0)
+        layout.setSpacing(6)
+
         ui.selection_widget = self._selection_widget(page)
+        layout.addWidget(ui.selection_widget)
+
         ui.checkbox_widget = self._checkbox_widget(page)
+        layout.addWidget(ui.checkbox_widget)
+
         ui.image_container_layout = self._image_container_layout()
         self._slider_panel_layout()
-        ui.image_container_widget = self._image_container_widget()
+        ui.image_container_widget = self._image_container_widget(page)
+        layout.addWidget(ui.image_container_widget, 1)
         ui.image_container_layout.addWidget(ui.image_label)
         self._create_image_startup_placeholder()
         self._create_zoom_indicator()
@@ -115,28 +142,20 @@ class ImageCompareLayoutBuilder:
         from sli_ui_toolkit.ui.widgets.overlays.drag_drop_overlay import DragDropOverlay
 
         ui.drag_overlay = DragDropOverlay(ui.image_container_widget)
+
         ui.footer_info_widget = self._footer_info_widget(page)
-        # Parented immediately, same reasoning as `_image_container_widget`:
-        # a detached `ThemedBackgroundContainer()` can miss its initial
-        # theme-registration/paint before being reattached, leaving
-        # `_bg_color` at its default (invalid, fully transparent) QColor --
-        # visible as a see-through hole where the themed background should
-        # be, on the panel this ends up backing (`btn_file_names`' edit row).
+        layout.addWidget(ui.footer_info_widget)
+
+        layout.addWidget(ui.length_warning_label)
+
         ui.edit_layout_widget = ThemedBackgroundContainer(page)
         ui.edit_layout = self._edit_layout()
         ui.edit_layout_widget.setLayout(ui.edit_layout)
-        ui.save_buttons_widget = self._save_buttons_widget(page)
-
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, control_edge_padding(), 0, 0)
-        layout.setSpacing(6)
-        layout.addWidget(ui.selection_widget)
-        layout.addWidget(ui.checkbox_widget)
-        layout.addWidget(ui.image_container_widget, 1)
-        layout.addWidget(ui.footer_info_widget)
-        layout.addWidget(ui.length_warning_label)
         layout.addWidget(ui.edit_layout_widget)
+
+        ui.save_buttons_widget = self._save_buttons_widget(page)
         layout.addWidget(ui.save_buttons_widget)
+
         return layout
 
     def _selection_widget(self, parent: QWidget) -> QWidget:
@@ -158,20 +177,8 @@ class ImageCompareLayoutBuilder:
         layout.setContentsMargins(0, 0, 0, 0)
         return layout
 
-    def _image_container_widget(self) -> QWidget:
-        # NOTE: deliberately parentless (not `QWidget(page)`) -- giving this
-        # a parent up front avoids the spurious top-level close+reopen on
-        # image_compare's first activation (see git history/investigation
-        # notes) but reliably breaks QRhiWidget initialization ("No QRhi")
-        # on at least one real Wayland setup: the reparent-through-orphan
-        # dance this widget (and `ui.image_label`, the QRhiWidget canvas,
-        # inside it) goes through before landing in `page`'s layout appears
-        # to be load-bearing for QRhi's first-expose timing here, matching
-        # the similar first-expose sensitivity already noted for
-        # `multi_compare` in `tab.py`'s `transition_hint()` docstring. Do not
-        # "fix" the flicker by parenting this eagerly without re-verifying
-        # QRhi still initializes on a real (non-offscreen) run.
-        widget = QWidget()
+    def _image_container_widget(self, parent: QWidget) -> QWidget:
+        widget = QWidget(parent)
         widget.setLayout(self.target.image_container_layout)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         return widget
