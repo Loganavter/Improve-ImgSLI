@@ -10,14 +10,26 @@ class FontSettingsController:
         self.widget = widget
 
     def toggle(self, anchor_widget=None):
+        import logging
+        logger = logging.getLogger("ImproveImgSLI")
         host = self.manager.host
+        logger.debug(
+            "[panel-debug] FontSettingsController.toggle popup_open=%s anchor=%s",
+            host._font_popup_open, anchor_widget,
+        )
         if host._font_popup_open:
             self.hide()
         else:
             self.show(anchor_widget=anchor_widget)
 
     def show(self, anchor_widget=None):
+        import logging
+        logger = logging.getLogger("ImproveImgSLI")
         host = self.manager.host
+        logger.debug(
+            "[panel-debug] FontSettingsController.show flyout=%s",
+            host.font_settings_flyout,
+        )
         if not host.font_settings_flyout:
             return
         # Find Action / cold open: edit row (btn_text_settings) is hidden until
@@ -53,8 +65,14 @@ class FontSettingsController:
 
     def _ensure_text_settings_chrome(self) -> None:
         """Show the bottom edit toolbar so ``btn_text_settings`` can be anchored."""
+        import logging
+        logger = logging.getLogger("ImproveImgSLI")
         widget = self.widget
         btn = getattr(widget, "btn_text_settings", None)
+        logger.debug(
+            "[panel-debug] _ensure_text_settings_chrome btn=%s alive_and_visible=%s",
+            btn, self._is_alive_and_visible(btn),
+        )
         if self._is_alive_and_visible(btn):
             return
 
