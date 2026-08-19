@@ -4,7 +4,7 @@ import time
 
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QCursor
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QWidget
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
@@ -214,44 +214,14 @@ class MagnifierSettingsHoverController(QObject):
         if flyout is None or group is None:
             return
         self._link_sibling_flyouts(flyout)
-        trigger_button = self._focused_group_button()
-        flyout.show_for_group(group, focus_reason=self._resolve_focus_reason(trigger_button))
-        if trigger_button is not None:
-            # show_for_group()/show_aligned() sets BaseFlyout._anchor_widget
-            # to `group` (the container, needed for correct positioning) --
-            # but _restore_focus_policies() also reads _anchor_widget to
-            # decide where to send focus back on close, and prefers it over
-            # _previous_focus_widget whenever it's visible/enabled. A
-            # ButtonGroup container IS focusable (for its own arrow-key nav),
-            # so closing this flyout was sending focus to the whole group
-            # instead of back to the specific button the user had focused,
-            # leaving no button with a visible ring afterward. Point it at
-            # the real trigger button instead -- distinct from the
-            # `_anchor_group` attribute reposition() uses, so this doesn't
-            # affect positioning.
-            flyout._anchor_widget = trigger_button
+        # show_for_group() opens with grab_focus=False (see its own
+        # comment): keyboard focus deliberately stays wherever it already
+        # is -- on a group toolbar button, or nowhere in particular for a
+        # mouse-hover open -- instead of being stolen onto the panel's own
+        # first slider, so arrow-key/Tab navigation across the whole group
+        # keeps working while this panel is open.
+        flyout.show_for_group(group)
         flyout.cancel_auto_hide()
-
-    def _focused_group_button(self):
-        focused = QApplication.focusWidget()
-        return focused if focused in self._group_buttons else None
-
-    def _resolve_focus_reason(self, focused=None):
-        # show_for_group()'s anchor is the group *container*, which never
-        # carries _keyboard_focus/_last_focus_reason (only individual Button
-        # widgets do) -- without this, BaseFlyout._grab_focus always falls
-        # back to MouseFocusReason, so its first control (a ValueSlider)
-        # takes focus without a visible ring, i.e. keyboard focus appears to
-        # just vanish when this panel opens. Derive the real reason from
-        # whichever group button actually holds focus right now.
-        if focused is None:
-            return None
-        raw_reason = getattr(focused, "_last_focus_reason", None)
-        if raw_reason is not None:
-            return raw_reason
-        if getattr(focused, "_keyboard_focus", False):
-            return Qt.FocusReason.OtherFocusReason
-        return None
 
     def _link_sibling_flyouts(self, flyout) -> None:
         """Make every other toolbar flyout part of this panel's family.
