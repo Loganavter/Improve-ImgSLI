@@ -132,21 +132,14 @@ class MainWindowStartupRuntime:
         # that registry.  With lazy tab initialization the widget may not
         # exist yet (the page is created on first show), so treat a missing
         # widget as a deferred state rather than a fatal error.
-        image_compare_widget = next(
+        window.image_compare_widget = next(
             iter(window.ui.legacy_tab_widgets.values()), None
         )
-        window.image_compare_widget = image_compare_widget
         window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
         window._startup_canvas_first_frame_rendered = False
         window._startup_canvas_first_visual_ready = False
         window.appearance.update_image_label_background()
         self.show_cover()
-        if image_compare_widget is not None:
-            image_label = image_compare_widget.image_label
-            image_label.firstFrameRendered.connect(self.on_image_label_first_frame_rendered)
-            image_label.firstVisualFrameReady.connect(
-                self.on_image_label_first_visual_frame_ready
-            )
 
         components = window.app_context.create_window_dependent_components(window)
         window.geometry_manager = components.geometry_manager
@@ -161,7 +154,6 @@ class MainWindowStartupRuntime:
             menu.refresh_platform_action_targets()
 
         window.installEventFilter(window.event_handler)
-        image_label.installEventFilter(window.event_handler)
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(window.event_handler)
@@ -187,8 +179,6 @@ class MainWindowStartupRuntime:
         window.appearance.update_image_label_background()
         if window.main_controller and window.main_controller.sessions:
             window.main_controller.sessions.initialize_app_display()
-        if image_compare_widget is not None:
-            image_compare_widget.reapply_button_styles()
         from tabs.registry import TabRegistry
 
         _tab_registry = TabRegistry()
@@ -297,33 +287,12 @@ class MainWindowStartupRuntime:
             # App is warm under onboarding — load deferred work, but do NOT mark
             # revealed: QStackedLayout only sizes the *current* page, so app_host
             # must get its first geometry pass when we switch after Start.
-            widget = window.image_compare_widget
-            if widget is not None:
-                widget.image_startup_placeholder.hide()
             self.emit_visual_ready()
             return
         if not window._main_app_revealed:
             window._startup_stack.setCurrentWidget(window._app_host)
             window._main_app_revealed = True
             self._sync_app_host_geometry()
-        widget = window.image_compare_widget
-        if widget is not None:
-            # Hide the per-canvas placeholder only once the canvas actually
-            # rendered its first frame. The active-tab gate above is about
-            # the window-level startup cover (session_picker must not hold it
-            # up); the canvas placeholder covers the image_label itself, and
-            # hiding it on the gate bypass exposed the transparent subsurface
-            # for the first frame(s) when the workspace current tab was not
-            # the image pair tab at bootstrap.
-            image_label = getattr(widget, "image_label", None)
-            if image_label is not None and getattr(
-                image_label, "_first_frame_rendered_emitted", False
-            ):
-                _startup_ffd_log(
-                    "reveal_if_ready hiding image_startup_placeholder "
-                    "(first frame emitted)"
-                )
-                widget.image_startup_placeholder.hide()
         self.hide_cover()
         self.emit_visual_ready()
 
@@ -463,9 +432,6 @@ class MainWindowStartupRuntime:
             window._main_app_revealed = True
             self._sync_app_host_geometry()
             self.hide_cover()
-            widget = window.image_compare_widget
-            if widget is not None:
-                widget.image_startup_placeholder.hide()
             self.emit_visual_ready()
 
         # Apply mode after app_host is current so layout_manager sizes visible chrome.
