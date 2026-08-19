@@ -19,18 +19,12 @@ class TransientUIManager:
         self.closing = PopupClosingController(self)
 
     def _get_service(self, attr: str):
-        """Lazily resolve a tab-owned service.
-
-        With lazy tab initialization the service may not exist at
-        construction time (the tab's page hasn't been created yet).
-        We re-probe on every access until a non-None result is found —
-        ``None`` is never cached so the probe retries when the tab's
-        page is later materialized.
-        """
+        """Lazily resolve a tab-owned service."""
         cached = self._services.get(attr)
         if cached is not None:
             return cached
         service_id = self._service_ids[attr]
+        logger.debug("[transient] resolving service '%s' (attr=%s)", service_id, attr)
         from tabs.registry import TabRegistry
 
         registry = TabRegistry()
@@ -38,6 +32,9 @@ class TransientUIManager:
         service = registry.create_startup_service(service_id, self)
         if service is not None:
             self._services[attr] = service
+            logger.debug("[transient] '%s' → resolved: %s", service_id, type(service).__name__)
+        else:
+            logger.debug("[transient] '%s' → None (deferred)", service_id)
         return service
 
     def __getattr__(self, name: str):

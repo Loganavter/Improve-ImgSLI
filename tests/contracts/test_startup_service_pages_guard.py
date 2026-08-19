@@ -73,33 +73,36 @@ def test_service_factories_guard_tab_widget():
 
 
 def test_create_startup_service_uses_pages_only_guard():
-    """Tab-specific services must NOT be created eagerly at startup.
+    """create_startup_service must resolve against bootstrap-default tab only.
 
-    ``build_main_window_features`` must use ``_LazyTabService`` (deferred
-    resolution) for tab-specific services like toolbar and export, NOT
-    ``create_startup_service`` which probes all registered tabs at once.
-    Tab services should only be created when their tab's page is materialized.
+    Per docs/dev/tabs/capability-mechanisms.md, create_startup_service
+    resolves strictly against the tab that declares is_bootstrap_default=True.
+    It must NOT iterate all registered tabs.
     """
-    features_path = SRC / "ui" / "presenters" / "main_window" / "features.py"
-    text = features_path.read_text(encoding="utf-8")
-    assert "_LazyTabService" in text, (
-        "build_main_window_features must use _LazyTabService for deferred "
-        "tab service creation, not create_startup_service"
+    registry_path = SRC / "tabs" / "registry.py"
+    text = registry_path.read_text(encoding="utf-8")
+    # Verify it calls _bootstrap_default_tab() (not _first_tab_answering_result)
+    assert "_bootstrap_default_tab()" in text, (
+        "create_startup_service must use _bootstrap_default_tab() "
+        "to resolve against the bootstrap-default tab only"
     )
-    # Verify toolbar and export are created via _LazyTabService, not directly
+    # Verify it does NOT iterate self._tabs directly
     tree = ast.parse(text)
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef):
             continue
-        if node.name != "build_main_window_features":
+        if node.name != "create_startup_service":
             continue
         func_text = ast.get_source_segment(text, node)
-        assert "create_startup_service" not in func_text, (
-            "build_main_window_features must NOT call create_startup_service "
-            "directly — use _LazyTabService for tab-specific services"
+        assert "_first_tab_answering_result" not in func_text, (
+            "create_startup_service must NOT use _first_tab_answering_result "
+            "(which iterates all tabs) — use _bootstrap_default_tab() instead"
+        )
+        assert "self._tabs" not in func_text, (
+            "create_startup_service must NOT iterate self._tabs directly"
         )
         return
-    assert False, "build_main_window_features method not found"
+    assert False, "create_startup_service method not found"
 
 
 def _check_function_for_unguarded_widget(

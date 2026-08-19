@@ -95,27 +95,6 @@ class UIManager(QObject):
     def _on_unified_flyout_closed(self):
         self.transient.on_unified_flyout_closed()
 
-    def _update_magnifier_flyout_states(self):
-        self.transient.magnifier.update_states()
-
-    def _on_magnifier_toggle_with_hover(self, checked: bool):
-        self.transient.magnifier.on_toggle_with_hover(checked)
-
-    def _show_magnifier_visibility_flyout(self, reason: str = "hover"):
-        self.transient.magnifier.show(reason)
-
-    def _hide_magnifier_visibility_flyout(self):
-        self.transient.magnifier.hide()
-
-    def _show_magnifier_instances_popup(self):
-        self.transient.magnifier_instances.show()
-
-    def _hide_magnifier_instances_popup(self):
-        self.transient.magnifier_instances.hide()
-
-    def _on_magnifier_instances_count_changed(self):
-        self.transient.magnifier_instances.on_count_changed()
-
     def eventFilter(self, watched, event):
         app = QApplication.instance()
         if (
