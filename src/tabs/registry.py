@@ -70,6 +70,7 @@ class TabRegistry:
         self._initialized = True
         self._tabs: dict[str, TabContract] = {}
         self._pages: dict[str, QWidget] = {}
+        self._pending_pages: dict[str, TabContract] = {}
         self._context: TabContext | None = None
         self._active_session_type: str | None = None
         self._active_session_id: str | None = None
@@ -375,22 +376,39 @@ class TabRegistry:
                 )
 
     def assemble_host_pages(self, ui: Any) -> None:
-        """Let registered tabs assemble any legacy host-owned page pieces."""
-        for tab in self._tabs.values():
+        """Let registered tabs assemble any legacy host-owned page pieces.
+
+        Skips tabs whose pages haven't been created yet (lazy init — the
+        page will be assembled when ``_ensure_page`` creates it).
+        """
+        self._ui = ui
+        for session_type, tab in self._tabs.items():
+            if session_type not in self._pages:
+                continue
             try:
                 tab.assemble_host_page(ui)
             except Exception:
-                logger.exception("Tab host-page assembly failed for %s", tab.session_type)
+                logger.exception("Tab host-page assembly failed for %s", session_type)
                 raise
 
     def finalize_host_pages(self, ui: Any) -> None:
-        """Let registered tabs do one-time cosmetic setup on their own host-assembled chrome."""
-        for tab in self._tabs.values():
-            try:
-                tab.finalize_host_page(ui)
-            except Exception:
-                logger.exception("Tab host-page finalize failed for %s", tab.session_type)
-                raise
+        """Let registered tabs do one-time cosmetic setup on their own host-assembled chrome.
+
+        Only the currently active tab's page is guaranteed to exist (created
+        lazily by ``activate()``).  Other tabs are skipped — their
+        ``finalize_host_page`` runs when they are first shown.
+        """
+        active_type = self._active_session_type
+        if active_type is None:
+            return
+        tab = self._tabs.get(active_type)
+        if tab is None:
+            return
+        try:
+            tab.finalize_host_page(ui)
+        except Exception:
+            logger.exception("Tab host-page finalize failed for %s", active_type)
+            raise
 
     def apply_host_session_mode(
         self,
@@ -412,39 +430,131 @@ class TabRegistry:
         stack: QStackedWidget,
         context: TabContext,
     ) -> None:
-        """Create pages for all discovered tabs and add them to the stack."""
+        """Register tab types without creating pages (lazy initialization).
+
+        Pages are created on-demand when a tab is first shown via
+        ``activate()`` → ``_ensure_page()``.  This avoids building 30+
+        widgets for tabs the user may never visit.
+        """
         self._context = context
+        self._stack = stack
         self.contribute_all_settings()
         self.contribute_all_help()
         for session_type, tab in self._tabs.items():
-            try:
-                page = tab.create_page(stack, context)
-                stack.addWidget(page)
-                self._pages[session_type] = page
-            except Exception as e:
-                logger.error(f"Failed to create page for tab '{session_type}': {e}")
+            if session_type not in self._pages:
+                self._pending_pages[session_type] = tab
+
+    def _ensure_page(self, session_type: str) -> QWidget | None:
+        """Create and assemble the page for *session_type* if not yet done.
+
+        Returns the page widget (or ``None`` if the tab is unknown).
+        """
+        if session_type in self._pages:
+            return self._pages[session_type]
+        tab = self._pending_pages.pop(session_type, None) or self._tabs.get(session_type)
+        if tab is None:
+            return None
+        return self._create_and_assemble_page(session_type, tab)
+
+    def _create_and_assemble_page(
+        self, session_type: str, tab: TabContract
+    ) -> QWidget | None:
+        """Create a page widget, add it to the stack, and assemble host pieces."""
+        stack = getattr(self, "_stack", None)
+        if stack is None or self._context is None:
+            return None
+        try:
+            page = tab.create_page(stack, self._context)
+            stack.addWidget(page)
+            self._pages[session_type] = page
+        except Exception as e:
+            logger.error("Failed to create page for tab '%s': %s", session_type, e)
+            return None
+        try:
+            ui = getattr(self, "_ui", None)
+            if ui is not None:
+                tab.assemble_host_page(ui)
+        except Exception:
+            logger.exception("Tab host-page assembly failed for %s", session_type)
+        try:
+            ui = getattr(self, "_ui", None)
+            if ui is not None:
+                tab.finalize_host_page(ui)
+        except Exception:
+            logger.exception("Tab host-page finalize failed for %s", session_type)
+        self.contribute_settings_for(session_type)
+        self.contribute_all_help()
+        # Connect first-frame signals for the image_compare tab so the
+        # startup cover gate works when this tab is activated after startup.
+        self._connect_first_frame_signals_if_needed(session_type, tab)
+        return page
+
+    def _connect_first_frame_signals_if_needed(
+        self, session_type: str, tab: TabContract
+    ) -> None:
+        """Connect canvas first-frame signals for tabs that need the startup gate.
+
+        Called during lazy page creation.  At startup, ``bootstrap_main_app``
+        connects these signals for whichever widget exists at that moment
+        (typically none with lazy init).  This ensures the signals are
+        connected when the tab is first created later.
+        """
+        host_window = self._context.main_window if self._context else None
+        if host_window is None:
+            return
+        # Only connect for tabs that actually need the first-frame gate.
+        try:
+            requires_gate = bool(tab.create_service("requires_first_frame_startup_gate"))
+        except Exception:
+            requires_gate = False
+        if not requires_gate:
+            return
+        widget = getattr(host_window, "image_compare_widget", None)
+        if widget is None:
+            # The widget is the page we just created — look it up from the tab.
+            widget = getattr(tab, "widget", None)
+        if widget is None:
+            return
+        image_label = getattr(widget, "image_label", None)
+        if image_label is None:
+            return
+        startup_rt = getattr(host_window, "_startup_runtime", None)
+        if startup_rt is None:
+            return
+        # Avoid duplicate connections (idempotent via disconnection).
+        try:
+            image_label.firstFrameRendered.disconnect(
+                startup_rt.on_image_label_first_frame_rendered
+            )
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            image_label.firstVisualFrameReady.disconnect(
+                startup_rt.on_image_label_first_visual_frame_ready
+            )
+        except (RuntimeError, TypeError):
+            pass
+        image_label.firstFrameRendered.connect(
+            startup_rt.on_image_label_first_frame_rendered
+        )
+        image_label.firstVisualFrameReady.connect(
+            startup_rt.on_image_label_first_visual_frame_ready
+        )
 
     def install_missing_pages(self, stack: QStackedWidget) -> tuple[str, ...]:
-        """Add workspace pages for tabs discovered after ``install_pages``."""
+        """Register deferred tabs without creating pages (lazy init).
+
+        Pages will be created on-demand when each tab is first shown.
+        """
         if self._context is None:
             raise RuntimeError("TabContext not set; call install_pages first")
+        self._stack = stack
         added: list[str] = []
         for session_type, tab in self._tabs.items():
-            if session_type in self._pages:
+            if session_type in self._pages or session_type in self._pending_pages:
                 continue
-            try:
-                page = tab.create_page(stack, self._context)
-                stack.addWidget(page)
-                self._pages[session_type] = page
-                self.contribute_settings_for(session_type)
-                self.contribute_all_help()
-                added.append(session_type)
-            except Exception as e:
-                logger.error(
-                    "Failed to create page for deferred tab '%s': %s",
-                    session_type,
-                    e,
-                )
+            self._pending_pages[session_type] = tab
+            added.append(session_type)
         return tuple(added)
 
     def get_page(self, session_type: str) -> QWidget | None:
@@ -568,6 +678,7 @@ class TabRegistry:
         if session_type != self._active_session_type:
             if self._active_session_type is not None:
                 self.deactivate(self._active_session_type)
+            self._ensure_page(session_type)
             tab = self._tabs.get(session_type)
             if tab and self._context:
                 try:
@@ -794,5 +905,6 @@ class TabRegistry:
                 pass
         self._tabs.clear()
         self._pages.clear()
+        self._pending_pages.clear()
         self._appearance_stale.clear()
         self._active_session_type = None
