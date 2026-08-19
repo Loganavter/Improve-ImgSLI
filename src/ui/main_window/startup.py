@@ -157,13 +157,23 @@ class MainWindowStartupRuntime:
             nav_manager.register(tab_strip, TabStripSection(tab_strip))
             logger.debug("[nav-tabstrip] registered tab strip section")
 
-        # Session picker registers itself in __init__ (created lazily by
-        # TabRegistry, so we cannot register it here).
+        # Session picker — register LAST (bottom of visual hierarchy).
+        # The page is created during setupUi() → activate_default(), so
+        # it already exists by now.  We must register after title_bar and
+        # tab_strip to preserve the top-to-bottom section ordering that
+        # _neighbor() relies on.
+        from tabs.registry import TabRegistry
+
+        _picker_page = TabRegistry().get_page("session_picker")
+        if _picker_page is not None:
+            from core.navigation_sections import SessionPickerSection
+
+            nav_manager.register(_picker_page, SessionPickerSection(_picker_page))
+            logger.debug("[nav-picker] registered session picker section")
 
         window.appearance.update_image_label_background()
         if window.main_controller and window.main_controller.sessions:
             window.main_controller.sessions.initialize_app_display()
-        from tabs.registry import TabRegistry
 
         _tab_registry = TabRegistry()
         _tab_registry.discover(tier="bootstrap")

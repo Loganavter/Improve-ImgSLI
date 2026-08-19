@@ -49,6 +49,12 @@ class SessionPickerSection:
         cards = self._page._card_entries()
         card_idx = next((i for i, (_, c) in enumerate(cards) if c is widget), None)
 
+        logger.debug(
+            "[nav-card] navigate key=%s widget=%s card_idx=%s cards=%d in_recent=%s",
+            key, type(widget).__name__, card_idx, len(cards),
+            self._is_in_recent(widget),
+        )
+
         # If the focused widget is inside the recent panel, delegate to it.
         if card_idx is None and self._is_in_recent(widget):
             recent = self._page._recent_panel
@@ -147,6 +153,10 @@ class TabStripSection:
         return False
 
     def navigate(self, key: int, widget: QWidget) -> bool:
+        logger.debug(
+            "[nav-tab] navigate key=%s widget=%s owns=%s",
+            key, type(widget).__name__, self.owns(widget),
+        )
         # Left/Right are handled by _AdaptiveTabBar itself — don't consume
         # them here.  Down yields to the session picker below.
         # Up — yield so NavigationManager can hand off to the title bar.
