@@ -33,6 +33,7 @@ class ImageCompareTab(TabContract):
     def __init__(self):
         self._widget: "ImageCompareWidget | None" = None
         self._active_session_id: str | None = None
+        self._nav_section = None
 
     @property
     def session_type(self) -> str:
@@ -210,9 +211,34 @@ class ImageCompareTab(TabContract):
             self.on_active_session_changed(session_id, context)
         if self._widget is not None:
             self._widget.setFocus()
+            self._register_nav_section()
         from ui.actions.registry import get_action_registry
 
         self._register_actions(get_action_registry())
+
+    def _toolbar_rows(self) -> list[QWidget | None]:
+        w = self._widget
+        if w is None:
+            return []
+        return [
+            getattr(w, "selection_widget", None),
+            getattr(w, "checkbox_widget", None),
+            getattr(w, "footer_info_widget", None),
+            getattr(w, "edit_layout_widget", None),
+            getattr(w, "save_buttons_widget", None),
+        ]
+
+    def _register_nav_section(self) -> None:
+        if self._widget is None:
+            return
+        from core.navigation import NavigationManager
+        from core.navigation_sections import ToolbarRowsSection
+
+        if self._nav_section is None:
+            self._nav_section = ToolbarRowsSection(
+                self._toolbar_rows, tag="image-compare"
+            )
+        NavigationManager.get_instance().register(self._widget, self._nav_section)
 
     def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
         if session_id == self._active_session_id:
@@ -222,6 +248,10 @@ class ImageCompareTab(TabContract):
         self._restore_from(context, session_id)
 
     def on_deactivated(self, context: TabContext) -> None:
+        if self._widget is not None:
+            from core.navigation import NavigationManager
+
+            NavigationManager.get_instance().unregister(self._widget)
         self._snapshot_into(context, self._active_session_id)
 
     def on_session_created(self, session_id: str, context: TabContext) -> None:
@@ -348,4 +378,8 @@ class ImageCompareTab(TabContract):
             self._widget.reapply_button_styles()
 
     def dispose(self) -> None:
+        if self._widget is not None:
+            from core.navigation import NavigationManager
+
+            NavigationManager.get_instance().unregister(self._widget)
         self._widget = None
