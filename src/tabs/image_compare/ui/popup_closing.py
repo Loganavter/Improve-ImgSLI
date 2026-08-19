@@ -30,7 +30,7 @@ class ImageComparePopupClosing:
         except Exception:
             pass
         try:
-            if host._magn_popup_open and host.magnifier_visibility_flyout is not None:
+            if host._magn_popup_open and self.widget.magnifier_visibility_flyout is not None:
                 self.manager.panel_visibility.hide(reason="hide_transient_same_window_ui")
         except Exception:
             pass
@@ -64,7 +64,7 @@ class ImageComparePopupClosing:
                     if parent is unified:
                         return True
                     parent = parent.parent()
-        magnifier_flyout = host.magnifier_visibility_flyout
+        magnifier_flyout = self.widget.magnifier_visibility_flyout
         if self._visible(magnifier_flyout) and new_widget is not None:
             parent = new_widget
             while parent is not None:

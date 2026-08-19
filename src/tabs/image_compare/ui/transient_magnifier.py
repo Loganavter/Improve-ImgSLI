@@ -29,14 +29,14 @@ class MagnifierVisibilityController:
     def _wire_button(self) -> None:
         host = self.manager.host
         btn = getattr(self.widget, "btn_magnifier", None)
-        if btn is None or host.magnifier_visibility_flyout is None:
+        if btn is None or self.widget.magnifier_visibility_flyout is None:
             return
         btn.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         btn.installEventFilter(host)
-        host.magnifier_visibility_flyout.installEventFilter(host)
-        host.magnifier_visibility_flyout.btn_left.installEventFilter(host)
-        host.magnifier_visibility_flyout.btn_center.installEventFilter(host)
-        host.magnifier_visibility_flyout.btn_right.installEventFilter(host)
+        self.widget.magnifier_visibility_flyout.installEventFilter(host)
+        self.widget.magnifier_visibility_flyout.btn_left.installEventFilter(host)
+        self.widget.magnifier_visibility_flyout.btn_center.installEventFilter(host)
+        self.widget.magnifier_visibility_flyout.btn_right.installEventFilter(host)
         btn.toggled.connect(self.on_toggle_with_hover)
 
     def update_states(self):
@@ -47,7 +47,7 @@ class MagnifierVisibilityController:
             left_on = bool(model.get("visible_left", True)) if model is not None else True
             center_on = bool(model.get("visible_center", True)) if model is not None else True
             right_on = bool(model.get("visible_right", True)) if model is not None else True
-            host.magnifier_visibility_flyout.set_mode_and_states(
+            self.widget.magnifier_visibility_flyout.set_mode_and_states(
                 show_center, left_on, center_on, right_on
             )
         except Exception:
@@ -80,17 +80,17 @@ class MagnifierVisibilityController:
         btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:
             return
-        host.magnifier_visibility_flyout.show_for_button(
+        self.widget.magnifier_visibility_flyout.show_for_button(
             btn, host.parent_widget, hover_delay_ms=0
         )
         host._magn_popup_open = True
         host._magn_popup_last_open_ts = time.monotonic()
         if reason == "wheel":
-            host.magnifier_visibility_flyout.schedule_auto_hide(
+            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_WHEEL_AUTO_HIDE_DELAY_MS
             )
         else:
-            host.magnifier_visibility_flyout.cancel_auto_hide()
+            self.widget.magnifier_visibility_flyout.cancel_auto_hide()
 
     def hide(self, reason: str = "explicit"):
         host = self.manager.host
@@ -98,7 +98,7 @@ class MagnifierVisibilityController:
             self._hover_timer.stop()
         except Exception:
             pass
-        host.magnifier_visibility_flyout.hide()
+        self.widget.magnifier_visibility_flyout.hide()
         host._magn_popup_open = False
 
     def event_filter(self, watched, event):
@@ -108,9 +108,9 @@ class MagnifierVisibilityController:
             return False
         if watched is btn:
             return self._handle_button_event(event)
-        if watched is host.magnifier_visibility_flyout:
+        if watched is self.widget.magnifier_visibility_flyout:
             return self._handle_flyout_event(event)
-        flyout = host.magnifier_visibility_flyout
+        flyout = self.widget.magnifier_visibility_flyout
         if watched in (
             getattr(flyout, "btn_left", None),
             getattr(flyout, "btn_center", None),
@@ -128,11 +128,11 @@ class MagnifierVisibilityController:
             if use_magnifier:
                 self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
             else:
-                host.magnifier_visibility_flyout.hide()
+                self.widget.magnifier_visibility_flyout.hide()
             return False
         if et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
             self._hover_timer.stop()
-            host.magnifier_visibility_flyout.schedule_auto_hide(
+            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
             )
             return False
@@ -148,15 +148,15 @@ class MagnifierVisibilityController:
         host = self.manager.host
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
-            host.magnifier_visibility_flyout.cancel_auto_hide()
+            self.widget.magnifier_visibility_flyout.cancel_auto_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
-            host.magnifier_visibility_flyout.schedule_auto_hide(
+            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
             )
         return False
 
     def _handle_child_event(self, event):
-        flyout = self.manager.host.magnifier_visibility_flyout
+        flyout = self.widget.magnifier_visibility_flyout
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
             flyout.cancel_auto_hide()

@@ -129,14 +129,16 @@ class ImageCompareTab(TabContract):
         return True
 
     def _create_magnifier_flyout(self, ui) -> None:
-        """Create the magnifier visibility flyout — tab-owned, stored on host ui."""
-        if getattr(ui, "magnifier_visibility_flyout", None) is not None:
+        """Create the magnifier visibility flyout — tab-owned, stored on the
+        tab's own widget (see ImageComparePrimitivesFactory's docstring for
+        why tab-built widgets attach to ``self._widget``, never to ``ui``)."""
+        if getattr(self._widget, "magnifier_visibility_flyout", None) is not None:
             return  # already created
         from ui.widgets.panel_visibility_flyout import PanelVisibilityFlyout
 
         parent = getattr(ui, "main_window", None) or self._widget
         flyout = PanelVisibilityFlyout(parent, slot_icon="magnifier.svg")
-        ui.magnifier_visibility_flyout = flyout
+        self._widget.magnifier_visibility_flyout = flyout
         self._connect_magnifier_flyout_buttons(flyout, ui)
 
     def _connect_magnifier_flyout_buttons(self, flyout, ui) -> None:
