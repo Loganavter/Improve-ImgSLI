@@ -85,7 +85,7 @@ class DialogManager:
             if _get_guides_state is not None
             else type("_Fallback", (), {"smoothing_enabled": False})()
         )
-        magnifier_settings = self._query_overlay("overlay.behavior_settings", {}) or {}
+        behavior_settings = self._query_overlay("overlay.behavior_settings", {}) or {}
         auto_calculate_psnr, auto_calculate_ssim = self._query_metrics_settings()
 
         if self.host._settings_application_service is None:
@@ -117,16 +117,16 @@ class DialogManager:
                 self.host.store.settings, "ui_scale_factor", 1.0
             ),
             current_ui_mode=getattr(self.host.store.settings, "ui_mode", "beginner"),
-            optimize_magnifier_movement=self.host.store.viewport.view_state.optimize_interactive_movement,
+            optimize_interactive_movement=self.host.store.viewport.view_state.optimize_interactive_movement,
             movement_interpolation_method=self.host.store.viewport.render_config.interactive_movement_interpolation_method,
             optimize_laser_smoothing=guides_state.smoothing_enabled,
             interpolation_method=self.host.store.viewport.render_config.interpolation_method,
             zoom_interpolation_method=self.host.store.viewport.render_config.zoom_interpolation_method,
-            magnifier_intersection_highlight_enabled=bool(
-                magnifier_settings.get("intersection_highlight_enabled", False)
+            canvas_intersection_highlight_enabled=bool(
+                behavior_settings.get("intersection_highlight_enabled", False)
             ),
-            magnifier_auto_color_new_instances=bool(
-                magnifier_settings.get("auto_color_new_instances", False)
+            canvas_auto_color_new_instances=bool(
+                behavior_settings.get("auto_color_new_instances", False)
             ),
             auto_calculate_psnr=auto_calculate_psnr,
             auto_calculate_ssim=auto_calculate_ssim,
