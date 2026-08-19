@@ -312,36 +312,37 @@ class TabRegistry:
             raise
 
     def create_startup_service(self, service_id: str, *args: Any, **kwargs: Any) -> Any:
-        """Create a startup-shell service from the bootstrap-default tab.
+        """Create a legacy startup-shell service from whichever tab provides it.
 
-        Resolves strictly against the tab that declares
-        ``is_bootstrap_default = True`` (session_picker).  Other tabs are
-        never probed — they may not have been discovered yet, and their
-        pages certainly don't exist at startup.
+        Like ``create_main_window_feature``, this is *not* routed by the
+        currently active session — it is requested synchronously during
+        one-time main-window shell construction, before the user's real
+        initial session is necessarily active (see
+        ``create_main_window_feature``'s docstring for why routing by
+        active session would be wrong here).
+
+        Routes **by capability**: each already-discovered tab is asked in
+        registration order (bootstrap before deferred) and the first one
+        whose ``create_service`` returns a non-``None`` answer provides the
+        service. No tab has a privileged role — ``image_compare`` answers
+        most of today's legacy shell capabilities purely because it is the
+        tab that implements them, not because it is bootstrap-default.
+        See docs/dev/tabs/capability-mechanisms.md.
 
         For capabilities needed after startup, use ``create_service``
         (active-tab-only) or ``create_service_for`` (named tab).
         """
-        tab = self._bootstrap_default_tab()
-        if tab is None:
-            logger.debug("[startup-service] '%s' → no bootstrap tab", service_id)
+        answered = self._first_tab_answering_result(
+            "create_service", service_id, *args, **kwargs
+        )
+        if answered is None:
+            logger.debug("[startup-service] '%s' → None (unclaimed)", service_id)
             return None
-        method = getattr(tab, "create_service", None)
-        if method is None:
-            return None
-        try:
-            result = method(service_id, *args, **kwargs)
-        except Exception:
-            logger.exception(
-                "Startup service probe failed for %r on %s",
-                service_id,
-                tab.session_type,
-            )
-            raise
+        tab, result = answered
         logger.debug(
             "[startup-service] '%s' → %s from %s",
             service_id,
-            type(result).__name__ if result is not None else "None",
+            type(result).__name__,
             tab.session_type,
         )
         return result

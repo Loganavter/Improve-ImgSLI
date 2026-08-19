@@ -65,13 +65,14 @@ fallback to another tab's answer). A missing implementation returns `None`;
 it must not silently resolve to another tab's service. That keeps
 session-scoped state typed to the active session type.
 
-`create_startup_service` is a variant that resolves against the
-**bootstrap-default** tab (`is_bootstrap_default = True`) instead of the
-active one, for use during one-time startup shell construction
-(`MainWindowComposer.compose()` builds the main-window shell — `UIManager`,
-toolbar, layout manager, ... — once, synchronously, before the user's real
-initial session is necessarily active). See `tabs/registry.py`'s docstring
-on `create_startup_service` for the full ordering argument.
+`create_startup_service` is a variant that, like `create_main_window_feature`
+below, routes by capability across every already-discovered tab (bootstrap
+before deferred, first non-`None` answer wins) instead of the active one,
+for use during one-time startup shell construction (`MainWindowComposer.compose()`
+builds the main-window shell — `UIManager`, toolbar, layout manager, ... —
+once, synchronously, before the user's real initial session is necessarily
+active). See `tabs/registry.py`'s docstring on `create_startup_service` for
+the full ordering argument.
 
 Both `create_service`/`create_startup_service` **catch and re-raise**
 exceptions from the tab's implementation (logged first) — they do not

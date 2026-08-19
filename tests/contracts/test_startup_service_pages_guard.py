@@ -10,7 +10,9 @@ Dogma: every ``create_service`` branch that uses ``tab._widget`` in any way
 (attribute access OR keyword argument) MUST be preceded by
 ``if tab._widget is None: return None``.
 
-Source: docs/dev/investigations/lazy-tab-initialization-plan.md
+(The lazy-tab-initialization planning doc this dogma originated from was
+never committed to this repo — this test file is the only surviving
+record of it.)
 """
 
 from __future__ import annotations
@@ -72,21 +74,22 @@ def test_service_factories_guard_tab_widget():
     )
 
 
-def test_create_startup_service_uses_pages_only_guard():
-    """create_startup_service must resolve against bootstrap-default tab only.
+def test_create_startup_service_probes_by_capability():
+    """create_startup_service must route by capability, like create_main_window_feature.
 
-    Per docs/dev/tabs/capability-mechanisms.md, create_startup_service
-    resolves strictly against the tab that declares is_bootstrap_default=True.
-    It must NOT iterate all registered tabs.
+    Per docs/dev/tabs/capability-mechanisms.md ("Legacy shell: routing by
+    capability (no privileged tab)"), every already-discovered tab is asked
+    in registration order and the first non-None answer wins — no tab has a
+    privileged role. Resolving strictly against the bootstrap-default tab
+    (session_picker) instead would make every startup service only
+    image_compare implements permanently unreachable (session_picker never
+    implements them), which is exactly the bug this contract guards against.
+    Per-tab safety for lazily-initialized tabs (``tab._widget is None``) is
+    the service factory's job — see test_service_factories_guard_tab_widget
+    above — not this method's.
     """
     registry_path = SRC / "tabs" / "registry.py"
     text = registry_path.read_text(encoding="utf-8")
-    # Verify it calls _bootstrap_default_tab() (not _first_tab_answering_result)
-    assert "_bootstrap_default_tab()" in text, (
-        "create_startup_service must use _bootstrap_default_tab() "
-        "to resolve against the bootstrap-default tab only"
-    )
-    # Verify it does NOT iterate self._tabs directly
     tree = ast.parse(text)
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef):
@@ -94,12 +97,9 @@ def test_create_startup_service_uses_pages_only_guard():
         if node.name != "create_startup_service":
             continue
         func_text = ast.get_source_segment(text, node)
-        assert "_first_tab_answering_result" not in func_text, (
-            "create_startup_service must NOT use _first_tab_answering_result "
-            "(which iterates all tabs) — use _bootstrap_default_tab() instead"
-        )
-        assert "self._tabs" not in func_text, (
-            "create_startup_service must NOT iterate self._tabs directly"
+        assert "_first_tab_answering_result" in func_text, (
+            "create_startup_service must route by capability via "
+            "_first_tab_answering_result, mirroring create_main_window_feature"
         )
         return
     assert False, "create_startup_service method not found"
