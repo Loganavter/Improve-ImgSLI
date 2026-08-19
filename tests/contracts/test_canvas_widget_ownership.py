@@ -105,8 +105,11 @@ def test_magnifier_feature_widgets_live_under_image_compare_tab():
         path = SRC / "ui" / relative
         if path.exists():
             offenders.append(rel(path))
-    # magnifier_visibility_flyout.py is host-owned (created by bootstrap.py),
-    # NOT tab-owned — it lives in ui/widgets/ by design.
+    # panel_visibility_flyout.py (formerly magnifier_visibility_flyout.py) is
+    # a generic, tab-agnostic widget class that lives in ui/widgets/ by
+    # design — but the instance itself is created and owned by image_compare
+    # (tabs/image_compare/tab.py::_create_magnifier_flyout, stored on
+    # tab._widget), not by the host.
     assert not offenders, (
         "magnifier feature UI belongs under tabs.image_compare.ui: "
         + ", ".join(offenders)

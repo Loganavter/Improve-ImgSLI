@@ -756,18 +756,11 @@ def _host_magnifier_visibility_controller():
 
 
 def _host_magnifier_visibility_flyout():
-    from PySide6.QtWidgets import QApplication
+    from tabs.registry import TabRegistry
 
-    app = QApplication.instance()
-    if app is None:
-        return None
-    for top in app.topLevelWidgets():
-        presenter = getattr(top, "presenter", None)
-        ui = getattr(presenter, "ui_manager", None) if presenter else None
-        flyout = getattr(ui, "magnifier_visibility_flyout", None) if ui else None
-        if flyout is not None:
-            return flyout
-    return None
+    tab = TabRegistry().get_tab("image_compare")
+    widget = getattr(tab, "_widget", None) if tab is not None else None
+    return getattr(widget, "magnifier_visibility_flyout", None) if widget else None
 
 
 _MAGNIFIER_VISIBILITY_SLOTS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
