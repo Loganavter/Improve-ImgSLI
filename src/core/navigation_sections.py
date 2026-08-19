@@ -142,8 +142,8 @@ class TabStripSection:
 
     def navigate(self, key: int, widget: QWidget) -> bool:
         logger.debug(
-            "[nav-tab] navigate key=%s widget=%s owns=%s",
-            key, type(widget).__name__, self.owns(widget),
+            "[nav-tab] navigate key=%s widget=%s",
+            key, type(widget).__name__,
         )
         # Left/Right are handled by _AdaptiveTabBar itself — don't consume
         # them here.  Down yields to the session picker below.

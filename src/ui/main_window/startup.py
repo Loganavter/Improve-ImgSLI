@@ -162,9 +162,10 @@ class MainWindowStartupRuntime:
         # it already exists by now.  We must register after title_bar and
         # tab_strip to preserve the top-to-bottom section ordering that
         # _neighbor() relies on.
+        from core.store import INITIAL_WORKSPACE_SESSION_TYPE
         from tabs.registry import TabRegistry
 
-        _picker_page = TabRegistry().get_page("session_picker")
+        _picker_page = TabRegistry().get_page(INITIAL_WORKSPACE_SESSION_TYPE)
         if _picker_page is not None:
             from core.navigation_sections import SessionPickerSection
 

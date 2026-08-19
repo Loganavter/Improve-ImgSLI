@@ -96,18 +96,22 @@ class RecentHeaderBar(QWidget):
             return
         focused = QApplication.focusWidget()
         idx = next((i for i, b in enumerate(buttons) if b is focused), None)
-        if key in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+        if key == Qt.Key.Key_Left:
             if idx is not None and idx > 0:
                 buttons[idx - 1].setFocus(Qt.FocusReason.OtherFocusReason)
                 event.accept()
                 logger.debug(
-                    "[shelf-nav] header left/up idx=%d -> button %d/%d",
+                    "[shelf-nav] header left idx=%d -> button %d/%d",
                     idx, idx - 1, len(buttons),
                 )
                 return
-            # Past first → hand off to last create-card in the session picker.
+            event.ignore()
+            super().keyPressEvent(event)
+            return
+        if key == Qt.Key.Key_Up:
+            # Up from any header button → last create-card (vertical exit).
             logger.debug(
-                "[shelf-nav] header left/up idx=%s -> create-cards (past first)", idx
+                "[shelf-nav] header up idx=%s -> create-cards", idx
             )
             picker = self.parentWidget()
             while picker is not None and not hasattr(picker, "focus_last_create_card"):

@@ -233,7 +233,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
             # to header — that would cycle). Return False to let the event
             # propagate up to create cards.
             self._recent_panel.set_keyboard_handoff(
-                lambda: self._recent_panel.focus_header_control(False)
+                lambda col: self._recent_panel.focus_header_control_near(col)
             )
 
         translatable_callback(

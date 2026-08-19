@@ -296,8 +296,9 @@ class TestSessionPickerSection:
 
     def test_owns_returns_false_for_unrelated(self):
         section, page, _ = self._make_page()
-        page.isAncestorOf = MagicMock(return_value=False)
-        assert section.owns(MagicMock()) is False
+        unrelated = MagicMock()
+        unrelated.parentWidget.return_value = None
+        assert section.owns(unrelated) is False
 
     def test_down_from_nothing_focuses_first_card(self):
         section, _, buttons = self._make_page(["a", "b", "c"])
@@ -438,8 +439,9 @@ class TestTabStripSection:
 
     def test_owns_returns_false_for_unrelated(self):
         section, strip, _ = self._make_strip()
-        strip.isAncestorOf = MagicMock(return_value=False)
-        assert section.owns(MagicMock()) is False
+        unrelated = MagicMock()
+        unrelated.parentWidget.return_value = None
+        assert section.owns(unrelated) is False
 
     def test_navigate_up_yields_to_title_bar(self):
         section, _, _ = self._make_strip()
