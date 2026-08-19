@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 
 from PySide6.QtCore import QEvent, Qt, QTimer
@@ -7,6 +8,8 @@ from PySide6.QtCore import QEvent, Qt, QTimer
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
 from tabs.image_compare.canvas.registry import registry
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def _query_overlay(store, capability_id: str, default=None):
@@ -70,6 +73,7 @@ class MagnifierVisibilityController:
     def show(self, reason: str = "hover"):
         host = self.manager.host
         use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
+        logger.debug("[magnifier-visibility] show() reason=%s use_magnifier=%s", reason, use_magnifier)
         if not use_magnifier:
             return
         try:
@@ -107,6 +111,12 @@ class MagnifierVisibilityController:
         if btn is None:
             return False
         if watched is btn:
+            if event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
+                logger.debug(
+                    "[magnifier-visibility] btn_magnifier event=%s reason=%s",
+                    event.type(),
+                    getattr(event, "reason", lambda: None)(),
+                )
             return self._handle_button_event(event)
         if watched is self.widget.magnifier_visibility_flyout:
             return self._handle_flyout_event(event)
@@ -142,16 +152,24 @@ class MagnifierVisibilityController:
             # `_keyboard_focus` flag, because our filter runs before
             # Button.focusInEvent updates that flag for this same event.
             reason = getattr(event, "reason", lambda: None)()
-            if reason not in (
+            is_keyboard = reason not in (
                 Qt.FocusReason.MouseFocusReason,
                 Qt.FocusReason.MenuBarFocusReason,
-            ):
+            )
+            use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
+            logger.debug(
+                "[magnifier-visibility] FocusIn reason=%s is_keyboard=%s use_magnifier=%s",
+                reason,
+                is_keyboard,
+                use_magnifier,
+            )
+            if is_keyboard:
                 self._hover_timer.stop()
-                use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
                 if use_magnifier:
                     self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
             return False
         if et == QEvent.Type.FocusOut:
+            logger.debug("[magnifier-visibility] FocusOut")
             self._hover_timer.stop()
             self.widget.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS

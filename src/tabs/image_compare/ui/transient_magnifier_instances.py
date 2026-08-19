@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QEvent, Qt, QSize
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
 from ui.managers.transient_ui_parts.anchored_popup import AnchoredPopupBubbleController
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 class MagnifierInstancesPopupController:
@@ -31,12 +35,19 @@ class MagnifierInstancesPopupController:
     def _wire_button(self) -> None:
         button = self._button()
         if button is None:
+            logger.debug("[magnifier-instances] _wire_button: no btn_magnifier_instances yet on widget=%s", self.widget)
             return
         button.countChanged.connect(lambda _count: self.on_count_changed())
         targets = button.popup_targets() if hasattr(button, "popup_targets") else (button,)
         for target in targets:
             target.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
             target.installEventFilter(self.manager.host)
+        logger.debug(
+            "[magnifier-instances] _wire_button: installed on button=%s targets=%s host=%s",
+            button,
+            targets,
+            self.manager.host,
+        )
 
     def _mark_closed(self) -> None:
         self.manager.host._magn_instances_popup_open = False
@@ -47,6 +58,13 @@ class MagnifierInstancesPopupController:
             return False
 
         et = event.type()
+        if et in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
+            logger.debug(
+                "[magnifier-instances] watched=%s event=%s reason=%s",
+                watched,
+                et,
+                getattr(event, "reason", lambda: None)(),
+            )
         if et == QEvent.Type.Enter:
             self._requested_open = True
             try:
@@ -97,6 +115,7 @@ class MagnifierInstancesPopupController:
         if button is None:
             return
         count = int(button.magnifier_count())
+        logger.debug("[magnifier-instances] show() count=%s", count)
         if count <= 1:
             self.hide()
             return
