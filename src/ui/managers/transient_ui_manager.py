@@ -8,14 +8,42 @@ logger = logging.getLogger("ImproveImgSLI")
 class TransientUIManager:
     def __init__(self, host):
         self.host = host
-        self.flyouts = self._create_tab_service("unified_flyout_controller")
-        self.interpolation = self._create_tab_service("interpolation_flyout_controller")
-        self.font_settings = self._create_tab_service("font_settings_flyout_controller")
-        self.magnifier = self._create_tab_service("magnifier_visibility_controller")
-        self.magnifier_instances = self._create_tab_service(
-            "magnifier_instances_popup_controller"
-        )
+        self._services: dict[str, object | None] = {}
+        self._service_ids = {
+            "flyouts": "unified_flyout_controller",
+            "interpolation": "interpolation_flyout_controller",
+            "font_settings": "font_settings_flyout_controller",
+            "magnifier": "magnifier_visibility_controller",
+            "magnifier_instances": "magnifier_instances_popup_controller",
+        }
         self.closing = PopupClosingController(self)
+
+    def _get_service(self, attr: str):
+        """Lazily resolve a tab-owned service.
+
+        With lazy tab initialization the service may not exist at
+        construction time (the tab's page hasn't been created yet).
+        We probe on every access until a non-None result is found —
+        once the tab's page is materialized, ``create_startup_service``
+        will find it and cache the result.
+        """
+        cached = self._services.get(attr)
+        if cached is not None:
+            return cached
+        service_id = self._service_ids[attr]
+        from tabs.registry import TabRegistry
+
+        registry = TabRegistry()
+        registry.discover()
+        service = registry.create_startup_service(service_id, self)
+        if service is not None:
+            self._services[attr] = service
+        return service
+
+    def __getattr__(self, name: str):
+        if name in self._service_ids:
+            return self._get_service(name)
+        raise AttributeError(name)
 
     @property
     def unified_flyout(self):
@@ -32,62 +60,84 @@ class TransientUIManager:
     def mark_font_popup_closed(self):
         self.host._font_popup_open = False
 
-    def _create_tab_service(self, service_id: str):
-        from tabs.registry import TabRegistry
-
-        registry = TabRegistry()
-        registry.discover()
-        service = registry.create_startup_service(service_id, self)
-        if service is None:
-            raise RuntimeError(f"Tab transient UI service is unavailable: {service_id}")
-        return service
-
     def show_flyout(self, image_number: int):
-        self.flyouts.show_flyout(image_number)
+        flyouts = self.flyouts
+        if flyouts is not None:
+            flyouts.show_flyout(image_number)
 
     def sync_flyout_combo_status(self):
-        self.flyouts.sync_flyout_combo_status()
+        flyouts = self.flyouts
+        if flyouts is not None:
+            flyouts.sync_flyout_combo_status()
 
     def toggle_interpolation_flyout(self):
-        self.interpolation.toggle()
+        interpolation = self.interpolation
+        if interpolation is not None:
+            interpolation.toggle()
 
     def show_interpolation_flyout(self):
-        self.interpolation.show()
+        interpolation = self.interpolation
+        if interpolation is not None:
+            interpolation.show()
 
     def apply_interpolation_choice(self, idx: int):
-        self.interpolation.apply_choice(idx)
+        interpolation = self.interpolation
+        if interpolation is not None:
+            interpolation.apply_choice(idx)
 
     def close_interpolation_flyout(self):
-        self.interpolation.close()
+        interpolation = self.interpolation
+        if interpolation is not None:
+            interpolation.close()
 
     def on_interpolation_flyout_closed_event(self):
-        self.interpolation.on_closed()
+        interpolation = self.interpolation
+        if interpolation is not None:
+            interpolation.on_closed()
 
     def toggle_font_settings_flyout(self, anchor_widget=None):
-        self.font_settings.toggle(anchor_widget=anchor_widget)
+        font_settings = self.font_settings
+        if font_settings is not None:
+            font_settings.toggle(anchor_widget=anchor_widget)
 
     def show_font_settings_flyout(self, anchor_widget=None):
-        self.font_settings.show(anchor_widget=anchor_widget)
+        font_settings = self.font_settings
+        if font_settings is not None:
+            font_settings.show(anchor_widget=anchor_widget)
 
     def hide_font_settings_flyout(self):
-        self.font_settings.hide()
+        font_settings = self.font_settings
+        if font_settings is not None:
+            font_settings.hide()
 
     def repopulate_flyouts(self):
-        self.flyouts.repopulate_flyouts()
+        flyouts = self.flyouts
+        if flyouts is not None:
+            flyouts.repopulate_flyouts()
 
     def on_font_changed(self):
-        self.font_settings.on_font_changed()
+        font_settings = self.font_settings
+        if font_settings is not None:
+            font_settings.on_font_changed()
 
     def on_flyout_closed(self, image_number: int):
-        self.flyouts.on_flyout_closed(image_number)
+        flyouts = self.flyouts
+        if flyouts is not None:
+            flyouts.on_flyout_closed(image_number)
 
     def on_unified_flyout_closed(self):
-        self.flyouts.on_unified_flyout_closed()
+        flyouts = self.flyouts
+        if flyouts is not None:
+            flyouts.on_unified_flyout_closed()
 
     def event_filter(self, watched, event):
-        if self.magnifier.event_filter(watched, event):
+        magnifier = self.magnifier
+        if magnifier is not None and magnifier.event_filter(watched, event):
             return True
-        return self.magnifier_instances.event_filter(watched, event)
+        magnifier_instances = self.magnifier_instances
+        if magnifier_instances is not None:
+            return magnifier_instances.event_filter(watched, event)
+        return False
 
     def close_all_flyouts_if_needed(self, global_pos: QPointF):
         self.closing.close_all_flyouts_if_needed(global_pos)
