@@ -11,7 +11,6 @@ logger = logging.getLogger("ImproveImgSLI")
 def initialize_ui_manager_pre_transient(manager) -> None:
     _init_unified_flyout(manager)
     _init_popup_state(manager)
-    _init_magnifier_flyout_widget(manager)
 
 def initialize_ui_manager_post_transient(manager) -> None:
     _connect_services(manager)
@@ -57,60 +56,6 @@ def _init_popup_state(manager) -> None:
     manager._magn_popup_open = False
     manager._magn_popup_last_open_ts = 0.0
     manager._magn_instances_popup_open = False
-
-def _init_magnifier_flyout_widget(manager) -> None:
-    # MagnifierVisibilityFlyout is tab-owned — created by image_compare
-    # in assemble_host_page(), NOT by the host.
-    pass
-
-def _connect_magnifier_visibility_buttons(manager) -> None:
-    if manager.main_controller is None:
-        return
-
-    from ui.canvas_infra.scene.feature_state_api import execute_feature_command
-
-    flyout = manager.magnifier_visibility_flyout
-    store = manager.store
-
-    if store is not None:
-        flyout.btn_left.toggled.connect(
-            lambda checked: execute_feature_command(
-                store, "magnifier", "set_active_visibility_parts",
-                left=not checked,
-                center=query_current_visibility(store, "center"),
-                right=query_current_visibility(store, "right"),
-            )
-        )
-        flyout.btn_right.toggled.connect(
-            lambda checked: execute_feature_command(
-                store, "magnifier", "set_active_visibility_parts",
-                left=query_current_visibility(store, "left"),
-                center=query_current_visibility(store, "center"),
-                right=not checked,
-            )
-        )
-        flyout.btn_center.toggled.connect(
-            lambda checked: execute_feature_command(
-                store, "magnifier", "set_active_visibility_parts",
-                left=query_current_visibility(store, "left"),
-                center=not checked,
-                right=query_current_visibility(store, "right"),
-            )
-        )
-        return
-
-    logger.warning(
-        "UIManager: Cannot connect magnifier visibility flyout buttons - no store available"
-    )
-
-def query_current_visibility(store, part: str) -> bool:
-    """Query current visibility of a magnifier part."""
-    from ui.canvas_infra.scene.feature_state_api import query_feature_state
-    state = query_feature_state(store, "magnifier", "active_state")
-    if state is None:
-        return True
-    part_key = f"visible_{part}"
-    return bool(state.get(part_key, True))
 
 def _connect_services(manager) -> None:
     font_manager = FontManager.get_instance()

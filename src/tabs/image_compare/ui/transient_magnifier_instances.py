@@ -17,7 +17,7 @@ class MagnifierInstancesPopupController:
             host=manager.host,
             popup_key="magnifier_instances_popup",
             auto_hide_delay_ms=AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS,
-            on_before_show=lambda: self.manager.magnifier.hide(
+            on_before_show=lambda: self.manager.panel_visibility.hide(
                 reason="magnifier_instances_popup"
             ),
             on_hidden=self._mark_closed,
@@ -50,7 +50,7 @@ class MagnifierInstancesPopupController:
         if et == QEvent.Type.Enter:
             self._requested_open = True
             try:
-                self.manager.magnifier.hide(reason="magnifier_instances_enter")
+                self.manager.panel_visibility.hide(reason="magnifier_instances_enter")
             except Exception:
                 pass
             if not self.manager.host._magn_instances_popup_open:

@@ -101,9 +101,9 @@ class MainWindowPresenter(QObject):
     def schedule_canvas_update(self):
         self.features.image_canvas.schedule_update()
 
-    def invalidate_canvas_render_state(self, clear_magnifier: bool = False):
+    def invalidate_canvas_render_state(self, clear_overlay_state: bool = False):
         self.features.image_canvas.invalidate_render_state(
-            clear_magnifier=clear_magnifier
+            clear_overlay_state=clear_overlay_state
         )
 
     def shutdown(self):

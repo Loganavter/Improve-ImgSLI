@@ -31,12 +31,12 @@ class ImageComparePopupClosing:
             pass
         try:
             if host._magn_popup_open and host.magnifier_visibility_flyout is not None:
-                self.manager.magnifier.hide(reason="hide_transient_same_window_ui")
+                self.manager.panel_visibility.hide(reason="hide_transient_same_window_ui")
         except Exception:
             pass
         try:
             if host._magn_instances_popup_open:
-                self.manager.magnifier_instances.hide()
+                self.manager.panel_instances.hide()
         except Exception:
             pass
 

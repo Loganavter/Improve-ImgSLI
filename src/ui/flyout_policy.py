@@ -50,22 +50,24 @@ def install_flyout_show_policy() -> GroupShowPolicy:
             claim_active=True,
         )
     _configure_pinned_hud_rules(policy)
-    # Hosts combo_interpolation, whose dropdown is an "options" flyout —
-    # letting that (or any other exclusive group) dismiss this one on open
-    # would close the sliders panel mid-pick. Closing is hover/timer-driven
-    # instead, see MagnifierSettingsHoverController.
-    policy.configure_group("magnifier_settings", dismisses=(), claim_active=False)
+    # Hosts a per-feature settings panel (e.g. combo_interpolation), whose own
+    # dropdown is an "options" flyout — letting that (or any other exclusive
+    # group) dismiss this one on open would close the panel mid-pick. Closing
+    # is hover/timer-driven instead, see the owning tab's settings hover
+    # controller (flyout_group="canvas_feature_settings", declared by the
+    # tab-owned flyout widget).
+    policy.configure_group("canvas_feature_settings", dismisses=(), claim_active=False)
     # SliderHintFlyout (the small "what does this slider do" popup) is
     # unconfigured -> falls into the "default" group, whose fallback is
     # exclusive (dismiss every other open flyout). Since it's shown from
-    # hover *while* the magnifier-settings panel above it is already open,
+    # hover *while* the feature-settings panel above it is already open,
     # that fallback was closing the parent panel every time a slider hint
     # appeared. dismisses=() makes opening the hint a no-op for every other
     # flyout, matching its own hover/timer-driven lifecycle (see
     # SliderHintController).
     policy.configure_group("slider_hint", dismisses=(), claim_active=False)
     # _ScrollValueFlyout (ScrollValueButton's own wheel-nudge value popup,
-    # e.g. divider/magnifier width buttons) — same "default"-fallback
+    # e.g. divider/width buttons) — same "default"-fallback
     # DISMISS_ALL problem as slider_hint above, except worse: it was killing
     # every flyout on screen, including the pinned zoom/info HUD chips
     # (pinned only exempts a flyout from *its own* passive-dismiss paths,

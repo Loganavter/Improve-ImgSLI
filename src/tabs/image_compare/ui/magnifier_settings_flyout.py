@@ -141,7 +141,7 @@ class MagnifierSettingsFlyout(BaseFlyout):
     # ui/flyout_policy.py's _EXCLUSIVE_GROUPS: this flyout hosts
     # ``combo_interpolation``, whose own dropdown is an "options" flyout —
     # letting that dismiss us on open would close the parent mid-pick.
-    flyout_group = "magnifier_settings"
+    flyout_group = "canvas_feature_settings"
 
     SHADOW_RADIUS = 0
     CONTENT_RADIUS = 8

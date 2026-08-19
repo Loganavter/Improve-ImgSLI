@@ -132,10 +132,10 @@ class ImageCompareTab(TabContract):
         """Create the magnifier visibility flyout — tab-owned, stored on host ui."""
         if getattr(ui, "magnifier_visibility_flyout", None) is not None:
             return  # already created
-        from ui.widgets.magnifier_visibility_flyout import MagnifierVisibilityFlyout
+        from ui.widgets.panel_visibility_flyout import PanelVisibilityFlyout
 
         parent = getattr(ui, "main_window", None) or self._widget
-        flyout = MagnifierVisibilityFlyout(parent)
+        flyout = PanelVisibilityFlyout(parent, slot_icon="magnifier.svg")
         ui.magnifier_visibility_flyout = flyout
         self._connect_magnifier_flyout_buttons(flyout, ui)
 

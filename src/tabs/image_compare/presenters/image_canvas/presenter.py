@@ -43,8 +43,8 @@ class ImageCanvasPresenter(QObject):
     def schedule_update(self):
         return self.background.schedule_update()
 
-    def invalidate_render_state(self, clear_magnifier: bool = False):
-        return self.lifecycle.invalidate_render_state(clear_magnifier)
+    def invalidate_render_state(self, clear_overlay_state: bool = False):
+        return self.lifecycle.invalidate_render_state(clear_overlay_state)
 
     def update_comparison_if_needed(self) -> bool:
         return self.background.update_comparison_if_needed()

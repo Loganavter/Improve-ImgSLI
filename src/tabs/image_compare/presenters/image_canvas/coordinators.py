@@ -135,7 +135,7 @@ class CanvasLifecycleCoordinator:
     def update_minimum_window_size(self):
         return update_minimum_window_size(self.presenter)
 
-    def invalidate_render_state(self, clear_magnifier: bool = False):
+    def invalidate_render_state(self, clear_overlay_state: bool = False):
         return invalidate_render_state(self.presenter)
 
     def start_interactive_movement(self):

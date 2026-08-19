@@ -354,10 +354,10 @@ class SessionController(QObject):
     def duplicate_image_to_slot(self, source_slot: int, target_slot: int) -> None:
         loading.duplicate_image_to_slot(self, source_slot, target_slot)
 
-    def _invalidate_image_canvas_render_state(self, clear_magnifier: bool = False):
+    def _invalidate_image_canvas_render_state(self, clear_overlay_state: bool = False):
         presenter = getattr(self, "presenter", None)
         if presenter and hasattr(presenter, "invalidate_canvas_render_state"):
-            presenter.invalidate_canvas_render_state(clear_magnifier=clear_magnifier)
+            presenter.invalidate_canvas_render_state(clear_overlay_state=clear_overlay_state)
 
     def _schedule_image_canvas_update(self):
         presenter = getattr(self, "presenter", None)

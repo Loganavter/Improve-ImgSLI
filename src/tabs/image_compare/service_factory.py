@@ -138,7 +138,7 @@ def create_service(
 
         save_image_compare_feature_settings(*args, **kwargs)
         return True
-    if service_id == "magnifier_visibility_controller":
+    if service_id == "panel_visibility_controller":
         if tab._widget is None:
             return None
         from tabs.image_compare.ui.transient_magnifier import (
@@ -146,7 +146,7 @@ def create_service(
         )
 
         return MagnifierVisibilityController(*args, widget=tab._widget, **kwargs)
-    if service_id == "magnifier_instances_popup_controller":
+    if service_id == "panel_instances_controller":
         if tab._widget is None:
             return None
         from tabs.image_compare.ui.transient_magnifier_instances import (

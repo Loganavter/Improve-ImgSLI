@@ -729,7 +729,7 @@ def set_current_image(
         # clear_image_slot_data already drops this slot's display/scaled caches.
         # invalidate_geometry_cache() would also wipe the other side and flash
         # a blank canvas while the live half is still valid.
-        controller._invalidate_image_canvas_render_state(clear_magnifier=True)
+        controller._invalidate_image_canvas_render_state(clear_overlay_state=True)
         controller._schedule_image_canvas_update()
         if controller.presenter:
             controller.presenter.ui_batcher.schedule_batch_update(
@@ -776,7 +776,7 @@ def set_current_image(
     # Not _invalidate_diff_cache(controller): a swap, see the matching
     # comment above _mark_full_res_ready's call site.
     controller.store.invalidate_render_cache()
-    controller._invalidate_image_canvas_render_state(clear_magnifier=False)
+    controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
     controller._schedule_image_canvas_update()
 
     if pil_img is None and path:
@@ -838,7 +838,7 @@ def on_unified_images_ready(controller, result):
         # Not _invalidate_diff_cache(controller): a swap, see the matching
         # comment above _mark_full_res_ready's call site.
         controller.store.invalidate_render_cache()
-        controller._invalidate_image_canvas_render_state(clear_magnifier=False)
+        controller._invalidate_image_canvas_render_state(clear_overlay_state=False)
         controller._schedule_image_canvas_update()
 
         _clear_unification_flags(controller)

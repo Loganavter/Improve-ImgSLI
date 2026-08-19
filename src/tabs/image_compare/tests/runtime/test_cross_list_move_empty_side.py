@@ -116,7 +116,7 @@ class _FakeController:
             else:
                 document.image2_path = path
 
-    def _invalidate_image_canvas_render_state(self, clear_magnifier=False):
+    def _invalidate_image_canvas_render_state(self, clear_overlay_state=False):
         pass
 
     def _schedule_image_canvas_update(self):
