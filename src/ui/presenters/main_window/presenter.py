@@ -101,8 +101,10 @@ class MainWindowPresenter(QObject):
     def schedule_canvas_update(self):
         # Reached from generic window-resize/settle handling
         # (`ui/main_window/window.py::schedule_update`), which fires
-        # regardless of which tab is active — image_canvas may not be
-        # materialized yet (e.g. session_picker is still the active tab).
+        # regardless of which tab is active. This isn't just a startup-
+        # materialization race: session_picker has no canvas at all, so
+        # while it's the active tab this can never resolve — not only
+        # "not yet", but "not applicable".
         schedule_update = getattr(self.features.image_canvas, "schedule_update", None)
         if schedule_update is not None:
             schedule_update()
