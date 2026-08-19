@@ -303,7 +303,7 @@ class MainWindowStartupController:
         if tab_strip is not None:
             add_btn = getattr(tab_strip, "add_button", None)
             target = add_btn if add_btn is not None and add_btn.isVisible() else tab_strip
-            target.setFocus(Qt.FocusReason.OtherFocusReason)
+            target.setFocus(Qt.FocusReason.MouseFocusReason)
         self._log_layout_summary(window)
         # Onboarding is built during prepare() before the window has a real
         # layout; re-apply geometry/scale after the first show pass.
