@@ -335,6 +335,7 @@ def test_multi_compare_registers_toolbar_actions():
 
 
 def test_platform_registers_settings_and_workspace_actions():
+    from core.session_blueprints import SessionBlueprint
     from ui.actions.platform import register_platform_actions, register_settings_page_actions
 
     registry = ActionRegistry()
@@ -349,8 +350,11 @@ def test_platform_registers_settings_and_workspace_actions():
         show_settings_section=lambda sid: sections.append(sid),
         resolve_settings_sidebar=lambda sid: sidebar_hits.append(sid) or f"row:{sid}",
         open_session_picker=_noop,
-        new_image_compare=_noop,
-        new_multi_compare=_noop,
+        new_session_runner=_noop,
+        session_blueprints=(
+            SessionBlueprint(session_type="image_compare", plugin_name="image_compare"),
+            SessionBlueprint(session_type="multi_compare", plugin_name="multi_compare"),
+        ),
         registry=registry,
     )
     ids = {a.action_id for a in registry.all_actions()}

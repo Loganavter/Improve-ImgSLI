@@ -5,6 +5,7 @@ import logging
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 
+from core.store import INITIAL_WORKSPACE_SESSION_TYPE
 from plugins.onboarding import host as onboarding_host
 from shared_toolkit.ui.decorate_dialog import resolve_csd_band
 from ui.main_window.ui import Ui_ImageComparisonApp
@@ -285,14 +286,12 @@ class MainWindowStartupRuntime:
             # to call install_missing_pages() here.
             # Cards were built from a tab-package scan; only refresh icons now
             # that deferred tabs can answer get_tab_icon.
-            picker = ui._tab_registry.get_page("session_picker")
-            sync_icons = getattr(picker, "sync_icons", None)
-            if callable(sync_icons):
-                sync_icons()
+            picker = ui._tab_registry.get_page(INITIAL_WORKSPACE_SESSION_TYPE)
+            if picker is not None:
+                picker.sync_icons()
             menu = getattr(window, "_menu_controller", None)
-            wire = getattr(menu, "_wire_session_picker_recent", None)
-            if callable(wire):
-                wire()
+            if menu is not None:
+                menu._wire_session_picker_recent()
 
         main_controller = window.main_controller
         presenter = window.presenter

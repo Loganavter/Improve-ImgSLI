@@ -76,20 +76,30 @@ def _matched_concepts(raw_identifier: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Allowlist — host-side workspace-action catalog wiring.
+# Allowlist — host action catalog + the landing-tab capability mechanism.
 #
-# The host owns exactly one job that legitimately has to name concrete tabs:
-# opening the landing ``session_picker`` tab and registering the "new
-# image_compare / new multi_compare" workspace actions (Find Action /
-# titlebar menu entries whose action IDs are literally
-# ``workspace.new_image_compare`` etc. — the public product catalog the
-# module docstring's "Action IDs" exception already names). This is
-# distinct from — and much narrower than — a host manager reaching into a
-# tab's *internal* feature (see the un-allowlisted ``magnifier`` wiring
-# below, which this contract intentionally still fails on).
+# Two narrow, *documented* mechanisms legitimately name concrete tabs from
+# host code:
 #
-# Entries are (repo-relative path, identifier-or-string-literal). Adding an
-# entry here should point at genuine action-catalog/landing-tab wiring, not
+# 1. ``actions/platform.py``'s ``register_platform_actions()`` kwargs are the
+#    fixed, public host action catalog (menu/Find-Action entries whose IDs
+#    are literally ``workspace.new_image_compare`` etc.) — by product design
+#    exactly two "new session" actions and one "open landing tab" action
+#    exist; this isn't meant to generalize over an arbitrary tab count.
+# 2. ``session_picker`` is the one tab with a reserved hub role
+#    (``TabContract.is_bootstrap_default``, see
+#    docs/dev/tabs/capability-mechanisms.md "Bootstrap seam" /
+#    "create_service_for") — host code that opens it or talks to its
+#    ``session_picker.host_chrome`` extension resolves the session_type via
+#    ``core.store.INITIAL_WORKSPACE_SESSION_TYPE`` (never a bare literal) and
+#    is merely *named* after what it does.
+#
+# This is distinct from — and much narrower than — a host manager reaching
+# into a tab's *internal* feature (see the un-allowlisted ``magnifier``
+# wiring below, which this contract intentionally still fails on): every
+# entry here is one hop away from one of the two mechanisms above, not an
+# arbitrary tab-shaped name. Entries are (repo-relative path, identifier).
+# Adding one should point at genuine action-catalog/landing-tab wiring, not
 # be used to silence a fresh leak — new entries should be reviewed like any
 # other contract exception.
 # ---------------------------------------------------------------------------
@@ -102,10 +112,6 @@ _ALLOWLISTED_IDENTIFIERS: frozenset[tuple[str, str]] = frozenset(
         ("src/ui/main_window/project_io.py", "resolve_session_picker_host_chrome"),
         ("src/ui/main_window/project_io.py", "refresh_session_picker_recent"),
         ("src/ui/main_window/project_io.py", "wire_session_picker_recent"),
-        ("src/ui/actions/workspace_new_sessions.py", "image_compare_runner"),
-        ("src/ui/actions/workspace_new_sessions.py", "multi_compare_runner"),
-        ("src/ui/actions/workspace_new_sessions.py", "image_compare_target"),
-        ("src/ui/actions/workspace_new_sessions.py", "multi_compare_target"),
         ("src/ui/actions/platform.py", "open_session_picker"),
         ("src/ui/actions/platform.py", "new_image_compare"),
         ("src/ui/actions/platform.py", "new_multi_compare"),
@@ -116,16 +122,17 @@ _ALLOWLISTED_IDENTIFIERS: frozenset[tuple[str, str]] = frozenset(
         ("src/ui/main_window/use_cases/platform_actions.py", "_wire_session_picker_recent"),
         ("src/ui/main_window/use_cases/platform_actions.py", "_open_session_picker"),
         ("src/ui/presenters/main_window/workspace.py", "ensure_session_picker_visible"),
+        ("src/ui/main_window/startup.py", "_wire_session_picker_recent"),
     }
 )
 
 _ALLOWLISTED_STRING_LITERALS: frozenset[tuple[str, str]] = frozenset(
     {
-        ("src/ui/main_window/ui.py", "multi_compare"),
-        ("src/ui/main_window/ui.py", "session_picker"),
-        ("src/ui/main_window/startup.py", "session_picker"),
-        ("src/ui/actions/workspace_new_sessions.py", "image_compare"),
-        ("src/ui/actions/workspace_new_sessions.py", "multi_compare"),
+        # The literal ``session_type`` arguments to the generic
+        # runner_for()/target_for() calls that back the fixed
+        # new-session action catalog (see identifier allowlist above).
+        ("src/ui/main_window/use_cases/platform_actions.py", "image_compare"),
+        ("src/ui/main_window/use_cases/platform_actions.py", "multi_compare"),
     }
 )
 
