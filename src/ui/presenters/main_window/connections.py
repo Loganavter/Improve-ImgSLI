@@ -46,8 +46,6 @@ def _focus_content(presenter, direction: int) -> None:
 
 
 def connect_signals(presenter):
-    image_canvas = presenter.get_feature("image_canvas")
-
     presenter.store.state_changed.connect(
         lambda domain: on_store_state_changed(presenter, domain)
     )
@@ -61,11 +59,16 @@ def connect_signals(presenter):
     presenter.main_controller.ui_update_requested.connect(
         lambda components: on_ui_update_requested(presenter, components)
     )
+    # `image_canvas` is resolved lazily (not materialized until its tab is
+    # active) — defer attribute access to signal-fire time via lambda rather
+    # than binding a method reference now, which would force resolution
+    # (and likely raise) before the tab exists. See
+    # docs/dev/investigations/lazy-legacy-shell-plan.md.
     presenter.main_controller.start_interactive_movement.connect(
-        image_canvas.start_interactive_movement
+        lambda: presenter.features.image_canvas.start_interactive_movement()
     )
     presenter.main_controller.stop_interactive_movement.connect(
-        image_canvas.stop_interactive_movement
+        lambda: presenter.features.image_canvas.stop_interactive_movement()
     )
 
     presenter.ui.workspace_tabs.currentChanged.connect(
@@ -108,9 +111,10 @@ def _refresh_active_tab_actions() -> None:
 
 
 def connect_event_handler_signals(presenter, event_handler):
-    image_canvas = presenter.get_feature("image_canvas")
-    image_canvas.connect_event_handler_signals(event_handler)
-
+    # image_canvas's own `connect_event_handler_signals(event_handler)` call
+    # (not idempotent — must fire exactly once) is wired via the
+    # `on_resolved` callback attached to its `LazyTabService` in
+    # composer.py, since image_canvas may not be materialized yet here.
     event_handler.mouse_press_event_signal.connect(
         lambda event: handle_global_mouse_press(presenter, event)
     )

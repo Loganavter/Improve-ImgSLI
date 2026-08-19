@@ -131,12 +131,23 @@ shape in `tabs/session_picker/host_chrome.py`.
 
 A narrow hook for **main-presenter-hosted features only.** Currently exactly
 one ID is ever requested, `"image_canvas"` (`ui/main_window/composer.py`),
-implemented only by `ImageCompareTab`. Resolves active-tab-only, same as
-`create_service`. Do not add new IDs to it — new capabilities go through
-`create_service`. Making `"image_canvas"` lazy (built on first activation of
-whichever tab implements it) would remove the need for a privileged
-bootstrap-default tab; out of scope until someone picks up
-`ui/main_window/composer.py`'s startup sequence.
+implemented only by `ImageCompareTab`. Resolves by capability (see above),
+same routing as `create_startup_service`. Do not add new IDs to it — new
+capabilities go through `create_service`.
+
+`"image_canvas"` is resolved lazily — `composer.py` wraps it in
+`tabs.registry.LazyTabService` (`probe_method="create_main_window_feature"`)
+instead of calling `create_main_window_feature` synchronously and raising on
+`None`. It is only actually built the first time some caller touches an
+attribute on it, which in practice is once `image_compare`'s page is
+materialized (`ImageCompareTab.create_main_window_feature` returns `None`
+while `self._widget` is still unset). This is what let `image_compare` stop
+being forced into existence at every boot merely because the legacy shell
+depended on it. See `docs/dev/investigations/lazy-legacy-shell-plan.md` for
+the full writeup, including the small set of call sites
+(`ui/presenters/main_window/connections.py`,
+`ui/presenters/main_window/presenter.py::schedule_canvas_update`) that had to
+be made tolerant of `image_canvas` not being resolved yet.
 
 ## host → tab: `CanvasGeometryProvider` (typed protocol, hot path)
 

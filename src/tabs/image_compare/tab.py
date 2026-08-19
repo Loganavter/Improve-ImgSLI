@@ -280,6 +280,8 @@ class ImageCompareTab(TabContract):
     def create_main_window_feature(self, feature_id: str, **kwargs):
         if feature_id != "image_canvas":
             return None
+        if self._widget is None:
+            return None
         from tabs.image_compare.presenters.image_canvas.presenter import (
             ImageCanvasPresenter,
         )

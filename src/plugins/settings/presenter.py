@@ -91,20 +91,9 @@ class SettingsPresenter(QObject):
         return tr(text, self.store.settings.current_language)
 
     def _create_color_picker_coordinator(self, **kwargs):
-        from tabs.registry import TabRegistry
+        from tabs.registry import LazyTabService
 
-        registry = TabRegistry()
-        registry.discover()
-        coordinator = registry.create_startup_service(
-            "settings_color_picker_coordinator",
-            **kwargs,
-        )
-        if coordinator is None:
-            raise RuntimeError(
-                "No tab provides settings_color_picker_coordinator; "
-                "canvas feature color pickers must be supplied by the tab owner."
-            )
-        return coordinator
+        return LazyTabService("settings_color_picker_coordinator", **kwargs)
 
     def on_language_changed(self):
         self.update_interpolation_combo_box_ui()
