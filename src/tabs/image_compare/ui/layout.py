@@ -356,6 +356,7 @@ class ImageCompareLayoutBuilder:
                 icon=Icon.MAGNIFIER_SIZE,
                 icon_attr="icon_magnifier_size",
                 label=ui.label_magnifier_size,
+                value_row_attr="value_row_slider_size",
             )
         )
         column.addLayout(
@@ -366,6 +367,7 @@ class ImageCompareLayoutBuilder:
                 icon=Icon.CAPTURE_SIZE,
                 icon_attr="icon_capture_size",
                 label=ui.label_capture_size,
+                value_row_attr="value_row_slider_capture",
             )
         )
         column.addLayout(
@@ -376,6 +378,7 @@ class ImageCompareLayoutBuilder:
                 icon=Icon.MOVEMENT_SPEED,
                 icon_attr="icon_movement_speed",
                 label=ui.label_movement_speed,
+                value_row_attr="value_row_slider_speed",
             )
         )
         return column
@@ -389,6 +392,7 @@ class ImageCompareLayoutBuilder:
         icon: Icon,
         icon_attr: str,
         label: Label,
+        value_row_attr: str,
     ) -> QHBoxLayout:
         slider.setMinimum(minimum)
         slider.setMaximum(maximum)
@@ -407,10 +411,14 @@ class ImageCompareLayoutBuilder:
         row.addWidget(icon_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         # The persistent value label sits right of the track (ValueSliderRow
         # replaces the hover hint flyout with it); a fixed-width pad keeps
-        # the slider's geometry stable as the value text changes.
-        row.addWidget(
-            ValueSliderRow(slider), 1, alignment=Qt.AlignmentFlag.AlignVCenter
-        )
+        # the slider's geometry stable as the value text changes. Kept as
+        # `value_row_<slider_attr>` so callers can force-refresh the label
+        # (see ValueSliderRow.refresh()) after a signal-blocked/"quiet"
+        # setValue() from store state, which never fires the valueChanged
+        # connection this row's label otherwise relies on.
+        value_row = ValueSliderRow(slider)
+        setattr(self.target, value_row_attr, value_row)
+        row.addWidget(value_row, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
         return row
 
     def _slider_icon(self, icon: Icon) -> QLabel:
