@@ -122,14 +122,18 @@ class EventHandler(QObject):
             return True
 
         # Close visible in-window ContextMenus on Escape before the global
-        # keyboard handler consumes it.
+        # keyboard handler consumes it — but only if no flyout section owns
+        # the focused widget (flyout sections route Escape through
+        # NavigationManager → extra_keys → keyPressEvent).
         if event_type == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
-            from sli_ui_toolkit.ui.widgets.composite.context_menu.menu import (
-                ContextMenu,
-            )
-            if ContextMenu.close_visible():
-                event.accept()
-                return True
+            from sli_ui_toolkit.managers import NavigationManager
+            if not NavigationManager.get_instance().should_intercept(Qt.Key.Key_Escape):
+                from sli_ui_toolkit.ui.widgets.composite.context_menu.menu import (
+                    ContextMenu,
+                )
+                if ContextMenu.close_visible():
+                    event.accept()
+                    return True
 
         if event_type == QEvent.Type.ApplicationDeactivate:
             self._reset_keyboard_state(f"event:{int(event_type)}")
