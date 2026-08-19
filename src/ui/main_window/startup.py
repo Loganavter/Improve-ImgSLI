@@ -129,27 +129,24 @@ class MainWindowStartupRuntime:
         # The legacy main-window shell widget comes from the single tab that
         # registers its assembled page into ``legacy_tab_widgets``. There is
         # no privileged "shell host" role — the widget is read straight from
-        # that registry.
+        # that registry.  With lazy tab initialization the widget may not
+        # exist yet (the page is created on first show), so treat a missing
+        # widget as a deferred state rather than a fatal error.
         image_compare_widget = next(
             iter(window.ui.legacy_tab_widgets.values()), None
         )
-        if image_compare_widget is None:
-            raise RuntimeError(
-                "Legacy shell widget not registered — tab discovery likely "
-                "failed (frozen builds need import-based discovery when "
-                "tabs/*/tab.py are not on disk)."
-            )
         window.image_compare_widget = image_compare_widget
-        image_label = image_compare_widget.image_label
         window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
         window._startup_canvas_first_frame_rendered = False
         window._startup_canvas_first_visual_ready = False
         window.appearance.update_image_label_background()
         self.show_cover()
-        image_label.firstFrameRendered.connect(self.on_image_label_first_frame_rendered)
-        image_label.firstVisualFrameReady.connect(
-            self.on_image_label_first_visual_frame_ready
-        )
+        if image_compare_widget is not None:
+            image_label = image_compare_widget.image_label
+            image_label.firstFrameRendered.connect(self.on_image_label_first_frame_rendered)
+            image_label.firstVisualFrameReady.connect(
+                self.on_image_label_first_visual_frame_ready
+            )
 
         components = window.app_context.create_window_dependent_components(window)
         window.geometry_manager = components.geometry_manager
@@ -190,7 +187,8 @@ class MainWindowStartupRuntime:
         window.appearance.update_image_label_background()
         if window.main_controller and window.main_controller.sessions:
             window.main_controller.sessions.initialize_app_display()
-        image_compare_widget.reapply_button_styles()
+        if image_compare_widget is not None:
+            image_compare_widget.reapply_button_styles()
         from tabs.registry import TabRegistry
 
         _tab_registry = TabRegistry()
@@ -413,9 +411,8 @@ class MainWindowStartupRuntime:
         ui = window.ui
         if ui is not None and getattr(ui, "_tab_registry", None) is not None:
             ui._tab_registry.discover(tier="deferred")
-            stack = getattr(ui, "workspace_stack", None)
-            if stack is not None:
-                ui._tab_registry.install_missing_pages(stack)
+            # Deferred tab pages are created lazily on first show — no need
+            # to call install_missing_pages() here.
             # Cards were built from a tab-package scan; only refresh icons now
             # that deferred tabs can answer get_tab_icon.
             picker = ui._tab_registry.get_page("session_picker")
