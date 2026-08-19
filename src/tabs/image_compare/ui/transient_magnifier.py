@@ -27,6 +27,7 @@ class MagnifierVisibilityController:
         self._hover_timer = DelayedActionTimer(
             lambda: self.show(reason="hover"), parent=manager.host
         )
+        self._last_flyout_hide_ts = 0.0
         self._wire_button()
 
     def _wire_button(self) -> None:
@@ -67,7 +68,15 @@ class MagnifierVisibilityController:
                 pass
             self.hide(reason="main_toggle_disabled")
             return
-        if btn.underMouse():
+        # Toggling the button with Enter/Space while it holds keyboard focus
+        # (no mouse involved) never sets underMouse() -- mirror the hover
+        # path for that case too, the same way on_count_changed does for the
+        # instances counter, or a keyboard-driven "turn magnifier on" never
+        # shows the flyout that mouse users get automatically.
+        keyboard_driven = (
+            bool(getattr(btn, "_keyboard_focus", False)) and btn.hasFocus()
+        )
+        if btn.underMouse() or keyboard_driven:
             QTimer.singleShot(0, lambda: self.show(reason="hover"))
 
     def show(self, reason: str = "hover"):
@@ -163,7 +172,15 @@ class MagnifierVisibilityController:
                 is_keyboard,
                 use_magnifier,
             )
-            if is_keyboard:
+            # Escape (or any other route) closing the flyout returns
+            # keyboard focus to its own anchor button as part of the same
+            # close operation (flyout-nav's _restore_focus_policies) -- that
+            # FocusIn is indistinguishable from a fresh Tab-in by reason
+            # alone (both are OtherFocusReason), so without this cooldown
+            # the flyout would instantly reopen right after Escape closes
+            # it, making Escape look broken.
+            since_hide = time.monotonic() - self._last_flyout_hide_ts
+            if is_keyboard and since_hide > 0.4:
                 self._hover_timer.stop()
                 if use_magnifier:
                     self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
@@ -192,6 +209,8 @@ class MagnifierVisibilityController:
             self.widget.magnifier_visibility_flyout.schedule_auto_hide(
                 AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
             )
+        elif et == QEvent.Type.Hide:
+            self._last_flyout_hide_ts = time.monotonic()
         return False
 
     def _handle_child_event(self, event):

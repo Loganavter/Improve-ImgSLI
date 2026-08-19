@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QWidget
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
@@ -32,6 +35,8 @@ class MagnifierSettingsHoverController(QObject):
         self.widget = widget
         self._hover_timer = DelayedActionTimer(self._show, parent=widget)
         self._mode_picker_flyouts_wired: set = set()
+        self._group_buttons: set = set()
+        self._last_flyout_hide_ts = 0.0
         self._wire()
 
     def _wire(self) -> None:
@@ -46,6 +51,16 @@ class MagnifierSettingsHoverController(QObject):
         group.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         group.installEventFilter(self)
         flyout.installEventFilter(self)
+        # The zone-based hover check (_cursor_in_group_zone) only reacts to
+        # mouse position, so Tab/keyboard focus landing on a button inside
+        # the group never opened this panel -- Qt delivers FocusIn/FocusOut
+        # to the focused widget itself, not to ancestor containers via
+        # installEventFilter, so each button needs its own filter (mirrors
+        # MagnifierVisibilityController._wire_button in transient_magnifier.py).
+        for child in group.findChildren(QWidget):
+            if child.focusPolicy() != Qt.FocusPolicy.NoFocus:
+                child.installEventFilter(self)
+                self._group_buttons.add(child)
         # The color-options flyouts (btn_magnifier_color_settings[_beginner])
         # already exist at this point (built earlier in the same assemble()
         # pass, before this controller) -- other toolbar flyouts
@@ -119,6 +134,8 @@ class MagnifierSettingsHoverController(QObject):
             self._handle_hover_event(event)
         elif watched is getattr(widget, "magnifier_settings_flyout", None):
             self._handle_flyout_event(event)
+        elif watched in self._group_buttons:
+            self._handle_button_focus_event(event)
         return False
 
     def _handle_hover_event(self, event) -> None:
@@ -143,6 +160,31 @@ class MagnifierSettingsHoverController(QObject):
             self._hover_timer.stop()
             self._schedule_hide()
 
+    def _handle_button_focus_event(self, event) -> None:
+        et = event.type()
+        if et == QEvent.Type.FocusIn:
+            reason = getattr(event, "reason", lambda: None)()
+            is_keyboard = reason not in (
+                Qt.FocusReason.MouseFocusReason,
+                Qt.FocusReason.MenuBarFocusReason,
+            )
+            # Same post-close cooldown as MagnifierVisibilityController: a
+            # flyout closing (Escape, outside click) returns keyboard focus
+            # to whichever group button last held it, which would otherwise
+            # immediately reopen this panel right after closing it.
+            since_hide = time.monotonic() - self._last_flyout_hide_ts
+            if is_keyboard and since_hide > 0.4:
+                self._cancel_hide()
+                flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+                if flyout is None or not flyout.isVisible():
+                    self._hover_timer.stop()
+                    self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+                else:
+                    self._hover_timer.stop()
+        elif et == QEvent.Type.FocusOut:
+            self._hover_timer.stop()
+            self._schedule_hide()
+
     def _cursor_in_group_zone(self) -> bool:
         group = getattr(self.widget, "magnifier_group_container", None)
         if group is None:
@@ -162,6 +204,8 @@ class MagnifierSettingsHoverController(QObject):
             self._cancel_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
             self._schedule_hide()
+        elif et == QEvent.Type.Hide:
+            self._last_flyout_hide_ts = time.monotonic()
 
     def _show(self) -> None:
         widget = self.widget
