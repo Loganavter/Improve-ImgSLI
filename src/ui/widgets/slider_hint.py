@@ -471,6 +471,23 @@ class ValueSliderRow(QWidget):
     def _on_value_changed(self, _value: int) -> None:
         self._apply_label()
 
+    def refresh(self) -> None:
+        """Re-sync the value label from the slider's current value.
+
+        The label only otherwise updates reactively via the slider's own
+        ``valueChanged`` signal (see ``__init__``) — callers that set the
+        slider's real value through a signal-blocked/"quiet" setter (the
+        usual pattern here for syncing UI from store state without firing
+        feedback back into it, e.g. ``set_slider_value_quietly``) never
+        trigger that connection, so the label stays stuck at whatever
+        ``slider.value()`` happened to read when this row was constructed
+        (typically the slider's un-initialized default). Call this once
+        after such an update, or whenever this row's panel is about to
+        become visible, to catch up.
+        """
+        self._apply_label()
+        self._apply_pad_width()
+
     def _apply_pad_width(self, _factor: float | None = None) -> None:
         try:
             import shiboken6

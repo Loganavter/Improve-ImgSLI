@@ -4,7 +4,7 @@ import time
 
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QCursor
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from core.constants import AppConstants
 from sli_ui_toolkit.managers import DelayedActionTimer
@@ -57,10 +57,18 @@ class MagnifierSettingsHoverController(QObject):
         # to the focused widget itself, not to ancestor containers via
         # installEventFilter, so each button needs its own filter (mirrors
         # MagnifierVisibilityController._wire_button in transient_magnifier.py).
+        from sli_ui_toolkit.managers import NavigationManager
+
+        nav = NavigationManager.get_instance()
         for child in group.findChildren(QWidget):
             if child.focusPolicy() != Qt.FocusPolicy.NoFocus:
                 child.installEventFilter(self)
                 self._group_buttons.add(child)
+                # Down from any group button enters this panel instead of
+                # jumping to the next toolbar row, and Up from the panel's
+                # first control returns here (see NavigationManager.link_below
+                # and ToolbarRowsSection/_navigate_focusable in the toolkit).
+                nav.link_below(child, flyout)
         # The color-options flyouts (btn_magnifier_color_settings[_beginner])
         # already exist at this point (built earlier in the same assemble()
         # pass, before this controller) -- other toolbar flyouts
@@ -183,7 +191,22 @@ class MagnifierSettingsHoverController(QObject):
                     self._hover_timer.stop()
         elif et == QEvent.Type.FocusOut:
             self._hover_timer.stop()
-            self._schedule_hide()
+            # Down from a group button can move focus straight into this
+            # panel's own content (NavigationManager.extension_below /
+            # BaseFlyout.focus_first_child) -- that's still "inside" the
+            # combined group+panel unit, not a reason to auto-hide. Without
+            # this check, the button's FocusOut alone would schedule a
+            # hide that nothing then cancels (the mouse-hover Enter that
+            # normally cancels it never fires for a keyboard-only move),
+            # closing the panel out from under the focus that just entered it.
+            new_focus = QApplication.focusWidget()
+            flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+            still_inside = new_focus is not None and (
+                new_focus in self._group_buttons
+                or (flyout is not None and flyout.isAncestorOf(new_focus))
+            )
+            if not still_inside:
+                self._schedule_hide()
 
     def _cursor_in_group_zone(self) -> bool:
         group = getattr(self.widget, "magnifier_group_container", None)
@@ -214,6 +237,7 @@ class MagnifierSettingsHoverController(QObject):
         if flyout is None or group is None:
             return
         self._link_sibling_flyouts(flyout)
+        self._refresh_slider_labels()
         # show_for_group() opens with grab_focus=False (see its own
         # comment): keyboard focus deliberately stays wherever it already
         # is -- on a group toolbar button, or nowhere in particular for a
@@ -222,6 +246,22 @@ class MagnifierSettingsHoverController(QObject):
         # keeps working while this panel is open.
         flyout.show_for_group(group)
         flyout.cancel_auto_hide()
+
+    def _refresh_slider_labels(self) -> None:
+        # The three sliders' real values get applied via signal-blocked
+        # ("quiet") setters when syncing from store state, specifically to
+        # avoid firing valueChanged back into the store -- but that also
+        # means ValueSliderRow's own value label, which only updates
+        # reactively off that same signal, never catches up and is stuck
+        # showing whatever the slider's value was at construction time
+        # (its un-initialized default, i.e. "0"). Force each row to
+        # re-read the slider's actual current value right before this
+        # panel becomes visible.
+        widget = self.widget
+        for attr in ("value_row_slider_size", "value_row_slider_capture", "value_row_slider_speed"):
+            row = getattr(widget, attr, None)
+            if row is not None:
+                row.refresh()
 
     def _link_sibling_flyouts(self, flyout) -> None:
         """Make every other toolbar flyout part of this panel's family.
