@@ -118,18 +118,22 @@ class RecentHeaderBar(QWidget):
             event.ignore()
             super().keyPressEvent(event)
             return
-        if key in (Qt.Key.Key_Right, Qt.Key.Key_Down):
+        if key == Qt.Key.Key_Right:
             if idx is not None and idx < len(buttons) - 1:
                 buttons[idx + 1].setFocus(Qt.FocusReason.OtherFocusReason)
                 event.accept()
                 logger.debug(
-                    "[shelf-nav] header right/down idx=%d -> button %d/%d",
+                    "[shelf-nav] header right idx=%d -> button %d/%d",
                     idx, idx + 1, len(buttons),
                 )
                 return
-            # Past last → hand off to recent items via panel.
+            event.ignore()
+            super().keyPressEvent(event)
+            return
+        if key == Qt.Key.Key_Down:
+            # Down from any header button → first shelf card.
             logger.debug(
-                "[shelf-nav] header right/down idx=%s -> hand off to recent items", idx
+                "[shelf-nav] header down idx=%s -> shelf cards", idx
             )
             panel = self.parentWidget()
             while panel is not None and not hasattr(panel, "focus_recent_item"):
