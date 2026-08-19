@@ -106,7 +106,7 @@ class ImageCompareLayoutBuilder:
         ui.checkbox_widget = self._checkbox_widget(page)
         ui.image_container_layout = self._image_container_layout()
         self._slider_panel_layout()
-        ui.image_container_widget = self._image_container_widget(page)
+        ui.image_container_widget = self._image_container_widget()
         ui.image_container_layout.addWidget(ui.image_label)
         self._create_image_startup_placeholder()
         self._create_zoom_indicator()
@@ -116,10 +116,16 @@ class ImageCompareLayoutBuilder:
 
         ui.drag_overlay = DragDropOverlay(ui.image_container_widget)
         ui.footer_info_widget = self._footer_info_widget(page)
-        ui.edit_layout_widget = ThemedBackgroundContainer()
+        # Parented immediately, same reasoning as `_image_container_widget`:
+        # a detached `ThemedBackgroundContainer()` can miss its initial
+        # theme-registration/paint before being reattached, leaving
+        # `_bg_color` at its default (invalid, fully transparent) QColor --
+        # visible as a see-through hole where the themed background should
+        # be, on the panel this ends up backing (`btn_file_names`' edit row).
+        ui.edit_layout_widget = ThemedBackgroundContainer(page)
         ui.edit_layout = self._edit_layout()
         ui.edit_layout_widget.setLayout(ui.edit_layout)
-        ui.save_buttons_widget = self._save_buttons_widget()
+        ui.save_buttons_widget = self._save_buttons_widget(page)
 
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, control_edge_padding(), 0, 0)
@@ -152,15 +158,20 @@ class ImageCompareLayoutBuilder:
         layout.setContentsMargins(0, 0, 0, 0)
         return layout
 
-    def _image_container_widget(self, parent: QWidget) -> QWidget:
-        # Parented immediately (not a detached QWidget()) so that when
-        # `ui.image_label` (a QRhiWidget, holding a native surface) is added
-        # to its layout right after, it moves within the same already-
-        # realized top-level tree instead of briefly passing through a
-        # parentless orphan -- which forced Qt/Wayland to tear down and
-        # recreate the top-level window's native surface (visible as a
-        # spurious close+reopen) on image_compare's first activation.
-        widget = QWidget(parent)
+    def _image_container_widget(self) -> QWidget:
+        # NOTE: deliberately parentless (not `QWidget(page)`) -- giving this
+        # a parent up front avoids the spurious top-level close+reopen on
+        # image_compare's first activation (see git history/investigation
+        # notes) but reliably breaks QRhiWidget initialization ("No QRhi")
+        # on at least one real Wayland setup: the reparent-through-orphan
+        # dance this widget (and `ui.image_label`, the QRhiWidget canvas,
+        # inside it) goes through before landing in `page`'s layout appears
+        # to be load-bearing for QRhi's first-expose timing here, matching
+        # the similar first-expose sensitivity already noted for
+        # `multi_compare` in `tab.py`'s `transition_hint()` docstring. Do not
+        # "fix" the flicker by parenting this eagerly without re-verifying
+        # QRhi still initializes on a real (non-offscreen) run.
+        widget = QWidget()
         widget.setLayout(self.target.image_container_layout)
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         return widget
@@ -419,7 +430,7 @@ class ImageCompareLayoutBuilder:
         layout.addWidget(ui.btn_text_settings)
         return layout
 
-    def _save_buttons_widget(self) -> QWidget:
+    def _save_buttons_widget(self, parent: QWidget) -> QWidget:
         ui = self.target
         layout = QHBoxLayout()
         layout.setSpacing(0)
@@ -431,7 +442,7 @@ class ImageCompareLayoutBuilder:
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         layout.addWidget(ui.btn_save, 1)
-        widget = ThemedBackgroundContainer()
+        widget = ThemedBackgroundContainer(parent)
         widget.setFixedHeight(scaled_px(42))
         widget.setLayout(layout)
         return widget

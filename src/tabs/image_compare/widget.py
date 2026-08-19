@@ -197,7 +197,19 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             btn.update()
 
     def toggle_edit_layout_visibility(self, checked: bool):
+        logger.debug(
+            "[panel-debug] toggle_edit_layout_visibility(checked=%s) widget_id=%s "
+            "was_visible=%s parent=%s",
+            checked, id(self.edit_layout_widget),
+            self.edit_layout_widget.isVisible(),
+            type(self.edit_layout_widget.parent()).__name__,
+        )
         self.edit_layout_widget.setVisible(bool(checked))
+        logger.debug(
+            "[panel-debug] after setVisible: is_visible=%s geometry=%s",
+            self.edit_layout_widget.isVisible(),
+            self.edit_layout_widget.geometry(),
+        )
 
     def open_magnifier_settings_flyout(self) -> None:
         flyout = getattr(self, "magnifier_settings_flyout", None)
