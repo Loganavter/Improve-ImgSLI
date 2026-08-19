@@ -104,13 +104,14 @@ class Ui_ImageComparisonApp:
         return session_type if translated == key else translated
 
     def sync_session_mode(self, session_type: str, session_title: str | None = None):
+        if self._tab_registry:
+            self._tab_registry.activate(session_type)
         tab_page = (
             self._tab_registry.get_page(session_type) if self._tab_registry else None
         )
         if tab_page is not None:
             self.workspace_stack.setCurrentWidget(tab_page)
             if self._tab_registry:
-                self._tab_registry.activate(session_type)
                 # Theme may have flipped while this page was hidden.
                 main_window = self.workspace_stack.window()
                 self._tab_registry.flush_stale_appearance(main_window)
