@@ -230,7 +230,8 @@ class RecentItemsView(QWidget):
         else:
             target = current + step
             if target < 0 and self._keyboard_handoff is not None:
-                return self._keyboard_handoff()
+                columns = max(1, self._grid_columns)
+                return self._keyboard_handoff(current % columns)
             target %= len(self._records)
         self._ensure_index_visible(target)
         record = self._records[target]

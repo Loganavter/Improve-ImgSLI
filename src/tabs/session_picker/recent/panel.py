@@ -547,6 +547,30 @@ class RecentProjectsPanel(ShelfWidget):
         )
         return True
 
+    def focus_header_control_near(self, column: int) -> bool:
+        """Focus the header-bar control nearest to *column* index.
+
+        Maps shelf grid columns to header buttons: leftmost column →
+        first button, rightmost → last button.
+        """
+        header = getattr(self, "_header", None)
+        if header is None:
+            return False
+        buttons = [
+            b
+            for b in (header.sort_button, header.sort_order_button, header.view_button)
+            if b.isVisible()
+        ]
+        if not buttons:
+            return False
+        idx = min(column, len(buttons) - 1)
+        buttons[idx].setFocus(Qt.FocusReason.OtherFocusReason)
+        logger.debug(
+            "[shelf-nav] focus_header_control_near col=%d -> button %d/%d",
+            column, idx, len(buttons),
+        )
+        return True
+
     def set_keyboard_handoff(self, callback) -> None:
         """Set a callback invoked when keyboard navigation would leave the
         shelf going upward/leftward past the first item (hands focus back to
