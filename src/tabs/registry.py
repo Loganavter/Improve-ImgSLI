@@ -484,62 +484,7 @@ class TabRegistry:
             logger.exception("Tab host-page finalize failed for %s", session_type)
         self.contribute_settings_for(session_type)
         self.contribute_all_help()
-        # Connect first-frame signals for the image_compare tab so the
-        # startup cover gate works when this tab is activated after startup.
-        self._connect_first_frame_signals_if_needed(session_type, tab)
         return page
-
-    def _connect_first_frame_signals_if_needed(
-        self, session_type: str, tab: TabContract
-    ) -> None:
-        """Connect canvas first-frame signals for tabs that need the startup gate.
-
-        Called during lazy page creation.  At startup, ``bootstrap_main_app``
-        connects these signals for whichever widget exists at that moment
-        (typically none with lazy init).  This ensures the signals are
-        connected when the tab is first created later.
-        """
-        host_window = self._context.main_window if self._context else None
-        if host_window is None:
-            return
-        # Only connect for tabs that actually need the first-frame gate.
-        try:
-            requires_gate = bool(tab.create_service("requires_first_frame_startup_gate"))
-        except Exception:
-            requires_gate = False
-        if not requires_gate:
-            return
-        widget = getattr(host_window, "image_compare_widget", None)
-        if widget is None:
-            # The widget is the page we just created — look it up from the tab.
-            widget = getattr(tab, "widget", None)
-        if widget is None:
-            return
-        image_label = getattr(widget, "image_label", None)
-        if image_label is None:
-            return
-        startup_rt = getattr(host_window, "_startup_runtime", None)
-        if startup_rt is None:
-            return
-        # Avoid duplicate connections (idempotent via disconnection).
-        try:
-            image_label.firstFrameRendered.disconnect(
-                startup_rt.on_image_label_first_frame_rendered
-            )
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            image_label.firstVisualFrameReady.disconnect(
-                startup_rt.on_image_label_first_visual_frame_ready
-            )
-        except (RuntimeError, TypeError):
-            pass
-        image_label.firstFrameRendered.connect(
-            startup_rt.on_image_label_first_frame_rendered
-        )
-        image_label.firstVisualFrameReady.connect(
-            startup_rt.on_image_label_first_visual_frame_ready
-        )
 
     def install_missing_pages(self, stack: QStackedWidget) -> tuple[str, ...]:
         """Register deferred tabs without creating pages (lazy init).
