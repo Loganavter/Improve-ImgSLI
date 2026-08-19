@@ -347,13 +347,6 @@ class MainWindowRuntime:
         """Geometry that must track the window every pixel — never wait for settle."""
         window = self.window
         window.startup_runtime.sync_cover_geometry()
-        widget = _active_image_compare_widget(window)
-        if widget is not None:
-            widget.image_startup_placeholder.sync_geometry()
-            flyout_debug("runtime: _sync_live_chrome -> zoom_indicator.sync_position()")
-            widget.zoom_indicator.sync_position()
-            flyout_debug("runtime: _sync_live_chrome -> _sync_info_huds()")
-            widget._sync_info_huds()
         if onboarding_host.is_active(window):
             onboarding_host.sync_geometry(window)
 
@@ -387,13 +380,6 @@ class MainWindowRuntime:
     def handle_move(self) -> None:
         window = self.window
         window.startup_runtime.sync_cover_geometry()
-        widget = _active_image_compare_widget(window)
-        if widget is not None:
-            widget.image_startup_placeholder.sync_geometry()
-            flyout_debug("runtime: handle_move -> zoom_indicator.sync_position()")
-            widget.zoom_indicator.sync_position()
-            flyout_debug("runtime: handle_move -> _sync_info_huds()")
-            widget._sync_info_huds()
         if onboarding_host.is_active(window):
             onboarding_host.sync_geometry(window)
         self._hide_unified_flyout()
@@ -403,13 +389,6 @@ class MainWindowRuntime:
     def handle_show(self) -> None:
         window = self.window
         window.startup_runtime.sync_cover_geometry()
-        widget = _active_image_compare_widget(window)
-        if widget is not None:
-            widget.image_startup_placeholder.sync_geometry()
-            flyout_debug("runtime: handle_show -> zoom_indicator.sync_position()")
-            widget.zoom_indicator.sync_position()
-            flyout_debug("runtime: handle_show -> _sync_info_huds()")
-            widget._sync_info_huds()
         if onboarding_host.is_active(window) and not window._startup_visual_ready_emitted:
             window.startup_runtime.emit_visual_ready()
         if window._offscreen_prewarm_active:

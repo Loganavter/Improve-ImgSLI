@@ -76,6 +76,8 @@ def create_service(
 
         return ExportPresenter(*args, **kwargs)
     if service_id == "clipboard_paste_service":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.services.clipboard import ClipboardService
 
         return ClipboardService(*args, widget=tab._widget, **kwargs)
@@ -143,12 +145,16 @@ def create_service(
 
         return MagnifierVisibilityFlyout(*args, **kwargs)
     if service_id == "magnifier_visibility_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_magnifier import (
             MagnifierVisibilityController,
         )
 
         return MagnifierVisibilityController(*args, widget=tab._widget, **kwargs)
     if service_id == "magnifier_instances_popup_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_magnifier_instances import (
             MagnifierInstancesPopupController,
         )
@@ -258,22 +264,30 @@ def create_service(
         canvas, plan = args
         return apply_canvas_render_plan(canvas, plan, **kwargs)
     if service_id == "unified_flyout_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_flyouts import FlyoutController
 
         return FlyoutController(*args, widget=tab._widget, **kwargs)
     if service_id == "interpolation_flyout_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_interpolation import (
             InterpolationFlyoutController,
         )
 
         return InterpolationFlyoutController(*args, widget=tab._widget, **kwargs)
     if service_id == "font_settings_flyout_controller":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.transient_font_settings import (
             FontSettingsController,
         )
 
         return FontSettingsController(*args, widget=tab._widget, **kwargs)
     if service_id == "popup_close_extension":
+        if tab._widget is None:
+            return None
         from tabs.image_compare.ui.popup_closing import ImageComparePopupClosing
 
         return ImageComparePopupClosing(*args, widget=tab._widget, **kwargs)

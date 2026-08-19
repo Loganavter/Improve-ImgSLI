@@ -6,9 +6,9 @@ UI widgets) may not exist yet (``tab._widget is None``).  Service factories
 for such tabs MUST return ``None`` rather than creating a presenter with
 ``widget=None`` — the presenter would crash on first use.
 
-Dogma: every ``create_service`` branch that passes ``tab._widget`` to a
-presenter/controller constructor MUST guard with ``if tab._widget is None:
-return None`` first.
+Dogma: every ``create_service`` branch that uses ``tab._widget`` in any way
+(attribute access OR keyword argument) MUST be preceded by
+``if tab._widget is None: return None``.
 
 Source: docs/dev/investigations/lazy-tab-initialization-plan.md
 """
@@ -31,6 +31,26 @@ def _service_factory_files() -> list[Path]:
     return factories
 
 
+def _find_tab_widget_usages(func: ast.FunctionDef) -> list[ast.AST]:
+    """Find ALL AST nodes that reference tab._widget — both attribute access
+    (``tab._widget.foo``) and keyword arguments (``widget=tab._widget``)."""
+    usages: list[ast.AST] = []
+    for node in ast.walk(func):
+        # Pattern 1: tab._widget.attr (attribute access)
+        if isinstance(node, ast.Attribute):
+            if isinstance(node.value, ast.Attribute):
+                if node.value.attr == "_widget" and isinstance(node.value.value, ast.Name):
+                    if node.value.value.id == "tab":
+                        usages.append(node)
+        # Pattern 2: widget=tab._widget (keyword argument in a call)
+        if isinstance(node, ast.keyword):
+            if node.arg == "widget" and isinstance(node.value, ast.Attribute):
+                if node.value.attr == "_widget" and isinstance(node.value.value, ast.Name):
+                    if node.value.value.id == "tab":
+                        usages.append(node)
+    return usages
+
+
 def test_service_factories_guard_tab_widget():
     """Every service factory branch that uses tab._widget must guard against None."""
     offenders: list[str] = []
@@ -45,8 +65,6 @@ def test_service_factories_guard_tab_widget():
                 continue
             if node.name != "create_service":
                 continue
-            # Walk the function body for branches that use tab._widget
-            # without a preceding None guard.
             _check_function_for_unguarded_widget(node, rel_path, offenders)
     assert not offenders, (
         "Service factories use tab._widget without a None guard:\n  "
@@ -100,16 +118,20 @@ def _check_function_for_unguarded_widget(
                 if hasattr(child, "lineno"):
                     guard_lines.add(child.lineno)
 
-    # Find all attribute accesses on tab._widget
-    for node in ast.walk(func):
-        if isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Attribute):
-                if node.value.attr == "_widget" and node.value.value.id == "tab":
-                    if node.lineno not in guard_lines:
-                        offenders.append(
-                            f"{rel_path}:{func.name} line {node.lineno}: "
-                            f"tab._widget.{node.attr} without None guard"
-                        )
+    # Find ALL usages of tab._widget (attribute access + keyword args)
+    for usage in _find_tab_widget_usages(func):
+        if usage.lineno not in guard_lines:
+            # Build a human-readable description
+            if isinstance(usage, ast.Attribute):
+                desc = f"tab._widget.{usage.attr}"
+            elif isinstance(usage, ast.keyword):
+                desc = f"widget=tab._widget"
+            else:
+                desc = "tab._widget"
+            offenders.append(
+                f"{rel_path}:{func.name} line {usage.lineno}: "
+                f"{desc} without None guard"
+            )
 
 
 def _is_widget_none_guard(node: ast.If) -> bool:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
@@ -12,17 +11,6 @@ from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.widgets.themed_surface import ThemedSurface
 
 logger = logging.getLogger("ImproveImgSLI")
-
-
-def _startup_ffd_log(message: str) -> None:
-    """Env-gated (IMGSLI_IC_FIRST_FRAME_DEBUG) startup-cover timeline log."""
-    flag = os.environ.get("IMGSLI_IC_FIRST_FRAME_DEBUG", "").strip().lower()
-    if flag in ("", "0", "false", "no", "off"):
-        return
-    try:
-        logging.getLogger("ImproveImgSLI").info("[ic-first-frame] startup: %s", message)
-    except Exception:
-        pass
 
 
 class MainWindowStartupRuntime:
@@ -90,7 +78,6 @@ class MainWindowStartupRuntime:
         window = self.window
         if getattr(window, "_startup_cover", None) is None:
             return
-        _startup_ffd_log("show_cover")
         self.sync_cover_geometry()
         window._startup_cover.show()
         window._startup_cover.raise_()
@@ -99,7 +86,6 @@ class MainWindowStartupRuntime:
         window = self.window
         if getattr(window, "_startup_cover", None) is None:
             return
-        _startup_ffd_log("hide_cover")
         window._startup_cover.hide()
 
     def bootstrap_content(self) -> None:
@@ -126,18 +112,6 @@ class MainWindowStartupRuntime:
         host_mask = getattr(window._app_host, "_workspace_transition_mask", None)
         if host_mask is not None:
             window._workspace_transition_mask = host_mask
-        # The legacy main-window shell widget comes from the single tab that
-        # registers its assembled page into ``legacy_tab_widgets``. There is
-        # no privileged "shell host" role — the widget is read straight from
-        # that registry.  With lazy tab initialization the widget may not
-        # exist yet (the page is created on first show), so treat a missing
-        # widget as a deferred state rather than a fatal error.
-        window.image_compare_widget = next(
-            iter(window.ui.legacy_tab_widgets.values()), None
-        )
-        window._startup_expects_initial_canvas_content = self.has_initial_canvas_content()
-        window._startup_canvas_first_frame_rendered = False
-        window._startup_canvas_first_visual_ready = False
         window.appearance.update_image_label_background()
         self.show_cover()
 
@@ -200,42 +174,8 @@ class MainWindowStartupRuntime:
         self.sync_cover_geometry()
         self.reveal_if_ready()
 
-    def has_initial_canvas_content(self) -> bool:
-        from tabs.registry import TabRegistry
-
-        registry = TabRegistry()
-        registry.discover(tier="bootstrap")
-        result = registry.create_service(
-            "has_initial_canvas_content", self.window.store
-        )
-        return bool(result)
-
-    def on_image_label_first_frame_rendered(self) -> None:
-        self.window._startup_canvas_first_frame_rendered = True
-        self.reveal_if_ready()
-
-    def on_image_label_first_visual_frame_ready(self) -> None:
-        self.window._startup_canvas_first_visual_ready = True
-        self.reveal_if_ready()
-
-    def is_canvas_ready(self) -> bool:
-        window = self.window
-        if window.ui is None:
-            return False
-        if not self._active_tab_requires_first_frame_gate():
-            return True
-        if window._startup_expects_initial_canvas_content:
-            return (
-                window._startup_canvas_first_frame_rendered
-                and window._startup_canvas_first_visual_ready
-                and self.is_canvas_content_ready()
-            )
-        return window._startup_canvas_first_visual_ready
-
     def _active_tab(self):
-        # The tab whose page is currently shown in the workspace stack —
-        # the single resolution point shared by every startup hook below
-        # that needs to ask "what is on screen right now".
+        """The tab whose page is currently shown in the workspace stack."""
         window = self.window
         tab_registry = getattr(window.ui, "_tab_registry", None)
         stack = getattr(window.ui, "workspace_stack", None)
@@ -248,41 +188,10 @@ class MainWindowStartupRuntime:
             return tab_registry.get_tab(session_type)
         return None
 
-    def _active_tab_requires_first_frame_gate(self) -> bool:
-        # The startup cover is gated on the active tab's canvas rendering its
-        # first frame, but that signal only fires for tabs whose canvas
-        # opts in (via the "requires_first_frame_startup_gate" service). If
-        # a tab without that signal (e.g. session_picker) is shown at
-        # startup, the cover would stay up forever, so the gate does not
-        # apply then.
-        tab = self._active_tab()
-        if tab is None:
-            return True
-        try:
-            return bool(tab.create_service("requires_first_frame_startup_gate"))
-        except Exception:
-            return True
-
-    def is_canvas_content_ready(self) -> bool:
-        window = self.window
-        if window.ui is None:
-            return False
-        tab = self._active_tab()
-        if tab is None:
-            return False
-        return bool(tab.create_service("is_canvas_content_ready"))
-
     def reveal_if_ready(self) -> None:
         window = self.window
         if window.ui is None:
             return
-        if not self.is_canvas_ready():
-            return
-        _startup_ffd_log(
-            "reveal_if_ready canvas_ready=True "
-            f"first_frame={window._startup_canvas_first_frame_rendered} "
-            f"first_visual={window._startup_canvas_first_visual_ready}"
-        )
         if onboarding_host.is_active(window):
             # App is warm under onboarding — load deferred work, but do NOT mark
             # revealed: QStackedLayout only sizes the *current* page, so app_host

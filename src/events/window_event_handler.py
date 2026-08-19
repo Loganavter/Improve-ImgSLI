@@ -138,6 +138,8 @@ class WindowEventHandler(QObject):
             return False
 
     def handle_resize(self, event):
+        if self.widget is None:
+            return
         self.widget.update_drag_overlays(
             self.store.viewport.view_state.is_horizontal, self.widget.is_drag_overlay_visible()
         )
@@ -146,6 +148,8 @@ class WindowEventHandler(QObject):
         event.accept()
 
     def _is_in_left_area(self, pos: QPoint) -> bool:
+        if self.widget is None:
+            return True
         if not self.widget.image_label.isVisible():
             return True
         label_rect = self.widget.image_label.geometry()
