@@ -23,9 +23,9 @@ class TransientUIManager:
 
         With lazy tab initialization the service may not exist at
         construction time (the tab's page hasn't been created yet).
-        We probe on every access until a non-None result is found —
-        once the tab's page is materialized, ``create_startup_service``
-        will find it and cache the result.
+        We re-probe on every access until a non-None result is found —
+        ``None`` is never cached so the probe retries when the tab's
+        page is later materialized.
         """
         cached = self._services.get(attr)
         if cached is not None:
