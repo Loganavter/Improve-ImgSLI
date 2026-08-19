@@ -118,14 +118,64 @@ class ImageCompareTab(TabContract):
         if ic_first_frame_debug_enabled():
             logger.info(
                 "[ic-page] canvas built widget=%s canvas=%s",
-                str(hex(id(self._widget)))[-6:],
+                str(hex(id(self._widget.image_label)))[-6:],
                 str(hex(id(self._widget.image_label)))[-6:],
             )
         self._widget.assemble(ui)
         self._widget.image_label.set_drag_overlay_state(False)
         self._widget.drag_overlay.hide()
         self._widget.install_rating_wheel_handlers()
+        self._create_magnifier_flyout(ui)
         return True
+
+    def _create_magnifier_flyout(self, ui) -> None:
+        """Create the magnifier visibility flyout — tab-owned, stored on host ui."""
+        if getattr(ui, "magnifier_visibility_flyout", None) is not None:
+            return  # already created
+        from ui.widgets.magnifier_visibility_flyout import MagnifierVisibilityFlyout
+
+        parent = getattr(ui, "main_window", None) or self._widget
+        flyout = MagnifierVisibilityFlyout(parent)
+        ui.magnifier_visibility_flyout = flyout
+        self._connect_magnifier_flyout_buttons(flyout, ui)
+
+    def _connect_magnifier_flyout_buttons(self, flyout, ui) -> None:
+        """Connect magnifier visibility buttons to the store."""
+        from ui.canvas_infra.scene.feature_state_api import (
+            execute_feature_command,
+            query_feature_state,
+        )
+
+        store = getattr(ui, "store", None) or (
+            self._widget._context.store if self._widget else None
+        )
+        if store is None:
+            return
+
+        def _query(part: str) -> bool:
+            state = query_feature_state(store, "magnifier", "active_state")
+            if state is None:
+                return True
+            return bool(state.get(f"visible_{part}", True))
+
+        flyout.btn_left.toggled.connect(
+            lambda checked: execute_feature_command(
+                store, "magnifier", "set_active_visibility_parts",
+                left=not checked, center=_query("center"), right=_query("right"),
+            )
+        )
+        flyout.btn_right.toggled.connect(
+            lambda checked: execute_feature_command(
+                store, "magnifier", "set_active_visibility_parts",
+                left=_query("left"), center=_query("center"), right=not checked,
+            )
+        )
+        flyout.btn_center.toggled.connect(
+            lambda checked: execute_feature_command(
+                store, "magnifier", "set_active_visibility_parts",
+                left=_query("left"), center=not checked, right=_query("right"),
+            )
+        )
 
     def finalize_host_page(self, ui) -> None:
         if self._widget is None:

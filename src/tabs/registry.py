@@ -312,46 +312,38 @@ class TabRegistry:
             raise
 
     def create_startup_service(self, service_id: str, *args: Any, **kwargs: Any) -> Any:
-        """Create a startup-shell service from the tab that provides it.
+        """Create a startup-shell service from the bootstrap-default tab.
 
-        ``MainWindowComposer.compose()`` builds the entire legacy shell
-        (``UIManager``, ``TransientUIManager``, ``DialogManager``,
-        ``MainWindowPresenter``, the toolbar/layout-manager/clipboard
-        services, ...) exactly once, synchronously, during app startup —
-        before the user could possibly have switched tabs. By the time that
-        construction runs, ``_active_session_type`` already reflects the
-        app's real initial workspace session (whichever tab
-        ``core.store.INITIAL_WORKSPACE_SESSION_TYPE`` names, e.g.
-        ``session_picker`` — not necessarily the tab that implements these
-        shell services). Routing shell construction through ``create_service``
-        would make the app's startup ordering silently decide whether shell
-        construction succeeds. Use this instead for any ``service_id``
-        requested during that one-time startup construction; use
-        ``create_service`` for anything requested later, in response to the
-        user's actual active tab (settings queries, canvas commands, export,
-        session-content checks, ...).
+        Resolves strictly against the tab that declares
+        ``is_bootstrap_default = True`` (session_picker).  Other tabs are
+        never probed — they may not have been discovered yet, and their
+        pages certainly don't exist at startup.
 
-        Routes **by capability**: each registered tab is asked in
-        registration order (bootstrap before deferred) and the first one
-        whose ``create_service`` returns a non-``None`` answer provides the
-        service. No tab has a privileged role; whichever tab actually
-        implements the service answers. See
-        docs/dev/tabs/capability-mechanisms.md.
-
-        Only tabs whose page has been materialized (``_pages``) are probed.
-        Tabs whose page hasn't been created yet (lazy init) are skipped —
-        their service factories may depend on UI widgets that don't exist.
+        For capabilities needed after startup, use ``create_service``
+        (active-tab-only) or ``create_service_for`` (named tab).
         """
-        answered = self._first_tab_answering_result(
-            "create_service", service_id, *args, **kwargs
-        )
-        if answered is None:
+        tab = self._bootstrap_default_tab()
+        if tab is None:
+            logger.debug("[startup-service] '%s' → no bootstrap tab", service_id)
             return None
-        # The answering tab's ``create_service`` already ran (and created the
-        # service) inside the probe — calling it again would build a *second*
-        # instance and re-run its side effects (e.g. registering a context
-        # menu provider again → duplicated menu sections).
-        tab, result = answered
+        method = getattr(tab, "create_service", None)
+        if method is None:
+            return None
+        try:
+            result = method(service_id, *args, **kwargs)
+        except Exception:
+            logger.exception(
+                "Startup service probe failed for %r on %s",
+                service_id,
+                tab.session_type,
+            )
+            raise
+        logger.debug(
+            "[startup-service] '%s' → %s from %s",
+            service_id,
+            type(result).__name__ if result is not None else "None",
+            tab.session_type,
+        )
         return result
 
     def notify_all(self, hook_id: str, *args: Any, **kwargs: Any) -> None:

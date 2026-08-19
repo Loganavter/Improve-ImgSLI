@@ -59,14 +59,9 @@ def _init_popup_state(manager) -> None:
     manager._magn_instances_popup_open = False
 
 def _init_magnifier_flyout_widget(manager) -> None:
-    from ui.widgets.magnifier_visibility_flyout import MagnifierVisibilityFlyout
-
-    manager.magnifier_visibility_flyout = MagnifierVisibilityFlyout(
-        manager.parent_widget,
-    )
-    if manager.magnifier_visibility_flyout is None:
-        return
-    _connect_magnifier_visibility_buttons(manager)
+    # MagnifierVisibilityFlyout is tab-owned — created by image_compare
+    # in assemble_host_page(), NOT by the host.
+    pass
 
 def _connect_magnifier_visibility_buttons(manager) -> None:
     if manager.main_controller is None:
