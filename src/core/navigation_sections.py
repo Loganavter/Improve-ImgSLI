@@ -171,13 +171,14 @@ class TabStripSection:
 
 
 class ToolbarRowsSection:
-    """Up/Down navigation between an ordered set of toolbar-row containers.
+    """Up/Down between toolbar rows, Left/Right between buttons in a row.
 
-    ``NavigationManager`` never routes Left/Right through ``navigate()`` —
-    it yields horizontal arrows to native widget handling before sections
-    ever see them (see its ``eventFilter``) — so intra-row movement between
-    buttons in the same toolbar row already works via Tab/Shift+Tab without
-    any help here. This section only moves focus *between* rows.
+    ``NavigationManager`` leaves Left/Right to native widget handling by
+    default (QTabBar, QSpinBox, ...) — this section opts back in via
+    ``extra_keys`` so arrow navigation is symmetric: Down/Up cross rows,
+    Left/Right move within the current row's focusable buttons, skipping
+    disabled/hidden ones by construction (``_focusable`` already filters
+    them out, so stepping to index ± 1 in that list can never land on one).
 
     A tab's canvas/sliders are deliberately never covered by ``rows_provider``
     — those already bind arrows to pan/value-adjustment when focused, and
@@ -223,6 +224,27 @@ class ToolbarRowsSection:
         items[0].setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
+    def _focus_near_in(self, row: QWidget, reference: QWidget) -> bool:
+        """Like ``_focus_first_in``, but land on the item horizontally
+        closest to ``reference`` on screen, instead of always the first.
+
+        This is the standard 2D directional-navigation rule (tvOS Focus
+        Engine, Windows XYFocus, W3C CSS Spatial Navigation, Netflix's TV
+        UI): moving Down/Up focuses the nearest candidate in that
+        direction rather than a fixed index, so focus lands roughly
+        under/above where the user actually was.
+        """
+        items = self._focusable(row)
+        if not items:
+            return False
+        ref_x = reference.mapToGlobal(reference.rect().center()).x()
+        target = min(
+            items,
+            key=lambda w: abs(w.mapToGlobal(w.rect().center()).x() - ref_x),
+        )
+        target.setFocus(Qt.FocusReason.OtherFocusReason)
+        return True
+
     def navigate(self, key: int, widget: QWidget) -> bool:
         rows = self._rows()
         row = self._row_of(widget)
@@ -235,15 +257,28 @@ class ToolbarRowsSection:
         )
         if key == Qt.Key.Key_Down:
             if idx < len(rows) - 1:
-                return self._focus_first_in(rows[idx + 1])
+                return self._focus_near_in(rows[idx + 1], widget)
             # Last row — yield (e.g. canvas/no further row below).
             return False
         if key == Qt.Key.Key_Up:
             if idx > 0:
-                return self._focus_first_in(rows[idx - 1])
+                return self._focus_near_in(rows[idx - 1], widget)
             # First row — yield so NavigationManager can hand off upward
             # (title bar / tab strip).
             return False
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            items = self._focusable(row)
+            if widget not in items:
+                return False
+            cur = items.index(widget)
+            step = 1 if key == Qt.Key.Key_Right else -1
+            target = cur + step
+            if 0 <= target < len(items):
+                items[target].setFocus(Qt.FocusReason.OtherFocusReason)
+            # Row edge: consume anyway (don't fall through to native
+            # handling, which does nothing for a plain Button) rather than
+            # wrap into an adjacent row — Up/Down already own row transitions.
+            return True
         return False
 
     def focus_first(self) -> bool:
@@ -256,4 +291,4 @@ class ToolbarRowsSection:
 
     @property
     def extra_keys(self) -> frozenset[int]:
-        return frozenset()
+        return frozenset({Qt.Key.Key_Left, Qt.Key.Key_Right})
