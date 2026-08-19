@@ -33,6 +33,21 @@ class TransientUIManager:
         if service is not None:
             self._services[attr] = service
             logger.debug("[transient] '%s' → resolved: %s", service_id, type(service).__name__)
+            # panel_visibility (btn_magnifier) and panel_instances
+            # (btn_magnifier_instances) are one toolbar group -- both
+            # controllers install event filters on their own button in
+            # __init__, so whichever one never gets touched never wires its
+            # button at all (no hover, no focus, nothing). panel_visibility
+            # happens to get warmed up incidentally via the magnifier Find
+            # Action registration (actions.py:_contribute_magnifier_visibility_flyout),
+            # but panel_instances has no equivalent warmup path and stays
+            # unconstructed -- and thus its button stays completely inert --
+            # until the magnifier is toggled on at least once. Resolve the
+            # sibling eagerly so both are always wired together.
+            _SIBLING = {"panel_visibility": "panel_instances", "panel_instances": "panel_visibility"}
+            sibling = _SIBLING.get(attr)
+            if sibling is not None and self._services.get(sibling) is None:
+                self._get_service(sibling)
         else:
             logger.debug("[transient] '%s' → None (deferred)", service_id)
         return service
