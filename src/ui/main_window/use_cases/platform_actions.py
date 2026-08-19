@@ -83,12 +83,7 @@ def show_contextual_palette(controller) -> None:
 def register_platform_actions(controller) -> None:
     from core.actions.types import ActionTarget
     from ui.actions.platform import register_platform_actions as _register
-    from ui.actions.workspace_new_sessions import (
-        image_compare_runner,
-        image_compare_target,
-        multi_compare_runner,
-        multi_compare_target,
-    )
+    from ui.actions.workspace_new_sessions import runner_for, target_for
     from ui.main_window.project_io import resolve_session_picker_host_chrome
 
     file_btn = help_btn = None
@@ -113,6 +108,23 @@ def register_platform_actions(controller) -> None:
             return None
         return chrome.card_for(session_type)
 
+    def _run_new_session(session_type: str) -> None:
+        runner_for(session_type, controller._create_workspace_session)()
+
+    def _new_session_target(session_type: str):
+        return target_for(
+            session_type,
+            ensure_visible=controller._open_session_picker,
+            resolve_card=_resolve_picker_card,
+        )
+
+    workspace = controller._workspace()
+    try:
+        session_blueprints = list(workspace.list_session_blueprints()) if workspace else []
+    except Exception:
+        logger.exception("list_session_blueprints failed for platform action registration")
+        session_blueprints = []
+
     open_picker_target = (
         ActionTarget(widget=add_tab_btn) if add_tab_btn is not None else None
     )
@@ -130,8 +142,9 @@ def register_platform_actions(controller) -> None:
         resolve_settings_member=controller._resolve_settings_member,
         run_settings_member=controller._run_settings_member,
         open_session_picker=controller._open_session_picker,
-        new_image_compare=image_compare_runner(controller._create_workspace_session),
-        new_multi_compare=multi_compare_runner(controller._create_workspace_session),
+        new_session_runner=_run_new_session,
+        new_session_target_resolver=_new_session_target,
+        session_blueprints=session_blueprints,
         next_session=lambda: controller._switch_workspace_session(1),
         prev_session=lambda: controller._switch_workspace_session(-1),
         open_project=controller._open_project,
@@ -142,14 +155,6 @@ def register_platform_actions(controller) -> None:
         file_menu_button=file_btn,
         help_menu_button=help_btn,
         open_session_picker_target=open_picker_target,
-        new_image_compare_target=image_compare_target(
-            ensure_visible=controller._open_session_picker,
-            resolve_card=_resolve_picker_card,
-        ),
-        new_multi_compare_target=multi_compare_target(
-            ensure_visible=controller._open_session_picker,
-            resolve_card=_resolve_picker_card,
-        ),
     )
     controller._wire_session_picker_recent()
 

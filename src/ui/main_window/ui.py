@@ -12,11 +12,6 @@ from ui.widgets.workspace_tab_strip import WorkspaceTabStrip
 
 logger = logging.getLogger("ImproveImgSLI")
 
-_SESSION_TYPE_KEYS = {
-    "multi_compare": "workspace.session_types.multi_compare",
-    "session_picker": "workspace.session_types.session_picker",
-}
-
 
 class Ui_ImageComparisonApp:
     """Owns widget construction and exposes the update API used by the presenter.
@@ -104,9 +99,7 @@ class Ui_ImageComparisonApp:
                 localized = tab.localized_display_name(language)
                 if localized and localized != session_type:
                     return localized
-        key = _SESSION_TYPE_KEYS.get(session_type)
-        if key is None:
-            return session_type
+        key = f"workspace.session_types.{session_type}"
         translated = tr(key, language)
         return session_type if translated == key else translated
 

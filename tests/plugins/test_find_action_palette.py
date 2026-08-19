@@ -546,6 +546,7 @@ def test_settings_sidebar_row_button_resolves(qtbot):
 
 def test_workspace_actions_carry_picker_reveal_targets():
     from core.actions.types import ActionTarget
+    from core.session_blueprints import SessionBlueprint
     from ui.actions.platform import register_platform_actions
     from ui.actions.registry import ActionRegistry, reset_action_registry_for_tests
 
@@ -555,6 +556,12 @@ def test_workspace_actions_carry_picker_reveal_targets():
     card = object()
     opened: list[str] = []
 
+    def _target_for(session_type: str) -> ActionTarget:
+        return ActionTarget(
+            ensure_visible=lambda: opened.append(f"ensure_{session_type}"),
+            resolve_widget=lambda: card,
+        )
+
     register_platform_actions(
         show_settings=lambda: None,
         show_help=lambda: None,
@@ -562,17 +569,13 @@ def test_workspace_actions_carry_picker_reveal_targets():
         show_find_action=lambda: None,
         quit_app=lambda: None,
         open_session_picker=lambda: opened.append("open"),
-        new_image_compare=lambda: None,
-        new_multi_compare=lambda: None,
+        new_session_runner=lambda session_type: None,
+        new_session_target_resolver=_target_for,
+        session_blueprints=(
+            SessionBlueprint(session_type="image_compare", plugin_name="image_compare"),
+            SessionBlueprint(session_type="multi_compare", plugin_name="multi_compare"),
+        ),
         open_session_picker_target=ActionTarget(widget=add_btn),
-        new_image_compare_target=ActionTarget(
-            ensure_visible=lambda: opened.append("ensure"),
-            resolve_widget=lambda: card,
-        ),
-        new_multi_compare_target=ActionTarget(
-            ensure_visible=lambda: opened.append("ensure_multi"),
-            resolve_widget=lambda: card,
-        ),
         registry=registry,
     )
     open_picker = registry.get("workspace.open_session_picker")

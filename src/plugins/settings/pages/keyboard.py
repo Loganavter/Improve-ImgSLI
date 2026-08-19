@@ -44,12 +44,18 @@ def _collect_defaults() -> KeymapDefaultsRegistry:
     registry = KeymapDefaultsRegistry()
     from ui.actions.platform import contribute_platform_keymap_defaults
 
-    contribute_platform_keymap_defaults(registry)
     try:
+        from core.store import INITIAL_WORKSPACE_SESSION_TYPE
         from tabs.registry import TabRegistry
 
         tabs = TabRegistry()
         tabs.discover()
+        new_session_types = [
+            tab.session_type
+            for tab in tabs.list_tabs()
+            if tab.session_type != INITIAL_WORKSPACE_SESSION_TYPE
+        ]
+        contribute_platform_keymap_defaults(registry, new_session_types)
         tabs.notify_all("contribute_keymap_defaults", registry)
     except Exception:
         import logging
@@ -57,6 +63,7 @@ def _collect_defaults() -> KeymapDefaultsRegistry:
         logging.getLogger(__name__).exception(
             "Failed to collect tab keymap defaults for Settings → Keyboard"
         )
+        contribute_platform_keymap_defaults(registry)
     return registry
 
 

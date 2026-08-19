@@ -52,21 +52,18 @@ def test_session_picker_host_chrome_via_create_service_for(qtbot, tab_registry):
 
 
 def test_workspace_new_session_runners_use_get_tab(tab_registry):
-    from ui.actions.workspace_new_sessions import (
-        image_compare_runner,
-        multi_compare_runner,
-    )
+    from ui.actions.workspace_new_sessions import runner_for
 
     created: list[str] = []
-    image_compare_runner(created.append)()
+    runner_for("image_compare", created.append)()
     assert created == ["image_compare"]
 
     # multi_compare is deferred — runner no-ops until discovered
-    multi_compare_runner(created.append)()
+    runner_for("multi_compare", created.append)()
     assert created == ["image_compare"]
 
     tab_registry.discover(tier="deferred")
-    multi_compare_runner(created.append)()
+    runner_for("multi_compare", created.append)()
     assert created == ["image_compare", "multi_compare"]
 
 

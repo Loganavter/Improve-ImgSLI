@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from core.actions.types import ActionDescriptor, ActionTarget
+from core.session_blueprints import SessionBlueprint
+from core.store import INITIAL_WORKSPACE_SESSION_TYPE
 from ui.actions.registry import ActionRegistry, get_action_registry
 
 _BC_WORKSPACE = "action.breadcrumb.workspace"
@@ -46,8 +48,9 @@ def register_platform_actions(
     resolve_settings_member: Callable[[str, str, str], object | None] | None = None,
     run_settings_member: Callable[[str, str, str], None] | None = None,
     open_session_picker: Callable[[], None] | None = None,
-    new_image_compare: Callable[[], None] | None = None,
-    new_multi_compare: Callable[[], None] | None = None,
+    new_session_runner: Callable[[str], None] | None = None,
+    new_session_target_resolver: Callable[[str], ActionTarget | None] | None = None,
+    session_blueprints: Sequence[SessionBlueprint] = (),
     next_session: Callable[[], None] | None = None,
     prev_session: Callable[[], None] | None = None,
     paste_clipboard_image: Callable[[], None] | None = None,
@@ -59,8 +62,6 @@ def register_platform_actions(
     file_menu_button: object | None = None,
     help_menu_button: object | None = None,
     open_session_picker_target: ActionTarget | None = None,
-    new_image_compare_target: ActionTarget | None = None,
-    new_multi_compare_target: ActionTarget | None = None,
     registry: ActionRegistry | None = None,
 ) -> None:
     reg = registry if registry is not None else get_action_registry()
@@ -253,34 +254,29 @@ def register_platform_actions(
                 target=open_session_picker_target,
             )
         )
-    if new_image_compare is not None:
-        specs.append(
-            ActionDescriptor(
-                action_id="workspace.new_image_compare",
-                label_key="action.workspace.new_image_compare",
-                description_key="action.workspace.new_image_compare_desc",
-                breadcrumb=(_BC_WORKSPACE,),
-                owner_tab=None,
-                topic="workspace",
-                help_page="file_management",
-                run=new_image_compare,
-                target=new_image_compare_target,
+    if new_session_runner is not None:
+        for blueprint in session_blueprints:
+            session_type = blueprint.session_type
+            if session_type == INITIAL_WORKSPACE_SESSION_TYPE:
+                continue
+            target = (
+                new_session_target_resolver(session_type)
+                if new_session_target_resolver is not None
+                else None
             )
-        )
-    if new_multi_compare is not None:
-        specs.append(
-            ActionDescriptor(
-                action_id="workspace.new_multi_compare",
-                label_key="action.workspace.new_multi_compare",
-                description_key="action.workspace.new_multi_compare_desc",
-                breadcrumb=(_BC_WORKSPACE,),
-                owner_tab=None,
-                topic="workspace",
-                help_page="file_management",
-                run=new_multi_compare,
-                target=new_multi_compare_target,
+            specs.append(
+                ActionDescriptor(
+                    action_id=f"workspace.new_{session_type}",
+                    label_key=f"action.workspace.new_{session_type}",
+                    description_key=f"action.workspace.new_{session_type}_desc",
+                    breadcrumb=(_BC_WORKSPACE,),
+                    owner_tab=None,
+                    topic="workspace",
+                    help_page="file_management",
+                    run=(lambda st=session_type: new_session_runner(st)),
+                    target=target,
+                )
             )
-        )
     if next_session is not None:
         specs.append(
             ActionDescriptor(
@@ -354,8 +350,15 @@ def register_platform_actions(
     )
 
 
-def contribute_platform_keymap_defaults(registry) -> None:
-    """Metadata defaults for platform / workspace actions (Settings → Keyboard)."""
+def contribute_platform_keymap_defaults(
+    registry, new_session_types: Sequence[str] = ()
+) -> None:
+    """Metadata defaults for platform / workspace actions (Settings → Keyboard).
+
+    *new_session_types* is every tab's ``session_type`` except the bootstrap
+    default (session_picker) — one keymap default per ``workspace.new_*``
+    action registered by :func:`register_platform_actions`.
+    """
     from ui.actions.keymap import KeymapDefaultEntry
 
     entries = (
@@ -463,21 +466,16 @@ def contribute_platform_keymap_defaults(registry) -> None:
             ("action.breadcrumb.workspace",),
             description_key="action.workspace.open_session_picker_desc",
         ),
-        KeymapDefaultEntry(
-            "workspace.new_image_compare",
-            "action.workspace.new_image_compare",
-            None,
-            None,
-            ("action.breadcrumb.workspace",),
-            description_key="action.workspace.new_image_compare_desc",
-        ),
-        KeymapDefaultEntry(
-            "workspace.new_multi_compare",
-            "action.workspace.new_multi_compare",
-            None,
-            None,
-            ("action.breadcrumb.workspace",),
-            description_key="action.workspace.new_multi_compare_desc",
+        *(
+            KeymapDefaultEntry(
+                f"workspace.new_{session_type}",
+                f"action.workspace.new_{session_type}",
+                None,
+                None,
+                ("action.breadcrumb.workspace",),
+                description_key=f"action.workspace.new_{session_type}_desc",
+            )
+            for session_type in new_session_types
         ),
         KeymapDefaultEntry(
             "workspace.next_tab",

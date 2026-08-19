@@ -43,8 +43,6 @@ def test_platform_actions_register_next_prev():
         show_find_action=_noop,
         quit_app=_noop,
         open_session_picker=_noop,
-        new_image_compare=_noop,
-        new_multi_compare=_noop,
         next_session=lambda: runs.append("next"),
         prev_session=lambda: runs.append("prev"),
         registry=registry,
