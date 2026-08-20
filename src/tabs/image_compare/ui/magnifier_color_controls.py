@@ -117,6 +117,13 @@ class ColorSettingsButton(Button):
         self._hide_timer = None
         self.clicked.connect(self.smartColorSetRequested.emit)
         self.flyout.actionTriggered.connect(self.colorOptionClicked.emit)
+        # Link for keyboard Down to enter color options (ToolbarRowsSection)
+        try:
+            from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+
+            NavigationManager.get_instance().link_below(self, self.flyout)
+        except Exception:
+            pass
         if self.store:
             self.store.state_changed.connect(self._on_store_state_changed)
             self._update_underline_colors()
@@ -251,11 +258,12 @@ class ColorSettingsButton(Button):
     def enterEvent(self, event):
         super().enterEvent(event)
         self.elementHovered.emit("magnifier")
-        # Hover now opens (user request "сделай чтобы открывались")
+        # Hover now opens (user request "сделай чтобы открывались") and must be
+        # enterable via Down even when opened by mouse.
         self.flyout.update_state()
         if self.flyout.has_visible_actions():
             self.flyout.show_aligned(
-                self, "top-center", "bottom-center", toggle=False, grab_focus=False, register_nav_section=False, animation="none"
+                self, "top-center", "bottom-center", toggle=False, grab_focus=False, register_nav_section=True, animation="none"
             )
             self.flyout.cancel_auto_hide()
 
@@ -293,13 +301,14 @@ class ColorSettingsButton(Button):
             if self.flyout.has_visible_actions():
                 # Anchor to button for visual centering; group is only for
                 # keep-open logic (focusOut still checks group).
+                # register=True for keyboard preview so Down can enter via link_below
                 self.flyout.show_aligned(
                     self,
                     "top-center",
                     "bottom-center",
                     toggle=False,
                     grab_focus=False,
-                    register_nav_section=False,
+                    register_nav_section=True,
                     animation="none",
                 )
                 self.flyout.cancel_auto_hide()

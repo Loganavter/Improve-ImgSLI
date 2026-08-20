@@ -301,16 +301,9 @@ class MagnifierSettingsFlyout(BaseFlyout):
         return ()
 
     def keyPressEvent(self, event) -> None:
-        # This panel + the magnifier button group above it are meant to
-        # read as one continuous unit (the panel is a seamless flush
-        # continuation of the group's own border, see paintEvent) rather
-        # than an isolated popover -- so unlike every other flyout, Escape
-        # does not dismiss it. It only closes when keyboard focus actually
-        # leaves the group+panel for some other toolbar control (handled by
-        # MagnifierSettingsHoverController._handle_button_focus_event's
-        # FocusOut -> _schedule_hide, mirroring the mouse-hover-leave path).
         if event.key() == Qt.Key.Key_Escape:
-            event.ignore()
+            self.hide()
+            event.accept()
             return
         super().keyPressEvent(event)
 
