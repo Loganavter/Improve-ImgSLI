@@ -40,20 +40,7 @@ class PanelVisibilityFlyout(IndexedToggleFlyout):
         super().hideEvent(event)
 
     def keyPressEvent(self, event) -> None:
-        from PySide6.QtCore import Qt
-
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not self._keyboard_navigation_active:
-            self._keyboard_navigation_active = True
-            # Focus first toggle with keyboard ring
-            if self.buttons:
-                self.buttons[0].setFocus(Qt.FocusReason.OtherFocusReason)
-            event.accept()
-            return
-        if event.key() == Qt.Key.Key_Escape and self._keyboard_navigation_active:
-            self._keyboard_navigation_active = False
-            self.hide()
-            event.accept()
-            return
+        # No keyboard handling — pure hover preview, arrow/Enter/Esc go to toolbar
         super().keyPressEvent(event)
 
     def set_mode_and_states(
