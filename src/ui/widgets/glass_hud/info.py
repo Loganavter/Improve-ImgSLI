@@ -46,6 +46,13 @@ class InfoHUD(GlassHUD):
 
     def __init__(self, parent: QWidget, *, corner: str = "left"):
         super().__init__(parent)
+        # Purely informational HUD (read-only labels, no controls at all --
+        # see ZoomIndicator.__init__ for the identical rationale). Skip
+        # BaseFlyout.show()'s focus grab and NavigationSection
+        # registration -- without this, every show_on() resync while
+        # already visible steals keyboard focus from whatever the user was
+        # actually doing.
+        self._skip_focus_grab = True
         self._corner = corner
         self._target_widget: QWidget | None = None
         # The host's labels (toolkit `Label`, scale-resolved on their own)
@@ -69,7 +76,8 @@ class InfoHUD(GlassHUD):
         self._target_widget = target_widget
         self._ensure_overlay_parent(target_widget)
         self._position()
-        self.show()
+        if not was_visible:
+            self.show()
         self._raise_self()
         if not was_visible:
             # See ZoomIndicator.update_zoom()'s identical guard for the full
