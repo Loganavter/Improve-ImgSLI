@@ -220,7 +220,12 @@ class ColorSettingsButton(Button):
             if self.flyout.isVisible():
                 if self.flyout.has_visible_actions():
                     self.flyout.show_aligned(
-                        self, "top-center", "bottom-center", toggle=False
+                        self,
+                        "top-center",
+                        "bottom-center",
+                        toggle=False,
+                        grab_focus=False,
+                        register_nav_section=False,
                     )
                 else:
                     self.flyout.hide()
@@ -282,30 +287,14 @@ class ColorSettingsButton(Button):
             if self.flyout.has_visible_actions():
                 anchor = self._group_anchor()
                 self.flyout.show_aligned(
-                    anchor, "top-center", "bottom-center", toggle=False
+                    anchor,
+                    "top-center",
+                    "bottom-center",
+                    toggle=False,
+                    grab_focus=False,
+                    register_nav_section=False,
                 )
                 self.flyout.cancel_auto_hide()
-
-    def focusOutEvent(self, event):
-        super().focusOutEvent(event)
-        # Keep flyout open if focus moves within same magnifier group
-        try:
-            from PySide6.QtWidgets import QApplication
-
-            new_focus = QApplication.focusWidget()
-            anchor = self._group_anchor()
-            flyout = self.flyout
-            still_inside = new_focus is not None and (
-                (anchor is not None and anchor.isAncestorOf(new_focus))
-                or (flyout is not None and flyout.isAncestorOf(new_focus))
-                or new_focus is anchor
-            )
-            if still_inside:
-                return
-        except Exception:
-            pass
-        self.elementHoverEnded.emit()
-        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def keyPressEvent(self, event):
         from PySide6.QtCore import Qt
