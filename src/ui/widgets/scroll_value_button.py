@@ -663,12 +663,18 @@ class ScrollValueButton(Button):
             # show_aligned с grab=True уже вызвал _grab_focus, но для
             # _ScrollValueFlyout без StrongFocus детей фокус может упасть на
             # ButtonGroup — форсируем на сам флайаут (StrongFocus) c кольцом
+            # через singleShot, чтобы пережить NavigationManager bootstrap.
             try:
-                from PySide6.QtCore import Qt as _Qt
+                from PySide6.QtCore import Qt as _Qt, QTimer as _QTimer
 
-                self._flyout.setFocus(_Qt.FocusReason.OtherFocusReason)
+                _QTimer.singleShot(0, lambda f=self._flyout: f.setFocus(_Qt.FocusReason.OtherFocusReason))
             except Exception:
-                pass
+                try:
+                    from PySide6.QtCore import Qt as _Qt2
+
+                    self._flyout.setFocus(_Qt2.FocusReason.OtherFocusReason)
+                except Exception:
+                    pass
         else:
             self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
         if not self._is_scrolling:
