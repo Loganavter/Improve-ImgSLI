@@ -154,7 +154,7 @@ class ImageCompareTab(TabContract):
         )
 
         store = getattr(ui, "store", None) or (
-            self._widget._context.store if self._widget else None
+            self._widget._context.store if self._widget and self._widget._context else None
         )
         if store is None:
             return
