@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QWidget
@@ -36,7 +34,6 @@ class MagnifierSettingsHoverController(QObject):
         self._hover_timer = DelayedActionTimer(self._show, parent=widget)
         self._mode_picker_flyouts_wired: set = set()
         self._group_buttons: set = set()
-        self._last_flyout_hide_ts = 0.0
         self._wire()
 
     def _wire(self) -> None:
@@ -158,15 +155,23 @@ class MagnifierSettingsHoverController(QObject):
                 flyout = getattr(self.widget, "magnifier_settings_flyout", None)
                 if flyout is None or not flyout.isVisible():
                     self._hover_timer.stop()
-                    self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+                    self._show()
                 else:
                     self._hover_timer.stop()
+                    self._cancel_hide()
             else:
                 self._hover_timer.stop()
-                self._schedule_hide()
+                # Binary without timer for cursor as well (user request)
+                if not self._is_cursor_in_combined_zone():
+                    self._hide_immediately()
+                else:
+                    self._cancel_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
             self._hover_timer.stop()
-            self._schedule_hide()
+            if not self._is_cursor_in_combined_zone():
+                self._hide_immediately()
+            else:
+                self._cancel_hide()
 
     def _handle_button_focus_event(self, event) -> None:
         et = event.type()
@@ -176,19 +181,16 @@ class MagnifierSettingsHoverController(QObject):
                 Qt.FocusReason.MouseFocusReason,
                 Qt.FocusReason.MenuBarFocusReason,
             )
-            # Same post-close cooldown as MagnifierVisibilityController: a
-            # flyout closing (Escape, outside click) returns keyboard focus
-            # to whichever group button last held it, which would otherwise
-            # immediately reopen this panel right after closing it.
-            since_hide = time.monotonic() - self._last_flyout_hide_ts
-            if is_keyboard and since_hide > 0.4:
+            if is_keyboard:
                 self._cancel_hide()
                 flyout = getattr(self.widget, "magnifier_settings_flyout", None)
                 if flyout is None or not flyout.isVisible():
                     self._hover_timer.stop()
-                    self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+                    # Binary without timer for keyboard (user request)
+                    self._show()
                 else:
                     self._hover_timer.stop()
+                    self._cancel_hide()
         elif et == QEvent.Type.FocusOut:
             self._hover_timer.stop()
             # Down from a group button can move focus straight into this
@@ -213,7 +215,21 @@ class MagnifierSettingsHoverController(QObject):
                 or (flyout is not None and flyout.isAncestorOf(new_focus))
             )
             if not still_inside:
-                self._schedule_hide()
+                # Immediate hide when focus leaves group+flyout or ring disappears
+                # (user request: "сразу как пропадает focus ring")
+                try:
+                    from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+
+                    has_ring = any(
+                        getattr(btn, "_keyboard_focus", False) and btn.hasFocus()
+                        for btn in self._group_buttons
+                    )
+                    if not has_ring or not NavigationManager.get_instance().last_input_was_keyboard():
+                        self._hide_immediately()
+                        return
+                except Exception:
+                    pass
+                self._hide_immediately()
 
     def _cursor_in_group_zone(self) -> bool:
         group = getattr(self.widget, "magnifier_group_container", None)
@@ -228,14 +244,32 @@ class MagnifierSettingsHoverController(QObject):
         )
         return zone.contains(local)
 
+    def _is_cursor_in_combined_zone(self) -> bool:
+        if self._cursor_in_group_zone():
+            return True
+        flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+        if flyout is not None and flyout.isVisible():
+            try:
+                if flyout.contains_global(QCursor.pos()):
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def _hide_immediately(self) -> None:
+        flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+        if flyout is not None and flyout.isVisible():
+            flyout.hide()
+
     def _handle_flyout_event(self, event) -> None:
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
             self._cancel_hide()
         elif et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
-            self._schedule_hide()
-        elif et == QEvent.Type.Hide:
-            self._last_flyout_hide_ts = time.monotonic()
+            if not self._is_cursor_in_combined_zone():
+                self._hide_immediately()
+            else:
+                self._schedule_hide()
 
     def _show(self) -> None:
         widget = self.widget
