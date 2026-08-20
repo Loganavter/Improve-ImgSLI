@@ -27,7 +27,9 @@ def _tab_packages() -> list:
     return sorted(
         d
         for d in TABS.iterdir()
-        if d.is_dir() and not d.name.startswith("_") and d.name != "__pycache__"
+        if d.is_dir()
+        and not d.name.startswith("_")
+        and d.name not in ("__pycache__", "use_cases")
     )
 
 TAB_PKGS = _tab_packages()

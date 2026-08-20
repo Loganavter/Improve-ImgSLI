@@ -8,7 +8,6 @@ here. Build rows for a ListPanel/UnifiedFlyout through
 """
 
 from PySide6.QtCore import (
-    QEvent,
     QPoint,
     QPointF,
     Qt,
@@ -35,7 +34,6 @@ from PySide6.QtWidgets import (
 
 from typing import Literal
 
-from sli_ui_toolkit.config import get_dragdrop_service
 from sli_ui_toolkit.ui.managers.ui_scale import UiScale, scaled_px
 from sli_ui_toolkit.icons import resolve_icon
 from sli_ui_toolkit.theme import ThemeManager
@@ -47,6 +45,8 @@ from sli_ui_toolkit.ui.widgets.buttons.layers import RippleLayer
 from sli_ui_toolkit.ui.widgets.buttons.layers._base import Layer
 from sli_ui_toolkit.ui.widgets.buttons.state import ButtonState
 from typing import Literal
+
+from ui.widgets.list_item import drag_drop, rating_gestures, tooltip
 
 # Row kind tag shared with the picker's populate() ("image" vs "simple").
 ListItemType = Literal["image", "simple"]
@@ -370,80 +370,30 @@ class RatingListItem(Button):
         self.btn_plus.set_override_bg_color(color)
 
     def _find_panel(self):
-        # Generic ListPanel (the app picker's panels are ListPanel instances).
-        widget = self.parentWidget()
-        while widget is not None:
-            if widget.objectName() == "ListPanel":
-                return widget
-            widget = widget.parentWidget()
-        return None
+        return drag_drop.find_panel(self)
 
     def drag_indices(self) -> list[int]:
         """Indices to move: multi-selection if this row is in it, else self."""
-        panel = self._find_panel()
-        if panel is None:
-            return [self.index]
-        getter = getattr(panel, "selected_indices", None)
-        if not callable(getter):
-            return [self.index]
-        selected = sorted(getter())
-        if self.index in selected and len(selected) > 1:
-            return selected
-        return [self.index]
+        return drag_drop.drag_indices(self)
 
     def set_batch_dragging_state(self, dragging: bool, indices) -> None:
-        panel = self._find_panel()
-        if panel is not None and hasattr(panel, "set_items_dragging"):
-            panel.set_items_dragging(indices, bool(dragging))
-            return
-        self.set_dragging_state(dragging)
+        drag_drop.set_batch_dragging_state(self, dragging, indices)
 
     def eventFilter(self, obj, event):
         item_type = getattr(self, "item_type", None)
         if item_type != "image":
             return super().eventFilter(obj, event)
 
-        btn_plus = getattr(self, "btn_plus", None)
-        btn_minus = getattr(self, "btn_minus", None)
-        if obj in (btn_plus, btn_minus):
-            if event.type() == QEvent.Type.MouseMove and (
-                event.buttons() & Qt.MouseButton.LeftButton
-            ):
-                if self._active_button is obj and not self._is_drag_initiated:
-                    try:
-                        obj._initial_delay_timer.stop()
-                        obj._repeat_timer.stop()
-                    except Exception:
-                        pass
-                    distance = (
-                        event.globalPosition() - self._drag_start_pos_global
-                    ).manhattanLength()
-                    if distance >= QApplication.startDragDistance():
-                        self._cancel_button_interaction()
-
-                return True
+        handled = drag_drop.handle_button_event_filter(self, obj, event)
+        if handled is not None:
+            return handled
 
         return super().eventFilter(obj, event)
 
     def wheelEvent(self, event):
         if not self.shouldHandleWheelEvent(event):
             return
-        if self.item_type != "image":
-            return
-
-        pos = event.position().toPoint()
-
-        if self.rating_label.geometry().contains(pos):
-            delta = event.angleDelta().y()
-            if delta > 0:
-                self._increment_rating(self.list_num, self.index)
-            else:
-                self._decrement_rating(self.list_num, self.index)
-            self._update_label_from_store()
-            event.accept()
-        else:
-
-            event.ignore()
+        rating_gestures.wheel_event(self, event)
 
     def update_styles(self):
         tm = self.theme_manager
@@ -459,13 +409,11 @@ class RatingListItem(Button):
 
     def enterEvent(self, event):
         super().enterEvent(event)
-        if self.full_path:
-            self.tooltip_timer.start()
+        tooltip.enter_event(self)
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
-        self.tooltip_timer.stop()
-        PathTooltip.get_instance().hide_tooltip()
+        tooltip.leave_event(self)
 
     def mousePressEvent(self, event: QMouseEvent):
         self.tooltip_timer.stop()
@@ -477,50 +425,10 @@ class RatingListItem(Button):
 
     def mouseMoveEvent(self, event: QMouseEvent):
         super().mouseMoveEvent(event)
-        if not (event.buttons() & Qt.MouseButton.LeftButton):
-            return
-        if self._is_drag_initiated:
-            return
-        if not self._drag_allowed():
-            return
-
-        current_global_pos = self.mapToGlobal(event.position().toPoint())
-        start_global_pos = self.mapToGlobal(self.drag_start_pos)
-        distance = (current_global_pos - start_global_pos).manhattanLength()
-
-        if distance >= QApplication.startDragDistance():
-            if self.item_type == "image" and self._active_button:
-                try:
-                    self._active_button._initial_delay_timer.stop()
-                    self._active_button._repeat_timer.stop()
-                except Exception:
-                    pass
-                if self._gesture_tx is not None:
-                    self._gesture_tx.rollback()
-                    self._gesture_tx = None
-
-            self.tooltip_timer.stop()
-            PathTooltip.get_instance().hide_tooltip()
-
-            self._is_drag_initiated = True
-            panel = self._find_panel()
-            if panel is not None and self.index not in panel.selected_indices():
-                # Dragging a row outside the marquee selection collapses it;
-                # dragging a selected row keeps it (multi-move).
-                panel.clear_selection()
-            service = get_dragdrop_service()
-            if service is not None and not service.is_dragging():
-                service.start_drag(self, event)
-            self._notify_flyout_drop_indicator(event.globalPosition())
+        drag_drop.mouse_move_event(self, event)
 
     def _drag_allowed(self) -> bool:
-        widget = self.parentWidget()
-        while widget is not None:
-            getter = getattr(widget, "is_drag_enabled", None)
-            if callable(getter):
-                return bool(getter())
-            widget = widget.parentWidget()
-        return True
+        return drag_drop.drag_allowed(self)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if self._is_drag_initiated:
@@ -532,18 +440,11 @@ class RatingListItem(Button):
         else:
             super().mouseReleaseEvent(event)
 
-        if (
-            self.item_type == "image"
-            and self._gesture_tx is not None
-            and self._active_button is None
-        ):
-            self._gesture_tx.commit()
-            self._gesture_tx = None
-            self._update_label_from_store()
+        rating_gestures.maybe_commit_gesture(self)
 
         self._is_drag_initiated = False
         self._active_button = None
-        self._notify_flyout_clear_indicator()
+        drag_drop.notify_flyout_clear_indicator(self)
 
     def _emit_item_selected_from_row(self) -> None:
         if self.item_type == "image":
@@ -565,68 +466,25 @@ class RatingListItem(Button):
         self.itemSelected.emit(self.index)
 
     def _on_plus_clicked(self):
-        if self._is_drag_initiated or self._active_button not in (None, self.btn_plus):
-            return
-        self._clear_panel_selection()
-        if self._gesture_tx is not None:
-            self._gesture_tx.apply_delta(+1)
-        else:
-            self._increment_rating(self.list_num, self.index)
-        self._update_label_from_store()
+        rating_gestures.on_plus_clicked(self)
 
     def _on_minus_clicked(self):
-        if self._is_drag_initiated or self._active_button not in (None, self.btn_minus):
-            return
-        self._clear_panel_selection()
-        if self._gesture_tx is not None:
-            self._gesture_tx.apply_delta(-1)
-        else:
-            self._decrement_rating(self.list_num, self.index)
-        self._update_label_from_store()
-
-    def _clear_panel_selection(self):
-        panel = self._find_panel()
-        if panel is not None and hasattr(panel, "clear_selection"):
-            panel.clear_selection()
+        rating_gestures.on_minus_clicked(self)
 
     def _on_button_pressed(self, button):
-        if self.item_type != "image":
-            return
-        self._active_button = button
-        self._drag_start_pos_global = QPointF(QCursor.pos())
-        self.drag_start_pos = self.mapFromGlobal(QCursor.pos())
-        starting_score = self._get_rating(self.list_num, self.index)
-        self._gesture_tx = self._create_rating_gesture(
-            self.list_num,
-            self.index,
-            starting_score,
-        )
+        rating_gestures.on_button_pressed(self, button)
 
     def _on_button_released(self, button):
-        if self._active_button is not button:
-            return
-        if self._gesture_tx is not None and not self._is_drag_initiated:
-            self._gesture_tx.commit()
-            self._gesture_tx = None
-            self._update_label_from_store()
-        self._active_button = None
+        rating_gestures.on_button_released(self, button)
 
     def _cancel_button_interaction(self):
-        if self._gesture_tx is not None:
-            self._gesture_tx.rollback()
-            self._gesture_tx = None
-        self._active_button = None
+        rating_gestures.cancel_button_interaction(self)
 
     def _update_label_from_store(self):
-        if self.item_type != "image":
-            return
-        self.rating_label.setText(str(self._get_rating(self.list_num, self.index)))
+        rating_gestures.update_label_from_store(self)
 
     def _show_tooltip(self):
-        if self.full_path:
-            PathTooltip.get_instance().show_tooltip(
-                QCursor.pos(), self.full_path
-            )
+        tooltip.show_tooltip(self)
 
     def _notify_flyout_drop_indicator(self, global_pos):
         self._on_update_drop_indicator(global_pos)

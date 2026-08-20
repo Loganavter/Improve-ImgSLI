@@ -87,8 +87,12 @@ def test_create_startup_service_probes_by_capability():
     Per-tab safety for lazily-initialized tabs (``tab._widget is None``) is
     the service factory's job — see test_service_factories_guard_tab_widget
     above — not this method's.
+
+    The routing logic itself lives in
+    ``tabs/use_cases/capability_routing.py`` (``TabRegistry.create_startup_service``
+    is a thin delegator into it — see docs/dev/CODE_PATTERNS.md).
     """
-    registry_path = SRC / "tabs" / "registry.py"
+    registry_path = SRC / "tabs" / "use_cases" / "capability_routing.py"
     text = registry_path.read_text(encoding="utf-8")
     tree = ast.parse(text)
     for node in ast.walk(tree):

@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 
 from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QKeySequence, QMouseEvent, QShortcut
+from PySide6.QtGui import QDesktopServices, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QScrollArea,
@@ -15,9 +14,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from plugins.help import topic_search
 from plugins.help.back_bar import HelpBackBar
 from plugins.help.hub_page import HelpHubPage
-from plugins.help.icons import resolve_help_icon
 from plugins.help.labels import node_title
 from plugins.help.layout_geometry import (
     HELP_SIDEBAR_DEFAULT_WIDTH,
@@ -41,10 +40,6 @@ from shared_toolkit.ui.layout_sizing import (
 from shared_toolkit.ui.overlay_layer import OverlayLayer
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.ui.widgets.composite.help_document import (
-    blocks_to_plain_text,
-    parse_help_blocks,
-)
 from sli_ui_toolkit.ui.widgets.composite.help_sections import (
     normalize_help_language,
     toc_title_for_language,
@@ -59,30 +54,6 @@ from ui.icon_manager import AppIcon, get_app_icon
 from ui.layout_spacing import sidebar_header_host
 
 logger = logging.getLogger("ImproveImgSLI")
-
-
-@lru_cache(maxsize=512)
-def _page_search_text(language: str, body_rel: str, body_root) -> str:
-    """Cached plain text of a help page body (what the canvas renders).
-
-    Mirrors ``HelpDocumentView`` block parsing so the search haystack is
-    exactly the text ``scroll_to_text`` can highlight afterwards.
-    """
-    md = read_help_page_markdown(language, body_rel, body_root=body_root)
-    return blocks_to_plain_text(parse_help_blocks(md))
-
-
-@lru_cache(maxsize=512)
-def _page_search_norm_text(language: str, body_rel: str, body_root) -> str:
-    """Cached normalized page text — the haystack for content hits.
-
-    ``match_score_normalized`` is non-fuzzy by default (exact/prefix/
-    substring only), so only real locatable occurrences rank for content
-    matches — the canvas can always highlight them.
-    """
-    from sli_ui_toolkit.ui.widgets.comboboxes._search import normalize_for_search
-
-    return normalize_for_search(_page_search_text(language, body_rel, body_root))
 
 
 class _HelpMouseNavFilter(QObject):
@@ -450,126 +421,25 @@ class HelpDialog(ThemedDialog):
         self._render_current()
 
     # ---- topic search (matches titles + page content, ranked) ----
+    # Logic lives in plugins/help/topic_search.py — see docs/dev/CODE_PATTERNS.md.
 
     def _setup_topic_search(self) -> None:
-        self._search_timer = QTimer(self)
-        self._search_timer.setSingleShot(True)
-        self._search_timer.setInterval(120)
-        self._search_timer.timeout.connect(self._apply_topic_search)
-        self._search_field.textChanged.connect(self._on_search_text_changed)
-        self._search_escape = QShortcut(
-            QKeySequence(Qt.Key.Key_Escape), self._search_field
-        )
-        self._search_escape.activated.connect(self.clear_topic_search)
+        topic_search._setup_topic_search(self)
 
     def _on_search_text_changed(self, _text: str) -> None:
-        if self._search_timer.isActive():
-            self._search_timer.stop()
-        self._search_timer.start()
+        topic_search._on_search_text_changed(self, _text)
 
     def _apply_topic_search(self) -> None:
-        query = self._search_field.text().strip()
-        if not query:
-            self.clear_topic_search()
-            return
-        matches = self._rank_topic_matches(query)
-        self._search_mode = True
-        #: node ids whose best match came from page content (vs title) — those
-        #: results open at the first occurrence with a text highlight.
-        self._search_body_match_ids = {
-            node_id for node_id, _score, in_body in matches if in_body
-        }
-        self.nav_widget.clear()
-        if not matches:
-            self.nav_widget.add_item(
-                tr("help.search_no_results", language=self.current_language),
-                row_height=scaled_px(35),
-            )
-            self._set_sidebar_expanded(True)
-            return
-        for node_id, _score, _in_body in matches[:12]:
-            node = self._tree.require(node_id)
-            self.nav_widget.add_item(
-                node_title(node, self.current_language),
-                icon=resolve_help_icon(
-                    node.icon, resolvers=self._tree.icon_resolvers
-                ),
-                data=node_id,
-                row_height=scaled_px(35),
-            )
-        self._set_sidebar_expanded(True)
-        self.nav_widget.setCurrentRow(-1)
+        topic_search._apply_topic_search(self)
 
     def _rank_topic_matches(self, query: str) -> list[tuple[str, int, bool]]:
-        from sli_ui_toolkit.ui.widgets.comboboxes._search import (
-            match_score_normalized,
-            normalize_for_search,
-        )
-
-        # Match against the current language AND English (Find Action-style
-        # cross-language haystacks): a query typed before a language switch —
-        # or in a language the topic isn't translated into — still hits.
-        langs = ("en", self.current_language) if self.current_language != "en" else ("en",)
-        norm_query = normalize_for_search(query)
-        scored: list[tuple[int, str, bool]] = []
-        for node_id, node in self._tree.nodes.items():
-            if node_id == self._tree.root_id:
-                continue
-            best: int | None = None
-            in_body = False
-            for lang in langs:
-                title = node_title(node, lang)
-                if title:
-                    score = match_score_normalized(
-                        norm_query, normalize_for_search(title)
-                    )
-                    if score is not None and (best is None or score < best):
-                        best = score
-                        in_body = False
-                if node.kind == "page" and node.body:
-                    # Non-fuzzy by default: only real locatable occurrences
-                    # rank for content matches, so the canvas can always
-                    # scroll to and highlight them.
-                    norm_body = _page_search_norm_text(
-                        lang, node.body, node.body_root
-                    )
-                    score = match_score_normalized(norm_query, norm_body)
-                    if score is not None and (best is None or score < best):
-                        best = score
-                        in_body = True
-            if best is not None:
-                scored.append((best, node_id, in_body))
-        scored.sort(key=lambda item: (item[0], item[1]))
-        return [(node_id, score, in_body) for score, node_id, in_body in scored]
+        return topic_search._rank_topic_matches(self, query)
 
     def _on_search_result_activated(self, row: int) -> None:
-        item = self.nav_widget.item(row)
-        if item is None:
-            return
-        node_id = item.data()
-        if not node_id:
-            return
-        self._pending_anchor = None
-        self._nav.push(node_id)
-        self._render_current()
-        # Content matches jump to the first occurrence and highlight it;
-        # title matches just open the page normally.
-        if node_id in getattr(self, "_search_body_match_ids", ()):
-            query = self._search_field.text().strip()
-            if query:
-                target = self._document.scroll_to_text(query)
-                if target is not None:
-                    self._scroll.ensureWidgetVisible(target, 0, 24)
+        topic_search._on_search_result_activated(self, row)
 
     def clear_topic_search(self) -> None:
-        if not self._search_mode:
-            return
-        self._search_mode = False
-        if self._search_field.text():
-            self._search_field.blockSignals(True)
-            self._search_field.clear()
-            self._search_field.blockSignals(False)
-        self._sync_sidebar()
+        topic_search.clear_topic_search(self)
 
     def _sidebar_sibling_ids(self) -> list[str]:
         current = self._nav.current_id
