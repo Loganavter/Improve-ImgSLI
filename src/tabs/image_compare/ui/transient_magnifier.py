@@ -86,16 +86,14 @@ class MagnifierVisibilityController:
         if not use_magnifier:
             return
         # Only explicit Enter/click/wheel may open PanelVisibilityFlyout —
-        # hover alone must not (fixes "opens without Enter").
+        # hover alone must not (fixes "opens without Enter"). For keyboard
+        # opens, keep flyout pinned open (no auto-hide) until explicit close.
         if reason == "hover":
             try:
                 from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
 
                 if not NavigationManager.get_instance().last_input_was_keyboard():
-                    # Mouse hover without keyboard — ignore
                     return
-                # Even keyboard hover (FocusIn) without Enter should not open
-                # — require explicit toggled/click.
                 return
             except Exception:
                 return

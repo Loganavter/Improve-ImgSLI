@@ -57,6 +57,14 @@ def install_flyout_show_policy() -> GroupShowPolicy:
     # controller (flyout_group="canvas_feature_settings", declared by the
     # tab-owned flyout widget).
     policy.configure_group("canvas_feature_settings", dismisses=(), claim_active=False)
+    # Magnifier enable shows two flyouts at once: the bottom magnifier
+    # controls (canvas_feature_settings) and the top panel-visibility
+    # toggles (toggle group, via MagnifierVisibilityController). Without an
+    # explicit coexistence rule the default exclusive policy would dismiss
+    # whichever opened first when the second shows (seen as
+    # PanelVisibilityFlyout hide 287ms after show while MagnifierSettingsFlyout
+    # was still visible).
+    policy.coexists_with("toggle", "canvas_feature_settings")
     # SliderHintFlyout (the small "what does this slider do" popup) is
     # unconfigured -> falls into the "default" group, whose fallback is
     # exclusive (dismiss every other open flyout). Since it's shown from
