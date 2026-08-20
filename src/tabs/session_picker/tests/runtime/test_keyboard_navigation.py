@@ -250,13 +250,13 @@ def test_up_from_first_recent_item_returns_to_last_create_card(
         QTest.keyClick(first_recent, Qt.Key.Key_Up)
         QTest.qWait(20)
         header = widget._recent_panel._header
-        last_visible_btn = next(
-            b for b in reversed(
-                (header.sort_button, header.sort_order_button, header.view_button)
-            )
+        # Up from first recent item hands off to header via
+        # focus_header_control_near(col) — col 0 → first visible button.
+        first_visible_btn = next(
+            b for b in (header.sort_button, header.sort_order_button, header.view_button)
             if b.isVisible()
         )
-        assert QApplication.focusWidget() is last_visible_btn
+        assert QApplication.focusWidget() is first_visible_btn
     finally:
         manager.unregister(section)
         NavigationManager._instance = None
