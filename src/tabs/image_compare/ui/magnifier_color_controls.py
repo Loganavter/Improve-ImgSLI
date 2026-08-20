@@ -267,8 +267,24 @@ class ColorSettingsButton(Button):
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
-        # Focus alone no longer opens — only Enter (handled in keyPressEvent)
-        pass
+        # Keyboard focus previews the flyout without stealing focus —
+        # actual navigation inside still requires Enter (see
+        # PanelVisibilityFlyout._keyboard_navigation_active).
+        from PySide6.QtCore import Qt
+
+        reason = getattr(event, "reason", lambda: None)()
+        is_keyboard = reason not in (
+            Qt.FocusReason.MouseFocusReason,
+            Qt.FocusReason.MenuBarFocusReason,
+        )
+        if is_keyboard and getattr(self, "_keyboard_focus", False):
+            self.flyout.update_state()
+            if self.flyout.has_visible_actions():
+                anchor = self._group_anchor()
+                self.flyout.show_aligned(
+                    anchor, "top-center", "bottom-center", toggle=False
+                )
+                self.flyout.cancel_auto_hide()
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
