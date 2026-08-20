@@ -249,6 +249,13 @@ class SettingsDialog(ThemedDialog):
         self._search_escape = QShortcut(
             QKeySequence(Qt.Key.Key_Escape), self.search_field
         )
+        # WidgetShortcut (not the QShortcut default WindowShortcut): a
+        # window-scoped shortcut fires on Escape anywhere in this dialog,
+        # regardless of what actually has focus — it was silently stealing
+        # Escape from any other focused control in the window (e.g. an open
+        # ComboBox dropdown, which never got the key to close itself) even
+        # while the search field itself had nothing to clear.
+        self._search_escape.setContext(Qt.ShortcutContext.WidgetShortcut)
         self._search_escape.activated.connect(self.clear_search)
         # Do not let the field steal Ctrl+A / typing focus semantics from
         # normal usage: typing in the field filters, and only the filter.
