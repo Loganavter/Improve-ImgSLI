@@ -226,6 +226,7 @@ class ColorSettingsButton(Button):
                         toggle=False,
                         grab_focus=False,
                         register_nav_section=False,
+                        animation="none",
                     )
                 else:
                     self.flyout.hide()
@@ -249,24 +250,29 @@ class ColorSettingsButton(Button):
 
     def enterEvent(self, event):
         super().enterEvent(event)
-        # Hover no longer opens the color flyout — only explicit Enter/click
-        # (keyPressEvent Enter or mousePress) does. Hover still emits for
-        # magnifier group zone tracking, but not for flyout show.
         self.elementHovered.emit("magnifier")
+        # Hover now opens (user request "сделай чтобы открывались")
+        self.flyout.update_state()
+        if self.flyout.has_visible_actions():
+            self.flyout.show_aligned(
+                self, "top-center", "bottom-center", toggle=False, grab_focus=False, register_nav_section=False, animation="none"
+            )
+            self.flyout.cancel_auto_hide()
 
     def leaveEvent(self, event):
         self.elementHoverEnded.emit()
+        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
-        # Click explicitly opens — same as Enter
+        # Click explicitly opens — same as Enter. Anchor to the button itself
+        # for correct centering (group anchor would shift left by ~group.center - button.center).
         if event.button() == event.button().LeftButton:
             self.flyout.update_state()
             if self.flyout.has_visible_actions():
-                anchor = self._group_anchor()
                 self.flyout.show_aligned(
-                    anchor, "top-center", "bottom-center", toggle=False
+                    self, "top-center", "bottom-center", toggle=False, animation="none"
                 )
                 self.flyout.cancel_auto_hide()
 
@@ -285,14 +291,16 @@ class ColorSettingsButton(Button):
         if is_keyboard and getattr(self, "_keyboard_focus", False):
             self.flyout.update_state()
             if self.flyout.has_visible_actions():
-                anchor = self._group_anchor()
+                # Anchor to button for visual centering; group is only for
+                # keep-open logic (focusOut still checks group).
                 self.flyout.show_aligned(
-                    anchor,
+                    self,
                     "top-center",
                     "bottom-center",
                     toggle=False,
                     grab_focus=False,
                     register_nav_section=False,
+                    animation="none",
                 )
                 self.flyout.cancel_auto_hide()
 
@@ -302,9 +310,8 @@ class ColorSettingsButton(Button):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.flyout.update_state()
             if self.flyout.has_visible_actions():
-                anchor = self._group_anchor()
                 self.flyout.show_aligned(
-                    anchor, "top-center", "bottom-center", toggle=False
+                    self, "top-center", "bottom-center", toggle=False, animation="none"
                 )
                 self.flyout.cancel_auto_hide()
                 event.accept()
@@ -318,21 +325,15 @@ class ColorSettingsButton(Button):
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
         self.elementHoverEnded.emit()
-        # Keep flyout open if focus moves to sibling inside same magnifier group
-        # (e.g. ScrollValueButton in same row) — only hide when truly leaving
-        # the group+flyout unit.
+        # Hide when focus leaves the opener button itself — even if it moves
+        # to a sibling inside the same magnifier group. Keep open only while
+        # focus is inside the flyout itself (keyboard navigation inside).
         try:
             from PySide6.QtWidgets import QApplication
 
             new_focus = QApplication.focusWidget()
-            anchor = self._group_anchor()
             flyout = self.flyout
-            still_inside = new_focus is not None and (
-                (anchor is not None and anchor.isAncestorOf(new_focus))
-                or (flyout is not None and flyout.isAncestorOf(new_focus))
-                or new_focus is anchor
-            )
-            if still_inside:
+            if new_focus is not None and flyout is not None and flyout.isAncestorOf(new_focus):
                 return
         except Exception:
             pass

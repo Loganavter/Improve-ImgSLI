@@ -95,18 +95,10 @@ class MagnifierVisibilityController:
         logger.debug("[magnifier-visibility] show() reason=%s use_magnifier=%s", reason, use_magnifier)
         if not use_magnifier:
             return
-        # Only explicit Enter/click/wheel may open PanelVisibilityFlyout —
-        # hover alone must not (fixes "opens without Enter"). For keyboard
-        # opens, keep flyout pinned open (no auto-hide) until explicit close.
+        # Hover now opens preview for both mouse and keyboard (user request:
+        # "сделай чтобы открывались" on hover). No early return.
         if reason == "hover":
-            try:
-                from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
-
-                if not NavigationManager.get_instance().last_input_was_keyboard():
-                    return
-                return
-            except Exception:
-                return
+            pass
         try:
             self.manager.panel_instances.hide()
         except Exception:
@@ -128,6 +120,7 @@ class MagnifierVisibilityController:
             hover_delay_ms=0,
             grab_focus=False,
             register_nav_section=False,
+            animation="none",
         )
         try:
             flyout = self.widget.magnifier_visibility_flyout
@@ -181,11 +174,16 @@ class MagnifierVisibilityController:
         host = self.manager.host
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
-            # Hover alone no longer opens PanelVisibilityFlyout — only
-            # explicit Enter/click (on_toggle_with_hover) does. Hover
-            # timer kept for MagnifierSettingsFlyout, but not for this.
+            use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
+            if use_magnifier:
+                self.show(reason="hover")
             return False
         if et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
+            # Schedule hide on leave, but keep open if cursor moves to flyout itself
+            # (handled by _handle_flyout_event). Use auto-hide delay.
+            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
+                AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
+            )
             return False
         if et == QEvent.Type.FocusIn:
             reason = getattr(event, "reason", lambda: None)()
