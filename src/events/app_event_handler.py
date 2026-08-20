@@ -25,7 +25,7 @@ import os
 # opt-in flag, off by default even under --debug -- same convention as
 # shared/rendering/render_debug.py's IMGSLI_RESIZE_DEBUG.
 logger = logging.getLogger("ImproveImgSLI.nav")
-if os.environ.get("IMGSLI_NAV_DEBUG", "").strip().lower() in (
+if os.environ.get("UI_NAV_DEBUG", "").strip().lower() in (
     "",
     "0",
     "false",
