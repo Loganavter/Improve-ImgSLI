@@ -96,6 +96,20 @@ class _ShortcutCaptureButton(Button):
 
     def keyPressEvent(self, event) -> None:
         if not self._listening:
+            # Button's own keyPressEvent turns Space/Enter into a plain
+            # click, but this button's "start listening" behavior lives in
+            # mousePressEvent (see above) and is not wired to the clicked
+            # signal — without this branch, Tab/arrow focus + Enter did
+            # nothing and the capture row was mouse-only.
+            if event.key() in (
+                Qt.Key.Key_Space,
+                Qt.Key.Key_Return,
+                Qt.Key.Key_Enter,
+            ):
+                self._listening = True
+                self.setText("…")
+                event.accept()
+                return
             super().keyPressEvent(event)
             return
         key = event.key()
@@ -132,6 +146,7 @@ class _ShortcutCaptureButton(Button):
         self.setText(self._chord or "—")
         if self._on_changed is not None:
             self._on_changed(self._chord)
+
 
 
 def build(dialog, p):
@@ -290,6 +305,23 @@ def build(dialog, p):
 
         group.add_layout(group_layout)
         groups_layout.addWidget(group)
+
+    keyboard_scroll_area = dialog._page_scroll_area(dialog.page_keyboard)
+    dialog._keyboard_nav_filter = _KeyboardRowNavFilter(
+        dialog, row_widgets, keyboard_scroll_area
+    )
+    # Installed on both: content_widget catches an arrow key a focused
+    # capture button left unhandled (it propagates up from there — see the
+    # class docstring); the scroll area itself also needs it directly,
+    # because clicking empty space between rows/groups can leave the bare
+    # QScrollArea holding focus (no capture button focused at all), and
+    # QAbstractScrollArea's own keyPressEvent would otherwise just scroll on
+    # arrow keys instead of moving focus — content_widget's filter never
+    # sees that event since content_widget is a *child* of the scroll area,
+    # not an ancestor of it.
+    dialog.page_keyboard.content_widget.installEventFilter(dialog._keyboard_nav_filter)
+    if keyboard_scroll_area is not None:
+        keyboard_scroll_area.installEventFilter(dialog._keyboard_nav_filter)
 
     reset_all = Button(
         text=_tr(dialog, "settings.keyboard_reset_all", "Reset all shortcuts"),
