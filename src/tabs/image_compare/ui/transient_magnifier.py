@@ -77,7 +77,7 @@ class MagnifierVisibilityController:
             bool(getattr(btn, "_keyboard_focus", False)) and btn.hasFocus()
         )
         if btn.underMouse() or keyboard_driven:
-            QTimer.singleShot(0, lambda: self.show(reason="hover"))
+            QTimer.singleShot(0, lambda kd=keyboard_driven: self.show(reason="keyboard" if kd else "hover"))
 
     def show(self, reason: str = "hover"):
         host = self.manager.host
@@ -85,6 +85,20 @@ class MagnifierVisibilityController:
         logger.debug("[magnifier-visibility] show() reason=%s use_magnifier=%s", reason, use_magnifier)
         if not use_magnifier:
             return
+        # Only explicit Enter/click/wheel may open PanelVisibilityFlyout —
+        # hover alone must not (fixes "opens without Enter").
+        if reason == "hover":
+            try:
+                from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+
+                if not NavigationManager.get_instance().last_input_was_keyboard():
+                    # Mouse hover without keyboard — ignore
+                    return
+                # Even keyboard hover (FocusIn) without Enter should not open
+                # — require explicit toggled/click.
+                return
+            except Exception:
+                return
         try:
             self.manager.panel_instances.hide()
         except Exception:
@@ -104,6 +118,24 @@ class MagnifierVisibilityController:
             )
         else:
             self.widget.magnifier_visibility_flyout.cancel_auto_hide()
+        # When opened via keyboard (Enter), move focus into flyout's first
+        # toggle with a ring so user sees where keyboard navigation is.
+        if reason in ("hover", "toggle", "keyboard"):
+            try:
+                from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+
+                if NavigationManager.get_instance().last_input_was_keyboard():
+                    flyout = self.widget.magnifier_visibility_flyout
+                    if flyout is not None and hasattr(flyout, "focus_first_child"):
+                        from PySide6.QtCore import Qt
+
+                        flyout.focus_first_child()
+                        # Ensure ring visible — focus with keyboard reason
+                        for btn in getattr(flyout, "buttons", []):
+                            if btn.hasFocus():
+                                btn.update()
+            except Exception:
+                pass
 
     def hide(self, reason: str = "explicit"):
         host = self.manager.host
@@ -142,55 +174,22 @@ class MagnifierVisibilityController:
         host = self.manager.host
         et = event.type()
         if et in (QEvent.Type.HoverEnter, QEvent.Type.Enter):
-            self._hover_timer.stop()
-            use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
-            if use_magnifier:
-                self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
-            else:
-                self.widget.magnifier_visibility_flyout.hide()
+            # Hover alone no longer opens PanelVisibilityFlyout — only
+            # explicit Enter/click (on_toggle_with_hover) does. Hover
+            # timer kept for MagnifierSettingsFlyout, but not for this.
             return False
         if et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
-            self._hover_timer.stop()
-            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
-                AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
-            )
             return False
         if et == QEvent.Type.FocusIn:
-            # Mirror the hover-open path for keyboard/Tab focus. The reason
-            # is read straight off the event rather than the button's
-            # `_keyboard_focus` flag, because our filter runs before
-            # Button.focusInEvent updates that flag for this same event.
-            reason = getattr(event, "reason", lambda: None)()
-            is_keyboard = reason not in (
-                Qt.FocusReason.MouseFocusReason,
-                Qt.FocusReason.MenuBarFocusReason,
-            )
-            use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
-            logger.debug(
-                "[magnifier-visibility] FocusIn reason=%s is_keyboard=%s use_magnifier=%s",
-                reason,
-                is_keyboard,
-                use_magnifier,
-            )
-            # Escape (or any other route) closing the flyout returns
-            # keyboard focus to its own anchor button as part of the same
-            # close operation (flyout-nav's _restore_focus_policies) -- that
-            # FocusIn is indistinguishable from a fresh Tab-in by reason
-            # alone (both are OtherFocusReason), so without this cooldown
-            # the flyout would instantly reopen right after Escape closes
-            # it, making Escape look broken.
-            since_hide = time.monotonic() - self._last_flyout_hide_ts
-            if is_keyboard and since_hide > 0.4:
-                self._hover_timer.stop()
-                if use_magnifier:
-                    self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
+            # FocusIn alone no longer opens — Enter on the button
+            # (handled via keyPressEvent → toggled) or mouse click does.
             return False
         if et == QEvent.Type.FocusOut:
-            logger.debug("[magnifier-visibility] FocusOut")
-            self._hover_timer.stop()
-            self.widget.magnifier_visibility_flyout.schedule_auto_hide(
-                AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS
-            )
+            # Don't auto-hide on focus moving to another toolbar control
+            # (e.g. ScrollValueButton) — only hide on explicit Escape or
+            # when focus leaves the entire toolbar+flyout unit (handled via
+            # _handle_button_focus_event's still_inside check in
+            # MagnifierSettingsHoverController, not here).
             return False
         if et == QEvent.Type.Wheel:
             use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
