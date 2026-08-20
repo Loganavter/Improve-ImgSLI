@@ -53,6 +53,10 @@ class ImageCompareTab(TabContract):
 
         return SessionData(image_state=ImageSessionState(), render_cache=RenderCacheState())
 
+    def consumes_canvas_key_events(self) -> bool:
+        # Wired in CanvasLifecycleCoordinator.connect_event_handler_signals.
+        return True
+
     @property
     def display_name(self) -> str:
         return "Image Compare"
