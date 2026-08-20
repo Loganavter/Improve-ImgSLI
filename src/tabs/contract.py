@@ -222,6 +222,25 @@ class TabContract(ABC):
         provider = self.get_canvas_geometry_provider()
         return provider is not None and provider.owns_widget(candidate)
 
+    def consumes_canvas_key_events(self) -> bool:
+        """True if this tab handles canvas key events via
+        `EventHandler.canvas_keyboard_press_event_signal` /
+        `canvas_keyboard_release_event_signal` (see `events/router.py`'s
+        `route_global_keyboard_event`).
+
+        When True, key presses/releases targeting a widget this tab
+        `owns_widget()` are swallowed by the app-wide event filter and
+        re-emitted as those signals instead of being delivered to the
+        widget's own `keyPressEvent`/`keyReleaseEvent` — so the tab must
+        connect to them (see `image_compare`'s
+        `CanvasLifecycleCoordinator.connect_event_handler_signals`).
+
+        Default False: key events reach the owned widget's own
+        `keyPressEvent`/`keyReleaseEvent` through normal Qt delivery, which
+        is what tabs that never wired the signal-based path expect.
+        """
+        return False
+
     def get_canvas_size(self) -> tuple[int, int] | None:
         provider = self.get_canvas_geometry_provider()
         return provider.get_size() if provider is not None else None

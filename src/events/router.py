@@ -29,6 +29,8 @@ def _belongs_to_canvas(event_handler, watched_obj) -> bool:
     tab = get_shared_tab_registry().get_active_tab()
     if tab is None:
         return False
+    if not tab.consumes_canvas_key_events():
+        return False
     return tab.owns_widget(watched_obj)
 
 def route_drag_and_drop_override(event_handler, event: QEvent, dnd_service) -> bool:
