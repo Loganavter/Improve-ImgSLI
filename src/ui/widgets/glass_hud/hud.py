@@ -90,6 +90,14 @@ class GlassHUD(BaseFlyout):
 
     def __init__(self, parent: QWidget):
         super().__init__(parent, pinned=True)
+        # Both current subclasses (InfoHUD, ZoomIndicator) are purely
+        # informational corner chips -- read-only labels plus, at most, a
+        # NoFocus reset button -- with nothing for keyboard navigation to
+        # reach. Skip BaseFlyout.show()'s focus grab and NavigationSection
+        # registration here, once, rather than requiring every subclass to
+        # remember it: without this, a resync while already visible steals
+        # keyboard focus from whatever the user was actually doing.
+        self._skip_focus_grab = True
         # BaseFlyout.__init__ (create_shadow_surface) reserves an 8px
         # SHADOW_RADIUS margin around `container` on every side by default,
         # meant for the CPU drop-shadow gradient other (non-GPU) flyouts
