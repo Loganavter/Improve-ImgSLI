@@ -182,6 +182,28 @@ class _ScrollValueFlyout(BaseFlyout):
         self._label.setMinimumSize(scaled_px(22), scaled_px(20))
         self.add_widget(self._label)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._keyboard_focus = False
+
+    def focusInEvent(self, event) -> None:
+        reason = event.reason()
+        is_kbd = reason not in (Qt.FocusReason.MouseFocusReason, Qt.FocusReason.MenuBarFocusReason)
+        # NavigationManager preserve уже форсит, но дублируем для BaseFlyout без Button-логики
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+
+            if not is_kbd and NavigationManager.get_instance().last_input_was_keyboard():
+                is_kbd = True
+        except Exception:
+            pass
+        self._keyboard_focus = bool(is_kbd)
+        self._last_focus_reason = reason
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event) -> None:
+        self._keyboard_focus = False
+        super().focusOutEvent(event)
+        self.update()
 
     def keyPressEvent(self, event) -> None:
         # В edit-mode кольцо на флайауте — Esc/Left/Right возвращают на якорь
@@ -630,13 +652,25 @@ class ScrollValueButton(Button):
                 bind_flyout(self, self._flyout, side="above")
             except Exception:
                 pass
-        # Edit-mode (Enter) → кольцо наверх, wheel-preview → кольцо на кнопке
+        # Edit-mode (Enter) → кольцо наверх и без автоскрытия, wheel-preview → кольцо на кнопке с таймером
         _grab = bool(self._keyboard_edit_active)
         if self._is_at_zero():
             self._flyout.show_value("", icon=get_app_icon(self._zero_icon), anchor=self, grab_focus=_grab)
         else:
             self._flyout.show_value(str(self._value), anchor=self, grab_focus=_grab)
-        self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
+        if _grab:
+            self._flyout_hide_timer.stop()
+            # show_aligned с grab=True уже вызвал _grab_focus, но для
+            # _ScrollValueFlyout без StrongFocus детей фокус может упасть на
+            # ButtonGroup — форсируем на сам флайаут (StrongFocus) c кольцом
+            try:
+                from PySide6.QtCore import Qt as _Qt
+
+                self._flyout.setFocus(_Qt.FocusReason.OtherFocusReason)
+            except Exception:
+                pass
+        else:
+            self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
         if not self._is_scrolling:
             self._is_scrolling = True
             self._sync_regions()
