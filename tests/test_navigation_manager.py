@@ -41,8 +41,8 @@ def _make_section(*, owns_fn=None, navigate_fn=None, focus_first_fn=None, focus_
     section = SimpleNamespace()
     section.owns = owns_fn or (lambda w: False)
     section.navigate = navigate_fn or (lambda k, w: False)
-    section.focus_first = focus_first_fn or (lambda ref_x=0: False)
-    section.focus_last = focus_last_fn or (lambda ref_x=0: False)
+    section.focus_first = focus_first_fn or (lambda ref_x=0, **kw: False)
+    section.focus_last = focus_last_fn or (lambda ref_x=0, **kw: False)
     return section
 
 
@@ -135,7 +135,7 @@ class TestNavigationManager:
 
         second = _make_section(
             owns_fn=lambda w: False,
-            focus_first_fn=lambda ref_x=0: (focus_calls.append("first") or True),
+            focus_first_fn=lambda ref_x=0, **kw: (focus_calls.append("first") or True),
         )
         first = _make_section(
             owns_fn=lambda w: w is widget,
@@ -201,7 +201,7 @@ class TestCrossSectionRouting:
         )
         bottom = _make_section(
             owns_fn=lambda w: False,
-            focus_first_fn=lambda ref_x=0: (focus_calls.append("bottom_first") or True),
+            focus_first_fn=lambda ref_x=0, **kw: (focus_calls.append("bottom_first") or True),
         )
         self.manager.register(owner1, top)
         self.manager.register(owner2, bottom)
@@ -221,7 +221,7 @@ class TestCrossSectionRouting:
 
         top = _make_section(
             owns_fn=lambda w: False,
-            focus_last_fn=lambda ref_x=0: (focus_calls.append("top_last") or True),
+            focus_last_fn=lambda ref_x=0, **kw: (focus_calls.append("top_last") or True),
         )
         bottom = _make_section(
             owns_fn=lambda w: w is widget,
@@ -496,7 +496,7 @@ class TestClickToArrowRealign:
 
         section = _make_section(
             owns_fn=lambda w: w is clicked,
-            focus_first_fn=lambda ref_x: (focus_first_calls.append(ref_x) or True),
+            focus_first_fn=lambda ref_x=None, **kw: (focus_first_calls.append(ref_x) or True),
         )
         section.focus_nearest = lambda pos: (focus_nearest_calls.append(pos) or True)
         self.manager.register(owner, section)
@@ -528,7 +528,7 @@ class TestClickToArrowRealign:
 
         section = _make_section(
             owns_fn=lambda w: w is clicked,
-            focus_first_fn=lambda ref_x: (focus_first_calls.append(ref_x) or True),
+            focus_first_fn=lambda ref_x=None, **kw: (focus_first_calls.append(ref_x) or True),
         )
         # No focus_nearest attribute
         self.manager.register(owner, section)
@@ -695,21 +695,21 @@ class TestSessionPickerSection:
 
     def test_focus_first(self):
         section, _, buttons = self._make_page(["a", "b", "c"])
-        assert section.focus_first() is True
+        assert section.focus_first(reason=Qt.FocusReason.OtherFocusReason) is True
         buttons[0][1].setFocus.assert_called_once()
 
     def test_focus_first_empty(self):
         section, _, _ = self._make_page([])
-        assert section.focus_first() is False
+        assert section.focus_first(reason=Qt.FocusReason.OtherFocusReason) is False
 
     def test_focus_last(self):
         section, _, buttons = self._make_page(["a", "b", "c"])
-        assert section.focus_last() is True
+        assert section.focus_last(reason=Qt.FocusReason.OtherFocusReason) is True
         buttons[2][1].setFocus.assert_called_once()
 
     def test_focus_last_empty(self):
         section, _, _ = self._make_page([])
-        assert section.focus_last() is False
+        assert section.focus_last(reason=Qt.FocusReason.OtherFocusReason) is False
 
     def _make_focusable(self, name, local_center_y, visible=True, enabled=True):
         """Create a mock widget whose mapTo(page, center).y() returns local_center_y."""
@@ -734,7 +734,7 @@ class TestSessionPickerSection:
         page.findChildren.return_value = [w1, w2, w3]
 
         pos = SimpleNamespace(y=lambda: 280)
-        result = section.focus_nearest(pos)
+        result = section.focus_nearest(pos, reason=Qt.FocusReason.OtherFocusReason)
         assert result is True
         w2.setFocus.assert_called_once()
 
@@ -748,7 +748,7 @@ class TestSessionPickerSection:
         page.findChildren.return_value = [w1, w2, w3]
 
         pos = SimpleNamespace(y=lambda: 350)
-        result = section.focus_nearest(pos)
+        result = section.focus_nearest(pos, reason=Qt.FocusReason.OtherFocusReason)
         assert result is True
         w2.setFocus.assert_called_once()
 
@@ -761,7 +761,7 @@ class TestSessionPickerSection:
         page.findChildren.return_value = [w1, w2]
 
         pos = SimpleNamespace(y=lambda: 50)
-        result = section.focus_nearest(pos)
+        result = section.focus_nearest(pos, reason=Qt.FocusReason.OtherFocusReason)
         assert result is True
         w1.setFocus.assert_called_once()
 
@@ -774,7 +774,7 @@ class TestSessionPickerSection:
         page.findChildren.return_value = [w1, w2, w3]
 
         pos = SimpleNamespace(y=lambda: 250)
-        result = section.focus_nearest(pos)
+        result = section.focus_nearest(pos, reason=Qt.FocusReason.OtherFocusReason)
         assert result is True
         w3.setFocus.assert_called_once()
 
@@ -790,7 +790,7 @@ class TestSessionPickerSection:
         page.findChildren.return_value = [w1, w2]
 
         pos = SimpleNamespace(y=lambda: 150)
-        result = section.focus_nearest(pos)
+        result = section.focus_nearest(pos, reason=Qt.FocusReason.OtherFocusReason)
         assert result is True
         w2.setFocus.assert_called_once()
 
@@ -798,7 +798,7 @@ class TestSessionPickerSection:
         section, page, _ = self._make_page([])
         page.findChildren.return_value = []
         pos = SimpleNamespace(y=lambda: 0)
-        assert section.focus_nearest(pos) is False
+        assert section.focus_nearest(pos, reason=Qt.FocusReason.OtherFocusReason) is False
 
     def test_focus_nearest_real_scenario_click_in_recent_panel(self):
         """Click at local y=465 in RecentProjectsPanel area, cards at
@@ -811,7 +811,7 @@ class TestSessionPickerSection:
         page.findChildren.return_value = [card0, card1, card2]
 
         pos = SimpleNamespace(y=lambda: 465)
-        result = section.focus_nearest(pos)
+        result = section.focus_nearest(pos, reason=Qt.FocusReason.OtherFocusReason)
         assert result is True
         card0.setFocus.assert_called_once()
         card1.setFocus.assert_not_called()
@@ -876,12 +876,12 @@ class TestTabStripSection:
 
     def test_focus_first_focuses_add_button(self):
         section, _, add_button = self._make_strip()
-        assert section.focus_first() is True
+        assert section.focus_first(reason=Qt.FocusReason.OtherFocusReason) is True
         add_button.setFocus.assert_called_once()
 
     def test_focus_last_focuses_add_button(self):
         section, _, add_button = self._make_strip()
-        assert section.focus_last() is True
+        assert section.focus_last(reason=Qt.FocusReason.OtherFocusReason) is True
         add_button.setFocus.assert_called_once()
 
 
