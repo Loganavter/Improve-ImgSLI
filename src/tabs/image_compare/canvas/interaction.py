@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single canvas interaction router — gesture/drag/zoom routing"
 from __future__ import annotations
 
 import logging

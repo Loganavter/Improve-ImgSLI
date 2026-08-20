@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=qdialog-wiring reason="video export dialog sections — one dialog assembly"
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt

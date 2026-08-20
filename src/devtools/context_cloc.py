@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Audit-Meta: pattern=state-machine reason="single devtools report generator — cloc + shader + tests aggregation"
 """Dev context bundle + cloc report generator (Python port of context_cloc.sh).
 
 Builds a context bundle for Improve-ImgSLI and the optional sibling

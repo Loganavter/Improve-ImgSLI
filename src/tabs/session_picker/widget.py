@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner reason="session_picker page — thin owner delegating to SessionPickerWidget + RecentProjectsPanel"
 """Home-page style new-session picker."""
 
 from __future__ import annotations

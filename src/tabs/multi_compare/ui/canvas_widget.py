@@ -3,6 +3,7 @@
 Input chrome lives in ``canvas/interaction.py``; drop/hit projection in
 ``ui/drop_targets.py`` and ``ui/hit_projection.py``. Feature gestures stay
 under ``canvas/features/*/input/``.
+Audit-Meta: pattern=thin-owner reason="Canvas widget thin owner — delegates to interaction/render_context/features"
 """
 
 from __future__ import annotations

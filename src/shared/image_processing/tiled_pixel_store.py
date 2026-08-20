@@ -7,6 +7,7 @@ There is no small-image fast path at the public API level; callers use
 
 Full-res spill uses strip writes so peak RAM is one decode buffer plus a
 strip, not a second full ``HxWx4`` copy beside PIL.
+Audit-Meta: pattern=state-machine reason="one memmap lifecycle — splitting threads memmap/shape/tile_size"
 """
 
 from __future__ import annotations

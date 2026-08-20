@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single toolbar connections wiring — action->presenter bindings"
 import logging
 
 from tabs.host_helpers import MessageKind

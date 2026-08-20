@@ -12,6 +12,7 @@ Typical usage:
    ones.
 4. **Lifecycle** — call the recipe after build, and ``defer_dialog_geometry`` on
    language / theme / font changes.
+Audit-Meta: pattern=state-machine reason="single layout sizing helper — shared toolkit"
 """
 
 from __future__ import annotations

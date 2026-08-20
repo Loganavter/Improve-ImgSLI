@@ -1,4 +1,5 @@
 """Contribute functions and main registration for image_compare actions."""
+# Audit-Meta: pattern=thin-owner-target reason="action contributions — one registry builder"
 
 from __future__ import annotations
 

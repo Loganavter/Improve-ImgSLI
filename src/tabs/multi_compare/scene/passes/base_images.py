@@ -1,4 +1,5 @@
 """Base image tile QRhi pass for Multi Compare."""
+# Audit-Meta: pattern=state-machine reason="single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle"
 
 from __future__ import annotations
 

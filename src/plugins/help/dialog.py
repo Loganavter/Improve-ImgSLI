@@ -1,4 +1,5 @@
 """Hierarchical help dialog: hubs, back bar, HelpDocumentView pages."""
+# Audit-Meta: pattern=qdialog-wiring reason="one Help QDialog — HelpDocumentView + search wiring"
 
 from __future__ import annotations
 

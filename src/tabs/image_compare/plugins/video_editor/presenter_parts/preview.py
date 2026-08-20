@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard"
 import logging
 
 from core.tracing import Tracer

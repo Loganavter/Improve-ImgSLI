@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=qdialog-wiring reason="video editor dialog shell — one QDialog chrome"
 import logging
 
 from PySide6.QtCore import Qt, QTimer, Signal

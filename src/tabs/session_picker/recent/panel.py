@@ -1,4 +1,5 @@
 """Resolve/Shotcut-style recent projects shelf for the Session Picker."""
+# Audit-Meta: pattern=thin-owner reason="RecentProjectsPanel thin owner — delegates to recent/use_cases/*"
 
 from __future__ import annotations
 

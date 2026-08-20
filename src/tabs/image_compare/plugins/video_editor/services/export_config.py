@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single export config assembly — encoding/bounds/images"
 from __future__ import annotations
 
 import logging

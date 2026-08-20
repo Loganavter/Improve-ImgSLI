@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner-target reason="use_cases target for _session_controller — 15 functions taking controller"
 import logging
 import os
 

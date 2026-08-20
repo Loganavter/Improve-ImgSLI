@@ -15,6 +15,7 @@ Kept API-compatible with the subset of ``QColorDialog`` the callers used
 (``colorSelected``, ``finished``, ``show``/``raise_``/``activateWindow``,
 ``setWindowTitle``) so call sites only need to swap the constructor and
 ``setOption(ShowAlphaChannel, ...)`` -> ``set_show_alpha(...)``.
+Audit-Meta: pattern=qdialog-wiring reason="one ColorPicker QDialog — picker + fields + preview wiring"
 """
 
 from __future__ import annotations

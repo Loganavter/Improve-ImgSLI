@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner reason="reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation"
 import logging
 
 from PySide6.QtCore import QObject, QTimer, Signal

@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single RHI backend lifecycle — backend selection + QRhiWidget init"
 from __future__ import annotations
 
 import logging

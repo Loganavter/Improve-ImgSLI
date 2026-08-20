@@ -1,0 +1,453 @@
+{
+  "_generated_by": "src/devtools/file_meta.py --write-registry",
+  "_policy": "docs/dev/FILE_SIZE_POLICY.md",
+  "entries": [
+    {
+      "path": "src/devtools/context_cloc.py",
+      "lines": 786,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single devtools report generator — cloc + shader + tests aggregation\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single devtools report generator — cloc + shader + tests aggregation"
+      }
+    },
+    {
+      "path": "src/plugins/export/dialog.py",
+      "lines": 733,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate"
+      }
+    },
+    {
+      "path": "src/plugins/help/dialog.py",
+      "lines": 543,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one Help QDialog — HelpDocumentView + search wiring"
+      }
+    },
+    {
+      "path": "src/plugins/settings/dialog.py",
+      "lines": 636,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one Settings QDialog — 6 pages + load/save\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one Settings QDialog — 6 pages + load/save"
+      }
+    },
+    {
+      "path": "src/plugins/settings/manager.py",
+      "lines": 503,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single settings manager — load/save + change propagation\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single settings manager — load/save + change propagation"
+      }
+    },
+    {
+      "path": "src/shared/analysis/differ.py",
+      "lines": 584,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=tiled-pipeline reason=\"stateless tiled diff kernels highlight/grayscale/ssim sharing workers\"",
+      "parsed": {
+        "pattern": "tiled-pipeline",
+        "reason": "stateless tiled diff kernels highlight/grayscale/ssim sharing workers"
+      }
+    },
+    {
+      "path": "src/shared/image_processing/tiled_pixel_store.py",
+      "lines": 893,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "one memmap lifecycle — splitting threads memmap/shape/tile_size"
+      }
+    },
+    {
+      "path": "src/shared/rendering/glass_panel.py",
+      "lines": 917,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels"
+      }
+    },
+    {
+      "path": "src/shared/rendering/mip_cascade.py",
+      "lines": 584,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single shared mip cascade — deduped from 2x350 identical copies\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single shared mip cascade — deduped from 2x350 identical copies"
+      }
+    },
+    {
+      "path": "src/shared_toolkit/ui/layout_sizing.py",
+      "lines": 556,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single layout sizing helper — shared toolkit\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single layout sizing helper — shared toolkit"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/_session_controller.py",
+      "lines": 595,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/actions/_contribute.py",
+      "lines": 569,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"action contributions — one registry builder\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "action contributions — one registry builder"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/geometry/layout_plan.py",
+      "lines": 470,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "build_magnifier_layout is one non-decomposable per-frame",
+      "parsed": {
+        "reason": "build_magnifier_layout is one non-decomposable per-frame"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/input/keyboard_movement.py",
+      "lines": 491,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "InteractiveMovementController is one stateful QTimer-driven",
+      "parsed": {
+        "reason": "InteractiveMovementController is one stateful QTimer-driven"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/render/magnifier_pass.py",
+      "lines": 738,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "single QRhi pass, one resource lifecycle (border-disk",
+      "parsed": {
+        "reason": "single QRhi pass, one resource lifecycle (border-disk"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/features/magnifier/render/tile_capture.py",
+      "lines": 466,
+      "limit": 400,
+      "marker": "File-Size-Exempt:",
+      "raw": "one cohesive pure-geometry pipeline (tc-range math ->",
+      "parsed": {
+        "reason": "one cohesive pure-geometry pipeline (tc-range math ->"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/interaction.py",
+      "lines": 581,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single canvas interaction router — gesture/drag/zoom routing\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single canvas interaction router — gesture/drag/zoom routing"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/render_context.py",
+      "lines": 594,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single render runtime context builder for RHI\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single render runtime context builder for RHI"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/draw_plan.py",
+      "lines": 521,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single draw plan builder for RHI renderer\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single draw plan builder for RHI renderer"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
+      "lines": 812,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"one frame sequencing RhiCanvasRenderer.render() — see CODE_PATTERNS When not to split\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "one frame sequencing RhiCanvasRenderer.render() — see CODE_PATTERNS When not to split"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/canvas/widget.py",
+      "lines": 684,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "Canvas widget thin owner — delegates to interaction/render_context/features"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/dialog/sections.py",
+      "lines": 697,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"video export dialog sections — one dialog assembly\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "video export dialog sections — one dialog assembly"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/dialog/shell.py",
+      "lines": 589,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"video editor dialog shell — one QDialog chrome\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "video editor dialog shell — one QDialog chrome"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py",
+      "lines": 708,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/services/export_config.py",
+      "lines": 600,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single export config assembly — encoding/bounds/images\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single export config assembly — encoding/bounds/images"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/presenters/toolbar/connections.py",
+      "lines": 585,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single toolbar connections wiring — action->presenter bindings\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single toolbar connections wiring — action->presenter bindings"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/use_cases/loading.py",
+      "lines": 710,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner-target reason=\"use_cases target for _session_controller — 15 functions taking controller\"",
+      "parsed": {
+        "pattern": "thin-owner-target",
+        "reason": "use_cases target for _session_controller — 15 functions taking controller"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/plugins/export/dialog.py",
+      "lines": 641,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/scene/passes/base_images.py",
+      "lines": 873,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single QRhi tile pass — one pipeline + MipCascade + host cache lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/scene/store.py",
+      "lines": 666,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"MultiCompareStore facade over Dispatcher + slot lifecycle\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "MultiCompareStore facade over Dispatcher + slot lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/ui/canvas_widget.py",
+      "lines": 576,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "Canvas widget thin owner — delegates to interaction/render_context/features"
+      }
+    },
+    {
+      "path": "src/tabs/session_picker/recent/items_view.py",
+      "lines": 686,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single virtualized grid view — grid_columns/visible_window/acquire/place pipeline\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single virtualized grid view — grid_columns/visible_window/acquire/place pipeline"
+      }
+    },
+    {
+      "path": "src/tabs/session_picker/recent/panel.py",
+      "lines": 592,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"RecentProjectsPanel thin owner — delegates to recent/use_cases/*\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "RecentProjectsPanel thin owner — delegates to recent/use_cases/*"
+      }
+    },
+    {
+      "path": "src/tabs/session_picker/widget.py",
+      "lines": 527,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"session_picker page — thin owner delegating to SessionPickerWidget + RecentProjectsPanel\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "session_picker page — thin owner delegating to SessionPickerWidget + RecentProjectsPanel"
+      }
+    },
+    {
+      "path": "src/ui/canvas_infra/rhi/rhi_backend.py",
+      "lines": 699,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single RHI backend lifecycle — backend selection + QRhiWidget init\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single RHI backend lifecycle — backend selection + QRhiWidget init"
+      }
+    },
+    {
+      "path": "src/ui/main_window/csd_menu_strip.py",
+      "lines": 502,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single CSD menu strip — custom chrome + layout\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single CSD menu strip — custom chrome + layout"
+      }
+    },
+    {
+      "path": "src/ui/main_window/menu_controller.py",
+      "lines": 504,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single menu controller — platform menu assembly\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single menu controller — platform menu assembly"
+      }
+    },
+    {
+      "path": "src/ui/widgets/color/picker_dialog.py",
+      "lines": 618,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=qdialog-wiring reason=\"one ColorPicker QDialog — picker + fields + preview wiring\"",
+      "parsed": {
+        "pattern": "qdialog-wiring",
+        "reason": "one ColorPicker QDialog — picker + fields + preview wiring"
+      }
+    },
+    {
+      "path": "src/ui/widgets/rating_item.py",
+      "lines": 567,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single rating item painter — custom control\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single rating item painter — custom control"
+      }
+    },
+    {
+      "path": "src/ui/widgets/scroll_value_button.py",
+      "lines": 616,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single custom-painted control — painter pipeline owns visuals\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single custom-painted control — painter pipeline owns visuals"
+      }
+    },
+    {
+      "path": "src/ui/widgets/slider_hint.py",
+      "lines": 575,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single slider hint painter — custom paint + animations\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single slider hint painter — custom paint + animations"
+      }
+    }
+  ]
+}
