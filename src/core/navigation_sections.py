@@ -22,6 +22,17 @@ from sli_ui_toolkit.managers import widget_label
 logger = logging.getLogger("ImproveImgSLI")
 
 
+def _focus_reason() -> Qt.FocusReason:
+    try:
+        from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+
+        if not NavigationManager.get_instance().last_input_was_keyboard():
+            return Qt.FocusReason.MouseFocusReason
+    except Exception:
+        pass
+    return Qt.FocusReason.OtherFocusReason
+
+
 class SessionPickerSection:
     """Arrow-key navigation for the session picker create-cards list.
 
@@ -71,13 +82,13 @@ class SessionPickerSection:
                         "[nav-card] Down from non-card → first card (%s)",
                         widget_label(cards[0][1]),
                     )
-                    cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
+                    cards[0][1].setFocus(_focus_reason())
                     return True
             elif card_idx < len(cards) - 1:
                 logger.debug(
                     "[nav-card] Down card[%d] → card[%d]", card_idx, card_idx + 1
                 )
-                cards[card_idx + 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+                cards[card_idx + 1][1].setFocus(_focus_reason())
                 return True
             # Past last card — try to hand off to recent shelf.
             recent = getattr(self._page, "_recent_panel", None)
@@ -100,7 +111,7 @@ class SessionPickerSection:
                 logger.debug(
                     "[nav-card] Up card[%d] → card[%d]", card_idx, card_idx - 1
                 )
-                cards[card_idx - 1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+                cards[card_idx - 1][1].setFocus(_focus_reason())
                 return True
             # At first card — yield so NavigationManager can hand off to
             # the tab strip (the section above).
@@ -114,14 +125,14 @@ class SessionPickerSection:
         # Single-column list: x doesn't distinguish anything, ref_x unused.
         cards = self._page._card_entries()
         if cards:
-            cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            cards[0][1].setFocus(_focus_reason())
             return True
         return False
 
     def focus_last(self, ref_x: float | None = None) -> bool:
         cards = self._page._card_entries()
         if cards:
-            cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+            cards[-1][1].setFocus(_focus_reason())
             return True
         return False
 
@@ -160,7 +171,7 @@ class SessionPickerSection:
                 w.mapTo(self._page, w.rect().center()).y() - local_y
             ),
         )
-        best.setFocus(Qt.FocusReason.OtherFocusReason)
+        best.setFocus(_focus_reason())
         return True
 
 
@@ -200,9 +211,9 @@ class TabStripSection:
         that accepts programmatic focus (tab_bar has ClickFocus)."""
         add_btn = getattr(self._tab_strip, "add_button", None)
         if add_btn is not None and add_btn.isVisible():
-            add_btn.setFocus(Qt.FocusReason.OtherFocusReason)
+            add_btn.setFocus(_focus_reason())
             return True
-        self._tab_strip.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._tab_strip.setFocus(_focus_reason())
         return True
 
     def _focus_tab_bar(self, ref_x: float | None) -> bool:
@@ -224,7 +235,7 @@ class TabStripSection:
                 if idx < 0:
                     idx = 0 if local_x < 0 else count - 1
                 tab_bar.setCurrentIndex(idx)
-        tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+        tab_bar.setFocus(_focus_reason())
         return True
 
     def _focus_nearest(self, ref_x: float) -> bool:

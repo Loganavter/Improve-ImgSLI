@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
 from core.store import INITIAL_WORKSPACE_SESSION_TYPE
 from plugins.onboarding import host as onboarding_host
 from shared_toolkit.ui.decorate_dialog import resolve_csd_band
+from tabs.registry import TabRegistry
 from ui.main_window.ui import Ui_ImageComparisonApp
 from ui.widgets.themed_surface import ThemedSurface
 
