@@ -82,6 +82,15 @@ vec4 computeEdgeArray(int layer, vec2 uv)
 
 void main()
 {
+    // TEMPORARY DEBUG: bypass all letterbox/discard logic, paint the whole
+    // instance quad solid red. If the WHOLE canvas turns red, rasterization
+    // covers the full target and the bug is downstream (compositor/buffer
+    // swap). If only a strip turns red, rasterization itself is clipped
+    // (scissor/viewport), independent of any letterbox math. Revert after
+    // observing.
+    fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+    return;
+
     vec2 center = vec2(0.5);
     vec2 uv = (vTexCoord - center) / zoom + center - offset;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
