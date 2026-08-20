@@ -296,7 +296,8 @@ def test_unregister_prefix_clears_matching_ids_only():
 
 
 def test_image_compare_registers_expanded_catalog():
-    from tabs.image_compare.actions import _SPECS, register_image_compare_actions
+    from tabs.image_compare.actions._common import _SPECS
+    from tabs.image_compare.actions import register_image_compare_actions
 
     registry = ActionRegistry()
     attrs = {spec.attr: object() for spec in _SPECS}
@@ -786,7 +787,7 @@ def test_settings_extra_search_ambient_across_sessions():
 
 
 def test_image_compare_create_service_contribute_actions():
-    from tabs.image_compare.actions import _SPECS
+    from tabs.image_compare.actions._common import _SPECS
     from tabs.image_compare.tab import ImageCompareTab
 
     registry = ActionRegistry()
