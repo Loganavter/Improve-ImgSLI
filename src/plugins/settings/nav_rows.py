@@ -2,8 +2,9 @@
 
 Every settings page is a stack of visually distinct "rows" (a radio group,
 a combo, a checkbox, a slider...), same shape as the workspace toolbars that
-already use ``ToolbarRowsSection`` (see ``tabs/image_compare/tab.py``). A
-row needs to be an actual ``QWidget`` — ``ToolbarRowsSection._focusable``
+already use ``ToolbarRowsSection`` (see the tab layer's own toolbar-row
+wiring for that pattern). A row needs to be an actual ``QWidget`` —
+``ToolbarRowsSection._focusable``
 looks at a row's *descendants*, never the row widget itself — so a
 standalone control (a lone ``CheckBox``, a ``QHBoxLayout`` built with no
 parent widget) has to be wrapped before it can serve as one.
