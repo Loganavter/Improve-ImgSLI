@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QButtonGroup, QHBoxLayout
+from PySide6.QtWidgets import QHBoxLayout
 
 from sli_ui_toolkit.managers import scaled_px
-from sli_ui_toolkit.widgets import CheckBox, ComboBox, RadioButton
+from sli_ui_toolkit.widgets import CheckBox, ComboBox, RadioButton, RadioButtonGroup
 from ui.icon_manager import AppIcon
 
 from plugins.settings.nav_rows import as_nav_row, register_page_nav_rows
@@ -63,7 +63,7 @@ def build(dialog, p):
     LANGUAGE.tag_member(dialog.radio_ru, "settings.language_ru")
     LANGUAGE.tag_member(dialog.radio_zh, "settings.language_zh")
     LANGUAGE.tag_member(dialog.radio_pt_br, "settings.language_pt_br")
-    dialog._lang_group = QButtonGroup(dialog)
+    dialog._lang_group = RadioButtonGroup()
     for rb in (dialog.radio_en, dialog.radio_ru, dialog.radio_zh, dialog.radio_pt_br):
         dialog._lang_group.addButton(rb)
         lang_layout.addWidget(rb)

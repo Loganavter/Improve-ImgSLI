@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QHBoxLayout,
     QSizePolicy,
-    QVBoxLayout,
     QWidget,
 )
 
-from sli_ui_toolkit.widgets import ComboBox, RadioButton, SpinBox
+from sli_ui_toolkit.widgets import ComboBox, RadioButton, RadioButtonGroup, SpinBox
 from sli_ui_toolkit.managers import scaled_px
 from ui.icon_manager import AppIcon
 from ui.widgets.slider_hint import ValueSlider, ValueSliderRow
@@ -54,7 +52,7 @@ def build(dialog, p):
     UI_MODE.tag_member(dialog.radio_ui_mode_beginner, "settings.ui_mode_beginner")
     UI_MODE.tag_member(dialog.radio_ui_mode_advanced, "settings.ui_mode_advanced")
     UI_MODE.tag_member(dialog.radio_ui_mode_expert, "settings.ui_mode_expert")
-    dialog._ui_mode_group = QButtonGroup(dialog)
+    dialog._ui_mode_group = RadioButtonGroup()
     for rb in (dialog.radio_ui_mode_beginner, dialog.radio_ui_mode_advanced, dialog.radio_ui_mode_expert):
         dialog._ui_mode_group.addButton(rb)
         row.addWidget(rb)
@@ -83,6 +81,13 @@ def build(dialog, p):
         dialog.radio_font_system_default,
         dialog.radio_font_system_custom,
     )
+    # Previously exclusive "for free" via QRadioButton's autoExclusive
+    # (Qt radios sharing one parent widget are mutually exclusive with no
+    # QButtonGroup at all) -- Button-based RadioButton has no such native
+    # behavior, so this group is now required explicitly.
+    dialog._font_group_buttons = RadioButtonGroup()
+    for rb in font_radios:
+        dialog._font_group_buttons.addButton(rb)
     # Stacked vertically (unlike ui_mode_row's side-by-side radios above), so
     # each radio is its own nav row -- one shared row would let Left/Right
     # jump between them purely by x-coordinate, which is meaningless here.
