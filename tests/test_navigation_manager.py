@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 
 # ---------------------------------------------------------------------------
@@ -254,8 +254,187 @@ class TestCrossSectionRouting:
 
 
 # ---------------------------------------------------------------------------
-# SessionPickerSection
+# Click-to-arrow realignment
 # ---------------------------------------------------------------------------
+
+class _FakeMouseEvent:
+    def __init__(self, x=10, y=10) -> None:
+        self._pos = SimpleNamespace(toPoint=lambda: SimpleNamespace(x=lambda: x, y=lambda: y))
+
+    def type(self):
+        return QEvent.Type.MouseButtonPress
+
+    def globalPosition(self):
+        return self._pos
+
+
+class TestClickToArrowRealign:
+    def setup_method(self):
+        from sli_ui_toolkit.managers import NavigationManager
+        NavigationManager._instance = None
+        self.manager = NavigationManager()
+
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
+    def test_click_on_focusable_widget_realigns_directly(self, mock_qapp):
+        """A click that lands on an owned, focusable widget re-anchors the
+        ring on that exact widget on the next arrow press, instead of
+        resuming from whatever Qt's stale focusWidget() still points at.
+        """
+        clicked = _fake_widget("clicked")
+        clicked.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
+        clicked.isVisible.return_value = True
+        clicked.isEnabled.return_value = True
+        clicked.parentWidget.return_value = None
+
+        stale = _fake_widget("stale")
+        owner = _fake_widget("owner")
+        section = _make_section(owns_fn=lambda w: w is clicked)
+        self.manager.register(owner, section)
+
+        mock_qapp.widgetAt.return_value = clicked
+        mock_qapp.focusWidget.return_value = stale
+
+        self.manager.eventFilter(None, _FakeMouseEvent())
+        assert self.manager._realign_pending is True
+
+        result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
+        assert result is True
+        clicked.setFocus.assert_called_once()
+        assert self.manager._realign_pending is False
+
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
+    def test_click_on_non_focusable_area_falls_back_to_focus_first(self, mock_qapp):
+        """Clicking a non-focusable spot inside a section (e.g. empty row
+        background) still resolves to that section's nearest widget via
+        focus_first(ref_x), rather than leaving focus on a stale widget.
+        """
+        clicked = _fake_widget("clicked")
+        clicked.focusPolicy.return_value = Qt.FocusPolicy.NoFocus
+        clicked.isVisible.return_value = True
+        clicked.isEnabled.return_value = True
+        clicked.parentWidget.return_value = None
+
+        stale = _fake_widget("stale")
+        owner = _fake_widget("owner")
+        focus_first_calls = []
+        section = _make_section(
+            owns_fn=lambda w: w is clicked,
+            focus_first_fn=lambda ref_x: (focus_first_calls.append(ref_x) or True),
+        )
+        self.manager.register(owner, section)
+
+        mock_qapp.widgetAt.return_value = clicked
+        mock_qapp.focusWidget.return_value = stale
+
+        self.manager.eventFilter(None, _FakeMouseEvent(x=42))
+        result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
+        assert result is True
+        assert focus_first_calls == [42]
+
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
+    def test_click_outside_any_section_falls_through_to_normal_routing(self, mock_qapp):
+        """A click that lands nowhere any section owns leaves the stale
+        focusWidget() in place -- next arrow press behaves exactly as
+        before this feature existed.
+        """
+        widget = _fake_widget("target")
+        unrelated = _fake_widget("unrelated")
+        unrelated.parentWidget.return_value = None
+        owner = _fake_widget("owner")
+        handled = []
+        section = _make_section(
+            owns_fn=lambda w: w is widget,
+            navigate_fn=lambda k, w: (handled.append(k) or True),
+        )
+        self.manager.register(owner, section)
+
+        mock_qapp.widgetAt.return_value = unrelated
+        mock_qapp.focusWidget.return_value = widget
+
+        self.manager.eventFilter(None, _FakeMouseEvent())
+        result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
+        assert result is True
+        assert handled == [Qt.Key.Key_Down]
+
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
+    def test_keyboard_focus_change_clears_realign_pending(self, mock_qapp):
+        """Legitimate keyboard-driven focus movement between a click and
+        the next arrow press supersedes the click -- the arrow should
+        navigate from the new focus, not jump back to the click point.
+        """
+        widget = MagicMock(spec=QWidget)
+        self.manager.eventFilter(None, _FakeMouseEvent())
+        assert self.manager._realign_pending is True
+
+        focus_event = SimpleNamespace(
+            type=lambda: QEvent.Type.FocusIn,
+            reason=lambda: Qt.FocusReason.TabFocusReason,
+        )
+        self.manager.eventFilter(widget, focus_event)
+        assert self.manager._realign_pending is False
+
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
+    def test_left_right_after_click_are_not_hijacked(self, mock_qapp):
+        """Regression: clicking a section's owner widget (e.g. a tab strip)
+        must not make the *next* Left/Right press get swallowed by
+        realignment -- Qt has already resolved that key event's delivery
+        target before this filter runs, so consuming it here would just
+        eat the keypress instead of letting native QTabBar-style handling
+        (or a section's own extra_keys routing) receive it.
+        """
+        owner = _fake_widget("tab_strip_owner")
+        owner.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
+        owner.isVisible.return_value = True
+        owner.isEnabled.return_value = True
+        owner.parentWidget.return_value = None
+        # Yields Left/Right, like TabStripSection does -- native QTabBar
+        # handling is expected to run instead.
+        section = _make_section(owns_fn=lambda w: False, navigate_fn=lambda k, w: False)
+        self.manager.register(owner, section)
+
+        mock_qapp.widgetAt.return_value = owner
+        mock_qapp.focusWidget.return_value = owner
+
+        self.manager.eventFilter(None, _FakeMouseEvent())
+        assert self.manager._realign_pending is True
+
+        result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
+        # Not intercepted -- passes through for native handling, and the
+        # pending realignment survives for the next Up/Down.
+        assert result is False
+        owner.setFocus.assert_not_called()
+        assert self.manager._realign_pending is True
+
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
+    def test_click_on_bare_owner_falls_back_to_focus_first(self, mock_qapp):
+        """A click that only resolves to a section's bare owner widget
+        (e.g. row padding, or an owner container with no matching content
+        under the cursor) must not blindly setFocus() the owner itself --
+        that widget commonly carries StrongFocus only to support the
+        arrow-key bootstrap path, not as a meaningful landing spot.
+        """
+        owner = _fake_widget("owner")
+        owner.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
+        owner.isVisible.return_value = True
+        owner.isEnabled.return_value = True
+        owner.parentWidget.return_value = None
+
+        focus_first_calls = []
+        section = _make_section(
+            owns_fn=lambda w: False,
+            focus_first_fn=lambda ref_x: (focus_first_calls.append(ref_x) or True),
+        )
+        self.manager.register(owner, section)
+
+        mock_qapp.widgetAt.return_value = owner
+        mock_qapp.focusWidget.return_value = owner
+
+        self.manager.eventFilter(None, _FakeMouseEvent(x=7))
+        result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
+        assert result is True
+        owner.setFocus.assert_not_called()
+        assert focus_first_calls == [7]
+
 
 class TestSessionPickerSection:
     def _make_page(self, card_labels=None):
