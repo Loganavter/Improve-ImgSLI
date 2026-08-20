@@ -181,8 +181,17 @@ class _ScrollValueFlyout(BaseFlyout):
         # every show (show_aligned -> adjustSize), same as SliderHintFlyout.
         self._label.setMinimumSize(scaled_px(22), scaled_px(20))
         self.add_widget(self._label)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    def show_value(self, text: str, icon=None, anchor: QWidget | None = None) -> None:
+    def keyPressEvent(self, event) -> None:
+        # В edit-mode кольцо на флайауте — Esc/Left/Right возвращают на якорь
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Left, Qt.Key.Key_Right):
+            self.hide()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def show_value(self, text: str, icon=None, anchor: QWidget | None = None, grab_focus: bool | None = None) -> None:
         if icon is not None:
             self._label.setPixmap(icon.pixmap(scaled_px(16), scaled_px(16)))
             self._label.setText("")
@@ -190,17 +199,20 @@ class _ScrollValueFlyout(BaseFlyout):
             self._label.clear()
             self._label.setText(text)
         if anchor is not None:
+            # Edit-mode (Enter) → кольцо наверх, wheel-preview → без кражи фокуса
+            _grab = grab_focus if grab_focus is not None else False
+            # Декларативный side для навигации — flyout визуально выше кнопки
+            try:
+                self._nav_side = "above"  # type: ignore[attr-defined]
+            except Exception:
+                pass
             self.show_aligned(
                 anchor,
                 anchor_point="top-center",
                 flyout_point="bottom-center",
                 offset=6,
-                # This is a read-only value preview, not an interactive
-                # panel -- it must not steal keyboard focus from the button
-                # (the flyout's own _grab_focus() fallback would otherwise
-                # land on itself, since a QLabel isn't focusable, breaking
-                # further keyboard-driven Up/Down stepping on the button).
-                grab_focus=False,
+                grab_focus=_grab,
+                register_nav_section=_grab,
             )
         else:
             self.show()
@@ -611,23 +623,32 @@ class ScrollValueButton(Button):
             pass
         if self._flyout is None:
             self._flyout = _ScrollValueFlyout(self.window())
+            # Навигация: Up входит в флайаут сверху, Left/Right выходят обратно
+            try:
+                from sli_ui_toolkit.managers import bind_flyout
+
+                bind_flyout(self, self._flyout, side="above")
+            except Exception:
+                pass
+        # Edit-mode (Enter) → кольцо наверх, wheel-preview → кольцо на кнопке
+        _grab = bool(self._keyboard_edit_active)
         if self._is_at_zero():
-            self._flyout.show_value("", icon=get_app_icon(self._zero_icon), anchor=self)
+            self._flyout.show_value("", icon=get_app_icon(self._zero_icon), anchor=self, grab_focus=_grab)
         else:
-            self._flyout.show_value(str(self._value), anchor=self)
+            self._flyout.show_value(str(self._value), anchor=self, grab_focus=_grab)
         self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
         if not self._is_scrolling:
             self._is_scrolling = True
             self._sync_regions()
-        # _ScrollValueFlyout is a transient value preview, not a navigation
-        # target — never intercept arrow keys. Ensure it never registers a
-        # navigation section that would steal Up/Down from the toolbar.
-        try:
-            from sli_ui_toolkit.managers import NavigationManager
+        # Preview (wheel) не регистрирует секцию — Up/Down остаются у тулбара;
+        # edit-mode регистрирует и крадёт фокус наверх.
+        if not _grab:
+            try:
+                from sli_ui_toolkit.managers import NavigationManager
 
-            NavigationManager.get_instance().unregister(self._flyout)
-        except Exception:
-            pass
+                NavigationManager.get_instance().unregister(self._flyout)
+            except Exception:
+                pass
 
     def _hide_flyout(self) -> None:
         self._flyout_hide_timer.stop()
