@@ -17,6 +17,9 @@ from sli_ui_toolkit.widgets import (
 
 
 class MagnifierColorOptionsFlyout(IconActionFlyout):
+    _nav_side = "above"
+    _nav_mode = "preview"
+
     def __init__(self, parent=None, current_language: str = "en", store=None):
         self.current_language = current_language
         self.store = store
@@ -117,11 +120,11 @@ class ColorSettingsButton(Button):
         self._hide_timer = None
         self.clicked.connect(self.smartColorSetRequested.emit)
         self.flyout.actionTriggered.connect(self.colorOptionClicked.emit)
-        # Link for keyboard Down to enter color options (ToolbarRowsSection)
+        # Фасад вместо глубокого ui.managers — side декларирован на классе
         try:
-            from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+            from sli_ui_toolkit.managers import bind_flyout
 
-            NavigationManager.get_instance().link_below(self, self.flyout)
+            bind_flyout(self, self.flyout, side="above")
         except Exception:
             pass
         if self.store:
@@ -259,11 +262,12 @@ class ColorSettingsButton(Button):
         super().enterEvent(event)
         self.elementHovered.emit("magnifier")
         # Hover now opens (user request "сделай чтобы открывались") and must be
-        # enterable via Down even when opened by mouse.
+        # enterable via Up (above flyout) even when opened by mouse — mirror
+        # PanelVisibility bottom/top logic: preview with grab False, no nav proxy.
         self.flyout.update_state()
         if self.flyout.has_visible_actions():
             self.flyout.show_aligned(
-                self, "top-center", "bottom-center", toggle=False, grab_focus=False, register_nav_section=True, animation="none"
+                self, "top-center", "bottom-center", toggle=False, grab_focus=False, register_nav_section=False, animation="none"
             )
             self.flyout.cancel_auto_hide()
 
@@ -301,14 +305,14 @@ class ColorSettingsButton(Button):
             if self.flyout.has_visible_actions():
                 # Anchor to button for visual centering; group is only for
                 # keep-open logic (focusOut still checks group).
-                # register=True for keyboard preview so Down can enter via link_below
+                # register=False like PanelVisibility — Up enters via extension_below.
                 self.flyout.show_aligned(
                     self,
                     "top-center",
                     "bottom-center",
                     toggle=False,
                     grab_focus=False,
-                    register_nav_section=True,
+                    register_nav_section=False,
                     animation="none",
                 )
                 self.flyout.cancel_auto_hide()

@@ -13,6 +13,9 @@ from sli_ui_toolkit.widgets import IndexedToggleFlyout
 
 
 class PanelVisibilityFlyout(IndexedToggleFlyout):
+    _nav_side = "above"
+    _nav_mode = "preview"
+
     def __init__(self, parent_widget: QWidget, *, slot_icon: str):
         super().__init__(parent_widget, slot_count=3, slot_icon=slot_icon)
         self.btn_left = self.buttons[0]
