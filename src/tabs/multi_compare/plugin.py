@@ -27,7 +27,7 @@ class MultiComparePlugin(Plugin, ISessionPlugin):
         register_multi_compare_reducers()
 
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
-        from tabs.multi_compare.tab import _fresh_default_state
+        from tabs.multi_compare.use_cases.persistence import _fresh_default_state
 
         return (
             SessionBlueprint(

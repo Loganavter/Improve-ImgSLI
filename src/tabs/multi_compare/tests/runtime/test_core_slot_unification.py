@@ -11,7 +11,7 @@ from core.store import Store
 from tabs.multi_compare.bootstrap_reducers import register_multi_compare_reducers
 from tabs.multi_compare.models import MultiCompareDividerSettings
 from tabs.multi_compare.scene.store import actions
-from tabs.multi_compare.tab import _STATE_SLOT, _fresh_default_state
+from tabs.multi_compare.use_cases.persistence import _STATE_SLOT, _fresh_default_state
 
 
 def _make_store_with_mc_session():

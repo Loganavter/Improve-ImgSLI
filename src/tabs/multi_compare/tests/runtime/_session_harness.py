@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 from tabs.multi_compare.models import MultiCompareState
 from tabs.multi_compare.scene.store import reduce as mc_reduce
-from tabs.multi_compare.tab import _STATE_SLOT
+from tabs.multi_compare.use_cases.persistence import _STATE_SLOT
 
 
 class FakeDispatcher:
@@ -70,7 +70,7 @@ class FakeCoreStore:
         return self.dispatcher
 
     def ensure_slot(self, session_id, factory=None):
-        from tabs.multi_compare.tab import _fresh_default_state
+        from tabs.multi_compare.use_cases.persistence import _fresh_default_state
 
         session = self.sessions[session_id]
         if _STATE_SLOT not in session.state_slots:

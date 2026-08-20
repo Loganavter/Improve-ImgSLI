@@ -7,7 +7,7 @@ from tabs.multi_compare.models import (
     MultiCompareDividerSettings,
 )
 from tabs.multi_compare.scene.store import MultiCompareStore, actions
-from tabs.multi_compare.tab import _STATE_SLOT
+from tabs.multi_compare.use_cases.persistence import _STATE_SLOT
 from tabs.multi_compare.tests.runtime._session_harness import FakeCoreStore
 
 
