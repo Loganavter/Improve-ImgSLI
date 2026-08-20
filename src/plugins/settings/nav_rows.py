@@ -33,6 +33,35 @@ def as_nav_row(item: QWidget | QLayout) -> QWidget:
     return row
 
 
+def _ensure_sidebar_nav_section(dialog):
+    """Register ``dialog.sidebar`` as an ``IconListNavSection`` once per
+    dialog, wiring Right (from the sidebar) to re-enter whichever page is
+    currently visible in ``dialog.pages_stack``.
+
+    Idempotent: every settings page calls :func:`register_page_nav_rows`
+    during ``__init__``, and each needs the *same* sidebar section instance
+    to hand its own Left off to — so the first call builds it and caches it
+    on ``dialog``, every later call reuses it.
+    """
+    existing = getattr(dialog, "_sidebar_nav_section", None)
+    if existing is not None:
+        return existing
+
+    from core.navigation import NavigationManager
+    from sli_ui_toolkit.managers import IconListNavSection
+
+    def _focus_active_page() -> bool:
+        current = dialog.pages_stack.currentWidget()
+        if current is None:
+            return False
+        return NavigationManager.get_instance().focus_section_for_owner(current)
+
+    section = IconListNavSection(dialog.sidebar, on_exit_right=_focus_active_page)
+    dialog._sidebar_nav_section = section
+    NavigationManager.get_instance().register(dialog.sidebar, section)
+    return section
+
+
 def register_page_nav_rows(dialog, page: QWidget, rows: list[QWidget], *, tag: str) -> None:
     """Register *rows* (in visual top-to-bottom order) as one
     ``ToolbarRowsSection`` for *page*, so Up/Down/Left/Right arrow-key
@@ -40,10 +69,21 @@ def register_page_nav_rows(dialog, page: QWidget, rows: list[QWidget], *, tag: s
     workspace toolbars (see ``core/navigation.py``'s ``NavigationManager``
     contract: it owns arrow-key consumption on ``QApplication`` exclusively
     — no page-local event filter may consume them instead).
+
+    Left at the leftmost control of a row hands off to ``dialog.sidebar``
+    (landing on whichever row is already selected there, not literally the
+    first) — mirrored by the sidebar's own Right handing back to whichever
+    page is currently visible, via ``_ensure_sidebar_nav_section``.
     """
     from core.navigation import NavigationManager
     from sli_ui_toolkit.managers import ToolbarRowsSection
 
-    section = ToolbarRowsSection(lambda: list(rows), tag=tag)
+    sidebar_section = _ensure_sidebar_nav_section(dialog)
+
+    section = ToolbarRowsSection(
+        lambda: list(rows),
+        tag=tag,
+        on_exit_left=sidebar_section.focus_first,
+    )
     setattr(dialog, f"_{tag.replace('-', '_')}_nav_section", section)
     NavigationManager.get_instance().register(page, section)
