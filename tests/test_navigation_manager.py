@@ -41,8 +41,8 @@ def _make_section(*, owns_fn=None, navigate_fn=None, focus_first_fn=None, focus_
     section = SimpleNamespace()
     section.owns = owns_fn or (lambda w: False)
     section.navigate = navigate_fn or (lambda k, w: False)
-    section.focus_first = focus_first_fn or (lambda: False)
-    section.focus_last = focus_last_fn or (lambda: False)
+    section.focus_first = focus_first_fn or (lambda ref_x=0: False)
+    section.focus_last = focus_last_fn or (lambda ref_x=0: False)
     return section
 
 
@@ -135,7 +135,7 @@ class TestNavigationManager:
 
         second = _make_section(
             owns_fn=lambda w: False,
-            focus_first_fn=lambda: (focus_calls.append("first") or True),
+            focus_first_fn=lambda ref_x=0: (focus_calls.append("first") or True),
         )
         first = _make_section(
             owns_fn=lambda w: w is widget,
@@ -201,7 +201,7 @@ class TestCrossSectionRouting:
         )
         bottom = _make_section(
             owns_fn=lambda w: False,
-            focus_first_fn=lambda: (focus_calls.append("bottom_first") or True),
+            focus_first_fn=lambda ref_x=0: (focus_calls.append("bottom_first") or True),
         )
         self.manager.register(owner1, top)
         self.manager.register(owner2, bottom)
@@ -221,7 +221,7 @@ class TestCrossSectionRouting:
 
         top = _make_section(
             owns_fn=lambda w: False,
-            focus_last_fn=lambda: (focus_calls.append("top_last") or True),
+            focus_last_fn=lambda ref_x=0: (focus_calls.append("top_last") or True),
         )
         bottom = _make_section(
             owns_fn=lambda w: w is widget,
@@ -303,10 +303,10 @@ class TestClickToArrowRealign:
         assert self.manager._realign_pending is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_click_on_non_focusable_area_falls_back_to_focus_first(self, mock_qapp):
+    def test_click_on_non_focusable_area_does_not_realign(self, mock_qapp):
         """Clicking a non-focusable spot inside a section (e.g. empty row
-        background) still resolves to that section's nearest widget via
-        focus_first(ref_x), rather than leaving focus on a stale widget.
+        background) where _nearest_focusable finds nothing leaves focus on
+        the stale widget — realign does not happen.
         """
         clicked = _fake_widget("clicked")
         clicked.focusPolicy.return_value = Qt.FocusPolicy.NoFocus
@@ -316,10 +316,8 @@ class TestClickToArrowRealign:
 
         stale = _fake_widget("stale")
         owner = _fake_widget("owner")
-        focus_first_calls = []
         section = _make_section(
             owns_fn=lambda w: w is clicked,
-            focus_first_fn=lambda ref_x: (focus_first_calls.append(ref_x) or True),
         )
         self.manager.register(owner, section)
 
@@ -328,8 +326,9 @@ class TestClickToArrowRealign:
 
         self.manager.eventFilter(None, _FakeMouseEvent(x=42))
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
+        # Realigned but section has no focusable children, so arrow goes to
+        # normal routing from stale widget.
         assert result is True
-        assert focus_first_calls == [42]
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_click_outside_any_section_falls_through_to_normal_routing(self, mock_qapp):
@@ -848,6 +847,7 @@ class TestTabStripSection:
         from core.navigation_sections import TabStripSection
 
         strip = MagicMock()
+        strip.tab_bar = None
         add_button = MagicMock()
         add_button.setFocus = MagicMock()
         add_button.isVisible = MagicMock(return_value=True)

@@ -156,7 +156,7 @@ def test_recents_row_shows_caption_section(qapp, store):
         assert dialog._recents_row._caption.text() == tr("ui.recent_colors_caption", default="Recent")
         assert not dialog._recents_row._caption.isHidden()
         # Shelf structure: header host (title) + content host (chip grid).
-        assert dialog._recents_row.root_layout().count() == 2
+        assert dialog._recents_row._root.count() == 2
         assert len(dialog._recents_row._chip_widgets) == 1  # 1 chip in the store
     finally:
         dialog.deleteLater()
