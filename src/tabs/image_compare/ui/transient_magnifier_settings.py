@@ -199,8 +199,15 @@ class MagnifierSettingsHoverController(QObject):
             # hide that nothing then cancels (the mouse-hover Enter that
             # normally cancels it never fires for a keyboard-only move),
             # closing the panel out from under the focus that just entered it.
+            # Also, if PanelVisibilityFlyout is open via keyboard (Enter) and
+            # has focus, keep MagnifierSettingsFlyout open as well — they
+            # are meant to coexist when magnifier is enabled via keyboard.
             new_focus = QApplication.focusWidget()
             flyout = getattr(self.widget, "magnifier_settings_flyout", None)
+            panel_flyout = getattr(self.widget, "magnifier_visibility_flyout", None)
+            if panel_flyout is not None and getattr(panel_flyout, "_keyboard_navigation_active", False):
+                # Panel flyout open via keyboard — keep settings flyout open
+                return
             still_inside = new_focus is not None and (
                 new_focus in self._group_buttons
                 or (flyout is not None and flyout.isAncestorOf(new_focus))
