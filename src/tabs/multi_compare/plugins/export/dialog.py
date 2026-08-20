@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import (
     Button,
@@ -38,7 +39,6 @@ from sli_ui_toolkit.i18n import tr as app_tr
 from tabs.multi_compare.plugins.export.models import (
     MultiCompareExportDialogState as ExportDialogState,
 )
-from ui.icon_manager import AppIcon
 from ui.theming import polish_themed_dialog
 from ui.widgets.form_controls import DialogActionBar, OutputPathSection
 from utils.resource_loader import resource_path
@@ -223,14 +223,14 @@ class MultiCompareExportDialog(QDialog):
         )
         self.edit_width = QLineEdit()
         self.edit_width.setValidator(QIntValidator(1, 32768))
-        self.edit_width.setFixedWidth(72)
+        self.edit_width.setFixedWidth(scaled_px(72))
         self.edit_width.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.edit_height = QLineEdit()
         self.edit_height.setValidator(QIntValidator(1, 32768))
-        self.edit_height.setFixedWidth(72)
+        self.edit_height.setFixedWidth(scaled_px(72))
         self.edit_height.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.btn_lock_ratio = Button(
-            icon=(AppIcon.UNLINK, AppIcon.LINK), toggle=True, size=(32, 32)
+            icon=("unlink.svg", "link.svg"), toggle=True, size=(32, 32)
         )
         self.btn_lock_ratio.setChecked(True)
         self.btn_lock_ratio.setToolTip(

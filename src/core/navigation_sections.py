@@ -5,7 +5,7 @@ picker page.  ``TabStripSection`` owns the workspace tab bar and delegates
 Left/Right to ``_AdaptiveTabBar``'s native handling (our event filter never
 sees those keys because the tab bar consumes them first).
 
-The generic row-navigation section used by image_compare/multi_compare
+The generic row-navigation section used by workspace tabs
 (``ToolbarRowsSection``) has no app-specific logic and lives in
 sli-ui-toolkit instead — import it from ``sli_ui_toolkit.managers``.
 """

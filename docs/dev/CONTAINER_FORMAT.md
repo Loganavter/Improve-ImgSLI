@@ -20,7 +20,7 @@ cache/<asset_id>/pixels.raw (optional, decoded RGBA8 spill buffer)
 - **`media/`**: Byte-copied (not re-encoded) images used within the project. The `<asset_id>` is the first 16 hexadecimal characters of the file's SHA-256 digest.
 - **`cache/`**: Optional, opt-in per save (see below). Raw RGBA8 pixel buffers (`ZIP_STORED`, uncompressed) that let a future reopen skip re-decoding a source image entirely. Shares its `asset_id` with the corresponding `media/` entry, so cache validity is structurally tied to the exact embedded bytes.
 
-*(Note: Legacy plain JSON v1 and ZIP v2 `.imgsli` files remain loadable for backward compatibility — see [docs/legacy/container-format.md](../legacy/container-format.md).)*
+*(Note: Legacy plain JSON v1 and ZIP v2 `.imgsli` files remain loadable for backward compatibility.)*
 
 ## Optional Embedded Pixel Cache
 
@@ -52,5 +52,4 @@ Project save can optionally embed each live session's already-decoded `TiledPixe
 ## Legacy Formats
 
 Superseded container versions (v2 ZIP without pixel cache, v1 plain JSON)
-are documented in [docs/legacy/container-format.md](../legacy/container-format.md)
-— both remain loadable today, they're just never written anymore.
+are no longer documented separately — both remain loadable today, they're just never written anymore.

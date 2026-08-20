@@ -29,7 +29,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
   Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/legacy/README.md](../legacy/README.md), [docs/legacy/container-format.md](../legacy/container-format.md)
+  Referenced by: [docs/dev/README.md](README.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
   Referenced by: [docs/dev/CAPABILITY_ALIASES.md](CAPABILITY_ALIASES.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/rendering/contracts.md](rendering/contracts.md), [docs/dev/rendering/index.md](rendering/index.md), [docs/dev/rendering/overview.md](rendering/overview.md), [docs/dev/rendering/render-pass-contract.md](rendering/render-pass-contract.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[App Dialogs / Windows](DIALOGS.md)** — `docs/dev/DIALOGS.md`
@@ -72,6 +72,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 
 ## docs/dev/investigations/
 
+- **[Investigation: Keyboard Navigation, CSD Focus, and Flyout Focus Routing](investigations/keyboard-navigation-csd-focus.md)** — `docs/dev/investigations/keyboard-navigation-csd-focus.md`
 - **[Investigation: NavigationManager for cross-section keyboard navigation](investigations/navigation-manager-plan.md)** — `docs/dev/investigations/navigation-manager-plan.md`
 - **[Critical Analysis: Session Picker Navigation](investigations/session-picker-navigation-analysis.md)** — `docs/dev/investigations/session-picker-navigation-analysis.md`
 - **[Investigation: widget weight reduction](investigations/widget-weight-reduction.md)** — `docs/dev/investigations/widget-weight-reduction.md`
@@ -158,12 +159,6 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[UnifiedListPicker](widgets/unified_list_picker.md)** — `docs/dev/widgets/unified_list_picker.md`
 - **[ValueSlider / ValueSliderRow](widgets/value_slider.md)** — `docs/dev/widgets/value_slider.md`
 - **[WorkspaceTabStrip](widgets/workspace_tab_strip.md)** — `docs/dev/widgets/workspace_tab_strip.md`
-
-## docs/legacy/
-
-- **[Legacy Docs](../legacy/README.md)** — `docs/legacy/README.md`
-- **[`.imgsli` Container Format — Legacy Versions](../legacy/container-format.md)** — `docs/legacy/container-format.md`
-  Referenced by: [docs/dev/CONTAINER_FORMAT.md](CONTAINER_FORMAT.md), [docs/legacy/README.md](../legacy/README.md)
 
 ## src/tabs/image_compare/docs/
 
