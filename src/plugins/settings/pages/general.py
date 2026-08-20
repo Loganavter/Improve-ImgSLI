@@ -8,6 +8,7 @@ from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import CheckBox, ComboBox, RadioButton
 from ui.icon_manager import AppIcon
 
+from plugins.settings.nav_rows import as_nav_row, register_page_nav_rows
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
 
@@ -66,7 +67,8 @@ def build(dialog, p):
     for rb in (dialog.radio_en, dialog.radio_ru, dialog.radio_zh, dialog.radio_pt_br):
         dialog._lang_group.addButton(rb)
         lang_layout.addWidget(rb)
-    dialog.lang_group.add_layout(lang_layout)
+    lang_row = as_nav_row(lang_layout)
+    dialog.lang_group.add_widget(lang_row)
     layout.addWidget(dialog.lang_group)
     {"ru": dialog.radio_ru, "zh": dialog.radio_zh, "pt_BR": dialog.radio_pt_br}.get(
         p.current_language, dialog.radio_en
@@ -88,7 +90,8 @@ def build(dialog, p):
         dialog.combo_theme.setCurrentIndex(idx)
     theme_row.addWidget(dialog.combo_theme)
     theme_row.addStretch()
-    dialog.sys_group.add_layout(theme_row)
+    theme_row_widget = as_nav_row(theme_row)
+    dialog.sys_group.add_widget(theme_row_widget)
 
     dialog.system_notifications_checkbox = CheckBox(
         APPEARANCE.text(dialog, "settings.system_notifications")
@@ -97,15 +100,23 @@ def build(dialog, p):
     APPEARANCE.tag_member(
         dialog.system_notifications_checkbox, "settings.system_notifications"
     )
-    dialog.sys_group.add_widget(dialog.system_notifications_checkbox)
+    notifications_row = as_nav_row(dialog.system_notifications_checkbox)
+    dialog.sys_group.add_widget(notifications_row)
     dialog.debug_checkbox = CheckBox(
         APPEARANCE.text(dialog, "settings.enable_debug_logging")
     )
     dialog.debug_checkbox.setChecked(p.debug_mode_enabled)
     APPEARANCE.tag_member(dialog.debug_checkbox, "settings.enable_debug_logging")
-    dialog.sys_group.add_widget(dialog.debug_checkbox)
+    debug_row = as_nav_row(dialog.debug_checkbox)
+    dialog.sys_group.add_widget(debug_row)
 
     layout.addWidget(dialog.sys_group)
+    register_page_nav_rows(
+        dialog,
+        dialog.page_general,
+        [lang_row, theme_row_widget, notifications_row, debug_row],
+        tag="settings-general",
+    )
     dialog.pages_stack.addWidget(dialog.page_general)
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QScrollArea, QSizePolicy
 
 from plugins.settings.layout_geometry import apply_settings_dialog_geometry
@@ -84,6 +85,18 @@ def create_scrollable_page():
     page.content_widget.setSizePolicy(
         QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding
     )
+    # QScrollArea defaults to StrongFocus, so clicking empty space between
+    # controls parks real Qt focus on the bare scroll container itself
+    # instead of any actual row/control. A NavigationSection registered on
+    # the page (see pages/keyboard.py) only recognizes its own row widgets
+    # via owns() — it never claims the scroll area, so arrow keys pressed
+    # right after such a click go nowhere (NavigationManager finds no owner
+    # and yields to native QAbstractScrollArea scrolling instead of routing
+    # into the section). NavigationManager's own click-realign path already
+    # exists to land focus on the nearest real control after a click on
+    # non-focusable padding — but only fires when the scroll container
+    # itself can't out-compete it for focus first.
+    page.scroll_area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     return page, page.content_layout
 
 def page_scroll_area(page):
