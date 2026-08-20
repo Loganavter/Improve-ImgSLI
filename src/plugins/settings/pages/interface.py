@@ -191,16 +191,11 @@ def build(dialog, p):
     # (fixed-width pad keeps the slider's geometry stable as text changes).
     dialog.slider_ui_scale_row = ValueSliderRow(dialog.slider_ui_scale)
     scale_layout.addWidget(dialog.slider_ui_scale_row, 1)
-    scale_row = as_nav_row(scale_layout)
+    scale_row = builder.row(scale_layout)
     dialog.ui_scale_group.add_widget(scale_row)
     layout.addWidget(dialog.ui_scale_group)
 
-    register_page_nav_rows(
-        dialog,
-        dialog.page_interface,
-        [ui_mode_row, *font_radio_rows, font_combo_container, len_row, scale_row],
-        tag="settings-interface",
-    )
+    register_page_navigation(dialog, dialog.page_interface, builder)
     dialog.pages_stack.addWidget(dialog.page_interface)
 
 

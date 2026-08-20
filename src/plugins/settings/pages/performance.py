@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import ComboBox, Label
 
-from plugins.settings.nav_rows import as_nav_row, register_page_nav_rows
+from plugins.settings.nav_rows import page_nav_builder, register_page_navigation
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
 from ui.icon_manager import AppIcon
@@ -34,19 +34,25 @@ SEARCH = SearchIndex.of(RENDER_BACKEND)
 def build(dialog, p):
     dialog.page_perf, layout = dialog._create_scrollable_page()
     dialog._perf_layout = layout
+    builder = page_nav_builder(dialog, tag="settings-performance")
     from plugins.settings.registry import get_settings_registry
 
     for extra in get_settings_registry().extras_for(
         "builtin.performance",
         getattr(dialog, "active_tab", None),
     ):
-        extra(dialog, p)
-    rows = _build_render_backend_group(dialog, layout, p)
-    register_page_nav_rows(dialog, dialog.page_perf, rows, tag="settings-performance")
+        # An extra can return the nav rows it built (see
+        # tabs/image_compare/ui/settings_performance.py) so they participate
+        # in this page's keyboard navigation instead of being silently
+        # invisible to it (the bug this migration fixes — see
+        # docs/legacy/plan_navigation_descriptor_unification.md §2.2).
+        builder.extend(extra(dialog, p) or [])
+    _build_render_backend_group(dialog, layout, p, builder)
+    register_page_navigation(dialog, dialog.page_perf, builder)
     dialog.pages_stack.addWidget(dialog.page_perf)
 
 
-def _build_render_backend_group(dialog, layout, p):
+def _build_render_backend_group(dialog, layout, p, builder):
     dialog.render_backend_group = RENDER_BACKEND.widget(dialog)
     row = QHBoxLayout()
     row.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
@@ -91,7 +97,7 @@ def _build_render_backend_group(dialog, layout, p):
         dialog.combo_rhi_backend.setCurrentIndex(idx)
     row.addWidget(dialog.lbl_rhi_backend)
     row.addWidget(dialog.combo_rhi_backend, 1)
-    backend_row = as_nav_row(row)
+    backend_row = builder.row(row)
     dialog.render_backend_group.add_widget(backend_row)
 
     dialog.lbl_rhi_backend_hint = Label(
@@ -105,7 +111,6 @@ def _build_render_backend_group(dialog, layout, p):
     dialog.render_backend_group.add_widget(dialog.lbl_rhi_backend_hint)
 
     layout.addWidget(dialog.render_backend_group)
-    return [backend_row]
 
 
 SECTION = SettingsSection(
