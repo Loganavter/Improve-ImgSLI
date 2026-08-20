@@ -1,6 +1,6 @@
 from PIL import Image as PilImage
-from PySide6.QtCore import QPoint, QPointF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPixmap
+from PySide6.QtCore import QCoreApplication, QPoint, QPointF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPixmap, QResizeEvent
 from PySide6.QtWidgets import QRhiWidget
 
 from tabs.image_compare.first_frame_debug import (
@@ -108,6 +108,12 @@ class CanvasWidget(QRhiWidget):
         self._context_menu_provider = None
         self._render_scene_flush = CoalescedFlush(self._flush_render_scene)
         init_widget_state(self)
+        # Tracks the device size (widget size * DPR) resizeEvent last
+        # committed to the GPU-rendering machinery -- see paintEvent's
+        # stale-device-size self-heal below (docs/dev/investigations/
+        # image-compare-first-activation-flicker-and-qrhi.md Bug 3
+        # follow-up, ported from Telegram Desktop's lib_ui gl_surface.cpp).
+        self._device_size = QSize()
         ic_first_frame_debug(self, "canvas constructed")
 
     def set_store(self, store):
@@ -218,13 +224,44 @@ class CanvasWidget(QRhiWidget):
         QTimer.singleShot(50, _tick)
 
     def resizeEvent(self, event):
+        # lib_ui's gl_surface.cpp guard: refuse to forward a resize into
+        # GPU-rendering machinery before the top-level's native window
+        # exists at all (see docs/dev/investigations/
+        # image-compare-first-activation-flicker-and-qrhi.md Bug 3
+        # follow-up). Qt's own geometry bookkeeping for this widget is
+        # already done by the time the event is dispatched, so skipping
+        # here loses nothing -- the next resizeEvent once the window handle
+        # exists will pick up the current size.
+        top = self.window()
+        if top is None or top.windowHandle() is None:
+            return
         state = self.runtime_state
         state._drag_overlay_cache_key = None
         state._drag_overlay_cached_image = None
         super().resizeEvent(event)
         size = event.size()
         ic_first_frame_debug(self, "resizeEvent -> %s", size)
+        self._device_size = size * self.devicePixelRatio()
         resize_canvas(self, size.width(), size.height())
+
+    def paintEvent(self, event):
+        # lib_ui's gl_surface.cpp guard: self-heal the "stuck at old size"
+        # symptom directly -- if the widget's current size*DPR has drifted
+        # from what resizeEvent last committed to the GPU-rendering
+        # machinery (e.g. a resize was skipped above, or landed before the
+        # RHI surface was ready), re-post a synthetic resize instead of
+        # painting a frame at the stale size. See docs/dev/investigations/
+        # image-compare-first-activation-flicker-and-qrhi.md Bug 3
+        # follow-up.
+        expected = self.size() * self.devicePixelRatio()
+        if self._device_size != expected and expected.width() > 0 and expected.height() > 0:
+            self._device_size = expected
+            QCoreApplication.postEvent(
+                self, QResizeEvent(self.size(), self.size())
+            )
+            self.update()
+            return
+        super().paintEvent(event)
 
     def set_session_controller(self, session_controller) -> None:
         if self._context_menu_provider is not None:
