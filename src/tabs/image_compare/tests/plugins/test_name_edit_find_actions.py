@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QWidget
 
 from core.actions.types import ActionTarget
 from sli_ui_toolkit.widgets import Button, CustomLineEdit
-from tabs.image_compare.actions import (
+from tabs.image_compare.actions._contribute import (
     _contribute_name_edit_actions,
     _ensure_name_edit_chrome,
     _focus_name_edit,
@@ -54,7 +54,7 @@ def test_name_edit_ensure_shows_edit_row(qtbot, monkeypatch):
         )
 
         monkeypatch.setattr(
-            "tabs.image_compare.actions._host_font_settings_controller",
+            "tabs.image_compare.actions._contribute._host_font_settings_controller",
             lambda: None,
         )
         _ensure_name_edit_chrome(widget)
@@ -110,7 +110,7 @@ def test_name_edit_actions_listed_while_hidden_and_run_shows(qtbot, monkeypatch)
         )
 
         monkeypatch.setattr(
-            "tabs.image_compare.actions._host_font_settings_controller",
+            "tabs.image_compare.actions._contribute._host_font_settings_controller",
             lambda: None,
         )
 
