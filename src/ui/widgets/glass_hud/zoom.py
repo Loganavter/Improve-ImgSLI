@@ -58,6 +58,13 @@ class ZoomIndicator(GlassHUD):
         reset_icon: AppIcon | QIcon | None = None,
     ):
         super().__init__(parent)
+        # Purely informational HUD: its only control (btn_zoom_reset) is
+        # deliberately NoFocus (see below), so there is nothing here for
+        # keyboard navigation to reach. Skip BaseFlyout.show()'s focus grab
+        # and NavigationSection registration -- without this, every resync
+        # while zoom/pan is non-default steals keyboard focus from whatever
+        # the user was actually doing and inserts a dead-end nav section.
+        self._skip_focus_grab = True
         self._lang_provider = lang_provider
         if target_widget is not None:
             self._connect_zoom_refresh(target_widget)

@@ -44,10 +44,14 @@ class TitleBarNavigationSection:
             return True
         return True
 
-    def focus_first(self) -> bool:
+    def focus_first(self, ref_x: float | None = None) -> bool:
+        if ref_x is not None:
+            return self._title_bar.focus_nearest_button(ref_x)
         self._title_bar.focus_first_button()
         return True
 
-    def focus_last(self) -> bool:
+    def focus_last(self, ref_x: float | None = None) -> bool:
+        if ref_x is not None:
+            return self._title_bar.focus_nearest_button(ref_x)
         self._title_bar.focus_last_button()
         return True

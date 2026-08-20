@@ -108,14 +108,15 @@ class SessionPickerSection:
         # Left/Right: single-column list, nothing horizontal to navigate.
         return True
 
-    def focus_first(self) -> bool:
+    def focus_first(self, ref_x: float | None = None) -> bool:
+        # Single-column list: x doesn't distinguish anything, ref_x unused.
         cards = self._page._card_entries()
         if cards:
             cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
             return True
         return False
 
-    def focus_last(self) -> bool:
+    def focus_last(self, ref_x: float | None = None) -> bool:
         cards = self._page._card_entries()
         if cards:
             cards[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
@@ -164,22 +165,56 @@ class TabStripSection:
         self._tab_strip.setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
-    def focus_first(self) -> bool:
-        # Entering from above (title bar, Down) -- land on the actual tab
-        # bar (not the wrapper strip) so its own Left/Right/Home/End
-        # handling (_AdaptiveTabBar.keyPressEvent) becomes reachable,
-        # instead of skipping straight past every tab to the add button.
-        # setFocus() on ClickFocus still works for an explicit call --
-        # only Tab-key traversal / click-to-focus semantics are affected.
+    def _focus_tab_bar(self, ref_x: float | None) -> bool:
+        # Land on the actual tab bar (not the wrapper strip) so its own
+        # Left/Right/Home/End handling (_AdaptiveTabBar.keyPressEvent)
+        # becomes reachable. setFocus() on ClickFocus still works for an
+        # explicit call -- only Tab-key traversal / click-to-focus
+        # semantics are affected.
         tab_bar = getattr(self._tab_strip, "tab_bar", None)
-        if tab_bar is not None:
-            tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
-            return True
-        return self._focus_add_button()
+        if tab_bar is None:
+            return False
+        if ref_x is not None:
+            count = len(getattr(tab_bar, "_tabs", None) or [])
+            if count:
+                from PySide6.QtCore import QPoint
 
-    def focus_last(self) -> bool:
-        # Entering from below (session picker, Up) -- the add button is the
-        # strip's actual rightmost/last control.
+                local_x = tab_bar.mapFromGlobal(QPoint(int(ref_x), 0)).x()
+                idx = tab_bar.tabAt(QPoint(int(local_x), tab_bar.height() // 2))
+                if idx < 0:
+                    idx = 0 if local_x < 0 else count - 1
+                tab_bar.setCurrentIndex(idx)
+        tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+        return True
+
+    def _focus_nearest(self, ref_x: float) -> bool:
+        # Coordinate-aware cross-section entry: whichever real control
+        # (tab bar vs. add button) sits closer to ref_x on screen, instead
+        # of always jumping to one fixed end regardless of where the user
+        # actually was.
+        tab_bar = getattr(self._tab_strip, "tab_bar", None)
+        add_btn = getattr(self._tab_strip, "add_button", None)
+        add_visible = add_btn is not None and add_btn.isVisible()
+        if tab_bar is None:
+            return self._focus_add_button() if add_visible else False
+        if not add_visible:
+            return self._focus_tab_bar(ref_x)
+        tab_bar_x = tab_bar.mapToGlobal(tab_bar.rect().center()).x()
+        add_x = add_btn.mapToGlobal(add_btn.rect().center()).x()
+        if abs(add_x - ref_x) < abs(tab_bar_x - ref_x):
+            return self._focus_add_button()
+        return self._focus_tab_bar(ref_x)
+
+    def focus_first(self, ref_x: float | None = None) -> bool:
+        # Entering from above (title bar, Down).
+        if ref_x is not None:
+            return self._focus_nearest(ref_x)
+        return self._focus_tab_bar(None) or self._focus_add_button()
+
+    def focus_last(self, ref_x: float | None = None) -> bool:
+        # Entering from below (session picker, Up).
+        if ref_x is not None:
+            return self._focus_nearest(ref_x)
         return self._focus_add_button()
 
 
