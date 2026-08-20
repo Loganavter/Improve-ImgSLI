@@ -142,6 +142,8 @@ class MagnifierSettingsFlyout(BaseFlyout):
     # ``combo_interpolation``, whose own dropdown is an "options" flyout —
     # letting that dismiss us on open would close the parent mid-pick.
     flyout_group = "canvas_feature_settings"
+    _nav_side = "below"  # декларативно для bind_flyout / ToolbarRowsSection
+    _nav_mode = "preview"
 
     SHADOW_RADIUS = 0
     CONTENT_RADIUS = 8

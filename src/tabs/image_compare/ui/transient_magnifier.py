@@ -42,14 +42,12 @@ class MagnifierVisibilityController:
         self.widget.magnifier_visibility_flyout.btn_center.installEventFilter(host)
         self.widget.magnifier_visibility_flyout.btn_right.installEventFilter(host)
         btn.toggled.connect(self.on_toggle_with_hover)
-        # Preview flyout — Down from btn_magnifier enters via extension_below
-        # (ToolbarRowsSection.navigate checks extension_below before row jump).
+        # Один вызов вместо трёх проволочек — side декларирован на классе,
+        # но оставляем императивный для надёжности (фасад оркестрирует nav+hover).
         try:
-            from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+            from sli_ui_toolkit.managers import bind_flyout
 
-            NavigationManager.get_instance().link_below(
-                btn, self.widget.magnifier_visibility_flyout
-            )
+            bind_flyout(btn, self.widget.magnifier_visibility_flyout, side="above")
         except Exception:
             pass
 

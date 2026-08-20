@@ -75,11 +75,10 @@ class MagnifierSettingsHoverController(QObject):
                 except Exception:
                     pass
                 if not is_top_button:
-                    # Down from any other group button enters this panel instead of
-                    # jumping to the next toolbar row, and Up from the panel's
-                    # first control returns here (see NavigationManager.link_below
-                    # and ToolbarRowsSection/_navigate_focusable in the toolkit).
-                    nav.link_below(child, flyout)
+                    # Один вызов фасада вместо link_below+side комбо
+                    from sli_ui_toolkit.managers import bind_flyout as _bind
+
+                    _bind(child, flyout, side="below")
         # The color-options flyouts (btn_magnifier_color_settings[_beginner])
         # already exist at this point (built earlier in the same assemble()
         # pass, before this controller) -- other toolbar flyouts
