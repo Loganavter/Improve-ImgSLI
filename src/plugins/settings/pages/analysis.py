@@ -39,8 +39,7 @@ def build(dialog, p, *, extras_section_id: str | None = None):
             extras_section_id,
             getattr(dialog, "active_tab", None),
         ):
-            # An extra can return the nav rows it built (see
-            # tabs/image_compare/ui/settings_performance.py) so they
+            # An extra can return the nav rows it built so they
             # participate in this page's keyboard navigation instead of
             # being silently invisible to it (the bug this migration fixes
             # — see docs/legacy/plan_navigation_descriptor_unification.md
