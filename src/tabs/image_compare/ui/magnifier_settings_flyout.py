@@ -375,7 +375,7 @@ class MagnifierSettingsFlyout(BaseFlyout):
             offset=0,
             animation="none",
             grab_focus=False,
-            register_nav_section=True,
+            register_nav_section=False,
         )
         # show_aligned centers this flyout's box on the group *widget*
         # center, which only puts the box's left edge exactly on the
