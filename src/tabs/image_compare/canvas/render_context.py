@@ -28,6 +28,7 @@ from tabs.image_compare.canvas.render_arch import (
 
 from .render_config import update_display_split_position
 from ui.canvas_infra.rhi.render_metrics import RenderMetrics
+from shared.rendering.render_debug import rhi_render_debug
 from .texture_parts.base_images import (
     update_common_letterbox_geometry,
     upload_pil_images,
@@ -236,6 +237,17 @@ def build_render_runtime_context(widget) -> RenderRuntimeContext:
         )
         if fill is not None and len(fill) >= 4 and float(fill[3]) > 0
         else (0.0, 0.0, 0.0, 0.0)
+    )
+    rhi_render_debug(
+        "letterbox_uniforms widget=%dx%d shader_mode=%s letterbox1=%r letterbox2=%r "
+        "canvas_letterbox=%r content_rect_px=%r",
+        widget.width(),
+        widget.height(),
+        bool(state._shader_letterbox_mode),
+        letterbox1,
+        letterbox2,
+        canvas_letterbox,
+        getattr(state, "_content_rect_px", None),
     )
     # Base shader compares spit in letterboxed image UV (magnifier parity).
     # DividerPass still reads display_split_position for the white line.

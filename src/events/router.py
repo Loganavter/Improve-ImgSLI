@@ -1,13 +1,29 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent, QMouseEvent
 
 from tabs.registry import get_shared_tab_registry
 
-logger = logging.getLogger("ImproveImgSLI")
+# dnd-override/kbd-route trace lines fire on every mouse/key event once
+# --debug is on, drowning out other subsystems' debug output (e.g.
+# IMGSLI_RESIZE_DEBUG render tracing). Gated on its own opt-in flag, off by
+# default even under --debug -- same convention as
+# shared/rendering/render_debug.py's IMGSLI_RESIZE_DEBUG.
+logger = logging.getLogger("ImproveImgSLI.nav")
+if os.environ.get("IMGSLI_NAV_DEBUG", "").strip().lower() in (
+    "",
+    "0",
+    "false",
+    "no",
+    "off",
+):
+    logger.setLevel(logging.WARNING)
+else:
+    logger.setLevel(logging.DEBUG)
 
 def _belongs_to_canvas(event_handler, watched_obj) -> bool:
     tab = get_shared_tab_registry().get_active_tab()
