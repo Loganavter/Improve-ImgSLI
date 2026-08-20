@@ -116,24 +116,9 @@ class MagnifierVisibilityController:
             )
         else:
             self.widget.magnifier_visibility_flyout.cancel_auto_hide()
-        # When opened via keyboard (Enter), move focus into flyout's first
-        # toggle with a ring so user sees where keyboard navigation is.
-        if reason in ("hover", "toggle", "keyboard"):
-            try:
-                from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
-
-                if NavigationManager.get_instance().last_input_was_keyboard():
-                    flyout = self.widget.magnifier_visibility_flyout
-                    if flyout is not None and hasattr(flyout, "focus_first_child"):
-                        from PySide6.QtCore import Qt
-
-                        flyout.focus_first_child()
-                        # Ensure ring visible — focus with keyboard reason
-                        for btn in getattr(flyout, "buttons", []):
-                            if btn.hasFocus():
-                                btn.update()
-            except Exception:
-                pass
+        # Do NOT auto-focus into flyout — preview stays on anchor with ring.
+        # Enter/Down from the anchor (extension_below) will enter
+        # explicitly, as requested: open without Enter, but don't take focus.
 
     def hide(self, reason: str = "explicit"):
         host = self.manager.host
@@ -179,15 +164,26 @@ class MagnifierVisibilityController:
         if et in (QEvent.Type.HoverLeave, QEvent.Type.Leave):
             return False
         if et == QEvent.Type.FocusIn:
-            # FocusIn alone no longer opens — Enter on the button
-            # (handled via keyPressEvent → toggled) or mouse click does.
+            reason = getattr(event, "reason", lambda: None)()
+            is_keyboard = reason not in (
+                Qt.FocusReason.MouseFocusReason,
+                Qt.FocusReason.MenuBarFocusReason,
+            )
+            use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
+            if is_keyboard and use_magnifier:
+                # Keyboard focus alone shows the panel flyout as a preview
+                # (no focus steal) — actual keyboard navigation inside the
+                # flyout still requires explicit Enter (see
+                # PanelVisibilityFlyout._keyboard_navigation_active).
+                self._hover_timer.stop()
+                # Use hover delay to avoid flicker on rapid Tab
+                self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
             return False
         if et == QEvent.Type.FocusOut:
-            # Don't auto-hide on focus moving to another toolbar control
-            # (e.g. ScrollValueButton) — only hide on explicit Escape or
-            # when focus leaves the entire toolbar+flyout unit (handled via
-            # _handle_button_focus_event's still_inside check in
-            # MagnifierSettingsHoverController, not here).
+            # Don't hide immediately when focus moves to another toolbar
+            # control — the flyout is a preview, should stay while focus is
+            # anywhere in the magnifier group+flyout unit. Hide is handled
+            # via hover leave / explicit Esc, not FocusOut.
             return False
         if et == QEvent.Type.Wheel:
             use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
