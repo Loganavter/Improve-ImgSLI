@@ -118,12 +118,16 @@ class MagnifierVisibilityController:
         # Preview — keep focus on anchor (btn_magnifier) with ring, don't
         # steal into flyout. Down/Enter from anchor (extension_below) will
         # explicitly enter via focus_first_child with ring.
+        # register_nav_section=False: preview must not become a nav section
+        # — it would otherwise shift positioning (available rect changes with
+        # focus proxy) and intercept arrows before Down can enter via
+        # extension_below.
         self.widget.magnifier_visibility_flyout.show_for_button(
             btn,
             host.parent_widget,
             hover_delay_ms=0,
             grab_focus=False,
-            register_nav_section=True,
+            register_nav_section=False,
         )
         try:
             flyout = self.widget.magnifier_visibility_flyout
