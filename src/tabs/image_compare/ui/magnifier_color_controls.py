@@ -225,40 +225,110 @@ class ColorSettingsButton(Button):
                 else:
                     self.flyout.hide()
 
+    def _group_anchor(self):
+        # Anchor to the whole magnifier group, not just this button,
+        # so keyboard navigation on sibling ScrollValueButtons inside the
+        # same group doesn't hide the color flyout (still inside group).
+        parent = self.parentWidget()
+        # Walk up to find the ButtonGroup container (magnifier_group_container)
+        while parent is not None:
+            if parent.objectName() == "magnifier_group" or "magnifier" in parent.objectName().lower():
+                return parent
+            # Fallback: use the direct parent that is a ButtonGroup
+            from sli_ui_toolkit.widgets import ButtonGroup
+
+            if isinstance(parent, ButtonGroup):
+                return parent
+            parent = parent.parentWidget()
+        return self
+
     def enterEvent(self, event):
         super().enterEvent(event)
+        # Hover no longer opens the color flyout — only explicit Enter/click
+        # (keyPressEvent Enter or mousePress) does. Hover still emits for
+        # magnifier group zone tracking, but not for flyout show.
         self.elementHovered.emit("magnifier")
-        self.flyout.update_state()
-        if self.flyout.has_visible_actions():
-            self.flyout.show_aligned(
-                self, "top-center", "bottom-center", toggle=False
-            )
-            self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def leaveEvent(self, event):
         self.elementHoverEnded.emit()
-        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
         super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        # Click explicitly opens — same as Enter
+        if event.button() == event.button().LeftButton:
+            self.flyout.update_state()
+            if self.flyout.has_visible_actions():
+                anchor = self._group_anchor()
+                self.flyout.show_aligned(
+                    anchor, "top-center", "bottom-center", toggle=False
+                )
+                self.flyout.cancel_auto_hide()
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
-        # This flyout was only ever reachable via mouse hover (enterEvent
-        # above) -- arrow-key ring navigation lands keyboard focus here but
-        # never fired any equivalent, so the flyout silently never opened
-        # for keyboard users. Mirror enterEvent, but only for a genuine
-        # keyboard-driven focus grant: a mouse click also focuses the
-        # button (MouseFocusReason), and enterEvent already handled that
-        # case moments earlier -- gating on _keyboard_focus avoids showing
-        # the flyout twice / fighting its own auto-hide timer.
-        if getattr(self, "_keyboard_focus", False):
-            self.elementHovered.emit("magnifier")
+        # Focus alone no longer opens — only Enter (handled in keyPressEvent)
+        pass
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        # Keep flyout open if focus moves within same magnifier group
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            new_focus = QApplication.focusWidget()
+            anchor = self._group_anchor()
+            flyout = self.flyout
+            still_inside = new_focus is not None and (
+                (anchor is not None and anchor.isAncestorOf(new_focus))
+                or (flyout is not None and flyout.isAncestorOf(new_focus))
+                or new_focus is anchor
+            )
+            if still_inside:
+                return
+        except Exception:
+            pass
+        self.elementHoverEnded.emit()
+        self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
+
+    def keyPressEvent(self, event):
+        from PySide6.QtCore import Qt
+
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.flyout.update_state()
             if self.flyout.has_visible_actions():
+                anchor = self._group_anchor()
                 self.flyout.show_aligned(
-                    self, "top-center", "bottom-center", toggle=False
+                    anchor, "top-center", "bottom-center", toggle=False
                 )
+                self.flyout.cancel_auto_hide()
+                event.accept()
+                return
+        if event.key() == Qt.Key.Key_Escape and self.flyout.isVisible():
+            self.flyout.hide()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
         self.elementHoverEnded.emit()
+        # Keep flyout open if focus moves to sibling inside same magnifier group
+        # (e.g. ScrollValueButton in same row) — only hide when truly leaving
+        # the group+flyout unit.
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            new_focus = QApplication.focusWidget()
+            anchor = self._group_anchor()
+            flyout = self.flyout
+            still_inside = new_focus is not None and (
+                (anchor is not None and anchor.isAncestorOf(new_focus))
+                or (flyout is not None and flyout.isAncestorOf(new_focus))
+                or new_focus is anchor
+            )
+            if still_inside:
+                return
+        except Exception:
+            pass
         self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
