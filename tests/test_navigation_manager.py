@@ -417,6 +417,82 @@ class TestClickToArrowRealign:
         assert self.manager._realign_pending is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
+    def test_first_press_after_click_reveals_without_stepping(self, mock_qapp):
+        """The ring is invisible right after a mouse click (MouseButtonPress
+        suppresses it) -- if the very first arrow press both silently
+        realigned focus to the nearest widget *and* stepped navigate() one
+        further, the user would see the ring appear two items away from
+        the click with no visual step in between. The first press must
+        only reveal the ring at the realigned widget; a second, distinct
+        press then steps normally.
+        """
+        clicked = _fake_widget("clicked")
+        clicked.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
+        clicked.isVisible.return_value = True
+        clicked.isEnabled.return_value = True
+        clicked.parentWidget.return_value = None
+
+        owner = _fake_widget("owner")
+        navigate_calls = []
+        # A section that DOES want this key (like ToolbarRowsSection's
+        # Left/Right via extra_keys) -- the case that risks double-moving.
+        section = _make_section(
+            owns_fn=lambda w: w is clicked,
+            navigate_fn=lambda k, w: (navigate_calls.append((k, w)) or True),
+        )
+        section.extra_keys = frozenset({Qt.Key.Key_Left, Qt.Key.Key_Right})
+        self.manager.register(owner, section)
+
+        mock_qapp.widgetAt.return_value = clicked
+        mock_qapp.focusWidget.return_value = clicked
+
+        self.manager.eventFilter(None, _FakeMouseEvent())
+        first = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
+        assert first is True
+        clicked.setFocus.assert_called_once()
+        assert navigate_calls == [], "first press after a click must not also step navigate()"
+
+        second = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
+        assert second is True
+        assert navigate_calls == [(Qt.Key.Key_Left, clicked)], "second press should step normally"
+
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
+    def test_reclicking_the_already_focused_widget_still_restores_the_ring(self, mock_qapp):
+        """Regression: clicking the exact widget that's already keyboard-
+        focused makes setFocus() a real Qt no-op -- no FocusIn fires, so
+        the ring-reveal that normally rides on FocusIn never runs, and the
+        ring stays stuck in the MouseButtonPress-suppressed state. Without
+        a manual restore, every subsequent "reveal-only" press after a
+        re-click looks like nothing happened, repeating forever.
+        """
+        clicked = _fake_widget("clicked")
+        clicked.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
+        clicked.isVisible.return_value = True
+        clicked.isEnabled.return_value = True
+        clicked.parentWidget.return_value = None
+        # Ring already suppressed, mirroring MouseButtonPress's own
+        # suppression of whatever was focused before this click.
+        clicked._keyboard_focus = False
+        clicked._last_focus_reason = Qt.FocusReason.MouseFocusReason
+
+        owner = _fake_widget("owner")
+        section = _make_section(owns_fn=lambda w: w is clicked)
+        self.manager.register(owner, section)
+
+        mock_qapp.widgetAt.return_value = clicked
+        # Already the focused widget *before* this click -- setFocus()
+        # below will be a no-op from Qt's perspective.
+        mock_qapp.focusWidget.return_value = clicked
+
+        self.manager.eventFilter(None, _FakeMouseEvent())
+        result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
+        assert result is True
+        clicked.setFocus.assert_called_once()
+        assert clicked._keyboard_focus is True
+        assert clicked._last_focus_reason == Qt.FocusReason.OtherFocusReason
+        clicked.update.assert_called_once()
+
+    @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_click_on_bare_owner_falls_back_to_focus_first(self, mock_qapp):
         """A click that only resolves to a section's bare owner widget
         (e.g. row padding, or an owner container with no matching content
@@ -593,6 +669,55 @@ class TestSessionPickerSection:
     def test_focus_last_empty(self):
         section, _, _ = self._make_page([])
         assert section.focus_last() is False
+
+    def test_focus_nearest_picks_card_closest_to_pos(self):
+        """focus_nearest() must select the card whose global center y is
+        closest to the given pos y, not the first or last card."""
+        section, _, buttons = self._make_page(["top", "mid", "bot"])
+        # Mock mapToGlobal so each card's center y is distinct.
+        # top=100, mid=300, bot=500
+        for label, btn in buttons:
+            center_y = {"top": 100, "mid": 300, "bot": 500}[label]
+            btn.mapToGlobal.return_value = SimpleNamespace(
+                y=lambda cy=center_y: cy,
+            )
+            btn.rect.return_value = SimpleNamespace(
+                center=lambda: SimpleNamespace(y=lambda: 0),
+            )
+
+        pos = SimpleNamespace(y=lambda: 280)  # nearest to mid (300)
+        result = section.focus_nearest(pos)
+        assert result is True
+        buttons[1][1].setFocus.assert_called_once()
+
+    def test_focus_nearest_picks_first_when_closest(self):
+        section, _, buttons = self._make_page(["a", "b", "c"])
+        for i, (_, btn) in enumerate(buttons):
+            btn.mapToGlobal.return_value = SimpleNamespace(y=lambda i=i: i * 100)
+            btn.rect.return_value = SimpleNamespace(
+                center=lambda: SimpleNamespace(y=lambda: 0),
+            )
+        pos = SimpleNamespace(y=lambda: 10)  # closest to a (0)
+        result = section.focus_nearest(pos)
+        assert result is True
+        buttons[0][1].setFocus.assert_called_once()
+
+    def test_focus_nearest_picks_last_when_closest(self):
+        section, _, buttons = self._make_page(["a", "b", "c"])
+        for i, (_, btn) in enumerate(buttons):
+            btn.mapToGlobal.return_value = SimpleNamespace(y=lambda i=i: i * 100)
+            btn.rect.return_value = SimpleNamespace(
+                center=lambda: SimpleNamespace(y=lambda: 0),
+            )
+        pos = SimpleNamespace(y=lambda: 290)  # closest to c (200)
+        result = section.focus_nearest(pos)
+        assert result is True
+        buttons[2][1].setFocus.assert_called_once()
+
+    def test_focus_nearest_empty_returns_false(self):
+        section, _, _ = self._make_page([])
+        pos = SimpleNamespace(y=lambda: 0)
+        assert section.focus_nearest(pos) is False
 
 
 # ---------------------------------------------------------------------------

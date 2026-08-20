@@ -125,6 +125,28 @@ class SessionPickerSection:
             return True
         return False
 
+    def focus_nearest(self, pos) -> bool:
+        """Land on whichever card is vertically closest to *pos*.
+
+        Distinct from ``focus_first``/``focus_last``: those always pick a
+        *fixed* card (first/last) because ``ref_x`` is meaningless for a
+        single-column list -- they model "entering this section from
+        above/below" for cross-section Up/Down handoff, not an arbitrary
+        click. A mouse click can land next to any card in the list, so a
+        click-driven re-anchor (``NavigationManager._realign_to_last_click``)
+        needs the card nearest the click's *y*, not a card fixed by entry
+        direction.
+        """
+        cards = self._page._card_entries()
+        if not cards:
+            return False
+        target = min(
+            cards,
+            key=lambda entry: abs(entry[1].mapToGlobal(entry[1].rect().center()).y() - pos.y()),
+        )
+        target[1].setFocus(Qt.FocusReason.OtherFocusReason)
+        return True
+
 
 class TabStripSection:
     """Arrow-key navigation for the workspace tab strip.
