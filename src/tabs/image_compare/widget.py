@@ -90,6 +90,26 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             signal.connect(self._on_first_visual_frame)
         except Exception:
             pass
+        # Unlike multi_compare's widget.py, nothing here previously dismissed
+        # ``image_startup_placeholder`` on the canvas's first real frame --
+        # it stayed shown (and raised) over the canvas forever, painted at
+        # whatever geometry ``sync_geometry()`` last captured (showEvent
+        # time, before layout finishes settling after text-controls-row
+        # visibility changes). The gap between that stale geometry and the
+        # canvas's final, larger size read as "top of the canvas shows the
+        # theme background, only a bottom strip shows the real comparison".
+        # Mirror multi_compare's ``_on_first_frame``.
+        first_frame_signal = getattr(canvas, "firstFrameRendered", None)
+        if first_frame_signal is not None:
+            try:
+                first_frame_signal.connect(self._on_first_frame_hide_placeholder)
+            except Exception:
+                pass
+
+    def _on_first_frame_hide_placeholder(self) -> None:
+        placeholder = getattr(self, "image_startup_placeholder", None)
+        if placeholder is not None:
+            placeholder.hide()
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
