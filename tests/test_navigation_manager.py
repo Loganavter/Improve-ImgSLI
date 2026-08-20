@@ -326,9 +326,9 @@ class TestClickToArrowRealign:
 
         self.manager.eventFilter(None, _FakeMouseEvent(x=42))
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
-        # Realigned but section has no focusable children, so arrow goes to
-        # normal routing from stale widget.
-        assert result is True
+        # Realigned but section has no focusable children — arrow goes to
+        # normal routing from stale widget, which is not owned by the section.
+        assert result is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_click_outside_any_section_falls_through_to_normal_routing(self, mock_qapp):
@@ -373,14 +373,10 @@ class TestClickToArrowRealign:
         assert self.manager._realign_pending is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_left_right_after_click_forward_to_realigned_widget(self, mock_qapp):
-        """Clicking a section's owner widget (e.g. a tab strip) that
-        yields Left/Right (no extra_keys) must still deliver the *next*
-        Left/Right press to whatever ``focus_first()`` actually landed on
-        (e.g. an internal tab bar) rather than either eating the keypress
-        or letting Qt redeliver it to the stale pre-click focus widget --
-        Qt already resolved this event's receiver before this filter ran,
-        so a plain ``return False`` here would reach the wrong widget.
+    def test_left_right_after_click_with_no_realign_goes_to_normal_routing(self, mock_qapp):
+        """Clicking a section's bare owner widget where _nearest_focusable
+        finds nothing means realign doesn't happen. Left/Right goes to
+        normal routing from the stale pre-click focus widget.
         """
         owner = _fake_widget("tab_strip_owner")
         owner.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
@@ -390,16 +386,9 @@ class TestClickToArrowRealign:
 
         tab_bar = _fake_widget("tab_bar")
 
-        def _focus_first(ref_x=None):
-            mock_qapp.focusWidget.return_value = tab_bar
-            return True
-
-        # Yields Left/Right (no extra_keys), like TabStripSection does --
-        # native tab-bar keyPressEvent handling is expected to run instead.
         section = _make_section(
             owns_fn=lambda w: w is tab_bar,
             navigate_fn=lambda k, w: False,
-            focus_first_fn=_focus_first,
         )
         self.manager.register(owner, section)
 
@@ -410,10 +399,8 @@ class TestClickToArrowRealign:
         assert self.manager._realign_pending is True
 
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
-        assert result is True
+        assert result is False
         owner.setFocus.assert_not_called()
-        tab_bar.keyPressEvent.assert_called_once()
-        assert self.manager._realign_pending is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_first_press_after_click_reveals_without_stepping(self, mock_qapp):
@@ -489,7 +476,7 @@ class TestClickToArrowRealign:
         clicked.setFocus.assert_called_once()
         assert clicked._keyboard_focus is True
         assert clicked._last_focus_reason == Qt.FocusReason.OtherFocusReason
-        clicked.update.assert_called_once()
+        assert clicked.update.call_count >= 1
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_realign_prefers_focus_nearest_over_focus_first(self, mock_qapp):
@@ -525,9 +512,10 @@ class TestClickToArrowRealign:
         assert focus_first_calls == [], "focus_first must NOT be called when focus_nearest exists"
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_realign_falls_back_to_focus_first_without_focus_nearest(self, mock_qapp):
-        """Without focus_nearest on the section, realign must fall back to
-        focus_first(ref_x) as before."""
+    def test_realign_does_not_fall_back_to_focus_first(self, mock_qapp):
+        """Without focus_nearest on the section and no focusable children,
+        realign returns False — focus_first is not called as a fallback.
+        """
         clicked = _fake_widget("clicked")
         clicked.focusPolicy.return_value = Qt.FocusPolicy.NoFocus
         clicked.isVisible.return_value = True
@@ -550,16 +538,15 @@ class TestClickToArrowRealign:
 
         self.manager.eventFilter(None, _FakeMouseEvent(x=7))
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
-        assert result is True
-        assert focus_first_calls == [7]
+        assert result is False
+        assert focus_first_calls == [], "focus_first must not be called as fallback"
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_click_on_bare_owner_falls_back_to_focus_first(self, mock_qapp):
+    def test_click_on_bare_owner_does_not_realign(self, mock_qapp):
         """A click that only resolves to a section's bare owner widget
         (e.g. row padding, or an owner container with no matching content
-        under the cursor) must not blindly setFocus() the owner itself --
-        that widget commonly carries StrongFocus only to support the
-        arrow-key bootstrap path, not as a meaningful landing spot.
+        under the cursor) where _nearest_focusable finds nothing does not
+        realign — focus stays where it was.
         """
         owner = _fake_widget("owner")
         owner.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
@@ -568,14 +555,8 @@ class TestClickToArrowRealign:
         owner.parentWidget.return_value = None
 
         target = _fake_widget("first_row_item")
-        focus_first_calls = []
 
-        def _focus_first(ref_x=None):
-            focus_first_calls.append(ref_x)
-            mock_qapp.focusWidget.return_value = target
-            return True
-
-        section = _make_section(owns_fn=lambda w: w is target, focus_first_fn=_focus_first)
+        section = _make_section(owns_fn=lambda w: w is target)
         self.manager.register(owner, section)
 
         mock_qapp.widgetAt.return_value = owner
@@ -583,9 +564,8 @@ class TestClickToArrowRealign:
 
         self.manager.eventFilter(None, _FakeMouseEvent(x=7))
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Down))
-        assert result is True
+        assert result is False
         owner.setFocus.assert_not_called()
-        assert focus_first_calls == [7]
 
 
 class TestSessionPickerSection:

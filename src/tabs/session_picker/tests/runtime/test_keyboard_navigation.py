@@ -202,6 +202,9 @@ def test_down_from_last_create_card_focuses_first_header_button(
     qapp, tmp_path, monkeypatch
 ):
     """Down from last create-card focuses the first header button on the shelf."""
+    from core.navigation import NavigationManager
+    from core.navigation_sections import SessionPickerSection
+
     widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
     entries = widget._card_entries()
     header = widget._recent_panel._header
@@ -210,37 +213,54 @@ def test_down_from_last_create_card_focuses_first_header_button(
         if b.isVisible()
     )
 
-    entries[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
-    QTest.qWait(20)
-    QTest.keyClick(entries[-1][1], Qt.Key.Key_Down)
-    QTest.qWait(20)
-    assert QApplication.focusWidget() is first_btn
-    widget.deleteLater()
+    manager = NavigationManager.get_instance()
+    section = SessionPickerSection(widget)
+    manager.register(widget, section)
+    try:
+        entries[-1][1].setFocus(Qt.FocusReason.OtherFocusReason)
+        QTest.qWait(20)
+        QTest.keyClick(entries[-1][1], Qt.Key.Key_Down)
+        QTest.qWait(20)
+        assert QApplication.focusWidget() is first_btn
+    finally:
+        manager.unregister(section)
+        NavigationManager._instance = None
+        widget.deleteLater()
 
 
 def test_up_from_first_recent_item_returns_to_last_create_card(
     qapp, tmp_path, monkeypatch
 ):
+    from core.navigation import NavigationManager
+    from core.navigation_sections import SessionPickerSection
+
     widget, records = _build_page_with_recent(qapp, tmp_path, monkeypatch)
     entries = widget._card_entries()
     first_recent = widget._recent_panel._items._cards_by_path.get(records[0].path)
     assert first_recent is not None
 
-    widget._recent_panel._items.navigate_focus(1)
-    QTest.qWait(20)
-    assert QApplication.focusWidget() is first_recent
+    manager = NavigationManager.get_instance()
+    section = SessionPickerSection(widget)
+    manager.register(widget, section)
+    try:
+        widget._recent_panel._items.navigate_focus(1)
+        QTest.qWait(20)
+        assert QApplication.focusWidget() is first_recent
 
-    QTest.keyClick(first_recent, Qt.Key.Key_Up)
-    QTest.qWait(20)
-    header = widget._recent_panel._header
-    last_visible_btn = next(
-        b for b in reversed(
-            (header.sort_button, header.sort_order_button, header.view_button)
+        QTest.keyClick(first_recent, Qt.Key.Key_Up)
+        QTest.qWait(20)
+        header = widget._recent_panel._header
+        last_visible_btn = next(
+            b for b in reversed(
+                (header.sort_button, header.sort_order_button, header.view_button)
+            )
+            if b.isVisible()
         )
-        if b.isVisible()
-    )
-    assert QApplication.focusWidget() is last_visible_btn
-    widget.deleteLater()
+        assert QApplication.focusWidget() is last_visible_btn
+    finally:
+        manager.unregister(section)
+        NavigationManager._instance = None
+        widget.deleteLater()
 
 
 def test_header_arrows_navigate_between_controls(qapp, tmp_path, monkeypatch):
