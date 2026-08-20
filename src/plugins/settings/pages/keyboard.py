@@ -306,22 +306,28 @@ def build(dialog, p):
         group.add_layout(group_layout)
         groups_layout.addWidget(group)
 
-    keyboard_scroll_area = dialog._page_scroll_area(dialog.page_keyboard)
-    dialog._keyboard_nav_filter = _KeyboardRowNavFilter(
-        dialog, row_widgets, keyboard_scroll_area
+    # Arrow-key row navigation goes through the app-wide NavigationManager
+    # (same mechanism the main window's tabs/toolbars use — see
+    # ToolbarRowsSection), not a page-local event filter: NavigationManager
+    # owns arrow-key consumption on QApplication exclusively (see its own
+    # docstring's Contract) — a widget-level filter would never even see the
+    # key, since NavigationManager's QApplication-level filter runs first
+    # and, if no registered section claims the focused widget, simply
+    # yields to native Qt delivery (a bare QScrollArea then just scrolls).
+    # Each row already holds two focusable buttons (capture + reset), so
+    # ToolbarRowsSection's Left/Right-within-row, Up/Down-between-rows model
+    # applies directly; row_widgets is the same list the search filter
+    # toggles visibility on, so hidden rows drop out of navigation too.
+    from core.navigation import NavigationManager
+    from sli_ui_toolkit.managers import ToolbarRowsSection
+
+    dialog._keyboard_nav_section = ToolbarRowsSection(
+        lambda: [row for row, _group, _entry in row_widgets],
+        tag="settings-keyboard",
     )
-    # Installed on both: content_widget catches an arrow key a focused
-    # capture button left unhandled (it propagates up from there — see the
-    # class docstring); the scroll area itself also needs it directly,
-    # because clicking empty space between rows/groups can leave the bare
-    # QScrollArea holding focus (no capture button focused at all), and
-    # QAbstractScrollArea's own keyPressEvent would otherwise just scroll on
-    # arrow keys instead of moving focus — content_widget's filter never
-    # sees that event since content_widget is a *child* of the scroll area,
-    # not an ancestor of it.
-    dialog.page_keyboard.content_widget.installEventFilter(dialog._keyboard_nav_filter)
-    if keyboard_scroll_area is not None:
-        keyboard_scroll_area.installEventFilter(dialog._keyboard_nav_filter)
+    NavigationManager.get_instance().register(
+        dialog.page_keyboard, dialog._keyboard_nav_section
+    )
 
     reset_all = Button(
         text=_tr(dialog, "settings.keyboard_reset_all", "Reset all shortcuts"),

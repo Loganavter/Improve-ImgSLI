@@ -16,6 +16,7 @@ from sli_ui_toolkit.managers import scaled_px
 from ui.icon_manager import AppIcon
 from ui.widgets.slider_hint import ValueSlider, ValueSliderRow
 
+from plugins.settings.nav_rows import as_nav_row, register_page_nav_rows
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
 
@@ -57,15 +58,14 @@ def build(dialog, p):
     for rb in (dialog.radio_ui_mode_beginner, dialog.radio_ui_mode_advanced, dialog.radio_ui_mode_expert):
         dialog._ui_mode_group.addButton(rb)
         row.addWidget(rb)
-    dialog.ui_mode_group.add_layout(row)
+    ui_mode_row = as_nav_row(row)
+    dialog.ui_mode_group.add_widget(ui_mode_row)
     layout.addWidget(dialog.ui_mode_group)
     {"expert": dialog.radio_ui_mode_expert, "advanced": dialog.radio_ui_mode_advanced}.get(
         p.current_ui_mode, dialog.radio_ui_mode_beginner
     ).setChecked(True)
 
     dialog.font_group = UI_FONT.widget(dialog)
-    font_radio_layout = QVBoxLayout()
-    font_radio_layout.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
     dialog.radio_font_builtin = RadioButton(
         UI_FONT.text(dialog, "settings.builtin_font")
     )
@@ -78,9 +78,27 @@ def build(dialog, p):
     UI_FONT.tag_member(dialog.radio_font_builtin, "settings.builtin_font")
     UI_FONT.tag_member(dialog.radio_font_system_default, "settings.system_default")
     UI_FONT.tag_member(dialog.radio_font_system_custom, "settings.custom")
-    for rb in (dialog.radio_font_builtin, dialog.radio_font_system_default, dialog.radio_font_system_custom):
-        font_radio_layout.addWidget(rb)
-    dialog.font_group.add_layout(font_radio_layout)
+    font_radios = (
+        dialog.radio_font_builtin,
+        dialog.radio_font_system_default,
+        dialog.radio_font_system_custom,
+    )
+    # Stacked vertically (unlike ui_mode_row's side-by-side radios above), so
+    # each radio is its own nav row -- one shared row would let Left/Right
+    # jump between them purely by x-coordinate, which is meaningless here.
+    # One row widget per radio (not one shared font_radio_layout) so
+    # as_nav_row's reparenting can't fight a layout membership -- margins
+    # match the QVBoxLayout this replaces (scaled_px(5) each side).
+    # Vertical margins stay 0 -- CustomGroupWidget's own 8px inter-row
+    # spacing is what used to separate these 3 radios inside the single
+    # font_radio_layout, so duplicating a 5px top+bottom margin on every
+    # row here would nearly double the gap between them.
+    font_radio_rows = []
+    for rb in font_radios:
+        row_widget = as_nav_row(rb)
+        row_widget.layout().setContentsMargins(scaled_px(5), 0, scaled_px(5), 0)
+        dialog.font_group.add_widget(row_widget)
+        font_radio_rows.append(row_widget)
 
     dialog.combo_font_family = ComboBox()
     UI_FONT.tag_combo(dialog.combo_font_family, "settings.custom")
@@ -139,7 +157,8 @@ def build(dialog, p):
     dialog.spin_max_length.setAlignment(Qt.AlignmentFlag.AlignCenter)
     len_layout.addWidget(dialog.spin_max_length)
     len_layout.addStretch()
-    dialog.other_ui_group.add_layout(len_layout)
+    len_row = as_nav_row(len_layout)
+    dialog.other_ui_group.add_widget(len_row)
     layout.addWidget(dialog.other_ui_group)
 
     dialog.ui_scale_group = UI_SCALE.widget(dialog)
@@ -163,8 +182,16 @@ def build(dialog, p):
     # (fixed-width pad keeps the slider's geometry stable as text changes).
     dialog.slider_ui_scale_row = ValueSliderRow(dialog.slider_ui_scale)
     scale_layout.addWidget(dialog.slider_ui_scale_row, 1)
-    dialog.ui_scale_group.add_layout(scale_layout)
+    scale_row = as_nav_row(scale_layout)
+    dialog.ui_scale_group.add_widget(scale_row)
     layout.addWidget(dialog.ui_scale_group)
+
+    register_page_nav_rows(
+        dialog,
+        dialog.page_interface,
+        [ui_mode_row, *font_radio_rows, font_combo_container, len_row, scale_row],
+        tag="settings-interface",
+    )
     dialog.pages_stack.addWidget(dialog.page_interface)
 
 

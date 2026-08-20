@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.widgets import ComboBox, Label
 
+from plugins.settings.nav_rows import as_nav_row, register_page_nav_rows
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
 from ui.icon_manager import AppIcon
@@ -40,7 +41,8 @@ def build(dialog, p):
         getattr(dialog, "active_tab", None),
     ):
         extra(dialog, p)
-    _build_render_backend_group(dialog, layout, p)
+    rows = _build_render_backend_group(dialog, layout, p)
+    register_page_nav_rows(dialog, dialog.page_perf, rows, tag="settings-performance")
     dialog.pages_stack.addWidget(dialog.page_perf)
 
 
@@ -89,7 +91,8 @@ def _build_render_backend_group(dialog, layout, p):
         dialog.combo_rhi_backend.setCurrentIndex(idx)
     row.addWidget(dialog.lbl_rhi_backend)
     row.addWidget(dialog.combo_rhi_backend, 1)
-    dialog.render_backend_group.add_layout(row)
+    backend_row = as_nav_row(row)
+    dialog.render_backend_group.add_widget(backend_row)
 
     dialog.lbl_rhi_backend_hint = Label(
         RENDER_BACKEND.text(dialog, "settings.render_backend_restart_hint")
@@ -98,9 +101,11 @@ def _build_render_backend_group(dialog, layout, p):
         dialog.lbl_rhi_backend_hint, "settings.render_backend_restart_hint"
     )
     dialog.lbl_rhi_backend_hint.setWordWrap(True)
+    # Plain label, nothing to focus -- not a nav row (see nav_rows.py).
     dialog.render_backend_group.add_widget(dialog.lbl_rhi_backend_hint)
 
     layout.addWidget(dialog.render_backend_group)
+    return [backend_row]
 
 
 SECTION = SettingsSection(

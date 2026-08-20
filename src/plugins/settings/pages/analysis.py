@@ -13,6 +13,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QSizePolicy
 from sli_ui_toolkit.widgets import CheckBox
 
+from plugins.settings.nav_rows import as_nav_row, register_page_nav_rows
 from plugins.settings.search import SearchIndex, group
 
 AUTO = group("settings.auto", "settings.autocrop_black_borders_on_load")
@@ -38,8 +39,10 @@ def build(dialog, p, *, extras_section_id: str | None = None):
             getattr(dialog, "active_tab", None),
         ):
             extra(dialog, p)
-    _build_auto_crop_group(dialog, layout, p)
-    _build_metrics_group(dialog, layout, p)
+    rows = []
+    rows += _build_auto_crop_group(dialog, layout, p)
+    rows += _build_metrics_group(dialog, layout, p)
+    register_page_nav_rows(dialog, dialog.page_analysis, rows, tag="settings-analysis")
     dialog.pages_stack.addWidget(dialog.page_analysis)
 
 
@@ -53,8 +56,10 @@ def _build_auto_crop_group(dialog, layout, p):
     dialog.crop_checkbox.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
     )
-    dialog.auto_group.add_widget(dialog.crop_checkbox)
+    crop_row = as_nav_row(dialog.crop_checkbox)
+    dialog.auto_group.add_widget(crop_row)
     layout.addWidget(dialog.auto_group)
+    return [crop_row]
 
 
 def _build_metrics_group(dialog, layout, p):
@@ -64,11 +69,14 @@ def _build_metrics_group(dialog, layout, p):
     )
     dialog.auto_psnr_checkbox.setChecked(p.auto_calculate_psnr)
     METRICS.tag_member(dialog.auto_psnr_checkbox, "settings.autocalculate_psnr")
-    dialog.metrics_group.add_widget(dialog.auto_psnr_checkbox)
+    psnr_row = as_nav_row(dialog.auto_psnr_checkbox)
+    dialog.metrics_group.add_widget(psnr_row)
     dialog.auto_ssim_checkbox = CheckBox(
         METRICS.text(dialog, "settings.autocalculate_ssim")
     )
     dialog.auto_ssim_checkbox.setChecked(p.auto_calculate_ssim)
     METRICS.tag_member(dialog.auto_ssim_checkbox, "settings.autocalculate_ssim")
-    dialog.metrics_group.add_widget(dialog.auto_ssim_checkbox)
+    ssim_row = as_nav_row(dialog.auto_ssim_checkbox)
+    dialog.metrics_group.add_widget(ssim_row)
     layout.addWidget(dialog.metrics_group)
+    return [psnr_row, ssim_row]
