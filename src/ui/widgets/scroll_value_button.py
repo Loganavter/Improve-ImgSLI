@@ -431,19 +431,11 @@ class ScrollValueButton(Button):
             # Show flyout when entering edit mode so value is visible
             if self._keyboard_edit_active:
                 self._show_flyout()
-                # Focus ring on flyout value preview when entered via Enter
-                if self._flyout is not None:
-                    self._flyout.setProperty("editActive", True)
-                    self._flyout.style().polish(self._flyout)
-                    self._flyout.update()
-                # Visual edit-mode ring on the button itself
+                # Ring only on the button itself — preview flyout is read-only, no ring
                 self.setProperty("editActive", True)
                 self.style().polish(self)
             else:
                 self._hide_flyout()
-                if self._flyout is not None:
-                    self._flyout.setProperty("editActive", False)
-                    self._flyout.style().polish(self._flyout)
                 self.setProperty("editActive", False)
                 self.style().polish(self)
             event.accept()
@@ -453,9 +445,6 @@ class ScrollValueButton(Button):
             if self._keyboard_edit_active:
                 self._keyboard_edit_active = False
                 self._hide_flyout()
-                if self._flyout is not None:
-                    self._flyout.setProperty("editActive", False)
-                    self._flyout.style().polish(self._flyout)
                 self.setProperty("editActive", False)
                 self.style().polish(self)
                 self.update()
