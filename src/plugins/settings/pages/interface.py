@@ -14,7 +14,7 @@ from sli_ui_toolkit.managers import scaled_px
 from ui.icon_manager import AppIcon
 from ui.widgets.slider_hint import ValueSlider, ValueSliderRow
 
-from plugins.settings.nav_rows import as_nav_row, register_page_nav_rows
+from plugins.settings.nav_rows import page_nav_builder, register_page_navigation
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
 
@@ -37,6 +37,7 @@ SEARCH = SearchIndex.of(UI_MODE, UI_FONT, UI_SCALE, MAX_NAME)
 
 def build(dialog, p):
     dialog.page_interface, layout = dialog._create_scrollable_page()
+    builder = page_nav_builder(dialog, tag="settings-interface")
     dialog.ui_mode_group = UI_MODE.widget(dialog)
     row = QHBoxLayout()
     row.setContentsMargins(scaled_px(5), scaled_px(5), scaled_px(5), scaled_px(5))
@@ -56,7 +57,7 @@ def build(dialog, p):
     for rb in (dialog.radio_ui_mode_beginner, dialog.radio_ui_mode_advanced, dialog.radio_ui_mode_expert):
         dialog._ui_mode_group.addButton(rb)
         row.addWidget(rb)
-    ui_mode_row = as_nav_row(row)
+    ui_mode_row = builder.row(row)
     dialog.ui_mode_group.add_widget(ui_mode_row)
     layout.addWidget(dialog.ui_mode_group)
     {"expert": dialog.radio_ui_mode_expert, "advanced": dialog.radio_ui_mode_advanced}.get(
@@ -92,18 +93,16 @@ def build(dialog, p):
     # each radio is its own nav row -- one shared row would let Left/Right
     # jump between them purely by x-coordinate, which is meaningless here.
     # One row widget per radio (not one shared font_radio_layout) so
-    # as_nav_row's reparenting can't fight a layout membership -- margins
+    # builder.row()'s reparenting can't fight a layout membership -- margins
     # match the QVBoxLayout this replaces (scaled_px(5) each side).
     # Vertical margins stay 0 -- CustomGroupWidget's own 8px inter-row
     # spacing is what used to separate these 3 radios inside the single
     # font_radio_layout, so duplicating a 5px top+bottom margin on every
     # row here would nearly double the gap between them.
-    font_radio_rows = []
     for rb in font_radios:
-        row_widget = as_nav_row(rb)
+        row_widget = builder.row(rb)
         row_widget.layout().setContentsMargins(scaled_px(5), 0, scaled_px(5), 0)
         dialog.font_group.add_widget(row_widget)
-        font_radio_rows.append(row_widget)
 
     dialog.combo_font_family = ComboBox()
     UI_FONT.tag_combo(dialog.combo_font_family, "settings.custom")
@@ -119,6 +118,11 @@ def build(dialog, p):
     fc_layout.addWidget(dialog.combo_font_family)
     fc_layout.addStretch()
     dialog.font_group.add_widget(font_combo_container)
+    # Already a real QWidget with its own layout -- builder.row() only
+    # matters for wrapping a bare control/layout, so this goes straight
+    # through extend() instead (still keeps it in the accumulated row
+    # order, unlike the old hand-assembled list this used to require).
+    builder.extend([font_combo_container])
     layout.addWidget(dialog.font_group)
 
     mode = p.current_ui_font_mode or "builtin"
@@ -162,7 +166,7 @@ def build(dialog, p):
     dialog.spin_max_length.setAlignment(Qt.AlignmentFlag.AlignCenter)
     len_layout.addWidget(dialog.spin_max_length)
     len_layout.addStretch()
-    len_row = as_nav_row(len_layout)
+    len_row = builder.row(len_layout)
     dialog.other_ui_group.add_widget(len_row)
     layout.addWidget(dialog.other_ui_group)
 
