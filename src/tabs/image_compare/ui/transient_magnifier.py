@@ -42,6 +42,16 @@ class MagnifierVisibilityController:
         self.widget.magnifier_visibility_flyout.btn_center.installEventFilter(host)
         self.widget.magnifier_visibility_flyout.btn_right.installEventFilter(host)
         btn.toggled.connect(self.on_toggle_with_hover)
+        # Preview flyout — Down from btn_magnifier enters via extension_below
+        # (ToolbarRowsSection.navigate checks extension_below before row jump).
+        try:
+            from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+
+            NavigationManager.get_instance().link_below(
+                btn, self.widget.magnifier_visibility_flyout
+            )
+        except Exception:
+            pass
 
     def update_states(self):
         host = self.manager.host
@@ -105,9 +115,22 @@ class MagnifierVisibilityController:
         btn = getattr(self.widget, "btn_magnifier", None)
         if btn is None:
             return
+        # Preview — keep focus on anchor (btn_magnifier) with ring, don't
+        # steal into flyout. Down/Enter from anchor (extension_below) will
+        # explicitly enter via focus_first_child with ring.
         self.widget.magnifier_visibility_flyout.show_for_button(
-            btn, host.parent_widget, hover_delay_ms=0
+            btn,
+            host.parent_widget,
+            hover_delay_ms=0,
+            grab_focus=False,
+            register_nav_section=True,
         )
+        try:
+            flyout = self.widget.magnifier_visibility_flyout
+            if hasattr(flyout, "_keyboard_navigation_active"):
+                flyout._keyboard_navigation_active = False
+        except Exception:
+            pass
         host._magn_popup_open = True
         host._magn_popup_last_open_ts = time.monotonic()
         if reason == "wheel":
@@ -116,19 +139,6 @@ class MagnifierVisibilityController:
             )
         else:
             self.widget.magnifier_visibility_flyout.cancel_auto_hide()
-        # Preview — keep focus on anchor (btn_magnifier) with ring, don't
-        # steal into flyout. Down/Enter from anchor (extension_below) will
-        # explicitly enter via focus_first_child with ring.
-        try:
-            flyout = self.widget.magnifier_visibility_flyout
-            if hasattr(flyout, "_keyboard_navigation_active"):
-                flyout._keyboard_navigation_active = False
-            # Ensure anchor keeps keyboard focus ring
-            btn = getattr(self.widget, "btn_magnifier", None)
-            if btn is not None and btn.hasFocus():
-                btn.update()
-        except Exception:
-            pass
 
     def hide(self, reason: str = "explicit"):
         host = self.manager.host
