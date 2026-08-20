@@ -112,20 +112,21 @@ class MagnifierVisibilityController:
         # explicitly enter via focus_first_child with ring.
         # register=True for keyboard preview so Down can enter, False for mouse
         # hover (user request: both top flyouts now open on hover).
+        # Like bottom MagnifierSettingsFlyout: preview keeps focus on anchor
+        # (grab_focus=False) but we still register for arrow routing so Down/Up
+        # can hand off via extension_below. Keep _keyboard_navigation_active
+        # tied to input modality (showEvent sets it from last_input_was_keyboard)
+        # instead of forcing False — keyboard-driven open should allow
+        # Left/Right inside the toggle immediately, hover open should stay
+        # preview-only (mirrors bottom panel's zone logic).
         self.widget.magnifier_visibility_flyout.show_for_button(
             btn,
             host.parent_widget,
             hover_delay_ms=0,
             grab_focus=False,
-            register_nav_section=True,
+            register_nav_section=False,
             animation="none",
         )
-        try:
-            flyout = self.widget.magnifier_visibility_flyout
-            if hasattr(flyout, "_keyboard_navigation_active"):
-                flyout._keyboard_navigation_active = False
-        except Exception:
-            pass
         host._magn_popup_open = True
         host._magn_popup_last_open_ts = time.monotonic()
         if reason == "wheel":
@@ -200,10 +201,44 @@ class MagnifierVisibilityController:
                 self._hover_timer.start(AppConstants.TRANSIENT_HOVER_OPEN_DELAY_MS)
             return False
         if et == QEvent.Type.FocusOut:
-            # Don't hide immediately when focus moves to another toolbar
-            # control — the flyout is a preview, should stay while focus is
-            # anywhere in the magnifier group+flyout unit. Hide is handled
-            # via hover leave / explicit Esc, not FocusOut.
+            # Mirror bottom MagnifierSettingsHoverController: stay open while
+            # focus is inside btn+flyout, hide when it leaves (keyboard-driven).
+            # Without this, Up→enter keeps flyout alive but Up→previous-row
+            # would never close it; the hover-leave timer alone is too slow for
+            # keyboard.
+            from PySide6.QtWidgets import QApplication as _QApp
+
+            _new = _QApp.focusWidget()
+            _flyout = self.widget.magnifier_visibility_flyout
+            _still = _new is not None and (
+                _new is btn or (_flyout is not None and _flyout.isAncestorOf(_new))
+            )
+            if not _still:
+                # Keep open only if focus ring still alive on btn/flyout and
+                # last input was keyboard — same guard as bottom panel.
+                try:
+                    from sli_ui_toolkit.ui.managers.navigation_manager import (
+                        NavigationManager as _NM,
+                    )
+
+                    _has_ring = bool(getattr(btn, "_keyboard_focus", False) and btn.hasFocus())
+                    if not _has_ring:
+                        # Check flyout children rings as well
+                        for _b in (
+                            getattr(_flyout, "btn_left", None),
+                            getattr(_flyout, "btn_center", None),
+                            getattr(_flyout, "btn_right", None),
+                        ):
+                            if _b is not None and getattr(_b, "_keyboard_focus", False) and _b.hasFocus():
+                                _has_ring = True
+                                break
+                    if not _has_ring or not _NM.get_instance().last_input_was_keyboard():
+                        self.hide(reason="focus_out")
+                        return False
+                except Exception:
+                    pass
+                # Still hide when focus truly left the unit
+                self.widget.magnifier_visibility_flyout.schedule_auto_hide(0)
             return False
         if et == QEvent.Type.Wheel:
             use_magnifier = bool(_query_overlay(host.store, "overlay.enabled", False))
