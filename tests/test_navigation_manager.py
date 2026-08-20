@@ -374,22 +374,34 @@ class TestClickToArrowRealign:
         assert self.manager._realign_pending is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
-    def test_left_right_after_click_are_not_hijacked(self, mock_qapp):
-        """Regression: clicking a section's owner widget (e.g. a tab strip)
-        must not make the *next* Left/Right press get swallowed by
-        realignment -- Qt has already resolved that key event's delivery
-        target before this filter runs, so consuming it here would just
-        eat the keypress instead of letting native QTabBar-style handling
-        (or a section's own extra_keys routing) receive it.
+    def test_left_right_after_click_forward_to_realigned_widget(self, mock_qapp):
+        """Clicking a section's owner widget (e.g. a tab strip) that
+        yields Left/Right (no extra_keys) must still deliver the *next*
+        Left/Right press to whatever ``focus_first()`` actually landed on
+        (e.g. an internal tab bar) rather than either eating the keypress
+        or letting Qt redeliver it to the stale pre-click focus widget --
+        Qt already resolved this event's receiver before this filter ran,
+        so a plain ``return False`` here would reach the wrong widget.
         """
         owner = _fake_widget("tab_strip_owner")
         owner.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
         owner.isVisible.return_value = True
         owner.isEnabled.return_value = True
         owner.parentWidget.return_value = None
-        # Yields Left/Right, like TabStripSection does -- native QTabBar
-        # handling is expected to run instead.
-        section = _make_section(owns_fn=lambda w: False, navigate_fn=lambda k, w: False)
+
+        tab_bar = _fake_widget("tab_bar")
+
+        def _focus_first(ref_x=None):
+            mock_qapp.focusWidget.return_value = tab_bar
+            return True
+
+        # Yields Left/Right (no extra_keys), like TabStripSection does --
+        # native tab-bar keyPressEvent handling is expected to run instead.
+        section = _make_section(
+            owns_fn=lambda w: w is tab_bar,
+            navigate_fn=lambda k, w: False,
+            focus_first_fn=_focus_first,
+        )
         self.manager.register(owner, section)
 
         mock_qapp.widgetAt.return_value = owner
@@ -399,11 +411,10 @@ class TestClickToArrowRealign:
         assert self.manager._realign_pending is True
 
         result = self.manager.eventFilter(None, _FakeKeyEvent(Qt.Key.Key_Left))
-        # Not intercepted -- passes through for native handling, and the
-        # pending realignment survives for the next Up/Down.
-        assert result is False
+        assert result is True
         owner.setFocus.assert_not_called()
-        assert self.manager._realign_pending is True
+        tab_bar.keyPressEvent.assert_called_once()
+        assert self.manager._realign_pending is False
 
     @patch("sli_ui_toolkit.ui.managers.navigation_manager.QApplication")
     def test_click_on_bare_owner_falls_back_to_focus_first(self, mock_qapp):
@@ -419,11 +430,15 @@ class TestClickToArrowRealign:
         owner.isEnabled.return_value = True
         owner.parentWidget.return_value = None
 
+        target = _fake_widget("first_row_item")
         focus_first_calls = []
-        section = _make_section(
-            owns_fn=lambda w: False,
-            focus_first_fn=lambda ref_x: (focus_first_calls.append(ref_x) or True),
-        )
+
+        def _focus_first(ref_x=None):
+            focus_first_calls.append(ref_x)
+            mock_qapp.focusWidget.return_value = target
+            return True
+
+        section = _make_section(owns_fn=lambda w: w is target, focus_first_fn=_focus_first)
         self.manager.register(owner, section)
 
         mock_qapp.widgetAt.return_value = owner
