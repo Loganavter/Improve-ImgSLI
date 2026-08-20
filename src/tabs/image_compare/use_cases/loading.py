@@ -11,208 +11,25 @@ from sli_ui_toolkit.i18n import get_current_language, tr
 
 logger = logging.getLogger("ImproveImgSLI")
 
-# Progress checkpoints for the "loading full version of image" toast: 0 at
-# the quick preview, DECODE_DONE_PROGRESS once the full-res decode lands,
-# PYRAMID_START_PROGRESS..100 tracking pyramid level build-out (skipped
-# straight to 100 for stores that need no pyramid).
-DECODE_DONE_PROGRESS = 20
-PYRAMID_START_PROGRESS = 40
+# Re-export toast constants for controller binding (see _session_controller.py).
+from tabs.image_compare.use_cases.loading_toast import (  # noqa: E402
+    DECODE_DONE_PROGRESS,
+    PYRAMID_START_PROGRESS,
+    bump_loading_toast_pyramid_started,
+    finish_loading_toast,
+    finish_toast_for_unpaired_slot,
+    get_toast_manager,
+    mark_full_res_ready,
+    set_loading_toast_progress,
+    show_loading_toast,
+)
 
-
-def get_toast_manager(controller):
-    # controller.presenter is a MainWindowPresenter, not the window shell
-    # itself -- it owns main_window_app, which is where toast_manager
-    # actually lives (see ExportSaveFlowCoordinator._get_toast_manager,
-    # the same lookup used by the save-image toast).
-    toast_manager = getattr(
-        getattr(controller.presenter, "main_window_app", None), "toast_manager", None
-    )
-    if toast_manager is None:
-        logger.debug(
-            "[FullImageLoad] no toast_manager available (presenter=%r)",
-            controller.presenter,
-        )
-    return toast_manager
-
-
-def show_loading_toast(controller, image_number: int) -> None:
-    if image_number in controller._loading_toasts:
-        return
-    toast_manager = get_toast_manager(controller)
-    if toast_manager is None:
-        return
-    message = tr("msg.loading_full_image_in_progress", get_current_language())
-    try:
-        controller._loading_toasts[image_number] = toast_manager.show_toast(
-            message, duration=0, progress=0
-        )
-        logger.debug(
-            "[FullImageLoad] toast shown (slot=%s toast_id=%s msg=%r)",
-            image_number,
-            controller._loading_toasts[image_number],
-            message,
-        )
-    except Exception:
-        logger.exception("Failed to show full-image loading toast")
-
-
-def set_loading_toast_progress(controller, image_number: int, percent: int) -> None:
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.get(image_number)
-    if toast_manager is None or toast_id is None:
-        logger.debug(
-            "[FullImageLoad] skip toast update (slot=%s toast_manager=%s "
-            "toast_id=%s percent=%d)",
-            image_number,
-            toast_manager is not None,
-            toast_id,
-            percent,
-        )
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            tr("msg.loading_full_image_in_progress", get_current_language()),
-            success=False,
-            duration=0,
-            progress=max(0, min(99, percent)),
-        )
-    except Exception:
-        logger.exception("Failed to update full-image loading toast")
-
-
-def mark_full_res_ready(controller, image_number: int) -> None:
-    set_loading_toast_progress(controller, image_number, DECODE_DONE_PROGRESS)
-
-
-def bump_loading_toast_pyramid_started(controller, image_number: int) -> None:
-    set_loading_toast_progress(controller, image_number, PYRAMID_START_PROGRESS)
-
-
-def finish_loading_toast(controller, image_number: int) -> None:
-    toast_manager = get_toast_manager(controller)
-    toast_id = controller._loading_toasts.pop(image_number, None)
-    if toast_manager is None or toast_id is None:
-        return
-    try:
-        toast_manager.update_toast(
-            toast_id,
-            tr("msg.loading_full_image_done", get_current_language()),
-            success=True,
-            duration=2000,
-            progress=100,
-        )
-        logger.debug(
-            "[FullImageLoad] toast done (slot=%s toast_id=%s)",
-            image_number,
-            toast_id,
-        )
-    except Exception:
-        logger.exception("Failed to complete full-image loading toast")
-
-
-def start_pyramid_builds(controller, *stores) -> None:
-    # Called as start_pyramid_builds(controller, u1, u2) -- positional order
-    # matches image_state.image1/image2 at the call site, so slot number is
-    # simply the 1-based position here.
-    from shared.image_processing import pyramid_registry
-    from shared.image_processing.pyramid_pixel_store import estimate_total_levels
-    from shared.rendering.image_identity import image_uid
-
-    task_id = controller._unification_task_id
-    for slot_offset, store in enumerate(stores):
-        image_number = slot_offset + 1
-        # A cheap preview-resolution unify races ahead of the real
-        # full-res decode and can hit this same method with a trivial,
-        # already-complete pyramid. Only let the toast react once the
-        # slot's real decode has actually landed -- otherwise it closes
-        # over stale preview data before the real progress ever starts.
-        slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0
-        pyramid = pyramid_registry.ensure_pyramid(store)
-        if pyramid is None:
-            logger.debug(
-                "[Pyramid] skip build: no pyramid for store %dx%d",
-                getattr(store, "width", -1),
-                getattr(store, "height", -1),
-            )
-            if slot_toast_live:
-                controller._finish_loading_toast(image_number)
-            continue
-        if pyramid.is_complete():
-            logger.debug(
-                "[Pyramid] skip build: already complete for store %dx%d "
-                "(levels=%d)",
-                store.width,
-                store.height,
-                pyramid.level_count,
-            )
-            if slot_toast_live:
-                controller._finish_loading_toast(image_number)
-            continue
-        uid = image_uid(store)
-        if uid in controller._pyramid_builds:
-            logger.debug("[Pyramid] skip build: already in flight (uid=%s)", uid)
-            continue
-        controller._pyramid_builds.add(uid)
-        logger.info(
-            "[Pyramid] build started for store %dx%d (uid=%s)",
-            store.width,
-            store.height,
-            uid,
-        )
-        total_levels = estimate_total_levels(store.width, store.height)
-        if slot_toast_live:
-            controller._loading_toast_uid_slot[uid] = image_number
-            controller._bump_loading_toast_pyramid_started(image_number)
-        worker = GenericWorker(
-            controller._pyramid_build_task, pyramid, task_id, uid, total_levels
-        )
-        worker.kwargs["progress_callback"] = worker.signals.partial_result.emit
-        worker.signals.partial_result.connect(controller._on_pyramid_level_ready)
-        worker.signals.finished.connect(
-            lambda uid=uid: controller._pyramid_builds.discard(uid)
-        )
-        controller.thread_pool.start(worker)
-
-
-def pyramid_build_task(
-    controller, pyramid, task_id, uid, total_levels, progress_callback=None
-):
-    # A newer unification supersedes this pair; abort at the next strip.
-    # Base-store closure aborts independently via pyramid validity.
-    def should_abort() -> bool:
-        return task_id != controller._unification_task_id
-
-    while pyramid.build_next_level(should_abort=should_abort):
-        complete = pyramid.is_complete()
-        if progress_callback is not None:
-            progress_callback((uid, pyramid.level_count, total_levels, complete))
-    return None
-
-
-def on_pyramid_level_ready(controller, payload) -> None:
-    uid, level_count, total_levels, complete = payload
-    # Only a *completed* pyramid can flip pick_display_image from the
-    # preview tier to the tiled store — that's the only publish that
-    # needs the pick signatures dropped. Intermediate levels just need
-    # a repaint so the per-frame LOD selector can use them; a full
-    # invalidation per level caused plan re-applies mid-interaction
-    # (docs/dev/rendering/display-image-pipeline.md, preview→store flip).
-    if complete:
-        controller._invalidate_image_canvas_render_state()
-    controller._schedule_image_canvas_update()
-    image_number = controller._loading_toast_uid_slot.get(uid)
-    if image_number is None:
-        return
-    if complete:
-        controller._loading_toast_uid_slot.pop(uid, None)
-        controller._finish_loading_toast(image_number)
-    else:
-        fraction = level_count / max(total_levels, 1)
-        percent = PYRAMID_START_PROGRESS + int(
-            fraction * (100 - PYRAMID_START_PROGRESS)
-        )
-        controller._set_loading_toast_progress(image_number, percent)
+# Re-export pyramid functions for controller binding.
+from tabs.image_compare.use_cases.loading_pyramid import (  # noqa: E402
+    on_pyramid_level_ready,
+    pyramid_build_task,
+    start_pyramid_builds,
+)
 
 
 def _invalidate_diff_cache(controller) -> None:
@@ -325,20 +142,6 @@ def _defer_mixed_unify(controller, document) -> bool:
     return False
 
 
-def _finish_toast_for_unpaired_slot(controller, document, image_number: int) -> None:
-    """Unify -- and the pyramid build that normally closes the loading
-    toast -- only ever runs once both slots hold an image. When the other
-    slot has no image at all, unify will never fire, so the toast for this
-    slot would otherwise hang forever. Close it here once this slot's own
-    full-res decode has actually landed.
-    """
-    own_full = getattr(document, f"full_res_image{image_number}", None)
-    other_number = 2 if image_number == 1 else 1
-    other_path = getattr(document, f"image{other_number}_path", None)
-    if own_full is not None and not other_path:
-        controller._finish_loading_toast(image_number)
-
-
 def trigger_preview_unification(controller, image_number: int):
     if controller.presenter:
         controller.presenter.ui_batcher.schedule_batch_update(
@@ -387,7 +190,7 @@ def trigger_preview_unification(controller, image_number: int):
             controller.metrics_service.on_metrics_calculated(None)
     else:
         controller.metrics_service.on_metrics_calculated(None)
-        _finish_toast_for_unpaired_slot(controller, document, image_number)
+        finish_toast_for_unpaired_slot(controller, document, image_number)
 
     if controller.presenter:
         QTimer.singleShot(10, lambda: controller.store.emit_state_change("viewport"))
@@ -477,7 +280,7 @@ def handle_full_image_loaded(controller, full_img, path, image_number, index_in_
             controller.thread_pool.start(worker, priority=1)
         else:
             controller.metrics_service.on_metrics_calculated(None)
-            _finish_toast_for_unpaired_slot(controller, live_document, image_number)
+            finish_toast_for_unpaired_slot(controller, live_document, image_number)
 
     QTimer.singleShot(50, trigger_unification)
 
