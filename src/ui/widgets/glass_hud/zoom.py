@@ -176,7 +176,8 @@ class ZoomIndicator(GlassHUD):
         )
         self._ensure_overlay_parent(self._target_widget)
         self._position()
-        self.show()
+        if not was_visible:
+            self.show()
         self._raise_self()
         if not was_visible:
             # First time this indicator becomes visible in a while (or ever):

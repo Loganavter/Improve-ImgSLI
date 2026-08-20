@@ -165,9 +165,21 @@ class TabStripSection:
         return True
 
     def focus_first(self) -> bool:
+        # Entering from above (title bar, Down) -- land on the actual tab
+        # bar (not the wrapper strip) so its own Left/Right/Home/End
+        # handling (_AdaptiveTabBar.keyPressEvent) becomes reachable,
+        # instead of skipping straight past every tab to the add button.
+        # setFocus() on ClickFocus still works for an explicit call --
+        # only Tab-key traversal / click-to-focus semantics are affected.
+        tab_bar = getattr(self._tab_strip, "tab_bar", None)
+        if tab_bar is not None:
+            tab_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
         return self._focus_add_button()
 
     def focus_last(self) -> bool:
+        # Entering from below (session picker, Up) -- the add button is the
+        # strip's actual rightmost/last control.
         return self._focus_add_button()
 
 
