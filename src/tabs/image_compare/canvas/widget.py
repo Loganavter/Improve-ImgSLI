@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=thin-owner reason="Canvas widget thin owner — delegates to interaction/render_context/features"
 from PIL import Image as PilImage
 from PySide6.QtCore import QCoreApplication, QPoint, QPointF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QContextMenuEvent, QImage, QPixmap, QResizeEvent

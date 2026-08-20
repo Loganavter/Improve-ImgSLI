@@ -12,6 +12,7 @@ holding one ``QLabel`` -- but shown from hovering the slider's *thumb*
 specifically (via ``Slider.hoverHitTest``, not just being anywhere over the
 track/widget) instead of scroll/wheel, and kept live while the value
 changes (e.g. dragging the handle) instead of only updating on show.
+Audit-Meta: pattern=state-machine reason="single slider hint painter — custom paint + animations"
 """
 
 from __future__ import annotations

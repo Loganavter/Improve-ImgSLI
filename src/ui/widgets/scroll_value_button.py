@@ -8,6 +8,7 @@ color).
 
 Used for divider width, magnifier-divider width, and magnifier-guides width
 controls across multi_compare and image_compare toolbars.
+Audit-Meta: pattern=state-machine reason="single custom-painted control — painter pipeline owns visuals"
 """
 
 from __future__ import annotations

@@ -13,6 +13,7 @@ truth, reduced by the core ``RootReducer`` (see ``bootstrap_reducers.py``) and
 covered by the core undo/redo stacks. The standalone mode (no ``core_store``)
 keeps the historical local dispatch loop for tests. The pure ``reduce``
 function remains the reducer for both modes.
+Audit-Meta: pattern=state-machine reason="MultiCompareStore facade over Dispatcher + slot lifecycle"
 """
 
 from __future__ import annotations

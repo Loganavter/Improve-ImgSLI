@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single draw plan builder for RHI renderer"
 from __future__ import annotations
 
 from dataclasses import dataclass

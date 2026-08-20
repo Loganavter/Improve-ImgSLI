@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single rating item painter — custom control"
 from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 """App-owned rating list row (moved out of sli-ui-toolkit).
 

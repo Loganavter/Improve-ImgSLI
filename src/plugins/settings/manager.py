@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single settings manager — load/save + change propagation"
 import logging
 import os
 import shutil

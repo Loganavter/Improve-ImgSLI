@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="one frame sequencing RhiCanvasRenderer.render() — see CODE_PATTERNS When not to split"
 from __future__ import annotations
 
 import logging

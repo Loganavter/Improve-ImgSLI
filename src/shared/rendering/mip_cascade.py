@@ -9,6 +9,7 @@ a ~350-line byte-identical copy of this logic (each tab derives its own
 ``_ARRAY_LAYER_PX`` and owns its own shader directory, so everything
 tab-specific is threaded through as a constructor/call argument instead of
 assumed).
+Audit-Meta: pattern=state-machine reason="single shared mip cascade — deduped from 2x350 identical copies"
 """
 
 from __future__ import annotations

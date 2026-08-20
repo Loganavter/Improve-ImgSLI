@@ -1,4 +1,5 @@
 """Host-level title bar menus (File, Help) and platform action runners."""
+# Audit-Meta: pattern=state-machine reason="single menu controller — platform menu assembly"
 
 from __future__ import annotations
 

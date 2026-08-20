@@ -88,6 +88,7 @@ owns a ``GlassPanelRenderer`` and calls ``render_backdrops()`` once per frame,
 before the main pass opens, populating ``widget._glass_panel_sprites``; each
 HUD's own ``GlassPanelDisplayWidget`` reads its entry from that dict and
 blits it on its own, entirely outside the canvas's render pipeline.
+Audit-Meta: pattern=state-machine reason="single GPU lifecycle crop->blur->composite + readback — splitting threads rhi/sampler/panels"
 """
 
 from __future__ import annotations

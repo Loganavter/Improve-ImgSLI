@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=tiled-pipeline reason="stateless tiled diff kernels highlight/grayscale/ssim sharing workers"
 import logging
 import os
 import time

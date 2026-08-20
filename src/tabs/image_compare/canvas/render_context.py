@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single render runtime context builder for RHI"
 from __future__ import annotations
 
 import logging

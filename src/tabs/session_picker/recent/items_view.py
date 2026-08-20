@@ -1,4 +1,5 @@
 """Scrollable grid/list of recent project cards (row-window virtualized)."""
+# Audit-Meta: pattern=state-machine reason="single virtualized grid view — grid_columns/visible_window/acquire/place pipeline"
 
 from __future__ import annotations
 

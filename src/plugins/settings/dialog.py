@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=qdialog-wiring reason="one Settings QDialog — 6 pages + load/save"
 from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 import logging
 

@@ -11,6 +11,7 @@ composite handles the in-window overlay, positioning and scrolling.
 
 Find Action reveal relies on two methods mirroring the old toolkit strip:
 ``buttons()`` and ``reveal_menu_action(button, action_id)``.
+Audit-Meta: pattern=state-machine reason="single CSD menu strip — custom chrome + layout"
 """
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=qdialog-wiring reason="one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate"
 import io
 import logging
 
