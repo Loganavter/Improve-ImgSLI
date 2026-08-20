@@ -17,6 +17,8 @@ import logging
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
 
+from sli_ui_toolkit.managers import widget_label
+
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -59,7 +61,7 @@ class SessionPickerSection:
 
         logger.debug(
             "[nav-card] navigate key=%s widget=%s card_idx=%s cards=%d",
-            key, type(widget).__name__, card_idx, len(cards),
+            key, widget_label(widget), card_idx, len(cards),
         )
 
         if key == Qt.Key.Key_Down:
@@ -67,7 +69,7 @@ class SessionPickerSection:
                 if cards:
                     logger.debug(
                         "[nav-card] Down from non-card → first card (%s)",
-                        type(cards[0][1]).__name__,
+                        widget_label(cards[0][1]),
                     )
                     cards[0][1].setFocus(Qt.FocusReason.OtherFocusReason)
                     return True
@@ -148,7 +150,7 @@ class TabStripSection:
     def navigate(self, key: int, widget: QWidget) -> bool:
         logger.debug(
             "[nav-tab] navigate key=%s widget=%s",
-            key, type(widget).__name__,
+            key, widget_label(widget),
         )
         # Left/Right are handled by _AdaptiveTabBar itself — don't consume
         # them here.  Down yields to the session picker below.
