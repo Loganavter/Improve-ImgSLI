@@ -61,11 +61,25 @@ class MagnifierSettingsHoverController(QObject):
             if child.focusPolicy() != Qt.FocusPolicy.NoFocus:
                 child.installEventFilter(self)
                 self._group_buttons.add(child)
-                # Down from any group button enters this panel instead of
-                # jumping to the next toolbar row, and Up from the panel's
-                # first control returns here (see NavigationManager.link_below
-                # and ToolbarRowsSection/_navigate_focusable in the toolkit).
-                nav.link_below(child, flyout)
+                # Don't overwrite top flyouts' links (btn_magnifier -> PanelVisibility,
+                # ColorSettingsButton -> ColorOptions) — they must stay enterable
+                # via Down. Only link the remaining group buttons to the bottom panel.
+                is_top_button = False
+                try:
+                    if child is getattr(widget, "btn_magnifier", None):
+                        is_top_button = True
+                    for attr in ("btn_magnifier_color_settings", "btn_magnifier_color_settings_beginner"):
+                        if child is getattr(widget, attr, None):
+                            is_top_button = True
+                            break
+                except Exception:
+                    pass
+                if not is_top_button:
+                    # Down from any other group button enters this panel instead of
+                    # jumping to the next toolbar row, and Up from the panel's
+                    # first control returns here (see NavigationManager.link_below
+                    # and ToolbarRowsSection/_navigate_focusable in the toolkit).
+                    nav.link_below(child, flyout)
         # The color-options flyouts (btn_magnifier_color_settings[_beginner])
         # already exist at this point (built earlier in the same assemble()
         # pass, before this controller) -- other toolbar flyouts
@@ -210,9 +224,28 @@ class MagnifierSettingsHoverController(QObject):
             if panel_flyout is not None and getattr(panel_flyout, "_keyboard_navigation_active", False):
                 # Panel flyout open via keyboard — keep settings flyout open
                 return
+            # Top flyouts (PanelVisibility, ColorOptions) are part of the same
+            # magnifier unit — entering them via Down should not hide the bottom
+            # panel, otherwise the bottom would flicker when navigating to top.
+            top_inside = False
+            try:
+                for attr in ("magnifier_visibility_flyout",):
+                    tf = getattr(self.widget, attr, None)
+                    if tf is not None and tf.isAncestorOf(new_focus):
+                        top_inside = True
+                        break
+                for attr in ("btn_magnifier_color_settings", "btn_magnifier_color_settings_beginner"):
+                    btn = getattr(self.widget, attr, None)
+                    tf = getattr(btn, "flyout", None) if btn is not None else None
+                    if tf is not None and tf.isAncestorOf(new_focus):
+                        top_inside = True
+                        break
+            except Exception:
+                pass
             still_inside = new_focus is not None and (
                 new_focus in self._group_buttons
                 or (flyout is not None and flyout.isAncestorOf(new_focus))
+                or top_inside
             )
             if not still_inside:
                 # Immediate hide when focus leaves group+flyout or ring disappears

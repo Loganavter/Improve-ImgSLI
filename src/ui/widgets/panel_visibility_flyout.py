@@ -39,6 +39,14 @@ class PanelVisibilityFlyout(IndexedToggleFlyout):
         self._keyboard_navigation_active = False
         super().hideEvent(event)
 
+    def focus_first_child(self) -> bool:
+        self._keyboard_navigation_active = True
+        return super().focus_first_child()
+
+    def focus_last_child(self) -> bool:
+        self._keyboard_navigation_active = True
+        return super().focus_last_child()
+
     def keyPressEvent(self, event) -> None:
         # No keyboard handling — pure hover preview, arrow/Enter/Esc go to toolbar
         super().keyPressEvent(event)
