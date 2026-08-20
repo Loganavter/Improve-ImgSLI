@@ -19,6 +19,42 @@ class PanelVisibilityFlyout(IndexedToggleFlyout):
         self.btn_center = self.buttons[1]
         self.btn_right = self.buttons[2]
         self.btn_laser = None
+        self._keyboard_navigation_active = False
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # Only activate keyboard navigation if opened via keyboard (Enter)
+        # — hover opens should not intercept arrow keys.
+        try:
+            from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
+
+            if NavigationManager.get_instance().last_input_was_keyboard():
+                self._keyboard_navigation_active = True
+            else:
+                self._keyboard_navigation_active = False
+        except Exception:
+            self._keyboard_navigation_active = False
+
+    def hideEvent(self, event) -> None:
+        self._keyboard_navigation_active = False
+        super().hideEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        from PySide6.QtCore import Qt
+
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not self._keyboard_navigation_active:
+            self._keyboard_navigation_active = True
+            # Focus first toggle with keyboard ring
+            if self.buttons:
+                self.buttons[0].setFocus(Qt.FocusReason.OtherFocusReason)
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Escape and self._keyboard_navigation_active:
+            self._keyboard_navigation_active = False
+            self.hide()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def set_mode_and_states(
         self,

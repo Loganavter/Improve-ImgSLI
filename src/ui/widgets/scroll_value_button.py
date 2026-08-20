@@ -256,6 +256,7 @@ class ScrollValueButton(Button):
         self._flyout_hide_timer = QTimer()
         self._flyout_hide_timer.setSingleShot(True)
         self._flyout_hide_timer.timeout.connect(self._hide_flyout)
+        self._keyboard_edit_active = False
 
         regions, split = self._build_regions()
         super().__init__(
@@ -420,18 +421,69 @@ class ScrollValueButton(Button):
         self._step_value(1 if delta > 0 else -1)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
-        # Mirrors wheelEvent's step direction (scroll up == Key_Up == +1) so
-        # a control that got keyboard focus via arrow-key ring navigation
-        # can still be adjusted without a mouse -- otherwise Up/Down while
-        # focused here does nothing (NavigationManager's ToolbarRowsSection
-        # claims Up/Down for row-to-row navigation everywhere else, but
-        # trial-dispatches to this handler first and respects accept()).
         key = event.key()
-        if key in (Qt.Key.Key_Up, Qt.Key.Key_Down):
-            self._step_value(1 if key == Qt.Key.Key_Up else -1)
+        # Enter toggles keyboard edit mode — arrows only adjust value after
+        # explicit activation, otherwise they navigate (Left/Right → next
+        # button, Up/Down → next row). This prevents swallowing navigation
+        # without user intent and keeps flyouts open.
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._keyboard_edit_active = not self._keyboard_edit_active
+            # Show flyout when entering edit mode so value is visible
+            if self._keyboard_edit_active:
+                self._show_flyout()
+                # Focus ring on flyout value preview when entered via Enter
+                if self._flyout is not None:
+                    self._flyout.setProperty("editActive", True)
+                    self._flyout.style().polish(self._flyout)
+                    self._flyout.update()
+                # Visual edit-mode ring on the button itself
+                self.setProperty("editActive", True)
+                self.style().polish(self)
+            else:
+                self._hide_flyout()
+                if self._flyout is not None:
+                    self._flyout.setProperty("editActive", False)
+                    self._flyout.style().polish(self._flyout)
+                self.setProperty("editActive", False)
+                self.style().polish(self)
+            event.accept()
+            self.update()
+            return
+        if key == Qt.Key.Key_Escape:
+            if self._keyboard_edit_active:
+                self._keyboard_edit_active = False
+                self._hide_flyout()
+                if self._flyout is not None:
+                    self._flyout.setProperty("editActive", False)
+                    self._flyout.style().polish(self._flyout)
+                self.setProperty("editActive", False)
+                self.style().polish(self)
+                self.update()
+                event.accept()
+                return
+            # Even when not in edit mode, Escape should hide the preview flyout
+            # (e.g. after wheel) and not propagate to close unrelated flyouts
+            if self._flyout is not None and self._flyout.isVisible():
+                self._hide_flyout()
+                event.accept()
+                return
+        if key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right):
+            if not self._keyboard_edit_active:
+                # Not in edit mode — let navigation handle it (move focus)
+                super().keyPressEvent(event)
+                return
+            # In edit mode — Up/Right increment, Down/Left decrement
+            if key in (Qt.Key.Key_Up, Qt.Key.Key_Right):
+                self._step_value(1)
+            else:
+                self._step_value(-1)
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802
+        self._keyboard_edit_active = False
+        super().focusOutEvent(event)
 
     def _step_value(self, step: int) -> None:
         new_value = max(self._min_value, min(self._max_value, self._value + step))
@@ -578,6 +630,15 @@ class ScrollValueButton(Button):
         if not self._is_scrolling:
             self._is_scrolling = True
             self._sync_regions()
+        # _ScrollValueFlyout is a transient value preview, not a navigation
+        # target — never intercept arrow keys. Ensure it never registers a
+        # navigation section that would steal Up/Down from the toolbar.
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+
+            NavigationManager.get_instance().unregister(self._flyout)
+        except Exception:
+            pass
 
     def _hide_flyout(self) -> None:
         self._flyout_hide_timer.stop()
