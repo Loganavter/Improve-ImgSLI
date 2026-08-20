@@ -732,25 +732,23 @@ class TestSessionPickerSection:
         section, _, _ = self._make_page([])
         assert section.focus_last() is False
 
-    def _make_focusable(self, name, global_center_y, visible=True, enabled=True, height=76):
+    def _make_focusable(self, name, local_center_y, visible=True, enabled=True):
+        """Create a mock widget whose mapTo(page, center).y() returns local_center_y."""
         w = MagicMock()
         w._name = name
         w.focusPolicy.return_value = Qt.FocusPolicy.StrongFocus
         w.isVisible.return_value = visible
         w.isEnabled.return_value = enabled
-        w.mapToGlobal.return_value = SimpleNamespace(
-            y=lambda cy=global_center_y: cy,
+        w.mapTo.return_value = SimpleNamespace(
+            y=lambda cy=local_center_y: cy,
         )
-        w.rect.return_value = SimpleNamespace(
-            center=lambda: SimpleNamespace(y=lambda: 0),
-            height=lambda h=height: h,
-        )
+        w.findChildren.return_value = []
         return w
 
-    def test_focus_nearest_picks_nearest_above(self):
-        """When the click is at y=280 and widgets are at y=100/300/500,
-        the nearest *above* (≤ 280) is the one at y=100."""
+    def test_focus_nearest_picks_nearest(self):
+        """Click at y=280, widgets at local y=100/300/500 → picks y=300 (nearest)."""
         section, page, _ = self._make_page([])
+        page.mapFromGlobal.return_value = SimpleNamespace(y=lambda: 280)
         w1 = self._make_focusable("a", 100)
         w2 = self._make_focusable("b", 300)
         w3 = self._make_focusable("c", 500)
@@ -759,11 +757,12 @@ class TestSessionPickerSection:
         pos = SimpleNamespace(y=lambda: 280)
         result = section.focus_nearest(pos)
         assert result is True
-        w1.setFocus.assert_called_once()
+        w2.setFocus.assert_called_once()
 
-    def test_focus_nearest_picks_nearest_above_when_multiple_qualify(self):
-        """Click at y=350, widgets at y=100/300/500 → picks y=300 (closest above)."""
+    def test_focus_nearest_picks_nearest_when_multiple_qualify(self):
+        """Click at y=350, widgets at y=100/300/500 → picks y=300 (nearest)."""
         section, page, _ = self._make_page([])
+        page.mapFromGlobal.return_value = SimpleNamespace(y=lambda: 350)
         w1 = self._make_focusable("a", 100)
         w2 = self._make_focusable("b", 300)
         w3 = self._make_focusable("c", 500)
@@ -774,22 +773,22 @@ class TestSessionPickerSection:
         assert result is True
         w2.setFocus.assert_called_once()
 
-    def test_focus_nearest_falls_back_when_all_below(self):
-        """Click at y=50, all cards below → returns False so the toolkit's
-        generic fallback can search the full widget tree."""
+    def test_focus_nearest_picks_nearest_even_when_above_all(self):
+        """Click at y=50, all widgets below at y=100/300 → picks y=100."""
         section, page, _ = self._make_page([])
+        page.mapFromGlobal.return_value = SimpleNamespace(y=lambda: 50)
         w1 = self._make_focusable("a", 100)
         w2 = self._make_focusable("b", 300)
         page.findChildren.return_value = [w1, w2]
-        # _card_entries returns the same widgets as cards
-        page._card_entries.return_value = [("a", w1), ("b", w2)]
 
         pos = SimpleNamespace(y=lambda: 50)
         result = section.focus_nearest(pos)
-        assert result is False
+        assert result is True
+        w1.setFocus.assert_called_once()
 
     def test_focus_nearest_skips_hidden_and_disabled(self):
         section, page, _ = self._make_page([])
+        page.mapFromGlobal.return_value = SimpleNamespace(y=lambda: 250)
         w1 = self._make_focusable("hidden", 100, visible=False)
         w2 = self._make_focusable("disabled", 200, enabled=False)
         w3 = self._make_focusable("ok", 300)
@@ -802,11 +801,12 @@ class TestSessionPickerSection:
 
     def test_focus_nearest_skips_nofocus(self):
         section, page, _ = self._make_page([])
+        page.mapFromGlobal.return_value = SimpleNamespace(y=lambda: 150)
         w1 = MagicMock()
         w1.focusPolicy.return_value = Qt.FocusPolicy.NoFocus
         w1.isVisible.return_value = True
         w1.isEnabled.return_value = True
-        w1.rect.return_value = SimpleNamespace(height=lambda: 100)
+        w1.findChildren.return_value = []
         w2 = self._make_focusable("ok", 200)
         page.findChildren.return_value = [w1, w2]
 
@@ -822,10 +822,10 @@ class TestSessionPickerSection:
         assert section.focus_nearest(pos) is False
 
     def test_focus_nearest_real_scenario_click_in_recent_panel(self):
-        """Regression: click at y=465 in RecentProjectsPanel area, cards at
-        y≈426/512/598 → should pick card at y=426 (nearest above), not
-        card at y=512 (nearest by abs distance)."""
+        """Click at local y=465 in RecentProjectsPanel area, cards at
+        local y=426/512/598 → should pick card at y=426 (nearest)."""
         section, page, _ = self._make_page([])
+        page.mapFromGlobal.return_value = SimpleNamespace(y=lambda: 465)
         card0 = self._make_focusable("card0", 426)
         card1 = self._make_focusable("card1", 512)
         card2 = self._make_focusable("card2", 598)
