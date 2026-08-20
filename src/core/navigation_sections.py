@@ -126,25 +126,29 @@ class SessionPickerSection:
         return False
 
     def focus_nearest(self, pos) -> bool:
-        """Land on whichever card is vertically closest to *pos*.
+        """Land on the nearest card *above* *pos*, or the last card.
 
-        Distinct from ``focus_first``/``focus_last``: those always pick a
-        *fixed* card (first/last) because ``ref_x`` is meaningless for a
-        single-column list -- they model "entering this section from
-        above/below" for cross-section Up/Down handoff, not an arbitrary
-        click. A mouse click can land next to any card in the list, so a
-        click-driven re-anchor (``NavigationManager._realign_to_last_click``)
-        needs the card nearest the click's *y*, not a card fixed by entry
-        direction.
+        Called by ``NavigationManager._realign_to_last_click`` before its
+        generic widget-tree fallback.  If the click is below all cards
+        (e.g. in the RecentProjectsPanel area), returns ``False`` so the
+        toolkit's generic fallback can search the full widget tree.
         """
+        click_y = pos.y()
         cards = self._page._card_entries()
         if not cards:
             return False
-        target = min(
-            cards,
-            key=lambda entry: abs(entry[1].mapToGlobal(entry[1].rect().center()).y() - pos.y()),
-        )
-        target[1].setFocus(Qt.FocusReason.OtherFocusReason)
+        best: QWidget | None = None
+        best_dist = float("inf")
+        for _label, btn in cards:
+            cy = btn.mapToGlobal(btn.rect().center()).y()
+            if cy <= click_y:
+                dist = click_y - cy
+                if dist < best_dist:
+                    best_dist = dist
+                    best = btn
+        if best is None:
+            return False
+        best.setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
 
