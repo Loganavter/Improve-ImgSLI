@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QDragEnterEvent,
@@ -16,21 +16,15 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from domain.qt_adapters import ensure_visible_qcolor
-from domain.types import Color
 from tabs.multi_compare.context_menu import MultiCompareContextMenuProvider
-from tabs.multi_compare.models import (
-    DEFAULT_DIVIDER_COLOR_RGBA,
-    MultiCompareDividerSettings,
-    MultiCompareLabelSettings,
-    MultiCompareState,
-)
+from tabs.multi_compare.models import MultiCompareState
 from tabs.multi_compare.scene import MultiCompareStore, actions
-from tabs.multi_compare.ui import drag_drop
+from tabs.multi_compare.ui import chrome, divider_sync, drag_drop, font_settings_sync
 from tabs.multi_compare.ui.canvas_widget import MultiCompareCanvasWidget
 from tabs.multi_compare.ui.footer import MultiCompareFooter
 from tabs.multi_compare.ui.toolbar import MultiCompareToolbar
 from tabs.multi_compare.icons import Icon
+from tabs.multi_compare.use_cases import placement
 from ui.context_menu.manager import install_context_menu_provider
 from ui.widgets.font_settings_flyout import FontSettingsFlyout
 from ui.widgets.startup_placeholder import StartupPlaceholder
@@ -201,121 +195,31 @@ class MultiCompareWidget(QWidget):
         self.font_settings_flyout.closed.connect(self._on_font_settings_closed)
 
     def _sync_zoom_indicator(self) -> None:
-        indicator = getattr(self, "zoom_indicator", None)
-        if indicator is None:
-            return
-        st = self.store.state
-        from ui.widgets.flyout_debug import flyout_debug, flyout_debug_enabled
-
-        if flyout_debug_enabled():
-            flyout_debug(
-                "mc-zoom-indicator: _sync_zoom_indicator() zoom=%.4f pan=(%.2f, %.2f) "
-                "widget.size=%r canvas_container.size=%r canvas.size=%r",
-                float(getattr(st, "zoom", 1.0)),
-                float(getattr(st, "pan_x", 0.0)),
-                float(getattr(st, "pan_y", 0.0)),
-                self.size(),
-                self._canvas_container.size(),
-                self.canvas.size(),
-            )
-        indicator.update_zoom(
-            float(getattr(st, "zoom", 1.0)),
-            float(getattr(st, "pan_x", 0.0)),
-            float(getattr(st, "pan_y", 0.0)),
-        )
+        chrome.sync_zoom_indicator(self)
 
     def _on_first_frame(self) -> None:
-        from tabs.multi_compare.first_frame_debug import mc_first_frame_debug
-
-        placeholder = self._startup_placeholder
-        mc_first_frame_debug(
-            self.canvas,
-            "first frame -> placeholder hidden (was_visible=%s was_covering=%s)",
-            bool(placeholder is not None and placeholder.isVisible()),
-            bool(
-                placeholder is not None
-                and placeholder.isVisible()
-                and placeholder.geometry().intersects(self.canvas.geometry())
-            ),
-        )
-        if placeholder is not None:
-            placeholder.hide()
-        self._release_transition_mask()
+        chrome.on_first_frame(self)
 
     def _release_transition_mask(self) -> None:
-        """Drop the workspace transition cover once an opaque frame is up.
-
-        Mirrors image_compare's widget: without this the cover would stay for
-        its whole ``max_duration`` (400 ms) on every tab enter, because the
-        mask force-releases only on its deadline unless told otherwise.
-        """
-        context = self._context
-        services = getattr(context, "services", None) if context else None
-        if not services:
-            return
-        mask = services.get("workspace.transition_mask")
-        if mask is None:
-            return
-        try:
-            mask.release()
-        except Exception:
-            import logging
-
-            logging.getLogger("ImproveImgSLI").exception(
-                "[workspace-transition] MC mask.release failed"
-            )
+        chrome.release_transition_mask(self)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        placeholder = getattr(self, "_startup_placeholder", None)
-        if placeholder is not None:
-            # Always sync — during the first show/layout the placeholder is
-            # still at its construction-time default size (100x30) and is not
-            # "visible" yet, so an isVisible() guard would skip the resize and
-            # leave the canvas uncovered (transparent) for its first frames.
-            placeholder.sync_geometry()
-        indicator = getattr(self, "zoom_indicator", None)
-        if indicator is not None and indicator.isVisible():
-            indicator.sync_position()
-        self._sync_focus_dim_overlays()
+        chrome.resize_event(self, event)
 
     def _exit_focus(self) -> None:
-        if self.state.is_focused:
-            self.store.dispatch(actions.set_focus(None))
+        chrome.exit_focus(self)
 
     def _sync_focus_dim_overlays(self) -> None:
-        dim_toolbar = getattr(self, "_focus_dim_toolbar", None)
-        dim_footer = getattr(self, "_focus_dim_footer", None)
-        if dim_toolbar is None or dim_footer is None:
-            return
-        dim_toolbar.setGeometry(self.toolbar.geometry())
-        dim_footer.setGeometry(self.footer.geometry())
-        dim_toolbar.raise_()
-        dim_footer.raise_()
+        chrome.sync_focus_dim_overlays(self)
 
     def hideEvent(self, event):
         super().hideEvent(event)
-        # ZoomIndicator is a `pinned` flyout reparented onto the app-wide
-        # OverlayLayer host (see ui/flyout_policy.py), not a child of this
-        # page -- Qt's own hideEvent on this page (fired when the workspace
-        # switches to another tab/session) does not cascade to it, so
-        # without this it kept rendering above whichever tab became active
-        # next. showEvent below resyncs it from current state when this tab
-        # is shown again.
-        indicator = getattr(self, "zoom_indicator", None)
-        if indicator is not None:
-            indicator.hide()
+        chrome.hide_event(self, event)
 
     def showEvent(self, event):
         super().showEvent(event)
-        placeholder = getattr(self, "_startup_placeholder", None)
-        if placeholder is not None:
-            # Re-size/raise before the canvas's first paint: at construction
-            # the placeholder tracked a 100x30 container, and leaving it there
-            # exposes the unrendered (transparent) QRhi surface on the first
-            # frames (see the placeholder probe in canvas_widget.py).
-            placeholder.sync_geometry()
-        self._sync_zoom_indicator()
+        chrome.show_event(self, event)
 
     @property
     def state(self) -> MultiCompareState:
@@ -331,153 +235,41 @@ class MultiCompareWidget(QWidget):
         self._on_store_change(None, self.store.state)
 
     def _on_store_change(self, _action, new_state: MultiCompareState) -> None:
-        self.canvas.set_state(new_state)
-        dim_toolbar = getattr(self, "_focus_dim_toolbar", None)
-        dim_footer = getattr(self, "_focus_dim_footer", None)
-        if dim_toolbar is not None and dim_footer is not None:
-            focused = bool(new_state.is_focused)
-            if focused != dim_toolbar.isVisible():
-                if focused:
-                    self._sync_focus_dim_overlays()
-                dim_toolbar.setVisible(focused)
-                dim_footer.setVisible(focused)
-        # Indicator show/hide sits above the QRhi canvas; sync after set_state,
-        # then poke another view update so reset-from-overlay cannot leave a
-        # stale backing frame (see MultiCompareCanvasWidget.request_view_update).
-        self._sync_zoom_indicator()
-        action_type = getattr(_action, "type", "") or ""
-        if action_type in {
-            "multi_compare/set_zoom",
-            "multi_compare/set_pan",
-            "multi_compare/reset_view",
-        }:
-            from ui.canvas_infra.rhi.rhi_present_sync import schedule_compositor_sync
-
-            self.canvas.request_view_update()
-            # Flush the Wayland/Vulkan catch-up on gesture settle — otherwise
-            # the first flyout after zoom restacks and the image jumps while
-            # the zoom % chip stays unchanged.
-            schedule_compositor_sync(self.canvas, reason=action_type)
-        self.sync_divider_toolbar()
-        if self._font_popup_open:
-            self._sync_font_settings_flyout()
+        divider_sync.on_store_change(self, _action, new_state)
 
     def sync_divider_toolbar(self) -> None:
-        self._sync_divider_toolbar()
-        self._queue_divider_toolbar_resync()
+        divider_sync.sync_divider_toolbar(self)
 
     def _queue_divider_toolbar_resync(self) -> None:
-        if self._divider_toolbar_sync_pending:
-            return
-        self._divider_toolbar_sync_pending = True
-        QTimer.singleShot(0, self._run_queued_divider_toolbar_sync)
+        divider_sync.queue_divider_toolbar_resync(self)
 
     def _run_queued_divider_toolbar_sync(self) -> None:
-        self._divider_toolbar_sync_pending = False
-        self._sync_divider_toolbar()
+        divider_sync.run_queued_divider_toolbar_sync(self)
 
     def _sync_divider_toolbar(self) -> None:
-        ds = self.store.state.divider_settings
-        btn = self.toolbar.btn_divider_visible
-        btn.blockSignals(True)
-        btn.setChecked(not ds.visible)
-        btn.blockSignals(False)
-        width_btn = self.toolbar.btn_divider_width
-        if hasattr(width_btn, "get_value") and hasattr(width_btn, "set_value"):
-            ui_value = ds.thickness if ds.visible else 0
-            if width_btn.get_value() != ui_value:
-                width_btn.blockSignals(True)
-                width_btn.set_value(ui_value)
-                width_btn.blockSignals(False)
-        color = ensure_visible_qcolor(
-            ds.color_rgba, fallback=Color(*DEFAULT_DIVIDER_COLOR_RGBA)
-        )
-        if hasattr(self.toolbar.btn_divider_color, "setUnderlineColor"):
-            self.toolbar.btn_divider_color.setUnderlineColor(color)
-        if hasattr(width_btn, "setUnderlineColor"):
-            width_btn.setUnderlineColor(color)
+        divider_sync._sync_divider_toolbar(self)
 
     def _on_divider_visible_toggled(self, visible: bool) -> None:
-        ds = self.store.state.divider_settings
-        new_ds = MultiCompareDividerSettings(
-            visible=bool(visible),
-            thickness=ds.thickness,
-            color_rgba=ds.color_rgba,
-        )
-        self.store.dispatch(actions.set_divider_settings(new_ds))
+        divider_sync.on_divider_visible_toggled(self, visible)
 
     def _on_divider_width_changed(self, width: int) -> None:
-        ds = self.store.state.divider_settings
-        thickness = max(0, int(width))
-        new_ds = MultiCompareDividerSettings(
-            visible=thickness > 0,
-            thickness=thickness if thickness > 0 else ds.thickness,
-            color_rgba=ds.color_rgba,
-        )
-        if new_ds == ds:
-            return
-        self.store.dispatch(actions.set_divider_settings(new_ds))
+        divider_sync.on_divider_width_changed(self, width)
 
     def apply_divider_color(self, color: QColor) -> None:
-        if color is None or not color.isValid():
-            return
-        visible = ensure_visible_qcolor(
-            color, fallback=Color(*DEFAULT_DIVIDER_COLOR_RGBA)
-        )
-        ds = self.store.state.divider_settings
-        new_ds = MultiCompareDividerSettings(
-            visible=ds.visible,
-            thickness=ds.thickness,
-            color_rgba=(
-                visible.red(),
-                visible.green(),
-                visible.blue(),
-                visible.alpha(),
-            ),
-        )
-        self.store.dispatch(actions.set_divider_settings(new_ds))
+        divider_sync.apply_divider_color(self, color)
 
     def _sync_font_settings_flyout(self) -> None:
-        from domain.qt_adapters import ensure_visible_qcolor
-        from domain.types import Color
-
-        st = self.state.label_settings
-        self.font_settings_flyout.set_values(
-            st.font_size_percent,
-            st.font_weight,
-            ensure_visible_qcolor(st.text_rgba, fallback=Color(255, 255, 255, 255)),
-            ensure_visible_qcolor(st.bg_rgba, fallback=Color(0, 0, 0, 255)),
-            st.draw_background,
-            "edges",
-            st.text_alpha_percent,
-        )
+        font_settings_sync.sync_font_settings_flyout(self)
 
     def _toggle_font_settings_flyout(self) -> None:
-        if self._font_popup_open:
-            self.font_settings_flyout.hide()
-            return
-        self.show_font_settings_flyout()
+        font_settings_sync.toggle_font_settings_flyout(self)
 
     def show_font_settings_flyout(self) -> None:
         """Open the text flyout without toggle-close (Find Action reveal/run)."""
-        if self._font_popup_open:
-            return
-        self._sync_font_settings_flyout()
-        self.font_settings_flyout.show_aligned(
-            self.toolbar.btn_text_settings,
-            anchor_point="bottom-right",
-            flyout_point="top-left",
-            offset=10,
-            animation="slide-fade",
-        )
-        if hasattr(self.toolbar.btn_text_settings, "setFlyoutOpen"):
-            self.toolbar.btn_text_settings.setFlyoutOpen(True)
-        self._font_popup_open = True
+        font_settings_sync.show_font_settings_flyout(self)
 
     def _on_font_settings_closed(self) -> None:
-        self._font_popup_open = False
-        if hasattr(self.toolbar.btn_text_settings, "setFlyoutOpen"):
-            self.toolbar.btn_text_settings.setFlyoutOpen(False)
+        font_settings_sync.on_font_settings_closed(self)
 
     def _on_font_settings_changed(
         self,
@@ -489,49 +281,15 @@ class MultiCompareWidget(QWidget):
         _placement: str,
         opacity: int,
     ) -> None:
-        settings = MultiCompareLabelSettings(
-            font_size_percent=max(1, int(size)),
-            font_weight=max(0, int(weight)),
-            text_rgba=(
-                color.red(),
-                color.green(),
-                color.blue(),
-                color.alpha(),
-            ),
-            bg_rgba=(
-                bg_color.red(),
-                bg_color.green(),
-                bg_color.blue(),
-                bg_color.alpha(),
-            ),
-            draw_background=bool(draw_bg),
-            text_alpha_percent=max(0, min(100, int(opacity))),
+        font_settings_sync.on_font_settings_changed(
+            self, size, weight, color, bg_color, draw_bg, _placement, opacity
         )
-        self.store.dispatch(actions.set_label_settings(settings))
 
     def add_image_auto(
         self, path: Path, image: "TiledPixelStore", label: str = ""
     ) -> int | None:
         """Append an image by splitting the largest leaf along its longer axis."""
-        if len(self.state.slots) >= self.state.max_slots:
-            return None
-        if self.state.root is None:
-            target_path, side, target_root = None, None, True
-        else:
-            target_path, side = self._pick_auto_target()
-            target_root = False
-        before = len(self.state.slots)
-        self.store.dispatch(
-            actions.add_slot(
-                path=path,
-                image=image,
-                label=label or path.stem,
-                target_path=target_path,
-                side=side,
-                target_root=target_root,
-            )
-        )
-        return self.state.slots[-1].id if len(self.state.slots) > before else None
+        return placement.add_image_auto(self, path, image, label)
 
     def add_image_at(
         self,
@@ -542,42 +300,19 @@ class MultiCompareWidget(QWidget):
         side: str | None,
         target_root: bool,
     ) -> int | None:
-        if len(self.state.slots) >= self.state.max_slots:
-            return None
-
-        if (
-            not target_root
-            and (target_path is None or side is None)
-            and self.state.root is not None
-        ):
-            target_path, side = self._pick_auto_target()
-        before = len(self.state.slots)
-        self.store.dispatch(
-            actions.add_slot(
-                path=path,
-                image=image,
-                label=label or path.stem,
-                target_path=target_path,
-                side=side,
-                target_root=target_root or self.state.root is None,
-            )
+        return placement.add_image_at(
+            self, path, image, label, target_path, side, target_root
         )
-        return self.state.slots[-1].id if len(self.state.slots) > before else None
 
     def _pick_auto_target(self) -> tuple[tuple[int, ...], str]:
         """Pick the existing leaf with the largest rect; split along its longer axis."""
-        entries = self.canvas._leaf_paths_and_rects()
-        if not entries:
-            return (), "right"
-        leaf, rect, path = max(entries, key=lambda e: e[1].width() * e[1].height())
-        side = "right" if rect.width() >= rect.height() else "bottom"
-        return path, side
+        return placement.pick_auto_target(self)
 
     def remove_slot(self, slot_id: int) -> None:
-        self.store.dispatch(actions.remove_slot(slot_id))
+        placement.remove_slot(self, slot_id)
 
     def reset_view(self) -> None:
-        self.store.dispatch(actions.reset_view())
+        placement.reset_view(self)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         drag_drop.drag_enter_event(self, event)
