@@ -126,28 +126,40 @@ class SessionPickerSection:
         return False
 
     def focus_nearest(self, pos) -> bool:
-        """Land on the nearest card *above* *pos*, or the last card.
+        """Land on the nearest focusable widget to *pos* within the page.
 
-        Called by ``NavigationManager._realign_to_last_click`` before its
-        generic widget-tree fallback.  If the click is below all cards
-        (e.g. in the RecentProjectsPanel area), returns ``False`` so the
-        toolkit's generic fallback can search the full widget tree.
+        Uses owner-local coordinates (``mapTo``) for reliable comparison
+        regardless of window state.  Searches all focusable descendants
+        but excludes container widgets that themselves contain focusable
+        children (scroll areas, panels — not navigation targets).
         """
-        click_y = pos.y()
-        cards = self._page._card_entries()
-        if not cards:
+        local_pos = self._page.mapFromGlobal(pos)
+        local_y = local_pos.y()
+        all_focusable = set()
+        for w in self._page.findChildren(QWidget):
+            if (
+                w.focusPolicy() != Qt.FocusPolicy.NoFocus
+                and w.isVisible()
+                and w.isEnabled()
+            ):
+                all_focusable.add(w)
+        candidates = []
+        for w in all_focusable:
+            children_focusable = any(
+                c in all_focusable
+                for c in w.findChildren(QWidget)
+                if c is not w
+            )
+            if not children_focusable:
+                candidates.append(w)
+        if not candidates:
             return False
-        best: QWidget | None = None
-        best_dist = float("inf")
-        for _label, btn in cards:
-            cy = btn.mapToGlobal(btn.rect().center()).y()
-            if cy <= click_y:
-                dist = click_y - cy
-                if dist < best_dist:
-                    best_dist = dist
-                    best = btn
-        if best is None:
-            return False
+        best = min(
+            candidates,
+            key=lambda w: abs(
+                w.mapTo(self._page, w.rect().center()).y() - local_y
+            ),
+        )
         best.setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
