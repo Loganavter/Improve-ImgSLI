@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from plugins.settings.nav_rows import page_nav_builder, register_page_navigation
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
 from sli_ui_toolkit.widgets import Button, CustomGroupWidget, CustomLineEdit, Label
@@ -153,6 +154,7 @@ def build(dialog, p):
     from ui.actions.keymap import exclusive_overrides
 
     dialog.page_keyboard, layout = dialog._create_scrollable_page()
+    builder = page_nav_builder(dialog, tag="settings-keyboard")
     defaults = _collect_defaults()
     defaults_map = {
         entry.action_id: (entry.default_shortcut, entry.owner_tab)
@@ -318,16 +320,11 @@ def build(dialog, p):
     # ToolbarRowsSection's Left/Right-within-row, Up/Down-between-rows model
     # applies directly; row_widgets is the same list the search filter
     # toggles visibility on, so hidden rows drop out of navigation too.
-    from core.navigation import NavigationManager
-    from sli_ui_toolkit.managers import ToolbarRowsSection
-
-    dialog._keyboard_nav_section = ToolbarRowsSection(
-        lambda: [row for row, _group, _entry in row_widgets],
-        tag="settings-keyboard",
-    )
-    NavigationManager.get_instance().register(
-        dialog.page_keyboard, dialog._keyboard_nav_section
-    )
+    # Rows are already real QWidgets (built directly above, not from a bare
+    # control/layout) so they go through extend() rather than builder.row()
+    # (which would re-wrap and re-parent them out of group_layout).
+    builder.extend([row for row, _group, _entry in row_widgets])
+    register_page_navigation(dialog, dialog.page_keyboard, builder)
 
     reset_all = Button(
         text=_tr(dialog, "settings.keyboard_reset_all", "Reset all shortcuts"),

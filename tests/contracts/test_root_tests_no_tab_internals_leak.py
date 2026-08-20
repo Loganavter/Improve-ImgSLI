@@ -80,6 +80,11 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "cross-cutting tile-constant consistency contract spanning host, "
         "image_compare, and multi_compare"
     ),
+    "tests/plugins/test_settings_extras_navigation.py": (
+        "host-level regression: settings extras (tab-contributed) must be "
+        "keyboard-reachable via NavRowBuilder.extend(); image_compare is the "
+        "only tab with extras, so it's the natural fixture"
+    ),
 }
 
 

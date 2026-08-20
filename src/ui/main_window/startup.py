@@ -135,42 +135,9 @@ class MainWindowStartupRuntime:
 
         # NavigationManager must be installed AFTER EventHandler on QApplication
         # so its event filter runs first (Qt LIFO order).
-        from sli_ui_toolkit.managers import NavigationManager
+        from core.app_shell_navigation import register_app_shell_navigation
 
-        nav_manager = NavigationManager.get_instance()
-
-        # CSD title bar is a toolkit widget without widget_descriptor;
-        # register its navigation section manually (must be first = topmost
-        # so that _neighbor(owner, -1) from the tab strip finds it).
-        title_bar = getattr(window, "_custom_title_bar", None)
-        if title_bar is not None:
-            from ui.main_window.title_bar_navigation import TitleBarNavigationSection
-
-            nav_manager.register(title_bar, TitleBarNavigationSection(title_bar))
-            logger.debug("[nav-titlebar] registered title bar section")
-
-        # Workspace tab strip — explicit registration (top-to-bottom order).
-        tab_strip = getattr(window.ui, "workspace_tabs", None)
-        if tab_strip is not None:
-            from core.navigation_sections import TabStripSection
-
-            nav_manager.register(tab_strip, TabStripSection(tab_strip))
-            logger.debug("[nav-tabstrip] registered tab strip section")
-
-        # Session picker — register LAST (bottom of visual hierarchy).
-        # The page is created during setupUi() → activate_default(), so
-        # it already exists by now.  We must register after title_bar and
-        # tab_strip to preserve the top-to-bottom section ordering that
-        # _neighbor() relies on.
-        from core.store import INITIAL_WORKSPACE_SESSION_TYPE
-        from tabs.registry import TabRegistry
-
-        _picker_page = TabRegistry().get_page(INITIAL_WORKSPACE_SESSION_TYPE)
-        if _picker_page is not None:
-            from core.navigation_sections import SessionPickerSection
-
-            nav_manager.register(_picker_page, SessionPickerSection(_picker_page))
-            logger.debug("[nav-picker] registered session picker section")
+        register_app_shell_navigation(window)
 
         window.appearance.update_image_label_background()
         if window.main_controller and window.main_controller.sessions:

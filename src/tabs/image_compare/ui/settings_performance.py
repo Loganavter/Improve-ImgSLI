@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
-from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.managers import as_nav_row, scaled_px
 from sli_ui_toolkit.widgets import CheckBox, ComboBox, Label, SpinBox
 
 from core.constants import AppConstants
@@ -27,16 +27,28 @@ VIDEO = group("image_compare.settings.video_recording", "image_compare.settings.
 SEARCH = SearchIndex.of(INTERACTIVE, VIDEO)
 
 
-def build_image_perf_extras(dialog, p) -> None:
+def build_image_perf_extras(dialog, p) -> list:
+    """Build this tab's performance extras and return their nav rows.
+
+    The caller (``plugins/settings/pages/analysis.py`` /
+    ``performance.py``) feeds the returned rows into its page's
+    ``NavRowBuilder`` so they participate in keyboard navigation — these
+    used to be added straight to the layout via ``add_layout()``, which
+    made them permanently unreachable by Up/Down (see
+    docs/legacy/plan_navigation_descriptor_unification.md §2.2).
+    """
     layout = getattr(dialog, "_perf_layout", None)
     if layout is None:
-        return
-    _build_interactive_optimization_group(dialog, layout, p)
-    _build_video_group(dialog, layout, p)
+        return []
+    rows = []
+    rows += _build_interactive_optimization_group(dialog, layout, p)
+    rows += _build_video_group(dialog, layout, p)
+    return rows
 
 
 def _build_interactive_optimization_group(dialog, layout, p):
     dialog.interactive_opt_group = INTERACTIVE.widget(dialog)
+    rows = []
 
     row_zoom = QHBoxLayout()
     row_zoom.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
@@ -52,7 +64,9 @@ def _build_interactive_optimization_group(dialog, layout, p):
     )
     row_zoom.addWidget(dialog.lbl_zoom_interp)
     row_zoom.addWidget(dialog.combo_zoom_interp, 1)
-    dialog.interactive_opt_group.add_layout(row_zoom)
+    row_zoom_widget = as_nav_row(row_zoom)
+    dialog.interactive_opt_group.add_widget(row_zoom_widget)
+    rows.append(row_zoom_widget)
 
     row_mag = QHBoxLayout()
     row_mag.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
@@ -71,7 +85,9 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.combo_mag_interp.setEnabled(p.optimize_magnifier_movement)
     row_mag.addWidget(dialog.optimize_movement_checkbox)
     row_mag.addWidget(dialog.combo_mag_interp, 1)
-    dialog.interactive_opt_group.add_layout(row_mag)
+    row_mag_widget = as_nav_row(row_mag)
+    dialog.interactive_opt_group.add_widget(row_mag_widget)
+    rows.append(row_mag_widget)
 
     row_laser = QHBoxLayout()
     row_laser.setContentsMargins(0, scaled_px(5), 0, scaled_px(5))
@@ -90,7 +106,9 @@ def _build_interactive_optimization_group(dialog, layout, p):
     dialog.combo_laser_interp.setEnabled(p.optimize_laser_smoothing)
     row_laser.addWidget(dialog.laser_smoothing_checkbox)
     row_laser.addWidget(dialog.combo_laser_interp, 1)
-    dialog.interactive_opt_group.add_layout(row_laser)
+    row_laser_widget = as_nav_row(row_laser)
+    dialog.interactive_opt_group.add_widget(row_laser_widget)
+    rows.append(row_laser_widget)
 
     dialog.magnifier_intersection_highlight_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.magnifier_intersection_highlight")
@@ -102,9 +120,9 @@ def _build_interactive_optimization_group(dialog, layout, p):
         dialog.magnifier_intersection_highlight_checkbox,
         "settings.magnifier_intersection_highlight",
     )
-    dialog.interactive_opt_group.add_widget(
-        dialog.magnifier_intersection_highlight_checkbox
-    )
+    intersection_row = as_nav_row(dialog.magnifier_intersection_highlight_checkbox)
+    dialog.interactive_opt_group.add_widget(intersection_row)
+    rows.append(intersection_row)
 
     dialog.magnifier_auto_color_checkbox = CheckBox(
         INTERACTIVE.text(dialog, "settings.magnifier_auto_color_new_instances")
@@ -116,7 +134,9 @@ def _build_interactive_optimization_group(dialog, layout, p):
         dialog.magnifier_auto_color_checkbox,
         "settings.magnifier_auto_color_new_instances",
     )
-    dialog.interactive_opt_group.add_widget(dialog.magnifier_auto_color_checkbox)
+    auto_color_row = as_nav_row(dialog.magnifier_auto_color_checkbox)
+    dialog.interactive_opt_group.add_widget(auto_color_row)
+    rows.append(auto_color_row)
 
     _populate_interpolation_combos(dialog, p)
     dialog.optimize_movement_checkbox.toggled.connect(
@@ -126,6 +146,7 @@ def _build_interactive_optimization_group(dialog, layout, p):
         dialog.combo_laser_interp.setEnabled
     )
     layout.addWidget(dialog.interactive_opt_group)
+    return rows
 
 
 def _populate_interpolation_combos(dialog, p):
@@ -186,5 +207,7 @@ def _build_video_group(dialog, layout, p):
     video_layout.addWidget(dialog.lbl_fps)
     video_layout.addWidget(dialog.spin_fps)
     video_layout.addStretch()
-    dialog.video_group.add_layout(video_layout)
+    video_row = as_nav_row(video_layout)
+    dialog.video_group.add_widget(video_row)
     layout.addWidget(dialog.video_group)
+    return [video_row]
