@@ -17,8 +17,24 @@ from events.router import route_drag_and_drop_override, route_global_keyboard_ev
 from events.runtime import build_event_handler_runtime
 
 import logging
+import os
 
-logger = logging.getLogger("ImproveImgSLI")
+# FOCUS/KEY-routing trace lines are extremely high-volume once --debug is on
+# (every focus change, every key press) and drown out other subsystems'
+# debug output (e.g. IMGSLI_RESIZE_DEBUG render tracing). Gated on its own
+# opt-in flag, off by default even under --debug -- same convention as
+# shared/rendering/render_debug.py's IMGSLI_RESIZE_DEBUG.
+logger = logging.getLogger("ImproveImgSLI.nav")
+if os.environ.get("IMGSLI_NAV_DEBUG", "").strip().lower() in (
+    "",
+    "0",
+    "false",
+    "no",
+    "off",
+):
+    logger.setLevel(logging.WARNING)
+else:
+    logger.setLevel(logging.DEBUG)
 
 
 def _wname(w) -> str:
