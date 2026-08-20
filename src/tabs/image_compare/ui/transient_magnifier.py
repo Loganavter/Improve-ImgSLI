@@ -116,9 +116,19 @@ class MagnifierVisibilityController:
             )
         else:
             self.widget.magnifier_visibility_flyout.cancel_auto_hide()
-        # Do NOT auto-focus into flyout — preview stays on anchor with ring.
-        # Enter/Down from the anchor (extension_below) will enter
-        # explicitly, as requested: open without Enter, but don't take focus.
+        # Preview — keep focus on anchor (btn_magnifier) with ring, don't
+        # steal into flyout. Down/Enter from anchor (extension_below) will
+        # explicitly enter via focus_first_child with ring.
+        try:
+            flyout = self.widget.magnifier_visibility_flyout
+            if hasattr(flyout, "_keyboard_navigation_active"):
+                flyout._keyboard_navigation_active = False
+            # Ensure anchor keeps keyboard focus ring
+            btn = getattr(self.widget, "btn_magnifier", None)
+            if btn is not None and btn.hasFocus():
+                btn.update()
+        except Exception:
+            pass
 
     def hide(self, reason: str = "explicit"):
         host = self.manager.host
