@@ -331,8 +331,8 @@ class MultiCompareTab(TabContract):
         if session_id is not None:
             self.on_active_session_changed(session_id, context)
         if self._widget:
-            self._widget.setFocus()
             self._register_nav_section()
+            self._widget.setFocus()
         from ui.actions.registry import get_action_registry
 
         self._register_actions(get_action_registry())
