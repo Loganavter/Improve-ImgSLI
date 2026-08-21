@@ -92,6 +92,7 @@ class FindActionDialog(ThemedDialog):
         # Keep parentless so Wayland/X11 do not create a transient-for link.
         del parent
         super().__init__(None)
+        self._find_action_nav_section = None
         self._topic = topic
         self._preselect_action_id = preselect_action_id
         self._auto_pulse = auto_pulse
@@ -127,12 +128,38 @@ class FindActionDialog(ThemedDialog):
         self._apply_independent_window_flags()
         self.installEventFilter(self)
         self._app_filter_installed = False
+        self._setup_find_action_navigation()
         self._reload()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # Keep search focused so the first typed character uses the active
         # keyboard layout / input method (not a Latin Key_A→'a' fallback).
         self._search.setFocus(Qt.FocusReason.OtherFocusReason)
         self._maybe_auto_pulse()
+
+    def _setup_find_action_navigation(self) -> None:
+        """Нормальный мапинг навигации через NavigationManager (как в Help/Settings)."""
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+            from sli_ui_toolkit.ui.managers.navigation_sections import AutoNavigationSection
+
+            if self._find_action_nav_section is not None:
+                return
+            # Dialog как Auto-контейнер: поиск StrongFocus (search + ряды) → Up/Down/Left/Right
+            section = AutoNavigationSection(self, tag="find-action")
+            NavigationManager.get_instance().register(self, section)
+            self._find_action_nav_section = section
+        except Exception:
+            pass
+
+    def _teardown_find_action_navigation(self) -> None:
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+
+            if self._find_action_nav_section is not None:
+                NavigationManager.get_instance().unregister(self)
+                self._find_action_nav_section = None
+        except Exception:
+            pass
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -141,10 +168,12 @@ class FindActionDialog(ThemedDialog):
 
     def hideEvent(self, event) -> None:
         self._release_app_event_filter()
+        self._teardown_find_action_navigation()
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:
         self._release_app_event_filter()
+        self._teardown_find_action_navigation()
         super().closeEvent(event)
 
     def _install_app_event_filter(self) -> None:
@@ -246,7 +275,7 @@ class FindActionDialog(ThemedDialog):
         root.addSpacing(scaled_px(8))
 
         self._search = CustomLineEdit(parent=self)
-        self._search.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self._search.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._search.setPlaceholderText(
             tr_action("action.palette.search_placeholder", "Search actions…")
         )
@@ -453,6 +482,14 @@ class FindActionDialog(ThemedDialog):
         QTimer.singleShot(0, lambda w=widget: pulse_widget(w))
 
     def eventFilter(self, obj, event):
+        # Синхронизируем current_index с фактическим фокусом (NavigationManager двигает фокус на Button-ряд)
+        if event.type() == QEvent.Type.FocusIn and isinstance(obj, QWidget):
+            # Находим ряд по виджету (row Button или его предок)
+            for idx, row in enumerate(self._rows):
+                if obj is row or row.isAncestorOf(obj):
+                    if self._current_index != idx:
+                        self._set_current_index(idx)
+                    break
         if event.type() == QEvent.Type.KeyPress:
             # App-wide filter must ignore keys belonging to other windows;
             # widget filters on ``self`` / ``_search`` always pass this check.
@@ -461,6 +498,24 @@ class FindActionDialog(ThemedDialog):
             key = event.key()
             mods = event.modifiers()
             if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+                # Нормальный мапинг через NavigationManager: даём менеджеру шанс обработать Down/Up
+                try:
+                    from sli_ui_toolkit.managers import NavigationManager
+
+                    mgr = NavigationManager.get_instance()
+                    focused = QApplication.focusWidget()
+                    # Если менеджер владеет фокусом (наш Auto-секция), пусть он двигает
+                    if focused is not None and mgr.should_intercept(key, focused):
+                        return False
+                    # Если фокус на поиске или в списке — отдаём менеджеру
+                    if self.isAncestorOf(focused) if focused is not None else False:
+                        # Проверяем что наш Auto-секция зарегистрирован
+                        for owner, sec in mgr._sections:
+                            if owner is self and sec.owns(focused):
+                                return False
+                except Exception:
+                    pass
+                # Фолбек — старый список
                 self._move_selection(1 if key == Qt.Key.Key_Down else -1)
                 return True
             if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
