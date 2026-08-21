@@ -179,8 +179,8 @@ class RowBackgroundLayer(Layer):
             ):
                 is_active = True
                 break
-        # Стандартная палитра кнопок внутри аппы (как в справке) — без hover-варианта
-        key = "help.nav.background"
+        # Каноникал surface.list (Phase 3 plan_theme_token_unification) — один токен вместо help.nav/list_item/Button алиасов
+        key = "surface.list"
         rect = row_capsule_rect(ctx.rect).toRect()
         painter = ctx.painter
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
