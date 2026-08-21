@@ -122,13 +122,19 @@ class ColorSettingsButton(Button):
         self._hide_timer = None
         self.clicked.connect(self.smartColorSetRequested.emit)
         self.flyout.actionTriggered.connect(self.colorOptionClicked.emit)
-        # Фасад вместо глубокого ui.managers — side декларирован на классе
+        # Декларативно: side + nearest + exit на классе + auto-preview wiring
         try:
-            from sli_ui_toolkit.managers import bind_flyout
+            from sli_ui_toolkit.managers import bind_auto_preview
 
-            bind_flyout(self, self.flyout, side="above")
+            bind_auto_preview(self, self.flyout, side="above")
         except Exception:
-            pass
+            # fallback к старому фасаду
+            try:
+                from sli_ui_toolkit.managers import bind_flyout
+
+                bind_flyout(self, self.flyout, side="above")
+            except Exception:
+                pass
         if self.store:
             self.store.state_changed.connect(self._on_store_state_changed)
             self._update_underline_colors()
