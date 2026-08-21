@@ -181,40 +181,33 @@ class HelpDialog(ThemedDialog):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._install_mouse_nav_filter()
-        QTimer.singleShot(0, self._focus_help_initial)
-        QTimer.singleShot(60, self._focus_help_initial)
+        QTimer.singleShot(0, self._focus_help_container)
+        QTimer.singleShot(60, self._focus_help_container)
 
-    def _focus_help_initial(self) -> None:
+    def _focus_help_container(self) -> None:
         try:
             from shiboken6 import isValid
 
             if not isValid(self) or not self.isVisible():
                 return
-            # Do not create an invisible focus before any user interaction.
-            # The log showed MouseButtonPress focused=Button keyboard_focus=None
-            # because we previously called setFocus(MouseFocusReason) via
-            # current_focus_reason() while last_input was mouse. Use a visible
-            # keyboard reason and mark last input as keyboard so the ring shows.
             try:
                 from sli_ui_toolkit.managers import NavigationManager
 
                 NavigationManager.get_instance()._last_input_keyboard = True
             except Exception:
                 pass
-            reason = Qt.FocusReason.OtherFocusReason
+            # Focus the navigation owner itself (container), not a button,
+            # so before first interaction the log shows focused=IconListWidget/QWidget
+            # with no invisible Button focus — matching main window approach where
+            # no button has keyboard_focus before the first click/arrow.
             if self.nav_widget.isVisible() and self.nav_widget.count() > 0:
-                btn = self.nav_widget.current_row_button()
-                if btn is None:
-                    btn = self.nav_widget.row_button(0)
-                if btn is not None and isValid(btn):
-                    btn.setFocus(reason)
-                    return
+                self.nav_widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                self.nav_widget.setFocus(Qt.FocusReason.OtherFocusReason)
+                return
             host = getattr(self, "_content_host", None)
-            if host is not None and isValid(host) and hasattr(self, "_help_content_section"):
-                try:
-                    self._help_content_section.focus_first(reason=reason)
-                except TypeError:
-                    self._help_content_section.focus_first(reason)
+            if host is not None and isValid(host):
+                host.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                host.setFocus(Qt.FocusReason.OtherFocusReason)
         except Exception:
             pass
 
@@ -568,31 +561,6 @@ class HelpDialog(ThemedDialog):
                 QTimer.singleShot(0, lambda a=anchor: self._scroll_to_anchor(a))
 
         defer_dialog_geometry(self, self._apply_dialog_geometry)
-        QTimer.singleShot(0, self._restore_help_focus_after_render)
-
-    def _restore_help_focus_after_render(self) -> None:
-        try:
-            from shiboken6 import isValid
-
-            if not isValid(self) or not self.isVisible():
-                return
-            focused = QApplication.focusWidget()
-            if focused is not None and isValid(focused):
-                # Don't steal from search field while typing
-                if focused is self._search_field or self._search_field.isAncestorOf(focused):
-                    return
-                # Keep focus if already inside help's sidebar/content and still valid+visible
-                if (
-                    self.nav_widget.isAncestorOf(focused) or focused is self.nav_widget
-                ) and focused.isVisible():
-                    return
-                if (
-                    self._content_host.isAncestorOf(focused) or focused is self._content_host
-                ) and focused.isVisible():
-                    return
-            self._focus_help_initial()
-        except Exception:
-            pass
 
     def _scroll_to_anchor(self, anchor: str) -> None:
         widget = self._document.scroll_to_anchor(anchor)
