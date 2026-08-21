@@ -206,11 +206,22 @@ class _ScrollValueFlyout(BaseFlyout):
         self.update()
 
     def keyPressEvent(self, event) -> None:
-        # В edit-mode кольцо на флайауте — Esc/Left/Right возвращают на якорь
-        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Left, Qt.Key.Key_Right):
+        # В edit-mode кольцо на флайауте — Esc возвращает, Left/Right шагуют значение якоря
+        if event.key() == Qt.Key.Key_Escape:
             self.hide()
             event.accept()
             return
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down):
+            # Прокидываем шаг на якорь-кнопку, флайаут остаётся до Esc
+            anchor = getattr(self, "_anchor_widget", None)
+            if anchor is not None and hasattr(anchor, "_step_value"):
+                step = 1 if event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Up) else -1
+                try:
+                    anchor._step_value(step)  # type: ignore[attr-defined]
+                    event.accept()
+                    return
+                except Exception:
+                    pass
         super().keyPressEvent(event)
 
     def show_value(self, text: str, icon=None, anchor: QWidget | None = None, grab_focus: bool | None = None) -> None:
@@ -393,11 +404,15 @@ class ScrollValueButton(Button):
     def set_value(self, value: int, emit: bool = True) -> None:
         clamped = max(self._min_value, min(self._max_value, int(value)))
         if clamped == self._value:
+            logger.debug("[scroll-value] set_value noop %s→%s emit=%s widget=%s", self._value, clamped, emit, type(self).__name__)
             return
+        old = self._value
         self._value = clamped
+        logger.debug("[scroll-value] set_value %s→%s emit=%s widget=%s reason=%s", old, clamped, emit, id(self), "api")
         self.setUnderlineThickness(self._underline_thickness_for_value(clamped))
         self._sync_regions()
         if emit:
+            logger.debug("[scroll-value] valueChanged emit %s widget=%s", clamped, id(self))
             self.valueChanged.emit(clamped)
 
     # ---------- saved-value memory (restore previous width after hide/show) ----------
@@ -448,6 +463,7 @@ class ScrollValueButton(Button):
 
     def wheelEvent(self, event) -> None:  # noqa: N802
         delta = event.angleDelta().y()
+        logger.debug("[scroll-value] wheelEvent delta=%s value=%s widget=%s", delta, self._value, id(self))
         if not delta:
             super().wheelEvent(event)
             return
@@ -456,12 +472,14 @@ class ScrollValueButton(Button):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
+        logger.debug("[scroll-value] keyPressEvent key=%s edit_active=%s value=%s widget=%s", key, self._keyboard_edit_active, self._value, id(self))
         # Enter toggles keyboard edit mode — arrows only adjust value after
         # explicit activation, otherwise they navigate (Left/Right → next
         # button, Up/Down → next row). This prevents swallowing navigation
         # without user intent and keeps flyouts open.
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._keyboard_edit_active = not self._keyboard_edit_active
+            logger.debug("[scroll-value] Enter toggle edit_active→%s widget=%s", self._keyboard_edit_active, id(self))
             # Show flyout when entering edit mode so value is visible
             if self._keyboard_edit_active:
                 self._show_flyout()
@@ -476,6 +494,7 @@ class ScrollValueButton(Button):
             self.update()
             return
         if key == Qt.Key.Key_Escape:
+            logger.debug("[scroll-value] Escape edit_active=%s widget=%s", self._keyboard_edit_active, id(self))
             if self._keyboard_edit_active:
                 self._keyboard_edit_active = False
                 self._hide_flyout()
@@ -487,10 +506,12 @@ class ScrollValueButton(Button):
             # Even when not in edit mode, Escape should hide the preview flyout
             # (e.g. after wheel) and not propagate to close unrelated flyouts
             if self._flyout is not None and self._flyout.isVisible():
+                logger.debug("[scroll-value] Escape hide preview widget=%s", id(self))
                 self._hide_flyout()
                 event.accept()
                 return
         if key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right):
+            logger.debug("[scroll-value] arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
             if not self._keyboard_edit_active:
                 # Not in edit mode — let navigation handle it (move focus)
                 super().keyPressEvent(event)
@@ -509,7 +530,9 @@ class ScrollValueButton(Button):
         super().focusOutEvent(event)
 
     def _step_value(self, step: int) -> None:
+        old = self._value
         new_value = max(self._min_value, min(self._max_value, self._value + step))
+        logger.debug("[scroll-value] _step_value step=%s %s→%s edit_active=%s widget=%s", step, old, new_value, self._keyboard_edit_active, id(self))
         self.set_value(new_value)
         self._show_flyout()
 
@@ -660,21 +683,40 @@ class ScrollValueButton(Button):
             self._flyout.show_value(str(self._value), anchor=self, grab_focus=_grab)
         if _grab:
             self._flyout_hide_timer.stop()
-            # show_aligned с grab=True уже вызвал _grab_focus, но для
-            # _ScrollValueFlyout без StrongFocus детей фокус может упасть на
-            # ButtonGroup — форсируем на сам флайаут (StrongFocus) c кольцом
-            # через singleShot, чтобы пережить NavigationManager bootstrap.
+            # Ослабляем ButtonGroup, чтобы не перетянул фокус (как lifecycle _grab_focus)
             try:
-                from PySide6.QtCore import Qt as _Qt, QTimer as _QTimer
+                from PySide6.QtWidgets import QWidget as _QW
 
-                _QTimer.singleShot(0, lambda f=self._flyout: f.setFocus(_Qt.FocusReason.OtherFocusReason))
+                _grp = self.parentWidget()
+                while _grp is not None and not isinstance(_grp, _QW) or (_grp is not None and _grp.objectName() != "magnifier_group" and "magnifier" not in _grp.objectName().lower()):
+                    # Ищем ButtonGroup магнifier_group_container
+                    from sli_ui_toolkit.widgets import ButtonGroup as _BG
+
+                    if isinstance(_grp, _BG):
+                        break
+                    _grp = _grp.parentWidget() if isinstance(_grp, _QW) else None
+                if _grp is not None:
+                    self._weakened_group = _grp  # type: ignore[attr-defined]
+                    self._weakened_policy = _grp.focusPolicy()  # type: ignore[attr-defined]
+                    _grp.setFocusPolicy(_grp.focusPolicy().__class__.NoFocus)  # type: ignore
             except Exception:
-                try:
-                    from PySide6.QtCore import Qt as _Qt2
+                pass
+            # Форсируем кольцо на флайаут — снимаем с кнопки, ставим на флайаут
+            try:
+                from PySide6.QtCore import Qt as _Qt
 
-                    self._flyout.setFocus(_Qt2.FocusReason.OtherFocusReason)
-                except Exception:
-                    pass
+                # Снимаем кольцо с кнопки до переноса фокуса, чтобы не было двух колец в кадре
+                self._keyboard_focus = False
+                self.clearFocus()
+                self.update()
+                self._flyout.setFocus(_Qt.FocusReason.OtherFocusReason)
+                self._flyout._keyboard_focus = True  # type: ignore[attr-defined]
+                self._flyout.update()
+                from PySide6.QtCore import QTimer as _QTimer
+
+                _QTimer.singleShot(0, lambda f=self._flyout: (f.clearFocus(), f.setFocus(_Qt.FocusReason.OtherFocusReason), setattr(f, "_keyboard_focus", True), f.update()))
+            except Exception:
+                pass
         else:
             self._flyout_hide_timer.start(_FLYOUT_HIDE_MS)
         if not self._is_scrolling:
