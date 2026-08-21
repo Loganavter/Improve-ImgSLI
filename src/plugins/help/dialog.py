@@ -555,7 +555,28 @@ class HelpDialog(ThemedDialog):
             return []
         return [n.node_id for n in self._tree.siblings_of(current)]
 
+    def _save_prev_focus(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+            from shiboken6 import isValid
+            fw = QApplication.focusWidget()
+            if fw is not None and isValid(fw) and self.isAncestorOf(fw):
+                # Remember which section had focus before window change
+                self._prev_focus_was_content = self._content_host.isAncestorOf(fw) or fw is self._content_host
+                self._prev_focus_was_left = self.nav_widget.isAncestorOf(fw) or fw is self.nav_widget or self._search_field.isAncestorOf(fw) or fw is self._search_field or self._back_bar.isAncestorOf(fw)
+            else:
+                self._prev_focus_was_content = False
+                self._prev_focus_was_left = False
+        except Exception:
+            self._prev_focus_was_content = False
+            self._prev_focus_was_left = False
+
     def _render_current(self) -> None:
+        # Save where focus was before window change for UX: keep it in same column
+        try:
+            self._save_prev_focus()
+        except Exception:
+            pass
         node = self._nav.current_node()
         lang = self.current_language
         crumbs = tuple(
@@ -593,6 +614,7 @@ class HelpDialog(ThemedDialog):
 
         defer_dialog_geometry(self, self._apply_dialog_geometry)
         QTimer.singleShot(0, self._restore_focus_after_window_change)
+        QTimer.singleShot(60, self._restore_focus_after_window_change)
 
     def _restore_focus_after_window_change(self) -> None:
         try:
@@ -621,24 +643,85 @@ class HelpDialog(ThemedDialog):
                         # Simple check: if focused is inside _content_host or nav_widget or _back_bar and visible, keep
                         if (self._content_host.isAncestorOf(focused) or self.nav_widget.isAncestorOf(focused) or self._back_bar.isAncestorOf(focused) or focused is self._search_field):
                             return
-            # Focus was lost or on title bar/overlay — move to new content or sidebar
-            # Prefer content first card when hub, otherwise sidebar
+            # Focus was lost or on title bar/overlay — restore to same column where it was before
+            # UX: opening from left (sidebar) should keep focus in left; opening from right (content) should stay in right
+            # Not jump to beginning of left when it was in right.
             try:
                 from sli_ui_toolkit.managers import NavigationManager
                 NavigationManager.get_instance()._last_input_keyboard = True
             except Exception:
                 pass
-            # Try content first (hub cards or document canvas)
-            host = getattr(self, "_content_host", None)
-            if host is not None and host.isVisible():
-                # Use Auto section's focus_first with visible reason
-                sec = getattr(self, "_help_content_section", None)
-                if sec is not None:
-                    try:
-                        if sec.focus_first(reason=__import__('PySide6.QtCore', fromlist=['Qt']).Qt.FocusReason.OtherFocusReason):
-                            return
-                    except Exception:
-                        pass
+            was_content = getattr(self, '_prev_focus_was_content', False)
+            was_left = getattr(self, '_prev_focus_was_left', False)
+            # Prefer the column where focus was before
+            order = []
+            if was_content:
+                order = ['content', 'left', 'search', 'back']
+            elif was_left:
+                order = ['left', 'content', 'search', 'back']
+            else:
+                order = ['content', 'left', 'search', 'back']
+            for target in order:
+                if target == 'content':
+                    host = getattr(self, "_content_host", None)
+                    if host is not None and host.isVisible():
+                        sec = getattr(self, "_help_content_section", None)
+                        if sec is not None:
+                            try:
+                                try:
+                                    sec._auto_rows()
+                                except Exception:
+                                    pass
+                                if sec.focus_first(reason=Qt.FocusReason.OtherFocusReason):
+                                    return
+                            except Exception:
+                                pass
+                            # Direct fallback
+                            try:
+                                from PySide6.QtWidgets import QWidget as _QW
+                                cands = [w for w in host.findChildren(_QW) if w.focusPolicy()==Qt.FocusPolicy.StrongFocus and w.isVisible() and w.isEnabled()]
+                                if cands:
+                                    cands.sort(key=lambda w: w.mapToGlobal(w.rect().center()).y())
+                                    cands[0].setFocus(Qt.FocusReason.OtherFocusReason)
+                                    return
+                            except Exception:
+                                pass
+                elif target == 'left':
+                    # Sidebar column (search+list) — focus its first visible row
+                    # Use the sidebar_column Auto section if available, otherwise nav_widget
+                    sidebar_owner = getattr(self.shell, "sidebar_column", None)
+                    if sidebar_owner is None:
+                        sidebar_owner = self.nav_widget
+                    sec = getattr(self, "_help_sidebar_section", None)
+                    # sidebar_section is Auto for sidebar_column (contains search+list)
+                    # Try to focus its first row
+                    if sidebar_owner is not None and sidebar_owner.isVisible():
+                        # Try via section if it is Auto
+                        try:
+                            if sec is not None and hasattr(sec, 'focus_first'):
+                                if sec.focus_first(reason=Qt.FocusReason.OtherFocusReason):
+                                    return
+                        except Exception:
+                            pass
+                        # Fallback: find first StrongFocus in sidebar column
+                        try:
+                            from PySide6.QtWidgets import QWidget as _QW2
+                            cands2 = [w for w in sidebar_owner.findChildren(_QW2) if w.focusPolicy()==Qt.FocusPolicy.StrongFocus and w.isVisible() and w.isEnabled()]
+                            if cands2:
+                                cands2.sort(key=lambda w: w.mapToGlobal(w.rect().center()).y())
+                                cands2[0].setFocus(Qt.FocusReason.OtherFocusReason)
+                                return
+                        except Exception:
+                            pass
+                elif target == 'search':
+                    if self._search_field.isVisible():
+                        self._search_field.setFocus(Qt.FocusReason.OtherFocusReason)
+                        return
+                elif target == 'back':
+                    if self._back_bar.isVisible():
+                        self._back_bar.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                        self._back_bar.setFocus(Qt.FocusReason.OtherFocusReason)
+                        return
             # Fallback to sidebar
             if self.nav_widget.isVisible() and self.nav_widget.count() > 0:
                 btn = self.nav_widget.current_row_button() or self.nav_widget.row_button(0)
