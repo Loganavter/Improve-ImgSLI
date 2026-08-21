@@ -205,6 +205,28 @@ class _ScrollValueFlyout(BaseFlyout):
         super().focusOutEvent(event)
         self.update()
 
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        # Кольцо фокуса как у Button — рисуем поверх BaseFlyout когда _keyboard_focus
+        if getattr(self, "_keyboard_focus", False) and self.hasFocus():
+            from PySide6.QtGui import QPen
+
+            from sli_ui_toolkit.managers import ThemeManager
+
+            try:
+                color = ThemeManager.get_instance().get_color("focus.ring")  # type: ignore
+            except Exception:
+                color = None
+            from PySide6.QtGui import QColor
+
+            c = color if isinstance(color, QColor) else QColor("#3b82f6")
+            p = QPainter(self)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setPen(QPen(c, 2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 6, 6)
+            p.end()
+
     def keyPressEvent(self, event) -> None:
         # В edit-mode кольцо на флайауте — Esc возвращает, Left/Right шагуют значение якоря
         if event.key() == Qt.Key.Key_Escape:
@@ -685,16 +707,13 @@ class ScrollValueButton(Button):
             self._flyout_hide_timer.stop()
             # Ослабляем ButtonGroup, чтобы не перетянул фокус (как lifecycle _grab_focus)
             try:
-                from PySide6.QtWidgets import QWidget as _QW
+                from sli_ui_toolkit.widgets import ButtonGroup as _BG
 
                 _grp = self.parentWidget()
-                while _grp is not None and not isinstance(_grp, _QW) or (_grp is not None and _grp.objectName() != "magnifier_group" and "magnifier" not in _grp.objectName().lower()):
-                    # Ищем ButtonGroup магнifier_group_container
-                    from sli_ui_toolkit.widgets import ButtonGroup as _BG
-
+                while _grp is not None:
                     if isinstance(_grp, _BG):
                         break
-                    _grp = _grp.parentWidget() if isinstance(_grp, _QW) else None
+                    _grp = _grp.parentWidget()
                 if _grp is not None:
                     self._weakened_group = _grp  # type: ignore[attr-defined]
                     self._weakened_policy = _grp.focusPolicy()  # type: ignore[attr-defined]
@@ -734,6 +753,16 @@ class ScrollValueButton(Button):
 
     def _hide_flyout(self) -> None:
         self._flyout_hide_timer.stop()
+        # Восстанавливаем ButtonGroup политику если ослабляли для edit-mode
+        try:
+            _grp = getattr(self, "_weakened_group", None)
+            _pol = getattr(self, "_weakened_policy", None)
+            if _grp is not None and _pol is not None:
+                _grp.setFocusPolicy(_pol)
+                self._weakened_group = None  # type: ignore[attr-defined]
+                self._weakened_policy = None  # type: ignore[attr-defined]
+        except Exception:
+            pass
         if self._flyout is not None:
             self._flyout.hide()
         if self._is_scrolling:
