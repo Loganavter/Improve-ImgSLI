@@ -502,9 +502,18 @@ class ScrollValueButton(Button):
             return
         super().keyPressEvent(event)
 
+    def focusInEvent(self, event) -> None:  # noqa: N802
+        super().focusInEvent(event)
+        # Нижняя капсула (value) уже была для ховера мышкой — показываем её и для фокуса стрелками
+        if getattr(self, "_keyboard_focus", False):
+            self._set_hover_split(True)
+
     def focusOutEvent(self, event) -> None:  # noqa: N802
         self._keyboard_edit_active = False
         super().focusOutEvent(event)
+        # Гасим капсулу если ушли фокусом и мышка не ховерит
+        if not self.underMouse():
+            self._set_hover_split(False)
 
     def _step_value(self, step: int) -> None:
         old = self._value
