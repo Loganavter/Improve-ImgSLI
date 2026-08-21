@@ -142,39 +142,60 @@ class HelpDialog(ThemedDialog):
         self._render_current()
 
     def _setup_help_navigation(self) -> None:
-        """Wire keyboard navigation: sidebar ↔ content (hub cards / document)."""
+        """Wire keyboard navigation for Help: back bar → sidebar (search+list) ↔ content."""
         try:
             from sli_ui_toolkit.managers import NavigationManager
             from sli_ui_toolkit.ui.managers.navigation_sections import (
                 AutoNavigationSection,
-                IconListNavSection,
+                ToolbarRowsSection,
             )
 
-            # Avoid double registration on re-init (tests may recreate dialog)
-            if getattr(self, "_help_sidebar_section", None) is not None:
+            if getattr(self, "_help_navigation_installed", None):
                 return
+            self._help_navigation_installed = True
+
+            # Back bar (top) — single row with back + crumbs
+            back_section = ToolbarRowsSection(
+                lambda: [self._back_bar] if self._back_bar.isVisible() else [],
+                tag="help-backbar",
+            )
+
+            # Sidebar column (search field + nav list) — auto-discovers both.
+            sidebar_column = getattr(self.shell, "sidebar_column", None)
+            sidebar_owner = sidebar_column if sidebar_column is not None else self.nav_widget
+            sidebar_section = AutoNavigationSection(
+                sidebar_owner, tag="help-sidebar"
+            )
 
             def _focus_content() -> bool:
-                # Focus whatever content is currently visible (hub or document)
                 host = getattr(self, "_content_host", None)
                 if host is None:
                     return False
                 return NavigationManager.get_instance().focus_section_for_owner(host)
 
-            sidebar_section = IconListNavSection(
-                self.nav_widget, on_exit_right=_focus_content
-            )
-            self._help_sidebar_section = sidebar_section
-            NavigationManager.get_instance().register(self.nav_widget, sidebar_section)
-
-            content_host = getattr(self, "_content_host", None)
-            if content_host is not None:
-                # Auto-discovers StrongFocus widgets (hub cards, TOC links) stacked vertically
-                content_section = AutoNavigationSection(
-                    content_host, tag="help-content", on_exit_left=sidebar_section.focus_first
+            def _focus_sidebar() -> bool:
+                return NavigationManager.get_instance().focus_section_for_owner(
+                    sidebar_owner
                 )
-                self._help_content_section = content_section
-                NavigationManager.get_instance().register(content_host, content_section)
+
+            sidebar_section._on_exit_right = lambda reason=None: _focus_content()  # type: ignore[attr-defined]
+            content_host = getattr(self, "_content_host", None)
+            content_section = None
+            if content_host is not None:
+                content_section = AutoNavigationSection(
+                    content_host, tag="help-content"
+                )
+                content_section._on_exit_left = lambda reason=None: _focus_sidebar()  # type: ignore[attr-defined]
+
+            mgr = NavigationManager.get_instance()
+            mgr.register(self._back_bar, back_section)
+            mgr.register(sidebar_owner, sidebar_section)
+            if content_host is not None and content_section is not None:
+                mgr.register(content_host, content_section)
+
+            self._help_back_section = back_section
+            self._help_sidebar_section = sidebar_section
+            self._help_content_section = content_section
         except Exception:
             logger.exception("help navigation setup failed")
 
@@ -196,18 +217,28 @@ class HelpDialog(ThemedDialog):
                 NavigationManager.get_instance()._last_input_keyboard = True
             except Exception:
                 pass
-            # Focus the navigation owner itself (container), not a button,
-            # so before first interaction the log shows focused=IconListWidget/QWidget
-            # with no invisible Button focus — matching main window approach where
-            # no button has keyboard_focus before the first click/arrow.
+            reason = Qt.FocusReason.OtherFocusReason
+            # Prefer the sidebar column (search+list) when visible — like main
+            # window, keep focus on the container before first arrow, not on an
+            # invisible Button. Down from the container will land on the first
+            # visible row (search field) with a visible ring.
+            sidebar_column = getattr(self.shell, "sidebar_column", None)
+            if sidebar_column is not None and sidebar_column.isVisible():
+                sidebar_column.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                sidebar_column.setFocus(reason)
+                return
             if self.nav_widget.isVisible() and self.nav_widget.count() > 0:
                 self.nav_widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-                self.nav_widget.setFocus(Qt.FocusReason.OtherFocusReason)
+                self.nav_widget.setFocus(reason)
+                return
+            if self._back_bar.isVisible():
+                self._back_bar.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                self._back_bar.setFocus(reason)
                 return
             host = getattr(self, "_content_host", None)
             if host is not None and isValid(host):
                 host.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-                host.setFocus(Qt.FocusReason.OtherFocusReason)
+                host.setFocus(reason)
         except Exception:
             pass
 
@@ -561,6 +592,64 @@ class HelpDialog(ThemedDialog):
                 QTimer.singleShot(0, lambda a=anchor: self._scroll_to_anchor(a))
 
         defer_dialog_geometry(self, self._apply_dialog_geometry)
+        QTimer.singleShot(0, self._restore_focus_after_window_change)
+
+    def _restore_focus_after_window_change(self) -> None:
+        try:
+            from shiboken6 import isValid
+            from PySide6.QtWidgets import QApplication
+            if not isValid(self) or not self.isVisible():
+                return
+            focused = QApplication.focusWidget()
+            # If focused is still inside help dialog and visible, keep it
+            # (e.g. back button still there after navigation). Only restore
+            # when focus was lost (deleted widget, window, or title bar).
+            if focused is not None and isValid(focused) and self.isAncestorOf(focused) and focused.isVisible():
+                # Keep focus if it is a navigable Button/LineEdit/Canvas
+                # but if it is the CustomTitleBar or OverlayScrollArea (as seen
+                # in log after Enter on back button: focused went to
+                # OverlayScrollArea -> HelpDocumentBodyCanvas -> CustomTitleBar),
+                # we should move it to the new content.
+                if isinstance(focused, type(self._back_bar)) and focused is self._back_bar:
+                    pass  # container itself, not a button
+                elif focused.objectName() in ("HelpBackBar", "HelpSearchField", "HelpDialog"):
+                    pass
+                else:
+                    # Check if focused is still a valid navigable widget
+                    # If it is inside help dialog and not the title bar, keep it
+                    if not isinstance(focused, type(self.windowHandle())):
+                        # Simple check: if focused is inside _content_host or nav_widget or _back_bar and visible, keep
+                        if (self._content_host.isAncestorOf(focused) or self.nav_widget.isAncestorOf(focused) or self._back_bar.isAncestorOf(focused) or focused is self._search_field):
+                            return
+            # Focus was lost or on title bar/overlay — move to new content or sidebar
+            # Prefer content first card when hub, otherwise sidebar
+            try:
+                from sli_ui_toolkit.managers import NavigationManager
+                NavigationManager.get_instance()._last_input_keyboard = True
+            except Exception:
+                pass
+            # Try content first (hub cards or document canvas)
+            host = getattr(self, "_content_host", None)
+            if host is not None and host.isVisible():
+                # Use Auto section's focus_first with visible reason
+                sec = getattr(self, "_help_content_section", None)
+                if sec is not None:
+                    try:
+                        if sec.focus_first(reason=__import__('PySide6.QtCore', fromlist=['Qt']).Qt.FocusReason.OtherFocusReason):
+                            return
+                    except Exception:
+                        pass
+            # Fallback to sidebar
+            if self.nav_widget.isVisible() and self.nav_widget.count() > 0:
+                btn = self.nav_widget.current_row_button() or self.nav_widget.row_button(0)
+                if btn is not None and isValid(btn):
+                    btn.setFocus(__import__('PySide6.QtCore', fromlist=['Qt']).Qt.FocusReason.OtherFocusReason)
+                    return
+            # Last fallback to search field
+            if self._search_field.isVisible():
+                self._search_field.setFocus(__import__('PySide6.QtCore', fromlist=['Qt']).Qt.FocusReason.OtherFocusReason)
+        except Exception:
+            pass
 
     def _scroll_to_anchor(self, anchor: str) -> None:
         widget = self._document.scroll_to_anchor(anchor)
