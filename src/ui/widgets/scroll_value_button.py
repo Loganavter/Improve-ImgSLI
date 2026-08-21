@@ -181,51 +181,6 @@ class _ScrollValueFlyout(BaseFlyout):
         # every show (show_aligned -> adjustSize), same as SliderHintFlyout.
         self._label.setMinimumSize(scaled_px(22), scaled_px(20))
         self.add_widget(self._label)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self._keyboard_focus = False
-
-    def focusInEvent(self, event) -> None:
-        reason = event.reason()
-        is_kbd = reason not in (Qt.FocusReason.MouseFocusReason, Qt.FocusReason.MenuBarFocusReason)
-        # NavigationManager preserve уже форсит, но дублируем для BaseFlyout без Button-логики
-        try:
-            from sli_ui_toolkit.managers import NavigationManager
-
-            if not is_kbd and NavigationManager.get_instance().last_input_was_keyboard():
-                is_kbd = True
-        except Exception:
-            pass
-        self._keyboard_focus = bool(is_kbd)
-        self._last_focus_reason = reason
-        super().focusInEvent(event)
-        self.update()
-
-    def focusOutEvent(self, event) -> None:
-        self._keyboard_focus = False
-        super().focusOutEvent(event)
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        super().paintEvent(event)
-        # Кольцо фокуса как у Button — рисуем поверх BaseFlyout когда _keyboard_focus
-        if getattr(self, "_keyboard_focus", False) and self.hasFocus():
-            from PySide6.QtGui import QPen
-
-            from sli_ui_toolkit.managers import ThemeManager
-
-            try:
-                color = ThemeManager.get_instance().get_color("focus.ring")  # type: ignore
-            except Exception:
-                color = None
-            from PySide6.QtGui import QColor
-
-            c = color if isinstance(color, QColor) else QColor("#3b82f6")
-            p = QPainter(self)
-            p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            p.setPen(QPen(c, 2))
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 6, 6)
-            p.end()
 
     def keyPressEvent(self, event) -> None:
         # В edit-mode кольцо на флайауте — Esc возвращает, Left/Right шагуют значение якоря
