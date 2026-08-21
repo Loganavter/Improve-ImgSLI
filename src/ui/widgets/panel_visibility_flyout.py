@@ -15,6 +15,8 @@ from sli_ui_toolkit.widgets import IndexedToggleFlyout
 class PanelVisibilityFlyout(IndexedToggleFlyout):
     _nav_side = "above"
     _nav_mode = "preview"
+    _nearest_focus = True  # Up→ближайший к якорю, не всегда левый
+    _nav_exit = "up"  # любой Up→якорь (у toggle уже так, но явно)
 
     def __init__(self, parent_widget: QWidget, *, slot_icon: str):
         super().__init__(parent_widget, slot_count=3, slot_icon=slot_icon)
