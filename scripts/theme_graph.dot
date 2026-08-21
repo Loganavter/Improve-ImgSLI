@@ -17,6 +17,7 @@ digraph theme {
   "hx_#ffffff" -> "label.image.background";
   "hx_#ffffff" -> "list_item.background.normal";
   "hx_#ffffff" -> "slider.thumb.outer";
+  "hx_#ffffff" -> "surface.background";
   "hx_#ffffff" -> "switch.knob.on";
   "hx_#ffffff" -> "toast.background";
   "hx_#ffffff" -> "toast.text";
@@ -34,6 +35,7 @@ digraph theme {
   "hx_#e1e1e1" -> "AlternateBase";
   "hx_#e1e1e1" -> "Button";
   "hx_#e1e1e1" -> "dialog.button.background";
+  "hx_#e1e1e1" -> "surface.button";
   "hx_#0078d4" [label="#0078d4", shape=ellipse, style=filled, fillcolor="#0078d4"];
   "hx_#0078d4" -> "Highlight";
   "hx_#0078d4" -> "accent";
@@ -88,11 +90,13 @@ digraph theme {
   "hx_#f0f0f0" -> "color_dialog.background";
   "hx_#f0f0f0" -> "help.nav.background";
   "hx_#f0f0f0" -> "list_item.text.normal";
+  "hx_#f0f0f0" -> "surface.list";
   "hx_#2b2b2b" [label="#2b2b2b", shape=ellipse, style=filled, fillcolor="#2b2b2b"];
   "hx_#2b2b2b" -> "Window";
   "hx_#2b2b2b" -> "color_dialog.background";
   "hx_#2b2b2b" -> "dialog.background";
   "hx_#2b2b2b" -> "label.image.background";
+  "hx_#2b2b2b" -> "surface.background";
   "hx_#dfdfdf" [label="#dfdfdf", shape=ellipse, style=filled, fillcolor="#dfdfdf"];
   "hx_#dfdfdf" -> "ButtonText";
   "hx_#dfdfdf" -> "Text";
@@ -110,10 +114,12 @@ digraph theme {
   "hx_#3c3c3c" -> "color_dialog.input.background";
   "hx_#3c3c3c" -> "dialog.button.background";
   "hx_#3c3c3c" -> "dialog.input.background";
+  "hx_#3c3c3c" -> "surface.button";
   "hx_#3c3c3c" -> "tooltip.background";
   "hx_#313131" [label="#313131", shape=ellipse, style=filled, fillcolor="#313131"];
   "hx_#313131" -> "AlternateBase";
   "hx_#313131" -> "help.nav.background";
+  "hx_#313131" -> "surface.list";
   "hx_#0096ff" [label="#0096ff", shape=ellipse, style=filled, fillcolor="#0096ff"];
   "hx_#0096ff" -> "Highlight";
   "hx_#0096ff" -> "accent";

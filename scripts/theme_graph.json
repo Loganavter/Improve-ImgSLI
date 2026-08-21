@@ -21,6 +21,7 @@
       "light:label.image.background",
       "light:list_item.background.normal",
       "light:slider.thumb.outer",
+      "light:surface.background",
       "light:switch.knob.on",
       "light:toast.background",
       "light:tooltip.background"
@@ -38,7 +39,8 @@
     "#e1e1e1": [
       "light:AlternateBase",
       "light:Button",
-      "light:dialog.button.background"
+      "light:dialog.button.background",
+      "light:surface.button"
     ],
     "#ff0000": [
       "dark:BrightText",
@@ -110,13 +112,15 @@
       "dark:list_item.text.normal",
       "light:button.toggle.background.normal",
       "light:color_dialog.background",
-      "light:help.nav.background"
+      "light:help.nav.background",
+      "light:surface.list"
     ],
     "#2b2b2b": [
       "dark:Window",
       "dark:color_dialog.background",
       "dark:dialog.background",
-      "dark:label.image.background"
+      "dark:label.image.background",
+      "dark:surface.background"
     ],
     "#dfdfdf": [
       "dark:ButtonText",
@@ -136,11 +140,13 @@
       "dark:color_dialog.input.background",
       "dark:dialog.button.background",
       "dark:dialog.input.background",
+      "dark:surface.button",
       "dark:tooltip.background"
     ],
     "#313131": [
       "dark:AlternateBase",
-      "dark:help.nav.background"
+      "dark:help.nav.background",
+      "dark:surface.list"
     ],
     "#0096ff": [
       "dark:Highlight",
@@ -332,6 +338,7 @@
       "label.image.background",
       "list_item.background.normal",
       "slider.thumb.outer",
+      "surface.background",
       "switch.knob.on",
       "toast.background",
       "toast.text",
@@ -350,7 +357,8 @@
     "#e1e1e1": [
       "AlternateBase",
       "Button",
-      "dialog.button.background"
+      "dialog.button.background",
+      "surface.button"
     ],
     "#0078d4": [
       "Highlight",
@@ -418,13 +426,15 @@
       "button.toggle.background.normal",
       "color_dialog.background",
       "help.nav.background",
-      "list_item.text.normal"
+      "list_item.text.normal",
+      "surface.list"
     ],
     "#2b2b2b": [
       "Window",
       "color_dialog.background",
       "dialog.background",
-      "label.image.background"
+      "label.image.background",
+      "surface.background"
     ],
     "#dfdfdf": [
       "ButtonText",
@@ -444,11 +454,13 @@
       "color_dialog.input.background",
       "dialog.button.background",
       "dialog.input.background",
+      "surface.button",
       "tooltip.background"
     ],
     "#313131": [
       "AlternateBase",
-      "help.nav.background"
+      "help.nav.background",
+      "surface.list"
     ],
     "#0096ff": [
       "Highlight",
