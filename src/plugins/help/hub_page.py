@@ -181,4 +181,7 @@ class HelpHubPage(QWidget):
         card.regionClicked.connect(
             lambda _id, nid=node.node_id: self.childActivated.emit(nid)
         )
+        # Keyboard activation (Space/Enter) goes through Button._activate_via_keyboard
+        # which emits clicked/shortClicked, not regionClicked — also wire clicked.
+        card.clicked.connect(lambda nid=node.node_id: self.childActivated.emit(nid))
         return card
