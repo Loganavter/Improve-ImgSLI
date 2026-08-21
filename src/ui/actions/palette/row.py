@@ -179,7 +179,8 @@ class RowBackgroundLayer(Layer):
             ):
                 is_active = True
                 break
-        key = "list_item.background.hover" if is_active else "list_item.background.normal"
+        # Стандартная палитра кнопок внутри аппы (как в справке) — без hover-варианта
+        key = "help.nav.background"
         rect = row_capsule_rect(ctx.rect).toRect()
         painter = ctx.painter
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)

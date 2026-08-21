@@ -114,6 +114,8 @@ class HelpDialog(ThemedDialog):
         self.setWindowTitle(title)
         self.setWindowIcon(get_app_icon(AppIcon.HELP))
         self.setObjectName("HelpDialog")
+        self._external_prev_focus = None
+        self._external_prev_window = None
         # Independent top-level window (not transient-for the main shell), so
         # opening Help from Video Editor / Export does not bury those windows.
         self.setWindowFlags(
@@ -213,6 +215,33 @@ class HelpDialog(ThemedDialog):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._install_mouse_nav_filter()
+        # Сохраняем внешний фокус до того как _focus_help_container его перетянет
+        try:
+            from PySide6.QtWidgets import QApplication
+            from shiboken6 import isValid as _isValid
+
+            fw = QApplication.focusWidget()
+            # Ищем топ-левел вне диалога
+            if fw is not None and _isValid(fw) and not self.isAncestorOf(fw):
+                self._external_prev_focus = fw
+                # Запоминаем окно для activate
+                self._external_prev_window = fw.window()
+            else:
+                # Фолбэк — активное окно приложения (MainWindow)
+                aw = QApplication.activeWindow()
+                if aw is not None and aw is not self:
+                    self._external_prev_window = aw
+                # Пробуем NavigationManager.last_keyboard_focus
+                try:
+                    from sli_ui_toolkit.managers import NavigationManager
+
+                    kbd = NavigationManager.get_instance().last_keyboard_focus()
+                    if kbd is not None and _isValid(kbd) and not self.isAncestorOf(kbd):
+                        self._external_prev_focus = kbd
+                except Exception:
+                    pass
+        except Exception:
+            pass
         QTimer.singleShot(0, self._focus_help_container)
         QTimer.singleShot(60, self._focus_help_container)
 
@@ -255,9 +284,68 @@ class HelpDialog(ThemedDialog):
 
     def hideEvent(self, event) -> None:
         self._remove_mouse_nav_filter()
+        # Возвращаем фокус наружу, чтобы не остаться в None (сценарий 23:42:16:980)
+        try:
+            from PySide6.QtWidgets import QApplication
+            from shiboken6 import isValid as _isValid
+
+            # Если фокус всё ещё внутри диалога или уже потерян (None), вернём наружу
+            fw = QApplication.focusWidget()
+            inside = fw is not None and _isValid(fw) and self.isAncestorOf(fw)
+            lost = fw is None or (fw is not None and not _isValid(fw))
+            if inside or lost:
+                target = getattr(self, "_external_prev_focus", None)
+                win = getattr(self, "_external_prev_window", None)
+                if target is not None and _isValid(target) and target.isVisible():
+                    try:
+                        from sli_ui_toolkit.managers import NavigationManager
+
+                        NavigationManager.get_instance()._last_input_keyboard = True
+                    except Exception:
+                        pass
+                    target.setFocus(Qt.FocusReason.OtherFocusReason)
+                elif win is not None and _isValid(win):
+                    win.activateWindow()
+                    # Фолбэк — последний клавиатурный фокус внутри окна
+                    try:
+                        from sli_ui_toolkit.managers import NavigationManager
+
+                        kbd = NavigationManager.get_instance().last_keyboard_focus()
+                        if kbd is not None and _isValid(kbd) and kbd.isVisible() and win.isAncestorOf(kbd):
+                            kbd.setFocus(Qt.FocusReason.OtherFocusReason)
+                        else:
+                            win.setFocus(Qt.FocusReason.OtherFocusReason)
+                    except Exception:
+                        win.setFocus(Qt.FocusReason.OtherFocusReason)
+                else:
+                    # Последний фолбэк — первое topLevel MainWindow
+                    for w in QApplication.topLevelWidgets():
+                        if w.isVisible() and (w.objectName() == "MainWindow" or "ImageComparisonApp" in type(w).__name__):
+                            w.activateWindow()
+                            w.setFocus(Qt.FocusReason.OtherFocusReason)
+                            break
+                    else:
+                        aw = QApplication.activeWindow()
+                        if aw is not None and _isValid(aw):
+                            aw.activateWindow()
+        except Exception:
+            pass
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:
+        # close → hide уже вернёт фокус, но на случай прямого close без hide
+        try:
+            from PySide6.QtWidgets import QApplication
+            from shiboken6 import isValid as _isValid
+
+            fw = QApplication.focusWidget()
+            if fw is not None and _isValid(fw) and self.isAncestorOf(fw):
+                # Тот же возврат что в hideEvent, но до super().closeEvent
+                target = getattr(self, "_external_prev_focus", None)
+                if target is not None and _isValid(target) and target.isVisible():
+                    target.setFocus(Qt.FocusReason.OtherFocusReason)
+        except Exception:
+            pass
         self._remove_mouse_nav_filter()
         super().closeEvent(event)
 
