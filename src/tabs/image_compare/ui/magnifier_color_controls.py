@@ -19,6 +19,8 @@ from sli_ui_toolkit.widgets import (
 class MagnifierColorOptionsFlyout(IconActionFlyout):
     _nav_side = "above"
     _nav_mode = "preview"
+    _nearest_focus = True  # Up→ближайший к якорю, а не всегда capture слева
+    _nav_exit = "down"  # Down из любого места флайаута → к якорю (side=above)
 
     def __init__(self, parent=None, current_language: str = "en", store=None):
         self.current_language = current_language
@@ -229,46 +231,26 @@ class ColorSettingsButton(Button):
             self.refresh_visual_state()
             if self.flyout.isVisible():
                 if self.flyout.has_visible_actions():
-                    self.flyout.show_aligned(
-                        self,
-                        "top-center",
-                        "bottom-center",
-                        toggle=False,
-                        grab_focus=False,
-                        register_nav_section=False,
-                        animation="none",
-                    )
+                    self._show_preview()
                 else:
                     self.flyout.hide()
 
-    def _group_anchor(self):
-        # Anchor to the whole magnifier group, not just this button,
-        # so keyboard navigation on sibling ScrollValueButtons inside the
-        # same group doesn't hide the color flyout (still inside group).
-        parent = self.parentWidget()
-        # Walk up to find the ButtonGroup container (magnifier_group_container)
-        while parent is not None:
-            if parent.objectName() == "magnifier_group" or "magnifier" in parent.objectName().lower():
-                return parent
-            # Fallback: use the direct parent that is a ButtonGroup
-            from sli_ui_toolkit.widgets import ButtonGroup
+    def _show_preview(self):
+        """Preview без кражи фокуса — Up входит через extension_below."""
+        self.flyout.show_aligned(
+            self, "top-center", "bottom-center", toggle=False, grab_focus=False, register_nav_section=False, animation="none"
+        )
 
-            if isinstance(parent, ButtonGroup):
-                return parent
-            parent = parent.parentWidget()
-        return self
+    def _show_interactive(self):
+        """Enter/Click — с захватом фокуса, _nearest_focus выберет ближайший к якорю."""
+        self.flyout.show_aligned(self, "top-center", "bottom-center", toggle=False, animation="none")
 
     def enterEvent(self, event):
         super().enterEvent(event)
         self.elementHovered.emit("magnifier")
-        # Hover now opens (user request "сделай чтобы открывались") and must be
-        # enterable via Up (above flyout) even when opened by mouse — mirror
-        # PanelVisibility bottom/top logic: preview with grab False, no nav proxy.
         self.flyout.update_state()
         if self.flyout.has_visible_actions():
-            self.flyout.show_aligned(
-                self, "top-center", "bottom-center", toggle=False, grab_focus=False, register_nav_section=False, animation="none"
-            )
+            self._show_preview()
             self.flyout.cancel_auto_hide()
 
     def leaveEvent(self, event):
@@ -278,54 +260,29 @@ class ColorSettingsButton(Button):
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
-        # Click explicitly opens — same as Enter. Anchor to the button itself
-        # for correct centering (group anchor would shift left by ~group.center - button.center).
         if event.button() == event.button().LeftButton:
             self.flyout.update_state()
             if self.flyout.has_visible_actions():
-                self.flyout.show_aligned(
-                    self, "top-center", "bottom-center", toggle=False, animation="none"
-                )
+                self._show_interactive()
                 self.flyout.cancel_auto_hide()
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
-        # Keyboard focus previews the flyout without stealing focus —
-        # actual navigation inside still requires Enter (see
-        # PanelVisibilityFlyout._keyboard_navigation_active).
         from PySide6.QtCore import Qt
-
         reason = getattr(event, "reason", lambda: None)()
-        is_keyboard = reason not in (
-            Qt.FocusReason.MouseFocusReason,
-            Qt.FocusReason.MenuBarFocusReason,
-        )
+        is_keyboard = reason not in (Qt.FocusReason.MouseFocusReason, Qt.FocusReason.MenuBarFocusReason)
         if is_keyboard and getattr(self, "_keyboard_focus", False):
             self.flyout.update_state()
             if self.flyout.has_visible_actions():
-                # Anchor to button for visual centering; group is only for
-                # keep-open logic (focusOut still checks group).
-                # register=False like PanelVisibility — Up enters via extension_below.
-                self.flyout.show_aligned(
-                    self,
-                    "top-center",
-                    "bottom-center",
-                    toggle=False,
-                    grab_focus=False,
-                    register_nav_section=False,
-                    animation="none",
-                )
+                self._show_preview()
                 self.flyout.cancel_auto_hide()
 
     def keyPressEvent(self, event):
         from PySide6.QtCore import Qt
-
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.flyout.update_state()
             if self.flyout.has_visible_actions():
-                self.flyout.show_aligned(
-                    self, "top-center", "bottom-center", toggle=False, animation="none"
-                )
+                self._show_interactive()
                 self.flyout.cancel_auto_hide()
                 event.accept()
                 return
@@ -338,15 +295,10 @@ class ColorSettingsButton(Button):
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
         self.elementHoverEnded.emit()
-        # Hide when focus leaves the opener button itself — even if it moves
-        # to a sibling inside the same magnifier group. Keep open only while
-        # focus is inside the flyout itself (keyboard navigation inside).
         try:
             from PySide6.QtWidgets import QApplication
-
             new_focus = QApplication.focusWidget()
-            flyout = self.flyout
-            if new_focus is not None and flyout is not None and flyout.isAncestorOf(new_focus):
+            if new_focus is not None and self.flyout is not None and self.flyout.isAncestorOf(new_focus):
                 return
         except Exception:
             pass
