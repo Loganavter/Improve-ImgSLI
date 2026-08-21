@@ -553,6 +553,18 @@ class SettingsDialog(ThemedDialog):
         self._reset_button_states()
         super().reject()
 
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            # Settings window must not close on Esc — navigation owns Esc
+            # for in-dialog search clearing and widget-local dismissals
+            # (e.g. ComboBox dropdown). Consume the key so QDialog's
+            # default Esc -> reject() never fires; clear search if active.
+            if getattr(self, "_search_mode", False):
+                self.clear_search()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def _reset_button_states(self):
         if hasattr(self, "ok_button"):
             self.ok_button.setProperty("state", "normal")

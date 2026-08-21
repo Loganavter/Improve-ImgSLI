@@ -138,7 +138,45 @@ class HelpDialog(ThemedDialog):
 
         decorate_dialog(self, title=title)
         self._setup_topic_search()
+        self._setup_help_navigation()
         self._render_current()
+
+    def _setup_help_navigation(self) -> None:
+        """Wire keyboard navigation: sidebar ↔ content (hub cards / document)."""
+        try:
+            from sli_ui_toolkit.managers import NavigationManager
+            from sli_ui_toolkit.ui.managers.navigation_sections import (
+                AutoNavigationSection,
+                IconListNavSection,
+            )
+
+            # Avoid double registration on re-init (tests may recreate dialog)
+            if getattr(self, "_help_sidebar_section", None) is not None:
+                return
+
+            def _focus_content() -> bool:
+                # Focus whatever content is currently visible (hub or document)
+                host = getattr(self, "_content_host", None)
+                if host is None:
+                    return False
+                return NavigationManager.get_instance().focus_section_for_owner(host)
+
+            sidebar_section = IconListNavSection(
+                self.nav_widget, on_exit_right=_focus_content
+            )
+            self._help_sidebar_section = sidebar_section
+            NavigationManager.get_instance().register(self.nav_widget, sidebar_section)
+
+            content_host = getattr(self, "_content_host", None)
+            if content_host is not None:
+                # Auto-discovers StrongFocus widgets (hub cards, TOC links) stacked vertically
+                content_section = AutoNavigationSection(
+                    content_host, tag="help-content", on_exit_left=sidebar_section.focus_first
+                )
+                self._help_content_section = content_section
+                NavigationManager.get_instance().register(content_host, content_section)
+        except Exception:
+            logger.exception("help navigation setup failed")
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -256,6 +294,7 @@ class HelpDialog(ThemedDialog):
         self._scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        self._scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         content_layout.addWidget(self._scroll, 1)
 
         self._content_host = QWidget()
@@ -346,6 +385,14 @@ class HelpDialog(ThemedDialog):
             if self.shell.sidebar_column is not None:
                 self.shell.sidebar_column.setVisible(False)
             splitter.setSizes([0, total])
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            if getattr(self, "_search_mode", False):
+                self.clear_topic_search()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _apply_dialog_geometry(self) -> None:
         apply_help_dialog_geometry(self)
