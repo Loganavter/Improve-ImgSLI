@@ -174,6 +174,17 @@ class HelpDialog(ThemedDialog):
                 return NavigationManager.get_instance().focus_section_for_owner(host)
 
             def _focus_sidebar() -> bool:
+                # Сохраняем выбранный ряд, а не search (как в _restore)
+                try:
+                    btn = self.nav_widget.current_row_button()
+                    if btn is not None:
+                        from shiboken6 import isValid as _isValid
+
+                        if _isValid(btn) and btn.isVisible():
+                            btn.setFocus(Qt.FocusReason.OtherFocusReason)
+                            return True
+                except Exception:
+                    pass
                 return NavigationManager.get_instance().focus_section_for_owner(
                     sidebar_owner
                 )
@@ -561,14 +572,17 @@ class HelpDialog(ThemedDialog):
             from shiboken6 import isValid
             fw = QApplication.focusWidget()
             if fw is not None and isValid(fw) and self.isAncestorOf(fw):
-                # Remember which section had focus before window change
+                # Remember which section + exact left sub-target (search vs list)
                 self._prev_focus_was_content = self._content_host.isAncestorOf(fw) or fw is self._content_host
-                self._prev_focus_was_left = self.nav_widget.isAncestorOf(fw) or fw is self.nav_widget or self._search_field.isAncestorOf(fw) or fw is self._search_field or self._back_bar.isAncestorOf(fw)
+                self._prev_focus_was_search = fw is self._search_field or self._search_field.isAncestorOf(fw)
+                self._prev_focus_was_left = self.nav_widget.isAncestorOf(fw) or fw is self.nav_widget or self._prev_focus_was_search or self._back_bar.isAncestorOf(fw)
             else:
                 self._prev_focus_was_content = False
+                self._prev_focus_was_search = False
                 self._prev_focus_was_left = False
         except Exception:
             self._prev_focus_was_content = False
+            self._prev_focus_was_search = False
             self._prev_focus_was_left = False
 
     def _render_current(self) -> None:
@@ -647,13 +661,29 @@ class HelpDialog(ThemedDialog):
             except Exception:
                 pass
             was_left = getattr(self, "_prev_focus_was_left", False)
+            was_search = getattr(self, "_prev_focus_was_search", False)
             # Декларативно: фокус в ту колонку где был до навигации, без ручного findChildren
+            # Для левой колонки сохраняем точную позицию: search → search, список → текущий ряд
             try:
                 from sli_ui_toolkit.managers import NavigationManager as _NM
 
                 mgr = _NM.get_instance()
                 sidebar_owner = getattr(self.shell, "sidebar_column", None) or self.nav_widget
                 if was_left:
+                    if was_search and self._search_field.isVisible():
+                        self._search_field.setFocus(Qt.FocusReason.OtherFocusReason)
+                        return
+                    # Список: предпочитаем current_row_button, а не первый StrongFocus (search)
+                    try:
+                        btn = self.nav_widget.current_row_button()
+                        if btn is not None:
+                            from shiboken6 import isValid as _isValid
+
+                            if _isValid(btn) and btn.isVisible():
+                                btn.setFocus(Qt.FocusReason.OtherFocusReason)
+                                return
+                    except Exception:
+                        pass
                     if mgr.focus_section_for_owner(sidebar_owner):
                         return
                     if mgr.focus_section_for_owner(self._content_host):
