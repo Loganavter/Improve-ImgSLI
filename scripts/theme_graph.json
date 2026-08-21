@@ -1,31 +1,5 @@
 {
   "hex_to_keys": {
-    "#ffffff": [
-      "dark:HighlightedText",
-      "dark:button.primary.text",
-      "dark:dialog.text",
-      "dark:help.nav.selected.text",
-      "dark:switch.knob.on",
-      "dark:toast.text",
-      "light:Base",
-      "light:HighlightedText",
-      "light:ToolTipBase",
-      "light:Window",
-      "light:button.dialog.default.background",
-      "light:button.primary.background",
-      "light:color_dialog.input.background",
-      "light:dialog.background",
-      "light:dialog.input.background",
-      "light:flyout.background",
-      "light:help.nav.selected.text",
-      "light:label.image.background",
-      "light:list_item.background.normal",
-      "light:slider.thumb.outer",
-      "light:surface.background",
-      "light:switch.knob.on",
-      "light:toast.background",
-      "light:tooltip.background"
-    ],
     "#1f1f1f": [
       "light:ButtonText",
       "light:Text",
@@ -35,12 +9,6 @@
       "light:dialog.text",
       "light:switch.text",
       "light:tooltip.text"
-    ],
-    "#e1e1e1": [
-      "light:AlternateBase",
-      "light:Button",
-      "light:dialog.button.background",
-      "light:surface.button"
     ],
     "#ff0000": [
       "dark:BrightText",
@@ -90,13 +58,19 @@
     ],
     "#000000": [
       "light:button.primary.text",
-      "light:list_item.text.normal",
       "light:toast.text"
     ],
     "#e0e0e0": [
       "dark:color_dialog.text",
       "light:flyout.border",
       "light:help.nav.border"
+    ],
+    "#ffffff": [
+      "dark:button.primary.text",
+      "dark:dialog.text",
+      "dark:toast.text",
+      "light:list_item.background.normal",
+      "light:surface.background"
     ],
     "#e5e5e5": [
       "light:help.separator",
@@ -108,20 +82,6 @@
       "light:dialog.border",
       "light:tooltip.border"
     ],
-    "#f0f0f0": [
-      "dark:list_item.text.normal",
-      "light:button.toggle.background.normal",
-      "light:color_dialog.background",
-      "light:help.nav.background",
-      "light:surface.list"
-    ],
-    "#2b2b2b": [
-      "dark:Window",
-      "dark:color_dialog.background",
-      "dark:dialog.background",
-      "dark:label.image.background",
-      "dark:surface.background"
-    ],
     "#dfdfdf": [
       "dark:ButtonText",
       "dark:Text",
@@ -129,24 +89,6 @@
       "dark:WindowText",
       "dark:switch.text",
       "dark:tooltip.text"
-    ],
-    "#3c3c3c": [
-      "dark:Base",
-      "dark:Button",
-      "dark:ToolTipBase",
-      "dark:button.dialog.default.background",
-      "dark:button.primary.background",
-      "dark:button.toggle.background.normal",
-      "dark:color_dialog.input.background",
-      "dark:dialog.button.background",
-      "dark:dialog.input.background",
-      "dark:surface.button",
-      "dark:tooltip.background"
-    ],
-    "#313131": [
-      "dark:AlternateBase",
-      "dark:help.nav.background",
-      "dark:surface.list"
     ],
     "#0096ff": [
       "dark:Highlight",
@@ -180,10 +122,6 @@
     "#26ffffff": [
       "dark:button.dialog.default.border",
       "dark:button.primary.border"
-    ],
-    "#383838": [
-      "dark:flyout.background",
-      "dark:list_item.background.normal"
     ],
     "#9a9a9a": [
       "dark:list_item.text.rating",
@@ -321,29 +259,6 @@
     ]
   },
   "color_graph": {
-    "#ffffff": [
-      "Base",
-      "HighlightedText",
-      "ToolTipBase",
-      "Window",
-      "button.dialog.default.background",
-      "button.primary.background",
-      "button.primary.text",
-      "color_dialog.input.background",
-      "dialog.background",
-      "dialog.input.background",
-      "dialog.text",
-      "flyout.background",
-      "help.nav.selected.text",
-      "label.image.background",
-      "list_item.background.normal",
-      "slider.thumb.outer",
-      "surface.background",
-      "switch.knob.on",
-      "toast.background",
-      "toast.text",
-      "tooltip.background"
-    ],
     "#1f1f1f": [
       "ButtonText",
       "Text",
@@ -353,12 +268,6 @@
       "dialog.text",
       "switch.text",
       "tooltip.text"
-    ],
-    "#e1e1e1": [
-      "AlternateBase",
-      "Button",
-      "dialog.button.background",
-      "surface.button"
     ],
     "#0078d4": [
       "Highlight",
@@ -404,13 +313,19 @@
     ],
     "#000000": [
       "button.primary.text",
-      "list_item.text.normal",
       "toast.text"
     ],
     "#e0e0e0": [
       "color_dialog.text",
       "flyout.border",
       "help.nav.border"
+    ],
+    "#ffffff": [
+      "button.primary.text",
+      "dialog.text",
+      "list_item.background.normal",
+      "surface.background",
+      "toast.text"
     ],
     "#e5e5e5": [
       "help.separator",
@@ -422,20 +337,6 @@
       "dialog.border",
       "tooltip.border"
     ],
-    "#f0f0f0": [
-      "button.toggle.background.normal",
-      "color_dialog.background",
-      "help.nav.background",
-      "list_item.text.normal",
-      "surface.list"
-    ],
-    "#2b2b2b": [
-      "Window",
-      "color_dialog.background",
-      "dialog.background",
-      "label.image.background",
-      "surface.background"
-    ],
     "#dfdfdf": [
       "ButtonText",
       "Text",
@@ -443,24 +344,6 @@
       "WindowText",
       "switch.text",
       "tooltip.text"
-    ],
-    "#3c3c3c": [
-      "Base",
-      "Button",
-      "ToolTipBase",
-      "button.dialog.default.background",
-      "button.primary.background",
-      "button.toggle.background.normal",
-      "color_dialog.input.background",
-      "dialog.button.background",
-      "dialog.input.background",
-      "surface.button",
-      "tooltip.background"
-    ],
-    "#313131": [
-      "AlternateBase",
-      "help.nav.background",
-      "surface.list"
     ],
     "#0096ff": [
       "Highlight",
@@ -494,10 +377,6 @@
     "#26ffffff": [
       "button.dialog.default.border",
       "button.primary.border"
-    ],
-    "#383838": [
-      "flyout.background",
-      "list_item.background.normal"
     ],
     "#9a9a9a": [
       "list_item.text.rating",
