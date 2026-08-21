@@ -247,10 +247,9 @@ class ImageCompareTab(TabContract):
     def _register_nav_section(self) -> None:
         if self._widget is None:
             return
-        # 1 строка вместо 15 — generic для любого виджета, не только тулбара
-        from sli_ui_toolkit.managers import declare_navigation_rows
+        from sli_ui_toolkit.managers import declare_toolbar_navigation
 
-        declare_navigation_rows(
+        declare_toolbar_navigation(
             self._widget,
             self._toolbar_rows(),
             tag="image-compare",

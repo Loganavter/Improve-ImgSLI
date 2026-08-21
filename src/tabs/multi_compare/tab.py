@@ -162,9 +162,9 @@ class MultiCompareTab(TabContract):
     def _register_nav_section(self) -> None:
         if self._widget is None:
             return
-        from sli_ui_toolkit.managers import declare_navigation_rows
+        from sli_ui_toolkit.managers import declare_toolbar_navigation
 
-        declare_navigation_rows(self._widget, self._toolbar_rows(), tag="multi-compare")
+        declare_toolbar_navigation(self._widget, self._toolbar_rows(), tag="multi-compare")
         from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
 
         for owner, sec in NavigationManager.get_instance()._sections:
