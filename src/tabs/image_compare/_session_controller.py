@@ -334,7 +334,7 @@ class SessionController(QObject):
         )
 
     def _on_full_resolution_error(self, path: str, err) -> None:
-        logger.error(f"Failed to load full resolution: {err}")
+        logger.error(f"Failed to load full resolution: {err}", exc_info=True)
         message = (
             f"{tr('msg.failed_to_load_image', self.store.settings.current_language)}:\n"
             f"{path}\n\n{_format_worker_error(err)}"
@@ -414,8 +414,7 @@ class SessionController(QObject):
 
             return u1, u2, path1, path2, task_id
         except Exception as e:
-            import traceback
-            logger.error(f"Failed to unify images: {e}\n{traceback.format_exc()}")
+            logger.error(f"Failed to unify images: {e}", exc_info=True)
             return None
 
     def _on_unified_images_ready(self, result):

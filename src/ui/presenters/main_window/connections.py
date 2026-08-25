@@ -62,14 +62,32 @@ def connect_signals(presenter):
     # `image_canvas` is resolved lazily (not materialized until its tab is
     # active) — defer attribute access to signal-fire time via lambda rather
     # than binding a method reference now, which would force resolution
-    # (and likely raise) before the tab exists. See
-    # docs/dev/investigations/lazy-legacy-shell-plan.md.
-    presenter.main_controller.start_interactive_movement.connect(
-        lambda: presenter.features.image_canvas.start_interactive_movement()
-    )
-    presenter.main_controller.stop_interactive_movement.connect(
-        lambda: presenter.features.image_canvas.stop_interactive_movement()
-    )
+    # (and likely raise) before the tab exists. Guard the call so the
+    # generic resize-settle/startup-drain path (MainWindow.schedule_update
+    # etc.) does not raise when session_picker is active — see
+    # docs/dev/investigations/lazy-legacy-shell-plan.md open question 2.
+    def _guarded_start():
+        method = getattr(
+            presenter.features.image_canvas, "start_interactive_movement", None
+        )
+        if method is not None:
+            try:
+                method()
+            except AttributeError:
+                pass
+
+    def _guarded_stop():
+        method = getattr(
+            presenter.features.image_canvas, "stop_interactive_movement", None
+        )
+        if method is not None:
+            try:
+                method()
+            except AttributeError:
+                pass
+
+    presenter.main_controller.start_interactive_movement.connect(_guarded_start)
+    presenter.main_controller.stop_interactive_movement.connect(_guarded_stop)
 
     presenter.ui.workspace_tabs.currentChanged.connect(
         lambda index: on_workspace_tab_changed(presenter, index)
