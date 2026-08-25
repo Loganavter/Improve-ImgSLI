@@ -60,9 +60,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Testing](TESTING.md)** — `docs/dev/TESTING.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/tabs/isolation.md](tabs/isolation.md)
 - **[Theming & QSS](THEMING.md)** — `docs/dev/THEMING.md`
-  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
+  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Development TODO](TODO.md)** — `docs/dev/TODO.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Runtime Tracer](TRACING.md)** — `docs/dev/TRACING.md`
   Referenced by: [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[UI Inspector](UI_INSPECTOR.md)** — `docs/dev/UI_INSPECTOR.md`
@@ -75,7 +75,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/dev/investigations/
 
 - **[Investigation: deep review wave 2 — threading, shared/services, security, video editor, tests](investigations/cross-module-review-2026-08-25-wave2.md)** — `docs/dev/investigations/cross-module-review-2026-08-25-wave2.md`
-  Referenced by: [docs/dev/TODO.md](TODO.md)
+  Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Investigation: cross-module review — duplication, error handling, abstractions](investigations/cross-module-review-2026-08-25.md)** — `docs/dev/investigations/cross-module-review-2026-08-25.md`
   Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/TODO.md](TODO.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md)
 - **[Investigation: Keyboard Navigation, CSD Focus, and Flyout Focus Routing](investigations/keyboard-navigation-csd-focus.md)** — `docs/dev/investigations/keyboard-navigation-csd-focus.md`
@@ -129,6 +129,8 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 
 ## docs/dev/tabs/
 
+- **[Background tab policy](tabs/background-tab-policy.md)** — `docs/dev/tabs/background-tab-policy.md`
+  Referenced by: [docs/dev/TODO.md](TODO.md)
 - **[Capability mechanisms](tabs/capability-mechanisms.md)** — `docs/dev/tabs/capability-mechanisms.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/HELP_SYSTEM.md](HELP_SYSTEM.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/tabs/contract.md](tabs/contract.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/isolation.md](tabs/isolation.md), [docs/dev/tabs/registry.md](tabs/registry.md)
 - **[TabContract & TabContext](tabs/contract.md)** — `docs/dev/tabs/contract.md`
@@ -136,7 +138,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Tab System Documentation](tabs/index.md)** — `docs/dev/tabs/index.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/PRESENTERS.md](PRESENTERS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/plugins/layout.md](plugins/layout.md)
 - **[Isolation & dependency wiring](tabs/isolation.md)** — `docs/dev/tabs/isolation.md`
-  Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
+  Referenced by: [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TESTING.md](TESTING.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md), [docs/dev/tabs/index.md](tabs/index.md), [docs/dev/tabs/overview.md](tabs/overview.md)
 - **[Overview](tabs/overview.md)** — `docs/dev/tabs/overview.md`
   Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[Tab package structure](tabs/package-structure.md)** — `docs/dev/tabs/package-structure.md`
@@ -144,7 +146,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[TabRegistry](tabs/registry.md)** — `docs/dev/tabs/registry.md`
   Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/tabs/index.md](tabs/index.md)
 - **[Workspace session lifecycle](tabs/session-lifecycle.md)** — `docs/dev/tabs/session-lifecycle.md`
-  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/index.md](tabs/index.md)
+  Referenced by: [docs/dev/TAB_CONTRACT.md](TAB_CONTRACT.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md), [docs/dev/tabs/index.md](tabs/index.md)
 
 ## docs/dev/widgets/
 
