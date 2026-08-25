@@ -353,8 +353,9 @@ class SnapshotFrameRenderer:
 
 
 def _create_tab_snapshot_renderer(*args, **kwargs):
-    from tabs.registry import TabRegistry
+    # Tab→tab direct import — no TabRegistry hop.
+    # Host startup wiring keeps create_startup_service for
+    # "snapshot_frame_renderer" (service_factory.py:57).
+    from tabs._shared.canvas import create_snapshot_frame_renderer_direct
 
-    registry = TabRegistry()
-    registry.discover()
-    return registry.create_startup_service("snapshot_frame_renderer", *args, **kwargs)
+    return create_snapshot_frame_renderer_direct(*args, **kwargs)
