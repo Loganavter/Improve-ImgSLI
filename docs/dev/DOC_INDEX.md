@@ -62,7 +62,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Theming & QSS](THEMING.md)** — `docs/dev/THEMING.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
 - **[Development TODO](TODO.md)** — `docs/dev/TODO.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md)
 - **[Runtime Tracer](TRACING.md)** — `docs/dev/TRACING.md`
   Referenced by: [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[UI Inspector](UI_INSPECTOR.md)** — `docs/dev/UI_INSPECTOR.md`
@@ -74,8 +74,10 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 
 ## docs/dev/investigations/
 
+- **[Investigation: deep review wave 2 — threading, shared/services, security, video editor, tests](investigations/cross-module-review-2026-08-25-wave2.md)** — `docs/dev/investigations/cross-module-review-2026-08-25-wave2.md`
+  Referenced by: [docs/dev/TODO.md](TODO.md)
 - **[Investigation: cross-module review — duplication, error handling, abstractions](investigations/cross-module-review-2026-08-25.md)** — `docs/dev/investigations/cross-module-review-2026-08-25.md`
-  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/TODO.md](TODO.md)
+  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/TODO.md](TODO.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md)
 - **[Investigation: Keyboard Navigation, CSD Focus, and Flyout Focus Routing](investigations/keyboard-navigation-csd-focus.md)** — `docs/dev/investigations/keyboard-navigation-csd-focus.md`
 - **[Investigation: NavigationManager for cross-section keyboard navigation](investigations/navigation-manager-plan.md)** — `docs/dev/investigations/navigation-manager-plan.md`
 - **[Critical Analysis: Session Picker Navigation](investigations/session-picker-navigation-analysis.md)** — `docs/dev/investigations/session-picker-navigation-analysis.md`
