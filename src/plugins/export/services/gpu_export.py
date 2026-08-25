@@ -17,7 +17,8 @@ class GpuExportService:
         payload.setdefault("event", threading.Event())
         payload.setdefault("result_box", {})
         self._proxy.render_requested.emit(payload)
-        payload["event"].wait()
+        if not payload["event"].wait(timeout=2.0):
+            raise TimeoutError("GPU marshal timed out waiting for GUI thread")
         error = payload["result_box"].get("error")
         if error is not None:
             raise error

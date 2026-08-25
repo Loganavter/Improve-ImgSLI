@@ -18,11 +18,10 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 
+from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
 from tabs.multi_compare.models import leaves, node_at_path, slot_ids_in_tree
 from tabs.multi_compare.scene import actions
 from tabs.multi_compare.ui.canvas_widget import INTERNAL_SLOT_MIME
-
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 
 
 def has_image_urls(mime) -> bool:

@@ -52,7 +52,7 @@ class VideoSelectionState:
         return payload
 
 
-@dataclass(frozen=True)
+@dataclass
 class VideoProjectModel:
 
     width: int = 1920

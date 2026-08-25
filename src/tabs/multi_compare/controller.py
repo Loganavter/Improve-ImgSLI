@@ -15,6 +15,7 @@ from typing import Any
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QFileDialog
 
+from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
 from tabs.multi_compare.scene import actions as mc_actions
 from tabs.multi_compare.services.gpu_export import MultiCompareGpuExporter
 from tabs.multi_compare.services.save_flow import MultiCompareSaveFlowCoordinator
@@ -23,8 +24,6 @@ from tabs.multi_compare.use_cases import loading as loading_use_cases
 from tabs.multi_compare.widget import MultiCompareWidget
 
 logger = logging.getLogger("ImproveImgSLI")
-
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 
 
 class MultiCompareController:
@@ -227,7 +226,9 @@ class MultiCompareController:
 
     def _on_add_requested(self) -> None:
         start_dir = export_use_cases.default_dir(self)
-        filters = "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp);;All files (*)"
+        from shared.image_extensions import IMAGE_FILTER_GLOB
+
+        filters = f"Images ({IMAGE_FILTER_GLOB});;All files (*)"
         paths, _ = QFileDialog.getOpenFileNames(
             self.widget, "Add images to compare", start_dir, filters
         )

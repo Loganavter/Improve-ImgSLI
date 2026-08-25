@@ -8,12 +8,11 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.multi_compare.use_cases import persistence
 
 logger = logging.getLogger("ImproveImgSLI")
-
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp"}
 
 
 class MultiCompareTab(TabContract):
