@@ -114,7 +114,7 @@
     },
     {
       "path": "src/shared_toolkit/ui/layout_sizing.py",
-      "lines": 556,
+      "lines": 574,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single layout sizing helper — shared toolkit\"",
@@ -275,7 +275,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/services/export_config.py",
-      "lines": 600,
+      "lines": 624,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single export config assembly — encoding/bounds/images\"",
@@ -421,7 +421,7 @@
     },
     {
       "path": "src/ui/canvas_infra/rhi/rhi_backend.py",
-      "lines": 699,
+      "lines": 698,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single RHI backend lifecycle — backend selection + QRhiWidget init\"",

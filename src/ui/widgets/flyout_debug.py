@@ -10,20 +10,11 @@ when disabled.
 from __future__ import annotations
 
 import logging
-import os
 import time
 
+from shared.debug_flags import env_flag as _env_flag
+
 logger = logging.getLogger("ImproveImgSLI")
-
-
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() not in (
-        "",
-        "0",
-        "false",
-        "no",
-        "off",
-    )
 
 
 def flyout_debug_enabled() -> bool:

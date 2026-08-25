@@ -1,6 +1,8 @@
 import os
 import re
+from pathlib import Path
 
+from shared.image_processing.pil_save import next_available_path
 from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
 
 from .common import default_downloads_dir
@@ -59,17 +61,9 @@ class OutputPathCoordinator:
     def unique_output_filepath(
         self, directory: str, base_name: str, extension: str
     ) -> str:
-        full_path = os.path.join(directory, f"{base_name}.{extension}")
-        if not os.path.exists(full_path):
-            return full_path
-
-        counter = 1
-        while True:
-            candidate_name = f"{base_name} ({counter})"
-            candidate_path = os.path.join(directory, f"{candidate_name}.{extension}")
-            if not os.path.exists(candidate_path):
-                return candidate_path
-            counter += 1
+        # Single source: shared/image_processing/pil_save.py:45 next_available_path
+        candidate = Path(directory) / f"{base_name}.{extension.lstrip('.')}"
+        return str(next_available_path(candidate, style="paren"))
 
     def refresh_unique_output_filename(self) -> None:
         if self.view is None:

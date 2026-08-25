@@ -105,8 +105,7 @@ def requested_rhi_backend_name() -> str:
     return value if value in _API_BY_NAME else "default"
 
 
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+from shared.debug_flags import env_flag_strict as _env_flag
 
 
 def platform_fallback_rhi_backend() -> str:

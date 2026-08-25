@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QRhiWidget
+
+from shared.debug_flags import env_flag as _env_flag
 from sli_ui_toolkit.managers import SettleGate
 
 from core.state_management.interaction_actions import SetResizeInProgressAction
@@ -16,17 +17,6 @@ logger = logging.getLogger("ImproveImgSLI")
 
 _RESIZE_SHIELD_ATTR = "_imgsli_resize_shield"
 _MAIN_WINDOW_RESIZE_SETTLE_MS = 150
-
-
-
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() not in (
-        "",
-        "0",
-        "false",
-        "no",
-        "off",
-    )
 
 
 def _resize_debug_enabled() -> bool:

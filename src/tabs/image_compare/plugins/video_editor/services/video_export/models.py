@@ -2,21 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pathlib import Path
+
 from PIL import Image
+from shared.image_processing.pil_save import next_available_path
 from shared.rendering import NormalizedBounds, TargetSurfaceSpec, VirtualCanvasLayout
 
-def unique_video_path(directory: str, base_name: str, ext: str) -> str:
-    full_path = f"{directory}/{base_name}.{ext}"
-    import os
 
-    if not os.path.exists(full_path):
-        return full_path
-    counter = 1
-    while True:
-        new_path = f"{directory}/{base_name} ({counter}).{ext}"
-        if not os.path.exists(new_path):
-            return new_path
-        counter += 1
+def unique_video_path(directory: str, base_name: str, ext: str) -> str:
+    # Single source: shared/image_processing/pil_save.py:45 next_available_path
+    # Fixed f-string path (was f"{directory}/{...}") → pathlib.
+    candidate = Path(directory) / f"{base_name}.{ext.lstrip('.')}"
+    return str(next_available_path(candidate, style="paren"))
 
 @dataclass(slots=True, frozen=True)
 class GlobalCanvasBounds:

@@ -1,12 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core.state_management.action_base import Action, ActionType
 
 @dataclass
 class SetLanguageAction(Action):
     language: str
-    def __init__(self, language: str):
-        super().__init__(type=ActionType.SET_LANGUAGE); self.language = language
+    type: str = field(default=ActionType.SET_LANGUAGE.value, kw_only=True)
     def get_payload(self): return {"language": self.language}
 
 @dataclass
