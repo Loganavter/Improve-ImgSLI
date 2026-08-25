@@ -179,9 +179,20 @@ class VideoEditorDialog(ThemedDialog):
         top_layout.setContentsMargins(scaled_px(10), scaled_px(10), scaled_px(10), scaled_px(10))
         top_layout.setSpacing(VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX)
 
-        self.preview_label = create_canvas_widget()
-        self.preview_label.setObjectName("VideoEditorPreviewLabel")
-        self.preview_label.set_read_only(True)
+        canvas = create_canvas_widget()
+        if canvas is None:
+            logger.debug("VideoEditor preview canvas not available for active tab — using placeholder")
+            canvas = QWidget()
+            canvas.setObjectName("VideoEditorPreviewPlaceholder")
+            # Degrade gracefully: plain QWidget placeholder, no QRhi rendering.
+            canvas.set_read_only = lambda *a, **k: None  # type: ignore[attr-defined]
+        self.preview_label = canvas
+        self.preview_label.setObjectName("VideoEditorPreviewLabel" if canvas.objectName() != "VideoEditorPreviewPlaceholder" else "VideoEditorPreviewLabel")
+        if hasattr(self.preview_label, "set_read_only"):
+            try:
+                self.preview_label.set_read_only(True)
+            except Exception:
+                logger.debug("preview placeholder set_read_only no-op", exc_info=True)
         self.preview_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )

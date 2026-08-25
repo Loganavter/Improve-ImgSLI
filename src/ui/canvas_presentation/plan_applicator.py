@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 from .composition import CompositionPlan, resolve_composition
 from .plan import CanvasRenderPlan
+
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def _call_tab_canvas_service(service_id: str, *args, **kwargs):
@@ -9,7 +13,14 @@ def _call_tab_canvas_service(service_id: str, *args, **kwargs):
 
     registry = TabRegistry()
     registry.discover()
-    return registry.create_service(service_id, *args, **kwargs)
+    result = registry.create_service(service_id, *args, **kwargs)
+    if result is None:
+        logger.debug(
+            "Tab canvas service %r not provided for active session %r — degrade gracefully",
+            service_id,
+            getattr(registry, "_active_session_type", None),
+        )
+    return result
 
 
 def apply_plan_runtime_overlays(canvas, plan: CanvasRenderPlan) -> None:
