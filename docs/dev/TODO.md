@@ -28,7 +28,7 @@ Area: `src/tabs/multi_compare/use_cases/loading.py`,
 `src/ui/actions/widget_pulse.py`
 
 Findings from the cross-module review
-([investigations/cross-module-review-2026-08-25.md](./investigations/cross-module-review-2026-08-25.md),
+(improve-imgsli-internal-docs/docs/dev/investigations/cross-module-review-2026-08-25.md,
 sections A1–A3, C9):
 
 - **MC load failures are log-only** — IC surfaces failed image
@@ -54,7 +54,7 @@ Area: `src/core/bootstrap.py`, `src/__main__.py`, `src/shared/image_processing/t
 `src/tabs/image_compare/plugins/video_editor/model.py`
 
 Findings from the second review wave
-([investigations/cross-module-review-2026-08-25-wave2.md](./investigations/cross-module-review-2026-08-25-wave2.md),
+(improve-imgsli-internal-docs/docs/dev/investigations/cross-module-review-2026-08-25-wave2.md,
 W1–W4):
 
 - **Video editor resolution is silently never applied** —
@@ -265,7 +265,7 @@ Area: `src/plugins/settings/manager.py`, `src/events/runtime.py`,
 `src/core/tracing/file_sink.py`
 
 Findings and fix recipe
-([investigations/dead-code-overengineering-audit-2026-08-26.md](./investigations/dead-code-overengineering-audit-2026-08-26.md),
+(improve-imgsli-internal-docs/docs/dev/investigations/dead-code-overengineering-audit-2026-08-26.md,
 section C; same pattern as the 2026-08-25 logging sweep — `logger.warning(...,
 exc_info=True)` + narrowed exception type):
 
@@ -296,7 +296,7 @@ Area: `src/ui/widgets/zoom_indicator.py`, `src/ui/widgets/canvas/`,
 `src/core/tracing/print_tree.py`
 
 Verified-dead list + conditional items in
-[investigations/dead-code-overengineering-audit-2026-08-26.md](./investigations/dead-code-overengineering-audit-2026-08-26.md),
+improve-imgsli-internal-docs/docs/dev/investigations/dead-code-overengineering-audit-2026-08-26.md,
 section A. Notes:
 
 - removing `tabs/image_compare/presenters/connections.py` requires updating
@@ -315,7 +315,7 @@ dynamic-discovery keep-list in the same doc.
 Status: `Open`.
 
 Area: see table in
-[investigations/dead-code-overengineering-audit-2026-08-26.md](./investigations/dead-code-overengineering-audit-2026-08-26.md),
+improve-imgsli-internal-docs/docs/dev/investigations/dead-code-overengineering-audit-2026-08-26.md,
 section D
 
 B7 tail (unique-output-path trio → `pil_save.next_available_path`), ffmpeg
@@ -336,7 +336,7 @@ Area: `src/core/plugin_system/settings.py`, `registry.py`,
 `src/core/session_manager.py`, `src/ui/store_bridge.py`
 
 Candidates from
-[investigations/dead-code-overengineering-audit-2026-08-26.md](./investigations/dead-code-overengineering-audit-2026-08-26.md),
+improve-imgsli-internal-docs/docs/dev/investigations/dead-code-overengineering-audit-2026-08-26.md,
 section B: dead `PluginSettings`/`auto_persist` abstraction (0 production
 callers), write-only second plugin registry in `PluginRegistry`, merge of
 near-identical `SettingsDialogData`/`SettingsDialogContext`, SessionManager
@@ -352,7 +352,7 @@ Area: `src/core/state_management/actions/`, tab action modules (e.g.
 `src/plugins/settings/actions/settings_actions.py`), settings mutation surface
 
 Findings from the mass root-cause review
-([investigations/codebase-mass-root-causes-2026-08-26.md](./investigations/codebase-mass-root-causes-2026-08-26.md)):
+(improve-imgsli-internal-docs/docs/dev/investigations/codebase-mass-root-causes-2026-08-26.md):
 
 - 62 action classes repeat a shape where the `@dataclass` decorator is dead
   weight: handwritten `__init__` overrides the generated one and calls
@@ -374,7 +374,7 @@ Area: `src/tabs/session_picker/recent/items_view.py` (686 LOC),
 
 A recent-projects panel outweighs whole plugins (≈2.5k prod + 2.2k test LOC)
 with no functional justification found by the mass root-cause review
-([investigations/codebase-mass-root-causes-2026-08-26.md](./investigations/codebase-mass-root-causes-2026-08-26.md)).
+(improve-imgsli-internal-docs/docs/dev/investigations/codebase-mass-root-causes-2026-08-26.md).
 Scope: check whether `items_view.py` mixes view + model + geometry concerns
 that the thin-owner pattern would split, and whether the panel's test mass
 (0.56:1 test:prod — highest in the repo) matches its risk.
@@ -389,7 +389,7 @@ Area: `src/events/` (2 015 LOC), `src/core/plugin_system/event_bus.py`,
 `src/events/` coexists with the core EventBus as a second eventing surface;
 `shared_toolkit/` predates the external toolkit. Both flagged as historical
 layers by
-[investigations/codebase-mass-root-causes-2026-08-26.md](./investigations/codebase-mass-root-causes-2026-08-26.md).
+improve-imgsli-internal-docs/docs/dev/investigations/codebase-mass-root-causes-2026-08-26.md.
 Needs an inventory of who consumes each surface before any merge decision;
 AGENTS.md forbids silently removing legacy toolkit compat imports.
 
