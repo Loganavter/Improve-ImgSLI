@@ -29,6 +29,8 @@ import os
 import threading
 from typing import Any, Callable
 
+from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE
+
 from tabs.save_toast import SaveToastMixin
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -280,18 +282,22 @@ class SaveFlowCoordinator(SaveToastMixin):
         if thread_pool is None:
             if self.sync_fallback and sync_fn is not None:
                 logger.warning("No thread_pool available, saving synchronously on GUI thread")
-                self._finalize_save_worker(save_task_id)
                 try:
-                    sync_fn()
+                    out_path = sync_fn()
+                except RuntimeError as exc:
+                    # mirrors _save_worker_task cancel swallow (SAVE_CANCELED_MESSAGE / legacy export message)
+                    if str(exc) in (SAVE_CANCELED_MESSAGE, "Export canceled by user"):
+                        self._finalize_save_worker(save_task_id)
+                        return
+                    logger.error("Synchronous save failed: %s", exc, exc_info=True)
+                    self._on_save_worker_error(save_task_id, cancel_event, final_path_for_display, (type(exc), exc, exc.__traceback__))
+                    return
                 except Exception as exc:
                     logger.error("Synchronous save failed: %s", exc, exc_info=True)
-                    # ensure error toast even without worker error signal
-                    self._update_toast_safe(
-                        save_task_id,
-                        f"{self._tr('msg.error_saving', 'Error saving')} {final_path_for_display}",
-                        success=False,
-                        duration=5000,
-                    )
+                    self._on_save_worker_error(save_task_id, cancel_event, final_path_for_display, (type(exc), exc, exc.__traceback__))
+                    return
+                # success — reuse async done path (handles cancel flag, toast, on_success_notify, finalize)
+                self._on_save_worker_done(save_task_id, cancel_event, out_path)
                 return
             logger.error("No thread_pool available and sync_fallback disabled; save aborted")
             self._update_toast_safe(

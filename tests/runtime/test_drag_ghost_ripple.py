@@ -15,6 +15,7 @@ from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtWidgets import QWidget
 
 from events.drag_drop_handler import DragAndDropService, _cancel_ripple
+from tests.helpers.drain_until_stable import drain_until_stable
 from ui.widgets.rating_item import RatingListItem
 
 
@@ -73,7 +74,12 @@ def test_start_drag_cancels_ripple_before_grab(qapp):
     service = _make_service(host)
     row = _make_row()
     row.show()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: (row.isVisible(), row.width(), row.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
     row._ripple.trigger(QRectF(row.rect()).center())
     assert row._ripple.is_active()
 

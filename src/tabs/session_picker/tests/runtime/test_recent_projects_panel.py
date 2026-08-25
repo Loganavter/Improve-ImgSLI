@@ -10,6 +10,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtCore import QSettings
 
+from tests.helpers.drain_until_stable import drain_until_stable
+
 from services.io.recent_projects import (
     SORT_NAME,
     VIEW_LIST,
@@ -212,7 +214,12 @@ def test_recent_panel_bare_panel_falls_back_to_two_rows(qapp, tmp_path, monkeypa
     panel.resize(592, 800)
     panel.show()
     panel.refresh()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: (panel._items.grid_columns, panel._items.scroll_area.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     assert panel._items.scroll_area is not None
     assert panel._items.grid_columns == 3
@@ -224,7 +231,12 @@ def test_recent_panel_bare_panel_falls_back_to_two_rows(qapp, tmp_path, monkeypa
 
     panel._records = records[:3]  # one grid row at 3 columns
     panel._rebuild_items()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: panel._items.scroll_area.height(),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
     assert panel._items.scroll_area.height() == content_height_for_rows(
         1, card_h=GRID_CARD_H
     )
@@ -281,8 +293,12 @@ def test_recent_panel_viewport_uses_available_window_space(qapp, tmp_path, monke
     lay.addWidget(panel)
     lay.addStretch(1)
     panel.refresh()
-    for _ in range(5):  # resizeEvent -> deferred relayout is singleShot(0)
-        qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: (panel._recent_viewport_max_height(), panel._items.scroll_area.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     max_h = panel._recent_viewport_max_height()
     assert max_h > 0
@@ -295,8 +311,9 @@ def test_recent_panel_viewport_uses_available_window_space(qapp, tmp_path, monke
     # Many more records overflow the available space -> scrollbar appears.
     panel._records = [_record(i) for i in range(30)]
     panel._rebuild_items()
-    for _ in range(5):
-        qapp.processEvents()
+    drain_until_stable(
+        qapp, lambda: panel._items.scroll_area.height(), timeout_ms=1000, stable_frames=2
+    )
     assert panel._items.scroll_area.height() == max_h
     assert panel._items.scroll_area.verticalScrollBar().maximum() > 0
 
@@ -333,7 +350,9 @@ def test_recent_panel_grid_uses_available_width(qapp, tmp_path, monkeypatch):
     panel.resize(980, 800)
     panel.show()
     panel.refresh()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp, lambda: panel._items.grid_columns, timeout_ms=1000, stable_frames=2
+    )
 
     assert panel._items.scroll_area is not None
     expected = grid_columns_for_width(panel._grid_content_width())
@@ -343,7 +362,9 @@ def test_recent_panel_grid_uses_available_width(qapp, tmp_path, monkeypatch):
     assert panel._items.scroll_area.verticalScrollBar().maximum() == 0
 
     panel.resize(400, 800)
-    qapp.processEvents()
+    drain_until_stable(
+        qapp, lambda: panel._items.grid_columns, timeout_ms=1000, stable_frames=2
+    )
     assert panel._items.grid_columns == grid_columns_for_width(panel._grid_content_width())
     assert panel._items.grid_columns <= 2
     panel.deleteLater()
@@ -378,7 +399,9 @@ def test_recent_panel_grid_shrinks_after_fullscreen_exit(qapp, tmp_path, monkeyp
     panel.resize(980, 800)
     panel.show()
     panel.refresh()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp, lambda: panel._items.grid_columns, timeout_ms=1000, stable_frames=2
+    )
     wide_columns = panel._items.grid_columns
     assert wide_columns >= 4
 
@@ -386,7 +409,9 @@ def test_recent_panel_grid_shrinks_after_fullscreen_exit(qapp, tmp_path, monkeyp
     # the fullscreen state flag has not cleared yet.
     monkeypatch.setattr(panel.window(), "isFullScreen", lambda: True)
     panel.resize(400, 800)
-    qapp.processEvents()
+    drain_until_stable(
+        qapp, lambda: panel._items.grid_columns, timeout_ms=1000, stable_frames=2
+    )
 
     # The panel's live content width (which applies the shelf width floor)
     # drives the column count — not the raw resized width.
@@ -432,7 +457,12 @@ def test_recent_panel_shelf_height_settles_atomically(qapp, tmp_path, monkeypatc
     window.resize(1000, 800)
     window.show()
     panel.refresh()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: (panel._items.scroll_area.height(), panel.height()),
+        timeout_ms=1000,
+        stable_frames=2,
+    )
 
     one_row_scroll = panel._items.scroll_area.height()
     one_row_panel_h = panel.height()
@@ -440,9 +470,13 @@ def test_recent_panel_shelf_height_settles_atomically(qapp, tmp_path, monkeypatc
 
     def pump():
         # The resize-driven relayout and its height settle run in two nested
-        # singleShot timers; flush the event loop until both have fired.
-        for _ in range(6):
-            qapp.processEvents()
+        # singleShot timers; wait until geometry stable.
+        drain_until_stable(
+            qapp,
+            lambda: (panel._items.grid_columns, panel._items.scroll_area.height(), panel.height()),
+            timeout_ms=1000,
+            stable_frames=2,
+        )
 
     # Narrow across the 4->3 column boundary: 4 cards flip to two grid rows.
     window.resize(760, 800)
@@ -507,13 +541,17 @@ def test_recent_panel_resize_preserves_card_widgets(qapp, tmp_path, monkeypatch)
     panel.resize(592, 800)
     panel.show()
     panel.refresh()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp, lambda: panel._items.grid_columns, timeout_ms=1000, stable_frames=2
+    )
     assert panel._items.grid_columns == 3
     before = [panel._items.card_for(records[i].path) for i in range(6)]
     assert all(w is not None for w in before)
 
     panel.resize(980, 800)
-    qapp.processEvents()
+    drain_until_stable(
+        qapp, lambda: panel._items.grid_columns, timeout_ms=1000, stable_frames=2
+    )
     expected = grid_columns_for_width(panel._grid_content_width())
     assert expected > 3
     assert panel._items.grid_columns == expected
@@ -592,7 +630,7 @@ def test_recent_panel_clears_orphaned_card_widgets(qapp, tmp_path, monkeypatch):
     assert len([w for w in host.findChildren(Button) if w.parent() is host]) == 2
 
     panel._rebuild_items()
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: len([w for w in host.findChildren(Button) if w.parent() is host]), timeout_ms=1000, stable_frames=2)
     live = [w for w in host.findChildren(Button) if w.parent() is host]
     assert len(live) == panel._items.live_card_count == 2
     panel.deleteLater()
@@ -663,12 +701,12 @@ def test_recent_panel_retranslate_keeps_opaque_shelf(qapp, tmp_path, monkeypatch
     panel.resize(560, 800)
     panel.show()
     panel.refresh()
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: panel._items.card_for(record.path) is not None, timeout_ms=1000, stable_frames=2)
     card = panel._items.card_for(record.path)
     assert card is not None
 
     panel._retranslate()
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: panel.isVisible() and panel.updatesEnabled(), timeout_ms=1000, stable_frames=2)
 
     assert panel.updatesEnabled() is True
     assert panel.isVisible() is True
@@ -755,11 +793,11 @@ def test_recent_panel_relayout_never_leaves_updates_disabled(
     panel.resize(592, 800)
     panel.show()
     panel.refresh()
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: panel._items.grid_columns, timeout_ms=1000, stable_frames=2)
     assert panel._items.grid_columns == 3
 
     panel.resize(980, 800)
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: panel._items.grid_columns, timeout_ms=1000, stable_frames=2)
     assert panel._items.grid_columns == grid_columns_for_width(panel._grid_content_width())
     assert panel.updatesEnabled() is True
     panel.deleteLater()
@@ -1003,7 +1041,7 @@ def test_recent_panel_virtualizes_large_list(qapp, tmp_path, monkeypatch):
     panel.resize(560, 800)
     panel.show()
     panel.refresh()
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: panel._items.live_card_count, timeout_ms=1000, stable_frames=2)
 
     live = panel._items.live_card_count
     assert live < len(records)
@@ -1016,7 +1054,7 @@ def test_recent_panel_virtualizes_large_list(qapp, tmp_path, monkeypatch):
     assert bar.maximum() > 0
     top_paths = set(panel._items._cards_by_path)
     bar.setValue(bar.maximum())
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: panel._items.live_card_count, timeout_ms=1000, stable_frames=2)
     bottom_paths = set(panel._items._cards_by_path)
     assert bottom_paths != top_paths
     assert panel._items.card_for(records[-1].path) is not None

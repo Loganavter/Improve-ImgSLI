@@ -117,7 +117,7 @@ class MultiCompareSaveFlowCoordinator:
                 progress_callback=emit_progress,
             )
         except RuntimeError as e:
-            if str(e) == SAVE_CANCELED_MESSAGE:
+            if str(e) in (SAVE_CANCELED_MESSAGE, "Export canceled by user"):
                 return None
             raise
         except Exception as e:

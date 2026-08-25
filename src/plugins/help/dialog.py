@@ -105,6 +105,8 @@ class HelpDialog(ThemedDialog):
         self._tree = get_help_tree()
         self._nav = HelpNavigator(self._tree)
         self._pending_anchor: str | None = None
+        self._pending_video_url: str | None = None
+        self._pending_learn_more_url: str | None = None
         self._syncing_sidebar = False
         self._search_mode = False
         self.overlay_layer = OverlayLayer(self)
@@ -578,7 +580,14 @@ class HelpDialog(ThemedDialog):
         self._render_current()
         defer_dialog_geometry(self, self._apply_dialog_geometry)
 
-    def navigate_to(self, slug: str, anchor: str | None = None) -> None:
+    def navigate_to(
+        self,
+        slug: str,
+        anchor: str | None = None,
+        *,
+        video_url: str | None = None,
+        learn_more_url: str | None = None,
+    ) -> None:
         """Open a topic by legacy slug, node id, or ``help://``-style page key."""
         try:
             node_id = self._tree.resolve_alias(slug)
@@ -586,21 +595,29 @@ class HelpDialog(ThemedDialog):
             logger.warning("Help navigate_to: unknown page %r", slug)
             return
         self._pending_anchor = anchor
+        self._pending_video_url = video_url
+        self._pending_learn_more_url = learn_more_url
         self._nav.push(node_id)
         self._render_current()
 
     def _open_node(self, node_id: str) -> None:
         self._pending_anchor = None
+        self._pending_video_url = None
+        self._pending_learn_more_url = None
         self._nav.push(node_id)
         self._render_current()
 
     def _go_back(self) -> None:
         self._pending_anchor = None
+        self._pending_video_url = None
+        self._pending_learn_more_url = None
         self._nav.pop()
         self._render_current()
 
     def _go_forward(self) -> None:
         self._pending_anchor = None
+        self._pending_video_url = None
+        self._pending_learn_more_url = None
         if not self._nav.can_go_forward():
             return
         self._nav.go_forward()
@@ -608,6 +625,8 @@ class HelpDialog(ThemedDialog):
 
     def _on_crumb(self, node_id: str) -> None:
         self._pending_anchor = None
+        self._pending_video_url = None
+        self._pending_learn_more_url = None
         self._nav.pop_to(node_id)
         self._render_current()
 
@@ -706,6 +725,16 @@ class HelpDialog(ThemedDialog):
             md = read_help_page_markdown(
                 lang, body, body_root=node.body_root
             )
+            # Append per-action external links (video/learn_more) if provided
+            # via navigate_to. This keeps the descriptor optional and
+            # reuses existing markdown link rendering (no new block type).
+            extra_parts: list[str] = []
+            if self._pending_video_url:
+                extra_parts.append(f"[Video]({self._pending_video_url})")
+            if self._pending_learn_more_url:
+                extra_parts.append(f"[Learn more]({self._pending_learn_more_url})")
+            if extra_parts:
+                md = md.rstrip() + "\n\n" + " — ".join(extra_parts) + "\n"
             self._document.set_markdown(md)
             self._document.show()
             self._hub_page.hide()

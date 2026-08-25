@@ -41,6 +41,8 @@ class HelpPlugin(Plugin, IControllablePlugin):
         language: str = "en",
         page: str | None = None,
         anchor: str | None = None,
+        video_url: str | None = None,
+        learn_more_url: str | None = None,
     ) -> None:
         # Never Qt-parent Help to the main window. A transient-for link makes
         # the WM raise the whole main-window group when Help activates, which
@@ -66,7 +68,9 @@ class HelpPlugin(Plugin, IControllablePlugin):
         self._dialog.raise_()
         self._dialog.activateWindow()
         if page:
-            self._dialog.navigate_to(page, anchor)
+            self._dialog.navigate_to(
+                page, anchor, video_url=video_url, learn_more_url=learn_more_url
+            )
 
     def _on_dialog_destroyed(self) -> None:
         self._dialog = None

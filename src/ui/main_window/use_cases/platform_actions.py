@@ -53,9 +53,18 @@ def show_find_action(controller) -> None:
 
 
 def show_contextual_palette(controller) -> None:
-    """F1: open Find Action, preferably filtered to the focused chrome topic."""
+    """F1 → help topic page without opening the palette (if resolvable).
+
+    Resolves the focused widget to a catalog action, then tries
+    ``help_page`` → ``topic`` (both as help-tree aliases).  When that
+    alias exists in ``get_help_tree()`` we open ``HelpDialog`` directly
+    (with the action's ``video_url``/``learn_more_url`` if present);
+    otherwise we fall back to the filtered palette so F1 is never a dead
+    key.
+    """
     from tabs.registry import get_shared_tab_registry
     from ui.actions.palette import show_command_palette
+    from ui.actions.palette.dialog import open_help_page
     from ui.actions.registry import get_action_registry
 
     active_tab = None
@@ -70,6 +79,40 @@ def show_contextual_palette(controller) -> None:
         focused,
         active_tab=active_tab,
     )
+
+    # Try direct help page first: help_page or topic as help-tree alias.
+    if match is not None:
+        candidate_slugs: list[str] = []
+        help_page = getattr(match, "help_page", None)
+        if help_page:
+            candidate_slugs.append(help_page)
+        help_anchor = getattr(match, "help_anchor", None)
+        # Some actions tag only a topic that doubles as a help alias
+        # (e.g. "magnifier", "export").
+        topic = getattr(match, "topic", None)
+        if topic and topic not in candidate_slugs:
+            candidate_slugs.append(topic)
+        for slug in candidate_slugs:
+            try:
+                from plugins.help.tree import get_help_tree
+
+                tree = get_help_tree()
+                tree.resolve_alias(slug)  # raises KeyError if unknown
+            except Exception:
+                continue
+            try:
+                open_help_page(
+                    slug,
+                    help_anchor,
+                    video_url=getattr(match, "video_url", None),
+                    learn_more_url=getattr(match, "learn_more_url", None),
+                )
+                return
+            except Exception:
+                logger.debug("F1 direct help open failed for %r", slug, exc_info=True)
+                continue
+
+    # Fallback: filtered palette (previous behaviour)
     topic = match.topic if match is not None else None
     preselect = match.action_id if match is not None else None
     show_command_palette(

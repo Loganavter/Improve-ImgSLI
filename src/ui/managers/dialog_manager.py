@@ -52,6 +52,8 @@ class DialogManager:
         *,
         page: str | None = None,
         anchor: str | None = None,
+        video_url: str | None = None,
+        learn_more_url: str | None = None,
     ):
         if self.host.main_controller is None:
             logger.warning("UIManager.show_help_dialog: plugin coordinator is unavailable")
@@ -65,6 +67,8 @@ class DialogManager:
                 language=self.host.store.settings.current_language,
                 page=page,
                 anchor=anchor,
+                video_url=video_url,
+                learn_more_url=learn_more_url,
             )
         except Exception as e:
             logger.error("UIManager.show_help_dialog failed: %s", e)
