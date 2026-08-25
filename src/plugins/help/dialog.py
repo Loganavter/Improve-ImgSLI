@@ -319,7 +319,7 @@ class HelpDialog(ThemedDialog):
                         win.setFocus(Qt.FocusReason.OtherFocusReason)
                 else:
                     # Последний фолбэк — первое topLevel MainWindow
-                    for w in QApplication.topLevelWidgets():
+                    for w in QApplication.topLevelWidgets():  # ALLOWED: focus-fallback — generic top-level MainWindow activation, not tab-specific
                         if w.isVisible() and (w.objectName() == "MainWindow" or "ImageComparisonApp" in type(w).__name__):
                             w.activateWindow()
                             w.setFocus(Qt.FocusReason.OtherFocusReason)

@@ -51,7 +51,7 @@ class SaveToastMixin:
                 **kwargs,
             )
         except Exception as exc:
-            logger.error("Toast update failed for %s: %s", save_task_id, exc)
+            logger.error("Toast update failed for %s: %s", save_task_id, exc, exc_info=True)
 
     def _build_toast_path_line(self, final_path_for_display: str) -> str:
         directory, file_name = os.path.split(final_path_for_display)

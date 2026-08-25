@@ -10,7 +10,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from core.store import Store
-from domain.types import ImageDocument
+from tabs.image_compare.state.document import DocumentModel, ImageItem
 
 
 def _make_real_store():
@@ -25,7 +25,7 @@ def _make_real_store():
 def test_fake_store_document_mirrors_real():
     # Real store: document property proxies to active session's document
     real = _make_real_store()
-    doc = ImageDocument()
+    doc = DocumentModel(image_list1=[ImageItem(path="a")])
     real.document = doc
     assert real.get_active_workspace_session().document is doc
     assert real.document is doc
@@ -41,7 +41,7 @@ def test_fake_store_document_mirrors_real():
     # Must have document property or attribute that behaves like real's .document
     # We pin that fake's document handling touches session.document, not separate dict
     # Simple runtime check: instantiate fake and set document, ensure it's reachable
-    fake_doc = ImageDocument()
+    fake_doc = DocumentModel(image_list1=[ImageItem(path="a")])
     fake = FakeStore(fake_doc)
     # The fake should store document and allow resync via viewport emit
     # At least ensure fake doesn't silently misdirect to wrong slot
@@ -58,8 +58,8 @@ def test_real_store_workspace_document_isolation():
     s.create_workspace_session(session_type="image_compare", activate=False)
     sessions = list(s.list_workspace_sessions())
     assert len(sessions) >= 2
-    doc1 = ImageDocument()
-    doc2 = ImageDocument()
+    doc1 = DocumentModel(image_list1=[ImageItem(path="a")])
+    doc2 = DocumentModel(image_list1=[ImageItem(path="b")])
     # Activate first, set doc1
     s.switch_workspace_session(sessions[0].id)
     s.document = doc1

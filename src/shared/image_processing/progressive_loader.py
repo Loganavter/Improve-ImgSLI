@@ -299,18 +299,21 @@ def get_image_format_info(image_path: str) -> tuple[str, bool, bool]:
             )
 
             return format_name, is_progressive, False
-    except:
+    except Exception:
         if image_path.lower().endswith(".jxl"):
             return "JXL", False, False
         return "UNKNOWN", False, False
 
 class ProgressiveImageLoader:
+    _FULL_CACHE_MAX = 8
+
     def __init__(self):
+        from collections import OrderedDict
         from typing import TYPE_CHECKING
         if TYPE_CHECKING:
             from PySide6.QtGui import QImage
         self._preview_cache: dict[str, "QImage"] = {}
-        self._full_cache: dict[str, object] = {}
+        self._full_cache: OrderedDict[str, object] = OrderedDict()
 
     def get_preview(
         self, image_path: str, force_reload: bool = False
@@ -325,8 +328,12 @@ class ProgressiveImageLoader:
     def get_full(
         self, image_path: str, force_reload: bool = False, *, auto_crop: bool = False
     ):
-        """Return a ``TiledPixelStore`` for ``image_path`` (cached)."""
+        """Return a ``TiledPixelStore`` for ``image_path`` (cached, LRU-bounded)."""
         if not force_reload and image_path in self._full_cache:
+            try:
+                self._full_cache.move_to_end(image_path)
+            except Exception:
+                pass
             return self._full_cache[image_path]
         try:
             from shared.image_processing.tiled_pixel_store import TiledPixelStore
@@ -339,6 +346,18 @@ class ProgressiveImageLoader:
             return None
         if store is not None:
             self._full_cache[image_path] = store
+            try:
+                self._full_cache.move_to_end(image_path)
+            except Exception:
+                pass
+            while len(self._full_cache) > self._FULL_CACHE_MAX:
+                try:
+                    _old_path, _old_store = self._full_cache.popitem(last=False)
+                    from shared.image_processing.tiled_pixel_store import close_pixel_store
+
+                    close_pixel_store(_old_store)
+                except Exception:
+                    break
         return store
 
     def clear_cache(self):

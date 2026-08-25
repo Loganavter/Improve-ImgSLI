@@ -27,7 +27,7 @@ def current_keyboard_overrides() -> dict[str, str]:
     try:
         from PySide6.QtWidgets import QApplication
 
-        for widget in QApplication.topLevelWidgets():
+        for widget in QApplication.topLevelWidgets():  # ALLOWED: system-wide keyboard-overrides lookup — walks top-levels generically for store.settings, not tab-specific
             presenter = getattr(widget, "presenter", None)
             store = getattr(presenter, "store", None) if presenter is not None else None
             settings = getattr(store, "settings", None) if store is not None else None

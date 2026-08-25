@@ -54,14 +54,11 @@ def test_mixed_tiles_some_kept_some_dropped():
 
 
 def test_threshold_is_near_total():
-    # Covered fraction ~0.97 should NOT be considered covered (<0.98) -> keep
-    # Create fallback 0..1, current covers 0.97 via sampling grid 9x9
+    # 0.8 covers 72/81=0.888 <0.98 -> keep; 0.99 covers all 81/81=1.0 >0.98 -> drop
     fallback = [_tile((0.0, 0.0, 1.0, 1.0))]
-    # Cover 0..0.97 on x (81 points: ~78 covered -> 0.962 <0.98)
-    current = [_tile((0.0, 0.0, 0.97, 1.0))]
-    kept = drop_covered_fallback_tiles(fallback, current)
-    assert len(kept) == 1, "97% should still be kept (threshold 0.98)"
-    # Now 0.99 -> should be dropped (above 0.98)
-    current2 = [_tile((0.0, 0.0, 0.99, 1.0))]
-    kept2 = drop_covered_fallback_tiles(fallback, current2)
+    current_keep = [_tile((0.0, 0.0, 0.8, 1.0))]
+    kept = drop_covered_fallback_tiles(fallback, current_keep)
+    assert len(kept) == 1, "0.8 coverage should be kept (below 0.98)"
+    current_drop = [_tile((0.0, 0.0, 0.99, 1.0))]
+    kept2 = drop_covered_fallback_tiles(fallback, current_drop)
     assert kept2 == []

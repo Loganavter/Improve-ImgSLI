@@ -425,7 +425,9 @@ class VideoEditorDialog(ThemedDialog):
         if hasattr(self, "export_log_edit"):
             from datetime import datetime
             ts = datetime.now().strftime("%H:%M:%S")
-            self.export_log_edit.append_status(f"Export started {ts}")
+            tpl = self._tr("video.export_started")
+            msg = tpl.format(ts=ts) if "{ts}" in tpl else f"{tpl} {ts}" if tpl != "video.export_started" else f"Export started {ts}"
+            self.export_log_edit.append_status(msg)
 
     def set_export_progress(self, value: int):
         self.runtime.set_export_progress(value)

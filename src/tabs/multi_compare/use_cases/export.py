@@ -52,22 +52,19 @@ def background_color_from_settings(settings) -> QColor:
 
 
 def untested_export_suppressed(controller) -> bool:
-    settings = getattr(controller.store, "settings", None)
-    return bool(
-        getattr(settings, "export_suppress_untested_resolution_warning", False)
-    )
+    from shared.export_warning_state import is_untested_export_suppressed
+
+    return is_untested_export_suppressed(getattr(controller.store, "settings", None))
 
 
 def suppress_untested_export_warning(controller) -> None:
-    settings = getattr(controller.store, "settings", None)
-    if settings is not None:
-        settings.export_suppress_untested_resolution_warning = True
+    from shared.export_warning_state import set_untested_export_suppressed
+
     main_window = getattr(controller.context, "main_window", None) if controller.context else None
     manager = getattr(main_window, "settings_manager", None) if main_window else None
-    if manager is not None:
-        manager._save_setting(
-            "export_suppress_untested_resolution_warning", True
-        )
+    set_untested_export_suppressed(
+        getattr(controller.store, "settings", None), manager, True
+    )
 
 
 def persist_export_preferences(controller, options: dict) -> None:

@@ -176,15 +176,11 @@ class MultiCompareTab(TabContract):
     def _register_nav_section(self) -> None:
         if self._widget is None:
             return
-        from sli_ui_toolkit.managers import declare_toolbar_navigation
+        from tabs.host_helpers import declare_toolbar_navigation
 
-        declare_toolbar_navigation(self._widget, self._toolbar_rows(), tag="multi-compare")
-        from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
-
-        for owner, sec in NavigationManager.get_instance()._sections:
-            if owner is self._widget:
-                self._nav_section = sec
-                break
+        self._nav_section = declare_toolbar_navigation(
+            self._widget, self._toolbar_rows(), tag="multi-compare"
+        )
 
     def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
         # The session slot is authoritative; the bound facade re-reads it.

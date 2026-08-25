@@ -107,7 +107,9 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
             return downscale_source_to_pil(img, img.size).convert("RGBA")
         return img.convert("RGBA")
 
-    w, h = _img_dims(img)
+    from shared.image_processing.image_dims import get_image_dims
+
+    w, h = get_image_dims(img)
     geometry = resolve_canvas_content_geometry(
         widget_width=cw,
         widget_height=ch,
@@ -140,24 +142,14 @@ def letterbox_pil(widget, img: PilImage.Image, slot_index: int = -1) -> PilImage
     return result
 
 
-def _img_dims(img) -> tuple[int, int]:
-    if img is None: return (0, 0)
-    w, h = 0, 0
-    if hasattr(img, "width") and callable(img.width): w = int(img.width())
-    elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): w = int(img.size[0])
-    elif hasattr(img, "size") and callable(img.size): w = int(img.size().width())
-    else: w = int(img.width)
-    if hasattr(img, "height") and callable(img.height): h = int(img.height())
-    elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): h = int(img.size[1])
-    elif hasattr(img, "size") and callable(img.size): h = int(img.size().height())
-    else: h = int(img.height)
-    return w, h
+# helper removed — use shared helper (B6)
 
 
 def update_letterbox_geometry(widget, img: PilImage.Image | None, slot_index: int = -1):
+    from shared.image_processing.image_dims import get_image_dims
     state = widget.runtime_state
     cw, ch = _canvas_dims(widget)
-    w, h = _img_dims(img)
+    w, h = get_image_dims(img)
     if img is None or cw <= 0 or ch <= 0 or w <= 0 or h <= 0:
         if slot_index >= 0:
             state._letterbox_params[slot_index] = (0.0, 0.0, 1.0, 1.0)
@@ -390,7 +382,8 @@ def get_letterbox_params(widget, slot: int = 0) -> tuple:
     )
     w, h = _canvas_dims(widget)
     if img and w > 0 and h > 0:
-        iw, ih = _img_dims(img)
+        from shared.image_processing.image_dims import get_image_dims
+        iw, ih = get_image_dims(img)
         if iw > 0 and ih > 0:
             ratio = min(w / iw, h / ih)
             nw = max(1, int(iw * ratio))

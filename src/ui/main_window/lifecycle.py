@@ -137,7 +137,7 @@ class CloseDerivedWindowsStep(WindowShutdownStep):
         if not isinstance(app, QApplication):
             return
 
-        for widget in list(app.topLevelWidgets()):
+        for widget in list(app.topLevelWidgets()):  # ALLOWED: system-wide shutdown — closes every derived top-level generically, not tab-specific
             if widget is None or widget is window:
                 continue
             try:

@@ -523,35 +523,66 @@ class PreviewCoordinator:
                 self._preview_frame_cache = cache
         self._finish_preview_render(request_id)
 
+    def _fallback_render_frame(self, exporter, snap, render_w, render_h, global_bounds, fill_color_tuple):
+        """CPU fallback render for prepare-error path — safe off GUI thread."""
+        if exporter is None:
+            return None
+        return exporter.render_snapshot_to_pil(
+            snap,
+            render_w,
+            render_h,
+            auto_crop=False,
+            fit_content=self.fit_content_mode,
+            global_bounds=global_bounds,
+            fill_color=fill_color_tuple or (0, 0, 0, 0),
+        )
+
+    def _on_fallback_frame_ready(self, frame_pil, request_id: int, request_key) -> None:
+        if request_id == self._render_task_id and self.has_live_view() and frame_pil is not None:
+            self._apply_preview_frame(frame_pil, request_key)
+            self._preview_frame_cache = {
+                "prepare_key": None,
+                "plan": None,
+                "store": None,
+                "request_key": request_key,
+                "frame_pil": frame_pil,
+            }
+        self._finish_preview_render(request_id)
+
+    def _on_fallback_frame_error(self, err, request_id: int) -> None:
+        logger.error("Video preview fallback render failed: %s", err)
+        self._finish_preview_render(request_id)
+
     def _on_preview_prepare_error(
         self, request_id: int, request_key, snap, render_w: int, render_h: int, global_bounds, fill_color_tuple
     ) -> None:
         logger.error("Video preview prepare failed on background thread")
-        if request_id == self._render_task_id and self.has_live_view():
-            exporter = getattr(self.export_controller, "video_exporter", None)
-            frame_pil = (
-                exporter.render_snapshot_to_pil(
-                    snap,
-                    render_w,
-                    render_h,
-                    auto_crop=False,
-                    fit_content=self.fit_content_mode,
-                    global_bounds=global_bounds,
-                    fill_color=fill_color_tuple or (0, 0, 0, 0),
-                )
-                if exporter is not None
-                else None
-            )
-            if frame_pil is not None:
-                self._apply_preview_frame(frame_pil, request_key)
-                self._preview_frame_cache = {
-                    "prepare_key": None,
-                    "plan": None,
-                    "store": None,
-                    "request_key": request_key,
-                    "frame_pil": frame_pil,
-                }
-        self._finish_preview_render(request_id)
+        if request_id != self._render_task_id or not self.has_live_view():
+            self._finish_preview_render(request_id)
+            return
+        exporter = getattr(self.export_controller, "video_exporter", None)
+        worker = GenericWorker(
+            self._fallback_render_frame,
+            exporter,
+            snap,
+            render_w,
+            render_h,
+            global_bounds,
+            fill_color_tuple,
+        )
+        worker.signals.result.connect(
+            lambda pil, rid=request_id, rk=request_key: self._on_fallback_frame_ready(pil, rid, rk)
+        )
+        worker.signals.error.connect(
+            lambda err, rid=request_id: self._on_fallback_frame_error(err, rid)
+        )
+        try:
+            self._prepare_pool.start(worker)
+        except Exception:
+            try:
+                self.export_controller.thread_pool.start(worker)
+            except Exception:
+                self._finish_preview_render(request_id)
 
     def _finish_preview_render(self, request_id: int) -> bool:
         _vplog.debug("preview_end task=%s", request_id)

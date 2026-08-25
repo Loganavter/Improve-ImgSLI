@@ -67,7 +67,12 @@
     "ffmpeg_output_args_hint": "Enter FFmpeg output arguments.\nInput is rawvideo pipe.",
     "crf_value_hint": "CRF Value (0-51, Lower is better)",
     "cq_value_hint": "CQ Value (0-51, Lower is better)",
-    "bitrate_hint": "Bitrate (e.g. 5000k, 5M)"
+    "bitrate_hint": "Bitrate (e.g. 5000k, 5M)",
+    "export_finished": "Export finished {ts}",
+    "export_failed": "Export failed {ts}",
+    "export_started": "Export started {ts}",
+    "video_exported": "Video Exported",
+    "saved_to": "Saved to: {path}"
   },
   "tooltip": {
     "use_favorite": "Use Favorite"

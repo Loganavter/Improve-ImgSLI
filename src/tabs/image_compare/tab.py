@@ -266,20 +266,13 @@ class ImageCompareTab(TabContract):
     def _register_nav_section(self) -> None:
         if self._widget is None:
             return
-        from sli_ui_toolkit.managers import declare_toolbar_navigation
+        from tabs.host_helpers import declare_toolbar_navigation
 
-        declare_toolbar_navigation(
+        self._nav_section = declare_toolbar_navigation(
             self._widget,
             self._toolbar_rows(),
             tag="image-compare",
         )
-        # Сохраняем для unregister совместимости
-        from sli_ui_toolkit.ui.managers.navigation_manager import NavigationManager
-
-        for owner, sec in NavigationManager.get_instance()._sections:
-            if owner is self._widget:
-                self._nav_section = sec
-                break
 
     def on_active_session_changed(self, session_id: str, context: TabContext) -> None:
         if session_id == self._active_session_id:

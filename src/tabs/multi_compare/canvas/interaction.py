@@ -331,24 +331,12 @@ def handle_mouse_double_click_event(widget, event: QMouseEvent) -> None:
             event.accept()
 
 
-_KEY_PAN = {
-    Qt.Key.Key_Left,
-    Qt.Key.Key_Right,
-    Qt.Key.Key_Up,
-    Qt.Key.Key_Down,
-}
-_KEY_ZOOM_IN = {
-    Qt.Key.Key_Plus,
-    Qt.Key.Key_Equal,
-}
-_KEY_ZOOM_OUT = {
-    Qt.Key.Key_Minus,
-}
-# Pan nudge as a fraction of the reference cell width/height per arrow press,
-# divided by ``fit * zoom`` so a nudge stays a fixed *screen* distance
-# (mirrors the middle-button pan formula ``dpan = delta_px / ref_width /
-# (fit * zoom)`` with ``delta_px = nudge_fraction * ref_width``).
-_KEY_PAN_NUDGE = 0.05
+from shared.canvas.keyboard_constants import (
+    KEY_PAN as _KEY_PAN,
+    KEY_PAN_NUDGE as _KEY_PAN_NUDGE,
+    KEY_ZOOM_IN as _KEY_ZOOM_IN,
+    KEY_ZOOM_OUT as _KEY_ZOOM_OUT,
+)
 
 
 def _keyboard_pan_reference(widget) -> tuple[QRect, tuple[float, float]]:

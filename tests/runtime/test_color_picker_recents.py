@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from tests.helpers.drain_until_stable import drain_until_stable
 from ui.widgets.color import (
     RECENT_COLORS_CAP,
     RecentColorsRow,
@@ -122,7 +123,13 @@ def test_chip_hover_ring_and_no_resting_border(qapp):
     try:
         row.set_colors(["#FF8800"])
         row.show()
-        qapp.processEvents()
+        drain_until_stable(
+            qapp,
+            lambda: (row._chip_widgets[0].width(), row._chip_widgets[0].height()) if row._chip_widgets else (0, 0),
+            timeout_ms=800,
+            poll_ms=10,
+            stable_frames=2,
+        )
         chip = row._chip_widgets[0]
         assert not chip._hovered
         assert chip.width() >= 60  # ~3x the old 22px chip
@@ -150,7 +157,13 @@ def test_row_wraps_chips_onto_rows_when_narrow(qapp):
     try:
         row.set_colors([f"#{i:02X}0000" for i in range(6)])
         host.show()
-        qapp.processEvents()
+        drain_until_stable(
+            qapp,
+            lambda: tuple((c.x(), c.y(), c.width()) for c in row._chip_widgets),
+            timeout_ms=800,
+            poll_ms=10,
+            stable_frames=2,
+        )
         rows = {chip.y() for chip in row._chip_widgets}
         # 260px fits three 64px chips per row -> 6 chips on 2 rows.
         assert len(rows) >= 2
@@ -167,12 +180,24 @@ def test_row_positions_stable_across_resizes(qapp):
         row.set_colors(["#FF0000", "#00FF00"])
         row.resize(400, 400)
         row.show()
-        qapp.processEvents()
+        drain_until_stable(
+            qapp,
+            lambda: tuple((c.x(), c.width()) for c in row._chip_widgets),
+            timeout_ms=800,
+            poll_ms=10,
+            stable_frames=2,
+        )
         chips = [row._chip_widgets[i] for i in range(2)]
         positions = [(c.x(), c.width()) for c in chips]
         for width in (400, 500, 400):
             row.resize(width, row.height())
-            qapp.processEvents()
+            drain_until_stable(
+                qapp,
+                lambda: tuple((c.x(), c.width()) for c in row._chip_widgets),
+                timeout_ms=800,
+                poll_ms=10,
+                stable_frames=2,
+            )
             positions_now = [(c.x(), c.width()) for c in chips]
             assert positions_now == positions
     finally:

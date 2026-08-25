@@ -38,9 +38,13 @@ class RecordingFlow:
                     is_paused=False,
                     pause_enabled=True,
                 )
-                controller._toggle_recording_in_progress = False
+        except Exception as exc:
+            logger.error("Recorder toggle failed: %s", exc, exc_info=True)
+            self._emit_error(f"Recording toggle failed: {exc}")
+            controller._toggle_recording_in_progress = False
+            return
         finally:
-            if controller.recorder.is_recording:
+            if not controller._recording_finalize_in_progress:
                 controller._toggle_recording_in_progress = False
 
     def toggle_pause_recording(self, checked: bool | None = None):

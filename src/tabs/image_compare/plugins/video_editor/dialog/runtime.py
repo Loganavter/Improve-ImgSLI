@@ -182,9 +182,13 @@ class VideoEditorDialogRuntime:
             from datetime import datetime
             ts = datetime.now().strftime("%H:%M:%S")
             if success:
-                d.export_log_edit.append_status(f"Export finished {ts}")
+                tpl = d._tr("video.export_finished")
+                msg = tpl.format(ts=ts) if "{ts}" in tpl else f"{tpl} {ts}" if tpl != "video.export_finished" else f"Export finished {ts}"
+                d.export_log_edit.append_status(msg)
             else:
-                d.export_log_edit.append_error(f"Export failed {ts}")
+                tpl = d._tr("video.export_failed")
+                msg = tpl.format(ts=ts) if "{ts}" in tpl else f"{tpl} {ts}" if tpl != "video.export_failed" else f"Export failed {ts}"
+                d.export_log_edit.append_error(msg)
         if success:
             d.export_progress.setValue(100)
             d._set_export_progress_state("success")

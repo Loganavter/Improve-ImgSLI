@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication
 
 from resources.translations import tr
 from sli_ui_toolkit.widgets import Label
+from tests.helpers.drain_until_stable import drain_until_stable
 from ui.widgets.color import ColorPickerDialog, RecentColorsStore
 
 
@@ -35,7 +36,13 @@ def store(settings):
 
 def _show(dialog, qapp):
     dialog.show()
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: (dialog.width(), dialog.height(), dialog._hex_edit.x()),
+        timeout_ms=800,
+        poll_ms=10,
+        stable_frames=2,
+    )
 
 
 def test_hex_display_respects_alpha_flag(qapp):
@@ -167,12 +174,32 @@ def test_fields_row_gaps_stable_and_right_aligned(qapp):
     try:
         _show(dialog, qapp)
         dialog.resize(560, dialog.height())
-        qapp.processEvents()
+        drain_until_stable(
+            qapp,
+            lambda: (
+                dialog._hex_edit.x() - (dialog._preview.x() + dialog._preview.width()),
+                dialog._r_spin.x() - (dialog._hex_edit.x() + dialog._hex_edit.width()),
+                dialog._a_spin.x() + dialog._a_spin.width(),
+            ),
+            timeout_ms=800,
+            poll_ms=10,
+            stable_frames=2,
+        )
         gap_hex = dialog._hex_edit.x() - (dialog._preview.x() + dialog._preview.width())
         gap_r = dialog._r_spin.x() - (dialog._hex_edit.x() + dialog._hex_edit.width())
         for width in (560, 620, 680, 620, 560):
             dialog.resize(width, dialog.height())
-            qapp.processEvents()
+            drain_until_stable(
+                qapp,
+                lambda: (
+                    dialog._hex_edit.x() - (dialog._preview.x() + dialog._preview.width()),
+                    dialog._r_spin.x() - (dialog._hex_edit.x() + dialog._hex_edit.width()),
+                    dialog._a_spin.x() + dialog._a_spin.width(),
+                ),
+                timeout_ms=800,
+                poll_ms=10,
+                stable_frames=2,
+            )
             # Anti-jitter: internal gaps never grow with dialog width.
             assert (
                 dialog._hex_edit.x() - (dialog._preview.x() + dialog._preview.width())

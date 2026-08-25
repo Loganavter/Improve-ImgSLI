@@ -29,10 +29,10 @@ def test_corrupt_zip_raises_or_returns_error(tmp_path: Path):
 
 def test_zip_slip_member_rejected(tmp_path: Path, monkeypatch):
     proj = tmp_path / "evil.imgsli"
-    # Build a zip with a zip-slip member: media/../../evil.txt
+    # One .. stays inside cache/media/../ -> cache/evil (safe). Need two .. to escape cache_dir.
     with zipfile.ZipFile(proj, "w") as zf:
         zf.writestr("project.json", '{"format":"imgsli","version":3,"active_session_index":0,"sessions":[]}')
-        zf.writestr("media/../evil.txt", b"evil")
+        zf.writestr("media/../../evil.txt", b"evil")
         # Also add a valid media entry to have non-empty namelist
         zf.writestr("media/abcd/name.png", b"123")
     cache_dir = tmp_path / "cache"
