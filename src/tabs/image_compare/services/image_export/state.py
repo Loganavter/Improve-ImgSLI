@@ -6,6 +6,7 @@ from pathlib import Path
 
 from domain.types import Color
 from plugins.export.models import ExportDialogState
+from shared.image_processing.pil_save import next_available_path
 
 
 class ExportStateCoordinator:
@@ -25,17 +26,9 @@ class ExportStateCoordinator:
         base_name: str,
         extension: str,
     ) -> str:
-        full_path = os.path.join(directory, f"{base_name}{extension}")
-        if not os.path.exists(full_path):
-            return full_path
-
-        counter = 1
-        while True:
-            new_name = f"{base_name} ({counter})"
-            new_path = os.path.join(directory, f"{new_name}{extension}")
-            if not os.path.exists(new_path):
-                return new_path
-            counter += 1
+        # Single source: shared/image_processing/pil_save.py:45 next_available_path
+        candidate = Path(directory) / f"{base_name}{extension}"
+        return str(next_available_path(candidate, style="paren"))
 
     def color_from_tuple(self, color_tuple):
         if color_tuple is None:

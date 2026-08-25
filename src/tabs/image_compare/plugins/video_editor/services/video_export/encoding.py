@@ -3,39 +3,24 @@ from __future__ import annotations
 import logging
 import os
 import shlex
-import shutil
 import subprocess
-import sys
 import threading
-from pathlib import Path
 
-from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
+from tabs.image_compare.plugins.video_editor.services.export_config import (
+    ExportConfigBuilder,
+    resolve_ffmpeg_executable,
+)
 
 logger = logging.getLogger("ImproveImgSLI")
 
+
 class FFmpegCommandBuilder:
     def build(self, output_path, width, height, fps, options):
-        ffmpeg_exe = "ffmpeg"
-        if not shutil.which(ffmpeg_exe):
-            # W3 minor: don't trust CWD-relative ffmpeg (planted binary in attacker dir)
-            candidates: list[str] = []
-            try:
-                candidates.append(str(Path(sys.executable).resolve().parent / "ffmpeg"))
-                candidates.append(str(Path(sys.executable).resolve().parent / "ffmpeg.exe"))
-            except Exception:
-                pass
-            try:
-                candidates.append(str(Path(__file__).resolve().parents[6] / "ffmpeg"))
-                candidates.append(str(Path(__file__).resolve().parents[6] / "ffmpeg.exe"))
-            except Exception:
-                pass
-            found = next((c for c in candidates if os.path.exists(c)), None)
-            if found:
-                ffmpeg_exe = found
-            else:
-                raise FileNotFoundError(
-                    "FFmpeg executable not found in PATH or app directory."
-                )
+        ffmpeg_exe = resolve_ffmpeg_executable()
+        if not ffmpeg_exe:
+            raise FileNotFoundError(
+                "FFmpeg executable not found in PATH or app directory."
+            )
 
         cmd = [
             ffmpeg_exe,

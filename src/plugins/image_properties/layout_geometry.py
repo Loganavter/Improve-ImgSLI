@@ -9,6 +9,7 @@ from shared_toolkit.ui.layout_sizing import (
     apply_dialog_geometry,
     clamp,
     clamp_to_screen,
+    widget_size_hint as _size_hint,
 )
 
 IMAGE_PROPERTIES_MIN_WIDTH = 480
@@ -29,20 +30,6 @@ IMAGE_PROPERTIES_GEOMETRY_POLICY = GeometryApplyPolicy(
 
 
 IMAGE_PROPERTIES_MAX_CONTENT_HEIGHT_PX = 520
-
-
-def _size_hint(widget: QWidget | None) -> tuple[int, int]:
-    """Read intrinsic size without ``adjustSize``.
-
-    Calling ``adjustSize`` on the live document canvas / scroll content freezes
-    it to its sizeHint geometry and breaks the parent VBox stretch until the
-    next user resize — first open then looks like a collapsed blank pane.
-    """
-    if widget is None:
-        return (0, 0)
-    widget.ensurePolished()
-    hint = widget.sizeHint()
-    return (max(0, hint.width()), max(0, hint.height()))
 
 
 def _activate_content_layout(dialog) -> None:

@@ -127,6 +127,24 @@ def clamp(value: int, *, minimum: int, maximum: int) -> int:
     return max(minimum, min(value, maximum))
 
 
+def widget_size_hint(widget: QWidget | None) -> tuple[int, int]:
+    """Read intrinsic size without ``adjustSize`` (which collapses live layout).
+
+    Single source for ``_size_hint`` previously duplicated in
+    ``plugins/help/layout_geometry.py:47`` and
+    ``plugins/image_properties/layout_geometry.py:34``.
+    """
+    if widget is None:
+        return (0, 0)
+    widget.ensurePolished()
+    hint = widget.sizeHint()
+    return (max(0, hint.width()), max(0, hint.height()))
+
+
+# Back-compat private alias — callers imported ``_size_hint``.
+_size_hint = widget_size_hint
+
+
 def estimate_prelayout_width(
     widget: QWidget,
     *,
