@@ -363,7 +363,10 @@ def main():
         project_path = str(Path(args.project).expanduser().resolve())
 
         def _open_startup_project(path: str = project_path) -> None:
-            menu = getattr(window, "_menu_controller", None)
+            # Use public accessor — avoids private ``_menu_controller`` hunt (C7).
+            menu = getattr(window, "menu_controller", None) or getattr(
+                window, "_menu_controller", None
+            )
             opener = getattr(menu, "open_project_at_path", None) if menu else None
             if callable(opener):
                 opener(path)

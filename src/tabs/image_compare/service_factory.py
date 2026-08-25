@@ -316,4 +316,33 @@ def create_service(
         if tab._widget is None:
             return None
         return tab._widget.image_label
+    if service_id == "capture_preview_image":
+        if tab._widget is None:
+            return None
+        canvas = getattr(tab._widget, "image_label", None)
+        if canvas is None:
+            return None
+        try:
+            # Mirror project_preview._grab_widget_image logic but lives on tab.
+            if hasattr(canvas, "grabFramebuffer"):
+                try:
+                    canvas.update()
+                    from PySide6.QtWidgets import QApplication
+
+                    app = QApplication.instance()
+                    if app is not None:
+                        app.processEvents()
+                except Exception:
+                    pass
+                from PySide6.QtGui import QImage
+
+                image = canvas.grabFramebuffer()
+                if isinstance(image, QImage) and not image.isNull():
+                    return image
+            pix = canvas.grab()
+            if pix is not None and not pix.isNull():
+                return pix.toImage()
+        except Exception:
+            return None
+        return None
     return None

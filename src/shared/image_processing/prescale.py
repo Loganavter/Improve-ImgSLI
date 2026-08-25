@@ -8,15 +8,8 @@ from __future__ import annotations
 from PIL import Image
 
 from shared.image_processing.pixel_ops.resample import write_resampled_to_store
+from shared.image_processing.resample_map import get_resample
 from shared.image_processing.tiled_pixel_store import TiledPixelStore
-
-_RESAMPLE = {
-    "NEAREST": Image.Resampling.NEAREST,
-    "BILINEAR": Image.Resampling.BILINEAR,
-    "BICUBIC": Image.Resampling.BICUBIC,
-    "LANCZOS": Image.Resampling.LANCZOS,
-    "EWA_LANCZOS": Image.Resampling.LANCZOS,
-}
 
 
 def _as_store(source) -> TiledPixelStore:
@@ -62,7 +55,7 @@ def prescale_pair(
             max(1, int(src_h * ratio)),
         )
 
-    resample = _RESAMPLE.get(str(method_name).upper(), Image.Resampling.LANCZOS)
+    resample = get_resample(method_name)
     tw, th = target_size
 
     def _resize(source) -> TiledPixelStore:

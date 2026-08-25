@@ -67,17 +67,20 @@ class SessionPickerTab(TabContract):
 
     def on_host_revealed(self) -> None:
         """Refresh opaque fills and recent panel after host becomes visible."""
-        from tabs.registry import TabRegistry
+        page = self._widget
+        if page is None:
+            from tabs.registry import TabRegistry
 
-        page = TabRegistry().get_page(self.session_type)
+            page = TabRegistry().get_page(self.session_type)
         if page is None:
             return
+        # Use public widget API first; private getattr fallback kept only for
+        # transition while widget migrates to explicit methods.
         recover = getattr(page, "_sync_opaque_page_fills", None)
         if callable(recover):
             recover()
-        show_hook = getattr(page, "refresh", None)
-        if callable(show_hook):
-            show_hook()
+        if hasattr(page, "refresh") and callable(getattr(page, "refresh")):
+            page.refresh()  # type: ignore[attr-defined]
         recent = getattr(page, "_recent_panel", None)
         if recent is not None:
             on_shown = getattr(recent, "on_page_shown", None)
@@ -87,3 +90,6 @@ class SessionPickerTab(TabContract):
             if callable(recover_recent):
                 recover_recent()
         page.update()
+
+    def dispose(self) -> None:
+        self._widget = None

@@ -269,6 +269,16 @@ CATALOG REFRESH — "re-publish into a host-owned registry":
   only the active tab's chrome targets are live. Host callers must not
   import tabs.*.actions / tab settings builders by module path. Tab-owned
   label keys live under the tab i18n namespace.
+
+Why this divergence (C10): settings/help are *browsable catalogs* — browser
+must list every inactive tab's sections/help subtrees (user hasn't switched
+yet), so the host broadcasts ``notify_all`` and filters by ``owner_tab`` on
+display. Actions (including keymap defaults) are *active-tab chrome* — only
+the live tab's widget targets exist and are hittable; inactive tabs' targets
+are not in the widget tree. Hence ``contribute_actions`` / ``contribute_keymap_defaults``
+resolve strictly against the active tab via ``create_service`` (``_active_session_type``),
+and ``connections.py:_refresh_active_tab_actions`` re-calls it on every
+``currentChanged``. Same verb prefix, opposite routing by product need.
 ```
 
 Anything that exists only to let host code *push* a value or *command* a tab
@@ -331,5 +341,13 @@ As of this writing:
   tab-owned `ImageComparePopupClosing` extension via
   `create_startup_service("popup_close_extension", ...)`, not widget-name
   lookups.
-- `notify_all` and the `is_bootstrap_default` stopgap above are both in
+ - Session-switch state dialects (C3): IC snapshot/restore per switch
+  (``tabs/image_compare/use_cases/persistence.py``), MC slot-authoritative
+  re-read (post 2026-08 unification, ``tabs/multi_compare/use_cases/persistence.py``),
+  image_gallery raw ``state_slots.get`` (``tabs/image_gallery/tab.py:86``).
+  All three are now documented as sanctioned — they reflect different ownership
+  models (IC camera lives on host widget, MC state in Redux slot, gallery folder
+  in slot dict). New tabs should pick the slot-authoritative model (MC) unless
+  host-widget state forces snapshot semantics (IC).
+ - `notify_all` and the `is_bootstrap_default` stopgap above are both in
   active use.

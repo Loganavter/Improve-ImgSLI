@@ -7,6 +7,7 @@ import logging
 from PIL import Image
 
 from shared.image_processing.pixel_ops.resample import write_resampled_to_store
+from shared.image_processing.resample_map import get_resample
 from shared.image_processing.tiled_pixel_store import (
     TiledPixelStore,
     maybe_wrap_pixel_store,
@@ -16,13 +17,6 @@ from shared.image_processing.tiled_pixel_store import (
 from shared.image_processing.store_lease import StoreLease
 
 logger = logging.getLogger("ImproveImgSLI")
-
-_RESAMPLE = {
-    "NEAREST": Image.Resampling.NEAREST,
-    "BILINEAR": Image.Resampling.BILINEAR,
-    "BICUBIC": Image.Resampling.BICUBIC,
-    "LANCZOS": Image.Resampling.LANCZOS,
-}
 
 # Below this size unified output uses PIL resize_images_processor (exact match).
 _ACCURATE_UNIFY_MAX_PIXELS = 4096 * 4096
@@ -52,7 +46,7 @@ def unify_pair(
     if source1 is None and source2 is None:
         return None, None
 
-    resample = _RESAMPLE.get(method_name.upper(), Image.Resampling.LANCZOS)
+    resample = get_resample(method_name)
 
     w1, h1 = pixel_source_size(source1)
     w2, h2 = pixel_source_size(source2)

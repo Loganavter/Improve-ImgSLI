@@ -192,11 +192,17 @@ def build(dialog, p):
         None: KEYBOARD_PLATFORM.title_key,
     }
     try:
+        from core.store import INITIAL_WORKSPACE_SESSION_TYPE
         from tabs.registry import TabRegistry
 
         for tab in TabRegistry().list_tabs():
             session_type = tab.session_type
-            if session_type == "session_picker":
+            if session_type == INITIAL_WORKSPACE_SESSION_TYPE:
+                continue
+            # Also skip tabs that are bootstrap-default but not the
+            # initial workspace type (defensive; is_bootstrap_default is
+            # reserved for session_picker — see TabContract).
+            if getattr(tab, "is_bootstrap_default", False):
                 continue
             group_key = f"settings.keyboard_group_{session_type}"
             owner_titles[session_type] = _tr(

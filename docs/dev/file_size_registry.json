@@ -26,7 +26,7 @@
     },
     {
       "path": "src/plugins/help/dialog.py",
-      "lines": 543,
+      "lines": 849,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",
@@ -37,7 +37,7 @@
     },
     {
       "path": "src/plugins/settings/dialog.py",
-      "lines": 636,
+      "lines": 648,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Settings QDialog — 6 pages + load/save\"",
@@ -70,7 +70,7 @@
     },
     {
       "path": "src/shared/image_processing/tiled_pixel_store.py",
-      "lines": 893,
+      "lines": 923,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
@@ -114,7 +114,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 595,
+      "lines": 671,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -253,7 +253,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py",
-      "lines": 708,
+      "lines": 739,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard\"",
@@ -296,17 +296,6 @@
       }
     },
     {
-      "path": "src/tabs/multi_compare/plugins/export/dialog.py",
-      "lines": 641,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=qdialog-wiring reason=\"one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate\"",
-      "parsed": {
-        "pattern": "qdialog-wiring",
-        "reason": "one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate"
-      }
-    },
-    {
       "path": "src/tabs/multi_compare/scene/passes/base_images.py",
       "lines": 873,
       "limit": 500,
@@ -330,7 +319,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/canvas_widget.py",
-      "lines": 576,
+      "lines": 666,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",
@@ -429,7 +418,7 @@
     },
     {
       "path": "src/ui/widgets/scroll_value_button.py",
-      "lines": 616,
+      "lines": 762,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single custom-painted control — painter pipeline owns visuals\"",

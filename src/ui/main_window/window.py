@@ -116,6 +116,7 @@ class MainWindow(QWidget):
             self.settings_manager.settings,
             self.store,
         )
+        self._menu_controller = None  # set in startup.build_shell()
         # Title-bar File/Help widths are measured at strip construction. Apply
         # the UI face first so Cyrillic labels are not sized with a fallback
         # font (Help then sits where File should be until FontChange remasure).
@@ -232,6 +233,15 @@ class MainWindow(QWidget):
 
     def end_offscreen_prewarm(self):
         self._offscreen_prewarm_active = False
+
+    @property
+    def menu_controller(self):
+        """Public accessor for the CSD/title-bar controller.
+
+        Prefer over ``getattr(window, "_menu_controller")`` (private
+        attribute hunt flagged by cross-module review C7).
+        """
+        return getattr(self, "_menu_controller", None)
 
     @property
     def toast_manager(self):
