@@ -57,29 +57,6 @@ def _is_end_record(rec: dict) -> bool:
     kind = rec.get("kind", "")
     return kind.endswith(".end") or kind == "dispatch.end" or kind == "render.apply_end"
 
-def _begin_kind_for_end(end_kind: str) -> str:
-    if end_kind == "dispatch.end":
-        return "dispatch.begin"
-    if end_kind == "render.apply_end":
-        return "render.apply_plan"
-    if end_kind == "eventbus.end":
-        return "eventbus.emit"
-    if end_kind.startswith("input.") and end_kind.endswith(".end"):
-        return end_kind[: -len(".end")]
-    return ""
-
-def _pair_durations(records: list[dict]) -> dict[int, float]:
-    durations: dict[int, float] = {}
-    for rec in records:
-        if not _is_end_record(rec):
-            continue
-        dur = rec.get("payload", {}).get("duration_ms")
-        seq_begin = rec.get("payload", {}).get("span_id")
-        if dur is None or not seq_begin:
-            continue
-        durations[seq_begin] = dur
-    return durations
-
 def render_trace(records: list[dict], trace_id: str, min_ms: float = 0.0) -> str:
     durations_by_span = {}
     for rec in records:

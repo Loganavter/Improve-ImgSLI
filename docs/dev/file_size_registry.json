@@ -48,7 +48,7 @@
     },
     {
       "path": "src/plugins/settings/manager.py",
-      "lines": 503,
+      "lines": 508,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single settings manager — load/save + change propagation\"",
