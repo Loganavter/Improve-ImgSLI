@@ -115,10 +115,14 @@ class LayoutComposer:
                 else None
             )
 
-        def show_help_dialog(*, page: str | None = None, anchor: str | None = None):
+        def show_help_dialog(
+            *, page: str | None = None, anchor: str | None = None, video_url: str | None = None, learn_more_url: str | None = None
+        ):
             mgr = _ui_manager()
             if mgr is not None:
-                mgr.dialogs.show_help_dialog(page=page, anchor=anchor)
+                mgr.dialogs.show_help_dialog(
+                    page=page, anchor=anchor, video_url=video_url, learn_more_url=learn_more_url
+                )
 
         def show_settings_dialog(*, section_id: str | None = None):
             mgr = _ui_manager()

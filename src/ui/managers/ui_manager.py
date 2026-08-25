@@ -149,8 +149,17 @@ class UIManager(QObject):
     def close_all_flyouts_if_needed(self, global_pos: QPointF):
         self.transient.close_all_flyouts_if_needed(global_pos)
 
-    def show_help_dialog(self, *, page: str | None = None, anchor: str | None = None):
-        self.dialogs.show_help_dialog(page=page, anchor=anchor)
+    def show_help_dialog(
+        self,
+        *,
+        page: str | None = None,
+        anchor: str | None = None,
+        video_url: str | None = None,
+        learn_more_url: str | None = None,
+    ):
+        self.dialogs.show_help_dialog(
+            page=page, anchor=anchor, video_url=video_url, learn_more_url=learn_more_url
+        )
 
     def show_settings_dialog(self, *, section_id: str | None = None):
         self.dialogs.show_settings_dialog(section_id=section_id)

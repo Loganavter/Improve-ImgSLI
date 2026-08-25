@@ -74,10 +74,13 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 
 ## docs/dev/investigations/
 
+- **[Investigation: orchestration 6-agent rework — ImportError `_STATE_SLOT`, haltura audit and registry stale](investigations/audit-2026-08-25-orchestration-halture.md)** — `docs/dev/investigations/audit-2026-08-25-orchestration-halture.md`
+- **[Investigation: W3 Untrusted-input hardening — craft .imgsli DoS/SIGBUS + zip-bomb + UNC + ffmpeg minors](investigations/cross-module-review-2026-08-25-wave2-W3-untrusted-input.md)** — `docs/dev/investigations/cross-module-review-2026-08-25-wave2-W3-untrusted-input.md`
 - **[Investigation: deep review wave 2 — threading, shared/services, security, video editor, tests](investigations/cross-module-review-2026-08-25-wave2.md)** — `docs/dev/investigations/cross-module-review-2026-08-25-wave2.md`
   Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Investigation: cross-module review — duplication, error handling, abstractions](investigations/cross-module-review-2026-08-25.md)** — `docs/dev/investigations/cross-module-review-2026-08-25.md`
   Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/TODO.md](TODO.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md)
+- **[Investigation: drain migration wave 5 — single-drain → drain_until_stable (W5)](investigations/drain-migration-wave5-2026-08-25.md)** — `docs/dev/investigations/drain-migration-wave5-2026-08-25.md`
 - **[Investigation: Keyboard Navigation, CSD Focus, and Flyout Focus Routing](investigations/keyboard-navigation-csd-focus.md)** — `docs/dev/investigations/keyboard-navigation-csd-focus.md`
 - **[Investigation: NavigationManager for cross-section keyboard navigation](investigations/navigation-manager-plan.md)** — `docs/dev/investigations/navigation-manager-plan.md`
 - **[Critical Analysis: Session Picker Navigation](investigations/session-picker-navigation-analysis.md)** — `docs/dev/investigations/session-picker-navigation-analysis.md`

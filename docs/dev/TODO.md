@@ -135,9 +135,9 @@ Area: `src/core/plugin_system/event_bus.py`, `state_management/dispatcher.py`,
 
 ## P2 - Test suite: pin unpinned invariants (review wave 2)
 
-Status: `In progress` (2026-08-25 wave3 — 85% done; остаток: drain-migration ~35 файлов low-risk, single-drain → drain-until-stable helper)
+Status: `Done (2026-08-25 wave5)` — drain 61→46 `processEvents` (35→20 в `tests/runtime` + 26→15 в `src/tabs/session_picker/tests/runtime/test_recent_projects_panel.py:1`) via `tests/helpers/drain_until_stable.py:1` (bounded poll-until-stable, 1000 ms / 2 stable frames); helper покрыл 5 high-risk файлов (`test_dialog_auto_decoration`, `test_tooltip_interceptor`, `test_rounded_window_mask`, `test_drag_ghost_ripple`, `test_themed_dialog`) + `test_modal_keeps_flyout_open`/`test_main_window_title_bar_menus` и `src/tabs/session_picker/tests/runtime/test_recent_projects_panel.py:13` session_picker (11 replaces, pump `for _ in range(6)` → bounded drain) — `docs/dev/investigations/drain-migration-wave5-2026-08-25.md:1`; остаток low-risk cleanup — 46 `processEvents` вне точных geometry asserts (deleteLater/flush, `tests/plugins`/`tests/devtools`/`tests/contracts`/`tests/render`, `src/shared/rendering/offscreen_canvas.py` — не геометрия, no QRhi).
 
-What done: concurrent-dispatch (`tests/runtime/test_dispatcher_concurrency.py:1`), MC residency parity, `drop_covered_fallback_tiles` direct (`src/tabs/multi_compare/tests/render/test_drop_covered_fallback_tiles.py:1`), project-I/O negative (`tests/runtime/test_project_io_negative.py:1`), reducer purity full sweep (`tests/runtime/test_reducer_purity_full.py:1`), corrupt-ini, real-widget anchor (`src/tabs/image_compare/tests/video/test_real_widget_anchor.py:1`), `drain_until_stable` helper (`tests/runtime/test_drain_until_stable_helper.py:1`) — all wave3, `QT_QPA_PLATFORM=offscreen pytest tests/runtime/test_dispatcher_concurrency.py tests/runtime/test_project_io_negative.py tests/runtime/test_reducer_purity_full.py tests/runtime/test_drain_until_stable_helper.py -q` → 11 passed. Остаток: migration of ~35 remaining single-drain exact-equality geometry asserts to helper (low-risk, no QRhi) — tracked here.
+What done: concurrent-dispatch (`tests/runtime/test_dispatcher_concurrency.py:1`), MC residency parity, `drop_covered_fallback_tiles` direct (`src/tabs/multi_compare/tests/render/test_drop_covered_fallback_tiles.py:1`), project-I/O negative (`tests/runtime/test_project_io_negative.py:1`), reducer purity full sweep (`tests/runtime/test_reducer_purity_full.py:1`), corrupt-ini, real-widget anchor (`src/tabs/image_compare/tests/video/test_real_widget_anchor.py:1`), `drain_until_stable` helper (`tests/runtime/test_drain_until_stable_helper.py:1`) — all wave3, `QT_QPA_PLATFORM=offscreen pytest tests/runtime/test_dispatcher_concurrency.py tests/runtime/test_project_io_negative.py tests/runtime/test_reducer_purity_full.py tests/runtime/test_drain_until_stable_helper.py -q` → 11 passed. Wave5: drain-migration 61→46 (15 high-risk geometry → `drain_until_stable`, остаток 46 — low-risk non-geometry single drains), `QT_QPA_PLATFORM=offscreen pytest tests/runtime/test_dialog_auto_decoration.py tests/runtime/test_drag_ghost_ripple.py tests/runtime/test_themed_dialog.py tests/runtime/test_tooltip_interceptor.py tests/runtime/test_rounded_window_mask.py tests/runtime/test_modal_keeps_flyout_open.py tests/runtime/test_main_window_title_bar_menus.py -q` → 27 passed, `src/tabs/session_picker/tests/runtime/test_recent_projects_panel.py -q` → 34 passed.
 
 Highest silent-breakage gaps found (W5 of the investigation):
 
@@ -228,9 +228,9 @@ matches only `image_compare|image_session` literals and skips
 
 ## P2/P3 - IC↔MC duplication consolidation queue (review 2026-08-25)
 
-Status: `In progress` (2026-08-25 wave3 — 80% done; остаток: B1 save-flow design + B3 pyramid predicate design low-risk, no QRhi)
+Status: `Done (2026-08-25 wave5)` — B1 save-flow `src/tabs/_shared/save_flow.py:1` `SaveFlowCoordinator` 309 LOC (IC `src/tabs/image_compare/services/image_export/save_flow.py:1` 131 LOC делегат, MC `src/tabs/multi_compare/services/save_flow.py:1` 82 LOC делегат) + B3 pyramid predicate final review `src/tabs/_shared/pyramid.py:57` `should_abort` param, IC `src/tabs/image_compare/use_cases/loading_pyramid.py:26` `task_id != _unification_task_id`, MC `src/tabs/multi_compare/use_cases/loading.py:206`/`controller.py:288` `not pyramid.valid` — low-risk, no QRhi. Final review wave5 fixed sync-fallback success toast + cancel swallow, unified `SAVE_CANCELED_MESSAGE` → `pil_save.py:23` single source (grep 1 hit), verified `display_path_style` paren/underscore, `get_thread_pool` lambda, proxy `_save_cancellation/_save_workers`, `on_success_notify` для IC, contracts 1480 passed (2 arrow pre-existing), `QT_QPA_PLATFORM=offscreen pytest tests/plugins -k "toast or export"` 14 passed.
 
-Done wave3: B2 loading-toast `src/tabs/_shared/loading_toast.py:42` `LoadingToastCoordinator` (IC `src/tabs/image_compare/use_cases/loading_toast.py:19` re-export, MC `src/tabs/multi_compare/use_cases/loading.py:27` wired), B3 pyramid `src/tabs/_shared/pyramid.py:57` `PyramidBuildCoordinator` (parameterized `should_abort`, IC `src/tabs/image_compare/use_cases/loading_pyramid.py:26`, MC `src/tabs/multi_compare/controller.py:276`), B4 encoding tail (`src/tabs/multi_compare/services/image_export.py:34`), B5 warning helpers, B6 `_img_dims` quartet (`plan_applicator.py:50`, `base_images.py:143`, `render_config.py:37`, `interaction.py:44`), B9 keyboard constants, B10 `pixel_cache_registry.lookup` ×4, B7 `next_available_path`, B12 `_RESAMPLE` map, logging sweep (`exc_info=True`, `tabs/save_toast.py:43`), dead-code `dialog.py`/`__init__.py` removed. Остаток: B1 save-flow coordinator ~170 LOC design + B3 predicate-vs-valid parameterization final review (low-risk, lazy shell verified `src/tabs/_shared/save_flow.py:1` exists untracked).
+Done wave3: B2 loading-toast `src/tabs/_shared/loading_toast.py:42` `LoadingToastCoordinator` (IC `src/tabs/image_compare/use_cases/loading_toast.py:19` re-export, MC `src/tabs/multi_compare/use_cases/loading.py:27` wired), B3 pyramid `src/tabs/_shared/pyramid.py:57` `PyramidBuildCoordinator` (parameterized `should_abort`, IC `src/tabs/image_compare/use_cases/loading_pyramid.py:26`, MC `src/tabs/multi_compare/controller.py:276`), B4 encoding tail (`src/tabs/multi_compare/services/image_export.py:34`), B5 warning helpers, B6 `_img_dims` quartet (`plan_applicator.py:50`, `base_images.py:143`, `render_config.py:37`, `interaction.py:44`), B9 keyboard constants, B10 `pixel_cache_registry.lookup` ×4, B7 `next_available_path`, B12 `_RESAMPLE` map, logging sweep (`exc_info=True`, `tabs/save_toast.py:43`), dead-code `dialog.py`/`__init__.py` removed. Остаток wave5 закрыт: B1/B2/B3/B4/B5/B6/B9/B10 done, B7/B12 done, лог sweep done; B8/B11 QRhi deferred санкционированы как не делать (canvas-merge scope), `file_meta --check` Registry OK. Итог `src/tabs/_shared/save_flow.py:1` 315 LOC + `pyramid.py:57` + `loading_toast.py:42`.
 
 Low-risk consolidation candidates found by the review (investigation table
 B1–B7, B9, B10, B12; QRhi-adjacent B8/B11 stay inside the deferred
@@ -356,16 +356,16 @@ future concern (see UI_INSPECTOR.md).
 
 ## P2 - Action palette / Help follow-ups
 
-Status: `Open`
+Status: `In progress` (tip needs toolkit TipBlock — `:::tip` отложено needs design token; `video_url`/`learn_more_url` + F1→topic Done 2026-08-25 wave5)
 
 Host discovery MVP and hierarchical Help are live — see [ACTIONS.md](./ACTIONS.md),
 [HELP_SYSTEM.md](./HELP_SYSTEM.md).
 
 Still open:
 
-- embedded `video_url` / `learn_more_url` on actions;
-- F1 → topic page without opening the palette;
-- optional `:::tip` / richer definition-list blocks in the toolkit subset.
+- optional `:::tip` / richer definition-list blocks in the toolkit subset — отложено needs design token (требует toolkit `TipBlock` / design token, не делать в app до toolkit решения).
+
+Done wave5: embedded `video_url` / `learn_more_url` on actions (`src/core/actions/types.py:97` `ActionDescriptor.video_url/learn_more_url`, `src/ui/actions/palette/dialog.py:48` `open_help_page(video_url/learn_more_url)` → `src/plugins/help/dialog.py:588` pending urls → `[Video]/[Learn more]` links `:732`, `src/plugins/help/plugin.py:6` passthrough) + F1 → topic page without opening the palette (`src/ui/actions/platform.py:152` `platform.find_action_context` F1, `src/ui/main_window/use_cases/platform_actions.py:56` `show_contextual_palette` `help_page`/`topic` → `get_help_tree().resolve_alias` → direct `open_help_page` else filtered palette `topic`/`preselect` + `auto_pulse`, `src/ui/actions/palette/dialog.py:376` `learnMoreRequested`/`_learn_more_action_id` Ctrl+Enter).
 
 Resolved / decided:
 - real Help screenshots — done (all figures real: `check_help_figures.py`

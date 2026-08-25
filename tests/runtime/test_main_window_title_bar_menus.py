@@ -12,6 +12,8 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
+from tests.helpers.drain_until_stable import drain_until_stable
+
 
 def test_project_start_path_uses_documents_and_localized_untitled(qapp, monkeypatch, tmp_path):
     from pathlib import Path
@@ -262,19 +264,19 @@ def test_csd_menu_opens_as_in_window_overlay(qapp):
         on_change=lambda _cb: None,
     )
     host.show()
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: host.isVisible(), timeout_ms=1000, stable_frames=2)
 
     controller = MainWindowMenuController(host)  # type: ignore[arg-type]
     strip = controller.build_menus()
     host._menu_strip = strip
     strip.setParent(host)
     strip.show()
-    qapp.processEvents()
+    drain_until_stable(qapp, lambda: strip.isVisible(), timeout_ms=1000, stable_frames=2)
 
     file_btn = strip.buttons()[0]
     try:
         row = strip.reveal_menu_action(file_btn, "file.open_project")
-        qapp.processEvents()
+        drain_until_stable(qapp, lambda: strip._flyouts.get(id(file_btn)) is not None and strip._flyouts.get(id(file_btn)).isVisible(), timeout_ms=1000, stable_frames=2)
         assert row is not None
 
         flyout = strip._flyouts.get(id(file_btn))

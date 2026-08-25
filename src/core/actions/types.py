@@ -94,6 +94,8 @@ class ActionDescriptor:
     shortcut: str | None = None
     help_page: str | None = None
     help_anchor: str | None = None
+    video_url: str | None = None
+    learn_more_url: str | None = None
     # i18n keys resolved at query time, in addition to label/description/breadcrumb.
     search_keys: tuple[str, ...] = ()
     # Literal tokens (ids, English backend names) that are not i18n keys.

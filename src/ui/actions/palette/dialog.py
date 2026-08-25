@@ -42,18 +42,36 @@ def _active_tab_type() -> str | None:
         return None
 
 
-def open_help_page(page: str, anchor: str | None = None) -> None:
+def open_help_page(
+    page: str,
+    anchor: str | None = None,
+    *,
+    video_url: str | None = None,
+    learn_more_url: str | None = None,
+) -> None:
     try:
         registry = get_shared_tab_registry()
         context = getattr(registry, "_context", None)
         if context is not None and hasattr(context, "call_service"):
-            context.call_service("show_help_dialog", page=page, anchor=anchor)
+            context.call_service(
+                "show_help_dialog",
+                page=page,
+                anchor=anchor,
+                video_url=video_url,
+                learn_more_url=learn_more_url,
+            )
             return
         tab = registry.get_active_tab()
         widget = getattr(tab, "_widget", None) if tab is not None else None
         widget_context = getattr(widget, "_context", None) if widget is not None else None
         if widget_context is not None and hasattr(widget_context, "call_service"):
-            widget_context.call_service("show_help_dialog", page=page, anchor=anchor)
+            widget_context.call_service(
+                "show_help_dialog",
+                page=page,
+                anchor=anchor,
+                video_url=video_url,
+                learn_more_url=learn_more_url,
+            )
             return
     except Exception:
         pass
@@ -68,7 +86,12 @@ def open_help_page(page: str, anchor: str | None = None) -> None:
             ui_manager = getattr(presenter, "ui_manager", None) if presenter else None
             dialogs = getattr(ui_manager, "dialogs", None)
             if dialogs is not None and hasattr(dialogs, "show_help_dialog"):
-                dialogs.show_help_dialog(page=page, anchor=anchor)
+                dialogs.show_help_dialog(
+                    page=page,
+                    anchor=anchor,
+                    video_url=video_url,
+                    learn_more_url=learn_more_url,
+                )
                 return
     except Exception:
         pass
@@ -462,10 +485,14 @@ class FindActionDialog(ThemedDialog):
         if not page:
             return
         anchor = getattr(action, "help_anchor", None)
+        video_url = getattr(action, "video_url", None)
+        learn_more_url = getattr(action, "learn_more_url", None)
         self.accept()
         QTimer.singleShot(
             0,
-            lambda p=page, a=anchor: open_help_page(p, a),
+            lambda p=page, a=anchor, v=video_url, l=learn_more_url: open_help_page(
+                p, a, video_url=v, learn_more_url=l
+            ),
         )
 
     def _maybe_auto_pulse(self) -> None:
