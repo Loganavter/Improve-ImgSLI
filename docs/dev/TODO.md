@@ -46,6 +46,129 @@ sections A1–A3, C9):
 - Remove committed unconditional `print()` from `ui/actions/widget_pulse.py:51,200`
   (paint-path debug noise; LOGGING.md violation).
 
+## P1 - Shutdown safety, video-editor model, silent pixel corruption (review wave 2)
+
+Status: `Open`
+
+Area: `src/core/bootstrap.py`, `src/__main__.py`, `src/shared/image_processing/tiled_pixel_store.py`,
+`src/tabs/image_compare/plugins/video_editor/model.py`
+
+Findings from the second review wave
+([investigations/cross-module-review-2026-08-25-wave2.md](./investigations/cross-module-review-2026-08-25-wave2.md),
+W1–W4):
+
+- **Video editor resolution is silently never applied** —
+  `VideoProjectModel` is declared `@dataclass(frozen=True)` but mutated at
+  ≥9 sites; the resulting `FrozenInstanceError` is swallowed inside Qt
+  slots (`model.py:55`, `bootstrap.py:37-41`). Verified live. Drop frozen
+  or route through `replace()`.
+- **Quit during GPU round-trip deadlocks for 2 s then force-exits** —
+  `bootstrap.py:366` `waitForDone(2000)` vs unbounded `event.wait()` in
+  `gpu_export.py:_request`. Timeout the marshal + reorder drain.
+- **`os._exit` can truncate a still-image export** — export writes
+  directly to the final path (`pil_save.py:236`); hard exit mid-encode
+  leaves a corrupt file with no error. Give it tmp+replace like project
+  packaging.
+- **16-bit JXL decoded data truncated mod-256 into the uint8 store**
+  (ndarray branch `tiled_pixel_store.py:232`; vips path `cast("uchar")`
+  :411) — scale instead.
+- **Stale global-bounds race in video preview** — bounds computed from
+  pre-edit snapshots installed when an in-flight calc overlaps an edit
+  (`preview.py:633-656`); add a generation counter.
+- **Presenter leaked per video-dialog open/close** — never disconnected /
+  deleteLater'd (`presenter.py:122-128,225-237`).
+
+## P2 - Untrusted-input hardening (security review wave 2)
+
+Status: `Open`
+
+Area: `src/services/io/project_io.py`, `project_package.py`,
+`src/shared/image_processing/pixel_cache_registry.py`,
+`video_export/encoding.py`
+
+Desktop-calibrated (no code-execution paths found; crash/DoS/resource):
+full write-up W3 of the investigation above.
+
+- Clamp `pixel_cache` width/height from project.json against
+  `MAX_SUPPORTED_IMAGE_DIMENSION` and verify file size ≥ w·h·4 before
+  memmap (`project_io.py:324-327`) — currently a crafted `.imgsli`
+  SIGBUS-crashes on open and bypasses the dimension bound entirely.
+- Add per-member/cumulative decompression caps to zip extraction and RAM
+  reads (incl. the GNOME thumbnailer, which runs on directory listing).
+- Prompt/warn before resolving absolute/UNC media paths from legacy v1
+  projects (Windows NTLM credential exchange on open).
+- Replace zip-slip `startswith` guard with `Path.is_relative_to`
+  (`project_package.py:400-403,441-444`).
+- Minor: CWD-relative ffmpeg fallback (`encoding.py:18`), `-`-leading
+  output filename parsed as option, `shlex.split` backslash mangling on
+  Windows.
+
+## P2 - Concurrency hardening + resource lifecycle (review wave 2)
+
+Status: `Open`
+
+Area: `src/core/plugin_system/event_bus.py`, `state_management/dispatcher.py`,
+`services/io/project_package.py`, `src/shared/rendering/host_texture_cache.py`,
+`src/shared/image_processing/{resize,prescale}.py`
+
+- EventBus subscribe/emit need a lock — worker-thread emits can lose
+  just-added subscribers (`event_bus.py:100-137`).
+- Metrics results need a staleness token like unify/diff already have —
+  stale PSNR/SSIM shown for the wrong pair (`metrics.py:79-102`).
+- Dispatcher: move subscribe/unsubscribe under the lock; document the
+  no-synchronous-dispatch contract (MC store delivers inside the held
+  lock today) or enforce it.
+- `GpuExportProxy.shutdown()` must drain pending marshal requests;
+  cancel-flag TOCTOU in video export; drop `processEvents()` from the
+  GPU render slot.
+- `from_embedded_cache` stores must not delete files owned by the project
+  extract cache on close; invalidate `pixel_cache_registry` on close
+  (`tiled_pixel_store.py:737-746`).
+- Extract-cache members: atomic extraction (tmp+rename) + size check
+  against catalog byte counts; purge old `projects/<hash>` dirs (none
+  exists; every save→open cycle strands a full copy).
+- Count `_uid_cache` into `evict_over_budget` (up to ~6.4 GiB of
+  whole-image QImages outside the 3 GiB budget).
+- `resize_images_processor`: fail loudly instead of returning a
+  mismatch-sized "unified" pair; port unify's abort/OSError-fallback to
+  `prescale.py`.
+
+## P2 - Test suite: pin unpinned invariants (review wave 2)
+
+Status: `Open`
+
+Highest silent-breakage gaps found (W5 of the investigation):
+
+- Concurrent-dispatch test — the ARCHITECTURE.md thread-safety claim has
+  zero coverage (no threading anywhere in tests/).
+- MC residency parity: rekey-on-swap and first-tile-guarantee cases
+  mirroring IC's `test_realize_tile_plan_budget.py`.
+- Direct tests for MC's `drop_covered_fallback_tiles` (currently zero).
+- Project-I/O negative paths: corrupt ZIP, zip-slip member, unwritable
+  save dir — guards exist but were never executed by any test.
+- Letterbox focus preservation rule enforced on IC only; MC owns its own
+  projection stack.
+- Deflake by construction: replace single-drain exact-equality geometry
+  asserts (~6 more candidate files beyond the 4 known failures) with a
+  bounded drain-until-stable helper; widen reducer purity sweep to all
+  action types; corrupt-ini graceful-load test; one real-widget anchor
+  for the over-mocked video-preview fakes.
+
+## P3 - Smaller items (review wave 2)
+
+Status: `Open`
+
+Video editor: delegate the timeline's duplicate channel evaluator to
+`evaluate_channel`; mixed int/float keyframe values interpolate as hold —
+fix lerp fallback; delete notification thumbnail tempfile; route the
+prepare-error fallback render off the GUI thread; translate hardcoded
+export strings (`runtime.py:185`, `shell.py:428`, `export_flow.py:151`);
+debounce keystroke settings persistence; unstick recorder toggle if
+stop() raises. shared/: QImage zero-copy fallback missing buffer back-ref
+(`qt_conversion.py:56-74`); clipboard temp-file leaks + unbounded URL
+download body + `file://` percent-decoding; bare `except:` at
+`progressive_loader.py:302`; unbounded `_full_cache`.
+
 ## P2 - Contract-test blind spots + implied-lookup cleanup (review 2026-08-25)
 
 Status: `Open`
