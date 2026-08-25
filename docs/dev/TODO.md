@@ -255,6 +255,94 @@ Renderer-unification Phase 4 (`drop_covered_*`) is effectively complete —
 primitive lives in `shared/rendering/tile_coverage.py`; close rather than
 schedule further work.
 
+## P2 - Silent-error surfacing stragglers (audit 2026-08-26)
+
+Status: `Open`.
+
+Area: `src/plugins/settings/manager.py`, `src/events/runtime.py`,
+`src/plugins/settings/application_service.py`, `src/services/io/project_preview.py`,
+`src/tabs/image_compare/plugins/video_editor/services/export_flow.py`,
+`src/core/tracing/file_sink.py`
+
+Findings and fix recipe
+([investigations/dead-code-overengineering-audit-2026-08-26.md](./investigations/dead-code-overengineering-audit-2026-08-26.md),
+section C; same pattern as the 2026-08-25 logging sweep — `logger.warning(...,
+exc_info=True)` + narrowed exception type):
+
+- bare `except:` at `settings/manager.py:118` silently resets any user
+  setting to default (also catches `KeyboardInterrupt`);
+- silent Null-fallback for keyboard controller build (`events/runtime.py:52`)
+  — navigation dies without a trace;
+- theme/font reapply swallowed (`application_service.py:175–215`);
+- zip errors indistinguishable from "no preview"
+  (`project_preview.py:244`) — recent projects lose previews forever;
+- video export preview-frame failure returns `None` silently
+  (`export_flow.py:81`);
+- tracer writes fail without a marker (`tracing/file_sink.py:62`) — trace
+  ends mid-chain and misleads investigations.
+
+Medium tier (same audit, section C): narrow focus/theme `except Exception:
+pass` blocks to `RuntimeError`; log one-shot capability-probe outcomes that
+select streaming vs bounded load path.
+
+## P3 - Dead-code removal wave (audit 2026-08-26)
+
+Status: `Open`.
+
+Area: `src/ui/widgets/zoom_indicator.py`, `src/ui/widgets/canvas/`,
+`src/domain/qt_adapters.py`, `src/utils/resource_loader.py`,
+`src/shared/image_processing/pixel_cache_loader.py`,
+`src/tabs/session_picker/recent/use_cases/refresh.py`,
+`src/core/tracing/print_tree.py`
+
+Verified-dead list + conditional items in
+[investigations/dead-code-overengineering-audit-2026-08-26.md](./investigations/dead-code-overengineering-audit-2026-08-26.md),
+section A. Notes:
+
+- removing `tabs/image_compare/presenters/connections.py` requires updating
+  `OWNER_FILES` in `tests/contracts/test_no_stale_ui_widget_attrs.py:35`;
+- decide fate of orphan CLI tool `src/devtools/check_translations.py`
+  (wire into launcher or remove);
+- `shared/rendering/live_snapshot.py` is test-only → move under tests;
+- legacy-compat `shared_toolkit/__init__.py` exports are out of scope per
+  AGENTS.md (no silent toolkit-compat removals).
+
+Do NOT delete anything listed under "Rejected raw-scan findings" or the
+dynamic-discovery keep-list in the same doc.
+
+## P3 - Utility consolidation queue: topical homes (audit 2026-08-26)
+
+Status: `Open`.
+
+Area: see table in
+[investigations/dead-code-overengineering-audit-2026-08-26.md](./investigations/dead-code-overengineering-audit-2026-08-26.md),
+section D
+
+B7 tail (unique-output-path trio → `pil_save.next_available_path`), ffmpeg
+resolution divergence (behavioral risk: CWD policy differs between
+`export_config.py` and `encoding.py`), ISO-parse ×3, `CoalescedFlush`
+adoption ×2 hand-rolled copies, magnifier geometric-mean helper ×6,
+verbatim `_size_hint` dup across plugins, `_env_flag` ×5 live copies.
+Each consolidation lands in its single topical home — no shared grab-bag
+module (CODE_PATTERNS.md "when not to split").
+
+## P2/P3 - Plugin/settings-layer simplifications (audit 2026-08-26)
+
+Status: `Design needed` — plugin-facing API surface must be checked for
+external consumers before deletion (AGENTS.md rule).
+
+Area: `src/core/plugin_system/settings.py`, `registry.py`,
+`src/plugins/settings/models.py` + `dialog_context.py`,
+`src/core/session_manager.py`, `src/ui/store_bridge.py`
+
+Candidates from
+[investigations/dead-code-overengineering-audit-2026-08-26.md](./investigations/dead-code-overengineering-audit-2026-08-26.md),
+section B: dead `PluginSettings`/`auto_persist` abstraction (0 production
+callers), write-only second plugin registry in `PluginRegistry`, merge of
+near-identical `SettingsDialogData`/`SettingsDialogContext`, SessionManager
+passthrough trimming, `QtStoreBridge` double notification mechanism (check
+cross-thread emits before giving Store a real Signal).
+
 ## P3 - CODE_PATTERNS.md: add the "who owns the state" axis
 
 Status: `Done (2026-08-25 wave3)` — documented state-owning collaborator vs widget-glue use_cases rule in `docs/dev/CODE_PATTERNS.md:161`, lazy shell verified via `src/tabs/_shared/` coordinators as example (toast/pyramid/save_flow), drag&drop placement inconsistency sanctioned (both `use_cases/` and `ui/` allowed). Refs `docs/dev/investigations/cross-module-review-2026-08-25.md:104` B1–B3 + `docs/dev/investigations/audit-2026-08-25-orchestration-halture.md:1`.
