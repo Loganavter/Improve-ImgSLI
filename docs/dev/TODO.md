@@ -169,6 +169,31 @@ stop() raises. shared/: QImage zero-copy fallback missing buffer back-ref
 download body + `file://` percent-decoding; bare `except:` at
 `progressive_loader.py:302`; unbounded `_full_cache`.
 
+## P2 - Background-tab render gating (browser-model policy)
+
+Status: `Open` (policy doc written; implementation measurement-gated)
+
+Area: `src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py`,
+`src/tabs/image_compare/use_cases/chrome_sync.py`,
+`src/tabs/multi_compare/ui/canvas_widget.py`, `src/ui/presenters/main_window/presenter.py`
+
+Policy and full inventory:
+[tabs/background-tab-policy.md](./tabs/background-tab-policy.md). Hidden
+tabs already get GPU release + theme/language stale-flush for free, but
+the IC comparison pipeline runs at full price off-screen (no tab
+visibility gate anywhere in `chrome_sync.py:141-157` →
+`render_flow.py:72-87`), MC `_flush_composition` lacks an isVisible gate,
+and metrics/SSIM auto-recalc fires for background tabs. Browser-model
+tiers: keep decodes/pyramids as declared prefetch; defer render flushes
+and analysis until shown by extending the existing stale-flush pattern
+(`appearance.py`) — no new machinery.
+
+Phases: (0) measure hidden-tab dispatch cost via `IMGSLI_TRACE=1`;
+(1) IC pipeline visibility gate + stale-render flush-on-show;
+(2) MC composition gate; (3) metrics deferral-to-show per Phase 0
+evidence. Pyramid/store release on deactivate is explicitly out of scope
+(undo closed-store hazard).
+
 ## P2 - Contract-test blind spots + implied-lookup cleanup (review 2026-08-25)
 
 Status: `Open`
