@@ -40,6 +40,9 @@ class GpuExportProxy(QObject):
             return self._widget
 
         widget = create_canvas_widget()
+        if widget is None:
+            logger.debug("GpuExportProxy _ensure_widget skipped: no canvas widget for active tab")
+            return None
         widget.setObjectName("gpu_export_canvas")
         configure_offscreen_widget(widget)
         widget._use_plan_fill_clear = True
@@ -208,8 +211,16 @@ class GpuExportProxy(QObject):
         debug_timings = {}
         image = None
         error = None
+        widget = None
         try:
             widget = self._ensure_widget()
+            if widget is None:
+                error = RuntimeError("No canvas widget available for active tab — GPU export skipped")
+                logger.debug("GPU export skipped (no canvas provider): %s", error)
+                if result_box is not None:
+                    result_box["error"] = error
+                # error will be delivered via finally callback/event
+                return
             mode = payload.get("mode", "render")
             if mode != "render_plan":
                 raise RuntimeError(f"Unsupported GPU export mode: {mode}")
@@ -227,7 +238,11 @@ class GpuExportProxy(QObject):
                 result_box["image"] = image
                 result_box["debug_timings"] = debug_timings
         except Exception as exc:
-            logger.exception("GPU export rendering failed")
+            # Degrade for missing canvas is already debug-logged; other failures stay exception.
+            if widget is None:
+                logger.debug("GPU export degraded (no canvas): %s", exc)
+            else:
+                logger.exception("GPU export rendering failed")
             error = exc
             if result_box is not None:
                 result_box["error"] = exc

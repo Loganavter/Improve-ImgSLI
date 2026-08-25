@@ -105,7 +105,10 @@ class GpuExportService:
         if app is None:
             return
         try:
-            self._proxy._ensure_widget()
+            widget = self._proxy._ensure_widget()
+            if widget is None:
+                logger.debug("GPU export widget warm-up skipped (no canvas provider for active tab)")
+                return
         except Exception as e:
             logger.debug("GPU export widget warm-up skipped (not ready yet): %s", e)
 

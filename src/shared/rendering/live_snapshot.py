@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger("ImproveImgSLI")
+
 
 def build_live_frame_snapshot(store):
     from tabs.registry import TabRegistry
@@ -8,5 +12,9 @@ def build_live_frame_snapshot(store):
     registry.discover()
     snapshot = registry.create_service("live_frame_snapshot", store)
     if snapshot is None:
-        raise RuntimeError("Active tab does not provide live frame snapshots")
+        logger.debug(
+            "Active tab %r does not provide live frame snapshots",
+            getattr(registry, "_active_session_type", None),
+        )
+        return None
     return snapshot
