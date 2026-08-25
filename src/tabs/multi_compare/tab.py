@@ -148,6 +148,20 @@ class MultiCompareTab(TabContract):
             except Exception:
                 reason = Qt.FocusReason.OtherFocusReason
             self._widget.setFocus(reason)
+            # Phase2 stale-flush: MC composition may have been deferred.
+            try:
+                canvas = getattr(self._widget, "canvas", None)
+                if canvas is not None and hasattr(canvas, "flush_stale_composition"):
+                    # only flush if page is now current (mirrors appearance.py)
+                    try:
+                        if hasattr(canvas, "is_current_stack_page") and canvas.is_current_stack_page():
+                            canvas.flush_stale_composition()
+                        elif getattr(canvas, "_composition_stale", False):
+                            canvas.flush_stale_composition()
+                    except Exception:
+                        canvas.flush_stale_composition()
+            except Exception:
+                pass
         from ui.actions.registry import get_action_registry
 
         self._register_actions(get_action_registry())
@@ -254,14 +268,12 @@ class MultiCompareTab(TabContract):
         self._resync_action_shortcuts()
 
     def _resync_action_shortcuts(self) -> None:
-        from PySide6.QtWidgets import QApplication
-
         from ui.actions.binder import resync_action_shortcuts
+        from ui.helpers.window_resolver import find_main_window
 
-        for widget in QApplication.topLevelWidgets():
-            if getattr(widget, "presenter", None) is not None:
-                resync_action_shortcuts(widget, active_tab=self.session_type)
-                return
+        window = find_main_window()
+        if window is not None:
+            resync_action_shortcuts(window, active_tab=self.session_type)
 
     def create_service(self, service_id: str, *args, **kwargs):
         if service_id == "contribute_settings":
@@ -312,6 +324,32 @@ class MultiCompareTab(TabContract):
             if self._widget is None:
                 return None
             return self._widget.canvas
+        if service_id == "capture_preview_image":
+            canvas = self._canvas()
+            if canvas is None:
+                return None
+            try:
+                if hasattr(canvas, "grabFramebuffer"):
+                    try:
+                        canvas.update()
+                        from PySide6.QtWidgets import QApplication
+
+                        app = QApplication.instance()
+                        if app is not None:
+                            app.processEvents()
+                    except Exception:
+                        pass
+                    from PySide6.QtGui import QImage
+
+                    image = canvas.grabFramebuffer()
+                    if isinstance(image, QImage) and not image.isNull():
+                        return image
+                pix = canvas.grab()
+                if pix is not None and not pix.isNull():
+                    return pix.toImage()
+            except Exception:
+                return None
+            return None
         return None
 
     def accepts_drop(self, paths: list[Path]) -> bool:

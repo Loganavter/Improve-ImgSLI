@@ -228,6 +228,25 @@ class ImageCompareTab(TabContract):
             except Exception:
                 reason = Qt.FocusReason.OtherFocusReason
             self._widget.setFocus(reason)
+            try:
+                if getattr(self._widget, "_render_stale", False) and self._widget.is_current_stack_page():
+                    self._widget._flush_stale_render()
+            except Exception:
+                pass
+            try:
+                if getattr(self._widget, "_metrics_stale", False) and self._widget.is_current_stack_page():
+                    self._widget._flush_stale_metrics()
+            except Exception:
+                pass
+            try:
+                chrome = getattr(self._widget, "chrome_sync", None)
+                if chrome is not None and hasattr(chrome, "flush_stale_render"):
+                    window = getattr(context, "main_window", None)
+                    presenter = getattr(window, "presenter", None) if window is not None else None
+                    if presenter is not None:
+                        chrome.flush_stale_render(presenter)
+            except Exception:
+                pass
         from ui.actions.registry import get_action_registry
 
         self._register_actions(get_action_registry())

@@ -34,6 +34,8 @@ class ImageCompareWidget(ThemedWidget, QWidget):
         self._assembled = False
         self._slot_has_image1 = False
         self._slot_has_image2 = False
+        self._render_stale: bool = False
+        self._metrics_stale: bool = False
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -80,6 +82,101 @@ class ImageCompareWidget(ThemedWidget, QWidget):
             return getattr(window, "presenter", None) if window is not None else None
 
         self.chrome_sync = ImageCompareChromeSync(self, store, _resolve_window_presenter)
+
+    def is_current_stack_page(self) -> bool:
+        try:
+            window = self.window()
+            ui = getattr(window, "ui", None)
+            if ui is None:
+                presenter = getattr(window, "presenter", None)
+                ui = getattr(presenter, "ui", None) if presenter is not None else None
+            stack = getattr(ui, "workspace_stack", None) if ui is not None else None
+            if stack is not None:
+                current = stack.currentWidget()
+                if current is self:
+                    return True
+                if current is not None and hasattr(current, "isAncestorOf"):
+                    try:
+                        if current.isAncestorOf(self):
+                            return True
+                    except Exception:
+                        pass
+                return False
+            return bool(self.isVisible())
+        except Exception:
+            try:
+                return bool(self.isVisible())
+            except Exception:
+                return True
+
+    def _flush_stale_render(self) -> bool:
+        if not getattr(self, "_render_stale", False):
+            return False
+        if not self.is_current_stack_page():
+            return False
+        self._render_stale = False
+        try:
+            from core.tracing.tracer import Tracer
+            if Tracer.enabled():
+                Tracer.instance().record("render.ic.flush", "IC stale render flushed on showEvent", {})
+        except Exception:
+            pass
+        try:
+            window = self.window()
+            presenter = getattr(window, "presenter", None)
+            if presenter is not None:
+                icp = getattr(getattr(presenter, "features", None), "image_canvas", None)
+                if icp is not None:
+                    try:
+                        from tabs.image_compare.presenters.image_canvas.background_parts.render_flow import flush_stale_render as _flush
+                        _flush(icp)
+                    except Exception:
+                        icp.schedule_update()
+                    return True
+            ctx = getattr(self, "_context", None)
+            win = getattr(ctx, "main_window", None) if ctx is not None else None
+            presenter = getattr(win, "presenter", None) if win is not None else None
+            icp = getattr(getattr(presenter, "features", None), "image_canvas", None) if presenter else None
+            if icp is not None:
+                icp.schedule_update()
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _flush_stale_metrics(self) -> bool:
+        if not getattr(self, "_metrics_stale", False):
+            return False
+        if not self.is_current_stack_page():
+            return False
+        self._metrics_stale = False
+        try:
+            from core.tracing.tracer import Tracer
+            if Tracer.enabled():
+                Tracer.instance().record("metrics.flush", "IC stale metrics flushed on show", {})
+        except Exception:
+            pass
+        try:
+            window = self.window()
+            presenter = getattr(window, "presenter", None)
+            ctrl = None
+            if presenter is not None:
+                sessions = getattr(getattr(presenter, "main_controller", None), "sessions", None)
+                ctrl = getattr(sessions, "_session_controller", None) if sessions else None
+            if ctrl is None:
+                ctx = getattr(self, "_context", None)
+                win2 = getattr(ctx, "main_window", None) if ctx else None
+                ctrl = getattr(getattr(getattr(win2, "main_controller", None) if win2 else None, "sessions", None), "_session_controller", None)
+            if ctrl is not None and hasattr(ctrl, "_trigger_metrics_calculation_if_needed"):
+                ctrl._trigger_metrics_calculation_if_needed()
+                try:
+                    ctrl._trigger_full_diff_generation()
+                except Exception:
+                    pass
+                return True
+        except Exception:
+            pass
+        return False
 
     def _wire_transition_mask_release(self) -> None:
         canvas = getattr(self, "image_label", None)
@@ -136,6 +233,23 @@ class ImageCompareWidget(ThemedWidget, QWidget):
 
             QTimer.singleShot(0, self._release_transition_mask)
         self._resync_pinned_huds_on_show()
+        try:
+            self._flush_stale_render()
+        except Exception:
+            pass
+        try:
+            self._flush_stale_metrics()
+        except Exception:
+            pass
+        try:
+            chrome = getattr(self, "chrome_sync", None)
+            if chrome is not None and hasattr(chrome, "flush_stale_render"):
+                window = self.window()
+                presenter = getattr(window, "presenter", None)
+                if presenter is not None:
+                    chrome.flush_stale_render(presenter)
+        except Exception:
+            pass
 
     def hideEvent(self, event) -> None:  # noqa: N802
         super().hideEvent(event)

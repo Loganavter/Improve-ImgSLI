@@ -146,6 +146,10 @@ def schedule_update(presenter):
     ):
         return
 
+    if _is_background_tab(presenter):
+        _mark_render_stale(presenter)
+        return
+
     is_interactive = presenter.store.viewport.interaction_state.is_interactive_mode
 
     if is_interactive:
@@ -162,6 +166,10 @@ def schedule_update(presenter):
 
 
 def update_comparison_if_needed(presenter):
+    if _is_background_tab(presenter):
+        _mark_render_stale(presenter)
+        return False
+
     if (
         not getattr(presenter.main_window_app, "_is_ui_stable", False)
         or presenter.store.viewport.interaction_state.resize_in_progress
