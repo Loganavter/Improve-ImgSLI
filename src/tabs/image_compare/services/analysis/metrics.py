@@ -15,17 +15,24 @@ class MetricsService:
         self.store = store
         self.runtime = runtime
         self._active_ssim_toast_id: int | None = None
+        # Staleness token: every async calculation bumps this; stale results
+        # landing after a pair switch are dropped (same pattern as unify's
+        # _unification_task_id and cached-diff request_key).
+        self._metrics_request_id: int = 0
 
     def calculate_metrics_async(self, calc_psnr: bool, calc_ssim: bool):
         img1, img2 = self._get_metric_source_images()
         if not img1 or not img2 or img1.size != img2.size:
             self._close_ssim_metrics_toast()
-            self.on_metrics_calculated(None)
+            self.on_metrics_calculated(None, request_id=None)
             return
 
         self._show_ssim_metrics_toast_if_needed(calc_ssim)
 
         from shared.image_processing.store_lease import StoreLease
+
+        self._metrics_request_id += 1
+        request_id = self._metrics_request_id
 
         worker = GenericWorker(
             self.metrics_worker_task,
@@ -36,12 +43,18 @@ class MetricsService:
             StoreLease.capture(img1),
             StoreLease.capture(img2),
         )
-        worker.signals.result.connect(self.on_metrics_calculated)
+        # Capture request_id so late results for a previous pair are ignored.
+        worker.signals.result.connect(lambda r, rid=request_id: self.on_metrics_calculated(r, request_id=rid))
         worker.signals.error.connect(
-            lambda _err_tuple: self._close_ssim_metrics_toast()
+            lambda _err_tuple, rid=request_id: self._on_metrics_error(rid)
         )
         if self.runtime.thread_pool:
             self.runtime.thread_pool.start(worker)
+
+    def _on_metrics_error(self, request_id: int) -> None:
+        if request_id != self._metrics_request_id:
+            return
+        self._close_ssim_metrics_toast()
 
     def _get_metric_source_images(self):
         image_state = self.store.viewport.session_data.image_state
@@ -77,8 +90,15 @@ class MetricsService:
             return None
 
     def on_metrics_calculated(
-        self, result: Optional[Tuple[Optional[float], Optional[float]]]
+        self, result: Optional[Tuple[Optional[float], Optional[float]]],
+        *,
+        request_id: int | None = None,
     ):
+        # Stale result from a previous pair: ignore (metrics worker has no
+        # ordering guarantee; the last finish must not overwrite the current
+        # pair's numbers).
+        if request_id is not None and request_id != self._metrics_request_id:
+            return
         if result:
             psnr_val, ssim_val = result
 
@@ -112,7 +132,7 @@ class MetricsService:
             self.calculate_metrics_async(calc_psnr=calc_psnr, calc_ssim=calc_ssim)
         else:
             self._close_ssim_metrics_toast()
-            self.on_metrics_calculated(None)
+            self.on_metrics_calculated(None, request_id=None)
 
     def _show_ssim_metrics_toast_if_needed(self, calc_ssim: bool) -> None:
         if not calc_ssim:

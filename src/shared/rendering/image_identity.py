@@ -18,14 +18,21 @@ def image_uid(image) -> int:
         return tag
 
     tag = getattr(image, _UID_INFO_KEY, None)
-    if tag is None:
-        tag = next(_counter)
-        try:
-            setattr(image, _UID_INFO_KEY, tag)
-        except (AttributeError, TypeError):
-            pass
     if tag is not None:
         return tag
+    # Try to attach a stable counter-based tag.
+    try:
+        tag = next(_counter)
+        setattr(image, _UID_INFO_KEY, tag)
+        return tag
+    except (AttributeError, TypeError):
+        pass
+    # Object rejects setattr (numpy ndarray, some Qt types). Fall back to
+    # a stable per-identity value instead of churning a fresh counter on
+    # every call (pure cache miss otherwise).
     if hasattr(image, "cacheKey"):
-        return image.cacheKey()
+        try:
+            return int(image.cacheKey())
+        except Exception:
+            pass
     return id(image)

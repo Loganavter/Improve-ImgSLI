@@ -116,6 +116,17 @@ _RAPID_ACTION_GROUP_MS = 400
 
 
 class Dispatcher:
+    """Central Redux-style dispatcher.
+
+    Thread-safety: ``dispatch`` holds ``_lock`` across reduce → write-back →
+    history → subscriber notification.  Subscribers are therefore **not allowed
+    to dispatch synchronously** while the lock is held — the underlying lock
+    is non-reentrant and a synchronous dispatch would deadlock.  All current
+    call sites that need to trigger a follow-up dispatch from a store callback
+    defer via ``QTimer.singleShot(0, ...)`` (e.g. ``menu_controller.py:161``,
+    ``_session_controller.py:71-80``).  Keep this contract: if you add a new
+    store subscriber that needs to dispatch, schedule it asynchronously.
+    """
 
     def __init__(self, store):
         self._store = store
@@ -261,7 +272,10 @@ class Dispatcher:
                             self._undo_stack.pop(0)
                         self._redo_stack.clear()
 
-                    for subscriber in self._subscribers:
+                    # Subscribers run while _lock is still held.
+                    # Do NOT dispatch synchronously from a subscriber;
+                    # use QTimer.singleShot(0, ...) to defer (see class docstring).
+                    for subscriber in list(self._subscribers):
                         try:
                             subscriber(action)
                         except Exception as e:
@@ -278,12 +292,14 @@ class Dispatcher:
                 raise
 
     def subscribe(self, callback: Callable[[Action], None]) -> None:
-        if callback not in self._subscribers:
-            self._subscribers.append(callback)
+        with self._lock:
+            if callback not in self._subscribers:
+                self._subscribers.append(callback)
 
     def unsubscribe(self, callback: Callable[[Action], None]) -> None:
-        if callback in self._subscribers:
-            self._subscribers.remove(callback)
+        with self._lock:
+            if callback in self._subscribers:
+                self._subscribers.remove(callback)
 
     def get_action_history(self) -> List[Action]:
         with self._lock:

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
 from tabs.contract import TabContext, TabContract, TabTransitionHint
 from tabs.multi_compare.use_cases import persistence
+from tabs.multi_compare.use_cases.persistence import _STATE_SLOT
 
 logger = logging.getLogger("ImproveImgSLI")
 

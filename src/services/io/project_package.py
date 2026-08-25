@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single ZIP package lifecycle — media/cache extraction + purge + atomic write"
 """ZIP package helpers for portable ``.imgsli`` project files.
 
 Layout::
@@ -29,6 +30,14 @@ PROJECT_JSON_NAME = "project.json"
 MEDIA_PREFIX = "media/"
 CACHE_PREFIX = "cache/"
 ASSET_ID_LEN = 16
+
+# Desktop-calibrated decompression caps (W3.2): a ~10 MB zip must not expand
+# to hundreds of GB. These are generous for legitimate large images
+# (20000x20000 raw ~1.6 GB) but block zip-bombs / GNOME thumbnailer abuse.
+ZIP_MAX_PROJECT_JSON_BYTES = 16 * 1024 * 1024
+ZIP_MAX_PREVIEW_BYTES = 32 * 1024 * 1024
+ZIP_MAX_MEMBER_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB per member
+ZIP_MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024  # 4 GiB cumulative
 
 # Path-bearing keys inside tab session blobs (IC + MC).
 _LIST_PATH_KEYS = ("image_list1", "image_list2")
@@ -366,10 +375,127 @@ def write_project_zip(
         raise
 
 
+def _capped_copy(src, dst, limit: int, member: str) -> int:
+    """Copy src->dst, aborting if *limit* bytes exceeded. Returns bytes copied."""
+    copied = 0
+    chunk = 1024 * 1024
+    while True:
+        buf = src.read(chunk)
+        if not buf:
+            break
+        copied += len(buf)
+        if copied > limit:
+            raise ValueError(
+                f"Zip member {member!r} exceeds per-member limit ({limit} bytes)"
+            )
+        dst.write(buf)
+    return copied
+
+
 def read_project_json_from_zip(path: str | Path) -> dict[str, Any]:
     with zipfile.ZipFile(path, "r") as zf:
+        try:
+            info = zf.getinfo(PROJECT_JSON_NAME)
+            if info.file_size > ZIP_MAX_PROJECT_JSON_BYTES:
+                raise ValueError(
+                    f"{PROJECT_JSON_NAME} too large ({info.file_size} bytes > {ZIP_MAX_PROJECT_JSON_BYTES})"
+                )
+        except KeyError:
+            pass
         with zf.open(PROJECT_JSON_NAME) as fh:
-            return json.loads(fh.read().decode("utf-8"))
+            # Stream with cap rather than unbounded read()
+            import io
+
+            buf = io.BytesIO()
+            _capped_copy(fh, buf, ZIP_MAX_PROJECT_JSON_BYTES, PROJECT_JSON_NAME)
+            return json.loads(buf.getvalue().decode("utf-8"))
+
+
+def _is_within_directory(base: Path, target: Path) -> bool:
+    try:
+        target.resolve().is_relative_to(base.resolve())
+        return True
+    except AttributeError:
+        # Python <3.9 fallback
+        try:
+            target.resolve().relative_to(base.resolve())
+            return True
+        except ValueError:
+            return False
+    except ValueError:
+        return False
+
+
+def _atomic_extract_member(
+    zf: zipfile.ZipFile, member: str, target: Path, *, per_member_limit: int | None = None
+) -> None:
+    """Extract *member* to *target* atomically via tmp+rename, capped per-member."""
+    if per_member_limit is None:
+        per_member_limit = ZIP_MAX_MEMBER_BYTES
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.parent / f".{target.name}.tmp"
+    # Ensure stale tmp from a crashed previous extraction does not confuse.
+    try:
+        tmp.unlink(missing_ok=True)
+    except OSError:
+        pass
+    # Pre-check declared size before decompressing (cheap rejection for zip-bomb).
+    try:
+        info = zf.getinfo(member)
+        if info.file_size > per_member_limit:
+            raise ValueError(
+                f"Zip member {member!r} too large ({info.file_size} bytes > {per_member_limit})"
+            )
+    except KeyError:
+        pass
+    with zf.open(member) as src, tmp.open("wb") as dst:
+        _capped_copy(src, dst, per_member_limit, member)
+    # Verify non-truncated extraction before publishing.
+    try:
+        info = zf.getinfo(member)
+        expected = info.file_size
+        actual = tmp.stat().st_size
+        if actual != expected:
+            raise IOError(f"Truncated extraction for {member}: expected {expected} got {actual}")
+    except KeyError:
+        pass
+    os.replace(tmp, target)
+
+
+def purge_old_project_caches(current_cache_dir: Path, keep: int = 5, max_age_days: int = 7) -> int:
+    """Delete stale ``projects/<hash>`` dirs, keeping *keep* newest.
+
+    Every save changes the ``path:mtime`` hash, stranding a full copy. This
+    purges siblings of *current_cache_dir* older than *max_age_days* or beyond
+    the *keep* newest quota. Returns number of dirs removed.
+    """
+    import time
+
+    projects_root = Path(current_cache_dir).parent
+    if not projects_root.is_dir():
+        return 0
+    try:
+        entries = [p for p in projects_root.iterdir() if p.is_dir()]
+    except OSError:
+        return 0
+    # Sort newest first by mtime.
+    entries.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+    now = time.time()
+    max_age_sec = max_age_days * 86400
+    removed = 0
+    for idx, entry in enumerate(entries):
+        if entry.resolve() == current_cache_dir.resolve():
+            continue
+        is_old = (now - entry.stat().st_mtime) > max_age_sec if entry.exists() else False
+        beyond_keep = idx >= keep
+        if is_old or beyond_keep:
+            try:
+                shutil.rmtree(entry)
+                removed += 1
+                logger.debug("Purged old project cache %s", entry)
+            except OSError as exc:
+                logger.debug("Failed to purge %s: %s", entry, exc)
+    return removed
 
 
 def extract_media(
@@ -381,12 +507,15 @@ def extract_media(
     """Extract ``media/`` members to ``cache_dir``.
 
     Returns ``{package_relative_member: absolute_cache_path}``.
-    Reuses existing files when present and non-empty.
+    Reuses existing files only when size matches the catalog/ZIP entry;
+    otherwise re-extracts atomically via tmp+rename to avoid truncated files
+    being reused forever. Also purges old project caches.
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     mapping: dict[str, str] = {}
 
+    cumulative = 0
     with zipfile.ZipFile(path, "r") as zf:
         members = [
             name
@@ -397,19 +526,42 @@ def extract_media(
         for index, member in enumerate(members):
             if progress is not None:
                 progress(index, total, member)
-            # Guard against zip-slip
+            # Pre-check cumulative budget using declared sizes
+            try:
+                info = zf.getinfo(member)
+                cumulative += info.file_size
+                if cumulative > ZIP_MAX_TOTAL_BYTES:
+                    raise ValueError(
+                        f"Total extracted media exceeds cumulative limit ({ZIP_MAX_TOTAL_BYTES} bytes)"
+                    )
+            except KeyError:
+                pass
             target = (cache_dir / member).resolve()
-            if not str(target).startswith(str(cache_dir.resolve())):
+            if not _is_within_directory(cache_dir, target):
                 raise ValueError(f"Unsafe zip member path: {member}")
-            if target.is_file() and target.stat().st_size > 0:
-                mapping[member] = str(target)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(member) as src, target.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
+            # Reuse only when size matches ZIP entry (catalog bytes); a
+            # crash/disk-full can leave a partial file that st_size>0 would
+            # previously have trusted forever.
+            if target.is_file():
+                try:
+                    info = zf.getinfo(member)
+                    if target.stat().st_size == info.file_size:
+                        mapping[member] = str(target)
+                        continue
+                    logger.debug("Re-extracting %s: size mismatch %s != %s", member, target.stat().st_size, info.file_size)
+                except KeyError:
+                    if target.stat().st_size > 0:
+                        mapping[member] = str(target)
+                        continue
+            _atomic_extract_member(zf, member, target)
             mapping[member] = str(target)
         if progress is not None and total:
             progress(total, total, "")
+    # Best-effort purge of stale sibling project caches.
+    try:
+        purge_old_project_caches(cache_dir)
+    except Exception:
+        logger.debug("purge_old_project_caches failed", exc_info=True)
     return mapping
 
 
@@ -421,13 +573,14 @@ def extract_pixel_cache(
 ) -> dict[str, str]:
     """Extract ``cache/`` members (embedded pixel-cache buffers) to ``cache_dir``.
 
-    Returns ``{asset_id: absolute_cache_path}``. Reuses existing files when
-    present and non-empty, same as :func:`extract_media`.
+    Returns ``{asset_id: absolute_cache_path}``. Atomic + size-checked like
+    :func:`extract_media`.
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     mapping: dict[str, str] = {}
 
+    cumulative = 0
     with zipfile.ZipFile(path, "r") as zf:
         members = [
             name
@@ -438,17 +591,30 @@ def extract_pixel_cache(
         for index, member in enumerate(members):
             if progress is not None:
                 progress(index, total, member)
-            # Guard against zip-slip
+            try:
+                info = zf.getinfo(member)
+                cumulative += info.file_size
+                if cumulative > ZIP_MAX_TOTAL_BYTES:
+                    raise ValueError(
+                        f"Total extracted pixel cache exceeds cumulative limit ({ZIP_MAX_TOTAL_BYTES} bytes)"
+                    )
+            except KeyError:
+                pass
             target = (cache_dir / member).resolve()
-            if not str(target).startswith(str(cache_dir.resolve())):
+            if not _is_within_directory(cache_dir, target):
                 raise ValueError(f"Unsafe zip member path: {member}")
             asset_id = member[len(CACHE_PREFIX):].split("/", 1)[0]
-            if target.is_file() and target.stat().st_size > 0:
-                mapping[asset_id] = str(target)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(member) as src, target.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
+            if target.is_file():
+                try:
+                    info = zf.getinfo(member)
+                    if target.stat().st_size == info.file_size:
+                        mapping[asset_id] = str(target)
+                        continue
+                except KeyError:
+                    if target.stat().st_size > 0:
+                        mapping[asset_id] = str(target)
+                        continue
+            _atomic_extract_member(zf, member, target)
             mapping[asset_id] = str(target)
         if progress is not None and total:
             progress(total, total, "")

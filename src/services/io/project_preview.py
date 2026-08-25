@@ -250,11 +250,29 @@ def read_preview_image_bytes(path: str | Path) -> bytes | None:
     if not path.is_file():
         return None
     try:
+        from services.io.project_package import ZIP_MAX_PREVIEW_BYTES, _capped_copy
+
         with zipfile.ZipFile(path, "r") as zf:
             names = set(zf.namelist())
             for member in PREVIEW_MEMBERS:
                 if member in names:
-                    return zf.read(member)
+                    try:
+                        info = zf.getinfo(member)
+                        if info.file_size > ZIP_MAX_PREVIEW_BYTES:
+                            logger.warning("Preview %s too large (%d bytes), skipping", member, info.file_size)
+                            continue
+                    except KeyError:
+                        pass
+                    import io
+
+                    with zf.open(member) as fh:
+                        buf = io.BytesIO()
+                        try:
+                            _capped_copy(fh, buf, ZIP_MAX_PREVIEW_BYTES, member)
+                        except ValueError as exc:
+                            logger.warning("%s", exc)
+                            continue
+                        return buf.getvalue()
     except Exception:
         logger.debug("Failed reading preview from %s", path, exc_info=True)
         return None

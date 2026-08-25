@@ -5,7 +5,9 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 import threading
+from pathlib import Path
 
 from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
 
@@ -15,9 +17,21 @@ class FFmpegCommandBuilder:
     def build(self, output_path, width, height, fps, options):
         ffmpeg_exe = "ffmpeg"
         if not shutil.which(ffmpeg_exe):
-            local_ffmpeg = os.path.join(os.getcwd(), "ffmpeg")
-            if os.path.exists(local_ffmpeg) or os.path.exists(local_ffmpeg + ".exe"):
-                ffmpeg_exe = local_ffmpeg
+            # W3 minor: don't trust CWD-relative ffmpeg (planted binary in attacker dir)
+            candidates: list[str] = []
+            try:
+                candidates.append(str(Path(sys.executable).resolve().parent / "ffmpeg"))
+                candidates.append(str(Path(sys.executable).resolve().parent / "ffmpeg.exe"))
+            except Exception:
+                pass
+            try:
+                candidates.append(str(Path(__file__).resolve().parents[6] / "ffmpeg"))
+                candidates.append(str(Path(__file__).resolve().parents[6] / "ffmpeg.exe"))
+            except Exception:
+                pass
+            found = next((c for c in candidates if os.path.exists(c)), None)
+            if found:
+                ffmpeg_exe = found
             else:
                 raise FileNotFoundError(
                     "FFmpeg executable not found in PATH or app directory."
@@ -46,8 +60,15 @@ class FFmpegCommandBuilder:
         ]
 
         if options.get("manual_mode", False):
-            cmd.extend(shlex.split(options.get("manual_args", "").strip()))
-            cmd.append(output_path)
+            raw = options.get("manual_args", "").strip()
+            # W3 minor: shlex posix=True mangles Windows backslashes
+            cmd.extend(shlex.split(raw, posix=(os.name != "nt")))
+            # W3 minor: -leading filename parsed as option — delimit with --
+            out = str(output_path)
+            if out.startswith("-"):
+                cmd.extend(["--", out])
+            else:
+                cmd.append(out)
             return cmd
 
         codec = options.get("codec", "h264")
@@ -127,7 +148,11 @@ class FFmpegCommandBuilder:
             else:
                 cmd.extend(["-b:v", bitrate or "8000k"])
 
-        cmd.append(output_path)
+        out = str(output_path)
+        if out.startswith("-"):
+            cmd.extend(["--", out])
+        else:
+            cmd.append(out)
         return cmd
 
 class FFmpegProcessManager:
