@@ -51,13 +51,8 @@ def _emit_mc_load_error(controller, path: Path | str, err) -> None:
     except Exception:
         logger.exception("Failed to emit MC load error event for %s", path)
 
-# Progress checkpoints for the "loading full version of image" toast,
-# mirroring image_compare's _session_controller: 0 at the quick preview,
-# DECODE_DONE_PROGRESS once the full-res decode lands, PYRAMID_START_PROGRESS
-# ..100 tracking pyramid level build-out (skipped straight to done for
-# stores that need no pyramid).
-DECODE_DONE_PROGRESS = 20
-PYRAMID_START_PROGRESS = 40
+# Single source now in tabs._shared.loading_toast (B2 dedup).
+from tabs._shared.loading_toast import DECODE_DONE_PROGRESS, PYRAMID_START_PROGRESS  # noqa: F401
 
 
 def get_toast_manager(controller):
@@ -71,6 +66,10 @@ def get_toast_manager(controller):
 
 
 def show_loading_toast(controller, slot_id: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.show(slot_id)
+        return
     if slot_id in controller._loading_toasts:
         return
     toast_manager = get_toast_manager(controller)
@@ -86,6 +85,10 @@ def show_loading_toast(controller, slot_id: int) -> None:
 
 
 def set_loading_toast_progress(controller, slot_id: int, percent: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.set_progress(slot_id, percent)
+        return
     toast_manager = get_toast_manager(controller)
     toast_id = controller._loading_toasts.get(slot_id)
     if toast_manager is None or toast_id is None:
@@ -103,14 +106,26 @@ def set_loading_toast_progress(controller, slot_id: int, percent: int) -> None:
 
 
 def mark_full_res_ready(controller, slot_id: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.mark_full_res_ready(slot_id)
+        return
     set_loading_toast_progress(controller, slot_id, DECODE_DONE_PROGRESS)
 
 
 def bump_loading_toast_pyramid_started(controller, slot_id: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.bump_pyramid_started(slot_id)
+        return
     set_loading_toast_progress(controller, slot_id, PYRAMID_START_PROGRESS)
 
 
 def finish_loading_toast(controller, slot_id: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.finish(slot_id)
+        return
     toast_manager = get_toast_manager(controller)
     toast_id = controller._loading_toasts.pop(slot_id, None)
     if toast_manager is None or toast_id is None:
@@ -131,6 +146,10 @@ def dismiss_loading_toast(controller, slot_id: int) -> None:
     """Closes a slot's loading toast without the "done" success banner --
     used when the load fails or the slot vanished mid-load, as opposed to
     ``finish_loading_toast``'s success path."""
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.dismiss(slot_id)
+        return
     toast_manager = get_toast_manager(controller)
     toast_id = controller._loading_toasts.pop(slot_id, None)
     if toast_manager is None or toast_id is None:
@@ -176,6 +195,19 @@ def start_pyramid_build(controller, store, *, slot_id: int | None = None) -> Non
     with no new work) also finishes that slot's toast instead of leaving
     it stuck at "pyramid started" forever.
     """
+    coord = getattr(controller, "_pyramid_coordinator", None)
+    if coord is not None:
+        # Use coordinator's worker lifecycle + toast routing (B3).
+        # MC abort predicate: pyramid.valid
+        from shared.image_processing.pyramid_registry import ensure_pyramid as _ensure
+
+        _pyr = _ensure(store)
+
+        def _should_abort(_p=_pyr):
+            return not getattr(_p, "valid", True) if _p is not None else False
+
+        coord.start_build(store, slot_id=slot_id, should_abort=_should_abort)
+        return
     from shared.image_processing.pyramid_registry import ensure_pyramid
     from shared.image_processing.tiled_pixel_store import TiledPixelStore
     from shared.rendering.image_identity import image_uid
@@ -227,6 +259,19 @@ def start_pyramid_build(controller, store, *, slot_id: int | None = None) -> Non
 
 
 def on_pyramid_level_ready(controller, payload=None) -> None:
+    coord = getattr(controller, "_pyramid_coordinator", None)
+    if coord is not None:
+        # coordinator handles canvas refresh via injected callback, but MC's
+        # canvas is on widget; ensure refresh if coordinator didn't inject.
+        coord.on_level_ready(payload)
+        # keep legacy canvas refresh for fakes without injected callback
+        try:
+            canvas = getattr(controller.widget, "canvas", None)
+            if canvas is not None:
+                canvas.request_view_update()
+        except Exception:
+            pass
+        return
     canvas = getattr(controller.widget, "canvas", None)
     if canvas is not None:
         canvas.request_view_update()

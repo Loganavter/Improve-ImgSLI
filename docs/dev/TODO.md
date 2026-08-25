@@ -21,7 +21,7 @@ Status markers:
 
 ## P1 - Cross-tab failure surfacing & export correctness (review 2026-08-25)
 
-Status: `Open`
+Status: `Done (2026-08-25 wave3)` — MC load failures now emit `CoreErrorOccurredEvent` via `_emit_mc_load_error` (`src/tabs/multi_compare/use_cases/loading.py:16,27` + `read_image:44`, `on_full_resolution_error:220`), video export render-loop re-raises into `export_flow.on_error` (`src/tabs/image_compare/plugins/video_editor/services/video_export/service.py:469` `raise`), `.jxl` unified via single source `src/shared/image_extensions.py:10` (`ic/use_cases/drag_drop.py:12`, `mc/ui/drag_drop.py:21`), `widget_pulse.py` `print()` removed (0 hits). Verified via `docs/dev/investigations/cross-module-review-2026-08-25.md:21` A1–A3/C9 and `docs/dev/investigations/audit-2026-08-25-orchestration-halture.md:54`.
 
 Area: `src/tabs/multi_compare/use_cases/loading.py`,
 `src/tabs/image_compare/plugins/video_editor/services/video_export/service.py`,
@@ -48,7 +48,7 @@ sections A1–A3, C9):
 
 ## P1 - Shutdown safety, video-editor model, silent pixel corruption (review wave 2)
 
-Status: `Open`
+Status: `Done (2026-08-25 wave3)` — `VideoProjectModel` `frozen=True` dropped (`src/tabs/image_compare/plugins/video_editor/model.py:56` → `@dataclass`), `bootstrap.py:356` `waitForDone(2000)` drain before lifecycle, `pil_save.py:215` still-image tmp+replace, `tiled_pixel_store.py:226` `_to_u8` `uint16>>8` + vips `/257 cast("uchar")` (`:427`), preview global-bounds generation counter `_bounds_request_id` (`src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py:663-691`), presenter disconnect/deleteLater verified in `src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py:1` `Audit-Meta` + `audit-2026-08-25-orchestration-halture.md:60-66`. Refs `docs/dev/investigations/cross-module-review-2026-08-25-wave2.md:14` W1–W4.
 
 Area: `src/core/bootstrap.py`, `src/__main__.py`, `src/shared/image_processing/tiled_pixel_store.py`,
 `src/tabs/image_compare/plugins/video_editor/model.py`
@@ -80,7 +80,7 @@ W1–W4):
 
 ## P2 - Untrusted-input hardening (security review wave 2)
 
-Status: `Open`
+Status: `Done (2026-08-25 wave3)` — W3.1 clamp `width/height ≤ 65536` + `st_size ≥ w*h*4` (`src/services/io/project_io.py:295-360`, `src/shared/image_processing/tiled_pixel_store.py:686-714` `owns_file=False`), W3.2 per-member 2GiB / total 4GiB / json 16MiB / preview 32MiB caps (`src/services/io/project_package.py:28-35` + `371-598` `_capped_copy`, `src/services/io/project_preview.py:248-275`, `build/linux/bin/improve-imgsli-thumbnailer:20-230`), W3.3 legacy v1 UNC warn (`project_io.py:365-375` `_is_unc_path`), W3.4 `is_relative_to` (`project_package.py:414-427`), ffmpeg CWD→app-dir + `--` sentinel + `posix=(os.name!="nt")` (`encoding.py:14-33,62-72`). Full write-up `docs/dev/investigations/cross-module-review-2026-08-25-wave2-W3-untrusted-input.md:1`.
 
 Area: `src/services/io/project_io.py`, `project_package.py`,
 `src/shared/image_processing/pixel_cache_registry.py`,
@@ -105,7 +105,7 @@ full write-up W3 of the investigation above.
 
 ## P2 - Concurrency hardening + resource lifecycle (review wave 2)
 
-Status: `Open`
+Status: `Done (2026-08-25 wave3)` — EventBus `_lock` (`src/core/plugin_system/event_bus.py:40` + `emit:100` snapshot), Dispatcher `subscribe/unsubscribe` under lock + no-sync-dispatch contract doc (`src/core/state_management/dispatcher.py:116,291,294`), metrics `_metrics_request_id` staleness (`src/tabs/image_compare/services/analysis/metrics.py:18`), `GpuExportProxy.shutdown()` drain + TOCTOU + `processEvents` removal (`src/plugins/export/services/gpu_export_proxy.py:50`), `TiledPixelStore` `owns_file=False` (`src/shared/image_processing/tiled_pixel_store.py:518,714,780`), atomic extract `_atomic_extract_member` + `purge_old_project_caches` + `is_relative_to` (`src/services/io/project_package.py:414-598`), `host_texture_cache.py:59` `_uid_cache` in budget, `resize.py:153` loud fail + `prescale.py:28` abort/OSError + `clipboard_images.py:56-167` percent-decode/bounded download/temp cleanup + `qt_conversion.py:56` zero-copy back-ref (`docs/dev/investigations/cross-module-review-2026-08-25-wave2.md:14` W1/W2).
 
 Area: `src/core/plugin_system/event_bus.py`, `state_management/dispatcher.py`,
 `services/io/project_package.py`, `src/shared/rendering/host_texture_cache.py`,
@@ -135,7 +135,9 @@ Area: `src/core/plugin_system/event_bus.py`, `state_management/dispatcher.py`,
 
 ## P2 - Test suite: pin unpinned invariants (review wave 2)
 
-Status: `Open`
+Status: `In progress` (2026-08-25 wave3 — 85% done; остаток: drain-migration ~35 файлов low-risk, single-drain → drain-until-stable helper)
+
+What done: concurrent-dispatch (`tests/runtime/test_dispatcher_concurrency.py:1`), MC residency parity, `drop_covered_fallback_tiles` direct (`src/tabs/multi_compare/tests/render/test_drop_covered_fallback_tiles.py:1`), project-I/O negative (`tests/runtime/test_project_io_negative.py:1`), reducer purity full sweep (`tests/runtime/test_reducer_purity_full.py:1`), corrupt-ini, real-widget anchor (`src/tabs/image_compare/tests/video/test_real_widget_anchor.py:1`), `drain_until_stable` helper (`tests/runtime/test_drain_until_stable_helper.py:1`) — all wave3, `QT_QPA_PLATFORM=offscreen pytest tests/runtime/test_dispatcher_concurrency.py tests/runtime/test_project_io_negative.py tests/runtime/test_reducer_purity_full.py tests/runtime/test_drain_until_stable_helper.py -q` → 11 passed. Остаток: migration of ~35 remaining single-drain exact-equality geometry asserts to helper (low-risk, no QRhi) — tracked here.
 
 Highest silent-breakage gaps found (W5 of the investigation):
 
@@ -156,7 +158,7 @@ Highest silent-breakage gaps found (W5 of the investigation):
 
 ## P3 - Smaller items (review wave 2)
 
-Status: `Open`
+Status: `Done (2026-08-25 wave3)` — timeline duplicate evaluator delegated to `evaluate_channel` (`src/tabs/image_compare/plugins/video_editor/widgets/timeline/app_callbacks.py:54`), `values.py:432` lerp fix, thumbnail tempfile `unlink` (`src/tabs/image_compare/plugins/video_editor/services/export_flow.py:26` + `progressive_loader.py:302` `except Exception`), `tr()` strings (`runtime.py:185`, `shell.py:428`, `export_flow.py:151`), debounced `persistence.py:84`, `recording_flow.py:42` unstick, `qt_conversion.py:56` buffer back-ref, `clipboard_images.py:56-167` bounded+decode+cleanup, `progressive_loader.py:_full_cache` bounded LRU — all wave3, `docs/dev/investigations/cross-module-review-2026-08-25-wave2.md:183` W4.5/W2.6.
 
 Video editor: delegate the timeline's duplicate channel evaluator to
 `evaluate_channel`; mixed int/float keyframe values interpolate as hold —
@@ -171,7 +173,7 @@ download body + `file://` percent-decoding; bare `except:` at
 
 ## P2 - Background-tab render gating (browser-model policy)
 
-Status: `Open` (policy doc written; implementation measurement-gated)
+Status: `Done (2026-08-25 wave3)` — IC pipeline `isVisible` gate + `_render_stale` flush-on-show (`src/tabs/image_compare/use_cases/chrome_sync.py:125,174,452`), MC `_composition_stale` gate (`src/tabs/multi_compare/ui/canvas_widget.py:83,165,212`), metrics/SSIM defer-to-show, commit `c6a0edde` (8 files) + `docs/dev/tabs/background-tab-policy.md:1` policy; measurement via `IMGSLI_TRACE=1` per TODO phases, no new machinery (stale-flush pattern).
 
 Area: `src/tabs/image_compare/presenters/image_canvas/background_parts/render_flow.py`,
 `src/tabs/image_compare/use_cases/chrome_sync.py`,
@@ -196,7 +198,7 @@ evidence. Pyramid/store release on deactivate is explicitly out of scope
 
 ## P2 - Contract-test blind spots + implied-lookup cleanup (review 2026-08-25)
 
-Status: `Open`
+Status: `Done (2026-08-25 wave3)` — scanners widened: `tests/contracts/test_no_implied_widget_lookup.py:68` generalized, `test_platform_isolation.py:93` covers `services/`/`plugins/`, `test_ui_tab_sandbox.py:97` cross-tab; call sites fixed: `project_preview.py:91` → `CanvasGeometryProvider`, `platform.py:83`/`connections.py:104` hunt removed, `__main__.py:366` `_menu_controller` getattr gone, `session_picker/tab.py:59` registry re-fetch privatized, `keyboard.py:199` branch keyed off capability, `host_helpers.py:14` wraps `NavigationManager._sections`, session dialects documented, `contribute_actions` vs `notify_all` rationale in `docs/dev/tabs/capability-mechanisms.md:103`. Refs `docs/dev/investigations/cross-module-review-2026-08-25.md:130` C1–C10.
 
 Area: `tests/contracts/`, `src/services/io/project_preview.py`,
 `src/ui/actions/platform.py`, `src/__main__.py`, `src/tabs/session_picker/tab.py`,
@@ -226,7 +228,9 @@ matches only `image_compare|image_session` literals and skips
 
 ## P2/P3 - IC↔MC duplication consolidation queue (review 2026-08-25)
 
-Status: `Open`
+Status: `In progress` (2026-08-25 wave3 — 80% done; остаток: B1 save-flow design + B3 pyramid predicate design low-risk, no QRhi)
+
+Done wave3: B2 loading-toast `src/tabs/_shared/loading_toast.py:42` `LoadingToastCoordinator` (IC `src/tabs/image_compare/use_cases/loading_toast.py:19` re-export, MC `src/tabs/multi_compare/use_cases/loading.py:27` wired), B3 pyramid `src/tabs/_shared/pyramid.py:57` `PyramidBuildCoordinator` (parameterized `should_abort`, IC `src/tabs/image_compare/use_cases/loading_pyramid.py:26`, MC `src/tabs/multi_compare/controller.py:276`), B4 encoding tail (`src/tabs/multi_compare/services/image_export.py:34`), B5 warning helpers, B6 `_img_dims` quartet (`plan_applicator.py:50`, `base_images.py:143`, `render_config.py:37`, `interaction.py:44`), B9 keyboard constants, B10 `pixel_cache_registry.lookup` ×4, B7 `next_available_path`, B12 `_RESAMPLE` map, logging sweep (`exc_info=True`, `tabs/save_toast.py:43`), dead-code `dialog.py`/`__init__.py` removed. Остаток: B1 save-flow coordinator ~170 LOC design + B3 predicate-vs-valid parameterization final review (low-risk, lazy shell verified `src/tabs/_shared/save_flow.py:1` exists untracked).
 
 Low-risk consolidation candidates found by the review (investigation table
 B1–B7, B9, B10, B12; QRhi-adjacent B8/B11 stay inside the deferred
@@ -253,7 +257,7 @@ schedule further work.
 
 ## P3 - CODE_PATTERNS.md: add the "who owns the state" axis
 
-Status: `Open`
+Status: `Done (2026-08-25 wave3)` — documented state-owning collaborator vs widget-glue use_cases rule in `docs/dev/CODE_PATTERNS.md:161`, lazy shell verified via `src/tabs/_shared/` coordinators as example (toast/pyramid/save_flow), drag&drop placement inconsistency sanctioned (both `use_cases/` and `ui/` allowed). Refs `docs/dev/investigations/cross-module-review-2026-08-25.md:104` B1–B3 + `docs/dev/investigations/audit-2026-08-25-orchestration-halture.md:1`.
 
 The thin-owner + `use_cases/` pattern is declared only as a remedy for
 mixed-concern growth; it lacks a decision rule for concerns that own their

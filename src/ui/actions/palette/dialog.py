@@ -511,10 +511,10 @@ class FindActionDialog(ThemedDialog):
                         return False
                     # Если фокус на поиске или в списке — отдаём менеджеру
                     if self.isAncestorOf(focused) if focused is not None else False:
-                        # Проверяем что наш Auto-секция зарегистрирован
-                        for owner, sec in mgr._sections:
-                            if owner is self and sec.owns(focused):
-                                return False
+                        # Проверяем что наш Auto-секция владеет фокусом — без обращения к приватному _sections (C6)
+                        sec = getattr(self, "_find_action_nav_section", None)
+                        if sec is not None and sec.owns(focused):
+                            return False
                 except Exception:
                     pass
                 # Фолбек — старый список

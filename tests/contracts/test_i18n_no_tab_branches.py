@@ -151,6 +151,8 @@ def _zone_of(path: Path) -> str:
         parts = path.relative_to(TABS_ROOT).parts
     except ValueError:
         return "shared"
+    if parts[0].startswith("_"):
+        return "shared"
     return f"tab:{parts[0]}"
 
 

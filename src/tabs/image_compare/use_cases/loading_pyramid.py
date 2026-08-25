@@ -22,11 +22,29 @@ def start_pyramid_builds(controller, *stores) -> None:
     # Called as start_pyramid_builds(controller, u1, u2) -- positional order
     # matches image_state.image1/image2 at the call site, so slot number is
     # simply the 1-based position here.
+    # Prefer shared coordinator when present (B3 dedup); fallback keeps fake
+    # controllers without coordinator working.
+    coord = getattr(controller, "_pyramid_coordinator", None)
+    if coord is not None:
+        task_id = getattr(controller, "_unification_task_id", 0)
+        for slot_offset, store in enumerate(stores):
+            image_number = slot_offset + 1
+            slot_toast_live = controller._pending_full_loads.get(image_number, 0) == 0  # type: ignore[union-attr]
+            slot_for_coordinator = image_number if slot_toast_live else None
+            # IC abort predicate: staleness via task_id
+            should_abort = lambda tid=task_id: tid != getattr(controller, "_unification_task_id", tid)
+            # coordinator handles skip->finish, already-in-flight, bump, worker
+            coord.start_build(store, slot_id=slot_for_coordinator, should_abort=should_abort)
+            # When toast was not live, coordinator would have mapped None;
+            # but legacy behavior left no mapping and no bump -- coordinator already
+            # respects slot_id=None (no toast). Nothing else to do.
+        return
+    # Legacy path (no coordinator, e.g. SimpleNamespace fakes in tests)
     from shared.image_processing import pyramid_registry
     from shared.image_processing.pyramid_pixel_store import estimate_total_levels
     from shared.rendering.image_identity import image_uid
 
-    from tabs.image_compare.use_cases.loading_toast import PYRAMID_START_PROGRESS
+    from tabs._shared.loading_toast import PYRAMID_START_PROGRESS
 
     task_id = controller._unification_task_id
     for slot_offset, store in enumerate(stores):
@@ -100,7 +118,11 @@ def pyramid_build_task(
 
 
 def on_pyramid_level_ready(controller, payload) -> None:
-    from tabs.image_compare.use_cases.loading_toast import PYRAMID_START_PROGRESS
+    coord = getattr(controller, "_pyramid_coordinator", None)
+    if coord is not None:
+        coord.on_level_ready(payload)
+        return
+    from tabs._shared.loading_toast import PYRAMID_START_PROGRESS
 
     uid, level_count, total_levels, complete = payload
     # Only a *completed* pyramid can flip pick_display_image from the

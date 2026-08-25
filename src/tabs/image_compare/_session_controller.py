@@ -58,12 +58,43 @@ class SessionController(QObject):
         self.event_bus = event_bus
 
         self._unification_task_id = 0
-        self._pyramid_builds: set[int] = set()
-        # "Loading full version of image" toast, tracked per compare slot
-        # (not per pyramid uid) so it can start as soon as the quick QImage
-        # preview is shown -- well before a pyramid store exists to key on.
-        self._loading_toasts: dict[int, int] = {}  # image_number -> toast_id
-        self._loading_toast_uid_slot: dict[int, int] = {}  # pyramid uid -> image_number
+        # B2/B3 shared coordinators (state-owning collaborators, CODE_PATTERNS.md)
+        from tabs._shared.loading_toast import LoadingToastCoordinator
+        from tabs._shared.pyramid import PyramidBuildCoordinator
+
+        def _ic_get_toast_manager():
+            # mirrors tabs.image_compare.use_cases.loading_toast.get_toast_manager
+            try:
+                return getattr(
+                    getattr(self.presenter, "main_window_app", None), "toast_manager", None
+                )
+            except Exception:
+                return None
+
+        def _ic_translate(key: str, default: str | None = None):
+            from sli_ui_toolkit.i18n import get_current_language, tr as _tr
+
+            try:
+                return _tr(key, get_current_language())
+            except Exception:
+                return default if default is not None else key
+
+        self._loading_toast_coordinator = LoadingToastCoordinator(
+            get_toast_manager=_ic_get_toast_manager,
+            translate=_ic_translate,
+        )
+        # Keep legacy dict attributes as live views onto the coordinator's state
+        # so external fakes/tests that poke controller._loading_toasts keep working.
+        self._loading_toasts: dict[int, int] = self._loading_toast_coordinator._loading_toasts  # type: ignore[attr-defined]
+        # Pyramid coordinator owns builds + uid->slot routing; toast via the same coordinator.
+        self._pyramid_coordinator = PyramidBuildCoordinator(
+            get_thread_pool=lambda: self.thread_pool,
+            toast_coordinator=self._loading_toast_coordinator,
+            request_view_update=self._schedule_image_canvas_update,
+            invalidate_render=lambda complete: self._invalidate_image_canvas_render_state() if complete else None,
+        )
+        self._pyramid_builds: set[int] = self._pyramid_coordinator._pyramid_builds
+        self._loading_toast_uid_slot: dict[int, int] = self._pyramid_coordinator._pyramid_toast_slot
         # Slots with a full-resolution decode in flight; unify against a
         # preview side is deferred while the real pixels are on the way.
         self._pending_full_loads: dict[int, int] = {1: 0, 2: 0}
@@ -424,26 +455,59 @@ class SessionController(QObject):
         loading.on_pyramid_level_ready(self, payload)
 
     def _get_toast_manager(self):
+        # Prefer coordinator; fallback to legacy use_case for fakes without it.
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            return coord.get_toast_manager()
         return loading.get_toast_manager(self)
 
-    # Progress checkpoints for the "loading full version of image" toast --
-    # see use_cases/loading.py's module-level constants of the same values.
-    _DECODE_DONE_PROGRESS = loading.DECODE_DONE_PROGRESS
-    _PYRAMID_START_PROGRESS = loading.PYRAMID_START_PROGRESS
+    # Single source for progress checkpoints: re-export from shared
+    # (legacy alias kept for tests that read controller._DECODE_DONE_PROGRESS).
+    @property
+    def _DECODE_DONE_PROGRESS(self) -> int:  # type: ignore[override]
+        from tabs._shared.loading_toast import DECODE_DONE_PROGRESS as _V
+
+        return _V
+
+    @property
+    def _PYRAMID_START_PROGRESS(self) -> int:  # type: ignore[override]
+        from tabs._shared.loading_toast import PYRAMID_START_PROGRESS as _V
+
+        return _V
 
     def _show_loading_toast(self, image_number: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.show(image_number)
+            return
         loading.show_loading_toast(self, image_number)
 
     def _set_loading_toast_progress(self, image_number: int, percent: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.set_progress(image_number, percent)
+            return
         loading.set_loading_toast_progress(self, image_number, percent)
 
     def _mark_full_res_ready(self, image_number: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.mark_full_res_ready(image_number)
+            return
         loading.mark_full_res_ready(self, image_number)
 
     def _bump_loading_toast_pyramid_started(self, image_number: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.bump_pyramid_started(image_number)
+            return
         loading.bump_loading_toast_pyramid_started(self, image_number)
 
     def _finish_loading_toast(self, image_number: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.finish(image_number)
+            return
         loading.finish_loading_toast(self, image_number)
 
     def _trigger_metrics_calculation_if_needed(self):
