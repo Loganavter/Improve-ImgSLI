@@ -472,17 +472,10 @@ class ExportService:
         base_name: str,
         extension: str,
     ) -> str:
-        """
-        Генерирует уникальный путь к файлу, добавляя номер, если файл уже существует.
-        """
-        full_path = os.path.join(directory, f"{base_name}{extension}")
-        if not os.path.exists(full_path):
-            return full_path
+        """Delegate to shared ``next_available_path`` (B7)."""
+        from pathlib import Path
 
-        counter = 1
-        while True:
-            new_name = f"{base_name} ({counter})"
-            new_path = os.path.join(directory, f"{new_name}{extension}")
-            if not os.path.exists(new_path):
-                return new_path
-            counter += 1
+        from shared.image_processing.pil_save import next_available_path
+
+        candidate = Path(directory) / f"{base_name}{extension}"
+        return str(next_available_path(candidate, style="paren"))

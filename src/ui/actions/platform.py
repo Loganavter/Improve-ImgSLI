@@ -75,19 +75,10 @@ def register_platform_actions(
 
     def _default_paste() -> None:
         from plugins.export.events import ExportPasteImageFromClipboardEvent
-        from PySide6.QtWidgets import QApplication
 
-        app = QApplication.instance()
-        event_bus = None
-        if isinstance(app, QApplication):
-            for widget in app.topLevelWidgets():
-                presenter = getattr(widget, "presenter", None)
-                event_bus = getattr(presenter, "event_bus", None) if presenter else None
-                if event_bus is None and presenter is not None:
-                    controller = getattr(presenter, "main_controller", None)
-                    event_bus = getattr(controller, "event_bus", None)
-                if event_bus is not None:
-                    break
+        from ui.helpers.window_resolver import find_event_bus
+
+        event_bus = find_event_bus()
         if event_bus is not None:
             event_bus.emit(ExportPasteImageFromClipboardEvent())
 

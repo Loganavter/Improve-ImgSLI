@@ -96,6 +96,7 @@ def _refresh_active_tab_actions() -> None:
     from tabs.registry import get_shared_tab_registry
     from ui.actions.binder import resync_action_shortcuts
     from ui.actions.registry import get_action_registry
+    from ui.helpers.window_resolver import find_main_window
 
     get_shared_tab_registry().create_service(
         "contribute_actions",
@@ -103,10 +104,7 @@ def _refresh_active_tab_actions() -> None:
     )
     window = QApplication.activeWindow()
     if window is None:
-        for top in QApplication.topLevelWidgets():
-            if getattr(top, "presenter", None) is not None:
-                window = top
-                break
+        window = find_main_window()
     resync_action_shortcuts(window)
 
 

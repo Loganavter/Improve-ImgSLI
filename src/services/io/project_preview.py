@@ -27,7 +27,12 @@ PREVIEW_PNG_COMPRESS = 6
 # Kept for call sites / tests that still pass ``quality=``.
 PREVIEW_JPEG_QUALITY = 80
 
-_SKIP_SESSION_TYPES = frozenset({"session_picker", ""})
+try:
+    from core.store import INITIAL_WORKSPACE_SESSION_TYPE as _SKIP_PICKER
+
+    _SKIP_SESSION_TYPES = frozenset({_SKIP_PICKER, ""})
+except Exception:
+    _SKIP_SESSION_TYPES = frozenset({"session_picker", ""})
 
 
 def project_previews_cache_dir() -> Path:
@@ -89,6 +94,10 @@ def qimage_to_png_bytes(
 
 
 def _canvas_attr(host) -> Any:
+    """Legacy canvas probe — kept as fallback for tabs not yet providing
+    ``capture_preview_image`` service. New tabs should implement that service
+    instead of adding their canvas attr name here (see C1).
+    """
     if host is None:
         return None
     for attr in ("image_label", "canvas", "compare_canvas"):
@@ -104,6 +113,8 @@ def _canvas_from_page(page) -> Any:
     Image Compare returns the host widget itself (``image_label``). Multi Compare
     wraps ``MultiCompareWidget`` in an outer ``QWidget``, so the canvas lives on
     a child — walk direct/deep children when the page has no canvas attr.
+
+    Prefer ``capture_preview_image`` service; this is fallback only.
     """
     found = _canvas_attr(page)
     if found is not None:
@@ -119,6 +130,29 @@ def _canvas_from_page(page) -> Any:
                 return found
     except Exception:
         logger.debug("Canvas lookup under page failed", exc_info=True)
+    return None
+
+
+def _grab_via_service(registry, session_type: str) -> QImage | None:
+    """Try tab-provided ``capture_preview_image`` service before duck-typing."""
+    if registry is None or not session_type:
+        return None
+    try:
+        # Prefer targeted create_service_for so only the active tab answers.
+        if hasattr(registry, "create_service_for"):
+            image = registry.create_service_for(
+                session_type, "capture_preview_image"
+            )
+            if isinstance(image, QImage) and not image.isNull():
+                return image
+        # Fallback to active-tab create_service (works when preview
+        # is requested for the currently active session).
+        if hasattr(registry, "create_service"):
+            image = registry.create_service("capture_preview_image")
+            if isinstance(image, QImage) and not image.isNull():
+                return image
+    except Exception:
+        logger.debug("capture_preview_image service failed", exc_info=True)
     return None
 
 
@@ -180,13 +214,16 @@ def capture_project_preview_png(
     if registry is None:
         return None
 
-    page = None
-    try:
-        page = registry.get_page(session_type)
-    except Exception:
+    # Prefer service-provided image (no widget-name literals).
+    image = _grab_via_service(registry, session_type)
+    if image is None:
+        # Legacy fallback: duck-typed canvas hunt — deprecated path (C1).
         page = None
-
-    image = _grab_widget_image(_canvas_from_page(page))
+        try:
+            page = registry.get_page(session_type)
+        except Exception:
+            page = None
+        image = _grab_widget_image(_canvas_from_page(page))
     if image is None or image.isNull():
         return None
 

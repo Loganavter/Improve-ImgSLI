@@ -111,6 +111,32 @@ render-task-id race-guard), `shared/image_processing/tiled_pixel_store.py`
 module docstring), `plugins/export/dialog.py` (one `QDialog`, size is
 layout/signal-wiring bulk, not mixed concerns).
 
+### Who owns the state — collaborator object vs use_cases function
+
+Review 2026-08-25 (B1–B3): the largest IC↔MC duplicates (save-flow ~170 LOC,
+loading-toast ~75, pyramid-build ~85) are flow-shaped concerns written as
+*functions over different owners* in both tabs, which made shared extraction
+non-mechanical — while toast already grew a state-owning ``SaveToastMixin``
+ad-hoc. Rule:
+
+- If the concern **owns its own state/lifecycle** (toast queue, coordinator
+  lifecycle, worker + abort predicate, toast bump timers) → small
+  **collaborator object** (parameterizable, shareable across tabs). It holds
+  its own dict/QTimer/thread state, receives the owner via constructor or
+  method args, and can be reused without copying functions. Example:
+  ``tabs/save_toast.py:SaveToastMixin``; future save-flow coordinator
+  should be one such object parameterized by abort predicate / thread pool.
+
+- If the concern is **widget-glue whose state genuinely lives on the owner**
+  (drag & drop pending paths, list ops that mutate owner's store) → keep the
+  ``use_cases`` **function-taking-owner** shape. Making a second class just
+  adds ceremony and an import cycle.
+
+Inconsistent placement today (IC drag&drop under ``use_cases/``, MC under
+``ui/``) is both sanctioned: ``use_cases/`` is for controller/store-owned
+logic, ``ui/`` for widget-owned logic. Pick the home that matches the owner,
+not the tab.
+
 ---
 
 ## Related dogmas (already documented, cross-referenced here on purpose)
