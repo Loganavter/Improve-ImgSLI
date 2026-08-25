@@ -25,7 +25,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Capability aliases](CAPABILITY_ALIASES.md)** — `docs/dev/CAPABILITY_ALIASES.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/rendering/contracts.md](rendering/contracts.md)
 - **[Code Mass Reduction](CODE_MASS_REDUCTION.md)** — `docs/dev/CODE_MASS_REDUCTION.md`
-  Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md)
+  Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md), [docs/dev/investigations/codebase-mass-root-causes-2026-08-26.md](investigations/codebase-mass-root-causes-2026-08-26.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md)
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
   Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
@@ -75,6 +75,8 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/dev/investigations/
 
 - **[Investigation: orchestration 6-agent rework — ImportError `_STATE_SLOT`, haltura audit and registry stale](investigations/audit-2026-08-25-orchestration-halture.md)** — `docs/dev/investigations/audit-2026-08-25-orchestration-halture.md`
+- **[Codebase-mass root-cause review (2026-08-26)](investigations/codebase-mass-root-causes-2026-08-26.md)** — `docs/dev/investigations/codebase-mass-root-causes-2026-08-26.md`
+  Referenced by: [docs/dev/TODO.md](TODO.md)
 - **[Investigation: W3 Untrusted-input hardening — craft .imgsli DoS/SIGBUS + zip-bomb + UNC + ffmpeg minors](investigations/cross-module-review-2026-08-25-wave2-W3-untrusted-input.md)** — `docs/dev/investigations/cross-module-review-2026-08-25-wave2-W3-untrusted-input.md`
 - **[Investigation: deep review wave 2 — threading, shared/services, security, video editor, tests](investigations/cross-module-review-2026-08-25-wave2.md)** — `docs/dev/investigations/cross-module-review-2026-08-25-wave2.md`
   Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)

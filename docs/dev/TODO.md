@@ -343,6 +343,56 @@ near-identical `SettingsDialogData`/`SettingsDialogContext`, SessionManager
 passthrough trimming, `QtStoreBridge` double notification mechanism (check
 cross-thread emits before giving Store a real Signal).
 
+## P2 - Redux action-shape compression + settings-scalar registry (mass review 2026-08-26)
+
+Status: `Design needed` — touches every subsystem's actions; contract suite
+and undo/redo/tracing properties must be pinned before any mechanical rewrite.
+
+Area: `src/core/state_management/actions/`, tab action modules (e.g.
+`src/plugins/settings/actions/settings_actions.py`), settings mutation surface
+
+Findings from the mass root-cause review
+([investigations/codebase-mass-root-causes-2026-08-26.md](./investigations/codebase-mass-root-causes-2026-08-26.md)):
+
+- 62 action classes repeat a shape where the `@dataclass` decorator is dead
+  weight: handwritten `__init__` overrides the generated one and calls
+  `super().__init__()`; `get_payload` returns the single field. Copy-paste
+  mechanics, not dogma — compress to a generic parameterized action or fix
+  the shape once. The Dispatcher → RootReducer → Store dogma itself stays.
+- One settings scalar costs ~12–15 lines across 6–7 files (ActionType entry,
+  action class, reducer branch, VIEWPORT_GETTERS/ACTIONS mappings,
+  load/save, page row); deleting one dead setting touched 14 files / ~120
+  LOC (CODE_MASS_REDUCTION.md). Evaluate a registry-driven scalar path.
+
+## P3 - session_picker/recent slim-down review (mass review 2026-08-26)
+
+Status: `Open`.
+
+Area: `src/tabs/session_picker/recent/items_view.py` (686 LOC),
+`src/tabs/session_picker/recent/use_cases/` (512),
+`src/tabs/session_picker/tests/runtime/test_recent_projects_panel.py` (1499)
+
+A recent-projects panel outweighs whole plugins (≈2.5k prod + 2.2k test LOC)
+with no functional justification found by the mass root-cause review
+([investigations/codebase-mass-root-causes-2026-08-26.md](./investigations/codebase-mass-root-causes-2026-08-26.md)).
+Scope: check whether `items_view.py` mixes view + model + geometry concerns
+that the thin-owner pattern would split, and whether the panel's test mass
+(0.56:1 test:prod — highest in the repo) matches its risk.
+
+## P3 - Event-infrastructure consolidation candidate (mass review 2026-08-26)
+
+Status: `Design needed` — architecture-level, not cleanup.
+
+Area: `src/events/` (2 015 LOC), `src/core/plugin_system/event_bus.py`,
+`src/shared_toolkit/` (legacy glue, 2 019 LOC)
+
+`src/events/` coexists with the core EventBus as a second eventing surface;
+`shared_toolkit/` predates the external toolkit. Both flagged as historical
+layers by
+[investigations/codebase-mass-root-causes-2026-08-26.md](./investigations/codebase-mass-root-causes-2026-08-26.md).
+Needs an inventory of who consumes each surface before any merge decision;
+AGENTS.md forbids silently removing legacy toolkit compat imports.
+
 ## P3 - CODE_PATTERNS.md: add the "who owns the state" axis
 
 Status: `Done (2026-08-25 wave3)` — documented state-owning collaborator vs widget-glue use_cases rule in `docs/dev/CODE_PATTERNS.md:161`, lazy shell verified via `src/tabs/_shared/` coordinators as example (toast/pyramid/save_flow), drag&drop placement inconsistency sanctioned (both `use_cases/` and `ui/` allowed). Refs `docs/dev/investigations/cross-module-review-2026-08-25.md:104` B1–B3 + `docs/dev/investigations/audit-2026-08-25-orchestration-halture.md:1`.
