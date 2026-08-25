@@ -103,6 +103,23 @@ Renderer-unification Phase 4 (`drop_covered_*`) is effectively complete —
 primitive lives in `shared/rendering/tile_coverage.py`; close rather than
 schedule further work.
 
+## P3 - CODE_PATTERNS.md: add the "who owns the state" axis
+
+Status: `Open`
+
+The thin-owner + `use_cases/` pattern is declared only as a remedy for
+mixed-concern growth; it lacks a decision rule for concerns that own their
+own state/lifecycle. Review follow-up (2026-08-25): the largest IC↔MC
+duplicates found (save-flow ~170 LOC, loading-toast ~75, pyramid-build
+~85) are exactly flow-shaped concerns written as *functions over different
+owners* in both tabs, which made shared extraction non-mechanical — while
+toast already grew a state-owning `SaveToastMixin` ad hoc. Proposed doc
+addition: if a concern owns its own state/lifecycle → small collaborator
+object (parameterizable, shareable across tabs); widget-glue whose state
+genuinely lives on the owner → keep the use_cases function shape. Also
+record the observed inconsistent placement (IC drag&drop under `use_cases/`,
+MC under `ui/`) and either converge it or sanction both homes.
+
 ## P2 - Session-state follow-ups
 
 Area: workspace sessions, tab lifecycle, project I/O
