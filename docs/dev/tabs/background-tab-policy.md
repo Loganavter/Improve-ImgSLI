@@ -1,7 +1,7 @@
 # Background tab policy
 
 Status: `Proposed` (2026-08-25, follow-up to the deep review waves — see
-[investigations/cross-module-review-2026-08-25-wave2.md](../investigations/cross-module-review-2026-08-25-wave2.md)).
+improve-imgsli-internal-docs/docs/dev/investigations/cross-module-review-2026-08-25-wave2.md).
 This doc records how hidden workspace tabs behave today and defines the
 target policy for CPU work on them. Implementation is phased and
 measurement-gated (Phase 0).
