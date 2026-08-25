@@ -30,8 +30,3 @@ def load_pixel_store(path: str | Path, *, auto_crop: bool = True):
         return TiledPixelStore.from_path(key, auto_crop=auto_crop)
     except TypeError:
         return TiledPixelStore.from_path(key)
-
-
-def load_pixel_store_no_crop(path: str | Path):
-    """Variant without auto-crop (multi_compare convention)."""
-    return load_pixel_store(path, auto_crop=False)

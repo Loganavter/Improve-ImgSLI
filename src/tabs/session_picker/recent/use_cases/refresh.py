@@ -110,8 +110,3 @@ def pin_dropped_paths(panel, paths: list[str]) -> None:
         except Exception:
             continue
     panel.refresh()
-
-
-def on_header_prefs_changed(panel) -> None:
-    # Header already persisted prefs; re-read and refresh cards.
-    panel.refresh()

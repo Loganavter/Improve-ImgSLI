@@ -17,6 +17,7 @@ logger = logging.getLogger("ImproveImgSLI")
 _INSTALLED = False
 _FILE_LOCK = threading.Lock()
 _FILE_HANDLE: TextIO | None = None
+_WRITE_FAILURE_LOGGED = False
 _FILE_PATH: Optional[str] = None
 
 def install_file_sink(app_name: str = "ImproveImgSLI", filename: str = "trace.jsonl") -> Optional[str]:
@@ -60,4 +61,10 @@ def _on_record(rec: TraceRecord) -> None:
             handle.write(line)
             handle.write("\n")
         except (OSError, ValueError):
-            pass
+            global _WRITE_FAILURE_LOGGED
+            if not _WRITE_FAILURE_LOGGED:
+                _WRITE_FAILURE_LOGGED = True
+                logger.warning(
+                    "trace file sink writes failing; trace output paused: %s",
+                    _FILE_PATH,
+                )

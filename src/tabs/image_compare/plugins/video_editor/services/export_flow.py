@@ -79,6 +79,10 @@ def build_video_notification_preview(
         _schedule_temp_delete(thumb_path, delay_ms=60000)
         return thumb_path
     except Exception:
+        logger.warning(
+            "video export preview frame generation failed; continuing without thumbnail",
+            exc_info=True,
+        )
         return None
 
 

@@ -173,11 +173,17 @@ class SettingsApplicationService(QObject):
                 try:
                     reapply_application_theme(app)
                 except Exception:
-                    pass
+                    logging.getLogger("ImproveImgSLI").warning(
+                        "reapply_application_theme failed during UI-scale apply",
+                        exc_info=True,
+                    )
             try:
                 FontManager.get_instance().apply_from_state(self.store)
             except Exception:
-                pass
+                logging.getLogger("ImproveImgSLI").warning(
+                    "font re-apply failed during UI-scale apply",
+                    exc_info=True,
+                )
             UiFont.get_instance().sync_from_application()
             _flush_deferred_scale_resyncs(app)
 
@@ -213,7 +219,10 @@ class SettingsApplicationService(QObject):
                         font_manager.get_font_path_for_image_text(self.store)
                     )
             except Exception:
-                pass
+                logging.getLogger("ImproveImgSLI").warning(
+                    "font_path_absolute sync failed after font change",
+                    exc_info=True,
+                )
 
     def _apply_viewport_interactive_settings(
         self, data: SettingsDialogData, render_update_needed: bool

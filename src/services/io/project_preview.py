@@ -241,7 +241,11 @@ def zip_has_preview(path: str | Path) -> bool:
         with zipfile.ZipFile(path, "r") as zf:
             names = set(zf.namelist())
             return any(name in names for name in PREVIEW_MEMBERS)
+    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile):
+        logger.debug("No readable preview archive at %s", path, exc_info=True)
+        return False
     except Exception:
+        logger.warning("Unexpected error checking preview in %s", path, exc_info=True)
         return False
 
 

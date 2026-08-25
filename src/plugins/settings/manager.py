@@ -115,7 +115,12 @@ class SettingsManager:
             if target_type == float:
                 return float(val)
             return target_type(val)
-        except:
+        except (TypeError, ValueError):
+            logger.warning(
+                "Setting %r has unusable value %r; falling back to default",
+                key,
+                val,
+            )
             return default
 
     def load_all_settings(self, store: Store):
