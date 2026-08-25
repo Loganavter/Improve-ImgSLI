@@ -62,7 +62,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Theming & QSS](THEMING.md)** — `docs/dev/THEMING.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Development TODO](TODO.md)** — `docs/dev/TODO.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md), [docs/dev/investigations/dead-code-overengineering-audit-2026-08-26.md](investigations/dead-code-overengineering-audit-2026-08-26.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Runtime Tracer](TRACING.md)** — `docs/dev/TRACING.md`
   Referenced by: [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[UI Inspector](UI_INSPECTOR.md)** — `docs/dev/UI_INSPECTOR.md`
@@ -80,10 +80,13 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/background-tab-policy.md](tabs/background-tab-policy.md)
 - **[Investigation: cross-module review — duplication, error handling, abstractions](investigations/cross-module-review-2026-08-25.md)** — `docs/dev/investigations/cross-module-review-2026-08-25.md`
   Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/TODO.md](TODO.md), [docs/dev/investigations/cross-module-review-2026-08-25-wave2.md](investigations/cross-module-review-2026-08-25-wave2.md)
+- **[Audit: dead code, over-engineering, silent errors, reinvented stdlib (2026-08-26)](investigations/dead-code-overengineering-audit-2026-08-26.md)** — `docs/dev/investigations/dead-code-overengineering-audit-2026-08-26.md`
+  Referenced by: [docs/dev/TODO.md](TODO.md)
 - **[Investigation: drain migration wave 5 — single-drain → drain_until_stable (W5)](investigations/drain-migration-wave5-2026-08-25.md)** — `docs/dev/investigations/drain-migration-wave5-2026-08-25.md`
 - **[Investigation: Keyboard Navigation, CSD Focus, and Flyout Focus Routing](investigations/keyboard-navigation-csd-focus.md)** — `docs/dev/investigations/keyboard-navigation-csd-focus.md`
 - **[Investigation: NavigationManager for cross-section keyboard navigation](investigations/navigation-manager-plan.md)** — `docs/dev/investigations/navigation-manager-plan.md`
 - **[Critical Analysis: Session Picker Navigation](investigations/session-picker-navigation-analysis.md)** — `docs/dev/investigations/session-picker-navigation-analysis.md`
+- **[Investigation: tab→tab registry decoupling — `_shared` direct imports (2026-08-25)](investigations/tab-service-isolation-2026-08-25.md)** — `docs/dev/investigations/tab-service-isolation-2026-08-25.md`
 - **[Investigation: widget weight reduction](investigations/widget-weight-reduction.md)** — `docs/dev/investigations/widget-weight-reduction.md`
 
 ## docs/dev/plugins/
