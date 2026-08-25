@@ -46,7 +46,7 @@ class PreviewCoordinator:
         self.fit_content_mode = False
         self.preview_render_scale = 1.0
         self._cached_global_bounds = None
-        self._bounds_calculation_pending = False
+        self._bounds_request_id: int = 0
         self._stored_crop_resolution = None
 
         # ``prepare_key`` / ``plan`` / ``store`` / optional ``frame_pil``.
@@ -159,11 +159,10 @@ class PreviewCoordinator:
             return
 
         if self.fit_content_mode and self._cached_global_bounds is None:
-            if not self._bounds_calculation_pending:
-                self.recalculate_global_bounds()
+            self.recalculate_global_bounds()
             _vplog.debug(
-                "preview_wait_global_bounds pending=%s",
-                self._bounds_calculation_pending,
+                "preview_wait_global_bounds request_id=%s",
+                self._bounds_request_id,
             )
             return
 
@@ -631,8 +630,6 @@ class PreviewCoordinator:
         self.schedule_update()
 
     def recalculate_global_bounds(self):
-        if self._bounds_calculation_pending:
-            return
         exporter = getattr(self.export_controller, "video_exporter", None)
         if exporter is None:
             return
@@ -643,18 +640,24 @@ class PreviewCoordinator:
 
         from .common import VIDEO_EDITOR_AUTO_CROP
 
-        self._bounds_calculation_pending = True
+        self._bounds_request_id += 1
+        request_id = self._bounds_request_id
 
         def calculate():
             return exporter.calculate_global_canvas_bounds(snapshots, VIDEO_EDITOR_AUTO_CROP)
 
         worker = GenericWorker(calculate)
-        worker.signals.result.connect(self.on_global_bounds_calculated)
-        worker.signals.error.connect(self.on_bounds_calculation_error)
+        worker.signals.result.connect(
+            lambda bounds, rid=request_id: self.on_global_bounds_calculated(bounds, request_id=rid)
+        )
+        worker.signals.error.connect(
+            lambda err, rid=request_id: self.on_bounds_calculation_error(err, request_id=rid)
+        )
         self.export_controller.thread_pool.start(worker)
 
-    def on_global_bounds_calculated(self, bounds):
-        self._bounds_calculation_pending = False
+    def on_global_bounds_calculated(self, bounds, request_id: int | None = None):
+        if request_id is not None and request_id != self._bounds_request_id:
+            return
         self._cached_global_bounds = bounds
 
         if self.emit_fit_content_available is not None:
@@ -683,8 +686,9 @@ class PreviewCoordinator:
 
         self.schedule_update()
 
-    def on_bounds_calculation_error(self, err):
-        self._bounds_calculation_pending = False
+    def on_bounds_calculation_error(self, err, request_id: int | None = None):
+        if request_id is not None and request_id != self._bounds_request_id:
+            return
         logger.error(f"Error calculating global bounds: {err}")
         if self.emit_fit_content_available is not None:
             # Unknown, not confirmed unit — don't leave the button stuck

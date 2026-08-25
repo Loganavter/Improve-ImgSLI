@@ -192,12 +192,18 @@ class VideoEditorPresenter(QObject):
         self.view.windowResized.connect(self.preview_coordinator.on_window_resized)
 
     def _on_view_destroyed(self, *_args):
+        self._disconnect_service_signals()
         self.preview_coordinator.on_view_destroyed()
         self.output_coordinator.detach_view()
         self.thumbnail_coordinator.detach_view()
         self.playback_coordinator.detach_view()
         self.export_coordinator.detach_view()
         self.view = None
+        if self.parent() is None:
+            try:
+                self.deleteLater()
+            except Exception:
+                pass
 
     def _initialize_from_snapshots(self):
         if not initialize_editor_from_snapshots(
@@ -249,6 +255,7 @@ class VideoEditorPresenter(QObject):
         self.export_coordinator.stop_export()
 
     def cleanup(self):
+        self._disconnect_service_signals()
         self.playback_engine.stop()
         self.thumbnail_coordinator.cleanup()
         if self.view is not None and hasattr(self.view, "timeline") and hasattr(
@@ -261,6 +268,11 @@ class VideoEditorPresenter(QObject):
         self.playback_coordinator.detach_view()
         self.export_coordinator.detach_view()
         self.view = None
+        if self.parent() is None:
+            try:
+                self.deleteLater()
+            except Exception:
+                pass
 
     def _on_export_progress(self, value):
         if self.view is not None:

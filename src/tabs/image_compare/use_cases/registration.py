@@ -58,11 +58,10 @@ def register_actions(tab, registry) -> None:
 
 
 def resync_action_shortcuts(tab) -> None:
-    from PySide6.QtWidgets import QApplication
-
     from ui.actions.binder import resync_action_shortcuts as _resync
+    from ui.helpers.window_resolver import find_main_window
 
-    for widget in QApplication.topLevelWidgets():
-        if getattr(widget, "presenter", None) is not None:
-            _resync(widget, active_tab=tab.session_type)
-            return
+    window = find_main_window()
+    if window is not None:
+        _resync(window, active_tab=tab.session_type)
+        return

@@ -140,18 +140,17 @@ def _contribute_mode_picker_options(widget, reg: ActionRegistry) -> None:
 
 
 def _host_interpolation_controller():
-    from PySide6.QtWidgets import QApplication
+    from ui.helpers.window_resolver import find_main_window
 
-    app = QApplication.instance()
-    if app is None:
+    window = find_main_window()
+    if window is None:
         return None
-    for top in app.topLevelWidgets():
-        presenter = getattr(top, "presenter", None)
-        ui = getattr(presenter, "ui_manager", None) if presenter else None
-        transient = getattr(ui, "transient", None) if ui else None
-        controller = getattr(transient, "interpolation", None) if transient else None
-        if controller is not None:
-            return controller
+    presenter = getattr(window, "presenter", None)
+    ui = getattr(presenter, "ui_manager", None) if presenter else None
+    transient = getattr(ui, "transient", None) if ui else None
+    controller = getattr(transient, "interpolation", None) if transient else None
+    if controller is not None:
+        return controller
     return None
 
 
@@ -181,18 +180,17 @@ def _contribute_interpolation_options(reg: ActionRegistry) -> None:
 
 
 def _host_font_settings_controller():
-    from PySide6.QtWidgets import QApplication
+    from ui.helpers.window_resolver import find_main_window
 
-    app = QApplication.instance()
-    if app is None:
+    window = find_main_window()
+    if window is None:
         return None
-    for top in app.topLevelWidgets():
-        presenter = getattr(top, "presenter", None)
-        ui = getattr(presenter, "ui_manager", None) if presenter else None
-        transient = getattr(ui, "transient", None) if ui else None
-        controller = getattr(transient, "font_settings", None) if transient else None
-        if controller is not None:
-            return controller
+    presenter = getattr(window, "presenter", None)
+    ui = getattr(presenter, "ui_manager", None) if presenter else None
+    transient = getattr(ui, "transient", None) if ui else None
+    controller = getattr(transient, "font_settings", None) if transient else None
+    if controller is not None:
+        return controller
     return None
 
 
@@ -321,18 +319,17 @@ def _contribute_magnifier_sliders(widget, reg: ActionRegistry) -> None:
 
 
 def _host_magnifier_visibility_controller():
-    from PySide6.QtWidgets import QApplication
+    from ui.helpers.window_resolver import find_main_window
 
-    app = QApplication.instance()
-    if app is None:
+    window = find_main_window()
+    if window is None:
         return None
-    for top in app.topLevelWidgets():
-        presenter = getattr(top, "presenter", None)
-        ui = getattr(presenter, "ui_manager", None) if presenter else None
-        transient = getattr(ui, "transient", None) if ui else None
-        controller = getattr(transient, "panel_visibility", None) if transient else None
-        if controller is not None:
-            return controller
+    presenter = getattr(window, "presenter", None)
+    ui = getattr(presenter, "ui_manager", None) if presenter else None
+    transient = getattr(ui, "transient", None) if ui else None
+    controller = getattr(transient, "panel_visibility", None) if transient else None
+    if controller is not None:
+        return controller
     return None
 
 
@@ -501,32 +498,30 @@ def _contribute_magnifier_color_options(widget, reg: ActionRegistry) -> None:
 
 
 def _host_font_settings_flyout():
-    from PySide6.QtWidgets import QApplication
+    from ui.helpers.window_resolver import find_main_window
 
-    app = QApplication.instance()
-    if app is None:
+    window = find_main_window()
+    if window is None:
         return None
-    for top in app.topLevelWidgets():
-        presenter = getattr(top, "presenter", None)
-        flyout = getattr(presenter, "font_settings_flyout", None) if presenter else None
-        if flyout is not None:
-            return flyout
+    presenter = getattr(window, "presenter", None)
+    flyout = getattr(presenter, "font_settings_flyout", None) if presenter else None
+    if flyout is not None:
+        return flyout
     return None
 
 
 def _show_host_font_settings_flyout() -> None:
-    from PySide6.QtWidgets import QApplication
+    from ui.helpers.window_resolver import find_main_window
 
-    app = QApplication.instance()
-    if not isinstance(app, QApplication):
+    window = find_main_window()
+    if window is None:
         return
-    for top in app.topLevelWidgets():
-        presenter = getattr(top, "presenter", None)
-        ui = getattr(presenter, "ui_manager", None) if presenter else None
-        show = getattr(ui, "show_font_settings_flyout", None) if ui else None
-        if callable(show):
-            show()
-            return
+    presenter = getattr(window, "presenter", None)
+    ui = getattr(presenter, "ui_manager", None) if presenter else None
+    show = getattr(ui, "show_font_settings_flyout", None) if ui else None
+    if callable(show):
+        show()
+        return
 
 
 def _contribute_font_settings_flyout(reg: ActionRegistry) -> None:

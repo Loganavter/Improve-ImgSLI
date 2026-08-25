@@ -3,6 +3,7 @@
 
 The host drives this object through ``window_presenter`` passed in as an
 argument, and reactive store updates flow through ``store.state_changed``.
+Audit-Meta: pattern=thin-owner-target size=exempt reason="use_cases target for MainWindowPresenter — display-sync chrome for document/viewport"
 """
 
 from PySide6.QtCore import QObject, QSignalBlocker, QTimer
