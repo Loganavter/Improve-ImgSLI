@@ -6,6 +6,10 @@ import math
 
 from sli_ui_toolkit.i18n import get_current_language, tr
 
+from tabs.image_compare.plugins.video_editor.services.keyframing.engine.values import (
+    evaluate_channel,
+)
+
 _PROMINENT_TRACK_IDS = {
     "splitter.main.position",
 }
@@ -42,33 +46,25 @@ def _channel_has_changes(channel) -> bool:
     return False
 
 def _evaluate_channel_at_timestamp(channel, timestamp: float):
-    keyframes = channel.keyframes
-    if not keyframes:
+    """Delegate to the canonical channel evaluator (evaluate_channel)."""
+    if not getattr(channel, "keyframes", None):
         return None
-    if timestamp <= keyframes[0].timestamp:
-        return keyframes[0].value
-    previous = keyframes[0]
-    for i in range(1, len(keyframes)):
-        current = keyframes[i]
-        if timestamp <= current.timestamp:
-            if math.isclose(float(timestamp), float(current.timestamp), abs_tol=1e-9):
-                while i + 1 < len(keyframes) and math.isclose(
-                    float(keyframes[i + 1].timestamp),
-                    float(current.timestamp),
-                    abs_tol=1e-9,
-                ):
-                    previous = current
-                    i += 1
-                    current = keyframes[i]
-                if math.isclose(
-                    float(previous.timestamp),
-                    float(current.timestamp),
-                    abs_tol=1e-9,
-                ):
-                    return current.value
-            return previous.value
-        previous = current
-    return keyframes[-1].value
+    try:
+        return evaluate_channel(channel, float(timestamp))
+    except ValueError:
+        return None
+    except Exception:
+        keyframes = channel.keyframes
+        if not keyframes:
+            return None
+        if timestamp <= keyframes[0].timestamp:
+            return keyframes[0].value
+        previous = keyframes[0]
+        for current in keyframes[1:]:
+            if timestamp <= current.timestamp:
+                return previous.value
+            previous = current
+        return keyframes[-1].value
 
 def app_should_show_track(track) -> bool:
     if track.id.startswith("__") or track.kind in {"state", "source", "label"}:

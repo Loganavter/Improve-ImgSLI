@@ -6,15 +6,51 @@ sources stay consistent across session types.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import tempfile
 import time
+import urllib.parse
 import urllib.request
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from PySide6.QtWidgets import QApplication
 
 logger = logging.getLogger("ImproveImgSLI")
+
+_MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
+_MAX_DOWNLOAD_PER_URL = _MAX_DOWNLOAD_BYTES
+_TEMP_CLIPBOARD_FILES: set[str] = set()
+
+
+def _register_temp_file(path: str) -> None:
+    _TEMP_CLIPBOARD_FILES.add(path)
+
+
+def _unregister_and_remove(path: str) -> None:
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+    _TEMP_CLIPBOARD_FILES.discard(path)
+
+
+def _schedule_temp_cleanup(path: str, delay_ms: int = 60000) -> None:
+    _register_temp_file(path)
+    try:
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(delay_ms, lambda p=path: _unregister_and_remove(p))
+    except Exception:
+        pass
+
+
+@atexit.register
+def _cleanup_clipboard_temps() -> None:
+    for p in list(_TEMP_CLIPBOARD_FILES):
+        _unregister_and_remove(p)
 
 
 def collect_clipboard_image_items() -> list[str]:
@@ -32,10 +68,22 @@ def collect_clipboard_image_items() -> list[str]:
             line = line.strip()
             if not line:
                 continue
-            if os.path.exists(line) or line.startswith("file://"):
-                path = line[7:] if line.startswith("file://") else line
+            if line.startswith("file://"):
+                try:
+                    parsed = urlparse(line)
+                    path = url2pathname(parsed.path)
+                    if parsed.netloc:
+                        path = os.path.join(f"//{parsed.netloc}", path.lstrip("/\\"))
+                    if os.name == "nt" and len(path) >= 3 and path[0] == "/" and path[2] == ":":
+                        path = path[1:]
+                    else:
+                        path = urllib.parse.unquote(path) if "%" in path else path
+                except Exception:
+                    path = urllib.parse.unquote(line[7:])
                 if os.path.exists(path):
                     items.append(path)
+            elif os.path.exists(line):
+                items.append(line)
             elif line.startswith(("http://", "https://")):
                 items.append(line)
 
@@ -54,10 +102,10 @@ def collect_clipboard_image_items() -> list[str]:
                 tempfile.gettempdir(),
                 f"clip_{int(time.time() * 1000)}.png",
             )
-            qimage.save(temp_path, "PNG")  # type: ignore[call-overload]  # PySide6 runtime wants str format
+            qimage.save(temp_path, "PNG")  # type: ignore[call-overload]
+            _schedule_temp_cleanup(temp_path, delay_ms=300000)
             items.append(temp_path)
 
-    # File managers often put the same path in both text and urls.
     return _dedupe_clipboard_items(items)
 
 
@@ -83,17 +131,34 @@ def download_images_from_urls(urls: list[str], timeout: int = 10) -> list[str]:
             try:
                 with urllib.request.urlopen(url_str, timeout=timeout) as response:
                     content_type = response.headers.get_content_type()
-                    if content_type and content_type.startswith("image/"):
-                        temp_dir = tempfile.gettempdir()
-                        timestamp = int(time.time() * 1000)
-                        ext = (content_type.split("/")[-1] or "png").lower()
-                        if ext == "jpeg":
-                            ext = "jpg"
-                        temp_filename = f"url_image_{os.getpid()}_{timestamp}.{ext}"
-                        image_path = os.path.join(temp_dir, temp_filename)
-                        with open(image_path, "wb") as f:
-                            f.write(response.read())
-                        downloaded_paths.append(image_path)
+                    if not (content_type and content_type.startswith("image/")):
+                        continue
+                    content_length = response.headers.get("Content-Length")
+                    if content_length is not None:
+                        try:
+                            if int(content_length) > _MAX_DOWNLOAD_PER_URL:
+                                logger.warning("URL download rejected (too large %s bytes): %s", content_length, url_str)
+                                continue
+                        except ValueError:
+                            pass
+                    data = response.read(_MAX_DOWNLOAD_PER_URL + 1)
+                    if len(data) > _MAX_DOWNLOAD_PER_URL:
+                        logger.warning("URL download body truncated (exceeds %s bytes): %s", _MAX_DOWNLOAD_PER_URL, url_str)
+                        continue
+                    if not data:
+                        continue
+                    temp_dir = tempfile.gettempdir()
+                    timestamp = int(time.time() * 1000)
+                    ext = (content_type.split("/")[-1] or "png").lower()
+                    if ext == "jpeg":
+                        ext = "jpg"
+                    ext = "".join(c for c in ext if c.isalnum())[:8] or "png"
+                    temp_filename = f"url_image_{os.getpid()}_{timestamp}.{ext}"
+                    image_path = os.path.join(temp_dir, temp_filename)
+                    with open(image_path, "wb") as f:
+                        f.write(data)
+                    _schedule_temp_cleanup(image_path, delay_ms=300000)
+                    downloaded_paths.append(image_path)
             except Exception as e:
                 logger.warning("Failed to download image from URL %s: %s", url_str, e)
         return downloaded_paths

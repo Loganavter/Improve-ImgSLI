@@ -63,7 +63,7 @@ def open_help_page(page: str, anchor: str | None = None) -> None:
         app = QApplication.instance()
         if not isinstance(app, QApplication):
             return
-        for widget in app.topLevelWidgets():
+        for widget in app.topLevelWidgets():  # ALLOWED: system-wide help fallback — walks top-levels generically for dialogs.show_help_dialog, not tab-specific
             presenter = getattr(widget, "presenter", None)
             ui_manager = getattr(presenter, "ui_manager", None) if presenter else None
             dialogs = getattr(ui_manager, "dialogs", None)

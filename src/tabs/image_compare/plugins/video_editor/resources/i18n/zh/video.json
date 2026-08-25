@@ -67,7 +67,12 @@
     "ffmpeg_output_args_hint": "输入FFmpeg输出参数。\n输入是原始视频管道。",
     "crf_value_hint": "CRF值（0-51，越低越好）",
     "cq_value_hint": "CQ 值（0-51，越低越好）",
-    "bitrate_hint": "比特率（例如：5000k, 5M）"
+    "bitrate_hint": "比特率（例如：5000k, 5M）",
+    "export_finished": "导出完成 {ts}",
+    "export_failed": "导出失败 {ts}",
+    "export_started": "导出开始 {ts}",
+    "video_exported": "视频已导出",
+    "saved_to": "已保存至: {path}"
   },
   "tooltip": {
     "use_favorite": "使用收藏"

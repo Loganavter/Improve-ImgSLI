@@ -47,19 +47,9 @@ def _refresh_live_content_rect(canvas, state, plan) -> None:
         if store is None:
             return
         base_image = plan.image1
-        def _img_dims(img) -> tuple[int, int]:
-            if img is None: return (0, 0)
-            w, h = 0, 0
-            if hasattr(img, "width") and callable(img.width): w = int(img.width())
-            elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): w = int(img.size[0])
-            elif hasattr(img, "size") and callable(img.size): w = int(img.size().width())
-            else: w = int(getattr(img, "width", 0))
-            if hasattr(img, "height") and callable(img.height): h = int(img.height())
-            elif hasattr(img, "size") and isinstance(img.size, (tuple, list)): h = int(img.size[1])
-            elif hasattr(img, "size") and callable(img.size): h = int(img.size().height())
-            else: h = int(getattr(img, "height", 0))
-            return w, h
-        fit_width, fit_height = _img_dims(base_image)
+        from shared.image_processing.image_dims import get_image_dims
+
+        fit_width, fit_height = get_image_dims(base_image)
     else:
         fit_width, fit_height = plan.canvas_w, plan.canvas_h
     if fit_width <= 0 or fit_height <= 0:

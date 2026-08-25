@@ -85,6 +85,15 @@ ALLOWED_DEEP_TAB_IMPORTS: dict[str, str] = {
         "keyboard-reachable via NavRowBuilder.extend(); image_compare is the "
         "only tab with extras, so it's the natural fixture"
     ),
+    "tests/runtime/test_dispatcher_concurrency.py": (
+        "generic Dispatcher thread-safety contract, image_compare tab is fixture for store/dispatcher"
+    ),
+    "tests/runtime/test_fake_store_anchor.py": (
+        "generic Store anchor contract, image_compare tab is fixture for document/state"
+    ),
+    "tests/runtime/test_reducer_purity_full.py": (
+        "widened reducer purity sweep over all action types, image_compare and multi_compare as fixtures"
+    ),
 }
 
 

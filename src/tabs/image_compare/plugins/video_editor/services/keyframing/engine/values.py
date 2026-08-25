@@ -431,10 +431,10 @@ def interpolate_value(start: Any, end: Any, factor: float) -> Any:
         )
     if isinstance(start, bool) or isinstance(end, bool):
         return clone_value(start)
-    if isinstance(start, int) and isinstance(end, int):
-        return lerp_int(start, end, factor)
-    if isinstance(start, float) and isinstance(end, float):
-        return lerp_float(start, end, factor)
+    if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+        if isinstance(start, int) and isinstance(end, int):
+            return lerp_int(start, end, factor)
+        return lerp_float(float(start), float(end), factor)
     if isinstance(start, tuple) and isinstance(end, tuple) and len(start) == len(end):
         return tuple(interpolate_value(a, b, factor) for a, b in zip(start, end))
     if isinstance(start, list) and isinstance(end, list) and len(start) == len(end):

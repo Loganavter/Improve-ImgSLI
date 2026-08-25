@@ -41,7 +41,7 @@ def _flush_deferred_scale_resyncs(app) -> None:
     """
     if app is None:
         return
-    for top in app.topLevelWidgets():
+    for top in app.topLevelWidgets():  # ALLOWED: system-wide scale fan-out — applies UiScale to every top-level window generically, not tab-specific
         try:
             bar = getattr(top, "_custom_title_bar", None) or getattr(
                 top, "_csd_title_bar", None

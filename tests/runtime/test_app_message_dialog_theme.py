@@ -10,6 +10,7 @@ from PySide6.QtGui import QColor
 
 from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
 from shared_toolkit.ui.message_dialog import AppMessageDialog, MessageKind
+from tests.helpers.drain_until_stable import drain_until_stable
 
 
 def test_app_message_dialog_has_csd_chrome(qapp):
@@ -19,7 +20,13 @@ def test_app_message_dialog_has_csd_chrome(qapp):
         title="Restart required",
         text="backend change",
     )
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: getattr(dialog, "_csd_paint_state", None),
+        timeout_ms=800,
+        poll_ms=10,
+        stable_frames=2,
+    )
 
     assert getattr(dialog, "_csd_paint_state", None) is not None
     assert getattr(dialog, "_csd_title_bar", None) is not None
@@ -43,7 +50,15 @@ def test_app_message_dialog_paints_light_window_body(qapp):
         text="The render backend will change after restart.",
     )
     dialog.show()
-    qapp.processEvents()
+    # Wait until grab is stable (deferred polish / CSD apply may take second frame).
+    def _body_color():
+        img = dialog.grab().toImage()
+        if img.width() == 0 or img.height() == 0:
+            return None
+        c = img.pixelColor(img.width() // 2, (img.height() * 2) // 3)
+        return (c.red(), c.green(), c.blue())
+
+    drain_until_stable(qapp, _body_color, timeout_ms=1000, poll_ms=10, stable_frames=2)
 
     img = dialog.grab().toImage()
     w, h = img.width(), img.height()
@@ -64,7 +79,13 @@ def test_app_message_dialog_is_edge_resizable(qapp):
         title="Info",
         text="Edge resize handles on alerts.",
     )
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: dialog.findChild(_ResizeFilter),
+        timeout_ms=600,
+        poll_ms=10,
+        stable_frames=1,
+    )
     assert dialog.findChild(_ResizeFilter) is not None
     dialog.deleteLater()
 
@@ -93,7 +114,13 @@ def test_app_message_dialog_updates_paint_state_on_theme_change(qapp):
     assert dialog._csd_paint_state["color"] == expected
 
     tm.set_theme("dark")
-    qapp.processEvents()
+    drain_until_stable(
+        qapp,
+        lambda: dialog._csd_paint_state.get("color"),
+        timeout_ms=800,
+        poll_ms=10,
+        stable_frames=2,
+    )
 
     assert dialog._csd_paint_state["color"] == QColor(tm.get_color("Window"))
     dialog.close()

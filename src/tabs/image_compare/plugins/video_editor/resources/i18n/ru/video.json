@@ -67,7 +67,12 @@
     "ffmpeg_output_args_hint": "Введите аргументы вывода FFmpeg.\nВходные данные - поток rawvideo.",
     "crf_value_hint": "Значение CRF (0-51, ниже - лучше)",
     "cq_value_hint": "Значение CQ (0-51, ниже - лучше)",
-    "bitrate_hint": "Битрейт (например, 5000k, 5M)"
+    "bitrate_hint": "Битрейт (например, 5000k, 5M)",
+    "export_finished": "Экспорт завершён {ts}",
+    "export_failed": "Ошибка экспорта {ts}",
+    "export_started": "Экспорт начат {ts}",
+    "video_exported": "Видео экспортировано",
+    "saved_to": "Сохранено в: {path}"
   },
   "tooltip": {
     "use_favorite": "Использовать избранное"

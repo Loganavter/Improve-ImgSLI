@@ -19,6 +19,7 @@ from shared_toolkit.ui.managers.font_manager import FontManager
 from plugins.settings.application_service import SettingsApplicationService
 from plugins.settings.dialog import SettingsDialog
 from plugins.settings.models import SettingsDialogData
+from tests.helpers.drain_until_stable import drain_until_stable
 from ui.main_window.csd_menu_strip import (
     ContextMenuAction,
     CsdMenuSpec,
@@ -82,11 +83,11 @@ def test_ui_scale_live_apply_roundtrip(qtbot):
     # before any chrome is built (otherwise the first settings apply swaps
     # the font mid-test and skews size comparisons).
     FontManager.get_instance().apply_from_state(store)
-    app.processEvents()
+    drain_until_stable(app, lambda: app.activeWindow() is not None or True, timeout_ms=200, poll_ms=10, stable_frames=1)
 
     strip, bar, host = _build_chrome()
     qtbot.addWidget(host)
-    app.processEvents()
+    drain_until_stable(app, lambda: (strip.height(), bar.height()), timeout_ms=800, poll_ms=10, stable_frames=2)
 
     from sli_ui_toolkit.managers import UiScale
 
@@ -103,7 +104,7 @@ def test_ui_scale_live_apply_roundtrip(qtbot):
     # Slider value = factor * 100 (50..250 → 0.50..2.50, free step 0.01).
     dialog.slider_ui_scale.setValue(150)
     svc.apply(dialog.get_settings())
-    app.processEvents()
+    drain_until_stable(app, lambda: (strip.height(), strip._buttons[0].size().toTuple(), bar.height()), timeout_ms=800, poll_ms=10, stable_frames=2)
 
     assert abs(store.settings.ui_scale_factor - 1.5) < 1e-9
     assert abs(UiScale.get_instance().factor() - 1.5) < 1e-9
@@ -118,7 +119,7 @@ def test_ui_scale_live_apply_roundtrip(qtbot):
 
     dialog.slider_ui_scale.setValue(100)
     svc.apply(dialog.get_settings())
-    app.processEvents()
+    drain_until_stable(app, lambda: (strip.height(), strip._buttons[0].size().toTuple(), bar.height()), timeout_ms=800, poll_ms=10, stable_frames=2)
 
     assert abs(UiScale.get_instance().factor() - 1.0) < 1e-9
     after = (strip.height(), strip._buttons[0].size().toTuple(), bar.height())

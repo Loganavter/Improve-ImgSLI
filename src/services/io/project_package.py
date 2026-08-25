@@ -413,8 +413,7 @@ def read_project_json_from_zip(path: str | Path) -> dict[str, Any]:
 
 def _is_within_directory(base: Path, target: Path) -> bool:
     try:
-        target.resolve().is_relative_to(base.resolve())
-        return True
+        return target.resolve().is_relative_to(base.resolve())
     except AttributeError:
         # Python <3.9 fallback
         try:

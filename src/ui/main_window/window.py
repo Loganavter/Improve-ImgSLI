@@ -342,7 +342,7 @@ class MainWindow(QWidget):
             self.repaint()
             from PySide6.QtWidgets import QApplication
 
-            for top in QApplication.topLevelWidgets():
+            for top in QApplication.topLevelWidgets():  # ALLOWED: system-wide CSD repaint — generic top-level bar repaint, not tab-specific
                 dialog_bar = getattr(top, "_csd_title_bar", None)
                 if dialog_bar is not None and dialog_bar is not getattr(
                     self, "_custom_title_bar", None

@@ -59,7 +59,7 @@
     },
     {
       "path": "src/services/io/project_package.py",
-      "lines": 621,
+      "lines": 620,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single ZIP package lifecycle — media/cache extraction + purge + atomic write\"",
@@ -125,7 +125,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 654,
+      "lines": 643,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -187,7 +187,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/interaction.py",
-      "lines": 581,
+      "lines": 570,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single canvas interaction router — gesture/drag/zoom routing\"",
@@ -253,7 +253,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/shell.py",
-      "lines": 589,
+      "lines": 591,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video editor dialog shell — one QDialog chrome\"",
@@ -264,7 +264,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py",
-      "lines": 708,
+      "lines": 743,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard\"",

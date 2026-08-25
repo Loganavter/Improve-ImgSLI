@@ -133,5 +133,5 @@ def dump_all_windows(registry: ActionRegistry) -> dict[str, Any]:
     """
     action_map = _widget_action_map(registry)
     app = QApplication.instance()
-    windows = list(app.topLevelWidgets()) if isinstance(app, QApplication) else []
+    windows = list(app.topLevelWidgets()) if isinstance(app, QApplication) else []  # ALLOWED: devtools dump — enumerates all top-level windows generically, not tab-specific
     return {"windows": [_node(w, action_map) for w in windows]}

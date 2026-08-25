@@ -25,7 +25,7 @@ def refresh_open_dialog_find_actions() -> int:
     if not isinstance(app, QApplication):
         return 0
     refreshed = 0
-    for widget in app.topLevelWidgets():
+    for widget in app.topLevelWidgets():  # ALLOWED: system-wide action refresh — walks top-levels generically for _contribute_find_actions, not tab-specific
         contribute = getattr(widget, "_contribute_find_actions", None)
         if not callable(contribute):
             continue

@@ -39,6 +39,31 @@ from tabs.registry import TabRegistry
 from tests.contracts._framework import SRC, iter_py, rel
 
 UI_DIR = SRC / "ui"
+# Widened: host isolation is not just ui — services/plugins/shared are also
+# host-owned and must not leak tab concepts. Scan them too.
+HOST_DIRS = [SRC / "ui", SRC / "services", SRC / "plugins", SRC / "shared", SRC / "core"]
+
+# Files where magnifier is a legitimate host-level gateway (settings owns the
+# magnifier calibration/border/divider knobs) or multi_compare action types are
+# central vocabulary (dispatcher owns Redux types). Without this, the widened
+# scanner would flag ~36 legitimate uses.
+_MAGNIFIER_HOST_ALLOW_FILES = frozenset(
+    {
+        "src/plugins/settings/presenter.py",
+        "src/plugins/settings/dialog.py",
+        "src/plugins/settings/models.py",
+        "src/plugins/settings/dialog_context.py",
+        "src/plugins/settings/presenter_parts/view_state.py",
+        "src/plugins/settings/translations.py",
+        "src/core/store_workspace.py",
+    }
+)
+_MULTI_COMPARE_HOST_ALLOW_FILES = frozenset(
+    {
+        "src/core/state_management/dispatcher.py",
+        "src/core/state_management/reducers.py",
+    }
+)
 
 
 def _discover_session_types() -> tuple[str, ...]:
@@ -127,6 +152,27 @@ _ALLOWLISTED_IDENTIFIERS: frozenset[tuple[str, str]] = frozenset(
         ("src/ui/main_window/use_cases/platform_actions.py", "_open_session_picker"),
         ("src/ui/presenters/main_window/workspace.py", "ensure_session_picker_visible"),
         ("src/ui/main_window/startup.py", "_wire_session_picker_recent"),
+        # Widened scanner: plugins/settings is the legitimate magnifier gateway
+        # (host owns the calibration knobs; the feature itself lives on the tab).
+        ("src/plugins/settings/presenter.py", "show_magnifier_divider_color_picker"),
+        ("src/plugins/settings/presenter.py", "show_magnifier_border_color_picker"),
+        ("src/plugins/settings/presenter.py", "apply_smart_magnifier_colors"),
+        ("src/plugins/settings/dialog.py", "optimize_magnifier_movement"),
+        ("src/plugins/settings/dialog.py", "magnifier_intersection_highlight_enabled"),
+        ("src/plugins/settings/dialog.py", "magnifier_auto_color_new_instances"),
+        ("src/plugins/settings/models.py", "optimize_magnifier_movement"),
+        ("src/plugins/settings/models.py", "magnifier_interpolation_method"),
+        ("src/plugins/settings/models.py", "magnifier_intersection_highlight_enabled"),
+        ("src/plugins/settings/models.py", "magnifier_auto_color_new_instances"),
+        ("src/plugins/settings/dialog_context.py", "optimize_magnifier_movement"),
+        ("src/plugins/settings/dialog_context.py", "magnifier_intersection_highlight_enabled"),
+        ("src/plugins/settings/dialog_context.py", "magnifier_auto_color_new_instances"),
+        # NavigationManager sections module legitimately mentions session_picker
+        ("src/core/navigation_sections.py", "SessionPickerSection"),
+        ("src/core/navigation_sections.py", "session_picker"),
+        # Core workspace owns magnifier_state reset on new session (generic copy)
+        ("src/core/store_workspace.py", "magnifier_state"),
+        ("src/core/store_workspace.py", "magnifier"),
     }
 )
 
@@ -193,10 +239,18 @@ def _iter_defined_identifiers(tree: ast.AST):
             yield node.lineno, "references attribute", node.attr
 
 
+def _iter_host_py_files():
+    for host_dir in HOST_DIRS:
+        if not host_dir.is_dir():
+            continue
+        for p in iter_py(host_dir):
+            yield p
+
+
 def test_ui_no_tab_specific_identifiers():
-    """src/ui/ must not define or reference identifiers built on a tab concept."""
+    """Host (ui/services/plugins/shared/core) must not reference tab concepts."""
     offenders: list[str] = []
-    for path in iter_py(UI_DIR):
+    for path in _iter_host_py_files():
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
@@ -206,24 +260,40 @@ def test_ui_no_tab_specific_identifiers():
             if (rel_path, name) in _ALLOWLISTED_IDENTIFIERS:
                 continue
             concepts = _matched_concepts(name)
-            if concepts:
-                offenders.append(
-                    f"{rel_path}:{lineno} {kind} '{name}' (concept: {', '.join(concepts)})"
-                )
+            if not concepts:
+                continue
+            # Host-allowed gateways for magnifier / multi_compare.
+            if rel_path in _MAGNIFIER_HOST_ALLOW_FILES and "magnifier" in concepts and len(concepts) == 1:
+                continue
+            if rel_path in _MULTI_COMPARE_HOST_ALLOW_FILES and "multi_compare" in concepts:
+                continue
+            offenders.append(
+                f"{rel_path}:{lineno} {kind} '{name}' (concept: {', '.join(concepts)})"
+            )
     assert not offenders, (
-        "src/ui/ references tab-specific identifiers:\n  " + "\n  ".join(offenders)
+        "Host references tab-specific identifiers:\n  " + "\n  ".join(offenders)
     )
 
 
 def test_ui_no_tab_session_type_string_literals():
-    """src/ui/ must not contain tab session_type/magnifier string literals in logic."""
+    """Host must not contain tab session_type/magnifier string literals in logic."""
     offenders: list[str] = []
-    for path in iter_py(UI_DIR):
+    for path in _iter_host_py_files():
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
         rel_path = rel(path)
+        # Magnifier gateway and dispatcher action-type vocab are allowlisted.
+        if rel_path in _MAGNIFIER_HOST_ALLOW_FILES or rel_path in _MULTI_COMPARE_HOST_ALLOW_FILES:
+            continue
+        if rel_path in {
+            "src/core/store.py",
+            "src/services/io/recent_projects.py",
+            "src/services/io/project_preview.py",
+            "src/services/io/project_io.py",
+        }:
+            continue
         skip_ids = _docstring_const_ids(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
@@ -241,7 +311,7 @@ def test_ui_no_tab_session_type_string_literals():
             if _CONCEPT_PATTERNS["magnifier"].search(_normalize(value)):
                 offenders.append(f"{rel_path}:{node.lineno} magnifier literal '{value}'")
     assert not offenders, (
-        "src/ui/ contains tab session_type/magnifier string literals:\n  "
+        "Host contains tab session_type/magnifier string literals:\n  "
         + "\n  ".join(offenders)
     )
 
@@ -253,10 +323,9 @@ _TAB_IMPORT_RE = re.compile(
 
 
 def test_ui_does_not_import_tab_internals():
-    """src/ui/ may only import ``tabs.contract`` / ``tabs.registry`` — the
-    shared tab infrastructure — never a concrete tab's own package."""
+    """Host may only import ``tabs.contract`` / ``tabs.registry`` — never a concrete tab."""
     offenders: list[str] = []
-    for path in iter_py(UI_DIR):
+    for path in _iter_host_py_files():
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
@@ -271,5 +340,5 @@ def test_ui_does_not_import_tab_internals():
                     if _TAB_IMPORT_RE.match(alias.name):
                         offenders.append(f"{rel_path}:{node.lineno} imports '{alias.name}'")
     assert not offenders, (
-        "src/ui/ imports a concrete tab's internals:\n  " + "\n  ".join(offenders)
+        "Host imports a concrete tab's internals:\n  " + "\n  ".join(offenders)
     )

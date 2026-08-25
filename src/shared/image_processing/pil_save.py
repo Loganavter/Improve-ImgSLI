@@ -20,6 +20,8 @@ from PIL import Image
 
 logger = logging.getLogger("ImproveImgSLI")
 
+SAVE_CANCELED_MESSAGE = "Save canceled by user"
+
 _INVALID_FILENAME_CHARS = re.compile(r'[\\/*?:"<>|]')
 _FORMATS_WITH_ALPHA = frozenset({"PNG", "TIFF", "WEBP", "JXL"})
 _MODE_BYTES_PER_PIXEL = {
@@ -155,7 +157,7 @@ class _CancelableStream:
 
     def write(self, b):
         if self._e is not None and self._e.is_set():
-            raise RuntimeError("Save canceled by user")
+            raise RuntimeError(SAVE_CANCELED_MESSAGE)
         written = self._b.write(b)
         if self._progress_callback is not None and self._expected_bytes > 0:
             try:

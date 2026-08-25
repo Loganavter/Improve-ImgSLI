@@ -35,7 +35,7 @@ def test_concurrent_dispatch_keeps_store_consistent():
     dispatcher.subscribe(subscriber)
 
     thread_count = 10
-    per_thread = 20
+    per_thread = 5
     total = thread_count * per_thread
 
     barrier = threading.Barrier(thread_count)

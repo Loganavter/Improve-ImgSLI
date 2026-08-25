@@ -143,15 +143,9 @@ def dismiss_loading_toast(controller, slot_id: int) -> None:
 
 def read_image(controller, path: Path, *, slot_id: int | None = None, start_pyramid: bool = True):
     try:
-        from shared.image_processing import pixel_cache_registry
-        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+        from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-        cached = pixel_cache_registry.lookup(str(path))
-        if cached is not None:
-            cache_path, width, height = cached
-            store = TiledPixelStore.from_embedded_cache(cache_path, width, height)
-        else:
-            store = TiledPixelStore.from_path(path)
+        store = load_pixel_store(path, auto_crop=False)
         if start_pyramid:
             start_pyramid_build(controller, store, slot_id=slot_id)
         return store
@@ -311,14 +305,9 @@ def load_full_resolution_async(controller, path: Path, slot_id: int) -> None:
     from sli_ui_toolkit.workers import GenericWorker
 
     def load_full_task(path_str: str):
-        from shared.image_processing import pixel_cache_registry
-        from shared.image_processing.tiled_pixel_store import TiledPixelStore
+        from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-        cached = pixel_cache_registry.lookup(path_str)
-        if cached is not None:
-            cache_path, width, height = cached
-            return TiledPixelStore.from_embedded_cache(cache_path, width, height)
-        return TiledPixelStore.from_path(path_str)
+        return load_pixel_store(path_str, auto_crop=False)
 
     worker = GenericWorker(load_full_task, str(path))
     worker.signals.result.connect(

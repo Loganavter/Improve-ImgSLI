@@ -401,7 +401,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
                 app = QApplication.instance()
                 if app is None:
                     return
-                for top in app.topLevelWidgets():
+                for top in app.topLevelWidgets():  # ALLOWED: debug probe — enumerates top-level QRhiWidgets generically, not tab-specific
                     if not isinstance(top, QRhiWidget):
                         continue
                     mc_first_frame_debug(

@@ -1,20 +1,23 @@
 from __future__ import annotations
-from typing import Any
 
 import logging
 import os
 import threading
 
+from shared.image_processing.pil_save import SAVE_CANCELED_MESSAGE
+
 from tabs.host_helpers import MessageKind
 from sli_ui_toolkit.workers import GenericWorker
 
 from tabs.image_compare.services import document_store_ops
-from tabs.save_toast import SaveToastMixin
+from tabs._shared.save_flow import SaveFlowCoordinator as SharedSaveFlowCoordinator
 
 logger = logging.getLogger("ImproveImgSLI")
 
 
-class ExportSaveFlowCoordinator(SaveToastMixin):
+class ExportSaveFlowCoordinator:
+    """IC save-flow — thin owner delegating lifecycle to shared coordinator."""
+
     def __init__(
         self,
         store,
@@ -30,13 +33,88 @@ class ExportSaveFlowCoordinator(SaveToastMixin):
         self.tr = tr_func
         self.state = state_coordinator
         self.export_service = export_service
-        self._save_cancellation = {}
-        self._save_workers = {}
+        self._flow = SharedSaveFlowCoordinator(
+            get_thread_pool=lambda: getattr(self.main_window_app, "thread_pool", None),
+            get_toast_manager=lambda: getattr(self.main_window_app, "toast_manager", None),
+            tr_func=tr_func,
+            display_path_style="paren",
+            sync_fallback=False,
+            on_success_notify=self._on_success_notify,
+        )
 
-    def _next_save_task_id(self) -> int:
-        current = int(getattr(self.main_window_app, "save_task_counter", 0) or 0) + 1
-        setattr(self.main_window_app, "save_task_counter", current)
-        return current
+    # -- shared state exposed for tests / external callers that poke dicts --------
+    @property
+    def _save_cancellation(self):
+        return self._flow._save_cancellation
+
+    @_save_cancellation.setter
+    def _save_cancellation(self, value):
+        self._flow._save_cancellation = value
+
+    @property
+    def _save_workers(self):
+        return self._flow._save_workers
+
+    @_save_workers.setter
+    def _save_workers(self, value):
+        self._flow._save_workers = value
+
+    # keep save_toast helpers accessible (tests may reach them)
+    def _get_toast_manager(self):
+        return self._flow._get_toast_manager()
+
+    def _update_toast_safe(self, *args, **kwargs):
+        return self._flow._update_toast_safe(*args, **kwargs)
+
+    def _build_toast_path_line(self, *args, **kwargs):
+        return self._flow._build_toast_path_line(*args, **kwargs)
+
+    def _build_display_path(self, *args, **kwargs):
+        return self._flow._build_display_path(*args, **kwargs)
+
+    def _next_save_task_id(self):
+        return self._flow._next_save_task_id()
+
+    def _create_save_toast(self, *args, **kwargs):
+        return self._flow._create_save_toast(*args, **kwargs)
+
+    def _on_save_worker_progress(self, *args, **kwargs):
+        return self._flow._on_save_worker_progress(*args, **kwargs)
+
+    def _on_save_worker_done(self, *args, **kwargs):
+        return self._flow._on_save_worker_done(*args, **kwargs)
+
+    def _on_save_worker_error(self, *args, **kwargs):
+        return self._flow._on_save_worker_error(*args, **kwargs)
+
+    def _finalize_save_worker(self, *args, **kwargs):
+        return self._flow._finalize_save_worker(*args, **kwargs)
+
+    def cancel_all_exports(self):
+        return self._flow.cancel_all_exports()
+
+    # -- IC-specific ------------------------------------------------------------
+    def _on_success_notify(self, out_path: str) -> None:
+        try:
+            self.main_window_app.actions.set_last_saved_path(out_path)
+            self.main_window_app.actions.update_tray_actions_visibility()
+            notifications_enabled = getattr(
+                self.store.settings,
+                "system_notifications_enabled",
+                True,
+            )
+            if notifications_enabled:
+                image_for_icon = (
+                    out_path if isinstance(out_path, str) and os.path.isfile(out_path) else None
+                )
+                self.main_window_app.actions.notify_system(
+                    self.tr("msg.saved"),
+                    f"{self.tr('msg.saved')}: {out_path}",
+                    image_path=image_for_icon,
+                    timeout_ms=4000,
+                )
+        except Exception as exc:
+            logger.error("Save notification failed: %s", exc, exc_info=True)
 
     def validate_export_options(self, export_opts: dict) -> bool:
         out_dir = export_opts.get("output_dir")
@@ -62,48 +140,23 @@ class ExportSaveFlowCoordinator(SaveToastMixin):
         save_ctx,
         export_opts: dict,
     ) -> None:
-        final_path_for_display = self._build_display_path(export_opts)
-        save_task_id, cancel_event = self._create_save_toast(final_path_for_display)
+        def worker_factory(cancel_event: threading.Event):
+            return GenericWorker(
+                self._export_worker_task,
+                store_copy=document_store_ops.copy_for_worker(self.store),
+                image1_for_save=save_ctx.image1_for_save,
+                image2_for_save=save_ctx.image2_for_save,
+                original1_full=save_ctx.original1_full,
+                original2_full=save_ctx.original2_full,
+                render_plan=save_ctx.render_plan,
+                render_store=save_ctx.render_store,
+                export_options=export_opts,
+                cancel_event=cancel_event,
+                file_name1_text=self.state.get_current_display_name(1),
+                file_name2_text=self.state.get_current_display_name(2),
+            )
 
-        worker = GenericWorker(
-            self._export_worker_task,
-            store_copy=document_store_ops.copy_for_worker(self.store),
-            image1_for_save=save_ctx.image1_for_save,
-            image2_for_save=save_ctx.image2_for_save,
-            original1_full=save_ctx.original1_full,
-            original2_full=save_ctx.original2_full,
-            render_plan=save_ctx.render_plan,
-            render_store=save_ctx.render_store,
-            export_options=export_opts,
-            cancel_event=cancel_event,
-            file_name1_text=self.state.get_current_display_name(1),
-            file_name2_text=self.state.get_current_display_name(2),
-        )
-        worker.kwargs["progress_callback"] = worker.signals.progress
-        self._save_workers[save_task_id] = worker
-        worker.signals.progress.connect(
-            lambda value: self._on_save_worker_progress(
-                save_task_id,
-                final_path_for_display,
-                value,
-            )
-        )
-        worker.signals.result.connect(
-            lambda out_path: self._on_save_worker_done(
-                save_task_id,
-                cancel_event,
-                out_path,
-            )
-        )
-        worker.signals.error.connect(
-            lambda err_tuple: self._on_save_worker_error(
-                save_task_id,
-                cancel_event,
-                final_path_for_display,
-                err_tuple,
-            )
-        )
-        self.main_window_app.thread_pool.start(worker)
+        self._flow.start_with_worker(export_opts, worker_factory)
 
     def _export_worker_task(self, **kwargs):
         progress_callback = kwargs.get("progress_callback")
@@ -131,160 +184,9 @@ class ExportSaveFlowCoordinator(SaveToastMixin):
                 progress_callback=lambda v: emit_progress(v),
             )
         except RuntimeError as e:
-            if str(e) in ("Export canceled by user", "Save canceled by user"):
+            if str(e) in ("Export canceled by user", SAVE_CANCELED_MESSAGE):
                 return None
             raise
         except Exception as e:
             logger.error(f"Export worker task failed: {e}", exc_info=True)
             raise e
-
-    def cancel_all_exports(self):
-        logger.debug(
-            "Canceling all active exports (count=%s)",
-            len(self._save_cancellation),
-        )
-        for save_task_id, cancel_event in list(self._save_cancellation.items()):
-            if cancel_event:
-                cancel_event.set()
-                logger.info("Export %s canceled", save_task_id)
-
-        for save_task_id in list(self._save_cancellation.keys()):
-            self._update_toast_safe(
-                save_task_id,
-                self.tr("msg.saving_canceled"),
-                success=False,
-                duration=2000,
-            )
-
-        self._save_cancellation.clear()
-        self._save_workers.clear()
-
-    def _build_display_path(self, export_opts: dict) -> str:
-        fmt_disp = (export_opts.get("format", "PNG") or "PNG").upper()
-        ext_disp = "." + fmt_disp.lower().replace("jpeg", "jpg")
-        return os.path.join(
-            export_opts["output_dir"],
-            f"{export_opts['file_name']}{ext_disp}",
-        )
-
-    def _create_save_toast(
-        self,
-        final_path_for_display: str,
-    ) -> tuple[int, threading.Event]:
-        toast_path_line = self._build_toast_path_line(final_path_for_display)
-        toast_message = f"{self.tr('msg.saving')}\n{toast_path_line}..."
-        cancel_event = threading.Event()
-        cancel_ctx: dict[str, Any] = {"event": cancel_event}
-        toast_manager = self._get_toast_manager()
-
-        def on_cancel():
-            ev = cancel_ctx.get("event")
-            toast_id = cancel_ctx.get("id")
-            if ev:
-                ev.set()
-            self._update_toast_safe(
-                toast_id,
-                self.tr("msg.saving_canceled"),
-                success=False,
-                duration=3000,
-            )
-
-        if toast_manager is None:
-            toast_id = self._next_save_task_id()
-            logger.info("Toast manager unavailable; continuing export without toast UI")
-        else:
-            toast_id = toast_manager.show_toast(
-                toast_message,
-                duration=0,
-                actions=[(self.tr("common.cancel"), on_cancel)],
-                progress=0,
-            )
-        cancel_ctx["id"] = toast_id
-        self._save_cancellation[toast_id] = cancel_event
-        return toast_id, cancel_event
-
-    def _on_save_worker_done(
-        self,
-        save_task_id: int,
-        cancel_event: threading.Event,
-        out_path: str,
-    ) -> None:
-        if cancel_event.is_set():
-            return
-
-        if not out_path:
-            self._finalize_save_worker(save_task_id)
-            return
-
-        success_message = f"{self.tr('msg.saved')} {os.path.basename(out_path)}"
-        self._update_toast_safe(
-            save_task_id,
-            success_message,
-            success=True,
-            duration=4000,
-            progress=100,
-            actions=[],
-        )
-        try:
-            self.main_window_app.actions.set_last_saved_path(out_path)
-            self.main_window_app.actions.update_tray_actions_visibility()
-            notifications_enabled = getattr(
-                self.store.settings,
-                "system_notifications_enabled",
-                True,
-            )
-            if notifications_enabled:
-                image_for_icon = (
-                    out_path
-                    if isinstance(out_path, str) and os.path.isfile(out_path)
-                    else None
-                )
-                self.main_window_app.actions.notify_system(
-                    self.tr("msg.saved"),
-                    f"{self.tr('msg.saved')}: {out_path}",
-                    image_path=image_for_icon,
-                    timeout_ms=4000,
-                )
-        except Exception as exc:
-            logger.error("Save notification failed: %s", exc, exc_info=True)
-        finally:
-            self._finalize_save_worker(save_task_id)
-
-    def _on_save_worker_progress(
-        self,
-        save_task_id: int,
-        final_path_for_display: str,
-        progress: int,
-    ) -> None:
-        if save_task_id not in self._save_cancellation:
-            return
-        toast_path_line = self._build_toast_path_line(final_path_for_display)
-        toast_message = f"{self.tr('msg.saving')}\n{toast_path_line}..."
-        self._update_toast_safe(
-            save_task_id,
-            toast_message,
-            success=False,
-            duration=0,
-            progress=progress,
-        )
-
-    def _on_save_worker_error(
-        self,
-        save_task_id: int,
-        cancel_event: threading.Event,
-        final_path_for_display: str,
-        _err_tuple,
-    ) -> None:
-        if not cancel_event.is_set():
-            error_message = f"{self.tr('msg.error_saving')} {final_path_for_display}"
-            self._update_toast_safe(
-                save_task_id,
-                error_message,
-                success=False,
-                duration=5000,
-            )
-        self._finalize_save_worker(save_task_id)
-
-    def _finalize_save_worker(self, save_task_id: int) -> None:
-        self._save_cancellation.pop(save_task_id, None)
-        self._save_workers.pop(save_task_id, None)

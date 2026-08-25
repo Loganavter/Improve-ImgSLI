@@ -85,20 +85,18 @@ class ExportPresenter(QObject):
         return text
 
     def _untested_export_suppressed(self) -> bool:
-        settings = getattr(self.store, "settings", None)
-        return bool(
-            getattr(settings, "export_suppress_untested_resolution_warning", False)
-        )
+        from shared.export_warning_state import is_untested_export_suppressed
+
+        return is_untested_export_suppressed(getattr(self.store, "settings", None))
 
     def _suppress_untested_export_warning(self) -> None:
-        settings = getattr(self.store, "settings", None)
-        if settings is not None:
-            settings.export_suppress_untested_resolution_warning = True
-        manager = getattr(self.main_controller, "settings_manager", None)
-        if manager is not None:
-            manager._save_setting(
-                "export_suppress_untested_resolution_warning", True
-            )
+        from shared.export_warning_state import set_untested_export_suppressed
+
+        set_untested_export_suppressed(
+            getattr(self.store, "settings", None),
+            getattr(self.main_controller, "settings_manager", None),
+            True,
+        )
 
     def shutdown(self) -> None:
         try:

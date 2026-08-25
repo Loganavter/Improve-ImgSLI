@@ -10,10 +10,12 @@ from PySide6.QtGui import QColor
 
 from shared_toolkit.ui.decorate_dialog import install_application_dialog_decorations
 from shared_toolkit.ui.text_input_dialog import AppTextInputDialog
+from tests.helpers.drain_until_stable import drain_until_stable
 
 
 def test_app_text_input_dialog_has_csd_chrome(qapp):
     from PySide6.QtCore import QEvent
+    from sli_ui_toolkit.ui.windows.frameless import _ResizeFilter
 
     install_application_dialog_decorations(qapp)
     dialog = AppTextInputDialog(
@@ -22,7 +24,13 @@ def test_app_text_input_dialog_has_csd_chrome(qapp):
         text="Tab 1",
     )
     try:
-        qapp.processEvents()
+        drain_until_stable(
+            qapp,
+            lambda: getattr(dialog, "_csd_paint_state", None),
+            timeout_ms=800,
+            poll_ms=10,
+            stable_frames=2,
+        )
 
         assert getattr(dialog, "_csd_paint_state", None) is not None
         assert getattr(dialog, "_csd_title_bar", None) is not None
@@ -41,7 +49,13 @@ def test_app_text_input_dialog_is_edge_resizable(qapp):
 
     dialog = AppTextInputDialog(title="Rename", prompt="Name", text="x")
     try:
-        qapp.processEvents()
+        drain_until_stable(
+            qapp,
+            lambda: dialog.findChild(_ResizeFilter),
+            timeout_ms=600,
+            poll_ms=10,
+            stable_frames=1,
+        )
         assert dialog.findChild(_ResizeFilter) is not None
     finally:
         dialog.hide()
@@ -69,7 +83,15 @@ def test_app_text_input_dialog_paints_light_window_body(qapp):
     )
     try:
         dialog.show()
-        qapp.processEvents()
+
+        def _body_color():
+            img = dialog.grab().toImage()
+            if img.width() == 0 or img.height() == 0:
+                return None
+            c = img.pixelColor(img.width() // 2, (img.height() * 2) // 3)
+            return (c.red(), c.green(), c.blue())
+
+        drain_until_stable(qapp, _body_color, timeout_ms=1000, poll_ms=10, stable_frames=2)
 
         img = dialog.grab().toImage()
         w, h = img.width(), img.height()

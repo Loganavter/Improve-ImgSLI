@@ -74,7 +74,7 @@ def _resolve_by_family(family: str) -> object | None:
 
     from PySide6.QtWidgets import QWidget
 
-    for w in app.topLevelWidgets():
+    for w in app.topLevelWidgets():  # ALLOWED: system-wide widget-family resolver — walks top-level widgets generically, not tab-specific
         result = _search(w)
         if result is not None:
             return result

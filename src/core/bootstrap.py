@@ -195,8 +195,8 @@ class ApplicationContext:
             UiScale.get_instance().set_factor(
                 getattr(self.store.settings, "ui_scale_factor", 1.0) or 1.0
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("UiScale apply failed: %s", exc, exc_info=True)
         if self.notification_service is not None:
             self.notification_service.set_enabled(
                 getattr(self.store.settings, "system_notifications_enabled", True)
@@ -320,8 +320,8 @@ class ApplicationContext:
                     from shared_toolkit.ui.managers.font_manager import FontManager
 
                     FontManager.get_instance().apply_from_state(self.store)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("FontManager apply_from_state failed: %s", exc, exc_info=True)
 
         startup_mark("ctx.plugins.deferred")
         return started

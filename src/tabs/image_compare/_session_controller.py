@@ -124,14 +124,9 @@ class SessionController(QObject):
                 if preview:
                     return preview, path, image_number, index_in_list, True
 
-            from shared.image_processing import pixel_cache_registry
+            from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-            cached = pixel_cache_registry.lookup(path)
-            if cached is not None:
-                cache_path, width, height = cached
-                store = TiledPixelStore.from_embedded_cache(cache_path, width, height)
-            else:
-                store = TiledPixelStore.from_path(path, auto_crop=should_crop)
+            store = load_pixel_store(path, auto_crop=should_crop)
             return store, path, image_number, index_in_list, False
         except Exception as e:
             if self.event_bus:
@@ -277,14 +272,9 @@ class SessionController(QObject):
         should_crop = getattr(self.store.settings, "auto_crop_black_borders", True)
 
         def load_full_task(path_str, crop_flag, slot_number, item_index):
-            from shared.image_processing import pixel_cache_registry
+            from shared.image_processing.pixel_cache_loader import load_pixel_store
 
-            cached = pixel_cache_registry.lookup(path_str)
-            if cached is not None:
-                cache_path, width, height = cached
-                store = TiledPixelStore.from_embedded_cache(cache_path, width, height)
-            else:
-                store = TiledPixelStore.from_path(path_str, auto_crop=crop_flag)
+            store = load_pixel_store(path_str, auto_crop=crop_flag)
             return (
                 store,
                 path_str,
