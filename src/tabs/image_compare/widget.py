@@ -4,6 +4,7 @@ The widget is constructed empty by the tab during ``create_page`` (early,
 before the host has built the primitive widgets it owns). The host calls
 ``assemble(ui)`` once those primitives exist; the builder then populates
 this widget with the full image-compare layout tree.
+Audit-Meta: pattern=thin-owner size=exempt reason="root widget thin owner — delegates to layout/magnifier/chrome_sync"
 """
 
 from __future__ import annotations

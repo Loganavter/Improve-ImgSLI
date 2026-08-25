@@ -1,4 +1,6 @@
-"""Find Action dialog — list, filter, keyboard, run / reveal / learn more."""
+"""Find Action dialog — list, filter, keyboard, run / reveal / learn more.
+Audit-Meta: pattern=qdialog-wiring size=exempt reason="one QDialog layout/signal wiring — list/filter/keyboard/pulse with scaled_px"
+"""
 
 from __future__ import annotations
 
