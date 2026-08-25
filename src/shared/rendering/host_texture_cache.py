@@ -56,7 +56,9 @@ class HostTextureUploadCache:
 
     def evict_over_budget(self, protected: set[str], budget_bytes: int | None = None) -> None:
         budget = self._budget_bytes if budget_bytes is None else budget_bytes
-        total_bytes = sum(image.sizeInBytes() for image in self._cache.values())
+        total_bytes = sum(image.sizeInBytes() for image in self._cache.values()) + sum(
+            image.sizeInBytes() for image in self._uid_cache.values()
+        )
         if total_bytes <= budget:
             return
         for texture_key in list(self._cache.keys()):
@@ -67,6 +69,14 @@ class HostTextureUploadCache:
             evicted = self._cache.pop(texture_key, None)
             if evicted is not None:
                 total_bytes -= evicted.sizeInBytes()
+        # If still over budget after draining _cache, evict oldest UID entries.
+        if total_bytes > budget:
+            for uid in list(self._uid_cache.keys()):
+                if total_bytes <= budget:
+                    break
+                evicted = self._uid_cache.pop(uid, None)
+                if evicted is not None:
+                    total_bytes -= evicted.sizeInBytes()
 
     def qimage_from_source(self, pil_image, texture_key: str) -> QImage:
         uid = image_uid(pil_image)

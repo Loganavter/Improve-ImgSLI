@@ -58,6 +58,17 @@
       }
     },
     {
+      "path": "src/services/io/project_package.py",
+      "lines": 621,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single ZIP package lifecycle — media/cache extraction + purge + atomic write\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single ZIP package lifecycle — media/cache extraction + purge + atomic write"
+      }
+    },
+    {
       "path": "src/shared/analysis/differ.py",
       "lines": 584,
       "limit": 500,
@@ -70,7 +81,7 @@
     },
     {
       "path": "src/shared/image_processing/tiled_pixel_store.py",
-      "lines": 923,
+      "lines": 937,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
@@ -114,7 +125,7 @@
     },
     {
       "path": "src/tabs/image_compare/_session_controller.py",
-      "lines": 671,
+      "lines": 654,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"reference thin owner per CODE_PATTERNS — delegates to use_cases/loading,list_ops,navigation\"",
@@ -253,7 +264,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/presenter_parts/preview.py",
-      "lines": 739,
+      "lines": 708,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"PreviewCoordinator single pipeline schedule->GPU->worker->apply with render_task_id race-guard\"",
@@ -271,6 +282,17 @@
       "parsed": {
         "pattern": "state-machine",
         "reason": "single export config assembly — encoding/bounds/images"
+      }
+    },
+    {
+      "path": "src/tabs/image_compare/plugins/video_editor/services/video_export/service.py",
+      "lines": 508,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine reason=\"single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "reason": "single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up"
       }
     },
     {
@@ -319,7 +341,7 @@
     },
     {
       "path": "src/tabs/multi_compare/ui/canvas_widget.py",
-      "lines": 666,
+      "lines": 659,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner reason=\"Canvas widget thin owner — delegates to interaction/render_context/features\"",

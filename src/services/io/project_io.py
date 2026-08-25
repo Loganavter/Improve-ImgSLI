@@ -292,6 +292,23 @@ def package_project_data(
     return missing
 
 
+def _is_unc_path(path_str: str) -> bool:
+    r"""True for Windows UNC (\\host\share or //host/share) that would trigger SMB."""
+    return path_str.startswith("\\\\") or path_str.startswith("//")
+
+
+def _collect_legacy_path_warnings(data: dict[str, Any]) -> list[str]:
+    """Warn about absolute/UNC paths in legacy v1 projects (W3.3)."""
+    warns: list[str] = []
+    for p in iter_session_media_paths(data):
+        s = str(p)
+        if _is_unc_path(s):
+            warns.append(f"UNC path {s!r} in legacy project — may trigger SMB credential exchange")
+        elif Path(s).is_absolute():
+            warns.append(f"Absolute path {s!r} in legacy project")
+    return warns
+
+
 def _register_pixel_cache(
     data: dict[str, Any],
     project_path: Path,
@@ -301,7 +318,11 @@ def _register_pixel_cache(
     progress: ProgressCallback | None = None,
 ) -> None:
     """Extract embedded ``cache/`` buffers (if any) and register them so the
-    ``TiledPixelStore.from_path`` call sites can skip re-decoding."""
+    ``TiledPixelStore.from_path`` call sites can skip re-decoding.
+
+    W3.1: clamp dims vs MAX_SUPPORTED_IMAGE_DIMENSION and verify
+    ``st_size >= w*h*4`` before memmap to avoid SIGBUS on crafted projects.
+    """
     pixel_cache = data.get("pixel_cache")
     if not pixel_cache:
         return
@@ -312,6 +333,8 @@ def _register_pixel_cache(
         logger.exception("Failed to extract embedded pixel cache from %s", project_path)
         return
 
+    from core.constants import AppConstants
+
     from shared.image_processing import pixel_cache_registry
 
     for asset_id, entry in pixel_cache.items():
@@ -321,10 +344,35 @@ def _register_pixel_cache(
             continue
         member = media_entry.get("member")
         abs_media_path = member_to_abs.get(member) if member else None
-        width, height = entry.get("width"), entry.get("height")
-        if not abs_media_path or not width or not height:
+        raw_w, raw_h = entry.get("width"), entry.get("height")
+        if not abs_media_path or raw_w is None or raw_h is None:
             continue
-        pixel_cache_registry.register(abs_media_path, extracted_path, int(width), int(height))
+        try:
+            width = int(raw_w)
+            height = int(raw_h)
+        except (TypeError, ValueError):
+            logger.warning("Skipping pixel_cache %s: non-int dims %r x %r", asset_id, raw_w, raw_h)
+            continue
+        max_dim = int(AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION)
+        if width <= 0 or height <= 0 or width > max_dim or height > max_dim:
+            logger.warning(
+                "Skipping pixel_cache %s: dims %dx%d out of bounds (max %d)",
+                asset_id, width, height, max_dim,
+            )
+            continue
+        try:
+            st_size = Path(extracted_path).stat().st_size
+        except OSError as exc:
+            logger.warning("Skipping pixel_cache %s: cannot stat %s: %s", asset_id, extracted_path, exc)
+            continue
+        expected = width * height * 4
+        if st_size < expected:
+            logger.warning(
+                "Skipping pixel_cache %s: file too small (%d < %d = %dx%dx4)",
+                asset_id, st_size, expected, width, height,
+            )
+            continue
+        pixel_cache_registry.register(abs_media_path, extracted_path, width, height)
 
 
 def prepare_project_file_for_load(
@@ -364,6 +412,10 @@ def prepare_project_file_for_load(
 
     data = json.loads(project_path.read_text(encoding="utf-8"))
     _validate_project_container(data)
+    legacy_warns = _collect_legacy_path_warnings(data)
+    for w in legacy_warns:
+        logger.warning(w)
+    warnings.extend(legacy_warns)
     return data, warnings
 
 

@@ -693,9 +693,23 @@ class TiledPixelStore:
         The store is a read-only tenant: the file is owned by the project
         extract cache (pixel_cache_registry), so :meth:`close` must not
         delete it.
+
+        W3.1: validate dims vs MAX_SUPPORTED_IMAGE_DIMENSION and
+        ``st_size >= w*h*4`` before memmap to avoid SIGBUS.
         """
         from core.constants import AppConstants
 
+        width, height = int(width), int(height)
+        max_dim = int(AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION)
+        if width <= 0 or height <= 0 or width > max_dim or height > max_dim:
+            raise ValueError(f"Embedded cache dims {width}x{height} out of bounds (max {max_dim})")
+        try:
+            st_size = Path(cache_path).stat().st_size
+        except OSError as exc:
+            raise OSError(f"Cannot stat embedded cache {cache_path}: {exc}") from exc
+        expected = width * height * 4
+        if st_size < expected:
+            raise ValueError(f"Embedded cache file too small ({st_size} < {expected} = {width}x{height}x4)")
         memmap = _reopen_readonly(cache_path, height, width)
         return cls(memmap, cache_path, tile_size=AppConstants.PIXEL_TILE_SIZE, owns_file=False)
 

@@ -30,9 +30,12 @@ class GpuExportProxy(QObject):
         self._widget = None
         self._resource_manager = resource_manager
         self._last_widget_size = None
+        self._shutting_down = False
         self.render_requested.connect(self._render_on_main_thread)
 
     def _ensure_widget(self):
+        if self._shutting_down:
+            raise RuntimeError("GpuExportProxy is shut down")
         if self._widget is not None:
             return self._widget
 
@@ -48,6 +51,13 @@ class GpuExportProxy(QObject):
 
     @Slot()
     def shutdown(self):
+        self._shutting_down = True
+        # Disconnect queued requests so a late delivery does not recreate the
+        # offscreen widget post-shutdown (W1.6).
+        try:
+            self.render_requested.disconnect(self._render_on_main_thread)
+        except Exception:
+            pass
         widget = self._widget
         self._widget = None
         self._last_widget_size = None
@@ -137,7 +147,6 @@ class GpuExportProxy(QObject):
 
         if widget_size_changed:
             self._render_widget_frame(widget)
-            QApplication.processEvents()
 
         paint_started = time.perf_counter()
         self._render_widget_frame(widget)
@@ -182,6 +191,17 @@ class GpuExportProxy(QObject):
         # async one ("callback", used by callers that must not block their
         # thread — e.g. video-editor thumbnail generation). Both still do
         # the actual GPU render synchronously here, on the main thread.
+        if self._shutting_down:
+            error = RuntimeError("GpuExportProxy is shut down")
+            if payload.get("result_box") is not None:
+                payload["result_box"]["error"] = error
+            callback = payload.get("callback")
+            event = payload.get("event")
+            if callback is not None:
+                callback(None, {}, error)
+            elif event is not None:
+                event.set()
+            return
         event = payload.get("event")
         result_box = payload.get("result_box")
         callback = payload.get("callback")

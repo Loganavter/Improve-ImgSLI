@@ -16,8 +16,10 @@ class GpuExportService:
 
         payload.setdefault("event", threading.Event())
         payload.setdefault("result_box", {})
+        if getattr(self._proxy, "_shutting_down", False):
+            raise RuntimeError("GpuExportProxy is shut down")
         self._proxy.render_requested.emit(payload)
-        if not payload["event"].wait(timeout=2.0):
+        if not payload["event"].wait(timeout=5.0):
             raise TimeoutError("GPU marshal timed out waiting for GUI thread")
         error = payload["result_box"].get("error")
         if error is not None:
@@ -108,11 +110,7 @@ class GpuExportService:
             logger.debug("GPU export widget warm-up skipped (not ready yet): %s", e)
 
     def shutdown(self) -> None:
-        app = QApplication.instance()
-        if app is None:
-            return
         try:
             self._proxy.shutdown()
-            app.processEvents()
         except Exception:
             logger.exception("GPU export shutdown failed")

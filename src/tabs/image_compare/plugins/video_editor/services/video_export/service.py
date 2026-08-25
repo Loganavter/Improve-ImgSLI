@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=state-machine reason="single video export service lifecycle — job building, ffmpeg, cancel, GPU warm-up"
 from __future__ import annotations
 
 import logging
@@ -41,6 +42,8 @@ VIDEO_EDITOR_AUTO_CROP = False
 
 class VideoExporterService:
     def __init__(self, recorder, store, main_controller=None, gpu_export_service=None):
+        import threading
+
         self.recorder = recorder
         self.main_store = store
         self.main_controller = main_controller
@@ -62,6 +65,7 @@ class VideoExporterService:
         self._cached_bounds_snapshots_hash = None
         self._active_processes = []
         self._cancel_requested = False
+        self._cancel_lock = threading.Lock()
         self._last_render_backend = "gpu"
 
         self._image_repository = VideoExportImageRepository()
@@ -99,8 +103,13 @@ class VideoExporterService:
         self._thumbnail_frame_renderer.reset_backend_state()
 
     def request_cancel(self):
-        self._cancel_requested = True
+        with self._cancel_lock:
+            self._cancel_requested = True
         self.cleanup()
+
+    def is_cancel_requested(self) -> bool:
+        with self._cancel_lock:
+            return bool(self._cancel_requested)
 
     def _coerce_recording(self, snapshots_or_recording):
         if isinstance(snapshots_or_recording, KeyframedRecording):
@@ -430,7 +439,12 @@ class VideoExporterService:
         if not recording:
             return None
 
-        self._cancel_requested = False
+        with self._cancel_lock:
+            if self._cancel_requested:
+                # Cancel was pressed before the worker even started; honor it
+                # instead of erasing the flag with an unconditional False.
+                return None
+            self._cancel_requested = False
         self._frame_renderer.reset_backend_state()
         self._thumbnail_frame_renderer.reset_backend_state()
 
@@ -473,7 +487,7 @@ class VideoExporterService:
         finally:
             process_returncode, stderr_output = self._process_manager.finalize(process)
 
-        if self._cancel_requested or export_canceled:
+        if self.is_cancel_requested() or export_canceled:
             self._clear_frame_caches()
             return None
 

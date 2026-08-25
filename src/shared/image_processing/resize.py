@@ -150,8 +150,9 @@ def resize_images_processor(
                 )
             else:
                 final_processed_image2 = processed_img2_intermediate
-    except Exception:
-        return (processed_img1_intermediate, processed_img2_intermediate)
+    except Exception as exc:
+        logger.error("resample failed for target %s: %s", target_size_final, exc, exc_info=True)
+        raise RuntimeError(f"Image unify/resample failed for {target_size_final}: {exc}") from exc
 
     if final_processed_image1:
         final_processed_image1.load()
