@@ -33,10 +33,18 @@ class MultiCompareController:
     SAVE_OUTPUT_H = 1080
     PREVIEW_MAX_EDGE = 1024
 
-    # Progress checkpoints for the "loading full version of image" toast --
-    # see use_cases/loading.py's module-level constants of the same values.
-    _DECODE_DONE_PROGRESS = loading_use_cases.DECODE_DONE_PROGRESS
-    _PYRAMID_START_PROGRESS = loading_use_cases.PYRAMID_START_PROGRESS
+    # Progress checkpoints re-exported from shared (single source).
+    @property
+    def _DECODE_DONE_PROGRESS(self) -> int:  # type: ignore[override]
+        from tabs._shared.loading_toast import DECODE_DONE_PROGRESS as _V
+
+        return _V
+
+    @property
+    def _PYRAMID_START_PROGRESS(self) -> int:  # type: ignore[override]
+        from tabs._shared.loading_toast import PYRAMID_START_PROGRESS as _V
+
+        return _V
 
     def __init__(
         self,
@@ -57,14 +65,35 @@ class MultiCompareController:
         self._gpu_exporter: MultiCompareGpuExporter | None = None
         self._save_flow: MultiCompareSaveFlowCoordinator | None = None
         self._last_applied_ui_mode: str | None = None
-        self._pyramid_builds: set[int] = set()
-        # "Loading full version of image" toast, mirroring image_compare's
-        # _session_controller (docs/dev/KNOWN_BUGS.md same-slot-swap SSIM
-        # follow-up investigation surfaced that multi_compare never had this
-        # feedback at all). Keyed by slot_id rather than a fixed image_number
-        # since multi_compare has an arbitrary tree of slots.
-        self._loading_toasts: dict[int, int] = {}  # slot_id -> toast_id
-        self._pyramid_toast_slot: dict[int, int] = {}  # pyramid uid -> slot_id
+        # B2/B3 shared coordinators (state-owning collaborators)
+        from tabs._shared.loading_toast import LoadingToastCoordinator
+        from tabs._shared.pyramid import PyramidBuildCoordinator
+
+        def _mc_get_toast_manager():
+            main_window = getattr(self.context, "main_window", None) if self.context else None
+            return getattr(main_window, "toast_manager", None) if main_window else None
+
+        self._loading_toast_coordinator = LoadingToastCoordinator(
+            get_toast_manager=_mc_get_toast_manager,
+            translate=self.translate,
+        )
+        self._loading_toasts: dict[int, int] = self._loading_toast_coordinator._loading_toasts  # type: ignore[attr-defined]
+
+        def _mc_request_update():
+            canvas = getattr(self.widget, "canvas", None)
+            if canvas is not None:
+                try:
+                    canvas.request_view_update()
+                except Exception:
+                    pass
+
+        self._pyramid_coordinator = PyramidBuildCoordinator(
+            get_thread_pool=lambda: getattr(self.context, "thread_pool", None) if self.context else None,
+            toast_coordinator=self._loading_toast_coordinator,
+            request_view_update=_mc_request_update,
+        )
+        self._pyramid_builds: set[int] = self._pyramid_coordinator._pyramid_builds
+        self._pyramid_toast_slot: dict[int, int] = self._pyramid_coordinator._pyramid_toast_slot
 
         self.widget.images_dropped.connect(self._on_images_dropped)
         self.widget.add_requested.connect(self._on_add_requested)
@@ -244,21 +273,59 @@ class MultiCompareController:
         )
 
     def _start_pyramid_build(self, store, *, slot_id: int | None = None) -> None:
+        # Prefer coordinator when present (covers thread_pool + toast routing)
+        coord = getattr(self, "_pyramid_coordinator", None)
+        if coord is not None:
+            # MC abort predicate: not pyramid.valid
+            # need pyramid reference for predicate; capture via closure after ensure
+            # coordinator's start_build will create predicate if None, but we want
+            # correct MC semantics (pyramid.valid). Provide explicit predicate
+            # that closes over the resolved pyramid.
+            from shared.image_processing.pyramid_registry import ensure_pyramid as _ensure
+
+            _pyr = _ensure(store)
+
+            def _should_abort(_p=_pyr):
+                return not getattr(_p, "valid", True) if _p is not None else False
+
+            # If pyramid is None, coordinator will handle finishing toast itself.
+            coord.start_build(store, slot_id=slot_id, should_abort=_should_abort)
+            return
         loading_use_cases.start_pyramid_build(self, store, slot_id=slot_id)
 
     def _on_pyramid_level_ready(self, payload=None) -> None:
+        coord = getattr(self, "_pyramid_coordinator", None)
+        if coord is not None:
+            coord.on_level_ready(payload)
+            return
         loading_use_cases.on_pyramid_level_ready(self, payload)
 
     def _show_loading_toast(self, slot_id: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.show(slot_id)
+            return
         loading_use_cases.show_loading_toast(self, slot_id)
 
     def _mark_full_res_ready(self, slot_id: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.mark_full_res_ready(slot_id)
+            return
         loading_use_cases.mark_full_res_ready(self, slot_id)
 
     def _finish_loading_toast(self, slot_id: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.finish(slot_id)
+            return
         loading_use_cases.finish_loading_toast(self, slot_id)
 
     def _dismiss_loading_toast(self, slot_id: int) -> None:
+        coord = getattr(self, "_loading_toast_coordinator", None)
+        if coord is not None:
+            coord.dismiss(slot_id)
+            return
         loading_use_cases.dismiss_loading_toast(self, slot_id)
 
     def _load_full_resolution_async(self, path: Path, slot_id: int) -> None:

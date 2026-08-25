@@ -14,12 +14,12 @@ from sli_ui_toolkit.i18n import get_current_language, tr
 
 logger = logging.getLogger("ImproveImgSLI")
 
-# Progress checkpoints for the "loading full version of image" toast: 0 at
-# the quick preview, DECODE_DONE_PROGRESS once the full-res decode lands,
-# PYRAMID_START_PROGRESS..100 tracking pyramid level build-out (skipped
-# straight to 100 for stores that need no pyramid).
-DECODE_DONE_PROGRESS = 20
-PYRAMID_START_PROGRESS = 40
+# Single source for checkpoints now lives in tabs._shared.loading_toast
+# (B2 dedup); re-exported here for backward compat of direct importers.
+from tabs._shared.loading_toast import (  # noqa: F401
+    DECODE_DONE_PROGRESS,
+    PYRAMID_START_PROGRESS,
+)
 
 
 def get_toast_manager(controller):
@@ -39,6 +39,10 @@ def get_toast_manager(controller):
 
 
 def show_loading_toast(controller, image_number: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.show(image_number)
+        return
     if image_number in controller._loading_toasts:
         return
     toast_manager = get_toast_manager(controller)
@@ -60,6 +64,10 @@ def show_loading_toast(controller, image_number: int) -> None:
 
 
 def set_loading_toast_progress(controller, image_number: int, percent: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.set_progress(image_number, percent)
+        return
     toast_manager = get_toast_manager(controller)
     toast_id = controller._loading_toasts.get(image_number)
     if toast_manager is None or toast_id is None:
@@ -85,14 +93,26 @@ def set_loading_toast_progress(controller, image_number: int, percent: int) -> N
 
 
 def mark_full_res_ready(controller, image_number: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.mark_full_res_ready(image_number)
+        return
     set_loading_toast_progress(controller, image_number, DECODE_DONE_PROGRESS)
 
 
 def bump_loading_toast_pyramid_started(controller, image_number: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.bump_pyramid_started(image_number)
+        return
     set_loading_toast_progress(controller, image_number, PYRAMID_START_PROGRESS)
 
 
 def finish_loading_toast(controller, image_number: int) -> None:
+    coord = getattr(controller, "_loading_toast_coordinator", None)
+    if coord is not None:
+        coord.finish(image_number)
+        return
     toast_manager = get_toast_manager(controller)
     toast_id = controller._loading_toasts.pop(image_number, None)
     if toast_manager is None or toast_id is None:
