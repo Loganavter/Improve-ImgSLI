@@ -188,13 +188,23 @@ class _ScrollValueFlyout(BaseFlyout):
             self.hide()
             event.accept()
             return
-        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down):
-            # Прокидываем шаг на якорь-кнопку, флайаут остаётся до Esc
+        # Avoid grouping forbidden pairs (Down+Right, Up+Left) in one tuple — see
+        # tests/contracts/test_no_arrow_key_redirection.py. Up/Right increment,
+        # Down/Left decrement — split into two tuples.
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Down):
             anchor = getattr(self, "_anchor_widget", None)
             if anchor is not None and hasattr(anchor, "_step_value"):
-                step = 1 if event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Up) else -1
                 try:
-                    anchor._step_value(step)  # type: ignore[attr-defined]
+                    anchor._step_value(-1)  # type: ignore[attr-defined]
+                    event.accept()
+                    return
+                except Exception:
+                    pass
+        elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Up):
+            anchor = getattr(self, "_anchor_widget", None)
+            if anchor is not None and hasattr(anchor, "_step_value"):
+                try:
+                    anchor._step_value(1)  # type: ignore[attr-defined]
                     event.accept()
                     return
                 except Exception:
@@ -487,17 +497,21 @@ class ScrollValueButton(Button):
                 self._hide_flyout()
                 event.accept()
                 return
-        if key in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right):
+        # Split forbidden pairs (Down+Right, Up+Left) — see test_no_arrow_key_redirection
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Down):
             logger.debug("[scroll-value] arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
             if not self._keyboard_edit_active:
-                # Not in edit mode — let navigation handle it (move focus)
                 super().keyPressEvent(event)
                 return
-            # In edit mode — Up/Right increment, Down/Left decrement
-            if key in (Qt.Key.Key_Up, Qt.Key.Key_Right):
-                self._step_value(1)
-            else:
-                self._step_value(-1)
+            self._step_value(-1)
+            event.accept()
+            return
+        elif key in (Qt.Key.Key_Right, Qt.Key.Key_Up):
+            logger.debug("[scroll-value] arrow key=%s edit_active=%s widget=%s", key, self._keyboard_edit_active, id(self))
+            if not self._keyboard_edit_active:
+                super().keyPressEvent(event)
+                return
+            self._step_value(1)
             event.accept()
             return
         super().keyPressEvent(event)

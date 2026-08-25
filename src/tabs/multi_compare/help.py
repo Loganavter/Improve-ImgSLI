@@ -47,13 +47,31 @@ def resolve_help_icon(name: str) -> QIcon | None:
     return None
 
 
-def contribute_help(registry) -> None:
-    registry.contribute(
+def build_help_contribution():  # type: ignore[no-untyped-def]
+    """Return typed ``HelpContribution`` for ``multi_compare`` (isolated)."""
+    from plugins.help.contribution import HelpContribution
+
+    return HelpContribution(
+        owner_tab="multi_compare",
         attach_under="workspace",
         child_ids=("workspace.multi_compare",),
-        nodes=_NODES,
-        aliases=_ALIASES,
+        nodes=dict(_NODES),
+        aliases=dict(_ALIASES),
         body_root=_HELP_ROOT,
         asset_root=_HELP_ROOT,
         resolve_icon=resolve_help_icon,
+    )
+
+
+def contribute_help(registry) -> None:  # deprecated shim
+    """Deprecated: mutates ``registry`` — prefer ``build_help_contribution``."""
+    contrib = build_help_contribution()
+    registry.contribute(
+        attach_under=contrib.attach_under,
+        child_ids=contrib.child_ids,
+        nodes=dict(contrib.nodes),
+        aliases=dict(contrib.aliases),
+        body_root=contrib.body_root,
+        asset_root=contrib.asset_root,
+        resolve_icon=contrib.resolve_icon,
     )

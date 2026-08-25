@@ -66,7 +66,7 @@ def test_help_plugin_show_dialog_navigates_to_page(monkeypatch):
         def activateWindow(self) -> None:
             return None
 
-        def navigate_to(self, slug: str, anchor: str | None = None) -> None:
+        def navigate_to(self, slug: str, anchor: str | None = None, **kwargs) -> None:
             navigated.append((slug, anchor))
 
     monkeypatch.setattr("plugins.help.plugin.HelpDialog", FakeHelpDialog)

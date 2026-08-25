@@ -16,21 +16,120 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ImproveImgSLI")
 
 
-def contribute_all_settings(registry: "TabRegistry") -> None:
-    """Let every registered tab publish settings sections (broadcast)."""
-    from plugins.settings.registry import get_settings_registry
+def collect_help_contributions(registry: "TabRegistry") -> list[Any]:
+    """Collectors: gather typed ``HelpContribution`` return values (broadcast).
 
-    notify_all(registry, "contribute_settings", get_settings_registry())
+    Replaces ``notify_all("contribute_help", registry)`` fire-and-forget.
+    Per-tab exception is logged and does not stop other tabs.
+    """
+    from plugins.help.contribution import HelpContribution
+
+    contributions: list[Any] = []
+    for tab in registry._tabs.values():
+        try:
+            result = tab.create_service("contribute_help")
+        except Exception:
+            logger.exception("help contribution failed for %s", tab.session_type)
+            continue
+        if result is None:
+            continue
+        # Legacy fire-and-forget returned ``True`` after mutating registry
+        if isinstance(result, bool):
+            continue
+        items: list[Any]
+        if isinstance(result, (list, tuple)):
+            items = list(result)
+        else:
+            items = [result]
+        for item in items:
+            if not isinstance(item, HelpContribution):
+                logger.warning(
+                    "tab %s returned non-HelpContribution for contribute_help: %r",
+                    tab.session_type,
+                    type(item).__name__,
+                )
+                continue
+            expected = tab.i18n_namespace or tab.session_type
+            if item.owner_tab != expected:
+                logger.warning(
+                    "tab %s contribute_help owner_tab mismatch: %r vs expected %r",
+                    tab.session_type,
+                    item.owner_tab,
+                    expected,
+                )
+            contributions.append(item)
+    return contributions
+
+
+def collect_settings_contributions(registry: "TabRegistry") -> list[Any]:
+    """Collectors: gather typed ``SettingsContribution`` return values (broadcast).
+
+    Replaces ``notify_all("contribute_settings", registry)`` fire-and-forget.
+    Per-tab exception is logged and does not stop other tabs.
+    """
+    from plugins.settings.registry import SettingsContribution
+
+    contributions: list[Any] = []
+    for tab in registry._tabs.values():
+        try:
+            result = tab.create_service("contribute_settings")
+        except Exception:
+            logger.exception("settings contribution failed for %s", tab.session_type)
+            continue
+        if result is None:
+            continue
+        if isinstance(result, bool):
+            # Legacy shim: tab mutated registry and returned True — no typed object
+            continue
+        items: list[Any]
+        if isinstance(result, (list, tuple)):
+            items = list(result)
+        else:
+            items = [result]
+        for item in items:
+            if not isinstance(item, SettingsContribution):
+                logger.warning(
+                    "tab %s returned non-SettingsContribution for contribute_settings: %r",
+                    tab.session_type,
+                    type(item).__name__,
+                )
+                continue
+            expected = tab.i18n_namespace or tab.session_type
+            if item.owner_tab != expected:
+                logger.warning(
+                    "tab %s contribute_settings owner_tab mismatch: %r vs expected %r",
+                    tab.session_type,
+                    item.owner_tab,
+                    expected,
+                )
+            contributions.append(item)
+    return contributions
+
+
+def contribute_all_settings(registry: "TabRegistry") -> None:
+    """Let every registered tab publish settings sections (broadcast).
+
+    Collect typed ``SettingsContribution`` objects and install them immutably.
+    Per-tab exception is logged; one tab failing does not stop others.
+    """
+    from plugins.settings.registry import install_settings_contributions
+
+    contributions = collect_settings_contributions(registry)
+    if contributions:
+        install_settings_contributions(contributions)
 
 
 def contribute_all_help(registry: "TabRegistry") -> None:
-    """Collect tab Help subtrees and install them into the host tree."""
-    from plugins.help.contribution import HelpContributionRegistry
+    """Collect tab Help subtrees and install them into the host tree.
+
+    Collect typed ``HelpContribution`` objects and install them immutably.
+    Per-tab exception is logged; one tab failing does not stop others.
+    """
     from plugins.help.tree import install_help_contributions
 
-    help_registry = HelpContributionRegistry()
-    notify_all(registry, "contribute_help", help_registry)
-    install_help_contributions(help_registry)
+    contributions = collect_help_contributions(registry)
+    if contributions:
+        install_help_contributions(contributions)
 
 
 def contribute_settings_for(registry: "TabRegistry", session_type: str) -> None:
@@ -38,12 +137,28 @@ def contribute_settings_for(registry: "TabRegistry", session_type: str) -> None:
     tab = registry._tabs.get(session_type)
     if tab is None:
         return
-    from plugins.settings.registry import get_settings_registry
+    from plugins.settings.registry import SettingsContribution, install_settings_contributions
 
     try:
-        tab.create_service("contribute_settings", get_settings_registry())
+        result = tab.create_service("contribute_settings")
     except Exception as e:
         logger.error(f"contribute_settings failed for {session_type}: {e}")
+        return
+    if result is None:
+        return
+    if isinstance(result, bool):
+        # Legacy shim: tab already mutated registry elsewhere
+        return
+    contributions: list[SettingsContribution]
+    if isinstance(result, (list, tuple)):
+        contributions = [r for r in result if isinstance(r, SettingsContribution)]
+    elif isinstance(result, SettingsContribution):
+        contributions = [result]
+    else:
+        logger.warning("tab %s contribute_settings returned non-SettingsContribution: %r", session_type, type(result).__name__)
+        return
+    if contributions:
+        install_settings_contributions(contributions)
 
 
 def create_main_window_feature(
