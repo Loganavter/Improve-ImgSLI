@@ -25,7 +25,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Capability aliases](CAPABILITY_ALIASES.md)** — `docs/dev/CAPABILITY_ALIASES.md`
   Referenced by: [docs/dev/CONTRACTS.md](CONTRACTS.md), [docs/dev/README.md](README.md), [docs/dev/rendering/contracts.md](rendering/contracts.md)
 - **[Code Mass Reduction](CODE_MASS_REDUCTION.md)** — `docs/dev/CODE_MASS_REDUCTION.md`
-  Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md)
+  Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md)
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
   Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
@@ -43,7 +43,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
-  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md)
+  Referenced by: [docs/dev/README.md](README.md), [docs/dev/SETTINGS_PERSISTENCE.md](SETTINGS_PERSISTENCE.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md)
 - **[Plugin lifecycle](PLUGINS.md)** — `docs/dev/PLUGINS.md`
   Referenced by: [docs/dev/ARCHITECTURE.md](ARCHITECTURE.md), [docs/dev/EVENT_BUS.md](EVENT_BUS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/STORE.md](STORE.md), [docs/dev/THEMING.md](THEMING.md), [docs/dev/plugins/export.md](plugins/export.md), [docs/dev/plugins/image_properties.md](plugins/image_properties.md), [docs/dev/plugins/index.md](plugins/index.md), [docs/dev/plugins/layout.md](plugins/layout.md), [docs/dev/plugins/onboarding.md](plugins/onboarding.md), [docs/dev/plugins/settings.md](plugins/settings.md)
 - **[Presenter layer](PRESENTERS.md)** — `docs/dev/PRESENTERS.md`
@@ -62,7 +62,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Theming & QSS](THEMING.md)** — `docs/dev/THEMING.md`
   Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md)
 - **[Development TODO](TODO.md)** — `docs/dev/TODO.md`
-  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/README.md](README.md), [docs/dev/investigations/cross-module-review-2026-08-25.md](investigations/cross-module-review-2026-08-25.md)
 - **[Runtime Tracer](TRACING.md)** — `docs/dev/TRACING.md`
   Referenced by: [docs/dev/LOGGING.md](LOGGING.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/rendering/zoom-pan.md](rendering/zoom-pan.md)
 - **[UI Inspector](UI_INSPECTOR.md)** — `docs/dev/UI_INSPECTOR.md`
@@ -74,6 +74,8 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 
 ## docs/dev/investigations/
 
+- **[Investigation: cross-module review — duplication, error handling, abstractions](investigations/cross-module-review-2026-08-25.md)** — `docs/dev/investigations/cross-module-review-2026-08-25.md`
+  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/TODO.md](TODO.md)
 - **[Investigation: Keyboard Navigation, CSD Focus, and Flyout Focus Routing](investigations/keyboard-navigation-csd-focus.md)** — `docs/dev/investigations/keyboard-navigation-csd-focus.md`
 - **[Investigation: NavigationManager for cross-section keyboard navigation](investigations/navigation-manager-plan.md)** — `docs/dev/investigations/navigation-manager-plan.md`
 - **[Critical Analysis: Session Picker Navigation](investigations/session-picker-navigation-analysis.md)** — `docs/dev/investigations/session-picker-navigation-analysis.md`

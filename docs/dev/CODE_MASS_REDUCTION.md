@@ -398,6 +398,21 @@ Each item was checked against the code before deciding:
   Lazy facade imports are a toolkit-repo change with its own test suite;
   plan as a toolkit project, not an app-repo change.
 
+### Follow-up review (2026-08-25)
+
+A three-pass cross-module review
+([investigations/cross-module-review-2026-08-25.md](./investigations/cross-module-review-2026-08-25.md))
+re-verified this plan's open items and added a low-risk consolidation queue
+(tracked in [TODO.md](TODO.md), sections tagged "review 2026-08-25").
+Status corrections: **renderer-unification Phase 4 (`drop_covered_*`) is
+effectively complete** — the coverage primitive lives in
+`shared/rendering/tile_coverage.py` and both tabs import it; only two thin
+meaningfully-drifted wrappers remain (~20 LOC). The residency budget loop
+is likewise already shared (`TileResidencyRealizerBase.realize_specs`);
+what remains parallel is spec-building (~130 LOC/tab) — inside the deferred
+canvas merge, do not pull separately. New duplication candidates are all
+non-QRhi and listed in the TODO queue.
+
 ## Explicitly out of scope (do not touch)
 
 - i18n/help translation packs (product content, 4 611 LOC)
