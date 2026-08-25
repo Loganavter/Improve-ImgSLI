@@ -127,6 +127,32 @@ class VideoEditorPresenter(QObject):
         if self.main_controller and hasattr(self.main_controller, "video_export_log"):
             self.main_controller.video_export_log.connect(self.exportLog)
 
+    def _disconnect_service_signals(self):
+        def _safe_disconnect(signal, slot):
+            try:
+                signal.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
+        try:
+            _safe_disconnect(self.playback_engine.frameChanged, self.playback_coordinator.on_frame_changed)
+            _safe_disconnect(self.playback_engine.playbackStateChanged, self.playback_coordinator.on_playback_state_changed)
+            _safe_disconnect(self.thumbnail_service.thumbnailReady, self.thumbnail_coordinator.on_single_thumbnail_ready)
+            _safe_disconnect(self.thumbnail_service.thumbnailsGenerated, self.thumbnail_coordinator.on_thumbnails_generated)
+            _safe_disconnect(self.thumbnail_service.generationFinished, self.thumbnail_coordinator.on_thumbnails_generation_finished)
+        except Exception:
+            pass
+        if self.main_controller:
+            try:
+                if hasattr(self.main_controller, "video_export_progress"):
+                    _safe_disconnect(self.main_controller.video_export_progress, self._on_export_progress)
+                    _safe_disconnect(self.main_controller.video_export_finished, self._on_export_finished)
+                if hasattr(self.main_controller, "error_occurred"):
+                    _safe_disconnect(self.main_controller.error_occurred, self.errorOccurred)
+                if hasattr(self.main_controller, "video_export_log"):
+                    _safe_disconnect(self.main_controller.video_export_log, self.exportLog)
+            except Exception:
+                pass
+
     def _connect_view_signals(self):
         self.view.destroyed.connect(self._on_view_destroyed)
         self.view.playClicked.connect(self.playback_coordinator.toggle_playback)

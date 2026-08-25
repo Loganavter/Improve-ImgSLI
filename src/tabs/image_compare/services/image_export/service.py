@@ -294,10 +294,18 @@ class ExportService:
                     quality = int(export_options.get("quality", 95))
                     logger.debug(f"JXL quality setting: {quality}")
 
+                    # Atomic: write to tmp then replace, so os._exit mid-encode
+                    # doesn't leave a truncated file at the final path.
+                    tmp_path = full_path + ".tmp"
+                    try:
+                        if os.path.exists(tmp_path):
+                            os.remove(tmp_path)
+                    except Exception:
+                        pass
                     if quality >= 100:
                         logger.debug("Saving JXL in lossless mode")
                         imagecodecs.imwrite(
-                            full_path,
+                            tmp_path,
                             img_array,
                             codec="jxl",
                             lossless=True,
@@ -308,15 +316,23 @@ class ExportService:
                             f"Saving JXL in lossy mode with distance: {distance}"
                         )
                         imagecodecs.imwrite(
-                            full_path,
+                            tmp_path,
                             img_array,
                             codec="jxl",
                             distance=distance,
                         )
+                    os.replace(tmp_path, full_path)
 
                     logger.info(f"JXL image saved successfully: {full_path}")
                 except Exception as e:
                     logger.error(f"Failed to save JXL image: {e}", exc_info=True)
+                    # Clean up stale tmp on failure; outer except will also try full_path
+                    try:
+                        tmp_candidate = full_path + ".tmp"
+                        if os.path.exists(tmp_candidate):
+                            os.remove(tmp_candidate)
+                    except Exception:
+                        pass
                     raise
             else:
                 write_pil_image_cancelable(
@@ -333,6 +349,13 @@ class ExportService:
             try:
                 if os.path.exists(full_path):
                     os.remove(full_path)
+            except Exception:
+                pass
+            # Also clean tmp if we used it (JXL or pil_save failure leaves .tmp)
+            try:
+                tmp_path = full_path + ".tmp"
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
             except Exception:
                 pass
             raise

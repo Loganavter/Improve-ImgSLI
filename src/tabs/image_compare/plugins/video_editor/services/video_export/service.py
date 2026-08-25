@@ -468,7 +468,8 @@ class VideoExporterService:
         try:
             export_canceled = self._render_loop.render(process, job, progress_callback)
         except Exception as exc:
-            logger.error("Error during video rendering loop: %s", exc)
+            logger.error("Error during video rendering loop: %s", exc, exc_info=True)
+            raise
         finally:
             process_returncode, stderr_output = self._process_manager.finalize(process)
 

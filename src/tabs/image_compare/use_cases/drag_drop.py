@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("ImproveImgSLI")
+from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
 
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".jxl"}
+logger = logging.getLogger("ImproveImgSLI")
 
 
 def accepts_drop(paths: list[Path]) -> bool:

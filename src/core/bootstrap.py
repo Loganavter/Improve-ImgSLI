@@ -357,12 +357,13 @@ class ApplicationContext:
         self._is_shutting_down = True
         logger.debug("Начало завершения работы ApplicationContext...")
 
-        if self.plugin_coordinator and self.plugin_coordinator.lifecycle:
-            try:
-                self.plugin_coordinator.lifecycle.shutdown_all()
-            except Exception as e:
-                logger.error(f"Ошибка при остановке плагинов: {e}")
-
+        # Drain worker pool before plugin shutdown: a worker parked in
+        # gpu_export.GpuExportService._request waits for a GUI-thread slot
+        # (event.wait); blocking the GUI thread in waitForDone while the
+        # worker waits for the GUI thread is a mutual deadlock. The marshal
+        # now has a timeout (gpu_export.py), but ordering still matters —
+        # draining first lets pending GPU round-trips be delivered or time out
+        # before lifecycle shutdown tears down offscreen widgets.
         if self.thread_pool:
             self.thread_pool.clear()
             if not self.thread_pool.waitForDone(2000):
@@ -370,6 +371,12 @@ class ApplicationContext:
                     "Некоторые потоки не завершились вовремя, принудительная очистка"
                 )
                 self.thread_pool.clear()
+
+        if self.plugin_coordinator and self.plugin_coordinator.lifecycle:
+            try:
+                self.plugin_coordinator.lifecycle.shutdown_all()
+            except Exception as e:
+                logger.error(f"Ошибка при остановке плагинов: {e}")
 
         if self.notification_service:
             try:

@@ -217,6 +217,20 @@ def _write_rgba_strips(
                 f"src_box {(right - left)}x{(bottom - top)} != memmap {out_w}x{out_h}"
             )
         import time
+
+        # Helper: normalize uint16 -> uint8 by scaling (>>8), not truncation
+        def _to_u8(b: np.ndarray) -> np.ndarray:
+            if b.dtype == np.uint8:
+                return b
+            if b.dtype == np.uint16:
+                # 16-bit JXL etc: 0..65535 -> 0..255 via high byte (>>8), i.e.
+                # 300 -> 1 not 44 (mod-256 truncation). Equivalent to //257.
+                return (b >> 8).astype(np.uint8)
+            # Fallback for float or other: clip and cast
+            if b.dtype.kind == "f":
+                return np.clip(b, 0, 255).astype(np.uint8)
+            return np.asarray(b, dtype=np.uint8)
+
         y = 0
         while y < out_h:
             chunk = min(strip_h, out_h - y)
@@ -225,11 +239,11 @@ def _write_rgba_strips(
             band = arr[src_y0:src_y1, left:right, :4]
             if band.shape[2] == 3:
                 rgba = np.empty((chunk, out_w, 4), dtype=np.uint8)
-                rgba[:, :, :3] = band
+                rgba[:, :, :3] = _to_u8(band)
                 rgba[:, :, 3] = 255
                 memmap[y : y + chunk, :, :] = rgba
             else:
-                memmap[y : y + chunk, :, :] = np.asarray(band, dtype=np.uint8)
+                memmap[y : y + chunk, :, :] = _to_u8(band)
             y += chunk
             time.sleep(0.001)
         memmap.flush()
@@ -409,7 +423,16 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
     if not img.hasalpha():
         img = img.bandjoin(255)
     if img.format != "uchar":
-        img = img.cast("uchar")
+        if img.format == "ushort":
+            # 16-bit -> 8-bit by scaling, not C truncation (cast("uchar") keeps low byte)
+            img = (img / 257).cast("uchar")
+        elif img.format in ("char", "short", "int"):
+            # Signed or other integer: clamp then cast
+            img = img.cast("uchar")
+        elif img.format in ("float", "double"):
+            img = (img * 255).cast("uchar")
+        else:
+            img = img.cast("uchar")
 
     src_w = img.width
     src_h = img.height
@@ -492,9 +515,11 @@ class TiledPixelStore:
         *,
         tile_size: int,
         generation: int = 0,
+        owns_file: bool = True,
     ):
         self._memmap: np.memmap | None = memmap
         self._path: str | None = path
+        self._owns_file: bool = bool(owns_file)
         self._tile_size = max(1, int(tile_size))
         self._generation = int(generation)
         self.info: dict = {}
@@ -664,11 +689,15 @@ class TiledPixelStore:
 
         The buffer's dimensions already reflect whatever crop was applied
         when it was captured at save time — no auto-crop pass here.
+
+        The store is a read-only tenant: the file is owned by the project
+        extract cache (pixel_cache_registry), so :meth:`close` must not
+        delete it.
         """
         from core.constants import AppConstants
 
         memmap = _reopen_readonly(cache_path, height, width)
-        return cls(memmap, cache_path, tile_size=AppConstants.PIXEL_TILE_SIZE)
+        return cls(memmap, cache_path, tile_size=AppConstants.PIXEL_TILE_SIZE, owns_file=False)
 
     @property
     def tile_size(self) -> int:
@@ -736,10 +765,11 @@ class TiledPixelStore:
 
     def close(self) -> None:
         path = self._path
+        owns = getattr(self, "_owns_file", True)
         self._memmap = None
         self._path = None
         self._generation += 1
-        if path:
+        if path and owns:
             try:
                 os.remove(path)
             except OSError as exc:

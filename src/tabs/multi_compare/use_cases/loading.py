@@ -13,7 +13,43 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from core.events import CoreErrorOccurredEvent
+
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _format_worker_error(err) -> str:
+    if isinstance(err, tuple) and len(err) >= 2:
+        return str(err[1])
+    return str(err)
+
+
+def _emit_mc_load_error(controller, path: Path | str, err) -> None:
+    """Surface a failed MC load via the shared EventBus/toast plumbing (IC parity).
+
+    Mirrors ``image_compare._session_controller._load_image_async`` /
+    ``_on_full_resolution_error`` — a dropped corrupt file must not silently
+    vanish; it emits ``CoreErrorOccurredEvent`` so MainController shows a toast.
+    """
+    try:
+        event_bus = getattr(controller.context, "event_bus", None) if getattr(controller, "context", None) else None
+        # controller.translate is TabContext.tr wrapper (already language-aware)
+        try:
+            prefix = controller.translate("msg.failed_to_load_image", "Failed to load image")
+        except Exception:
+            prefix = "Failed to load image"
+        message = f"{prefix}:\n{path}\n\n{_format_worker_error(err)}"
+        if event_bus is not None:
+            event_bus.emit(CoreErrorOccurredEvent(message))
+        else:
+            # Fallback: try main_window's presenter error pathway (kept for tests without TabContext)
+            main_window = getattr(controller.context, "main_window", None) if getattr(controller, "context", None) else None
+            presenter = getattr(main_window, "presenter", None) if main_window else None
+            fallback_bus = getattr(presenter, "event_bus", None) if presenter else None
+            if fallback_bus is not None:
+                fallback_bus.emit(CoreErrorOccurredEvent(message))
+    except Exception:
+        logger.exception("Failed to emit MC load error event for %s", path)
 
 # Progress checkpoints for the "loading full version of image" toast,
 # mirroring image_compare's _session_controller: 0 at the quick preview,
@@ -120,7 +156,13 @@ def read_image(controller, path: Path, *, slot_id: int | None = None, start_pyra
             start_pyramid_build(controller, store, slot_id=slot_id)
         return store
     except Exception as e:
-        logger.error("Failed to load %s: %s", path, e)
+        logger.error("Failed to load %s: %s", path, e, exc_info=True)
+        if slot_id is not None:
+            try:
+                dismiss_loading_toast(controller, slot_id)
+            except Exception:
+                pass
+        _emit_mc_load_error(controller, path, e)
         return None
 
 
@@ -289,8 +331,9 @@ def load_full_resolution_async(controller, path: Path, slot_id: int) -> None:
 
 
 def on_full_resolution_error(controller, path: Path, slot_id: int, err) -> None:
-    logger.error("Failed to load full resolution for %s: %s", path, err)
+    logger.error("Failed to load full resolution for %s: %s", path, err, exc_info=True)
     dismiss_loading_toast(controller, slot_id)
+    _emit_mc_load_error(controller, path, err)
 
 
 def apply_full_resolution(controller, slot_id: int, path: Path, store) -> None:

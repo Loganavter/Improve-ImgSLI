@@ -47,8 +47,6 @@ class _PulseOverlay(QWidget):
         self.update()
 
     def paintEvent(self, _event) -> None:  # noqa: ARG002 — Qt API
-        import sys as _s, shiboken6 as _sh
-        print("PULSE_PAINT alive:", _sh.isValid(self), "parent:", _sh.isValid(self.parentWidget()) if self.parentWidget() else None, file=_s.stderr)
         if self._target_rect.isNull() or not self._target_rect.isValid():
             return
         try:
@@ -196,8 +194,6 @@ def pulse_widget(
     state = {"step": 0}
 
     def _tick() -> None:
-        import sys as _s
-        print("PULSE_TICK alive:", _cpp_alive(overlay), "target:", _cpp_alive(target), file=_s.stderr)
         global _ACTIVE
         if overlay not in _ACTIVE:
             return

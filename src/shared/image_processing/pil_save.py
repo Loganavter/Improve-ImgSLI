@@ -212,7 +212,13 @@ def write_pil_image_cancelable(
 ) -> None:
     """Write ``pil_img`` to ``full_path`` via a cancelable stream.
 
-    Deletes a partial file on failure. Caller owns ``os.makedirs`` for
+    Atomic via tmp+replace: the encoder writes to ``full_path.tmp`` in the
+    same directory and the file is moved into place only on success, so a
+    hard exit (os._exit in ``__main__.py:385``) mid-encode leaves the
+    previous file intact (or no file) rather than a truncated image at the
+    final path — same guarantee project packaging already has.
+
+    Deletes a partial tmp file on failure. Caller owns ``os.makedirs`` for
     ``dirname(full_path)``. When ``progress_callback`` is set, encode progress
     is reported in ``[progress_start, progress_end]`` from bytes written;
     callers should emit 100 after a successful return.
@@ -226,8 +232,17 @@ def write_pil_image_cancelable(
         else 0
     )
 
+    tmp_path = full_path + ".tmp"
+    # If a stale tmp from a crashed previous run exists, remove it first so
+    # open() below doesn't append to it.
     try:
-        with open(full_path, "wb") as f:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    except Exception:
+        pass
+
+    try:
+        with open(tmp_path, "wb") as f:
             stream = _CancelableStream(
                 f,
                 cancel_event,
@@ -237,10 +252,11 @@ def write_pil_image_cancelable(
                 expected_bytes=expected_bytes,
             )
             pil_img.save(stream, format=pil_format, **save_kwargs)
+        os.replace(tmp_path, full_path)
     except Exception:
         try:
-            if os.path.exists(full_path):
-                os.remove(full_path)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         except Exception:
             pass
         raise
