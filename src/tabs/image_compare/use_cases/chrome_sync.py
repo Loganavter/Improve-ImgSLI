@@ -96,7 +96,37 @@ class ImageCompareChromeSync(QObject):
         self.store = store
         self._resolve_window_presenter = resolve_window_presenter
         self._workspace_language_stale = False
+        self._render_stale = False
         self.store.state_changed.connect(self._on_store_state_changed)
+
+    def _is_visible(self) -> bool:
+        widget = self.widget
+        if widget is None:
+            return True
+        try:
+            window = widget.window()
+            ui = getattr(window, "ui", None)
+            if ui is None:
+                wp = self._window_presenter()
+                ui = getattr(wp, "ui", None) if wp is not None else None
+            stack = getattr(ui, "workspace_stack", None) if ui is not None else None
+            if stack is not None:
+                current = stack.currentWidget()
+                if current is widget:
+                    return True
+                if current is not None and hasattr(current, "isAncestorOf"):
+                    try:
+                        if current.isAncestorOf(widget):
+                            return True
+                    except Exception:
+                        pass
+                return False
+            return bool(widget.isVisible())
+        except Exception:
+            try:
+                return bool(widget.isVisible())
+            except Exception:
+                return True
 
     def _window_presenter(self):
         try:
@@ -139,10 +169,24 @@ class ImageCompareChromeSync(QObject):
         self.handle_store_domain(window_presenter, domain)
 
     def handle_store_domain(self, window_presenter, domain):
-        toolbar = self._toolbar_presenter(window_presenter)
-        if toolbar is not None and hasattr(toolbar, "update_toolbar_states"):
-            toolbar.update_toolbar_states()
-        self.widget.toggle_edit_layout_visibility(
+        if not self._is_visible():
+            self._render_stale = True
+            try:
+                widget = self.widget
+                if widget is not None:
+                    widget._render_stale = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            try:
+                from core.tracing.tracer import Tracer
+                if Tracer.enabled():
+                    Tracer.instance().record("render.ic.chrome_deferred", "IC chrome deferred - background tab", {"domain": domain})
+            except Exception:
+                pass
+            toolbar = self._toolbar_presenter(window_presenter)
+            if toolbar is not None and hasattr(toolbar, "update_toolbar_states"):
+                toolbar.update_toolbar_states()
+            self.widget.toggle_edit_layout_visibility(
             self.store.viewport.render_config.include_file_names_in_saved
         )
         window_presenter.ui_batcher.schedule_batch_update(
@@ -403,6 +447,32 @@ class ImageCompareChromeSync(QObject):
         if page_visible:
             self._workspace_language_stale = False
             self._refresh_visible_workspace_language(window_presenter, lang_code)
+
+    def flush_stale_render(self, window_presenter) -> None:
+        if not self._render_stale:
+            return
+        if not self._is_visible():
+            return
+        widget = self.widget
+        if widget is not None and not getattr(widget, "_render_stale", False):
+            self._render_stale = False
+            return
+        self._render_stale = False
+        if widget is not None:
+            try:
+                widget._render_stale = False  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        try:
+            from core.tracing.tracer import Tracer
+            if Tracer.enabled():
+                Tracer.instance().record("render.ic.chrome_flush", "IC chrome stale flushed on show", {})
+        except Exception:
+            pass
+        try:
+            window_presenter.ui_batcher.schedule_batch_update(["file_names","resolution","combobox","ratings","window_schedule","zoom_indicator"])
+        except Exception:
+            pass
         else:
             self._workspace_language_stale = True
 
@@ -440,3 +510,29 @@ class ImageCompareChromeSync(QObject):
         if settings_presenter is not None:
             settings_presenter.on_language_changed()
         self._refresh_visible_workspace_language(window_presenter, lang_code)
+
+    def flush_stale_render(self, window_presenter) -> None:
+        if not self._render_stale:
+            return
+        if not self._is_visible():
+            return
+        widget = self.widget
+        if widget is not None and not getattr(widget, "_render_stale", False):
+            self._render_stale = False
+            return
+        self._render_stale = False
+        if widget is not None:
+            try:
+                widget._render_stale = False  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        try:
+            from core.tracing.tracer import Tracer
+            if Tracer.enabled():
+                Tracer.instance().record("render.ic.chrome_flush", "IC chrome stale flushed on show", {})
+        except Exception:
+            pass
+        try:
+            window_presenter.ui_batcher.schedule_batch_update(["file_names","resolution","combobox","ratings","window_schedule","zoom_indicator"])
+        except Exception:
+            pass

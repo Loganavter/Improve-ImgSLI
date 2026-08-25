@@ -61,6 +61,47 @@ from shared.rendering.first_frame_gate import (
 )
 
 
+def _is_canvas_visible(widget):
+    try:
+        window = widget.window()
+        ui = getattr(window, "ui", None) if window is not None else None
+        if ui is None:
+            presenter = getattr(window, "presenter", None) if window is not None else None
+            ui = getattr(presenter, "ui", None) if presenter is not None else None
+        stack = getattr(ui, "workspace_stack", None) if ui is not None else None
+        if stack is None:
+            from PySide6.QtWidgets import QStackedWidget
+            p2 = widget.parentWidget()
+            while p2 is not None:
+                if isinstance(p2, QStackedWidget):
+                    stack = p2
+                    break
+                p2 = p2.parentWidget()
+        if stack is not None:
+            cur = stack.currentWidget()
+            if cur is None:
+                return bool(widget.isVisible())
+            if cur is widget:
+                return True
+            try:
+                if hasattr(cur, "isAncestorOf") and cur.isAncestorOf(widget):
+                    return True
+            except Exception:
+                pass
+            p2 = widget.parentWidget()
+            while p2 is not None:
+                if p2 is cur:
+                    return True
+                p2 = p2.parentWidget()
+            return False
+        return bool(widget.isVisible())
+    except Exception:
+        try:
+            return bool(widget.isVisible())
+        except Exception:
+            return True
+
+
 class MultiCompareCanvasWidget(QRhiWidget):
     """QRhi canvas host for multi-compare rendering and input dispatch."""
 
@@ -121,6 +162,7 @@ class MultiCompareCanvasWidget(QRhiWidget):
         self._lmb_press_slot_id: int | None = None
         self._view_update_pending = False
         self._color_buffer_frozen = False
+        self._composition_stale: bool = False
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -138,13 +180,50 @@ class MultiCompareCanvasWidget(QRhiWidget):
             self, "set_state slots=%s composition=%s", len(state.slots),
             self._active_composition is not None,
         )
+        if not _is_canvas_visible(self):
+            self._composition_stale = True
+            try:
+                from core.tracing.tracer import Tracer
+                if Tracer.enabled():
+                    Tracer.instance().record("render.mc.deferred", "MC composition deferred - background tab", {"slots": len(state.slots)})
+            except Exception:
+                pass
+            return
         self._composition_flush.request()
         self.update()
 
     def _flush_composition(self) -> None:
+        if not _is_canvas_visible(self):
+            self._composition_stale = True
+            try:
+                from core.tracing.tracer import Tracer
+                if Tracer.enabled():
+                    Tracer.instance().record("render.mc.deferred", "MC _flush_composition deferred - background tab", {})
+            except Exception:
+                pass
+            return
         self._sync_textures()
         self._rebuild_composition()
         self.request_view_update()
+
+    def is_current_stack_page(self) -> bool:
+        return _is_canvas_visible(self)
+
+    def flush_stale_composition(self) -> bool:
+        if not getattr(self, "_composition_stale", False):
+            return False
+        if not _is_canvas_visible(self):
+            return False
+        self._composition_stale = False
+        try:
+            from core.tracing.tracer import Tracer
+            if Tracer.enabled():
+                Tracer.instance().record("render.mc.flush", "MC stale composition flushed on show", {})
+        except Exception:
+            pass
+        self._composition_flush.request()
+        self.update()
+        return True
 
     def request_view_update(self) -> None:
         """Ensure the QRhi backing store re-composites after view changes.
@@ -274,6 +353,10 @@ class MultiCompareCanvasWidget(QRhiWidget):
         super().showEvent(event)
         mc_first_frame_debug(self, "showEvent (canvas visible)")
         self._start_first_frame_sampler()
+        try:
+            self.flush_stale_composition()
+        except Exception:
+            pass
         # Mirrors image_compare's CanvasWidget.showEvent: hidden stack pages
         # never present, so on the first show force a repaint immediately and
         # schedule the compositor settle flush before the first present. The

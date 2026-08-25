@@ -220,6 +220,12 @@ class MultiCompareWidget(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         chrome.show_event(self, event)
+        try:
+            canvas = getattr(self, "canvas", None)
+            if canvas is not None and hasattr(canvas, "flush_stale_composition"):
+                canvas.flush_stale_composition()
+        except Exception:
+            pass
 
     @property
     def state(self) -> MultiCompareState:
