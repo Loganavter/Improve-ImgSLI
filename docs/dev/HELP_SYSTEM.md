@@ -25,14 +25,21 @@ Host **must not** import `tabs.*` for icons or hardcode tab topic trees.
 Tabs publish via the same broadcast pattern as settings/actions.
 
 ```text
-TabRegistry.notify_all("contribute_help", HelpContributionRegistry)
-  → each tab create_service("contribute_help", registry)
-  → merge into host HelpTree
+TabRegistry.collect_help_contributions()  # capability_routing.py:32
+  → each tab create_service("contribute_help") -> HelpContribution(owner_tab, nodes, aliases, body_root, asset_root, resolve_icon)
+  → collect return values (per-tab exception logged, others continue)
+  → install_help_contributions(contributions: list[HelpContribution])  # tree.py — immutable copy, uniq node_id, alias conflict raise
+  → merged host HelpTree
 ```
 
+Legacy ``notify_all("contribute_help", HelpContributionRegistry)`` +
+``HelpContributionRegistry`` is deprecated shim (one release); host now
+collects typed ``HelpContribution`` (frozen, ``owner_tab == i18n_namespace``
+per ``isolation.md:60``) so ``tabs.*`` is never imported by the Help plugin.
+
 Called from `TabRegistry.install_pages` via `contribute_all_help()`:
-collect contributions with `notify_all("contribute_help", registry)`, then
-`install_help_contributions(registry)` so the Help plugin never imports
+collect typed contributions with `collect_help_contributions()`, then
+`install_help_contributions(contributions)` so the Help plugin never imports
 `tabs.*`.
 
 ---
@@ -46,8 +53,8 @@ collect contributions with `notify_all("contribute_help", registry)`, then
 | `navigator.py` | Stack + back / forward |
 | `hub_page.py` | Session-picker-style topic cards |
 | `back_bar.py` | Full-width breadcrumb + back |
-| `tree.py` | Host load, contribution merge, body/asset resolve |
-| `contribution.py` | `HelpContributionRegistry` API for tabs |
+| `tree.py` | Host load, contribution merge (`install_help_contributions(list[HelpContribution])` immutable), body/asset resolve |
+| `contribution.py` | `HelpContribution` (frozen, `owner_tab`, typed `nodes/aliases/body_root/asset_root/resolve_icon`) + deprecated `HelpContributionRegistry` shim |
 | `labels.py` | `title_key` / `description_key` via `tr()` |
 | `icons.py` | App icons + contributed tab resolvers |
 | `interpolate.py` | `{{tr:dotted.key}}` / `{{img:figure.slot}}` in markdown bodies |

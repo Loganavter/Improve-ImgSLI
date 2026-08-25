@@ -20,11 +20,16 @@ def create_service(
     **kwargs: Any,
 ) -> Any:
     if service_id == "contribute_settings":
-        settings_registry = args[0] if args else kwargs.get("registry")
-        if settings_registry is None:
-            return None
-        tab._register_settings(settings_registry)
-        return True
+        # Typed path: caller collects return value (no registry arg).
+        # Keep deprecated registry-mutation for transitional callers that still
+        # pass a registry (e.g. legacy tests via notify_all).
+        legacy_registry = args[0] if args else kwargs.get("registry")
+        if legacy_registry is not None:
+            tab._register_settings(legacy_registry)
+            return True
+        from tabs.image_compare.use_cases.registration import build_settings_contribution
+
+        return build_settings_contribution(tab)
     if service_id == "contribute_actions":
         settings_registry = args[0] if args else kwargs.get("registry")
         if settings_registry is None:
@@ -40,13 +45,15 @@ def create_service(
         contribute_keymap_defaults(settings_registry)
         return True
     if service_id == "contribute_help":
-        settings_registry = args[0] if args else kwargs.get("registry")
-        if settings_registry is None:
-            return None
-        from tabs.image_compare.help import contribute_help
+        legacy_registry = args[0] if args else kwargs.get("registry")
+        if legacy_registry is not None:
+            from tabs.image_compare.help import contribute_help
 
-        contribute_help(settings_registry)
-        return True
+            contribute_help(legacy_registry)
+            return True
+        from tabs.image_compare.help import build_help_contribution
+
+        return build_help_contribution()
     if service_id == "snapshot_frame_renderer":
         from tabs.image_compare.services.video_snapshot_rendering import (
             SnapshotFrameRenderer,

@@ -84,21 +84,30 @@ A distinct mechanism from `create_service`, for the minority of hooks that
 are genuinely global broadcasts rather than session-scoped requests: every
 registered tab needs its own chance to act, regardless of which one is
 active. Current call sites: `install_translations` (each tab binds its
-own UI's translation signals at startup, not just the active one's),
+own UI's translation signals at startup, not just the active one's) and
 `refresh_startup_button_visuals` (cosmetic startup refresh every tab's page
-should get), and `contribute_settings` (each tab may publish settings sections into the host
-`SettingsRegistry`), and `contribute_help` (each tab may publish Help
-subtrees into the host `HelpContributionRegistry` — see [HELP_SYSTEM.md](../HELP_SYSTEM.md)).
+should get).  **Former** call sites `contribute_settings` /
+`contribute_help` have migrated to typed collectors
+(`tabs/use_cases/capability_routing.py:32`
+`collect_help_contributions()` /
+`collect_settings_contributions()` → `HelpContribution` /
+`SettingsContribution` with `owner_tab == i18n_namespace`, per-tab
+exception logged, not stopping others) and
+`install_help_contributions(list[HelpContribution])` /
+`install_settings_contributions(list[SettingsContribution])` immutable merge
+(see [HELP_SYSTEM.md](../HELP_SYSTEM.md) and `plugins/help/tree.py:42`).
 
 ```python
 registry.notify_all("install_translations", ui)
-registry.notify_all("contribute_help", help_registry)
+# Typed collectors (replacing notify_all for catalogs):
+from tabs.use_cases.capability_routing import collect_help_contributions
+contributions = collect_help_contributions(registry)  # -> list[HelpContribution]
 ```
 
 Iterates every registered tab, calls `tab.create_service(hook_id, *args,
-**kwargs)` on each. Return values are not collected — fire-and-forget by
-design. One tab's hook raising is logged and swallowed per-tab; it does not
-stop the others. **Do not** route anything that reads or mutates session
+**kwargs)` on each (for `notify_all`) or collects typed return values (for
+`collect_*`). One tab's hook raising is logged and does not stop the others
+(`notify_all` swallows, collectors log and continue). **Do not** route anything that reads or mutates session
 state through this — that must go through `create_service`, which resolves
 only against the active tab. This is a deliberately different method name
 from `create_service` (not a flag) so a call site can't silently pick the
@@ -259,16 +268,20 @@ only to it from now on" (the real contribution-point pattern):
   new contribution-point-shaped need, not a pattern to invent from scratch.
 
 CATALOG REFRESH — "re-publish into a host-owned registry":
-    # Settings (broadcast — every tab may own sections):
-    notify_all("contribute_settings", settings_registry)
+    # Settings / Help (broadcast — every tab may own sections/help, even inactive):
+    from tabs.use_cases.capability_routing import collect_help_contributions, collect_settings_contributions
+    collect_help_contributions(registry) -> list[HelpContribution]  # frozen, owner_tab == i18n_namespace
+    collect_settings_contributions(registry) -> list[SettingsContribution]
+    # then install_*_contributions(list) immutable merge (uniq node_id / alias conflict raise)
     # Actions (active-tab chrome only):
     create_service("contribute_actions", action_registry) -> True | None
-  Tabs (re)register into host SettingsRegistry / ActionRegistry
-  (see docs/dev/ACTIONS.md). For settings, use notify_all so inactive
-  tabs still publish sections filtered later by owner_tab. For actions,
-  only the active tab's chrome targets are live. Host callers must not
-  import tabs.*.actions / tab settings builders by module path. Tab-owned
-  label keys live under the tab i18n namespace.
+  Tabs (re)register into host SettingsRegistry / HelpTree / ActionRegistry
+  (see docs/dev/ACTIONS.md, HELP_SYSTEM.md). For settings/help, collectors
+  gather typed return values (per-tab exception logged, not stopping others);
+  they remain browsable catalogs listing every inactive tab's contributions
+  (filtered by owner_tab on display). For actions, only the active tab's
+  chrome targets are live. Host callers must not import tabs.* builders by
+  module path. Tab-owned label keys live under the tab i18n namespace.
 
 Why this divergence (C10): settings/help are *browsable catalogs* — browser
 must list every inactive tab's sections/help subtrees (user hasn't switched
@@ -323,11 +336,12 @@ As of this writing:
   could plausibly be the active tab for (`canvas_widget_class`,
   `layout_manager`, `toolbar_presenter` are the live candidates if those
   tabs are ever meant to render their own canvas chrome). Not yet started.
-- **No enforcement test exists yet** for "every `create_service(...)` call
-  site's string literal is recognized by at least one tab's `create_service`
-  override." A dangling/misspelled ID currently fails silently at runtime
-  (`None`), not at test time. This is the biggest concrete gap in the
-  mechanism as it stands today.
+- **Enforced** for `contribute_*` (see `tests/contracts/test_capability_ids.py`):
+  every `create_service("contribute_*")` / `notify_all("contribute_*")` literal
+  must be recognized by at least one tab's `create_service` override; dangling
+  IDs now fail at test time (not silently at runtime as `None`).  Other IDs
+  still lack a generic enforcement test — the `contribute_*` family closed the
+  biggest concrete gap (this paragraph previously documented it as missing).
 - `getattr(widget, "attr_name", None)` guards for tab-owned widgets have
   **not** been fully audited/removed. Confirmed still present (unaudited) in
   `tabs/image_compare/ui/popup_closing.py`,

@@ -272,10 +272,19 @@ class MultiCompareTab(TabContract):
         if window is not None:
             resync_action_shortcuts(window, active_tab=self.session_type)
 
+    def _build_settings_contribution(self):  # type: ignore[no-untyped-def]
+        from plugins.settings.registry import SettingsContribution
+
+        # No tab-owned settings pages yet — empty but typed contribution.
+        return SettingsContribution(owner_tab=self.session_type, sections=(), extras=())
+
     def create_service(self, service_id: str, *args, **kwargs):
         if service_id == "contribute_settings":
-            # No tab-owned settings pages yet.
-            return True
+            legacy_registry = args[0] if args else kwargs.get("registry")
+            if legacy_registry is not None:
+                # Legacy mutate path (no sections)
+                return True
+            return self._build_settings_contribution()
         if service_id == "contribute_actions":
             registry = args[0] if args else kwargs.get("registry")
             if registry is None:
@@ -291,13 +300,15 @@ class MultiCompareTab(TabContract):
             contribute_keymap_defaults(registry)
             return True
         if service_id == "contribute_help":
-            registry = args[0] if args else kwargs.get("registry")
-            if registry is None:
-                return None
-            from tabs.multi_compare.help import contribute_help
+            legacy_registry = args[0] if args else kwargs.get("registry")
+            if legacy_registry is not None:
+                from tabs.multi_compare.help import contribute_help
 
-            contribute_help(registry)
-            return True
+                contribute_help(legacy_registry)
+                return True
+            from tabs.multi_compare.help import build_help_contribution
+
+            return build_help_contribution()
         if service_id == "clipboard_paste_service":
             if self._controller is None:
                 return None

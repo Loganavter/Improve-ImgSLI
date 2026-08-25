@@ -47,6 +47,29 @@ class SettingsSection:
         return self.search.keys
 
 
+@dataclass(frozen=True, slots=True)
+class SettingsSectionExtra:
+    """One extra build appended to an existing section (tab-owned perf etc)."""
+
+    section_id: str
+    build: Callable[[object, object], None]
+    order: int = 100
+    search: SearchIndex = field(default_factory=SearchIndex)
+
+
+@dataclass(frozen=True, slots=True)
+class SettingsContribution:
+    """Typed, immutable settings fragment owned by one tab.
+
+    ``owner_tab`` must equal the tab's ``i18n_namespace`` per
+    ``docs/dev/tabs/isolation.md:60`` (fallback ``session_type``).
+    """
+
+    owner_tab: str
+    sections: tuple[SettingsSection, ...] = ()
+    extras: tuple[SettingsSectionExtra, ...] = ()
+
+
 class SettingsRegistry:
     def __init__(self) -> None:
         self._sections: list[SettingsSection] = []
@@ -192,6 +215,34 @@ def get_settings_registry() -> SettingsRegistry:
     return _REGISTRY
 
 
+def install_settings_contributions(
+    contributions: list[SettingsContribution],
+    registry: SettingsRegistry | None = None,
+) -> None:
+    """Immutable merge of typed ``SettingsContribution`` fragments.
+
+    Copy-on-install: ``registry.add`` dedupes ``section_id`` and
+    ``add_section_extra`` dedupes by ``build`` identity (see
+    ``SettingsRegistry.add``). ``owner_tab`` on each contribution must
+    match the section/extra's ``owner_tab`` — mismatch is treated as error
+    in callers (collectors validate against ``i18n_namespace``).
+    """
+    target = registry if registry is not None else get_settings_registry()
+    for contrib in contributions:
+        # Use defensive copies: SettingsRegistry dedupes internally but we
+        # ensure we don't mutate the frozen contribution tuples.
+        for section in tuple(contrib.sections):
+            target.add(section)
+        for extra in tuple(contrib.extras):
+            target.add_section_extra(
+                extra.section_id,
+                extra.build,
+                owner_tab=contrib.owner_tab,
+                order=extra.order,
+                search=extra.search,
+            )
+
+
 def ensure_tab_settings_contributions() -> None:
     """Make every registered tab contribute settings sections.
 
@@ -199,6 +250,12 @@ def ensure_tab_settings_contributions() -> None:
     this can safely run more than once and after staged discovery: deferred
     tabs (e.g. image_gallery) must not be missed just because platform
     actions or the dialog were first touched during the bootstrap window.
+
+    New path: ``TabRegistry.contribute_all_settings`` gathers typed
+    ``SettingsContribution`` return values (per-tab exception logged, not
+    stopping others) then ``install_settings_contributions`` merges immutably.
+    Legacy ``notify_all("contribute_settings", registry)`` remains as
+    fallback for not-yet-migrated tabs (transitional).
     """
     from tabs.registry import TabRegistry
 
@@ -206,7 +263,13 @@ def ensure_tab_settings_contributions() -> None:
     # Idempotent per tier — ensures bootstrap AND deferred tabs are
     # registered before contributions are collected.
     tabs.discover()
-    tabs.notify_all("contribute_settings", get_settings_registry())
+    # Delegates to TabRegistry which internally uses typed collectors;
+    # keeps host -> tabs import limited to tabs.registry (allowed).
+    tabs.contribute_all_settings()
+    # Transitional fallback: if no typed contributions were installed (all
+    # tabs still legacy), fall back to legacy notify_all path — but
+    # contribute_all_settings already handles typed vs legacy gracefully.
+    # Keeping explicit fallback here is unnecessary; rely on TabRegistry path.
 
 
 def _register_builtin_sections(registry: SettingsRegistry) -> None:
