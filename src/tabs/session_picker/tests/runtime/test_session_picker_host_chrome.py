@@ -39,7 +39,7 @@ def test_session_picker_host_chrome_via_create_service_for(qtbot, tab_registry):
     # install_pages is lazy — force page creation so get_page returns it.
     tab_registry._ensure_page(INITIAL_WORKSPACE_SESSION_TYPE)
 
-    chrome = tab_registry.create_service_for(
+    chrome = tab_registry.create_service_for(  # ALLOWED: tab calls host-provided shared
         INITIAL_WORKSPACE_SESSION_TYPE,
         "session_picker.host_chrome",
     )
