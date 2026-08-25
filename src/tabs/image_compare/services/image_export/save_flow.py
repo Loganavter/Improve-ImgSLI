@@ -246,7 +246,7 @@ class ExportSaveFlowCoordinator(SaveToastMixin):
                     timeout_ms=4000,
                 )
         except Exception as exc:
-            logger.error("Save notification failed: %s", exc)
+            logger.error("Save notification failed: %s", exc, exc_info=True)
         finally:
             self._finalize_save_worker(save_task_id)
 

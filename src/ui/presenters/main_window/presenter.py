@@ -110,12 +110,28 @@ class MainWindowPresenter(QObject):
             schedule_update()
 
     def invalidate_canvas_render_state(self, clear_overlay_state: bool = False):
-        self.features.image_canvas.invalidate_render_state(
-            clear_overlay_state=clear_overlay_state
+        # May be called from session lifecycle while session_picker is
+        # active — no canvas exists yet/lazily unresolved then. Same
+        # tolerance as schedule_canvas_update (see above).
+        method = getattr(
+            self.features.image_canvas, "invalidate_render_state", None
         )
+        if method is not None:
+            method(clear_overlay_state=clear_overlay_state)
 
     def shutdown(self):
-        self.features.export.shutdown()
+        method = getattr(self.features.export, "shutdown", None)
+        if method is not None:
+            try:
+                method()
+            except AttributeError:
+                # LazyTabService raises AttributeError when the tab was
+                # never activated (export_presenter not yet materialized)
+                # — matches lifecycle.py's "Ошибка при отмене экспортов"
+                # degrade path, not a real error at shutdown.
+                logger.debug(
+                    "shutdown: export_presenter not available yet (lazy, tab never shown)"
+                )
 
     def _connect_signals(self):
         return connect_signals_impl(self)
@@ -202,10 +218,25 @@ class MainWindowPresenter(QObject):
         return hide_orientation_popup(self)
 
     def get_current_label_dimensions(self) -> tuple[int, int]:
-        return self.features.image_canvas.get_current_label_dimensions()
+        method = getattr(
+            self.features.image_canvas, "get_current_label_dimensions", None
+        )
+        if method is not None:
+            try:
+                return method()
+            except AttributeError:
+                pass
+        return (0, 0)
 
     def update_minimum_window_size(self):
-        self.features.image_canvas.update_minimum_window_size()
+        method = getattr(
+            self.features.image_canvas, "update_minimum_window_size", None
+        )
+        if method is not None:
+            try:
+                method()
+            except AttributeError:
+                pass
 
     def _update_interpolation_combo_box_ui(self):
         self.features.settings.update_interpolation_combo_box_ui()
