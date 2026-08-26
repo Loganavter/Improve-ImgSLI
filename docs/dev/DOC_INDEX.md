@@ -10,7 +10,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## docs/
 
 - **[Development History](../DEVELOPMENT_HISTORY.md)** — `docs/DEVELOPMENT_HISTORY.md`
-  Referenced by: [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
 - **[Install Improve-ImgSLI](../INSTALL.md)** — `docs/INSTALL.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Launcher Guide (`launcher.sh`)](../LAUNCHER.md)** — `docs/LAUNCHER.md`
@@ -27,7 +27,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[Code Mass Reduction](CODE_MASS_REDUCTION.md)** — `docs/dev/CODE_MASS_REDUCTION.md`
   Referenced by: [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/TODO.md](TODO.md)
 - **[Code patterns & anti-patterns](CODE_PATTERNS.md)** — `docs/dev/CODE_PATTERNS.md`
-  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/CODE_MASS_REDUCTION.md](CODE_MASS_REDUCTION.md), [docs/dev/FILE_SIZE_POLICY.md](FILE_SIZE_POLICY.md), [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
 - **[`.imgsli` Container Format](CONTAINER_FORMAT.md)** — `docs/dev/CONTAINER_FORMAT.md`
   Referenced by: [docs/dev/README.md](README.md)
 - **[Application Contracts](CONTRACTS.md)** — `docs/dev/CONTRACTS.md`
@@ -39,7 +39,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[EventBus](EVENT_BUS.md)** — `docs/dev/EVENT_BUS.md`
   Referenced by: [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/STORE.md](STORE.md), [docs/dev/TODO.md](TODO.md), [docs/dev/tabs/session-lifecycle.md](tabs/session-lifecycle.md)
 - **[File Size Policy & Audit-Meta](FILE_SIZE_POLICY.md)** — `docs/dev/FILE_SIZE_POLICY.md`
-  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md)
+  Referenced by: [docs/dev/CODE_PATTERNS.md](CODE_PATTERNS.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
 - **[Help plugin (hierarchical illustrated manual)](HELP_SYSTEM.md)** — `docs/dev/HELP_SYSTEM.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/PLUGINS.md](PLUGINS.md), [docs/dev/README.md](README.md), [docs/dev/RESOURCES_I18N.md](RESOURCES_I18N.md), [docs/dev/TODO.md](TODO.md), [docs/dev/plugins/help.md](plugins/help.md), [docs/dev/tabs/capability-mechanisms.md](tabs/capability-mechanisms.md)
 - **[Logging](LOGGING.md)** — `docs/dev/LOGGING.md`
@@ -70,7 +70,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 - **[UI layout dump](UI_LAYOUT_DUMP.md)** — `docs/dev/UI_LAYOUT_DUMP.md`
   Referenced by: [docs/dev/ACTIONS.md](ACTIONS.md), [docs/dev/README.md](README.md)
 - **[UI Toolkit Library (app-side boundary)](UI_TOOLKIT_LIBRARY.md)** — `docs/dev/UI_TOOLKIT_LIBRARY.md`
-  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md)
+  Referenced by: [docs/dev/DIALOGS.md](DIALOGS.md), [docs/dev/README.md](README.md), [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md)
 
 ## docs/dev/plugins/
 
@@ -173,7 +173,9 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
 ## src/tabs/image_gallery/docs/
 
 - **[Image Gallery](../../src/tabs/image_gallery/docs/README.md)** — `src/tabs/image_gallery/docs/README.md`
-  Referenced by: [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
+  Referenced by: [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md), [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
+- **[Image Gallery — product & interaction design](../../src/tabs/image_gallery/docs/design.md)** — `src/tabs/image_gallery/docs/design.md`
+  Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md)
 
 ## src/tabs/image_gallery/docs/plugins/
 
