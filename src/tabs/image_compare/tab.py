@@ -327,10 +327,20 @@ class ImageCompareTab(TabContract):
         persistence.rehydrate_session(self, session_id, context)
 
     def accepts_drop(self, paths: list[Path]) -> bool:
-        return drag_drop.accepts_drop(paths)
+        from tabs.image_compare.debug import ic_dnd_debug
+
+        ic_dnd_debug("Tab accepts_drop: %d paths", len(paths))
+        ok = drag_drop.accepts_drop(paths)
+        ic_dnd_debug("Tab accepts_drop -> %s", ok)
+        return ok
 
     def handle_drop(self, paths: list[Path], hint: dict | None = None) -> bool:
-        return drag_drop.handle_drop(self, paths, hint)
+        from tabs.image_compare.debug import ic_dnd_debug
+
+        ic_dnd_debug("Tab handle_drop: ENTER")
+        ok = drag_drop.handle_drop(self, paths, hint)
+        ic_dnd_debug("Tab handle_drop -> %s", ok)
+        return ok
 
     def _register_settings(self, registry) -> None:
         registration.register_settings(self, registry)

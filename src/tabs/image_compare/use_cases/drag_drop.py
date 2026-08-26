@@ -10,19 +10,29 @@ import logging
 from pathlib import Path
 
 from shared.image_extensions import ACCEPTED_IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS
+from tabs.image_compare.debug import ic_dnd_debug as _dnd_log
 
 logger = logging.getLogger("ImproveImgSLI")
 
 
 def accepts_drop(paths: list[Path]) -> bool:
-    return any(p.suffix.lower() in _IMAGE_EXTENSIONS for p in paths)
+    _dnd_log("accepts_drop: %d paths %r", len(paths), paths[:3])
+    for p in paths:
+        ok = p.suffix.lower() in _IMAGE_EXTENSIONS
+        if ok:
+            _dnd_log("  accepts_drop: %s suffix=%s -> True", p, p.suffix.lower())
+            return True
+        _dnd_log("  accepts_drop: %s suffix=%s -> False", p, p.suffix.lower())
+    return False
 
 
 def handle_drop(tab, paths: list[Path], hint: dict | None = None) -> bool:
     from PySide6.QtCore import QTimer
 
+    _dnd_log("handle_drop: ENTER %d paths %r hint=%r", len(paths), paths[:5], hint)
     widget = tab._widget
     if widget is None:
+        _dnd_log("handle_drop: widget is None -> False")
         logger.warning("ImageCompareTab.handle_drop: widget is not initialized")
         return False
     main_window = getattr(widget._context, "main_window", None) if widget._context else None
@@ -43,7 +53,9 @@ def handle_drop(tab, paths: list[Path], hint: dict | None = None) -> bool:
         )
         return False
     image_paths = [str(p) for p in paths if p.suffix.lower() in _IMAGE_EXTENSIONS]
+    _dnd_log("handle_drop: filtered %d/%d image_paths %r", len(image_paths), len(paths), image_paths[:3])
     if not image_paths:
+        _dnd_log("handle_drop: no supported image paths -> False")
         logger.warning(
             "ImageCompareTab.handle_drop: no supported image paths in %s",
             paths,
@@ -55,6 +67,7 @@ def handle_drop(tab, paths: list[Path], hint: dict | None = None) -> bool:
             slot = 1 if int(hint.get("slot") or 1) == 1 else 2
         elif "is_left_area" in hint:
             slot = 1 if bool(hint.get("is_left_area")) else 2
+    _dnd_log("handle_drop: scheduling load slot=%s paths=%r", slot, image_paths[:3])
     QTimer.singleShot(
         0, lambda: sessions.load_images_from_paths(image_paths, slot)
     )
