@@ -342,6 +342,78 @@
       }
     },
     {
+      "path": "src/tabs/image_gallery/controller.py",
+      "lines": 725,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/services/artifacts.py",
+      "lines": 668,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=tiled-pipeline size=670 reason=\"7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle\"",
+      "parsed": {
+        "pattern": "tiled-pipeline",
+        "size": "670",
+        "reason": "7 pure detectors sharing PIL/numpy helpers — single catalog lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/card.py",
+      "lines": 943,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one card factory lifecycle — build/update/selection/hover/ContextMenu share Button pool state\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one card factory lifecycle — build/update/selection/hover/ContextMenu share Button pool state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/grid_view.py",
+      "lines": 503,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look.py",
+      "lines": 1239,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — preview+report+strip share TopLevelInWindowOverlay state\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one overlay lifecycle — preview+report+strip share TopLevelInWindowOverlay state"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/widget.py",
+      "lines": 874,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag"
+      }
+    },
+    {
       "path": "src/tabs/multi_compare/scene/passes/base_images.py",
       "lines": 873,
       "limit": 500,
