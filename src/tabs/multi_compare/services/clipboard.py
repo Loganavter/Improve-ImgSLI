@@ -13,6 +13,7 @@ from shared.clipboard_images import (
     collect_clipboard_image_items,
     download_images_from_urls,
 )
+from shared.clipboard_paste import split_clipboard_items
 
 logger = logging.getLogger("ImproveImgSLI")
 
@@ -42,8 +43,7 @@ class ClipboardService:
                     )
                 return False
 
-            local_files = [i for i in items if os.path.exists(i)]
-            urls = [i for i in items if i.startswith("http")]
+            local_files, urls = split_clipboard_items(items)
 
             if not local_files and not urls:
                 return False
