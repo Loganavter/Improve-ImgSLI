@@ -176,6 +176,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [src/tabs/image_gallery/docs/design.md](../../src/tabs/image_gallery/docs/design.md), [src/tabs/image_gallery/docs/plugins/image_gallery.md](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)
 - **[Image Gallery — product & interaction design](../../src/tabs/image_gallery/docs/design.md)** — `src/tabs/image_gallery/docs/design.md`
   Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md)
+- **[Image Gallery — Design Parity Plan](../../src/tabs/image_gallery/docs/plan_design_parity.md)** — `src/tabs/image_gallery/docs/plan_design_parity.md`
 
 ## src/tabs/image_gallery/docs/plugins/
 
