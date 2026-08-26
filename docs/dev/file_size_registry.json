@@ -343,7 +343,7 @@
     },
     {
       "path": "src/tabs/image_gallery/controller.py",
-      "lines": 851,
+      "lines": 865,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one controller lifecycle — folder scan/thumbnail/triage/VLM sharing GenericWorker state\"",
@@ -391,7 +391,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/grid_view.py",
-      "lines": 549,
+      "lines": 687,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"single virtualized grid view — grid_columns/series headers/pool/marquee share one layout lifecycle\"",
@@ -415,7 +415,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 586,
+      "lines": 742,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
