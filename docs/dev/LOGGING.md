@@ -81,6 +81,7 @@ Existing examples:
 - `src/ui/main_window/runtime.py:_resize_debug` → `IMGSLI_RESIZE_DEBUG` / `IMGSLI_RESIZE_DEBUG_VISUAL`
 - `src/tabs/multi_compare/first_frame_debug.py` → `IMGSLI_MC_FIRST_FRAME_DEBUG` (first-frame timeline for Multi Compare: canvas construction → show → renderer initialize → painted presents → `firstFrameRendered` → placeholder hide; also samples what the canvas region actually shows via grab + enumerates top-level QRhi windows)
 - `src/tabs/image_compare/first_frame_debug.py` → `IMGSLI_IC_FIRST_FRAME_DEBUG` (the same first-frame timeline for Image Compare)
+- `src/tabs/image_gallery/debug.py:gallery_dnd_debug / gallery_debug` → `IMGSLI_GALLERY_DEBUG` (`[gallery-dnd]` DnD/open routing, `[gallery-debug]` generic gallery lifecycle)
 
 Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise (the user has hit this; see the AI agent's own working-style memory on noise suppression).
 
