@@ -18,10 +18,7 @@ from sli_ui_toolkit.widgets import (
     ScrollableComboBox,
 )
 from ui.widgets.scroll_value_button import ScrollValueButton
-<<<<<<< Updated upstream
 from ui.widgets.slider_hint import ValueSlider
-=======
->>>>>>> Stashed changes
 
 from sli_ui_toolkit.i18n import tr
 from tabs.image_compare.canvas.widget import CanvasWidget
@@ -164,22 +161,13 @@ class ImageComparePrimitivesFactory:
             # confirm-untested-resolution dialog -- ripple must finish first.
             defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
-<<<<<<< Updated upstream
         target.btn_magnifier_orientation = ScrollValueButton(
             icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
-=======
-        ui.btn_magnifier_orientation = ScrollValueButton(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
->>>>>>> Stashed changes
             toggle=True,
             show_underline=True,
             min_value=0,
             max_value=10,
-<<<<<<< Updated upstream
             zero_icon=Icon.DIVIDER_HIDDEN,
-=======
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
->>>>>>> Stashed changes
             parent=parent,
         )
         target.btn_save = Button(
@@ -200,24 +188,14 @@ class ImageComparePrimitivesFactory:
         target.combo_interpolation.setAutoWidthEnabled(True)
 
     def _create_view_controls(self, parent: QWidget) -> None:
-<<<<<<< Updated upstream
         target = self.target
         target.btn_orientation = ScrollValueButton(
             icon=(Icon.VERTICAL_SPLIT, Icon.HORIZONTAL_SPLIT),
-=======
-        ui = self.ui
-        ui.btn_orientation = ScrollValueButton(
-            icon=(AppIcon.VERTICAL_SPLIT, AppIcon.HORIZONTAL_SPLIT),
->>>>>>> Stashed changes
             toggle=True,
             show_underline=True,
             min_value=0,
             max_value=10,
-<<<<<<< Updated upstream
             zero_icon=Icon.DIVIDER_HIDDEN,
-=======
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
->>>>>>> Stashed changes
             parent=parent,
         )
         target.btn_magnifier = Button(Icon.MAGNIFIER, toggle=True, parent=parent)
@@ -239,22 +217,13 @@ class ImageComparePrimitivesFactory:
         target.btn_magnifier_color_settings = ColorSettingsButton(
             parent=parent, current_language="en"
         )
-<<<<<<< Updated upstream
         target.btn_magnifier_guides = ScrollValueButton(
             icon=Icon.MAGNIFIER_GUIDES,
-=======
-        ui.btn_magnifier_guides = ScrollValueButton(
-            icon=AppIcon.MAGNIFIER_GUIDES,
->>>>>>> Stashed changes
             toggle=True,
             show_underline=True,
             min_value=0,
             max_value=10,
-<<<<<<< Updated upstream
             zero_icon=Icon.DIVIDER_HIDDEN,
-=======
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
->>>>>>> Stashed changes
             parent=parent,
         )
 
@@ -271,19 +240,11 @@ class ImageComparePrimitivesFactory:
         target.btn_divider_color = Button(
             Icon.DIVIDER_COLOR, show_underline=True, parent=parent
         )
-<<<<<<< Updated upstream
         target.btn_divider_width = ScrollValueButton(
             icon=Icon.DIVIDER_WIDTH,
             min_value=0,
             max_value=10,
             zero_icon=Icon.DIVIDER_HIDDEN,
-=======
-        ui.btn_divider_width = ScrollValueButton(
-            icon=AppIcon.DIVIDER_WIDTH,
-            min_value=0,
-            max_value=10,
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
->>>>>>> Stashed changes
             parent=parent,
         )
         target.btn_magnifier_orientation_simple = Button(
@@ -300,13 +261,8 @@ class ImageComparePrimitivesFactory:
         target.btn_magnifier_color_settings_beginner = ColorSettingsButton(
             parent=parent, current_language="en"
         )
-<<<<<<< Updated upstream
         target.btn_magnifier_divider_width = ScrollValueButton(
             icon=Icon.DIVIDER_WIDTH,
-=======
-        ui.btn_magnifier_divider_width = ScrollValueButton(
-            icon=AppIcon.DIVIDER_WIDTH,
->>>>>>> Stashed changes
             show_underline=True,
             min_value=1,
             max_value=10,
@@ -315,13 +271,8 @@ class ImageComparePrimitivesFactory:
         target.btn_magnifier_guides_simple = Button(
             Icon.MAGNIFIER_GUIDES, toggle=True, parent=parent
         )
-<<<<<<< Updated upstream
         target.btn_magnifier_guides_width = ScrollValueButton(
             icon=Icon.DIVIDER_WIDTH,
-=======
-        ui.btn_magnifier_guides_width = ScrollValueButton(
-            icon=AppIcon.DIVIDER_WIDTH,
->>>>>>> Stashed changes
             show_underline=True,
             min_value=1,
             max_value=10,

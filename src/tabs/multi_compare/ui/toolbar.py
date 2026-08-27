@@ -7,11 +7,7 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.theme import ThemeManager
-<<<<<<< Updated upstream
 from sli_ui_toolkit.widgets import DEFER_CLICK_AWAIT_RIPPLE, Button, ThemedWidget
-=======
-from sli_ui_toolkit.widgets import Button
->>>>>>> Stashed changes
 from ui.widgets.scroll_value_button import ScrollValueButton
 
 from sli_ui_toolkit.i18n import tr
@@ -95,17 +91,10 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         self.btn_divider_color.clicked.connect(self.divider_color_clicked)
 
         self.btn_divider_width = ScrollValueButton(
-<<<<<<< Updated upstream
             icon=Icon.GRID,
             min_value=0,
             max_value=10,
             zero_icon=Icon.DIVIDER_HIDDEN,
-=======
-            icon=AppIcon.VERTICAL_SPLIT,
-            min_value=0,
-            max_value=10,
-            zero_icon=AppIcon.DIVIDER_HIDDEN,
->>>>>>> Stashed changes
             parent=self,
         )
         self.btn_divider_width.setObjectName("mc_btn_divider_width")
@@ -153,13 +142,8 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         self.btn_add.clicked.connect(self.add_clicked)
 
         self.btn_text_settings = Button(
-<<<<<<< Updated upstream
             Icon.TEXT_FILENAME,
             variant="default",
-=======
-            AppIcon.TEXT_FILENAME,
-            variant="surface",
->>>>>>> Stashed changes
             parent=self,
         )
         translatable_tooltip(
@@ -233,11 +217,7 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
         self._ui_mode = (
             mode if mode in {"beginner", "advanced", "expert"} else "beginner"
         )
-<<<<<<< Updated upstream
         self.btn_divider_width.setShowUnderline(self._ui_mode == "expert")
-=======
-        self.btn_divider_width.setShowUnderline(True)
->>>>>>> Stashed changes
         self.layout_manager.apply_mode(mode)
 
     def _on_divider_width_right_clicked(self) -> None:

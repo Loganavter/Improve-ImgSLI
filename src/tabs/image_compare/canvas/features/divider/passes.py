@@ -96,7 +96,6 @@ class DividerPass(CanvasRenderPass):
         thickness_px = float(payloads.get("divider_thickness", 0) or 0)
         color = QColor(payloads.get("divider_color", QColor(255, 255, 255, 255)))
         is_horizontal = bool(getattr(ctx.scene_frame, "is_horizontal", False))
-<<<<<<< Updated upstream
         spit = _content_split_visual(ctx)
 
         # Position + clip from the letterbox *after* the same zoom/pan as
@@ -111,24 +110,6 @@ class DividerPass(CanvasRenderPass):
             position_px = cx + cw * spit - float(ctx.canvas_offset_x)
 
         return show_divider, position_px, thickness_px, is_horizontal, color, (cx, cy, cw, ch)
-=======
-        display_split = float(get_display_split_position(widget) or 0.5)
-        content_rect = widget.runtime_state._content_rect_px
-        if is_horizontal:
-            origin, extent = (
-                (content_rect[1], content_rect[3])
-                if content_rect
-                else (0.0, float(widget.height()))
-            )
-        else:
-            origin, extent = (
-                (content_rect[0], content_rect[2])
-                if content_rect
-                else (0.0, float(widget.width()))
-            )
-        position_px = float(origin) + float(extent) * display_split
-        return show_divider, position_px, thickness_px, is_horizontal, color
->>>>>>> Stashed changes
 
     def initialize(self, rhi, target) -> None:
         self.release()

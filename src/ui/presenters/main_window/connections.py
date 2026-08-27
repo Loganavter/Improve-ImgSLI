@@ -98,7 +98,6 @@ def connect_signals(presenter):
     presenter.ui.workspace_tabs.addRequested.connect(
         lambda: on_new_workspace_tab_requested(presenter)
     )
-<<<<<<< Updated upstream
     presenter.ui.workspace_tabs.navigateOutRequested.connect(
         lambda direction: _focus_content(presenter, direction)
     )
@@ -107,8 +106,6 @@ def connect_signals(presenter):
             presenter, index, global_pos
         )
     )
-=======
->>>>>>> Stashed changes
 
     _refresh_active_tab_actions()
 
@@ -193,81 +190,4 @@ def handle_global_mouse_press(presenter, event):
         presenter._popup_close_scheduled = False
         presenter.ui_manager.transient.close_all_flyouts_if_needed(global_pos)
 
-<<<<<<< Updated upstream
     QTimer.singleShot(0, _close_popups)
-=======
-    QTimer.singleShot(0, _close_popups)
-
-
-def on_font_flyout_closed(presenter):
-    presenter.ui_manager.transient.mark_font_popup_closed()
-    presenter.ui.btn_text_settings.setFlyoutOpen(False)
-
-
-def _connect_magnifier_color_controls(presenter):
-    settings_presenter = presenter.get_feature("settings")
-    if hasattr(presenter.ui.btn_magnifier_color_settings, "set_store"):
-        presenter.ui.btn_magnifier_color_settings.set_store(presenter.store)
-
-    presenter.ui.btn_magnifier_color_settings.smartColorSetRequested.connect(
-        settings_presenter.apply_smart_magnifier_colors
-    )
-    presenter.ui.btn_magnifier_color_settings.colorOptionClicked.connect(
-        lambda option: on_color_option_clicked(presenter, option)
-    )
-    presenter.ui.btn_magnifier_color_settings.elementHovered.connect(
-        lambda element_name: on_magnifier_element_hovered(presenter, element_name)
-    )
-    presenter.ui.btn_magnifier_color_settings.elementHoverEnded.connect(
-        lambda: on_magnifier_element_hover_ended(presenter)
-    )
-
-    if hasattr(presenter.ui, "btn_magnifier_color_settings_beginner"):
-        if hasattr(presenter.ui.btn_magnifier_color_settings_beginner, "set_store"):
-            presenter.ui.btn_magnifier_color_settings_beginner.set_store(
-                presenter.store
-            )
-        presenter.ui.btn_magnifier_color_settings_beginner.smartColorSetRequested.connect(
-            settings_presenter.apply_smart_magnifier_colors
-        )
-        presenter.ui.btn_magnifier_color_settings_beginner.colorOptionClicked.connect(
-            lambda option: on_color_option_clicked(presenter, option)
-        )
-        presenter.ui.btn_magnifier_color_settings_beginner.elementHovered.connect(
-            lambda element_name: on_magnifier_element_hovered(presenter, element_name)
-        )
-        presenter.ui.btn_magnifier_color_settings_beginner.elementHoverEnded.connect(
-            lambda: on_magnifier_element_hover_ended(presenter)
-        )
-
-    presenter.ui.btn_magnifier_guides.toggled.connect(
-        lambda checked: on_magnifier_guides_toggled(presenter, not checked)
-    )
-    presenter.ui.btn_magnifier_guides.valueChanged.connect(
-        lambda value: on_magnifier_guides_thickness_changed(presenter, value)
-    )
-
-    if hasattr(presenter.ui, "btn_magnifier_guides_simple"):
-        presenter.ui.btn_magnifier_guides_simple.toggled.connect(
-            lambda checked: on_magnifier_guides_toggled(presenter, checked)
-        )
-    # btn_magnifier_guides_width.valueChanged is wired by toolbar_presenter's
-    # own connect_signals() (tabs/image_compare/presenters/toolbar/connections.py,
-    # control_id "guides.thickness") — not here, to avoid a double connection.
-
-
-def _on_font_flyout_interaction_started(presenter, slider_name: str) -> None:
-    viewport_ctrl = getattr(
-        getattr(presenter, "main_controller", None), "viewport_plugin", None
-    )
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_pressed"):
-        viewport_ctrl.on_slider_pressed(slider_name)
-
-
-def _on_font_flyout_interaction_finished(presenter, slider_name: str) -> None:
-    viewport_ctrl = getattr(
-        getattr(presenter, "main_controller", None), "viewport_plugin", None
-    )
-    if viewport_ctrl is not None and hasattr(viewport_ctrl, "on_slider_released"):
-        viewport_ctrl.on_slider_released(slider_name)
->>>>>>> Stashed changes

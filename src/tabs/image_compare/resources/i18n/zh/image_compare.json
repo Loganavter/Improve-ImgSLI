@@ -1,6 +1,5 @@
 {
   "image_compare": {
-<<<<<<< Updated upstream
     "session_type": "图像比较",
     "help": {
       "hub": {
@@ -188,8 +187,5 @@
       "capture_ring": "捕获环",
       "fit_mode_toggle": "切换适配模式"
     }
-=======
-    "session_type": "图像比较"
->>>>>>> Stashed changes
   }
 }
