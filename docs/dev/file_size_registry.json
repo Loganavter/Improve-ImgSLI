@@ -253,7 +253,7 @@
     },
     {
       "path": "src/tabs/image_compare/plugins/video_editor/dialog/shell.py",
-      "lines": 624,
+      "lines": 618,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"video editor dialog shell — one QDialog chrome\"",
@@ -379,7 +379,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/card.py",
-      "lines": 1466,
+      "lines": 1468,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one card factory lifecycle — build/update/selection/hover/ContextMenu share Button pool state\"",
@@ -415,7 +415,7 @@
     },
     {
       "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "lines": 1915,
+      "lines": 1918,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine size=exempt reason=\"one overlay lifecycle — preview+report+strip share TopLevelInWindowOverlay state\"",
@@ -439,7 +439,7 @@
     },
     {
       "path": "src/tabs/image_gallery/widget.py",
-      "lines": 806,
+      "lines": 810,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner size=exempt reason=\"thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag\"",
@@ -447,6 +447,18 @@
         "pattern": "thin-owner",
         "size": "exempt",
         "reason": "thin owner delegating to use_cases/triage+carry+quick look; splitting would create helpers bag"
+      }
+    },
+    {
+      "path": "src/tabs/multi_compare/plugins/export/dialog.py",
+      "lines": 641,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner size=exempt reason=\"export dialog state machine — dialog+state+validation share one lifecycle\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "size": "exempt",
+        "reason": "export dialog state machine — dialog+state+validation share one lifecycle"
       }
     },
     {
@@ -584,7 +596,7 @@
     },
     {
       "path": "src/ui/widgets/scroll_value_button.py",
-      "lines": 946,
+      "lines": 776,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"single custom-painted control — painter pipeline owns visuals\"",

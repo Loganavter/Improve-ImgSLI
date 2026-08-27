@@ -1,4 +1,5 @@
 import io
+# Audit-Meta: pattern=thin-owner size=exempt reason="export dialog state machine — dialog+state+validation share one lifecycle"
 import logging
 
 import PIL.Image
