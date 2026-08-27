@@ -83,6 +83,11 @@ class MainWindowPresenter(QObject):
             self._configure_workspace_actions()
             self.sync_workspace_tabs()
             self.sync_session_mode()
+<<<<<<< Updated upstream
+=======
+            self.update_slider_tooltips()
+            self.ui.reapply_button_styles()
+>>>>>>> Stashed changes
             self.repopulate_flyouts()
         except Exception:
             logger.exception(

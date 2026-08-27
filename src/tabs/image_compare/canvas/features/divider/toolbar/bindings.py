@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+<<<<<<< Updated upstream:src/tabs/image_compare/canvas/features/divider/toolbar/bindings.py
 import logging
 
 from domain.qt_adapters import ensure_visible_qcolor, qcolor_to_color
+=======
+from domain.qt_adapters import color_to_qcolor, qcolor_to_color
+>>>>>>> Stashed changes:src/tabs/image_compare/canvas/features/divider/toolbar.py
 from ui.canvas_infra.scene.widget_contract import CanvasFeatureToolbarBinding
 
 from tabs.image_compare.canvas.features.divider.commands.registry import (
@@ -130,7 +134,11 @@ def sync_toolbar_state(presenter) -> None:
     )
     if ui.btn_orientation.get_value() != divider_thickness:
         ui.btn_orientation.set_value(divider_thickness, emit=False)
+<<<<<<< Updated upstream:src/tabs/image_compare/canvas/features/divider/toolbar/bindings.py
     ui.btn_orientation.setUnderlineColor(ensure_visible_qcolor(divider_state.color))
+=======
+    ui.btn_orientation.setUnderlineColor(color_to_qcolor(divider_state.color))
+>>>>>>> Stashed changes:src/tabs/image_compare/canvas/features/divider/toolbar.py
     if hasattr(ui, "btn_orientation_simple"):
         ui.btn_orientation_simple.setChecked(
             viewport.view_state.is_horizontal,

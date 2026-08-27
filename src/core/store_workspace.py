@@ -370,6 +370,7 @@ class WorkspaceStoreMixin:
         self.document = session.document
         self.viewport = session.viewport
 
+<<<<<<< Updated upstream
     @contextmanager
     def using_workspace_session(self, session_id: str) -> Iterator[WorkspaceSession | None]:
         """Temporarily activate ``session_id`` for the duration of ``with`` block."""
@@ -390,6 +391,8 @@ class WorkspaceStoreMixin:
                 if previous is not None:
                     self._activate_workspace_session(previous)
 
+=======
+>>>>>>> Stashed changes
     def _slot_factory_registry(self) -> dict[str, Callable]:
         """Per-slot-name factory registered by session blueprints.
 

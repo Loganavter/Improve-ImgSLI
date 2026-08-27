@@ -120,7 +120,11 @@ def sync_magnifier_orientation_state(presenter) -> None:
             set_checked_quietly(btn_orientation, magnifier_is_horizontal)
             set_slider_value_quietly(btn_orientation, magnifier_thickness)
         btn_orientation.setUnderlineColor(
+<<<<<<< Updated upstream
             ensure_visible_qcolor(active_or_default_divider_color(view_state))
+=======
+            color_to_qcolor(active_or_default_divider_color(view_state))
+>>>>>>> Stashed changes
         )
     set_checked_quietly(
         getattr(ui, "btn_magnifier_orientation_simple", None),

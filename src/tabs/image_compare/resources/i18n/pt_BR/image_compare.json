@@ -1,5 +1,6 @@
 {
   "image_compare": {
+<<<<<<< Updated upstream
     "session_type": "Comparar imagens",
     "help": {
       "hub": {
@@ -187,5 +188,8 @@
       "capture_ring": "Anel de captura",
       "fit_mode_toggle": "Alternar modo de ajuste"
     }
+=======
+    "session_type": "Comparar imagens"
+>>>>>>> Stashed changes
   }
 }

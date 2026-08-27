@@ -34,7 +34,39 @@ class VideoEditorDialogRuntime:
     def update_settings_panel_width(self):
         d = self.dialog
         try:
+<<<<<<< Updated upstream:src/tabs/image_compare/plugins/video_editor/dialog/runtime.py
             apply_top_row_geometry(d)
+=======
+            d.settings_panel.ensurePolished()
+            max_tab_content_width = 0
+            for i in range(d.tabs.count()):
+                widget = d.tabs.widget(i)
+                if widget:
+                    widget.ensurePolished()
+                    widget.adjustSize()
+                    max_tab_content_width = max(
+                        max_tab_content_width, widget.sizeHint().width()
+                    )
+            tab_bar_width = d.tabs.tabBar().sizeHint().width()
+            d.btn_export.ensurePolished()
+            d.btn_export.adjustSize()
+            btn_width = d.btn_export.sizeHint().width()
+            optimal_width = max(350, max_tab_content_width + 44, tab_bar_width + 44, btn_width + 24)
+            final_width = int(min(optimal_width, 650))
+            d.settings_panel.setFixedWidth(final_width)
+            logger.warning(
+                "DBG-BUG1 update_settings_panel_width dialog_width=%s "
+                "max_tab_content_width=%s tab_bar_width=%s btn_width=%s "
+                "optimal_width=%s final_width=%s preview_min=%s",
+                d.width(),
+                max_tab_content_width,
+                tab_bar_width,
+                btn_width,
+                optimal_width,
+                final_width,
+                d.preview_label.minimumSize(),
+            )
+>>>>>>> Stashed changes:src/plugins/video_editor/dialog_runtime.py
         except Exception as exc:
             logger.warning(f"Error calculating panel width: {exc}")
             fallback_width = scaled_px(380)

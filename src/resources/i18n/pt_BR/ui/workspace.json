@@ -2,6 +2,7 @@
   "workspace": {
     "session_types": {
       "multi_compare": "Comparação múltipla",
+<<<<<<< Updated upstream
       "session_picker": "Nova Aba",
       "image_compare": "Comparar imagens"
     },
@@ -12,6 +13,9 @@
       "duplicate": "Duplicar aba",
       "close_others": "Fechar outras abas",
       "new": "Nova aba"
+=======
+      "session_picker": "Nova Aba"
+>>>>>>> Stashed changes
     }
   }
 }

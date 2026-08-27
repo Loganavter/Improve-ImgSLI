@@ -2,6 +2,7 @@
   "workspace": {
     "session_types": {
       "multi_compare": "多图比较",
+<<<<<<< Updated upstream
       "session_picker": "新标签页",
       "image_compare": "图像比较"
     },
@@ -12,6 +13,9 @@
       "duplicate": "复制标签页",
       "close_others": "关闭其他标签页",
       "new": "新建标签页"
+=======
+      "session_picker": "新标签页"
+>>>>>>> Stashed changes
     }
   }
 }

@@ -166,6 +166,7 @@ class MainWindowStartupRuntime:
     def _active_tab(self):
         """The tab whose page is currently shown in the workspace stack."""
         window = self.window
+<<<<<<< Updated upstream
         tab_registry = getattr(window.ui, "_tab_registry", None)
         stack = getattr(window.ui, "workspace_stack", None)
         if tab_registry is None or stack is None:
@@ -176,6 +177,70 @@ class MainWindowStartupRuntime:
                 continue
             return tab_registry.get_tab(session_type)
         return None
+=======
+        if window.onboarding_overlay is not None:
+            return True
+        if window.ui is None:
+            return False
+        if not self._is_image_compare_page_active():
+            return True
+        if window._startup_expects_initial_canvas_content:
+            return (
+                window._startup_canvas_first_frame_rendered
+                and window._startup_canvas_first_visual_ready
+                and self.is_canvas_content_ready()
+            )
+        return window._startup_canvas_first_visual_ready
+
+    def _is_image_compare_page_active(self) -> bool:
+        # The startup cover is gated on the image_compare canvas rendering its
+        # first frame, but QRhiWidget only renders while it is the visible
+        # stack page. If a different tab (e.g. session_picker) is shown at
+        # startup, that signal never fires and the cover would stay up
+        # forever, so the gate does not apply then.
+        window = self.window
+        tab_registry = getattr(window.ui, "_tab_registry", None)
+        stack = getattr(window.ui, "workspace_stack", None)
+        if tab_registry is None or stack is None:
+            return True
+        image_compare_page = tab_registry.get_page("image_compare")
+        if image_compare_page is None:
+            return True
+        return stack.currentWidget() is image_compare_page
+
+    def is_canvas_content_ready(self) -> bool:
+        window = self.window
+        if window.ui is None:
+            return False
+        image_label = getattr(window.ui, "image_label", None)
+        if image_label is None:
+            return False
+
+        source_ready = bool(getattr(image_label, "_source_images_ready", False))
+        if source_ready:
+            return True
+
+        uploaded = getattr(image_label, "_images_uploaded", None)
+        if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
+            return True
+
+        runtime_state = getattr(image_label, "runtime_state", None)
+        if runtime_state is not None:
+            uploaded = getattr(runtime_state, "_images_uploaded", None)
+            if isinstance(uploaded, (list, tuple)) and any(bool(item) for item in uploaded):
+                return True
+            background = getattr(runtime_state, "_background_pixmap", None)
+            if background is not None and not background.isNull():
+                return True
+
+        stored_qimages = getattr(image_label, "_stored_qimages", None)
+        if isinstance(stored_qimages, (list, tuple)):
+            for image in stored_qimages:
+                if image is not None and not image.isNull():
+                    return True
+
+        return False
+>>>>>>> Stashed changes
 
     def reveal_if_ready(self) -> None:
         window = self.window

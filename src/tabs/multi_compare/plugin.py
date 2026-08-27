@@ -27,7 +27,11 @@ class MultiComparePlugin(Plugin, ISessionPlugin):
         register_multi_compare_reducers()
 
     def get_session_blueprints(self) -> tuple[SessionBlueprint, ...]:
+<<<<<<< Updated upstream
         from tabs.multi_compare.use_cases.persistence import _fresh_default_state
+=======
+        from tabs.multi_compare.tab import _default_state
+>>>>>>> Stashed changes
 
         return (
             SessionBlueprint(
@@ -37,7 +41,11 @@ class MultiComparePlugin(Plugin, ISessionPlugin):
                 state_slots=(
                     SessionSlotBlueprint(
                         name="multi_compare.state",
+<<<<<<< Updated upstream
                         factory=_fresh_default_state,
+=======
+                        factory=_default_state,
+>>>>>>> Stashed changes
                     ),
                 ),
             ),
