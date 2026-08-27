@@ -12,7 +12,6 @@
     "image_compare": "Side-by-side image comparison with a divider, magnifier, and analysis tools.",
     "multi_compare": "Grid layout for comparing several sources at once."
   },
-<<<<<<< Updated upstream
   "recent": {
     "title": "Recent",
     "empty_title": "Load your first project",
@@ -44,12 +43,5 @@
       "hours": "{n}h ago",
       "days": "{n}d ago"
     }
-=======
-  "drop_zone": "Drop image files here to start a comparison",
-  "recent": {
-    "title": "Continue",
-    "badge": "In development",
-    "placeholder": "Recent workspaces will appear here once this feature lands."
->>>>>>> Stashed changes
   }
 }

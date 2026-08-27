@@ -10,27 +10,16 @@
     "change_diff_mode": "Изменить режим сравнения",
     "click_remove_current_image": "Нажатие: Удалить текущее изображение",
     "click_swap_current_images": "Нажатие: Поменять текущие изображения",
-<<<<<<< Updated upstream:src/tabs/image_compare/resources/i18n/ru/tooltips.json
     "divider_color": "Цвет разделителя",
     "file_names_hidden_on_zoom": "Названия на холсте скрыты при зуме. Верните масштаб к 100%, чтобы снова их увидеть.",
     "freeze_magnifier_position": "Зафиксировать положение лупы",
     "hold_swap_entire_lists": "Удержание: Поменять списки целиком",
-=======
-    "create_workspace_session": "Создать сессию рабочего пространства",
-    "divider_color": "Цвет разделителя",
-    "freeze_magnifier_position": "Зафиксировать положение лупы",
-    "hold_swap_entire_lists": "Удержание: Поменять списки целиком",
-    "file_names_hidden_on_zoom": "Названия на холсте скрыты при зуме. Верните масштаб к 100%, чтобы снова их увидеть.",
->>>>>>> Stashed changes:src/resources/i18n/ru/ui/tooltips.json
     "include_file_names": "Включить имена файлов в сохранённое изображение",
     "magnifier_colors": "Цвета лупы",
     "magnifier_guides": "Направляющие лупы",
     "magnifier_interpolation": "Метод интерполяции лупы",
     "magnifier_orientation": "Ориентация лупы",
-<<<<<<< Updated upstream:src/tabs/image_compare/resources/i18n/ru/tooltips.json
     "magnifier_visibility": "Показать или скрыть отдельные экземпляры лупы",
-=======
->>>>>>> Stashed changes:src/resources/i18n/ru/ui/tooltips.json
     "open_application_settings": "Открыть настройки приложения",
     "open_file_name_text_settings": "Открыть настройки текста имен файлов",
     "open_video_editor": "Открыть видеоредактор",
@@ -43,11 +32,6 @@
     "split_orientation": "Ориентация разделения",
     "toggle_divider_visibility": "Переключить видимость разделителя",
     "toggle_magnifier": "Включить/выключить лупу",
-<<<<<<< Updated upstream:src/tabs/image_compare/resources/i18n/ru/tooltips.json
     "toggle_magnifier_divider_visibility": "Переключить видимость разделителя лупы"
-=======
-    "toggle_magnifier_divider_visibility": "Переключить видимость разделителя лупы",
-    "use_favorite": "Использовать избранное"
->>>>>>> Stashed changes:src/resources/i18n/ru/ui/tooltips.json
   }
 }

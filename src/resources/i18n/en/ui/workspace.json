@@ -3,7 +3,6 @@
     "session_types": {
       "video_compare": "Video Compare",
       "multi_compare": "Multi Compare",
-<<<<<<< Updated upstream
       "session_picker": "New Tab",
       "image_compare": "Image Compare"
     },
@@ -14,9 +13,6 @@
       "duplicate": "Duplicate Tab",
       "close_others": "Close Other Tabs",
       "new": "New Tab"
-=======
-      "session_picker": "New Tab"
->>>>>>> Stashed changes
     }
   }
 }

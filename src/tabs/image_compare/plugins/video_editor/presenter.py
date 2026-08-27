@@ -221,18 +221,9 @@ class VideoEditorPresenter(QObject):
         self.playback_coordinator.update_buttons_state()
         self.thumbnail_coordinator.generate_thumbnails()
         self.preview_coordinator.schedule_update()
-<<<<<<< Updated upstream:src/tabs/image_compare/plugins/video_editor/presenter.py
         # Eager, independent of fit_content_mode: lets the UI disable the
         # fit-content toggle up front when the canvas never leaves 0..1.
         self.preview_coordinator.recalculate_global_bounds()
-=======
-        logger.warning(
-            "DBG-BUG4 _initialize_from_snapshots: bootstrap=%.1fms rest=%.1fms total=%.1fms",
-            (_dbg_t1 - _dbg_t0) * 1000,
-            (time.perf_counter() - _dbg_t1) * 1000,
-            (time.perf_counter() - _dbg_t0) * 1000,
-        )
->>>>>>> Stashed changes:src/plugins/video_editor/presenter.py
 
     def _initialize_output_fields(self):
         _dbg_t0 = time.perf_counter()

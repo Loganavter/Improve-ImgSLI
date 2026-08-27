@@ -14,16 +14,12 @@ from ui.canvas_infra.rhi.render_metrics import resolve_relative_px
 class DividersOverlaySource:
     """Geometry + style for Multi Compare split dividers.
 
-<<<<<<< Updated upstream
     Reads gap geometry and styling from the resolved ``ResolvedComposition``
     (``composition.gaps`` / ``composition.divider_settings``) baked by
     ``build_composition_plan`` — live canvas and offscreen export share the
     same snapshot. ``GridDividersPass`` uploads projected rects as GPU quads;
     ``paint()`` remains for CPU/debug paths and contract tests.
     """
-=======
-    MIN_THICKNESS_FB = 1.0
->>>>>>> Stashed changes
 
     MIN_THICKNESS_FB = 1.0
 
@@ -108,7 +104,6 @@ class DividersOverlaySource:
         # size, so preview and export stay visually WYSIWYG.
         if direction == "h":
             thickness = max(self.MIN_THICKNESS_FB, w)
-<<<<<<< Updated upstream
             if thickness_du is not None:
                 thickness = max(
                     self.MIN_THICKNESS_FB,
@@ -122,15 +117,6 @@ class DividersOverlaySource:
                 self.MIN_THICKNESS_FB,
                 resolve_relative_px(thickness_du, short_edge_px=short_edge_fb),
             )
-=======
-            if thickness_canvas is not None:
-                thickness = max(self.MIN_THICKNESS_FB, thickness_canvas)
-            center = x + w * 0.5
-            return QRectF(center - thickness * 0.5, y, thickness, max(1.0, h))
-        thickness = max(self.MIN_THICKNESS_FB, h)
-        if thickness_canvas is not None:
-            thickness = max(self.MIN_THICKNESS_FB, thickness_canvas)
->>>>>>> Stashed changes
         center = y + h * 0.5
         return QRectF(x, center - thickness * 0.5, max(1.0, w), thickness)
 

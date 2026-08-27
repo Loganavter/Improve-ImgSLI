@@ -488,16 +488,10 @@ class VideoEditorDialog(ThemedDialog):
         return tr(text, self.current_language)
 
     def update_language(self, lang_code: str):
-<<<<<<< Updated upstream:src/tabs/image_compare/plugins/video_editor/dialog/shell.py
         from tabs.image_compare.plugins.video_editor.translations import apply_translations
 
         apply_translations(self, lang_code or "en")
         self._update_settings_panel_width()
-=======
-        from plugins.video_editor.translations import apply_translations
-
-        apply_translations(self, lang_code or "en")
->>>>>>> Stashed changes:src/plugins/video_editor/dialog.py
 
     def _tr_preset(self, preset):
         from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder

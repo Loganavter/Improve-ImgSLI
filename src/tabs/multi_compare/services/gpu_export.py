@@ -138,7 +138,6 @@ class MultiCompareGpuExporter:
             QApplication.processEvents()
             widget._mc_overlay_debug = False
 
-<<<<<<< Updated upstream
         def set_export_viewport(viewport):
             widget._export_canvas_viewport = viewport
 
@@ -164,29 +163,6 @@ class MultiCompareGpuExporter:
                     target_size[1],
                     Qt.AspectRatioMode.IgnoreAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
-=======
-        render_plan = CanvasRenderPlan(
-            image1=None,
-            image2=None,
-            source_image1=None,
-            source_image2=None,
-            source_key=(),
-            canvas_w=composition.canvas_w,
-            canvas_h=composition.canvas_h,
-            gl_scene=None,
-            overlay_layout=None,
-            capture_visible=False,
-            capture_color=QColor(0, 0, 0, 0),
-            guides_enabled=False,
-            guides_color=QColor(0, 0, 0, 0),
-            guides_thickness=0,
-            fill_rgba=(
-                (
-                    background_color.red(),
-                    background_color.green(),
-                    background_color.blue(),
-                    background_color.alpha(),
->>>>>>> Stashed changes
                 )
             return image
 

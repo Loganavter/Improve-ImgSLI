@@ -193,7 +193,6 @@ class MultiCompareController:
             title=self.translate("ui.choose_divider_line_color", "Choose divider color"),
             show_alpha=True,
         )
-<<<<<<< Updated upstream
         dialog.setModal(False)
 
         def on_color_selected(color):
@@ -207,14 +206,6 @@ class MultiCompareController:
         dialog.finished.connect(on_finished)
         self._divider_color_dialog = dialog
         dialog.show()
-=======
-        logger.warning(
-            "[divider-color-debug] picker closed: current=%s chosen=%s valid=%s",
-            current.getRgb(), chosen.getRgb(), chosen.isValid(),
-        )
-        if chosen.isValid():
-            self.widget.apply_divider_color(chosen)
->>>>>>> Stashed changes
 
     def _on_help_requested(self) -> None:
         self._call_service("show_help_dialog")
@@ -309,142 +300,10 @@ class MultiCompareController:
             return
         loading_use_cases.on_pyramid_level_ready(self, payload)
 
-<<<<<<< Updated upstream
     def _show_loading_toast(self, slot_id: int) -> None:
         coord = getattr(self, "_loading_toast_coordinator", None)
         if coord is not None:
             coord.show(slot_id)
-=======
-            t0 = time.perf_counter()
-            saved_path = save_composite(image, options)
-            logger.info(
-                "[mc-export] save_composite in %.1f ms -> %s",
-                (time.perf_counter() - t0) * 1000.0,
-                saved_path,
-            )
-
-            self._persist_export_preferences(options)
-            logger.info(
-                "Multi Compare composite saved to %s (total=%.1f ms)",
-                saved_path,
-                (time.perf_counter() - t_start) * 1000.0,
-            )
-        except Exception:
-            logger.exception("Composite save failed")
-
-    def _open_local_export_dialog(
-        self,
-        *,
-        preview_image,
-        suggested_filename: str,
-        native_size: tuple[int, int],
-    ):
-        from resources.translations import tr
-
-        from tabs.multi_compare.plugins.export import (
-            MultiCompareExportDialog,
-            MultiCompareExportDialogState,
-        )
-
-        settings = getattr(self.store, "settings", None)
-        state = MultiCompareExportDialogState(
-            current_language=getattr(settings, "current_language", "en"),
-            output_dir=self._default_dir(),
-            favorite_dir=getattr(settings, "export_favorite_dir", None),
-            last_format=getattr(settings, "export_last_format", "PNG"),
-            quality=int(getattr(settings, "export_quality", 95) or 95),
-            png_compress_level=int(
-                getattr(settings, "export_png_compress_level", 9) or 9
-            ),
-            fill_background=bool(getattr(settings, "export_fill_background", True)),
-            background_color=self._background_color_from_settings(settings),
-            comment_text=getattr(settings, "export_comment_text", "") or "",
-            comment_keep_default=bool(
-                getattr(settings, "export_comment_keep_default", False)
-            ),
-            resolution_scale=float(
-                getattr(settings, "export_resolution_scale", 1.0) or 1.0
-            ),
-        )
-        dialog = MultiCompareExportDialog(
-            state,
-            preview_image=preview_image,
-            suggested_filename=suggested_filename,
-            native_size=native_size,
-            tr_func=tr,
-            on_set_favorite_dir=self._set_favorite_dir,
-            parent=None,
-        )
-        return dialog.exec(), dialog.get_export_options()
-
-    def _live_view_size(self) -> tuple[int, int]:
-        width = max(1, int(self.widget.canvas.width()))
-        height = max(1, int(self.widget.canvas.height()))
-        return width, height
-
-    def _native_canvas_size(self) -> tuple[int, int] | None:
-        """Smallest canvas where every loaded slot renders at native resolution.
-
-        Delegates to the composition module so live render, export, and the
-        export dialog's suggested resolution all share one source of truth.
-        """
-        plan = build_composition_plan(self.widget.state, include_labels=False)
-        if plan is None:
-            return None
-        return compute_native_canvas_size(
-            plan.root, max_edge=self.NATIVE_CANVAS_MAX_EDGE
-        )
-
-    def _render_export_preview(
-        self,
-        width: int,
-        height: int,
-        background_color: QColor,
-        fill_background: bool,
-    ) -> QPixmap:
-
-        longest = max(int(width), int(height))
-        if longest > self.PREVIEW_MAX_EDGE:
-            scale = self.PREVIEW_MAX_EDGE / float(longest)
-            width = max(1, int(round(width * scale)))
-            height = max(1, int(round(height * scale)))
-        return QPixmap.fromImage(
-            self._compose_image(
-                width,
-                height,
-                background_color=background_color,
-                fill_background=fill_background,
-            )
-        )
-
-    def _default_dir(self) -> str:
-        if self.store is not None:
-            settings = getattr(self.store, "settings", None)
-            if settings is not None:
-                d = getattr(settings, "export_default_dir", None)
-                if d:
-                    return d
-        return str(Path.home())
-
-    @staticmethod
-    def _background_color_from_settings(settings) -> QColor:
-        color = getattr(settings, "export_background_color", None)
-        if color is None:
-            return QColor(20, 20, 20)
-        if isinstance(color, QColor):
-            return QColor(color)
-        channels = (
-            getattr(color, "r", 20),
-            getattr(color, "g", 20),
-            getattr(color, "b", 20),
-            getattr(color, "a", 255),
-        )
-        return QColor(*channels)
-
-    def _persist_export_preferences(self, options: dict) -> None:
-        settings = getattr(self.store, "settings", None)
-        if settings is None:
->>>>>>> Stashed changes
             return
         loading_use_cases.show_loading_toast(self, slot_id)
 
