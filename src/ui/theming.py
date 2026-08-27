@@ -20,6 +20,15 @@ def resolve_theme_color(theme_manager, color_key: str) -> QColor:
     return theme_manager.get_color(color_key)
 
 
+def try_resolve_theme_color(theme_manager, color_key: str) -> QColor | None:
+    """Resolve a theme token, returning ``None`` when the key is absent.
+
+    Thin infra wrapper over ``ThemeManager.try_get_color`` so feature code can
+    degrade to a fallback color without touching manager internals directly.
+    """
+    return theme_manager.try_get_color(color_key)
+
+
 def refresh_application_styles(app: QApplication) -> None:
     """Re-polish application QSS after runtime style-affecting settings change."""
     app.setStyleSheet(app.styleSheet())

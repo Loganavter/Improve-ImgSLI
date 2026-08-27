@@ -450,18 +450,6 @@
       }
     },
     {
-      "path": "src/tabs/multi_compare/plugins/export/dialog.py",
-      "lines": 641,
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner size=exempt reason=\"export dialog state machine — dialog+state+validation share one lifecycle\"",
-      "parsed": {
-        "pattern": "thin-owner",
-        "size": "exempt",
-        "reason": "export dialog state machine — dialog+state+validation share one lifecycle"
-      }
-    },
-    {
       "path": "src/tabs/multi_compare/scene/passes/base_images.py",
       "lines": 873,
       "limit": 500,
