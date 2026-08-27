@@ -210,7 +210,10 @@ def main():
     cli_forced_rhi = args.rhi_backend is not None
     if selected_rhi_backend != "default":
         configure_rhi_process_environment(selected_rhi_backend)
+<<<<<<< Updated upstream
     configure_vulkan_layer_environment(selected_rhi_backend)
+=======
+>>>>>>> Stashed changes
     _configure_qt_logging()
     _configure_linux_desktop_integrations()
 

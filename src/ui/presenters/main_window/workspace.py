@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import logging
 
+<<<<<<< Updated upstream
 from core.store import INITIAL_WORKSPACE_SESSION_TYPE
 
+=======
+>>>>>>> Stashed changes
 logger = logging.getLogger("ImproveImgSLI")
 
 
@@ -16,8 +19,15 @@ def initialize_workspace_state(presenter) -> None:
 
 def configure_workspace_actions(presenter):
     # The add-tab button always opens the session picker directly (see
+<<<<<<< Updated upstream
     # on_new_workspace_tab_requested). Button no longer embeds dropdown menus.
     pass
+=======
+    # on_new_workspace_tab_requested) instead of popping up a session-type
+    # menu, so no menu actions are attached here.
+    btn = presenter.ui.btn_new_session
+    btn.set_actions([])
+>>>>>>> Stashed changes
 
 
 def on_new_workspace_tab_requested(presenter):
@@ -322,5 +332,10 @@ def on_workspace_tab_close_requested(presenter, index: int):
             logger.exception(
                 "on_workspace_tab_close_requested: failed to create session_picker"
             )
+<<<<<<< Updated upstream
         return
     presenter.main_controller.workspace.close_workspace_session(session_id)
+=======
+            return
+    presenter.main_controller.workspace.close_workspace_session(session_id)
+>>>>>>> Stashed changes

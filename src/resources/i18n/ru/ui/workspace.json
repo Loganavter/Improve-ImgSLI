@@ -2,6 +2,7 @@
   "workspace": {
     "session_types": {
       "video_compare": "Сравнение видео",
+<<<<<<< Updated upstream
       "multi_compare": "Мультисравнение",
       "session_picker": "Новая вкладка",
       "image_compare": "Сравнение изображений"
@@ -13,6 +14,10 @@
       "duplicate": "Дублировать вкладку",
       "close_others": "Закрыть остальные вкладки",
       "new": "Новая вкладка"
+=======
+      "multi_compare": "Мульти-сравнение",
+      "session_picker": "Новая вкладка"
+>>>>>>> Stashed changes
     }
   }
 }

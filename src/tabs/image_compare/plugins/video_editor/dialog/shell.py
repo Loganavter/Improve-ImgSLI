@@ -1,5 +1,6 @@
 # Audit-Meta: pattern=qdialog-wiring reason="video editor dialog shell — one QDialog chrome"
 import logging
+import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPixmap, QResizeEvent
@@ -67,6 +68,7 @@ class VideoEditorDialog(ThemedDialog):
     timelineHeightChanged = Signal(int)
 
     def __init__(self, snapshots, export_controller, main_window_app, parent=None):
+        _dbg_t0 = time.perf_counter()
         super().__init__(parent)
 
         self.current_language = "en"
@@ -147,6 +149,11 @@ class VideoEditorDialog(ThemedDialog):
         self._contribute_find_actions()
         QTimer.singleShot(0, self.presenter._initialize_output_fields)
         QTimer.singleShot(1200, self._emit_ready_to_show)
+
+        logger.warning(
+            "DBG-BUG4 VideoEditorDialog.__init__ took %.1f ms (constructor done, about to return/show)",
+            (time.perf_counter() - _dbg_t0) * 1000,
+        )
 
     def _get_first_snapshot(self):
         snapshots = getattr(self, "snapshots", None)
@@ -481,10 +488,16 @@ class VideoEditorDialog(ThemedDialog):
         return tr(text, self.current_language)
 
     def update_language(self, lang_code: str):
+<<<<<<< Updated upstream:src/tabs/image_compare/plugins/video_editor/dialog/shell.py
         from tabs.image_compare.plugins.video_editor.translations import apply_translations
 
         apply_translations(self, lang_code or "en")
         self._update_settings_panel_width()
+=======
+        from plugins.video_editor.translations import apply_translations
+
+        apply_translations(self, lang_code or "en")
+>>>>>>> Stashed changes:src/plugins/video_editor/dialog.py
 
     def _tr_preset(self, preset):
         from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
@@ -538,6 +551,15 @@ class VideoEditorDialog(ThemedDialog):
         if hasattr(self, "timeline"):
             self.timeline.update_layout_width()
         self._position_stop_export_button()
+
+        logger.warning(
+            "DBG-BUG1 dialog=%s preview_label=%s settings_panel=%s tabs=%s top_container=%s",
+            self.geometry(),
+            self.preview_label.geometry(),
+            self.settings_panel.geometry(),
+            self.tabs.geometry() if hasattr(self, "tabs") else None,
+            self.top_container.geometry(),
+        )
 
     def showEvent(self, event):
         super().showEvent(event)

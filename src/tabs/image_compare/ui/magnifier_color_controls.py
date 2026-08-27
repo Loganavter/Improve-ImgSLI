@@ -107,9 +107,14 @@ class ColorSettingsButton(Button):
 
     def __init__(self, parent=None, current_language: str = "en", store=None):
         super().__init__(
+<<<<<<< Updated upstream
             Icon.DIVIDER_COLOR,
             show_underline=True,
             underline_thickness=2.0,
+=======
+            AppIcon.DIVIDER_COLOR,
+            show_underline=True,
+>>>>>>> Stashed changes
             parent=parent,
         )
         self.current_language = current_language
@@ -237,6 +242,7 @@ class ColorSettingsButton(Button):
             self.refresh_visual_state()
             if self.flyout.isVisible():
                 if self.flyout.has_visible_actions():
+<<<<<<< Updated upstream
                     self._show_preview()
                 else:
                     self.flyout.hide()
@@ -250,14 +256,24 @@ class ColorSettingsButton(Button):
     def _show_interactive(self):
         """Enter/Click — с захватом фокуса, _nearest_focus выберет ближайший к якорю."""
         self.flyout.show_aligned(self, "top-center", "bottom-center", toggle=False, animation="none")
+=======
+                    self.flyout.show_aligned(self, "top-center", "bottom-center")
+                else:
+                    self.flyout.hide()
+>>>>>>> Stashed changes
 
     def enterEvent(self, event):
         super().enterEvent(event)
         self.elementHovered.emit("magnifier")
         self.flyout.update_state()
         if self.flyout.has_visible_actions():
+<<<<<<< Updated upstream
             self._show_preview()
             self.flyout.cancel_auto_hide()
+=======
+            self.flyout.show_aligned(self, "top-center", "bottom-center")
+            self.flyout.schedule_auto_hide(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
+>>>>>>> Stashed changes
 
     def leaveEvent(self, event):
         self.elementHoverEnded.emit()

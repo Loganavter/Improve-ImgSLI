@@ -56,6 +56,7 @@ def test_configure_rhi_process_environment_sets_backend_env(monkeypatch):
     configure_rhi_process_environment("vulkan")
 
     assert requested_rhi_backend_name() == "vulkan"
+<<<<<<< Updated upstream
 
 
 def test_resolve_falls_back_when_vulkan_probe_fails(monkeypatch):
@@ -376,3 +377,5 @@ def test_record_and_take_fallback_notice():
     )
     assert unsupported.kind == RHI_NOTICE_UNSUPPORTED
     take_rhi_fallback_notice()
+=======
+>>>>>>> Stashed changes
