@@ -129,6 +129,22 @@ duplicating). Each tab has its own section set:
   ancestor class (the entire `SettingsDialog`). The rest of the file stays
   collapsed into gap rows; Apply is disabled for such function-only
   regions (nothing to hot-patch), Save still rewrites the file.
+- **Colors** — the selected widget's background / text / border colors and
+  **where each comes from**, answering "why is this widget this color"
+  without guessing: matched QSS rules (selector + value + file:line),
+  the effective palette role + `autoFillBackground` flag (a transparent
+  widget additionally shows the first ancestor that actually paints and
+  its own origin), a reverse-lookup of the ThemeManager tokens behind the
+  color (app-defined tokens with `themes.json:line` sources first, the
+  rest of the alias cluster collapsed into "+N more"), a custom
+  `paintEvent` marker for toolkit primitives whose fill comes from their
+  own painter, and the paint-relevant widget flags
+  (`autoFillBackground`, `WA_StyledBackground`,
+  `WA_TranslucentBackground`, …). For example the settings page's
+  `content_widget` shows `palette Window #2b2b2b` ← token
+  `surface.background` (themes.json:72) — with the app's dark `Window`
+  `#1e1e1e` shadowed by the token alias, which is exactly why stock
+  containers painted near-black while the panels stayed gray.
 - **Docs** — the widget's `docs=` reference: renders the per-widget doc
   file from [docs/dev/widgets/](widgets/).
 
