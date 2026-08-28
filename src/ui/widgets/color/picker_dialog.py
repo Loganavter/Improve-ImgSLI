@@ -42,7 +42,7 @@ from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Button, CustomLineEdit, Label, Slider, SpinBox
 
-from ui.theming import resolve_theme_color
+from ui.theming import try_resolve_theme_color
 from ui.widgets.color.recents import (
     RecentColorsRow,
     RecentColorsStore,
@@ -72,6 +72,31 @@ _GEOMETRY_POLICY = GeometryApplyPolicy(
     center_on_parent=True,
     remember_key="color_picker",
 )
+
+
+def _themed_or_fallback(
+    manager: ThemeManager | None, token: str, fallback: QColor | str
+) -> QColor:
+    """Theme token with hardcoded fallback to preserve visual when token missing.
+
+    Keeps HSV-generated colors intact — only used for chrome / neutral fills
+    that have a semantic token (dialog.background, surface.background, etc.).
+    """
+    try:
+        if manager is not None:
+            resolved = try_resolve_theme_color(manager, token)
+            if resolved is not None and resolved.isValid():
+                return QColor(resolved)
+    except Exception:
+        pass
+    return QColor(fallback) if not isinstance(fallback, QColor) else QColor(fallback)
+
+
+def _themed_border_color(manager: ThemeManager | None) -> QColor:
+    """dialog.border with visual-preserving fallback (#c0c0c0 light / #555 dark)."""
+    # dialog.border light #c0c0c0 dark #555 — fallback uses light value to keep
+    # pre-token visual; dark theme resolves via token when available.
+    return _themed_or_fallback(manager, "dialog.border", QColor("#c0c0c0"))
 
 
 class _SVSquare(QWidget):
@@ -150,28 +175,60 @@ class _SVSquare(QWidget):
 
         hue_color = QColor.fromHsvF(self._hue / 360.0, 1.0, 1.0)
         sat_gradient = QLinearGradient(rect.topLeft(), rect.topRight())
-        sat_gradient.setColorAt(0.0, QColor(255, 255, 255))
+        # Saturation endpoint: intrinsic white (HSV model) — keep visual white
+        # but allow theme override via surface.background alias (dialog.background)
+        # with fallback to hardcoded white so HSV square stays correct if token missing.
+        sat_white = _themed_or_fallback(
+            self.theme_manager, "surface.background", QColor(255, 255, 255)
+        )
+        # Preserve pure white for the SV picker even on dark theme: the square's
+        # left edge must be white (s=0) not surface dark gray. Use token only if
+        # it resolves to near-white; otherwise keep hardcoded white.
+        if sat_white.lightness() < 220:
+            sat_white = QColor(255, 255, 255)
+        sat_gradient.setColorAt(0.0, sat_white)
         sat_gradient.setColorAt(1.0, hue_color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(sat_gradient)
         painter.drawRoundedRect(rect, radius, radius)
 
         val_gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        # Value overlay: transparent→opaque black — part of HSV model, not theme
         val_gradient.setColorAt(0.0, QColor(0, 0, 0, 0))
         val_gradient.setColorAt(1.0, QColor(0, 0, 0, 255))
         painter.setBrush(val_gradient)
         painter.drawRoundedRect(rect, radius, radius)
 
-        border = resolve_theme_color(self.theme_manager, "dialog.border")
+        border = _themed_border_color(self.theme_manager)
         painter.setPen(QPen(border, 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(rect, radius, radius)
 
         center = self._thumb_center(rect)
         thumb_radius = self.THUMB_RADIUS
-        painter.setPen(QPen(QColor("#ffffff"), 3.2))
+        # Thumb rings: high-contrast white + soft dark outline — tokenized via
+        # slider.thumb.outer (alias surface.background) and shadow.color
+        thumb_outer = _themed_or_fallback(
+            self.theme_manager, "slider.thumb.outer", QColor("#ffffff")
+        )
+        # Keep pure white for contrast even on dark surface.background (#2b2b2b)
+        if thumb_outer.lightness() < 220:
+            thumb_outer = QColor("#ffffff")
+        painter.setPen(QPen(thumb_outer, 3.2))
         painter.drawEllipse(center, thumb_radius, thumb_radius)
-        painter.setPen(QPen(QColor(0, 0, 0, 90), 1.2))
+        thumb_shadow = _themed_or_fallback(
+            self.theme_manager, "shadow.color", QColor(0, 0, 0, 90)
+        )
+        # shadow.color may be #50000000 / #64000000 — normalize to 90 alpha fallback
+        # if token resolves to a different alpha, keep the resolved but ensure alpha
+        if thumb_shadow.alpha() == 0:
+            thumb_shadow = QColor(0, 0, 0, 90)
+        elif thumb_shadow.alpha() not in (90, 100, 80):
+            # Blend resolved shadow's RGB with desired 90 alpha to preserve theme hue
+            tmp = QColor(thumb_shadow)
+            tmp.setAlpha(90)
+            thumb_shadow = tmp
+        painter.setPen(QPen(thumb_shadow, 1.2))
         painter.drawEllipse(center, thumb_radius, thumb_radius)
 
 
@@ -187,9 +244,11 @@ class _PreviewChip(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedSize(scaled_px(34), scaled_px(34))
-        self._before = QColor(255, 255, 255)
-        self._after = QColor(255, 255, 255)
-        self.theme_manager = ThemeManager.get_instance()
+        # Neutral preview defaults: themed dialog.background / surface.background
+        _tm = ThemeManager.get_instance()
+        self._before = _themed_or_fallback(_tm, "dialog.background", QColor(255, 255, 255))
+        self._after = _themed_or_fallback(_tm, "dialog.background", QColor(255, 255, 255))
+        self.theme_manager = _tm
         self.theme_manager.theme_changed.connect(self.update)
 
     def set_before(self, color: QColor) -> None:
@@ -224,7 +283,7 @@ class _PreviewChip(QWidget):
 
         painter.restore()
 
-        border = resolve_theme_color(self.theme_manager, "dialog.border")
+        border = _themed_border_color(self.theme_manager)
         painter.setPen(QPen(border, 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(rect)
@@ -248,7 +307,14 @@ class ColorPickerDialog(ThemedDialog):
     ) -> None:
         super().__init__(parent)
         self.theme_manager = ThemeManager.get_instance()
-        self._color = QColor(initial) if isinstance(initial, QColor) and initial.isValid() else QColor(255, 255, 255)
+        # Fallback initial white via theme token (surface.background alias dialog.background)
+        _fallback_init = _themed_or_fallback(
+            self.theme_manager, "surface.background", QColor(255, 255, 255)
+        )
+        if _fallback_init.lightness() < 220:
+            # HSV neutral must stay white, not dark surface gray
+            _fallback_init = QColor(255, 255, 255)
+        self._color = QColor(initial) if isinstance(initial, QColor) and initial.isValid() else QColor(_fallback_init)
         self._updating = False
         self._show_alpha = False
         self._value_format = ValueFormat.HEX
