@@ -66,7 +66,17 @@
     "titlebar.menu.hover": "#e8e8e8",
     "surface.background": "#ffffff",
     "surface.button": "#e1e1e1",
-    "surface.list": "#f0f0f0"
+    "surface.list": "#f0f0f0",
+    "gallery.stats.background": "#e1e1e1",
+    "gallery.stats.text": "#1f1f1f",
+    "gallery.card.background": "#ffffff",
+    "gallery.card.hover": "#f0f0f0",
+    "gallery.header.text": "#5a5a5a",
+    "gallery.footer.text": "#6a6a6a",
+    "gallery.accent.bar": "#0078D4",
+    "gallery.status.ok": "#2e7d32",
+    "gallery.status.warn": "#b77900",
+    "gallery.status.danger": "#c0392b"
   },
   "dark": {
     "WindowText": "#dfdfdf",
@@ -137,6 +147,16 @@
     "titlebar.menu.hover": "#3a3a3a",
     "surface.background": "#2b2b2b",
     "surface.button": "#3c3c3c",
-    "surface.list": "#313131"
+    "surface.list": "#313131",
+    "gallery.stats.background": "#333333",
+    "gallery.stats.text": "#dfdfdf",
+    "gallery.card.background": "#383838",
+    "gallery.card.hover": "#424242",
+    "gallery.header.text": "#9a9a9a",
+    "gallery.footer.text": "#8a8a8a",
+    "gallery.accent.bar": "#0096FF",
+    "gallery.status.ok": "#3fbf5f",
+    "gallery.status.warn": "#e8b64c",
+    "gallery.status.danger": "#D93025"
   }
 }

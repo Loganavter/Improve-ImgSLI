@@ -178,6 +178,10 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [src/tabs/image_gallery/docs/README.md](../../src/tabs/image_gallery/docs/README.md), [src/tabs/image_gallery/docs/design_parity_audit.md](../../src/tabs/image_gallery/docs/design_parity_audit.md)
 - **[Image Gallery — Design Parity Audit](../../src/tabs/image_gallery/docs/design_parity_audit.md)** — `src/tabs/image_gallery/docs/design_parity_audit.md`
 
+## src/tabs/image_gallery/docs/design/
+
+- **[UI-SPEC (text-only) · Improve ImgSLI — Image Gallery · состояние S2 «triage complete»](../../src/tabs/image_gallery/docs/design/real_design.md)** — `src/tabs/image_gallery/docs/design/real_design.md`
+
 ## src/tabs/image_gallery/docs/plugins/
 
 - **[Image Gallery plugin](../../src/tabs/image_gallery/docs/plugins/image_gallery.md)** — `src/tabs/image_gallery/docs/plugins/image_gallery.md`
