@@ -119,7 +119,16 @@ duplicating). Each tab has its own section set:
   selector + source file:line + rule body, with `[matched]`/`[dead]`
   markers from the app-wide dead-selector scan (refreshed whenever the
   widget tree changes). Type selectors match the full class MRO (a
-  base-class rule applies to subclasses, like Qt's cascade).
+  base-class rule applies to subclasses, like Qt's cascade). A bare
+  `QWidget` container (no class source of its own — e.g. the settings
+  page's `ScrollableDialogPage.content_widget`) shows only the **creation
+  site**: the enclosing function whose line creates/configures the widget,
+  matched by objectName or by an instance attribute on its parent chain
+  (searched in the app ancestor's file and the files its module imports,
+  e.g. `create_scrollable_page` in `dialog_shell.py`), instead of the whole
+  ancestor class (the entire `SettingsDialog`). The rest of the file stays
+  collapsed into gap rows; Apply is disabled for such function-only
+  regions (nothing to hot-patch), Save still rewrites the file.
 - **Docs** — the widget's `docs=` reference: renders the per-widget doc
   file from [docs/dev/widgets/](widgets/).
 
