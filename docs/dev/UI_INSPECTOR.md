@@ -131,14 +131,15 @@ duplicating). Each tab has its own section set:
   regions (nothing to hot-patch), Save still rewrites the file.
 - **Colors** — the selected widget's background / text / border colors and
   **where each comes from**, answering "why is this widget this color"
-  without guessing: matched QSS rules (selector + value + file:line),
-  the effective palette role + `autoFillBackground` flag (a transparent
-  widget additionally shows the first ancestor that actually paints and
-  its own origin), a reverse-lookup of the ThemeManager tokens behind the
-  color (app-defined tokens with `themes.json:line` sources first, the
-  rest of the alias cluster collapsed into "+N more"), a custom
-  `paintEvent` marker for toolkit primitives whose fill comes from their
-  own painter, and the paint-relevant widget flags
+  without guessing: matched QSS rules (selector + value, with a path
+  button opening the QSS file at the rule's line), the effective palette
+  role + `autoFillBackground` flag (a transparent widget additionally
+  shows the first ancestor that actually paints and its own origin), a
+  reverse-lookup of the ThemeManager tokens behind the color (app-defined
+  tokens first, each with a path button opening `themes.json` at the
+  token's line; the rest of the alias cluster collapsed into "+N more"), a
+  custom `paintEvent` marker for toolkit primitives whose fill comes from
+  their own painter, and the paint-relevant widget flags
   (`autoFillBackground`, `WA_StyledBackground`,
   `WA_TranslucentBackground`, …). For example the settings page's
   `content_widget` shows `palette Window #2b2b2b` ← token
