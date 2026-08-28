@@ -31,7 +31,7 @@ from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.widgets import Label
 
-from ui.theming import resolve_theme_color
+from ui.theming import try_resolve_theme_color
 
 # Rounded-corner radius (design px) of the shelf panel, same as the Session
 # Picker shelf.
@@ -60,9 +60,15 @@ class OpaqueFillHost(QWidget):
         super().__init__(parent)
         try:
             from sli_ui_toolkit.theme import ThemeManager
-            from ui.theming import resolve_theme_color
+            from ui.theming import try_resolve_theme_color
 
-            bg = QColor(resolve_theme_color(ThemeManager.get_instance(), "surface.background"))
+            _resolved = try_resolve_theme_color(
+                ThemeManager.get_instance(), "surface.background"
+            )
+            if _resolved is not None and _resolved.isValid():
+                bg = QColor(_resolved)
+            else:
+                bg = QColor(255, 255, 255)
             if not bg.isValid():
                 bg = QColor(255, 255, 255)
         except Exception:
@@ -80,9 +86,15 @@ class OpaqueFillHost(QWidget):
 
     def _on_theme_changed(self) -> None:
         try:
-            from ui.theming import resolve_theme_color
+            from ui.theming import try_resolve_theme_color
 
-            bg = QColor(resolve_theme_color(self._theme_manager, "surface.background"))
+            _resolved = try_resolve_theme_color(
+                self._theme_manager, "surface.background"
+            )
+            if _resolved is not None:
+                bg = QColor(_resolved)
+            else:
+                bg = QColor(255, 255, 255)
             if bg.isValid():
                 self.set_fill_color(bg)
         except Exception:
@@ -150,8 +162,17 @@ class ShelfWidget(QWidget):
         self._theme_manager = ThemeManager.get_instance()
         self._theme_manager.theme_changed.connect(self._on_shelf_theme_changed)
 
-        self._shelf_surface = QColor(255, 255, 255)
-        self._shelf_panel = QColor(255, 255, 255)
+        # Initial chrome via theme tokens with visual-preserving fallback (white = light surface.background).
+        _init_surface = try_resolve_theme_color(self._theme_manager, self._surface_token)
+        if _init_surface is None or not _init_surface.isValid():
+            _init_surface = try_resolve_theme_color(self._theme_manager, "surface.background")
+        if _init_surface is not None and _init_surface.isValid():
+            self._shelf_surface = QColor(_init_surface)
+            self._shelf_surface.setAlpha(255)
+        else:
+            self._shelf_surface = QColor(255, 255, 255)
+        # Panel is derived from surface; init with same token-derived base to keep visual parity until first update.
+        self._shelf_panel = QColor(self._shelf_surface)
         self._shelf_title_label: Label | None = None
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
@@ -270,9 +291,16 @@ class ShelfWidget(QWidget):
     # ----- chrome ----------------------------------------------------------
 
     def _surface_color(self) -> QColor:
-        color = QColor(resolve_theme_color(self._theme_manager, self._surface_token))
-        if not color.isValid() or color.alpha() == 0:
-            color = QColor(255, 255, 255)
+        _resolved = try_resolve_theme_color(self._theme_manager, self._surface_token)
+        if _resolved is None or not _resolved.isValid() or _resolved.alpha() == 0:
+            # Fallback chain: canonical surface.background → hardcoded white (light visual).
+            _fallback = try_resolve_theme_color(self._theme_manager, "surface.background")
+            if _fallback is not None and _fallback.isValid() and _fallback.alpha() != 0:
+                color = QColor(_fallback)
+            else:
+                color = QColor(255, 255, 255)
+        else:
+            color = QColor(_resolved)
         color.setAlpha(255)
         return color
 
@@ -311,7 +339,12 @@ class ShelfWidget(QWidget):
             header_button = header_button.darker(118)
         header_button.setAlpha(255)
 
-        title = QColor(resolve_theme_color(self._theme_manager, "WindowText"))
+        _resolved_title = try_resolve_theme_color(self._theme_manager, "WindowText")
+        if _resolved_title is not None and _resolved_title.isValid():
+            title = QColor(_resolved_title)
+        else:
+            # Fallback preserves light visual #1f1f1f (≈31,31,31) / original hardcoded 40,40,40 cluster.
+            title = QColor(31, 31, 31)
         hint = QColor(title)
         hint.setAlpha(170)
         if panel.lightness() > 140:
