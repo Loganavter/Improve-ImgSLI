@@ -1,0 +1,39 @@
+{
+  "$description": "Primitive tokens — base palette + metrics. Single source for build_tokens.py → themes.json. Keep flat, hex lowercase, deterministic order.",
+  "color": {
+    "blue500": "#0096FF",
+    "blue600": "#0078D4",
+    "red500": "#D93025",
+    "red600": "#c0392b",
+    "green500": "#3fbf5f",
+    "green600": "#2e7d32",
+    "amber500": "#e8b64c",
+    "amber600": "#b77900",
+    "gray50": "#ffffff",
+    "gray100": "#f5f5f5",
+    "gray200": "#f0f0f0",
+    "gray300": "#e8e8e8",
+    "gray400": "#e0e0e0",
+    "gray500": "#c0c0c0",
+    "gray600": "#9a9a9a",
+    "gray700": "#5a5a5a",
+    "gray750": "#4a4a4a",
+    "gray800": "#383838",
+    "gray850": "#424242",
+    "gray900": "#2b2b2b",
+    "gray950": "#1f1f1f",
+    "gray930": "#dfdfdf",
+    "black": "#000000",
+    "redBright": "#ff0000"
+  },
+  "space": {
+    "100": "4",
+    "200": "8",
+    "300": "16"
+  },
+  "radius": {
+    "sm": "4",
+    "md": "6",
+    "lg": "8"
+  }
+}
