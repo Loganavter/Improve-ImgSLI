@@ -8,16 +8,12 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def get_canvas_widget_class():
-    from tabs.registry import TabRegistry
+    from tabs.registry import get_shared_tab_registry
 
-    registry = TabRegistry()
-    registry.discover()
+    registry = get_shared_tab_registry()
     widget_cls = registry.create_service("canvas_widget_class")
     if widget_cls is None:
-        logger.debug(
-            "No tab provides canvas widget class for active session %r",
-            getattr(registry, "_active_session_type", None),
-        )
+        # Expected for non-canvas tabs (session_picker) — don't log per call.
         return None
     return widget_cls
 
@@ -31,17 +27,12 @@ def create_canvas_widget(*args, **kwargs):
 
 
 def call_canvas_service(service_id: str, *args, **kwargs):
-    from tabs.registry import TabRegistry
+    from tabs.registry import get_shared_tab_registry
 
-    registry = TabRegistry()
-    registry.discover()
+    registry = get_shared_tab_registry()
     result = registry.create_service(service_id, *args, **kwargs)
     if result is None:
-        logger.debug(
-            "No tab provides canvas service %r for active session %r",
-            service_id,
-            getattr(registry, "_active_session_type", None),
-        )
+        # Expected for tabs without that canvas capability — silent degrade.
         return None
     return result
 

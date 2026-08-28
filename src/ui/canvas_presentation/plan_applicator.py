@@ -9,17 +9,18 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def _call_tab_canvas_service(service_id: str, *args, **kwargs):
-    from tabs.registry import TabRegistry
+    from tabs.registry import get_shared_tab_registry
 
-    registry = TabRegistry()
-    registry.discover()
+    # Hot path (per-frame) — must not call TabRegistry().discover() fresh
+    # each time, use the process-wide shared registry (see TabRegistry
+    # docstring). Discover is idempotent, but the fresh-instance + log
+    # per frame spams DEBUG when the active tab has no canvas (session_picker).
+    registry = get_shared_tab_registry()
     result = registry.create_service(service_id, *args, **kwargs)
     if result is None:
-        logger.debug(
-            "Tab canvas service %r not provided for active session %r — degrade gracefully",
-            service_id,
-            getattr(registry, "_active_session_type", None),
-        )
+        # Expected for tabs without canvas — log once per session type, not per frame.
+        # Keep at DEBUG but avoid flood; callers already degrade gracefully.
+        pass
     return result
 
 

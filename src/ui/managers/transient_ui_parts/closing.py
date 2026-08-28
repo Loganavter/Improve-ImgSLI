@@ -139,7 +139,15 @@ class PopupClosingController:
             pass
 
     def _focus_aware_owners(self):
-        return (self._tab_extension, self.manager.interpolation, self.manager.font_settings)
+        # Use cached services only — accessing self.manager.interpolation /
+        # font_settings here would force a TabRegistry probe on every
+        # focusChanged (which fires at high frequency due to the flyout
+        # focus guard). Passive focus checks must not create services.
+        return (
+            self._tab_extension,
+            self.manager._services.get("interpolation"),
+            self.manager._services.get("font_settings"),
+        )
 
     def on_app_focus_changed(self, old_widget, new_widget):
         host = self.manager.host

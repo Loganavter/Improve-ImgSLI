@@ -216,16 +216,17 @@ class LayoutComposer:
             },
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
-        # The main-window shell (composer.py's "image_canvas" feature, etc.)
-        # is built before any workspace session exists to activate via
-        # `sync_session_mode()`. Seed whichever registered tab declares
-        # itself the bootstrap default (see `TabContract.is_bootstrap_default`)
-        # so `create_service`/`create_main_window_feature` — which resolve
-        # *only* against the active tab, see docs/dev/tabs/capability-mechanisms.md —
-        # have someone to route to during this bootstrap window. The first
-        # real `sync_session_mode()` call reconciles this with the actual
-        # initial session's type. Deliberately tab-name-agnostic: this file
-        # must not know which tab that is.
+        # Seed the bootstrap-default tab (session_picker) so that
+        # `create_service` (active-tab-only) has an active tab to route to
+        # during the narrow window before the first workspace session exists.
+        # Legacy shell construction (`create_startup_service` /
+        # `create_main_window_feature`) routes by capability, not by active
+        # tab (see docs/dev/tabs/capability-mechanisms.md), so it does not
+        # depend on this seeding — it succeeds purely because image_compare
+        # implements those shell capabilities. The first real
+        # `sync_session_mode()` call reconciles active with the actual initial
+        # session type. Deliberately tab-name-agnostic: this file must not
+        # know which tab that is (see `TabContract.is_bootstrap_default`).
         ui._tab_registry.activate_default()
 
         if event_bus is not None:

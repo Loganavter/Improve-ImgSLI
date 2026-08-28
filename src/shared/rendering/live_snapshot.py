@@ -6,15 +6,11 @@ logger = logging.getLogger("ImproveImgSLI")
 
 
 def build_live_frame_snapshot(store):
-    from tabs.registry import TabRegistry
+    from tabs.registry import get_shared_tab_registry
 
-    registry = TabRegistry()
-    registry.discover()
+    registry = get_shared_tab_registry()
     snapshot = registry.create_service("live_frame_snapshot", store)
     if snapshot is None:
-        logger.debug(
-            "Active tab %r does not provide live frame snapshots",
-            getattr(registry, "_active_session_type", None),
-        )
+        # Normal for session_picker / non-canvas tabs — silent degrade.
         return None
     return snapshot
