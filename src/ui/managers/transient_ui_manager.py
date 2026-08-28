@@ -1,9 +1,17 @@
 import logging
+import time
 
 from PySide6.QtCore import QPointF
 
 from ui.managers.transient_ui_parts import PopupClosingController
 logger = logging.getLogger("ImproveImgSLI")
+
+# How long a negative lookup stays cached for the same (active, tiers) key.
+# Suppresses focusChanged flood (10ms) while staying on the bootstrap-
+# default session, but still retries after a few seconds if a tab's widget
+# becomes available later while staying on the same session (lazy page
+# creation).  # ALLOWED
+_NEGATIVE_CACHE_TTL_S = 5.0
 
 class TransientUIManager:
     def __init__(self, host):
@@ -16,13 +24,14 @@ class TransientUIManager:
             "panel_visibility": "panel_visibility_controller",
             "panel_instances": "panel_instances_controller",
         }
-        # Negative lookup cache: remember that attr was unavailable for a
-        # given active session type + discovery tiers, so repeated
-        # focusChanged / eventFilter polls while staying on the same session
-        # (e.g. session_picker) don't re-probe the registry and spam DEBUG
-        # logs on every tick. Cleared automatically when the active session
-        # type or discovered tiers change.
-        self._service_miss_session: dict[str, tuple[str | None, frozenset[str]]] = {}
+        # Negative lookup cache: (active, tiers) -> timestamp of last miss.
+        # Repeated focusChanged / eventFilter polls while staying on the same
+        # session (e.g. the bootstrap-default session) don't re-probe the
+        # registry and spam DEBUG logs on every tick. Cleared automatically
+        # when the active session type or discovered tiers change, and expires
+        # after _NEGATIVE_CACHE_TTL_S so a widget that becomes available later
+        # while staying on the same session is retried.  # ALLOWED
+        self._service_miss_session: dict[str, tuple[tuple[str | None, frozenset[str]], float]] = {}
         self.closing = PopupClosingController(self)
 
     def _get_service(self, attr: str):
@@ -37,9 +46,15 @@ class TransientUIManager:
         tiers = frozenset(registry._discovered_tiers)
         miss_key = (active, tiers)
         # If we already probed and found nothing for this exact active
-        # session + discovery state, return cached miss without re-discovering or logging.
-        if attr in self._service_miss_session and self._service_miss_session[attr] == miss_key:
-            return None
+        # session + discovery state, return cached miss without re-discovering
+        # or logging — but expire after TTL so a later widget creation while
+        # staying on the same session is retried.
+        cached_miss = self._service_miss_session.get(attr)
+        if cached_miss is not None and cached_miss[0] == miss_key:
+            if (time.monotonic() - cached_miss[1]) < _NEGATIVE_CACHE_TTL_S:
+                return None
+            # TTL expired — fall through to re-probe
+            self._service_miss_session.pop(attr, None)
         service_id = self._service_ids[attr]
         logger.debug("[transient] resolving service '%s' (attr=%s)", service_id, attr)
         registry.discover()
@@ -64,7 +79,7 @@ class TransientUIManager:
             if sibling is not None and self._services.get(sibling) is None:
                 self._get_service(sibling)
         else:
-            self._service_miss_session[attr] = miss_key
+            self._service_miss_session[attr] = (miss_key, time.monotonic())
             logger.debug("[transient] '%s' → None (deferred)", service_id)
         return service
 

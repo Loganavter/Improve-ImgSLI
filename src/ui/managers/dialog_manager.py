@@ -158,14 +158,18 @@ class DialogManager:
         return self.host._settings_dialog
 
     def show_settings_dialog(self, *, section_id: str | None = None):
+        import traceback
+
+        _caller = "".join(traceback.format_stack()[-4:-2])
         dialog = self._ensure_settings_dialog()
+        logger.debug(
+            "UIManager.show_settings_dialog showing dialog object=%s visible=%s caller=%s",
+            hex(id(dialog)) if dialog else "None",
+            dialog.isVisible() if dialog else False,
+            _caller.strip(),
+        )
         if dialog is None:
             return
-        logger.debug(
-            "UIManager.show_settings_dialog showing dialog object=%s visible=%s",
-            hex(id(dialog)),
-            dialog.isVisible(),
-        )
         sync = getattr(dialog, "sync_from_store", None)
         if callable(sync):
             sync()

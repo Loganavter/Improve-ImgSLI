@@ -13,7 +13,7 @@ def get_canvas_widget_class():
     registry = get_shared_tab_registry()
     widget_cls = registry.create_service("canvas_widget_class")
     if widget_cls is None:
-        # Expected for non-canvas tabs (session_picker) — don't log per call.
+        # Expected for non-canvas tabs — don't log per call.  # ALLOWED
         return None
     return widget_cls
 
