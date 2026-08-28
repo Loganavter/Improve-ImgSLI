@@ -16,6 +16,13 @@ class TransientUIManager:
             "panel_visibility": "panel_visibility_controller",
             "panel_instances": "panel_instances_controller",
         }
+        # Negative lookup cache: remember that attr was unavailable for a
+        # given active session type + discovery tiers, so repeated
+        # focusChanged / eventFilter polls while staying on the same session
+        # (e.g. session_picker) don't re-probe the registry and spam DEBUG
+        # logs on every tick. Cleared automatically when the active session
+        # type or discovered tiers change.
+        self._service_miss_session: dict[str, tuple[str | None, frozenset[str]]] = {}
         self.closing = PopupClosingController(self)
 
     def _get_service(self, attr: str):
@@ -23,15 +30,23 @@ class TransientUIManager:
         cached = self._services.get(attr)
         if cached is not None:
             return cached
-        service_id = self._service_ids[attr]
-        logger.debug("[transient] resolving service '%s' (attr=%s)", service_id, attr)
         from tabs.registry import TabRegistry
 
         registry = TabRegistry()
+        active = registry._active_session_type
+        tiers = frozenset(registry._discovered_tiers)
+        miss_key = (active, tiers)
+        # If we already probed and found nothing for this exact active
+        # session + discovery state, return cached miss without re-discovering or logging.
+        if attr in self._service_miss_session and self._service_miss_session[attr] == miss_key:
+            return None
+        service_id = self._service_ids[attr]
+        logger.debug("[transient] resolving service '%s' (attr=%s)", service_id, attr)
         registry.discover()
         service = registry.create_startup_service(service_id, self)
         if service is not None:
             self._services[attr] = service
+            self._service_miss_session.pop(attr, None)
             logger.debug("[transient] '%s' → resolved: %s", service_id, type(service).__name__)
             # panel_visibility (btn_magnifier) and panel_instances
             # (btn_magnifier_instances) are one toolbar group -- both
@@ -49,8 +64,17 @@ class TransientUIManager:
             if sibling is not None and self._services.get(sibling) is None:
                 self._get_service(sibling)
         else:
+            self._service_miss_session[attr] = miss_key
             logger.debug("[transient] '%s' → None (deferred)", service_id)
         return service
+
+    def invalidate_miss_cache(self) -> None:
+        """Clear negative-cache so the next access re-probes the registry.
+
+        Called implicitly via active-session change (handled in _get_service),
+        but also exposed for TabRegistry deferred-load or manual invalidation.
+        """
+        self._service_miss_session.clear()
 
     def __getattr__(self, name: str):
         if name in self._service_ids:

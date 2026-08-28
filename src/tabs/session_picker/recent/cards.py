@@ -1,4 +1,6 @@
-"""Grid and list cards for recent project records."""
+"""Grid and list cards for recent project records.
+Audit-Meta: pattern=compound-widget size=exempt reason="grid+list card factory with hover/selection/cover handling — single widget family"
+"""
 
 from __future__ import annotations
 

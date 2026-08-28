@@ -482,6 +482,18 @@
       }
     },
     {
+      "path": "src/tabs/session_picker/recent/cards.py",
+      "lines": 538,
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=compound-widget size=exempt reason=\"grid+list card factory with hover/selection/cover handling — single widget family\"",
+      "parsed": {
+        "pattern": "compound-widget",
+        "size": "exempt",
+        "reason": "grid+list card factory with hover/selection/cover handling — single widget family"
+      }
+    },
+    {
       "path": "src/tabs/session_picker/recent/items_view.py",
       "lines": 686,
       "limit": 500,
