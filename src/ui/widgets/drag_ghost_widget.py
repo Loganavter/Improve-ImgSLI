@@ -26,12 +26,28 @@ def make_count_slot_pixmap(template: QWidget, count: int) -> QPixmap:
     try:
         from sli_ui_toolkit.theme import ThemeManager
 
-        from ui.theming import resolve_theme_color
+        from ui.theming import try_resolve_theme_color
 
         tm = ThemeManager.get_instance()
-        fill = QColor(resolve_theme_color(tm, "list_item.background.hover"))
-        accent = QColor(resolve_theme_color(tm, "accent"))
-        text = QColor(resolve_theme_color(tm, "list_item.text.normal"))
+
+        def _resolve(token: str, fallback: QColor) -> QColor:
+            try:
+                c = try_resolve_theme_color(tm, token)
+                if c is not None and c.isValid():
+                    return QColor(c)
+            except Exception:
+                pass
+            return QColor(fallback)
+
+        fill = _resolve("list_item.background.hover", QColor(240, 240, 240))
+        accent = _resolve("accent", QColor("#0078D4"))
+        # list_item.text.normal may be absent in dark; chain to WindowText
+        text_resolved = try_resolve_theme_color(tm, "list_item.text.normal")
+        if text_resolved is not None and text_resolved.isValid():
+            text = QColor(text_resolved)
+        else:
+            text_alt = try_resolve_theme_color(tm, "WindowText")
+            text = QColor(text_alt) if text_alt is not None and text_alt.isValid() else QColor(30, 30, 30)
     except Exception:
         fill = QColor(240, 240, 240)
         accent = QColor("#0078D4")

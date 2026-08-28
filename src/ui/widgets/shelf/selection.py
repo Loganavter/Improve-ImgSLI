@@ -18,10 +18,30 @@ from ui.widgets.shelf.layout import (
     LIST_CARD_H,
     row_stride,
 )
-from ui.theming import resolve_theme_color
+from ui.theming import try_resolve_theme_color
 
 # Pastel red for list cards whose project file is missing (cards.py).
-_MISSING_LIST_BG = QColor(242, 190, 190)
+# Token ``shelf.card.missing`` is preferred; fallback preserves the original
+# light-theme pastel so offscreen / missing-token cases stay visually identical.
+_MISSING_LIST_BG_TOKEN = "shelf.card.missing"
+_MISSING_LIST_BG_FALLBACK = QColor(242, 190, 190)
+_MISSING_LIST_BG = QColor(_MISSING_LIST_BG_FALLBACK)
+
+
+def _resolve_missing_bg(theme_manager=None) -> QColor:
+    tm = _theme_manager_or_none(theme_manager)
+    if tm is not None:
+        try:
+            c = try_resolve_theme_color(tm, _MISSING_LIST_BG_TOKEN)
+            if c is not None and c.isValid():
+                col = QColor(c)
+                col.setAlpha(255)
+                return col
+        except Exception:
+            pass
+    out = QColor(_MISSING_LIST_BG_FALLBACK)
+    out.setAlpha(255)
+    return out
 
 # Blend accent toward Base — ~half visual punch → soft “постельный” blue.
 _SELECTION_PASTEL_MIX = 0.62
@@ -43,11 +63,29 @@ def _raw_accent(theme_manager=None) -> QColor:
     if tm is None:
         color = QColor("#0078D4")
     else:
-        color = QColor(resolve_theme_color(tm, "accent"))
+        c = try_resolve_theme_color(tm, "accent")
+        if c is not None and c.isValid():
+            color = QColor(c)
+        else:
+            color = QColor()
         if not color.isValid():
-            color = QColor(resolve_theme_color(tm, "Highlight"))
+            c2 = try_resolve_theme_color(tm, "Highlight")
+            if c2 is not None and c2.isValid():
+                color = QColor(c2)
+            else:
+                color = QColor()
     if not color.isValid():
-        color = QColor("#0078D4")
+        # final fallback via token helper then hardcode preserves light visual
+        try:
+            tm2 = tm if tm is not None else _theme_manager_or_none(None)
+            if tm2 is not None:
+                c3 = try_resolve_theme_color(tm2, "accent")
+                if c3 is not None and c3.isValid():
+                    color = QColor(c3)
+        except Exception:
+            pass
+        if not color.isValid():
+            color = QColor("#0078D4")
     color.setAlpha(255)
     return color
 
@@ -70,9 +108,16 @@ def selection_accent_color(theme_manager=None) -> QColor:
     if tm is None:
         base = QColor("#ffffff")
     else:
-        base = QColor(resolve_theme_color(tm, "Base"))
-        if not base.isValid():
-            base = QColor(resolve_theme_color(tm, "Window"))
+        # Resolve surface/base via tokens; chain preserves light (#ffffff) visual.
+        base = QColor()
+        for token in ("Base", "Window", "surface.background"):
+            try:
+                c = try_resolve_theme_color(tm, token)
+                if c is not None and c.isValid():
+                    base = QColor(c)
+                    break
+            except Exception:
+                continue
         if not base.isValid():
             base = QColor("#ffffff")
     return _mix_toward(accent, base, _SELECTION_PASTEL_MIX)
@@ -119,7 +164,7 @@ def apply_card_selected(
         return
     # Restore base: missing list cards keep the pastel signal; others default.
     if getattr(card, "_recent_missing", False):
-        set_override(QColor(_MISSING_LIST_BG))
+        set_override(_resolve_missing_bg())
     else:
         set_override(None)
     if callable(set_locked):

@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QPainter, QPalette
 from PySide6.QtWidgets import QRhiWidget, QWidget
 
 from sli_ui_toolkit.widgets import ThemedWidget
-from ui.theming import resolve_theme_color
+from ui.theming import try_resolve_theme_color
 
 
 class ThemedSurface(ThemedWidget, QWidget):
@@ -38,9 +38,17 @@ class ThemedSurface(ThemedWidget, QWidget):
         painter.end()
 
     def on_theme_changed(self) -> None:
-        self._bg_color = QColor(
-            resolve_theme_color(self._theme_manager, self._color_token)
-        )
+        try:
+            resolved = try_resolve_theme_color(self._theme_manager, self._color_token)
+            if resolved is not None and resolved.isValid():
+                self._bg_color = QColor(resolved)
+            else:
+                # Visual-preserving fallback: neutral light surface
+                self._bg_color = QColor("#ffffff")
+                if self._color_token == "label.image.background":
+                    self._bg_color = QColor("#f0f0f0")
+        except Exception:
+            self._bg_color = QColor("#ffffff")
         super().on_theme_changed()
 
 
@@ -69,7 +77,13 @@ def apply_qrhi_theme_background(
     """Push a theme background color into a QRhi canvas widget."""
     if widget is None or theme_manager is None:
         return
-    bg = resolve_theme_color(theme_manager, color_token)
+    try:
+        resolved = try_resolve_theme_color(theme_manager, color_token)
+        bg = QColor(resolved) if resolved is not None and resolved.isValid() else None
+    except Exception:
+        bg = None
+    if bg is None or not bg.isValid():
+        bg = QColor("#f0f0f0") if color_token == "label.image.background" else QColor("#ffffff")
     pal = widget.palette()
     pal.setColor(widget.backgroundRole(), bg)
     pal.setColor(widget.foregroundRole(), bg)

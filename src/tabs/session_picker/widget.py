@@ -32,11 +32,46 @@ from tabs.session_picker.geometry import (
 )
 from tabs.session_picker.icons import Icon as SessionPickerIcon, get_icon as get_session_picker_icon
 from tabs.session_picker.recent.panel import RecentProjectsPanel
-from ui.theming import resolve_theme_color
+from ui.theming import resolve_theme_color, try_resolve_theme_color
 
 logger = logging.getLogger("ImproveImgSLI")
 
 HIDDEN_SESSION_TYPES = frozenset({"session_picker"})
+
+_TOKEN_WINDOW = "Window"
+_TOKEN_SURFACE_BG = "surface.background"
+
+
+def _themed_or_fallback(manager, token: str, fallback: QColor | str) -> QColor:
+    """Resolve theme token with hardcoded fallback to preserve visual."""
+    try:
+        if manager is not None:
+            resolved = try_resolve_theme_color(manager, token)
+            if resolved is not None and resolved.isValid():
+                return QColor(resolved)
+    except Exception:
+        pass
+    return QColor(fallback) if not isinstance(fallback, QColor) else QColor(fallback)
+
+
+def _get_theme_manager_or_none():
+    try:
+        from sli_ui_toolkit.theme import ThemeManager
+
+        return ThemeManager.get_instance()
+    except Exception:
+        return None
+
+
+def _fallback_window_color(manager=None) -> QColor:
+    tm = manager if manager is not None else _get_theme_manager_or_none()
+    # Window token is the page background; fallback preserves light visual #ffffff
+    return _themed_or_fallback(tm, _TOKEN_WINDOW, "#ffffff")
+
+
+def _fallback_surface_color(manager=None) -> QColor:
+    tm = manager if manager is not None else _get_theme_manager_or_none()
+    return _themed_or_fallback(tm, _TOKEN_SURFACE_BG, "#ffffff")
 
 
 class _OpaqueFillWidget(QWidget):
@@ -49,7 +84,8 @@ class _OpaqueFillWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._fill = QColor(255, 255, 255)
+        self._fill = _fallback_surface_color()
+        self._fill.setAlpha(255)
 
     def set_fill(self, color: QColor) -> None:
         fill = QColor(color)
@@ -115,9 +151,10 @@ class SessionPickerWidget(ThemedWidget, QWidget):
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
-        bg = QColor(getattr(self, "_bg_color", QColor(255, 255, 255)))
+        fallback = _fallback_window_color(getattr(self, "_theme_manager", None))
+        bg = QColor(getattr(self, "_bg_color", fallback))
         if not bg.isValid() or bg.alpha() == 0:
-            bg = QColor(255, 255, 255)
+            bg = QColor(fallback)
         bg.setAlpha(255)
         painter.fillRect(self.rect(), bg)
         painter.end()
@@ -125,7 +162,7 @@ class SessionPickerWidget(ThemedWidget, QWidget):
     def on_theme_changed(self) -> None:
         self._bg_color = QColor(resolve_theme_color(self._theme_manager, "Window"))
         if not self._bg_color.isValid():
-            self._bg_color = QColor(255, 255, 255)
+            self._bg_color = QColor(_fallback_window_color(self._theme_manager))
         self._bg_color.setAlpha(255)
         self._sync_opaque_page_fills()
         # Cards store eager QIcons from build time; re-resolve light/dark SVGs.
@@ -153,7 +190,8 @@ class SessionPickerWidget(ThemedWidget, QWidget):
         widget.update()
 
     def _sync_opaque_page_fills(self) -> None:
-        bg = QColor(getattr(self, "_bg_color", QColor(255, 255, 255)))
+        fallback = _fallback_window_color(getattr(self, "_theme_manager", None))
+        bg = QColor(getattr(self, "_bg_color", fallback))
         bg.setAlpha(255)
         self._apply_opaque_fill(self, bg)
         scroll = getattr(self, "_page_scroll", None)
