@@ -81,13 +81,27 @@ class PopupClosingController:
             pass
 
     def hide_transient_same_window_ui(self, *, reason: str = "unspecified"):
+        import logging, traceback
+
+        logger = logging.getLogger("ImproveImgSLI")
+        # DIAGNOSTIC: log reason + caller for duplicate hide spams (file.settings → dialog)
+        _caller = "".join(traceback.format_stack()[-4:-2])
+        logger.debug(
+            "[transient-close] hide_transient_same_window_ui reason=%s scheduled=%s caller=%s old_active=%s",
+            reason,
+            getattr(self, "_hide_transient_scheduled", False),
+            _caller.strip(),
+            getattr(self.manager.host, "_active_session_type", None),
+        )
         # Coalesce bursts from deactivate + focus_changed in one event-loop turn.
         if getattr(self, "_hide_transient_scheduled", False):
+            logger.debug("[transient-close] hide suppressed — already scheduled reason=%s", reason)
             return
         self._hide_transient_scheduled = True
 
         def _run() -> None:
             self._hide_transient_scheduled = False
+            logger.debug("[transient-close] hide_run reason=%s", reason)
             self._hide_transient_same_window_ui_now()
 
         from PySide6.QtCore import QTimer
@@ -150,10 +164,27 @@ class PopupClosingController:
         )
 
     def on_app_focus_changed(self, old_widget, new_widget):
+        import logging
+
+        logger = logging.getLogger("ImproveImgSLI")
         host = self.manager.host
+        try:
+            window_active = host.parent_widget.isActiveWindow() if hasattr(host, "parent_widget") else None
+        except RuntimeError:
+            window_active = None
+        logger.debug(
+            "[transient-close] on_app_focus_changed old=%s new=%s window_active=%s",
+            type(old_widget).__name__ if old_widget else None,
+            type(new_widget).__name__ if new_widget else None,
+            window_active,
+        )
         if _modal_dialog_blocks_transient_hide(host, new_widget):
+            logger.debug("[transient-close] focus change blocked by modal")
             return
-        window_active = host.parent_widget.isActiveWindow()
+        try:
+            window_active = host.parent_widget.isActiveWindow()
+        except RuntimeError:
+            window_active = None
 
         # Window fully deactivated → sweep. Otherwise ignore null-focus flicker.
         if new_widget is None:

@@ -216,17 +216,17 @@ class LayoutComposer:
             },
         )
         ui._tab_registry.install_pages(ui.workspace_stack, context)
-        # Seed the bootstrap-default tab (session_picker) so that
-        # `create_service` (active-tab-only) has an active tab to route to
-        # during the narrow window before the first workspace session exists.
-        # Legacy shell construction (`create_startup_service` /
+        # Seed the bootstrap-default tab so that `create_service`
+        # (active-tab-only) has an active tab to route to during the narrow
+        # window before the first workspace session exists. Legacy shell
+        # construction (`create_startup_service` /
         # `create_main_window_feature`) routes by capability, not by active
         # tab (see docs/dev/tabs/capability-mechanisms.md), so it does not
-        # depend on this seeding — it succeeds purely because image_compare
-        # implements those shell capabilities. The first real
+        # depend on this seeding — it succeeds purely because the tab that
+        # implements those shell capabilities answers. The first real
         # `sync_session_mode()` call reconciles active with the actual initial
         # session type. Deliberately tab-name-agnostic: this file must not
-        # know which tab that is (see `TabContract.is_bootstrap_default`).
+        # know which tab that is (see `TabContract.is_bootstrap_default`).  # ALLOWED
         ui._tab_registry.activate_default()
 
         if event_bus is not None:

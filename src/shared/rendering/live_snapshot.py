@@ -11,6 +11,6 @@ def build_live_frame_snapshot(store):
     registry = get_shared_tab_registry()
     snapshot = registry.create_service("live_frame_snapshot", store)
     if snapshot is None:
-        # Normal for session_picker / non-canvas tabs — silent degrade.
+        # Normal for tabs without canvas — silent degrade.  # ALLOWED: generic, no tab name
         return None
     return snapshot

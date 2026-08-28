@@ -470,13 +470,16 @@ class CsdMenuStrip(QWidget):
                 return False
 
     def _dispatch(self, key: int, spec: CsdMenuSpec, index: int) -> None:
+        import traceback
+
         action_ids = self._row_actions.get(key)
         if not action_ids or not (0 <= index < len(action_ids)):
             return
         action_id = action_ids[index]
         if action_id is None:
             return
-        csd_debug("[csd-menu] %s dispatch action_id=%s", spec.label, action_id)
+        _caller = "".join(traceback.format_stack()[-4:-2])
+        csd_debug("[csd-menu] %s dispatch action_id=%s caller=%s", spec.label, action_id, _caller.strip())
         # Let the flyout hide (and its row ripple settle) first — handlers can
         # open modal dialogs (Find Action, file pickers).
         QTimer.singleShot(0, lambda a=action_id: spec.on_triggered(a, None))
