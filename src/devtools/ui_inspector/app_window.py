@@ -33,13 +33,13 @@ class AppInspectorWindow(InspectorWindow):
         self._native_chain: tuple[NativeWindowInfo, ...] = ()
 
     def _add_dump_buttons(self) -> None:
-        widget_dump = Button(text="Dump widget", variant="surface", size=(0, 30))
+        widget_dump = Button(text="Dump widget", variant="default", size=(0, 30))
         widget_dump.setToolTip(
             "Dump the selected widget's subtree (falls back to the whole "
             "window if nothing is selected)"
         )
         widget_dump.clicked.connect(self.dump_layout_requested)
-        window_dump = Button(text="Dump window", variant="surface", size=(0, 30))
+        window_dump = Button(text="Dump window", variant="default", size=(0, 30))
         window_dump.setToolTip("Dump the whole last-focused window layout")
         window_dump.clicked.connect(self.dump_window_layout_requested)
         self.toolbar_layout.addWidget(widget_dump)
@@ -54,11 +54,11 @@ class AppInspectorWindow(InspectorWindow):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(8, 4, 8, 2)
         layout.setSpacing(6)
-        toggle = Button(text="Toggle native window", variant="surface", size=(0, 28))
+        toggle = Button(text="Toggle native window", variant="default", size=(0, 28))
         toggle.clicked.connect(self.toggle_native_window_requested)
-        repaint = Button(text="Force repaint()", variant="surface", size=(0, 28))
+        repaint = Button(text="Force repaint()", variant="default", size=(0, 28))
         repaint.clicked.connect(self.force_repaint_requested)
-        update = Button(text="Force update()", variant="surface", size=(0, 28))
+        update = Button(text="Force update()", variant="default", size=(0, 28))
         update.clicked.connect(self.force_update_requested)
         layout.addWidget(toggle)
         layout.addWidget(repaint)
