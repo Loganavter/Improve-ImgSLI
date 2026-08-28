@@ -8,7 +8,18 @@ from sli_ui_toolkit.ui.widgets.overlays.in_window_overlay import (
     TopLevelInWindowOverlay,
 )
 
-from ui.theming import resolve_theme_color
+from ui.theming import try_resolve_theme_color
+
+
+def _themed_or_fallback(theme_manager, token: str, fallback) -> QColor:
+    """Theme token with hardcoded fallback to preserve visual when token missing."""
+    try:
+        resolved = try_resolve_theme_color(theme_manager, token)
+        if resolved is not None and resolved.isValid():
+            return QColor(resolved)
+    except Exception:
+        pass
+    return QColor(fallback) if not isinstance(fallback, QColor) else QColor(fallback)
 
 
 def show_paste_direction_overlay(
@@ -162,11 +173,21 @@ class PasteDirectionOverlay(TopLevelInWindowOverlay):
             )
 
         tm = ThemeManager.get_instance()
-        surface = QColor(resolve_theme_color(tm, "flyout.background"))
-        text_normal = QColor(resolve_theme_color(tm, "WindowText"))
-        border_idle = QColor(resolve_theme_color(tm, "flyout.border"))
-        accent = QColor(resolve_theme_color(tm, "accent"))
-        separator = QColor(resolve_theme_color(tm, "separator.color"))
+        # Theme-aware with visual-preserving fallbacks (light values) — dark
+        # resolves via token when available. flyout.background not in
+        # app themes.json — chain through canonical aliases.
+        surface = None
+        for _tok in ("flyout.background", "surface.background", "Window"):
+            _r = try_resolve_theme_color(tm, _tok)
+            if _r is not None and _r.isValid():
+                surface = QColor(_r)
+                break
+        if surface is None:
+            surface = QColor("#ffffff")
+        text_normal = _themed_or_fallback(tm, "WindowText", "#1f1f1f")
+        border_idle = _themed_or_fallback(tm, "flyout.border", "#e0e0e0")
+        accent = _themed_or_fallback(tm, "accent", "#0078D4")
+        separator = _themed_or_fallback(tm, "separator.color", "#e5e5e5")
 
         for rect, direction, text in buttons:
             is_hovered = self.hovered_button == direction

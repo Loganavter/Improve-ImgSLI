@@ -27,9 +27,19 @@ from sli_ui_toolkit.widgets import (
     popup_context_menu_for_anchor,
 )
 
-from ui.theming import resolve_theme_color
+from ui.theming import try_resolve_theme_color
 
 logger = logging.getLogger("ImproveImgSLI")
+
+
+def _themed_or_fallback(theme_manager, token: str, fallback: QColor | str) -> QColor:
+    try:
+        resolved = try_resolve_theme_color(theme_manager, token)
+        if resolved is not None and resolved.isValid():
+            return QColor(resolved)
+    except Exception:
+        pass
+    return QColor(fallback) if not isinstance(fallback, QColor) else QColor(fallback)
 from ui.widgets.shelf import (
     PANEL_RADIUS,
     SHELF_MARGIN_BOTTOM,
@@ -271,7 +281,7 @@ class RecentProjectsPanel(ShelfWidget):
         if self._drop.drag_active:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            accent = QColor(resolve_theme_color(self._theme_manager, "accent"))
+            accent = _themed_or_fallback(self._theme_manager, "accent", "#0078D4")
             fill = QColor(accent)
             fill.setAlpha(36)
             path = QPainterPath()

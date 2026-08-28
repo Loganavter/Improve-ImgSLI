@@ -13,6 +13,80 @@ from sli_ui_toolkit.theme import ThemeManager
 from sli_ui_toolkit.ui.widgets.buttons import ButtonRow, VerticalSplit
 from sli_ui_toolkit.widgets import Button, ButtonRegion, DrawContext
 
+from ui.theming import try_resolve_theme_color
+
+_TOKEN_MISSING_LIST_BG = "recent.missing.list_background"
+_TOKEN_MISSING_COVER_BG = "recent.missing.cover_background"
+_TOKEN_HOVER_WASH = "recent.card.hover_wash"
+
+
+def _themed_or_fallback(
+    manager: ThemeManager | None, token: str, fallback: QColor | str
+) -> QColor:
+    """Resolve theme token with hardcoded fallback to preserve visual."""
+    try:
+        if manager is not None:
+            resolved = try_resolve_theme_color(manager, token)
+            if resolved is not None and resolved.isValid():
+                return QColor(resolved)
+    except Exception:
+        pass
+    return QColor(fallback) if not isinstance(fallback, QColor) else QColor(fallback)
+
+
+def _missing_list_bg(manager: ThemeManager | None = None) -> QColor:
+    tm = manager if manager is not None else _get_theme_manager_or_none()
+    return _themed_or_fallback(tm, _TOKEN_MISSING_LIST_BG, "#f2bebe")
+
+
+def _missing_cover_bg(manager: ThemeManager | None = None) -> QColor:
+    tm = manager if manager is not None else _get_theme_manager_or_none()
+    return _themed_or_fallback(tm, _TOKEN_MISSING_COVER_BG, "#ffffff")
+
+
+def _hover_wash_color(tm: ThemeManager | None) -> QColor:
+    # Single token with per-theme hex: light #1a000000 (26 alpha black), dark #26ffffff (38 alpha white)
+    if tm is None:
+        tm = _get_theme_manager_or_none()
+    fallback = "#26ffffff" if (tm is not None and _is_dark(tm)) else "#1a000000"
+    # Try dark/light specific fallback if token missing
+    if tm is None:
+        return QColor(fallback)
+    resolved = try_resolve_theme_color(tm, _TOKEN_HOVER_WASH)
+    if resolved is not None and resolved.isValid():
+        return QColor(resolved)
+    return QColor(fallback)
+
+
+def _transparent_color(manager: ThemeManager | None = None) -> QColor:
+    # Used for hover_color to keep BackgroundLayer hover off — transparent wash layer does the hover.
+    # Tokenize via generic transparent if present, else hardcoded transparent.
+    tm = manager if manager is not None else _get_theme_manager_or_none()
+    if tm is not None:
+        try:
+            resolved = try_resolve_theme_color(tm, "transparent")
+            if resolved is not None and resolved.isValid():
+                c = QColor(resolved)
+                c.setAlpha(0)
+                return c
+        except Exception:
+            pass
+    return QColor("#00000000")
+
+
+def _get_theme_manager_or_none() -> ThemeManager | None:
+    try:
+        return ThemeManager.get_instance()
+    except Exception:
+        return None
+
+
+def _is_dark(tm: ThemeManager) -> bool:
+    try:
+        return bool(tm.is_dark())
+    except Exception:
+        return False
+
 from services.io.project_preview import peek_project_preview
 from services.io.recent_projects import RecentProjectRecord
 from tabs.session_picker.icons import Icon as SessionPickerIcon
@@ -28,22 +102,11 @@ from ui.widgets.shelf.layout import (
 )
 from ui.widgets.shelf.relative_time import format_relative_opened
 
-# Pastel red for list cards whose project file is missing.
-_MISSING_LIST_BG = QColor(242, 190, 190)
-_MISSING_COVER_BG = QColor(255, 255, 255)
-
 
 def _opaque(color: QColor) -> QColor:
     out = QColor(color)
     out.setAlpha(255)
     return out
-
-
-# Translucent monochrome wash painted OVER the whole card on hover — the
-# "overlay" half of the hover effect (the stock ``BackgroundLayer`` hover is
-# an opaque repaint under the content, invisible over the cover preview).
-_WASH_LIGHT = QColor(0, 0, 0, 26)
-_WASH_DARK = QColor(255, 255, 255, 38)
 
 
 def _rounded_rect_path(rect: QRectF, radii: tuple[float, float, float, float]) -> QPainterPath:
@@ -87,11 +150,7 @@ def _card_hover_wash(painter: QPainter, ctx: DrawContext, tm: ThemeManager) -> N
     """
     if ctx.effective_bg_locked or ctx.hovered_region_id is None:
         return
-    try:
-        is_dark = tm.is_dark()
-    except Exception:
-        is_dark = False
-    color = _WASH_DARK if is_dark else _WASH_LIGHT
+    color = _hover_wash_color(tm)
     radii = ctx.corner_radii or (0, 0, 0, 0)
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -162,7 +221,7 @@ def _cover_region(
             weight=weight,
             group="card",
             corner_radii=corner_radii,
-            override_bg_color=_opaque(_MISSING_COVER_BG),
+            override_bg_color=_opaque(_missing_cover_bg()),
             bg_locked=True,
         )
     thumb = preview_for_record(record)
@@ -174,7 +233,7 @@ def _cover_region(
             weight=weight,
             group="card",
             corner_radii=corner_radii,
-            hover_color=QColor(0, 0, 0, 0),
+            hover_color=_transparent_color(),
         )
     return ButtonRegion(
         id="cover",
@@ -183,7 +242,7 @@ def _cover_region(
         weight=weight,
         group="card",
         corner_radii=corner_radii,
-        hover_color=QColor(0, 0, 0, 0),
+        hover_color=_transparent_color(),
     )
 
 
@@ -376,7 +435,7 @@ def update_list_card(
     card.update_region("text", rows=list_text_rows(record, missing=missing, tr=tr))
     card.update_region("meta", rows=list_meta_rows(record, tr=tr))
     if missing:
-        card.set_override_bg_color(_opaque(_MISSING_LIST_BG))
+        card.set_override_bg_color(_opaque(_missing_list_bg()))
     else:
         card.set_override_bg_color(None)
 
@@ -410,7 +469,7 @@ def build_grid_card(
                 weight=GRID_TEXT_WEIGHT,
                 group="card",
                 corner_radii=(0, 0, 10, 10),
-                hover_color=QColor(0, 0, 0, 0),
+                hover_color=_transparent_color(),
             ),
         ],
         split=VerticalSplit(),
@@ -449,7 +508,7 @@ def build_list_card(
                 weight=8.0,
                 group="card",
                 corner_radii=(8, 0, 0, 8),
-                hover_color=QColor(0, 0, 0, 0),
+                hover_color=_transparent_color(),
             ),
             ButtonRegion(
                 id="meta",
@@ -457,7 +516,7 @@ def build_list_card(
                 weight=2.0,
                 group="card",
                 corner_radii=(0, 8, 8, 0),
-                hover_color=QColor(0, 0, 0, 0),
+                hover_color=_transparent_color(),
             ),
         ],
         variant="default",
@@ -471,7 +530,7 @@ def build_list_card(
     apply_list_card_size(card, LIST_CARD_H)
     if missing:
         # Missing stays an explicit pastel signal; healthy cards keep default tint.
-        card.set_override_bg_color(_opaque(_MISSING_LIST_BG))
+        card.set_override_bg_color(_opaque(_missing_list_bg()))
     _attach_record(card, record, missing=missing)
     bind_card(card, on_activate=on_activate, on_context_menu=on_context_menu)
     return card

@@ -8,7 +8,81 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from sli_ui_toolkit.managers import scaled_px
 from sli_ui_toolkit.ui.managers.ui_font import ui_font
+from ui.theming import try_resolve_theme_color
 from ui.widgets.shelf.layout import EMPTY_DROP_ZONE_H, PANEL_RADIUS
+
+# Tokens for the empty-state drop zone — see plan_app_wide_tokenization.md
+# ``shelf.empty.*``. Falls back to the original hardcodes so light-theme
+# visuals are preserved until the tokens land in ``themes.json``.
+_SHELF_EMPTY_BORDER_TOKEN = "shelf.empty.border"
+_SHELF_EMPTY_TITLE_TOKEN = "shelf.empty.title"
+_SHELF_EMPTY_HINT_TOKEN = "shelf.empty.hint"
+_SHELF_EMPTY_FILL_TOKEN = "shelf.empty.fill"
+
+_SHELF_EMPTY_BORDER_FALLBACK = QColor(120, 120, 120)
+_SHELF_EMPTY_TITLE_FALLBACK = QColor(40, 40, 40)
+_SHELF_EMPTY_HINT_FALLBACK = QColor(90, 90, 90)
+
+
+def _resolve_token(token: str, fallback: QColor) -> QColor:
+    try:
+        from sli_ui_toolkit.managers import ThemeManager
+
+        tm = ThemeManager.get_instance()
+        c = try_resolve_theme_color(tm, token)
+        if c is not None and c.isValid():
+            return QColor(c)
+    except Exception:
+        pass
+    return QColor(fallback)
+
+
+def _resolve_title_token() -> QColor:
+    # Prefer dedicated token, then generic WindowText, then hardcoded.
+    for tok in (_SHELF_EMPTY_TITLE_TOKEN, "WindowText", "dialog.text"):
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            tm = ThemeManager.get_instance()
+            c = try_resolve_theme_color(tm, tok)
+            if c is not None and c.isValid():
+                return QColor(c)
+        except Exception:
+            continue
+    return QColor(_SHELF_EMPTY_TITLE_FALLBACK)
+
+
+def _resolve_hint_token() -> QColor:
+    for tok in (_SHELF_EMPTY_HINT_TOKEN, "gallery.header.text", "WindowText"):
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            tm = ThemeManager.get_instance()
+            c = try_resolve_theme_color(tm, tok)
+            if c is not None and c.isValid():
+                col = QColor(c)
+                # For WindowText fallback reproduce the original 90,90,90 hint
+                # as semi-transparent title (mirrors ShelfWidget.colors() hint).
+                if tok == "WindowText":
+                    col.setAlpha(170)
+                return col
+        except Exception:
+            continue
+    return QColor(_SHELF_EMPTY_HINT_FALLBACK)
+
+
+def _resolve_border_token() -> QColor:
+    for tok in (_SHELF_EMPTY_BORDER_TOKEN, "dialog.border", "separator.color", "flyout.border"):
+        try:
+            from sli_ui_toolkit.managers import ThemeManager
+
+            tm = ThemeManager.get_instance()
+            c = try_resolve_theme_color(tm, tok)
+            if c is not None and c.isValid():
+                return QColor(c)
+        except Exception:
+            continue
+    return QColor(_SHELF_EMPTY_BORDER_FALLBACK)
 
 
 class EmptyDropZone(QWidget):
@@ -19,10 +93,16 @@ class EmptyDropZone(QWidget):
         self._title = ""
         self._hint = ""
         self._drag_active = False
-        self._border = QColor(120, 120, 120)
-        self._title_color = QColor(40, 40, 40)
-        self._hint_color = QColor(90, 90, 90)
-        self._fill = QColor(0, 0, 0, 0)
+        self._border = _resolve_border_token()
+        self._title_color = _resolve_title_token()
+        self._hint_color = _resolve_hint_token()
+        # Fill is transparent by design; try token first, keep transparent fallback.
+        self._fill = _resolve_token(_SHELF_EMPTY_FILL_TOKEN, QColor(0, 0, 0, 0))
+        if self._fill.alpha() != 0:
+            # Token should remain subtle; if opaque token sneaks in, keep it.
+            pass
+        else:
+            self._fill = QColor(0, 0, 0, 0)
         self.setObjectName("RecentEmptyDropZone")
         self.setAcceptDrops(True)
         self.setFixedHeight(scaled_px(EMPTY_DROP_ZONE_H))

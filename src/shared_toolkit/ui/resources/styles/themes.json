@@ -57,8 +57,16 @@
     "list_item.background.hover": "#e8e8e8",
     "list_item.background.normal": "#ffffff",
     "list_item.text.rating": "#7f7f7f",
+    "recent.card.hover_wash": "#1a000000",
+    "recent.missing.cover_background": "#ffffff",
+    "recent.missing.list_background": "#f2bebe",
     "separator.color": "#e5e5e5",
     "shadow.color": "#64000000",
+    "shelf.card.missing": "#f2bebe",
+    "shelf.empty.border": "#787878",
+    "shelf.empty.fill": "#00000000",
+    "shelf.empty.hint": "#5a5a5a",
+    "shelf.empty.title": "#282828",
     "slider.track.background": "#929292",
     "slider.track.unfilled": "#706f6f",
     "surface.background": "#ffffff",
@@ -76,7 +84,11 @@
     "toast.progress.fill": "#0078D4",
     "toast.text": "#000000",
     "tooltip.border": "#c0c0c0",
-    "tooltip.text": "#1f1f1f"
+    "tooltip.text": "#1f1f1f",
+    "Window": "#f5f5f5",
+    "label.image.background": "#f0f0f0",
+    "quick_look.bar.background": "#e8e8e8",
+    "list_item.text.normal": "#1f1f1f"
   },
   "dark": {
     "BrightText": "#ff0000",
@@ -138,8 +150,16 @@
     "list_item.background.selected": "#424242",
     "list_item.icon.selected": "#0096FF",
     "list_item.text.rating": "#9a9a9a",
+    "recent.card.hover_wash": "#26ffffff",
+    "recent.missing.cover_background": "#ffffff",
+    "recent.missing.list_background": "#5a2a2a",
     "separator.color": "#4f4f4f",
     "shadow.color": "#50000000",
+    "shelf.card.missing": "#6b3a3a",
+    "shelf.empty.border": "#8a8a8a",
+    "shelf.empty.fill": "#00000000",
+    "shelf.empty.hint": "#9a9a9a",
+    "shelf.empty.title": "#dfdfdf",
     "slider.track.background": "#5a5a5a",
     "slider.track.unfilled": "#9a9a9a",
     "surface.background": "#2b2b2b",
@@ -157,6 +177,10 @@
     "toast.progress.fill": "#0096FF",
     "toast.text": "#ffffff",
     "tooltip.border": "#555555",
-    "tooltip.text": "#dfdfdf"
+    "tooltip.text": "#dfdfdf",
+    "Window": "#1e1e1e",
+    "label.image.background": "#1e1e1e",
+    "quick_look.bar.background": "#262626",
+    "list_item.text.normal": "#dfdfdf"
   }
 }
