@@ -58,9 +58,35 @@ class OpaqueFillHost(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._fill = QColor(255, 255, 255)
+        try:
+            from sli_ui_toolkit.theme import ThemeManager
+            from ui.theming import resolve_theme_color
+
+            bg = QColor(resolve_theme_color(ThemeManager.get_instance(), "surface.background"))
+            if not bg.isValid():
+                bg = QColor(255, 255, 255)
+        except Exception:
+            bg = QColor(255, 255, 255)
+        self._fill = bg
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAutoFillBackground(False)
+        try:
+            from sli_ui_toolkit.theme import ThemeManager
+
+            self._theme_manager = ThemeManager.get_instance()
+            self._theme_manager.theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            self._theme_manager = None  # type: ignore[attr-defined]
+
+    def _on_theme_changed(self) -> None:
+        try:
+            from ui.theming import resolve_theme_color
+
+            bg = QColor(resolve_theme_color(self._theme_manager, "surface.background"))
+            if bg.isValid():
+                self.set_fill_color(bg)
+        except Exception:
+            pass
 
     def set_fill_color(self, color: QColor) -> None:
         fill = QColor(color)
