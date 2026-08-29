@@ -392,8 +392,24 @@ class TileResidencyRealizer(TileResidencyRealizerBase):
             # the live source size disagrees with the cached grid, or its
             # own identity changed (see content_changed below).
             if is_tiled_store and pil_source is not None:
-                src_w, src_h = pil_source.size
-                src_uid = image_uid(pil_source)
+                try:
+                    from shared.image_processing.tiled_pixel_store import (
+                        pixel_source_size,
+                    )
+
+                    src_w, src_h = pixel_source_size(pil_source)
+                    if src_w == 0 or src_h == 0:
+                        # Closed or empty store (race with unify closing old store
+                        # while tile_service still references old key) — skip this
+                        # key this frame; next frame's _pil_image_for_texture_key
+                        # will resolve the live store.
+                        continue
+                except Exception:
+                    continue
+                try:
+                    src_uid = image_uid(pil_source)
+                except Exception:
+                    continue
                 prev_uid = self._pil_source_uid_by_key.get(key)
                 # A same-size image swap into an already-loaded slot (the
                 # common case: two photos being compared are rarely the

@@ -59,16 +59,22 @@ def unify_pair(
         from shared.image_processing.pixel_ops.downscale import downscale_source_to_pil
         from shared.image_processing.resize import resize_images_processor
 
-        pil1 = (
-            downscale_source_to_pil(source1, (w1, h1), resample=resample)
-            if source1 is not None
-            else None
-        )
-        pil2 = (
-            downscale_source_to_pil(source2, (w2, h2), resample=resample)
-            if source2 is not None
-            else None
-        )
+        try:
+            pil1 = (
+                downscale_source_to_pil(source1, (w1, h1), resample=resample)
+                if source1 is not None
+                else None
+            )
+            pil2 = (
+                downscale_source_to_pil(source2, (w2, h2), resample=resample)
+                if source2 is not None
+                else None
+            )
+        except RuntimeError as exc:
+            # Source closed mid-unify (race with Store swap / new unify task).
+            # Treat as abort, not error — caller will retry with live store.
+            logger.debug("Unify aborted (source closed): %s", exc)
+            return None, None
         u1, u2 = resize_images_processor(pil1, pil2, method_name)
         return maybe_wrap_pixel_store(u1), maybe_wrap_pixel_store(u2)
 
@@ -86,10 +92,21 @@ def unify_pair(
             ):
                 out1.close()
                 return None, None
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
+            # RuntimeError = source closed mid-unify (race) — treat as abort
+            if isinstance(exc, RuntimeError) and "closed" in str(exc).lower():
+                logger.debug("Unify aborted (source1 closed): %s", exc)
+                if out1 is not None and out1 is not source1:
+                    try:
+                        out1.close()
+                    except Exception:
+                        pass
+                return None, None
             logger.warning("Tile-native unify memmap failed for source1, falling back to PIL: %s", exc)
-            from shared.image_processing.resize import resize_images_processor
-            pil1 = to_real_pil_copy(source1)
+            try:
+                pil1 = to_real_pil_copy(source1)
+            except RuntimeError:
+                return None, None
             pil2 = to_real_pil_copy(source2) if source2 is not None else None
             u1, u2 = resize_images_processor(pil1, pil2, method_name)
             return maybe_wrap_pixel_store(u1), maybe_wrap_pixel_store(u2)
@@ -106,11 +123,29 @@ def unify_pair(
                     assert out1 is not None
                     out1.close()
                 return None, None
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
+            if isinstance(exc, RuntimeError) and "closed" in str(exc).lower():
+                logger.debug("Unify aborted (source2 closed): %s", exc)
+                if out2 is not None and out2 is not source2:
+                    try:
+                        out2.close()
+                    except Exception:
+                        pass
+                if out1 is not None and out1 is not source1:
+                    try:
+                        out1.close()
+                    except Exception:
+                        pass
+                return None, None
             logger.warning("Tile-native unify memmap failed for source2, falling back to PIL: %s", exc)
-            from shared.image_processing.resize import resize_images_processor
-            pil1 = to_real_pil_copy(source1) if source1 is not None else None
-            pil2 = to_real_pil_copy(source2) if source2 is not None else None
+            try:
+                pil1 = to_real_pil_copy(source1) if source1 is not None else None
+            except RuntimeError:
+                return None, None
+            try:
+                pil2 = to_real_pil_copy(source2) if source2 is not None else None
+            except RuntimeError:
+                return None, None
             u1, u2 = resize_images_processor(pil1, pil2, method_name)
             return maybe_wrap_pixel_store(u1), maybe_wrap_pixel_store(u2)
 

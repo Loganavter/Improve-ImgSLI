@@ -81,7 +81,7 @@
     },
     {
       "path": "src/shared/image_processing/tiled_pixel_store.py",
-      "lines": 960,
+      "lines": 966,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one memmap lifecycle — splitting threads memmap/shape/tile_size\"",
@@ -231,7 +231,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/renderer.py",
-      "lines": 1226,
+      "lines": 1231,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=state-machine reason=\"one frame sequencing RhiCanvasRenderer.render() — see CODE_PATTERNS When not to split\"",
@@ -242,7 +242,7 @@
     },
     {
       "path": "src/tabs/image_compare/canvas/rhi_renderer/residency.py",
-      "lines": 528,
+      "lines": 544,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=tile-residency size=exempt reason=\"viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2\"",
