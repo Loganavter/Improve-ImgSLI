@@ -440,7 +440,9 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
     src_box = None
     if auto_crop:
         try:
-            probe_img = pyvips.Image.thumbnail(path_str, _AUTO_CROP_PROBE_MAX)
+            probe_img = pyvips.Image.thumbnail(
+                path_str, _AUTO_CROP_PROBE_MAX, size=pyvips.enums.Size.DOWN
+            )
             probe_rgb = probe_img[:3] if probe_img.bands >= 3 else probe_img
             left, top, width, height = probe_rgb.find_trim(
                 threshold=15, background=[0, 0, 0]
