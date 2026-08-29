@@ -5,7 +5,6 @@ from PySide6.QtCore import QEvent, QObject, QSize, Qt
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QProgressBar,
     QFrame,
     QScrollArea,
     QSizePolicy,
@@ -14,6 +13,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import (
+    ThemedExportProgressBar,
+    VideoEditorToolbar,
+)
 from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
 from tabs.image_compare.plugins.video_editor.widgets.timeline import VideoTimelineWidget
 from sli_ui_toolkit.managers import scaled_px
@@ -104,7 +107,7 @@ def build_settings_panel(dialog):
     footer_gap_bottom.setFixedHeight(scaled_px(12))
     sp_layout.addWidget(footer_gap_bottom)
 
-    dialog.export_progress = QProgressBar()
+    dialog.export_progress = ThemedExportProgressBar()
     dialog.export_progress.setObjectName("VideoEditorExportProgress")
     dialog.export_progress.setProperty("state", "active")
     dialog.export_progress.setVisible(False)
@@ -631,7 +634,7 @@ def create_quality_stack(dialog):
     return stack
 
 def create_toolbar(dialog):
-    toolbar_frame = QFrame()
+    toolbar_frame = VideoEditorToolbar()
     toolbar_frame.setObjectName("VideoEditorToolbar")
     toolbar_frame.setFixedHeight(scaled_px(50))
 

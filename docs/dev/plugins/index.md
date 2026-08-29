@@ -32,6 +32,5 @@ A plugin under `src/plugins/<name>/` typically has:
 | `events.py` | frozen dataclasses published on EventBus |
 | `services/`, `application_service.py`, `manager.py` | domain/services logic |
 | `actions.py` | Find Action contributions (see [ACTIONS.md](../ACTIONS.md)) |
-| `resources/<name>.qss` | plugin-owned stylesheet (via `get_qss_paths`) |
 
 Not every plugin has all of these — see the per-plugin docs.

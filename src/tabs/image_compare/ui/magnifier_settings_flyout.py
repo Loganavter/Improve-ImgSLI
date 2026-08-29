@@ -178,16 +178,9 @@ class MagnifierSettingsFlyout(BaseFlyout):
             + scaled_px(_CAPTION_BOTTOM_MARGIN_PX)
         )
         self._main_layout.setContentsMargins(0, 0, 0, caption_reserve)
-        # widgets.qss has a global `QWidget#FlyoutContainer { border-radius:
-        # 8px; border: 1px solid @flyout.border; ... }` rule keyed on this
-        # objectName. WA_StyledBackground=False (set by BaseFlyout.__init__)
-        # is meant to suppress it, but a later app.setStyleSheet()/polish
-        # pass can re-flip that attribute back on for any widget the sheet
-        # still matches by name -- clearing the name is what actually starves
-        # the rule, instead of racing the attribute. Without this, that QSS
-        # border rendered on top of our own square-top paintEvent below,
-        # showing as a rounded "inner" border no amount of custom painting
-        # could cover.
+        # QSS is retired (2026-08-29); the old `#FlyoutContainer` rule this
+        # cleared is gone. The objectName stays empty so a future host
+        # stylesheet cannot accidentally match this container.
         self.container.setObjectName("")
         # Replace the base class's uniform-radius clip with one matching the
         # square-top/round-bottom shape paintEvent draws below.

@@ -1,17 +1,16 @@
-# Theming & QSS
+# Theming
 
-Centralised palette + QSS pipeline. Lives in the external `sli-ui-toolkit` package (`ThemeManager` singleton); ImgSLI registers its palette and QSS files at startup.
+Centralised palette pipeline. Lives in the external `sli-ui-toolkit` package (`ThemeManager` singleton); ImgSLI registers its palette at startup. Application QSS was **retired on 2026-08-29** — all visual output goes through tokens painted in code (see "QSS is retired" below).
 
 ## Files
 
 | Path | Role |
 |---|---|
-| `sli_ui_toolkit/ui/managers/theme_manager.py` | `ThemeManager` singleton — palette store + QSS pipeline + `theme_changed` signal |
+| `sli_ui_toolkit/ui/managers/theme_manager.py` | `ThemeManager` singleton — palette store + `theme_changed` signal (QSS machinery still exists in the toolkit but the app registers no QSS) |
 | `src/core/theme.py` | `load_themes()` — parses `resources/themes.json` into two `dict[str, QColor]` palettes |
 | `src/resources/themes.json` | The actual color tokens (light + dark) |
-| `src/resources/styles/app.qss` | App-wide QSS template (with `{token}` placeholders) |
 | `src/ui/theming.py` | Thin facade: `install_application_theme`, `polish_themed_dialog`, `resolve_theme_color` |
-| `src/core/bootstrap.py:_configure_theme_manager` | Wires palettes + QSS paths into the singleton at startup |
+| `src/core/bootstrap.py:_configure_theme_manager` | Wires the palettes into the singleton at startup |
 
 ## Architecture
 
@@ -20,21 +19,18 @@ themes.json  →  load_themes() → (light, dark) palettes
                      │
                      ▼
           ThemeManager.register_palettes(light, dark)
-          ThemeManager.register_qss_path("base.qss")
-          ThemeManager.register_qss_path("widgets.qss")
-          ThemeManager.register_qss_path("app.qss")
                      │
                      ▼
           ThemeManager.apply_theme_to_app(app)
                      │            │
                      ▼            ▼
-              QPalette set   QSS rendered with current palette tokens
+              QPalette set   empty stylesheet (no QSS registered)
                      │
                      ▼
           ThemeManager.theme_changed.emit()
                      │
                      ▼
-       widgets connected to theme_changed → re-style themselves
+       widgets connected to theme_changed → re-read tokens, repaint
 ```
 
 ## ThemeManager API (singleton)
@@ -44,7 +40,7 @@ ThemeManager.get_instance()                  # always returns the same instance
 
 # Registration (do once, at bootstrap):
 register_palettes(light: dict, dark: dict | None)
-register_qss_path(path: str)                 # registered in order; later wins on conflict
+register_qss_path(path: str)                 # toolkit API — unused by the app since QSS retirement
 
 # Reads (anywhere, anytime):
 get_color(token: str) -> QColor              # token = key from themes.json; "#000000" if missing
@@ -53,9 +49,9 @@ is_dark() -> bool
 get_current_theme() -> "light" | "dark"
 
 # Writes:
-set_theme(name: str, app=None)               # "light" / "dark"; rebuilds QSS, emits theme_changed
+set_theme(name: str, app=None)               # "light" / "dark"; applies palette, emits theme_changed
 set_color(token: str, color: QColor)         # runtime override (settings UI uses this)
-apply_theme_to_app(app: QApplication)        # re-apply QSS+QPalette; called on theme change
+apply_theme_to_app(app: QApplication)        # re-apply QPalette; called on theme change
 apply_theme_to_dialog(dialog: QWidget)       # for standalone modal dialogs
 
 # Signal:
@@ -71,51 +67,35 @@ Two flat dicts of `{token_name: hex_color}`. Conventions:
 
 Loaded once at module import by `core/theme.py:load_themes()` and exposed as `LIGHT_THEME_PALETTE`, `DARK_THEME_PALETTE`.
 
-## QSS
+## QSS is retired
 
-QSS files are concatenated in registration order with a separator (`/* --- NEW FILE --- */`) into `_qss_template`. On `apply_theme_to_app`, the template is rendered against the current palette: tokens like `palette(button.background)` (or whatever placeholder convention the toolkit uses — check `theme_manager._render_template`) are substituted.
-
-**UI scale pass.** After color substitution, `apply_theme_to_app` multiplies every `Npx` QSS literal (N ≥ 2) by the `UiScale` factor (`theme_manager._scale_qss_px`). `1px` borders stay untouched. Re-applying the theme after a factor change (settings → Interface Scale, via `ui.theming.reapply_application_theme`) rescales QSS live; `FontManager.apply_from_state` is re-run right after (the stylesheet push resets `WA_SetFont`-pinned fonts — see `src/core/bootstrap.py`).
-
-Registered at bootstrap in `src/core/bootstrap.py:_configure_theme_manager`:
-- `shared_toolkit/ui/resources/styles/base.qss`
-- `shared_toolkit/ui/resources/styles/widgets.qss`
-- `resources/styles/app.qss`
-
-Plus each plugin contributes via `Plugin.get_qss_paths()` — see [PLUGINS.md](PLUGINS.md).
-
-### QSS is being retired — painter owns toolkit widgets
-
-Application QSS is a shrinking fallback, not a co-equal pipeline. The painter
-pipeline (`paintEvent` + `get_color`) owns all toolkit widgets, and QSS rules
-on them are either inert or actively harmful:
+Application QSS was fully removed on 2026-08-29 (171 rules across 7 files
+deleted; the last files were `app.qss` and `editor.qss`). The painter
+pipeline (`paintEvent` + token reads) owns every surface:
 
 - Qt only honors QSS backgrounds/borders on widgets whose class is exactly
   `QWidget` (as a top level) or on stock widgets (`QFrame`/`QScrollArea`/…).
-  Custom `QWidget` subclasses never get `WA_StyledBackground`, so rules like
-  `#SettingsSidebar { background-color: … }` silently no-op and the widget
-  falls back to the QPalette `Window` role — which hosts keep darker than the
-  dialog surface token (near-black in the dark theme). Verified 2026-08-29.
-- Surfaces that used to rely on such rules now paint themselves from
-  `dialog.background`: toolkit `IconListWidget` (paints its list surface) and
-  `SidebarDialogShell`'s content area (`_SurfaceWidget` in
-  `sli-ui-toolkit/ui/widgets/composite/dialog_shell.py`). The same explicit
-  `paintEvent` pattern is the documented fix for any future "this surface is
-  black" bug (see "Known Qt quirk" below).
+  Custom `QWidget` subclasses never get `WA_StyledBackground`, so QSS rules
+  on toolkit widgets silently no-op and the widget falls back to the QPalette
+  `Window` role — which hosts keep darker than the dialog surface token
+  (near-black in the dark theme). That was the Settings sidebar "black
+  substrate" bug, fixed by painting surfaces from tokens instead. Verified
+  2026-08-29.
+- Surfaces paint themselves from `dialog.background`: toolkit
+  `IconListWidget`, `SidebarDialogShell`'s content area (`_SurfaceWidget`),
+  and app `ThemedDialog` (every app dialog paints its own surface).
+  App-side containers use `ThemedSurface`/`ThemedBackgroundContainer`
+  (`src/ui/widgets/themed_surface.py`) or a small `ThemedWidget` subclass
+  with a `paintEvent` fill. The same explicit-`paintEvent` pattern is the
+  documented fix for any future "this surface is black" bug (see "Known Qt
+  quirk" below).
+- `bootstrap.py` registers no QSS; `Plugin.get_qss_paths()` was removed.
+  The toolkit `ThemeManager` still ships the QSS template machinery
+  (`register_qss_path`, `_scale_qss_px`) — dormant, kept for other hosts.
 
-What QSS still covers today (the sanctioned remainder): the `custom-line-edit`
-neutralization rules (strip QSS chrome so toolkit `CustomLineEdit`/`SpinBox`
-painters work — a prerequisite gate), `#FlyoutWidget` container chrome for the
-`UnifiedListPicker` (plain `QWidget` + explicit `WA_StyledBackground`),
-`#ValuePopupContainer`, `#WorkspaceTabsBar` margin slivers, `QSplitter` handle
-dividers, `QProgressBar::chunk` (stock widget, no painter replacement yet), and
-`QDialog#<Name>` top-level surface rules (top-level QSS painting does work).
-Everything else was deleted in the 2026-08-29 QSS-retirement sweep
-(dead legacy selectors, toast blocks, stock-input rules for widgets already
-replaced by toolkit equivalents, opacity/`QTabBar` rules on widgets that never
-existed). If you add a QSS rule today, it must be token-substituted and target
-a stock widget with no painter equivalent — do not add rules for toolkit
-widgets.
+If you must add a stylesheet rule today, prefer a widget-level
+`setStyleSheet` on the specific widget over app-wide QSS, and read the
+"Never use QSS to style toolkit widgets" rule in AGENTS.md.
 
 ## Connecting a widget to theme changes
 
@@ -141,7 +121,7 @@ For QPainter-based custom widgets, call `theme_manager.get_color(...)` inside `p
 ## Theme switch performance
 
 `ThemeManager.set_theme` (toolkit ≥ 3.1.5) freezes top-level widget updates
-for the whole QSS apply **and** the `theme_changed` fan-out, then issues one
+for the whole theme apply **and** the `theme_changed` fan-out, then issues one
 `update()` pass. Labels (toolkit ≥ 3.1.6) only recolor on theme flip.
 
 Toolkit ≥ 3.1.7: `set_theme(..., await_ripples=True)` (default) postpones that
@@ -168,9 +148,6 @@ workspace page; hidden tabs flush on the next session switch. Session-picker
 icon SVG re-resolve is deferred off the hot path. Do not re-apply fonts from
 `MainWindowAppearance.on_theme_changed` — fonts are theme-independent.
 
-Do **not** call `QApplication.processEvents()` between clearing and setting
-the application stylesheet.
-
 ## Extension recipe — adding a color token
 
 1. Add the key under both `"light"` and `"dark"` in `src/resources/themes.json`:
@@ -178,20 +155,11 @@ the application stylesheet.
    "light": { ..., "my_section.accent": "#4F8AF7" },
    "dark":  { ..., "my_section.accent": "#7AA6F8" }
    ```
-2. In the widget: `bg = ThemeManager.get_instance().get_color("my_section.accent")`.
-3. If used from QSS, add a rule in `resources/styles/app.qss` using the toolkit's token placeholder syntax (look at existing entries for the format).
-4. Restart — palettes are loaded once at import.
+2. In the widget: `resolve_theme_color(ThemeManager.get_instance(), "my_section.accent")` (app code uses `try_resolve_theme_color` from `src/ui/theming.py` — bare `get_color` outside theme-infra files is forbidden by contract tests).
+3. Restart — palettes are loaded once at import.
 
-## Extension recipe — adding a new QSS file
-
-For a plugin:
-```python
-def get_qss_paths(self) -> tuple[str, ...]:
-    return (self.plugin_resource_path("resources/styles/my_plugin.qss"),)
-```
-The discovery loop in `bootstrap._initialize_plugins` registers them automatically.
-
-For shared/app QSS: add `theme_manager.register_qss_path(...)` in `bootstrap._configure_theme_manager` — keep that file as the single registration point.
+There is no QSS recipe anymore: surfaces are painted in `paintEvent` from
+tokens (see `ThemedSurface` / the QSS-retirement section above).
 
 ## Common gotchas
 
