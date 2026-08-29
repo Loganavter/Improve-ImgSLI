@@ -98,6 +98,12 @@ class SessionController(QObject):
         # Slots with a full-resolution decode in flight; unify against a
         # preview side is deferred while the real pixels are on the way.
         self._pending_full_loads: dict[int, int] = {1: 0, 2: 0}
+        # Image loads via set_current_image() — dedup for the
+        # load_images_from_paths (QTimer 50ms) vs resync (QTimer 0ms) race:
+        # both schedule set_current_image for the same slot/path before the
+        # first worker returns, which would start two TiledPixelStore.from_path
+        # for the same file. Guard by pending (slot, path) set.
+        self._pending_image_loads: set[tuple[int, str]] = set()
         # Undo/redo of browsing (SET_CURRENT_INDEX) restores the index but
         # the slot's pixels can point at a closed store — re-sync on the
         # "document" scope. Deferred to the next loop turn: the emit fires
@@ -201,6 +207,14 @@ class SessionController(QObject):
         else:
             pil_img, path, image_number, index_in_list = result
             is_preview = False
+        # Clear the pending guard for (slot, path) — covers both
+        # immediate result and finished-signal fallback for fake pools.
+        try:
+            pending = getattr(self, "_pending_image_loads", None)
+            if pending is not None and path is not None:
+                pending.discard((int(image_number), str(path)))
+        except Exception:
+            pass
         document = self.store.get_session_state_slot("document")
         target_list = (
             document.image_list1 if image_number == 1 else document.image_list2
