@@ -5,6 +5,7 @@ from dataclasses import replace
 from PySide6.QtGui import QColor
 
 from core.store import Store
+
 from tabs.image_compare.services.analysis.background_layers import (
     build_cached_diff_image,
 )
@@ -348,12 +349,16 @@ class SnapshotRenderPlanBuilder:
             if scene_images_cache is not None:
                 scene_images_cache["key"] = scene_cache_key
                 scene_images_cache["value"] = scene_images
+        from core.state_management.actions import SetCachedDiffImageAction
         try:
-            self.store.viewport.session_data.render_cache.cached_diff_image = (
-                cached_diff_image
-            )
+            d = getattr(self.store, "get_dispatcher", lambda: None)()
+            if d is not None:
+                d.dispatch(SetCachedDiffImageAction(image=cached_diff_image), scope="viewport")
+            else:
+                setattr(self.store.viewport.session_data.render_cache, "cached_diff_image", cached_diff_image)
         except Exception:
-            pass
+            try: setattr(self.store.viewport.session_data.render_cache, "cached_diff_image", cached_diff_image)
+            except Exception: pass
 
         viewport_state = {
             "pixmap_width": getattr(

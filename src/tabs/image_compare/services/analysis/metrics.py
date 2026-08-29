@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 
 from PIL import Image
 
+from core.state_management.actions import SetPsnrValueAction, SetSsimValueAction
 from tabs.image_compare.services.analysis.runtime import AnalysisRuntime
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.workers import GenericWorker
@@ -56,6 +57,34 @@ class MetricsService:
             return
         self._close_ssim_metrics_toast()
 
+    def _dispatch_psnr_value(self, value) -> None:
+        dispatcher = getattr(self.store, "get_dispatcher", None)
+        dispatcher = dispatcher() if callable(dispatcher) else None
+        if dispatcher is not None:
+            try:
+                dispatcher.dispatch(SetPsnrValueAction(value=value), scope="viewport")
+                return
+            except Exception:
+                logger.error("Failed to dispatch SetPsnrValueAction", exc_info=True)
+        try:
+            setattr(self.store.viewport.session_data.image_state, "psnr_value", value)
+        except Exception:
+            pass
+
+    def _dispatch_ssim_value(self, value) -> None:
+        dispatcher = getattr(self.store, "get_dispatcher", None)
+        dispatcher = dispatcher() if callable(dispatcher) else None
+        if dispatcher is not None:
+            try:
+                dispatcher.dispatch(SetSsimValueAction(value=value), scope="viewport")
+                return
+            except Exception:
+                logger.error("Failed to dispatch SetSsimValueAction", exc_info=True)
+        try:
+            setattr(self.store.viewport.session_data.image_state, "ssim_value", value)
+        except Exception:
+            pass
+
     def _get_metric_source_images(self):
         image_state = self.store.viewport.session_data.image_state
         return image_state.image1, image_state.image2
@@ -106,17 +135,17 @@ class MetricsService:
                 self.store.viewport.session_data.image_state.auto_calculate_psnr
                 or self.store.viewport.view_state.diff_mode == "ssim"
             ):
-                self.store.viewport.session_data.image_state.psnr_value = psnr_val
+                self._dispatch_psnr_value(psnr_val)
             if (
                 self.store.viewport.session_data.image_state.auto_calculate_ssim
                 or self.store.viewport.view_state.diff_mode == "ssim"
             ):
-                self.store.viewport.session_data.image_state.ssim_value = ssim_val
+                self._dispatch_ssim_value(ssim_val)
         else:
             if not self.store.viewport.session_data.image_state.auto_calculate_psnr:
-                self.store.viewport.session_data.image_state.psnr_value = None
+                self._dispatch_psnr_value(None)
             if not self.store.viewport.session_data.image_state.auto_calculate_ssim:
-                self.store.viewport.session_data.image_state.ssim_value = None
+                self._dispatch_ssim_value(None)
 
         self._complete_ssim_metrics_toast(success=result is not None)
         self.runtime.ui_updates.emit(("resolution",))

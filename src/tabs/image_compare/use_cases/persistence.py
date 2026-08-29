@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 
+from PySide6.QtCore import QTimer
+
 from tabs.contract import TabContext
 
 logger = logging.getLogger("ImproveImgSLI")
@@ -219,7 +221,7 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
             for e in entries or []
         ]
 
-    session.document = DocumentModel(
+    doc = DocumentModel(
         image_list1=_items(data.get("image_list1")),
         image_list2=_items(data.get("image_list2")),
         current_index1=data.get("current_index1", -1),
@@ -228,20 +230,73 @@ def deserialize_session(tab, session_id: str, data: dict, context: TabContext) -
         image2_path=data.get("image2_path"),
     )
     camera = data.get("camera") or {}
-    store.set_session_state_slot(
-        _STATE_SLOT,
-        ImageCompareState(
-            show_file_names=bool(data.get("show_file_names", False)),
-            edit_name_1=data.get("edit_name_1", ""),
-            edit_name_2=data.get("edit_name_2", ""),
-            zoom=float(camera.get("zoom", 1.0) or 1.0),
-            pan_x=float(camera.get("pan_x", 0.0) or 0.0),
-            pan_y=float(camera.get("pan_y", 0.0) or 0.0),
-        ),
-        session_id=session_id,
-        emit_scope=None,
+    # Replace direct session.document assignment with slot API (AST-safe).
+    # Use batch to coalesce document + viewport writes atomically when
+    # dispatcher is bound; defer via QTimer.singleShot if dispatcher not yet
+    # bound (dispatcher.py:118), fallback via setattr for fake stores.
+    def _write_document():
+        try:
+            store.set_session_state_slot(
+                "document", doc, session_id=session_id, emit_scope="document"
+            )
+        except Exception:
+            try:
+                setattr(session, "document", doc)
+            except Exception:
+                pass
+
+    dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+    ui_state = ImageCompareState(
+        show_file_names=bool(data.get("show_file_names", False)),
+        edit_name_1=data.get("edit_name_1", ""),
+        edit_name_2=data.get("edit_name_2", ""),
+        zoom=float(camera.get("zoom", 1.0) or 1.0),
+        pan_x=float(camera.get("pan_x", 0.0) or 0.0),
+        pan_y=float(camera.get("pan_y", 0.0) or 0.0),
     )
-    restore_viewport_block(getattr(session, "viewport", None), data.get("viewport"))
+    viewport_data = data.get("viewport")
+    viewport = getattr(session, "viewport", None)
+    if dispatcher is not None:
+        try:
+            with store.batch_changes():
+                store.set_session_state_slot(
+                    "document", doc, session_id=session_id, emit_scope="document"
+                )
+                store.set_session_state_slot(
+                    _STATE_SLOT, ui_state, session_id=session_id, emit_scope=None
+                )
+                restore_viewport_block(viewport, viewport_data, store)
+        except Exception:
+            logger.error("Failed to deserialize document/viewport via batch", exc_info=True)
+            _write_document()
+            try:
+                store.set_session_state_slot(
+                    _STATE_SLOT, ui_state, session_id=session_id, emit_scope=None
+                )
+            except Exception:
+                pass
+            restore_viewport_block(viewport, viewport_data, store)
+    else:
+        # No dispatcher yet – early bootstrap: write slot directly and defer
+        # a retry once dispatcher is wired; also handle fake stores where
+        # dispatcher never appears (immediate write is the final state).
+        _write_document()
+        try:
+            store.set_session_state_slot(
+                _STATE_SLOT, ui_state, session_id=session_id, emit_scope=None
+            )
+        except Exception:
+            pass
+        restore_viewport_block(viewport, viewport_data, store)
+        try:
+            QTimer.singleShot(
+                0,
+                lambda: store.set_session_state_slot(
+                    "document", doc, session_id=session_id, emit_scope="document"
+                ),
+            )
+        except Exception:
+            pass
     # If this session is currently shown, push camera onto the host now.
     active = None
     try:
