@@ -41,7 +41,70 @@ def _size_or_none(candidate):
     if isinstance(candidate, (QImage, QPixmap)):
         qsize = candidate.size()
         return (qsize.width(), qsize.height())
-    return candidate.size
+    try:
+        return candidate.size
+    except AttributeError:
+        # Size-less stand-ins (test doubles, exotic sources) mean "no size
+        # known" -- geometry callers then keep the previous rect.
+        return None
+
+
+def _update_comparison_geometry(
+    presenter, source1, source2, label_width: int, label_height: int
+) -> None:
+    """Letterbox the comparison to the best sizes available right now.
+
+    Sizes prefer the unified stores (``image_state.image{1,2}``), then the
+    full-res/preview/original document sources. Called as early as any side
+    has content -- before the gate's unification deferral / one-side returns
+    -- so the canvas layout converges to the new comparison while the
+    preview is showing, not only when the unified store's tiles land.
+    Previews preserve the source aspect, so the pair-fit rect here equals
+    the rect the store flip will compute; the flip then changes nothing
+    visually. No-op (keeps the previous rect) while neither side has a
+    size. ``image_display_rect_on_label`` is only assigned when the rect
+    actually changes -- steady-state passes leave it untouched.
+    """
+    src_resize1 = presenter.store.viewport.session_data.image_state.image1
+    src_resize2 = presenter.store.viewport.session_data.image_state.image2
+    size1 = _size_or_none(src_resize1) or _size_or_none(source1)
+    size2 = _size_or_none(src_resize2) or _size_or_none(source2)
+    if size1 and size2:
+        img1_w, img1_h = size1
+        img2_w, img2_h = size2
+        scale1 = min(label_width / img1_w, label_height / img1_h)
+        scale2 = min(label_width / img2_w, label_height / img2_h)
+        scale = min(scale1, scale2)
+        scaled_w = max(1, int(img1_w * scale))
+        scaled_h = max(1, int(img1_h * scale))
+    elif size1:
+        img1_w, img1_h = size1
+        scale = min(label_width / img1_w, label_height / img1_h)
+        scaled_w = max(1, int(img1_w * scale))
+        scaled_h = max(1, int(img1_h * scale))
+    elif size2:
+        img2_w, img2_h = size2
+        scale = min(label_width / img2_w, label_height / img2_h)
+        scaled_w = max(1, int(img2_w * scale))
+        scaled_h = max(1, int(img2_h * scale))
+    else:
+        return
+
+    geometry = presenter.store.viewport.geometry_state
+    img_x, img_y = (label_width - scaled_w) // 2, (label_height - scaled_h) // 2
+    geometry.pixmap_width = scaled_w
+    geometry.pixmap_height = scaled_h
+    new_rect = Rect(img_x, img_y, scaled_w, scaled_h)
+    if getattr(geometry, "image_display_rect_on_label", None) != new_rect:
+        geometry.image_display_rect_on_label = new_rect
+        _preview_log(
+            "geometry: comparison rect updated to %dx%d (sizes from %s)",
+            scaled_w,
+            scaled_h,
+            "unified stores"
+            if (src_resize1 is not None or src_resize2 is not None)
+            else "sources/previews",
+        )
 
 
 def pick_display_with_preview_backing(
@@ -259,17 +322,6 @@ def update_comparison_if_needed(presenter):
         )
         return False
 
-    if getattr(
-        presenter.store.viewport.session_data.render_cache,
-        "unification_in_progress",
-        False,
-    ):
-        if presenter.store.viewport.session_data.image_state.image1 is None:
-            _preview_log(
-                "update: deferred - unification in progress, image1 not ready"
-            )
-            return False
-
     _document = presenter.store.get_session_state_slot("document")
     if _document is None:
         _preview_log("update: deferred - no document slot")
@@ -284,6 +336,31 @@ def update_comparison_if_needed(presenter):
         or _document.preview_image2
         or _document.original_image2
     )
+
+    # Comparison letterbox geometry must track the preview arrival, not the
+    # unified-store flip. The early returns below (unification deferral,
+    # single-image mode, one-side missing) used to skip the geometry block,
+    # leaving the canvas letterboxed at the *previous* comparison's rect
+    # until the unified tiles landed -- a visible resize arriving "with the
+    # tiles" instead of "with the preview". Computing the rect from the best
+    # available sizes (unified stores > full-res > previews) as soon as any
+    # side has content converges it to the final layout during the preview
+    # phase: previews preserve the source aspect, so the pair-fit rect is
+    # already the flip's rect and the store flip no longer resizes anything.
+    _update_comparison_geometry(
+        presenter, source1, source2, label_width, label_height
+    )
+
+    if getattr(
+        presenter.store.viewport.session_data.render_cache,
+        "unification_in_progress",
+        False,
+    ):
+        if presenter.store.viewport.session_data.image_state.image1 is None:
+            _preview_log(
+                "update: deferred - unification in progress, image1 not ready"
+            )
+            return False
 
     if presenter.store.viewport.view_state.showing_single_image_mode != 0:
         _preview_log(
@@ -344,28 +421,6 @@ def update_comparison_if_needed(presenter):
         )
         presenter.view.display_single_image_on_label(image_to_show)
         return False
-
-    src_resize1 = presenter.store.viewport.session_data.image_state.image1
-    src_resize2 = presenter.store.viewport.session_data.image_state.image2
-    size1 = _size_or_none(src_resize1) or _size_or_none(source1)
-    size2 = _size_or_none(src_resize2) or _size_or_none(source2)
-    if size1 and size2:
-        img1_w, img1_h = size1
-        img2_w, img2_h = size2
-        scale1 = min(label_width / img1_w, label_height / img1_h)
-        scale2 = min(label_width / img2_w, label_height / img2_h)
-        scale = min(scale1, scale2)
-        scaled_w = max(1, int(img1_w * scale))
-        scaled_h = max(1, int(img1_h * scale))
-    else:
-        scaled_w, scaled_h = label_width, label_height
-
-    presenter.store.viewport.geometry_state.pixmap_width = scaled_w
-    presenter.store.viewport.geometry_state.pixmap_height = scaled_h
-    img_x, img_y = (label_width - scaled_w) // 2, (label_height - scaled_h) // 2
-    presenter.store.viewport.geometry_state.image_display_rect_on_label = Rect(
-        img_x, img_y, scaled_w, scaled_h
-    )
 
     current_bg_sig = presenter.background.get_background_signature(source1, source2)
     last_bg_sig = getattr(presenter, "_last_bg_signature", None)
