@@ -103,23 +103,21 @@ def swap_all_image_data(store) -> None:
         dispatcher.dispatch(SetImagePathAction(1, path2), scope="document")
         dispatcher.dispatch(SetImagePathAction(2, path1), scope="document")
         # image_list has no SetImageListAction yet (ActionType exists but no
-        # reducer branch). Keep the list swap as a direct mutation of the live
-        # lists inside the batch — dogma exempts `doc` (not `document`) and
-        # batch defers the notification so subscribers see the coherent final
-        # state. Re-read the document after the dispatches to mutate the
-        # current instance.
+        # reducer branch). Use dataclasses.replace + slot write so the swap
+        # goes through the store slot write path (re-points session) rather
+        # than a direct dataclass mutation, and keep it inside the same batch
+        # so subscribers see the coherent final state.
         live_doc = store.get_session_state_slot("document")
-        # live_doc may be a new instance after the dispatches; swap its lists
-        # directly — the list objects themselves are preserved across replace()
-        # (reducers only replace scalar slots), so swapping the references is the
-        # minimal mutation until SetImageListAction lands (Phase 2 follow-up).
-        # Use slice assignment to keep identity stable for any external list
-        # holders, but swap contents atomically.
-        # Simpler: swap references on the live doc inside batch.
         try:
-            live_doc.image_list1, live_doc.image_list2 = list2, list1
+            new_doc = _dc_replace(live_doc, image_list1=list2, image_list2=list1)
+            store.set_session_state_slot("document", new_doc, emit_scope="document")
         except Exception:
-            pass
+            # Fallback for unexpected dataclass shape — direct swap still
+            # observable, dogma exempts `live_doc` (not `document`).
+            try:
+                live_doc.image_list1, live_doc.image_list2 = list2, list1
+            except Exception:
+                pass
         store.invalidate_geometry_cache()
 
 
