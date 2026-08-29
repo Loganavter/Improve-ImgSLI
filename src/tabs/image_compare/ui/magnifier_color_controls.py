@@ -138,6 +138,21 @@ class ColorSettingsButton(Button):
         if self.store:
             self.store.state_changed.connect(self._on_store_state_changed)
             self._update_underline_colors()
+        # A store signal must never reach a destroyed widget: PySide6 keeps
+        # this Python wrapper alive through the bound-method connection, so
+        # without this the handler would fire after the C++ widget (and its
+        # flyout buttons) are gone and crash with "Internal C++ object
+        # (Button) already deleted" (icon_action_flyout.set_action_state).
+        self.destroyed.connect(self._on_destroyed)
+
+    def _on_destroyed(self):
+        store = getattr(self, "store", None)
+        if store is None:
+            return
+        try:
+            store.state_changed.disconnect(self._on_store_state_changed)
+        except Exception:
+            pass
 
     def refresh_visual_state(self):
         self._update_underline_colors()
