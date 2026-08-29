@@ -570,18 +570,32 @@ class RhiCanvasRenderer:
             # Duplicate-left-on-both-halves debug: log the actual objects
             # bound for sampling (type/size/id) plus the slot keys, under
             # same [ic-preview] stream as picker (render_flow.py:482).
+            def _sz(o):
+                if o is None:
+                    return None
+                if hasattr(o, "size"):
+                    v = getattr(o, "size")
+                    if callable(v):
+                        try:
+                            q = v()
+                            return (q.width(), q.height()) if hasattr(q, "width") else str(q)
+                        except Exception:
+                            return str(v)
+                    return v
+                return None
             _ic_preview_log(
-                "sources use_hires=%s tex_keys=%s src_tex_ids=%s src_uids=%s types=%s sizes=%s ids=0x%x/0x%x stored_uids=%s source_pil_uids=%s",
+                "sources use_hires=%s tex_keys=%s src_tex_ids=%s src_uids=%s types=%s sizes=%s ids=0x%x/0x%x stored_uids=%s source_pil_uids=%s is_same_object=%s",
                 base_image.use_hires,
                 list(texture_keys),
                 list(ctx.source_texture_ids),
                 [image_uid(s) if s is not None else None for s in sources],
                 [type(s).__name__ if s is not None else None for s in sources],
-                [getattr(s, "size", None) if s is not None else None for s in sources],
+                [_sz(s) for s in sources],
                 id(sources[0]) if len(sources) > 0 and sources[0] is not None else 0,
                 id(sources[1]) if len(sources) > 1 and sources[1] is not None else 0,
                 [image_uid(s) if s is not None else None for s in ctx.stored_pil_images],
                 [image_uid(s) if s is not None else None for s in getattr(widget.runtime_state, "_source_pil_images", ())],
+                (len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]),
             )
             # Device px per logical px: DPR in live render, 1.0 during tiled
             # export (widget is sized to the tile's pixel footprint).
@@ -785,6 +799,18 @@ class RhiCanvasRenderer:
             rhi_render_debug(
                 "render array_draw_plan=%d entries", len(array_draw_plan)
             )
+            # Real draw content (not wishful sources): per-tile layers/bbox — if
+            # fallback holds old duplicate, both layers will be same _prev_content
+            # even when sources already distinct.
+            if array_draw_plan:
+                _ic_preview_log(
+                    "draw_plan tex_keys=%s entries=%d layers1_sample=%s layers2_sample=%s bboxes=%s",
+                    list(texture_keys),
+                    len(array_draw_plan),
+                    [getattr(it, "layer1", None) for it in array_draw_plan[:3]],
+                    [getattr(it, "layer2", None) for it in array_draw_plan[:3]],
+                    [getattr(it, "bbox", None) for it in array_draw_plan[:2]],
+                )
             # docs/dev/rendering/tile-array-atlas-plan.md Phase 9: ground
             # truth for whether *this exact frame* actually has a blank
             # hole on screen, independent of which internal mechanism
