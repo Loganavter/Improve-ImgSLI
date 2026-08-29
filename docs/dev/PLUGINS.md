@@ -81,7 +81,6 @@ class Plugin(ABC):
     def get_toolbar_actions(self) -> list
     def get_menu_items(self) -> list
     def get_render_entities(self) -> list
-    def get_qss_paths(self) -> tuple[str, ...]
     def get_definition(self) -> Any | None
     def plugin_resource_path(*parts) -> str            # path under the plugin's own directory
 ```
@@ -212,9 +211,8 @@ Patterns:
            # subscribe to events, construct services
    ```
 3. (Optional) Add `controller.py`, `presenter.py`, `services/`, `events.py`, `state.py` as needed — follow `comparison/` or `export/` as templates depending on whether you need UI commands or dialogs.
-4. (Optional) If you contribute QSS, override `get_qss_paths()` and return paths via `self.plugin_resource_path("resources/styles/x.qss")`.
-5. (Optional) If your plugin defines a workspace session type, implement `ISessionPlugin.get_session_blueprints()`.
-6. **Nothing else** — discovery is automatic; declare `startup_tier` on `@plugin`.
+4. (Optional) If your plugin defines a workspace session type, implement `ISessionPlugin.get_session_blueprints()`.
+5. **Nothing else** — discovery is automatic; declare `startup_tier` on `@plugin`.
 
 ## See also
 

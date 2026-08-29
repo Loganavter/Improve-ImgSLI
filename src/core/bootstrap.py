@@ -230,13 +230,6 @@ class ApplicationContext:
         )
         self.theme_manager.set_theme(initial_theme)
 
-        for qss_path in (
-            self._resource_path("shared_toolkit/ui/resources/styles/base.qss"),
-            self._resource_path("shared_toolkit/ui/resources/styles/widgets.qss"),
-            self._resource_path("resources/styles/app.qss"),
-        ):
-            self.theme_manager.register_qss_path(qss_path)
-
     def _configure_flyout_manager(self):
         from ui.flyout_policy import install_flyout_show_policy
 
@@ -249,9 +242,6 @@ class ApplicationContext:
         discovered_plugins = list(
             self.plugin_registry.discover_plugins(tier="bootstrap")
         )
-        for plugin in discovered_plugins:
-            for qss_path in plugin.get_qss_paths():
-                self.theme_manager.register_qss_path(qss_path)
 
         self.plugin_coordinator = PluginCoordinator(self.event_bus)
         self.plugin_coordinator.register_plugins(discovered_plugins)
@@ -279,57 +269,12 @@ class ApplicationContext:
             startup_mark("ctx.plugins.deferred")
             return ()
 
-        deferred_qss = False
-        for plugin in discovered:
-            paths = tuple(plugin.get_qss_paths())
-            assert self.theme_manager is not None
-            for qss_path in paths:
-                self.theme_manager.register_qss_path(qss_path)
-            if paths:
-                deferred_qss = True
-
         assert self.theme_manager is not None
         started = self.plugin_coordinator.register_and_start(discovered, self)
         self._deferred_plugins_loaded = True
 
-        # register_qss_path only rebuilds the template; push it live so deferred
-        # styles (e.g. video editor tab bar) are not stuck on the native Qt look.
-        if deferred_qss:
-            from PySide6.QtWidgets import QApplication
-
-            app = QApplication.instance()
-            if app is not None and isinstance(app, QApplication) and bool(app.styleSheet()):
-                self.theme_manager.apply_theme_to_app(app)
-                # `apply_theme_to_app` re-applies the *global* app
-                # stylesheet (`app.setStyleSheet(...)`) -- confirmed live
-                # (IMGSLI_FLYOUT_DEBUG=1, a QEvent::FontChange filter on
-                # ZoomIndicator's label) that this resets already-explicit
-                # widget fonts (`WA_SetFont`-pinned via `apply_ui_font()`)
-                # to some earlier/default point size, even though
-                # `QApplication.font()` itself never actually changes --
-                # a Qt style-sheet-engine font re-resolution quirk, not a
-                # real `ApplicationFontChange` (so `UiFont.font_changed`
-                # never fires for it, and widgets relying on that signal
-                # to self-heal don't). Re-assert the correct app font
-                # right after, same call `window.py`/`ApplyFontSettingsStep`
-                # already make at startup, undoing whatever the stylesheet
-                # push broke -- see
-                # docs/dev/rendering/glass-panel-text-vibrancy-plan.md
-                # Phase 3 for the investigation this fixes.
-                try:
-                    from shared_toolkit.ui.managers.font_manager import FontManager
-
-                    FontManager.get_instance().apply_from_state(self.store)
-                except Exception as exc:
-                    logger.debug("FontManager apply_from_state failed: %s", exc, exc_info=True)
-
         startup_mark("ctx.plugins.deferred")
         return started
-
-    def _resource_path(self, relative_path: str) -> str:
-        from utils.resource_loader import resource_path
-
-        return resource_path(relative_path)
 
     def create_window_dependent_components(self, window):
         if not self._initialized:

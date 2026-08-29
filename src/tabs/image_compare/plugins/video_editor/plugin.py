@@ -40,9 +40,6 @@ class VideoEditorPlugin(Plugin, ISessionPlugin):
                 SettingsChangeLanguageEvent, self._on_language_changed
             )
 
-    def get_qss_paths(self) -> tuple[str, ...]:
-        return (self.plugin_resource_path("resources", "editor.qss"),)
-
     def open_editor(
         self, snapshots: list[Any], export_controller: Any, main_window_app: Any
     ) -> None:

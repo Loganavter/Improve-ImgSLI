@@ -35,6 +35,7 @@ from tabs.image_compare.plugins.video_editor.layout_geometry import (
 from tabs.image_compare.plugins.video_editor.dialog.export import VideoEditorDialogExport
 from tabs.image_compare.plugins.video_editor.dialog.persistence import VideoEditorDialogPersistence
 from tabs.image_compare.plugins.video_editor.dialog.runtime import VideoEditorDialogRuntime
+from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import VideoPreviewSurface
 from tabs.image_compare.plugins.video_editor.presenter import VideoEditorPresenter
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.managers import scaled_px
@@ -189,7 +190,7 @@ class VideoEditorDialog(ThemedDialog):
         canvas = create_canvas_widget()
         if canvas is None:
             logger.debug("VideoEditor preview canvas not available for active tab — using placeholder")
-            canvas = QWidget()
+            canvas = VideoPreviewSurface()
             canvas.setObjectName("VideoEditorPreviewPlaceholder")
             # Degrade gracefully: plain QWidget placeholder, no QRhi rendering.
             canvas.set_read_only = lambda *a, **k: None  # type: ignore[attr-defined]
@@ -471,8 +472,6 @@ class VideoEditorDialog(ThemedDialog):
         if not hasattr(self, "export_progress"):
             return
         self.export_progress.setProperty("state", state)
-        self.export_progress.style().unpolish(self.export_progress)
-        self.export_progress.style().polish(self.export_progress)
         self.export_progress.update()
 
     def _browse_output_dir(self, checked: bool = False):

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
@@ -53,7 +52,6 @@ class LayoutComposer:
     def _workspace_bar_widget(self, main_window: QWidget) -> QWidget:
         ui = self.ui
         ui.workspace_tabs.setParent(main_window)
-        ui.workspace_tabs.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         ui.workspace_tabs_bar = ui.workspace_tabs
         return ui.workspace_tabs
 

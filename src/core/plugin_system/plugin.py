@@ -43,8 +43,6 @@ class Plugin(ABC):
 
     def _set_state(self, state: PluginState) -> None:
         self._state = state
-    def get_qss_paths(self) -> tuple[str, ...]:
-        return ()
     def plugin_resource_path(self, *parts: str) -> str:
         module_file = inspect.getfile(self.__class__)
         plugin_root = os.path.dirname(module_file)

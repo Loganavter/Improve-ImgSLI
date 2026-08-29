@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
-
 from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QTabBar
 
+from sli_ui_toolkit.ui.inspector.spec import InspectSpec, SpecField  # noqa: E402
 from sli_ui_toolkit.ui.widgets.composite.adaptive_tab_strip import (
     AdaptiveTabStrip,
     CloseButtonPolicy,
 )
+from sli_ui_toolkit.widgets import ThemedWidget
+from ui.theming import try_resolve_theme_color
 
 
-class WorkspaceTabStrip(AdaptiveTabStrip):
+class WorkspaceTabStrip(ThemedWidget, AdaptiveTabStrip):
     """Adaptive tabs with browser-like close interactions.
 
     Eats mouse presses that land on a tab's close-button slot so
@@ -22,12 +24,38 @@ class WorkspaceTabStrip(AdaptiveTabStrip):
     tab briefly switches to that tab (currentChanged on press) before the
     close is processed on release, flashing the closed tab's page for one
     frame.
+
+    The strip paints its own background from the ``button.toggle.background.normal``
+    token (QSS retired; the tab bar above it paints the same token).
     """
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("close_policy", CloseButtonPolicy.ALL)
+        self._strip_bg_color = QColor()
         super().__init__(*args, **kwargs)
+        self._read_strip_color()
         self.tab_bar.installEventFilter(self)
+
+    def _read_strip_color(self) -> None:
+        try:
+            resolved = try_resolve_theme_color(
+                self._theme_manager, "button.toggle.background.normal"
+            )
+        except Exception:
+            resolved = None
+        if resolved is not None and resolved.isValid():
+            self._strip_bg_color = QColor(resolved)
+        else:
+            self._strip_bg_color = QColor(self.palette().window().color())
+
+    def on_theme_changed(self) -> None:
+        self._read_strip_color()
+        super().on_theme_changed()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self._strip_bg_color)
+        painter.end()
 
     def _close_slot_at(self, pos):
         index = self.tab_bar.tabAt(pos)

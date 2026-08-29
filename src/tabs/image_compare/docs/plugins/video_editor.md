@@ -17,7 +17,6 @@ tab, see [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 - `initialize(context)` stores `event_bus`, `thread_pool`, `store`;
   subscribes `SettingsChangeLanguageEvent`.
-- `get_qss_paths()` → `resources/editor.qss`.
 - `open_editor(snapshots, export_controller, main_window_app)` opens the
   modeless `VideoEditorDialog`, re-showing the existing dialog if one is open.
 - `create_recording_services(store, main_controller, gpu_export_service,
