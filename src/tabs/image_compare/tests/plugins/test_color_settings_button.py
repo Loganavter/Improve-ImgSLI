@@ -100,7 +100,7 @@ def test_color_button_hides_underline_when_magnifier_disabled(monkeypatch):
     assert probe.value is None
 
 
-def test_color_button_disconnects_store_when_destroyed(qtbot):
+def test_color_button_disconnects_store_when_destroyed(qtbot, monkeypatch):
     """Regression: a destroyed ColorSettingsButton must stop reacting to
     store.state_changed.
 
@@ -110,6 +110,13 @@ def test_color_button_disconnects_store_when_destroyed(qtbot):
     IconActionFlyout.set_action_state with "Internal C++ object (Button)
     already deleted".
     """
+    # Keep the real feature commands out: other tests in the suite register
+    # the live "overlay.enabled" command, which would touch the fake store.
+    monkeypatch.setattr(
+        color_settings_button_module,
+        "registry",
+        lambda: SimpleNamespace(get_feature_command_by_alias=lambda alias: None),
+    )
     from PySide6.QtCore import QObject, Signal
     from PySide6.QtWidgets import QWidget
 

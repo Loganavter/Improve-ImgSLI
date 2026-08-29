@@ -44,7 +44,9 @@ def _size_or_none(candidate):
     return candidate.size
 
 
-def pick_display_with_preview_backing(*candidates, last_applied_uid=None):
+def pick_display_with_preview_backing(
+    *candidates, last_applied_uid=None, superseded_preview_uid=None
+):
     """Display-pair picker for the live canvas (stored role).
 
     ``pick_display_image`` only returns a ``TiledPixelStore`` once its
@@ -56,17 +58,29 @@ def pick_display_with_preview_backing(*candidates, last_applied_uid=None):
     flips straight to store tiles whose fallback-LOD baseline is the
     *previous* content -- the new preview never appears underneath.
 
-    Rule: while the slot's preview is *fresh* (its ``image_uid`` differs
-    from the display pair last applied to the canvas), prefer the preview
-    for the stored role regardless of pyramid state. The next apply cycle
-    (unify result / pyramid-completion invalidation) then finds the preview
-    no longer fresh, picks the store as usual, and the flip's fallback
+    Rule: while the slot's preview is *fresh*, prefer the preview for the
+    stored role regardless of pyramid state. The next apply cycle (unify
+    result / pyramid-completion invalidation) then finds the preview no
+    longer fresh, picks the store as usual, and the flip's fallback
     baseline is exactly the new preview tiles -- the backing survives every
     on-the-fly change instead of only the first load.
+
+    Freshness is *not* "uid differs from the display pair last applied":
+    ``image_uid`` is a per-object identity, so a preview and the store
+    built from the same image always differ, and that test alone would
+    re-degrade an already-sharp store back to the 1024px preview on every
+    apply cycle (flip-flop). The caller therefore also passes
+    ``superseded_preview_uid`` -- the uid of the preview that the
+    currently-installed store superseded. A preview matching either the
+    last-applied display or that superseded preview is the same image's
+    and must never preempt its store; only a preview belonging to a
+    different image (or a reload) counts as fresh.
     """
     preview = candidates[1] if len(candidates) > 1 else None
-    if preview is not None and image_uid(preview) != last_applied_uid:
-        return preview
+    if preview is not None:
+        uid = image_uid(preview)
+        if uid != last_applied_uid and uid != superseded_preview_uid:
+            return preview
     return pick_display_image(*candidates)
 
 
@@ -392,17 +406,22 @@ def update_comparison_if_needed(presenter):
         if presenter.view.is_canvas_widget():
             image_label = get_canvas_widget(presenter.widget)
             _last_display_uids = getattr(presenter, "_last_display_uids", None) or {}
+            _superseded_uids = (
+                getattr(presenter, "_last_superseded_preview_uid", None) or {}
+            )
             img1 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image1,
                 _document.preview_image1,
                 _document.original_image1,
                 last_applied_uid=_last_display_uids.get(1),
+                superseded_preview_uid=_superseded_uids.get(1),
             )
             img2 = pick_display_with_preview_backing(
                 presenter.store.viewport.session_data.image_state.image2,
                 _document.preview_image2,
                 _document.original_image2,
                 last_applied_uid=_last_display_uids.get(2),
+                superseded_preview_uid=_superseded_uids.get(2),
             )
             render_img1, render_img2 = img1, img2
 
@@ -466,6 +485,25 @@ def update_comparison_if_needed(presenter):
                         1: image_uid(render_img1),
                         2: image_uid(render_img2),
                     }
+                    # Flip-flop guard: remember which preview uid each slot's
+                    # store just superseded, so pick_display_with_preview_backing
+                    # never treats that same image's preview as "fresh" again.
+                    _applied_preview = (
+                        getattr(presenter, "_last_applied_preview_uid", None) or {}
+                    )
+                    _superseded_uids = (
+                        getattr(presenter, "_last_superseded_preview_uid", None) or {}
+                    )
+                    for _slot, _picked in ((1, render_img1), (2, render_img2)):
+                        if _picked is getattr(document, f"preview_image{_slot}"):
+                            _applied_preview[_slot] = presenter._last_display_uids[_slot]
+                        elif _picked is getattr(
+                            presenter.store.viewport.session_data.image_state,
+                            f"image{_slot}",
+                        ):
+                            _superseded_uids[_slot] = _applied_preview.get(_slot)
+                    presenter._last_applied_preview_uid = _applied_preview
+                    presenter._last_superseded_preview_uid = _superseded_uids
             else:
                 _preview_log(
                     "update: skip apply - img_sig unchanged (uid1=%s uid2=%s) "
