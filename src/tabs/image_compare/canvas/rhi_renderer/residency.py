@@ -1,3 +1,4 @@
+# Audit-Meta: pattern=tile-residency size=exempt reason="viewport-driven rekey+stash/restore + residency (IC) — single TileResidencyRealizer, see docs/dev/TILED_RENDERING_DESIGN.md Phase 2"
 """Viewport-driven partial tile residency for the image_compare base-image
 renderer (docs/dev/TILED_RENDERING_DESIGN.md Phase 2).
 

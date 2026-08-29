@@ -567,6 +567,22 @@ class RhiCanvasRenderer:
                 if base_image.use_hires
                 else tuple(ctx.stored_pil_images)
             )
+            # Duplicate-left-on-both-halves debug: log the actual objects
+            # bound for sampling (type/size/id) plus the slot keys, under
+            # same [ic-preview] stream as picker (render_flow.py:482).
+            _ic_preview_log(
+                "sources use_hires=%s tex_keys=%s src_tex_ids=%s src_uids=%s types=%s sizes=%s ids=0x%x/0x%x stored_uids=%s source_pil_uids=%s",
+                base_image.use_hires,
+                list(texture_keys),
+                list(ctx.source_texture_ids),
+                [image_uid(s) if s is not None else None for s in sources],
+                [type(s).__name__ if s is not None else None for s in sources],
+                [getattr(s, "size", None) if s is not None else None for s in sources],
+                id(sources[0]) if len(sources) > 0 and sources[0] is not None else 0,
+                id(sources[1]) if len(sources) > 1 and sources[1] is not None else 0,
+                [image_uid(s) if s is not None else None for s in ctx.stored_pil_images],
+                [image_uid(s) if s is not None else None for s in getattr(widget.runtime_state, "_source_pil_images", ())],
+            )
             # Device px per logical px: DPR in live render, 1.0 during tiled
             # export (widget is sized to the tile's pixel footprint).
             scale_px = target_size.width() / float(max(1, widget.width()))
