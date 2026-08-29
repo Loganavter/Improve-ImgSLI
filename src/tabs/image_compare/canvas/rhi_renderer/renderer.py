@@ -32,6 +32,7 @@ from ..texture_parts.tile_geometry import (
 )
 from shared.rendering.fallback_lod import resolve_fallback_lod
 from shared.rendering.glass_panel import GlassPanelRenderer
+from shared.rendering.lod import LevelKey
 from ._debug import rhi_render_debug, rhi_render_debug_enabled
 
 # [ic-preview] correlation for "placeholder missing" flash (same env flag as
@@ -118,6 +119,11 @@ def _is_rekeyed_content_key(key: object) -> bool:
     see ``_resolve_fallback_plan``'s docstring for why the two want
     different reveal behavior. ``LevelKey`` is a NamedTuple whose first
     element is the base slot key, so it can never match a marker prefix."""
+    # Fix LevelKey mismatch: LevelKey(base, level) where base itself is a
+    # marker tuple (e.g. rekeyed stash) would otherwise check LevelKey[0]==base
+    # (a tuple) not the marker string. Unwrap to the base first.
+    if isinstance(key, LevelKey):
+        key = key.base
     return (
         isinstance(key, tuple) and len(key) > 0 and key[0] in ("_prev_content", "_content_stash")
     )
@@ -194,6 +200,9 @@ class RhiCanvasRenderer:
         # shows left on right as "placeholder" — obviously wrong. Track whether
         # previous frame's sources were same object to bypass that baseline.
         self._prev_sources_is_same: bool | None = None
+        # Snapshots for consistent [ic-preview] logging across SET/CLEAR/result/tile_dump/gap
+        self._fallback_atomic_snapshot: bool | None = None
+        self._fallback_more_pending_snapshot: bool | None = None
 
     # -- backward-compatible views onto RhiResources' GPU state, used by
     # feature passes (e.g. magnifier) that read tile textures directly. --
@@ -337,23 +346,58 @@ class RhiCanvasRenderer:
         # change and draws the old content underneath while the new content
         # at the reused slot fills in.
         if rekeyed:
+            # Fix LevelKey mismatch: rekeyed map is keyed by bare slot labels
+            # ("stored_0") but texture_keys may be LevelKey("stored_0", lvl).
+            # Look up via .base for LevelKeys so the marker is actually applied
+            # and the log shows the real substituted marker.
+            def _rekeyed_lookup(k):
+                if k is None:
+                    return None
+                if k in rekeyed:
+                    return rekeyed[k]
+                if isinstance(k, LevelKey) and k.base in rekeyed:
+                    # Preserve level but substitute base marker for visibility
+                    try:
+                        return LevelKey(rekeyed[k.base], k.level)  # type: ignore[arg-type]
+                    except Exception:
+                        return rekeyed[k.base]
+                return k
+
             last_good_key = (
-                tuple(rekeyed.get(k, k) for k in texture_keys),
-                rekeyed.get(diff_source_key, diff_source_key),
+                tuple(_rekeyed_lookup(k) for k in texture_keys),
+                _rekeyed_lookup(diff_source_key),
+            )
+            _ic_preview_log(
+                "rekeyed LevelKey lookup: texture_keys=%s rekeyed_map=%s -> last_good=%s",
+                [str(k) for k in texture_keys],
+                {str(k): str(v) for k, v in rekeyed.items()},
+                last_good_key,
             )
         # Single-image duplicate guard (left on both halves): if previous frame's
         # sources were same object (display_single_image_on_label dup) and current
         # are distinct (preview/full_res distinct distinct after second load), the
         # old baseline is left-on-both duplicate — holding it atomically would
         # show left on right as "placeholder", obviously wrong.
-        if self._prev_sources_is_same is True and current_sources_is_same is False:
+        # Fix is_same lag: log both prev and current, decision uses current frame's is_same.
+        _prev_is_same = self._prev_sources_is_same
+        if current_sources_is_same is False and _prev_is_same is True:
             _ic_preview_log(
-                "fallback SKIP_DUPLICATE_BASELINE: prev same True current False last_good=%s -> drop baseline",
+                "fallback SKIP_DUPLICATE_BASELINE: prev=%s current=%s last_good=%s -> drop baseline",
+                _prev_is_same,
+                current_sources_is_same,
                 last_good_key,
             )
             last_good_key = None
             # Don't keep content_swap_active for duplicate baseline
             self._content_swap_active = False
+        elif _prev_is_same is not None or current_sources_is_same is not None:
+            _ic_preview_log(
+                "fallback is_same_check: prev=%s current=%s last_good=%s keep=%s",
+                _prev_is_same,
+                current_sources_is_same,
+                last_good_key,
+                last_good_key is not None,
+            )
         _prev_swap = self._content_swap_active
         if source_changed and last_good_key is not None and last_good_key != key:
             # A content replacement just committed (see the flag's
@@ -370,24 +414,33 @@ class RhiCanvasRenderer:
         is_content_swap = self._content_swap_active or _is_rekeyed_content_baseline(
             last_good_key
         )
+        # Capture decision snapshot for consistent logging across SET/CLEAR/result/tile_dump/gap
+        decision_is_content_swap = is_content_swap
+        decision_content_swap_flag = self._content_swap_active
+        decision_last_good_has_marker = _is_rekeyed_content_baseline(last_good_key)
         # Always emit the atomic decision on every fallback-active frame so
         # "[ic-preview] fallback decision -> fallback result -> apply" can be
         # correlated in one grep. Otherwise a preview->store flip that silently
         # falls back to progressive (is_content_swap=False) looks identical to
         # a correct atomic hold in the log.
+        # Snapshot captured above ensures SET/CLEAR/result/tile_dump/gap share one value.
         _ic_preview_log(
-            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s",
+            "fallback decision: source_changed=%s last_good=%s key=%s rekeyed=%s is_content_swap=%s atomic=%s more_pending=%s current_entries=%d last_good_has_marker=%s content_swap_flag=%s decision_atomic=%s",
             source_changed,
             last_good_key,
             key,
             dict(rekeyed) if rekeyed else None,
-            is_content_swap,
-            is_content_swap,
+            decision_is_content_swap,
+            decision_is_content_swap,
             main_more_pending,
             len(current_array_plan),
-            _is_rekeyed_content_baseline(last_good_key),
-            self._content_swap_active,
+            decision_last_good_has_marker,
+            decision_content_swap_flag,
+            decision_is_content_swap,
         )
+        # Stash snapshot for render() gap log (same frame, after promotion clears flag)
+        self._fallback_atomic_snapshot = decision_is_content_swap
+        self._fallback_more_pending_snapshot = main_more_pending
         fallback_diag: dict[str, int] = {}
         # Fast path: promotion without fallback — avoid closure alloc per frame
         if not main_more_pending and current_array_plan:
@@ -435,33 +488,50 @@ class RhiCanvasRenderer:
             # resident; the transition is over. From here on, further
             # LOD-level churn on the (now committed) content is a plain
             # progressive reveal again.
-            if self._content_swap_active:
+            if decision_content_swap_flag:
                 _ic_preview_log(
-                    "fallback content_swap_active: CLEARED on promotion (new_last_good==key %s)",
+                    "fallback content_swap_active: CLEARED on promotion (new_last_good==key %s) decision_atomic_was=%s",
                     key,
+                    decision_is_content_swap,
                 )
             self._content_swap_active = False
+            # Promotion vs fallback explicit
+            _ic_preview_log(
+                "fallback promotion: promoted=True key=%s more_pending_at_decision=%s coverage_will_be_checked_in_render",
+                key,
+                self._fallback_more_pending_snapshot,
+            )
+        else:
+            _ic_preview_log(
+                "fallback no_promotion: promoted=False fallback_kept=%s current=%d more_pending=%s atomic=%s",
+                fallback_diag.get("kept"),
+                len(current_array_plan),
+                main_more_pending,
+                decision_is_content_swap,
+            )
         # Result line: explains "forgot placeholder and immediately tiled" —
         # three distinct reasons leave fallback empty / not drawn:
         #   1) last_good_key is None (no baseline yet),
         #   2) atomic fallback empty (old content evicted → degraded to current),
         #   3) is_content_swap False (progressive instead of atomic).
+        # Use decision snapshot so SET/CLEAR/result share one value.
         _ic_preview_log(
-            "fallback result: atomic=%s fallback_raw=%s fallback_kept=%s resolved=%d current=%d more_pending=%s last_good=%s new_last_good=%s promoted=%s",
-            is_content_swap,
+            "fallback result: atomic=%s fallback_raw=%s fallback_kept=%s resolved=%d current=%d more_pending=%s last_good=%s new_last_good=%s promoted=%s decision_atomic=%s",
+            decision_is_content_swap,
             fallback_diag.get("raw"),
             fallback_diag.get("kept"),
             len(array_draw_plan),
             len(current_array_plan),
-            main_more_pending,
+            self._fallback_more_pending_snapshot,
             last_good_key,
             new_last_good_key,
             new_last_good_key == key,
+            decision_is_content_swap,
         )
         if fallback_diag and fallback_diag.get("raw") == 0:
             _ic_preview_log(
                 "fallback EMPTY: atomic=%s old_keys=%s — placeholder had no resident tiles, degraded to partial new content",
-                is_content_swap,
+                decision_is_content_swap,
                 old_texture_keys,
             )
         elif not fallback_diag and last_good_key is not None and last_good_key != key:
@@ -499,12 +569,14 @@ class RhiCanvasRenderer:
                 fallback_kept=fallback_diag.get("kept"),
                 current_entries=len(current_array_plan),
                 resolved_entries=len(array_draw_plan),
-                main_more_pending=main_more_pending,
+                main_more_pending=self._fallback_more_pending_snapshot,
                 fallback_active=bool(fallback_diag),
                 rekeyed_same_slot_swap={str(k): str(v) for k, v in rekeyed.items()}
                 if rekeyed
                 else None,
-                content_swap_active=self._content_swap_active,
+                content_swap_active=decision_is_content_swap,
+                decision_atomic=decision_is_content_swap,
+                decision_flag=decision_content_swap_flag,
             )
         return new_last_good_key, array_draw_plan
 
@@ -596,6 +668,8 @@ class RhiCanvasRenderer:
                 else tuple(ctx.stored_pil_images)
             )
             # Gated debug: avoid 4× image_uid + type + closure alloc per frame when off
+            # sources vs draw_plan stale fix: this is raw (pre-LOD) log; the
+            # committed log after LOD commit below reflects what was actually drawn.
             if _ic_preview_enabled():
                 def _sz(o):
                     if o is None:
@@ -611,7 +685,7 @@ class RhiCanvasRenderer:
                         return v
                     return None
                 _ic_preview_log(
-                    "sources use_hires=%s tex_keys=%s src_tex_ids=%s src_uids=%s types=%s sizes=%s ids=0x%x/0x%x stored_uids=%s source_pil_uids=%s is_same_object=%s",
+                    "sources raw use_hires=%s tex_keys_raw=%s src_tex_ids=%s src_uids=%s types=%s sizes=%s ids=0x%x/0x%x stored_uids=%s source_pil_uids=%s is_same_object_raw=%s",
                     base_image.use_hires,
                     list(texture_keys),
                     list(ctx.source_texture_ids),
@@ -673,6 +747,39 @@ class RhiCanvasRenderer:
                 self._lod_committed_keys = raw_texture_keys
                 self._lod_committed_source_ids = source_ids
             texture_keys = self._lod_committed_keys
+            # sources vs draw_plan stale fix: log after LOD commit so is_same and tex_keys reflect committed draw.
+            if _ic_preview_enabled():
+                # _sz defined above in raw log block — redefine cheaply for committed log scope
+                def _sz2(o):
+                    if o is None:
+                        return None
+                    if hasattr(o, "size"):
+                        v = getattr(o, "size")
+                        if callable(v):
+                            try:
+                                q = v()
+                                return (q.width(), q.height()) if hasattr(q, "width") else str(q)
+                            except Exception:
+                                return str(v)
+                        return v
+                    return None
+                _is_same_committed = len(sources) == 2 and sources[0] is not None and sources[0] is sources[1]
+                _ic_preview_log(
+                    "sources committed use_hires=%s tex_keys_raw=%s tex_keys_committed=%s is_same_object_committed=%s src_uids=%s committed_uids_src=%s",
+                    base_image.use_hires,
+                    [str(k) for k in raw_texture_keys],
+                    [str(k) for k in texture_keys],
+                    _is_same_committed,
+                    [image_uid(s) if s is not None else None for s in sources],
+                    list(source_ids),
+                )
+                _ic_preview_log(
+                    "draw_sources committed tex_keys=%s is_same=%s committed_src_ids=%s raw_src_ids=%s",
+                    [str(k) for k in texture_keys],
+                    _is_same_committed,
+                    list(source_ids),
+                    [str(k) for k in raw_texture_keys],
+                )
             if source_changed:
                 _ic_preview_log(
                     "lod_commit source_changed=True src_ids=%s raw=%s committed=%s pending_ms=%.1f",
@@ -899,22 +1006,54 @@ class RhiCanvasRenderer:
                     visible2_common,
                     [_to_common_space(item.rect2, letterbox2) for item in array_draw_plan],
                 )
+                # Make more_pending vs coverage gap explicit: more_pending tells
+                # whether residency still has tiles to upload, covered tells
+                # whether the current draw plan actually covers the visible
+                # rect. A gap with more_pending=True is expected progressive
+                # fill-in; a gap with more_pending=False is the real bug (fallback
+                # failed to cover the hole). Use decision snapshot for atomic
+                # so SET/CLEAR/result/tile_dump/gap share one value.
+                _gap_atomic = getattr(self, "_fallback_atomic_snapshot", self._content_swap_active)
+                _gap_more = getattr(self, "_fallback_more_pending_snapshot", False)
+                # Fallback to local main_more_pending if snapshot missing but variable exists
+                if _gap_more is None:
+                    try:
+                        _gap_more = main_more_pending
+                    except NameError:
+                        _gap_more = False
                 if covered1 < 0.999 or covered2 < 0.999:
                     rhi_render_debug(
                         "render GAP_DETECTED covered1=%.4f covered2=%.4f entries=%d "
-                        "main_more_pending=%s",
+                        "main_more_pending=%s decision_atomic=%s coverage_gap=True",
                         covered1,
                         covered2,
                         len(array_draw_plan),
-                        main_more_pending,
+                        _gap_more,
+                        _gap_atomic,
                     )
                     _ic_preview_log(
-                        "gap_detected covered1=%.4f covered2=%.4f entries=%d more_pending=%s atomic=%s",
+                        "gap_detected covered1=%.4f covered2=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s coverage=%.4f/%.4f gap_vs_pending=%s",
                         covered1,
                         covered2,
                         len(array_draw_plan),
-                        main_more_pending,
+                        _gap_more,
                         self._content_swap_active,
+                        _gap_atomic,
+                        covered1,
+                        covered2,
+                        "expected_more_pending" if _gap_more else "BUG_no_more_pending_but_gap",
+                    )
+                elif _ic_preview_enabled():
+                    # Log healthy coverage explicitly so more_pending vs coverage
+                    # correlation is visible even without a gap.
+                    _ic_preview_log(
+                        "coverage_healthy covered1=%.4f covered2=%.4f entries=%d more_pending=%s atomic=%s decision_atomic=%s",
+                        covered1,
+                        covered2,
+                        len(array_draw_plan),
+                        _gap_more,
+                        self._content_swap_active,
+                        _gap_atomic,
                     )
 
         # Submit this frame's tile uploads now (rather than folding them into

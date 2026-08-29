@@ -615,12 +615,55 @@ def update_comparison_if_needed(presenter):
                             _superseded_uids[_slot] = _applied_preview.get(_slot)
                     presenter._last_applied_preview_uid = _applied_preview
                     presenter._last_superseded_preview_uid = _superseded_uids
+                    # pick log vs GPU: correlate tier log with actual _stored_pil_images after upload_pil_images/realize_tile_plan
+                    try:
+                        _stored_actual = getattr(image_label.runtime_state, "_stored_pil_images", [None, None])
+                        _gpu_t1 = "full_res" if _stored_actual[0] is _document.full_res_image1 and _stored_actual[0] is not None else _source_tier(
+                            _stored_actual[0],
+                            _document.preview_image1,
+                            _document.original_image1,
+                            presenter.store.viewport.session_data.image_state.image1,
+                        )
+                        _gpu_t2 = "full_res" if _stored_actual[1] is _document.full_res_image2 and _stored_actual[1] is not None else _source_tier(
+                            _stored_actual[1],
+                            _document.preview_image2,
+                            _document.original_image2,
+                            presenter.store.viewport.session_data.image_state.image2,
+                        )
+                        _preview_log(
+                            "pick->GPU applied: picked tier1=%s tier2=%s GPU tier1=%s tier2=%s picked_uids=%s/%s stored_uids=%s/%s match=%s",
+                            _t1,
+                            _t2,
+                            _gpu_t1,
+                            _gpu_t2,
+                            image_uid(render_img1),
+                            image_uid(render_img2),
+                            image_uid(_stored_actual[0]) if _stored_actual[0] is not None else None,
+                            image_uid(_stored_actual[1]) if _stored_actual[1] is not None else None,
+                            _t1 == _gpu_t1 and _t2 == _gpu_t2,
+                        )
+                    except Exception:
+                        pass
             else:
+                # pick log vs GPU: handle scene-only skip — GPU still shows old _stored_pil_images, not the pick
+                _t1_skip = "full_res" if render_img1 is _document.full_res_image1 and render_img1 is not None else _source_tier(
+                    render_img1,
+                    _document.preview_image1,
+                    _document.original_image1,
+                    presenter.store.viewport.session_data.image_state.image1,
+                )
+                _t2_skip = "full_res" if render_img2 is _document.full_res_image2 and render_img2 is not None else _source_tier(
+                    render_img2,
+                    _document.preview_image2,
+                    _document.original_image2,
+                    presenter.store.viewport.session_data.image_state.image2,
+                )
                 _preview_log(
-                    "update: skip apply - img_sig unchanged (uid1=%s uid2=%s) "
-                    "scene-only repaint",
+                    "update: skip apply - img_sig unchanged (uid1=%s uid2=%s picked_tier=%s/%s) scene-only repaint",
                     image_uid(render_img1),
                     image_uid(render_img2),
+                    _t1_skip,
+                    _t2_skip,
                 )
                 runtime_state = getattr(image_label, "runtime_state", None)
                 if runtime_state is not None:
@@ -636,6 +679,32 @@ def update_comparison_if_needed(presenter):
                             clip_overlays_to_image_bounds=False,
                         )
                     )
+                    # Correlate scene-only pick with actual GPU still holding old stored images
+                    try:
+                        _stored_skip = getattr(runtime_state, "_stored_pil_images", [None, None])
+                        _gpu_skip_t1 = "full_res" if _stored_skip[0] is _document.full_res_image1 and _stored_skip[0] is not None else _source_tier(
+                            _stored_skip[0],
+                            _document.preview_image1,
+                            _document.original_image1,
+                            presenter.store.viewport.session_data.image_state.image1,
+                        )
+                        _gpu_skip_t2 = "full_res" if _stored_skip[1] is _document.full_res_image2 and _stored_skip[1] is not None else _source_tier(
+                            _stored_skip[1],
+                            _document.preview_image2,
+                            _document.original_image2,
+                            presenter.store.viewport.session_data.image_state.image2,
+                        )
+                        _preview_log(
+                            "pick->GPU scene-only: picked tier=%s/%s GPU tier still %s/%s stored_uids=%s/%s scene_only=True",
+                            _t1_skip,
+                            _t2_skip,
+                            _gpu_skip_t1,
+                            _gpu_skip_t2,
+                            image_uid(_stored_skip[0]) if _stored_skip[0] is not None else None,
+                            image_uid(_stored_skip[1]) if _stored_skip[1] is not None else None,
+                        )
+                    except Exception:
+                        pass
             presenter._last_mag_signature = None
             presenter._last_bg_signature = current_bg_sig
             presenter._last_label_dims = current_label_dims
