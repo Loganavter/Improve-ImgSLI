@@ -172,6 +172,49 @@ def test_from_path_auto_crop_near_fullres_bbox(tmp_path):
         store.close()
 
 
+def test_from_path_auto_crop_all_black_unchanged(tmp_path):
+    """All-black image must not be cropped to a sliver.
+
+    Regression: the pyvips streaming probe used ``thumbnail`` without
+    ``size=DOWN``, which upscales small sources and leaves resample edge
+    artifacts that ``find_trim`` mistook for content (box (0, 0, 1, 1)).
+    """
+    canvas = Image.new("RGBA", (500, 400), (0, 0, 0, 255))
+    path = tmp_path / "all_black.png"
+    canvas.save(path)
+
+    store = TiledPixelStore.from_path(path, auto_crop=True)
+    try:
+        assert store.size == (500, 400)
+    finally:
+        store.close()
+
+
+def test_from_path_auto_crop_small_image_keeps_all_content(tmp_path):
+    """Small (sub-probe) bordered image crops exactly to the content bbox.
+
+    Regression: the upscaled pyvips probe returned a wrong trim box that
+    cut real content off the right/bottom edges.
+    """
+    canvas = Image.new("RGBA", (800, 600), (0, 0, 0, 255))
+    content = Image.new("RGBA", (601, 401), (200, 180, 160, 255))
+    canvas.paste(content, (100, 100))
+    path = tmp_path / "small_bordered.png"
+    canvas.save(path)
+
+    store = TiledPixelStore.from_path(path, auto_crop=True)
+    try:
+        assert store.size == (601, 401)
+        # Top-left pixel of the cropped store must be the content color,
+        # i.e. no black margin survived and no content was cut.
+        px = store.crop((0, 0, 1, 1)).getpixel((0, 0))
+        assert px[0] == 200 and px[1] == 180 and px[2] == 160
+        px = store.crop((600, 400, 601, 401)).getpixel((0, 0))
+        assert px[0] == 200 and px[1] == 180 and px[2] == 160
+    finally:
+        store.close()
+
+
 def test_from_pil_does_not_asarray_full_image(monkeypatch):
     """Spill must not allocate one HxWx4 numpy copy of the whole PIL image."""
     import shared.image_processing.tiled_pixel_store as tps

@@ -243,7 +243,9 @@ def _load_preview_vips(image_path: str, auto_crop: bool = False) -> "QImage | No
             qimage_from_pixel_source,
         )
 
-        thumb = pyvips.Image.thumbnail(image_path, 1024, height=1024)
+        thumb = pyvips.Image.thumbnail(
+            image_path, 1024, height=1024, size=pyvips.enums.Size.DOWN
+        )
         if not thumb.hasalpha():
             thumb = thumb.bandjoin(255)
         if thumb.format != "uchar":
