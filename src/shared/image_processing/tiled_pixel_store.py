@@ -26,6 +26,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ImproveImgSLI")
 
+
+def autocrop_debug(message: str, *args) -> None:
+    """Env-gated auto-crop diagnostics — ``IMGSLI_AUTOCROP_DEBUG=1``.
+
+    Tagged ``[autocrop-debug]`` so the stream can be grepped out of
+    ``log.txt``; see docs/dev/LOGGING.md (unique-prefix convention).
+    """
+    if os.environ.get("IMGSLI_AUTOCROP_DEBUG") == "1":
+        logger.debug("[autocrop-debug] " + message, *args)
+
 _spill_dir_cache: str | None = None
 _AUTO_CROP_PROBE_MAX = 1024
 
@@ -462,6 +472,7 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
                     src_box = (l2, t2, r2, b2)
         except Exception as e:
             logger.debug("pyvips auto-crop probe failed: %s", e)
+        autocrop_debug("streaming probe box=%s (src %dx%d)", src_box, src_w, src_h)
 
     out_w = src_w
     out_h = src_h
@@ -470,6 +481,9 @@ def _stream_pyvips_to_memmap(path_str: str, tmp_dir: str | None, auto_crop: bool
         out_w = right - left
         out_h = bottom - top
         logger.info("Auto-crop applied via pyvips: %s (Orig: %dx%d)", src_box, src_w, src_h)
+        autocrop_debug(
+            "streaming crop src=%dx%d out=%dx%d box=%s", src_w, src_h, out_w, out_h, src_box
+        )
 
     memmap, spill_path = _allocate_spill_memmap(out_w, out_h, tmp_dir)
 
@@ -620,6 +634,7 @@ class TiledPixelStore:
         t0 = time.perf_counter()
         path_str = os.fspath(path)
         logger.info(f"[TileStore] from_path starting for {path_str} (auto_crop={auto_crop})")
+        autocrop_debug("from_path start path=%s auto_crop=%s", path_str, auto_crop)
         if pyvips_can_stream(path_str):
             try:
                 memmap, spill_path, out_w, out_h = _stream_pyvips_to_memmap(path_str, tmp_dir, auto_crop=auto_crop)
@@ -649,6 +664,9 @@ class TiledPixelStore:
                 logger.info(
                     "Auto-crop applied: %s (Orig: %dx%d)", src_box, src_w, src_h
                 )
+            autocrop_debug(
+                "ndarray path box=%s src=%dx%d out=%dx%d", src_box, src_w, src_h, out_w, out_h
+            )
             memmap, spill_path = _allocate_spill_memmap(out_w, out_h, tmp_dir)
             try:
                 _write_rgba_strips(memmap, arr, src_box=src_box)
@@ -671,6 +689,9 @@ class TiledPixelStore:
             left, top, right, bottom = src_box
             out_w, out_h = right - left, bottom - top
             logger.info("Auto-crop applied: %s (Orig: %s)", src_box, rgba.size)
+        autocrop_debug(
+            "PIL path box=%s src=%s out=%dx%d", src_box, rgba.size, out_w, out_h
+        )
 
         memmap, spill_path = _allocate_spill_memmap(out_w, out_h, tmp_dir)
         try:

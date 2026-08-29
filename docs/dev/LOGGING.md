@@ -83,6 +83,7 @@ Existing examples:
 - `src/tabs/image_compare/first_frame_debug.py` → `IMGSLI_IC_FIRST_FRAME_DEBUG` (the same first-frame timeline for Image Compare)
 - `src/tabs/image_gallery/debug.py:gallery_dnd_debug / gallery_debug` → `IMGSLI_GALLERY_DEBUG` (`[gallery-dnd]` DnD/open routing, `[gallery-debug]` generic gallery lifecycle)
 - `src/tabs/image_compare/debug.py:ic_dnd_debug / ic_debug` → `IMGSLI_IMAGE_COMPARE_DEBUG` / `IMGSLI_IC_DEBUG` (`[ic-dnd]` drag/drop routing)
+- auto-crop diagnostics → `IMGSLI_AUTOCROP_DEBUG` (`[autocrop-debug]` in `shared/image_processing/tiled_pixel_store.py`, `shared/image_processing/pixel_cache_loader.py`, `tabs/image_compare/_session_controller.py`, `tabs/image_compare/canvas/presentation/live_presentation.py`): the crop flag at every load site, embedded-cache hits that bypass crop, the computed trim box / source→store dims per decode backend, and the pixel sources actually bound for canvas presentation)
 
 Do **not** wire a noisy subsystem's debug stream to the global `debug_mode_enabled` switch — that turns one log file into white noise (the user has hit this; see the AI agent's own working-style memory on noise suppression).
 
