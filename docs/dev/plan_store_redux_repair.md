@@ -1,6 +1,6 @@
 # Plan: Store/Redux direct mutation elimination and dogma hardening
 
-Status: `Draft` (2026-08-29)
+Status: `In progress` (2026-08-29) — app-wide generation, 60 hits remaining
 Area: `src/core/store.py:34`, `src/core/state_management/dispatcher.py:118`, `src/core/state_management/reducers.py:1`, `src/tabs/image_compare/state/reducers.py:50`, `src/tabs/image_compare/use_cases/loading.py:42`, `src/tabs/image_compare/services/document_store_ops.py:1`, `src/tabs/image_compare/services/analysis/metrics.py:1`, `tests/contracts/test_no_direct_store_mutation.py:1`
 Related: [STORE.md](./STORE.md) (Action→Dispatcher→RootReducer→Store), [CONTRACTS.md](./CONTRACTS.md) (isolation), [ARCHITECTURE.md](./ARCHITECTURE.md) §State Model, [CODE_PATTERNS.md](./CODE_PATTERNS.md) (thin owner), `tests/contracts/test_viewport_state_slots.py:1`, `tests/runtime/test_reducer_purity_full.py:1`
 TODO ref: `docs/dev/TODO.md` → P2 Redux action-shape (blocked, this plan unblocks it); `docs/dev/STORE.md:109` Step 9 (~340 sites)
@@ -27,25 +27,24 @@ Skills: `.cursor/skills/imgsli-devtools/SKILL.md` (tracer `IMGSLI_TRACE=1`, cont
 
 ## 2. Research summary (verified 2026-08-29, full scan — do not re-research)
 
-### 2.1 Inventory — where direct writes live today (78 hits, narrowed scope)
+### 2.1 Inventory — where direct writes live today (78 → 0 narrow, then 60 app-wide after generation)
 
 | Scope | `grep` / AST | Hits | Example file:line |
 |---|---|---|---|
 | Dogma old | `*.viewport.<attr>` depth1 `test_viewport_state_slots.py:40` | 0 for `image_state` | `src/tabs/image_compare/use_cases/loading.py:639` missed (chain depth 3, dataclass not slotted) |
-| New dogma `INTERMEDIATE={session_data,image_state,render_cache,document}` `test_no_direct_store_mutation.py:15` | `78` (exempt `Store`/`Reducer` impl) | `loading.py:639 image_state.image1 = u1` |
+| Narrow dogma `INTERMEDIATE={session_data,image_state,render_cache,document}` `test_no_direct_store_mutation.py:15` | `78` (exempt `Store`/`Reducer` impl) | `loading.py:639 image_state.image1 = u1` |
 | Transient excluded | `Store()`-derived via `_collect_transients` | `~20` excluded (`snapshot_store.py:52` → `138` etc) | `snapshot_store.py:52 store=Store()` → `138 document.image1_path` exempt |
+| **App-wide generation** (audit `test_no_tab_to_tab_service.py:57` style) `INTERMEDIATE` from `ViewportState.__slots__` `src/core/store_viewport.py:259` + `SessionData.__slots__` `122` + `viewport/document/state_slots` → `{"viewport","session_data","image_state","render_cache","document","state_slots","view_state","interaction_state","geometry_state","render_config"}` `test_no_direct_store_mutation.py:31` | `60` (after narrow 78 fixed, new coverage) | `use_cases/navigation.py:12 view_state.showing_single_image_mode`, `multi_compare/scene/store.py:607 state_slots[self._SLOT]` |
 
-Full breakdown (78):
+Full breakdown (60 app-wide, after Phases 1-4 narrow fixes):
 
 | Bucket | Files | Count | Hot lines |
 |---|---|---|---|
-| Hot path unify/render | `use_cases/loading.py` `63` `render_cache.unification_in_progress/pending` + `639 image_state.image1/2`, `cached_diff.py:23` | 22 | `loading.py:42,62,165,188,262,300,309,553,639` |
-| Document slot | `document_store_ops.py:32` `preview/full_res/path`, `playlist_components/common.py:21`, `list_operations.py:41` `preview`, `unified_list_picker/common.py:179` | 28 | `document_store_ops.py:37 image_state.image1`, `101 vp.session_data.image_state` |
-| Analysis/metrics/diff | `metrics.py:109 psnr_value`, `cached_diff.py:119`, `magnifier/workers/diff_cache.py:83`, `snapshot_render_plan_builder.py:352` | 8 | `metrics.py:109`, `diff_cache.py:83` |
-| Persistence (pre-dispatch) | `session_persistence.py:101`, `settings_persistence.py:20` `auto_calculate_psnr` | 4 | — |
-| Other live | `persistence.py:222 session.document`, `use_cases/persistence.py` | 2 | — |
-| Exempt impl | `store.py`, `reducers.py`, `dispatcher.py`, `models.py` | 0 | — |
-| Transient builders (excluded) | `snapshot_store.py:135`, `store_rebuild.py:43` | 0 in 78 | validated exempt |
+| `view_state` / `interaction_state` / `geometry_state` | `canvas/features/divider/commands/registry.py:145`, `magnifier/commands/interaction.py:22`, `presenters/toolbar/actions.py:55`, `plan_applicator.py:261` `vp.geometry_state`, `navigation.py:24` | ~22 | `registry.py:145 is_dragging_split_line`, `actions.py:55 highlighted_overlay_element`, `apply.py:178 active_overlay_screen_center` |
+| `render_config` | `navigation.py:83`, `transient_interpolation.py:105`, `session_persistence.py:218` `viewport.render_config` | ~6 | `navigation.py:83 interpolation_method`, `218 viewport.render_config =` |
+| `document` / `state_slots` (remaining) | `multi_compare/scene/store.py:607`, `document_store_ops.py:118` `live_doc.image_list1` (post-fix residue), `simple_adapter.py:66` | ~8 | `multi_compare 607 state_slots[self._SLOT]` |
+| `view_state` canvas_widget_state | `magnifier/persistence.py:189`, `feature_state.py:52` `view_state.canvas_widget_state` | ~4 | — |
+| Other `viewport` / `settings` not covered (settings/workspace excluded to avoid `self.workspace` false positive `src/core/main_controller.py:47`) | — | — | — |
 
 ### 2.2 Why `image_state.image1 = u1` breaks Redux
 
@@ -126,13 +125,29 @@ Files: `src/tabs/image_compare/session_persistence.py:101`, `ui/settings_persist
 2. `session.document =` `222` → `SetDocumentAction` or `store.set_session_state_slot("document", ...)` inside `batch_changes` with `emit_state_change("document")`.
 3. Verify: `tests/runtime/test_settings_full_pass.py -q` still hermetic (`plan_test_suite_revision.md` hermetic fixture), no real `~/.config` write.
 
-### Phase 5 — Close dogma and docs
+### Phase 5 — App-wide extension (generation, 60 hits) — In progress
+
+Files: `tests/contracts/test_no_direct_store_mutation.py:31` (`_build_intermediate` from `ViewportState.__slots__` + `state_slots`, `_build_exempt` via `tabs` discovery), `src/tabs/multi_compare/scene/store.py:607`, `src/tabs/image_compare/use_cases/navigation.py:12`
+
+1. Generation: replace hard-coded `INTERMEDIATE` with `_build_intermediate()` (10 names) and `EXEMPT` with `_build_exempt()` (like `test_no_tab_to_tab_service.py:57` dynamic `_known_tabs`), handle `Subscript` `state_slots[...]`.
+2. Re-run `pytest tests/contracts/test_no_direct_store_mutation.py -q` → `60 hits` app-wide (new `view_state`/`geometry_state`/`render_config`/`state_slots`).
+
+### Phase 6 — Fix remaining app-wide buckets (60 hits) — In progress
+
+Buckets for 4 parallel subagents (all in SINGLE message per `parallel-execution` skill, `imgsli-devtools` for verification):
+
+* **A `view_state/interaction_state`** — `canvas/features/divider/commands/registry.py:145` `is_dragging_split_line` → `SetDraggingSplitLineAction`, `presenters/toolbar/actions.py:55` `highlighted_overlay_element` → `SetHighlightedOverlayElementAction`, `lifecycle.py:121` `is_interactive_mode` etc — via existing `ViewStateReducer`/`InteractionStateReducer` `src/core/state_management/reducers.py:106`.
+* **B `geometry_state/render_config`** — `plan_applicator.py:261` `vp.geometry_state.pixmap_width` → `SetGeometryAction`/`SyncGeometryState`, `navigation.py:83`/`transient_interpolation.py:105` `render_config.interpolation_method` → `SetInterpolationMethodAction` `src/tabs/image_compare/state/reducers.py:60`, `session_persistence.py:218` `viewport.render_config =` → `replace` via dispatch.
+* **C `state_slots/document` multi_compare** — `multi_compare/scene/store.py:607` `session.state_slots[self._SLOT] =` → `store.set_session_state_slot("multi_compare.state", ..., emit_scope="viewport")` / `Dispatcher.dispatch` with slot reducer `src/tabs/multi_compare/bootstrap_reducers.py:19`, `document_store_ops.py:118` residue `live_doc.image_list1` etc via `DocumentModel` replace.
+* **D `canvas_widget_state` + misc** — `magnifier/persistence.py:189` `view_state.canvas_widget_state` + `state/snapshot_store.py:107` `runtime_cache` already exempt, `values.py:455` `interpolated.render_config` — verify transient vs live, fix live with `UpdateCanvasFeatureState` + `emit_viewport_change`.
+
+### Phase 7 — Close dogma and docs
 
 Files: `docs/dev/STORE.md:157`, `docs/dev/CONTRACTS.md`, `docs/dev/TODO.md`, `src/devtools/docs_link_graph.py`
 
-1. Dogma green: `pytest tests/contracts -q` `0 failed` (78→0).
-2. Update `STORE.md:157` invariants — add example of forbidden `image_state.image1 =` vs sanctioned `dispatch(SetImageSessionImageAction)`.
-3. Run `python src/devtools/docs_link_graph.py --write-index` → `tests/devtools/test_docs_link_graph.py -q`.
+1. Dogma green app-wide: `pytest tests/contracts -q` `0 failed` (60→0).
+2. Update `STORE.md:157` invariants — add example of forbidden `view_state.canvas_widget_state =` vs sanctioned `dispatch(SetViewStateAction)` and `state_slots` Subscript pattern.
+3. Run `python src/devtools/docs_link_graph.py --write-index` → `tests/devtools/test_docs_link_graph.py -q` + `file_meta.py --write-registry`.
 4. Full suite `QT_QPA_PLATFORM=offscreen pytest -q` + contracts quick job — matches `plan_test_suite_revision.md:201` CI gates.
 
 ## 5. Risks
@@ -146,8 +161,14 @@ Files: `docs/dev/STORE.md:157`, `docs/dev/CONTRACTS.md`, `docs/dev/TODO.md`, `sr
 
 | Step | Date | Result |
 |---|---|---|
-| 0 | 2026-08-29 | Dogma landed `tests/contracts/test_no_direct_store_mutation.py:1` — 78 hits, baseline `pytest tests/contracts/test_no_direct_store_mutation.py -q` 1 failed (table §2.1). 4 parallel `explore` subagents mapped violations. |
-| — | — | Next: Phase 1 hot-path (loading.py) via 4 parallel `task` subagents using `imgsli-devtools` (contracts+tracer). |
+| 0 | 2026-08-29 | Dogma landed `tests/contracts/test_no_direct_store_mutation.py:1` — 78 hits (narrow), baseline `pytest tests/contracts/test_no_direct_store_mutation.py -q` 1 failed (table §2.1). 4 parallel `explore` subagents mapped violations. |
+| 1 | 2026-08-29 | Phase 1 `use_cases/loading.py:42` — replaced 22 hits with `SetUnificationInProgressAction`/`SetImageSessionImageAction`/`SetCurrentIndexAction` via `batch_changes`. `78→51`, `loading.py` 0 hits. |
+| 2 | 2026-08-29 | Phase 2 `document_store_ops.py:32` + `playlist_components` — removed fallback direct, atomic `batch_changes` dispatches. `78→41` → `0` for bucket. |
+| 3 | 2026-08-29 | Phase 3 `metrics.py:109`/`cached_diff.py:23`/`diff_cache.py:83`/`snapshot_render_plan_builder.py:352` — `SetPsnr/Ssim/CachedDiffImageAction` with staleness guards. 4 files 0 hits. |
+| 4 | 2026-08-29 | Phase 4 `session_persistence.py:101`/`settings_persistence.py:20`/`persistence.py:222`/`unified_list_picker/common.py:179` — `SetAutoCalculate*Action`/`set_session_state_slot` with `QTimer.singleShot(0)` defer. 0 hits narrow. |
+| 5 | 2026-08-29 | Narrow dogma green `tests/contracts -q` 1547 passed, `file_size_registry.json` regenerated, `docs_link_graph.py --write-index` 0 broken. 4 parallel `general` subagents (SINGLE message per `parallel-execution` skill). |
+| 6 | 2026-08-29 | App-wide generation: audit subagent found narrow misses `view_state`/`geometry_state`/`render_config`/`multi_compare.state` (like `test_no_tab_to_tab_service.py:57` dynamic). Rewrote `test_no_direct_store_mutation.py:31` `_build_intermediate` from `ViewportState.__slots__` + `_build_exempt` via `tabs` discovery, added `Subscript` for `state_slots`. New baseline `60 hits` app-wide. |
+| 7 | 2026-08-29 | Phase 6 buckets defined (A `view_state/interaction_state`, B `geometry_state/render_config`, C `state_slots`, D `canvas_widget_state`) for 4 parallel `general` subagents — firing now. |
 
 ## 7. Deviations from the plan (deliberate, recorded)
 
