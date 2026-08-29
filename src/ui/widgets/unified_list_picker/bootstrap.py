@@ -12,6 +12,10 @@ from ui.widgets.unified_list_picker.common import (
 from ui.widgets.unified_list_picker.session import (
     _UnifiedFlyoutSessionMixin,
 )
+from ui.widgets.unified_list_picker.surface import (
+    FlyoutSurfaceWidget,
+    pin_scroll_area_transparency,
+)
 
 class _UnifiedFlyoutBootstrapMixin(_UnifiedFlyoutSessionMixin):
 
@@ -68,12 +72,21 @@ class _UnifiedFlyoutBootstrapMixin(_UnifiedFlyoutSessionMixin):
         self._init_theme()
 
     def _init_container_and_panels(self):
-        self.container_widget = QWidget(self)
+        # FlyoutSurfaceWidget paints the container chrome (flyout tokens,
+        # 1px border, scaled radius) in paintEvent — the retired
+        # `QWidget#FlyoutWidget` QSS rules could not survive the migration
+        # because app QSS backgrounds no-op on custom QWidget subclasses.
+        # WA_StyledBackground is unnecessary with an explicit paintEvent.
+        self.container_widget = FlyoutSurfaceWidget(self)
         self.container_widget.setObjectName("FlyoutWidget")
-        self.container_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.container_widget.setProperty("surfaceRole", "container")
         self.panel_left = self._create_panel(1)
         self.panel_right = self._create_panel(2)
+        # QScrollArea.setWidget flips autoFillBackground on for viewports and
+        # content widgets; pin them transparent so no Base-colored rectangle
+        # covers the painted surface (replaces the retired
+        # `QWidget#FlyoutWidget QScrollArea` QSS rule).
+        pin_scroll_area_transparency(self.container_widget)
 
     def _document(self):
         """Current document via the host store's session-state slot API.

@@ -40,7 +40,6 @@ def test_app_message_dialog_paints_light_window_body(qapp):
 
     tm = ThemeManager.get_instance()
     tm.register_palettes(LIGHT_THEME_PALETTE, DARK_THEME_PALETTE)
-    tm.register_qss_path("src/shared_toolkit/ui/resources/styles/base.qss")
     tm.set_theme("light", qapp)
 
     install_application_dialog_decorations(qapp)

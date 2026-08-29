@@ -1,3 +1,0 @@
-QDialog#SettingsDialog {
-    background-color: @dialog.background;
-}

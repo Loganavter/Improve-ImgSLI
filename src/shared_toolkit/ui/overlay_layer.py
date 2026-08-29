@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import shiboken6 as sip
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QPainter, QPixmap
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from shared_toolkit.ui.in_window_surface import (
@@ -36,6 +36,20 @@ class _PopupBubble(QWidget):
             content_spacing=0,
         )
         self._layout.setSpacing(0)
+        # The bubble paints the container surface (flyout tokens, 1px border,
+        # scaled radius) itself in paintEvent — the retired
+        # `#ValuePopupContainer` QSS rule is gone, so the container must stay
+        # transparent instead of styling itself.
+        self.container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+
+        self._theme_manager = ThemeManager.get_instance()
+        self._surface_color = QColor()
+        self._border_color = QColor()
+        self._apply_surface_colors()
+        try:
+            self._theme_manager.theme_changed.connect(self._on_theme_changed)
+        except Exception:
+            pass
 
         self.label = QLabel(self.container)
         self.label.setObjectName("ValuePopupLabel")
@@ -50,6 +64,32 @@ class _PopupBubble(QWidget):
         apply_text_color(
             self.label, ThemeManager.get_instance().get_color("dialog.text")
         )
+
+    def _apply_surface_colors(self) -> None:
+        """Re-read the flyout tokens; fall back to the palette Window role."""
+        try:
+            bg = self._theme_manager.get_color("flyout.background")
+            border = self._theme_manager.get_color("flyout.border")
+        except Exception:
+            bg = border = None
+        fallback = QColor(self.palette().window().color())
+        self._surface_color = (
+            QColor(bg) if bg is not None and bg.isValid() else fallback
+        )
+        self._border_color = (
+            QColor(border)
+            if border is not None and border.isValid()
+            else QColor(fallback).darker(120)
+        )
+
+    def _on_theme_changed(self, *_args) -> None:
+        """Re-tint the surface after a theme switch. Bound method, so the
+        connection dies with the widget."""
+        try:
+            self._apply_surface_colors()
+            self.update()
+        except RuntimeError:
+            pass
 
     def set_content(
         self,
@@ -74,11 +114,24 @@ class _PopupBubble(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         paint_shadowed_surface(
             painter,
             self.container.geometry(),
             shadow_radius=self.SHADOW_RADIUS,
             corner_radius=self.CONTENT_RADIUS,
+        )
+        # Container chrome the retired `#ValuePopupContainer` QSS rule used
+        # to paint: fill + 1px border at the scaled corner radius. Painted
+        # here (under the container/label) because the container itself is
+        # a plain transparent QWidget now.
+        radius = scaled_px(self.CONTENT_RADIUS)
+        painter.setPen(QPen(self._border_color, 1))
+        painter.setBrush(self._surface_color)
+        painter.drawRoundedRect(
+            QRectF(self.container.geometry()).adjusted(0.5, 0.5, -0.5, -0.5),
+            radius,
+            radius,
         )
         painter.end()
 

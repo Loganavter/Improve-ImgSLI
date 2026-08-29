@@ -1,9 +1,0 @@
-QDialog#HelpDialog {
-    background-color: @dialog.background;
-}
-
-QDialog#HelpDialog QSplitter#HelpSidebarSplitter::handle:horizontal {
-    background-color: @help.nav.border;
-    width: 1px;
-    margin: 0;
-}
