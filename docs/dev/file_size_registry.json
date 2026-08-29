@@ -26,7 +26,7 @@
     },
     {
       "path": "src/plugins/help/dialog.py",
-      "lines": 878,
+      "lines": 894,
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=qdialog-wiring reason=\"one Help QDialog — HelpDocumentView + search wiring\"",

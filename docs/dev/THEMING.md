@@ -89,6 +89,14 @@ pipeline (`paintEvent` + token reads) owns every surface:
   with a `paintEvent` fill. The same explicit-`paintEvent` pattern is the
   documented fix for any future "this surface is black" bug (see "Known Qt
   quirk" below).
+- Stock `QScrollArea`s paint the raw `Window` role: Help dialog content
+  (`HelpDialog._apply_scroll_surface`) tints its scroll area with a
+  widget-level `background-color` resolved from `dialog.background`
+  (survives `QStyle::polish` at `show()` — same mechanism as the toolkit's
+  `ScrollableDialogPage._apply_dialog_surface`), which fixes both
+  `HelpHubPage` and `HelpDocumentView` substrates. Toolkit
+  `HelpDocumentView` also paints its own surface from `dialog.background`
+  (used standalone in the Image Properties dialog).
 - `bootstrap.py` registers no QSS; `Plugin.get_qss_paths()` was removed.
   The toolkit `ThemeManager` still ships the QSS template machinery
   (`register_qss_path`, `_scale_qss_px`) — dormant, kept for other hosts.
