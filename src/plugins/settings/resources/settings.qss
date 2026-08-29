@@ -1,7 +1,3 @@
 QDialog#SettingsDialog {
     background-color: @dialog.background;
 }
-
-#SettingsContentArea {
-    background-color: @dialog.background;
-}
