@@ -16,10 +16,12 @@ def begin_capture_drag(actions) -> None:
     if dispatch_viewport_action(actions, SetDraggingCapturePointAction(True)):
         emit_interaction_update(actions)
         return
-    viewport = getattr(getattr(actions, "store", None), "viewport", None)
-    if viewport is None:
+    store = getattr(actions, "store", None)
+    dispatcher = store.get_dispatcher() if store is not None and hasattr(store, "get_dispatcher") else None
+    if dispatcher is not None:
+        dispatcher.dispatch(SetDraggingCapturePointAction(True), scope="viewport")
+        emit_interaction_update(actions)
         return
-    viewport.interaction_state.is_dragging_overlay_handle = True
     emit_interaction_update(actions)
 
 
@@ -27,10 +29,12 @@ def end_capture_drag(actions) -> None:
     if dispatch_viewport_action(actions, SetDraggingCapturePointAction(False)):
         emit_interaction_update(actions)
         return
-    viewport = getattr(getattr(actions, "store", None), "viewport", None)
-    if viewport is None:
+    store = getattr(actions, "store", None)
+    dispatcher = store.get_dispatcher() if store is not None and hasattr(store, "get_dispatcher") else None
+    if dispatcher is not None:
+        dispatcher.dispatch(SetDraggingCapturePointAction(False), scope="viewport")
+        emit_interaction_update(actions)
         return
-    viewport.interaction_state.is_dragging_overlay_handle = False
     emit_interaction_update(actions)
 
 
@@ -67,10 +71,12 @@ def begin_internal_split_drag(actions) -> None:
     if dispatch_viewport_action(actions, SetDraggingSplitInMagnifierAction(True)):
         emit_interaction_update(actions)
         return
-    viewport = getattr(getattr(actions, "store", None), "viewport", None)
-    if viewport is None:
+    store = getattr(actions, "store", None)
+    dispatcher = store.get_dispatcher() if store is not None and hasattr(store, "get_dispatcher") else None
+    if dispatcher is not None:
+        dispatcher.dispatch(SetDraggingSplitInMagnifierAction(True), scope="viewport")
+        emit_interaction_update(actions)
         return
-    viewport.interaction_state.is_dragging_overlay_split = True
     emit_interaction_update(actions)
 
 
@@ -78,10 +84,12 @@ def end_internal_split_drag(actions) -> None:
     if dispatch_viewport_action(actions, SetDraggingSplitInMagnifierAction(False)):
         emit_interaction_update(actions)
         return
-    viewport = getattr(getattr(actions, "store", None), "viewport", None)
-    if viewport is None:
+    store = getattr(actions, "store", None)
+    dispatcher = store.get_dispatcher() if store is not None and hasattr(store, "get_dispatcher") else None
+    if dispatcher is not None:
+        dispatcher.dispatch(SetDraggingSplitInMagnifierAction(False), scope="viewport")
+        emit_interaction_update(actions)
         return
-    viewport.interaction_state.is_dragging_overlay_split = False
     emit_interaction_update(actions)
 
 

@@ -146,7 +146,7 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
 
     if active_magnifier is None:
         canvas.set_overlay_coords(None, 0, [], 0)
-        sync_active_magnifier_geometry(scene, geometry_state)
+        sync_active_magnifier_geometry(scene, geometry_state, store)
         return
 
     mag_centers = [
@@ -169,21 +169,55 @@ def apply_magnifier_objects(scene, context: CanvasSceneApplyContext) -> None:
 
     canvas.set_overlay_coords(capture_center, capture_radius, mag_centers, mag_radius)
 
-    sync_active_magnifier_geometry(scene, geometry_state)
+    sync_active_magnifier_geometry(scene, geometry_state, store)
 
 
-def sync_active_magnifier_geometry(scene, geometry_state) -> None:
+def _dispatch_magnifier_geometry(geometry_state, center: Point, size: int, store) -> bool:
+    if store is not None:
+        dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None:
+            try:
+                from tabs.image_compare.canvas.features.magnifier.input.actions import (
+                    SetMagnifierScreenCenterAction,
+                    SetMagnifierScreenSizeAction,
+                )
+
+                batch = getattr(store, "batch_changes", None)
+                if callable(batch):
+                    with store.batch_changes():
+                        dispatcher.dispatch(
+                            SetMagnifierScreenCenterAction(center=center), scope="viewport"
+                        )
+                        dispatcher.dispatch(
+                            SetMagnifierScreenSizeAction(size=size), scope="viewport"
+                        )
+                else:
+                    dispatcher.dispatch(
+                        SetMagnifierScreenCenterAction(center=center), scope="viewport"
+                    )
+                    dispatcher.dispatch(
+                        SetMagnifierScreenSizeAction(size=size), scope="viewport"
+                    )
+                return True
+            except Exception:
+                pass
+    try:
+        setattr(geometry_state, "active_overlay_screen_center", center)
+        setattr(geometry_state, "active_overlay_screen_size", size)
+    except Exception:
+        pass
+    return False
+
+
+def sync_active_magnifier_geometry(scene, geometry_state, store=None) -> None:
     active_magnifier = get_active_magnifier(scene)
     if active_magnifier is None:
-        geometry_state.active_overlay_screen_center = Point()
-        geometry_state.active_overlay_screen_size = 0
+        _dispatch_magnifier_geometry(geometry_state, Point(), 0, store)
         return
     interactive_circle = active_magnifier.interactive_circle()
     if interactive_circle is not None:
-        geometry_state.active_overlay_screen_center = interactive_circle.center
-        geometry_state.active_overlay_screen_size = int(
-            round(interactive_circle.radius * 2.0)
+        _dispatch_magnifier_geometry(
+            geometry_state, interactive_circle.center, int(round(interactive_circle.radius * 2.0)), store
         )
         return
-    geometry_state.active_overlay_screen_center = Point()
-    geometry_state.active_overlay_screen_size = 0
+    _dispatch_magnifier_geometry(geometry_state, Point(), 0, store)

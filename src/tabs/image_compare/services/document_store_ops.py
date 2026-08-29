@@ -108,16 +108,8 @@ def swap_all_image_data(store) -> None:
         # than a direct dataclass mutation, and keep it inside the same batch
         # so subscribers see the coherent final state.
         live_doc = store.get_session_state_slot("document")
-        try:
-            new_doc = _dc_replace(live_doc, image_list1=list2, image_list2=list1)
-            store.set_session_state_slot("document", new_doc, emit_scope="document")
-        except Exception:
-            # Fallback for unexpected dataclass shape — direct swap still
-            # observable, dogma exempts `live_doc` (not `document`).
-            try:
-                live_doc.image_list1, live_doc.image_list2 = list2, list1
-            except Exception:
-                pass
+        new_doc = _dc_replace(live_doc, image_list1=list2, image_list2=list1)
+        store.set_session_state_slot("document", new_doc, emit_scope="document")
         store.invalidate_geometry_cache()
 
 

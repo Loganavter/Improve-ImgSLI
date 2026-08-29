@@ -258,9 +258,48 @@ def sync_geometry_state(canvas, store) -> None:
     cx, cy, cw, ch = rect
     vp = getattr(store, "viewport", None)
     if vp is not None and cw > 0 and ch > 0:
-        vp.geometry_state.pixmap_width = cw
-        vp.geometry_state.pixmap_height = ch
-        vp.geometry_state.image_display_rect_on_label = Rect(cx, cy, cw, ch)
+        dispatcher = getattr(store, "get_dispatcher", lambda: None)()
+        if dispatcher is not None:
+            try:
+                from core.state_management.geometry_actions import (
+                    SetImageDisplayRectAction,
+                    SetPixmapDimensionsAction,
+                )
+
+                batch = getattr(store, "batch_changes", None)
+                rect_val = Rect(cx, cy, cw, ch)
+                if callable(batch):
+                    with store.batch_changes():
+                        dispatcher.dispatch(
+                            SetPixmapDimensionsAction(width=cw, height=ch),
+                            scope="viewport",
+                        )
+                        dispatcher.dispatch(
+                            SetImageDisplayRectAction(rect=rect_val),
+                            scope="viewport",
+                        )
+                else:
+                    dispatcher.dispatch(
+                        SetPixmapDimensionsAction(width=cw, height=ch),
+                        scope="viewport",
+                    )
+                    dispatcher.dispatch(
+                        SetImageDisplayRectAction(rect=Rect(cx, cy, cw, ch)),
+                        scope="viewport",
+                    )
+                return
+            except Exception:
+                pass
+        try:
+            geometry_state = getattr(vp, "geometry_state", None)
+            if geometry_state is None:
+                geometry_state = getattr(getattr(store, "viewport", None), "geometry_state", None)
+            if geometry_state is not None:
+                setattr(geometry_state, "pixmap_width", cw)
+                setattr(geometry_state, "pixmap_height", ch)
+                setattr(geometry_state, "image_display_rect_on_label", Rect(cx, cy, cw, ch))
+        except Exception:
+            pass
 
 
 def _sync_split_position(store, canvas, split_position: float) -> None:

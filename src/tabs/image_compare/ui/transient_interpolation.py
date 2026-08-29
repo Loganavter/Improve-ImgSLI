@@ -102,8 +102,26 @@ class InterpolationFlyoutController:
                     if AppConstants.DEFAULT_INTERPOLATION_METHOD in method_keys
                     else method_keys[0]
                 )
-                host.store.viewport.render_config.interpolation_method = target_key
-                host.store.emit_state_change()
+                _interp_dispatcher = getattr(host.store, "get_dispatcher", lambda: None)()
+                if _interp_dispatcher is not None:
+                    try:
+                        from core.state_management.appearance_actions import SetInterpolationMethodAction
+
+                        _interp_dispatcher.dispatch(
+                            SetInterpolationMethodAction(method=target_key), scope="viewport"
+                        )
+                    except Exception:
+                        try:
+                            setattr(host.store.viewport.render_config, "interpolation_method", target_key)
+                            host.store.emit_state_change()
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        setattr(host.store.viewport.render_config, "interpolation_method", target_key)
+                        host.store.emit_state_change()
+                    except Exception:
+                        pass
             current_index = method_keys.index(target_key) if method_keys else 0
         except (AttributeError, ValueError, IndexError):
             current_index = 0
@@ -197,9 +215,35 @@ class InterpolationFlyoutController:
                     elif getattr(controller, "sessions", None) is not None:
                         controller.sessions.on_interpolation_changed(idx)
             elif 0 <= idx < len(method_keys) and getattr(host, "store", None) is not None:
-                host.store.viewport.render_config.interpolation_method = method_keys[idx]
-                if hasattr(host.store, "emit_state_change"):
-                    host.store.emit_state_change()
+                _fallback_method = method_keys[idx]
+                _fb_dispatcher = getattr(host.store, "get_dispatcher", lambda: None)()
+                if _fb_dispatcher is not None:
+                    try:
+                        from core.state_management.appearance_actions import SetInterpolationMethodAction
+
+                        _fb_dispatcher.dispatch(
+                            SetInterpolationMethodAction(method=_fallback_method), scope="viewport"
+                        )
+                    except Exception:
+                        try:
+                            setattr(
+                                host.store.viewport.render_config,
+                                "interpolation_method",
+                                _fallback_method,
+                            )
+                            if hasattr(host.store, "emit_state_change"):
+                                host.store.emit_state_change()
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        setattr(
+                            host.store.viewport.render_config, "interpolation_method", _fallback_method
+                        )
+                        if hasattr(host.store, "emit_state_change"):
+                            host.store.emit_state_change()
+                    except Exception:
+                        pass
         finally:
             self.close()
 

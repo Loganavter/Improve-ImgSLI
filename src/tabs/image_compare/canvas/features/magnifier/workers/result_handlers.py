@@ -16,7 +16,23 @@ def _has_visible_magnifiers(presenter) -> bool:
 
 def stop_interactive_movement(presenter, log_gate):
     del log_gate
-    presenter.store.viewport.interaction_state.is_interactive_mode = False
+    try:
+        _dispatcher = presenter.store.get_dispatcher() if hasattr(presenter.store, "get_dispatcher") else None
+    except Exception:
+        _dispatcher = None
+    if _dispatcher is not None:
+        try:
+            from core.state_management.interaction_actions import SetInteractiveModeAction
+
+            _dispatcher.dispatch(SetInteractiveModeAction(False), scope="viewport.interaction")
+        except Exception:
+            setattr(presenter.store.viewport.interaction_state, "is_interactive_mode", False)
+            if hasattr(presenter.store, "emit_viewport_change"):
+                presenter.store.emit_viewport_change("interaction")
+    else:
+        setattr(presenter.store.viewport.interaction_state, "is_interactive_mode", False)
+        if hasattr(presenter.store, "emit_viewport_change"):
+            presenter.store.emit_viewport_change("interaction")
     presenter._cached_split_pos = -1.0
     presenter._last_mag_signature = None
     image_label = get_live_image_label(presenter)

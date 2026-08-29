@@ -139,10 +139,12 @@ def command_begin_split_drag(actions) -> None:
     if dispatch_viewport_action(actions, SetDraggingSplitLineAction(True)):
         emit_interaction_update(actions)
         return
-    viewport = getattr(getattr(actions, "store", None), "viewport", None)
-    if viewport is None:
+    store = getattr(actions, "store", None)
+    dispatcher = store.get_dispatcher() if store is not None and hasattr(store, "get_dispatcher") else None
+    if dispatcher is not None:
+        dispatcher.dispatch(SetDraggingSplitLineAction(True), scope="viewport")
+        emit_interaction_update(actions)
         return
-    viewport.interaction_state.is_dragging_split_line = True
     emit_interaction_update(actions)
 
 
@@ -150,10 +152,12 @@ def command_end_split_drag(actions) -> None:
     if dispatch_viewport_action(actions, SetDraggingSplitLineAction(False)):
         emit_interaction_update(actions)
         return
-    viewport = getattr(getattr(actions, "store", None), "viewport", None)
-    if viewport is None:
+    store = getattr(actions, "store", None)
+    dispatcher = store.get_dispatcher() if store is not None and hasattr(store, "get_dispatcher") else None
+    if dispatcher is not None:
+        dispatcher.dispatch(SetDraggingSplitLineAction(False), scope="viewport")
+        emit_interaction_update(actions)
         return
-    viewport.interaction_state.is_dragging_split_line = False
     emit_interaction_update(actions)
 
 
@@ -170,12 +174,16 @@ def command_update_split_drag(actions, position: float) -> None:
             dispatch_viewport_action(actions, SetSplitPositionVisualAction(clamped))
         emit_interaction_update(actions)
         return
-    viewport = getattr(getattr(actions, "store", None), "viewport", None)
-    if viewport is None:
+    store = getattr(actions, "store", None)
+    dispatcher = store.get_dispatcher() if store is not None and hasattr(store, "get_dispatcher") else None
+    if dispatcher is not None:
+        dispatcher.dispatch(SetSplitPositionAction(clamped), scope="viewport")
+        viewport = getattr(store, "viewport", None)
+        interaction = getattr(viewport, "interaction_state", None) if viewport is not None else None
+        if bool(getattr(interaction, "is_dragging_split_line", False)):
+            dispatcher.dispatch(SetSplitPositionVisualAction(clamped), scope="viewport")
+        emit_interaction_update(actions)
         return
-    viewport.view_state.split_position = clamped
-    if viewport.interaction_state.is_dragging_split_line:
-        viewport.view_state.split_position_visual = clamped
     emit_interaction_update(actions)
 
 
@@ -189,11 +197,13 @@ def command_sync_split_position(actions, position: float) -> None:
     if dispatched:
         emit_interaction_update(actions)
         return
-    viewport = getattr(getattr(actions, "store", None), "viewport", None)
-    if viewport is None:
+    store = getattr(actions, "store", None)
+    dispatcher = store.get_dispatcher() if store is not None and hasattr(store, "get_dispatcher") else None
+    if dispatcher is not None:
+        dispatcher.dispatch(SetSplitPositionAction(clamped), scope="viewport")
+        dispatcher.dispatch(SetSplitPositionVisualAction(clamped), scope="viewport")
+        emit_interaction_update(actions)
         return
-    viewport.view_state.split_position = clamped
-    viewport.view_state.split_position_visual = clamped
     emit_interaction_update(actions)
 
 
