@@ -149,12 +149,12 @@ class SessionController(QObject):
 
         try:
             use_progressive = should_use_progressive_load(path)
-        from shared.image_processing.tiled_pixel_store import autocrop_debug
+            from shared.image_processing.tiled_pixel_store import autocrop_debug
 
-        autocrop_debug(
-            "slot=%d path=%s auto_crop=%s progressive=%s",
-            image_number, path, should_crop, use_progressive,
-        )
+            autocrop_debug(
+                "slot=%d path=%s auto_crop=%s progressive=%s",
+                image_number, path, should_crop, use_progressive,
+            )
 
             if use_progressive:
                 preview = load_preview_image(path, should_crop)
